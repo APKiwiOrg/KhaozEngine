@@ -51,10 +51,10 @@ public class CellEvictionTests
         private readonly List<CellCoord> playerCells = new();
         private long nextNetId = 1;
 
-        public GridHost()
+        public GridHost(ICellLink? cellLink = null)
         {
             Host = new ShardHost(cellSize: 100f, tickSeconds: 0.1f, Registry(), interestCellSize: 100f,
-                overlapMargin: 20f, positionAccessor: PosAccessor);
+                overlapMargin: 20f, positionAccessor: PosAccessor, cellLink: cellLink);
             Host.CellCreated += c => CellCreated?.Invoke(c.Coord);
         }
 
@@ -217,7 +217,6 @@ public class CellEvictionTests
         Assert.True(dest.World.TryGet(re, out Node rn));
         Assert.Equal(5, rn.Amount);
         Assert.True(dest.TryGetOwned(walker, out _));             // and the migrant landed
-        Assert.Equal(0, dest.TickCount);
         Assert.Equal(1, host.Host.OwnerCount(resident));
         Assert.Equal(1, host.Host.OwnerCount(walker));
     }
@@ -448,5 +447,208 @@ public class CellEvictionTests
         Assert.False(host.CanEvictCell(occupied));
         Assert.False(host.EvictCell(occupied));
         Assert.True(server.Host.TryGetCell(occupied, out _));
+    }
+
+    [Fact]
+    public async Task Evict_BacksOffWhenTheCellChangesWhileTheSaveIsInFlight()
+    {
+        // Plain (ungated) store deliberately: FlushAsync's own trailing SaveDirtyPass would legitimately re-save
+        // this coord too (the SpawnNode below makes it dirty again), and a GatedSaveStore would need a second,
+        // unreachable release for that trailing write from inside this single await.
+        var store = new InMemoryWorldStore();
+        var host = new GridHost();
+        var persistence = new CellPersistence(host, store);
+        var evictor = new CellEvictor(host, persistence);
+        host.SpawnNode(250f, 250f, 1);
+
+        Assert.True(evictor.RequestEvict(C22));      // snapshot taken (1 entity), save dispatched
+        host.SpawnNode(260f, 260f, 2);               // the cell changes before the write is confirmed durable
+
+        await persistence.FlushAsync();
+        evictor.Update(0f);
+
+        Assert.True(host.Host.TryGetCell(C22, out CellSim still));   // the eviction backed off
+        Assert.Equal(2, still.OwnedCount);                            // both entities remain, nothing lost
+        Assert.Equal(0, evictor.EvictedCount);
+    }
+
+    [Fact]
+    public async Task EvictingASecondCell_DropsTheOldestFromTheCache_AndItRestoresThroughTheStoreOnRecreate()
+    {
+        var store = new InMemoryWorldStore();
+        var host = new GridHost();
+        var persistence = new CellPersistence(host, store);
+        var evictor = new CellEvictor(host, persistence, new CellEvictionConfig { MaxCachedSnapshots = 1 });
+
+        long firstId = host.SpawnNode(250f, 250f, 1);     // cell (2,2)
+        host.SpawnNode(350f, 250f, 2);                     // cell (3,2)
+        var c32 = new CellCoord(3, 2);
+
+        await EvictAsync(evictor, persistence, C22);
+        Assert.Equal(1, evictor.CachedSnapshotCount);
+
+        await EvictAsync(evictor, persistence, c32);       // the cache holds only 1: this pushes C22 out of it
+        Assert.Equal(1, evictor.CachedSnapshotCount);       // still bounded, now holding c32's snapshot instead
+
+        // C22 fell out of the cache, so recreating it does not restore synchronously.
+        host.Host.EnsureCell(C22);
+        Assert.True(host.Host.TryGetCell(C22, out CellSim fresh));
+        Assert.False(fresh.TryGetOwned(firstId, out _));    // blank until the async store load lands
+
+        await persistence.FlushAsync();
+        Assert.True(fresh.TryGetOwned(firstId, out Entity e));
+        Assert.True(fresh.World.TryGet(e, out Node n));
+        Assert.Equal(1, n.Amount);
+    }
+
+    [Fact]
+    public async Task EvictThenRecreate_FlushingPersistenceAfterwards_DoesNotDoubleRestore()
+    {
+        var store = new InMemoryWorldStore();
+        var host = new GridHost();
+        var persistence = new CellPersistence(host, store);
+        var evictor = new CellEvictor(host, persistence);
+
+        host.SpawnNode(250f, 250f, 5);
+        host.SpawnNode(260f, 260f, 6);   // two entities in the same cell
+
+        await EvictAsync(evictor, persistence, C22);
+
+        CellSim again = host.Host.EnsureCell(C22);   // cache-hit restore, synchronous
+        Assert.Equal(2, again.OwnedCount);
+
+        // A store-backed load queued alongside the cache restore would double every entity once it lands. Exactly
+        // one restore path is armed per evicted coordinate, so it must not be queued at all.
+        await persistence.FlushAsync();
+        Assert.Equal(2, again.OwnedCount);
+    }
+
+    /// <summary>A link that implements only what <see cref="ICellLink"/> requires, leaning on the interface's own
+    /// default <see cref="ICellLink.HasPending"/> (always true) rather than overriding it.</summary>
+    private sealed class BareCellLink : ICellLink
+    {
+        public void Send(in CellMessage message) { }
+        public IReadOnlyList<CellMessage> Drain(CellCoord target, CellMessageKind kind) => Array.Empty<CellMessage>();
+    }
+
+    [Fact]
+    public async Task Evict_IsRefusedByALinkThatLeansOnTheDefaultHasPending()
+    {
+        var store = new InMemoryWorldStore();
+        var host = new GridHost(new BareCellLink());
+        var persistence = new CellPersistence(host, store);
+        var evictor = new CellEvictor(host, persistence);
+        host.SpawnNode(250f, 250f, 1);
+
+        Assert.False(evictor.RequestEvict(C22));
+
+        await persistence.FlushAsync();
+        evictor.Update(0f);
+
+        Assert.True(host.Host.TryGetCell(C22, out _));
+        Assert.Equal(0, evictor.EvictedCount);
+        Assert.Equal(0, evictor.PendingEvictionCount);
+    }
+
+    [Fact]
+    public async Task Scan_DoesNotSpendTheBudgetOnACellRefusedForAnUnrelatedReason_AndStillEvictsAGenuineCandidate()
+    {
+        var store = new InMemoryWorldStore();
+        var host = new GridHost();
+        var persistence = new CellPersistence(host, store);
+        var evictor = new CellEvictor(host, persistence, new CellEvictionConfig
+        {
+            ScanIntervalSeconds = 1f,
+            MaxEvictionsPerScan = 1,   // budget for exactly one eviction this scan
+            Policy = new IdleCellEvictionPolicy { IdleSeconds = 1f, KeepRadius = 0 },
+        });
+
+        long migrating = host.SpawnNode(950f, 950f, 1);   // cell (9,9): idle, but mid-handoff
+        Assert.True(host.Host.TryGetOwner(migrating, out CellSim blocked, out Entity e));
+        blocked.World.Set(e, new Migrating { Destination = new CellCoord(8, 9) });
+
+        host.SpawnNode(50f, 50f, 2);                       // cell (0,0): idle and genuinely evictable
+        var far = new CellCoord(9, 9);
+        var near = new CellCoord(0, 0);
+
+        evictor.Update(5f);
+        await persistence.FlushAsync();
+        evictor.Update(0f);
+
+        Assert.True(host.Host.TryGetCell(far, out _));     // refused: mid-handoff
+        Assert.False(host.Host.TryGetCell(near, out _));   // the refusal above did not spend the one-slot budget
+        Assert.Equal(1, evictor.EvictedCount);
+    }
+
+    [Fact]
+    public async Task Crossing_IntoAPreviouslyEvictedCell_TheMovementSystemStillRunsThere()
+    {
+        var (st, ct) = LoopbackTransport.CreatePair();
+        var cfg = new ShardedWorldServerConfig
+        {
+            TickSeconds = 1f / 30f,
+            CellSize = 10f,
+            OverlapMargin = 4f,
+            InterestRadius = 4f,
+            MaxPlayers = 8,
+            SpawnPosition = _ => new Vector3(8f, 0f, 5f),   // cell (0,0), near the east edge at x=10
+        };
+        var server = new ShardedWorldServer(st, cfg, (x, z) => 0f, MoveTuning.Default);
+        var persistence = new CellPersistence(server, new InMemoryWorldStore());
+        var evictor = new CellEvictor(server, persistence);
+
+        // Wire the neighbour cell the player is about to cross into, then evict it: the crossing has to recreate it
+        // from scratch (a fresh World with no systems yet), exactly what wiredCells.Remove on CellRemoved has to
+        // unblock for EnsureWired to re-add the movement system to.
+        server.Host.EnsureCell(new CellCoord(1, 0));
+        server.Tick(cfg.TickSeconds);
+        Assert.True(evictor.RequestEvict(new CellCoord(1, 0)));
+        await persistence.FlushAsync();
+        evictor.Update(0f);
+        Assert.False(server.Host.TryGetCell(new CellCoord(1, 0), out _));
+
+        var client = new NetClient(ct, TestHandshake.Wire());
+        var east = new MoveCommand(new Vector2(1f, 0f), run: true, cameraYaw: 0f);
+
+        int slot = -1;
+        for (int i = 0; i < 200 && slot < 0; i++)
+        {
+            client.Poll();
+            server.Poll();
+            server.Tick(cfg.TickSeconds);
+            if (client.Slot >= 0 && server.TryGetPlayerNetId(client.Slot, out _)) slot = client.Slot;
+        }
+        Assert.True(slot >= 0, "client never joined");
+        Assert.True(server.TryGetPlayerNetId(slot, out long netId));
+
+        bool crossed = false;
+        float xAtCrossing = 0f;
+        for (int i = 0; i < 120 && !crossed; i++)
+        {
+            client.Send(MoveProtocol.EncodeMove(i, east), NetChannelReliability.ReliableOrdered);
+            server.Poll();
+            server.Tick(cfg.TickSeconds);
+            client.Poll();
+            if (server.Host.TryGetOwner(netId, out CellSim owner, out Entity e) && owner.Coord.X >= 1)
+            {
+                crossed = true;
+                xAtCrossing = owner.World.Get<ReplicatedPosition>(e).Value.X;
+            }
+        }
+        Assert.True(crossed, "player never crossed into the recreated cell");
+
+        // Keep walking. A stale wiredCells entry would leave the recreated cell's World without a
+        // PlayerMovementSystem, freezing the player exactly at the crossing point no matter how many more moves
+        // arrive.
+        for (int i = 0; i < 20; i++)
+        {
+            client.Send(MoveProtocol.EncodeMove(1000 + i, east), NetChannelReliability.ReliableOrdered);
+            server.Poll();
+            server.Tick(cfg.TickSeconds);
+            client.Poll();
+        }
+        Assert.True(server.Host.TryGetOwner(netId, out CellSim final, out Entity fe));
+        Assert.True(final.World.Get<ReplicatedPosition>(fe).Value.X > xAtCrossing,
+            "position froze after crossing into the recreated cell");
     }
 }

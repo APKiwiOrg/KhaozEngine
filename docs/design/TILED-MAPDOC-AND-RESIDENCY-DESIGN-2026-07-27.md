@@ -1688,7 +1688,7 @@ in a design doc is invisible to the ledger.
 - **Tiled nav bake** ([#269](https://github.com/APKiwiOrg/KhaozEngine/issues/269)) consumes the same tile
   granularity and the same arrival and departure events. Nothing here blocks it and nothing here does it.
 - **Editor `StreamerConfig` surface** ([#282](https://github.com/APKiwiOrg/KhaozEngine/issues/282)) is no
-  longer unaffected: 17.4.0 added `RenderDistanceProfile`/`RenderDistanceTier` (`KhaozEngine.Terrain`) and
+  longer unaffected: 17.5.0 added `RenderDistanceProfile`/`RenderDistanceTier` (`KhaozEngine.Terrain`) and
   `MapEditorOptions.RenderDistance`, so `ViewportWorld` now builds its `StreamerConfig` from
   `_renderDistance.ToStreamerConfig().Synchronous()` instead of the hardcoded
   `StreamerConfig.Default.Synchronous()` this section originally described, and `MapEditorScene` applies

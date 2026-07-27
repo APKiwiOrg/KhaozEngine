@@ -142,9 +142,10 @@ leaves an empty stack (a blank screen, since a scene never touches window APIs d
 `SceneManager`, so an editor pushed on top of it later pops back to the menu instead of leaving the app with
 nothing to show. It draws a title, a New Map row (a name field plus a Create button), an Open Recent list
 (one button per recent path, most-recent first, a missing file's button greyed but still clickable so a tap
-prunes it instead of erroring), and a Quit button. It is 2D-only chrome (no `IGameScene3D`) and runs
-headless: every action (`TryCreateMap`/`CreateMapNamed`, `ActivateRecent`, `RequestQuitLanding`) is reachable
-directly, with no live viewport required.
+prunes it instead of erroring), an Open Map section below Open Recent for maps the head knows about that
+are not (yet) in Open Recent (see Open Map below), and a Quit button. It is 2D-only chrome (no
+`IGameScene3D`) and runs headless: every action (`TryCreateMap`/`CreateMapNamed`, `ActivateRecent`,
+`ActivateDiscovered`, `RequestQuitLanding`) is reachable directly, with no live viewport required.
 
 ```csharp
 var landingOptions = new MapEditorLandingOptions
@@ -153,6 +154,7 @@ var landingOptions = new MapEditorLandingOptions
     CreateMap = name => CreateMapDocument(name),         // head owns file IO, returns the new path or null
     OpenEditor = path => BuildMapEditorScene(path),       // head assembles a fully-initialized MapEditorScene
     Recent = new EditorRecentFiles("MyStudio", "MyGame"), // rides GameStorage under the publisher/app pair
+    DiscoverMaps = () => Directory.GetFiles(mapsDir, "*.map.json"), // head owns file IO, picks the directory
     RequestQuit = () => app.Quit(),
 };
 sceneManager.Push(new MapEditorLandingScene().Init(whiteTexture, dpiFont, landingOptions));
@@ -166,8 +168,38 @@ sceneManager.Push(new MapEditorLandingScene().Init(whiteTexture, dpiFont, landin
   manifests, registry, all head concerns). The landing scene only `Push`es the result and stays underneath
   it, so the editor's own exit dialog pops back to this menu (see Exit dialog above).
 - `Recent` (`IRecentFilesStore`, nullable) backs the Open Recent list. Null renders an empty list.
+- `DiscoverMaps` (`Func<IReadOnlyList<string>>?`) backs the Open Map section: the head returns the map
+  document paths it knows about, since the head owns file IO and picks which directories it looks in, the
+  same seam as `CreateMap` and `OpenEditor`. The engine never traverses a directory itself. Null renders no
+  Open Map section at all, byte-identical to a head that has not adopted it. See Open Map below.
 - `RequestQuit` mirrors `MapEditorOptions.RequestQuit`: null leaves the Quit button an inline no-op note
   instead of touching window APIs directly.
+
+**Open Map.** The section sits below Open Recent and above the status note and Quit: Open Recent is the
+most-recently-used fast lane whose entries keep stable positions, Open Map is the variable-length remainder.
+A path already tracked by `Recent` is filtered out of Open Map (the same ordinal identity rule
+`IRecentFilesStore.Touch`/`Remove` use), so a map renders exactly once and migrates from Open Map into Open
+Recent the first time it is opened. The returned paths are deduplicated (ordinal), blank entries dropped, and
+sorted by file name `OrdinalIgnoreCase` with the full path `Ordinal` as tiebreak: filesystem enumeration
+order is not stable across platforms or launches, both comparisons are culture-independent so the order
+cannot shift with the machine's locale, and the pair is a total order so two maps sharing a file name in
+different directories keep a fixed relative position. At most `MaxDiscoveredShown` (12) rows are drawn, with
+any remainder stated on its own line ("+N more not shown") rather than silently dropped: the cap bounds the
+section against a head with a large maps directory, it is not a fit guarantee, since the panel does not
+scroll and a full Open Recent list can already overflow a small window on its own.
+
+A discovered path whose file is gone greys with the same missing-file style as a stale recent entry, and
+clicking it re-queries the head and leaves a note instead of pushing: there is no store to prune (the head
+owns the directory), so the re-query is the prune, and a recent entry pruned for being missing also triggers
+a re-query so it does not reappear greyed under Open Map. `DiscoverMaps` is called on scene enter and again
+on the re-expose edge (this scene becomes the top of the stack again after a pushed editor pops), so a map
+created or deleted outside the editor shows up with no restart needed. It is deliberately not called every
+frame, unlike the Recent list's own per-frame diff (self-heals below), since this is head file IO rather
+than a cheap in-memory compare. A non-null hook returning nothing still renders the label plus a "No other
+maps found" placeholder row, so the layout does not jump as maps migrate into Open Recent. Each row reuses
+the Open Recent button machinery: `FriendlyLabel` (the file name) for the display text, the full path as
+identity, and the same `Touch` + `OpenEditor` push `ActivateRecent` performs, through a new internal
+`ActivateDiscovered(path)`.
 
 `IRecentFilesStore` is the seam (`Paths`, `Touch`, `Remove`, `Flush`): `Paths` is the most-recent-first list a
 test or a fake can substitute, `Touch`/`Remove` mutate it (ordinal, case-sensitive dedup), and `Flush` drains

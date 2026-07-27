@@ -5,7 +5,7 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 17.4.0
+## 17.5.0
 
 ### Render distance becomes one coherent set, and the map editor stops ending in a void
 
@@ -54,6 +54,54 @@ actually takes, are unchanged at ~10.5 ms because they re-mesh only the dirty re
 See #362 for the one structural limit found on the way: `StreamerConfig.Async` is a single bool for the
 whole streamer, so the editor cannot yet keep gameplay loads blocking while the decor ring fills in
 behind.
+
+## 17.4.0
+
+### Map editor landing menu: an Open Map section for maps the recents store hasn't seen
+
+A fresh machine's landing menu could only reach a map already in Open Recent or passed via a `--map` launch
+argument, so `MapEditorLandingOptions` gains `DiscoverMaps`, a head-supplied hook rendered as a new Open Map
+section below Open Recent.
+
+- **`MapEditorLandingOptions.DiscoverMaps` (`KhaozEngine.MapEditor`).** New `Func<IReadOnlyList<string>>?`
+  hook: the head returns the map document paths it knows about and decides which directories to look in.
+  The engine never traverses a directory itself, the same head-owns-IO seam as `CreateMap` and `OpenEditor`.
+  Null renders no Open Map section at all, byte-identical to a head that has not adopted it.
+- **Open Map section (`KhaozEngine.MapEditor`).** `MapEditorLandingScene` renders `DiscoverMaps`'s result as
+  a new section below Open Recent and above the status note and Quit: Open Recent is the most-recently-used
+  fast lane whose entries keep stable positions, Open Map is the variable-length remainder. A path already
+  tracked by the recents store is filtered out of Open Map (the same ordinal identity rule
+  `IRecentFilesStore.Touch`/`Remove` use), so a map renders exactly once and migrates from Open Map into
+  Open Recent the first time it is opened. Each row reuses the Open Recent button machinery (`FriendlyLabel`
+  for display text, the full path as identity, the same `Touch` + `OpenEditor` push `ActivateRecent`
+  performs) through a new internal `ActivateDiscovered(path)`.
+- **Deterministic ordering (`KhaozEngine.MapEditor`).** Returned paths are deduplicated (ordinal), blank
+  entries dropped, and sorted by file name `OrdinalIgnoreCase` with the full path `Ordinal` as tiebreak, so
+  the order cannot shift with filesystem enumeration order, platform, or the machine's locale, and two maps
+  sharing a file name in different directories keep a fixed relative position.
+- **Render cap (`KhaozEngine.MapEditor`).** At most `MaxDiscoveredShown` (12) rows are drawn, with any
+  remainder stated on its own line ("+N more not shown") rather than silently dropped. The cap bounds the
+  section against a head with a large maps directory. It is not a fit guarantee: the panel does not scroll,
+  and a full Open Recent list can already overflow a small window on its own.
+- **Missing files (`KhaozEngine.MapEditor`).** A discovered path whose file is gone greys with the same
+  missing-file style as a stale recent entry. Clicking it re-queries the head and leaves a note instead of
+  pushing, since there is no store to prune (the head owns the directory), so the re-query is the prune. A
+  recent entry pruned for being missing also triggers a re-query, so it does not reappear greyed under Open
+  Map.
+- **Re-query timing (`KhaozEngine.MapEditor`).** `DiscoverMaps` is called on scene enter and again on the
+  re-expose edge (this scene becomes the top of the stack again after a pushed editor pops), so a map
+  created or deleted outside the editor shows up with no restart needed. It is deliberately not called
+  every frame, unlike the Recent list's own per-frame diff, since this is head file IO.
+- **Unwired heads are unchanged (`KhaozEngine.MapEditor`).** A null `DiscoverMaps` draws no label and no
+  reserved row. A wired hook returning nothing still renders the label plus a "No other maps found"
+  placeholder row, so the layout does not jump as maps migrate into Open Recent.
+- **Headless coverage (`KhaozEngine.MapEditor.Tests`).** Eight new tests in `MapEditorLandingSceneTests`:
+  normalization and sort, no-double-render against the recents store, activation and migration into Open
+  Recent, missing-file re-query, the unwired null hook, a real tap driven through `SceneManager.Update`,
+  the re-expose re-query (including the negative assertion that the hook is not called per frame), and the
+  cap plus the reported remainder.
+
+Closes #359.
 
 ## 17.3.0
 

@@ -5,6 +5,58 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.0.0
+
+### The wire goes frame-relative and the sharded head simulates in island frames. BREAKING
+
+Release 3 of the floating-origin program, the program's one major, and its finish line. Every head
+now simulates near a local anchor: the flat head re-anchors around its players, each shard cell owns
+an immutable frame fixed at its centre with its own physics world, and positions cross the wire as a
+frame stamp plus a small local, so replication, prediction, and reconciliation keep millimetre
+precision at 100 km. Measured on both heads: a 300-tick walk at 100 km lands within 0.3 mm of the
+identical walk at the origin, against 469 mm before. This release also lands #197, the fan-out
+determinism scope.
+
+Breaking changes and migrations, in adoption order:
+
+- **`ReplicatedPosition.Value` is read-only.** Every construction is a build error until migrated by
+  provenance: `FromWorld(absolute, frame)` for positions from outside the sim,
+  `InFrame(frame, local)` for positions out of the sim or a physics world in that frame,
+  `WithLocal` inside a step. With no frame in hand, `world.GetIslandFrame()` answers.
+- **Wire generation 9.** A position encodes as a 4-byte frame stamp plus three floats. Client and
+  server repin together, a generation mismatch disconnects cleanly at connect.
+- **`ShardedWorldServer` takes `ShardedWorldServerConfig.PhysicsWorldFactory`
+  (`Func<CellCoord, IPhysicsWorld>`) instead of one shared physics world.** Populate each cell's
+  world per the documented contract: statics within `CellSize/2 + OverlapMargin` of the centre,
+  poses relative to the cell frame's anchor, one world per cell. The server validates the factory's
+  `Origin` against the cell frame and refuses a mismatch, worlds are disposed with their cells and
+  at server disposal (`ShardedWorldServer` is now `IDisposable`).
+- **`FrameAnchoring` defaults ON for every head** (`WorldServerConfig`, `ShardedWorldServerConfig`,
+  and the new `WorldClientConfig.FrameAnchoring`). A head constructed with a physics world that
+  cannot rebase now throws, set the flag false to opt out entirely, the off path is byte-identical
+  to 16.x.
+- **Cell-blob schema 3.** Persisted cell blobs migrate forward automatically through the built-in
+  chain, a config with `IncludeEngineMigrations = false` registers `PositionFrameBlobMigration`
+  explicitly. Saves survive the upgrade, verified against real snapshot bodies.
+- **`CellSize` is validated against the precision ceiling when anchoring is on** (the planar
+  worst-case local must clear the 512 m binade, the exception carries the derivation). The 60 m
+  default passes with margin.
+- A custom `IPredictedState<T>` opting into `FrameAnchor` also implements `WithFrameAnchor` (the
+  default throws). `PlayerMovementSystem` and `CellSim` constructors gained optional frame
+  parameters, source-compatible for named usage.
+
+What did not change: consumer-facing positions stay absolute everywhere (`WorldClient.Snapshot`,
+`LocalRenderState`, `ReplicatedPosition.Value`, every grid key), authored content and persisted
+player records stay world-space, and ghosts, handoffs, and cross-frame interpolation convert
+internally with proven exactness bounds. The client reconciliation path converts frames before
+comparing, so a server re-anchor produces no hard snap and no render glide.
+
+`ShardHost.Tick` and `ThreadPoolJobScheduler.For` now run every fanned-out worker body inside
+`DeterministicFpScope`, closing the cross-peer FP divergence #197 tracked. Closes #197.
+
+Design in `docs/design/FLOATING-ORIGIN-DESIGN-2026-07-27.md`. Resolves #337 and completes the
+engine side of the 100 km world program (https://github.com/APKiwiOrg/Ruinborne/issues/242).
+
 ## 16.12.0
 
 ### World-locked water grid: the FFT ocean no longer boils under camera motion

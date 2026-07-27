@@ -249,6 +249,61 @@ namespace KhaozEngine.Tests.Gpu
                 "the grid mode is not reaching the renderer at all.");
         }
 
+        /// <summary>
+        /// Two planes of very different sizes in ONE frame. With <see cref="WaterSettings.ClipmapLevels"/> at its
+        /// default of 0 the ring count is derived PER PLANE, so the second plane wants a bigger grid than the
+        /// first - and the buffers therefore have to be sized for the largest of them before any draw is recorded.
+        /// Growing them inside the per-plane loop would free the buffer the first plane's already-recorded draw
+        /// still points at, which is a use-after-free that a single-plane test cannot see.
+        /// </summary>
+        [GpuFact]
+        public void TwoPlanesOfDifferentSizesShareOneFrame()
+        {
+            using (GpuDeviceContext probe = GpuDeviceContext.CreateHeadless())
+                Assert.True(probe.GpuDevice.Capabilities.SupportsCompute, "no compute support");
+
+            MeshHandle seabed = default;
+            byte[] rgba = Render3DSnapshot.Capture(320, 240,
+                setup: scene =>
+                {
+                    seabed = scene.LoadMesh(MeshPrimitives.Tile(160f, 1f));
+                    scene.Post.Starfield = false;
+                    scene.Post.Sky.Enabled = true;
+                    scene.Post.LightDirection = new Vector3(-0.45f, -0.75f, -0.4f);
+                    scene.Post.Water.WaveSource = WaterWaveSource.FftOcean;
+                    scene.Post.Water.GridMode = WaterGridMode.Clipmap;
+                    WaterSeaState sea = Sea();
+                    sea.CascadeCount = 2;
+                    sea.CascadeResolution = 64;
+                    scene.Post.Water.SeaState = sea;
+                    scene.Camera.Frame(Vector3.Zero, new Vector3(46f, 30f, 46f));
+                    scene.EffectTimeSeconds = 0f;
+                },
+                drawFrame: scene =>
+                {
+                    scene.Draw(seabed, Matrix4x4.CreateTranslation(0f, -12f, 0f), new Color(0.18f, 0.20f, 0.18f, 1f));
+                    // Small first, large second: the growth order that would trip the use-after-free.
+                    scene.DrawWater(new WaterPlane(centerX: -30f, surfaceY: -2f, centerZ: 0f, halfExtentX: 8f));
+                    scene.DrawWater(new WaterPlane(centerX: 0f, surfaceY: 0f, centerZ: 0f, halfExtentX: 400f));
+                },
+                frames: 2);
+
+            float[] grid = GoldenCompare.Downsample(rgba, 320, 240);
+            float min = float.MaxValue, max = float.MinValue;
+            int water = 0;
+            for (int cell = 0; cell < grid.Length / 3; cell++)
+            {
+                float r = grid[cell * 3], g = grid[cell * 3 + 1], b = grid[cell * 3 + 2];
+                if (b < r - 0.02f || MathF.Max(r, MathF.Max(g, b)) <= 0.05f) continue;
+                water++;
+                float brightness = (r + g + b) / 3f;
+                min = MathF.Min(min, brightness);
+                max = MathF.Max(max, brightness);
+            }
+            Assert.True(water >= 40, $"two planes rendered only {water} water-ish cells");
+            Assert.True(max - min >= 0.08f, $"the two-plane frame is a flat sheet ({min:F3}..{max:F3})");
+        }
+
         static float[] CaptureGrid(WaterGridMode mode)
         {
             MeshHandle seabed = default;

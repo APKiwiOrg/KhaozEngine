@@ -205,6 +205,7 @@ namespace KhaozEngine.Render3D.Internal
             int stride = n + 1;
             int perLevel = stride * stride;
             float cell = MathF.Max(baseCell, 1e-4f);
+            levels = Math.Clamp(levels, 1, MaxLevels);
 
             float minX = plane.CenterX - plane.HalfExtentX, maxX = plane.CenterX + plane.HalfExtentX;
             float minZ = plane.CenterZ - plane.HalfExtentZ, maxZ = plane.CenterZ + plane.HalfExtentZ;

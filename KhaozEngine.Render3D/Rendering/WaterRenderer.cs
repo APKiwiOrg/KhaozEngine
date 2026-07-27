@@ -418,7 +418,18 @@ namespace KhaozEngine.Render3D.Rendering
             if (planes.Length == 0) return;
             bool clipmap = settings.GridMode == WaterGridMode.Clipmap;
             EnsureUboCapacity(planes.Length);
-            if (clipmap) EnsureClipPipeline(); else EnsureGridBuffers();
+            if (clipmap)
+            {
+                EnsureClipPipeline();
+                // Sized for the LARGEST plane in the frame, once, BEFORE any draw is recorded. Two planes can want
+                // different ring counts (ClipmapLevels 0 derives them per plane), and growing the buffers inside
+                // the loop would dispose one that an already-recorded draw still references.
+                EnsureClipBuffers(planes, settings);
+            }
+            else
+            {
+                EnsureGridBuffers();
+            }
 
             // ONE ocean update per frame, ahead of the per-plane loop and of BindTargets (which binds whatever maps
             // it produced). Every queued plane samples the same cascades: this release has one sea state, not one
@@ -471,9 +482,7 @@ namespace KhaozEngine.Render3D.Rendering
         {
             float cell = MathF.Max(settings.ClipmapCellSize, 1e-4f);
             int ringCells = WaterClipmap.ClampRingCells(settings.ClipmapRingCells);
-            int levels = settings.ClipmapLevels > 0
-                ? Math.Clamp(settings.ClipmapLevels, 1, WaterClipmap.MaxLevels)
-                : WaterClipmap.LevelsFor(plane, cell, ringCells);
+            int levels = LevelsFor(plane, settings, cell, ringCells);
 
             Vector2 focus = WaterClipmap.ClampFocus(plane, cameraPos.X, cameraPos.Z);
             var key = new ClipKey(cell, ringCells, levels, plane.CenterX, plane.CenterZ, plane.SurfaceY,
@@ -486,7 +495,6 @@ namespace KhaozEngine.Render3D.Rendering
 
             if (!same)
             {
-                EnsureClipBuffers(levels, ringCells);
                 _clipVertexCount = WaterClipmap.Build(plane, focus.X, focus.Y, cell, ringCells, levels,
                     _clipVerts, _clipIndices, out _clipIndexCount);
                 cl.UpdateBuffer<WaterClipmapVertex>(_clipVb!, 0, _clipVerts.AsSpan(0, _clipVertexCount));
@@ -502,14 +510,31 @@ namespace KhaozEngine.Render3D.Rendering
             cl.DrawIndexed((uint)_clipIndexCount, 1, 0, 0, 0);
         }
 
-        /// <summary>Size the clipmap's buffers + CPU scratch for a (levels, ringCells) pair, reallocating only when
-        /// that pair changes. Both counts are exact functions of the pair: the hole is always the same number of
-        /// quads however the snap placed it.</summary>
-        void EnsureClipBuffers(int levels, int ringCells)
+        /// <summary>The ring count for one plane: the explicit setting when it is positive, otherwise derived so
+        /// the outermost ring covers the plane from any camera position on it.</summary>
+        static int LevelsFor(in WaterPlane plane, WaterSettings settings, float cell, int ringCells)
+            => settings.ClipmapLevels > 0
+                ? Math.Clamp(settings.ClipmapLevels, 1, WaterClipmap.MaxLevels)
+                : WaterClipmap.LevelsFor(plane, cell, ringCells);
+
+        /// <summary>
+        /// Size the clipmap's buffers + CPU scratch for the LARGEST plane in the frame, growing only. Called once
+        /// before any draw is recorded, which is the point: with <see cref="WaterSettings.ClipmapLevels"/> at 0 the
+        /// ring count is derived per plane, so a second, bigger plane would otherwise reallocate mid-loop and free
+        /// the buffer the first plane's already-recorded draw still points at.
+        /// </summary>
+        void EnsureClipBuffers(ReadOnlySpan<WaterPlane> planes, WaterSettings settings)
         {
-            int vcount = WaterClipmap.VertexCount(levels, ringCells);
-            int icount = WaterClipmap.IndexCount(levels, ringCells);
-            if (_clipVb != null && _clipVerts.Length == vcount && _clipIndices.Length == icount) return;
+            float cell = MathF.Max(settings.ClipmapCellSize, 1e-4f);
+            int ringCells = WaterClipmap.ClampRingCells(settings.ClipmapRingCells);
+            int vcount = 0, icount = 0;
+            foreach (WaterPlane plane in planes)
+            {
+                int levels = LevelsFor(plane, settings, cell, ringCells);
+                vcount = Math.Max(vcount, WaterClipmap.VertexCount(levels, ringCells));
+                icount = Math.Max(icount, WaterClipmap.IndexCount(levels, ringCells));
+            }
+            if (_clipVb != null && _clipVerts.Length >= vcount && _clipIndices.Length >= icount) return;
             _clipVb?.Dispose();
             _clipIb?.Dispose();
             _clipVerts = new WaterClipmapVertex[vcount];

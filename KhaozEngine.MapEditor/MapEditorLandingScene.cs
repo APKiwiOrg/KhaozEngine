@@ -33,6 +33,14 @@ namespace KhaozEngine.MapEditor
         /// <summary>The recent-files store the Open Recent list reads and prunes. Null renders an empty recent list.</summary>
         public IRecentFilesStore? Recent;
 
+        /// <summary>The map documents this head knows about, queried on demand for the Open Map section. The head owns
+        /// file IO and decides which directories it looks in: the engine never traverses a directory itself, the same
+        /// seam as <see cref="CreateMap"/> (builds the path and writes the document) and <see cref="OpenEditor"/> (builds
+        /// the scene). Null renders no Open Map section at all, so a head that does not wire it keeps exactly the menu it
+        /// had before. A wired hook returning nothing still renders the section with a placeholder row, so the layout does
+        /// not jump as maps migrate into Open Recent.</summary>
+        public Func<IReadOnlyList<string>>? DiscoverMaps;
+
         /// <summary>How the menu leaves the app (the head's quit path, e.g. a <c>GameApp</c> subclass calling the
         /// protected <c>Quit()</c>). Null leaves the Quit button a no-op with an inline note, since a scene never
         /// touches window APIs directly (decision 1).</summary>
@@ -42,11 +50,19 @@ namespace KhaozEngine.MapEditor
     /// <summary>The turn-key entry menu a per-game editor head pushes as the bottom scene on its
     /// <see cref="SceneManager"/> (decision 6): a title, a New Map row (a name field and a Create button), an Open
     /// Recent list (one button per recent path, most-recent first, missing files greyed and pruned on an activation
-    /// attempt), and a Quit button. Creating or opening a map pushes the head-built editor on top and leaves this
-    /// scene at the stack bottom, so the editor's Close pops back here (decision 1). Only 2D chrome (no 3D pass, so
-    /// it does not implement <c>IGameScene3D</c>). Developer tooling, so the whole class is
+    /// attempt), an Open Map section, and a Quit button. Creating or opening a map pushes the head-built editor on
+    /// top and leaves this scene at the stack bottom, so the editor's Close pops back here (decision 1). Only 2D
+    /// chrome (no 3D pass, so it does not implement <c>IGameScene3D</c>). Developer tooling, so the whole class is
     /// <see cref="LocalizationExemptAttribute">localization-exempt</see>. The widget drive is viewport-gated, so the
-    /// scene runs headless (its create / activate / quit actions are reachable without a live viewport).</summary>
+    /// scene runs headless (its create / activate / quit actions are reachable without a live viewport).
+    /// <para>Open Map (issue 359) is the reachability seam for a map document the recents store does not know about
+    /// yet, e.g. a game's committed map on a fresh machine that has never opened it through this editor. It sits
+    /// BELOW Open Recent and above the note/Quit rows: Open Recent is the most-recently-used fast lane whose entries
+    /// keep stable positions, and Open Map is the variable-length remainder. A path already in the recents store is
+    /// filtered OUT of Open Map (ordinal compare, matching <see cref="IRecentFilesStore"/>'s own identity rule), so a
+    /// map renders exactly once, and the first time it is opened it migrates from Open Map into Open Recent.
+    /// <see cref="MapEditorLandingOptions.DiscoverMaps"/> null renders no section at all (a head that does not wire
+    /// it keeps exactly the menu it had before).</para></summary>
     [LocalizationExempt]
     public sealed class MapEditorLandingScene : GameScene
     {
@@ -55,13 +71,19 @@ namespace KhaozEngine.MapEditor
         const float TitleRowHeight = 40f;
         const float SectionLabelHeight = 22f;
         const float FieldRowHeight = 34f;
-        const float RecentRowHeight = 32f;
+        const float MapRowHeight = 32f;
         const float RowGap = 8f;
-        const float RecentGap = 6f;
+        const float MapRowGap = 6f;
         const float NoteRowHeight = 22f;
         const float QuitRowHeight = 34f;
         const float CreateButtonWidth = 110f;
         const float FieldButtonGap = 10f;
+
+        /// <summary>Caps the Open Map section so a head with a large map directory cannot render an unbounded
+        /// panel. Not a fit guarantee: this panel has no scrolling, and a full recents list can already overflow a
+        /// small window on its own. Internal so the tests can reference it directly instead of hard-coding the
+        /// number.</summary>
+        internal const int MaxDiscoveredShown = 12;
 
         static readonly Color BackdropColor = new(0.06f, 0.07f, 0.09f, 1f);
         static readonly Color PanelBackground = new(0.115f, 0.12f, 0.165f, 0.98f);
@@ -71,18 +93,20 @@ namespace KhaozEngine.MapEditor
         static readonly Color NoteColor = new(0.95f, 0.78f, 0.45f, 1f);
         static readonly float PanelCornerRadius = GuiStyle.Modern.CornerRadius;
 
-        // A recent-list button whose file is missing: greyed text over a muted fill so it reads inactive, yet still
-        // Enabled so a click runs ActivateRecent (which prunes it). The disabled visual can't do double duty here,
-        // since a disabled Button never fires its OnClick (decision 6 wants the click to prune, not just disable).
+        // A map-list button (either list) whose file is missing: greyed text over a muted fill so it reads inactive,
+        // yet still Enabled so a click runs ActivateRecent (which prunes it from the store) or ActivateDiscovered
+        // (which re-queries the head). The disabled visual can't do double duty here, since a disabled Button never
+        // fires its OnClick (decision 6 wants the click to prune, not just disable).
         static readonly GuiStyle MissingStyle = BuildMissingStyle();
 
-        // One recent-list entry: the button and the full path it activates (the button's label shows only the file
-        // name). The path is the identity ActivateRecent / the store key on, not the shortened label.
-        readonly struct RecentEntry
+        // One map-list entry (Open Recent or Open Map): the button and the full path it activates (the button's
+        // label shows only the file name). The path is the identity that ActivateRecent, ActivateDiscovered, and
+        // the store key all act on, not the shortened label.
+        readonly struct MapEntry
         {
             public readonly Button Button;
             public readonly string Path;
-            public RecentEntry(Button button, string path) { Button = button; Path = path; }
+            public MapEntry(Button button, string path) { Button = button; Path = path; }
         }
 
         Texture2D _white = null!;
@@ -93,10 +117,22 @@ namespace KhaozEngine.MapEditor
         TextInput _nameInput = null!;
         Button _createButton = null!;
         Button _quitButton = null!;
-        readonly List<RecentEntry> _recent = new();
+        readonly List<MapEntry> _recent = new();
+
+        // The last DiscoverMaps query result: normalized (null/whitespace skipped), deduped (ordinal), sorted. Kept
+        // separate from _discoveredButtons because a recents-only mutation (no new query) can change which entries
+        // are filtered out without re-running the head's file IO.
+        readonly List<string> _discovered = new();
+        readonly List<MapEntry> _discoveredButtons = new();
+        int _discoveredHidden;
 
         string _note = "";
         bool _built;
+
+        // Whether this scene was the top of the SceneManager stack as of the last OnUpdate. SceneManager gives this
+        // scene no re-exposure hook (see RefreshDiscoveredOnReExpose), so this is how the scene notices it has
+        // become active again after the head's editor scene popped off above it.
+        bool _wasTopOfStack;
 
         // The store's Paths as of the last RebuildRecentButtons, so OnUpdate can notice a mutation made while this
         // scene was not driving the actions itself (e.g. a future Save-As from the editor scene pushed on top).
@@ -136,6 +172,18 @@ namespace KhaozEngine.MapEditor
         /// <c>Bounds</c> reflect that frame's layout, so a test can drive a real tap against it. Exposed for tests.</summary>
         internal Button? RecentButtonAt(int index) => index >= 0 && index < _recent.Count ? _recent[index].Button : null;
 
+        /// <summary>The number of Open Map buttons currently built (the last <see cref="QueryDiscoveredMaps"/> result,
+        /// filtered against Open Recent and capped at <see cref="MaxDiscoveredShown"/>). Exposed for tests.</summary>
+        internal int DiscoveredButtonCount => _discoveredButtons.Count;
+
+        /// <summary>The Nth Open Map button, or null when out of range. After an <see cref="OnUpdate"/> pass its
+        /// <c>Bounds</c> reflect that frame's layout, so a test can drive a real tap against it. Exposed for tests.</summary>
+        internal Button? DiscoveredButtonAt(int index) => index >= 0 && index < _discoveredButtons.Count ? _discoveredButtons[index].Button : null;
+
+        /// <summary>How many discovered maps are beyond <see cref="MaxDiscoveredShown"/> and so not rendered as a
+        /// button (surfaced instead as the "+N more" overflow row). Exposed for tests.</summary>
+        internal int DiscoveredHiddenCount => _discoveredHidden;
+
         // ---- lifecycle ---------------------------------------------------------------------------------------
 
         /// <inheritdoc/>
@@ -144,6 +192,8 @@ namespace KhaozEngine.MapEditor
             if (_built) return;
             BuildChrome();
             RebuildRecentButtons();
+            QueryDiscoveredMaps();
+            _wasTopOfStack = true;
             _built = true;
         }
 
@@ -171,17 +221,86 @@ namespace KhaozEngine.MapEditor
         {
             _recent.Clear();
             _lastSeenRecentPaths.Clear();
-            if (_options.Recent is not { } store) return;
-            foreach (string path in store.Paths)
+            if (_options.Recent is { } store)
             {
-                _lastSeenRecentPaths.Add(path);
+                foreach (string path in store.Paths)
+                {
+                    _lastSeenRecentPaths.Add(path);
+                    bool exists = SafeExists(path);
+                    var button = new Button(default, LocalizedText.Raw(FriendlyLabel(path)), null!, () => ActivateRecent(path))
+                    {
+                        Style = exists ? GuiStyle.Modern : MissingStyle,
+                    };
+                    _recent.Add(new MapEntry(button, path));
+                }
+            }
+            // The Open Map filter (what counts as already-in-recents) is derived from this list, so any recents
+            // rebuild must re-derive it too. This is IO-free (RebuildDiscoveredButtons only re-filters _discovered,
+            // it never re-queries the head), so it is safe to run unconditionally here rather than trusting every
+            // call site to remember a second call.
+            RebuildDiscoveredButtons();
+        }
+
+        // The ONLY place DiscoverMaps is invoked. This is head file IO (a directory enumeration), so it must never
+        // ride the per-frame path the way RefreshRecentIfChanged's store compare does: it runs once on OnEnter and
+        // once per re-exposure (see RefreshDiscoveredOnReExpose), never on every driven frame. Clears and repopulates
+        // _discovered: tolerates a null hook return, skips null/whitespace entries, dedupes ordinal, sorts, then
+        // rebuilds the buttons (IO-free) over the fresh list.
+        void QueryDiscoveredMaps()
+        {
+            _discovered.Clear();
+            if (_options.DiscoverMaps is { } discover)
+            {
+                IReadOnlyList<string>? found = discover();
+                if (found is not null)
+                {
+                    foreach (string path in found)
+                    {
+                        if (string.IsNullOrWhiteSpace(path)) continue;
+                        if (_discovered.Exists(p => string.Equals(p, path, StringComparison.Ordinal))) continue;
+                        _discovered.Add(path);
+                    }
+                }
+            }
+            // Sort by file name first (OrdinalIgnoreCase), then full path (Ordinal) as a tiebreak. Filesystem
+            // enumeration order is not stable across platforms or launches, and both comparisons are
+            // culture-independent, so the order cannot shift with the machine's locale. The pair is a total order,
+            // so two maps sharing a file name in different directories still keep a fixed relative position.
+            _discovered.Sort((a, b) =>
+            {
+                int byName = string.Compare(FriendlyLabel(a), FriendlyLabel(b), StringComparison.OrdinalIgnoreCase);
+                return byName != 0 ? byName : string.Compare(a, b, StringComparison.Ordinal);
+            });
+            RebuildDiscoveredButtons();
+        }
+
+        // Rebuild _discoveredButtons from _discovered: no IO. Filters out anything already in the recents list (so
+        // a map renders exactly once, migrating into Open Recent the first time it is opened), caps at
+        // MaxDiscoveredShown, and counts the remainder into _discoveredHidden so the "+N more" row never truncates
+        // silently. Called after every QueryDiscoveredMaps AND every RebuildRecentButtons: the filter depends on
+        // both the discovered list and the recents list, so either input changing must re-derive it.
+        void RebuildDiscoveredButtons()
+        {
+            _discoveredButtons.Clear();
+            _discoveredHidden = 0;
+            foreach (string path in _discovered)
+            {
+                if (IsInRecents(path)) continue;
+                if (_discoveredButtons.Count >= MaxDiscoveredShown) { _discoveredHidden++; continue; }
                 bool exists = SafeExists(path);
-                var button = new Button(default, LocalizedText.Raw(FriendlyLabel(path)), null!, () => ActivateRecent(path))
+                var button = new Button(default, LocalizedText.Raw(FriendlyLabel(path)), null!, () => ActivateDiscovered(path))
                 {
                     Style = exists ? GuiStyle.Modern : MissingStyle,
                 };
-                _recent.Add(new RecentEntry(button, path));
+                _discoveredButtons.Add(new MapEntry(button, path));
             }
+        }
+
+        bool IsInRecents(string path)
+        {
+            for (int i = 0; i < _recent.Count; i++)
+                if (string.Equals(_recent[i].Path, path, StringComparison.Ordinal)) return true;
+            return false;
         }
 
         // SceneManager gives this scene no re-exposure hook when the editor scene pushed on top of it later pops
@@ -204,7 +323,32 @@ namespace KhaozEngine.MapEditor
             return true;
         }
 
+        // SceneManager has no re-exposure hook (only OnEnter/OnUpdate exist, and OnEnter runs once per push per the
+        // _built guard), and the head's editor scene does not pass updates down (GameScene.UpdateBelow defaults
+        // false), so this scene simply stops being updated while the editor sits above it. The observable edge is
+        // therefore: this scene is the top of the stack again, and it was not the last time it looked, which is
+        // exactly when a map created or deleted while this menu was not driving should appear. See OpenEditorFor for
+        // why the flag must be cleared there rather than inferred here (SceneManager.Push during Update is deferred,
+        // so Manager.Active cannot yet reflect a same-frame handover).
+        void RefreshDiscoveredOnReExpose()
+        {
+            bool top = ReferenceEquals(Manager!.Active, this);
+            if (top && !_wasTopOfStack) QueryDiscoveredMaps();
+            _wasTopOfStack = top;
+        }
+
         // ---- actions (the seam the buttons + Enter key both call, reachable headless) -------------------------
+
+        // The shared success tail of every open path (create, recent, discovered): record the map as most-recent, rebuild
+        // the lists over the new store contents (which is what migrates a discovered map into Open Recent), clear the
+        // note, and push the head-built editor.
+        void OpenTouchedMap(string path)
+        {
+            _options.Recent?.Touch(path);
+            RebuildRecentButtons();
+            _note = "";
+            OpenEditorFor(path);
+        }
 
         /// <summary>Create a map from the current name-field text (the Create button + Enter both call this).</summary>
         internal void TryCreateMap() => CreateMapNamed(_nameInput?.Text ?? "");
@@ -227,15 +371,13 @@ namespace KhaozEngine.MapEditor
             string? path = create(name);
             if (string.IsNullOrEmpty(path)) { _note = "Could not create map '" + name + "'"; return; }
 
-            _options.Recent?.Touch(path);
-            RebuildRecentButtons();
-            _note = "";
-            OpenEditorFor(path);
+            OpenTouchedMap(path);
         }
 
         /// <summary>Open a recent map: when the file exists, touch the store and push the editor. When it is missing,
-        /// prune it from the store and leave a note instead of crashing (decision 6). Internal so a recent button's
-        /// click and the tests share one path.</summary>
+        /// prune it from the store, re-query the discovered list (so a file that vanished drops out of Open Map too
+        /// instead of reappearing there greyed), and leave a note instead of crashing (decision 6). Internal so a
+        /// recent button's click and the tests share one path.</summary>
         internal void ActivateRecent(string path)
         {
             if (string.IsNullOrEmpty(path)) return;
@@ -243,13 +385,29 @@ namespace KhaozEngine.MapEditor
             {
                 _options.Recent?.Remove(path);
                 RebuildRecentButtons();
+                QueryDiscoveredMaps();
                 _note = "Map not found, removed from recents: " + path;
                 return;
             }
-            _options.Recent?.Touch(path);
-            RebuildRecentButtons();
-            _note = "";
-            OpenEditorFor(path);
+            OpenTouchedMap(path);
+        }
+
+        /// <summary>Open a map surfaced by <see cref="MapEditorLandingOptions.DiscoverMaps"/>: touch the store and
+        /// push the editor exactly like <see cref="ActivateRecent"/>, migrating it into Open Recent. When the file
+        /// has vanished from disk since the last query (deleted outside the editor), there is no store entry to
+        /// prune here, since the head owns the directory and not this scene, so the re-query itself IS the prune: it
+        /// drops the path from the discovered list the same way <see cref="ActivateRecent"/>'s branch drops a
+        /// vanished recent from the store. Internal so a discovered button's click and the tests share one path.</summary>
+        internal void ActivateDiscovered(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return;
+            if (!SafeExists(path))
+            {
+                QueryDiscoveredMaps();
+                _note = "Map not found: " + path;
+                return;
+            }
+            OpenTouchedMap(path);
         }
 
         /// <summary>Leave the menu via <see cref="MapEditorLandingOptions.RequestQuit"/>, or leave an inline note when
@@ -269,6 +427,11 @@ namespace KhaozEngine.MapEditor
             GameScene? editor = open(path);
             if (editor is null) { _note = "Could not open map '" + path + "'"; return; }
             Manager?.Push(editor);
+            // SceneManager.Push during Update is DEFERRED (applied only once the update pass finishes), so
+            // Manager.Active still reports this scene for the rest of THIS frame even though the push has been
+            // requested. Clear the flag explicitly here rather than relying on the reference compare in
+            // RefreshDiscoveredOnReExpose, which could not otherwise observe the handover this frame.
+            _wasTopOfStack = false;
         }
 
         // ---- per-frame ---------------------------------------------------------------------------------------
@@ -280,6 +443,7 @@ namespace KhaozEngine.MapEditor
             UiViewport? ui = Manager!.UiViewport;
             if (ui is null) return;   // headless: no widget drive (actions stay reachable directly)
 
+            RefreshDiscoveredOnReExpose();
             RefreshRecentIfChanged();
             _ui.Update(Manager.Input, ui);
             LandingLayout layout = ComputeLayout(ui.Width, ui.Height);
@@ -295,11 +459,20 @@ namespace KhaozEngine.MapEditor
 
             // Snapshot the entries: a recent button's click runs ActivateRecent, which may RebuildRecentButtons and
             // replace the live list mid-loop, so iterate a copy and stop after the one tap a gesture can produce.
-            RecentEntry[] entries = _recent.ToArray();
+            MapEntry[] entries = _recent.ToArray();
             for (int i = 0; i < entries.Length && i < layout.RecentButtons.Count; i++)
             {
                 entries[i].Button.Bounds = layout.RecentButtons[i];
                 if (entries[i].Button.Update(_ui.Pointer)) break;
+            }
+
+            // Same snapshot-then-break idiom: a discovered button's click runs ActivateDiscovered, which can rebuild
+            // _discoveredButtons mid-loop (a successful activation migrates the entry into Open Recent).
+            MapEntry[] discovered = _discoveredButtons.ToArray();
+            for (int i = 0; i < discovered.Length && i < layout.DiscoveredButtons.Count; i++)
+            {
+                discovered[i].Button.Bounds = layout.DiscoveredButtons[i];
+                if (discovered[i].Button.Update(_ui.Pointer)) break;
             }
 
             _quitButton.Bounds = layout.QuitButton;
@@ -334,7 +507,7 @@ namespace KhaozEngine.MapEditor
             DrawLeft(batch, font, "Open recent", layout.RecentLabel, LabelColor);
             if (_recent.Count == 0)
             {
-                var placeholder = new Rect(layout.RecentLabel.X, layout.RecentLabel.Bottom, layout.RecentLabel.Width, RecentRowHeight);
+                var placeholder = new Rect(layout.RecentLabel.X, layout.RecentLabel.Bottom, layout.RecentLabel.Width, MapRowHeight);
                 DrawLeft(batch, font, "No recent maps", placeholder, PlaceholderColor);
             }
             else
@@ -344,6 +517,31 @@ namespace KhaozEngine.MapEditor
                     _recent[i].Button.Bounds = layout.RecentButtons[i];
                     _recent[i].Button.Font = font;
                     _recent[i].Button.Draw(batch, _white);
+                }
+            }
+
+            if (_options.DiscoverMaps is not null)
+            {
+                DrawLeft(batch, font, "Open map", layout.DiscoveredLabel, LabelColor);
+                if (_discoveredButtons.Count == 0)
+                {
+                    // "other" = not already sitting in Open Recent (that is this whole section's purpose), so an
+                    // empty Open Map next to a populated Open Recent is the common case here, not a bug.
+                    var placeholder = new Rect(layout.DiscoveredLabel.X, layout.DiscoveredLabel.Bottom, layout.DiscoveredLabel.Width, MapRowHeight);
+                    DrawLeft(batch, font, "No other maps found", placeholder, PlaceholderColor);
+                }
+                else
+                {
+                    for (int i = 0; i < _discoveredButtons.Count && i < layout.DiscoveredButtons.Count; i++)
+                    {
+                        _discoveredButtons[i].Button.Bounds = layout.DiscoveredButtons[i];
+                        _discoveredButtons[i].Button.Font = font;
+                        _discoveredButtons[i].Button.Draw(batch, _white);
+                    }
+                    // Never truncate silently: anything beyond MaxDiscoveredShown is named in this overflow line
+                    // instead of just disappearing from the list.
+                    if (_discoveredHidden > 0)
+                        DrawLeft(batch, font, "+" + _discoveredHidden + " more not shown", layout.DiscoveredOverflow, PlaceholderColor);
                 }
             }
 
@@ -406,31 +604,53 @@ namespace KhaozEngine.MapEditor
         // layout, though the binding tests drive the actions rather than the pixels.
         readonly struct LandingLayout
         {
-            public readonly Rect Panel, Title, NewMapLabel, NameField, CreateButton, RecentLabel, Note, QuitButton;
+            public readonly Rect Panel, Title, NewMapLabel, NameField, CreateButton, RecentLabel, DiscoveredLabel,
+                DiscoveredOverflow, Note, QuitButton;
             public readonly IReadOnlyList<Rect> RecentButtons;
+            public readonly IReadOnlyList<Rect> DiscoveredButtons;
 
             public LandingLayout(Rect panel, Rect title, Rect newMapLabel, Rect nameField, Rect createButton,
-                Rect recentLabel, IReadOnlyList<Rect> recentButtons, Rect note, Rect quitButton)
+                Rect recentLabel, IReadOnlyList<Rect> recentButtons, Rect discoveredLabel,
+                IReadOnlyList<Rect> discoveredButtons, Rect discoveredOverflow, Rect note, Rect quitButton)
             {
                 Panel = panel; Title = title; NewMapLabel = newMapLabel; NameField = nameField;
                 CreateButton = createButton; RecentLabel = recentLabel; RecentButtons = recentButtons;
-                Note = note; QuitButton = quitButton;
+                DiscoveredLabel = discoveredLabel; DiscoveredButtons = discoveredButtons;
+                DiscoveredOverflow = discoveredOverflow; Note = note; QuitButton = quitButton;
             }
         }
 
         LandingLayout ComputeLayout(float w, float h)
         {
             int recentCount = _recent.Count;
-            // Reserve one row for the "No recent maps" placeholder when the list is empty, so the Quit button below
-            // does not jump between the empty and populated states.
+            // Reserve one row for the "No recent maps" placeholder when the list is empty, so the block below does
+            // not jump between the empty and populated states.
             float recentBlockH = recentCount > 0
-                ? recentCount * RecentRowHeight + (recentCount - 1) * RecentGap
-                : RecentRowHeight;
+                ? recentCount * MapRowHeight + (recentCount - 1) * MapRowGap
+                : MapRowHeight;
+
+            // The whole Open Map block contributes 0 height when the head never wired DiscoverMaps, so an unwired
+            // head's menu keeps exactly the layout it had before this feature. When wired, it reserves one row per
+            // discovered button, or a single placeholder row when there are none (mirroring the recent block above,
+            // same reason: the rows below must not jump as maps migrate into Open Recent). The overflow line is
+            // additional, reserved only when there is a remainder to report.
+            bool discoveredWired = _options.DiscoverMaps is not null;
+            int discoveredCount = _discoveredButtons.Count;
+            float discoveredRowsH = discoveredCount > 0
+                ? discoveredCount * MapRowHeight + (discoveredCount - 1) * MapRowGap
+                : MapRowHeight;
+            float discoveredBlockH = 0f;
+            if (discoveredWired)
+            {
+                discoveredBlockH = SectionLabelHeight + discoveredRowsH + RowGap;
+                if (_discoveredHidden > 0) discoveredBlockH += MapRowGap + NoteRowHeight;
+            }
 
             float contentH =
                 TitleRowHeight + RowGap +
                 SectionLabelHeight + FieldRowHeight + RowGap +
                 SectionLabelHeight + recentBlockH + RowGap +
+                discoveredBlockH +
                 NoteRowHeight + RowGap +
                 QuitRowHeight;
             float panelH = contentH + Pad * 2f;
@@ -457,15 +677,36 @@ namespace KhaozEngine.MapEditor
             y += SectionLabelHeight;
             var recentButtons = new Rect[recentCount];
             for (int i = 0; i < recentCount; i++)
-                recentButtons[i] = new Rect(innerX, y + i * (RecentRowHeight + RecentGap), innerW, RecentRowHeight);
+                recentButtons[i] = new Rect(innerX, y + i * (MapRowHeight + MapRowGap), innerW, MapRowHeight);
             y += recentBlockH + RowGap;
+
+            Rect discoveredLabel = default;
+            Rect[] discoveredButtons = Array.Empty<Rect>();
+            Rect discoveredOverflow = default;
+            if (discoveredWired)
+            {
+                discoveredLabel = new Rect(innerX, y, innerW, SectionLabelHeight);
+                y += SectionLabelHeight;
+                discoveredButtons = new Rect[discoveredCount];
+                for (int i = 0; i < discoveredCount; i++)
+                    discoveredButtons[i] = new Rect(innerX, y + i * (MapRowHeight + MapRowGap), innerW, MapRowHeight);
+                y += discoveredRowsH;
+                if (_discoveredHidden > 0)
+                {
+                    y += MapRowGap;
+                    discoveredOverflow = new Rect(innerX, y, innerW, NoteRowHeight);
+                    y += NoteRowHeight;
+                }
+                y += RowGap;
+            }
 
             var note = new Rect(innerX, y, innerW, NoteRowHeight);
             y += NoteRowHeight + RowGap;
 
             var quitButton = new Rect(innerX, y, innerW, QuitRowHeight);
 
-            return new LandingLayout(panel, title, newMapLabel, nameField, createButton, recentLabel, recentButtons, note, quitButton);
+            return new LandingLayout(panel, title, newMapLabel, nameField, createButton, recentLabel, recentButtons,
+                discoveredLabel, discoveredButtons, discoveredOverflow, note, quitButton);
         }
     }
 }

@@ -51,6 +51,22 @@ current and future game, with Ruinborne as the first adopter.
 6. **Approach: engine-native stack, document core first.** Scored 42/50 against a
    game-first prototype (26/50) and an MCP-first sequencing (35/50) on reuse, time to first
    edit, risk, engine capability growth, and parallel-execution fit.
+7. **Landing-menu map discovery: a head-supplied hook, not an in-engine browser.** A fresh
+   machine's landing menu could only reach a map already in the recents history or passed in
+   via a launch argument, so a machine with a committed map document and an empty recents
+   store had no menu path to it at all. `MapEditorLandingOptions` gains a discovery hook: the
+   head hands back the paths it already knows about, following the same head-owns-IO seam as
+   its existing `CreateMap`/`OpenEditor` hooks, the engine never walks a directory itself. The
+   rendered section sits below Open Recent, since Open Recent is the fast lane whose most-used
+   entries keep stable positions and the discovered list is the variable-length remainder, and
+   a path already tracked as a recent is filtered out of it so a map never renders twice,
+   migrating into Open Recent the first time it is opened. Rejected: a path text field (typing
+   an absolute path by hand is hostile UX for the everyday case), an in-engine directory
+   browser (pulls directory traversal inside the engine, against the head-owns-IO principle,
+   and adds cross-platform surface for a workflow where a game's maps typically live in one
+   known directory), and a native OS file dialog (the best UX of the three, but GLFW ships no
+   file dialog, so it means a new native dependency with per-platform binaries on a
+   deliberately dependency-light stack). See #359.
 
 ## Architecture
 

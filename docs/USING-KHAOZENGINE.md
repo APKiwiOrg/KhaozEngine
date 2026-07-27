@@ -4637,7 +4637,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.0.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.4.0" />
 ```
 
 ```csharp
@@ -5757,10 +5757,11 @@ beneath it. Null is fine when the editor is always pushed above `MapEditorLandin
 Close then pops back to the menu instead of needing to quit the app. A head that pushes the editor as its
 only scene should set `RequestQuit`, or Close leaves an empty stack (a blank screen).
 
-**Landing scene.** `MapEditorLandingScene` is a turn-key entry menu (title, New Map, Open Recent, Quit) a
-head pushes as the BOTTOM scene on its `SceneManager`, with `MapEditorLandingOptions` wiring `CreateMap`
-(name to new document path), `OpenEditor` (path to a built `MapEditorScene`), `Recent`
-(`IRecentFilesStore`), and its own `RequestQuit`:
+**Landing scene.** `MapEditorLandingScene` is a turn-key entry menu (title, New Map, Open Recent, Open Map,
+Quit) a head pushes as the BOTTOM scene on its `SceneManager`, with `MapEditorLandingOptions` wiring
+`CreateMap` (name to new document path), `OpenEditor` (path to a built `MapEditorScene`), `Recent`
+(`IRecentFilesStore`), `DiscoverMaps` (the head's own map paths, for the Open Map section below), and its own
+`RequestQuit`:
 
 ```csharp
 var landingOptions = new MapEditorLandingOptions
@@ -5769,6 +5770,7 @@ var landingOptions = new MapEditorLandingOptions
     CreateMap = name => CreateMapDocument(name),
     OpenEditor = path => BuildMapEditorScene(path),
     Recent = new EditorRecentFiles("MyStudio", "MyGame"),
+    DiscoverMaps = () => Directory.GetFiles(mapsDir, "*.map.json"),
     RequestQuit = () => app.Quit(),
 };
 sceneManager.Push(new MapEditorLandingScene().Init(whiteTexture, dpiFont, landingOptions));
@@ -5781,7 +5783,10 @@ app. `EditorRecentFiles` is the canonical `IRecentFilesStore`, riding the engine
 ordinal-deduplicated). A head that owns the `(publisher, appName)` overload should call `Flush()` itself
 during its own shutdown to drain the coalesced write. A `--map <path>` launch flag (or similar) can still
 push `MapEditorScene` directly ABOVE the landing scene instead of going through New Map/Open Recent, so
-Close still returns to the menu. See the `KhaozEngine.MapEditor` README's "Landing scene and recent files"
+Close still returns to the menu. `DiscoverMaps` renders a further Open Map section below Open Recent for
+paths the head knows about but the recents store does not: deduplicated against `Recent`, deterministically
+ordered, and capped with a reported remainder, re-queried on scene enter and on re-exposure rather than every
+frame since it is head file IO. See the `KhaozEngine.MapEditor` README's "Landing scene and recent files"
 section for the full mechanics.
 
 **Tool modes** (`EditorToolController.Mode`, also the toolbar tab bar): `Select` (pick a placement or spawn

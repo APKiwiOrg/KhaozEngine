@@ -12,9 +12,14 @@ namespace KhaozEngine.Tests.MapEditor
 {
     /// <summary>Headless tests for <see cref="MapEditorLandingScene"/> (decision 6): opening a recent map pushes the
     /// editor and touches the store, a missing recent is pruned with a note instead of crashing, New Map validates
-    /// the typed name before calling the create hook, and Quit routes to the wired quit action. The scene's
-    /// widget-drive is viewport-gated (null <c>UiViewport</c> headless), so these drive the internal action seams the
-    /// buttons and the Enter key both call, the way <c>MapEditorSceneTests</c> drives <c>SaveDocument</c>.</summary>
+    /// the typed name before calling the create hook, and Quit routes to the wired quit action. Also covers the Open
+    /// Map section (issue 359): normalizing and sorting a head's <c>DiscoverMaps</c> result, filtering out a path
+    /// already in the recents store, activating a discovered map (migrating it into Open Recent, or re-querying with
+    /// a note when the file has vanished), the unwired (null hook) case, a real tap driven through
+    /// <c>SceneManager.Update</c>, the re-query-on-re-expose requirement, and the <c>MaxDiscoveredShown</c> cap. The
+    /// scene's widget-drive is viewport-gated (null <c>UiViewport</c> headless), so these drive the internal action
+    /// seams the buttons and the Enter key both call, the way <c>MapEditorSceneTests</c> drives
+    /// <c>SaveDocument</c>.</summary>
     public class MapEditorLandingSceneTests
     {
         // A bare scene the OpenEditor hook returns as its "built editor" stand-in, so a Push is observable headless.
@@ -244,6 +249,265 @@ namespace KhaozEngine.Tests.MapEditor
                 Assert.Equal(2, m.Count);
             }
             finally { if (File.Exists(existing)) File.Delete(existing); }
+        }
+
+        [Fact]
+        public void Landing_DiscoverMaps_NormalizesAndSortsPaths()
+        {
+            // Two same-named files in different directories: proves the sort's tiebreak (full path, Ordinal) fires
+            // when the file-name comparison (OrdinalIgnoreCase) is tied, not just that both entries survive dedup.
+            string root = Path.Combine(Path.GetTempPath(), "ke-landing-sort-" + Path.GetRandomFileName());
+            string dirA = Path.Combine(root, "aaa");
+            string dirB = Path.Combine(root, "bbb");
+            Directory.CreateDirectory(dirA);
+            Directory.CreateDirectory(dirB);
+            string commonA = Path.Combine(dirA, "common.map.json");
+            string commonB = Path.Combine(dirB, "common.map.json");
+            string alpha = Path.Combine(root, "alpha.map.json");
+            string beta = Path.Combine(root, "beta.map.json");
+            string zeta = Path.Combine(root, "Zeta.map.json");   // capital: proves the file-name compare ignores case
+            foreach (string p in new[] { commonA, commonB, alpha, beta, zeta }) File.WriteAllText(p, "{}");
+
+            try
+            {
+                var opened = new List<string>();
+                var scene = Landing(new MapEditorLandingOptions
+                {
+                    // Out of order, with a whitespace entry and an ordinal-identical duplicate: both must vanish.
+                    DiscoverMaps = () => new[] { zeta, beta, "   ", alpha, alpha, commonB, commonA },
+                    OpenEditor = path => { opened.Add(path); return new StubEditorScene(); },
+                });
+                var m = new SceneManager();
+                m.Push(scene);
+
+                Assert.Equal(5, scene.DiscoveredButtonCount);   // 7 raw entries - 1 duplicate - 1 whitespace
+                Assert.Equal("alpha.map.json", scene.DiscoveredButtonAt(0)!.Resolved);
+                Assert.Equal("beta.map.json", scene.DiscoveredButtonAt(1)!.Resolved);
+                Assert.Equal("common.map.json", scene.DiscoveredButtonAt(2)!.Resolved);
+                Assert.Equal("common.map.json", scene.DiscoveredButtonAt(3)!.Resolved);
+                Assert.Equal("Zeta.map.json", scene.DiscoveredButtonAt(4)!.Resolved);
+
+                // Disambiguate the two identically-labeled "common.map.json" buttons by activating them: index 3
+                // first (its removal only re-indexes what comes after it, index 4, never index 2), then index 2,
+                // so neither activation shifts the other button out from under us mid-check.
+                scene.DiscoveredButtonAt(3)!.OnClick!.Invoke();
+                scene.DiscoveredButtonAt(2)!.OnClick!.Invoke();
+                Assert.Equal(new[] { commonB, commonA }, opened);   // dirA sorted before dirB, per the tiebreak
+            }
+            finally { Directory.Delete(root, recursive: true); }
+        }
+
+        [Fact]
+        public void Landing_DiscoveredMap_AlreadyInRecents_IsNotListedTwice()
+        {
+            // A discovered path already in the recents store must render exactly once, in Open Recent, never twice.
+            EditorRecentFiles store = NewStore();
+            store.Touch("/maps/known.map.json");
+
+            var scene = Landing(new MapEditorLandingOptions
+            {
+                Recent = store,
+                DiscoverMaps = () => new[] { "/maps/known.map.json", "/maps/other.map.json" },
+            });
+            var m = new SceneManager();
+            m.Push(scene);
+
+            Assert.Equal(1, scene.RecentButtonCount);
+            Assert.Equal("known.map.json", scene.RecentButtonAt(0)!.Resolved);
+
+            Assert.Equal(1, scene.DiscoveredButtonCount);   // "known" filtered out: only "other" remains
+            Assert.Equal("other.map.json", scene.DiscoveredButtonAt(0)!.Resolved);
+        }
+
+        [Fact]
+        public void Landing_ActivateDiscovered_TouchesStore_PushesEditor_MigratesToRecent()
+        {
+            // A real temp file: activating a discovered map touches the store, pushes the editor, and migrates the
+            // entry out of Open Map into Open Recent.
+            string existing = Path.Combine(Path.GetTempPath(), "ke-landing-discovered-" + Path.GetRandomFileName() + ".map.json");
+            File.WriteAllText(existing, "{}");
+            try
+            {
+                EditorRecentFiles store = NewStore();
+                string? opened = null;
+                var scene = Landing(new MapEditorLandingOptions
+                {
+                    Recent = store,
+                    DiscoverMaps = () => new[] { existing },
+                    OpenEditor = path => { opened = path; return new StubEditorScene(); },
+                });
+                var m = new SceneManager();
+                m.Push(scene);
+                Assert.Equal(1, scene.DiscoveredButtonCount);
+
+                scene.ActivateDiscovered(existing);
+
+                Assert.Equal(existing, opened);                 // the editor was built for the activated path
+                Assert.Equal(2, m.Count);                        // and pushed on top of the landing scene
+                Assert.Equal(existing, store.Paths[0]);          // activation touched it to the front
+                Assert.Equal(0, scene.DiscoveredButtonCount);    // migrated into Open Recent: dropped from Open Map
+            }
+            finally { if (File.Exists(existing)) File.Delete(existing); }
+        }
+
+        [Fact]
+        public void Landing_ActivateDiscovered_MissingFile_RequeriesWithNote()
+        {
+            // A discovered path that vanished from disk since the last query: ActivateDiscovered has no store entry
+            // to prune (the head owns the directory, not this scene), so the re-query itself IS the prune.
+            string missing = Path.Combine(Path.GetTempPath(), "ke-landing-discovered-missing-" + Guid.NewGuid().ToString("N") + ".map.json");
+            int calls = 0;
+            var scene = Landing(new MapEditorLandingOptions
+            {
+                DiscoverMaps = () =>
+                {
+                    calls++;
+                    return calls == 1 ? new[] { missing } : Array.Empty<string>();
+                },
+            });
+            var m = new SceneManager();
+            m.Push(scene);
+            Assert.Equal(1, scene.DiscoveredButtonCount);
+            Assert.Equal(1, calls);
+
+            scene.ActivateDiscovered(missing);
+
+            Assert.Equal(1, m.Count);                          // nothing pushed
+            Assert.False(string.IsNullOrEmpty(scene.Note));    // a note explains why
+            Assert.Equal(2, calls);                            // the miss re-queried the head
+            Assert.Equal(0, scene.DiscoveredButtonCount);      // and the button is gone
+        }
+
+        [Fact]
+        public void Landing_NoDiscoverHook_ListsNothing()
+        {
+            // A head that never wires DiscoverMaps keeps exactly the menu it had before this feature: no entries,
+            // and a driven frame must not throw despite the null hook.
+            var scene = Landing(new MapEditorLandingOptions());
+            var m = new SceneManager();
+            m.Push(scene);
+            m.UiViewport = new UiViewport(800, 600, 800, 600);
+
+            Assert.Equal(0, scene.DiscoveredButtonCount);
+
+            m.Input = InputState.Empty;
+            m.Update(0.016f);
+
+            Assert.Equal(0, scene.DiscoveredButtonCount);
+        }
+
+        [Fact]
+        public void Landing_OnUpdate_TapDiscoveredButton_ActivatesDiscovered()
+        {
+            string existing = Path.Combine(Path.GetTempPath(), "ke-landing-discovered-tap-" + Path.GetRandomFileName() + ".map.json");
+            File.WriteAllText(existing, "{}");
+            try
+            {
+                string? opened = null;
+                var scene = Landing(new MapEditorLandingOptions
+                {
+                    DiscoverMaps = () => new[] { existing },
+                    OpenEditor = path => { opened = path; return new StubEditorScene(); },
+                });
+                var m = new SceneManager();
+                m.Push(scene);
+                m.UiViewport = new UiViewport(800, 600, 800, 600);
+
+                m.Input = InputState.Empty;
+                m.Update(0.016f);   // lays out this frame's discovered button, so its Bounds are current
+
+                Button button = scene.DiscoveredButtonAt(0) ?? throw new InvalidOperationException("expected a discovered button");
+                var at = new Vector2(button.Bounds.X + button.Bounds.Width * 0.5f, button.Bounds.Y + button.Bounds.Height * 0.5f);
+
+                // A real press-then-release tap at the button's center, driven through SceneManager.Update ->
+                // MapEditorLandingScene.OnUpdate, not ActivateDiscovered directly (mirrors the Open Recent tap test).
+                m.Input = MouseFrame(at, leftDown: false); m.Update(0.016f);
+                m.Input = MouseFrame(at, leftDown: true); m.Update(0.016f);
+                m.Input = MouseFrame(at, leftDown: false); m.Update(0.016f);
+
+                Assert.Equal(existing, opened);
+                Assert.Equal(2, m.Count);
+            }
+            finally { if (File.Exists(existing)) File.Delete(existing); }
+        }
+
+        [Fact]
+        public void Landing_ReExpose_RequeriesDiscoveredMaps()
+        {
+            // The load-bearing case for issue 359's re-query-on-scene-enter requirement: a map created (or deleted)
+            // outside the editor while this menu was not driving must appear (or disappear) the next time the menu
+            // becomes the top of the stack again, without restarting the head.
+            string mapA = Path.Combine(Path.GetTempPath(), "ke-landing-reexpose-a-" + Path.GetRandomFileName() + ".map.json");
+            string mapB = Path.Combine(Path.GetTempPath(), "ke-landing-reexpose-b-" + Path.GetRandomFileName() + ".map.json");
+            File.WriteAllText(mapA, "{}");
+            File.WriteAllText(mapB, "{}");
+            try
+            {
+                EditorRecentFiles store = NewStore();
+                int calls = 0;
+                bool includeB = false;
+                var scene = Landing(new MapEditorLandingOptions
+                {
+                    Recent = store,
+                    DiscoverMaps = () =>
+                    {
+                        calls++;
+                        return includeB ? new[] { mapA, mapB } : new[] { mapA };
+                    },
+                    OpenEditor = _ => new StubEditorScene(),
+                });
+                var m = new SceneManager();
+                m.Push(scene);   // OnEnter queries once
+                m.UiViewport = new UiViewport(800, 600, 800, 600);
+
+                Assert.Equal(1, calls);
+                Assert.Equal(1, scene.DiscoveredButtonCount);   // mapA
+
+                // Several driven frames while this scene stays the top of the stack: the hook is head file IO (a
+                // directory enumeration), so it must not ride the per-frame path the way the recents compare does.
+                m.Input = InputState.Empty;
+                m.Update(0.016f);
+                m.Update(0.016f);
+                m.Update(0.016f);
+                Assert.Equal(1, calls);   // no climb: still just the one OnEnter query
+
+                // Activate mapA (migrates it into Open Recent, pushes the stub editor), then let mapB "appear" as
+                // if the game wrote it while the editor sat on top of this menu.
+                includeB = true;
+                scene.ActivateDiscovered(mapA);
+                Assert.Equal(2, m.Count);   // the stub editor is pushed on top
+                Assert.Equal(1, calls);     // activating does not itself re-query (only RebuildRecentButtons ran)
+
+                m.Pop();                // back to the landing scene (outside Update, so this applies immediately)
+                m.Update(0.016f);       // this scene is top again: RefreshDiscoveredOnReExpose must notice and requery
+
+                Assert.Equal(2, calls);                          // re-queried exactly once on re-expose
+                Assert.Equal(1, scene.DiscoveredButtonCount);     // mapB: mapA is now filtered, already in Open Recent
+                Assert.Equal(Path.GetFileName(mapB), scene.DiscoveredButtonAt(0)!.Resolved);
+            }
+            finally
+            {
+                if (File.Exists(mapA)) File.Delete(mapA);
+                if (File.Exists(mapB)) File.Delete(mapB);
+            }
+        }
+
+        [Fact]
+        public void Landing_DiscoveredCap_ShowsFirstNAndReportsTheRest()
+        {
+            // A head with a large map directory must not render an unbounded panel: cap at MaxDiscoveredShown and
+            // report the remainder via DiscoveredHiddenCount instead of truncating silently.
+            int total = MapEditorLandingScene.MaxDiscoveredShown + 3;
+            var paths = new string[total];
+            for (int i = 0; i < total; i++)
+                paths[i] = Path.Combine(Path.GetTempPath(), "map-" + i.ToString("D3") + ".map.json");
+
+            var scene = Landing(new MapEditorLandingOptions { DiscoverMaps = () => paths });
+            var m = new SceneManager();
+            m.Push(scene);
+
+            Assert.Equal(MapEditorLandingScene.MaxDiscoveredShown, scene.DiscoveredButtonCount);
+            Assert.Equal(3, scene.DiscoveredHiddenCount);
         }
 
         // A minimal mouse frame for driving the scene's real OnUpdate headless (mirrors the MapEditorSceneTests

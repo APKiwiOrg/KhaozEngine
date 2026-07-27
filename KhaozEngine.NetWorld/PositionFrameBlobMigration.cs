@@ -8,8 +8,9 @@ namespace KhaozEngine.NetWorld;
 /// <summary>
 /// The engine-provided cell-blob migration for the floating-origin wire: it brings a persisted snapshot body whose
 /// <see cref="ReplicatedPosition"/> frames are three ABSOLUTE float32s (schema
-/// <see cref="AbsolutePositionSchemaVersion"/>, the pre-16 layout) forward to the framed layout (schema
-/// <see cref="FramedPositionSchemaVersion"/>), where each one is <c>[frameX:short][frameZ:short][local:3 float]</c>.
+/// <see cref="AbsolutePositionSchemaVersion"/>, the layout before the framed wire) forward to the framed layout
+/// (schema <see cref="FramedPositionSchemaVersion"/>), where each one is
+/// <c>[frameX:short][frameZ:short][local:3 float]</c>.
 /// <para>
 /// The conversion is a pure widening and it loses nothing: the stored triple is an absolute world position, and
 /// <see cref="WorldFrame.Origin"/> has an exactly-zero anchor, so stamping the frame as Origin and keeping the triple
@@ -32,11 +33,12 @@ namespace KhaozEngine.NetWorld;
 /// </remarks>
 public static class PositionFrameBlobMigration
 {
-    /// <summary>The cell-blob schema version whose position frames are three absolute float32s (the pre-16 layout).</summary>
+    /// <summary>The cell-blob schema version whose position frames are three absolute float32s (the layout before
+    /// the framed wire).</summary>
     public const int AbsolutePositionSchemaVersion = 2;
 
     /// <summary>The cell-blob schema version whose position frames carry an island-frame stamp plus a frame-local
-    /// offset (the 16.0.0 layout).</summary>
+    /// offset (the framed-wire layout).</summary>
     public const int FramedPositionSchemaVersion = 3;
 
     /// <summary>
@@ -109,7 +111,7 @@ public static class PositionFrameBlobMigration
     // Throws on an unknown built-in id (an undecodable body, which the driver quarantines).
     private static int BuiltinPayloadLength(ushort typeId, BinaryReader br, MemoryStream input, BinaryWriter bw) => typeId switch
     {
-        MoveProtocol.MovementTypeId => 26,   // float + bool + 2 float + bool + uint + 2 sbyte + 2 short
+        MoveProtocol.MovementTypeId => 24,   // float + bool + 2 float + bool + uint + 2 sbyte + 2 short
         MoveProtocol.IdentityTypeId => CopyIdentityLengthPrefix(br, input, bw),   // [ushort len] then len utf8 bytes
         MoveProtocol.DynamicBodyTypeId => 40,   // quaternion + 2 * Vector3
         MoveProtocol.PickupTypeId => 16,        // 2 * long

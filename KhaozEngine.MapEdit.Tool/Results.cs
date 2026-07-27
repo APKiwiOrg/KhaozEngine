@@ -30,9 +30,13 @@ public sealed record ConvertResult(string Path, string Form, float TileSize, str
 public sealed record RetileResult(string Path, float TileSize, string OldWorldHash, string NewWorldHash, string Warning);
 
 /// <summary>Result of validation: structural (semantic) validity and JSON-schema validity, each with its
-/// errors. When the document is structurally invalid the schema check is skipped and its errors carry a note.</summary>
+/// errors. The schema check is skipped (never run) when the document is structurally invalid, or when it is
+/// windowed (partial): <see cref="SchemaChecked"/> is false in both cases, and <see cref="SchemaValid"/> is
+/// always false alongside it, but that false means "not checked", not "checked and invalid". Read
+/// <see cref="SchemaValid"/> only when <see cref="SchemaChecked"/> is true. <see cref="SchemaErrors"/> carries
+/// the explanatory note either way.</summary>
 public sealed record ValidateResult(bool StructuralValid, IReadOnlyList<string> StructuralErrors,
-    bool SchemaValid, IReadOnlyList<string> SchemaErrors);
+    bool SchemaChecked, bool SchemaValid, IReadOnlyList<string> SchemaErrors);
 
 /// <summary>A flat snapshot of the open document: identity, bounds, terrain seed and water level, the feature
 /// types in fold order, layer and companion names, section counts, the player spawn ids, region names, and the

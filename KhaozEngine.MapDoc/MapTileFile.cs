@@ -103,8 +103,8 @@ internal static class MapTileFile
 }
 
 /// <summary>The on-disk shape of a tile file: an optional <c>$schema</c> annotation plus exactly four lists,
-/// and nothing else. <c>$schema</c> is deserialized only so the closed-shape reader does not trip over it;
-/// nothing reads the value and it never enters the tile hash.</summary>
+/// and nothing else. <c>$schema</c> is deserialized only so the closed-shape reader does not trip over it.
+/// Nothing reads the value, and it never enters the tile hash.</summary>
 internal sealed class MapTileFileDoc
 {
     [JsonPropertyName("$schema")]

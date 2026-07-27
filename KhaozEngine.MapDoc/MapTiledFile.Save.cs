@@ -26,10 +26,15 @@ internal static partial class MapTiledFile
         save ??= new MapDocumentSaveOptions();
         string root = Normalize(directory);
 
-        // 1. Validate, then the three guards.
+        // 1. Validate, then the four guards.
         IReadOnlyList<string> errors = MapDocumentValidator.Validate(doc, registry);
         if (errors.Count > 0)
             throw new MapDocumentException("refusing to save an invalid map document:\n  " + string.Join("\n  ", errors));
+
+        if (File.Exists(root))
+            throw new MapDocumentException(
+                $"{directory}: a file already exists at this path. A tiled document is a directory, remove " +
+                "the file or choose a different path.");
 
         string manifestPath = Path.Combine(root, ManifestName);
         if (doc.Tiles is null && File.Exists(manifestPath))
@@ -43,6 +48,12 @@ internal static partial class MapTiledFile
                 throw new MapDocumentException(
                     $"{directory}: this document is a window onto a larger world and may only be written back to " +
                     $"'{partial.SourceDirectory ?? "(nowhere: the index was built in memory)"}'.");
+            if (doc.TileSize != partial.TileSize)
+                throw new MapDocumentException(
+                    $"{directory}: this document's tileSize ({doc.TileSize}) no longer matches the loaded " +
+                    $"window's tileSize ({partial.TileSize}). Retiling rewrites every tile, and a partial " +
+                    "save would write the new size over an index built for the old one, so every unloaded tile " +
+                    "would silently keep the wrong size. Load the whole world first, then retile.");
         }
 
         // 2. Bucket and hash.
@@ -67,6 +78,7 @@ internal static partial class MapTiledFile
 
         // 4. Write changed tiles, at names nothing points at yet.
         JsonSerializerOptions indented = MapDocumentFile.CreateOptions(registry, write: true);
+        var touchedShards = new HashSet<string>(StringComparer.Ordinal);
         foreach (MapTileEntry entry in entries)
         {
             if (!entry.Loaded) continue;
@@ -77,6 +89,7 @@ internal static partial class MapTiledFile
 
             save.OnStep?.Invoke(MapTiledSaveStep.BeforeTileWrite);
             WriteTile(root, entry.Coord, entry.Hash, MapTileLists.Of(spatial, entry.Coord), indented, save.Durability);
+            touchedShards.Add(Normalize(MapTileFile.ShardPath(root, entry.Coord)));
             save.OnStep?.Invoke(MapTiledSaveStep.AfterTileWrite);
         }
 
@@ -84,7 +97,7 @@ internal static partial class MapTiledFile
         WriteManifest(root, doc, entries, indented, save.Durability);
         save.OnStep?.Invoke(MapTiledSaveStep.BeforeManifestRename);
         File.Move(Path.Combine(root, ManifestTempName), manifestPath, overwrite: true);
-        FlushDirectories(root, save.Durability);
+        FlushDirectories(root, touchedShards, save.Durability);
         save.OnStep?.Invoke(MapTiledSaveStep.AfterManifestRename);
 
         // 6. Sweep, after the commit. Skipped when the previous manifest could not be read: deleting files on
@@ -177,26 +190,19 @@ internal static partial class MapTiledFile
         if (moveTo is not null) File.Move(temp, moveTo, overwrite: true);
     }
 
-    /// <summary>Best-effort directory fsync, so a rename is durable and not only ordered. Linux and macOS
-    /// support it. Windows has no equivalent primitive and NTFS orders metadata through its own journal
-    /// instead, so a failure here is not an error and is not dressed up as a stronger guarantee.</summary>
-    static void FlushDirectories(string root, MapSaveDurability durability)
+    /// <summary>Best-effort directory fsync, so a rename is durable and not only ordered: the root (the
+    /// manifest rename lands there), <c>tiles/</c> (a new shard directory's own creation is itself a rename
+    /// into it), and every shard directory that received a tile-file rename this save. Linux and macOS only,
+    /// via <see cref="UnixDirectorySync"/>: Windows has no directory-fsync primitive at all and NTFS orders
+    /// metadata through its own journal instead, so there the guarantee is per-file flush only, never dressed
+    /// up as anything stronger.</summary>
+    static void FlushDirectories(string root, IReadOnlyCollection<string> touchedShards, MapSaveDurability durability)
     {
         if (durability != MapSaveDurability.PowerFail) return;
-        FlushDirectory(root);
-        FlushDirectory(Path.Combine(root, MapTileFile.TilesDirectory));
-    }
-
-    static void FlushDirectory(string directory)
-    {
-        try
-        {
-            if (!Directory.Exists(directory)) return;
-            using Microsoft.Win32.SafeHandles.SafeFileHandle handle =
-                File.OpenHandle(directory, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            RandomAccess.FlushToDisk(handle);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException) { }
+        if (OperatingSystem.IsWindows()) return;
+        UnixDirectorySync.Flush(root);
+        UnixDirectorySync.Flush(Path.Combine(root, MapTileFile.TilesDirectory));
+        foreach (string shard in touchedShards) UnixDirectorySync.Flush(shard);
     }
 
     static void Sweep(string root, List<MapTileEntry> entries, MapDocumentSaveOptions save)

@@ -41,7 +41,7 @@ namespace KhaozEngine.Tests.MapDoc
         }
 
         [Fact]
-        public void CrashDuringTileWrite_LeavesPreviousVersionIntact()
+        public void CrashBeforeFirstTileWrite_LeavesPreviousVersionIntact()
         {
             TiledDocFixture.InDirectory(directory =>
             {
@@ -218,6 +218,18 @@ namespace KhaozEngine.Tests.MapDoc
                 Assert.Equal(MapDocumentHash.OfWorld(doc), MapDocumentHash.OfWorld(MapDocumentFile.LoadTiled(directory)));
                 Assert.Empty(MapDocumentFile.VerifyTiled(directory));
             });
+        }
+
+        /// <summary>Locks the fix for the durability claim that used to be an unconditional silent no-op: on
+        /// Unix, <see cref="UnixDirectorySync.Flush"/> must actually fsync, not merely fail to throw. A bare
+        /// "did not throw" assertion would have passed on the old, permanently-broken implementation too
+        /// (every failure there was swallowed), so this checks the return value that says whether the syscall
+        /// genuinely ran.</summary>
+        [Fact]
+        public void UnixDirectorySync_FlushSucceedsOnARealDirectory()
+        {
+            if (OperatingSystem.IsWindows()) return;   // no primitive there, every call site already gates on it
+            TiledDocFixture.InDirectory(directory => Assert.True(UnixDirectorySync.Flush(directory)));
         }
 
         [Fact]

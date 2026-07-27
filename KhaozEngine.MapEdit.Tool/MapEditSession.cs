@@ -61,7 +61,12 @@ public sealed class MapEditSession
     /// biome to bind to), validates and saves it (monolithic: this is always a brand new document, so there is
     /// no existing form to preserve), and keeps it open. Creates parent directories. Throws
     /// <see cref="IOException"/> when something already exists at the path (a file OR a tiled directory) and
-    /// <paramref name="overwrite"/> is false.</summary>
+    /// <paramref name="overwrite"/> is false. <paramref name="overwrite"/> only ever replaces a monolithic
+    /// FILE (this always writes monolithic): an existing tiled directory is refused even with
+    /// <paramref name="overwrite"/> true, so the raw <see cref="FileStream"/> failure that opening a directory
+    /// as a file would throw never surfaces.</summary>
+    /// <exception cref="MapDocumentException">A tiled document (a directory) already exists at
+    /// <paramref name="path"/>.</exception>
     public OpenResult Create(string path, string id, string displayName,
         float minX, float minZ, float maxX, float maxZ,
         int seed = 1, float waterLevel = 0f, bool overwrite = false,
@@ -70,8 +75,14 @@ public sealed class MapEditSession
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         lock (_lock)
         {
-            if (MapDocumentFile.DetectForm(path) != MapDocumentForm.None && !overwrite)
+            MapDocumentForm existingForm = MapDocumentFile.DetectForm(path);
+            if (existingForm != MapDocumentForm.None && !overwrite)
                 throw new IOException($"{path}: already exists. Pass overwrite to replace it.");
+            if (existingForm == MapDocumentForm.Tiled)
+                throw new MapDocumentException(
+                    $"{path}: a tiled document (a directory) already exists there. Create always writes a " +
+                    "monolithic file, so overwrite cannot replace a directory. Delete it first or choose a " +
+                    "different path.");
 
             string? parent = Path.GetDirectoryName(path);
             if (!string.IsNullOrEmpty(parent)) Directory.CreateDirectory(parent);
@@ -174,13 +185,20 @@ public sealed class MapEditSession
     /// unchanged by a form conversion). A windowed (partial) document is refused by <c>SaveTiled</c>'s own
     /// guard when <paramref name="directory"/> differs from the window's source directory, which it always
     /// does here (a conversion always targets a fresh location), so that refusal is inherited rather than
-    /// re-implemented.</summary>
+    /// re-implemented. A directory that already holds a tiled document is refused here, the same as
+    /// <see cref="ConvertToSingle"/>: there is no overwrite parameter because a conversion targets a fresh
+    /// location, never an existing world (unrefused, this silently replaced the target world's tiles and
+    /// swept the rest away).</summary>
+    /// <exception cref="MapDocumentException">A tiled document already exists at <paramref name="directory"/>.</exception>
     public ConvertResult ConvertToTiled(string directory)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(directory);
         lock (_lock)
         {
             RequireDocumentLocked();
+            if (MapDocumentFile.DetectForm(directory) == MapDocumentForm.Tiled)
+                throw new MapDocumentException(
+                    $"{directory}: a tiled document already exists there. Convert or delete it first.");
             MapDocumentFile.SaveAs(_doc!, directory, MapDocumentForm.Tiled, _registry);
             _path = directory;
             _dirty = false;
@@ -242,8 +260,19 @@ public sealed class MapEditSession
                     "first (set_window over the full extent, or reopen without one).");
 
             string oldHash = MapDocumentHash.OfWorld(_doc, _registry);
+            float oldTileSize = _doc.TileSize;
             _doc.TileSize = tileSize;
-            MapDocumentFile.SaveAuto(_doc, _path!, _registry);
+            try
+            {
+                MapDocumentFile.SaveAuto(_doc, _path!, _registry);
+            }
+            catch
+            {
+                // A rejected save must not leave the session holding an in-memory tileSize that was never
+                // written: restore it, so the document (and IsDirty) still describe what is actually on disk.
+                _doc.TileSize = oldTileSize;
+                throw;
+            }
             _dirty = false;
             _field = null;
             _window = null;
@@ -262,7 +291,10 @@ public sealed class MapEditSession
     /// carry a note. A windowed (partial) document skips the schema check too:
     /// <see cref="MapDocumentFile.SaveText"/> (what the schema check serializes) refuses a partial document by
     /// the same guard every whole-document writer shares, so attempting it here would throw on every windowed
-    /// session rather than degrade gracefully. Widen the window to validate the whole world's schema.</summary>
+    /// session rather than degrade gracefully. Widen the window to validate the whole world's schema. Both
+    /// skip paths return <see cref="ValidateResult.SchemaChecked"/> false alongside a false
+    /// <see cref="ValidateResult.SchemaValid"/>, so a caller reading only <c>SchemaValid</c> cannot mistake
+    /// "not checked" for "checked and invalid".</summary>
     public ValidateResult Validate()
     {
         lock (_lock)
@@ -272,20 +304,20 @@ public sealed class MapEditSession
             bool structuralValid = structuralErrors.Count == 0;
             if (!structuralValid)
             {
-                return new ValidateResult(false, structuralErrors, false,
+                return new ValidateResult(false, structuralErrors, SchemaChecked: false, SchemaValid: false,
                     new[] { "schema check skipped because the document is structurally invalid." });
             }
 
             if (_doc!.Tiles is { IsPartial: true })
             {
-                return new ValidateResult(true, Array.Empty<string>(), false,
+                return new ValidateResult(true, Array.Empty<string>(), SchemaChecked: false, SchemaValid: false,
                     new[] { "schema check skipped: this is a windowed (partial) document. Widen the window " +
                             "(set_window over the full extent) to run the whole-document schema check." });
             }
 
             ValidationReport report = JsonSchemaValidator.Validate(
                 MapDocumentFile.SaveText(_doc!, _registry), MapDocumentSchema.GetJson());
-            return new ValidateResult(true, Array.Empty<string>(), report.IsValid, report.Errors);
+            return new ValidateResult(true, Array.Empty<string>(), SchemaChecked: true, report.IsValid, report.Errors);
         }
     }
 
@@ -378,7 +410,7 @@ public sealed class MapEditSession
                 null, null, null, null, null, null, null, null, OccupiedCount: 0, LoadedCount: 0);
 
         if (_window is not { } w)
-            return new WindowStatusResult(Tiled: true, Windowed: false,
+            return new WindowStatusResult(Tiled: true, Windowed: tiles.IsPartial,
                 null, null, null, null, null, null, null, null, tiles.Entries.Count, tiles.LoadedCount);
 
         RectArea worldMin = MapTileGrid.AreaOf(w.Min, tiles.TileSize);

@@ -209,6 +209,7 @@ namespace KhaozEngine.Tests.MapEditTool
                 ValidateResult ok = session.Validate();
                 Assert.True(ok.StructuralValid);
                 Assert.Empty(ok.StructuralErrors);
+                Assert.True(ok.SchemaChecked);
                 Assert.True(ok.SchemaValid);
                 Assert.Empty(ok.SchemaErrors);
 
@@ -222,6 +223,7 @@ namespace KhaozEngine.Tests.MapEditTool
                 ValidateResult bad = session.Validate();
                 Assert.False(bad.StructuralValid);
                 Assert.Contains(bad.StructuralErrors, e => e.Contains("duplicate placement id"));
+                Assert.False(bad.SchemaChecked);   // skipped, not "checked and invalid"
             }
             finally { Directory.Delete(dir, recursive: true); }
         }
@@ -381,7 +383,7 @@ namespace KhaozEngine.Tests.MapEditTool
                 var session = new MapEditSession { WholeWorldTileLimit = 1, EditorWindowRadius = 0 };
                 session.Open(dir);   // windowed: only tile (0, 0) loaded
 
-                // p-a is loaded (tile (0, 0)); move it into tile (-2, 0), which the index marks occupied but
+                // p-a is loaded (tile (0, 0)). Move it into tile (-2, 0), which the index marks occupied but
                 // this window never loaded.
                 session.Mutate((d, r) =>
                 {
@@ -472,6 +474,40 @@ namespace KhaozEngine.Tests.MapEditTool
             finally { TiledFixture.Delete(dir); Directory.Delete(outDir, recursive: true); }
         }
 
+        /// <summary>Reproduces the exact data-loss path: two unrelated tiled worlds exist, and converting a
+        /// document open in one session onto the OTHER world's directory used to call <c>SaveAs(..., Tiled)</c>
+        /// with no existence check, silently overwriting world two's manifest with world one's and sweeping
+        /// world two's tiles as orphans. The fix refuses whenever the target already holds a tiled document,
+        /// the same as <see cref="MapEditSession.ConvertToSingle"/> already refused an existing tiled
+        /// target, and world two is left completely untouched.</summary>
+        [Fact]
+        public void ConvertToTiled_RefusesAnExistingTiledDirectory()
+        {
+            string worldOneDir = TiledFixture.NewDirectory();
+            string worldTwoDir = TiledFixture.NewDirectory();
+            try
+            {
+                MapDocumentFile.SaveTiled(TiledFixture.SampleDoc(), worldOneDir);
+
+                MapDocument worldTwo = TiledFixture.SampleDoc();
+                worldTwo.Placements.Single(p => p.Id == "p-a").Yaw = 3f;   // distinguishes world two's content
+                MapDocumentFile.SaveTiled(worldTwo, worldTwoDir);
+                string worldTwoHashBefore = MapDocumentHash.OfWorld(MapDocumentFile.LoadTiled(worldTwoDir));
+                var worldTwoFilesBefore = TiledFixture.TileFiles(worldTwoDir);
+
+                var session = new MapEditSession();
+                session.Open(worldOneDir);   // whole load, not windowed
+
+                Assert.Throws<MapDocumentException>(() => session.ConvertToTiled(worldTwoDir));
+
+                // World two is untouched: same content, same tile files on disk.
+                Assert.Equal(worldTwoHashBefore, MapDocumentHash.OfWorld(MapDocumentFile.LoadTiled(worldTwoDir)));
+                Assert.Equal(worldTwoFilesBefore, TiledFixture.TileFiles(worldTwoDir));
+                Assert.Equal(3f, MapDocumentFile.LoadTiled(worldTwoDir).Placements.Single(p => p.Id == "p-a").Yaw);
+            }
+            finally { TiledFixture.Delete(worldOneDir); TiledFixture.Delete(worldTwoDir); }
+        }
+
         [Fact]
         public void Retile_ChangesWorldHash_WarningStatesTheChange()
         {
@@ -530,6 +566,51 @@ namespace KhaozEngine.Tests.MapEditTool
             finally { Directory.Delete(dir, recursive: true); }
         }
 
+        /// <summary>A rejected retile must not leave the session broken: <c>Retile</c> used to assign
+        /// <c>TileSize</c> before <c>SaveAuto</c> validates, so a save rejected for an unrelated reason
+        /// (here, a duplicate placement id injected straight into the document) left the in-memory document
+        /// reporting a tileSize that was never actually written. Confirms the size is restored, and that the
+        /// session still saves correctly once the document is valid again.</summary>
+        [Fact]
+        public void Retile_RestoresTileSizeWhenTheSaveIsRejected()
+        {
+            string dir = TiledFixture.NewDirectory();
+            try
+            {
+                MapDocumentFile.SaveTiled(TiledFixture.SampleDoc(), dir);
+
+                var session = new MapEditSession();
+                session.Open(dir);   // whole load, well under the default WholeWorldTileLimit
+                float originalTileSize = session.WithDocument((d, r) => d.TileSize);
+
+                // Bypass command guards: inject a duplicate placement id straight into the document, so the
+                // structural validator inside Retile's SaveAuto call rejects the save for a reason that has
+                // nothing to do with tileSize.
+                session.Mutate((d, r) =>
+                {
+                    d.Placements.Add(new MapPlacement { Id = "p-a", Kind = "rock", X = 0f, Z = 0f });
+                    return 0;
+                }, worldChanged: false);
+
+                Assert.Throws<MapDocumentException>(() => session.Retile(256f));
+
+                // The rejected retile must not leave the in-memory tileSize ahead of what is on disk.
+                Assert.Equal(originalTileSize, session.WithDocument((d, r) => d.TileSize));
+
+                // The session is still healthy: fix the document and save now writes the ORIGINAL tileSize.
+                session.Mutate((d, r) =>
+                {
+                    d.Placements.Remove(d.Placements.Last(p => p.Id == "p-a"));
+                    return 0;
+                }, worldChanged: false);
+                session.Save();
+
+                MapDocument reloaded = MapDocumentFile.LoadTiled(dir);
+                Assert.Equal(originalTileSize, reloaded.TileSize);
+            }
+            finally { TiledFixture.Delete(dir); }
+        }
+
         [Fact]
         public void WindowStatus_ReportsTiledFalseForMonolithicDocument()
         {
@@ -564,6 +645,7 @@ namespace KhaozEngine.Tests.MapEditTool
                 ValidateResult result = session.Validate();
 
                 Assert.True(result.StructuralValid);
+                Assert.False(result.SchemaChecked);   // skipped, not "checked and invalid"
                 Assert.False(result.SchemaValid);
                 Assert.Contains(result.SchemaErrors, e => e.Contains("windowed"));
             }

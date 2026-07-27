@@ -164,11 +164,7 @@ public static class MapRuntime
         ArgumentNullException.ThrowIfNull(doc);
         ArgumentNullException.ThrowIfNull(field);
         var result = new List<PropPlacement>(doc.Placements.Count);
-        foreach (MapPlacement p in doc.Placements)
-        {
-            float y = p.Y ?? field.SampleHeight(p.X, p.Z);
-            result.Add(new PropPlacement(p.Kind, p.X, y, p.Z, p.Scale, p.Yaw, 0));
-        }
+        foreach (MapPlacement p in doc.Placements) Add(result, p, field);
         return result;
     }
 

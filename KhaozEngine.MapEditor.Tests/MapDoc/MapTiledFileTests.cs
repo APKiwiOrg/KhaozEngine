@@ -290,6 +290,34 @@ namespace KhaozEngine.Tests.MapDoc
             });
         }
 
+        /// <summary>Reproduces the exact data-loss path: window a large document, mutate the LIVE
+        /// <c>TileSize</c> (bypassing <c>MapEditSession.Retile</c>'s own guard entirely, since a caller can
+        /// reach <see cref="MapDocumentFile.SaveTiled"/> directly), and save the window. Before the fix this
+        /// silently wrote the new tileSize over a manifest whose tile files were never re-hashed for it, so
+        /// every later <see cref="MapDocumentFile.LoadTiled(string, KhaozEngine.MapDoc.MapDocumentLoadOptions?)"/>
+        /// threw. The fix refuses the save outright, and nothing on disk changes.</summary>
+        [Fact]
+        public void PartialDocument_RefusesToWriteAMutatedTileSize()
+        {
+            TiledDocFixture.InDirectory(directory =>
+            {
+                MapDocumentFile.SaveTiled(TiledDocFixture.SampleDoc(), directory);
+                MapDocument window = MapDocumentFile.LoadTiled(directory, OriginWindow);
+                Assert.True(window.Tiles!.IsPartial);
+
+                window.TileSize = 256f;   // the window's index still says the old tileSize
+
+                MapDocumentException ex = Assert.Throws<MapDocumentException>(
+                    () => MapDocumentFile.SaveTiled(window, directory));
+                Assert.Contains("tileSize", ex.Message, StringComparison.Ordinal);
+
+                // Nothing was written: the whole world still loads, at its original tileSize.
+                MapDocument reloaded = MapDocumentFile.LoadTiled(directory);
+                Assert.Equal(MapDocumentFile.DefaultTileSize, reloaded.TileSize);
+                Assert.Equal(MapDocumentHash.OfWorld(TiledDocFixture.SampleDoc()), MapDocumentHash.OfWorld(reloaded));
+            });
+        }
+
         [Fact]
         public void MapDocumentSource_ReadsOneTileAtATimeAndRefusesAnUnindexedOne()
         {

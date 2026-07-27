@@ -142,7 +142,7 @@ namespace KhaozEngine.Tests.MapEditor
                 var m = new SceneManager();
                 m.Push(scene);
 
-                // p-a is loaded (tile (0, 0)); move it into tile (-2, 0), which the index marks occupied but
+                // p-a is loaded (tile (0, 0)). Move it into tile (-2, 0), which the index marks occupied but
                 // this window never loaded.
                 MapPlacement moved = scene.Document.Doc.Placements.Single(p => p.Id == "p-a");
                 moved.X = -600f;

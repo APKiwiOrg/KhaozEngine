@@ -1,6 +1,7 @@
 # Map editor settings menu, default sky, and the horizon artifact (2026-07-27)
 
-Status: in flight (17.6.0). Closes #364.
+Status: complete, shipped 17.6.0. Closes #364. See "What shipped" at the end for the three
+places the implementation departed from this plan.
 
 ## Problem
 
@@ -89,3 +90,33 @@ sun-angle slider stays in sync with the sky's sun disc and the water glint, whic
 - Cubemap/skybox (#50 stays deferred).
 - FFT ocean tuning UI beyond the preset/slider set.
 - Bathymetry-driven surf in the editor if it is not cheaply wireable (issue instead).
+
+## What shipped (17.6.0)
+
+Three departures from the plan above, kept here because each one is a decision rather than a detail.
+
+**The dialog is a `PropertyGrid`, not a `PopupPanel`.** The plan said "same shape as the exit dialog". That
+was wrong once the row list was written out: `PopupPanel` carries label/value rows plus footer buttons and has
+no interactive row type at all, while this menu is ten editable rows over live values, which is exactly what
+the inspector's `PropertyGrid` already is. `MapEditorSettingsDialog` is therefore a scrim, a centred card, a
+grid and two footer buttons. It also means Escape routing is the dialog's own (`HandleKeys` gated on
+`PropertyGrid.HasActiveEditor`) rather than `PopupPanel.HandleKeys`: a `NumberField` mid-type has to get
+Escape as its own cancel before the menu takes it as a dismiss.
+
+**`EditorSettings` is a mutable class, not a record.** It is round-tripped through `System.Text.Json` on the
+`ISettingsStorage` seam, which wants public settable properties, and the menu rows and the environment apply
+both hold the SAME instance, so Reset must not swap the object (hence `CopyFrom`/`ResetToDefaults` rather than
+a fresh value). `Sanitize()` carries the range discipline a record's constructor would otherwise have: a
+hand-edited, truncated or version-skewed file must degrade to a duller editor, never a crash or a black
+viewport.
+
+**Surf shipped rather than being deferred to an issue.** The conditional in the plan ("only if bathymetry can
+be wired from existing editor terrain data cheaply") resolved to yes: the depth field is built from the SAME
+data the viewport already streams, its `TerrainField` and the document's water level over the document bounds,
+so nothing new had to be plumbed through `ViewportWorld` (`MapEditorEnvironment.BuildBathymetry`, capped at
+256 texels a side so a large document cannot turn a rebuild into a million ground samples). It is a menu
+toggle, off by default, because the fill costs a pass over the document bounds on every world rebuild. No
+follow-up issue was needed.
+
+The verification the plan demanded was done: the black band and the starfield squares are gone under the
+Day sky, confirmed by before/after renders rather than by re-deriving the premise.

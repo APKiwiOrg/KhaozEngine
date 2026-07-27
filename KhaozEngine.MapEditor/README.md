@@ -40,7 +40,12 @@ sceneManager.Push(new MapEditorScene().Init(scene, whiteTexture, dpiFont, option
   (minX,minZ)-(maxX,maxZ)` segment (`MapEditorScene.Window`) shows the loaded extent. Moving content into a
   tile the window never covered surfaces Ctrl+S's failure as an ordinary status message, not a crash. There
   is no in-editor window-move affordance: `convert_to_tiled`/`convert_to_single`/`retile`
-  (`KhaozEngine.MapEdit.Tool`) are the tools for explicit form conversion and re-tiling.
+  (`KhaozEngine.MapEdit.Tool`) are the tools for explicit form conversion and re-tiling. `EditorWindowRadius`
+  is scaled by the operator's render-distance multiplier at open time (`MapEditorScene.EffectiveWindowRadius`,
+  rounded up to whole tiles), so a wider horizon also loads a wider slice rather than reaching past it. It is
+  read once, when the document opens, because re-windowing a live document means reloading it and discarding
+  unsaved edits, so a multiplier changed mid-session says so in the status strip instead. See Settings menu
+  below.
 - `ManifestPaths` are the same `AssetManifest` files the game's own prop-kit loading reads, so the
   editor's palette and picking heights match what the game actually renders.
 - `Registry` defaults to `MapDocRegistry.CreateDefault()`. Pass your own to add custom terrain feature
@@ -61,7 +66,21 @@ sceneManager.Push(new MapEditorScene().Init(scene, whiteTexture, dpiFont, option
   inside the frustum. Dial a weaker machine down with `RenderDistanceProfile.For(RenderDistanceTier.Near)`
   (or `.Medium`). A hand-rolled profile is checked with `RenderDistanceProfile.Validate()` when the scene
   builds its world, so an incoherent set throws at editor start rather than rendering wrong. See the
-  `KhaozEngine.Terrain` README for the type itself.
+  `KhaozEngine.Terrain` README for the type itself. This option is the BASE the settings menu scales: the
+  operator picks Base/2x/4x and the scene runs `RenderDistanceProfile.Scaled(multiplier)` over it (see
+  Settings menu below), so a head sets the floor here and the operator buys horizon above it.
+- `DriveEnvironment` (default true) makes the editor OWN the host `Scene3D`'s look: it writes its own sky,
+  lighting and water settings onto that scene's `Post` from the settings menu, re-applying only when a
+  setting actually changed. That default is what gives a freshly opened editor a day sky instead of the
+  engine's default starfield background behind the terrain, which the far plane used to cut wave-displaced
+  water against as a jagged black band (`docs/design/EDITOR-SETTINGS-MENU-DESIGN-2026-07-27.md`). Set it
+  false when the embedding host keeps ownership of the look (its own sky, its own `SunCycle`, its own water
+  tuning): the editor then never touches `Post` at all and the menu's sky, lighting and ocean rows go inert.
+  Render distance is unaffected either way, it is the viewport's own concern rather than the host's.
+- `Settings` (default null) is the persisted `IEditorSettingsStore` the settings menu reads and writes. Null
+  runs the menu over a session-only `EditorSettings` instead, so an embedder that wants no files on disk
+  still gets a working menu, it just forgets the choices on exit. A head wires an `EditorSettingsStore`, the
+  same way the landing menu is handed an `IRecentFilesStore`. See Settings menu below.
 - `StatusBottomOffset` (default 0) reserves that many points of clearance at the window bottom for a host
   that draws its own bottom chrome (the Showcase's F7-F10 display readout line), shifting the status strip
   and editor body up so the editor never stacks on the host's pixels.
@@ -95,7 +114,11 @@ undoable re-move with a null Y, a no-op when nothing placement-shaped is selecte
 already grounded). Ctrl+Up and Ctrl+Down reorder the selected terrain feature or scatter override one step
 earlier or later in its list (see Feature apply order below), clamped at the list ends so a boundary press
 lands no command. Bare 1..9 recalls a camera bookmark and Shift+1..9 stores one (see Camera bookmarks below). Escape
-cancels an in-flight gizmo/draw gesture and returns to Select. Every Ctrl chord above also fires on Cmd
+cancels an in-flight gizmo/draw gesture and returns to Select, and opens the settings menu when there is no
+gesture to cancel (see Settings menu below). Those two never collide on one keypress: the scene samples whether
+the tool layer would consume this frame's Escape BEFORE the tool step runs, since by the time the shortcut
+handler sees the key the gesture is already cancelled and the mode is back to Select, so asking then would let
+the same press both cancel a drag and pop the menu open. Every Ctrl chord above also fires on Cmd
 (Super): `InputState.IsCommandDown` treats the two as the same modifier, so the Windows/Linux chords work
 unmodified on a Mac (Cmd+S and Cmd+D also suppress the fly camera for that one frame, since both chords
 carry a WASD letter, see Camera bookmarks below for the Command-modifier suppression). All of them, plus the
@@ -135,6 +158,67 @@ the editor is the bottom scene on the stack (nothing beneath it to pop back to) 
 that runs, otherwise the scene just pops (returning to whatever sits beneath it, for example the landing
 scene, see below). A head that pushes `MapEditorScene` as its only scene must set `RequestQuit`, or Close
 leaves an empty stack (a blank screen, since a scene never touches window APIs directly).
+
+## Settings menu
+
+Bare Escape, with nothing for the tool layer to cancel, opens a modal settings menu
+(`MapEditorSettingsDialog`): a scrim, a centred card and a `PropertyGrid` of live rows over one
+`EditorSettings` instance, plus **Reset to defaults** and **Close**. Escape or Close dismisses it, except while
+a `NumberField` row holds a live edit, where that row's own Escape cancel takes the press first and the menu
+stays open. It sits one gate below the exit dialog in `OnUpdate`, so Shift+Escape still wins when both would
+apply and the two never stack. Built on `PropertyGrid` rather than the exit dialog's `PopupPanel` because the
+popup has label/value rows plus footer buttons and no interactive row type, and this is ten editable rows.
+
+The rows, and what each one drives:
+
+- **View / Render distance** - `Base`, `2x`, `4x`. Runs `RenderDistanceProfile.Scaled(multiplier)` over
+  `MapEditorOptions.RenderDistance` and pushes the result at everything that reads a render distance: the
+  viewport world (which streams and culls from it), the camera far clip (an independent copy of the same
+  number), and the streamed ring itself. The ring is the part that cannot be assigned: `ViewportWorld` bakes
+  its streamer config and every prop layer's cull radius when it BUILDS, so a change to a built world drives
+  the same rebuild path the Layers panel uses and pays its hitch. A tiled document that opened windowed is the
+  one thing this cannot grow live (`EditorWindowRadius` is read at open time), so it says so in the status
+  strip rather than under-loading in silence. Editor view only, it never touches the document.
+- **Sky / Sky preset** - `Day` (the default), `Sunset`, `Night`, `Starfield`, via
+  `Render3D.EnvironmentPresets`. Picking one resets the sun and lighting sliders to that preset's own values,
+  so a pick shows that preset rather than the previous one's sliders carried onto a new palette.
+- **Sky / Sun azimuth, Sun elevation** - degrees, clockwise from north and above the horizon. Fed through
+  `EnvironmentPresets.SunLightDirection`, so the sun disc, the key light and the water glint move together.
+- **Lighting / Key light, Ambient** - multipliers on the preset's own key and ambient colours, 1 being the
+  preset value.
+- **Ocean / Ocean preset** - `Calm`, `Moderate` (the default), `Rough`, via `Render3D.OceanPresets`, with the
+  same pick-resets-the-sliders rule as the sky.
+- **Ocean / Swell amplitude, Foam strength** - overrides on top of the ocean preset.
+- **Ocean / Surf** - off by default. On, the editor builds a `WaterBathymetry` depth field from this
+  document's own terrain and water level over the document bounds and hands it to the water renderer, so waves
+  shoal and break along the shoreline. It is rebuilt only when the terrain field instance or the water level
+  changes (a world rebuild hands out a new field), which is why it is off by default: the fill costs one pass
+  over the document bounds and is not worth paying unless the shoreline is what is being authored.
+
+Everything above is view preference, not document state, so two operators can prefer different horizons and
+skies over the same world. Every row writes straight into the settings instance and fires the change hook, so
+a change takes effect on the next frame and is persisted immediately rather than on close. The sky, lighting
+and ocean rows are inert when `MapEditorOptions.DriveEnvironment` is false.
+
+`MapEditorOptions.Settings` is where persistence comes from. `EditorSettingsStore` rides the engine settings
+seam (`ISettingsStorage`) on its own `editor-settings.json`, so it never collides with a game's
+`settings.json` or with the editor's own recents file, and writes through the coalesced persistence queue so a
+run of slider frames collapses to one file write. Construct it with an already-built `ISettingsStorage` (the
+testable shape) or with a publisher / app-name pair, which builds a publisher-rooted `GameStorage` internally
+so the preferences land beside the game's own app data. `Flush()` drains any pending write and a head calls it
+once during its own quit flushing, exactly like `IRecentFilesStore.Flush`. Loading always runs
+`EditorSettings.Sanitize()`, so a hand-edited, truncated or version-skewed file can only ever produce a duller
+editor and never a crash or a black viewport: an unknown enum falls back to its default preset, a non-finite
+number falls back to the value that preset itself carries, the render-distance multiplier snaps to the nearest
+offered tier, and everything else clamps.
+
+```csharp
+var options = new MapEditorOptions
+{
+    // ...
+    Settings = new EditorSettingsStore("MyPublisher", "MyGame"),
+};
+```
 
 ## Landing scene and recent files
 

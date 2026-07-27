@@ -18,7 +18,7 @@ namespace KhaozEngine.MapEditor;
 /// into the settings instance and raises <c>onChanged</c>, so a change takes effect on the next frame and is
 /// persisted immediately rather than on close.
 /// <para>Built on <see cref="PropertyGrid"/> rather than <see cref="PopupPanel"/>: the exit dialog's popup carries
-/// label / value rows plus footer buttons and has no interactive row type, while this menu is nine editable rows,
+/// label / value rows plus footer buttons and has no interactive row type, while this menu is ten editable rows,
 /// which is exactly what the property grid the inspector already uses is for.</para>
 /// <para>Developer tooling, so the whole class is
 /// <see cref="LocalizationExemptAttribute">localization-exempt</see> and its labels are raw.</para>

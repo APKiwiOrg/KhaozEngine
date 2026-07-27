@@ -267,8 +267,9 @@ public sealed class EditorSettingsStore : IEditorSettingsStore
     public void Save() => _storage.SaveSettings(_settings.Clone());
 
     /// <inheritdoc/>
-    // Exactly one of the two handles is ever non-null for a given instance (see the ctors), so draining both is a
-    // single unconditional call rather than a branch.
+    // At most one of the two handles is ever non-null for a given instance (see the ctors: the publisher/app-name
+    // overload owns a GameStorage and passes no queue, the ISettingsStorage overload owns no storage and may or may
+    // not be handed one), so draining both is a single unconditional call rather than a branch.
     public void Flush()
     {
         _ownedStorage?.Flush();

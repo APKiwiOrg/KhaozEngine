@@ -46,7 +46,7 @@ public partial class MapEditorScene
     readonly List<OverlayDraw> _overlayDrawList = new();
 
     /// <summary>Submits the exclusion / region / feature overlay fills to the Scene3D debug-fill pass. The
-    /// doc-to-draw-list step is the pure, headless-tested <see cref="ComputeOverlayDrawList"/>; only the per-entry
+    /// doc-to-draw-list step is the pure, headless-tested <see cref="ComputeOverlayDrawList"/>. Only the per-entry
     /// GPU submission (a debug disc / quad / fan) lives here. No-op until the field exists (world built).</summary>
     void DrawOverlays(Scene3D scene)
     {
@@ -273,13 +273,13 @@ internal readonly struct OverlayDraw
     /// <see cref="OverlayShape.Polygon"/> this is the fan hub at the point centroid.</summary>
     public readonly Vector3 Center;
     /// <summary>The radius for a <see cref="OverlayShape.Disc"/> (the shape radius, or the fixed marker radius for a
-    /// feature); zero for the other shapes.</summary>
+    /// feature), and zero for the other shapes.</summary>
     public readonly float Radius;
-    /// <summary>The half-extents (X along world X, Y along world Z) for a <see cref="OverlayShape.Rect"/>; zero for
+    /// <summary>The half-extents (X along world X, Y along world Z) for a <see cref="OverlayShape.Rect"/>, and zero for
     /// the other shapes.</summary>
     public readonly Vector2 HalfExtents;
     /// <summary>The ground-height rim ring for a <see cref="OverlayShape.Polygon"/> (each vertex sampled at its own
-    /// terrain height); null for the other shapes.</summary>
+    /// terrain height), and null for the other shapes.</summary>
     public readonly IReadOnlyList<Vector3>? Rim;
     /// <summary>The RGBA fill color, already brightened when <see cref="Selected"/>.</summary>
     public readonly Color Color;

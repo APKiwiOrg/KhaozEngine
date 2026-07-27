@@ -229,6 +229,21 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   // each frame, timeOfDay in [0,1) comes from YOUR game clock:
   SunCycle.Apply(SunCycle.Evaluate(timeOfDay, cycle), scene.Post);
   ```
+- `EnvironmentPresets` + `EnvironmentPresetKind` (17.6.0) - ready-made sky plus lighting bundles for a "pick a
+  look" dropdown. `EnvironmentPresets.Apply(kind, scene.Post)` writes one coherent group of fields for
+  `Day`/`Sunset`/`Night`/`Starfield`: the sky palette (`Sky.HorizonColor`/`ZenithColor`/`SunColor`/`SunEnabled`),
+  the background mode (`Sky.Enabled` + `Starfield` + `BackgroundColor`), and the five lighting fields
+  (`LightDirection`, `LightColor`, `AmbientColor`, `FillLightDirection`, `FillLightColor`). `Starfield` pulls the
+  sky palette DOWN to its near-black background on purpose, because water reflects `Sky.HorizonColor`/`ZenithColor`
+  whether or not the sky pass is on (see Water below), so leaving the palette at its bright defaults paints a
+  jagged bright horizon into water against a black background. Distinct from `SunCycle`: these are fixed snapshots
+  for a menu, `SunCycle` is a continuous arc off a caller-owned clock, and the two are not meant to be mixed on the
+  same scene. `EnvironmentPresets.SunLightDirection(azimuthDegrees, elevationDegrees)` is the sun-angle helper a
+  slider pair drives: it returns the key light's normalized TRAVEL direction (so an elevation above the horizon
+  gives a downward-pointing vector) in the same Y-up, north = `-Z`, east = `+X` convention
+  `SunCycle.SolarDirection` uses, and matches `SkySettings.ResolveSunDirection`'s sign convention exactly, so the
+  sun disc, the key light and the water glint all move together off one pair of angles. `Apply` throws
+  `ArgumentNullException` on a null `post` and `ArgumentOutOfRangeException` on an undefined kind.
 - Bloom: `PixelPostProcessSettings.Bloom` (a `BloomSettings`, **default off**) is an opt-in threshold +
   separable-blur bloom - beams, emissive materials, and bright billboards read as a glow instead of flat. A
   bright-pass thresholds the lit colour (soft smoothstep knee, `Threshold`/`Knee`) into a HALF-resolution target,
@@ -378,6 +393,14 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   bullseye); above strength 0 the surface takes two cascade samples per stage instead of one, and the sector count
   is free. Pure math is `Internal.OceanFocus` (headless-tested, mirrors the GLSL). Rationale:
   `docs/design/WATER-SAMPLING-FRAME-DESIGN-2026-07-26.md`.
+- `OceanPresets` + `OceanPresetKind` (17.6.0) - the `EnvironmentPresets` idea applied to the sea.
+  `OceanPresets.Apply(kind, post.Water)` writes one coherent group of `Calm`/`Moderate`/`Rough` values: the
+  Gerstner swell (`SwellAmplitude`, `SwellWavelength`, `SwellSteepness`, `SwellSpeed`), `NormalStrength`, the
+  whitecap foam (`FoamStrength`, `FoamCrestCoverage`) and the sun glint (`GlintStrength`, `GlintRoughness`).
+  It deliberately leaves `GridMode`, the clipmap fields, `Bathymetry` and the surf fields ALONE: those describe
+  the water body's geometry and shoreline rather than its weather, so a preset pick never undoes a consumer's
+  clipmap or bathymetry wiring. `Moderate` is closest to `WaterSettings`' own defaults. Throws
+  `ArgumentNullException` on a null `water` and `ArgumentOutOfRangeException` on an undefined kind.
 - Modern particle pass: `Scene3D.DrawParticle(in ParticleSprite)` / `DrawParticles(ReadOnlySpan<ParticleSprite>)`
   queue procedural particle sprites that render as ONE premultiplied-alpha instanced draw after the water pass and
   BEFORE the post chain, so additive sprites feed bloom and every sprite flows through the pixel post like meshes.

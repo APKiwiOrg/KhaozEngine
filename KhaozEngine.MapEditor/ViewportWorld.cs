@@ -131,8 +131,12 @@ public sealed class ViewportWorld : IDisposable
     /// water plane from <see cref="RenderDistanceProfile.OceanHalfExtent"/>. The editor scene points this at its
     /// <see cref="MapEditorOptions.RenderDistance"/> option and applies the same profile's
     /// <see cref="RenderDistanceProfile.FarClip"/> to the viewport camera, so terrain residency, prop cull, ocean rim
-    /// and frustum agree. The setter runs <see cref="RenderDistanceProfile.Validate"/>, so an incoherent hand-rolled
-    /// set throws here (at editor start) instead of quietly rendering a void horizon. Defaults to
+    /// and frustum agree, and re-points it whenever the operator changes the render-distance multiplier in the
+    /// settings menu (<see cref="MapEditorScene.ScaledRenderDistance"/>). The setter runs
+    /// <see cref="RenderDistanceProfile.Validate"/>, so an incoherent hand-rolled set throws instead of quietly
+    /// rendering a void horizon. In practice that only ever fires at editor start, on the head's own option:
+    /// <see cref="RenderDistanceProfile.Scaled"/> preserves every rule <see cref="RenderDistanceProfile.Validate"/>
+    /// checks, so a live rescale of an already-valid profile cannot produce an incoherent one. Defaults to
     /// <see cref="RenderDistanceProfile.Default"/>.</summary>
     public RenderDistanceProfile RenderDistance
     {

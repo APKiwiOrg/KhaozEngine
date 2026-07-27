@@ -14,10 +14,12 @@ down as it comes into the shallows, and break where it runs out of water. Plus t
 fades the water clipmap's ring boundaries instead of swapping them, which is the last of the
 camera-motion artifact [#296](https://github.com/APKiwiOrg/KhaozEngine/issues/296) left behind.
 
-All of it is OFF by default and off is byte-identical: with no depth field set every shore helper in
-both shader stages returns its identity by an early return, and the geomorph band at 0 reproduces
-16.12.0's grid vertex for vertex. The Metal golden suite, both water goldens included, passes
-unchanged.
+Bathymetry, shoaling and the breaking surf are OFF by default and off is byte-identical: with no depth
+field set every shore helper in both shader stages returns its identity by an early return. The clipmap
+LOD geomorph is the exception: `ClipmapGeomorphBand` ships ON at 0.5 for `WaterGridMode.Clipmap`
+consumers, which changes their default vertex positions and band-limit spacing, in exchange for the
+measured continuity improvement below (`0` reproduces 16.12.0's grid vertex for vertex). The Metal
+golden suite, both water goldens included, passes unchanged.
 
 Prompted by a Ruinborne playtest of 16.12.0: *"Sea should be a bit calmer around the shore, and there
 is no natural wave crash on the beach/rocks"*, plus *"there is a SLIGHT jump (very slight) when moving

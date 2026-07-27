@@ -467,10 +467,11 @@ void main() {
 
     float footprintSamples = FootprintParams.x, varianceGain = max(FootprintParams.y, 0.0);
 
-    // FFT ocean cascades, sampled FIRST. Two reasons, both Metal-only and both invisible here: the ocean map is
-    // binding 0 and the scene depth binding 2, and the cross-compiler numbers a stage's textures by first
-    // reference, so sampling the depth first would swap them. Inside the branch, so the procedural surface still
-    // pays nothing at runtime - emission order is static and a not-taken branch is still emitted.
+    // FFT ocean cascades, sampled second: after bathymetry (binding 0/1, see above) and ahead of the scene depth
+    // below. Two reasons, both Metal-only and both invisible here: the ocean map is binding 2 and the scene depth
+    // binding 4, and the cross-compiler numbers a stage's textures by first reference, so sampling the depth first
+    // would swap them. Inside the branch, so the procedural surface still pays nothing at runtime - emission order
+    // is static and a not-taken branch is still emitted.
     vec2 oceanSlope = vec2(0.0);
     float oceanFoam = 0.0;
     float oceanLost = 0.0;

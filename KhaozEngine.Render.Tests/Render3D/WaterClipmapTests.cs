@@ -24,20 +24,21 @@ namespace KhaozEngine.Tests.Render3D
         static WaterPlane BigPlane() => new(centerX: 0f, surfaceY: 3f, centerZ: 0f, halfExtentX: 4000f);
 
         static (WaterClipmapVertex[] Verts, uint[] Indices, int VCount, int ICount) Build(
-            in WaterPlane plane, float fx, float fz, int levels, float cell = Cell, int ring = Ring)
-            => BuildAt(plane, fx, fz, levels, default, cell, ring);
+            in WaterPlane plane, float fx, float fz, int levels, float cell = Cell, int ring = Ring,
+            float geomorph = 0f)
+            => BuildAt(plane, fx, fz, levels, default, cell, ring, geomorph);
 
         /// <summary>Build against a render origin. <paramref name="plane"/> and the focus are ABSOLUTE either way -
         /// that is the contract, and it is what keeps the lattice world-anchored.</summary>
         static (WaterClipmapVertex[] Verts, uint[] Indices, int VCount, int ICount) BuildAt(
             in WaterPlane plane, float fx, float fz, int levels, Vector3 renderOrigin,
-            float cell = Cell, int ring = Ring)
+            float cell = Cell, int ring = Ring, float geomorph = 0f)
         {
             var verts = new WaterClipmapVertex[WaterClipmap.VertexCount(levels, ring)];
             var indices = new uint[WaterClipmap.IndexCount(levels, ring)];
             Vector2 focus = WaterClipmap.ClampFocus(plane, fx, fz);
-            int vc = WaterClipmap.Build(plane, focus.X, focus.Y, cell, ring, levels, verts, indices, out int ic,
-                renderOrigin);
+            int vc = WaterClipmap.Build(plane, focus.X, focus.Y, cell, ring, levels, geomorph, verts, indices,
+                out int ic, renderOrigin);
             return (verts, indices, vc, ic);
         }
 
@@ -230,7 +231,7 @@ namespace KhaozEngine.Tests.Render3D
                     shifted.Verts[i].Position.X - (distance - originValue), 4);
                 Assert.Equal(flat.Verts[i].Position.Z - distance,
                     shifted.Verts[i].Position.Z - (distance - originValue), 4);
-                Assert.Equal(flat.Verts[i].Stitch, shifted.Verts[i].Stitch);
+                Assert.Equal(flat.Verts[i].Coarse, shifted.Verts[i].Coarse);
                 Assert.Equal(flat.Verts[i].Cell, shifted.Verts[i].Cell);
             }
         }
@@ -382,16 +383,16 @@ namespace KhaozEngine.Tests.Render3D
                         // Both sides of a shared boundary must band-limit to the SAME spacing, or they cannot
                         // evaluate to the same height and the seam opens.
                         Assert.Equal(boundary && l + 1 < levels ? coarse : c, v.Cell, 4);
-                        if (v.Stitch == Vector2.Zero) continue;
+                        if (v.Coarse == Vector2.Zero) continue;
 
                         stitched++;
                         Assert.True(boundary, "only ring-boundary vertices may stitch");
                         Assert.True(l + 1 < levels, "the outermost ring has nothing to stitch to");
                         // The stitch names its two coarse neighbours exactly, and the vertex is their midpoint.
-                        Assert.Equal(c, MathF.Abs(v.Stitch.X) + MathF.Abs(v.Stitch.Y), 4);
+                        Assert.Equal(c, MathF.Abs(v.Coarse.X) + MathF.Abs(v.Coarse.Y), 4);
                         foreach (float s in new[] { -1f, 1f })
                         {
-                            var p = new Vector2(v.Position.X + s * v.Stitch.X, v.Position.Z + s * v.Stitch.Y);
+                            var p = new Vector2(v.Position.X + s * v.Coarse.X, v.Position.Z + s * v.Coarse.Y);
                             Assert.Contains(((long)MathF.Round(p.X * 1024f), (long)MathF.Round(p.Y * 1024f)),
                                 coarsePositions);
                         }
@@ -440,8 +441,8 @@ namespace KhaozEngine.Tests.Render3D
                     int i = v % stride, j = v / stride;
                     if (i != 0 && i != Ring && j != 0 && j != Ring) continue;   // boundary vertices only
 
-                    var lo = new Vector2(vert.Position.X - vert.Stitch.X, vert.Position.Z - vert.Stitch.Y);
-                    var hi = new Vector2(vert.Position.X + vert.Stitch.X, vert.Position.Z + vert.Stitch.Y);
+                    var lo = new Vector2(vert.Position.X - vert.Coarse.X, vert.Position.Z - vert.Coarse.Y);
+                    var hi = new Vector2(vert.Position.X + vert.Coarse.X, vert.Position.Z + vert.Coarse.Y);
                     // Both taps have to be real coarse vertices. For an unstitched boundary vertex the two taps
                     // collapse onto the vertex itself, which must then be a coarse vertex in its own right - that
                     // is the even-index case, and it is just as load-bearing for the seam.
@@ -606,7 +607,7 @@ namespace KhaozEngine.Tests.Render3D
         public void ClipmapVertexMatchesTheStrideThePipelineDeclares()
         {
             Assert.Equal((int)WaterRenderer.ClipVertexBytes, Marshal.SizeOf<WaterClipmapVertex>());
-            Assert.Equal(3 * 4 + 2 * 4 + 4, (int)WaterRenderer.ClipVertexBytes);
+            Assert.Equal(3 * 4 + 2 * 4 + 4 + 4, (int)WaterRenderer.ClipVertexBytes);
         }
 
         [Fact]
@@ -616,13 +617,17 @@ namespace KhaozEngine.Tests.Render3D
             // The camera-focused source pins the band limit off and the tap count at one, both as compile-time
             // constants, so its FFT sampling collapses to the literal LOD-0 fetch it always was.
             Assert.Contains("const float bandCell = 0.0;", plain);
-            Assert.Contains("const int taps = 1;", plain);
-            Assert.DoesNotContain("in vec2 Stitch;", plain);
+            Assert.Contains("const int KE_TAPS = 1;", plain);
+            Assert.Contains("const vec3 tapWeights = vec3(1.0, 0.0, 0.0);", plain);
+            Assert.DoesNotContain("in vec2 Coarse;", plain);
             Assert.DoesNotContain("in float Cell;", plain);
+            Assert.DoesNotContain("in float Morph;", plain);
 
-            Assert.Contains("in vec2 Stitch;", clip);
+            Assert.Contains("in vec2 Coarse;", clip);
             Assert.Contains("in float Cell;", clip);
+            Assert.Contains("in float Morph;", clip);
             Assert.Contains("float bandCell = Cell;", clip);
+            Assert.Contains("const int KE_TAPS = 3;", clip);
 
             // One copy of the maths: the swell block and the sampling frame are the same text in both.
             Assert.Contains("float lambdaSum = wavelength", plain);

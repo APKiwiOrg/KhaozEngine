@@ -345,8 +345,27 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   `GridFocusBias` is inert under it. At the defaults it draws FEWER triangles than the grid it replaces and only
   rebuilds its buffers when a ring snaps (per plane: each plane owns a slice of the buffers, so one plane's rebuild
   never invalidates another's). Its snap lattice is decided in ABSOLUTE world space and only then reduced by the
-  camera-relative `RenderOrigin`, so an origin rebase moves no ring. The layout math is `Internal.WaterClipmap` (pure, headless-tested);
-  rationale: `docs/design/WATER-CLIPMAP-DESIGN-2026-07-27.md`.
+  camera-relative `RenderOrigin`, so an origin rebase moves no ring. Since 17.3.0 `ClipmapGeomorphBand` (0.5, `0`
+  restores the 16.12.0 grid exactly) fades each ring's outer band toward the next ring out's evaluation - sampled
+  displacement and band-limit spacing both - instead of swapping level at the boundary; it subsumes the stitch
+  (which is its `Morph = 1` case) and its weights are static per grid build, so a frame where no ring snapped
+  still does no work. Measured on the #296 acceptance metric it takes the ring-boundary residual from 0.00086 m
+  RMS to 0.00047 m at both a 0.10 m and a 0.50 m camera step. The layout math is `Internal.WaterClipmap` (pure,
+  headless-tested); rationale: `docs/design/WATER-CLIPMAP-DESIGN-2026-07-27.md` and
+  `docs/design/WATER-SHORE-DESIGN-2026-07-27.md`.
+- Bathymetry, shoaling and breaking surf (since 17.3.0, `WaterSettings.Bathymetry`, **null by default = the
+  16.12.0 surface, byte for byte**; needs `WaterWaveSource.FftOcean`): a `WaterBathymetry` is water depth in
+  metres over a world-space XZ rectangle, supplied as a plain `float[]` the consumer writes (`FillFromGround` fills
+  it from any ground-height function) and re-uploaded only when its `Revision` moves. With one bound, each cascade
+  is scaled by `tanh(k d)` against its own energy-weighted mean wave number, so the long swell calms in metres of
+  depth while the chop rides in untouched (`ShoalingStrength`, `ShoalingDepthScale`); and where the depth falls
+  below `Hs / SurfBreakerIndex` the surface foams, gated on the incoming wave's CREST PHASE so the white surges up
+  the beach with each wave rather than glowing in place (`SurfStrength`, `SurfBandWidth`, `SurfCrestBias`,
+  `SurfTrailWidth`, `SurfAmplitudeCollapse`). The surge direction is the DEPTH GRADIENT, not the wind heading, so
+  anything shallow - a rock, a bar - breaks around itself with no authoring. Outside the rectangle the surface
+  reads as deep open water, so a coastal strip can be baked at a useful resolution instead of an ocean at a
+  useless one. Pure math is `Internal.WaterShoaling` (headless-tested, mirrors the GLSL). Rationale:
+  `docs/design/WATER-SHORE-DESIGN-2026-07-27.md`.
 - FFT ocean sampling frame (since 16.5.0, all opt-in, all defaulting to the exact identity): `OnshoreFocusPoint` /
   `OnshoreFocusStrength` / `OnshoreFocusSectors` aim the local wave heading at a world point, so an island gets
   surf running at it from every azimuth instead of a sea running past it; `CascadeRotationDegrees` turns each

@@ -4,8 +4,8 @@ using System.Runtime.InteropServices;
 
 namespace KhaozEngine.Render3D.Internal
 {
-    /// <summary>One vertex of the <see cref="WaterGridMode.Clipmap"/> surface grid. 24 bytes, matching the vertex
-    /// layout <c>WaterRenderer</c> builds for the clipmap pipeline and the three inputs
+    /// <summary>One vertex of the <see cref="WaterGridMode.Clipmap"/> surface grid. 28 bytes, matching the vertex
+    /// layout <c>WaterRenderer</c> builds for the clipmap pipeline and the four inputs
     /// <c>ShaderSources.WaterClipmapVert</c> declares.</summary>
     [StructLayout(LayoutKind.Sequential)]
     internal struct WaterClipmapVertex
@@ -14,18 +14,38 @@ namespace KhaozEngine.Render3D.Internal
         /// plane rectangle (a fixed world rectangle, so clamping does not un-lock it from the world).</summary>
         public Vector3 Position;
 
-        /// <summary>Half the world-space vector between this vertex's two COARSE neighbours, for a vertex on a
-        /// ring's outer boundary that has no counterpart on the next ring out's lattice. The shader evaluates the
-        /// surface at <c>Position +/- Stitch</c> and averages, which lands the vertex exactly on the coarse ring's
-        /// edge segment and closes the T-junction with no skirt and no degenerate triangle. Zero everywhere else,
-        /// which is the single-tap path.</summary>
-        public Vector2 Stitch;
+        /// <summary>
+        /// Half the world-space vector between the two nodes of the NEXT RING OUT's lattice that this vertex sits
+        /// between. Zero for a vertex that is itself on the coarse lattice (both ring indices even) and for the
+        /// outermost ring, which has no coarser neighbour.
+        /// <para>
+        /// The shader evaluates the surface at <c>Position +/- Coarse</c> and mixes those two toward its own
+        /// single-tap evaluation by <see cref="Morph"/>, so at <c>Morph = 1</c> the vertex lands exactly on the
+        /// segment the coarse ring draws between those two nodes. At the ring's outer boundary
+        /// <see cref="Morph"/> is always 1, which is precisely the stitch that closes the T-junction with no skirt
+        /// and no degenerate triangle - the geomorph generalizes it inward rather than sitting beside it.
+        /// </para>
+        /// <para>
+        /// The three off-lattice cases are all two-tap, including the diagonal one. A vertex with BOTH indices odd
+        /// sits at the centre of a coarse quad, and the coarse surface there is not the average of four corners
+        /// but the average of the two the coarse triangulation's diagonal runs between - the index builders emit
+        /// <c>(i0, i2, i1) / (i1, i2, i3)</c>, so that diagonal is <c>i1</c> to <c>i2</c> and the offset is the
+        /// anti-diagonal <c>(+c, -c)</c>.
+        /// </para>
+        /// </summary>
+        public Vector2 Coarse;
 
-        /// <summary>The world-space sample spacing this vertex band-limits to: its own ring's cell size, or the
-        /// NEXT ring out's cell size when it sits on the shared boundary (so both sides of that boundary evaluate
-        /// the identical low-pass and meet exactly). Feeds the per-cascade mip selection in
-        /// <see cref="WaterClipmap.MipLevel"/>.</summary>
+        /// <summary>The world-space sample spacing this vertex band-limits to, ALREADY morphed: its own ring's cell
+        /// size blended toward the next ring out's by <see cref="Morph"/>. Feeds the per-cascade mip selection in
+        /// <see cref="WaterClipmap.MipLevel"/>. Precomputed here rather than blended in the shader because the
+        /// weight is static per grid build, so a frame where no ring snapped does no work for it at all.</summary>
         public float Cell;
+
+        /// <summary>How far this vertex has morphed toward the next ring out's evaluation, 0..1. 0 is its own
+        /// ring, pure; 1 is exactly what the coarse ring would draw here (same position, same band limit). Ramps
+        /// over the outer <see cref="WaterSettings.ClipmapGeomorphBand"/> of the ring and is 1 on the outer
+        /// boundary, which is what turns the LOD change from a step into a fade.</summary>
+        public float Morph;
     }
 
     /// <summary>
@@ -175,6 +195,60 @@ namespace KhaozEngine.Render3D.Internal
             return MathF.Min(MathF.Log2(want), maxMip);
         }
 
+        /// <summary>
+        /// How far the vertex at ring indices (<paramref name="i"/>, <paramref name="j"/>) has morphed toward the
+        /// next ring out, 0..1. Pure, static per grid build, and the whole of the geomorph's tuning.
+        /// <para>
+        /// The ramp is radial in CHEBYSHEV distance from the ring's centre (<c>max(|di|, |dj|)</c>), because that
+        /// is the metric the square rings are actually laid out in: it is constant along a ring's own perimeter,
+        /// so every vertex on the boundary reaches exactly 1 and the two sides of the boundary meet whatever the
+        /// corner does. A Euclidean radius would reach 1 at the edge midpoints and overshoot at the corners.
+        /// </para>
+        /// <para>
+        /// <paramref name="band"/> 0 gives back the pre-geomorph grid EXACTLY: 1 on the boundary (the stitch) and
+        /// 0 everywhere else, by an early return rather than by a ramp that happens to be degenerate. That is the
+        /// switch that keeps <see cref="WaterSettings.ClipmapGeomorphBand"/> at 0 byte-identical to 16.12.0.
+        /// </para>
+        /// </summary>
+        /// <param name="i">Ring index on X, 0..<paramref name="ringCells"/>.</param>
+        /// <param name="j">Ring index on Z, 0..<paramref name="ringCells"/>.</param>
+        /// <param name="ringCells">Cells per side, already <see cref="ClampRingCells"/>ed.</param>
+        /// <param name="band">Fraction of the ring's half-width the ramp spans, 0..1. At 1 the whole level morphs;
+        /// at 0.5 a RING morphs entirely (a ring's drawn extent starts at half its half-width, where its hole
+        /// ends) and level 0 morphs its outer half.</param>
+        public static float MorphWeight(int i, int j, int ringCells, float band)
+        {
+            int half = ringCells / 2;
+            if (half <= 0) return 0f;
+            int r = Math.Max(Math.Abs(i - half), Math.Abs(j - half));
+            if (r >= half) return 1f;
+            float b = Math.Clamp(band, 0f, 1f);
+            if (b <= 0f) return 0f;
+            float inner = half * (1f - b);
+            return Math.Clamp((r - inner) / (half - inner), 0f, 1f);
+        }
+
+        /// <summary>
+        /// Which two nodes of the NEXT ring out's lattice a vertex at ring indices
+        /// (<paramref name="i"/>, <paramref name="j"/>) sits between, as an index offset from it. <c>(0, 0)</c>
+        /// means the vertex is itself on the coarse lattice.
+        /// <para>
+        /// A vertex is on the coarse lattice exactly when both indices are even: the ring's own origin is a
+        /// multiple of twice its cell size and the coarse origin a multiple of four times it, so their difference
+        /// is a whole number of coarse cells, and <c>ringCells</c> being a multiple of 4 makes the half-offset
+        /// even too. The odd/odd case is the coarse quad's CENTRE and takes the anti-diagonal, which is the
+        /// diagonal the index builders' <c>(i0, i2, i1) / (i1, i2, i3)</c> triangulation actually draws.
+        /// </para>
+        /// </summary>
+        public static (int I, int J) CoarseNeighbourOffset(int i, int j)
+        {
+            bool oddI = (i & 1) != 0, oddJ = (j & 1) != 0;
+            if (!oddI && !oddJ) return (0, 0);
+            if (oddI && !oddJ) return (1, 0);
+            if (!oddI) return (0, 1);
+            return (1, -1);
+        }
+
         /// <summary>Mip levels a square cascade map of <paramref name="resolution"/> texels per side carries when
         /// it is given a full chain: <c>floor(log2(n)) + 1</c>, i.e. down to the 1x1 level.</summary>
         public static int MipCount(int resolution)
@@ -197,6 +271,9 @@ namespace KhaozEngine.Render3D.Internal
         /// <param name="baseCell">Level 0's cell size, world units.</param>
         /// <param name="ringCells">Cells per side per level; must already be <see cref="ClampRingCells"/>ed.</param>
         /// <param name="levels">Level count, 1..<see cref="MaxLevels"/>.</param>
+        /// <param name="geomorphBand"><see cref="WaterSettings.ClipmapGeomorphBand"/>: the fraction of each ring's
+        /// half-width over which it morphs toward the next ring out. 0 restores the pre-geomorph grid exactly (the
+        /// boundary stitch and nothing else).</param>
         /// <param name="vertices">Receives the vertex block.</param>
         /// <param name="indices">Receives the triangle-list indices.</param>
         /// <param name="indexCount">Receives the index count actually written.</param>
@@ -209,14 +286,15 @@ namespace KhaozEngine.Render3D.Internal
         /// in the RENDER frame instead would re-quantize every ring the moment the render origin rebased: the same
         /// world position would round to a different lattice node, every vertex would jump, and the surface would
         /// be resampled - which is the exact artifact this grid exists to remove, reintroduced by the fix for a
-        /// different problem. <see cref="WaterClipmapVertex.Stitch"/> is a difference and
-        /// <see cref="WaterClipmapVertex.Cell"/> a scalar, so neither needs reducing; the shader adds the origin
+        /// different problem. <see cref="WaterClipmapVertex.Coarse"/> is a difference and
+        /// <see cref="WaterClipmapVertex.Cell"/> and <see cref="WaterClipmapVertex.Morph"/> are scalars, so none of
+        /// them needs reducing; the shader adds the origin
         /// back to recover the absolute position it samples the cascades at.
         /// </para>
         /// </param>
         public static int Build(in WaterPlane plane, float focusX, float focusZ, float baseCell, int ringCells,
-            int levels, Span<WaterClipmapVertex> vertices, Span<uint> indices, out int indexCount,
-            Vector3 renderOrigin = default)
+            int levels, float geomorphBand, Span<WaterClipmapVertex> vertices, Span<uint> indices,
+            out int indexCount, Vector3 renderOrigin = default)
         {
             int n = ringCells;
             int stride = n + 1;
@@ -264,34 +342,43 @@ namespace KhaozEngine.Render3D.Internal
 
                 for (int j = 0; j <= n; j++)
                 {
-                    bool edgeZ = j == 0 || j == n;
                     for (int i = 0; i <= n; i++)
                     {
-                        bool edgeX = i == 0 || i == n;
-                        bool onBoundary = edgeX || edgeZ;
+                        bool onBoundary = i == 0 || i == n || j == 0 || j == n;
 
                         float wx = Math.Clamp(ox + (i - half) * c, minX, maxX);
                         float wz = Math.Clamp(oz + (j - half) * c, minZ, maxZ);
-                        Vector2 stitch = Vector2.Zero;
+                        Vector2 toCoarse = Vector2.Zero;
+                        float morph = 0f;
+                        float bandCell = c;
 
-                        if (onBoundary && hasCoarser)
+                        // The outermost level has no coarser neighbour, so it never morphs and never stitches.
+                        if (hasCoarser)
                         {
-                            // A boundary vertex sits on the coarse lattice exactly when its index is even (the
-                            // half-offset is even because ringCells is a multiple of 4), and the corners are
-                            // always even, so the two axes can never both want a stitch.
-                            if (edgeZ && (i & 1) != 0)
+                            morph = MorphWeight(i, j, n, geomorphBand);
+                            if (morph > 0f)
                             {
-                                float lo = Math.Clamp(ox + (i - 1 - half) * c, minX, maxX);
-                                float hi = Math.Clamp(ox + (i + 1 - half) * c, minX, maxX);
-                                wx = (lo + hi) * 0.5f;
-                                stitch = new Vector2((hi - lo) * 0.5f, 0f);
-                            }
-                            else if (edgeX && (j & 1) != 0)
-                            {
-                                float lo = Math.Clamp(oz + (j - 1 - half) * c, minZ, maxZ);
-                                float hi = Math.Clamp(oz + (j + 1 - half) * c, minZ, maxZ);
-                                wz = (lo + hi) * 0.5f;
-                                stitch = new Vector2(0f, (hi - lo) * 0.5f);
+                                (int di, int dj) = CoarseNeighbourOffset(i, j);
+                                if (di != 0 || dj != 0)
+                                {
+                                    // The two coarse nodes, each clamped into the plane the same way the vertex
+                                    // itself is, so a rectangle edge degrades the offset to zero rather than
+                                    // sampling outside the water body.
+                                    float lox = Math.Clamp(ox + (i - di - half) * c, minX, maxX);
+                                    float hix = Math.Clamp(ox + (i + di - half) * c, minX, maxX);
+                                    float loz = Math.Clamp(oz + (j - dj - half) * c, minZ, maxZ);
+                                    float hiz = Math.Clamp(oz + (j + dj - half) * c, minZ, maxZ);
+                                    toCoarse = new Vector2((hix - lox) * 0.5f, (hiz - loz) * 0.5f);
+                                    // On the BOUNDARY the vertex is moved onto the coarse segment's midpoint, so
+                                    // the two taps straddle it symmetrically and the seam is exact rather than
+                                    // nearly exact. Inside the ring it keeps its own lattice position: the morph
+                                    // is a blend of evaluations, not a displacement of the grid.
+                                    if (onBoundary) { wx = (lox + hix) * 0.5f; wz = (loz + hiz) * 0.5f; }
+                                }
+                                // Band-limit spacing, morphed. Written as the exact endpoints at 0 and 1 rather
+                                // than through one lerp, so an un-morphed vertex carries its own cell size and a
+                                // fully morphed one the coarse size, bit for bit.
+                                bandCell = morph >= 1f ? coarse : c + (coarse - c) * morph;
                             }
                         }
 
@@ -300,8 +387,9 @@ namespace KhaozEngine.Render3D.Internal
                         vertices[written++] = new WaterClipmapVertex
                         {
                             Position = new Vector3(wx, surfaceY, wz),
-                            Stitch = stitch,
-                            Cell = onBoundary && hasCoarser ? coarse : c,
+                            Coarse = toCoarse,
+                            Cell = bandCell,
+                            Morph = morph,
                         };
                     }
                 }

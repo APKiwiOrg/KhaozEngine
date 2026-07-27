@@ -94,6 +94,15 @@ namespace KhaozEngine.Render3D.Rendering
         /// needs it for the Toksvig transfer when a cascade band-limits out of the normal.</summary>
         public readonly float[] SlopeVariance = new float[OceanSpectrum.MaxCascades];
 
+        /// <summary>Each produced cascade's energy-weighted mean wave number, rad/m, from the baked spectrum. The
+        /// <c>k</c> the shoaling taper uses, so the long swell feels the bottom before the chop does.</summary>
+        public readonly float[] MeanWavenumber = new float[OceanSpectrum.MaxCascades];
+
+        /// <summary>Significant wave height of the whole baked sea state, metres (<c>4 sqrt(m0)</c> over every
+        /// cascade's height variance). What the breaking criterion measures the local depth against; 0 when
+        /// inactive.</summary>
+        public float SignificantHeight { get; private set; }
+
         /// <summary>
         /// The ocean map array, always bindable (a 1x1 placeholder when inactive). Layers
         /// <c>[0, CascadeCount)</c> are DISPLACEMENT (xyz = world displacement); layers
@@ -325,11 +334,20 @@ namespace KhaozEngine.Render3D.Rendering
             var h0 = new Vector4[texels * cascades];
             Array.Clear(TileMetres);
             Array.Clear(SlopeVariance);
+            Array.Clear(MeanWavenumber);
+            float heightVariance = 0f;
             for (int c = 0; c < cascades; c++)
             {
                 TileMetres[c] = OceanSpectrum.TileMetres(c, sea.CascadeTileMetres, sea.CascadeTileRatio);
-                SlopeVariance[c] = OceanSpectrum.BuildInitialSpectrum(sea, c, n, h0.AsSpan(c * texels, texels));
+                OceanSpectrum.CascadeStatistics stats =
+                    OceanSpectrum.BuildInitialSpectrum(sea, c, n, h0.AsSpan(c * texels, texels));
+                SlopeVariance[c] = stats.SlopeVariance;
+                MeanWavenumber[c] = stats.MeanWavenumber;
+                // The cascades PARTITION wave-number space (OceanSpectrum.CascadeBand), so their height variances
+                // add without double counting and the sum is m0 for the whole sea.
+                heightVariance += stats.HeightVariance;
             }
+            SignificantHeight = WaterShoaling.SignificantHeight(heightVariance);
             _gd.UpdateBuffer(_h0!, 0, h0);
 
             _baked = want;

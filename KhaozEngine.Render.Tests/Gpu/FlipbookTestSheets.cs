@@ -86,6 +86,33 @@ namespace KhaozEngine.Tests.Gpu
             return (px, w, h);
         }
 
+        /// <summary>
+        /// A cols x rows atlas of FLAT, fully opaque cells: cell <paramref name="hotCell"/> is pure red, every other
+        /// cell pure green. A cell has no internal structure at all, so blurring one is a no-op and any green in a
+        /// render of the hot cell can only have come from a neighbouring cell. That is what turns cross-cell mip
+        /// bleed into a number, where <see cref="Atlas"/>'s hue sweep only makes it a shade.
+        /// </summary>
+        public static (byte[] rgba, int w, int h) ContrastAtlas(int cols, int rows, int cellPx, int hotCell)
+        {
+            int w = cols * cellPx, h = rows * cellPx;
+            var px = new byte[w * h * 4];
+            for (int cr = 0; cr < rows; cr++)
+                for (int cc = 0; cc < cols; cc++)
+                {
+                    bool hot = cr * cols + cc == hotCell;
+                    for (int y = cr * cellPx; y < (cr + 1) * cellPx; y++)
+                        for (int x = cc * cellPx; x < (cc + 1) * cellPx; x++)
+                        {
+                            int i = (y * w + x) * 4;
+                            px[i] = hot ? (byte)255 : (byte)0;
+                            px[i + 1] = hot ? (byte)0 : (byte)255;
+                            px[i + 2] = 0;
+                            px[i + 3] = 255;
+                        }
+                }
+            return (px, w, h);
+        }
+
         /// <summary>A uniform-colour motion sheet: every texel is (r, g, 0, 255). (128, 128) is neutral (zero
         /// displacement). A value away from 128 encodes a constant per-frame warp.</summary>
         public static (byte[] rgba, int w, int h) UniformMotion(int cols, int rows, int cellPx, byte r, byte g)

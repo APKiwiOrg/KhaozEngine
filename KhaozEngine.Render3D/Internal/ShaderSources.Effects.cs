@@ -196,6 +196,21 @@ float vnoise(vec2 p)
     return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
 }
 
+// Sampling LOD for one flipbook sheet, clamped so a tap never reaches a level where the bilinear fringe crosses out
+// of its own cell. sz is the sheet in texels, cell the per-frame UV size (1/vec2(cols,rows)), dlx/dly the quad-local
+// derivatives taken by the CALLER (a derivative must be taken in uniform control flow, and a helper is a fine place
+// to consume one but not to take it). This function touches NO texture on purpose: a resource first referenced from
+// a helper is first-referenced BEFORE main on Metal, which is exactly the reordering the binding-order rule forbids.
+float cellLod(vec2 sz, vec2 cell, vec2 dlx, vec2 dly)
+{
+    vec2 cellPx = sz * cell;
+    float maxLod = max(log2(max(min(cellPx.x, cellPx.y), 1.0) / 4.0), 0.0);   // 4 = min texels a cell keeps
+    vec2 dx = dlx * cell * sz;
+    vec2 dy = dly * cell * sz;
+    float lod = 0.5 * log2(max(max(dot(dx, dx), dot(dy, dy)), 1e-20));
+    return clamp(lod, 0.0, maxLod);
+}
+
 void main() {
     int shape = int(vShape.x + 0.5);
     float param = clamp(vShape.y, 0.0, 1.0);
@@ -231,11 +246,26 @@ void main() {
     lu = mix(lu, vec2(1.0) - lu, vec2(flipU, flipV));
     vec2 uvA = (vec2(mod(vFlip.x, safeCols), floor(vFlip.x / safeCols)) + lu) * cell;
     vec2 uvB = (vec2(mod(vFlip.y, safeCols), floor(vFlip.y / safeCols)) + lu) * cell;
-    vec2 mvA = (texture(sampler2D(MotionTex, AtlasSamp), uvA).rg * 2.0 - 1.0) * mstr * cell;
-    vec2 mvB = (texture(sampler2D(MotionTex, AtlasSamp), uvB).rg * 2.0 - 1.0) * mstr * cell;
+    // Explicit, CLAMPED LOD instead of letting texture() pick one from the derivatives. A mip chain built over a grid
+    // of independent frames stops being usable once a cell is down to a couple of texels: the bilinear tap at a cell
+    // edge reaches one texel of that level into the neighbouring cell, so a distant sprite averages cells together.
+    // cellLod caps at the coarsest level where the cell still has 4 texels on its shorter side, which holds that
+    // fringe to a quarter of a texel while keeping proper minification WITHIN the cell. The derivatives come from lu,
+    // which differs from uvA/uvB only by a constant per-cell offset, so one LOD serves both taps on a sheet (a mirror
+    // only flips the sign, and the magnitude is what matters). Taken here, in uniform control flow: dFdx/dFdy inside
+    // a branch is undefined. The two sheets get their own cap off their own textureSize rather than one shared value,
+    // because the binding-order rule above forbids touching AtlasTex before the MotionTex taps. On a motion sheet
+    // packed to the same grid, which is the documented contract, the two caps are the same number anyway, and the
+    // 1x1 neutral dummy correctly resolves to level 0, the only level it has.
+    vec2 dlx = dFdx(lu);
+    vec2 dly = dFdy(lu);
+    float mlod = cellLod(vec2(textureSize(sampler2D(MotionTex, AtlasSamp), 0)), cell, dlx, dly);
+    vec2 mvA = (textureLod(sampler2D(MotionTex, AtlasSamp), uvA, mlod).rg * 2.0 - 1.0) * mstr * cell;
+    vec2 mvB = (textureLod(sampler2D(MotionTex, AtlasSamp), uvB, mlod).rg * 2.0 - 1.0) * mstr * cell;
     float fb = vFlip.z;
-    vec4 texA = texture(sampler2D(AtlasTex, AtlasSamp), uvA - mvA * fb);
-    vec4 texB = texture(sampler2D(AtlasTex, AtlasSamp), uvB + mvB * (1.0 - fb));
+    float alod = cellLod(vec2(textureSize(sampler2D(AtlasTex, AtlasSamp), 0)), cell, dlx, dly);
+    vec4 texA = textureLod(sampler2D(AtlasTex, AtlasSamp), uvA - mvA * fb, alod);
+    vec4 texB = textureLod(sampler2D(AtlasTex, AtlasSamp), uvB + mvB * (1.0 - fb), alod);
     vec4 flipCol = mix(texA, texB, fb);
 
     float mask;

@@ -34,6 +34,16 @@ namespace KhaozEngine.Render3D
             float dissolveThreshold, float dissolveEdgeWidth, Color dissolveEdge, bool castsShadows)
             => _items.Add(new Instance(mesh, world, tint, material, dissolveThreshold, dissolveEdgeWidth, dissolveEdge, castsShadows));
 
+        /// <summary>As the dissolve + opt-out overload, plus the inverted SHADOW dither (issue #391):
+        /// <paramref name="invertShadowDissolve"/> true draws this instance's depth through the inverted dissolve
+        /// pipeline, which keeps exactly what the plain one discards, so it complements a sibling instance dithering
+        /// at the mirrored threshold instead of nesting inside it. For the merged half of an HLOD crossfade. Affects
+        /// the SHADOW only: the colour pass is untouched, and false is the unchanged default everywhere else.</summary>
+        public void Add(MeshHandle mesh, Matrix4x4 world, Color tint, Material material,
+            float dissolveThreshold, float dissolveEdgeWidth, Color dissolveEdge, bool castsShadows, bool invertShadowDissolve)
+            => _items.Add(new Instance(mesh, world, tint, material, dissolveThreshold, dissolveEdgeWidth, dissolveEdge,
+                castsShadows, invertShadowDissolve));
+
         public readonly struct Instance
         {
             public MeshHandle Mesh { get; }
@@ -52,14 +62,21 @@ namespace KhaozEngine.Render3D
             /// casts-shadows policy a consumer sets on dense decorative geometry. CPU-side only - it never reaches
             /// the GPU instance stream, so the uploaded bytes are identical either way.</summary>
             public bool CastsShadows { get; }
+            /// <summary>Whether this instance's SHADOW dither is inverted (issue #391): the depth pass keeps exactly
+            /// what the plain dissolve discards, so it complements a sibling dithering at the mirrored threshold
+            /// instead of nesting inside it. Set on the merged half of an HLOD crossfade. Like
+            /// <see cref="CastsShadows"/> this is CPU-side only - it selects a depth pipeline and never reaches the
+            /// GPU instance stream, so the uploaded bytes and the whole COLOUR pass are identical either way. Only
+            /// meaningful while <see cref="Dissolving"/>.</summary>
+            public bool InvertShadowDissolve { get; }
             public Instance(MeshHandle mesh, Matrix4x4 world, Color tint) : this(mesh, world, tint, Material.None) { }
             public Instance(MeshHandle mesh, Matrix4x4 world, Color tint, Material material,
                 float dissolveThreshold = 0f, float dissolveEdgeWidth = 0f, Vector4 dissolveEdge = default,
-                bool castsShadows = true)
+                bool castsShadows = true, bool invertShadowDissolve = false)
             {
                 Mesh = mesh; World = world; Tint = tint; Material = material;
                 DissolveThreshold = dissolveThreshold; DissolveEdgeWidth = dissolveEdgeWidth; DissolveEdge = dissolveEdge;
-                CastsShadows = castsShadows;
+                CastsShadows = castsShadows; InvertShadowDissolve = invertShadowDissolve;
             }
 
             /// <summary>True when this draw carries a dissolve (routes through the gated ModelFrag term).</summary>

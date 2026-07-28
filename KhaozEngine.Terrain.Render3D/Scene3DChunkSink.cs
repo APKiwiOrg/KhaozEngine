@@ -535,11 +535,18 @@ namespace KhaozEngine.Terrain
                         if (t > 0f)
                         {
                             // The merged mesh follows the layer's own casts-shadows policy, so the policy does not
-                            // flip at the HLOD swap. Across the crossfade band both halves now dissolve in the depth
-                            // pass too (props out, merged in), instead of both casting at full strength (issue #287).
+                            // flip at the HLOD swap. Across the crossfade band both halves dissolve in the depth pass
+                            // too (props out, merged in), instead of both casting at full strength (issue #287), and
+                            // the merged half's SHADOW dither is INVERTED (issue #391) so it keeps exactly what the
+                            // fading props' dither discards. Without that the two keep-sets nest rather than
+                            // complement (both discard mask < threshold, at t and 1 - t), and the union of the two
+                            // shadows bottoms out at half the mask at band centre - the canopy visibly thinning
+                            // mid-band. The COLOUR halves stay on the plain rule: they are different geometry in
+                            // different places, so they need not complement, and inverting one would change the look.
                             float hlodDissolve = 1f - t;
                             if (hlodDissolve > 0f || !layer.CastsShadows)
-                                _scene.Draw(merged, Matrix4x4.Identity, Color.White, Material.None, hlodDissolve, 0f, default, layer.CastsShadows);
+                                _scene.Draw(merged, Matrix4x4.Identity, Color.White, Material.None, hlodDissolve, 0f, default,
+                                    layer.CastsShadows, invertShadowDissolve: true);
                             else
                                 _scene.Draw(merged, Matrix4x4.Identity, Color.White);
                         }

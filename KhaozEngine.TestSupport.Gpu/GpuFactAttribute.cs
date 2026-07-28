@@ -23,11 +23,15 @@ namespace KhaozEngine.Tests.Gpu
         // probe mode may run; a non-null string is the reason probe mode skips.
         static readonly Lazy<string?> ProbeReason = new(ProbeHeadlessDevice);
 
+        /// <summary>The shared probe accessor <see cref="GpuTheoryAttribute"/> passes to <see cref="SkipReason"/>,
+        /// so both attributes hit the SAME once-per-process device probe instead of each keeping their own.</summary>
+        internal static string? ProbeReasonValue() => ProbeReason.Value;
+
         public GpuFactAttribute()
         {
             string? reason = SkipReason(
                 Environment.GetEnvironmentVariable("KE_GPU_TESTS"),
-                () => ProbeReason.Value);
+                ProbeReasonValue);
             if (reason != null) Skip = reason;
         }
 

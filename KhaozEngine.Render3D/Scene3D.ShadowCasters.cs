@@ -18,6 +18,10 @@ namespace KhaozEngine.Render3D
         /// <summary>A caster carrying a rigid dissolve: drawn through the dissolve-aware depth pipeline, so its
         /// shadow erodes with the same noise mask that erodes the mesh instead of staying solid to the cull edge.</summary>
         Dissolving = 2,
+        /// <summary>A dissolving caster whose SHADOW dither is inverted (issue #391): drawn through the inverted
+        /// dissolve depth pipeline, which keeps exactly what <see cref="Dissolving"/> discards. The merged half of an
+        /// HLOD crossfade, so the two halves cover the mask between them instead of nesting.</summary>
+        DissolvingInverted = 3,
     }
 
     /// <summary>
@@ -30,8 +34,15 @@ namespace KhaozEngine.Render3D
     /// caster carrying the 14.5.0 rigid dissolve is drawn through the dissolve-aware depth pipeline, so its shadow
     /// thins as it fades: before this, a prop at 85 percent dissolve still cast a fully solid shadow, which then
     /// popped out at the hard cull radius, and across an HLOD crossfade band the individual props AND the merged
-    /// mesh both cast at full strength, roughly doubling shadow density. Both halves are complementary now: the
-    /// props' shadow dithers out as the merged mesh's dithers in.
+    /// mesh both cast at full strength, roughly doubling shadow density.
+    /// </para>
+    /// <para>
+    /// Across an HLOD crossfade the two halves' shadow dithers are COMPLEMENTARY, which is what
+    /// <see cref="ShadowCastKind.DissolvingInverted"/> exists for (issue #391). It was not always: both halves ran
+    /// the same "discard where mask &lt; threshold" test, at thresholds t and 1 - t, and those keep-sets NEST rather
+    /// than complement (for t &lt; 0.5 one contains the other), so the union bottomed out at half the mask at band
+    /// centre and the canopy shadow visibly thinned mid-band. The merged half now inverts its test, so the union is
+    /// the whole mask at every t while each end stays continuous with the single-half draws that bracket the band.
     /// </para>
     /// <para>
     /// Everything here classifies in ABSOLUTE space and reads the already-uploaded instance buffer, so the depth
@@ -75,13 +86,25 @@ namespace KhaozEngine.Render3D
             float dissolve, float edgeWidth, Color edgeColor, bool castsShadows)
             => _instances.Add(mesh, world, tint, material, dissolve, edgeWidth, edgeColor, castsShadows);
 
+        /// <summary>The dissolve + opt-out overload plus the inverted SHADOW dither (issue #391):
+        /// <paramref name="invertShadowDissolve"/> true records this instance's depth through the inverted dissolve
+        /// pipeline, which keeps exactly what the plain one discards. Pass it on ONE of two instances dithering at
+        /// mirrored thresholds (an HLOD crossfade's merged half against its fading props) so their shadows cover the
+        /// noise mask between them instead of nesting, which is what left the shadow at half density mid-band. It
+        /// changes the SHADOW only: same uploaded instance bytes, same colour pass, and <c>false</c> is
+        /// byte-identical to the overload above.</summary>
+        public void Draw(MeshHandle mesh, Matrix4x4 world, Color tint, Material material,
+            float dissolve, float edgeWidth, Color edgeColor, bool castsShadows, bool invertShadowDissolve)
+            => _instances.Add(mesh, world, tint, material, dissolve, edgeWidth, edgeColor, castsShadows, invertShadowDissolve);
+
         /// <summary>How one queued instance participates in the depth pass: opted out, plainly, or dissolving. Pure
         /// (no scene state), so the classification is unit-testable and stays the single definition both
         /// <see cref="GroupInstances"/> and the tests read.</summary>
         internal static ShadowCastKind ClassifyCaster(in SceneInstances.Instance instance)
             => !instance.CastsShadows ? ShadowCastKind.None
-             : instance.Dissolving ? ShadowCastKind.Dissolving
-             : ShadowCastKind.Opaque;
+             : !instance.Dissolving ? ShadowCastKind.Opaque
+             : instance.InvertShadowDissolve ? ShadowCastKind.DissolvingInverted
+             : ShadowCastKind.Dissolving;
 
         /// <summary>
         /// Append the maximal contiguous same-kind caster spans of one mesh run to <paramref name="spans"/>, skipping
@@ -205,8 +228,9 @@ namespace KhaozEngine.Render3D
         /// list (see <see cref="BuildShadowCasterSpans"/>): terrain (splat meshes) do NOT cast (model-only casting -
         /// terrain self-shadowing is visually negligible in the test scenes and the flat MMO ground has no overhangs),
         /// and neither does anything the consumer opted out of. Terrain always RECEIVES via the shared lighting block.
-        /// A dissolving span switches to the dissolve-aware depth pipeline so its shadow erodes with its mesh, and the
-        /// plain pipeline is re-bound before the skinned casters, which never dissolve in the depth pass. NEVER
+        /// A dissolving span switches to the dissolve-aware depth pipeline (or its inverted sibling, for the merged
+        /// half of an HLOD crossfade) so its shadow erodes with its mesh, and the plain pipeline is re-bound before
+        /// the skinned casters, which never dissolve in the depth pass. NEVER
         /// camera-frustum-culled - every entry in <c>_cpuSkinnedDraws</c> is drawn unconditionally (an entry only got
         /// there because it is visible to the main pass, the shadow pass, or both - see
         /// <see cref="ClassifySkinnedVisibility"/>). The receiver tail is set separately and always (even on a
@@ -222,7 +246,8 @@ namespace KhaozEngine.Render3D
             // scales with the cascade count (the accepted cost of cascaded coverage, measured by the GPU pass-timing
             // tests).
             int count = _cascadeCount;
-            _model.BeginShadowPass(cl, _cascadeDepthVps.AsSpan(0, count), count, _frameOrigin);
+            _model.BeginShadowPass(cl, _cascadeDepthVps.AsSpan(0, count), count, _frameOrigin,
+                _cascadeNoiseScales.AsSpan(0, count));
 
             // Rigid + CPU-skinned casters draw with the rigid depth pipeline + the per-cascade light matrix (bound by
             // the dynamic offset in BeginShadowCascadeRigid). CPU-skinned reuses the same rigid pipeline/light UBO.
@@ -240,6 +265,7 @@ namespace KhaozEngine.Render3D
                     if (span.Kind != bound)
                     {
                         if (span.Kind == ShadowCastKind.Dissolving) _model.BeginShadowCascadeRigidDissolve(cl, c);
+                        else if (span.Kind == ShadowCastKind.DissolvingInverted) _model.BeginShadowCascadeRigidDissolveInverted(cl, c);
                         else _model.BeginShadowCascadeRigid(cl, c);
                         bound = span.Kind;
                     }

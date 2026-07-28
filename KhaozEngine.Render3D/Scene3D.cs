@@ -90,6 +90,10 @@ namespace KhaozEngine.Render3D
         readonly Matrix4x4[] _cascadeReceiverVps = new Matrix4x4[ShadowSettings.MaxCascades];  // GPU-clip-corrected, receiver-sampled
         readonly Matrix4x4[] _cascadeDepthVps = new Matrix4x4[ShadowSettings.MaxCascades];      // receiver * atlas-column transform (depth pass)
         readonly float[] _cascadeNormalOffsets = new float[ShadowSettings.MaxCascades];
+        // Per-cascade dissolve noise scale for the DEPTH pass (issue #391): the base scale floored so a noise cell
+        // never shrinks below ShadowDissolveNoise.MinCellTexels shadow texels. Derived beside the normal offsets,
+        // from the same fitted radius + resolution.
+        readonly float[] _cascadeNoiseScales = new float[ShadowSettings.MaxCascades];
         int _cascadeCount;                    // active cascade count this frame
         readonly Matrix4x4[] _lastCascadeCpuVps = new Matrix4x4[ShadowSettings.MaxCascades];    // last rendered pass's per-cascade CPU fit
         int _lastShadowCascadeCount;          // last rendered pass's cascade count
@@ -1724,6 +1728,9 @@ namespace KhaozEngine.Render3D
                 // The radius is the FITTED slice-sphere radius (the split distances are no longer the ortho extents).
                 float texelWorld = Internal.ShadowMapMath.TexelWorldSize(_cascadeRadii[i], res);
                 _cascadeNormalOffsets[i] = texelWorld * MathF.Max(0f, shadows.ShadowNormalOffset);
+                // Per-cascade dissolve noise scale (issue #391): the same texel world size floors the noise cell so a
+                // dithered caster stays resolvable in this cascade instead of degenerating into isolated texels.
+                _cascadeNoiseScales[i] = Internal.ShadowDissolveNoise.ScaleForCascade(_cascadeRadii[i], res);
             }
             // Outermost-cascade UV border fade width (fraction of the map) so the coverage edge fades to lit instead of
             // a hard box. maxDistance (the outer cascade's coverage reach = ShadowMaxDistance for count>1, else the

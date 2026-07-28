@@ -174,7 +174,7 @@ void main() {
     if (vDissolve.x > 0.0) {
         float threshold = clamp(vDissolve.x, 0.0, 1.0);
         float edgeW = max(vDissolve.y, 1e-3);
-        float mask = dnoise((vWorldPos + RenderOrigin.xyz) * 6.0);
+        float mask = dnoise((vWorldPos + RenderOrigin.xyz) * " + ShadowDissolveNoise.BaseScaleGlsl + @");
         if (mask < threshold) discard;          // dissolved away
         float edge = 1.0 - smoothstep(threshold, threshold + edgeW, mask);
         lit += vEmissive.rgb * edge;
@@ -245,7 +245,7 @@ float dnoise(vec3 p) {
 void main() {
     float threshold = clamp(vSpecParams.z, 0.0, 1.0);
     float edgeW = max(vSpecParams.w, 1e-3);
-    float mask = dnoise((vWorldPos + RenderOrigin.xyz) * 6.0);   // 0..1 world-space dissolve mask
+    float mask = dnoise((vWorldPos + RenderOrigin.xyz) * " + ShadowDissolveNoise.BaseScaleGlsl + @");   // 0..1 world-space dissolve mask
     if (mask < threshold) discard;          // dissolved away
 
     vec3 Ngeo = normalize(vNormalW);
@@ -497,7 +497,7 @@ float dnoise(vec3 p) {
 void main() {
     float threshold = clamp(vSpecParams.z, 0.0, 1.0);
     float edgeW = max(vSpecParams.w, 1e-3);
-    float mask = dnoise((vWorldPos + RenderOrigin.xyz) * 6.0);
+    float mask = dnoise((vWorldPos + RenderOrigin.xyz) * " + ShadowDissolveNoise.BaseScaleGlsl + @");
     if (mask < threshold) discard;
 
     vec3 Ngeo = normalize(vNormalW);

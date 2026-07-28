@@ -71,14 +71,25 @@ void main() {
         //      read with a 1e-30 weight so SPIRV-Cross keeps the HLSL vertex-input signature contiguous
         //      (TEXCOORD0..13, no hole) and FXC/WARP does not miscompile. See the ShadowDepthVert note above.
         //
-        //      The mask is the SAME world-space value noise at the SAME scale as ModelFrag's rigid dissolve, so the
-        //      shadow erodes with the mesh in one visual language. The noise must be evaluated in ABSOLUTE world
-        //      space (the pattern is world-anchored, and a camera-relative one would re-roll on every render-origin
-        //      rebase), so the light UBO carries this frame's RenderOrigin beside the cascade matrix and the vertex
-        //      adds it back. Reconstructing in the vertex (not the fragment) keeps the UBO vertex-stage-only: at
-        //      island scale the float32 error is sub-millimetre against a 16 cm noise cell. ----
+        //      The mask is the SAME world-space value noise as ModelFrag's rigid dissolve, so the shadow erodes with
+        //      the mesh in one visual language. The noise must be evaluated in ABSOLUTE world space (the pattern is
+        //      world-anchored, and a camera-relative one would re-roll on every render-origin rebase), so the light
+        //      UBO carries this frame's RenderOrigin beside the cascade matrix and the vertex adds it back.
+        //      Reconstructing in the vertex (not the fragment) keeps the UBO vertex-stage-only: at island scale the
+        //      float32 error is sub-millimetre against a 16 cm noise cell.
+        //
+        //      The SCALE, however, is PER-CASCADE (issue #391), not the colour pass's fixed base. A cascade's texel
+        //      world size grows with the cascade, and once a noise cell is smaller than a texel the dither stops
+        //      being a dither: the depth pass scatters surviving fragments into isolated texels with no shape left
+        //      for the receiver's 3x3 kernel. So the light UBO carries that cascade's scale beside the origin (see
+        //      ShadowDissolveNoise.ScaleForCascade), and the vertex hands the fragment a pre-SCALED noise position -
+        //      which also keeps the UBO vertex-only, since scaling before interpolation is the same as after. ----
         public const string ShadowDepthDissolveVert = @"#version 450
-layout(set=0, binding=0) uniform U { mat4 LightViewProj; vec4 RenderOrigin; };
+layout(set=0, binding=0) uniform U {
+    mat4 LightViewProj;
+    vec4 RenderOrigin;
+    vec4 DissolveParams;                          // x = this cascade's dissolve noise scale (1/x = cell size, world units)
+};
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
 layout(location=2) in vec4 Color;
@@ -94,7 +105,7 @@ layout(location=11) in vec4 ISpecParams;
 layout(location=12) in float IDynamic;
 layout(location=13) in vec2 IDissolve;            // x = threshold (0 = solid .. 1 = gone), y = edge width (unused here)
 layout(location=0) out float vLightDepth;
-layout(location=1) out vec3 vWorldAbs;            // ABSOLUTE world position: the dissolve noise is world-anchored
+layout(location=1) out vec3 vNoisePos;            // ABSOLUTE world position pre-scaled by this cascade's noise scale
 layout(location=2) out vec2 vDissolve;
 void main() {
     mat4 Model = mat4(IModel0, IModel1, IModel2, IModel3);
@@ -105,17 +116,19 @@ void main() {
     world.x += sink * 1e-30;
     gl_Position = LightViewProj * world;
     vLightDepth = gl_Position.z / gl_Position.w;
-    vWorldAbs = world.xyz + RenderOrigin.xyz;
+    vNoisePos = (world.xyz + RenderOrigin.xyz) * DissolveParams.x;
     vDissolve = IDissolve;
 }";
 
-        public const string ShadowDepthDissolveFrag = @"#version 450
+        // The dissolve depth fragments' shared prologue: the interpolants plus the SAME hash/noise as ModelFrag's
+        // rigid dissolve (and ModelDissolveFrag's character one), so a caster's shadow holes match the holes punched
+        // in the caster itself. Keep the three in sync. Spliced into both fragment variants below so the noise
+        // itself exists once here.
+        const string ShadowDissolveFragPrologue = @"#version 450
 layout(location=0) in float vLightDepth;
-layout(location=1) in vec3 vWorldAbs;
+layout(location=1) in vec3 vNoisePos;
 layout(location=2) in vec2 vDissolve;
 layout(location=0) out vec4 oDepth;
-// The SAME hash/noise/scale as ModelFrag's rigid dissolve (and ModelDissolveFrag's character one), so a caster's
-// shadow holes match the holes punched in the caster itself. Keep the three in sync.
 float dhash(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
 float dnoise(vec3 p) {
     vec3 i = floor(p); vec3 f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -126,13 +139,41 @@ float dnoise(vec3 p) {
     return mix(mix(mix(n000, n100, f.x), mix(n010, n110, f.x), f.y),
                mix(mix(n001, n101, f.x), mix(n011, n111, f.x), f.y), f.z);
 }
+";
+
+        public const string ShadowDepthDissolveFrag = ShadowDissolveFragPrologue + @"
 void main() {
     // Gated exactly like ModelFrag: threshold 0 writes depth unconditionally, so an instance carrying no dissolve
     // records the same depth this pipeline's plain sibling would.
     if (vDissolve.x > 0.0) {
         float threshold = clamp(vDissolve.x, 0.0, 1.0);
-        float mask = dnoise(vWorldAbs * 6.0);
+        float mask = dnoise(vNoisePos);
         if (mask < threshold) discard;            // dissolved away: no depth, so no shadow from this fragment
+    }
+    oDepth = vec4(vLightDepth, 0.0, 0.0, 1.0);
+}";
+
+        // ---- INVERTED dissolve depth fragment (issue #391). Identical to ShadowDepthDissolveFrag except that it
+        //      keeps exactly what that one discards, so the two halves of an HLOD crossfade cover the mask between
+        //      them instead of nesting.
+        //
+        //      Derivation. The props half fades OUT on threshold t and keeps { mask >= t }. The merged half fades IN
+        //      on threshold d = 1 - t, and the plain rule would keep { mask >= 1 - t }: for t < 0.5 that CONTAINS
+        //      the props' keep-set rather than complementing it, so the union is the larger of the two and bottoms
+        //      out at 50 percent of the mask at t = 0.5. The complement of { mask >= t } is { mask < t }, and with
+        //      this half's own threshold that reads { mask < 1 - d }. Hence the test below. Union coverage is then
+        //      the whole mask at every t, and both ends stay continuous with the single-half draws that bracket the
+        //      band (t -> 0 keeps nothing here and everything in the props, t -> 1 the reverse).
+        //
+        //      Only the SHADOW half is inverted. The colour pass keeps both halves on the plain rule: they are
+        //      different geometry at different positions, so their colour dithers do not have to complement, and
+        //      inverting one there would change what the crossfade looks like. ----
+        public const string ShadowDepthDissolveInvertedFrag = ShadowDissolveFragPrologue + @"
+void main() {
+    if (vDissolve.x > 0.0) {
+        float threshold = clamp(vDissolve.x, 0.0, 1.0);
+        float mask = dnoise(vNoisePos);
+        if (mask >= 1.0 - threshold) discard;     // keep the complement of the plain half's keep-set
     }
     oDepth = vec4(vLightDepth, 0.0, 0.0, 1.0);
 }";

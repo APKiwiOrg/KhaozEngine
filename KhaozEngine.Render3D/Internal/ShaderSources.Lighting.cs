@@ -56,6 +56,10 @@ bool projectCascade(int i, vec3 worldPos, vec3 Ngeo, float slopeSin, float margi
 
 // One cascade's 3x3 PCF average inside its atlas column. uv is cascade-local, depth is already biased. Each
 // tap is CLAMPED inside the column then mapped to atlas U so it never bleeds into a neighbour cascade.
+// COMPARE FIRST, FILTER AFTER. The nine taps each fetch ONE stored depth (the atlas sampler is POINT, see
+// ShadowMapRenderer's ctor), compare it, and only the 0/1 comparison RESULTS are averaged. Averaging stored
+// depths instead would blend the atlas clear value (1.0 = no caster) into every tap next to a gap, which can only
+// ever lighten the result, and erases a dithered caster's shadow outright outside cascade 0 (issue #391).
 float pcfCascade(texture2D shadowAtlas, sampler shadowSamp, int cascade, int count, vec2 uv, float depth, float texelStep) {
     float atlasScaleX = 1.0 / float(count);
     float atlasBiasX = float(cascade) * atlasScaleX;

@@ -51,17 +51,26 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuResourceLayout _layout;    // set 0: the per-cascade light matrix (dynamic-offset UBO, vertex only)
         readonly IGpuBuffer _lightUbo;          // MaxCascades * 256: one light-clip matrix + the render origin per cascade slot
         readonly IGpuResourceSet _set;          // 64-byte window over _lightUbo, rebased per cascade by a dynamic offset
-        readonly IGpuSampler _sampler;          // clamp/linear sampler the RECEIVERS use to PCF-sample the atlas (owned)
+        readonly IGpuSampler _sampler;          // clamp/POINT sampler the RECEIVERS use to PCF-sample the atlas (owned)
         IGpuPipeline _pipeline = null!;
 
         // Dissolve-aware depth pipeline (issue #287): the same layout/outputs/raster state as _pipeline, with the
         // instance layout extended to the model pass's locations 12..13 and a fragment that noise-discards by the
         // per-instance dissolve. Bound ONLY for caster spans that carry a dissolve, so a scene with none never
         // touches it and its depth pass is byte-identical to before. Its set is a FULL-slot (256-byte) window over
-        // the same _lightUbo, because this vertex also reads the RenderOrigin that rides at slot offset 64.
+        // the same _lightUbo, because this vertex also reads the RenderOrigin (offset 64) and this cascade's
+        // dissolve noise scale (offset 80).
         readonly IGpuShaderSet _dissolveShaders;
         readonly IGpuResourceSet _dissolveSet;
         IGpuPipeline _dissolvePipeline = null!;   // rebuilt in EnsureLayout alongside _pipeline
+
+        // INVERTED dissolve depth pipeline (issue #391): the same vertex, layout, outputs, raster state and UBO
+        // window as _dissolvePipeline, differing ONLY in a fragment that keeps what the plain one discards. Bound
+        // for the merged half of an HLOD crossfade, so the two halves' dithers complement instead of nesting and
+        // their union covers the whole mask across the band. A scene that never marks a caster inverted never
+        // binds it. Shares _dissolveSet (same UBO window) - only the pipeline differs.
+        readonly IGpuShaderSet _dissolveInvertedShaders;
+        IGpuPipeline _dissolveInvertedPipeline = null!;   // rebuilt in EnsureLayout alongside _pipeline
 
         // GPU-skinning depth pipeline (mirrors _pipeline for skinned casters) + its combined-UBO grow-with-retire buffer.
         readonly IGpuShaderSet _skinnedShaders;
@@ -81,7 +90,9 @@ namespace KhaozEngine.Render3D.Rendering
         /// Stable handle across frames, reallocated only on a resolution/count change (see <see cref="EnsureLayout"/>).</summary>
         public IGpuTexture ShadowTexture => _atlas;
 
-        /// <summary>The clamp/linear sampler the receivers PCF-sample the atlas with (owned here).</summary>
+        /// <summary>The clamp/POINT sampler the receivers PCF-sample the atlas with (owned here). Point is required,
+        /// not preferred: the receivers compare depths themselves, so any pre-compare filtering blends the clear
+        /// value into a tap and only ever lightens. See the ctor note.</summary>
         public IGpuSampler ShadowSampler => _sampler;
 
         /// <summary>The current per-cascade allocated resolution per axis (one atlas column).</summary>
@@ -108,6 +119,7 @@ namespace KhaozEngine.Render3D.Rendering
             // D3D11-friendly 16-constant multiple. The layout description is identical to the plain one, so the same
             // _layout object backs both sets and both pipelines.
             _dissolveShaders = f.CreateShadersFromSpirv(ShaderSources.ShadowDepthDissolveVert, ShaderSources.ShadowDepthDissolveFrag);
+            _dissolveInvertedShaders = f.CreateShadersFromSpirv(ShaderSources.ShadowDepthDissolveVert, ShaderSources.ShadowDepthDissolveInvertedFrag);
             _dissolveSet = f.CreateResourceSet(new GpuResourceSetDescription(_layout, new GpuBufferRange(_lightUbo, 0, CascadeSlotBytes)));
 
             // GPU-skinning depth shaders/layout (the fragment is the shared ShadowDepthFrag). Set 0 = combined
@@ -116,11 +128,22 @@ namespace KhaozEngine.Render3D.Rendering
             _skinnedLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 new GpuResourceLayoutElement("VBlock", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex, dynamic: true)));
 
-            // Clamp addressing so a PCF tap off a column edge reads the border (never wraps), and linear so the 3x3 taps
-            // blend smoothly. The receiver additionally clamps each tap inside the selected cascade's column, so a tap
-            // never bleeds into a neighbour cascade.
+            // Clamp addressing so a PCF tap off a column edge reads the border (never wraps). The receiver additionally
+            // clamps each tap inside the selected cascade's column, so a tap never bleeds into a neighbour cascade.
+            //
+            // POINT filtering, deliberately (issue #391). This atlas is a MANUAL-compare depth map: the receiver
+            // fetches a stored depth and compares it itself (pcfCascade in ShaderSources.Lighting), so filtering
+            // belongs AFTER the compare, never before. A linear pre-filter averages stored DEPTHS, which is not a
+            // meaningful operation on this map: the clear value is 1.0 = "no caster", so a tap next to a gap blends
+            // a sentinel into a depth and lands wherever the numbers fall rather than where the geometry is. The
+            // flip point is around h / (2 * cascadeRadius) of admixture for a caster h above its receiver, a few
+            // percent in the far cascades, so which way a mixed tap resolves is set by the backend's filtering
+            // support rather than by the scene. It was harmless while every caster was solid (only silhouette texels
+            // mix) and became load-bearing once 17.10.0 started dithering depth, which punches gaps through the
+            // whole footprint. pcfCascade already averages nine COMPARISON results, which is the correct order, so
+            // the 3x3 kernel keeps giving a soft edge with point taps.
             _sampler = f.CreateSampler(new GpuSamplerDescription(
-                GpuSamplerFilter.MinLinearMagLinearMipLinear,
+                GpuSamplerFilter.MinPointMagPointMipPoint,
                 GpuSamplerAddress.Clamp, GpuSamplerAddress.Clamp, GpuSamplerAddress.Clamp));
 
             _perCascadeRes = 0;
@@ -140,6 +163,7 @@ namespace KhaozEngine.Render3D.Rendering
             _gd.WaitForIdle();   // a prior frame's pass may still reference the old targets; a layout change is rare
             _pipeline?.Dispose();
             _dissolvePipeline?.Dispose();
+            _dissolveInvertedPipeline?.Dispose();
             _skinnedPipeline?.Dispose();
             _fb?.Dispose();
             _atlas?.Dispose();
@@ -158,6 +182,7 @@ namespace KhaozEngine.Render3D.Rendering
 
             _pipeline = BuildPipeline(f, _fb.Outputs);
             _dissolvePipeline = BuildPipeline(f, _fb.Outputs, dissolve: true);
+            _dissolveInvertedPipeline = BuildPipeline(f, _fb.Outputs, dissolve: true, invertedDissolve: true);
             _skinnedPipeline = BuildSkinnedPipeline(f, _fb.Outputs);
         }
 
@@ -193,7 +218,10 @@ namespace KhaozEngine.Render3D.Rendering
         // declaring the model pass's two trailing instance elements (locations 12..13) so its vertex can read the
         // per-instance dissolve. Everything else - raster state, outputs, resource layout, the shared instance
         // stride - is identical, so a span drawn through either records the same depth when the dissolve is 0.
-        IGpuPipeline BuildPipeline(IGpuResourceFactory f, GpuOutputDescription outputs, bool dissolve = false)
+        // <paramref name="invertedDissolve"/> picks the issue #391 fragment that keeps what the plain dissolve
+        // fragment discards (the complementary half of an HLOD crossfade); it is meaningless without dissolve.
+        IGpuPipeline BuildPipeline(IGpuResourceFactory f, GpuOutputDescription outputs, bool dissolve = false,
+            bool invertedDissolve = false)
         {
             // Slot 0: per-vertex geometry (locations 0..4) - same layout the model pass uses, so the shared model
             // vertex buffer binds unchanged (only Position is read).
@@ -239,28 +267,34 @@ namespace KhaozEngine.Render3D.Rendering
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.Front, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: true),
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _layout },
-                ShaderSet = dissolve ? _dissolveShaders : _shaders,
+                ShaderSet = dissolve ? (invertedDissolve ? _dissolveInvertedShaders : _dissolveShaders) : _shaders,
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout, instanceLayout },
                 Outputs = outputs,
             });
         }
 
         /// <summary>Begin the cascaded depth pass: bind + clear the whole atlas, upload each cascade's DEPTH matrix
-        /// (world-&gt;light-clip already GPU-clip-corrected AND column-transformed) plus this frame's
-        /// <paramref name="renderOrigin"/> into its dynamic slot, and bind the rigid depth pipeline. Clear the R32F
-        /// atlas to 1.0 (far plane) so an unwritten texel reads "nothing in front" = unshadowed. Follow with
-        /// <see cref="BeginCascadeRigid"/> (or <see cref="BeginCascadeRigidDissolve"/>) per cascade to draw casters,
-        /// then <see cref="EndDepthPass"/>. The origin rides at slot offset 64 for the dissolve variant's
-        /// world-anchored noise. The plain depth vertex declares only the matrix and never reads it.</summary>
-        public void BeginDepthPass(IGpuCommandList cl, ReadOnlySpan<Matrix4x4> depthMats, int cascadeCount, Vector3 renderOrigin)
+        /// (world-&gt;light-clip already GPU-clip-corrected AND column-transformed), this frame's
+        /// <paramref name="renderOrigin"/> and that cascade's dissolve <paramref name="noiseScales"/> entry into its
+        /// dynamic slot, and bind the rigid depth pipeline. Clear the R32F atlas to 1.0 (far plane) so an unwritten
+        /// texel reads "nothing in front" = unshadowed. Follow with <see cref="BeginCascadeRigid"/> (or
+        /// <see cref="BeginCascadeRigidDissolve"/> / <see cref="BeginCascadeRigidDissolveInverted"/>) per cascade to
+        /// draw casters, then <see cref="EndDepthPass"/>. The origin rides at slot offset 64 and the noise scale at
+        /// 80, both read only by the dissolve variants' vertex (the plain depth vertex declares just the matrix).
+        /// A short <paramref name="noiseScales"/> falls back to the base scale for the cascades it does not cover.</summary>
+        public void BeginDepthPass(IGpuCommandList cl, ReadOnlySpan<Matrix4x4> depthMats, int cascadeCount,
+            Vector3 renderOrigin, ReadOnlySpan<float> noiseScales)
         {
             int count = Math.Min(cascadeCount, _cascadeCount);
             var origin = new Vector4(renderOrigin, 0f);
             for (int i = 0; i < count; i++)
             {
                 Matrix4x4 m = depthMats[i];
+                float scale = i < noiseScales.Length ? noiseScales[i] : ShadowDissolveNoise.BaseScale;
+                var dissolveParams = new Vector4(scale, 0f, 0f, 0f);
                 cl.UpdateBuffer(_lightUbo, (uint)i * CascadeSlotBytes, in m);
                 cl.UpdateBuffer(_lightUbo, (uint)i * CascadeSlotBytes + 64, in origin);
+                cl.UpdateBuffer(_lightUbo, (uint)i * CascadeSlotBytes + 80, in dissolveParams);
             }
             cl.SetFramebuffer(_fb);
             cl.ClearColorTarget(0, new Color(1f, 1f, 1f, 1f));  // 1.0 = far plane = no caster (whole atlas)
@@ -285,6 +319,17 @@ namespace KhaozEngine.Render3D.Rendering
         public void BeginCascadeRigidDissolve(IGpuCommandList cl, int cascade)
         {
             cl.SetPipeline(_dissolvePipeline);
+            SetCascadeScissor(cl, cascade);
+            cl.SetGraphicsResourceSet(0, _dissolveSet, (uint)cascade * CascadeSlotBytes);
+        }
+
+        /// <summary>As <see cref="BeginCascadeRigidDissolve"/>, but binds the INVERTED dissolve fragment (issue
+        /// #391): same cascade scissor, same light slot, same UBO window, and a discard test that keeps exactly
+        /// what the plain dissolve fragment throws away. For the merged half of an HLOD crossfade, whose dither
+        /// must complement the fading props' rather than nest inside it.</summary>
+        public void BeginCascadeRigidDissolveInverted(IGpuCommandList cl, int cascade)
+        {
+            cl.SetPipeline(_dissolveInvertedPipeline);
             SetCascadeScissor(cl, cascade);
             cl.SetGraphicsResourceSet(0, _dissolveSet, (uint)cascade * CascadeSlotBytes);
         }
@@ -376,6 +421,7 @@ namespace KhaozEngine.Render3D.Rendering
         {
             _pipeline?.Dispose();
             _dissolvePipeline?.Dispose();
+            _dissolveInvertedPipeline?.Dispose();
             _skinnedPipeline?.Dispose();
             _fb?.Dispose();
             _atlas?.Dispose();
@@ -383,6 +429,7 @@ namespace KhaozEngine.Render3D.Rendering
             _set.Dispose();
             _dissolveSet.Dispose();
             _dissolveShaders.Dispose();
+            _dissolveInvertedShaders.Dispose();
             _lightUbo.Dispose();
             _layout.Dispose();
             _shaders.Dispose();

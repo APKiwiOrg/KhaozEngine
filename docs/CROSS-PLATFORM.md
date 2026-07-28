@@ -171,7 +171,9 @@ in the `ShaderSources.cs` source comments; this is the consolidated checklist.)
   rendered no colour afterward (silhouette/normal/depth survived, only `oColor` went blank). Fix pattern: a
   numerically negligible LIVE sink that reads every declared input (summed with a `1e-30` scale, so the optimizer
   cannot fold it away) keeps the signature contiguous without changing the output to the bit. See the in-source
-  hazard note next to `ShadowDepthVert` in `KhaozEngine.Render3D/Internal/ShaderSources.cs`.
+  hazard note next to `ShadowDepthVert` in `KhaozEngine.Render3D/Internal/ShaderSources.Shadow.cs`. Its
+  dissolve-aware sibling (`ShadowDepthDissolveVert`, 17.x) declares the model pass's full 0..13 input set and
+  carries the same sink over everything it does not genuinely read, for the same reason.
 - **Sample all textures up front, in binding order.** SPIRV-Cross assigns MSL texture indices in the order
   textures are first SAMPLED, not by `binding=`, so sampling a higher-binding texture first makes a lower one read
   the wrong texture on Metal (untextured meshes came out flat-normal coloured). See the `ModelFrag` / `EdgeFrag` /

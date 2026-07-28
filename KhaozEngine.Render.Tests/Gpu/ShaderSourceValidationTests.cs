@@ -12,7 +12,8 @@ namespace KhaozEngine.Tests.Gpu
     /// device of that backend. The pairs mirror how the renderers actually create pipelines from ShaderSources:
     /// <list type="bullet">
     /// <item>ModelVert+ModelFrag, SplatVert+SplatFrag (ModelRenderer)</item>
-    /// <item>ShadowDepthVert+ShadowDepthFrag (ShadowMapRenderer depth-only pass)</item>
+    /// <item>ShadowDepthVert+ShadowDepthFrag, ShadowDepthDissolveVert+ShadowDepthDissolveFrag (ShadowMapRenderer's
+    /// two rigid depth pipelines)</item>
     /// <item>LineVert+LineFrag (LineRenderer via OverlayRenderer)</item>
     /// <item>BillboardVert+BillboardFrag (BillboardRenderer via OverlayRenderer)</item>
     /// <item>BillboardVert+TexturedBillboardFrag (TexturedBillboardRenderer - reuses BillboardVert)</item>
@@ -42,6 +43,13 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void ShadowDepth()
             => ShaderValidation.ValidatePair(ShaderSources.ShadowDepthVert, ShaderSources.ShadowDepthFrag, "ShadowDepth");
+
+        // The dissolve-aware depth pair (issue #287). Worth its own fact for the HLSL cross-compile specifically:
+        // it declares the model pass's full 0..13 vertex-input set and sinks every unread one, which is what keeps
+        // FXC/WARP from miscompiling a holed signature (see the ShaderSources.Shadow.cs note).
+        [Fact]
+        public void ShadowDepthDissolve()
+            => ShaderValidation.ValidatePair(ShaderSources.ShadowDepthDissolveVert, ShaderSources.ShadowDepthDissolveFrag, "ShadowDepthDissolve");
 
         [Fact]
         public void Line()

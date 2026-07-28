@@ -15,11 +15,24 @@ namespace KhaozEngine.Tests.Render3D
     /// </summary>
     public sealed class ShadowDepthDirtyTests
     {
-        static List<(int, int, uint)> Runs(params (int, int, uint)[] r) => new(r);
-        static List<Matrix4x4> Models(params float[] tx)
+        // A caster span list from (meshIndex, generation, count) triples, laid out back to back the way
+        // BuildShadowCasterSpans emits them, all opaque unless a test says otherwise.
+        static List<Scene3D.ShadowCasterSpan> Runs(params (int Index, int Generation, uint Count)[] r)
         {
-            var m = new List<Matrix4x4>();
-            foreach (var x in tx) m.Add(Matrix4x4.CreateTranslation(x, 0f, 0f));
+            var spans = new List<Scene3D.ShadowCasterSpan>();
+            uint start = 0;
+            foreach (var (index, generation, count) in r)
+            {
+                spans.Add(new Scene3D.ShadowCasterSpan(index, generation, start, count, ShadowCastKind.Opaque));
+                start += count;
+            }
+            return spans;
+        }
+
+        static List<Scene3D.ShadowCasterInstance> Models(params float[] tx)
+        {
+            var m = new List<Scene3D.ShadowCasterInstance>();
+            foreach (var x in tx) m.Add(new Scene3D.ShadowCasterInstance(Matrix4x4.CreateTranslation(x, 0f, 0f), 0f));
             return m;
         }
 
@@ -121,6 +134,34 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(now, held);
             Assert.False(Scene3D.ShadowDepthPassDirty(hadPrevious: true, anySkinnedCaster: false,
                 resolutionChanged: false, lightMatrixChanged: now != held, casterDataChanged: false));
+        }
+
+        [Fact]
+        public void A_changed_dissolve_is_a_change()
+        {
+            // A caster whose dissolve moved records DIFFERENT depth (the dissolve-aware depth pass discards more of
+            // it), so the signature must trip even though the caster set and every transform held still - the case a
+            // matrix-only signature missed, e.g. an HLOD crossfade ramping under a camera parked on a texel.
+            var runs = Runs((3, 1, 1));
+            var solid = new List<Scene3D.ShadowCasterInstance> { new(Matrix4x4.Identity, 0f) };
+            var fading = new List<Scene3D.ShadowCasterInstance> { new(Matrix4x4.Identity, 0.4f) };
+            Assert.True(Scene3D.ShadowCastersChanged(runs, solid, runs, fading));
+            Assert.False(Scene3D.ShadowCastersChanged(runs, fading, runs, fading));
+        }
+
+        [Fact]
+        public void A_changed_cast_kind_is_a_change()
+        {
+            // Same mesh, same count, same transform, but the span flipped from plain to dissolving (or a consumer
+            // toggled the layer's casts-shadows policy, which drops the span entirely): the atlas must re-render.
+            var models = Models(0f);
+            var opaque = new List<Scene3D.ShadowCasterSpan> { new(3, 1, 0, 1, ShadowCastKind.Opaque) };
+            var dissolving = new List<Scene3D.ShadowCasterSpan> { new(3, 1, 0, 1, ShadowCastKind.Dissolving) };
+            Assert.True(Scene3D.ShadowCastersChanged(opaque, models, dissolving, models));
+
+            // Opting the only caster out empties the span list, which is a change too (its shadow must disappear).
+            Assert.True(Scene3D.ShadowCastersChanged(opaque, models,
+                new List<Scene3D.ShadowCasterSpan>(), new List<Scene3D.ShadowCasterInstance>()));
         }
 
         [Fact]

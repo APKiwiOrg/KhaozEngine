@@ -199,7 +199,7 @@ namespace KhaozEngine.Render3D
         /// <summary>
         /// Upload this frame's grouped instances to the GPU in the render frame. <c>_instanceData</c> itself stays
         /// ABSOLUTE for its whole CPU life - <see cref="ComputeMainPassVisibility"/> (including the terrain identity
-        /// fast path) and <see cref="CaptureShadowCasters"/> both read it after this call - so the reduction lands in
+        /// fast path) and <see cref="BuildShadowCasterSpans"/> both read it after this call - so the reduction lands in
         /// a reused staging copy that differs only in each matrix's translation column. With no origin in force the
         /// absolute list is uploaded directly, so the byte traffic and the frame are unchanged.
         /// </summary>

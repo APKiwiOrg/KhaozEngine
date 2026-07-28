@@ -26,6 +26,14 @@ namespace KhaozEngine.Render3D
             float dissolveThreshold, float dissolveEdgeWidth, Color dissolveEdge)
             => _items.Add(new Instance(mesh, world, tint, material, dissolveThreshold, dissolveEdgeWidth, dissolveEdge));
 
+        /// <summary>As the dissolve overload, plus the per-instance shadow-caster opt-out (issue #287):
+        /// <paramref name="castsShadows"/> false keeps this instance out of the shadow depth pass entirely (it still
+        /// draws and still RECEIVES shadows), so a dense decorative layer can stop writing casters. True is the
+        /// unchanged default every other overload queues.</summary>
+        public void Add(MeshHandle mesh, Matrix4x4 world, Color tint, Material material,
+            float dissolveThreshold, float dissolveEdgeWidth, Color dissolveEdge, bool castsShadows)
+            => _items.Add(new Instance(mesh, world, tint, material, dissolveThreshold, dissolveEdgeWidth, dissolveEdge, castsShadows));
+
         public readonly struct Instance
         {
             public MeshHandle Mesh { get; }
@@ -38,12 +46,20 @@ namespace KhaozEngine.Render3D
             public float DissolveThreshold { get; }
             public float DissolveEdgeWidth { get; }
             public Vector4 DissolveEdge { get; }
+            /// <summary>Whether this instance writes into the key light's shadow depth pass (issue #287). True on
+            /// every ctor that does not say otherwise, so the whole pre-flag path is unchanged. False keeps the
+            /// instance out of the depth pass while it still draws and still receives shadows: the per-layer
+            /// casts-shadows policy a consumer sets on dense decorative geometry. CPU-side only - it never reaches
+            /// the GPU instance stream, so the uploaded bytes are identical either way.</summary>
+            public bool CastsShadows { get; }
             public Instance(MeshHandle mesh, Matrix4x4 world, Color tint) : this(mesh, world, tint, Material.None) { }
             public Instance(MeshHandle mesh, Matrix4x4 world, Color tint, Material material,
-                float dissolveThreshold = 0f, float dissolveEdgeWidth = 0f, Vector4 dissolveEdge = default)
+                float dissolveThreshold = 0f, float dissolveEdgeWidth = 0f, Vector4 dissolveEdge = default,
+                bool castsShadows = true)
             {
                 Mesh = mesh; World = world; Tint = tint; Material = material;
                 DissolveThreshold = dissolveThreshold; DissolveEdgeWidth = dissolveEdgeWidth; DissolveEdge = dissolveEdge;
+                CastsShadows = castsShadows;
             }
 
             /// <summary>True when this draw carries a dissolve (routes through the gated ModelFrag term).</summary>

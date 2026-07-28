@@ -89,7 +89,15 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   hand-off is invisible instead of a visible square seam, and fading the outermost cascade's term to lit at its border
   so the coverage limit is invisible (no hard box, no sliding coverage). Caster visibility for the shadow pass unions
   ALL cascade frustums (a caster camera-culled from the main pass but still inside any cascade still casts its
-  shadow). Every drawn mesh casts automatically (no per-frame opt-in). A degenerate camera makes
+  shadow). Every drawn mesh casts automatically, unless the draw opts out: `Draw(handle, transform, tint, material,
+  castsShadows: false)` (and the dissolve overload's `castsShadows` argument) keeps that instance out of the depth
+  pass while it still draws and still RECEIVES shadows - the per-instance policy a consumer sets on dense decorative
+  geometry whose hundreds of small cast shadows cost more than they read. A caster carrying a rigid dissolve is drawn
+  through a dissolve-aware depth pipeline instead, so its SHADOW erodes with the same world-space noise mask that
+  erodes the mesh: a prop fading out at its draw radius no longer casts a fully solid shadow under an almost-invisible
+  caster, and across an HLOD crossfade the props' shadow thins out as the merged mesh's thins in rather than both
+  casting at full strength. Both are inert at their defaults (no dissolve, casting on), and a frame with neither is
+  byte-identical to before. A degenerate camera makes
   `ComputeShadowCascades()` return `0` and disables shadows for that frame rather than throwing. Knobs on
   `ShadowSettings`: `ShadowCascadeCount` (default `3`, `1..4` via `ResolvedCascadeCount`), `ShadowNearDistance`
   (default `16`, the near cascade's view-depth reach - smaller packs texels onto the near action) and

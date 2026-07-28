@@ -60,8 +60,13 @@ up regardless of load order. Plain `float` math throughout.
   **`ChunkCoord`**/**`ChunkGrid`** driving an injected **`IChunkSink`**, so it is headless-testable with a
   fake sink and just as usable on a dedicated server (no chunk mesh, no GPU) as on a client.
   `StreamerConfig` also carries an optional `DecorRadius` (chunk units, default 0 = off) for a farther,
-  coarser decor-only ring tagged with **`ChunkRing`** (`Gameplay` / `Decor`). `UnloadAll`/`Dispose` free
-  the loaded ring instead of leaking it.
+  coarser decor-only ring tagged with **`ChunkRing`** (`Gameplay` / `Decor`), a `MaxUnloadsPerFrame`
+  budget (default 8, farthest first, 0 or less frees everything at once) so a ring shift spreads its GPU
+  frees over frames instead of bursting them onto one, and a `LodHysteresis` dead zone (metres, default
+  10, 0 opts out) so a chunk parked on a tier boundary does not re-tier and rebuild its mesh on every
+  small move. `UnloadAll`/`Dispose` free the loaded ring instead of leaking it, budget or no budget, and
+  `PrimeAround` settles on work done rather than on the resident count, so neither budget can leave it
+  returning with a half-filled ring.
 - **`RenderDistanceProfile`** (+ **`RenderDistanceTier`**) - the view-distance radii as one coherent set
   rather than four independent knobs: `GameplayLoadRadiusChunks`/`DecorRadiusChunks`/`UnloadRadiusChunks`
   (chunk units, feeding `StreamerConfig` via `ToStreamerConfig()` / `ToStreamerConfig(baseConfig)`), plus
@@ -120,7 +125,10 @@ up regardless of load order. Plain `float` math throughout.
 - **`TerrainLodConfig`** + **`TerrainLodTier`** - data-driven LOD tiers: an ordered list of
   `(Resolution, MaxDistance)` tiers, validated (strictly descending resolutions, strictly ascending
   distances, the coarsest at `float.PositiveInfinity`). `PickLod(distance)` -> tier index,
-  `ResolutionFor(lod)` -> grid resolution. `TerrainLodConfig.Default` gives 64/32/16 at 80 m/200 m plus
+  `PickLod(distance, currentLod, hysteresis)` the same with a dead zone around the boundary the chunk
+  would cross (`currentLod` -1 = not built yet, a hysteresis of 0 or less is the undamped pick, and
+  `DefaultHysteresis` is the 10 m `StreamerConfig` default), `ResolutionFor(lod)` -> grid resolution.
+  `TerrainLodConfig.Default` gives 64/32/16 at 80 m/200 m plus
   coarser 8- and 4-segment far tiers. **`TerrainLod`** is a thin facade over `Default`
   (`PickLod`/`ResolutionFor`). **`TerrainChunkRegion`** is the square world tile a mesh builder chunks the
   field into (default 60 m).

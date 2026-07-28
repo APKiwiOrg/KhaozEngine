@@ -222,6 +222,23 @@ namespace KhaozEngine.Tests.Terrain
         }
 
         [Fact]
+        public void The_unload_budget_breaks_a_distance_tie_on_coord_order()
+        {
+            // (-2,-2) and (-2,2) are equidistant from the away position, so which of them a budget of 2 reaches would
+            // otherwise ride on dictionary enumeration order. Lowest (X, Z) goes first.
+            var cfg = new StreamerConfig(LoadRadius: 3, UnloadRadius: 4, MaxLoadsPerFrame: 1000, ChunkSize: 60f,
+                MaxUnloadsPerFrame: 2);
+            var sink = new FakeChunkSink();
+            var s = new TerrainStreamer(cfg, sink);
+            Pump(s, sink, UnloadHome, 3);
+            sink.Unloads.Clear();
+
+            s.Update(UnloadAway, 1f / 60f);
+
+            Assert.Equal(new[] { new ChunkCoord(-3, 0), new ChunkCoord(-2, -2) }, sink.Unloads);
+        }
+
+        [Fact]
         public void A_chunk_that_returns_to_range_before_its_turn_is_never_unloaded_or_reloaded()
         {
             var cfg = new StreamerConfig(LoadRadius: 3, UnloadRadius: 4, MaxLoadsPerFrame: 1000, ChunkSize: 60f,

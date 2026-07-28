@@ -354,7 +354,11 @@ namespace KhaozEngine.Terrain
         /// snapshot so the caller can mutate the dictionary while walking it.
         /// <para>Deferring the rest needs no queue: the next Update recomputes the far set from the player's new
         /// position, so a chunk that came back into range is simply not selected any more. That is what makes a
-        /// deferred unload cancel itself instead of turning into an unload-then-reload.</para></summary>
+        /// deferred unload cancel itself instead of turning into an unload-then-reload.</para>
+        /// <para>The order is fully determined by the coords, never by the dictionary: the candidates come out of
+        /// <c>_loaded</c> in an enumeration order that is not a contract, and a run of equidistant chunks (a ring
+        /// shift exposes them in pairs) would otherwise be cut by the budget differently from run to run. Sorting
+        /// the whole set, not just a budgeted one, keeps the unload SEQUENCE reproducible too.</para></summary>
         List<ChunkCoord> FarChunksToUnload(ChunkCoord pc, float unloadSq)
         {
             var far = new List<ChunkCoord>();
@@ -364,12 +368,18 @@ namespace KhaozEngine.Terrain
                 int dx = kv.Key.X - pc.X, dz = kv.Key.Z - pc.Z;
                 if (dx * dx + dz * dz > unloadSq) far.Add(kv.Key);
             }
-            int budget = _config.MaxUnloadsPerFrame;
-            if (budget <= 0 || far.Count <= budget) return far;
+            if (far.Count < 2) return far;
             // Farthest first, so the survivors are the ones nearest the ring, which are also the likeliest to come
-            // back into range and have their unload cancelled.
-            far.Sort((a, b) => DistSq(b, pc).CompareTo(DistSq(a, pc)));
-            far.RemoveRange(budget, far.Count - budget);
+            // back into range and have their unload cancelled. Coord breaks a distance tie.
+            far.Sort((a, b) =>
+            {
+                int cmp = DistSq(b, pc).CompareTo(DistSq(a, pc));
+                if (cmp != 0) return cmp;
+                cmp = a.X.CompareTo(b.X);
+                return cmp != 0 ? cmp : a.Z.CompareTo(b.Z);
+            });
+            int budget = _config.MaxUnloadsPerFrame;
+            if (budget > 0 && far.Count > budget) far.RemoveRange(budget, far.Count - budget);
             return far;
         }
 

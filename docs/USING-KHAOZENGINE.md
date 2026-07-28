@@ -5168,13 +5168,36 @@ sink.Draw(playerPos);             // draws every loaded chunk + its in-range pro
 ```
 
 `Update(playerPos, dt)` each frame: (1) **requests** builds for chunks inside the outer load radius (Euclidean
-chunk-distance) that are not yet loaded, (2) **unloads** chunks past `UnloadRadius` immediately, (3) **re-LODs**
+chunk-distance) that are not yet loaded, (2) **unloads** chunks past `UnloadRadius`, farthest first and at most
+`MaxUnloadsPerFrame` of them, (3) **re-LODs**
 loaded chunks whose LOD tier (from `PickLod(distance-to-chunk-center)`) OR residency ring changed (the chunk is
 rebuilt at the new resolution / ring), and (4) **applies** the completed builds nearest-first, at most
 `MaxLoadsPerFrame` per update. `UnloadRadius` greater than the outer load radius is a **hysteresis band** that
 stops churn when the player oscillates across a chunk boundary. `StreamerConfig.Default` is LoadRadius 4
 (~240 m gameplay disk) / UnloadRadius 6 / MaxLoadsPerFrame 3 / 60 m chunks, with no decor ring (see the far
 field below to opt into one).
+
+**Both sides of the churn are budgeted and damped.** Two knobs beyond the radii, both defaulted, both with a
+plain opt-out:
+
+- **`MaxUnloadsPerFrame`** (default 8) caps the unloads a single `Update` does, farthest first. A ring shift
+  exposes roughly a dozen chunks at the default radii, and freeing them all in one call is a burst of GPU
+  buffer destruction on one frame, and spread over two it disappears into the frame budget. The chunks it does
+  not reach are not queued anywhere: the next `Update` recomputes the far set from the new position, so a
+  chunk that came back into range is simply not picked any more, and is never unloaded-then-reloaded. Set it
+  to **0 or less to opt out** and free everything at once (the pre-budget behaviour). `UnloadAll` and
+  `Dispose` ignore the budget entirely: a teleport or a world rebuild must free the whole ring on the spot.
+- **`LodHysteresis`** (default 10 m, `TerrainLodConfig.DefaultHysteresis`) is a dead zone around every tier
+  boundary. A chunk already built at a tier keeps it until the distance clears the boundary it would cross by
+  that margin, so a chunk parked near 80 m stops re-tiering on every step (and a re-tier frees a live GPU
+  mesh, so that was a mesh rebuild per step). It damps the CHANGE only: a first load and a viewer that has not
+  moved pick exactly the stateless tier, and once the margin is cleared the tier tracks distance in full,
+  multi-tier jumps included. Set it to **0 to opt out**. `TerrainLodConfig.PickLod(distance, currentLod,
+  hysteresis)` is the same rule as a standalone call, with `currentLod = -1` meaning "not built yet".
+
+Neither budget can cut `PrimeAround` short. It pumps until a pass does no work at all (nothing applied,
+nothing freed), rather than until the resident count stops moving, so a pass whose budgeted unloads cancel out
+its loads does not read as a settled ring. It returns with the ring filled and the stale chunks gone.
 
 **Async build (default).** With `StreamerConfig.Async` set (the default) and an `IAsyncChunkSink` sink (the
 production `Scene3DChunkSink` is one), each chunk's CPU mesh build runs on a **background thread** and only the
@@ -8934,11 +8957,22 @@ no-op (device destruction already freed all child objects), so a wrapper that ou
 teardown can neither drain nor destroy against a dead device. Veldrid's deferred-disposal path was
 evaluated as a non-stalling alternative and rejected:
 under Mesa's threaded queue its disposal flush can lose a wakeup and hang the process, so the engine
-drains instead. The engine's own renderers follow this rule for texture/mesh unload
-(`Scene3D.UnloadTexture` and siblings), resize-driven render target replacement (`RenderResources`,
-`Render3DPreview.Resize`), and sprite-batch set eviction and buffer growth (`SpriteBatch`). A custom
-renderer or content-streaming system built directly on `KhaozEngine.Gpu` should follow the same rule
-for anything it frees outside of full teardown.
+drains instead. The engine's own renderers follow this rule for texture unload (`Scene3D.UnloadTexture`),
+resize-driven render target replacement (`RenderResources`, `Render3DPreview.Resize`), and sprite-batch
+set eviction and buffer growth (`SpriteBatch`). A custom renderer or content-streaming system built
+directly on `KhaozEngine.Gpu` should follow the same rule for anything it frees outside of full teardown.
+
+**Streamed MESH unload is the one path that does not drain per call.** `Scene3D.UnloadMesh` hands the
+mesh's vertex buffer, index buffer and material set to an internal frame-delayed pool instead. They are
+held for three frame boundaries and then destroyed behind a SINGLE drain from `Scene3D.Begin`, by which
+point the work that referenced them is several presented frames old, so the wait is the near-free
+already-idle case rather than a mid-frame pipeline stall. The rule above is unchanged, only batched: the
+free still happens after a drain. What a streaming world cannot afford is one drain PER resource, since
+walking across a chunk boundary unloads a dozen meshes at once and each drain stalled the frame that
+unloaded them. `Scene3D.Dispose` flushes the pool behind the drain it already does, so nothing outlives
+the scene. The sibling unload paths (texture, skinned mesh, splat material) still drain per call, none of
+them being on the streaming path, and moving them over is
+[#383](https://github.com/APKiwiOrg/KhaozEngine/issues/383).
 
 ---
 

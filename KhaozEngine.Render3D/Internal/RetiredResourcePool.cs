@@ -15,7 +15,15 @@ namespace KhaozEngine.Render3D.Internal
     /// <para>The renderers that grow-and-retire a buffer (<c>ModelRenderer</c>, <c>ParticleRenderer</c>,
     /// <c>GroundDecalRenderer</c>, <c>OverlayMeshRenderer</c>, <c>ShadowMapRenderer</c>) keep their retired list until
     /// teardown, which is correct for a handful of geometric grows and wrong for a streaming path that retires
-    /// megabytes a minute. This type is the streaming form of the same rule.</para></summary>
+    /// megabytes a minute. This type is the streaming form of the same rule.</para>
+    /// <para><b>Not thread-safe.</b> It is the scene's frame loop and nothing else: every member touches the same
+    /// unsynchronized list and frame counter, so retiring from a background build thread while the frame thread is in
+    /// <see cref="BeginFrame"/> corrupts it. A worker that wants a resource freed hands it to the frame thread first,
+    /// the way the streamer's apply step does.</para>
+    /// <para><b>It only frees on <see cref="BeginFrame"/>.</b> Nothing here is time-driven, so a scene that retires
+    /// but never calls Begin holds every retired resource until <see cref="FlushAll"/> or teardown, which for a
+    /// streaming world is the whole unloaded ring. A host that drives the scene without a frame boundary (a tool, a
+    /// test, an offscreen render) must call one of the two itself.</para></summary>
     internal sealed class RetiredResourcePool
     {
         /// <summary>Frame boundaries a retired resource waits before it is destroyed. Three covers the deepest

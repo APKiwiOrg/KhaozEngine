@@ -48,6 +48,7 @@ namespace KhaozEngine.Render3D
         // Slot-indexed GPU mesh storage parallel to _slots; a freed slot's entry is null until reused.
         readonly List<Mesh?> _meshes = new();
         readonly MeshSlotMap _slots = new();
+        readonly RetiredResourcePool _retired;   // mesh buffers freed mid-life, destroyed behind one drain per frame
         // Loaded albedo textures, indexed by TextureHandle.Index. Shared across meshes; disposed in Dispose.
         readonly List<IGpuTexture?> _textures = new();   // a slot is nulled by UnloadTexture (handle stays stable, not recycled)
         // Loaded splat-terrain materials, indexed by SplatMaterialHandle.ListIndex. Each owns its two texture
@@ -362,6 +363,7 @@ namespace KhaozEngine.Render3D
         internal Scene3D(IGpuDevice gd, GpuOutputDescription targetOutput, ShadowSettings? initialShadows = null)
         {
             _gd = gd;
+            _retired = new RetiredResourcePool(gd.WaitForIdle);
             _targetOutput = targetOutput;
             // Construction seam (issue #27): the shadow atlas is sized ONCE here (resolution x cascade count), and its
             // handle is bound into every material set, so those knobs can only be honoured if supplied BEFORE this
@@ -726,15 +728,11 @@ namespace KhaozEngine.Render3D
         {
             if (h.Generation == 0) return;          // default handle: no-op
             _slots.Free(h.Index, h.Generation);     // throws on stale/invalid
-            var m = _meshes[h.Index];
-            // Dispose the per-mesh material set alongside the buffers, but NOT the texture: it is owned in
-            // _textures and may be shared by other meshes (freed in Dispose). Queued GPU work may still
-            // reference these resources, so drain the device before destroying them.
-            if (m is { } mesh)
-            {
-                _gd.WaitForIdle();
-                mesh.Vb.Dispose(); mesh.Ib.Dispose(); mesh.MaterialSet?.Dispose();
-            }
+            // Retire rather than destroy: queued GPU work may still reference these buffers, and draining the whole
+            // device per unload stalled the frame thread on the terrain streaming path (every chunk leaving the ring
+            // and every LOD flip lands here). The pool frees them behind one drain a few frames later. The per-mesh
+            // material set goes too, but NOT the texture: that is owned in _textures and shared between meshes.
+            if (_meshes[h.Index] is { } mesh) _retired.Retire(mesh.Vb, mesh.Ib, mesh.MaterialSet);
             _meshes[h.Index] = null;
         }
 
@@ -971,6 +969,7 @@ namespace KhaozEngine.Render3D
         /// queue, the debug-line queue, the filled-overlay queue, and the billboard queues. Call before submitting.</summary>
         public void Begin()
         {
+            _retired.BeginFrame();   // frees mid-life mesh buffers retired a few frames ago, behind one drain
             LatchRenderOrigin();
             _instances.Begin();
             _skinnedInstances.Begin();
@@ -2592,6 +2591,7 @@ namespace KhaozEngine.Render3D
             // scene with uploads/draws still queued on the device's async submission thread (Mesa lavapipe
             // executes queued commands on its own thread and segfaults on destroyed resources).
             _gd.WaitForIdle();
+            _retired.FlushAll();   // the retired tail would otherwise outlive the scene that owns it
             _model.Dispose();
             _post.Dispose();
             _lines.Dispose();

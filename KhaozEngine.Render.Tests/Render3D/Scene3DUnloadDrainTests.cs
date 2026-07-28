@@ -2,6 +2,7 @@ using System.Numerics;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
+using KhaozEngine.Render3D.Internal;
 using KhaozEngine.Tests.Gpu;
 using Xunit;
 
@@ -10,10 +11,10 @@ namespace KhaozEngine.Tests.Render3D
     // Regression coverage for the lavapipe mode-2 crash documented alongside the device-lifecycle gate
     // (GpuDeviceContext remarks): Scene3D used to Dispose() a mid-life resource immediately on Unload*, racing any
     // upload or draw still queued on the device (Mesa lavapipe executes queued work on its own thread and segfaults
-    // on a resource freed out from under it). Scene3D now drains the device (WaitForIdle) before disposing. These
-    // tests prove the DRAIN happens during the unload call via a spy device (the drain-precedes-dispose ordering
-    // inside the method is not observable through the device seam, so the drain-during-unload is the pinned
-    // contract). Scene3DTextureUnloadTests is the behavioural (slot-freeing) coverage.
+    // on a resource freed out from under it). Scene3D drains the device (WaitForIdle) before disposing, and these
+    // tests pin WHERE that drain lands via a spy device (the drain-precedes-dispose ordering inside a method is not
+    // observable through the device seam). The texture path drains inside the unload call. The mesh path retires and
+    // drains once at a later frame boundary. Scene3DTextureUnloadTests is the behavioural (slot-freeing) coverage.
     public sealed class Scene3DUnloadDrainTests
     {
         static readonly byte[] Pixel = new byte[] { 255, 255, 255, 255 };   // 1x1 RGBA8
@@ -46,26 +47,51 @@ namespace KhaozEngine.Tests.Render3D
             }
         }
 
+        static GltfMesh Triangle()
+        {
+            var verts = new[]
+            {
+                new ModelVertex(Vector3.Zero, Vector3.UnitZ, Vector4.One),
+                new ModelVertex(Vector3.UnitX, Vector3.UnitZ, Vector4.One),
+                new ModelVertex(Vector3.UnitY, Vector3.UnitZ, Vector4.One),
+            };
+            return new GltfMesh(verts, new uint[] { 0, 1, 2 });
+        }
+
+        // The mesh path moved off the per-unload drain: terrain streaming unloads meshes constantly (every chunk
+        // leaving the ring, every HLOD layer with it), and a full-device drain per mesh stalled the frame thread
+        // during ordinary movement. Buffers are retired instead and freed behind ONE drain at a later frame
+        // boundary, so the lavapipe rule (never destroy while queued work may reference it) still holds.
         [GpuFact]
-        public void UnloadMesh_DrainsTheDevice()
+        public void UnloadMesh_DoesNotDrainTheDevice()
         {
             var (gpu, spy, scene, tex, fb) = MakeScene();
             using (gpu) using (scene) using (tex) using (fb)
             {
-                var verts = new[]
-                {
-                    new ModelVertex(Vector3.Zero, Vector3.UnitZ, Vector4.One),
-                    new ModelVertex(Vector3.UnitX, Vector3.UnitZ, Vector4.One),
-                    new ModelVertex(Vector3.UnitY, Vector3.UnitZ, Vector4.One),
-                };
-                var mesh = new GltfMesh(verts, new uint[] { 0, 1, 2 });
-                MeshHandle h = scene.LoadMesh(mesh);
+                MeshHandle h = scene.LoadMesh(Triangle());
                 int before = spy.WaitForIdleCalls;
 
                 scene.UnloadMesh(h);
 
-                Assert.True(spy.WaitForIdleCalls > before,
-                    "UnloadMesh must drain the device (WaitForIdle) before disposing the buffers");
+                Assert.Equal(before, spy.WaitForIdleCalls);
+            }
+        }
+
+        [GpuFact]
+        public void RetiredMeshBuffers_AreFreedBehindOneDrainAtALaterFrame()
+        {
+            var (gpu, spy, scene, tex, fb) = MakeScene();
+            using (gpu) using (scene) using (tex) using (fb)
+            {
+                for (int i = 0; i < 8; i++) scene.UnloadMesh(scene.LoadMesh(Triangle()));
+                int before = spy.WaitForIdleCalls;
+
+                for (int i = 0; i < RetiredResourcePool.DefaultFrameDelay; i++) scene.Begin();
+
+                Assert.Equal(before + 1, spy.WaitForIdleCalls);   // one drain for the whole batch, not one per mesh
+
+                scene.Begin();
+                Assert.Equal(before + 1, spy.WaitForIdleCalls);   // nothing left pending, so no further drains
             }
         }
     }

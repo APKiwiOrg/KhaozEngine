@@ -30,6 +30,46 @@ namespace KhaozEngine.Terrain
     /// convenience a consumer with <c>using KhaozEngine.Terrain;</c> gets in scope.</summary>
     public static class PropRenderer
     {
+        // The per-call state an emit sink needs, carried by value through the generic emit loops so every sink
+        // delegate below can be STATIC and therefore allocated once for the process (issue #393). Each of the four
+        // entry points used to close over its scene/instances plus the tint and the casts-shadows flag, which cost a
+        // closure display class and two delegate objects on EVERY call. At one call per layer per loaded chunk per
+        // frame that was tens of thousands of gen0 allocations a second in a full scene, for three fields.
+        readonly struct DrawState
+        {
+            public readonly Scene3D Scene;
+            public readonly Color Tint;
+            public readonly bool CastsShadows;
+            public DrawState(Scene3D scene, Color tint, bool castsShadows)
+            { Scene = scene; Tint = tint; CastsShadows = castsShadows; }
+        }
+
+        readonly struct QueueState
+        {
+            public readonly SceneInstances Instances;
+            public readonly Color Tint;
+            public readonly bool CastsShadows;
+            public QueueState(SceneInstances instances, Color tint, bool castsShadows)
+            { Instances = instances; Tint = tint; CastsShadows = castsShadows; }
+        }
+
+        // One submission. Identical to the closures these replaced, including the fast path that skips the long
+        // overload when nothing about the draw is non-default.
+        static readonly Action<DrawState, MeshHandle, Matrix4x4, float> DrawSink = static (s, handle, world, dissolve) =>
+        {
+            if (dissolve > 0f || !s.CastsShadows) s.Scene.Draw(handle, world, s.Tint, Material.None, dissolve, 0f, default, s.CastsShadows);
+            else s.Scene.Draw(handle, world, s.Tint);
+        };
+
+        static readonly Action<DrawState, Vector3, float> DrawBlobSink = static (s, groundPos, radius) =>
+            s.Scene.AddShadowBlob(new ShadowBlob(groundPos, groundPos.Y, radius));
+
+        static readonly Action<QueueState, MeshHandle, Matrix4x4, float> QueueSink = static (s, handle, world, dissolve) =>
+        {
+            if (dissolve > 0f || !s.CastsShadows) s.Instances.Add(handle, world, s.Tint, Material.None, dissolve, 0f, default, s.CastsShadows);
+            else s.Instances.Add(handle, world, s.Tint);
+        };
+
         /// <summary>Queue every placement within <paramref name="drawRadius"/> (horizontal/XZ) of
         /// <paramref name="focus"/> whose <see cref="PropPlacement.Id"/> has a mesh in <paramref name="meshes"/>.
         /// Out-of-range and unknown-id placements are skipped. <paramref name="fadeBandWidth"/> (default 0 = hard cut)
@@ -49,11 +89,7 @@ namespace KhaozEngine.Terrain
             if (instances == null) throw new ArgumentNullException(nameof(instances));
             Color t = tint ?? Color.White;
             return Emit(placements, meshes, lodMeshes, lodDistance, focus, drawRadius, fadeBandWidth, dissolveFloor,
-                (handle, world, dissolve) =>
-                {
-                    if (dissolve > 0f || !castsShadows) instances.Add(handle, world, t, Material.None, dissolve, 0f, default, castsShadows);
-                    else instances.Add(handle, world, t);
-                });
+                new QueueState(instances, t, castsShadows), QueueSink);
         }
 
         /// <summary>Scene3D convenience: queue the in-range props into the scene's instance buffer for this frame
@@ -75,13 +111,9 @@ namespace KhaozEngine.Terrain
             Color t = tint ?? Color.White;
             bool emitBlobs = blobRadii != null && scene.ResolvedShadowMode == ShadowMode.Blob;
             return Emit(placements, meshes, lodMeshes, lodDistance, focus, drawRadius, fadeBandWidth, dissolveFloor,
-                (handle, world, dissolve) =>
-                {
-                    if (dissolve > 0f || !castsShadows) scene.Draw(handle, world, t, Material.None, dissolve, 0f, default, castsShadows);
-                    else scene.Draw(handle, world, t);
-                },
+                new DrawState(scene, t, castsShadows), DrawSink,
                 emitBlobs ? blobRadii : null,
-                emitBlobs ? (groundPos, radius) => scene.AddShadowBlob(new ShadowBlob(groundPos, groundPos.Y, radius)) : null);
+                emitBlobs ? DrawBlobSink : null);
         }
 
         /// <summary>Multi-part variant of <see cref="Queue(SceneInstances, IReadOnlyList{PropPlacement}, IReadOnlyDictionary{string, MeshHandle}, Vector3, float, Color?, float, IReadOnlyDictionary{string, MeshHandle}, float, float, bool)"/>: each kit id maps to ONE-OR-MANY
@@ -102,11 +134,7 @@ namespace KhaozEngine.Terrain
             if (instances == null) throw new ArgumentNullException(nameof(instances));
             Color t = tint ?? Color.White;
             return EmitParts(placements, parts, lodParts, lodDistance, focus, drawRadius, fadeBandWidth, dissolveFloor,
-                (handle, world, dissolve) =>
-                {
-                    if (dissolve > 0f || !castsShadows) instances.Add(handle, world, t, Material.None, dissolve, 0f, default, castsShadows);
-                    else instances.Add(handle, world, t);
-                });
+                new QueueState(instances, t, castsShadows), QueueSink);
         }
 
         /// <summary>Scene3D convenience: multi-part variant of <see cref="DrawProps(Scene3D,IReadOnlyList{PropPlacement},IReadOnlyDictionary{string,MeshHandle},Vector3,float,Color?,float,IReadOnlyDictionary{string,MeshHandle},float,float,bool,IReadOnlyDictionary{string,float})"/>.
@@ -127,13 +155,9 @@ namespace KhaozEngine.Terrain
             Color t = tint ?? Color.White;
             bool emitBlobs = blobRadii != null && scene.ResolvedShadowMode == ShadowMode.Blob;
             return EmitParts(placements, parts, lodParts, lodDistance, focus, drawRadius, fadeBandWidth, dissolveFloor,
-                (handle, world, dissolve) =>
-                {
-                    if (dissolve > 0f || !castsShadows) scene.Draw(handle, world, t, Material.None, dissolve, 0f, default, castsShadows);
-                    else scene.Draw(handle, world, t);
-                },
+                new DrawState(scene, t, castsShadows), DrawSink,
                 emitBlobs ? blobRadii : null,
-                emitBlobs ? (groundPos, radius) => scene.AddShadowBlob(new ShadowBlob(groundPos, groundPos.Y, radius)) : null);
+                emitBlobs ? DrawBlobSink : null);
         }
 
         // Deterministic dissolve for one placement at squared horizontal distance d2 from the focus. Outside the fade
@@ -150,12 +174,15 @@ namespace KhaozEngine.Terrain
 
         // Internal (not private): lets KhaozEngine.Render.Tests (InternalsVisibleTo) exercise the blob-radius lookup
         // and scale multiplication headlessly, with a fake blobSink, instead of only through a real Scene3D.
-        internal static int Emit(IReadOnlyList<PropPlacement> placements, IReadOnlyDictionary<string, MeshHandle> meshes,
+        // Generic over the sink's state so the callers above hand in a struct and a STATIC delegate rather than a
+        // closure per call (issue #393). TState is a struct at every production call site, so nothing is boxed and
+        // the delegate invocation is what it always was.
+        internal static int Emit<TState>(IReadOnlyList<PropPlacement> placements, IReadOnlyDictionary<string, MeshHandle> meshes,
                         IReadOnlyDictionary<string, MeshHandle>? lodMeshes, float lodDistance,
                         Vector3 focus, float drawRadius, float fadeBandWidth, float dissolveFloor,
-                        Action<MeshHandle, Matrix4x4, float> sink,
+                        TState state, Action<TState, MeshHandle, Matrix4x4, float> sink,
                         IReadOnlyDictionary<string, float>? blobRadii = null,
-                        Action<Vector3, float>? blobSink = null)
+                        Action<TState, Vector3, float>? blobSink = null)
         {
             if (placements == null) throw new ArgumentNullException(nameof(placements));
             if (meshes == null) throw new ArgumentNullException(nameof(meshes));
@@ -182,11 +209,11 @@ namespace KhaozEngine.Terrain
                                   * Matrix4x4.CreateTranslation(p.X, p.Y, p.Z);
                 // Per-placement fade band OR the uniform HLOD crossfade floor, whichever discards more.
                 float dissolve = MathF.Max(DissolveAt(d2, fadeInner, fadeBand), dissolveFloor);
-                sink(handle, world, dissolve);
+                sink(state, handle, world, dissolve);
                 // A fully dissolved prop draws nothing, so it gets no ground blob either (issue #388): otherwise a
                 // faded-out tree would leave a floating blob with no visible caster.
                 if (emitBlobs && dissolve < 1f && blobRadii!.TryGetValue(p.Id, out float baseRadius))
-                    blobSink!(new Vector3(p.X, p.Y, p.Z), baseRadius * p.Scale);
+                    blobSink!(state, new Vector3(p.X, p.Y, p.Z), baseRadius * p.Scale);
                 count++;
             }
             return count;
@@ -196,13 +223,13 @@ namespace KhaozEngine.Terrain
         // swap picks the variant's whole part list). The cull + matrix + dissolve are identical to the single-mesh
         // path, so a single-part list with no fade/LOD produces byte-identical submissions. Returns placements drawn.
         // Internal (not private): see the note on Emit above - the same headless test seam applies here.
-        internal static int EmitParts(IReadOnlyList<PropPlacement> placements,
+        internal static int EmitParts<TState>(IReadOnlyList<PropPlacement> placements,
                              IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> parts,
                              IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? lodParts, float lodDistance,
                              Vector3 focus, float drawRadius, float fadeBandWidth, float dissolveFloor,
-                             Action<MeshHandle, Matrix4x4, float> sink,
+                             TState state, Action<TState, MeshHandle, Matrix4x4, float> sink,
                              IReadOnlyDictionary<string, float>? blobRadii = null,
-                             Action<Vector3, float>? blobSink = null)
+                             Action<TState, Vector3, float>? blobSink = null)
         {
             if (placements == null) throw new ArgumentNullException(nameof(placements));
             if (parts == null) throw new ArgumentNullException(nameof(parts));
@@ -229,11 +256,11 @@ namespace KhaozEngine.Terrain
                                   * Matrix4x4.CreateTranslation(p.X, p.Y, p.Z);
                 // Whole prop shares one dissolve: per-placement fade band OR the uniform HLOD crossfade floor, max.
                 float dissolve = MathF.Max(DissolveAt(d2, fadeInner, fadeBand), dissolveFloor);
-                for (int j = 0; j < handles.Count; j++) sink(handles[j], world, dissolve);
+                for (int j = 0; j < handles.Count; j++) sink(state, handles[j], world, dissolve);
                 // One blob per PLACEMENT, not one per part (the whole prop shares one footprint). Same full-dissolve
                 // skip as Emit (issue #388).
                 if (emitBlobs && dissolve < 1f && blobRadii!.TryGetValue(p.Id, out float baseRadius))
-                    blobSink!(new Vector3(p.X, p.Y, p.Z), baseRadius * p.Scale);
+                    blobSink!(state, new Vector3(p.X, p.Y, p.Z), baseRadius * p.Scale);
                 count++;
             }
             return count;

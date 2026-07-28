@@ -7,6 +7,8 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Terrain
 {
+    using Blobs = List<(Vector3 pos, float radius)>;
+
     /// <summary>
     /// Headless coverage of the blob-shadow seam inside <see cref="PropRenderer"/>'s internal Emit/EmitParts cull
     /// loop (issue #388): per-kit radius lookup, scale multiplication, the full-dissolve skip, and the
@@ -31,7 +33,10 @@ namespace KhaozEngine.Tests.Terrain
             return new Dictionary<string, IReadOnlyList<MeshHandle>> { [id] = list };
         }
 
-        static void NoOpSink(MeshHandle handle, Matrix4x4 world, float dissolve) { }
+        // Emit/EmitParts are generic over their sink state (issue #393), so production can hand in a struct plus a
+        // static delegate instead of allocating a closure per call. Here the state is just the list a blob lands in.
+        static void NoOpSink(Blobs blobs, MeshHandle handle, Matrix4x4 world, float dissolve) { }
+        static void RecordBlob(Blobs blobs, Vector3 pos, float radius) => blobs.Add((pos, radius));
 
         [Fact]
         public void No_blob_table_registers_nothing()
@@ -40,7 +45,7 @@ namespace KhaozEngine.Tests.Terrain
             var blobs = new List<(Vector3 pos, float radius)>();
 
             PropRenderer.Emit(placements, Meshes(("pine_a", 1)), null, 0f, Vector3.Zero, 40f, 0f, 0f,
-                NoOpSink, blobRadii: null, blobSink: (pos, r) => blobs.Add((pos, r)));
+                blobs, NoOpSink, blobRadii: null, blobSink: RecordBlob);
 
             Assert.Empty(blobs);
         }
@@ -52,9 +57,10 @@ namespace KhaozEngine.Tests.Terrain
             // the resolved shadow tier is Blob, so Emit must stay silent with a table but no sink too.
             var placements = new List<PropPlacement> { new("pine_a", 2f, 0f, 3f, 2f, 0f, 0) };
             var radii = new Dictionary<string, float> { ["pine_a"] = 1.5f };
+            var blobs = new Blobs();
 
             int count = PropRenderer.Emit(placements, Meshes(("pine_a", 1)), null, 0f, Vector3.Zero, 40f, 0f, 0f,
-                NoOpSink, blobRadii: radii, blobSink: null);
+                blobs, NoOpSink, blobRadii: radii, blobSink: null);
 
             Assert.Equal(1, count);   // the prop itself still draws
         }
@@ -67,7 +73,7 @@ namespace KhaozEngine.Tests.Terrain
             var blobs = new List<(Vector3 pos, float radius)>();
 
             PropRenderer.Emit(placements, Meshes(("pine_a", 1)), null, 0f, Vector3.Zero, 40f, 0f, 0f,
-                NoOpSink, radii, (pos, r) => blobs.Add((pos, r)));
+                blobs, NoOpSink, radii, RecordBlob);
 
             var (pos, radius) = Assert.Single(blobs);
             Assert.Equal(new Vector3(2f, 5f, 3f), pos);      // the placement's ground position
@@ -82,7 +88,7 @@ namespace KhaozEngine.Tests.Terrain
             var blobs = new List<(Vector3 pos, float radius)>();
 
             PropRenderer.Emit(placements, Meshes(("rock_a", 1)), null, 0f, Vector3.Zero, 40f, 0f, 0f,
-                NoOpSink, radii, (pos, r) => blobs.Add((pos, r)));
+                blobs, NoOpSink, radii, RecordBlob);
 
             Assert.Empty(blobs);
         }
@@ -95,7 +101,7 @@ namespace KhaozEngine.Tests.Terrain
             var blobs = new List<(Vector3 pos, float radius)>();
 
             int count = PropRenderer.Emit(placements, Meshes(("pine_a", 1)), null, 0f, Vector3.Zero, 40f, 0f, 0f,
-                NoOpSink, radii, (pos, r) => blobs.Add((pos, r)));
+                blobs, NoOpSink, radii, RecordBlob);
 
             Assert.Equal(0, count);
             Assert.Empty(blobs);
@@ -110,7 +116,7 @@ namespace KhaozEngine.Tests.Terrain
             var blobs = new List<(Vector3 pos, float radius)>();
 
             PropRenderer.Emit(placements, Meshes(("pine_a", 1)), null, 0f, Vector3.Zero, 40f, 0f, 0f,
-                NoOpSink, radii, (pos, r) => blobs.Add((pos, r)));
+                blobs, NoOpSink, radii, RecordBlob);
 
             Assert.Empty(blobs);
         }
@@ -125,7 +131,7 @@ namespace KhaozEngine.Tests.Terrain
             var blobs = new List<(Vector3 pos, float radius)>();
 
             PropRenderer.Emit(placements, Meshes(("pine_a", 1)), null, 0f, Vector3.Zero, 40f, 12f, 0f,
-                NoOpSink, radii, (pos, r) => blobs.Add((pos, r)));
+                blobs, NoOpSink, radii, RecordBlob);
 
             Assert.Empty(blobs);
         }
@@ -140,7 +146,7 @@ namespace KhaozEngine.Tests.Terrain
             var blobs = new List<(Vector3 pos, float radius)>();
 
             PropRenderer.Emit(placements, Meshes(("pine_a", 1)), null, 0f, Vector3.Zero, 40f, 12f, 0f,
-                NoOpSink, radii, (pos, r) => blobs.Add((pos, r)));
+                blobs, NoOpSink, radii, RecordBlob);
 
             Assert.Single(blobs);
         }
@@ -156,7 +162,7 @@ namespace KhaozEngine.Tests.Terrain
             var blobs = new List<(Vector3 pos, float radius)>();
 
             PropRenderer.Emit(placements, Meshes(("pine_a", 1)), null, 0f, Vector3.Zero, 40f, 0f, 1f,
-                NoOpSink, radii, (pos, r) => blobs.Add((pos, r)));
+                blobs, NoOpSink, radii, RecordBlob);
 
             Assert.Empty(blobs);
         }
@@ -172,8 +178,8 @@ namespace KhaozEngine.Tests.Terrain
 
             int count = PropRenderer.EmitParts(placements, parts, null, 0f, Vector3.Zero, drawRadius: 40f,
                 fadeBandWidth: 0f, dissolveFloor: 0f,
-                sink: (handle, world, dissolve) => partSinkCalls++,
-                blobRadii: radii, blobSink: (pos, r) => blobs.Add((pos, r)));
+                state: blobs, sink: (_, handle, world, dissolve) => partSinkCalls++,
+                blobRadii: radii, blobSink: RecordBlob);
 
             Assert.Equal(1, count);
             Assert.Equal(3, partSinkCalls);      // every part still instances

@@ -13,9 +13,9 @@ namespace KhaozEngine.Terrain
     /// keeps it affordable, and each layer sets its own dissolve fade band (<see cref="FadeBandWidth"/>) and optional
     /// far LOD variants (<see cref="LodMeshes"/> / <see cref="LodPartMeshes"/> at <see cref="LodDistance"/>). Build
     /// one with
-    /// <see cref="ScatterLayer(ScatterConfig, IReadOnlyDictionary{string, MeshHandle}, float, float, IReadOnlyDictionary{string, MeshHandle}, float, bool)"/>,
-    /// <see cref="CompanionLayer(int, CompanionConfig, IReadOnlyDictionary{string, MeshHandle}, float, float, IReadOnlyDictionary{string, MeshHandle}, float, bool)"/>, or
-    /// <see cref="PlacementLayer(IReadOnlyList{PropPlacement}, IReadOnlyDictionary{string, MeshHandle}, float, float, IReadOnlyDictionary{string, MeshHandle}, float, bool, bool)"/>
+    /// <see cref="ScatterLayer(ScatterConfig, IReadOnlyDictionary{string, MeshHandle}, float, float, IReadOnlyDictionary{string, MeshHandle}, float, bool, IReadOnlyDictionary{string, float})"/>,
+    /// <see cref="CompanionLayer(int, CompanionConfig, IReadOnlyDictionary{string, MeshHandle}, float, float, IReadOnlyDictionary{string, MeshHandle}, float, bool, IReadOnlyDictionary{string, float})"/>, or
+    /// <see cref="PlacementLayer(IReadOnlyList{PropPlacement}, IReadOnlyDictionary{string, MeshHandle}, float, float, IReadOnlyDictionary{string, MeshHandle}, float, bool, bool, IReadOnlyDictionary{string, float})"/>
     /// (or their multi-part overloads).</summary>
     public readonly struct PropLayer
     {
@@ -49,6 +49,15 @@ namespace KhaozEngine.Terrain
         /// shadows, they just stop casting. Applies to the layer's individual props AND to its merged HLOD mesh, so
         /// the policy does not change at the HLOD swap.</summary>
         public bool CastsShadows { get; }
+        /// <summary>Optional per-kit blob-shadow radius table (issue #388): the ground-footprint radius (at
+        /// placement <see cref="PropPlacement.Scale"/> 1) a kit contributes at <see cref="ShadowMode.Blob"/>. Null
+        /// (the default on every factory) means this layer never registers a <see cref="ShadowBlob"/>, so the whole
+        /// seam is inert until a caller opts a kit in - byte-identical to before. A kit id absent from a non-null
+        /// table also gets no blob (per-kit opt-in, mirroring <see cref="LodMeshes"/>/<see cref="HlodSourceMeshes"/>).
+        /// Consulted by <see cref="PropRenderer"/> only when the layer draws through a live <see cref="Scene3D"/>
+        /// AND that scene's resolved shadow tier is <see cref="ShadowMode.Blob"/>. The merged HLOD mesh never
+        /// contributes a blob (no per-placement data there), so blobs stop at the HLOD boundary automatically.</summary>
+        public IReadOnlyDictionary<string, float>? BlobRadii { get; }
         /// <summary>The single-handle mesh set: one <see cref="MeshHandle"/> per kit id (the flat/untextured form).
         /// Always non-null: an empty dictionary for a multi-part layer (which carries its meshes in
         /// <see cref="PartMeshes"/> instead).</summary>
@@ -130,7 +139,8 @@ namespace KhaozEngine.Terrain
                   IReadOnlyDictionary<string, GltfMesh>? hlodSourceMeshes = null,
                   float hlodDistance = 0f, float hlodWeldCell = 0f, float hlodCrossfadeWidth = 0f,
                   IReadOnlyList<PropPlacement>? placements = null, bool registerColliders = true,
-                  IPlacementSource? placementSource = null, bool castsShadows = true)
+                  IPlacementSource? placementSource = null, bool castsShadows = true,
+                  IReadOnlyDictionary<string, float>? blobRadii = null)
         {
             Scatter = scatter;
             Companions = companions;
@@ -150,6 +160,7 @@ namespace KhaozEngine.Terrain
             RegisterColliders = registerColliders;
             PlacementSource = placementSource;
             CastsShadows = castsShadows;
+            BlobRadii = blobRadii;
         }
 
         /// <summary>This layer with HLOD turned on: a copy carrying the per-kit flat <paramref name="sourceMeshes"/> to
@@ -164,7 +175,7 @@ namespace KhaozEngine.Terrain
             if (sourceMeshes == null) throw new ArgumentNullException(nameof(sourceMeshes));
             return new PropLayer(Scatter, Companions, HostLayerIndex, Meshes, PartMeshes, DrawRadius, FadeBandWidth,
                 LodMeshes, LodPartMeshes, LodDistance, sourceMeshes, hlodDistance, weldCell, crossfadeWidth,
-                Placements, RegisterColliders, PlacementSource, CastsShadows);
+                Placements, RegisterColliders, PlacementSource, CastsShadows, BlobRadii);
         }
 
         /// <summary>A scatter layer driven by its own <see cref="ScatterConfig"/> (single-handle mesh set).
@@ -173,15 +184,17 @@ namespace KhaozEngine.Terrain
         /// a positive <paramref name="lodDistance"/> swap a kit to its far LOD variant beyond that distance (see
         /// <see cref="LodMeshes"/>).
         /// <paramref name="castsShadows"/> defaults true. Pass false to keep the whole layer out of the shadow
-        /// depth pass (see <see cref="CastsShadows"/>).</summary>
+        /// depth pass (see <see cref="CastsShadows"/>). <paramref name="blobRadii"/> (default null) opts kits into a
+        /// <see cref="ShadowMode.Blob"/> ground blob (see <see cref="BlobRadii"/>).</summary>
         public static PropLayer ScatterLayer(ScatterConfig scatter,
             IReadOnlyDictionary<string, MeshHandle> meshes, float drawRadius, float fadeBandWidth = 0f,
-            IReadOnlyDictionary<string, MeshHandle>? lodMeshes = null, float lodDistance = 0f, bool castsShadows = true)
+            IReadOnlyDictionary<string, MeshHandle>? lodMeshes = null, float lodDistance = 0f, bool castsShadows = true,
+            IReadOnlyDictionary<string, float>? blobRadii = null)
         {
             if (scatter == null) throw new ArgumentNullException(nameof(scatter));
             if (meshes == null) throw new ArgumentNullException(nameof(meshes));
             return new PropLayer(scatter, null, -1, meshes, null, drawRadius, fadeBandWidth, lodMeshes, null, lodDistance,
-                castsShadows: castsShadows);
+                castsShadows: castsShadows, blobRadii: blobRadii);
         }
 
         /// <summary>A scatter layer whose kits are MULTI-PART (each id one-or-many <see cref="MeshHandle"/>s, one
@@ -190,49 +203,53 @@ namespace KhaozEngine.Terrain
         /// <paramref name="fadeBandWidth"/> and (<paramref name="lodPartMeshes"/>, <paramref name="lodDistance"/>) work
         /// as on the single-handle overload, with LOD variants supplied as parallel part lists.
         /// <paramref name="castsShadows"/> defaults true. Pass false to keep the whole layer out of the shadow
-        /// depth pass (see <see cref="CastsShadows"/>).</summary>
+        /// depth pass (see <see cref="CastsShadows"/>). <paramref name="blobRadii"/> (default null) opts kits into a
+        /// <see cref="ShadowMode.Blob"/> ground blob (see <see cref="BlobRadii"/>).</summary>
         public static PropLayer ScatterLayer(ScatterConfig scatter,
             IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> partMeshes, float drawRadius, float fadeBandWidth = 0f,
             IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? lodPartMeshes = null, float lodDistance = 0f,
-            bool castsShadows = true)
+            bool castsShadows = true, IReadOnlyDictionary<string, float>? blobRadii = null)
         {
             if (scatter == null) throw new ArgumentNullException(nameof(scatter));
             if (partMeshes == null) throw new ArgumentNullException(nameof(partMeshes));
             return new PropLayer(scatter, null, -1, EmptyMeshes, partMeshes, drawRadius, fadeBandWidth, null, lodPartMeshes,
-                lodDistance, castsShadows: castsShadows);
+                lodDistance, castsShadows: castsShadows, blobRadii: blobRadii);
         }
 
         /// <summary>A companion layer: rings the placements of the scatter layer at <paramref name="hostLayerIndex"/>
         /// with foliage per <paramref name="companions"/> (single-handle mesh set). <paramref name="fadeBandWidth"/>
         /// and (<paramref name="lodMeshes"/>, <paramref name="lodDistance"/>) behave as on the scatter overload.
         /// <paramref name="castsShadows"/> defaults true. Pass false to keep the whole layer out of the shadow
-        /// depth pass (see <see cref="CastsShadows"/>).</summary>
+        /// depth pass (see <see cref="CastsShadows"/>). <paramref name="blobRadii"/> (default null) opts kits into a
+        /// <see cref="ShadowMode.Blob"/> ground blob (see <see cref="BlobRadii"/>).</summary>
         public static PropLayer CompanionLayer(int hostLayerIndex, CompanionConfig companions,
             IReadOnlyDictionary<string, MeshHandle> meshes, float drawRadius, float fadeBandWidth = 0f,
-            IReadOnlyDictionary<string, MeshHandle>? lodMeshes = null, float lodDistance = 0f, bool castsShadows = true)
+            IReadOnlyDictionary<string, MeshHandle>? lodMeshes = null, float lodDistance = 0f, bool castsShadows = true,
+            IReadOnlyDictionary<string, float>? blobRadii = null)
         {
             if (companions == null) throw new ArgumentNullException(nameof(companions));
             if (meshes == null) throw new ArgumentNullException(nameof(meshes));
             if (hostLayerIndex < 0) throw new ArgumentOutOfRangeException(nameof(hostLayerIndex));
             return new PropLayer(null, companions, hostLayerIndex, meshes, null, drawRadius, fadeBandWidth, lodMeshes, null,
-                lodDistance, castsShadows: castsShadows);
+                lodDistance, castsShadows: castsShadows, blobRadii: blobRadii);
         }
 
         /// <summary>A companion layer whose kits are MULTI-PART (additive companion to the single-handle overload).
         /// Each id's parts instance as a unit around every host placement. <paramref name="fadeBandWidth"/> and
         /// (<paramref name="lodPartMeshes"/>, <paramref name="lodDistance"/>) behave as on the scatter overload.
         /// <paramref name="castsShadows"/> defaults true. Pass false to keep the whole layer out of the shadow
-        /// depth pass (see <see cref="CastsShadows"/>).</summary>
+        /// depth pass (see <see cref="CastsShadows"/>). <paramref name="blobRadii"/> (default null) opts kits into a
+        /// <see cref="ShadowMode.Blob"/> ground blob (see <see cref="BlobRadii"/>).</summary>
         public static PropLayer CompanionLayer(int hostLayerIndex, CompanionConfig companions,
             IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> partMeshes, float drawRadius, float fadeBandWidth = 0f,
             IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? lodPartMeshes = null, float lodDistance = 0f,
-            bool castsShadows = true)
+            bool castsShadows = true, IReadOnlyDictionary<string, float>? blobRadii = null)
         {
             if (companions == null) throw new ArgumentNullException(nameof(companions));
             if (partMeshes == null) throw new ArgumentNullException(nameof(partMeshes));
             if (hostLayerIndex < 0) throw new ArgumentOutOfRangeException(nameof(hostLayerIndex));
             return new PropLayer(null, companions, hostLayerIndex, EmptyMeshes, partMeshes, drawRadius, fadeBandWidth, null,
-                lodPartMeshes, lodDistance, castsShadows: castsShadows);
+                lodPartMeshes, lodDistance, castsShadows: castsShadows, blobRadii: blobRadii);
         }
 
         /// <summary>A placement layer: a frozen, author-supplied list of exact <paramref name="placements"/>
@@ -244,16 +261,17 @@ namespace KhaozEngine.Terrain
         /// defaults true. Pass false to keep the layer render-only when the consuming game registers physics for
         /// these placements outside the sink.
         /// <paramref name="castsShadows"/> defaults true. Pass false to keep the whole layer out of the shadow
-        /// depth pass (see <see cref="CastsShadows"/>).</summary>
+        /// depth pass (see <see cref="CastsShadows"/>). <paramref name="blobRadii"/> (default null) opts kits into a
+        /// <see cref="ShadowMode.Blob"/> ground blob (see <see cref="BlobRadii"/>).</summary>
         public static PropLayer PlacementLayer(IReadOnlyList<PropPlacement> placements,
             IReadOnlyDictionary<string, MeshHandle> meshes, float drawRadius, float fadeBandWidth = 0f,
             IReadOnlyDictionary<string, MeshHandle>? lodMeshes = null, float lodDistance = 0f, bool colliders = true,
-            bool castsShadows = true)
+            bool castsShadows = true, IReadOnlyDictionary<string, float>? blobRadii = null)
         {
             if (placements == null) throw new ArgumentNullException(nameof(placements));
             if (meshes == null) throw new ArgumentNullException(nameof(meshes));
             return new PropLayer(null, null, -1, meshes, null, drawRadius, fadeBandWidth, lodMeshes, null, lodDistance,
-                placements: placements, registerColliders: colliders, castsShadows: castsShadows);
+                placements: placements, registerColliders: colliders, castsShadows: castsShadows, blobRadii: blobRadii);
         }
 
         /// <summary>A placement layer whose kits are MULTI-PART (additive companion to the single-handle overload):
@@ -263,16 +281,18 @@ namespace KhaozEngine.Terrain
         /// <paramref name="lodPartMeshes"/>. <paramref name="colliders"/> defaults true. Pass false to keep the
         /// layer render-only when the consuming game registers physics for these placements outside the sink.
         /// <paramref name="castsShadows"/> defaults true. Pass false to keep the whole layer out of the shadow
-        /// depth pass (see <see cref="CastsShadows"/>).</summary>
+        /// depth pass (see <see cref="CastsShadows"/>). <paramref name="blobRadii"/> (default null) opts kits into a
+        /// <see cref="ShadowMode.Blob"/> ground blob (see <see cref="BlobRadii"/>).</summary>
         public static PropLayer PlacementLayer(IReadOnlyList<PropPlacement> placements,
             IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> partMeshes, float drawRadius, float fadeBandWidth = 0f,
             IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? lodPartMeshes = null, float lodDistance = 0f,
-            bool colliders = true, bool castsShadows = true)
+            bool colliders = true, bool castsShadows = true, IReadOnlyDictionary<string, float>? blobRadii = null)
         {
             if (placements == null) throw new ArgumentNullException(nameof(placements));
             if (partMeshes == null) throw new ArgumentNullException(nameof(partMeshes));
             return new PropLayer(null, null, -1, EmptyMeshes, partMeshes, drawRadius, fadeBandWidth, null, lodPartMeshes,
-                lodDistance, placements: placements, registerColliders: colliders, castsShadows: castsShadows);
+                lodDistance, placements: placements, registerColliders: colliders, castsShadows: castsShadows,
+                blobRadii: blobRadii);
         }
 
         /// <summary>A placement layer backed by a LIVE <paramref name="source"/> instead of a frozen list: the
@@ -283,16 +303,18 @@ namespace KhaozEngine.Terrain
         /// <see cref="WithHlod"/> - applies unchanged, and so do the collider and casts-shadows flags.
         /// <para>The source is queried on the BUILD thread, so it must publish an immutable snapshot and read it
         /// once per query. <c>MapTileResidency</c> is one, which makes
-        /// <c>PropLayer.PlacementLayer(residency, meshes, drawRadius)</c> the whole of a consumer's wiring.</para></summary>
+        /// <c>PropLayer.PlacementLayer(residency, meshes, drawRadius)</c> the whole of a consumer's wiring.</para>
+        /// <paramref name="blobRadii"/> (default null) opts kits into a <see cref="ShadowMode.Blob"/> ground blob
+        /// (see <see cref="BlobRadii"/>).</summary>
         public static PropLayer PlacementLayer(IPlacementSource source,
             IReadOnlyDictionary<string, MeshHandle> meshes, float drawRadius, float fadeBandWidth = 0f,
             IReadOnlyDictionary<string, MeshHandle>? lodMeshes = null, float lodDistance = 0f, bool colliders = true,
-            bool castsShadows = true)
+            bool castsShadows = true, IReadOnlyDictionary<string, float>? blobRadii = null)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             if (meshes == null) throw new ArgumentNullException(nameof(meshes));
             return new PropLayer(null, null, -1, meshes, null, drawRadius, fadeBandWidth, lodMeshes, null, lodDistance,
-                registerColliders: colliders, placementSource: source, castsShadows: castsShadows);
+                registerColliders: colliders, placementSource: source, castsShadows: castsShadows, blobRadii: blobRadii);
         }
 
         /// <summary>A live-source placement layer whose kits are MULTI-PART (additive companion to the
@@ -300,16 +322,18 @@ namespace KhaozEngine.Terrain
         /// the chunk. Same per-build query, same knob set, with LOD variants supplied as parallel part lists via
         /// <paramref name="lodPartMeshes"/>.
         /// <paramref name="castsShadows"/> defaults true. Pass false to keep the whole layer out of the shadow
-        /// depth pass (see <see cref="CastsShadows"/>).</summary>
+        /// depth pass (see <see cref="CastsShadows"/>). <paramref name="blobRadii"/> (default null) opts kits into a
+        /// <see cref="ShadowMode.Blob"/> ground blob (see <see cref="BlobRadii"/>).</summary>
         public static PropLayer PlacementLayer(IPlacementSource source,
             IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> partMeshes, float drawRadius, float fadeBandWidth = 0f,
             IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? lodPartMeshes = null, float lodDistance = 0f,
-            bool colliders = true, bool castsShadows = true)
+            bool colliders = true, bool castsShadows = true, IReadOnlyDictionary<string, float>? blobRadii = null)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             if (partMeshes == null) throw new ArgumentNullException(nameof(partMeshes));
             return new PropLayer(null, null, -1, EmptyMeshes, partMeshes, drawRadius, fadeBandWidth, null, lodPartMeshes,
-                lodDistance, registerColliders: colliders, placementSource: source, castsShadows: castsShadows);
+                lodDistance, registerColliders: colliders, placementSource: source, castsShadows: castsShadows,
+                blobRadii: blobRadii);
         }
     }
 }

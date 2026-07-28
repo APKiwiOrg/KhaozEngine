@@ -1297,6 +1297,13 @@ namespace KhaozEngine.Render3D
         /// full render.</summary>
         internal ShadowResolution ResolvedShadows() => Post.Quality.Shadows.ResolveFor(_gd.Capabilities);
 
+        /// <summary>The shadow tier that will actually render this frame (see <see cref="ResolvedShadows"/>'s
+        /// <see cref="ShadowResolution.Effective"/>). Public so a consumer outside this assembly - a prop layer
+        /// deciding whether to register a <see cref="ShadowBlob"/> (issue #388), or a game's own diagnostics -
+        /// can gate cheaply on the resolved tier without re-deriving <see cref="ShadowSettings.ResolveFor"/>'s
+        /// degradation policy itself.</summary>
+        public ShadowMode ResolvedShadowMode => ResolvedShadows().Effective;
+
         /// <summary>
         /// Queue one stylized water surface for this frame, over <paramref name="plane"/>'s still-water height and XZ footprint,
         /// drawn after the sky + ground decals: a Gerstner swell displacing the surface grid, a domain-warped non-tiling ripple

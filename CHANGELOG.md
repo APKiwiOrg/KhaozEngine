@@ -61,6 +61,48 @@ reorders first reference against binding order, and Metal assigns argument slots
 the atlas and motion textures silently swap. That is why each sheet takes its cap from its own
 `textureSize` in binding order and the LOD helper touches no texture at all. Recurrence noted on #323.
 
+### Props get a blob shadow at the Blob tier
+
+At `ShadowMode.Blob`, props (trees, rocks) had no shadow at all: blob casters were a pure per-frame
+opt-in (`Scene3D.AddShadowBlob`) and only a character renderer ever called it. Closes
+[#388](https://github.com/APKiwiOrg/KhaozEngine/issues/388), reported from
+[Ruinborne#362](https://github.com/APKiwiOrg/Ruinborne/issues/362).
+
+`PropLayer.BlobRadii` (default null on every scatter, companion, and placement factory, carried
+through `WithHlod`) is the seam a consumer wires: an optional per-kit ground-footprint radius that
+opts a kit into a blob at the Blob tier. `PropRenderer` registers one `ShadowBlob` per surviving
+placement inside its existing cull loop, scaled by the placement's scale, only when the layer
+carries the table and the scene's resolved shadow tier is Blob. A fully dissolved placement (the
+fade band or the HLOD crossfade floor) gets no blob either, since it draws nothing.
+`Scene3DChunkSink` threads the table through the same way it threads `CastsShadows`, and the
+merged-HLOD branch never touches it, so a layer's blobs stop at the HLOD swap automatically.
+`Scene3D` gains a public `ResolvedShadowMode` so a consumer assembly can gate on the resolved tier
+without re-deriving the degradation policy.
+
+No layer sets `BlobRadii` today, so every existing scene is byte-identical until a consumer opts a
+kit in.
+
+### Shadows: compare before filtering, and complementary crossfade dithers
+
+Closes [#391](https://github.com/APKiwiOrg/KhaozEngine/issues/391), reported from
+[Ruinborne#364](https://github.com/APKiwiOrg/Ruinborne/issues/364).
+
+- The key light's shadow atlas is now point-sampled by receivers. It is a
+  manual-compare depth map, so filtering belongs after the compare: averaging
+  stored depths blended the atlas clear value (which means "no caster") into
+  taps next to a gap, and left the result depending on a backend's filtering
+  support rather than on the geometry. The 3x3 PCF kernel already averages
+  comparison results, so edges stay soft. No golden moved on Metal.
+- The depth pass scales its dissolve dither per cascade, keeping a noise cell at
+  least four shadow texels across. Past that a fading caster's dither collapsed
+  into isolated texels with no shape left for the receiver kernel. Near cascades
+  are unchanged, and the colour passes keep the original scale.
+- The two halves of an HLOD crossfade now cast complementary shadows. Both used
+  the same dither test at mirrored thresholds, which nests rather than
+  complements, so the shadow under a fading canopy dropped to half density in
+  the middle of the band. The merged half now records exactly what the fading
+  props drop.
+
 ## 17.11.0
 
 ### Streaming a chunk in no longer stalls the GPU

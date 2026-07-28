@@ -2238,7 +2238,8 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     coverage limit is invisible (no hard box). Casters shadow the ground and each other. **Terrain receives but does
     not cast** (model-only casting - terrain self-shadowing is negligible on the flat MMO ground). Caster visibility
     for the shadow pass unions ALL cascade frustums (a caster camera-culled from the main pass but still inside any
-    cascade still casts its shadow). No per-frame API to opt in: every drawn mesh casts automatically. The tier is on
+    cascade still casts its shadow). Every drawn mesh casts automatically unless the draw opts out (see
+    **Caster policy** below). The tier is on
     when `Shadows.Mode == ShadowMap` and the device reports `GpuCapabilities.SupportsShadowMaps` (every current
     backend does). A degenerate camera (e.g. zero-length forward) makes `ComputeShadowCascades()` return `0` and
     disables shadows for that frame rather than throwing. On a device that cannot render+sample the depth target,
@@ -2266,6 +2267,27 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     - Other knobs (all on `ShadowSettings`, runtime-mutable): `ShadowNearDistance` (default `16`, the near cascade's view-depth
       reach from the camera - smaller packs texels onto the near action, at the cost of handing off to a coarser
       cascade sooner). `ShadowStrength` (0..1 shadow darkness, default `0.85`).
+    - **Caster policy: opting out, and fading casters** (issue #287). Two per-instance behaviours sit on top of the
+      pass, both inert by default, so a scene that uses neither renders byte-identically to before.
+      - `scene.Draw(handle, transform, tint, material, castsShadows: false)` (and the `castsShadows` argument on the
+        dissolve overload) keeps THAT instance out of the depth pass. It still draws and still RECEIVES shadows: this
+        is a shadow policy, not a cull. Reach for it on dense decorative geometry - ground cover, understory - where
+        hundreds of small cast shadows cost more than they read, and pop on the draw-radius circle as the player
+        moves. Prop layers expose the same thing per layer: `PropLayer.ScatterLayer(..., castsShadows: false)` (every
+        layer factory takes it, and `WithHlod` keeps it), which `Scene3DChunkSink` threads onto the layer's props AND
+        its merged HLOD mesh. `PropRenderer.Queue` / `Scene3D.DrawProps` take the same trailing argument for a
+        hand-rolled prop pass.
+      - A caster carrying a rigid dissolve (`Draw(..., dissolve, edgeWidth, edgeColor)`, so a prop fading out inside
+        a `fadeBandWidth`, or either side of an HLOD crossfade) is drawn through a dissolve-aware depth pipeline, and
+        its SHADOW erodes with the same world-space noise mask that erodes the mesh. Before this the depth pass
+        ignored the dissolve entirely: a prop at 85 percent dissolve cast a fully solid shadow that then popped at
+        the hard cull radius, and across an HLOD crossfade band the individual props and the merged mesh both cast at
+        full strength (roughly double shadow density). Nothing to opt into - a positive dissolve is the opt-in - and
+        a caster at dissolve 0 still takes the plain pipeline.
+      - Both are decided per instance on the CPU, at the same point instances are grouped for upload, so neither adds
+        a GPU upload and an all-plain frame issues the same depth draws in the same order as before. The dissolve
+        variant does add a depth-pass pipeline switch per contiguous fading span, which is why it is bound only for
+        the spans that carry a dissolve.
     - **Bias tuning** (`ShadowNormalOffset` default `2.5`, `ShadowConstantBias` default `0.0004`, `ShadowSlopeBias`
       default `0.0015`): together these defeat self-shadow acne without detaching the shadow from the caster's feet
       (**peter-panning**). `ShadowNormalOffset` is the primary defence: it pushes the receiver's sample point off the
@@ -4217,6 +4239,12 @@ draw radius:
 scene.DrawProps(placements, meshes, focus: character.Position, drawRadius: 90f, fadeBandWidth: 25f);
 ```
 
+Under `ShadowMode.ShadowMap` a fading prop's SHADOW now fades with it (issue #287), so the band no longer leaves a
+solid shadow sitting under an almost-invisible caster. A dense short-radius layer usually wants the stronger knob
+instead: a trailing `castsShadows: false` on the same call (or on the `PropLayer` factory) keeps the layer out of
+the shadow depth pass entirely, so it draws and receives shadows but casts none. See "Caster policy" under
+`ShadowMode.ShadowMap` above.
+
 A kit can also carry an **author-supplied far LOD mesh** that swaps in past a distance. Declare an optional
 `"lodFile"` on the manifest entry, load it with `PropLoader.LoadPropLodAuto(entry)` (null when the entry has
 none) into a parallel LOD set, and pass it plus a `lodDistance`:
@@ -5331,6 +5359,11 @@ generate and no manifest field to stamp. Everything defaults off, so a layer wit
 every distance exactly as before. `PropHlod.Merge` / `Weld` / `CrossfadeAt` are public if you want the pieces
 directly (a bake tool, a custom sink).
 
+Under `ShadowMode.ShadowMap`, both halves of the crossfade now cast in proportion to their dissolve (issue #287):
+the props' shadow thins out as the merged mesh's thins in, instead of both casting at full strength across the whole
+band. `castsShadows: false` on the layer covers both too - the merged mesh follows the layer's policy, so casting
+does not switch back on at the HLOD swap.
+
 **Teardown / rebuild.** Both `Scene3DChunkSink` and `TerrainStreamer` are `IDisposable`. Steady-state
 walking already frees each chunk as it leaves the ring, but if you tear streaming down and rebuild it while the
 **same `Scene3D` survives** (level change, world reload, a teleport that recreates the streamer), the
@@ -5400,7 +5433,8 @@ The sink buckets each layer's placements by chunk coord once at construction (`C
 grid the streamer loads with), not per frame, so a frozen zone with tens of thousands of placements costs one
 split instead of a repeated scan. The sink keeps its own bucketed copy of every placement for its lifetime, in
 addition to the caller's list (which the layer also holds), so a zone's placements are resident twice. Every
-knob a scatter layer supports - `fadeBandWidth`, (`lodMeshes`/`lodPartMeshes`, `lodDistance`), `WithHlod` and
+knob a scatter layer supports - `fadeBandWidth`, (`lodMeshes`/`lodPartMeshes`, `lodDistance`), `castsShadows`,
+`WithHlod` and
 its decor-ring merged mesh - behaves identically given the same placements, since the sink streams a placement
 layer through the exact same per-chunk path a scatter layer uses. The engine takes a plain placement list:
 filtering by tag (or dropping `baked` placements that no longer apply) is the game's job before it hands the

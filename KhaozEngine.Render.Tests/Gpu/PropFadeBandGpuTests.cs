@@ -9,7 +9,7 @@ namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
     /// GPU coverage of the prop draw-distance FADE BAND (issue #44) driven through the REAL
-    /// <see cref="PropRenderer.DrawProps(Scene3D, System.Collections.Generic.IReadOnlyList{PropPlacement}, System.Collections.Generic.IReadOnlyDictionary{string, MeshHandle}, Vector3, float, Color?, float, System.Collections.Generic.IReadOnlyDictionary{string, MeshHandle}, float, float)"/>
+    /// <see cref="PropRenderer.DrawProps(Scene3D, System.Collections.Generic.IReadOnlyList{PropPlacement}, System.Collections.Generic.IReadOnlyDictionary{string, MeshHandle}, Vector3, float, Color?, float, System.Collections.Generic.IReadOnlyDictionary{string, MeshHandle}, float, float, bool)"/>
     /// path, not the bare dissolve overload. Pixel-presence, NOT golden (so no new bake and no cross-platform gate):
     /// one prop sits at the origin and the focus point slides out toward the draw radius, so PropRenderer computes a
     /// larger per-distance dissolve each frame and the box loses coverage to noise-discard holes monotonically. This

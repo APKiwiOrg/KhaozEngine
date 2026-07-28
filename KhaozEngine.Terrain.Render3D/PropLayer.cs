@@ -13,9 +13,9 @@ namespace KhaozEngine.Terrain
     /// keeps it affordable, and each layer sets its own dissolve fade band (<see cref="FadeBandWidth"/>) and optional
     /// far LOD variants (<see cref="LodMeshes"/> / <see cref="LodPartMeshes"/> at <see cref="LodDistance"/>). Build
     /// one with
-    /// <see cref="ScatterLayer(ScatterConfig, IReadOnlyDictionary{string, MeshHandle}, float, float, IReadOnlyDictionary{string, MeshHandle}, float)"/>,
-    /// <see cref="CompanionLayer(int, CompanionConfig, IReadOnlyDictionary{string, MeshHandle}, float, float, IReadOnlyDictionary{string, MeshHandle}, float)"/>, or
-    /// <see cref="PlacementLayer(IReadOnlyList{PropPlacement}, IReadOnlyDictionary{string, MeshHandle}, float, float, IReadOnlyDictionary{string, MeshHandle}, float, bool)"/>
+    /// <see cref="ScatterLayer(ScatterConfig, IReadOnlyDictionary{string, MeshHandle}, float, float, IReadOnlyDictionary{string, MeshHandle}, float, bool)"/>,
+    /// <see cref="CompanionLayer(int, CompanionConfig, IReadOnlyDictionary{string, MeshHandle}, float, float, IReadOnlyDictionary{string, MeshHandle}, float, bool)"/>, or
+    /// <see cref="PlacementLayer(IReadOnlyList{PropPlacement}, IReadOnlyDictionary{string, MeshHandle}, float, float, IReadOnlyDictionary{string, MeshHandle}, float, bool, bool)"/>
     /// (or their multi-part overloads).</summary>
     public readonly struct PropLayer
     {
@@ -42,6 +42,13 @@ namespace KhaozEngine.Terrain
         /// out via <c>colliders: false</c> on its factory when the placements are render-only and the consuming
         /// game registers their physics separately (issue #286).</summary>
         public bool RegisterColliders { get; }
+        /// <summary>Whether this layer's props write into the key light's shadow depth pass (issue #287). True by
+        /// default on every factory, so the whole pre-flag behaviour is unchanged. Set it false for a layer whose
+        /// cast shadows cost more than they read - a dense short-radius ground-cover or understory layer, where
+        /// hundreds of small casters pop on the draw-radius circle - and its props still draw and still RECEIVE
+        /// shadows, they just stop casting. Applies to the layer's individual props AND to its merged HLOD mesh, so
+        /// the policy does not change at the HLOD swap.</summary>
+        public bool CastsShadows { get; }
         /// <summary>The single-handle mesh set: one <see cref="MeshHandle"/> per kit id (the flat/untextured form).
         /// Always non-null: an empty dictionary for a multi-part layer (which carries its meshes in
         /// <see cref="PartMeshes"/> instead).</summary>
@@ -123,7 +130,7 @@ namespace KhaozEngine.Terrain
                   IReadOnlyDictionary<string, GltfMesh>? hlodSourceMeshes = null,
                   float hlodDistance = 0f, float hlodWeldCell = 0f, float hlodCrossfadeWidth = 0f,
                   IReadOnlyList<PropPlacement>? placements = null, bool registerColliders = true,
-                  IPlacementSource? placementSource = null)
+                  IPlacementSource? placementSource = null, bool castsShadows = true)
         {
             Scatter = scatter;
             Companions = companions;
@@ -142,6 +149,7 @@ namespace KhaozEngine.Terrain
             Placements = placements;
             RegisterColliders = registerColliders;
             PlacementSource = placementSource;
+            CastsShadows = castsShadows;
         }
 
         /// <summary>This layer with HLOD turned on: a copy carrying the per-kit flat <paramref name="sourceMeshes"/> to
@@ -156,61 +164,75 @@ namespace KhaozEngine.Terrain
             if (sourceMeshes == null) throw new ArgumentNullException(nameof(sourceMeshes));
             return new PropLayer(Scatter, Companions, HostLayerIndex, Meshes, PartMeshes, DrawRadius, FadeBandWidth,
                 LodMeshes, LodPartMeshes, LodDistance, sourceMeshes, hlodDistance, weldCell, crossfadeWidth,
-                Placements, RegisterColliders, PlacementSource);
+                Placements, RegisterColliders, PlacementSource, CastsShadows);
         }
 
         /// <summary>A scatter layer driven by its own <see cref="ScatterConfig"/> (single-handle mesh set).
         /// <paramref name="fadeBandWidth"/> (default 0 = hard cut) is the dissolve fade band just inside
         /// <paramref name="drawRadius"/> (see <see cref="FadeBandWidth"/>). Optional <paramref name="lodMeshes"/> plus
         /// a positive <paramref name="lodDistance"/> swap a kit to its far LOD variant beyond that distance (see
-        /// <see cref="LodMeshes"/>).</summary>
+        /// <see cref="LodMeshes"/>).
+        /// <paramref name="castsShadows"/> defaults true. Pass false to keep the whole layer out of the shadow
+        /// depth pass (see <see cref="CastsShadows"/>).</summary>
         public static PropLayer ScatterLayer(ScatterConfig scatter,
             IReadOnlyDictionary<string, MeshHandle> meshes, float drawRadius, float fadeBandWidth = 0f,
-            IReadOnlyDictionary<string, MeshHandle>? lodMeshes = null, float lodDistance = 0f)
+            IReadOnlyDictionary<string, MeshHandle>? lodMeshes = null, float lodDistance = 0f, bool castsShadows = true)
         {
             if (scatter == null) throw new ArgumentNullException(nameof(scatter));
             if (meshes == null) throw new ArgumentNullException(nameof(meshes));
-            return new PropLayer(scatter, null, -1, meshes, null, drawRadius, fadeBandWidth, lodMeshes, null, lodDistance);
+            return new PropLayer(scatter, null, -1, meshes, null, drawRadius, fadeBandWidth, lodMeshes, null, lodDistance,
+                castsShadows: castsShadows);
         }
 
         /// <summary>A scatter layer whose kits are MULTI-PART (each id one-or-many <see cref="MeshHandle"/>s, one
         /// textured sub-mesh per material). Additive companion to the single-handle overload. Every part instances at
         /// each placement transform. Feed it <see cref="Scene3D.LoadPropMeshes"/> output per id.
         /// <paramref name="fadeBandWidth"/> and (<paramref name="lodPartMeshes"/>, <paramref name="lodDistance"/>) work
-        /// as on the single-handle overload, with LOD variants supplied as parallel part lists.</summary>
+        /// as on the single-handle overload, with LOD variants supplied as parallel part lists.
+        /// <paramref name="castsShadows"/> defaults true. Pass false to keep the whole layer out of the shadow
+        /// depth pass (see <see cref="CastsShadows"/>).</summary>
         public static PropLayer ScatterLayer(ScatterConfig scatter,
             IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> partMeshes, float drawRadius, float fadeBandWidth = 0f,
-            IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? lodPartMeshes = null, float lodDistance = 0f)
+            IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? lodPartMeshes = null, float lodDistance = 0f,
+            bool castsShadows = true)
         {
             if (scatter == null) throw new ArgumentNullException(nameof(scatter));
             if (partMeshes == null) throw new ArgumentNullException(nameof(partMeshes));
-            return new PropLayer(scatter, null, -1, EmptyMeshes, partMeshes, drawRadius, fadeBandWidth, null, lodPartMeshes, lodDistance);
+            return new PropLayer(scatter, null, -1, EmptyMeshes, partMeshes, drawRadius, fadeBandWidth, null, lodPartMeshes,
+                lodDistance, castsShadows: castsShadows);
         }
 
         /// <summary>A companion layer: rings the placements of the scatter layer at <paramref name="hostLayerIndex"/>
         /// with foliage per <paramref name="companions"/> (single-handle mesh set). <paramref name="fadeBandWidth"/>
-        /// and (<paramref name="lodMeshes"/>, <paramref name="lodDistance"/>) behave as on the scatter overload.</summary>
+        /// and (<paramref name="lodMeshes"/>, <paramref name="lodDistance"/>) behave as on the scatter overload.
+        /// <paramref name="castsShadows"/> defaults true. Pass false to keep the whole layer out of the shadow
+        /// depth pass (see <see cref="CastsShadows"/>).</summary>
         public static PropLayer CompanionLayer(int hostLayerIndex, CompanionConfig companions,
             IReadOnlyDictionary<string, MeshHandle> meshes, float drawRadius, float fadeBandWidth = 0f,
-            IReadOnlyDictionary<string, MeshHandle>? lodMeshes = null, float lodDistance = 0f)
+            IReadOnlyDictionary<string, MeshHandle>? lodMeshes = null, float lodDistance = 0f, bool castsShadows = true)
         {
             if (companions == null) throw new ArgumentNullException(nameof(companions));
             if (meshes == null) throw new ArgumentNullException(nameof(meshes));
             if (hostLayerIndex < 0) throw new ArgumentOutOfRangeException(nameof(hostLayerIndex));
-            return new PropLayer(null, companions, hostLayerIndex, meshes, null, drawRadius, fadeBandWidth, lodMeshes, null, lodDistance);
+            return new PropLayer(null, companions, hostLayerIndex, meshes, null, drawRadius, fadeBandWidth, lodMeshes, null,
+                lodDistance, castsShadows: castsShadows);
         }
 
         /// <summary>A companion layer whose kits are MULTI-PART (additive companion to the single-handle overload).
         /// Each id's parts instance as a unit around every host placement. <paramref name="fadeBandWidth"/> and
-        /// (<paramref name="lodPartMeshes"/>, <paramref name="lodDistance"/>) behave as on the scatter overload.</summary>
+        /// (<paramref name="lodPartMeshes"/>, <paramref name="lodDistance"/>) behave as on the scatter overload.
+        /// <paramref name="castsShadows"/> defaults true. Pass false to keep the whole layer out of the shadow
+        /// depth pass (see <see cref="CastsShadows"/>).</summary>
         public static PropLayer CompanionLayer(int hostLayerIndex, CompanionConfig companions,
             IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> partMeshes, float drawRadius, float fadeBandWidth = 0f,
-            IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? lodPartMeshes = null, float lodDistance = 0f)
+            IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? lodPartMeshes = null, float lodDistance = 0f,
+            bool castsShadows = true)
         {
             if (companions == null) throw new ArgumentNullException(nameof(companions));
             if (partMeshes == null) throw new ArgumentNullException(nameof(partMeshes));
             if (hostLayerIndex < 0) throw new ArgumentOutOfRangeException(nameof(hostLayerIndex));
-            return new PropLayer(null, companions, hostLayerIndex, EmptyMeshes, partMeshes, drawRadius, fadeBandWidth, null, lodPartMeshes, lodDistance);
+            return new PropLayer(null, companions, hostLayerIndex, EmptyMeshes, partMeshes, drawRadius, fadeBandWidth, null,
+                lodPartMeshes, lodDistance, castsShadows: castsShadows);
         }
 
         /// <summary>A placement layer: a frozen, author-supplied list of exact <paramref name="placements"/>
@@ -220,15 +242,18 @@ namespace KhaozEngine.Terrain
         /// overload supports - <paramref name="fadeBandWidth"/>, (<paramref name="lodMeshes"/>,
         /// <paramref name="lodDistance"/>), and <see cref="WithHlod"/> - applies unchanged. <paramref name="colliders"/>
         /// defaults true. Pass false to keep the layer render-only when the consuming game registers physics for
-        /// these placements outside the sink.</summary>
+        /// these placements outside the sink.
+        /// <paramref name="castsShadows"/> defaults true. Pass false to keep the whole layer out of the shadow
+        /// depth pass (see <see cref="CastsShadows"/>).</summary>
         public static PropLayer PlacementLayer(IReadOnlyList<PropPlacement> placements,
             IReadOnlyDictionary<string, MeshHandle> meshes, float drawRadius, float fadeBandWidth = 0f,
-            IReadOnlyDictionary<string, MeshHandle>? lodMeshes = null, float lodDistance = 0f, bool colliders = true)
+            IReadOnlyDictionary<string, MeshHandle>? lodMeshes = null, float lodDistance = 0f, bool colliders = true,
+            bool castsShadows = true)
         {
             if (placements == null) throw new ArgumentNullException(nameof(placements));
             if (meshes == null) throw new ArgumentNullException(nameof(meshes));
             return new PropLayer(null, null, -1, meshes, null, drawRadius, fadeBandWidth, lodMeshes, null, lodDistance,
-                placements: placements, registerColliders: colliders);
+                placements: placements, registerColliders: colliders, castsShadows: castsShadows);
         }
 
         /// <summary>A placement layer whose kits are MULTI-PART (additive companion to the single-handle overload):
@@ -236,16 +261,18 @@ namespace KhaozEngine.Terrain
         /// <paramref name="placements"/> (issue #286), the same bucket-once-at-construction behaviour, and the same
         /// knob set as the single-handle overload, with LOD variants supplied as parallel part lists via
         /// <paramref name="lodPartMeshes"/>. <paramref name="colliders"/> defaults true. Pass false to keep the
-        /// layer render-only when the consuming game registers physics for these placements outside the sink.</summary>
+        /// layer render-only when the consuming game registers physics for these placements outside the sink.
+        /// <paramref name="castsShadows"/> defaults true. Pass false to keep the whole layer out of the shadow
+        /// depth pass (see <see cref="CastsShadows"/>).</summary>
         public static PropLayer PlacementLayer(IReadOnlyList<PropPlacement> placements,
             IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> partMeshes, float drawRadius, float fadeBandWidth = 0f,
             IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? lodPartMeshes = null, float lodDistance = 0f,
-            bool colliders = true)
+            bool colliders = true, bool castsShadows = true)
         {
             if (placements == null) throw new ArgumentNullException(nameof(placements));
             if (partMeshes == null) throw new ArgumentNullException(nameof(partMeshes));
             return new PropLayer(null, null, -1, EmptyMeshes, partMeshes, drawRadius, fadeBandWidth, null, lodPartMeshes,
-                lodDistance, placements: placements, registerColliders: colliders);
+                lodDistance, placements: placements, registerColliders: colliders, castsShadows: castsShadows);
         }
 
         /// <summary>A placement layer backed by a LIVE <paramref name="source"/> instead of a frozen list: the
@@ -253,33 +280,36 @@ namespace KhaozEngine.Terrain
         /// was constructed (a streamed document tile) renders as soon as its chunks are invalidated. A frozen-list
         /// layer is bucketed once at construction and cannot do that. Every knob the frozen overload supports -
         /// <paramref name="fadeBandWidth"/>, (<paramref name="lodMeshes"/>, <paramref name="lodDistance"/>), and
-        /// <see cref="WithHlod"/> - applies unchanged, and so does the collider flag.
+        /// <see cref="WithHlod"/> - applies unchanged, and so do the collider and casts-shadows flags.
         /// <para>The source is queried on the BUILD thread, so it must publish an immutable snapshot and read it
         /// once per query. <c>MapTileResidency</c> is one, which makes
         /// <c>PropLayer.PlacementLayer(residency, meshes, drawRadius)</c> the whole of a consumer's wiring.</para></summary>
         public static PropLayer PlacementLayer(IPlacementSource source,
             IReadOnlyDictionary<string, MeshHandle> meshes, float drawRadius, float fadeBandWidth = 0f,
-            IReadOnlyDictionary<string, MeshHandle>? lodMeshes = null, float lodDistance = 0f, bool colliders = true)
+            IReadOnlyDictionary<string, MeshHandle>? lodMeshes = null, float lodDistance = 0f, bool colliders = true,
+            bool castsShadows = true)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             if (meshes == null) throw new ArgumentNullException(nameof(meshes));
             return new PropLayer(null, null, -1, meshes, null, drawRadius, fadeBandWidth, lodMeshes, null, lodDistance,
-                registerColliders: colliders, placementSource: source);
+                registerColliders: colliders, placementSource: source, castsShadows: castsShadows);
         }
 
         /// <summary>A live-source placement layer whose kits are MULTI-PART (additive companion to the
         /// single-handle overload): each id's parts instance as a unit at every placement the source serves for
         /// the chunk. Same per-build query, same knob set, with LOD variants supplied as parallel part lists via
-        /// <paramref name="lodPartMeshes"/>.</summary>
+        /// <paramref name="lodPartMeshes"/>.
+        /// <paramref name="castsShadows"/> defaults true. Pass false to keep the whole layer out of the shadow
+        /// depth pass (see <see cref="CastsShadows"/>).</summary>
         public static PropLayer PlacementLayer(IPlacementSource source,
             IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> partMeshes, float drawRadius, float fadeBandWidth = 0f,
             IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? lodPartMeshes = null, float lodDistance = 0f,
-            bool colliders = true)
+            bool colliders = true, bool castsShadows = true)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             if (partMeshes == null) throw new ArgumentNullException(nameof(partMeshes));
             return new PropLayer(null, null, -1, EmptyMeshes, partMeshes, drawRadius, fadeBandWidth, null, lodPartMeshes,
-                lodDistance, registerColliders: colliders, placementSource: source);
+                lodDistance, registerColliders: colliders, placementSource: source, castsShadows: castsShadows);
         }
     }
 }

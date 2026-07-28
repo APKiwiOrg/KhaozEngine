@@ -42,7 +42,7 @@ namespace KhaozEngine.Terrain
         /// default) bakes exactly what the engine's own <see cref="TerrainSplatWeights.From"/> produces, so a caller
         /// that supplies nothing is byte-identical to the pre-rule builder. The full contract is on
         /// <see cref="TerrainSplatContext"/>, and all three parts of it are load-bearing: the rule must be PURE
-        /// (chunk meshes are cached per region and LOD and built off the frame thread, so an impure rule bakes
+        /// (each chunk is meshed independently, per region and LOD, off the frame thread, so an impure rule bakes
         /// neighbours that disagree at their shared edge), it runs on a HOT PATH (once per vertex of every streamed
         /// chunk), and it is PRESENTATION ONLY (no field, collision, document, or world-identity impact).</para></summary>
         public static TerrainChunkMesh Build(TerrainField field, TerrainChunkRegion region, int lod, TerrainLodConfig lodConfig, float skirtDepth = 0.3f, float snowLine = 60f,

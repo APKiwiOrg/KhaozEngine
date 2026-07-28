@@ -302,6 +302,17 @@ namespace KhaozEngine.Render3D
         /// </summary>
         public bool ShadowPassSkippedLastFrame => _shadowPassSkippedLastFrame;
 
+        /// <summary>
+        /// GPU resources retired by a mid-life unload (a streamed chunk mesh freed while the scene keeps running)
+        /// that are still waiting out their frame delay before being destroyed. Always on and allocation-free.
+        /// <para>A streaming world's healthy shape is a small number that returns to 0 within a few frames of a
+        /// burst of unloads. A number that climbs and stays up means the frame loop is retiring faster than it is
+        /// draining, or that a host driving the scene without frame boundaries (a tool, a test, an offscreen
+        /// render) is never reaching the <c>BeginFrame</c> that frees them, in which case the whole unloaded ring
+        /// is being held. Diagnostics only: reading it changes nothing.</para>
+        /// </summary>
+        public int RetiredResourceCount => _retired.PendingCount;
+
         /// <summary>Test/profiling seam onto the batched ground-decal renderer (its <c>ForceFullscreenQuads</c> parity
         /// toggle). Internal - the renderer type is internal. A GPU test flips the toggle to prove the footprint
         /// bounding renders pixel-identically to full-viewport coverage.</summary>

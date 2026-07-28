@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Threading;
 using KhaozEngine.Physics;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
@@ -44,12 +45,38 @@ namespace KhaozEngine.Terrain
         readonly int _collisionLod;
         readonly Func<TerrainSplatContext, TerrainSplatWeights>? _splatRule;
         readonly bool _anyHlod;
+        /// <summary>The HLOD merge gate, non-null exactly when some layer bakes an HLOD mesh. See
+        /// <see cref="HlodBuildGate"/>: it is what keeps a tier re-LOD or a ring change from merging a cluster whose
+        /// result the apply would only throw away.</summary>
+        readonly HlodBuildGate? _hlodGate;
+
+        /// <summary>The HLOD merge gate, or null when no layer bakes one. Internal (not private) so a headless test
+        /// can put a chunk into the applied state a re-LOD would see and then assert what <see cref="BuildCpu"/>
+        /// does, without a GPU device to run <see cref="Apply"/> through. Same seam as <see cref="CpuBuild"/>.</summary>
+        internal HlodBuildGate? HlodGate => _hlodGate;
         /// <summary>Each placement layer's placements split by chunk coord (index-aligned to the layers, null for
         /// every other layer), or null when no layer carries placements. Built once in the ctor: the list is frozen,
         /// so the split never has to be redone. See <see cref="PlacementBuckets"/>.</summary>
         readonly Dictionary<ChunkCoord, PropPlacement[]>[]? _placementBuckets;
         readonly Dictionary<ChunkCoord, ChunkLoad> _loaded = new();
+        // Cumulative HLOD merge counters (see HlodMergeStats). Built is bumped from the background build thread and
+        // uploaded from the frame thread, so both go through Interlocked rather than a plain add.
+        long _hlodBuilt, _hlodBuiltBytes, _hlodUploaded, _hlodUploadedBytes;
         bool _disposed;
+
+        /// <summary>Cumulative HLOD merge totals for this sink: clusters merged versus clusters an apply actually
+        /// consumed, with the byte totals. Always on and allocation-free. A steady difference between the two is
+        /// merge work being thrown away, so <see cref="HlodMergeStats.DiscardedBytes"/> is the signal to watch.
+        /// Zero on every field when the sink has no HLOD layer.</summary>
+        public HlodMergeStats MergeStats => new(
+            Interlocked.Read(ref _hlodBuilt), Interlocked.Read(ref _hlodBuiltBytes),
+            Interlocked.Read(ref _hlodUploaded), Interlocked.Read(ref _hlodUploadedBytes));
+
+        /// <summary>Merged-mesh size in bytes: vertices at their interleaved stride plus 4 bytes per 32-bit index.
+        /// A null (empty-cluster) mesh is 0, so an empty cluster still counts as a build and an upload of 0 bytes
+        /// and the built/uploaded totals stay comparable.</summary>
+        static long MeshBytes(GltfMesh? mesh) =>
+            mesh is null ? 0L : (long)mesh.Vertices.Length * ModelVertex.SizeInBytes + (long)mesh.Indices32.Length * sizeof(uint);
 
         /// <summary>Multi-layer sink. Each <see cref="PropLayer"/> is a scatter layer, a companion layer, or a
         /// placement layer (issue #286, a frozen author-supplied list bucketed by chunk here at construction). A
@@ -84,13 +111,18 @@ namespace KhaozEngine.Terrain
         /// own <see cref="TerrainSplatWeights.From"/> weights go straight into the vertex. A world with a SECOND body
         /// of water needs it, because <c>From</c> derives its sand band from the field's single water level, so a lake
         /// edge otherwise bakes as grass running into water. Three constraints, all spelled out on
-        /// <see cref="TerrainSplatContext"/> and all load-bearing: the rule must be PURE (this sink caches a chunk
-        /// mesh per region and LOD and builds it on a background thread, so an impure rule bakes neighbours that
-        /// disagree at their shared edge until something re-LODs them), it runs on a HOT PATH (once per vertex of
+        /// <see cref="TerrainSplatContext"/> and all load-bearing: the rule must be PURE (each chunk is meshed
+        /// independently, per region and LOD, on a background thread, and a meshed chunk is then held until it
+        /// re-LODs or unloads, so an impure rule bakes neighbours that disagree at their shared edge and they stay
+        /// that way until something rebuilds them), it runs on a HOT PATH (once per vertex of
         /// every streamed chunk), and it is PRESENTATION ONLY (no field, collision, document, or world-identity
         /// impact, so a client may adopt one against a server that has never heard of it). The rule is fixed for the
-        /// sink's lifetime, matching how the mesh cache is keyed: changing the mix means a new sink, or a rebuild of
-        /// the loaded ring (<see cref="TerrainStreamer.Invalidate(RectArea)"/>) the way a field swap does.</para></summary>
+        /// sink's lifetime: changing the mix means a new sink, or a rebuild of
+        /// the loaded ring (<see cref="TerrainStreamer.Invalidate(RectArea)"/>) the way a field swap does.</para>
+        /// <para>There is no chunk-mesh cache, and this doc used to claim there was one (issue #393, where the wrong
+        /// claim sent part of a leak audit down the wrong path). A chunk mesh is rebuilt from the field on every
+        /// build, at whatever tier is asked for, and the only thing genuinely reused across a re-LOD is the uploaded
+        /// HLOD merged mesh, which <see cref="HlodBuildGate"/> governs.</para></summary>
         public Scene3DChunkSink(Scene3D scene, TerrainField field, IReadOnlyList<PropLayer> layers,
                                 float chunkSize, Scene3D.SplatMaterialHandle material = default, bool ownsMaterial = false,
                                 IPhysicsWorld? physics = null,
@@ -151,6 +183,7 @@ namespace KhaozEngine.Terrain
             // entirely, so a sink with no HLOD layer is byte-identical to the pre-HLOD sink.
             for (int i = 0; i < snapshot.Length; i++)
                 if (snapshot[i].HasHlod) { _anyHlod = true; break; }
+            if (_anyHlod) _hlodGate = new HlodBuildGate();
         }
 
         /// <summary>Single-layer sink (back-compat): one scatter config, one mesh set, one draw radius. The splat
@@ -275,8 +308,11 @@ namespace KhaozEngine.Terrain
             /// <see cref="Mesh"/>: the collision resolution never follows the render tier, so a re-LOD keeps the same
             /// collision body. Reuses <see cref="Mesh"/> when the collision tier equals the render tier.</summary>
             public TerrainChunkMesh? CollisionMesh;
-            /// <summary>The coarse HLOD merged mesh per layer (index-aligned to the layers), or null when the sink has
-            /// no HLOD layer. An entry is null when that layer has no HLOD or the cluster produced no geometry. Built
+            /// <summary>The coarse HLOD merged mesh per layer (index-aligned to the layers), or null when this build
+            /// merged nothing: the sink has no HLOD layer, or the apply this build feeds is a tier re-LOD or a ring
+            /// change, which keeps the mesh already uploaded (see <see cref="HlodBuildGate"/>). An ENTRY is null when
+            /// that layer has no HLOD or the cluster produced no geometry, which is a different thing: the array
+            /// being non-null is <see cref="Apply"/>'s signal that this build carries a fresh merge to swap in. Built
             /// off the analytic scatter (deterministic per chunk + field) for BOTH rings, since a decor chunk renders
             /// the merged mesh in place of the props it never scatters. CPU-only - the GPU upload happens in Apply.</summary>
             public GltfMesh?[]? HlodMeshes;
@@ -317,13 +353,20 @@ namespace KhaozEngine.Terrain
         /// <summary>Build the chunk's mesh (and, for a gameplay chunk, its scatter + fixed-LOD collision surface) with
         /// no GPU access, so the streamer can run it off the frame thread. A decor chunk builds the mesh only - no
         /// scatter, no collision surface. <see cref="TerrainChunkBuilder"/> and <see cref="PropScatter"/> both
-        /// read only the immutable analytic field, so concurrent chunk builds are safe.</summary>
+        /// read only the immutable analytic field, so concurrent chunk builds are safe.
+        /// <para>The HLOD cluster merge is built only when the apply will CONSUME it, which is a fresh load or a
+        /// rebuild in place, never a tier re-LOD or a ring change (both keep the mesh already on the GPU). See
+        /// <see cref="HlodBuildGate"/> for the rule and issue #393 for what it costs to get this wrong: the merge is
+        /// multi-megabyte large-object work per chunk, so building it for an apply that discards it is the whole
+        /// leak.</para></summary>
         public object BuildCpu(ChunkCoord coord, int lod, ChunkRing ring = ChunkRing.Gameplay)
         {
             TerrainChunkRegion region = ChunkGrid.RegionOf(coord, _chunkSize);
-            // Scatter is needed for a gameplay chunk's props AND for any HLOD merge (even on a decor chunk, whose
-            // merged mesh stands in for the props it never scatters). Compute it once when either applies.
-            IReadOnlyList<PropPlacement>[]? scatter = ring == ChunkRing.Gameplay || _anyHlod ? ScatterLayersFor(coord) : null;
+            bool buildHlod = _hlodGate is not null && _hlodGate.NeedsMerge(coord, lod, ring);
+            // Scatter is needed for a gameplay chunk's props AND for an HLOD merge that is actually going to happen
+            // (even on a decor chunk, whose merged mesh stands in for the props it never scatters). Compute it once
+            // when either applies. A decor re-LOD that merges nothing does not query placements at all.
+            IReadOnlyList<PropPlacement>[]? scatter = ring == ChunkRing.Gameplay || buildHlod ? ScatterLayersFor(coord) : null;
             var cpu = new CpuBuild
             {
                 Mesh = TerrainChunkBuilder.Build(_field, region, lod, _lodConfig, splatRule: _splatRule),
@@ -336,8 +379,10 @@ namespace KhaozEngine.Terrain
             if (ring == ChunkRing.Gameplay && _collideTerrain)
                 cpu.CollisionMesh = _collisionLod == lod ? cpu.Mesh : TerrainChunkBuilder.Build(_field, region, _collisionLod, _lodConfig);
             // HLOD merged mesh per layer: merge + weld this cluster's placements into one coarse world-space mesh
-            // (deterministic per chunk + field, so a runtime bake at load reproduces). Built for both rings.
-            if (_anyHlod)
+            // (deterministic per chunk + field, so a runtime bake at load reproduces). Built for both rings, and only
+            // when the apply is going to consume it. A null HlodMeshes is the payload's own signal to Apply that this
+            // build carries no fresh merge and the uploaded handles must be kept as they are.
+            if (buildHlod)
             {
                 var hlod = new GltfMesh?[_layers.Count];
                 for (int i = 0; i < _layers.Count; i++)
@@ -346,6 +391,8 @@ namespace KhaozEngine.Terrain
                     if (!layer.HasHlod) continue;
                     GltfMesh m = PropHlod.BuildMergedMesh(scatter![i], layer.HlodSourceMeshes!, layer.HlodWeldCell);
                     hlod[i] = m.TriangleCount > 0 ? m : null;   // an empty cluster uploads nothing
+                    Interlocked.Increment(ref _hlodBuilt);
+                    Interlocked.Add(ref _hlodBuiltBytes, MeshBytes(hlod[i]));
                 }
                 cpu.HlodMeshes = hlod;
             }
@@ -385,6 +432,7 @@ namespace KhaozEngine.Terrain
                 // Decor chunk: render-only for physics. No scatter (LayerProps is empty), no statics/dynamics/terrain
                 // collider - but its HLOD merged mesh IS uploaded (a decor chunk shows the far forest as one instance).
                 UploadHlod(load, cpu);
+                _hlodGate?.MarkApplied(coord, lod, ring);
                 return load;
             }
 
@@ -450,13 +498,17 @@ namespace KhaozEngine.Terrain
             }
 
             // HLOD merged mesh: the coarse geometry is field-determined and tier/ring-independent, so a pure tier or
-            // ring re-LOD keeps the cached handle (no GPU churn). Only a field rebuild (editor Invalidate after a
-            // field swap) rebuilds it, mirroring how the placements + terrain surface refresh only then.
-            if (_anyHlod && fieldRebuild)
+            // ring re-LOD keeps the cached handle (no GPU churn). Only a rebuild in place (editor Invalidate after a
+            // field swap, or a placement source's arrival) rebuilds it, mirroring how the placements + terrain
+            // surface refresh only then. The condition is the PAYLOAD, not fieldRebuild: BuildCpu already made this
+            // exact call (it is what decides whether to spend the merge at all), so re-deriving it here would be a
+            // second copy of the rule that could drift from the one that actually spent the work.
+            if (cpu.HlodMeshes is not null)
             {
                 UnloadHlod(relod);
                 UploadHlod(relod, cpu);
             }
+            _hlodGate?.MarkApplied(coord, lod, ring);
             return relod;
         }
 
@@ -468,8 +520,15 @@ namespace KhaozEngine.Terrain
             if (!_anyHlod || cpu.HlodMeshes is null) return;
             load.HlodMeshHandles = new MeshHandle?[_layers.Count];
             for (int i = 0; i < _layers.Count; i++)
+            {
+                if (!_layers[i].HasHlod) continue;
+                // Counted per HLOD LAYER, matching how BuildCpu counts, so an empty cluster (no mesh to upload)
+                // still balances the built side at 0 bytes instead of showing as permanent waste.
+                Interlocked.Increment(ref _hlodUploaded);
+                Interlocked.Add(ref _hlodUploadedBytes, MeshBytes(cpu.HlodMeshes[i]));
                 if (cpu.HlodMeshes[i] is { } mesh)
                     load.HlodMeshHandles[i] = _scene.LoadMesh(mesh);
+            }
         }
 
         // Free a chunk's uploaded HLOD meshes and clear the handle array. Idempotent (null handles / already cleared).
@@ -500,6 +559,8 @@ namespace KhaozEngine.Terrain
             UnloadHlod(load);
             _scene.UnloadMesh(load.Mesh);
             _loaded.Remove(coord);
+            // The merged mesh went with it, so the next load of this chunk merges again.
+            _hlodGate?.Forget(coord);
         }
 
         /// <summary>Draw every loaded chunk mesh and each layer's in-range props (XZ-culled to that layer's draw
@@ -604,6 +665,7 @@ namespace KhaozEngine.Terrain
                 _scene.UnloadMesh(load.Mesh);
             }
             _loaded.Clear();
+            _hlodGate?.Clear();
             if (_ownsMaterial && _material.IsValid)
                 _scene.UnloadSplatMaterial(_material);
         }

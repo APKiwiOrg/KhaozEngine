@@ -5,6 +5,62 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.12.0
+
+### Particle flipbook atlases stop sampling their neighbouring cells
+
+A flipbook sprite could render fragments of the wrong atlas cell: on Windows constantly, on macOS never.
+Two independent defects, both in the sampling path, found from a Ruinborne report of dropped item icons
+flickering a staff into a health potion. Design and the weighted option scoring are in
+`docs/design/FLIPBOOK-ATLAS-SAMPLING-DESIGN-2026-07-28.md`. Closes #389 and #390, for
+[Ruinborne#365](https://github.com/APKiwiOrg/Ruinborne/issues/365).
+
+**The flip carrier went through the interpolator.** `ParticleRenderer.PackFlipGrid` packs columns, rows,
+quantized motion strength and the two flip bits into one 24-bit float, and the fragment shader decodes it
+with mirror `mod`/`floor` math. That value rode `vFlip.w`, and no varying in the particle shaders carried
+a `flat` qualifier, so a per-instance constant was handed to perspective-correct interpolation. Exact in
+infinite precision, not exact in float32: hardware that divides by an interpolated `w` rounds, hardware
+that evaluates a plane equation does not, which is the Metal versus Direct3D11 split. `FlipV` alone
+contributes 2^23, so any consumer setting it lands in the binade where the ULP is exactly 1.0, and one
+ULP moves the decoded column count by a whole cell.
+
+`vColor`, `vShape`, `vExtra` and `vFlip` are now all `flat`. Every one of them is written once per
+instance, so the qualifier is semantically identical, strictly cheaper, and closes the class rather than
+the one instance. `vLocal` and `vWorld` genuinely vary and stay interpolated.
+
+**The mip chain averaged across cell boundaries.** `Scene3D.LoadTexture` builds a full chain
+unconditionally and the flipbook path binds the trilinear sampler, so a distant sprite sampled levels
+where the atlas has collapsed toward one texel per cell and every cell is a blend of the whole sheet. The
+fragment shader now derives the safe maximum LOD itself, from the packed grid and the sheet's own
+`textureSize`, and samples with an explicit clamped `textureLod`. It caps at the coarsest level where a
+cell still has 4 texels on its shorter side, which holds the bilinear fringe at a cell edge to a quarter
+of a texel while keeping proper minification within the cell. Nothing is required of the consumer: an
+atlas loaded exactly as before now samples correctly, so adoption is a version pin bump.
+
+**`Scene3D.LoadTexture` takes an optional `TextureMipPolicy`.** `Full` (the default, and what every
+existing call keeps getting), `None`, or `AtlasGrid(columns, rows, minCellTexels = 4)`. This is the
+separate API gap the mip defect exposed: no caller could say "do not average this image with itself" for
+a UI sheet, a gradient ramp or a lookup texture either. The flipbook path does not need it, since the
+shader clamps regardless. It is there to stop paying memory for levels nothing samples, and for the model
+pipeline, which has no shader-side clamp of its own. `LevelsFor` is pure and covered headless.
+
+**`PackInstance` sends motion strength 0 when no motion sheet is bound.** `MotionStrength` defaults to 1
+whether or not a sheet exists, so it was contributing 2^20 to every flipbook that never warps. With no
+sheet bound the renderer binds a 1x1 neutral dummy that decodes to zero displacement, so the strength was
+scaling a zero and sending 0 changes no output. It drops the common case three binades down the packed
+lane, which is real headroom for a scheme that documents itself as having no spare bit.
+
+The mip clamp is proved by a new GPU test that renders a grazing minified flipbook strip and measures how
+much of the sprite came from cells other than its own. It fails against the unclamped shader. The `flat`
+fix is not testable on any backend the engine can bake on, since Metal is the exact path by hypothesis and
+lavapipe and WARP are software rasterizers, so it ships proven by construction with the existing flipbook
+GPU tests covering that the decode still works. Confirmation belongs to a Windows tester on a real drop.
+
+One trap worth reading before touching this shader: hoisting a `textureSize` above the motion-vector taps
+reorders first reference against binding order, and Metal assigns argument slots by first reference, so
+the atlas and motion textures silently swap. That is why each sheet takes its cap from its own
+`textureSize` in binding order and the LOD helper touches no texture at all. Recurrence noted on #323.
+
 ## 17.11.0
 
 ### Streaming a chunk in no longer stalls the GPU

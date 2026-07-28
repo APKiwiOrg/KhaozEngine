@@ -5,6 +5,84 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.13.0
+
+### Shadows survive a grazing sun
+
+Tall casters stopped shadowing the ground in a mid-distance band as the sun got low, evenings only,
+zoom sensitive, identical across render distance tiers. Two defects, both in the cascade path. Closes
+[#394](https://github.com/APKiwiOrg/KhaozEngine/issues/394), for
+[Ruinborne#364](https://github.com/APKiwiOrg/Ruinborne/issues/364).
+
+**The depth pass clipped instead of clamping.** Each cascade places its light eye 2r up-light of the
+slice-sphere centre with the ortho near plane at the eye, and a caster and the ground it shades sit
+h / sin(elevation) apart along the light ray, not h apart. At 15 degrees a 12 m tree stands 46 m
+up-sun of the ground it shades, so it lands in front of the near plane and was clipped out of the near
+cascades entirely. The receiver takes the first cascade whose UV accepts it with no fall-through, so
+that ground read the atlas clear value and rendered fully lit. All three shadow depth vertices now clamp
+the rasterized clip depth at the near plane and all three depth fragments clamp the stored depth, so a
+caster up-light of the plane records at it with its silhouette intact, which is exactly right for a
+directional light.
+
+The clamp is done in the shaders rather than by turning off the pipelines' depth clip, because that flag
+is not portable across the three backends: Veldrid's Metal backend derives MTLDepthClipMode from the
+depth-stencil state and ignores RasterizerState.DepthClipEnabled outright, so the flip would have been
+a silent no-op there, and its Vulkan backend maps it to depthClampEnable, a device feature that need
+not be present. The light projection is orthographic, so clamping clip space z is exactly a clamp of NDC
+depth and needs nothing from the device. Far-plane clipping is kept.
+
+**The receiver's cascade select was missing a bound.** The GLSL projectCascade rejected depth above 1
+but not below 0, while its CPU mirror ShadowMapMath.SelectCascade rejected both. A receiver in front of
+a cascade's near plane claimed that cascade anyway and read fully lit on all nine PCF taps, which is what
+gave the dead band its hard outer edge. Both bounds are now tested, and a shader-text contract test binds
+the GLSL to the CPU mirror so they cannot drift again.
+
+Nothing is required of a consumer: a pin bump is the whole adoption. No cascade radius, split, or eye
+placement changed, and every committed golden is pixel-identical. Known residual, deliberately separate:
+skinned casters are still frustum-culled against the cascade near plane before the depth pass
+([#395](https://github.com/APKiwiOrg/KhaozEngine/issues/395), low severity).
+
+### The HLOD cluster merge stops rebuilding itself on every re-LOD
+
+Scene3DChunkSink merged and welded a chunk's whole prop cluster on every chunk build, but only ever
+consumed the result on a fresh load or a rebuild in place. A tier re-LOD and a ring change both keep the
+merged mesh already on the GPU, so both were merging tens of thousands of triangles into a
+multi-megabyte large-object allocation and dropping it on the floor. A player walking across tier
+boundaries triggers those constantly, the large object heap does not compact, and committed heap plus
+background gen2 cost ratchet up with distance travelled and never come back down. Closes
+[#393](https://github.com/APKiwiOrg/KhaozEngine/issues/393), for
+[Ruinborne#373](https://github.com/APKiwiOrg/Ruinborne/issues/373).
+
+Measured on the cluster shape that found it (41 props, 188,928 pre-weld triangles): a tier flip or ring
+change went from 34.4 MB allocated to nothing at all, because the merge no longer happens. The new
+HlodBuildGate records each chunk's applied tier and ring and answers whether a build has to merge. It
+keeps its own copy rather than reading the sink's loaded map, since the question is asked on the
+streamer's background build thread while that map is mutated on the frame thread. A null
+CpuBuild.HlodMeshes is the payload's own signal to Apply that there is no fresh merge to swap in, so the
+rule that spends the work and the rule that consumes it cannot drift apart. The decor ring's placement
+query rides the same gate: a decor chunk has no props of its own, so once the merge is skipped there is
+nothing left to query placements for.
+
+**The merge and the chunk builder size their buffers exactly.** A merge is a concatenation, so its
+totals are known from the source meshes before a byte is written, and the chunk builder's grid plus four
+skirts are arithmetic on the LOD resolution. Both were growing lists and closing with a ToArray, which
+cost the merge roughly three times the final size in transient large-object allocation and cost the
+terrain builder a second full ModelVertex[] copy of every streamed chunk. Both now count first and fill
+exactly-sized arrays: a fresh merge dropped from 34.4 MB to 9.1 MB, and a lod-0 chunk build from about
+964 KB to 483 KB. Output is byte-identical, asserted against the pre-change implementations kept
+verbatim in the tests.
+
+**PropRenderer's emit sinks are no longer closures.** Each of the four entry points closed over its
+scene or instance queue plus the tint and the casts-shadows flag, costing a display class and one or two
+delegates per call, one call per layer per loaded chunk per frame. Emit and EmitParts are now generic
+over the sink's state, so callers hand in a readonly struct and a static delegate: 20 warmed calls over
+200 placements now allocate exactly zero bytes.
+
+**Two diagnostics ship with it.** Scene3DChunkSink.MergeStats counts cluster merges and bytes BUILT
+against CONSUMED, so a non-zero DiscardedBytes is exactly this class of bug rather than something to be
+argued about, and Scene3D.RetiredResourceCount exposes the deferred-disposal backlog that was internal.
+Both are always on and allocation-free.
+
 ## 17.12.0
 
 ### Particle flipbook atlases stop sampling their neighbouring cells

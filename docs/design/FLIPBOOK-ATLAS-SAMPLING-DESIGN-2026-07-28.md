@@ -159,7 +159,7 @@ of its own, so a model atlas has no other answer.
 - A texture-array flipbook path (one array layer per frame) is the fully correct answer: mips are
   per-layer, so there is no cross-cell fringe at any level. It also changes the resource layout, the
   sampling path and the consumer-facing handle, and the LOD clamp removes the visible artifact without
-  any of that. Filed rather than built.
+  any of that. Filed as [#392](https://github.com/APKiwiOrg/KhaozEngine/issues/392) rather than built.
 - Anything on the Ruinborne side. Both affected sites pass `FlipV: true` and neither needs to change.
 
 ## 4. What shipped

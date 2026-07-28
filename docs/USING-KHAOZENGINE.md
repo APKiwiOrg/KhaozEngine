@@ -4768,7 +4768,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.7.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.8.0" />
 ```
 
 ```csharp
@@ -5381,9 +5381,58 @@ scene.DrawTerrainChunk(handle, region);                   // the region places t
 two `texture2DArray`s - albedo + normal - are shared by all chunks using this material). The material may be
 reloaded; each `LoadTerrainMaterial` call allocates a fresh set of arrays.
 
+**4. Influence the mix with a splat rule (optional).** The weights themselves come from
+`TerrainSplatWeights.From`, which derives its sand band from the field's single `WaterLevel`. That is the sea, so
+a world with a SECOND body of water (a lake, river, pond, oasis, flooded interior) has a shoreline the engine
+cannot see: it bakes as grass running straight into the water. Pass a `splatRule` to `Scene3DChunkSink` (or
+`TerrainChunkBuilder.Build`) and each vertex's mix goes through your function first. It is the seam for material
+work generally - paths, trampled ground, biome-specific dirt.
+
+The rule is handed a `TerrainSplatContext`: the vertex's `Height`, `Slope01`, `Biome`, its ABSOLUTE `WorldX`/
+`WorldZ`, and `Default`, the weights the engine itself baked for that vertex. `Default` is the point of the
+context. The common rule is "the engine's mix, adjusted", and a consumer that reimplements the whole mix drifts
+from the engine's tuning the first time `From` changes.
+
+```csharp
+// lakes is pre-baked immutable data captured when the rule was built - never mutated afterwards.
+var sink = new Scene3DChunkSink(scene, field, layers, chunkSize: TerrainChunkRegion.DefaultSize,
+    material: splatHandle,
+    splatRule: ctx =>
+    {
+        foreach (Lake lake in lakes)
+        {
+            if (!lake.NearShore(ctx.WorldX, ctx.WorldZ, ctx.Height)) continue;
+            TerrainSplatWeights w = ctx.Default;
+            w.Sand += lake.ShoreStrength(ctx.WorldX, ctx.WorldZ);
+            return w.Normalized();          // the shader derives snow as 1 - sum, so restore it
+        }
+        return ctx.Default;                 // no opinion here: defer to the engine
+    });
+```
+
+Three constraints, all load-bearing:
+
+- **The rule must be PURE.** Same context in, same weights out, forever, on any thread. Chunk meshes are built
+  per (region, LOD) and cached until unload, off the frame thread, in whatever order the player walks. A rule
+  that reads mutable game state (time of day, a live water level, weather, an RNG) bakes a chunk differently
+  depending on WHEN it streamed in, so two neighbours loaded seconds apart disagree at their shared edge and the
+  seam does not heal until something re-LODs or invalidates them. Capture immutable data when you build the rule.
+  A world whose splat genuinely changes swaps the rule and rebuilds the ring, it does not mutate what a live rule
+  reads.
+- **It is a HOT PATH.** Called once per vertex of every streamed chunk, on the build thread. No allocation, no
+  locking, no IO, no LINQ. Pre-bake the spatial index the rule needs.
+- **Splat is PRESENTATION ONLY.** The weights ride in vertex colour and pick which material layers blend. They do
+  not feed the `TerrainField`, collision, the map document, or any world-identity hash, so a client can adopt a
+  rule against a server that has never heard of it, and a saved world is unchanged. A headless server never
+  builds chunk meshes, so it never runs the rule at all.
+
+Leave `splatRule` null (the default) and the builder is byte-identical to the pre-rule engine, asserted per
+vertex over a sampled grid rather than by a golden.
+
 **Out of scope.** Runtime layer blending tweaks, streaming of different materials per biome region, and
 per-chunk material overrides are not provided - swap the handle on `Scene3DChunkSink` and rebuild the ring
-(`streamer.UnloadAll()` then a fresh sink with the new handle) to change the look at stream time.
+(`streamer.UnloadAll()` then a fresh sink with the new handle) to change the look at stream time. A `splatRule`
+is fixed for the sink's lifetime for the same reason: the mesh cache is keyed by (region, LOD), not by the rule.
 
 ---
 

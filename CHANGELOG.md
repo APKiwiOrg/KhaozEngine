@@ -5,6 +5,89 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.8.0
+
+### A game can now decide what the ground is made of, so a lake gets a shoreline
+
+Terrain splat weights were baked by one hardcoded call in `TerrainChunkBuilder.Build`, and
+`TerrainSplatWeights.From` derives its sand band from the field's single `WaterLevel`. That is the sea. A
+consumer could move `snowLine` and nothing else, so a world with a SECOND body of water had a shoreline the
+engine could not see: the lake edge baked as grass running straight into the water, because the only sand band
+in the world was at sea level. `TerrainChunkBuilder` and `Scene3DChunkSink` now take an optional consumer
+splat rule. Closes [#373](https://github.com/APKiwiOrg/KhaozEngine/issues/373). Consumer origin is
+[Ruinborne#305](https://github.com/APKiwiOrg/Ruinborne/issues/305).
+
+Same shape as 17.7.0's per-plane water look: something derived scene-wide that a world with more than one of
+the thing needs per-instance. It is equally the seam for material work generally - paths, trampled ground,
+biome-specific dirt - none of which was reachable before.
+
+Off by default and off is byte-identical. A null rule bakes precisely what the engine baked before, asserted
+per vertex over a sampled grid (not by a golden, which would also pass if both sides drifted together), so the
+terrain goldens pass unbaked.
+
+**New: `TerrainSplatContext`** (`KhaozEngine.Terrain.Render3D`, namespace `KhaozEngine.Terrain`). A
+`readonly record struct` carrying one vertex's `Height`, `Slope01`, `Biome`, its ABSOLUTE `WorldX`/`WorldZ`,
+and `Default` - the weights `TerrainSplatWeights.From` produced for that vertex. `Default` is the point of the
+context and not a convenience: the common rule is "the engine's mix, adjusted", and a consumer that has to
+reimplement the whole mix drifts from the engine's own tuning the first time `From` changes. Returning
+`ctx.Default` unchanged is the free "no opinion here" path.
+
+**New: `TerrainSplatWeights.Normalized()`.** The splat pipeline packs four weights into vertex colour and the
+shader reconstructs snow as `1 - sum`, so a rule that pushes one channel up has to restore the sum-to-1
+invariant or the vertex renders with snow bleeding in. `From` already normalized internally, and that tail was
+extracted into this method so there is one implementation and a rule has a one-call fix. The engine
+deliberately does NOT renormalize a rule's output: that would be a per-vertex cost paid by every consumer to
+paper over one consumer's bug.
+
+**How a consumer adopts it.** Pass `splatRule` to the `Scene3DChunkSink` constructor (both the multi-layer and
+the single-layer one). That is the seam a game configures, because games drive the streamer and do not call
+`TerrainChunkBuilder.Build` themselves. `Build` takes the same trailing optional parameter on both overloads
+for direct callers and tools.
+
+```csharp
+// lakes is immutable data captured when the rule was built, never mutated afterwards.
+var sink = new Scene3DChunkSink(scene, field, layers, chunkSize: TerrainChunkRegion.DefaultSize,
+    material: splatHandle,
+    splatRule: ctx =>
+    {
+        foreach (Lake lake in lakes)
+        {
+            if (!lake.NearShore(ctx.WorldX, ctx.WorldZ, ctx.Height)) continue;
+            TerrainSplatWeights w = ctx.Default;
+            w.Sand += lake.ShoreStrength(ctx.WorldX, ctx.WorldZ);
+            return w.Normalized();
+        }
+        return ctx.Default;
+    });
+```
+
+**The contract, documented on `TerrainSplatContext` and on every parameter that takes a rule.** All three parts
+are load-bearing, and the first one is the one a consumer will otherwise discover the hard way.
+
+- **The rule must be PURE.** Same context in, same weights out, forever, on any thread. Chunk meshes are built
+  per (region, LOD) and cached until unload, off the frame thread, in whatever order the player walks. A rule
+  that reads mutable game state (time of day, a live water level, weather, an RNG) bakes a chunk differently
+  depending on WHEN it streamed in, so two neighbours loaded seconds apart disagree at their shared edge and
+  the seam does not heal until something re-LODs or invalidates them.
+- **It is a HOT PATH.** Called once per vertex of every streamed chunk, on the build thread. No allocation, no
+  locking, no IO. A skirt vertex copies its edge vertex, so the rule runs exactly once per SURFACE vertex.
+- **Splat is PRESENTATION ONLY.** The weights ride in vertex colour and pick which material layers blend. They
+  do not feed the `TerrainField`, collision, the map document, or any world-identity hash, so a client can
+  adopt a rule against a server that has never heard of one, and a saved world is unchanged. A headless server
+  never builds chunk meshes, so it never runs the rule.
+
+**Notes.**
+
+- The rule is fixed for a sink's lifetime, matching how the mesh cache is keyed. Changing the mix means a new
+  sink or a rebuild of the loaded ring, exactly like swapping the splat material handle.
+- The types live in `KhaozEngine.Terrain.Render3D` alongside `TerrainSplatWeights`, not in the render-free
+  `KhaozEngine.Terrain`. Splat is presentation, a headless server has no reason to evaluate it, and moving the
+  weight type across the assembly line to host a context that must carry it would have needed a type forwarder
+  to buy nothing.
+- The second grid a chunk meshes for terrain collision (when `collideTerrain` is on and `collisionLod` differs
+  from the render tier) does NOT run the rule: `ChunkTerrainCollision` reads positions and winding only, so
+  running a presentation rule over weights that are discarded is pure cost.
+
 ## 17.7.0
 
 ### A water plane can now carry its own look, so a calm lake and a rough sea can share a frame

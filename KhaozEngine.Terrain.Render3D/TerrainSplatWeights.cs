@@ -22,6 +22,18 @@ namespace KhaozEngine.Terrain
             float grass = MathF.Max(0f, 1f - rock - snow - sand - dirt);
 
             var w = new TerrainSplatWeights { Grass = grass, Dirt = dirt, Rock = rock, Sand = sand, Snow = snow };
+            return w.Normalized();
+        }
+
+        /// <summary>This set scaled so the five weights sum to 1. A set summing to ~0 has no mix to preserve, so
+        /// grass is forced to 1 rather than dividing by nothing. The splat pipeline
+        /// packs the four leading weights into vertex colour and reconstructs snow in the shader as <c>1 - sum</c>
+        /// (see <see cref="TerrainSplatPacking"/>), so an unnormalized set renders as snow bleeding in.
+        /// <see cref="From"/> already normalizes; this is for a consumer splat rule
+        /// (<see cref="TerrainSplatContext"/>) that adjusts a weight and needs the invariant back.</summary>
+        public readonly TerrainSplatWeights Normalized()
+        {
+            var w = this;
             float sum = w.Grass + w.Dirt + w.Rock + w.Sand + w.Snow;
             if (sum > 1e-6f)
             {

@@ -5,6 +5,60 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.11.0
+
+### Streaming a chunk in no longer stalls the GPU
+
+Walking around a streamed terrain world stuttered, worst when moving fast and crossing chunk
+boundaries. `Scene3D.UnloadMesh` drained the whole device (`WaitForIdle`) every time it freed a live
+mesh, and terrain streaming does that constantly: every chunk leaving the ring frees its chunk mesh
+plus every HLOD layer mesh, one full-pipeline stall each, on the frame thread. Closes
+[#99](https://github.com/APKiwiOrg/KhaozEngine/issues/99), reported from
+[Ruinborne#341](https://github.com/APKiwiOrg/Ruinborne/issues/341).
+
+The drain itself was never the bug. It exists to stop a lavapipe use-after-free (Mesa runs
+submissions on its own queue thread and segfaults on a resource destroyed under it). That rule is
+intact: nothing is destroyed without a preceding drain. What changed is where the drain lands.
+`UnloadMesh` now retires the mesh's buffers and material set, and they are destroyed behind ONE drain
+three frame boundaries later, from `Scene3D.Begin`. By then the referencing work is several presented
+frames old, so the wait is the near-free already-idle case, and a ring shift that retires forty
+buffers pays one drain on one later frame instead of forty mid-frame. `Scene3D.Dispose` flushes the
+tail behind the drain it already did. The residual (one batched drain per dirty frame under sustained
+streaming) is measured and tracked in [#385](https://github.com/APKiwiOrg/KhaozEngine/issues/385).
+
+Two streaming fixes go with it, because the drain was only half the churn.
+
+**New: `TerrainLodConfig.PickLod(distance, currentLod, hysteresis)`** and the matching
+`TerrainLod.PickLod` facade overload. LOD tier selection was a bare threshold compare, so a chunk
+parked near 80 m or 200 m re-tiered on every small move and rebuilt its mesh each time. The overload
+adds a dead zone: a chunk already at `currentLod` keeps it until the distance clears the boundary it
+would cross by the margin. Default 10 m via `StreamerConfig.LodHysteresis` (const
+`TerrainLodConfig.DefaultHysteresis`), so a player must cover 20 m to flip a chunk back and forth,
+about 3 s at a brisk run. Damping applies to a CHANGE only: a first load, a static viewer, a
+`currentLod` of -1, or a zero/negative/NaN margin all give exactly the stateless pick, and once the
+margin is cleared the tier tracks distance in full including multi-tier jumps.
+
+**New: `StreamerConfig.MaxUnloadsPerFrame`** (default 8, const
+`StreamerConfig.DefaultMaxUnloadsPerFrame`). `TerrainStreamer.Update` freed every chunk past
+`UnloadRadius` in one call while loads were capped at `MaxLoadsPerFrame`, so a ring shift landed a
+whole outgoing ring's worth of sink work on one frame. Unloads are now budgeted per frame, farthest
+first with a deterministic `(X, Z)` tie-break, on both the synchronous and async paths. Deferring
+needs no queue: the next `Update` recomputes the far set, so a chunk that came back into range has
+its unload silently cancelled rather than unloaded-then-reloaded, and it is never double-loaded.
+`UnloadAll` stays unbudgeted and total, because the teleport and world-rebuild contract depends on
+it. 0 or less opts out.
+
+**`TerrainStreamer.PrimeAround` now settles on work done, not on the resident count.** The old loop
+exited when the loaded count stopped moving, which the unload budget could satisfy early: an
+iteration whose unloads exactly cancelled its loads returned with stale chunks resident and holes in
+the target ring. It now loops until a pass neither applies nor frees anything, which provably
+terminates because the load disk and the unload region are disjoint and the hysteresis pick is
+idempotent once applied.
+
+Additive for consumers. Both new `StreamerConfig` members are defaulted tail parameters, so existing
+construction sites compile and behave the same apart from the intended damping and budgeting. Pass
+`LodHysteresis: 0f, MaxUnloadsPerFrame: 0` to reproduce the old behaviour exactly.
+
 ## 17.10.0
 
 ### A fading prop's shadow fades with it, and a layer can stop casting

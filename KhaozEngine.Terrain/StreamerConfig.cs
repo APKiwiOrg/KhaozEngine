@@ -13,14 +13,17 @@ namespace KhaozEngine.Terrain
     /// outer edge does not churn.</para>
     /// <para><b>LOD.</b> LOD tiers come from <see cref="LodConfig"/> (null uses <see cref="TerrainLodConfig.Default"/>),
     /// picked by metre distance to chunk center. The SAME <see cref="LodConfig"/> must be wired to the sink so a tier
-    /// index means the same grid resolution on both sides (both default, so the default wiring aligns for free).</para>
+    /// index means the same grid resolution on both sides (both default, so the default wiring aligns for free).
+    /// <see cref="LodHysteresis"/> is the dead zone (metres) around each tier boundary, so a chunk parked on one does
+    /// not re-tier (and rebuild its mesh) on every small move. It damps only a CHANGE: a first load and a viewer that
+    /// has not moved pick exactly the stateless tier. 0 restores the undamped behaviour.</para>
     /// <para><see cref="Async"/> (default true): the CPU mesh build runs on a background thread and only the GPU
     /// upload happens on the frame thread. <see cref="MaxLoadsPerFrame"/> then caps how many completed builds are
     /// APPLIED (GPU upload + swap) per <c>Update</c>. The builds themselves are unbudgeted (they run in parallel off
     /// the frame thread). When <see cref="Async"/> is false, or the sink is not an <see cref="IAsyncChunkSink"/>, the
     /// streamer runs the old synchronous path where <see cref="MaxLoadsPerFrame"/> caps build+upload ops done inline.
     /// Either way unloads are immediate.</para></summary>
-    public readonly record struct StreamerConfig(int LoadRadius, int UnloadRadius, int MaxLoadsPerFrame, float ChunkSize, bool Async = true, int DecorRadius = 0, TerrainLodConfig? LodConfig = null)
+    public readonly record struct StreamerConfig(int LoadRadius, int UnloadRadius, int MaxLoadsPerFrame, float ChunkSize, bool Async = true, int DecorRadius = 0, TerrainLodConfig? LodConfig = null, float LodHysteresis = TerrainLodConfig.DefaultHysteresis)
     {
         /// <summary>LoadRadius 4 (~240 m gameplay disk), UnloadRadius 6 (2-chunk hysteresis band), 3 applies/frame,
         /// 60 m chunks, async build on, NO decor ring by default (games opt into a far horizon by setting

@@ -6,7 +6,9 @@ namespace KhaozEngine.Terrain
 {
     /// <summary>Keeps the world loaded in a ring around the player. Each <see cref="Update"/>: unloads chunks beyond
     /// <c>UnloadRadius</c> (immediate), enqueues loads for chunks inside the <c>LoadRadius</c> disk that are not yet
-    /// loaded and re-LODs for loaded chunks whose <see cref="TerrainLod.PickLod"/> tier changed, then brings at most
+    /// loaded and re-LODs for loaded chunks whose tier changed (picked with the
+    /// <see cref="StreamerConfig.LodHysteresis"/> dead zone, so a chunk parked on a boundary does not re-tier on
+    /// every step), then brings at most
     /// <c>MaxLoadsPerFrame</c> of those into the scene (nearest first) through the injected <see cref="IChunkSink"/>.
     /// Pure bookkeeping (no GPU, no field), so it is fully headless-testable, and the sink does the real work. Load/unload
     /// use Euclidean chunk-distance; the hysteresis band (UnloadRadius &gt; LoadRadius) stops churn at boundaries.
@@ -191,12 +193,15 @@ namespace KhaozEngine.Terrain
                 Vector2 center = ChunkGrid.CenterOf(c, cs);
                 float mdx = center.X - playerPos.X, mdz = center.Y - playerPos.Z;
                 float metreDist = MathF.Sqrt(mdx * mdx + mdz * mdz);
-                int lod = _lodConfig.PickLod(metreDist);
                 ChunkRing ring = RingAt(chunkDistSq);
+                // The applied tier is the hysteresis reference, so a chunk sitting on a boundary keeps its mesh
+                // until the player really commits to the crossing. An unloaded chunk (-1) picks undamped.
+                bool loaded = _loaded.TryGetValue(c, out Entry? e);
+                int lod = _lodConfig.PickLod(metreDist, loaded ? e!.Lod : -1, _config.LodHysteresis);
 
-                if (!_loaded.TryGetValue(c, out Entry? e))
+                if (!loaded)
                     pending.Add(new Pending(c, lod, ring, metreDist, isLoad: true));
-                else if (e.Lod != lod || e.Ring != ring)
+                else if (e!.Lod != lod || e.Ring != ring)
                     pending.Add(new Pending(c, lod, ring, metreDist, isLoad: false));
             }
 
@@ -275,16 +280,19 @@ namespace KhaozEngine.Terrain
 
                 Vector2 center = ChunkGrid.CenterOf(c, cs);
                 float mdx = center.X - playerPos.X, mdz = center.Y - playerPos.Z;
-                int lod = _lodConfig.PickLod(MathF.Sqrt(mdx * mdx + mdz * mdz));
                 ChunkRing ring = RingAt(chunkDistSq);
+                // The applied tier is the hysteresis reference, so a chunk sitting on a boundary keeps its mesh
+                // until the player really commits to the crossing. An unloaded chunk (-1) picks undamped.
+                bool loaded = _loaded.TryGetValue(c, out Entry? e);
+                int lod = _lodConfig.PickLod(MathF.Sqrt(mdx * mdx + mdz * mdz), loaded ? e!.Lod : -1, _config.LodHysteresis);
                 int reqLod = sched.RequestedLod(c);
                 // The in-flight request already targets exactly this (tier, ring). When untracked reqLod is -1, so
                 // this is false and a fresh request goes out.
                 bool requestMatches = reqLod == lod && sched.RequestedRing(c) == ring;
 
-                if (_loaded.TryGetValue(c, out Entry? e))
+                if (loaded)
                 {
-                    if (e.Lod != lod || e.Ring != ring)
+                    if (e!.Lod != lod || e.Ring != ring)
                     {
                         if (!requestMatches) sched.Request(c, lod, ring);   // re-LOD / ring change (supersede a stale one)
                     }

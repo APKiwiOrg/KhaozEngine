@@ -32,7 +32,7 @@ namespace KhaozEngine.Terrain
     /// <summary>Data-driven distance-to-LOD mapping for chunked terrain, the configurable form of what
     /// <see cref="TerrainLod"/> used to hardcode. An ordered list of <see cref="TerrainLodTier"/>s, validated so
     /// resolutions strictly descend and max distances strictly ascend with distance (near = dense, far = coarse),
-    /// with the coarsest tier's <see cref="TerrainLodTier.MaxDistance"/> at positive infinity. <see cref="PickLod"/>
+    /// with the coarsest tier's <see cref="TerrainLodTier.MaxDistance"/> at positive infinity. <see cref="PickLod(float)"/>
     /// maps a camera distance to a tier index; <see cref="ResolutionFor"/> maps that tier to its grid resolution.
     /// <para>The same config must be wired to both the <see cref="TerrainStreamer"/> (via
     /// <see cref="StreamerConfig.LodConfig"/>, which picks the tier per chunk) and the <c>Scene3DChunkSink</c>
@@ -83,6 +83,31 @@ namespace KhaozEngine.Terrain
             for (int i = 0; i < _tiers.Length; i++)
                 if (distance < _tiers[i].MaxDistance) return i;
             return _tiers.Length - 1;
+        }
+
+        /// <summary>Default dead zone for the hysteresis <see cref="PickLod(float, int, float)"/>, in metres. A player
+        /// must cover 20 m (twice the margin) to flip a chunk's tier back and forth, about 3 s at a brisk 6 m/s run,
+        /// and it stays small against this table's 80 m and 200 m boundaries so a chunk is never visibly stuck on a
+        /// coarse tier.</summary>
+        public const float DefaultHysteresis = 10f;
+
+        /// <summary>The tier for a camera distance with a dead zone around every boundary: a chunk already built at
+        /// <paramref name="currentLod"/> keeps that tier until the distance clears the boundary it would cross by
+        /// <paramref name="hysteresis"/> metres. Without it a chunk parked near a boundary re-tiers on every small
+        /// move, and a re-tier frees a live GPU mesh, so a walking player pays a mesh rebuild per step.
+        /// <para>A <paramref name="currentLod"/> outside the tier range (use -1 for "not built yet") or a
+        /// <paramref name="hysteresis"/> that is not positive returns <see cref="PickLod(float)"/> unchanged, so a
+        /// first load and a static viewer see exactly the stateless tiers. The damping is on the CHANGE only: once
+        /// the margin is cleared the tier tracks the distance in full, including a multi-tier jump.</para></summary>
+        public int PickLod(float distance, int currentLod, float hysteresis)
+        {
+            int next = PickLod(distance);
+            if (currentLod < 0 || currentLod >= _tiers.Length || !(hysteresis > 0f) || next == currentLod) return next;
+            // Moving away: the boundary being crossed is the current tier's own reach. Moving closer: it is the
+            // previous tier's, which is the lower edge of the band the chunk currently sits in.
+            return next > currentLod
+                ? (distance >= _tiers[currentLod].MaxDistance + hysteresis ? next : currentLod)
+                : (distance <= _tiers[currentLod - 1].MaxDistance - hysteresis ? next : currentLod);
         }
 
         /// <summary>Grid resolution (segments per chunk edge) for a tier index, clamped to the valid range.</summary>

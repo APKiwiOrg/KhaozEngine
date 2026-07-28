@@ -106,6 +106,83 @@ namespace KhaozEngine.Tests.Terrain
             }
         }
 
+        // --- Hysteresis: a dead zone around every tier boundary -----------------------------------------------------
+        // Without it a chunk sitting near 80 m or 200 m flips tier on every small move, and each flip frees a live
+        // GPU mesh. The dead zone costs a slightly stale tier near the boundary and buys silence while walking.
+
+        [Fact]
+        public void Hysteresis_with_no_current_tier_matches_the_stateless_pick()
+        {
+            TerrainLodConfig d = TerrainLodConfig.Default;
+            for (float dist = 0f; dist < 1500f; dist += 3f)
+                Assert.Equal(d.PickLod(dist), d.PickLod(dist, currentLod: -1, hysteresis: 25f));
+        }
+
+        [Fact]
+        public void Hysteresis_holds_the_current_tier_inside_the_dead_zone()
+        {
+            TerrainLodConfig d = TerrainLodConfig.Default;
+            // Just past 80 m the stateless pick says tier 1, but a chunk already built at tier 0 stays there.
+            Assert.Equal(1, d.PickLod(85f));
+            Assert.Equal(0, d.PickLod(85f, currentLod: 0, hysteresis: 10f));
+            // Symmetrically, a chunk already built at tier 1 does not drop back to 0 just under the boundary.
+            Assert.Equal(0, d.PickLod(75f));
+            Assert.Equal(1, d.PickLod(75f, currentLod: 1, hysteresis: 10f));
+        }
+
+        [Fact]
+        public void Hysteresis_yields_once_the_move_clears_the_margin()
+        {
+            TerrainLodConfig d = TerrainLodConfig.Default;
+            Assert.Equal(1, d.PickLod(90f, currentLod: 0, hysteresis: 10f));    // 80 + 10, coarser
+            Assert.Equal(0, d.PickLod(70f, currentLod: 1, hysteresis: 10f));    // 80 - 10, finer
+            Assert.Equal(2, d.PickLod(210f, currentLod: 1, hysteresis: 10f));   // the second boundary too
+            Assert.Equal(1, d.PickLod(190f, currentLod: 2, hysteresis: 10f));
+        }
+
+        [Fact]
+        public void Hysteresis_still_allows_a_multi_tier_jump()
+        {
+            TerrainLodConfig d = TerrainLodConfig.Default;
+            // A teleport-sized move is well clear of the margin, so the tier tracks the distance in one step.
+            Assert.Equal(d.PickLod(2000f), d.PickLod(2000f, currentLod: 0, hysteresis: 10f));
+            Assert.Equal(0, d.PickLod(5f, currentLod: 4, hysteresis: 10f));
+        }
+
+        [Fact]
+        public void A_non_positive_or_NaN_margin_matches_the_stateless_pick()
+        {
+            TerrainLodConfig d = TerrainLodConfig.Default;
+            Assert.Equal(1, d.PickLod(85f, currentLod: 0, hysteresis: 0f));
+            Assert.Equal(1, d.PickLod(85f, currentLod: 0, hysteresis: -5f));
+            Assert.Equal(1, d.PickLod(85f, currentLod: 0, hysteresis: float.NaN));
+        }
+
+        [Fact]
+        public void Hysteresis_never_flips_on_a_move_smaller_than_twice_the_margin()
+        {
+            TerrainLodConfig d = TerrainLodConfig.Default;
+            const float margin = 10f;
+            int lod = d.PickLod(80f);            // start exactly on the first boundary
+            int flips = 0;
+            for (int i = 0; i < 200; i++)
+            {
+                float dist = 80f + (i % 2 == 0 ? 9f : -9f);   // an 18 m shuffle straddling the boundary
+                int next = d.PickLod(dist, lod, margin);
+                if (next != lod) flips++;
+                lod = next;
+            }
+            Assert.Equal(0, flips);
+        }
+
+        [Fact]
+        public void TerrainLod_facade_exposes_the_same_hysteresis_pick()
+        {
+            Assert.Equal(0, TerrainLod.PickLod(85f, currentLod: 0, hysteresis: 10f));
+            Assert.Equal(1, TerrainLod.PickLod(85f, currentLod: 0, hysteresis: 1f));
+            Assert.Equal(TerrainLod.PickLod(400f), TerrainLod.PickLod(400f, currentLod: -1, hysteresis: 10f));
+        }
+
         // --- Byte-identical meshes for existing callers -----------------------------------------------------------
 
         static void AssertMeshBytesEqual(TerrainChunkMesh a, TerrainChunkMesh b)

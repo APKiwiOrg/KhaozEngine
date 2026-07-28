@@ -174,6 +174,91 @@ namespace KhaozEngine.Tests.Terrain
             Assert.Contains(sink.ReLods, r => r.coord == target);
         }
 
+        // --- LOD hysteresis (a dead zone at every tier boundary) ----------------------------------------------------
+        // A chunk parked near 80 m used to re-LOD on every small move, and each re-LOD frees a live GPU mesh.
+
+        // Standing in chunk (1,0), x = 61 and x = 79 put chunk (2,0)'s centre (x = 150) at 89 m and 71 m: either side
+        // of the 80 m tier boundary, without the player's own chunk or any residency ring changing.
+        static readonly Vector3 NearSideOfBoundary = new(79f, 0f, 30f);
+        static readonly Vector3 FarSideOfBoundary = new(61f, 0f, 30f);
+
+        [Fact]
+        public void Small_moves_across_a_LOD_boundary_do_not_re_lod()
+        {
+            var cfg = new StreamerConfig(LoadRadius: 4, UnloadRadius: 6, MaxLoadsPerFrame: 1000, ChunkSize: 60f);
+            var sink = new FakeChunkSink();
+            var s = new TerrainStreamer(cfg, sink);
+
+            Pump(s, sink, FarSideOfBoundary, 3);
+            sink.ReLods.Clear();
+
+            for (int i = 0; i < 20; i++)
+            {
+                Pump(s, sink, NearSideOfBoundary, 1);
+                Pump(s, sink, FarSideOfBoundary, 1);
+            }
+
+            Assert.Empty(sink.ReLods);
+        }
+
+        [Fact]
+        public void Without_hysteresis_the_same_shuffle_churns_re_lods()
+        {
+            // Not vacuous: the shuffle really does straddle a boundary, so with the dead zone off it churns.
+            var cfg = new StreamerConfig(LoadRadius: 4, UnloadRadius: 6, MaxLoadsPerFrame: 1000, ChunkSize: 60f,
+                LodHysteresis: 0f);
+            var sink = new FakeChunkSink();
+            var s = new TerrainStreamer(cfg, sink);
+
+            Pump(s, sink, FarSideOfBoundary, 3);
+            sink.ReLods.Clear();
+
+            for (int i = 0; i < 20; i++)
+            {
+                Pump(s, sink, NearSideOfBoundary, 1);
+                Pump(s, sink, FarSideOfBoundary, 1);
+            }
+
+            Assert.Contains(sink.ReLods, r => r.coord == new ChunkCoord(2, 0));
+        }
+
+        [Fact]
+        public void A_move_clear_of_the_margin_still_re_lods()
+        {
+            var cfg = new StreamerConfig(LoadRadius: 4, UnloadRadius: 6, MaxLoadsPerFrame: 1000, ChunkSize: 60f);
+            var sink = new FakeChunkSink();
+            var s = new TerrainStreamer(cfg, sink);
+            var target = new ChunkCoord(2, 0);
+
+            Pump(s, sink, FarSideOfBoundary, 3);          // target centre at 89 m -> tier 1
+            Assert.Equal(1, s.LodOf(target));
+            sink.ReLods.Clear();
+
+            Pump(s, sink, new Vector3(85f, 0f, 30f), 2);  // 65 m: past 80 - 10, so the dead zone yields
+
+            Assert.Equal(0, s.LodOf(target));
+            Assert.Contains(sink.ReLods, r => r.coord == target);
+        }
+
+        [Fact]
+        public void First_load_picks_the_stateless_tier_whatever_the_margin()
+        {
+            var cfg = new StreamerConfig(LoadRadius: 5, UnloadRadius: 7, MaxLoadsPerFrame: 1000, ChunkSize: 60f,
+                LodHysteresis: 40f);
+            var sink = new FakeChunkSink();
+            var s = new TerrainStreamer(cfg, sink);
+            var pos = new Vector3(30f, 0f, 30f);
+
+            Pump(s, sink, pos, 3);
+
+            // A viewer that has not moved sees exactly today's tiers: hysteresis only ever damps a CHANGE.
+            foreach (ChunkCoord c in s.Loaded)
+            {
+                Vector2 center = ChunkGrid.CenterOf(c, 60f);
+                Assert.Equal(TerrainLod.PickLod(Vector2.Distance(new Vector2(pos.X, pos.Z), center)), s.LodOf(c));
+            }
+        }
+
         // --- Decor ring (far/render-only chunks) --------------------------------------------------------------------
 
         [Fact]

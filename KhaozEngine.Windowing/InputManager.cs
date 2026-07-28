@@ -73,6 +73,8 @@ namespace KhaozEngine.Windowing
         public Vector2 PointerPosition => _pointer.Position;
         /// <summary>Where the current press began (valid while down and on the release frame).</summary>
         public Vector2 PressOrigin => _pointer.PressOrigin;
+        /// <summary>Where the current RIGHT press began (valid while the right button is down and on its release frame).</summary>
+        public Vector2 RightPressOrigin => _pointer.RightPressOrigin;
         /// <summary>Pointer movement since the previous frame.</summary>
         public Vector2 PointerDelta => _pointer.Delta;
 
@@ -91,6 +93,10 @@ namespace KhaozEngine.Windowing
         public bool IsTapIn(Rect bounds) => _pointer.IsTapIn(bounds);
         /// <summary>True on release when the press began in <paramref name="pressOriginBounds"/> and the release is in <paramref name="releaseBounds"/>.</summary>
         public bool IsTapFromTo(Rect pressOriginBounds, Rect releaseBounds) => _pointer.IsTapFromTo(pressOriginBounds, releaseBounds);
+        /// <summary>The right-button twin of <see cref="IsTapIn"/> (same press-origin invariant): what a context menu hangs off.</summary>
+        public bool IsRightTapIn(Rect bounds) => _pointer.IsRightTapIn(bounds);
+        /// <summary>The right-button twin of <see cref="IsPressingIn"/>: right button held with its press-origin and the cursor both inside <paramref name="bounds"/>.</summary>
+        public bool IsRightPressingIn(Rect bounds) => _pointer.IsRightPressingIn(bounds);
         public bool IsPointerIn(Rect bounds) => _pointer.IsPointerIn(bounds);
         public bool IsHoveringIn(Rect bounds) => _pointer.IsHoveringIn(bounds);
         public bool IsPressingIn(Rect bounds) => _pointer.IsPressingIn(bounds);

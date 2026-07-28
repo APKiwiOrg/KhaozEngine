@@ -5,6 +5,126 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.9.0
+
+### Picking a thing up in one widget and putting it down in another
+
+`KhaozEngine.Gui` had exactly one drag-and-drop, `TreeView`'s same-widget row reorder. Everything else that
+looked like a drag (the slider thumb, `NumberField`'s scrub, `PannableCanvas`'s pan, the scroll drags) is a
+single-widget gesture that never leaves the widget it began in. So there was no way to pick an icon out of one
+`SlotGrid` slot and put it down on another slot, another grid, or anything else, and every game wanting an
+inventory had to hand-roll press-origin tracking, a ghost, cross-widget hit testing and drop validation.
+`GuiDragContext` is that primitive. Closes [#315](https://github.com/APKiwiOrg/KhaozEngine/issues/315).
+Consumers are [Ruinborne#295](https://github.com/APKiwiOrg/Ruinborne/issues/295) (drag a stack out of the bag
+to destroy it, which became the only way to recover a full bag),
+[Ruinborne#262](https://github.com/APKiwiOrg/Ruinborne/issues/262) and
+[Ruinborne#263](https://github.com/APKiwiOrg/Ruinborne/issues/263). Reasoning in
+[GUI-DRAG-AND-DROP-DESIGN-2026-07-28.md](docs/design/GUI-DRAG-AND-DROP-DESIGN-2026-07-28.md).
+
+The Gui layer still learns nothing about game items. A payload carries an opaque `object?` the engine only
+ever hands back, and the ghost is a delegate the source supplies, the same discipline `SlotContent` and
+`SlotGrid.DrawSlotContent` already hold.
+
+Additive and inert until wired. Every existing `Update(Pointer)` call keeps its exact behaviour, and a widget
+handed no drag context has no drag code path at all.
+
+**New: `GuiDragContext`** (`KhaozEngine.Gui`). The drag session that spans widgets: one live drag at a time,
+shared by everything taking part. Not widget-base-class members, deliberately - a drag is the state BETWEEN
+two widgets, and the Gui widgets are independent sealed classes with no base to hang it off. Per frame, in
+order: `BeginFrame(pointer, dt)` once before your widget updates, the widgets, `EndFrame()` once after them,
+then `Draw(batch, white, font)` on top. `EndFrame` is what turns a release over nothing into a cancel, because
+"no target offered" is only knowable once every widget has had its turn.
+
+**New: `DragPayload` / `DragDropResult` / `DragGhostPainter`.** `DragPayload` is what is carried: an opaque
+`Token`, a `SourceId` (the source widget passes `this`, so a drop handler can compare by reference), a
+`SourceIndex`, and an optional `Ghost` painter. `DragDropResult` is the committed drop (payload, `TargetId`,
+`TargetIndex`).
+
+**A target refuses BEFORE the release, not after it.** `OfferTarget(targetId, index, accepted)` is called on
+every frame the drag hovers a target, carrying that target's own verdict, so `ShowRejectOverlay` washes the
+ghost while the button is still down and a drop that would be refused simply never commits. There is no
+accept-then-undo path to get wrong. When two targets overlap the FIRST offer of the frame wins, matching
+`ScreenStack`'s top-to-bottom input routing, including when the topmost one refuses.
+`OfferTargetIn(rect, ...)` does the hit test for you, which is how a bare rect (a trash zone) becomes a drop
+target with no widget at all.
+
+**A refused or cancelled drag flies the ghost home.** `ReturnDuration` (default 0.12 s, 0 disables) eases the
+ghost from the release point back to the rect it was grabbed from. Purely cosmetic: `IsDragging` goes false the
+instant the gesture ends so nothing can still claim a returning ghost, only `IsReturning` stays true, and
+`WasDropped` / `WasCancelled` are reported on the frame the gesture ended, never at the end of the animation.
+
+**Grabbing consumes the pointer gesture** (`Pointer.ConsumeGesture`), so the release that drops an item cannot
+also register as a tap on whatever sits under it.
+
+**New: `SlotGrid.PressOriginSlot`.** The slot the held press BEGAN in, which `PressedSlot` could never be:
+`PressedSlot` is a per-frame containment test and goes -1 the instant the cursor crosses the slot edge, taking
+the drag's origin with it. This is the press-origin query (`Pointer.IsDragStartIn`), so it survives the pointer
+leaving the slot. Useful on its own, and it is what the drag hangs off.
+
+**New on `SlotGrid`: the drag seams.** `Update(Pointer, GuiDragContext?)` (the old `Update(Pointer)` is now a
+delegating overload). As a SOURCE, `BeginDragPayload(slotIndex)` builds the payload once the gesture clears the
+threshold and returns null to make a slot non-draggable, blocking the arm outright rather than starting a drag
+the drop side would only refuse later (the same shape as `TreeView.CanReorder`). As a TARGET,
+`CanAcceptDrop(slotIndex, payload)` is the per-frame verdict, `DropTargetSlot` / `DropTargetAccepted` drive the
+highlight, and a commit sets `DroppedSlot` / `DroppedPayload` and fires `OnSlotDropped`. `DraggingSlot` is the
+origin slot for the life of the drag, for dimming the slot whose contents are in flight. A payload built
+without a ghost gets the slot's own `SlotContent` (icon, cooldown sweep, count) as its ghost for free.
+
+**How a consumer adopts it.** Build one `GuiDragContext` per screen, thread it through the widget updates, and
+draw it last. The bag-destroy shape, whole:
+
+```csharp
+var drag = new GuiDragContext();
+var bag = new SlotGrid(bagRect, count: 25, columns: 5)
+{
+    BeginDragPayload = i => _bag[i] is { } stack ? new DragPayload(stack, sourceIndex: i) : null,
+    CanAcceptDrop = (i, p) => _bag.CanPlace(i, (ItemStack)p.Token!),   // refused BEFORE the release
+    OnSlotDropped = (i, p) => _bag.Move(p.SourceIndex, i),
+};
+
+// per frame
+drag.BeginFrame(pointer, dt);
+if (input.IsKeyDown(Key.Escape)) drag.Cancel();
+bag.Update(pointer, drag);
+equipment.Update(pointer, drag);                       // a second grid, same context
+if (drag.OfferTargetIn(destroyRect, "destroy", accepted: true))
+    ConfirmDestroy((ItemStack)drag.LastDrop.Payload.Token!);   // dragged out of the bag onto the destroy zone
+drag.EndFrame();
+
+// after the UI draw
+bag.Draw(batch, white, font);
+drag.Draw(batch, white, font);                         // the ghost floats over everything
+```
+
+`DraggingSlot` is what blanks the origin slot while its stack is in the air, and `DropTargetSlot` /
+`DropTargetAccepted` are what tint the slot under the cursor green or red.
+
+**`TreeView` is deliberately unchanged.** Its reorder is a same-widget ordinal move: the payload is a
+`TreeNode` it already holds, the drop geometry is an insertion point BETWEEN rows, and the constraint is
+same-parent-only. Folding it into the new primitive would either bloat the primitive with an "insert between"
+concept nothing else wants or lose the constraint that makes its indices mean anything. The boundary, for the
+next reader tempted to unify them: same-widget ordinal reorder is `TreeView`, cross-widget payload transfer is
+`GuiDragContext`. They already share the only piece that matters, the arm rule.
+
+### Right-click is hit-testable, so context menus are buildable
+
+`Pointer` had `IsRightDown` / `IsRightJustPressed` / `IsRightJustReleased` but no right-button BOUNDS helper,
+only the left-button `IsTapIn` / `IsPressingIn` / `IsReleasedOutside`. So a consumer could not hit-test a
+right-click without pairing a raw position test with a button read, which the engine's one hard input rule
+forbids, and right-click context menus were unbuildable in any game for the same structural reason drag was.
+Raised on [#315](https://github.com/APKiwiOrg/KhaozEngine/issues/315) and shipped with it.
+
+**New: `Pointer.IsRightTapIn(bounds)` and `Pointer.IsRightPressingIn(bounds)`**, carrying the same
+press-origin invariant as their left-button twins, plus `RightPressOrigin`, `ConsumeRightGesture()` and
+`IsRightConsumed`. All four are forwarded on `InputManager` except the consume pair, matching how
+`ConsumeGesture` is already reached through `InputManager.Pointer`.
+
+The right button needed real state, not an alias. `PressOrigin` was only latched on the LEFT press edge, so
+there was no right-button origin to enforce the invariant against, and the consume latch is tracked separately
+in both directions on purpose: consuming a left gesture must not blind a right-click, and consuming the
+right-click that opened a menu must not cancel an unrelated left tap in the same frame. Right-button DRAG
+helpers are deliberately not added.
+
 ## 17.8.0
 
 ### A game can now decide what the ground is made of, so a lake gets a shoreline

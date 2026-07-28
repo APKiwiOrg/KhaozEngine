@@ -16,6 +16,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Wiring a game (`KhaozEngine.Game` + `KhaozEngine.Game.Render3D`)](#wiring-a-game-khaozenginegame-khaozenginegamerender3d)
 - [Input (`KhaozEngine.Windowing`)](#input-khaozenginewindowing)
 - [Gui (`KhaozEngine.Gui`)](#gui-khaozenginegui)
+- [Drag and drop across widgets (`GuiDragContext` / `DragPayload`)](#drag-and-drop-across-widgets-guidragcontext--dragpayload-1790)
 - [Toast notifications (`ToastStack` / `ToastView` / `ToastTheme`)](#toast-notifications-toaststack-toastview-toasttheme)
 - [Action-bar icons and cooldowns (SlotContent + CooldownOverlay)](#action-bar-icons-and-cooldowns-slotcontent-cooldownoverlay)
 - [Number + duration formatting (`NumberFormatter` / `TimeFormatter`)](#number-duration-formatting-numberformatter-timeformatter)
@@ -1078,6 +1079,103 @@ var pips = new ProgressBar(new Rect(hudX, hudY, 240, 12), comboFrac)
 { SegmentCount = 5, SegmentFillMode = SegmentFillMode.Discrete };   // combo points light as whole pips
 var mana = new ProgressBar(new Rect(hudX, hudY, 12, 120), manaFrac)
 { FillDirection = FillDirection.BottomToTop };                   // vertical, grows upward
+```
+
+---
+
+## Drag and drop across widgets (`GuiDragContext` / `DragPayload`) (17.9.0)
+
+`KhaozEngine.Gui` had exactly one drag-and-drop before this: `TreeView`'s same-widget row reorder. Everything
+else that looks like a drag (the slider thumb, `NumberField`'s scrub, `PannableCanvas`'s pan, the scroll
+drags) is a single-widget gesture that never leaves the widget it began in. `GuiDragContext` is the primitive
+for the other kind: pick a thing up in one widget and put it down in another, or on a bare rect.
+
+It is a standalone object your widgets consult, not members on a widget base class, because a drag is not the
+state of a widget: it is the state BETWEEN two of them, and there is exactly one of it at a time. Build one
+per screen and thread it through.
+
+**The Gui layer never learns what you are dragging.** A `DragPayload` carries an opaque `object? Token` the
+engine only ever hands back to you, plus a `SourceId` (widgets pass `this`, so you can compare by reference)
+and a `SourceIndex`. The ghost under the pointer is a `DragGhostPainter` delegate the SOURCE supplies. Same
+discipline as `SlotContent` and `SlotGrid.DrawSlotContent`.
+
+**A target refuses before the release, not after it.** Every frame the drag hovers a target, that target calls
+`OfferTarget(id, index, accepted)` with its own verdict. A refused drop simply never commits, and
+`ShowRejectOverlay` washes the ghost while the button is still down, so the player sees the refusal instead of
+watching a drop happen and get undone. When two targets overlap, the first offer of the frame wins (update
+your widgets in the same top-to-bottom order you route input), including when the topmost one refuses.
+
+**A refused or cancelled drag flies the ghost home** over `ReturnDuration` (0.12 s, set 0 to disable). That is
+a cosmetic tail only: `IsDragging` goes false the instant the gesture ends, `WasDropped`/`WasCancelled` are
+reported on that same frame, and only `IsReturning` stays true while the ghost travels.
+
+The per-frame order is fixed, and `EndFrame` is load-bearing: "nothing would take it" is only knowable once
+every widget has had its turn.
+
+```csharp
+var drag = new GuiDragContext();
+
+var bag = new SlotGrid(bagRect, count: 25, columns: 5)
+{
+    IconAtlas = icons,
+    // Source: null makes a slot non-draggable, which blocks the grab instead of arming a drag
+    // the drop side would only refuse later.
+    BeginDragPayload = i => _bag[i] is { } stack ? new DragPayload(stack, sourceIndex: i) : null,
+    // Target: consulted EVERY frame the drag hovers, so a refusal shows before the player lets go.
+    CanAcceptDrop = (i, p) => _bag.CanPlace(i, (ItemStack)p.Token!),
+    OnSlotDropped = (i, p) => _bag.Move(p.SourceIndex, i),
+};
+
+// --- per frame ---
+drag.BeginFrame(pointer, dt);                    // sample the pointer, advance the return, clear last frame
+if (input.IsKeyDown(Key.Escape)) drag.Cancel();
+
+bag.Update(pointer, drag);                       // update sources/targets top-to-bottom
+equipment.Update(pointer, drag);                 // a second grid shares the one context
+
+// A bare rect is a drop target with no widget at all: this is the "drag it out of the bag to destroy it" zone.
+if (drag.OfferTargetIn(destroyRect, "destroy", accepted: true))
+    ConfirmDestroy((ItemStack)drag.LastDrop.Payload.Token!);
+
+drag.EndFrame();                                 // a release with no accepting target becomes a cancel
+
+// --- draw ---
+bag.Draw(batch, white, font);
+equipment.Draw(batch, white, font);
+drag.Draw(batch, white, font);                   // LAST: the ghost floats over the UI it crossed
+```
+
+**On `SlotGrid`**, the drag pass is the `Update(Pointer, GuiDragContext?)` overload, and passing null is exactly
+the old `Update(Pointer)`. `DropTargetSlot` / `DropTargetAccepted` are the drop highlight (tint the slot under
+the cursor by whether it will take the payload), `DraggingSlot` is the origin slot for the life of the drag
+(dim or blank it while its contents are in the air), and `DroppedSlot` / `DroppedPayload` mirror
+`OnSlotDropped` for a polling host. A payload you build without a ghost gets the slot's own `SlotContent`
+(icon, cooldown sweep, count) as its ghost for free, so the common case needs no painter at all.
+
+**`PressOriginSlot`** is worth knowing about on its own: it is the slot the held press BEGAN in, and unlike
+`PressedSlot` it survives the pointer leaving that slot, because it is the press-origin query
+(`Pointer.IsDragStartIn`) rather than a per-frame containment test. `PressedSlot` goes -1 the instant the
+cursor crosses the slot edge, which takes a drag's origin with it.
+
+**Do not reach for this to reorder rows inside one widget.** `TreeView` already does that, with insertion-line
+geometry and a same-parent constraint this primitive deliberately does not model. Same-widget ordinal reorder
+is `TreeView`, cross-widget payload transfer is `GuiDragContext`.
+
+### Right-click hit-testing (17.9.0)
+
+`Pointer` has the right-button twins of the left-button bounds helpers, carrying the same press-origin
+invariant off their own `RightPressOrigin`: `IsRightTapIn(bounds)` and `IsRightPressingIn(bounds)`, both
+forwarded on `InputManager`. This is what a right-click context menu hangs off, since hit-testing by raw
+position plus a button read is against the one hard input rule. `ConsumeRightGesture()` / `IsRightConsumed`
+mirror `ConsumeGesture()` / `IsConsumed` and are tracked separately, so consuming a left gesture cannot blind
+a right-click and consuming the right-click that opened a menu cannot cancel an unrelated left tap.
+
+```csharp
+if (pointer.IsRightTapIn(slotRect))
+{
+    OpenContextMenu(pointer.Position);
+    pointer.ConsumeRightGesture();   // the menu that just appeared must not act on this same release
+}
 ```
 
 ---
@@ -4768,7 +4866,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.8.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.9.0" />
 ```
 
 ```csharp

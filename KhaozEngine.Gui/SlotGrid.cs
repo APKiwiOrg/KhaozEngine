@@ -54,8 +54,8 @@ namespace KhaozEngine.Gui
     /// the press-origin <see cref="Pointer.IsTapIn"/> invariant, so a click that began in another slot (or off-grid)
     /// can't fire it. <see cref="HoveredSlot"/> / <see cref="PressedSlot"/> expose the live states (-1 = none). The
     /// widget knows nothing about game items: it draws each empty slot as a themed frame and lets the caller paint
-    /// icons / counts through <see cref="DrawSlotContent"/>. Call <see cref="Update"/> then <see cref="Draw"/> each
-    /// frame. <see cref="Update"/> reserves the footprint on the pointer (the click-through gate).
+    /// icons / counts through <see cref="DrawSlotContent"/>. Call <see cref="Update(Pointer)"/> then <see cref="Draw"/> each
+    /// frame. <see cref="Update(Pointer)"/> reserves the footprint on the pointer (the click-through gate).
     /// </summary>
     public sealed class SlotGrid
     {
@@ -154,13 +154,64 @@ namespace KhaozEngine.Gui
         /// so the caller can render an icon / count without the widget knowing about items. Null = frame-only slots.</summary>
         public Action<int, Rect, SpriteBatch>? DrawSlotContent;
 
-        /// <summary>Fired on a valid press-origin tap with the tapped slot index (mirrors the <see cref="Update"/> return).</summary>
+        /// <summary>Fired on a valid press-origin tap with the tapped slot index (mirrors the <see cref="Update(Pointer)"/> return).</summary>
         public Action<int>? OnSlotClicked;
 
-        /// <summary>Index of the slot under the pointer this frame, or -1. Set by <see cref="Update"/>.</summary>
+        /// <summary>Index of the slot under the pointer this frame, or -1. Set by <see cref="Update(Pointer)"/>.</summary>
         public int HoveredSlot { get; private set; } = -1;
-        /// <summary>Index of the slot being pressed this frame (press began inside it), or -1. Set by <see cref="Update"/>.</summary>
+        /// <summary>Index of the slot being pressed this frame (press began inside it), or -1. Set by <see cref="Update(Pointer)"/>.</summary>
         public int PressedSlot { get; private set; } = -1;
+
+        /// <summary>
+        /// Index of the slot the held press BEGAN in, or -1. Unlike <see cref="PressedSlot"/> this survives the
+        /// pointer leaving that slot, because it is the press-origin query (<see cref="Pointer.IsDragStartIn"/>)
+        /// rather than a per-frame containment test. That is what a drag needs: <see cref="PressedSlot"/> goes -1
+        /// the instant the cursor crosses the slot edge, taking the drag's origin with it.
+        /// </summary>
+        public int PressOriginSlot { get; private set; } = -1;
+
+        // The slot a drag that started in THIS grid grabbed, held for the life of that drag (see DraggingSlot).
+        int _dragSourceSlot = -1;
+
+        /// <summary>
+        /// Builds the <see cref="DragPayload"/> for a drag grabbed out of a slot, invoked once as
+        /// <c>(slotIndex)</c> the frame the gesture clears <see cref="GuiDragContext.DragThreshold"/>. Return null
+        /// to make that slot non-draggable (an empty slot, a locked one), which blocks the arm outright rather than
+        /// starting a drag the drop side would only refuse later - the same shape as
+        /// <see cref="TreeView.CanReorder"/>. Null (the default) means the grid is never a drag source. The grid
+        /// stays item-agnostic: what the payload CARRIES is entirely the caller's, and a payload with no
+        /// <see cref="DragPayload.Ghost"/> gets the slot's own <see cref="SlotContent"/> as its ghost for free.
+        /// Only consulted when an <c>Update</c> overload is given a <see cref="GuiDragContext"/>.
+        /// </summary>
+        public Func<int, DragPayload?>? BeginDragPayload;
+
+        /// <summary>
+        /// The drop verdict, consulted as <c>(slotIndex, payload)</c> on EVERY frame a live drag hovers a slot, not
+        /// on release: returning false refuses the drop before the player lets go, so the ghost shows the refusal
+        /// (<see cref="GuiDragContext.ShowRejectOverlay"/>) and nothing has to be accepted-then-undone. Null (the
+        /// default) accepts any payload into any slot.
+        /// </summary>
+        public Func<int, DragPayload, bool>? CanAcceptDrop;
+
+        /// <summary>Fired when a drop commits on this grid, as <c>(slotIndex, payload)</c>, before
+        /// <see cref="DroppedSlot"/> is polled.</summary>
+        public Action<int, DragPayload>? OnSlotDropped;
+
+        /// <summary>Slot a live drag is hovering over THIS grid this frame, or -1 (including when a widget above
+        /// claimed the pointer first). Draw the drop highlight on it.</summary>
+        public int DropTargetSlot { get; private set; } = -1;
+        /// <summary>Whether <see cref="DropTargetSlot"/> would take the payload: the highlight's accept / refuse colour.</summary>
+        public bool DropTargetAccepted { get; private set; }
+
+        /// <summary>Slot a drop committed on this frame, or -1. Cleared at the top of every <c>Update</c>.</summary>
+        public int DroppedSlot { get; private set; } = -1;
+        /// <summary>The payload dropped this frame (valid when <see cref="DroppedSlot"/> is 0 or more).</summary>
+        public DragPayload DroppedPayload { get; private set; }
+
+        /// <summary>Slot a drag that started in THIS grid is currently carrying, or -1. Live for the whole drag
+        /// (unlike <see cref="PressOriginSlot"/>, which goes -1 the moment the button comes up), so the origin slot
+        /// can be dimmed or blanked while its contents are in flight.</summary>
+        public int DraggingSlot => _dragSourceSlot;
 
         /// <summary>Create a grid of <paramref name="count"/> slots wrapping at <paramref name="columns"/> per row.</summary>
         public SlotGrid(Rect bounds, int count, int columns)
@@ -236,21 +287,86 @@ namespace KhaozEngine.Gui
         /// <see cref="PressedSlot"/>, and on a valid press-origin tap fires <see cref="OnSlotClicked"/> and returns
         /// that slot index. Returns -1 otherwise.
         /// </summary>
-        public int Update(Pointer pointer)
+        public int Update(Pointer pointer) => Update(pointer, null);
+
+        /// <summary>
+        /// <see cref="Update(Pointer)"/> plus the drag-and-drop pass over <paramref name="drag"/>. As a SOURCE, a
+        /// held press that clears <see cref="GuiDragContext.DragThreshold"/> grabs the payload
+        /// <see cref="BeginDragPayload"/> returns for <see cref="PressOriginSlot"/> (null there means that slot is
+        /// not draggable, and nothing arms). As a TARGET, every frame the live drag is over a slot the grid offers
+        /// it with <see cref="CanAcceptDrop"/>'s verdict, so a refusal shows BEFORE the release, and a drop that
+        /// commits sets <see cref="DroppedSlot"/> / <see cref="DroppedPayload"/> and fires
+        /// <see cref="OnSlotDropped"/>. Passing null for <paramref name="drag"/> is exactly
+        /// <see cref="Update(Pointer)"/>, and a grid with neither hook wired never takes part in a drag.
+        /// </summary>
+        public int Update(Pointer pointer, GuiDragContext? drag)
         {
             pointer.BlockRegion(ContentBounds);
             HoveredSlot = -1;
             PressedSlot = -1;
+            PressOriginSlot = -1;
+            DropTargetSlot = -1;
+            DropTargetAccepted = false;
+            DroppedSlot = -1;
+            DroppedPayload = default;
             int clicked = -1;
             for (int i = 0; i < Count; i++)
             {
                 Rect r = SlotRect(i);
                 if (HoveredSlot < 0 && pointer.IsHoveringIn(r)) HoveredSlot = i;
                 if (PressedSlot < 0 && pointer.IsPressingIn(r)) PressedSlot = i;
+                if (PressOriginSlot < 0 && pointer.IsDragStartIn(r)) PressOriginSlot = i;
                 if (clicked < 0 && pointer.IsTapIn(r)) clicked = i;
             }
+
+            if (drag is not null) UpdateDrag(pointer, drag);
+
             if (clicked >= 0) OnSlotClicked?.Invoke(clicked);
             return clicked;
+        }
+
+        // The drag pass, split out of Update so the plain hit-test loop above stays the same shape it always was.
+        // Source first, then target: a grid can be both (dragging a stack from one slot onto another in the same
+        // grid is the reorder case), and the two halves never collide because arming needs the button HELD while
+        // committing needs it released.
+        void UpdateDrag(Pointer pointer, GuiDragContext drag)
+        {
+            if (!drag.IsDragging) _dragSourceSlot = -1;
+
+            if (BeginDragPayload is not null && !drag.IsDragging && PressOriginSlot >= 0)
+            {
+                Rect source = SlotRect(PressOriginSlot);
+                if (drag.ShouldBeginDrag(pointer, source) && BeginDragPayload(PressOriginSlot) is { } payload)
+                {
+                    // Zero-config ghost: a payload the game built without a painter drags the slot's own built-in
+                    // SlotContent (icon, cooldown sweep, count), which is already exactly what the player grabbed.
+                    int from = PressOriginSlot;
+                    if (payload.Ghost is null && _content.TryGetValue(from, out SlotContent grabbed))
+                        payload = payload.WithGhost((b, white, font, rect) => DrawContent(b, white, font, from, rect, grabbed));
+
+                    if (drag.Begin(pointer, payload, source)) _dragSourceSlot = from;
+                }
+            }
+
+            if (!drag.IsDragging) return;
+
+            int over = SlotAt(pointer.Position);
+            if (over < 0) return;
+
+            bool accept = CanAcceptDrop is null || CanAcceptDrop(over, drag.Payload);
+            bool committed = drag.OfferTarget(this, over, accept);
+            // Only report the hover state when THIS grid actually claimed the offer: an overlay above it may have
+            // taken the pointer first, in which case this grid is not the target however much it overlaps.
+            if (committed || ReferenceEquals(drag.HoveredTargetId, this))
+            {
+                DropTargetSlot = over;
+                DropTargetAccepted = accept;
+            }
+            if (!committed) return;
+
+            DroppedSlot = over;
+            DroppedPayload = drag.LastDrop.Payload;
+            OnSlotDropped?.Invoke(over, DroppedPayload);
         }
 
         /// <summary>

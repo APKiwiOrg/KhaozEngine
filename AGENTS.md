@@ -10,16 +10,14 @@ source; Codex reads this file directly.
 ## Before starting ANY engine work (concurrent-dev rule)
 This section is the engine's instance of the global "Branching, worktrees, and finishing work"
 default (worktree per change; finish by merge to `main` + commit + push). It wins where it differs:
-heavy parallel dev makes the worktree mandatory (with the trivial-change exception below), and a
-finished release is a full publish (merge + push `main` + push the `vX.Y.Z` tag + pack to
-`local-feed`). **A finished feature auto-publishes: merge to `main`, tag `vX.Y.Z`, and push
-`main` + the tag right away** - do NOT hold or batch the push, and don't ask (CI publishing every
-package to GitHub Packages on each `v*` tag is the accepted cost). One release per finished feature
-leaves the repo clean after each worktree. **There is always parallel development on this engine, so
-NEVER assume your intended version or tag is free:** re-read the current version + tags on the
-up-to-date `main` right before you bump/tag, and if yours is taken, take the next FREE version/tag
-and auto-resolve (see the release-collision rule below). Bump `<KhaozEngineVersion>` in
-`Directory.Build.props` on every change - a finished feature always ships a version bump.
+heavy parallel dev makes the worktree mandatory (with the trivial-change exception below), and
+finishing a piece of work is merge to `main` + push `main` + pack to `local-feed`. **Push `main`
+right away** - do NOT hold or batch the push, and don't ask. That authorizes the push and nothing
+else: a `vX.Y.Z` tag is a release, and a release is never automatic (see the release ritual and the
+version-bump rule below for the one exception, a game pinned-and-waiting on the change). **There is
+always parallel development on this engine, so NEVER assume your intended version or tag is free:**
+re-read the current version + tags on the up-to-date `main` right before you bump/tag, and if yours
+is taken, take the next FREE version/tag and auto-resolve (see the release-collision rule below).
 Before you touch anything:
 1. Check for ongoing parallel work first: `git worktree list`, `git branch -a`,
    and `git fetch && git status` to see other branches/trees in flight.
@@ -116,16 +114,20 @@ version/release work.
   conflicts on `main`). The shared `<KhaozEngineVersion>` line collides constantly: a concurrent chat may have
   already bumped it and tagged that `vX.Y.Z`, so re-read the current version on the up-to-date `main` and take the
   next FREE version for your bump + tag (and rebase your `CHANGELOG.md` entry onto it).
-- Release ritual, in order: bump `<KhaozEngineVersion>` in `Directory.Build.props` → add the
-  `CHANGELOG.md` entry → update the engine-version declarations the
-  guard checks (EVERY `README.md` `<PackageReference>` example line, one per umbrella) →
-  close any issue this release resolved (`gh issue close`, or `Closes #123` in the commit) if it is
-  somehow still open, a backstop only: that should already have happened when the work landed, per the
-  Discovered work section → `dotnet pack -c Release -o ./local-feed`
-  (cumulative within a release) → commit → `scripts/tag-release.sh` (creates the annotated tag `vX.Y.Z` with the canonical
+- Finishing ritual, in order: bump `<KhaozEngineVersion>` in `Directory.Build.props`, unless you are
+  riding an in-flight bump (see the version-bump rule below), in which case skip this step → add the
+  `CHANGELOG.md` entry (or append your notes to the in-flight entry when riding) → update the
+  engine-version declarations the guard checks (EVERY `README.md` `<PackageReference>` example line,
+  one per umbrella) → close any issue this work resolves (`gh issue close`, or `Closes #123` in the
+  commit) if it is somehow still open, a backstop only: that should already have happened when the
+  work landed, per the Discovered work section → `dotnet pack -c Release -o ./local-feed` (cumulative,
+  and happens on every finish whether or not a tag follows) → commit → push `main` right away, don't
+  hold or ask. Stop there: a `vX.Y.Z` tag is a separate, deliberate act, never automatic (see the
+  version-bump rule below for who starts one and when). When a release IS due, cut it with
+  `scripts/tag-release.sh` (creates the annotated tag `vX.Y.Z` with the canonical
   `area(<version>): summary`, reading `<KhaozEngineVersion>`, and do NOT hand-type `git tag vX.Y.Z`, a
-  lightweight tag is rejected by `pre-push` and is how merge-commit subjects leaked into old tags) →
-  push `main` + the tag right away, don't hold or batch (CI publishes to GitHub Packages on `v*`).
+  lightweight tag is rejected by `pre-push` and is how merge-commit subjects leaked into old tags),
+  then push the tag (CI publishes to GitHub Packages on `v*`).
   `local-feed/` is a gitignored dev convenience; GitHub Packages (every published `v*`) is the durable store, so
   `local-feed` may be pruned up to the lowest version any consumer still pins (each consumer's `Directory.Build.props`
   `<KhaozEngineVersion>`; do not prune below it) without losing anything recoverable.
@@ -214,27 +216,34 @@ version/release work.
   per-consumer adopt PRs. Never bump the version per-item within a batch. Same spirit for a small
   standalone fix landing alongside other small work: fold it into that shared bump rather than cutting
   its own `vX.Y.Z`, and lean on the trivial-change exception (no bump at all) for anything that ships no
-  package, so the engine version does not creep through a run of one-line releases. A FINISHED feature
-  still auto-publishes right away (merge + tag + push, don't hold) - batching is about not fragmenting one
-  unit of work across several tiny releases, never about holding a finished feature.
-- **The batch gate: this one specific call is the user's, so ASK.** Check, at the point of bumping,
-  whether a bump is already in flight but unreleased (the current `<KhaozEngineVersion>` is ahead of the
-  newest `vX.Y.Z` tag: staged, not yet tagged). If it is, and your change is small enough that it could
-  ride that version instead of minting a new one, **stop and ask the user which**. Do not decide it
-  yourself.
-
-  Riding an in-flight version means appending your notes to its existing `CHANGELOG.md` entry rather than
-  bumping again. Whether that is right turns on what the user intends to release and when, which is not
-  visible from the repo: you can see that `<KhaozEngineVersion>` is ahead of the newest tag, but not
-  whether that staged version is minutes from tagging or parked pending a bake, nor whether your change
-  belongs in the same entry as what is already sitting there. Guessing silently either creeps the version
-  through a swarm of tiny releases or smuggles an unrelated change into someone's staged release.
-
-  Ask ONLY at that moment. Not on every bump. When `<KhaozEngineVersion>` is already tagged (nothing in
-  flight), cut a fresh version and carry on without asking, exactly as before. A change substantial enough
-  to stand alone also just takes its own version, no question needed. The gate is about which version a
-  small change rides, never about whether to publish: a finished feature still auto-publishes without
-  asking, per the concurrent-dev rule above.
+  package, so the engine version does not creep through a run of one-line releases.
+- **Ride the staged version. Never tag on your own initiative.** Releases are deliberately consolidated:
+  one tag carrying a lot of content, not a trickle of one-change versions. So the default end of every
+  piece of work is merge, push `main`, pack to `local-feed`, stop. Do NOT tag, and never treat "my feature
+  is finished and tested" or "that version has a lot in it now" as a reason to tag.
+  - **A bump already in flight is RIDDEN.** In flight means `<KhaozEngineVersion>` is ahead of the newest
+    `vX.Y.Z` tag: staged, not yet released. Append your notes to that version's existing `CHANGELOG.md`
+    entry, keep the version as it is, and do not bump. Riding is the assumption, so do not ask which. This
+    replaces the old batch gate, which asked at this moment. It no longer does.
+  - **Nothing in flight means cut exactly ONE fresh version.** When `<KhaozEngineVersion>` is already
+    tagged, bump once for your work, write its `CHANGELOG.md` entry, and leave it UNTAGGED for the next
+    chat to ride. Also without asking.
+  - **Tag immediately, without asking, when a game is pinned-and-waiting on this change.** The
+    engine-first rule pauses the dependent game's work until the upgrade ships, so holding the tag holds
+    that game. This is the one case the engine tags on its own initiative.
+  - **Otherwise only the user starts a release**, either by saying so or by answering the end-of-run
+    question below. When they do: `git fetch`, re-read the current `<KhaozEngineVersion>` and `git tag`
+    on the up-to-date `main`, take the next FREE version if yours is taken (that collision is still
+    auto-resolved without asking) and rebase the `CHANGELOG.md` entry onto it, then make the tag with
+    `scripts/tag-release.sh` and push it.
+- **The release ask: only when you look like the last chat standing.** At your checkpoint, before you
+  report back, run `git worktree list`. If it shows any worktree besides your own and the main checkout,
+  another chat is mid-flight: say nothing about releasing, and assume that chat rides your work and tags
+  at its end. If yours is the only one left, you may ask ONCE, as the last line of your report, whether to
+  release now or keep stacking. Name the staged version and summarise what has accumulated in its entry,
+  so the answer is an informed one. Never tag before the answer comes back. A stale worktree nobody
+  cleaned up will silence the ask, and that is the correct failure direction: an unasked question costs a
+  release cycle, an unwanted tag costs a release.
 - `local-feed/` is gitignored but MUST exist before `dotnet restore` (`mkdir -p local-feed`).
 - **SessionStart injects the discovered-work ledger** into every session: the open backlog count, via
   `scripts/session-context.sh` on top of `scripts/ledger.sh`. Informational, never blocks. There is no

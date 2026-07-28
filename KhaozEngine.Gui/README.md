@@ -104,7 +104,28 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     slot's `IconId` is set but the atlas cannot resolve it, for a roster that names icons the atlas has not
     registered yet. A null `IconId` never falls back, it still means no icon). The immediate-mode `GuiSurface`
     exposes the same primitives standalone: `Image` (an arbitrary texture, bypassing the icon atlas) and
-    `CooldownOverlay` (the radial sweep).
+    `CooldownOverlay` (the radial sweep). Drag-and-drop is opt-in through the `Update(Pointer, GuiDragContext?)`
+    overload (below): `BeginDragPayload(slot)` makes the grid a source (return null for a slot that cannot be
+    picked up), `CanAcceptDrop(slot, payload)` makes it a target and refuses before the release,
+    `DropTargetSlot`/`DropTargetAccepted` drive the drop highlight, `DroppedSlot`/`DroppedPayload`/`OnSlotDropped`
+    report a commit, and `DraggingSlot` is the origin slot for the life of the drag (dim it while its contents
+    are in the air). `PressOriginSlot` is the slot the held press BEGAN in and, unlike `PressedSlot`, survives the
+    pointer leaving that slot.
+  - `GuiDragContext` - drag-and-drop that SPANS widgets (pick an icon out of one `SlotGrid` slot, drop it on
+    another grid, an equipment rack, or a bare "destroy" rect). One live drag at a time, in its own object the
+    participating widgets consult rather than state on any one of them. Per frame: `BeginFrame(pointer, dt)`,
+    your widget updates, `EndFrame()`, then `Draw(batch, white, font)` last so the ghost floats over everything.
+    A `DragPayload` carries an OPAQUE game `Token` the engine never inspects (same discipline as `SlotContent`)
+    plus `SourceId`/`SourceIndex` and an optional `DragGhostPainter`. A target calls
+    `OfferTarget(id, index, accepted)` every frame the drag hovers it, so a refusal shows BEFORE the release
+    (`ShowRejectOverlay`) instead of being accepted and undone. The first offer of the frame wins, matching
+    `ScreenStack`'s top-to-bottom routing. `OfferTargetIn(rect, ...)` hit-tests for you, which makes a bare rect a
+    drop target with no widget. A commit sets `WasDropped`/`LastDrop` and fires `OnDropped`. A release over
+    nothing (or `Cancel()`, the Escape path) sets `WasCancelled` and eases the ghost back to its source rect over
+    `ReturnDuration` (0 disables). Grabbing calls `Pointer.ConsumeGesture`, so the release that drops cannot also
+    tap what is underneath. `DragThreshold` (6 px, matching `TreeView`) is the shared arm rule via
+    `ShouldBeginDrag`. `TreeView`'s own reorder is a different gesture and stays as it is: same-widget ordinal
+    reorder is `TreeView`, cross-widget payload transfer is this.
   - `ProgressBar` - a thin fill bar (health / XP / cast / load / charge pips). `Fraction` is clamped 0..1; the accent
     fill (`FillColor`) sits inside the border frame, the track is `TrackColor`, and corners/border/skin come from
     `Style`. `FillDirection` picks the edge the fill grows FROM: `LeftToRight` (default, today's look), `RightToLeft`,

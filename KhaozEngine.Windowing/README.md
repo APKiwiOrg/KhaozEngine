@@ -111,7 +111,12 @@ Windowing + input foundation for the custom MonoGame-free stack.
   bare `AppWindow` host is covered - it also un-loses the Metal-vsync `Console.Error` warning above on a WinExe),
   and `GameApp` calls it first (opt out with `GameAppOptions.SuppressParentConsoleAttach`).
 - `InputManager` / `Pointer` - the higher-level read: unified pointer, edges, bounds helpers (`IsTapIn` etc.),
-  region blocking, keyboard/gamepad/menu navigation.
+  region blocking, keyboard/gamepad/menu navigation. The right button has the same bounds helpers as the left
+  (`IsRightTapIn` / `IsRightPressingIn`, forwarded on `InputManager`), carrying the same press-origin invariant
+  off their own `RightPressOrigin` - what a right-click context menu hangs off, since hit-testing by raw
+  position plus a button read is against the rule above. `ConsumeRightGesture()` / `IsRightConsumed` are the
+  right-button twin of `ConsumeGesture()` / `IsConsumed` and are tracked separately, so neither button can
+  silence the other.
 - **Action maps + rebinding** (`KhaozEngine.Windowing.Actions`) - named actions instead of hardcoded key checks.
   A game declares `InputAction`s (`Button` / `Axis1D` / `Axis2D`) with default `InputBinding`s over `InputSource`s
   (key, mouse button, gamepad button, trigger, a whole stick via `WholeStick` for a 2D move/look, a single stick

@@ -15,14 +15,19 @@ namespace KhaozEngine.Windowing
     {
         readonly List<Rect> _blocked = new();
         bool _down, _wasDown, _mid, _wasMid, _right, _wasRight;
-        bool _consumed;   // current gesture claimed by a consumer; reset on the next fresh press
+        bool _consumed;   // current LEFT gesture claimed by a consumer; reset on the next fresh left press
+        bool _rightConsumed;   // the same latch for the RIGHT gesture, tracked separately (see ConsumeRightGesture)
         bool _focused = true;   // OS window focus, from InputState.WindowFocused; windows start focused
-        Vector2 _pos, _prevPos, _pressOrigin;
+        Vector2 _pos, _prevPos, _pressOrigin, _rightPressOrigin;
 
         /// <summary>Current pointer position (pixels).</summary>
         public Vector2 Position => _pos;
         /// <summary>Where the current press began (valid while down and on the release frame).</summary>
         public Vector2 PressOrigin => _pressOrigin;
+        /// <summary>Where the current RIGHT press began (valid while the right button is down and on its release
+        /// frame). Latched independently of <see cref="PressOrigin"/>, so a right gesture keeps its own origin even
+        /// when a left press happens during it.</summary>
+        public Vector2 RightPressOrigin => _rightPressOrigin;
         /// <summary>Movement since the previous frame.</summary>
         public Vector2 Delta => _pos - _prevPos;
 
@@ -88,8 +93,12 @@ namespace KhaozEngine.Windowing
             bool rightHeld = input.IsDown(MouseButton.Right);
             _right = rightHeld && (_wasRight || inWindow);
 
-            // A fresh press starts a fresh, unconsumed gesture.
+            // A fresh press starts a fresh, unconsumed gesture. The right button latches its own origin and its own
+            // consumed flag: a context menu opened by a right-click must not be blinded by a left-gesture consume,
+            // and consuming the right gesture (so the menu that just opened does not immediately re-fire) must not
+            // cancel an unrelated left tap in the same frame.
             if (IsJustPressed) { _pressOrigin = _pos; _consumed = false; }
+            if (IsRightJustPressed) { _rightPressOrigin = _pos; _rightConsumed = false; }
         }
 
         /// <summary>Reserve a region for an overlay this frame; the layer beneath checks <see cref="IsBlocked"/>. Cleared each <see cref="Update(KhaozEngine.Windowing.InputState)"/>.</summary>
@@ -114,12 +123,41 @@ namespace KhaozEngine.Windowing
         /// <summary>True while the current gesture has been claimed via <see cref="ConsumeGesture"/> (until the next fresh press).</summary>
         public bool IsConsumed => _consumed;
 
+        /// <summary>
+        /// The right-button twin of <see cref="ConsumeGesture"/>: mark the current RIGHT press/release gesture as
+        /// already handled, so <see cref="IsRightTapIn"/> reports false for the rest of it. Cleared automatically on
+        /// the next fresh right press. Call it when a right-click opens a context menu, so the menu that appeared
+        /// under the cursor does not act on the same release that spawned it. Tracked separately from the left
+        /// latch, so neither button can silence the other.
+        /// </summary>
+        public void ConsumeRightGesture() => _rightConsumed = true;
+
+        /// <summary>True while the current RIGHT gesture has been claimed via <see cref="ConsumeRightGesture"/> (until the next fresh right press).</summary>
+        public bool IsRightConsumed => _rightConsumed;
+
         /// <summary>True on release only if the press-origin AND the release are both inside <paramref name="bounds"/> (the click-through invariant) and the gesture has not been consumed via <see cref="ConsumeGesture"/>.</summary>
         public bool IsTapIn(Rect bounds) => !_consumed && IsJustReleased && bounds.Contains(_pressOrigin) && bounds.Contains(_pos);
 
         /// <summary>True on release when the press began in <paramref name="pressOriginBounds"/> and the release is in <paramref name="releaseBounds"/>, and the gesture has not been consumed via <see cref="ConsumeGesture"/>.</summary>
         public bool IsTapFromTo(Rect pressOriginBounds, Rect releaseBounds) =>
             !_consumed && IsJustReleased && pressOriginBounds.Contains(_pressOrigin) && releaseBounds.Contains(_pos);
+
+        /// <summary>
+        /// The right-button twin of <see cref="IsTapIn"/>, carrying the same press-origin invariant: true on the
+        /// right-button release only when the right press-origin AND the release are both inside
+        /// <paramref name="bounds"/>, and the right gesture has not been consumed via
+        /// <see cref="ConsumeRightGesture"/>. This is what a context menu hangs off: without it a consumer has to
+        /// pair <see cref="IsRightJustReleased"/> with a raw position test, which the input contract forbids
+        /// (hit-test through the bounds helpers, never raw position + button).
+        /// </summary>
+        public bool IsRightTapIn(Rect bounds) =>
+            !_rightConsumed && IsRightJustReleased && bounds.Contains(_rightPressOrigin) && bounds.Contains(_pos);
+
+        /// <summary>The right-button twin of <see cref="IsPressingIn"/>: true while the right button is held with
+        /// both its press-origin and the cursor inside <paramref name="bounds"/> (the press-state visual for a
+        /// right-clickable region).</summary>
+        public bool IsRightPressingIn(Rect bounds) =>
+            _right && bounds.Contains(_rightPressOrigin) && bounds.Contains(_pos);
 
         public bool IsPointerIn(Rect bounds) => bounds.Contains(_pos);
         /// <summary>True when the pointer hovers <paramref name="bounds"/> (over it, no button down) AND the window

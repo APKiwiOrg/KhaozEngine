@@ -12,7 +12,7 @@ namespace KhaozEngine.Render3D
 {
     /// <summary>One decoded material texture: tightly-packed RGBA8 pixels (row-major, top-left origin,
     /// <c>Rgba.Length == Width * Height * 4</c>) plus its dimensions. Carries no GPU resources; upload it with
-    /// <see cref="Scene3D.LoadTexture(byte[],int,int)"/> (or via <see cref="Scene3D.LoadSurfaceMaps"/>).</summary>
+    /// <see cref="Scene3D.LoadTexture(byte[],int,int,TextureMipPolicy)"/> (or via <see cref="Scene3D.LoadSurfaceMaps"/>).</summary>
     public readonly struct DecodedImage
     {
         /// <summary>Tightly-packed RGBA8 pixels, row-major, top-left origin (length = Width*Height*4).</summary>

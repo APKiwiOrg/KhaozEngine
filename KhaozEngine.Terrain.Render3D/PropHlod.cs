@@ -28,15 +28,30 @@ namespace KhaozEngine.Terrain
         /// (the same world matrix <see cref="PropRenderer"/> uses) and concatenate. A placement whose id is absent is
         /// skipped (per-kit opt-in). Normals are rotated by the yaw and tangents zeroed (the merged mesh lights by its
         /// geometric normal, like any untangented mesh); per-vertex colour and UV are carried through unchanged. No
-        /// coarsening - call <see cref="Weld"/> (or <see cref="BuildMergedMesh"/>) to reduce the triangle count.</summary>
+        /// coarsening - call <see cref="Weld"/> (or <see cref="BuildMergedMesh"/>) to reduce the triangle count.
+        /// <para>Both output arrays are sized EXACTLY, from a counting pass over the source meshes, before anything is
+        /// written. A merge is a concatenation, so the totals are known up front and there is no reason to pay for a
+        /// growing list: on a real cluster (the measured one is 41 props and 139,608 triangles) a doubling
+        /// <see cref="List{T}"/> plus its closing <c>ToArray</c> spent roughly three times the final size in
+        /// large-object allocations, all of it transient and none of it compacted (issue #393). The output is
+        /// byte-identical either way, since the fill order is unchanged.</para></summary>
         public static GltfMesh Merge(IReadOnlyList<PropPlacement> placements,
                                      IReadOnlyDictionary<string, GltfMesh> sourceMeshes)
         {
             if (placements == null) throw new ArgumentNullException(nameof(placements));
             if (sourceMeshes == null) throw new ArgumentNullException(nameof(sourceMeshes));
 
-            var verts = new List<ModelVertex>();
-            var idx = new List<uint>();
+            int vertCount = 0, indexCount = 0;
+            for (int p = 0; p < placements.Count; p++)
+                if (sourceMeshes.TryGetValue(placements[p].Id, out GltfMesh? m) && m != null)
+                {
+                    vertCount += m.Vertices.Length;
+                    indexCount += m.Indices32.Length;
+                }
+
+            var verts = new ModelVertex[vertCount];
+            var idx = new uint[indexCount];
+            int vi = 0, ii = 0;
             for (int p = 0; p < placements.Count; p++)
             {
                 PropPlacement pl = placements[p];
@@ -44,7 +59,7 @@ namespace KhaozEngine.Terrain
 
                 Matrix4x4 rot = Matrix4x4.CreateRotationY(pl.Yaw);
                 Matrix4x4 world = Matrix4x4.CreateScale(pl.Scale) * rot * Matrix4x4.CreateTranslation(pl.X, pl.Y, pl.Z);
-                uint baseIndex = (uint)verts.Count;
+                uint baseIndex = (uint)vi;
                 ModelVertex[] mv = mesh.Vertices;
                 for (int i = 0; i < mv.Length; i++)
                 {
@@ -52,12 +67,12 @@ namespace KhaozEngine.Terrain
                     v.Position = Vector3.Transform(mv[i].Position, world);
                     v.Normal = Vector3.Normalize(Vector3.TransformNormal(mv[i].Normal, rot));
                     v.Tangent = Vector4.Zero;
-                    verts.Add(v);
+                    verts[vi++] = v;
                 }
                 uint[] mi = mesh.Indices32;
-                for (int i = 0; i < mi.Length; i++) idx.Add(baseIndex + mi[i]);
+                for (int i = 0; i < mi.Length; i++) idx[ii++] = baseIndex + mi[i];
             }
-            return new GltfMesh(verts.ToArray(), idx.ToArray());
+            return new GltfMesh(verts, idx);
         }
 
         /// <summary>Vertex-cluster weld decimation: collapse every vertex whose position quantizes to the same cubic
@@ -65,36 +80,46 @@ namespace KhaozEngine.Terrain
         /// the triangles against the collapsed vertices, and drop the triangles that degenerate (two or three corners
         /// welded together). A coarse, silhouette-preserving reduction that is adequate at HLOD range - trunks go
         /// blobby but canopy shape and colour hold. Deterministic: cells are assigned ids in first-seen order over the
-        /// input vertices, so identical input yields a byte-identical result. Throws on a non-positive cell.</summary>
+        /// input vertices, so identical input yields a byte-identical result. Throws on a non-positive cell.
+        /// <para>Three passes, none of which grows a list: assign cells, accumulate into exactly-sized arrays, then
+        /// count the surviving triangles before filling an exactly-sized index array. The accumulate pass repeats the
+        /// same additions in the same per-cell order as the single-pass form it replaced, so the float sums (and
+        /// therefore the output) are bit-for-bit what they were.</para></summary>
         public static GltfMesh Weld(GltfMesh mesh, float cellSize)
         {
             if (mesh == null) throw new ArgumentNullException(nameof(mesh));
             if (cellSize <= 0f)
                 throw new ArgumentOutOfRangeException(nameof(cellSize), cellSize, "Weld cell size must be positive.");
 
+            ModelVertex[] src = mesh.Vertices;
             var cellOf = new Dictionary<(int, int, int), int>();
-            var accPos = new List<Vector3>();
-            var accNrm = new List<Vector3>();
-            var accCol = new List<Vector4>();
-            var accCnt = new List<int>();
-            var remap = new int[mesh.Vertices.Length];
-            for (int i = 0; i < mesh.Vertices.Length; i++)
+            var remap = new int[src.Length];
+            for (int i = 0; i < src.Length; i++)
             {
-                ModelVertex v = mesh.Vertices[i];
-                var key = ((int)MathF.Floor(v.Position.X / cellSize),
-                           (int)MathF.Floor(v.Position.Y / cellSize),
-                           (int)MathF.Floor(v.Position.Z / cellSize));
+                Vector3 p = src[i].Position;
+                var key = ((int)MathF.Floor(p.X / cellSize),
+                           (int)MathF.Floor(p.Y / cellSize),
+                           (int)MathF.Floor(p.Z / cellSize));
                 if (!cellOf.TryGetValue(key, out int id))
                 {
-                    id = accPos.Count;
+                    id = cellOf.Count;   // first-seen order, the determinism contract
                     cellOf[key] = id;
-                    accPos.Add(Vector3.Zero); accNrm.Add(Vector3.Zero); accCol.Add(Vector4.Zero); accCnt.Add(0);
                 }
-                accPos[id] += v.Position; accNrm[id] += v.Normal; accCol[id] += v.Color; accCnt[id]++;
                 remap[i] = id;
             }
 
-            var outV = new ModelVertex[accPos.Count];
+            int cells = cellOf.Count;
+            var accPos = new Vector3[cells];
+            var accNrm = new Vector3[cells];
+            var accCol = new Vector4[cells];
+            var accCnt = new int[cells];
+            for (int i = 0; i < src.Length; i++)
+            {
+                int id = remap[i];
+                accPos[id] += src[i].Position; accNrm[id] += src[i].Normal; accCol[id] += src[i].Color; accCnt[id]++;
+            }
+
+            var outV = new ModelVertex[cells];
             for (int i = 0; i < outV.Length; i++)
             {
                 float inv = 1f / accCnt[i];
@@ -105,14 +130,22 @@ namespace KhaozEngine.Terrain
             }
 
             uint[] si = mesh.Indices32;
-            var outI = new List<uint>();
+            int kept = 0;
             for (int t = 0; t + 2 < si.Length; t += 3)
             {
                 int a = remap[si[t]], b = remap[si[t + 1]], c = remap[si[t + 2]];
-                if (a == b || b == c || a == c) continue;   // collapsed / degenerate triangle
-                outI.Add((uint)a); outI.Add((uint)b); outI.Add((uint)c);
+                if (a != b && b != c && a != c) kept++;      // collapsed / degenerate triangles are dropped
             }
-            return new GltfMesh(outV, outI.ToArray());
+
+            var outI = new uint[kept * 3];
+            int o = 0;
+            for (int t = 0; t + 2 < si.Length; t += 3)
+            {
+                int a = remap[si[t]], b = remap[si[t + 1]], c = remap[si[t + 2]];
+                if (a == b || b == c || a == c) continue;
+                outI[o++] = (uint)a; outI[o++] = (uint)b; outI[o++] = (uint)c;
+            }
+            return new GltfMesh(outV, outI);
         }
 
         /// <summary>Build a cluster's coarse HLOD mesh in one call: <see cref="Merge"/> the placements, then

@@ -112,6 +112,54 @@ namespace KhaozEngine.Tests.Terrain
             Assert.Equal(chunk.Mesh.Vertices.Length, chunk.Splat.Length);
         }
 
+        [Theory]
+        [InlineData(0)]
+        [InlineData(1)]
+        [InlineData(2)]
+        public void Buffers_are_sized_exactly_and_filled_completely(int lod)
+        {
+            // Issue #393: the builder writes into exactly-sized arrays instead of growing three lists and copying
+            // each one out. That only holds if the counting formula matches what the loops actually write, and the
+            // failure mode of getting it wrong is silent: an oversized buffer leaves a tail of default vertices and
+            // a tail of (0,0,0) triangles, which renders as a degenerate sliver at the chunk origin rather than
+            // throwing. So pin the sizes, and pin that nothing degenerate survives anywhere in the index buffer.
+            var chunk = TerrainChunkBuilder.Build(Field(), Region(), lod);
+            int res = TerrainLod.ResolutionFor(lod), cols = res + 1;
+
+            Assert.Equal(cols * cols + cols * 4, chunk.Mesh.Vertices.Length);
+            Assert.Equal(cols * cols + cols * 4, chunk.Splat.Length);
+            Assert.Equal(res * res * 6 + res * 4 * 6, chunk.Mesh.Indices32.Length);
+
+            uint[] idx = chunk.Mesh.Indices32;
+            for (int t = 0; t < idx.Length; t += 3)
+            {
+                uint a = idx[t], b = idx[t + 1], c = idx[t + 2];
+                Assert.True(a != b && b != c && a != c, $"degenerate triangle at index {t}: an unfilled buffer tail");
+                Assert.True(a < chunk.Mesh.Vertices.Length && b < chunk.Mesh.Vertices.Length && c < chunk.Mesh.Vertices.Length);
+            }
+        }
+
+        [Fact]
+        public void Skirt_vertices_are_the_edge_vertices_dropped_by_the_skirt_depth()
+        {
+            // The four skirts are written through the same cursor as the surface, so a cursor that lost its place
+            // would put an edge copy somewhere other than where its quads expect it. Walk the -Z edge and check the
+            // dropped copy sits directly under its own top vertex.
+            var chunk = TerrainChunkBuilder.Build(Field(), Region(), lod: 1);
+            int res = TerrainLod.ResolutionFor(1), cols = res + 1;
+            int firstSkirt = cols * cols;   // the -Z edge, written first
+
+            for (int ix = 0; ix <= res; ix++)
+            {
+                var top = chunk.Mesh.Vertices[ix].Position;              // iz = 0 row
+                var low = chunk.Mesh.Vertices[firstSkirt + ix].Position;
+                Assert.Equal(top.X, low.X, 5);
+                Assert.Equal(top.Z, low.Z, 5);
+                Assert.Equal(top.Y - 0.3f, low.Y, 5);                    // the default skirtDepth
+                Assert.Equal(chunk.Splat[ix].Grass, chunk.Splat[firstSkirt + ix].Grass, 5);
+            }
+        }
+
         [Fact]
         public void Adjacent_chunks_share_identical_edge_heights()
         {

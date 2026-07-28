@@ -50,9 +50,16 @@ namespace KhaozEngine.Terrain
         {
             int res = lodConfig.ResolutionFor(lod);
             int cols = res + 1;
-            var verts = new List<ModelVertex>(cols * cols + cols * 4);
-            var splat = new List<TerrainSplatWeights>(cols * cols + cols * 4);
-            var inds = new List<uint>(res * res * 6 + res * 4 * 6);
+            // Exact sizes, not capacities: the surface is a cols x cols grid and each of the four skirts adds one
+            // dropped copy of its edge (cols vertices, res quads), so every total is known before a byte is written.
+            // Filling arrays directly is what removes the closing ToArray on each of the three buffers, and with it a
+            // second full ModelVertex[] copy of every streamed chunk (issue #393).
+            int vertCount = cols * cols + cols * 4;
+            int indexCount = res * res * 6 + res * 4 * 6;
+            var verts = new ModelVertex[vertCount];
+            var splat = new TerrainSplatWeights[vertCount];
+            var inds = new uint[indexCount];
+            int vi = 0, ii = 0;
 
             // --- surface grid -------------------------------------------------
             for (int iz = 0; iz <= res; iz++)
@@ -73,8 +80,9 @@ namespace KhaozEngine.Terrain
                 // meshes. The rule sees the engine's own result as Default so "the engine's mix plus a sand band"
                 // does not have to reimplement (and then drift from) TerrainSplatWeights.From.
                 if (splatRule is not null) w = splatRule(new TerrainSplatContext(h, slope01, biome, x, z, w));
-                verts.Add(new ModelVertex(new Vector3(lx, h, lz), n, TerrainRamp.Of(w), new Vector2((float)ix / res, (float)iz / res)));
-                splat.Add(w);
+                verts[vi] = new ModelVertex(new Vector3(lx, h, lz), n, TerrainRamp.Of(w), new Vector2((float)ix / res, (float)iz / res));
+                splat[vi] = w;
+                vi++;
             }
             for (int iz = 0; iz < res; iz++)
             for (int ix = 0; ix < res; ix++)
@@ -83,49 +91,51 @@ namespace KhaozEngine.Terrain
                 uint i1 = (uint)(iz * cols + ix + 1);
                 uint i2 = (uint)((iz + 1) * cols + ix);
                 uint i3 = (uint)((iz + 1) * cols + ix + 1);
-                inds.Add(i0); inds.Add(i2); inds.Add(i3);
-                inds.Add(i0); inds.Add(i3); inds.Add(i1);
+                inds[ii++] = i0; inds[ii++] = i2; inds[ii++] = i3;
+                inds[ii++] = i0; inds[ii++] = i3; inds[ii++] = i1;
             }
 
-            int surfaceVertexCount = verts.Count;
+            int surfaceVertexCount = vi;
 
             // --- skirts: drop a copy of each edge vertex by skirtDepth and stitch a vertical strip ------------
             uint Grid(int ix, int iz) => (uint)(iz * cols + ix);
-            void Skirt(IReadOnlyList<int> edgeIx, IReadOnlyList<int> edgeIz, bool flip)
+            // One scratch buffer for the four skirts: every edge is the same length, and the array is fully rewritten
+            // before it is read, so reusing it saves three allocations per chunk and changes nothing.
+            var lower = new uint[cols];
+            void Skirt(int[] edgeIx, int[] edgeIz, bool flip)
             {
-                int count = edgeIx.Count;
-                var lower = new uint[count];
+                int count = edgeIx.Length;
                 for (int k = 0; k < count; k++)
                 {
                     uint top = Grid(edgeIx[k], edgeIz[k]);
-                    var tv = verts[(int)top];
-                    var p = tv.Position; p.Y -= skirtDepth;
-                    lower[k] = (uint)verts.Count;
-                    verts.Add(new ModelVertex(p, tv.Normal, tv.Color, tv.Uv));
-                    splat.Add(splat[(int)top]);
+                    ModelVertex tv = verts[(int)top];
+                    Vector3 p = tv.Position; p.Y -= skirtDepth;
+                    lower[k] = (uint)vi;
+                    verts[vi] = new ModelVertex(p, tv.Normal, tv.Color, tv.Uv);
+                    splat[vi] = splat[(int)top];
+                    vi++;
                 }
                 for (int k = 0; k < count - 1; k++)
                 {
                     uint t0 = Grid(edgeIx[k], edgeIz[k]), t1 = Grid(edgeIx[k + 1], edgeIz[k + 1]);
                     uint b0 = lower[k], b1 = lower[k + 1];
-                    if (!flip) { inds.Add(t0); inds.Add(b0); inds.Add(b1); inds.Add(t0); inds.Add(b1); inds.Add(t1); }
-                    else { inds.Add(t0); inds.Add(b1); inds.Add(b0); inds.Add(t0); inds.Add(t1); inds.Add(b1); }
+                    if (!flip) { inds[ii++] = t0; inds[ii++] = b0; inds[ii++] = b1; inds[ii++] = t0; inds[ii++] = b1; inds[ii++] = t1; }
+                    else { inds[ii++] = t0; inds[ii++] = b1; inds[ii++] = b0; inds[ii++] = t0; inds[ii++] = t1; inds[ii++] = b1; }
                 }
             }
 
-            var rng = new List<int>();
-            for (int i = 0; i <= res; i++) rng.Add(i);
-            var zeros = new List<int>(); for (int i = 0; i <= res; i++) zeros.Add(0);
-            var maxs = new List<int>(); for (int i = 0; i <= res; i++) maxs.Add(res);
+            var rng = new int[cols];
+            var zeros = new int[cols];
+            var maxs = new int[cols];
+            for (int i = 0; i <= res; i++) { rng[i] = i; zeros[i] = 0; maxs[i] = res; }
             Skirt(rng, zeros, flip: false);   // -Z edge (iz = 0)
             Skirt(rng, maxs, flip: true);     // +Z edge (iz = res)
             Skirt(zeros, rng, flip: true);    // -X edge (ix = 0)
             Skirt(maxs, rng, flip: false);    // +X edge (ix = res)
 
-            var vertArr = verts.ToArray();
-            var mesh = new GltfMesh(vertArr, inds.ToArray());
-            var bounds = TerrainChunkBounds.FromPositions(vertArr);
-            return new TerrainChunkMesh(mesh, splat.ToArray(), bounds, lod, region, surfaceVertexCount);
+            var mesh = new GltfMesh(verts, inds);
+            var bounds = TerrainChunkBounds.FromPositions(verts);
+            return new TerrainChunkMesh(mesh, splat, bounds, lod, region, surfaceVertexCount);
         }
     }
 }

@@ -423,8 +423,8 @@ namespace KhaozEngine.Render3D
             _overlayMeshes = new Rendering.OverlayMeshRenderer(gd, _res.ModelFB.Outputs);
         }
 
-        /// <summary>An opaque handle to an albedo texture loaded with <see cref="LoadTexture(string)"/> /
-        /// <see cref="LoadTexture(byte[],int,int)"/>. Pass it to <see cref="LoadMesh(GltfMesh,TextureHandle)"/> to
+        /// <summary>An opaque handle to an albedo texture loaded with <see cref="LoadTexture(string,TextureMipPolicy)"/> /
+        /// <see cref="LoadTexture(byte[],int,int,TextureMipPolicy)"/>. Pass it to <see cref="LoadMesh(GltfMesh,TextureHandle)"/> to
         /// texture a mesh. Wraps an index into Scene3D's internal texture list; the GPU texture stays internal.</summary>
         public readonly struct TextureHandle
         {
@@ -456,7 +456,7 @@ namespace KhaozEngine.Render3D
         /// albedo, tangent-space normal, and roughness (glTF metallic-roughness .g convention). Any invalid
         /// (<c>default</c>) handle falls back to the renderer's default for that slot (white albedo, flat
         /// normal, zero roughness), so binding only some maps is fine. Load each map with
-        /// <see cref="LoadTexture(string)"/> / <see cref="LoadTexture(byte[],int,int)"/>. <see cref="AlphaCutoff"/>
+        /// <see cref="LoadTexture(string,TextureMipPolicy)"/> / <see cref="LoadTexture(byte[],int,int,TextureMipPolicy)"/>. <see cref="AlphaCutoff"/>
         /// carries the material's alpha-cutout threshold (0 = OPAQUE, no clip, see
         /// <see cref="GltfMaterialMaps.AlphaCutoff"/>).</summary>
         public readonly struct SurfaceMaps
@@ -552,22 +552,33 @@ namespace KhaozEngine.Render3D
         /// <summary>Decode a PNG/JPG file into an albedo texture (RGBA8) and return a handle for
         /// <see cref="LoadMesh(GltfMesh,TextureHandle)"/>. The texture is owned by the scene and freed in
         /// <see cref="Dispose"/>; it may be shared across several meshes.</summary>
-        public TextureHandle LoadTexture(string pngPath)
+        /// <param name="pngPath">Path to the image file.</param>
+        /// <param name="policy">How much of the mip chain to build. The default is
+        /// <see cref="TextureMipPolicy.Full"/>.</param>
+        public TextureHandle LoadTexture(string pngPath, TextureMipPolicy policy = default)
         {
             ImageRgba img = ImageRgba.Load(pngPath);
-            return LoadTexture(img.Pixels, img.Width, img.Height);
+            return LoadTexture(img.Pixels, img.Width, img.Height, policy);
         }
 
         /// <summary>Create an albedo texture from raw RGBA8 bytes (row-major, <paramref name="width"/> *
         /// <paramref name="height"/> * 4 bytes) and return a handle. For procedural textures and tests. The texture
         /// is owned by the scene and freed in <see cref="Dispose"/>.</summary>
-        public TextureHandle LoadTexture(byte[] rgba, int width, int height)
+        /// <param name="rgba">Row-major RGBA8 pixels.</param>
+        /// <param name="width">Texture width in texels.</param>
+        /// <param name="height">Texture height in texels.</param>
+        /// <param name="policy">How much of the mip chain to build. The default is
+        /// <see cref="TextureMipPolicy.Full"/>, which is what every caller got before the policy existed. Pass
+        /// <see cref="TextureMipPolicy.None"/> or <see cref="TextureMipPolicy.AtlasGrid"/> for an image whose
+        /// regions must not average into each other.</param>
+        public TextureHandle LoadTexture(byte[] rgba, int width, int height, TextureMipPolicy policy = default)
         {
-            uint w = (uint)width, h = (uint)height, mips = SplatMaterialConfig.MipLevelCount(width, height);
+            uint w = (uint)width, h = (uint)height, mips = policy.LevelsFor(width, height);
             // A full mip chain is what stops distant model/prop surfaces from aliasing into "pixely" sparkle when the
             // camera moves (level 0 alone point-minifies at range). Generate it exactly like the splat path; the model
             // pass samples through the trilinear LinearSampler, which now has real mips to blend between. Skip the
-            // generate for a 1-level texture (e.g. a 1x1 default) so those stay byte-identical.
+            // generate for a 1-level texture (e.g. a 1x1 default, or a policy that asked for none) so those stay
+            // byte-identical.
             GpuTextureUsage usage = GpuTextureUsage.Sampled | (mips > 1 ? GpuTextureUsage.GenerateMipmaps : 0);
             var tex = _gd.Factory.CreateTexture(new GpuTextureDescription(w, h, GpuPixelFormat.R8G8B8A8UNorm, usage, mips));
             _gd.UpdateTexture(tex, rgba, 0, 0, w, h);
@@ -632,7 +643,7 @@ namespace KhaozEngine.Render3D
 
         /// <summary>Upload a glTF material's auto-read <see cref="GltfMaterialMaps"/> (from
         /// <see cref="GltfLoader.LoadWithMaterial"/> / <see cref="GltfLoader.LoadSkinnedWithMaterial"/>) into a
-        /// <see cref="SurfaceMaps"/>: one <see cref="LoadTexture(byte[],int,int)"/> per present map. An absent map
+        /// <see cref="SurfaceMaps"/>: one <see cref="LoadTexture(byte[],int,int,TextureMipPolicy)"/> per present map. An absent map
         /// stays a <c>default</c> handle (the renderer falls back to its default for that slot - white albedo, flat
         /// normal, zero roughness), so an all-absent <paramref name="maps"/> yields an all-default
         /// <see cref="SurfaceMaps"/>. The uploaded textures are owned by the scene and freed in
@@ -1300,6 +1311,13 @@ namespace KhaozEngine.Render3D
         /// <see cref="ShadowSettings.ResolveFor"/>). Internal: lets tests assert the degradation decision without a
         /// full render.</summary>
         internal ShadowResolution ResolvedShadows() => Post.Quality.Shadows.ResolveFor(_gd.Capabilities);
+
+        /// <summary>The shadow tier that will actually render this frame (see <see cref="ResolvedShadows"/>'s
+        /// <see cref="ShadowResolution.Effective"/>). Public so a consumer outside this assembly - a prop layer
+        /// deciding whether to register a <see cref="ShadowBlob"/> (issue #388), or a game's own diagnostics -
+        /// can gate cheaply on the resolved tier without re-deriving <see cref="ShadowSettings.ResolveFor"/>'s
+        /// degradation policy itself.</summary>
+        public ShadowMode ResolvedShadowMode => ResolvedShadows().Effective;
 
         /// <summary>
         /// Queue one stylized water surface for this frame, over <paramref name="plane"/>'s still-water height and XZ footprint,

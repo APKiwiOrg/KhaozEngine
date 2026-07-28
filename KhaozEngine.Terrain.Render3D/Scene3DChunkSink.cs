@@ -563,17 +563,22 @@ namespace KhaozEngine.Terrain
         // layer draws one mesh per id (byte-identical to before). Exactly one representation is set per layer. Each
         // layer's fade band + far LOD variants (both defaulting to the old hard-cut, full-mesh behaviour) ride through,
         // plus the uniform HLOD crossfade dissolveFloor (0 = unchanged) when the cluster is fading out to its HLOD mesh,
-        // and the layer's casts-shadows policy (true = unchanged, false keeps the props out of the depth pass).
+        // the layer's casts-shadows policy (true = unchanged, false keeps the props out of the depth pass), and the
+        // layer's blob-radii table (issue #388, null = unchanged, no ShadowBlob registration). This is the ONLY branch
+        // that passes BlobRadii through: the merged-HLOD branch in Draw() above calls _scene.Draw directly on the
+        // single merged mesh with no per-placement data, so a layer's blobs stop at the HLOD swap automatically.
         void DrawLayerProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus, float dissolveFloor)
         {
             if (layer.PartMeshes is { } partMeshes)
                 _scene.DrawProps(placements, partMeshes, focus, layer.DrawRadius,
                     tint: null, fadeBandWidth: layer.FadeBandWidth, lodParts: layer.LodPartMeshes,
-                    lodDistance: layer.LodDistance, dissolveFloor: dissolveFloor, castsShadows: layer.CastsShadows);
+                    lodDistance: layer.LodDistance, dissolveFloor: dissolveFloor, castsShadows: layer.CastsShadows,
+                    blobRadii: layer.BlobRadii);
             else
                 _scene.DrawProps(placements, layer.Meshes, focus, layer.DrawRadius,
                     tint: null, fadeBandWidth: layer.FadeBandWidth, lodMeshes: layer.LodMeshes,
-                    lodDistance: layer.LodDistance, dissolveFloor: dissolveFloor, castsShadows: layer.CastsShadows);
+                    lodDistance: layer.LodDistance, dissolveFloor: dissolveFloor, castsShadows: layer.CastsShadows,
+                    blobRadii: layer.BlobRadii);
         }
 
         /// <summary>Free every still-loaded chunk's GPU mesh and clear the ring, so a sink teardown while the same

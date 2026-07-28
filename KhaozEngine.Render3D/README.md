@@ -48,6 +48,11 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   (sphere/dome/cylinder/circle), composited into the window. `UnloadTexture`/`UnloadMesh`/`UnloadSkinnedMesh`/
   `UnloadSplatMaterial` drain the device (`IGpuDevice.WaitForIdle`) before disposing GPU resources, since a
   queued upload or draw may still reference them.
+- `TextureMipPolicy` - an optional trailing argument on both `LoadTexture` overloads choosing how much of the mip
+  chain to build. `Full` (the default, and what `default(TextureMipPolicy)` is, so every existing call is
+  unchanged), `None` for level 0 only, and `AtlasGrid(columns, rows, minCellTexels = 4)` to stop at the coarsest
+  level where a grid cell still holds `minCellTexels` texels on its shorter side, which keeps a bilinear tap from
+  reaching into the neighbouring cell. `LevelsFor(width, height)` is the pure arithmetic behind it.
 - `Render3DPreview(AppWindow, width, height)` - live render-to-texture: render a model into a sampleable
   `Render2D.Texture2D` on the same device and draw it inside a 2D `SpriteBatch`/Gui panel (unit inspectors, shop
   previews, item icons). Load meshes + frame the camera once via `.Scene`, then call `Capture(drawFrame)` each
@@ -450,7 +455,10 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   since the grid, the quantized motion strength, and the two flip bits share one 24-bit packed float (8192px at a
   64px cell is already past most GPUs' max texture size). Flipbooks are additive over the procedural shapes,
   selected per-sprite, and a sprite that leaves `Flipbook` default renders byte-identically to the procedural path
-  (a 1x1 dummy atlas + neutral motion sheet keep procedural runs in the same one pipeline).
+  (a 1x1 dummy atlas + neutral motion sheet keep procedural runs in the same one pipeline). Atlas and motion taps
+  go through an explicit sampling LOD capped at the coarsest mip level where a cell still holds 4 texels on its
+  shorter side, so a distant sprite stops averaging its cell together with the ones around it. The cap is derived
+  in the shader from the packed grid and `textureSize`, so a consumer adopts it by version bump.
   `ParticleOrientation` is `CameraFacing` (default) or `FlatGround` (the quad lies in the XZ plane, for shockwave
   rings and ground glows). The whole queue sorts back-to-front and BOTH blend modes interleave in the one stream,
   because the fragment premultiplies colour and zeroes the alpha lane for additive sprites. Depth state is test

@@ -172,7 +172,28 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(fa, p.Flip.X);
             Assert.Equal(fb, p.Flip.Y);
             Assert.Equal(blend, p.Flip.Z, 5);
-            Assert.Equal(ParticleRenderer.PackFlipGrid(4, 4, 1f), p.Flip.W);
+            // Strength 0, not the spec's 1: no motion sheet is bound here, so the strength has nothing to scale.
+            Assert.Equal(ParticleRenderer.PackFlipGrid(4, 4, 0f), p.Flip.W);
+        }
+
+        [Fact]
+        public void PackInstance_MotionStrength_ZeroWithoutSheet_PreservedWithOne()
+        {
+            // MotionStrength defaults to 1 whether or not a sheet is bound. With none bound the renderer binds the
+            // 1x1 neutral dummy, which decodes to zero displacement, so packing 0 is behaviour-neutral and keeps the
+            // common flipbook three binades below the 2^24 ceiling instead of riding at 1,048,576.
+            ParticleSprite noSheet = Sprite();
+            noSheet.Flipbook = new ParticleFlipbook(new Scene3D.TextureHandle(0), 4, 4, MotionStrength: 1f, Loop: true);
+            (_, _, float mNone, _, _) = DecodeFlipGrid(ParticleRenderer.PackInstance(noSheet).Flip.W);
+            Assert.Equal(0f, mNone);
+            Assert.True(ParticleRenderer.PackInstance(noSheet).Flip.W < 16384f, "the strength field must be empty");
+
+            ParticleSprite withSheet = Sprite();
+            withSheet.Flipbook = new ParticleFlipbook(new Scene3D.TextureHandle(0), 4, 4,
+                new Scene3D.TextureHandle(1), MotionStrength: 2.5f, Loop: true);
+            (int dc, int dr, float mSheet, _, _) = DecodeFlipGrid(ParticleRenderer.PackInstance(withSheet).Flip.W);
+            Assert.Equal(2.5f, mSheet);
+            Assert.Equal((4, 4), (dc, dr));   // zeroing the strength must not disturb the grid either way
         }
 
         // Mirror of the fragment shader's decode (ShaderSources.Effects.cs). Round-tripping through this proves the

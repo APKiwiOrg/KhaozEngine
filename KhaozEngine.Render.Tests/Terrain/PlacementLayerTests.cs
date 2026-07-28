@@ -11,7 +11,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Terrain
 {
-    /// <summary>Covers <see cref="PropLayer.PlacementLayer(IReadOnlyList{PropPlacement}, IReadOnlyDictionary{string, MeshHandle}, float, float, IReadOnlyDictionary{string, MeshHandle}, float, bool, bool)"/>
+    /// <summary>Covers <see cref="PropLayer.PlacementLayer(IReadOnlyList{PropPlacement}, IReadOnlyDictionary{string, MeshHandle}, float, float, IReadOnlyDictionary{string, MeshHandle}, float, bool, bool, IReadOnlyDictionary{string, float})"/>
     /// and its multi-part overload (issue #286): the frozen, author-supplied placement kind, its collider opt-out,
     /// and that <see cref="PropLayer.WithHlod"/> carries both through unchanged. Then the sink wiring:
     /// <see cref="PlacementBuckets"/>, the shared per-chunk seam in <c>ScatterLayersFor</c> (a placement layer

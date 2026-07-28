@@ -60,7 +60,7 @@ namespace KhaozEngine.Render3D
     /// fragment shader, with optional motion-vector frame interpolation. The default (an invalid <see cref="Texture"/>
     /// handle) leaves the sprite on the procedural <see cref="ParticleShape"/> path, so a sprite that never sets this
     /// renders byte-identically to before flipbooks existed. Load the atlas (and the optional motion sheet) with
-    /// <see cref="Scene3D.LoadTexture(byte[],int,int)"/>.
+    /// <see cref="Scene3D.LoadTexture(byte[],int,int,TextureMipPolicy)"/>.
     /// <para>
     /// UV ORIGIN: a flipbook cell samples with its origin at the BOTTOM-LEFT, matching the rest of the 3D sprite
     /// path (see the <c>(u0,v0)</c> note on

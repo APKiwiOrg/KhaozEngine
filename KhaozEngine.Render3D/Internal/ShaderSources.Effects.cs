@@ -101,12 +101,16 @@ layout(location=2) in vec4 IColor;        // straight rgba tint (premultiplied b
 layout(location=3) in vec4 IShape;        // x shape id, y shape param, z life norm, w seed
 layout(location=4) in vec4 IExtra;        // x stretch, y additivity (0 alpha / 1 additive), z orientation (0 camera / 1 flat ground), w soft-fade scale
 layout(location=5) in vec4 IFlip;         // x frameA, y frameB, z blend, w packed grid+strength+flips (0 = procedural)
+// vColor/vShape/vExtra/vFlip are written once per instance, so they are the SAME at every vertex of the quad and go
+// out flat. Perspective-correct interpolation of a constant is exact in infinite precision only: hardware that
+// divides by the interpolated w rounds, and vFlip.w carries a 24-bit packed integer where one ULP in the top binade
+// moves the decoded column by a whole cell. vLocal and vWorld genuinely vary and stay interpolated.
 layout(location=0) out vec2 vLocal;
-layout(location=1) out vec4 vColor;
-layout(location=2) out vec4 vShape;
-layout(location=3) out vec4 vExtra;       // x aspect (stretch elongation), y additivity, z orientation, w soft-fade scale
+layout(location=1) flat out vec4 vColor;  // per-instance constant
+layout(location=2) flat out vec4 vShape;  // per-instance constant
+layout(location=3) flat out vec4 vExtra;  // per-instance constant: x aspect (stretch elongation), y additivity, z orientation, w soft-fade scale
 layout(location=4) out vec3 vWorld;
-layout(location=5) out vec4 vFlip;        // flipbook frames + packed grid, passed straight through to the fragment
+layout(location=5) flat out vec4 vFlip;   // per-instance constant: flipbook frames + packed grid, passed straight through to the fragment
 void main() {
     // Two-triangle quad from gl_VertexIndex (0..5), the same instanced-quad path DecalVert uses.
     float u = (gl_VertexIndex == 1 || gl_VertexIndex == 3 || gl_VertexIndex == 4) ? 1.0 : 0.0;
@@ -167,12 +171,14 @@ layout(set=0, binding=2) uniform sampler Samp;
 layout(set=0, binding=3) uniform texture2D MotionTex;
 layout(set=0, binding=4) uniform texture2D AtlasTex;
 layout(set=0, binding=5) uniform sampler AtlasSamp;
-layout(location=0) in vec2 vLocal;    // quad-local coords in [-1,1] (rotate/stretch with the quad)
-layout(location=1) in vec4 vColor;
-layout(location=2) in vec4 vShape;    // x shape id, y shape param, z life norm, w seed
-layout(location=3) in vec4 vExtra;    // x aspect, y additivity, z orientation (0 camera / 1 flat ground), w soft-fade scale
-layout(location=4) in vec3 vWorld;    // fragment world position (flat across the quad's plane)
-layout(location=5) in vec4 vFlip;     // x frameA, y frameB, z blend, w packed grid+strength+flips (0 = procedural)
+// The flat qualifiers MUST mirror ParticleVert's exactly or SPIRV-Cross rejects the link. See the note there for
+// why the per-instance-constant varyings skip the interpolator.
+layout(location=0) in vec2 vLocal;         // quad-local coords in [-1,1] (rotate/stretch with the quad)
+layout(location=1) flat in vec4 vColor;    // per-instance constant
+layout(location=2) flat in vec4 vShape;    // per-instance constant: x shape id, y shape param, z life norm, w seed
+layout(location=3) flat in vec4 vExtra;    // per-instance constant: x aspect, y additivity, z orientation (0 camera / 1 flat ground), w soft-fade scale
+layout(location=4) in vec3 vWorld;         // fragment world position (flat across the quad's plane)
+layout(location=5) flat in vec4 vFlip;     // per-instance constant: x frameA, y frameB, z blend, w packed grid+strength+flips (0 = procedural)
 layout(location=0) out vec4 oColor;
 
 // Texture-free value noise, the exact polynomial-hash idiom the decal pass ships cross-backend goldens with

@@ -11,6 +11,12 @@ namespace KhaozEngine.Terrain
     /// a running player paid a multi-megabyte large-object allocation per re-LOD for nothing. <c>Built</c> minus
     /// <c>Uploaded</c> is exactly that waste, which is why it is counted rather than reasoned about: it must stay at
     /// zero under steady streaming, and a non-zero <see cref="DiscardedBytes"/> is the regression signal.</para>
+    /// <para>Zero discarded is the steady state, but it is not an invariant, and a small trickle is not the bug
+    /// coming back. The streamer supersedes an in-flight build when a chunk's target tier changes before its first
+    /// one lands (last request wins), and a superseded fresh load has already merged. That is churn during loading,
+    /// bounded by how fast the player crosses tiers with chunks still in flight, and it does not grow with distance
+    /// travelled. What issue #393 looked like is different in kind: discarded climbing in step with consumed,
+    /// forever.</para>
     /// <para>One count is one LAYER of one chunk (a sink with two HLOD layers counts two per chunk build), and the
     /// bytes are the PRODUCED merged mesh, vertices plus 32-bit indices. That is the welded result, so it is the
     /// floor rather than the peak: the pre-weld merge the weld consumes is several times larger and is transient.

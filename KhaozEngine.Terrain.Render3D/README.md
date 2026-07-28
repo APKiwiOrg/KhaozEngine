@@ -7,7 +7,7 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
 
 ## Types
 
-- **`TerrainChunkBuilder.Build(field, region, lod[, lodConfig])`** -> **`TerrainChunkMesh`** - samples the
+- **`TerrainChunkBuilder.Build(field, region, lod[, lodConfig][, splatRule])`** -> **`TerrainChunkMesh`** - samples the
   field on a LOD-chosen grid into a `Render3D` `GltfMesh` with ~0.3 m edge skirts (mismatched-LOD neighbours
   stay crack-free), a per-vertex splat-weight array (grass/dirt/rock/sand/snow), a height/slope vertex-colour
   ramp, and an AABB (`TerrainChunkBounds`) for culling. CPU only, no GPU device. The `lodConfig` overload
@@ -17,6 +17,20 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   `x - region.OriginX`, so a chunk 100 km out has vertices of magnitude at most its own size instead of being
   quantized to that magnitude's 7.8 mm float32 lattice at bake time. The placement travels in the draw transform
   and in the collision static's pose. Offset the bounds by the region origin for a world-space box.
+  - **`splatRule`** (optional, default null) is the consumer hook on the per-vertex material mix. Null bakes
+    exactly what `TerrainSplatWeights.From` produces, so an existing caller is byte-identical. The rule is handed a
+    **`TerrainSplatContext`** (`Height`, `Slope01`, `Biome`, ABSOLUTE `WorldX`/`WorldZ`, and `Default` = the
+    engine's own weights for that vertex) and returns the weights to bake. This is how a world with a SECOND body
+    of water gets a shoreline at all: `From` derives its sand band from the field's single `WaterLevel`, which is
+    the sea, so a lake edge otherwise bakes as grass meeting water. It is equally the seam for paths, trampled
+    ground, and biome-specific dirt. Handing over `Default` is what keeps a rule from reimplementing (and then
+    drifting from) the engine's mix. Three constraints, spelled out on `TerrainSplatContext`: the rule must be
+    **pure** (chunk meshes are cached per region + LOD and built off the frame thread, so an impure rule bakes
+    neighbours that disagree at their shared edge), it is a **hot path** (once per vertex of every streamed chunk),
+    and splat is **presentation only** (no field, collision, document, or world-identity impact, so a client may
+    adopt a rule against a server that has never heard of it). **`TerrainSplatWeights.Normalized()`** restores the
+    sum-to-1 invariant a rule that adjusts a weight has to hand back, since the splat shader reconstructs snow as
+    `1 - sum`.
 - **`TerrainScene3D`** extensions - `Scene3D.LoadTerrainChunk` / `DrawTerrainChunk(handle, region)` (chunk-local
   vertices placed by the region origin, a pure translation) and `LoadTerrainMaterial` (realize a layered material
   once, share the handle across every chunk). The old parameterless `DrawTerrainChunk(handle)` is obsolete: it
@@ -42,7 +56,11 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   after a field swap plus invalidate), draws every loaded chunk + in-range props per frame, and optionally
   adds baked prop collision statics to an `IPhysicsWorld` (the `physics` + `collisionShapes` ctor params). A
   **`Decor`**-ring chunk is render-only: the sink skips scatter, prop colliders, dynamics, and terrain
-  collision for it. The `lodConfig` ctor param sets the tier table it meshes with (must match the streamer's).
+  collision for it. The `lodConfig` ctor param sets the tier table it meshes with (must match the streamer's),
+  and the `splatRule` ctor param (both ctors, default null) threads a consumer splat rule into every chunk the
+  sink builds - this is the seam a game configures, since games drive the streamer rather than calling
+  `TerrainChunkBuilder.Build` themselves. See the builder bullet above for the contract. The rule is fixed for
+  the sink's lifetime, matching how the mesh cache is keyed.
   A game may also
   pass an **`IChunkDynamicsSource`** (`dynamicsSource` ctor param, requires `physics`) to spawn dynamic
   bodies per chunk: the source yields **`DynamicSpawn`**s (shape + pose + `DynamicBodyDescription`) for a

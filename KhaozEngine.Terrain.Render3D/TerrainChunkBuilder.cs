@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Render3D;
@@ -17,19 +18,35 @@ namespace KhaozEngine.Terrain
     /// instead of quantized to that magnitude's 7.8 mm float32 lattice at BAKE time. Before this, the placement
     /// was baked into the vertex and no camera-relative render or physics rebase could recover it: the error was
     /// already in the buffer. <see cref="TerrainChunkMesh.Bounds"/> follows the vertices and is therefore
-    /// chunk-local too.</para></summary>
+    /// chunk-local too.</para>
+    /// <para>The per-vertex material mix comes from <see cref="TerrainSplatWeights.From"/> unless the caller supplies
+    /// a <c>splatRule</c>, which sees each vertex's inputs plus the engine's own result and returns the weights to
+    /// bake (<see cref="TerrainSplatContext"/> carries the full contract). That is how a world with a SECOND body of
+    /// water gets a shoreline at all: <c>From</c> derives its sand band from the field's single water level.</para></summary>
     public static class TerrainChunkBuilder
     {
         /// <summary>Mesh a chunk at <paramref name="lod"/> using the default LOD tier table
-        /// (<see cref="TerrainLodConfig.Default"/>). Byte-identical to the pre-data-driven behaviour for tiers 0/1/2.</summary>
-        public static TerrainChunkMesh Build(TerrainField field, TerrainChunkRegion region, int lod, float skirtDepth = 0.3f, float snowLine = 60f)
-            => Build(field, region, lod, TerrainLodConfig.Default, skirtDepth, snowLine);
+        /// (<see cref="TerrainLodConfig.Default"/>). Byte-identical to the pre-data-driven behaviour for tiers 0/1/2.
+        /// <para><paramref name="splatRule"/> is the optional consumer rule for the per-vertex material mix; null (the
+        /// default) bakes exactly what <see cref="TerrainSplatWeights.From"/> produces. Contract:
+        /// <see cref="TerrainSplatContext"/>.</para></summary>
+        public static TerrainChunkMesh Build(TerrainField field, TerrainChunkRegion region, int lod, float skirtDepth = 0.3f, float snowLine = 60f,
+                                             Func<TerrainSplatContext, TerrainSplatWeights>? splatRule = null)
+            => Build(field, region, lod, TerrainLodConfig.Default, skirtDepth, snowLine, splatRule);
 
         /// <summary>Mesh a chunk at <paramref name="lod"/>, resolving the tier's grid resolution through
         /// <paramref name="lodConfig"/> (so a game's custom tier table meshes at its own resolutions). The
         /// <paramref name="lodConfig"/> must be the same one the streamer picks tiers with, or a tier index means a
-        /// different resolution on each side.</summary>
-        public static TerrainChunkMesh Build(TerrainField field, TerrainChunkRegion region, int lod, TerrainLodConfig lodConfig, float skirtDepth = 0.3f, float snowLine = 60f)
+        /// different resolution on each side.
+        /// <para><paramref name="splatRule"/> is the optional consumer rule for the per-vertex material mix. Null (the
+        /// default) bakes exactly what the engine's own <see cref="TerrainSplatWeights.From"/> produces, so a caller
+        /// that supplies nothing is byte-identical to the pre-rule builder. The full contract is on
+        /// <see cref="TerrainSplatContext"/>, and all three parts of it are load-bearing: the rule must be PURE
+        /// (chunk meshes are cached per region and LOD and built off the frame thread, so an impure rule bakes
+        /// neighbours that disagree at their shared edge), it runs on a HOT PATH (once per vertex of every streamed
+        /// chunk), and it is PRESENTATION ONLY (no field, collision, document, or world-identity impact).</para></summary>
+        public static TerrainChunkMesh Build(TerrainField field, TerrainChunkRegion region, int lod, TerrainLodConfig lodConfig, float skirtDepth = 0.3f, float snowLine = 60f,
+                                             Func<TerrainSplatContext, TerrainSplatWeights>? splatRule = null)
         {
             int res = lodConfig.ResolutionFor(lod);
             int cols = res + 1;
@@ -49,7 +66,13 @@ namespace KhaozEngine.Terrain
                 float h = field.SampleHeight(x, z);
                 var n = field.SampleNormal(x, z);
                 float slope01 = 1f - n.Y;
-                var w = TerrainSplatWeights.From(h, slope01, field.SampleBiome(x, z), field.WaterLevel, snowLine);
+                BiomeId biome = field.SampleBiome(x, z);
+                var w = TerrainSplatWeights.From(h, slope01, biome, field.WaterLevel, snowLine);
+                // Consumer splat rule (issue #373), presentation only. Null is the whole pre-rule path: the engine's
+                // weights go straight into the vertex, so a consumer that supplies nothing bakes byte-identical
+                // meshes. The rule sees the engine's own result as Default so "the engine's mix plus a sand band"
+                // does not have to reimplement (and then drift from) TerrainSplatWeights.From.
+                if (splatRule is not null) w = splatRule(new TerrainSplatContext(h, slope01, biome, x, z, w));
                 verts.Add(new ModelVertex(new Vector3(lx, h, lz), n, TerrainRamp.Of(w), new Vector2((float)ix / res, (float)iz / res)));
                 splat.Add(w);
             }

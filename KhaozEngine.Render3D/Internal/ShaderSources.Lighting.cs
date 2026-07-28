@@ -51,7 +51,12 @@ bool projectCascade(int i, vec3 worldPos, vec3 Ngeo, float slopeSin, float margi
     uv.y = 1.0 - uv.y;                                  // render-target SAMPLING flips V vs the clip-Y the depth
                                                         // pass rasterized with (the same Y-origin trap as before)
     z = proj.z;
-    return !(uv.x < margin || uv.x > 1.0 - margin || uv.y < margin || uv.y > 1.0 - margin || z > 1.0);
+    // Both depth bounds, matching the CPU mirror ShadowMapMath.SelectCascade exactly. z < 0 is a receiver in FRONT
+    // of this cascade's near plane: it has no valid depth information here (nothing up-light of the near plane is
+    // recorded at its own depth), so it must fall through to the next, wider cascade rather than read the map and
+    // come back fully lit with a hard edge. The GPU used to test only z > 1.0, which is how a receiver could sit
+    // just outside a cascade's depth range and still claim it (issue #394).
+    return !(uv.x < margin || uv.x > 1.0 - margin || uv.y < margin || uv.y > 1.0 - margin || z < 0.0 || z > 1.0);
 }
 
 // One cascade's 3x3 PCF average inside its atlas column. uv is cascade-local, depth is already biased. Each

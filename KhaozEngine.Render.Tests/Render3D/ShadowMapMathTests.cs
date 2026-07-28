@@ -334,5 +334,110 @@ namespace KhaozEngine.Tests.Render3D
             Vector3 pFar = eye + fwd * 200f;
             Assert.Equal(2, ShadowMapMath.SelectCascade(mats, 3, pFar));
         }
+
+        // ---- Sun elevation sweep (issue #394) ---------------------------------------------------------------------
+        // Everything above pins ONE light, a comfortable ~54 degrees up. The near-cascade defect only appears at a
+        // grazing sun, because a caster and the ground it shades are h / sin(elevation) apart along the light ray, so
+        // the up-light distance the fit has to cover blows up as the sun drops. These sweep the elevation instead.
+
+        /// <summary>A key light travelling due +Z, <paramref name="elevationDegrees"/> above the horizon.</summary>
+        static Vector3 SunAt(float elevationDegrees)
+        {
+            float e = elevationDegrees * MathF.PI / 180f;
+            return Vector3.Normalize(new Vector3(0f, -MathF.Sin(e), MathF.Cos(e)));
+        }
+
+        static float ClipDepth(in Matrix4x4 lightVp, Vector3 p)
+        {
+            Vector4 lc = Vector4.Transform(new Vector4(p, 1f), lightVp);
+            return lc.Z / lc.W;
+        }
+
+        [Theory]
+        [InlineData(60f)]
+        [InlineData(45f)]
+        [InlineData(30f)]
+        [InlineData(20f)]
+        [InlineData(12f)]
+        [InlineData(8f)]
+        public void Fit_ContainsFocusSphere_AtEverySunElevation(float elevationDegrees)
+        {
+            // The containment property is elevation-INDEPENDENT by construction (the fit frames a sphere, which has
+            // no orientation), and this pins that it stays so: whatever else a grazing sun breaks, the focus sphere
+            // itself never falls out of the clip box.
+            var focus = new Vector3(3f, 1f, -2f);
+            const float radius = 12f;
+            Matrix4x4 lightVp = ShadowMapMath.BuildLightViewProj(SunAt(elevationDegrees), focus, radius, resolution: 2048);
+            foreach (var dir in new[]
+            {
+                Vector3.UnitX, -Vector3.UnitX, Vector3.UnitY, -Vector3.UnitY, Vector3.UnitZ, -Vector3.UnitZ,
+                Vector3.Normalize(Vector3.One), Vector3.Normalize(new Vector3(1, -1, 1)),
+            })
+            {
+                Vector4 clip = Vector4.Transform(new Vector4(focus + dir * radius, 1f), lightVp);
+                Assert.InRange(clip.X, -1.0001f, 1.0001f);
+                Assert.InRange(clip.Y, -1.0001f, 1.0001f);
+                Assert.InRange(clip.Z, -0.0001f, 1.0001f);
+            }
+        }
+
+        [Theory]
+        [InlineData(60f, 2f)] [InlineData(60f, 12f)] [InlineData(60f, 20f)]
+        [InlineData(40f, 2f)] [InlineData(40f, 12f)] [InlineData(40f, 20f)]
+        [InlineData(25f, 2f)] [InlineData(25f, 12f)] [InlineData(25f, 20f)]
+        [InlineData(15f, 2f)] [InlineData(15f, 12f)] [InlineData(15f, 20f)]
+        [InlineData(8f, 2f)] [InlineData(8f, 12f)] [InlineData(8f, 20f)]
+        public void DepthPass_CasterAboveTheFocus_ShadowsIt_AtEverySunElevation(float elevationDegrees, float casterHeight)
+        {
+            // The invariant the whole cascade fit exists to serve, stated without a GPU: a caster standing over a
+            // receiver the cascade covers must record a depth IN FRONT of that receiver, so the receiver reads
+            // shadowed. The caster's top sits h / sin(e) up-light of the ground it shades, on the same light ray and
+            // therefore in the same shadow-map texel, which is why only its DEPTH is ever in question.
+            const float radius = 14f;
+            var focus = new Vector3(0f, 0f, 0f);
+            Vector3 light = SunAt(elevationDegrees);
+            Matrix4x4 lightVp = ShadowMapMath.BuildLightViewProj(light, focus, radius, resolution: 2048);
+
+            Vector3 receiver = focus;                                        // shaded ground, dead centre of the map
+            float e = elevationDegrees * MathF.PI / 180f;
+            Vector3 casterTop = receiver - light * (casterHeight / MathF.Sin(e));
+
+            float receiverZ = ClipDepth(lightVp, receiver);
+            float casterZ = ClipDepth(lightVp, casterTop);
+            Assert.InRange(receiverZ, 0f, 1f);
+
+            // The depth pass CLAMPS rather than clips, so whether the raw depth landed in front of the near plane or
+            // not, what gets recorded is a valid depth in front of the receiver. This is the contract that replaced
+            // "place the eye far enough back that nothing clips", which no fixed slack can deliver.
+            float recorded = ShadowMapMath.PancakeDepth(casterZ);
+            Assert.InRange(recorded, 0f, 1f);
+            Assert.True(recorded < receiverZ,
+                $"caster records {recorded:0.####} which is not in front of the receiver at {receiverZ:0.####}");
+
+            // And the closed form for when the raw depth goes negative, pinned so the sweep cannot quietly stop
+            // covering the defect: a receiver at map centre (depth 0.5 over a 4r range) loses a caster taller than
+            // 2 r sin(e). At 8 degrees that budget is under 4 m, which a tree clears easily.
+            bool clippedWithoutThePancake = casterZ < 0f;
+            Assert.Equal(casterHeight > 2f * radius * MathF.Sin(e) + 1e-3f, clippedWithoutThePancake);
+        }
+
+        [Fact]
+        public void DepthPass_TheSweepActuallyCoversBothRegimes()
+        {
+            // Guard on the guard: the theory above is only worth running if its rows straddle the near plane. If a
+            // retune ever moved every row to one side it would still pass while testing nothing, so pin that a tall
+            // caster at a grazing sun IS clipped without the pancake and a short one at a high sun is NOT.
+            const float radius = 14f;
+            var focus = Vector3.Zero;
+            float Depth(float elevationDegrees, float h)
+            {
+                Vector3 light = SunAt(elevationDegrees);
+                Matrix4x4 vp = ShadowMapMath.BuildLightViewProj(light, focus, radius, 2048);
+                float e = elevationDegrees * MathF.PI / 180f;
+                return ClipDepth(vp, focus - light * (h / MathF.Sin(e)));
+            }
+            Assert.True(Depth(8f, 20f) < 0f, "a 20 m caster at an 8 degree sun should overrun the near plane");
+            Assert.True(Depth(60f, 2f) > 0f, "a 2 m caster at a 60 degree sun should fit comfortably");
+        }
     }
 }

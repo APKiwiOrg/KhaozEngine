@@ -234,8 +234,13 @@ namespace KhaozEngine.Render3D.Rendering
             {
                 (float frameA, float frameB, float blend) =
                     ResolveFrames(s.FlipbookFrame, s.Flipbook.Columns * s.Flipbook.Rows, s.Flipbook.Loop);
+                // MotionStrength defaults to 1 whether or not a sheet is bound, and with none bound the renderer
+                // binds the 1x1 neutral dummy whose texel decodes to exactly zero displacement, so the strength
+                // scales a zero. Sending 0 there is behaviour-neutral and drops the common case three binades down
+                // the packed lane, which is real headroom rather than a compensating fudge.
+                float motionStrength = s.Flipbook.MotionTexture.IsValid ? s.Flipbook.MotionStrength : 0f;
                 flip = new Vector4(frameA, frameB, blend,
-                    PackFlipGrid(s.Flipbook.Columns, s.Flipbook.Rows, s.Flipbook.MotionStrength,
+                    PackFlipGrid(s.Flipbook.Columns, s.Flipbook.Rows, motionStrength,
                         s.Flipbook.FlipU, s.Flipbook.FlipV));
             }
             return new ParticleInstance
@@ -259,7 +264,10 @@ namespace KhaozEngine.Render3D.Rendering
         /// a flipbook, procedural sprites pack 0. The shader decodes with the mirror mod/floor math.
         /// <para>Columns and rows cap at 127 (not 255) to buy the two flip bits. A 128-column atlas at even a 64px
         /// cell is 8192px wide, at or past the max texture size on most GPUs, so the narrower cap is unreachable in
-        /// practice.</para></summary>
+        /// practice.</para>
+        /// <para><see cref="PackInstance"/> sends <paramref name="motionStrength"/> 0 when no motion sheet is bound,
+        /// so the common flipbook sits three binades lower in the lane. That is behaviour-neutral: the dummy motion
+        /// texture decodes to zero displacement, so the strength has nothing to scale.</para></summary>
         internal static float PackFlipGrid(int cols, int rows, float motionStrength, bool flipU = false, bool flipV = false)
         {
             int c = Math.Clamp(cols, 1, 127);

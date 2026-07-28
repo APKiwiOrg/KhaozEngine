@@ -101,12 +101,16 @@ layout(location=2) in vec4 IColor;        // straight rgba tint (premultiplied b
 layout(location=3) in vec4 IShape;        // x shape id, y shape param, z life norm, w seed
 layout(location=4) in vec4 IExtra;        // x stretch, y additivity (0 alpha / 1 additive), z orientation (0 camera / 1 flat ground), w soft-fade scale
 layout(location=5) in vec4 IFlip;         // x frameA, y frameB, z blend, w packed grid+strength+flips (0 = procedural)
+// vColor/vShape/vExtra/vFlip are written once per instance, so they are the SAME at every vertex of the quad and go
+// out flat. Perspective-correct interpolation of a constant is exact in infinite precision only: hardware that
+// divides by the interpolated w rounds, and vFlip.w carries a 24-bit packed integer where one ULP in the top binade
+// moves the decoded column by a whole cell. vLocal and vWorld genuinely vary and stay interpolated.
 layout(location=0) out vec2 vLocal;
-layout(location=1) out vec4 vColor;
-layout(location=2) out vec4 vShape;
-layout(location=3) out vec4 vExtra;       // x aspect (stretch elongation), y additivity, z orientation, w soft-fade scale
+layout(location=1) flat out vec4 vColor;  // per-instance constant
+layout(location=2) flat out vec4 vShape;  // per-instance constant
+layout(location=3) flat out vec4 vExtra;  // per-instance constant: x aspect (stretch elongation), y additivity, z orientation, w soft-fade scale
 layout(location=4) out vec3 vWorld;
-layout(location=5) out vec4 vFlip;        // flipbook frames + packed grid, passed straight through to the fragment
+layout(location=5) flat out vec4 vFlip;   // per-instance constant: flipbook frames + packed grid, passed straight through to the fragment
 void main() {
     // Two-triangle quad from gl_VertexIndex (0..5), the same instanced-quad path DecalVert uses.
     float u = (gl_VertexIndex == 1 || gl_VertexIndex == 3 || gl_VertexIndex == 4) ? 1.0 : 0.0;
@@ -167,12 +171,14 @@ layout(set=0, binding=2) uniform sampler Samp;
 layout(set=0, binding=3) uniform texture2D MotionTex;
 layout(set=0, binding=4) uniform texture2D AtlasTex;
 layout(set=0, binding=5) uniform sampler AtlasSamp;
-layout(location=0) in vec2 vLocal;    // quad-local coords in [-1,1] (rotate/stretch with the quad)
-layout(location=1) in vec4 vColor;
-layout(location=2) in vec4 vShape;    // x shape id, y shape param, z life norm, w seed
-layout(location=3) in vec4 vExtra;    // x aspect, y additivity, z orientation (0 camera / 1 flat ground), w soft-fade scale
-layout(location=4) in vec3 vWorld;    // fragment world position (flat across the quad's plane)
-layout(location=5) in vec4 vFlip;     // x frameA, y frameB, z blend, w packed grid+strength+flips (0 = procedural)
+// The flat qualifiers MUST mirror ParticleVert's exactly or SPIRV-Cross rejects the link. See the note there for
+// why the per-instance-constant varyings skip the interpolator.
+layout(location=0) in vec2 vLocal;         // quad-local coords in [-1,1] (rotate/stretch with the quad)
+layout(location=1) flat in vec4 vColor;    // per-instance constant
+layout(location=2) flat in vec4 vShape;    // per-instance constant: x shape id, y shape param, z life norm, w seed
+layout(location=3) flat in vec4 vExtra;    // per-instance constant: x aspect, y additivity, z orientation (0 camera / 1 flat ground), w soft-fade scale
+layout(location=4) in vec3 vWorld;         // fragment world position (flat across the quad's plane)
+layout(location=5) flat in vec4 vFlip;     // per-instance constant: x frameA, y frameB, z blend, w packed grid+strength+flips (0 = procedural)
 layout(location=0) out vec4 oColor;
 
 // Texture-free value noise, the exact polynomial-hash idiom the decal pass ships cross-backend goldens with
@@ -188,6 +194,21 @@ float vnoise(vec2 p)
     float c = hash21(i + vec2(0.0, 1.0));
     float d = hash21(i + vec2(1.0, 1.0));
     return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+// Sampling LOD for one flipbook sheet, clamped so a tap never reaches a level where the bilinear fringe crosses out
+// of its own cell. sz is the sheet in texels, cell the per-frame UV size (1/vec2(cols,rows)), dlx/dly the quad-local
+// derivatives taken by the CALLER (a derivative must be taken in uniform control flow, and a helper is a fine place
+// to consume one but not to take it). This function touches NO texture on purpose: a resource first referenced from
+// a helper is first-referenced BEFORE main on Metal, which is exactly the reordering the binding-order rule forbids.
+float cellLod(vec2 sz, vec2 cell, vec2 dlx, vec2 dly)
+{
+    vec2 cellPx = sz * cell;
+    float maxLod = max(log2(max(min(cellPx.x, cellPx.y), 1.0) / 4.0), 0.0);   // 4 = min texels a cell keeps
+    vec2 dx = dlx * cell * sz;
+    vec2 dy = dly * cell * sz;
+    float lod = 0.5 * log2(max(max(dot(dx, dx), dot(dy, dy)), 1e-20));
+    return clamp(lod, 0.0, maxLod);
 }
 
 void main() {
@@ -225,11 +246,26 @@ void main() {
     lu = mix(lu, vec2(1.0) - lu, vec2(flipU, flipV));
     vec2 uvA = (vec2(mod(vFlip.x, safeCols), floor(vFlip.x / safeCols)) + lu) * cell;
     vec2 uvB = (vec2(mod(vFlip.y, safeCols), floor(vFlip.y / safeCols)) + lu) * cell;
-    vec2 mvA = (texture(sampler2D(MotionTex, AtlasSamp), uvA).rg * 2.0 - 1.0) * mstr * cell;
-    vec2 mvB = (texture(sampler2D(MotionTex, AtlasSamp), uvB).rg * 2.0 - 1.0) * mstr * cell;
+    // Explicit, CLAMPED LOD instead of letting texture() pick one from the derivatives. A mip chain built over a grid
+    // of independent frames stops being usable once a cell is down to a couple of texels: the bilinear tap at a cell
+    // edge reaches one texel of that level into the neighbouring cell, so a distant sprite averages cells together.
+    // cellLod caps at the coarsest level where the cell still has 4 texels on its shorter side, which holds that
+    // fringe to a quarter of a texel while keeping proper minification WITHIN the cell. The derivatives come from lu,
+    // which differs from uvA/uvB only by a constant per-cell offset, so one LOD serves both taps on a sheet (a mirror
+    // only flips the sign, and the magnitude is what matters). Taken here, in uniform control flow: dFdx/dFdy inside
+    // a branch is undefined. The two sheets get their own cap off their own textureSize rather than one shared value,
+    // because the binding-order rule above forbids touching AtlasTex before the MotionTex taps. On a motion sheet
+    // packed to the same grid, which is the documented contract, the two caps are the same number anyway, and the
+    // 1x1 neutral dummy correctly resolves to level 0, the only level it has.
+    vec2 dlx = dFdx(lu);
+    vec2 dly = dFdy(lu);
+    float mlod = cellLod(vec2(textureSize(sampler2D(MotionTex, AtlasSamp), 0)), cell, dlx, dly);
+    vec2 mvA = (textureLod(sampler2D(MotionTex, AtlasSamp), uvA, mlod).rg * 2.0 - 1.0) * mstr * cell;
+    vec2 mvB = (textureLod(sampler2D(MotionTex, AtlasSamp), uvB, mlod).rg * 2.0 - 1.0) * mstr * cell;
     float fb = vFlip.z;
-    vec4 texA = texture(sampler2D(AtlasTex, AtlasSamp), uvA - mvA * fb);
-    vec4 texB = texture(sampler2D(AtlasTex, AtlasSamp), uvB + mvB * (1.0 - fb));
+    float alod = cellLod(vec2(textureSize(sampler2D(AtlasTex, AtlasSamp), 0)), cell, dlx, dly);
+    vec4 texA = textureLod(sampler2D(AtlasTex, AtlasSamp), uvA - mvA * fb, alod);
+    vec4 texB = textureLod(sampler2D(AtlasTex, AtlasSamp), uvB + mvB * (1.0 - fb), alod);
     vec4 flipCol = mix(texA, texB, fb);
 
     float mask;

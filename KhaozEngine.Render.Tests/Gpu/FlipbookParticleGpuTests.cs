@@ -261,6 +261,90 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(differing > 100, $"expected the motion warp to move many pixels, only {differing} differed");
         }
 
+        // A grazing, flat-on-ground quad on the CONTRAST sheet, minified hard along one axis. The camera is
+        // orthographic, so a low elevation foreshortens the quad's Z axis by sin(Elevation) uniformly: the sprite
+        // stays MinStripPx wide and collapses to a couple of pixels tall. That is what drives the sampled LOD past
+        // the level where a cell still owns whole texels, without shrinking the sprite to something unmeasurable.
+        const int MinCols = 4, MinRows = 4, MinCellPx = 64;   // a 256x256 sheet, 64-texel cells, 9 mip levels
+        const int HotCell = 5;                                // interior cell, so every neighbour is a cold one
+        const float MinOrthoSize = 8f;                        // 128px viewport / 8 world units = 16 px per unit
+        const float MinHalfSize = 1.5f;                       // 48 px along the uncompressed axis
+        const float MinGrazeSin = 1.5f / 48f;                 // ~1.5 px along the compressed one
+
+        static byte[] RenderMinifiedStrip()
+        {
+            Scene3D.TextureHandle atlas = default;
+            return Render3DSnapshot.Capture(W, H,
+                setup: scene =>
+                {
+                    (byte[] ap, int aw, int ah) = FlipbookTestSheets.ContrastAtlas(MinCols, MinRows, MinCellPx, HotCell);
+                    atlas = scene.LoadTexture(ap, aw, ah);   // full chain, so the coarse levels really exist
+                    scene.Post.Starfield = false;
+                    scene.Post.Outline = false;
+                    scene.Post.BackgroundColor = new Color(0f, 0f, 0f, 1f);
+                    // Render at the readback size. The default fixed 1600x900 internal target would rasterize the
+                    // quad at a completely different pixel footprint and then blit it down, which is exactly the
+                    // variable under test.
+                    scene.Post.RenderScale = RenderScale.MatchViewport;
+                    scene.ParticleSoftFade = 0f;
+                    scene.EffectTimeSeconds = 0f;
+                    scene.Camera.Target = Vector3.Zero;
+                    scene.Camera.Azimuth = 0f;
+                    scene.Camera.Elevation = MathF.Asin(MinGrazeSin);
+                    scene.Camera.OrthoSize = MinOrthoSize;
+                    scene.Camera.Zoom = 1f;
+                },
+                drawFrame: scene =>
+                {
+                    scene.DrawParticle(new ParticleSprite
+                    {
+                        Position = Vector3.Zero,
+                        Size = MinHalfSize,
+                        Color = new Color(1f, 1f, 1f, 1f),
+                        Orientation = ParticleOrientation.FlatGround,
+                        Flipbook = new ParticleFlipbook(atlas, MinCols, MinRows, Loop: true),
+                        FlipbookFrame = HotCell,
+                        Blend = BillboardBlend.Alpha,
+                    });
+                },
+                frames: 2);
+        }
+
+        // Share of the lit sprite's colour that came from a COLD (green) cell: 0 is the hot cell alone, 1 is pure
+        // neighbour. The sheet has no other source of green, so this is cross-cell bleed and nothing else.
+        static double NeighbourShare(byte[] rgba, out int lit)
+        {
+            double r = 0, g = 0;
+            lit = 0;
+            for (int i = 0; i < rgba.Length; i += 4)
+            {
+                if (rgba[i] + rgba[i + 1] + rgba[i + 2] <= 24) continue;   // background
+                r += rgba[i];
+                g += rgba[i + 1];
+                lit++;
+            }
+            return g / Math.Max(r + g, 1e-9);
+        }
+
+        [GpuFact]
+        public void Flipbook_minified_atlas_samples_its_own_cell()
+        {
+            // The whole reason the fragment shader picks its own LOD. Left to the derivatives, this quad samples a
+            // level where its cell is about one texel wide, and the bilinear tap there spends half of the cell's UV
+            // range straddling the cells either side of it: the icon dissolves into the sheet around it, which is
+            // the shimmer a Windows tester reported on a distant loot orb. Clamped, the coarsest level a tap can
+            // reach still gives the cell 4 texels, so the neighbours contribute a fringe instead of a quarter of
+            // the picture.
+            // Measured on Metal: 8.0% with the clamp, 37.5% with the taps back on plain texture(). The threshold
+            // sits between them with room on both sides, so this fails loudly if the clamp is ever simplified away.
+            byte[] px = RenderMinifiedStrip();
+            double share = NeighbourShare(px, out int lit);
+
+            Assert.True(lit >= 24, $"the minified strip did not rasterize, only {lit} lit pixels");
+            Assert.True(share < 0.15, $"neighbouring cells contributed {share:P1} of the sprite over {lit} lit " +
+                "pixels, so the atlas taps are running past the clamped LOD");
+        }
+
         [GpuFact]
         public void Flipbook_zero_neutral_byte_identical()
         {

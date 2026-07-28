@@ -121,24 +121,35 @@ namespace KhaozEngine.Terrain
             (_sink as IDisposable)?.Dispose();
         }
 
-        public void Update(Vector3 playerPos, float dt)
-        {
-            if (_async) UpdateAsync(playerPos);
-            else UpdateSync(playerPos);
-        }
+        public void Update(Vector3 playerPos, float dt) => UpdateOnce(playerPos);
+
+        /// <summary>One <see cref="Update"/> pass, reporting whether it actually DID anything: freed a chunk, or
+        /// applied a load / re-LOD. <see cref="PrimeAround"/> settles on that instead of on the resident count.</summary>
+        bool UpdateOnce(Vector3 playerPos) => _async ? UpdateAsync(playerPos) : UpdateSync(playerPos);
 
         /// <summary>Deterministically load the full ring around <paramref name="playerPos"/> right now (a loading
         /// moment, not a frame): requests + applies every chunk in range, blocking on any async builds, ignoring the
         /// per-frame apply budget. Use at level load to fill the first ring before the first frame. Works in both
-        /// async and synchronous modes.</summary>
+        /// async and synchronous modes.
+        /// <para>It settles on WORK DONE, not on the resident count. Counting was right only while unloads were
+        /// unbudgeted and all landed in the first pass: with <see cref="StreamerConfig.MaxUnloadsPerFrame"/> in play, a
+        /// pass whose budgeted unloads happen to cancel out its loads leaves the count untouched while the ring still
+        /// has holes in it and stale chunks resident, and a count-based loop stops right there.</para>
+        /// <para>It terminates because the position is fixed, so every pass that does work makes progress that cannot
+        /// be undone: an unload frees a chunk past <see cref="StreamerConfig.UnloadRadius"/>, which can never come back
+        /// (the ctor forces that radius past the outer load radius, so the two regions are disjoint), and an apply
+        /// fills one of the finitely many chunks in range that are missing or on the wrong tier, which stays filled (a
+        /// chunk applied at the tier the hysteresis picked re-picks that same tier next pass). A load budget of 0 or
+        /// less simply means no pass ever does work, so this returns after one.</para></summary>
         public void PrimeAround(Vector3 playerPos)
         {
-            int before = -1;
-            while (_loaded.Count != before)
+            while (true)
             {
-                before = _loaded.Count;
-                Update(playerPos, 0f);
-                FlushPendingBuilds();
+                // Both run every pass: in async mode the requests go out in the update and the applies land in the
+                // flush, so either half on its own is an incomplete picture of the pass.
+                bool updated = UpdateOnce(playerPos);
+                bool flushed = FlushBuilds();
+                if (!updated && !flushed) return;
             }
         }
 
@@ -146,22 +157,27 @@ namespace KhaozEngine.Terrain
         /// ignoring the per-frame budget. Turns the async streamer into a blocking load for this call: used by
         /// <see cref="PrimeAround"/> and by editors/tools that want deterministic loads. A no-op in synchronous mode
         /// (builds are already applied inline). Call from the frame thread only (it touches the GPU device).</summary>
-        public void FlushPendingBuilds()
+        public void FlushPendingBuilds() => FlushBuilds();
+
+        /// <summary>The flush, reporting whether it applied anything (always false in synchronous mode, where there
+        /// is nothing outstanding to flush).</summary>
+        bool FlushBuilds()
         {
-            if (_scheduler is null) return;
+            if (_scheduler is null) return false;
             _scheduler.Flush();
-            ApplyBuilds(_scheduler.TakeReady(int.MaxValue, static (_, _) => 0));
+            return ApplyBuilds(_scheduler.TakeReady(int.MaxValue, static (_, _) => 0)) > 0;
         }
 
         // --- Synchronous path (pre-async behaviour: build + upload happen inline, budget caps build ops) ------------
-        void UpdateSync(Vector3 playerPos)
+        bool UpdateSync(Vector3 playerPos)
         {
             float cs = _config.ChunkSize;
             ChunkCoord pc = ChunkGrid.CoordOf(playerPos.X, playerPos.Z, cs);
 
             // 1. Unload chunks past the hysteresis radius, within this frame's budget.
             float unloadSq = _config.UnloadRadius * (float)_config.UnloadRadius;
-            foreach (ChunkCoord c in FarChunksToUnload(pc, unloadSq))
+            List<ChunkCoord> far = FarChunksToUnload(pc, unloadSq);
+            foreach (ChunkCoord c in far)
             {
                 _sink.Unload(c, _loaded[c].Handle);
                 _loaded.Remove(c);
@@ -199,6 +215,7 @@ namespace KhaozEngine.Terrain
             // 3. Process nearest-first, capped at MaxLoadsPerFrame.
             pending.Sort(static (a, b) => a.Dist.CompareTo(b.Dist));
             int budget = _config.MaxLoadsPerFrame;
+            int ops = 0;
             for (int i = 0; i < pending.Count && i < budget; i++)
             {
                 Pending p = pending[i];
@@ -214,11 +231,13 @@ namespace KhaozEngine.Terrain
                     e.Lod = p.Lod;
                     e.Ring = p.Ring;
                 }
+                ops++;
             }
+            return far.Count > 0 || ops > 0;
         }
 
         // --- Async path (background CPU build, frame thread requests + applies within budget) ------------------------
-        void UpdateAsync(Vector3 playerPos)
+        bool UpdateAsync(Vector3 playerPos)
         {
             ChunkBuildScheduler<object> sched = _scheduler!;
             float cs = _config.ChunkSize;
@@ -240,7 +259,8 @@ namespace KhaozEngine.Terrain
 
             // 1b. Unload APPLIED chunks past the hysteresis radius, within this frame's budget. Cancel any in-flight
             //     re-LOD for the ones that actually go (1a already cancelled every far chunk's build).
-            foreach (ChunkCoord c in FarChunksToUnload(pc, unloadSq))
+            List<ChunkCoord> far = FarChunksToUnload(pc, unloadSq);
+            foreach (ChunkCoord c in far)
             {
                 _sink.Unload(c, _loaded[c].Handle);
                 _loaded.Remove(c);
@@ -292,7 +312,8 @@ namespace KhaozEngine.Terrain
 
             // 3. Apply completed builds, nearest-first, capped at MaxLoadsPerFrame (the GPU upload is what we budget).
             sched.Pump();
-            ApplyBuilds(sched.TakeReady(_config.MaxLoadsPerFrame, NearestFirst(playerPos, cs)));
+            int applied = ApplyBuilds(sched.TakeReady(_config.MaxLoadsPerFrame, NearestFirst(playerPos, cs)));
+            return far.Count > 0 || applied > 0;
         }
 
         /// <summary>Rebuild every currently loaded chunk intersecting <paramref name="area"/> in place, at its
@@ -358,7 +379,9 @@ namespace KhaozEngine.Terrain
             return dx * dx + dz * dz;
         }
 
-        void ApplyBuilds(IReadOnlyList<ChunkBuild<object>> builds)
+        /// <summary>Apply a batch of completed builds and report how many landed, so a caller can tell a pass that
+        /// did work from one that did none.</summary>
+        int ApplyBuilds(IReadOnlyList<ChunkBuild<object>> builds)
         {
             for (int i = 0; i < builds.Count; i++)
             {
@@ -367,6 +390,7 @@ namespace KhaozEngine.Terrain
                 object handle = _asyncSink!.Apply(rb.Coord, rb.Lod, rb.Ring, rb.Payload, existing);
                 _loaded[rb.Coord] = new Entry { Handle = handle, Lod = rb.Lod, Ring = rb.Ring };
             }
+            return builds.Count;
         }
 
         static Comparison<ChunkCoord> NearestFirst(Vector3 playerPos, float cs) => (a, b) =>

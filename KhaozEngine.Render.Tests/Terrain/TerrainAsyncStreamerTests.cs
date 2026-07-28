@@ -312,6 +312,33 @@ namespace KhaozEngine.Tests.Terrain
         }
 
         [Fact]
+        public void PrimeAround_after_a_mid_stream_jump_frees_every_stale_chunk()
+        {
+            // A jump mid-stream, then a prime, which is what a teleport does. The two ordinary frames leave the ring
+            // half-swapped: 13 chunks of the old ring still resident and 8 of the new one still to apply. The prime's
+            // first pass then frees 8 and applies 8, an unchanged resident count with 5 stale chunks still on the GPU,
+            // which is exactly what a count-based settle mistook for a settled ring.
+            var manual = new ManualBuildDispatcher();
+            var sink = new FakeAsyncChunkSink();
+            StreamerConfig cfg = Async(3, 4, 21) with { MaxUnloadsPerFrame = 8 };
+            var s = new TerrainStreamer(cfg, sink, manual);
+            var home = new Vector3(30f, 0f, 30f);             // chunk (0,0)
+            var away = new Vector3(9 * 60f + 30f, 0f, 30f);   // chunk (9,0), clear of the radius-3 disk around home
+
+            s.PrimeAround(home);
+            Assert.Equal(ExpectedDisk(new ChunkCoord(0, 0), 3), new HashSet<ChunkCoord>(s.Loaded));
+
+            // Frame 1 unloads 8 and requests the new ring (no build has run yet, so nothing applies). Frame 2
+            // unloads 8 more and applies the 21 its budget allows.
+            for (int i = 0; i < 2; i++) { s.Update(away, 1f / 60f); manual.RunAll(); }
+            Assert.Equal(13 + 21, s.Loaded.Count);
+
+            s.PrimeAround(away);
+
+            Assert.Equal(ExpectedDisk(new ChunkCoord(9, 0), 3), new HashSet<ChunkCoord>(s.Loaded));
+        }
+
+        [Fact]
         public void PrimeAround_fills_the_ring_on_the_real_thread_pool()
         {
             // No injected dispatcher -> the default TaskChunkBuildDispatcher runs builds on the thread pool. PrimeAround

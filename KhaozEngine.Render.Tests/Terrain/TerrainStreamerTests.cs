@@ -279,6 +279,47 @@ namespace KhaozEngine.Tests.Terrain
             Assert.Equal(old, new HashSet<ChunkCoord>(sink.Unloads));
         }
 
+        // --- PrimeAround settles on work done, not on the resident count --------------------------------------------
+        // Once unloads are budgeted, a pass whose unloads cancel out its loads leaves the resident count unchanged
+        // while the ring still has holes in it and stale chunks resident, so a count-based settle exits right there.
+
+        [Fact]
+        public void PrimeAround_over_a_displaced_ring_fills_it_and_leaves_no_stale_chunk()
+        {
+            // Equal budgets, so the first pass's 8 unloads cancel its 8 loads exactly.
+            var cfg = new StreamerConfig(LoadRadius: 3, UnloadRadius: 4, MaxLoadsPerFrame: 8, ChunkSize: 60f,
+                MaxUnloadsPerFrame: 8);
+            var sink = new FakeChunkSink();
+            var s = new TerrainStreamer(cfg, sink);
+
+            s.PrimeAround(UnloadHome);
+            var home = ExpectedDisk(new ChunkCoord(0, 0), 3);
+            Assert.Equal(home, new HashSet<ChunkCoord>(s.Loaded));
+            // Not vacuous: the away ring is clear of the home ring, so the whole of it goes stale at once and one
+            // pass of either budget cannot clear it.
+            Assert.True(home.Count > cfg.MaxUnloadsPerFrame, $"only {home.Count} chunks primed");
+
+            s.PrimeAround(UnloadAway);
+
+            Assert.Equal(ExpectedDisk(new ChunkCoord(9, 0), 3), new HashSet<ChunkCoord>(s.Loaded));
+        }
+
+        [Fact]
+        public void PrimeAround_fills_the_ring_when_the_load_budget_undercuts_the_unload_budget()
+        {
+            // Unequal budgets settle later instead of never: the counts drift for a few passes, then the pass that
+            // frees the last of the stale chunks happens to free exactly as many as it loads.
+            var cfg = new StreamerConfig(LoadRadius: 3, UnloadRadius: 4, MaxLoadsPerFrame: 5, ChunkSize: 60f,
+                MaxUnloadsPerFrame: 8);
+            var sink = new FakeChunkSink();
+            var s = new TerrainStreamer(cfg, sink);
+
+            s.PrimeAround(UnloadHome);
+            s.PrimeAround(UnloadAway);
+
+            Assert.Equal(ExpectedDisk(new ChunkCoord(9, 0), 3), new HashSet<ChunkCoord>(s.Loaded));
+        }
+
         // --- LOD hysteresis (a dead zone at every tier boundary) ----------------------------------------------------
         // A chunk parked near 80 m used to re-LOD on every small move, and each re-LOD frees a live GPU mesh.
 

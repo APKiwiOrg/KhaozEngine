@@ -105,6 +105,19 @@ namespace KhaozEngine.Render3D.Internal
             return -1;
         }
 
+        /// <summary>
+        /// The CPU mirror of the shadow DEPTH pass's near-plane pancake: a caster in front of the light's near plane
+        /// (light-clip depth below 0) records at the near plane rather than being clipped away, so its silhouette
+        /// still shadows everything behind it. Clamping is the correct answer for a directional light because every
+        /// caster up-light of the near plane shadows the whole depth range below it, and it is what lets
+        /// <see cref="BuildLightViewProj"/>'s eye placement be a texel-density choice instead of a correctness one
+        /// (see the note there). The depth pass does this per fragment in
+        /// <c>ShaderSources.ShadowDepthVert</c>/<c>ShadowDepthFrag</c> and their dissolve + skinned siblings. This is
+        /// the same clamp, so the headless tests can pin the contract without a GPU. Mirrors
+        /// <see cref="SelectCascade"/>'s role for the RECEIVER shader.
+        /// </summary>
+        public static float PancakeDepth(float lightClipDepth) => MathF.Max(lightClipDepth, 0f);
+
         /// <summary>World size (in world units) of ONE shadow-map texel for a fit of the given
         /// <paramref name="radius"/> at <paramref name="resolution"/> texels: <c>2*radius/resolution</c>. Used both
         /// for the texel snap and to hand the fragment shader its filter kernel step.</summary>
@@ -212,8 +225,17 @@ namespace KhaozEngine.Render3D.Internal
             Matrix4x4.Invert(rotView, out Matrix4x4 rotViewInv);
             Vector3 snappedFocus = Vector3.Transform(focusView, rotViewInv);
 
-            // Depth slack along the light axis: place the light "eye" a full diameter back so a tall caster between it
-            // and the focus plane still writes depth and nothing clips the near plane.
+            // Depth slack along the light axis: the light "eye" sits a full diameter up-light of the focus.
+            //
+            // This is a TEXEL-DENSITY choice, not a correctness one, and the old comment here claimed otherwise (it
+            // read "so a tall caster ... still writes depth and nothing clips the near plane", which assumed a
+            // caster's up-light offset equalled its height - it is h / sin(elevation), so at a grazing sun a 12 m
+            // tree sits 31 m up-light of the ground it shades and no fixed slack can bound it). The near plane no
+            // longer loses casters because the DEPTH PASS CLAMPS instead of clipping: a caster in front of the near
+            // plane records at it with its silhouette intact (see PancakeDepth and ShaderSources.ShadowDepthVert).
+            // What 2r still buys is the depth RANGE the R32F atlas quantizes over, hence the density of the stored
+            // depth: widening it costs precision, narrowing it costs nothing in coverage now but is a separate
+            // retune. Changing it must not be justified as a fix for lost casters.
             float depthExtent = 2f * r;
             Vector3 eye = snappedFocus - dir * depthExtent;
 

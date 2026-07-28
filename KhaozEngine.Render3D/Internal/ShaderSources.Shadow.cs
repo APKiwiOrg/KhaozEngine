@@ -24,7 +24,32 @@ namespace KhaozEngine.Render3D.Internal
         //      building THIS pipeline at scene-construction corrupted WARP so the MAIN model+splat passes rendered no
         //      colour (silhouette/normal/depth survived, only oColor was blank). The `sink` reads every declared input
         //      with a zero weight, so SPIRV-Cross keeps a CONTIGUOUS TEXCOORD0..11 signature (matching ModelVert) with
-        //      no hole; gl_Position is unchanged (sink == 0). Do NOT drop the sink or reads of any input. ----
+        //      no hole; gl_Position is unchanged (sink == 0). Do NOT drop the sink or reads of any input.
+        //
+        //      NEAR-PLANE PANCAKE (issue #394, shared by all three depth vertices below). Each cascade puts its light
+        //      eye 2r up-light of the slice centre with the ortho near plane AT the eye, and a caster and the ground
+        //      it shades sit h / sin(elevation) apart along the light ray - so at a grazing sun a tall caster lands in
+        //      FRONT of the near plane and used to be clipped away, leaving the ground it should shade reading the
+        //      atlas clear value (fully lit) with no fall-through to the next cascade. Clamping is the right answer
+        //      for a DIRECTIONAL light: a caster up-light of the near plane shadows the whole depth range below it,
+        //      so recording it at the near plane with its silhouette intact is exactly correct.
+        //
+        //      It is done HERE, in the vertex, not by flipping the pipeline's depthClipEnabled, because the rasterizer
+        //      flag is not portable across the three backends this engine ships on: Veldrid's Metal backend derives
+        //      MTLDepthClipMode from DepthStencilState.DepthTestEnabled and IGNORES RasterizerState.DepthClipEnabled
+        //      entirely (so the flip is a NO-OP on Metal, the primary golden leg), and its Vulkan backend maps it to
+        //      depthClampEnable, a DEVICE FEATURE that may be absent. Clamping clip-space z at the vertex needs no
+        //      device feature and behaves identically everywhere. The light projection is ORTHOGRAPHIC, so w == 1 and
+        //      clamping clip z is exactly "clamp NDC depth to >= 0". Every vertex of a triangle ends up at z >= 0 and
+        //      the clipper interpolates linearly, so no interior point can fall in front of the near plane either.
+        //      The FAR plane still clips, deliberately: geometry past it is down-light of every receiver in the
+        //      cascade and cannot shadow anything, so clipping it is free.
+        //
+        //      The stored depth is a VARYING (this pass writes depth to an R32F colour target, not the depth buffer),
+        //      and it is fed from the UNCLAMPED value so the interpolation across a triangle crossing the near plane
+        //      stays exact - clamping the vertex value instead would tilt the interpolated depth away from the light
+        //      and under-shadow. The per-fragment clamp lives in the fragments below, which is both exact and
+        //      independent of draw order (every pancaked fragment ties at hardware depth 0). ----
         public const string ShadowDepthVert = @"#version 450
 layout(set=0, binding=0) uniform U { mat4 LightViewProj; };
 layout(location=0) in vec3 Position;
@@ -49,15 +74,20 @@ void main() {
     // scaled by 1e-30, so it is numerically negligible in world space; the projected position is unchanged to the bit.
     float sink = Normal.x + Color.x + TexCoord.x + Tangent.x + ITint.x + IEmissive.x + ISpecParams.x;
     world.x += sink * 1e-30;
-    gl_Position = LightViewProj * world;
-    vLightDepth = gl_Position.z / gl_Position.w;   // [0,1] light-clip depth, stored linearly in the R32F target
+    vec4 lightClip = LightViewProj * world;
+    vLightDepth = lightClip.z / lightClip.w;       // TRUE light-clip depth (unclamped), clamped per fragment below
+    lightClip.z = max(lightClip.z, 0.0);           // near-plane pancake, see the note above
+    gl_Position = lightClip;
 }";
 
         public const string ShadowDepthFrag = @"#version 450
 layout(location=0) in float vLightDepth;
 layout(location=0) out vec4 oDepth;               // single R32F target: .r carries the caster's light-space depth
 void main() {
-    oDepth = vec4(vLightDepth, 0.0, 0.0, 1.0);
+    // Per-fragment near-plane pancake: a caster up-light of the near plane records AT it (depth 0), which shadows
+    // every receiver below it, instead of being clipped away. Keeps the atlas a [0,1] depth map, and is exact
+    // (the varying carries the true interpolated depth, so only the clamped part is flattened).
+    oDepth = vec4(max(vLightDepth, 0.0), 0.0, 0.0, 1.0);
 }";
 
         // ---- Dissolve-aware depth pass (issue #287). Same transform + same R32F depth write as ShadowDepthVert/Frag,
@@ -114,8 +144,10 @@ void main() {
     // so the vertex-input signature stays gap-free. Numerically inert: the projected position is unchanged to the bit.
     float sink = Normal.x + Color.x + TexCoord.x + Tangent.x + ITint.x + IEmissive.x + ISpecParams.x + IDynamic;
     world.x += sink * 1e-30;
-    gl_Position = LightViewProj * world;
-    vLightDepth = gl_Position.z / gl_Position.w;
+    vec4 lightClip = LightViewProj * world;
+    vLightDepth = lightClip.z / lightClip.w;       // TRUE light-clip depth (unclamped), clamped per fragment below
+    lightClip.z = max(lightClip.z, 0.0);           // near-plane pancake, see the note above ShadowDepthVert
+    gl_Position = lightClip;
     vNoisePos = (world.xyz + RenderOrigin.xyz) * DissolveParams.x;
     vDissolve = IDissolve;
 }";
@@ -150,7 +182,7 @@ void main() {
         float mask = dnoise(vNoisePos);
         if (mask < threshold) discard;            // dissolved away: no depth, so no shadow from this fragment
     }
-    oDepth = vec4(vLightDepth, 0.0, 0.0, 1.0);
+    oDepth = vec4(max(vLightDepth, 0.0), 0.0, 0.0, 1.0);   // near-plane pancake, as ShadowDepthFrag
 }";
 
         // ---- INVERTED dissolve depth fragment (issue #391). Identical to ShadowDepthDissolveFrag except that it
@@ -175,7 +207,7 @@ void main() {
         float mask = dnoise(vNoisePos);
         if (mask >= 1.0 - threshold) discard;     // keep the complement of the plain half's keep-set
     }
-    oDepth = vec4(vLightDepth, 0.0, 0.0, 1.0);
+    oDepth = vec4(max(vLightDepth, 0.0), 0.0, 0.0, 1.0);   // near-plane pancake, as ShadowDepthFrag
 }";
 
         // Skinned shadow depth vertex (GPU skinning shadow-pass mirror). Reads ONE combined resource buffer at set 0
@@ -211,8 +243,10 @@ void main() {
     vec4 localPos = skin * vec4(Position, 1.0);
     float sink = Normal.x + Color.x + TexCoord.x + Tangent.x;   // keep the vertex-input signature gap-free
     localPos.x += sink * 1e-30;
-    gl_Position = LightMvp * localPos;
-    vLightDepth = gl_Position.z / gl_Position.w;
+    vec4 lightClip = LightMvp * localPos;
+    vLightDepth = lightClip.z / lightClip.w;       // TRUE light-clip depth (unclamped), clamped per fragment below
+    lightClip.z = max(lightClip.z, 0.0);           // near-plane pancake, see the note above ShadowDepthVert
+    gl_Position = lightClip;
 }";
     }
 }

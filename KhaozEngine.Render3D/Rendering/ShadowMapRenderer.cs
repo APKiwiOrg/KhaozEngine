@@ -189,6 +189,8 @@ namespace KhaozEngine.Render3D.Rendering
         // GPU-skinning depth pipeline: the rest-pose SkinnedVertex stream (locations 0..6) at slot 0, the combined
         // { LightMvp; bones[128] } dynamic UBO at set 0. Front-face cull (the same second-depth trick as the rigid
         // depth pass), scissor test on (per-column clip). Rebuilt with _pipeline whenever the layout reallocates.
+        // depthClipEnabled stays TRUE here for the same reason as the rigid pipeline below: the NEAR plane is handled
+        // in the vertex (SkinnedShadowDepthVert's pancake), which is portable, and the far plane should still clip.
         IGpuPipeline BuildSkinnedPipeline(IGpuResourceFactory f, GpuOutputDescription outputs)
         {
             var vertexLayout = new GpuVertexLayoutDescription(
@@ -262,8 +264,17 @@ namespace KhaozEngine.Render3D.Rendering
                 // Cull FRONT faces (draw back faces) so the stored depth is the caster's FAR side. This is the classic
                 // second-depth trick that lets the constant/slope bias defeat self-shadow acne on the lit front faces
                 // without peter-panning. Falls back gracefully for open/non-manifold meshes (they simply store their
-                // single face). depthClip on so nothing past the light far plane writes, and scissor test on so each
-                // cascade's column-transformed geometry is clipped to its atlas column (no bleed into a neighbour).
+                // single face). Scissor test on so each cascade's column-transformed geometry is clipped to its atlas
+                // column (no bleed into a neighbour).
+                //
+                // depthClip stays ON, deliberately (issue #394). It is the FAR plane it now guards: nothing past the
+                // light far plane is down-light of every receiver in the cascade, so clipping it is free. The NEAR
+                // plane is handled in the vertex instead (the pancake in ShaderSources.ShadowDepthVert and its
+                // siblings), because the rasterizer flag is not portable: Veldrid's Metal backend derives
+                // MTLDepthClipMode from DepthStencilState.DepthTestEnabled and ignores RasterizerState.DepthClipEnabled
+                // outright, so flipping this to false would be a silent no-op on Metal, and its Vulkan backend maps it
+                // to depthClampEnable, a device feature that need not be present. Clamping clip z in the vertex needs
+                // nothing from the device and behaves identically on all three backends.
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.Front, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: true),
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _layout },

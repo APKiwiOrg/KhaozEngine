@@ -1942,9 +1942,27 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
   billboards, a debug-draw overlay (`DebugLine/Ray/Box/Grid/Axes/Circle`), and depth-tested debug wire volumes
   (`DebugWireSphere/Dome/Cylinder/Circle`, see below). `LoadTexture` builds and generates a
   full mip chain for each texture (from 9.2.0), so model/prop surfaces stay smooth at distance instead of aliasing
-  into "pixely" sparkle as the camera moves. `Post` is the
+  into "pixely" sparkle as the camera moves. An optional trailing `TextureMipPolicy` picks how much of that chain
+  to build (see below). `Post` is the
   `PixelPostProcess` (pixelation / quantize / dither / cel bands / palette for the chunky retro look; the smooth
   look is the default).
+- **Mip policy (`TextureMipPolicy`).** A full chain is right for a tiled albedo and wrong for an image whose
+  regions are independent, because every level averages content that should never mix. Both `LoadTexture` overloads
+  take an optional trailing policy, defaulting to `TextureMipPolicy.Full`, so an omitted argument is exactly the
+  behaviour every caller already had:
+
+```csharp
+scene.LoadTexture(sheet, 1024, 512);                                  // Full: the whole chain, as before
+scene.LoadTexture(ramp, 256, 1, TextureMipPolicy.None);               // level 0 only (lookup / gradient / UI sheet)
+scene.LoadTexture(sheet, 1024, 512, TextureMipPolicy.AtlasGrid(4, 2));// stop where a cell is still 4 texels wide
+```
+
+  `AtlasGrid(columns, rows, minCellTexels = 4)` keeps the chain only as deep as a grid cell still has
+  `minCellTexels` texels on its shorter side (a 1024x512 sheet packed 4x2 gets 7 levels instead of 11), so a
+  bilinear tap never reaches far enough to pull in the neighbouring cell. Particle flipbooks do NOT need this: the
+  fragment shader derives the same cap from the packed grid and clamps its own sampling LOD, so a flipbook atlas
+  loaded `Full` still samples correctly. Reach for `AtlasGrid` to stop paying memory for levels nothing samples,
+  and on the model pipeline, which has no shader-side clamp of its own.
 - **Per-instance dissolve (rigid path).** `Draw(handle, transform, tint, material, dissolve, edgeWidth, edgeColor)`
   dissolves one instanced draw, mirroring the skinned `DrawSkinned` dissolve overload but on the rigid path.
   `dissolve` is a 0..1 threshold (0 = solid, 1 = fully gone), with a glowing emissive edge of `edgeColor` and width
@@ -3742,6 +3760,13 @@ knob, per spec:
 ```csharp
 Flipbook = new ParticleFlipbook(atlas, Columns: 8, Rows: 8, Loop: true, FlipV: true),
 ```
+
+**Distant sheets do not bleed between cells.** The fragment shader picks its own sampling LOD and caps it at the
+coarsest mip level where a cell still holds 4 texels on its shorter side. Past that point a bilinear tap at a cell
+edge reaches into the neighbouring frame, which reads as a distant sprite shimmering between cells (worst on a
+static icon, hidden by an animating sheet). The cap comes from the packed grid and `textureSize`, so it needs
+nothing from the caller: load the atlas however you like and adopt this by version bump. `TextureMipPolicy.AtlasGrid`
+computes the same cap on the upload side if you would rather not allocate the levels at all.
 
 `FlipV` mirrors each cell vertically, `FlipU` mirrors it horizontally, and both together are a 180 degree rotation.
 They flip only the coordinate WITHIN a cell, never which cell the frame index selects, so playback order is

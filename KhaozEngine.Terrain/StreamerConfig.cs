@@ -21,10 +21,19 @@ namespace KhaozEngine.Terrain
     /// upload happens on the frame thread. <see cref="MaxLoadsPerFrame"/> then caps how many completed builds are
     /// APPLIED (GPU upload + swap) per <c>Update</c>. The builds themselves are unbudgeted (they run in parallel off
     /// the frame thread). When <see cref="Async"/> is false, or the sink is not an <see cref="IAsyncChunkSink"/>, the
-    /// streamer runs the old synchronous path where <see cref="MaxLoadsPerFrame"/> caps build+upload ops done inline.
-    /// Either way unloads are immediate.</para></summary>
-    public readonly record struct StreamerConfig(int LoadRadius, int UnloadRadius, int MaxLoadsPerFrame, float ChunkSize, bool Async = true, int DecorRadius = 0, TerrainLodConfig? LodConfig = null, float LodHysteresis = TerrainLodConfig.DefaultHysteresis)
+    /// streamer runs the old synchronous path where <see cref="MaxLoadsPerFrame"/> caps build+upload ops done inline.</para>
+    /// <para><b>Unloads.</b> <see cref="MaxUnloadsPerFrame"/> caps how many out-of-range chunks are freed per
+    /// <c>Update</c>, farthest first, so a ring shift spreads over frames instead of freeing a whole outgoing ring in
+    /// one call. The rest are simply reconsidered next frame, which means a chunk that comes back into range before
+    /// its turn is never unloaded at all (and so never reloaded). 0 or less opts out and frees everything at once.
+    /// <c>UnloadAll</c> is never budgeted: a teleport or world rebuild must free the whole ring on the spot.</para></summary>
+    public readonly record struct StreamerConfig(int LoadRadius, int UnloadRadius, int MaxLoadsPerFrame, float ChunkSize, bool Async = true, int DecorRadius = 0, TerrainLodConfig? LodConfig = null, float LodHysteresis = TerrainLodConfig.DefaultHysteresis, int MaxUnloadsPerFrame = StreamerConfig.DefaultMaxUnloadsPerFrame)
     {
+        /// <summary>Default per-frame unload budget. A one-chunk ring shift exposes roughly a dozen chunks at the
+        /// default radii, so 8 clears an ordinary shift in two frames while still capping the worst case (a long
+        /// jump, or a slow frame that skipped several chunk boundaries at once).</summary>
+        public const int DefaultMaxUnloadsPerFrame = 8;
+
         /// <summary>LoadRadius 4 (~240 m gameplay disk), UnloadRadius 6 (2-chunk hysteresis band), 3 applies/frame,
         /// 60 m chunks, async build on, NO decor ring by default (games opt into a far horizon by setting
         /// <see cref="DecorRadius"/>). A brisk run (6 m/s) crosses a chunk in ~10 s, far under the per-frame budget.</summary>

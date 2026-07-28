@@ -340,6 +340,29 @@ namespace KhaozEngine.Tests.Terrain
         }
 
         [Fact]
+        public void The_unload_budget_applies_on_the_async_path_too()
+        {
+            var manual = new ManualBuildDispatcher();
+            var sink = new FakeAsyncChunkSink();
+            var cfg = Async(3, 4, 1000) with { MaxUnloadsPerFrame = 2 };
+            var s = new TerrainStreamer(cfg, sink, manual);
+            var home = new Vector3(30f, 0f, 30f);
+            var away = new Vector3(9 * 60f + 30f, 0f, 30f);
+
+            s.Update(home, 0f); manual.RunAll(); s.Update(home, 0f);
+            Assert.True(s.Loaded.Count > 4);
+            sink.Unloads.Clear();
+
+            s.Update(away, 0f);
+
+            Assert.Equal(2, sink.Unloads.Count);
+
+            // The backlog still drains: pump until the old ring is gone.
+            for (int i = 0; i < 40; i++) { s.Update(away, 0f); manual.RunAll(); }
+            Assert.Equal(ExpectedDisk(new ChunkCoord(9, 0), 3), new HashSet<ChunkCoord>(s.Loaded));
+        }
+
+        [Fact]
         public void UnloadAll_frees_the_ring_and_discards_in_flight_builds()
         {
             var manual = new ManualBuildDispatcher();

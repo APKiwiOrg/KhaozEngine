@@ -5,7 +5,8 @@ using System.Numerics;
 namespace KhaozEngine.Terrain
 {
     /// <summary>Keeps the world loaded in a ring around the player. Each <see cref="Update"/>: unloads chunks beyond
-    /// <c>UnloadRadius</c> (immediate), enqueues loads for chunks inside the <c>LoadRadius</c> disk that are not yet
+    /// <c>UnloadRadius</c> (farthest first, up to <c>MaxUnloadsPerFrame</c>), enqueues loads for chunks inside the
+    /// <c>LoadRadius</c> disk that are not yet
     /// loaded and re-LODs for loaded chunks whose tier changed (picked with the
     /// <see cref="StreamerConfig.LodHysteresis"/> dead zone, so a chunk parked on a boundary does not re-tier on
     /// every step), then brings at most
@@ -158,22 +159,12 @@ namespace KhaozEngine.Terrain
             float cs = _config.ChunkSize;
             ChunkCoord pc = ChunkGrid.CoordOf(playerPos.X, playerPos.Z, cs);
 
-            // 1. Unload everything past the hysteresis radius (immediate, unbudgeted).
+            // 1. Unload chunks past the hysteresis radius, within this frame's budget.
             float unloadSq = _config.UnloadRadius * (float)_config.UnloadRadius;
-            if (_loaded.Count > 0)
+            foreach (ChunkCoord c in FarChunksToUnload(pc, unloadSq))
             {
-                // Snapshot the far keys so we can mutate the dictionary while iterating.
-                var far = new List<ChunkCoord>();
-                foreach (KeyValuePair<ChunkCoord, Entry> kv in _loaded)
-                {
-                    int dx = kv.Key.X - pc.X, dz = kv.Key.Z - pc.Z;
-                    if (dx * dx + dz * dz > unloadSq) far.Add(kv.Key);
-                }
-                foreach (ChunkCoord c in far)
-                {
-                    _sink.Unload(c, _loaded[c].Handle);
-                    _loaded.Remove(c);
-                }
+                _sink.Unload(c, _loaded[c].Handle);
+                _loaded.Remove(c);
             }
 
             // 2. Gather pending load + re-LOD ops over the load disk (out to the OUTER radius, so decor chunks load
@@ -247,21 +238,13 @@ namespace KhaozEngine.Terrain
                 foreach (ChunkCoord c in cancel) sched.Cancel(c);
             }
 
-            // 1b. Unload APPLIED chunks past the hysteresis radius (immediate). Cancel any in-flight re-LOD for them.
-            if (_loaded.Count > 0)
+            // 1b. Unload APPLIED chunks past the hysteresis radius, within this frame's budget. Cancel any in-flight
+            //     re-LOD for the ones that actually go (1a already cancelled every far chunk's build).
+            foreach (ChunkCoord c in FarChunksToUnload(pc, unloadSq))
             {
-                var far = new List<ChunkCoord>();
-                foreach (KeyValuePair<ChunkCoord, Entry> kv in _loaded)
-                {
-                    int dx = kv.Key.X - pc.X, dz = kv.Key.Z - pc.Z;
-                    if (dx * dx + dz * dz > unloadSq) far.Add(kv.Key);
-                }
-                foreach (ChunkCoord c in far)
-                {
-                    _sink.Unload(c, _loaded[c].Handle);
-                    _loaded.Remove(c);
-                    sched.Cancel(c);
-                }
+                _sink.Unload(c, _loaded[c].Handle);
+                _loaded.Remove(c);
+                sched.Cancel(c);
             }
 
             // 2. Request builds over the load disk out to the OUTER radius (UNBUDGETED - the build runs off the frame
@@ -343,6 +326,36 @@ namespace KhaozEngine.Terrain
         {
             if (_loaded.TryGetValue(coord, out Entry? e))
                 _sink.ReLod(coord, e.Handle, e.Lod, e.Ring);
+        }
+
+        /// <summary>The loaded chunks past <paramref name="unloadSq"/> that this frame should free: farthest first,
+        /// capped at <see cref="StreamerConfig.MaxUnloadsPerFrame"/> (0 or less = all of them). Returned as a
+        /// snapshot so the caller can mutate the dictionary while walking it.
+        /// <para>Deferring the rest needs no queue: the next Update recomputes the far set from the player's new
+        /// position, so a chunk that came back into range is simply not selected any more. That is what makes a
+        /// deferred unload cancel itself instead of turning into an unload-then-reload.</para></summary>
+        List<ChunkCoord> FarChunksToUnload(ChunkCoord pc, float unloadSq)
+        {
+            var far = new List<ChunkCoord>();
+            if (_loaded.Count == 0) return far;
+            foreach (KeyValuePair<ChunkCoord, Entry> kv in _loaded)
+            {
+                int dx = kv.Key.X - pc.X, dz = kv.Key.Z - pc.Z;
+                if (dx * dx + dz * dz > unloadSq) far.Add(kv.Key);
+            }
+            int budget = _config.MaxUnloadsPerFrame;
+            if (budget <= 0 || far.Count <= budget) return far;
+            // Farthest first, so the survivors are the ones nearest the ring, which are also the likeliest to come
+            // back into range and have their unload cancelled.
+            far.Sort((a, b) => DistSq(b, pc).CompareTo(DistSq(a, pc)));
+            far.RemoveRange(budget, far.Count - budget);
+            return far;
+        }
+
+        static int DistSq(ChunkCoord c, ChunkCoord from)
+        {
+            int dx = c.X - from.X, dz = c.Z - from.Z;
+            return dx * dx + dz * dz;
         }
 
         void ApplyBuilds(IReadOnlyList<ChunkBuild<object>> builds)

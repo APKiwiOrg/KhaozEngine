@@ -174,6 +174,111 @@ namespace KhaozEngine.Tests.Terrain
             Assert.Contains(sink.ReLods, r => r.coord == target);
         }
 
+        // --- Unload budget (a ring shift spread over frames) --------------------------------------------------------
+        // Loads were budgeted from the start, unloads were not, so one Update could free the whole outgoing ring.
+
+        static readonly Vector3 UnloadHome = new(30f, 0f, 30f);            // chunk (0,0)
+        static readonly Vector3 UnloadAway = new(9 * 60f + 30f, 0f, 30f);  // chunk (9,0), clear of a radius-3 disk
+
+        [Fact]
+        public void At_most_MaxUnloadsPerFrame_chunks_unload_per_update_and_the_backlog_drains()
+        {
+            var cfg = new StreamerConfig(LoadRadius: 3, UnloadRadius: 4, MaxLoadsPerFrame: 1000, ChunkSize: 60f,
+                MaxUnloadsPerFrame: 2);
+            var sink = new FakeChunkSink();
+            var s = new TerrainStreamer(cfg, sink);
+            Pump(s, sink, UnloadHome, 3);
+
+            // Not vacuous: the outgoing ring needs several frames' worth of budget to clear.
+            Assert.True(s.Loaded.Count > 2 * cfg.MaxUnloadsPerFrame, $"only {s.Loaded.Count} chunks loaded");
+
+            for (int i = 0; i < 40; i++)
+            {
+                int before = sink.Unloads.Count;
+                s.Update(UnloadAway, 1f / 60f);
+                int landed = sink.Unloads.Count - before;
+                Assert.True(landed <= cfg.MaxUnloadsPerFrame, $"frame {i} unloaded {landed}, budget is {cfg.MaxUnloadsPerFrame}");
+            }
+
+            // Every out-of-range chunk went eventually, and only the new disk is left.
+            Assert.Equal(ExpectedDisk(new ChunkCoord(9, 0), 3), new HashSet<ChunkCoord>(s.Loaded));
+        }
+
+        [Fact]
+        public void The_unload_budget_frees_the_farthest_chunks_first()
+        {
+            var cfg = new StreamerConfig(LoadRadius: 3, UnloadRadius: 4, MaxLoadsPerFrame: 1000, ChunkSize: 60f,
+                MaxUnloadsPerFrame: 1);
+            var sink = new FakeChunkSink();
+            var s = new TerrainStreamer(cfg, sink);
+            Pump(s, sink, UnloadHome, 3);
+            sink.Unloads.Clear();
+
+            s.Update(UnloadAway, 1f / 60f);
+
+            // Of the radius-3 disk around (0,0), (-3,0) is the single farthest chunk from (9,0), so it goes first.
+            Assert.Single(sink.Unloads);
+            Assert.Equal(new ChunkCoord(-3, 0), sink.Unloads[0]);
+        }
+
+        [Fact]
+        public void A_chunk_that_returns_to_range_before_its_turn_is_never_unloaded_or_reloaded()
+        {
+            var cfg = new StreamerConfig(LoadRadius: 3, UnloadRadius: 4, MaxLoadsPerFrame: 1000, ChunkSize: 60f,
+                MaxUnloadsPerFrame: 1);
+            var sink = new FakeChunkSink();
+            var s = new TerrainStreamer(cfg, sink);
+            Pump(s, sink, UnloadHome, 3);
+
+            // (3,0) is the NEAREST of the old disk to the away position, so a budget of 1 never reaches it in
+            // two frames: it spends them queued for an unload that has not landed.
+            var target = new ChunkCoord(3, 0);
+            Assert.Contains(target, s.Loaded);
+            Pump(s, sink, UnloadAway, 2);
+            Assert.Contains(target, s.Loaded);
+
+            Pump(s, sink, UnloadHome, 3);   // back in range before its turn came up
+
+            Assert.Contains(target, s.Loaded);
+            Assert.DoesNotContain(target, sink.Unloads);                    // the queued unload was simply dropped
+            Assert.Equal(1, sink.Loads.Count(l => l.coord == target));      // and it was never re-loaded
+        }
+
+        [Fact]
+        public void UnloadAll_ignores_the_unload_budget()
+        {
+            var cfg = new StreamerConfig(LoadRadius: 3, UnloadRadius: 5, MaxLoadsPerFrame: 1000, ChunkSize: 60f,
+                MaxUnloadsPerFrame: 1);
+            var sink = new FakeChunkSink();
+            var s = new TerrainStreamer(cfg, sink);
+            Pump(s, sink, UnloadHome, 3);
+
+            var loaded = new HashSet<ChunkCoord>(s.Loaded);
+            Assert.True(loaded.Count > 1);
+            int before = sink.Unloads.Count;
+
+            s.UnloadAll();   // the teleport contract: total and immediate, whatever the per-frame budget says
+
+            Assert.Equal(loaded, new HashSet<ChunkCoord>(sink.Unloads.Skip(before)));
+            Assert.Empty(s.Loaded);
+        }
+
+        [Fact]
+        public void A_non_positive_unload_budget_clears_the_ring_in_one_update()
+        {
+            var cfg = new StreamerConfig(LoadRadius: 3, UnloadRadius: 4, MaxLoadsPerFrame: 1000, ChunkSize: 60f,
+                MaxUnloadsPerFrame: 0);
+            var sink = new FakeChunkSink();
+            var s = new TerrainStreamer(cfg, sink);
+            Pump(s, sink, UnloadHome, 3);
+            var old = new HashSet<ChunkCoord>(s.Loaded);
+            sink.Unloads.Clear();
+
+            s.Update(UnloadAway, 1f / 60f);   // opted out: the pre-budget behaviour, everything at once
+
+            Assert.Equal(old, new HashSet<ChunkCoord>(sink.Unloads));
+        }
+
         // --- LOD hysteresis (a dead zone at every tier boundary) ----------------------------------------------------
         // A chunk parked near 80 m used to re-LOD on every small move, and each re-LOD frees a live GPU mesh.
 

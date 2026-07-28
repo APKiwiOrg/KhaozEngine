@@ -112,7 +112,7 @@ namespace KhaozEngine.Render3D.Internal
         /// caster up-light of the near plane shadows the whole depth range below it, and it is what lets
         /// <see cref="BuildLightViewProj"/>'s eye placement be a texel-density choice instead of a correctness one
         /// (see the note there). The depth pass does this per fragment in
-        /// <c>ShaderSources.ShadowDepthVert</c>/<c>ShadowDepthFrag</c> and their dissolve + skinned siblings; this is
+        /// <c>ShaderSources.ShadowDepthVert</c>/<c>ShadowDepthFrag</c> and their dissolve + skinned siblings. This is
         /// the same clamp, so the headless tests can pin the contract without a GPU. Mirrors
         /// <see cref="SelectCascade"/>'s role for the RECEIVER shader.
         /// </summary>

@@ -51,7 +51,7 @@ namespace KhaozEngine.Tests.Render3D
                 ShadowMapMath.BuildLightViewProj(light, focus, r1, 2048),
             };
 
-            // 2*r0 up-light of the focus is exactly cascade 0's near plane; a little further is in front of it.
+            // 2*r0 up-light of the focus is exactly cascade 0's near plane, so a little further is in front of it.
             Vector3 inFront = focus - light * (2f * r0 + 3f);
             Assert.True(ClipZ(mats[0], inFront) < 0f, "probe is not actually in front of cascade 0's near plane");
             Assert.InRange(ClipZ(mats[1], inFront), 0f, 1f);

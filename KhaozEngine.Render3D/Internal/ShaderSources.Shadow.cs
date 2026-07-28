@@ -40,7 +40,7 @@ namespace KhaozEngine.Render3D.Internal
         //      entirely (so the flip is a NO-OP on Metal, the primary golden leg), and its Vulkan backend maps it to
         //      depthClampEnable, a DEVICE FEATURE that may be absent. Clamping clip-space z at the vertex needs no
         //      device feature and behaves identically everywhere. The light projection is ORTHOGRAPHIC, so w == 1 and
-        //      clamping clip z is exactly "clamp NDC depth to >= 0"; every vertex of a triangle ends up at z >= 0, and
+        //      clamping clip z is exactly "clamp NDC depth to >= 0". Every vertex of a triangle ends up at z >= 0 and
         //      the clipper interpolates linearly, so no interior point can fall in front of the near plane either.
         //      The FAR plane still clips, deliberately: geometry past it is down-light of every receiver in the
         //      cascade and cannot shadow anything, so clipping it is free.

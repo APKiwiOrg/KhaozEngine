@@ -49,10 +49,19 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuDevice _gd;
         readonly IGpuShaderSet _shaders;
         readonly IGpuResourceLayout _layout;    // set 0: the per-cascade light matrix (dynamic-offset UBO, vertex only)
-        readonly IGpuBuffer _lightUbo;          // MaxCascades * 256: one light-clip matrix per cascade slot
+        readonly IGpuBuffer _lightUbo;          // MaxCascades * 256: one light-clip matrix + the render origin per cascade slot
         readonly IGpuResourceSet _set;          // 64-byte window over _lightUbo, rebased per cascade by a dynamic offset
         readonly IGpuSampler _sampler;          // clamp/linear sampler the RECEIVERS use to PCF-sample the atlas (owned)
         IGpuPipeline _pipeline = null!;
+
+        // Dissolve-aware depth pipeline (issue #287): the same layout/outputs/raster state as _pipeline, with the
+        // instance layout extended to the model pass's locations 12..13 and a fragment that noise-discards by the
+        // per-instance dissolve. Bound ONLY for caster spans that carry a dissolve, so a scene with none never
+        // touches it and its depth pass is byte-identical to before. Its set is a FULL-slot (256-byte) window over
+        // the same _lightUbo, because this vertex also reads the RenderOrigin that rides at slot offset 64.
+        readonly IGpuShaderSet _dissolveShaders;
+        readonly IGpuResourceSet _dissolveSet;
+        IGpuPipeline _dissolvePipeline = null!;   // rebuilt in EnsureLayout alongside _pipeline
 
         // GPU-skinning depth pipeline (mirrors _pipeline for skinned casters) + its combined-UBO grow-with-retire buffer.
         readonly IGpuShaderSet _skinnedShaders;
@@ -94,6 +103,13 @@ namespace KhaozEngine.Render3D.Rendering
             _lightUbo = f.CreateBuffer(new GpuBufferDescription((uint)MaxCascades * CascadeSlotBytes, GpuBufferUsage.UniformBuffer));
             _set = f.CreateResourceSet(new GpuResourceSetDescription(_layout, new GpuBufferRange(_lightUbo, 0, 64)));
 
+            // Dissolve depth shaders + their window over the same buffer. The window is the WHOLE 256-byte slot (not
+            // 64) so the vertex can read RenderOrigin at offset 64 as well as the matrix, and 256 bytes is also the
+            // D3D11-friendly 16-constant multiple. The layout description is identical to the plain one, so the same
+            // _layout object backs both sets and both pipelines.
+            _dissolveShaders = f.CreateShadersFromSpirv(ShaderSources.ShadowDepthDissolveVert, ShaderSources.ShadowDepthDissolveFrag);
+            _dissolveSet = f.CreateResourceSet(new GpuResourceSetDescription(_layout, new GpuBufferRange(_lightUbo, 0, CascadeSlotBytes)));
+
             // GPU-skinning depth shaders/layout (the fragment is the shared ShadowDepthFrag). Set 0 = combined
             // { LightMvp; bones[128] } dynamic UBO, vertex only. The pipeline is built per layout in EnsureLayout.
             _skinnedShaders = f.CreateShadersFromSpirv(ShaderSources.SkinnedShadowDepthVert, ShaderSources.ShadowDepthFrag);
@@ -123,6 +139,7 @@ namespace KhaozEngine.Render3D.Rendering
             if (res == _perCascadeRes && count == _cascadeCount) return;
             _gd.WaitForIdle();   // a prior frame's pass may still reference the old targets; a layout change is rare
             _pipeline?.Dispose();
+            _dissolvePipeline?.Dispose();
             _skinnedPipeline?.Dispose();
             _fb?.Dispose();
             _atlas?.Dispose();
@@ -140,6 +157,7 @@ namespace KhaozEngine.Render3D.Rendering
             _fb = f.CreateFramebuffer(_depthStencil, _atlas);
 
             _pipeline = BuildPipeline(f, _fb.Outputs);
+            _dissolvePipeline = BuildPipeline(f, _fb.Outputs, dissolve: true);
             _skinnedPipeline = BuildSkinnedPipeline(f, _fb.Outputs);
         }
 
@@ -170,7 +188,12 @@ namespace KhaozEngine.Render3D.Rendering
             });
         }
 
-        IGpuPipeline BuildPipeline(IGpuResourceFactory f, GpuOutputDescription outputs)
+        // Build a rigid caster depth pipeline. <paramref name="dissolve"/> false is the plain depth-only pipeline,
+        // unchanged. True is the issue #287 dissolve-aware variant, which differs ONLY in its shader set and in
+        // declaring the model pass's two trailing instance elements (locations 12..13) so its vertex can read the
+        // per-instance dissolve. Everything else - raster state, outputs, resource layout, the shared instance
+        // stride - is identical, so a span drawn through either records the same depth when the dissolve is 0.
+        IGpuPipeline BuildPipeline(IGpuResourceFactory f, GpuOutputDescription outputs, bool dissolve = false)
         {
             // Slot 0: per-vertex geometry (locations 0..4) - same layout the model pass uses, so the shared model
             // vertex buffer binds unchanged (only Position is read).
@@ -180,20 +203,28 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuVertexElement("Color", GpuVertexElementFormat.Float4),
                 new GpuVertexElement("TexCoord", GpuVertexElementFormat.Float2),
                 new GpuVertexElement("Tangent", GpuVertexElementFormat.Float4));
-            // Slot 1: the model pass's per-instance stream (locations 5..11), reused verbatim - no second upload.
+            // Slot 1: the model pass's per-instance stream (locations 5..11, plus 12..13 on the dissolve variant),
+            // reused verbatim - no second upload. The stride is the full InstanceData either way, so the trailing
+            // elements the plain pipeline omits are simply not fetched.
+            var instanceElements = new List<GpuVertexElement>
+            {
+                new GpuVertexElement("IModel0", GpuVertexElementFormat.Float4),
+                new GpuVertexElement("IModel1", GpuVertexElementFormat.Float4),
+                new GpuVertexElement("IModel2", GpuVertexElementFormat.Float4),
+                new GpuVertexElement("IModel3", GpuVertexElementFormat.Float4),
+                new GpuVertexElement("ITint", GpuVertexElementFormat.Float4),
+                new GpuVertexElement("IEmissive", GpuVertexElementFormat.Float4),
+                new GpuVertexElement("ISpecParams", GpuVertexElementFormat.Float4),
+            };
+            if (dissolve)
+            {
+                instanceElements.Add(new GpuVertexElement("IDynamic", GpuVertexElementFormat.Float1));
+                instanceElements.Add(new GpuVertexElement("IDissolve", GpuVertexElementFormat.Float2));
+            }
             var instanceLayout = new GpuVertexLayoutDescription(
                 stride: ModelRenderer.InstanceData.SizeInBytes,
                 instanceStepRate: 1,
-                elements: new[]
-                {
-                    new GpuVertexElement("IModel0", GpuVertexElementFormat.Float4),
-                    new GpuVertexElement("IModel1", GpuVertexElementFormat.Float4),
-                    new GpuVertexElement("IModel2", GpuVertexElementFormat.Float4),
-                    new GpuVertexElement("IModel3", GpuVertexElementFormat.Float4),
-                    new GpuVertexElement("ITint", GpuVertexElementFormat.Float4),
-                    new GpuVertexElement("IEmissive", GpuVertexElementFormat.Float4),
-                    new GpuVertexElement("ISpecParams", GpuVertexElementFormat.Float4),
-                });
+                elements: instanceElements.ToArray());
 
             return f.CreateGraphicsPipeline(new GpuPipelineDescription
             {
@@ -208,24 +239,28 @@ namespace KhaozEngine.Render3D.Rendering
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.Front, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: true),
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _layout },
-                ShaderSet = _shaders,
+                ShaderSet = dissolve ? _dissolveShaders : _shaders,
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout, instanceLayout },
                 Outputs = outputs,
             });
         }
 
         /// <summary>Begin the cascaded depth pass: bind + clear the whole atlas, upload each cascade's DEPTH matrix
-        /// (world-&gt;light-clip already GPU-clip-corrected AND column-transformed) into its dynamic slot, and bind the
-        /// rigid depth pipeline. Clear the R32F atlas to 1.0 (far plane) so an unwritten texel reads "nothing in front"
-        /// = unshadowed. Follow with <see cref="BeginCascadeRigid"/> per cascade to draw casters, then
-        /// <see cref="EndDepthPass"/>.</summary>
-        public void BeginDepthPass(IGpuCommandList cl, ReadOnlySpan<Matrix4x4> depthMats, int cascadeCount)
+        /// (world-&gt;light-clip already GPU-clip-corrected AND column-transformed) plus this frame's
+        /// <paramref name="renderOrigin"/> into its dynamic slot, and bind the rigid depth pipeline. Clear the R32F
+        /// atlas to 1.0 (far plane) so an unwritten texel reads "nothing in front" = unshadowed. Follow with
+        /// <see cref="BeginCascadeRigid"/> (or <see cref="BeginCascadeRigidDissolve"/>) per cascade to draw casters,
+        /// then <see cref="EndDepthPass"/>. The origin rides at slot offset 64 for the dissolve variant's
+        /// world-anchored noise. The plain depth vertex declares only the matrix and never reads it.</summary>
+        public void BeginDepthPass(IGpuCommandList cl, ReadOnlySpan<Matrix4x4> depthMats, int cascadeCount, Vector3 renderOrigin)
         {
             int count = Math.Min(cascadeCount, _cascadeCount);
+            var origin = new Vector4(renderOrigin, 0f);
             for (int i = 0; i < count; i++)
             {
                 Matrix4x4 m = depthMats[i];
                 cl.UpdateBuffer(_lightUbo, (uint)i * CascadeSlotBytes, in m);
+                cl.UpdateBuffer(_lightUbo, (uint)i * CascadeSlotBytes + 64, in origin);
             }
             cl.SetFramebuffer(_fb);
             cl.ClearColorTarget(0, new Color(1f, 1f, 1f, 1f));  // 1.0 = far plane = no caster (whole atlas)
@@ -241,6 +276,17 @@ namespace KhaozEngine.Render3D.Rendering
             cl.SetPipeline(_pipeline);
             SetCascadeScissor(cl, cascade);
             cl.SetGraphicsResourceSet(0, _set, (uint)cascade * CascadeSlotBytes);
+        }
+
+        /// <summary>As <see cref="BeginCascadeRigid"/>, but binds the DISSOLVE-AWARE depth pipeline (issue #287) for
+        /// the caster spans that carry a per-instance dissolve: same cascade scissor, same light slot, a full-slot
+        /// UBO window (the vertex also reads the render origin), and a fragment that noise-discards by the dissolve.
+        /// Switch back with <see cref="BeginCascadeRigid"/> for the plain spans.</summary>
+        public void BeginCascadeRigidDissolve(IGpuCommandList cl, int cascade)
+        {
+            cl.SetPipeline(_dissolvePipeline);
+            SetCascadeScissor(cl, cascade);
+            cl.SetGraphicsResourceSet(0, _dissolveSet, (uint)cascade * CascadeSlotBytes);
         }
 
         void SetCascadeScissor(IGpuCommandList cl, int cascade)
@@ -329,11 +375,14 @@ namespace KhaozEngine.Render3D.Rendering
         public void Dispose()
         {
             _pipeline?.Dispose();
+            _dissolvePipeline?.Dispose();
             _skinnedPipeline?.Dispose();
             _fb?.Dispose();
             _atlas?.Dispose();
             _depthStencil?.Dispose();
             _set.Dispose();
+            _dissolveSet.Dispose();
+            _dissolveShaders.Dispose();
             _lightUbo.Dispose();
             _layout.Dispose();
             _shaders.Dispose();

@@ -8,7 +8,7 @@ using Xunit;
 namespace KhaozEngine.Tests.Terrain
 {
     /// <summary>Covers the live <see cref="IPlacementSource"/> seam: a source-backed
-    /// <see cref="PropLayer.PlacementLayer(IPlacementSource, IReadOnlyDictionary{string, MeshHandle}, float, float, IReadOnlyDictionary{string, MeshHandle}, float, bool)"/>
+    /// <see cref="PropLayer.PlacementLayer(IPlacementSource, IReadOnlyDictionary{string, MeshHandle}, float, float, IReadOnlyDictionary{string, MeshHandle}, float, bool, bool)"/>
     /// is queried at EVERY chunk build, so content that arrives after the sink was constructed reaches the render
     /// path, which a frozen bucketed list cannot do. The frozen path stays byte-identical.</summary>
     public class PlacementSourceLayerTests

@@ -91,7 +91,11 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   one of a layer's `Meshes`/`PartMeshes` is set, and its LOD set matches that representation
   (`LodMeshes`/`LodPartMeshes`). `FadeBandWidth` (default 0 = hard cut) dissolves props across the band just
   inside `DrawRadius`. A positive `LodDistance` with LOD variants swaps a kit to its far mesh past that
-  distance. `Scene3DChunkSink.Draw` reads whichever mesh set is set and threads the fade band + LOD through.
+  distance. `CastsShadows` (default true) is the layer's shadow policy: pass `castsShadows: false` to ANY of the
+  factories and the layer's props (and its merged HLOD mesh) stop writing into the key light's shadow depth pass
+  while still drawing and still RECEIVING shadows - what a dense short-radius ground-cover or understory layer wants
+  when hundreds of small casters pop on the draw-radius circle (issue #287). `Scene3DChunkSink.Draw` reads whichever
+  mesh set is set and threads the fade band + LOD + the shadow policy through.
   `layer.WithHlod(sourceMeshes, hlodDistance, weldCell, crossfadeWidth = 0)` returns a copy with **HLOD** on: past
   `HlodDistance` the chunk cluster swaps its individual props for one merged coarse mesh (baked from `sourceMeshes`,
   see `PropHlod`), crossfading the two across `HlodCrossfadeWidth`. Defaults off, so a layer without `WithHlod`
@@ -125,7 +129,10 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   (the 14.5.0 opaque-noise-discard primitive, so overlapping fades never sort-fight) ramps deterministically
   0..1 by horizontal distance over `[drawRadius - fadeBandWidth, drawRadius]`, so props thin out instead of
   popping; and `lodMeshes`/`lodParts` + `lodDistance` swap a kit to an author-supplied far LOD mesh past
-  `lodDistance` (per-kit opt-in, an id with no variant keeps its full mesh). See
+  `lodDistance` (per-kit opt-in, an id with no variant keeps its full mesh). A third knob, `castsShadows`
+  (default true), is policy rather than presentation: false stamps every queued prop as a non-caster (issue #287).
+  Left true, a prop inside the fade band now also thins its SHADOW as it dissolves, instead of casting solid up to
+  the cull radius. See
   `KhaozEngine.Render3D/README.md` ("Manifest-driven textured opt-in", "Far LOD variants") for `LoadPropAuto` /
   `LoadPropMeshes` / `LoadPropLodAuto`, the load-side half of this seam. Alpha-cutout foliage needs nothing here: the cutoff
   rides each part's material state (set at load via `LoadPropMeshes`), so a MASK leaf-card kit scatters and

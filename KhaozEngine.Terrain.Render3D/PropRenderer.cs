@@ -19,8 +19,11 @@ namespace KhaozEngine.Terrain
     /// (solid) to 1 (fully discarded) by horizontal distance, so props thin out instead of popping. A band of 0 keeps
     /// the byte-identical hard cut. <c>lodMeshes</c>/<c>lodDistance</c> swap a kit to an author-supplied far LOD mesh
     /// (from <see cref="AssetEntry.LodFile"/>) beyond <c>lodDistance</c>: a per-kit opt-in, an id with no variant just
-    /// keeps its full mesh. Both are deterministic per distance, no per-frame randomness.</para>
-    /// The headless <see cref="Queue(SceneInstances, IReadOnlyList{PropPlacement}, IReadOnlyDictionary{string, MeshHandle}, Vector3, float, Color?, float, IReadOnlyDictionary{string, MeshHandle}, float, float)"/> overload is testable without a GPU; <see cref="DrawProps(Scene3D, IReadOnlyList{PropPlacement}, IReadOnlyDictionary{string, MeshHandle}, Vector3, float, Color?, float, IReadOnlyDictionary{string, MeshHandle}, float, float)"/> is the Scene3D
+    /// keeps its full mesh. Both are deterministic per distance, no per-frame randomness. A third knob,
+    /// <c>castsShadows</c> (issue #287), is policy rather than presentation: false keeps the emitted props out of the
+    /// shadow depth pass entirely (they still draw and still receive shadows), which is what a dense short-radius
+    /// layer wants when its hundreds of small cast shadows cost more than they read.</para>
+    /// The headless <see cref="Queue(SceneInstances, IReadOnlyList{PropPlacement}, IReadOnlyDictionary{string, MeshHandle}, Vector3, float, Color?, float, IReadOnlyDictionary{string, MeshHandle}, float, float, bool)"/> overload is testable without a GPU; <see cref="DrawProps(Scene3D, IReadOnlyList{PropPlacement}, IReadOnlyDictionary{string, MeshHandle}, Vector3, float, Color?, float, IReadOnlyDictionary{string, MeshHandle}, float, float, bool)"/> is the Scene3D
     /// convenience a consumer with <c>using KhaozEngine.Terrain;</c> gets in scope.</summary>
     public static class PropRenderer
     {
@@ -31,43 +34,46 @@ namespace KhaozEngine.Terrain
         /// <paramref name="lodDistance"/> swap a kit to its far LOD variant beyond that distance.
         /// <paramref name="dissolveFloor"/> (default 0) raises the MINIMUM dissolve applied to every emitted prop
         /// (combined with the per-placement fade via max), the seam the HLOD crossfade uses to dissolve a whole
-        /// chunk's props out uniformly. Returns the number queued.</summary>
+        /// chunk's props out uniformly. <paramref name="castsShadows"/> (default true, unchanged) queues these props
+        /// as non-casters when false, so a dense decorative layer draws and receives shadows without writing
+        /// hundreds of small ones into the cascade atlas (issue #287). Returns the number queued.</summary>
         public static int Queue(SceneInstances instances, IReadOnlyList<PropPlacement> placements,
                                 IReadOnlyDictionary<string, MeshHandle> meshes, Vector3 focus, float drawRadius,
                                 Color? tint = null, float fadeBandWidth = 0f,
                                 IReadOnlyDictionary<string, MeshHandle>? lodMeshes = null, float lodDistance = 0f,
-                                float dissolveFloor = 0f)
+                                float dissolveFloor = 0f, bool castsShadows = true)
         {
             if (instances == null) throw new ArgumentNullException(nameof(instances));
             Color t = tint ?? Color.White;
             return Emit(placements, meshes, lodMeshes, lodDistance, focus, drawRadius, fadeBandWidth, dissolveFloor,
                 (handle, world, dissolve) =>
                 {
-                    if (dissolve > 0f) instances.Add(handle, world, t, Material.None, dissolve, 0f, default);
+                    if (dissolve > 0f || !castsShadows) instances.Add(handle, world, t, Material.None, dissolve, 0f, default, castsShadows);
                     else instances.Add(handle, world, t);
                 });
         }
 
         /// <summary>Scene3D convenience: queue the in-range props into the scene's instance buffer for this frame
-        /// (same cull + matrix + fade band + LOD selection as <see cref="Queue(SceneInstances, IReadOnlyList{PropPlacement}, IReadOnlyDictionary{string, MeshHandle}, Vector3, float, Color?, float, IReadOnlyDictionary{string, MeshHandle}, float, float)"/>). <paramref name="dissolveFloor"/>
-        /// (default 0) raises every prop's minimum dissolve, the HLOD crossfade seam. Returns the number drawn.</summary>
+        /// (same cull + matrix + fade band + LOD selection as <see cref="Queue(SceneInstances, IReadOnlyList{PropPlacement}, IReadOnlyDictionary{string, MeshHandle}, Vector3, float, Color?, float, IReadOnlyDictionary{string, MeshHandle}, float, float, bool)"/>). <paramref name="dissolveFloor"/>
+        /// (default 0) raises every prop's minimum dissolve, the HLOD crossfade seam. <paramref name="castsShadows"/>
+        /// (default true) draws these props as non-casters when false (issue #287). Returns the number drawn.</summary>
         public static int DrawProps(this Scene3D scene, IReadOnlyList<PropPlacement> placements,
                                     IReadOnlyDictionary<string, MeshHandle> meshes, Vector3 focus, float drawRadius,
                                     Color? tint = null, float fadeBandWidth = 0f,
                                     IReadOnlyDictionary<string, MeshHandle>? lodMeshes = null, float lodDistance = 0f,
-                                    float dissolveFloor = 0f)
+                                    float dissolveFloor = 0f, bool castsShadows = true)
         {
             if (scene == null) throw new ArgumentNullException(nameof(scene));
             Color t = tint ?? Color.White;
             return Emit(placements, meshes, lodMeshes, lodDistance, focus, drawRadius, fadeBandWidth, dissolveFloor,
                 (handle, world, dissolve) =>
                 {
-                    if (dissolve > 0f) scene.Draw(handle, world, t, Material.None, dissolve, 0f, default);
+                    if (dissolve > 0f || !castsShadows) scene.Draw(handle, world, t, Material.None, dissolve, 0f, default, castsShadows);
                     else scene.Draw(handle, world, t);
                 });
         }
 
-        /// <summary>Multi-part variant of <see cref="Queue(SceneInstances, IReadOnlyList{PropPlacement}, IReadOnlyDictionary{string, MeshHandle}, Vector3, float, Color?, float, IReadOnlyDictionary{string, MeshHandle}, float, float)"/>: each kit id maps to ONE-OR-MANY
+        /// <summary>Multi-part variant of <see cref="Queue(SceneInstances, IReadOnlyList{PropPlacement}, IReadOnlyDictionary{string, MeshHandle}, Vector3, float, Color?, float, IReadOnlyDictionary{string, MeshHandle}, float, float, bool)"/>: each kit id maps to ONE-OR-MANY
         /// <see cref="MeshHandle"/>s (a prop split into one textured sub-mesh per source material, from
         /// <see cref="Scene3D.LoadPropMeshes"/>). For every in-range placement, all of that id's parts are queued at
         /// the placement's shared scale/yaw/translation transform, so the whole prop instances as a unit and each
@@ -75,39 +81,39 @@ namespace KhaozEngine.Terrain
         /// per-instance shader indexing). The fade band and (<paramref name="lodParts"/>, <paramref name="lodDistance"/>)
         /// LOD swap work exactly as on the single-mesh form, applied to the whole prop (every part shares the one
         /// dissolve value and switches to the LOD variant together). A single-part list queues exactly one instance per
-        /// placement, byte-identical to <see cref="Queue(SceneInstances, IReadOnlyList{PropPlacement}, IReadOnlyDictionary{string, MeshHandle}, Vector3, float, Color?, float, IReadOnlyDictionary{string, MeshHandle}, float, float)"/>. Returns the number of PLACEMENTS drawn (not part submissions).</summary>
+        /// placement, byte-identical to <see cref="Queue(SceneInstances, IReadOnlyList{PropPlacement}, IReadOnlyDictionary{string, MeshHandle}, Vector3, float, Color?, float, IReadOnlyDictionary{string, MeshHandle}, float, float, bool)"/>. Returns the number of PLACEMENTS drawn (not part submissions).</summary>
         public static int Queue(SceneInstances instances, IReadOnlyList<PropPlacement> placements,
                                 IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> parts, Vector3 focus,
                                 float drawRadius, Color? tint = null, float fadeBandWidth = 0f,
                                 IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? lodParts = null, float lodDistance = 0f,
-                                float dissolveFloor = 0f)
+                                float dissolveFloor = 0f, bool castsShadows = true)
         {
             if (instances == null) throw new ArgumentNullException(nameof(instances));
             Color t = tint ?? Color.White;
             return EmitParts(placements, parts, lodParts, lodDistance, focus, drawRadius, fadeBandWidth, dissolveFloor,
                 (handle, world, dissolve) =>
                 {
-                    if (dissolve > 0f) instances.Add(handle, world, t, Material.None, dissolve, 0f, default);
+                    if (dissolve > 0f || !castsShadows) instances.Add(handle, world, t, Material.None, dissolve, 0f, default, castsShadows);
                     else instances.Add(handle, world, t);
                 });
         }
 
-        /// <summary>Scene3D convenience: multi-part variant of <see cref="DrawProps(Scene3D,IReadOnlyList{PropPlacement},IReadOnlyDictionary{string,MeshHandle},Vector3,float,Color?,float,IReadOnlyDictionary{string,MeshHandle},float,float)"/>.
+        /// <summary>Scene3D convenience: multi-part variant of <see cref="DrawProps(Scene3D,IReadOnlyList{PropPlacement},IReadOnlyDictionary{string,MeshHandle},Vector3,float,Color?,float,IReadOnlyDictionary{string,MeshHandle},float,float,bool)"/>.
         /// Queues every part of each in-range prop at the placement transform (same cull + matrix + fade band + LOD as
-        /// the headless <see cref="Queue(SceneInstances,IReadOnlyList{PropPlacement},IReadOnlyDictionary{string,IReadOnlyList{MeshHandle}},Vector3,float,Color?,float,IReadOnlyDictionary{string,IReadOnlyList{MeshHandle}},float,float)"/>).
+        /// the headless <see cref="Queue(SceneInstances,IReadOnlyList{PropPlacement},IReadOnlyDictionary{string,IReadOnlyList{MeshHandle}},Vector3,float,Color?,float,IReadOnlyDictionary{string,IReadOnlyList{MeshHandle}},float,float,bool)"/>).
         /// Returns the number of placements drawn.</summary>
         public static int DrawProps(this Scene3D scene, IReadOnlyList<PropPlacement> placements,
                                     IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> parts, Vector3 focus,
                                     float drawRadius, Color? tint = null, float fadeBandWidth = 0f,
                                     IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? lodParts = null, float lodDistance = 0f,
-                                    float dissolveFloor = 0f)
+                                    float dissolveFloor = 0f, bool castsShadows = true)
         {
             if (scene == null) throw new ArgumentNullException(nameof(scene));
             Color t = tint ?? Color.White;
             return EmitParts(placements, parts, lodParts, lodDistance, focus, drawRadius, fadeBandWidth, dissolveFloor,
                 (handle, world, dissolve) =>
                 {
-                    if (dissolve > 0f) scene.Draw(handle, world, t, Material.None, dissolve, 0f, default);
+                    if (dissolve > 0f || !castsShadows) scene.Draw(handle, world, t, Material.None, dissolve, 0f, default, castsShadows);
                     else scene.Draw(handle, world, t);
                 });
         }

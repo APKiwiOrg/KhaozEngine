@@ -8,7 +8,7 @@ using Xunit;
 namespace KhaozEngine.Tests.Terrain
 {
     /// <summary>Headless tests for the multi-part scatter path (no GPU): a kit id maps to one-or-many
-    /// <see cref="MeshHandle"/>s and <see cref="PropRenderer.Queue(SceneInstances, System.Collections.Generic.IReadOnlyList{PropPlacement}, System.Collections.Generic.IReadOnlyDictionary{string, System.Collections.Generic.IReadOnlyList{MeshHandle}}, Vector3, float, Color?, float, System.Collections.Generic.IReadOnlyDictionary{string, System.Collections.Generic.IReadOnlyList{MeshHandle}}, float, float)"/>
+    /// <see cref="MeshHandle"/>s and <see cref="PropRenderer.Queue(SceneInstances, System.Collections.Generic.IReadOnlyList{PropPlacement}, System.Collections.Generic.IReadOnlyDictionary{string, System.Collections.Generic.IReadOnlyList{MeshHandle}}, Vector3, float, Color?, float, System.Collections.Generic.IReadOnlyDictionary{string, System.Collections.Generic.IReadOnlyList{MeshHandle}}, float, float, bool)"/>
     /// queues one instance per (in-range placement, part) at the placement's shared world transform. A single-part
     /// list produces submissions byte-identical to the legacy single-handle path.</summary>
     public class MultiPartScatterTests

@@ -552,12 +552,16 @@ namespace KhaozEngine.Render3D.Rendering
         /// GPU-clip-corrected AND column-transformed per-cascade matrices (first <paramref name="cascadeCount"/> read).
         /// Follow with <see cref="BeginShadowCascadeRigid"/> per cascade, then <see cref="EndShadowPass"/>. Call after
         /// <see cref="UploadInstances"/> (the depth pass reuses that instance buffer).</summary>
-        public void BeginShadowPass(IGpuCommandList cl, ReadOnlySpan<Matrix4x4> depthMats, int cascadeCount) =>
-            _shadowMap.BeginDepthPass(cl, depthMats, cascadeCount);
+        public void BeginShadowPass(IGpuCommandList cl, ReadOnlySpan<Matrix4x4> depthMats, int cascadeCount, Vector3 renderOrigin) =>
+            _shadowMap.BeginDepthPass(cl, depthMats, cascadeCount, renderOrigin);
 
         /// <summary>Bind cascade <paramref name="cascade"/> (scissor its atlas column + rebase the light matrix) for
         /// the rigid + CPU-skinned caster draws that follow. <see cref="BeginShadowPass"/> must be bound.</summary>
         public void BeginShadowCascadeRigid(IGpuCommandList cl, int cascade) => _shadowMap.BeginCascadeRigid(cl, cascade);
+
+        /// <summary>Bind cascade <paramref name="cascade"/> on the DISSOLVE-AWARE depth pipeline (issue #287), for the
+        /// caster spans carrying a per-instance dissolve. Switch back with <see cref="BeginShadowCascadeRigid"/>.</summary>
+        public void BeginShadowCascadeRigidDissolve(IGpuCommandList cl, int cascade) => _shadowMap.BeginCascadeRigidDissolve(cl, cascade);
 
         /// <summary>Reset the scissor to full after the cascaded depth pass. Call once after all cascades are drawn.</summary>
         public void EndShadowPass(IGpuCommandList cl) => _shadowMap.EndDepthPass(cl);

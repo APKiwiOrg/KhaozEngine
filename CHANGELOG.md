@@ -5,6 +5,54 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.10.0
+
+### A fading prop's shadow fades with it, and a layer can stop casting
+
+The shadow depth pass ignored the 14.5.0 rigid dissolve entirely: it read Position plus the instance
+matrix and wrote depth unconditionally. So a prop at 85 percent dissolve still cast a fully solid
+shadow, which then popped out at the hard cull radius, and across an HLOD crossfade band the
+individual props AND the merged mesh both cast at full strength, roughly doubling shadow density.
+The 14.17.0 fade band is what unmasked it: before that, mesh and shadow popped together and read as
+one event. Closes [#287](https://github.com/APKiwiOrg/KhaozEngine/issues/287). The field report is
+[Ruinborne#344](https://github.com/APKiwiOrg/Ruinborne/issues/344): 13,661 ground-cover placements at
+a 42 m draw radius put several hundred full-strength cascade-1 shadows on a circle that follows the
+player.
+
+Two per-instance policies, both inert at their defaults.
+
+**Casters can opt out.** `Scene3D.Draw(handle, transform, tint, material, castsShadows: false)` (and
+the `castsShadows` argument on the dissolve overload) keeps that instance out of the depth pass while
+it still draws and still RECEIVES shadows. It is a shadow policy, not a cull. Prop layers carry the
+same thing per layer: `PropLayer.CastsShadows`, settable on every scatter, companion and placement
+factory and preserved by `WithHlod`, which `Scene3DChunkSink` threads onto the layer's props and its
+merged HLOD mesh alike, so casting does not switch back on at the HLOD swap.
+`PropRenderer.Queue` / `Scene3D.DrawProps` take the same trailing argument for a hand-rolled pass.
+
+**Fading casters cast proportionally.** A caster carrying a rigid dissolve is drawn through a new
+dissolve-aware depth pipeline whose fragment noise-discards on the SAME world-space mask `ModelFrag`
+uses, so the shadow's holes match the holes punched in the caster itself. Nothing to opt into, a
+positive dissolve is the opt-in, and a caster at dissolve 0 takes the plain pipeline. Both halves of
+an HLOD crossfade now cast in proportion, so the props' shadow thins out as the merged mesh's thins
+in.
+
+Neither costs a second upload. Each queued instance is classified where instances are already grouped
+for upload, and the depth pass draws the maximal contiguous same-kind spans of each mesh run, so an
+all-plain frame is one span per run and issues the same draws in the same order as before. The
+dissolve pipeline reads the per-instance dissolve out of the instance stream the model pass already
+uploaded, and the per-cascade light UBO slot now also carries the frame's render origin so the noise
+stays world-anchored across an origin rebase. The caster signature the frame-to-frame dirty check
+compares is now the drawn spans plus each caster's dissolve, so a dissolve or an opt-out that moves
+while the transforms and light matrices hold still still re-renders the atlas.
+
+Skinned casters are unchanged: they always cast, and a `CharDissolve` still casts solid. Filed as
+[#387](https://github.com/APKiwiOrg/KhaozEngine/issues/387).
+
+Internally, `Scene3D`'s shadow-caster half moved into `Scene3D.ShadowCasters.cs` (the depth pass, the
+classification, the span builder and the dirty predicates), taking `Scene3D.cs` from 3130 to 2988
+lines. SemVer: additive (new `Draw` overloads, new optional arguments, one new `PropLayer` property),
+so minor.
+
 ## 17.9.0
 
 ### Picking a thing up in one widget and putting it down in another

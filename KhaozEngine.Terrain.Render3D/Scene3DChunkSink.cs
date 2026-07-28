@@ -534,9 +534,12 @@ namespace KhaozEngine.Terrain
                             DrawLayerProps(load.LayerProps[i], layer, focus, dissolveFloor: t);
                         if (t > 0f)
                         {
+                            // The merged mesh follows the layer's own casts-shadows policy, so the policy does not
+                            // flip at the HLOD swap. Across the crossfade band both halves now dissolve in the depth
+                            // pass too (props out, merged in), instead of both casting at full strength (issue #287).
                             float hlodDissolve = 1f - t;
-                            if (hlodDissolve > 0f)
-                                _scene.Draw(merged, Matrix4x4.Identity, Color.White, Material.None, hlodDissolve, 0f, default);
+                            if (hlodDissolve > 0f || !layer.CastsShadows)
+                                _scene.Draw(merged, Matrix4x4.Identity, Color.White, Material.None, hlodDissolve, 0f, default, layer.CastsShadows);
                             else
                                 _scene.Draw(merged, Matrix4x4.Identity, Color.White);
                         }
@@ -552,17 +555,18 @@ namespace KhaozEngine.Terrain
         // Draw one layer's in-range props. A multi-part layer draws every kit id's sub-meshes as a unit; a single-handle
         // layer draws one mesh per id (byte-identical to before). Exactly one representation is set per layer. Each
         // layer's fade band + far LOD variants (both defaulting to the old hard-cut, full-mesh behaviour) ride through,
-        // plus the uniform HLOD crossfade dissolveFloor (0 = unchanged) when the cluster is fading out to its HLOD mesh.
+        // plus the uniform HLOD crossfade dissolveFloor (0 = unchanged) when the cluster is fading out to its HLOD mesh,
+        // and the layer's casts-shadows policy (true = unchanged, false keeps the props out of the depth pass).
         void DrawLayerProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus, float dissolveFloor)
         {
             if (layer.PartMeshes is { } partMeshes)
                 _scene.DrawProps(placements, partMeshes, focus, layer.DrawRadius,
                     tint: null, fadeBandWidth: layer.FadeBandWidth, lodParts: layer.LodPartMeshes,
-                    lodDistance: layer.LodDistance, dissolveFloor: dissolveFloor);
+                    lodDistance: layer.LodDistance, dissolveFloor: dissolveFloor, castsShadows: layer.CastsShadows);
             else
                 _scene.DrawProps(placements, layer.Meshes, focus, layer.DrawRadius,
                     tint: null, fadeBandWidth: layer.FadeBandWidth, lodMeshes: layer.LodMeshes,
-                    lodDistance: layer.LodDistance, dissolveFloor: dissolveFloor);
+                    lodDistance: layer.LodDistance, dissolveFloor: dissolveFloor, castsShadows: layer.CastsShadows);
         }
 
         /// <summary>Free every still-loaded chunk's GPU mesh and clear the ring, so a sink teardown while the same

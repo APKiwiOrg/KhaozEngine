@@ -62,7 +62,18 @@ namespace KhaozEngine.Terrain
         int _failedBuilds;
         ChunkBuildException? _lastBuildFault;   // kept so a total priming failure can report the real cause
 
+        // Per-reason build counters (see StreamerBuildReasons). Every one of these sites is on the frame thread, so
+        // plain adds are enough here, unlike the sink's merge counters, which are bumped from the build threads.
+        long _freshLoads, _tierChanges, _ringChanges, _invalidates, _anchorRecentres;
+        // Whether this streamer has ever anchored. Survives UnloadAll's anchor reset, so the first anchor of a
+        // session is not counted as a re-centre while a post-teleport re-anchor onto a different chunk is.
+        bool _anchoredOnce;
+
         bool _disposed;
+
+        // Which ring-scan site asked for a build, so the counter is picked where the decision is made rather than
+        // re-derived at the request call.
+        enum BuildReason { FreshLoad, TierChange, RingChange }
 
         sealed class Entry { public object Handle = null!; public int Lod; public ChunkRing Ring; }
 
@@ -160,12 +171,12 @@ namespace KhaozEngine.Terrain
         {
             float cs = _config.ChunkSize;
             ChunkCoord c = ChunkGrid.CoordOf(playerPos.X, playerPos.Z, cs);
-            if (!_hasAnchor) { _anchor = c; _hasAnchor = true; return c; }
+            if (!_hasAnchor) { Recentre(c); _hasAnchor = true; return c; }
             int dx = c.X - _anchor.X, dz = c.Z - _anchor.Z;
             if (dx == 0 && dz == 0) return _anchor;
             // A jump of more than one chunk is real movement (a teleport, a respawn, a warp), never boundary jitter,
             // so it re-centres immediately. Only a step to a NEIGHBOUR can be a flip across a boundary.
-            if (dx < -1 || dx > 1 || dz < -1 || dz > 1) { _anchor = c; return c; }
+            if (dx < -1 || dx > 1 || dz < -1 || dz > 1) { Recentre(c); return c; }
 
             // Re-centre only when the player is clear of every edge of the chunk they are now in, on the axes that
             // actually changed. An axis that did not change is already clear by definition.
@@ -173,9 +184,34 @@ namespace KhaozEngine.Terrain
             float clear = cs * 0.5f - ChunkAnchorHysteresis;
             bool deepX = dx == 0 || MathF.Abs(playerPos.X - center.X) <= clear;
             bool deepZ = dz == 0 || MathF.Abs(playerPos.Z - center.Y) <= clear;
-            if (deepX && deepZ) _anchor = c;
+            if (deepX && deepZ) Recentre(c);
             return _anchor;
         }
+
+        // Move the ring's centre chunk, counting the move unless it is this streamer's first anchor ever.
+        void Recentre(ChunkCoord c)
+        {
+            if (_anchoredOnce && c != _anchor) _anchorRecentres++;
+            _anchor = c;
+            _anchoredOnce = true;
+        }
+
+        // One build request, attributed. Kept next to the counters rather than inlined at the three request sites so
+        // the mapping from decision to counter is readable in one place.
+        void CountBuild(BuildReason reason)
+        {
+            switch (reason)
+            {
+                case BuildReason.TierChange: _tierChanges++; break;
+                case BuildReason.RingChange: _ringChanges++; break;
+                default: _freshLoads++; break;
+            }
+        }
+
+        // A loaded chunk whose tier or ring no longer matches the scan: the tier wins the attribution when both moved,
+        // because a tier flip is the metre-distance signal and a ring flip is the integer-distance one.
+        static BuildReason ReasonForRebuild(int appliedLod, int wantedLod) =>
+            appliedLod != wantedLod ? BuildReason.TierChange : BuildReason.RingChange;
 
         /// <summary>The residency ring for a chunk at Euclidean chunk-distance-squared <paramref name="chunkDistSq"/>
         /// from the player's chunk: <see cref="ChunkRing.Gameplay"/> within <see cref="StreamerConfig.LoadRadius"/>,
@@ -198,6 +234,13 @@ namespace KhaozEngine.Terrain
         /// separately. A boot step can report this after <see cref="PrimeAround"/> to say the world primed with
         /// failures rather than silently shipping a world with holes in it.</summary>
         public int FailedBuildCount => _failedBuilds;
+
+        /// <summary>Cumulative per-reason build counters (see <see cref="StreamerBuildReasons"/>): what this
+        /// streamer has asked the sink to build, split by WHY it asked. Read it the way
+        /// <c>Scene3DChunkSink.MergeStats</c> is read, as a value snapshot, and difference two samples for a rate.
+        /// Life-of-streamer totals: <see cref="UnloadAll"/> does not reset them.</summary>
+        public StreamerBuildReasons BuildReasons =>
+            new(_freshLoads, _tierChanges, _ringChanges, _invalidates, _anchorRecentres);
 
         /// <summary>Chunks whose builds failed <see cref="StreamerConfig.MaxChunkBuildAttempts"/> times and are no
         /// longer requested. These are the permanent holes in the world: everything else either loaded or is still
@@ -334,9 +377,9 @@ namespace KhaozEngine.Terrain
                 int lod = _lodConfig.PickLod(metreDist, loaded ? e!.Lod : -1, _config.LodHysteresis);
 
                 if (!loaded)
-                    pending.Add(new Pending(c, lod, ring, metreDist, isLoad: true));
+                    pending.Add(new Pending(c, lod, ring, metreDist, isLoad: true, BuildReason.FreshLoad));
                 else if (e!.Lod != lod || e.Ring != ring)
-                    pending.Add(new Pending(c, lod, ring, metreDist, isLoad: false));
+                    pending.Add(new Pending(c, lod, ring, metreDist, isLoad: false, ReasonForRebuild(e.Lod, lod)));
             }
 
             // 3. Process nearest-first, capped at MaxLoadsPerFrame.
@@ -358,6 +401,7 @@ namespace KhaozEngine.Terrain
                     e.Lod = p.Lod;
                     e.Ring = p.Ring;
                 }
+                CountBuild(p.Reason);
                 ops++;
             }
             return far.Count > 0 || ops > 0;
@@ -427,7 +471,11 @@ namespace KhaozEngine.Terrain
                 {
                     if (e!.Lod != lod || e.Ring != ring)
                     {
-                        if (!requestMatches) sched.Request(c, lod, ring);   // re-LOD / ring change (supersede a stale one)
+                        if (!requestMatches)
+                        {
+                            sched.Request(c, lod, ring);   // re-LOD / ring change (supersede a stale one)
+                            CountBuild(ReasonForRebuild(e.Lod, lod));
+                        }
                     }
                     else if (reqLod != -1)
                     {
@@ -437,6 +485,7 @@ namespace KhaozEngine.Terrain
                 else if (!requestMatches)
                 {
                     sched.Request(c, lod, ring);   // fresh load, or re-target an in-flight load whose tier/ring changed
+                    _freshLoads++;
                 }
             }
 
@@ -480,8 +529,9 @@ namespace KhaozEngine.Terrain
 
         void InvalidateLoaded(ChunkCoord coord)
         {
-            if (_loaded.TryGetValue(coord, out Entry? e))
-                _sink.ReLod(coord, e.Handle, e.Lod, e.Ring);
+            if (!_loaded.TryGetValue(coord, out Entry? e)) return;
+            _sink.ReLod(coord, e.Handle, e.Lod, e.Ring);
+            _invalidates++;
         }
 
         /// <summary>The loaded chunks past <paramref name="unloadSq"/> that this frame should free: farthest first,
@@ -573,8 +623,9 @@ namespace KhaozEngine.Terrain
             public readonly ChunkRing Ring;
             public readonly float Dist;
             public readonly bool IsLoad;
-            public Pending(ChunkCoord coord, int lod, ChunkRing ring, float dist, bool isLoad)
-            { Coord = coord; Lod = lod; Ring = ring; Dist = dist; IsLoad = isLoad; }
+            public readonly BuildReason Reason;
+            public Pending(ChunkCoord coord, int lod, ChunkRing ring, float dist, bool isLoad, BuildReason reason)
+            { Coord = coord; Lod = lod; Ring = ring; Dist = dist; IsLoad = isLoad; Reason = reason; }
         }
     }
 }

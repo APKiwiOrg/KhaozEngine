@@ -316,12 +316,13 @@ namespace KhaozEngine.Render3D
 
         /// <summary>
         /// GPU resources retired by a mid-life unload (a streamed chunk mesh freed while the scene keeps running)
-        /// that are still waiting out their frame delay before being destroyed. Always on and allocation-free.
-        /// <para>A streaming world's healthy shape is a small number that returns to 0 within a few frames of a
-        /// burst of unloads. A number that climbs and stays up means the frame loop is retiring faster than it is
-        /// draining, or that a host driving the scene without frame boundaries (a tool, a test, an offscreen
-        /// render) is never reaching the <c>BeginFrame</c> that frees them, in which case the whole unloaded ring
-        /// is being held. Diagnostics only: reading it changes nothing.</para>
+        /// that the GPU has not provably finished with yet, so they are still waiting to be destroyed. Always on
+        /// and allocation-free.
+        /// <para>A streaming world's healthy shape is a small number that returns to 0 within a frame or two of a
+        /// burst of unloads. A number that climbs and stays up means the frame loop is retiring faster than the GPU
+        /// is retiring frames, or that a host driving the scene without frame boundaries (a tool, a test, an
+        /// offscreen render) is never reaching the <c>BeginFrame</c> that frees them, in which case the whole
+        /// unloaded ring is being held. Diagnostics only: reading it changes nothing.</para>
         /// </summary>
         public int RetiredResourceCount => _retired.PendingCount;
 
@@ -393,7 +394,9 @@ namespace KhaozEngine.Render3D
             // Bound once, here, to a method group: the delegate object is allocated exactly once for this Scene3D's
             // lifetime rather than once per frame (see the field doc comment above and AlphaCutoffFor below).
             _alphaCutoffLookup = AlphaCutoffFor;
-            _retired = new RetiredResourcePool(gd.WaitForIdle);
+            // Fence-polled ripeness where the backend can signal on GPU completion (Metal, Vulkan), the frame-count
+            // drain everywhere else. TryCreate returning null IS the fallback, not a failure.
+            _retired = new RetiredResourcePool(gd.WaitForIdle, GpuRetireBarrier.TryCreate(gd));
             _targetOutput = targetOutput;
             // Construction seam (issue #27): the shadow atlas is sized ONCE here (resolution x cascade count), and its
             // handle is bound into every material set, so those knobs can only be honoured if supplied BEFORE this
@@ -1010,7 +1013,7 @@ namespace KhaozEngine.Render3D
         /// queue, the debug-line queue, the filled-overlay queue, and the billboard queues. Call before submitting.</summary>
         public void Begin()
         {
-            _retired.BeginFrame();   // frees mid-life mesh buffers retired a few frames ago, behind one drain
+            _retired.BeginFrame();   // frees mid-life mesh buffers whose retirement fence has signaled (no stall)
             LatchRenderOrigin();
             _instances.Begin();
             _skinnedInstances.Begin();
@@ -2578,7 +2581,7 @@ namespace KhaozEngine.Render3D
             // scene with uploads/draws still queued on the device's async submission thread (Mesa lavapipe
             // executes queued commands on its own thread and segfaults on destroyed resources).
             _gd.WaitForIdle();
-            _retired.FlushAll();   // the retired tail would otherwise outlive the scene that owns it
+            _retired.Dispose();    // flushes the retired tail (it would outlive the scene) and frees the fence barrier
             _model.Dispose();
             _post.Dispose();
             _lines.Dispose();

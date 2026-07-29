@@ -699,7 +699,7 @@ void main() {
                 _cl.SetPipeline(pipeline);
                 _gd.UpdateBuffer(vb, byteOffset, (ReadOnlySpan<V>)allVerts.Slice(start, count));
                 _stats.DrawCalls++;                                        // one draw call per emitted run
-                _stats.BufferUpdateBytes += (long)count * VertexSizeBytes; // vertex bytes counted at upload
+                _stats.AddSpriteUpload((long)count * VertexSizeBytes);     // vertex bytes counted at upload
                 BindAndDraw(f, tex, vb, (uint)count, vertexStart);
                 byteOffset += (uint)count * VertexSizeBytes;
                 vertexStart += (uint)count;
@@ -726,7 +726,7 @@ void main() {
                     var (_, start, count) = runs[idx];
                     if (count == 0) continue;
                     _gd.UpdateBuffer(vb, byteOffset, (ReadOnlySpan<V>)allVerts.Slice(start, count));
-                    _stats.BufferUpdateBytes += (long)count * VertexSizeBytes;   // vertex bytes counted at upload
+                    _stats.AddSpriteUpload((long)count * VertexSizeBytes);   // vertex bytes counted at upload
                     byteOffset += (uint)count * VertexSizeBytes;
                     groupCount += (uint)count;
                 }

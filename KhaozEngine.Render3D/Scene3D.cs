@@ -1945,8 +1945,8 @@ namespace KhaozEngine.Render3D
                 else if (_cpuSkinnedDraws.Count > 0)
                 {
                     _model.UploadCpuSkinned(cl, CollectionsMarshal.AsSpan(_cpuSkinnedVerts), CollectionsMarshal.AsSpan(_cpuSkinnedInstances));
-                    _frameStats.BufferUpdateBytes += (long)_cpuSkinnedVerts.Count * Unsafe.SizeOf<ModelVertex>()
-                        + (long)_cpuSkinnedInstances.Count * Unsafe.SizeOf<ModelRenderer.InstanceData>();
+                    _frameStats.AddSkinnedUpload((long)_cpuSkinnedVerts.Count * Unsafe.SizeOf<ModelVertex>()
+                        + (long)_cpuSkinnedInstances.Count * Unsafe.SizeOf<ModelRenderer.InstanceData>());
                 }
             }
             int skinnedCasterCount = UseGpuSkinning ? _gpuSkinnedDraws.Count : _cpuSkinnedDraws.Count;
@@ -2105,7 +2105,7 @@ namespace KhaozEngine.Render3D
                         _model.PackSkinnedMainSlot(cl, dr.Slot, dr.World, dr.Tint, dr.Emissive, dr.SpecParams,
                             boneSpan.Slice(dr.BoneSpanStart, dr.BoneCount));
                         // header (Mvp/Model/P) + the per-draw frame block + this mesh's bones = the palette-only upload.
-                        _frameStats.BufferUpdateBytes += (long)(ModelRenderer.SkinnedBonesOffset + (uint)dr.BoneCount * 64);
+                        _frameStats.AddSkinnedUniformUpload((long)(ModelRenderer.SkinnedBonesOffset + (uint)dr.BoneCount * 64));
                     }
                     bool dissolveBound = false;
                     _model.BindSkinnedPass(cl);

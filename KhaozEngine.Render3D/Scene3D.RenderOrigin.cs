@@ -219,7 +219,7 @@ namespace KhaozEngine.Render3D
                 src = _instanceDataRelative;
             }
             _model.UploadInstances(cl, CollectionsMarshal.AsSpan(src));
-            _frameStats.BufferUpdateBytes += (long)src.Count * Unsafe.SizeOf<ModelRenderer.InstanceData>();
+            _frameStats.AddInstanceUpload((long)src.Count * Unsafe.SizeOf<ModelRenderer.InstanceData>());
         }
 
         /// <summary>The queued ground decals with their centres in the render frame. The queue itself stays

@@ -75,6 +75,50 @@ namespace KhaozEngine.Tests
         }
 
         [Fact]
+        public void Upload_helpers_partition_the_total_exactly()
+        {
+            // The invariant the whole split rests on: each helper bumps the total AND exactly one bucket, so the
+            // four buckets always sum back to BufferUpdateBytes. Without it the split is a second, drifting truth,
+            // and a reader who cannot trust it is back to guessing which stream a megabyte total came from.
+            var s = default(RenderFrameStats);
+            s.AddInstanceUpload(1_000);
+            s.AddSkinnedUpload(20_000);
+            s.AddSkinnedUpload(300);            // repeated calls accumulate, exactly like the old += did
+            s.AddSkinnedUniformUpload(40);
+            s.AddSpriteUpload(5);
+
+            Assert.Equal(1_000L, s.InstanceUploadBytes);
+            Assert.Equal(20_300L, s.SkinnedUploadBytes);
+            Assert.Equal(40L, s.SkinnedUniformUploadBytes);
+            Assert.Equal(5L, s.SpriteUploadBytes);
+            Assert.Equal(21_345L, s.BufferUpdateBytes);
+            Assert.Equal(s.BufferUpdateBytes, s.UploadBytesPartitioned);
+        }
+
+        [Fact]
+        public void Addition_and_reset_keep_the_upload_partition_intact()
+        {
+            // Aggregating surfaces (a 3D scene plus a 2D HUD batch) must keep the invariant, since that sum is what
+            // a HUD actually displays.
+            var scene = default(RenderFrameStats);
+            scene.AddInstanceUpload(4_096);
+            scene.AddSkinnedUpload(65_536);
+            var hud = default(RenderFrameStats);
+            hud.AddSpriteUpload(2_048);
+
+            RenderFrameStats sum = scene + hud;
+
+            Assert.Equal(4_096L, sum.InstanceUploadBytes);
+            Assert.Equal(65_536L, sum.SkinnedUploadBytes);
+            Assert.Equal(2_048L, sum.SpriteUploadBytes);
+            Assert.Equal(sum.BufferUpdateBytes, sum.UploadBytesPartitioned);
+
+            sum.Reset();
+            Assert.Equal(0L, sum.UploadBytesPartitioned);
+            Assert.Equal(default, sum);
+        }
+
+        [Fact]
         public void Triangles_and_bytes_hold_beyond_int_range()
         {
             // A busy frame's totals can exceed a 32-bit range, so the fields are 64-bit and do not overflow.

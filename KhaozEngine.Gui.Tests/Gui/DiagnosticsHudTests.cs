@@ -30,8 +30,14 @@ namespace KhaozEngine.Tests.Gui
             var stats = new RenderFrameStats
             {
                 DrawCalls = 5, Instances = 40, Triangles = 1234,
-                Quads = 12, Flushes = 3, TextureSwitches = 2, BufferUpdateBytes = 2048,
+                Quads = 12, Flushes = 3, TextureSwitches = 2,
             };
+            // Through the recording helpers, so the section is fed a tally whose split really does sum to the total
+            // (1024 + 3072 + 512 + 512 = 5120 bytes = 5 KB).
+            stats.AddInstanceUpload(1024);
+            stats.AddSkinnedUpload(3072);
+            stats.AddSkinnedUniformUpload(512);
+            stats.AddSpriteUpload(512);
 
             OverlaySection sec = DiagnosticsOverlay.DrawStatsSection(stats);
 
@@ -42,7 +48,11 @@ namespace KhaozEngine.Tests.Gui
             Assert.Equal("12", Value(sec, "quads"));
             Assert.Equal("3", Value(sec, "flushes"));
             Assert.Equal("2", Value(sec, "tex switches"));
-            Assert.Equal("2.0", Value(sec, "upload KB"));      // 2048 / 1024
+            Assert.Equal("5.0", Value(sec, "upload KB"));      // 5120 / 1024
+            Assert.Equal("1.0", Value(sec, "  instances KB"));
+            Assert.Equal("3.0", Value(sec, "  skinned KB"));
+            Assert.Equal("0.5", Value(sec, "  skin ubo KB"));
+            Assert.Equal("0.5", Value(sec, "  sprites KB"));
         }
 
         [Fact]

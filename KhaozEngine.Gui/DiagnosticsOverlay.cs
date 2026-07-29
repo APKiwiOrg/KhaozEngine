@@ -166,6 +166,13 @@ public sealed class DiagnosticsOverlay
     /// texture-switch counts. Pass the whole-frame aggregate (e.g. the 3D scene's stats plus the 2D HUD batch's
     /// stats, summed via <see cref="RenderFrameStats.op_Addition"/>). Triangles are shown with thousands
     /// separators, the 2D-only rows read 0 for a pure-3D frame, and the 3D-only rows read 0 for a pure-2D frame.
+    /// <para>
+    /// The upload total is followed by its four-way SPLIT (instances / CPU-skinned / skinning uniforms / 2D
+    /// sprites), because the total on its own cannot tell a frame streaming a big instance list apart from one
+    /// streaming a crowd of skinned characters, and those have nothing in common but the number. A live read on a
+    /// streamed MMO scene put 19.3 MB per frame on the total with no way to say which stream it was, which is what
+    /// this split exists to answer in one glance.
+    /// </para>
     /// </summary>
     public static OverlaySection DrawStatsSection(in RenderFrameStats s)
     {
@@ -178,6 +185,10 @@ public sealed class DiagnosticsOverlay
             new OverlayRow("flushes", s.Flushes.ToString("0", Inv)),
             new OverlayRow("tex switches", s.TextureSwitches.ToString("0", Inv)),
             new OverlayRow("upload KB", (s.BufferUpdateBytes / 1024d).ToString("0.0", Inv)),
+            new OverlayRow("  instances KB", (s.InstanceUploadBytes / 1024d).ToString("0.0", Inv)),
+            new OverlayRow("  skinned KB", (s.SkinnedUploadBytes / 1024d).ToString("0.0", Inv)),
+            new OverlayRow("  skin ubo KB", (s.SkinnedUniformUploadBytes / 1024d).ToString("0.0", Inv)),
+            new OverlayRow("  sprites KB", (s.SpriteUploadBytes / 1024d).ToString("0.0", Inv)),
         };
         return new OverlaySection("Draw stats", rows);
     }

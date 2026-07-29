@@ -48,12 +48,11 @@ namespace KhaozEngine.Windowing
     }
 
     /// <summary>
-    /// Owns the Silk.NET window + input + frame loop (GLFW natives bundled per-RID, so no <c>brew install sdl2</c>),
-    /// the engine GPU device (<see cref="IGpuDevice"/>, backend GPU types hidden behind the KhaozEngine.Gpu seam),
-    /// and presentation. The Veldrid swapchain is created from the native window handle via
-    /// <see cref="GpuDeviceContext.CreateForWindow"/>. Each frame pumps Silk input into an engine-native
-    /// <see cref="InputState"/>, clears the swapchain, runs the callback, and presents. The 5.x renderers build on
-    /// this. The GPU backend is selected by <see cref="GpuBackendSelector"/> (Metal on this dev box).
+    /// Owns the Silk.NET window + input + frame loop (GLFW natives bundled per-RID, so no <c>brew install sdl2</c>), the engine GPU
+    /// device (<see cref="IGpuDevice"/>, backend GPU types hidden behind the KhaozEngine.Gpu seam), and presentation. The Veldrid
+    /// swapchain comes from the native window handle via <see cref="GpuDeviceContext.CreateForWindow"/>, on the backend
+    /// <see cref="GpuBackendSelector"/> picked, which <see cref="BackendSelection"/> reports with its provenance. Each frame pumps
+    /// Silk input into an engine-native <see cref="InputState"/>, clears the swapchain, runs the callback, and presents.
     /// </summary>
     public sealed class AppWindow : IDisposable, IDisplaySettings
     {
@@ -86,8 +85,9 @@ namespace KhaozEngine.Windowing
 
         /// <summary>The engine-owned GPU device (renderers consume this; backend GPU types stay hidden).</summary>
         public IGpuDevice GpuDevice => _device;
-        /// <summary>The selected graphics backend (centralized via <see cref="GpuBackendSelector"/>).</summary>
+        /// <summary>The selected graphics backend, and on <c>BackendSelection</c> where that choice came from (both centralized via <see cref="GpuBackendSelector"/>).</summary>
         public GpuBackendKind Backend => _gpu.Backend;
+        public GpuBackendSelection BackendSelection => _gpu.Selection;
         /// <summary>Clip-space / depth conventions of the live device (see <see cref="GpuCapabilities"/>).</summary>
         public GpuCapabilities Capabilities => _gpu.Capabilities;
         /// <summary>Physical framebuffer (drawable) size in pixels - the actual resolution the swapchain renders at

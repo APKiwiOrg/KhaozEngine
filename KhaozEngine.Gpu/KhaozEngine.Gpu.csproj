@@ -3,12 +3,15 @@
     <PackageId>KhaozEngine.Gpu</PackageId>
     <!-- Shared engine version line: <KhaozEngineVersion> in Directory.Build.props. -->
     <Version>$(KhaozEngineVersion)</Version>
-    <Description>GPU backend seam for the custom MonoGame-free stack. Owns backend selection (GpuBackendSelector: RuntimeInformation probe with a KE_GRAPHICS_BACKEND override), GpuCapabilities (clip-space-Y / depth-range), and a GpuDeviceContext that wraps Veldrid device creation (windowed via CreateForWindow from a native window handle, headless via GraphicsDevice.CreateMetal) so the 5.x renderers stop hard-coding GraphicsBackend.Metal. Renderers consume the engine-owned IGpuDevice (GpuDevice); the raw Veldrid device is a private implementation detail of the context. Veldrid deps are confined here.</Description>
+    <Description>GPU backend seam for the custom MonoGame-free stack. Owns backend selection (GpuBackendSelector: RuntimeInformation probe with a KE_GRAPHICS_BACKEND override) and its provenance (GpuBackendSelection / GpuBackendSource record whether the OS probe or the override decided, and keep the raw override value, so an unrecognized one is logged as a warning instead of silently reading as the OS default), GpuCapabilities (clip-space-Y / depth-range), and a GpuDeviceContext that wraps Veldrid device creation (windowed via CreateForWindow from a native window handle, headless via GraphicsDevice.CreateMetal) so the 5.x renderers stop hard-coding GraphicsBackend.Metal. Renderers consume the engine-owned IGpuDevice (GpuDevice). The raw Veldrid device is a private implementation detail of the context. Veldrid deps are confined here.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
+    <!-- Diagnostics is a dependency-free leaf, already carried by GPU-stack peers (Audio, Gui, Terrain). It is
+         here so device creation can log which backend was selected and why. -->
+    <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Veldrid" />

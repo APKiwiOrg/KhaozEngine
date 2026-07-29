@@ -61,6 +61,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Seeing where the frame goes (turn-key HUD + frame counters)](#seeing-where-the-frame-goes-turn-key-hud-frame-counters)
 - [Diagnostics overlay + telemetry recording (`DiagnosticsOverlay` / `FrameStats` / `TelemetryRecorder` / `WorldClient.NetStats`)](#diagnostics-overlay-telemetry-recording-diagnosticsoverlay-framestats-telemetryrecorder-worldclientnetstats)
 - [Per-pass frame timing (`Scene3D.EnableTiming` / `PassTimings`)](#per-pass-frame-timing-scene3denabletiming-passtimings)
+- [Which graphics backend actually ran (`GpuBackendSelection`, 17.21.0)](#which-graphics-backend-actually-ran-gpubackendselection-17210)
 - [Collision-shape debug overlay (`CollisionShapeOverlay` / `OverlayLegend`)](#collision-shape-debug-overlay-collisionshapeoverlay-overlaylegend)
 - [Install / update stamp (`KhaozEngine.App.AppInstallStamp`)](#install-update-stamp-khaozengineappappinstallstamp)
 - [Clean self-restart (`KhaozEngine.App.AppRelaunch`)](#clean-self-restart-khaozengineappapprelaunch)
@@ -4937,7 +4938,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.20.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.21.0" />
 ```
 
 ```csharp
@@ -7914,6 +7915,56 @@ ignores non-positive values) never records it and the row is simply absent. `Pas
 Scene3D render-path GPU tests.
 
 ---
+
+## Which graphics backend actually ran (`GpuBackendSelection`, 17.21.0)
+
+`KE_GRAPHICS_BACKEND` overrides the OS probe (`metal` / `vulkan` / `d3d11` / `gl`, case-insensitive, aliases
+`direct3d11` and `opengl`). The trap is what happens when it is wrong. A typo, a variable set in the wrong shell,
+or a launcher that drops the environment all fall back to the OS probe, and the run looks completely normal. If
+you were comparing backends, the trace then reads as "the backend I asked for did not help" when that backend
+never ran at all. This costs the most in exactly the case you can least afford it, a remote tester on a machine
+you cannot inspect.
+
+So the choice is reported with its provenance, and the engine logs it. `GpuDeviceContext` writes one INFO line
+per created device, plus a WARN when the override was set but is not a recognized backend:
+
+```
+GPU backend: Vulkan (KE_GRAPHICS_BACKEND override)
+GPU backend: Direct3D11 (OS probe)
+KE_GRAPHICS_BACKEND='vulcan' is not a recognized backend (metal/vulkan/d3d11/gl). Falling back to Direct3D11 from the OS probe.
+```
+
+Read it yourself to put the backend on a game's own debug overlay. `GameApp.Window` is `protected`, so a
+`GameApp` subclass reaches it directly:
+
+```csharp
+GpuBackendSelection sel = Window.BackendSelection;
+
+string line = sel.Source switch
+{
+    GpuBackendSource.EnvironmentOverride  => $"{sel.Backend} (KE_GRAPHICS_BACKEND={sel.RequestedOverride})",
+    GpuBackendSource.UnrecognizedOverride => $"{sel.Backend} (bad override '{sel.RequestedOverride}')",
+    _                                     => $"{sel.Backend} (OS probe)",
+};
+```
+
+`RequestedOverride` is the RAW environment value exactly as read, untrimmed and in its original case, and null
+when no non-blank override was present. It is deliberately not normalized: the untouched string is what makes a
+typo or stray quoting obvious to whoever reads the log.
+
+Selection itself is unchanged and still available through `GpuBackendSelector.Select()`. `Resolve()` answers the
+same question with the provenance attached, and `Select` is implemented on top of it so the two cannot drift:
+
+```csharp
+GpuBackendKind      backend   = GpuBackendSelector.Select();    // unchanged
+GpuBackendSelection selection = GpuBackendSelector.Resolve();   // same backend, plus Source + RequestedOverride
+```
+
+`Resolve(string? envOverride, OSPlatformKind os)` is the pure overload, mirroring
+`Select(string?, OSPlatformKind)`, so the logic is headless-testable without touching the real environment. A
+null, empty, or whitespace-only override counts as no override at all (`OsProbe`, no raw value recorded), since a
+launcher exporting the variable empty has not asked for anything. Only a non-blank value that fails to parse is
+`UnrecognizedOverride`, and the OS probe still decides the backend in that case.
 
 ## Collision-shape debug overlay (`CollisionShapeOverlay` / `OverlayLegend`)
 

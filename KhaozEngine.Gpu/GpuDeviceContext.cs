@@ -1,5 +1,6 @@
 using System;
 using Veldrid;
+using KhaozEngine.Diagnostics;
 using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu
@@ -23,11 +24,20 @@ namespace KhaozEngine.Gpu
         // remarks for why: it closes the concurrent-device-creation race that aborts the Vulkan loader on lavapipe.
         static readonly object _lifecycleGate = new();
 
+        static readonly ILogger log = Log.For<GpuDeviceContext>();
+
         readonly bool _ownsDevice;
         readonly GraphicsDevice _device;
 
         /// <summary>The selected graphics backend (from <see cref="GpuBackendSelector"/>).</summary>
-        public GpuBackendKind Backend { get; }
+        public GpuBackendKind Backend => Selection.Backend;
+
+        /// <summary>
+        /// The backend choice WITH its provenance: OS probe, an honoured <c>KE_GRAPHICS_BACKEND</c> override, or an
+        /// unrecognized one that fell back to the probe (the raw value is kept). Logged once per created device, so
+        /// a session log answers "which backend actually ran" without the tester having to reproduce their shell.
+        /// </summary>
+        public GpuBackendSelection Selection { get; }
 
         /// <summary>Clip-space / depth conventions of the live device (see <see cref="GpuCapabilities"/>).</summary>
         public GpuCapabilities Capabilities { get; }
@@ -39,15 +49,36 @@ namespace KhaozEngine.Gpu
         /// </summary>
         public IGpuDevice GpuDevice { get; }
 
-        GpuDeviceContext(GraphicsDevice device, GpuBackendKind backend, bool ownsDevice)
+        GpuDeviceContext(GraphicsDevice device, GpuBackendSelection selection, bool ownsDevice)
         {
             _device = device;
-            Backend = backend;
+            Selection = selection;
             _ownsDevice = ownsDevice;
             Capabilities = Internal.VeldridMap.ReadCapabilities(device);
             // Non-owning wrapper: this context owns the raw device's disposal (see Dispose), so the wrapper must
             // not dispose it again.
-            GpuDevice = new VeldridGpuDevice(device, backend, ownsDevice: false);
+            GpuDevice = new VeldridGpuDevice(device, selection.Backend, ownsDevice: false);
+            LogSelection(selection);
+        }
+
+        // One line per created device saying which backend is live and who chose it. The warning arm is the
+        // valuable one: a mistyped KE_GRAPHICS_BACKEND is otherwise indistinguishable from the OS default, so a
+        // remote perf comparison can be spent proving nothing.
+        static void LogSelection(GpuBackendSelection selection)
+        {
+            if (selection.Source == GpuBackendSource.UnrecognizedOverride)
+            {
+                log.Warn($"{GpuBackendSelector.EnvVarName}='{selection.RequestedOverride}' is not a recognized "
+                    + $"backend (metal/vulkan/d3d11/gl). Falling back to {selection.Backend} from the OS probe.");
+            }
+
+            string origin = selection.Source switch
+            {
+                GpuBackendSource.EnvironmentOverride => $"{GpuBackendSelector.EnvVarName} override",
+                GpuBackendSource.UnrecognizedOverride => "OS probe, override not recognized",
+                _ => "OS probe",
+            };
+            log.Info($"GPU backend: {selection.Backend} ({origin})");
         }
 
         /// <summary>
@@ -80,11 +111,11 @@ namespace KhaozEngine.Gpu
             var opts = new GraphicsDeviceOptions(false, null, syncToVerticalBlank, ResourceBindingModel.Improved, true, true);
             var scDesc = new SwapchainDescription(source, width, height, null, syncToVerticalBlank, false);
 
-            GpuBackendKind kind = GpuBackendSelector.Select();
+            GpuBackendSelection selection = GpuBackendSelector.Resolve();
             GraphicsDevice gd;
             lock (_lifecycleGate)
             {
-                gd = kind switch
+                gd = selection.Backend switch
                 {
                     GpuBackendKind.Metal => GraphicsDevice.CreateMetal(opts, scDesc),
                     GpuBackendKind.Vulkan => GraphicsDevice.CreateVulkan(opts, scDesc),
@@ -94,7 +125,7 @@ namespace KhaozEngine.Gpu
                     _ => GraphicsDevice.CreateMetal(opts, scDesc),
                 };
             }
-            return new GpuDeviceContext(gd, kind, ownsDevice: true);
+            return new GpuDeviceContext(gd, selection, ownsDevice: true);
         }
 
         /// <summary>
@@ -107,11 +138,11 @@ namespace KhaozEngine.Gpu
 
         internal static GpuDeviceContext CreateHeadless(GraphicsDeviceOptions options)
         {
-            GpuBackendKind kind = GpuBackendSelector.Select();
+            GpuBackendSelection selection = GpuBackendSelector.Resolve();
             GraphicsDevice gd;
             lock (_lifecycleGate)
             {
-                gd = kind switch
+                gd = selection.Backend switch
                 {
                     GpuBackendKind.Metal => GraphicsDevice.CreateMetal(options),
                     GpuBackendKind.Vulkan => GraphicsDevice.CreateVulkan(options),
@@ -121,7 +152,7 @@ namespace KhaozEngine.Gpu
                     _ => GraphicsDevice.CreateMetal(options),
                 };
             }
-            return new GpuDeviceContext(gd, kind, ownsDevice: true);
+            return new GpuDeviceContext(gd, selection, ownsDevice: true);
         }
 
         public void Dispose()

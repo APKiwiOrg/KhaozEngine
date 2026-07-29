@@ -5,6 +5,43 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.21.0
+
+### Graphics-backend selection now records where the choice came from, and logs it
+
+The engine says which GPU backend it selected and why, once per created device, so a `KE_GRAPHICS_BACKEND`
+override can no longer fail silently. Until now nothing recorded the decision: a typo, a variable set in the
+wrong shell, or a launcher that dropped it all fell back to the OS probe with no trace, and the resulting run
+looked like the requested backend had been tried and had not helped. That is expensive when the run is a remote
+tester's, which is exactly the case driving [#410](https://github.com/APKiwiOrg/KhaozEngine/issues/410).
+
+`GpuDeviceContext` now logs an INFO line naming the backend and its origin (`GPU backend: Vulkan
+(KE_GRAPHICS_BACKEND override)`, `GPU backend: Direct3D11 (OS probe)`). When the override was set but is not a
+recognized backend it also logs a WARN naming the raw bad value and the backend actually used
+(`KE_GRAPHICS_BACKEND='vulcan' is not a recognized backend (metal/vulkan/d3d11/gl). Falling back to Direct3D11
+from the OS probe.`). Backend selection itself is unchanged: the same override values win, the same OS probe
+decides otherwise, and a blank value still counts as no override.
+
+`KhaozEngine.Gpu` gains a `ProjectReference` to `KhaozEngine.Diagnostics` for the logger. Diagnostics is a
+dependency-free leaf already carried by GPU-stack peers (`Audio`, `Gui`, `Terrain`), so no umbrella membership,
+seam, or GPU-free closure changed.
+
+### Added
+- `GpuBackendSource` (enum): `OsProbe`, `EnvironmentOverride`, `UnrecognizedOverride`. Where a backend choice
+  came from.
+- `GpuBackendSelection` (readonly record struct): `Backend`, `Source`, and `RequestedOverride`, the RAW
+  `KE_GRAPHICS_BACKEND` value as read (untrimmed, original case) when one was present, else null. It is
+  deliberately not normalized, since the untouched string is what makes a typo or stray quoting obvious in a log.
+- `GpuBackendSelector.Resolve()` and `GpuBackendSelector.Resolve(string? envOverride, OSPlatformKind os)`: the
+  same decision `Select` makes, returned with its provenance. The pure overload mirrors
+  `Select(string?, OSPlatformKind)` and is headless-testable. `Select` is now implemented on top of `Resolve`, so
+  there is one decision path rather than two that can drift, and both existing `Select` overloads behave exactly
+  as before.
+- `GpuDeviceContext.Selection` (`GpuBackendSelection`): the full selection for the created device. `Backend` is
+  unchanged and now reads from it.
+- `AppWindow.BackendSelection` (`GpuBackendSelection`): the same value reachable from a `GameApp` subclass, for a
+  game's own debug overlay. `AppWindow.Backend` is unchanged.
+
 ## 17.20.0
 
 ### GPU-skinned uniform uploads avoid D3D11's partial-write stall path

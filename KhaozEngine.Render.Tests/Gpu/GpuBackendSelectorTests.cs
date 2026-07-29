@@ -92,5 +92,104 @@ namespace KhaozEngine.Tests.Gpu
                 Assert.Equal(expected, GpuBackendSelector.Select(env, os));
             }
         }
+
+        // --- Resolve: the same decision, reported WITH its provenance. This is what makes a misconfigured
+        // KE_GRAPHICS_BACKEND visible: without it, a typo'd override and the OS default are indistinguishable,
+        // so a backend A/B looks like "the requested backend did not help" when it never ran. ---
+
+        [Theory]
+        [InlineData(OSPlatformKind.MacOS, GpuBackendKind.Metal)]
+        [InlineData(OSPlatformKind.Windows, GpuBackendKind.Direct3D11)]
+        [InlineData(OSPlatformKind.Linux, GpuBackendKind.Vulkan)]
+        [InlineData(OSPlatformKind.Unknown, GpuBackendKind.Vulkan)]
+        public void Resolve_NoOverride_IsOsProbeWithNoRawValue(OSPlatformKind os, GpuBackendKind expected)
+        {
+            GpuBackendSelection selection = GpuBackendSelector.Resolve(null, os);
+
+            Assert.Equal(expected, selection.Backend);
+            Assert.Equal(GpuBackendSource.OsProbe, selection.Source);
+            Assert.Null(selection.RequestedOverride);
+        }
+
+        [Theory]
+        [InlineData("vulkan", GpuBackendKind.Vulkan)]
+        [InlineData("direct3d11", GpuBackendKind.Direct3D11)]  // alias
+        [InlineData("opengl", GpuBackendKind.OpenGL)]          // alias
+        [InlineData("metal", GpuBackendKind.Metal)]
+        public void Resolve_ValidOverride_IsHonoredAndKeepsTheRawValue(string env, GpuBackendKind expected)
+        {
+            // Windows would otherwise probe to Direct3D11, so the override is doing the work here.
+            GpuBackendSelection selection = GpuBackendSelector.Resolve(env, OSPlatformKind.Windows);
+
+            Assert.Equal(expected, selection.Backend);
+            Assert.Equal(GpuBackendSource.EnvironmentOverride, selection.Source);
+            Assert.Equal(env, selection.RequestedOverride);
+        }
+
+        [Theory]
+        [InlineData(" Vulkan ", GpuBackendKind.Vulkan)]
+        [InlineData("METAL", GpuBackendKind.Metal)]
+        [InlineData("\tD3D11\n", GpuBackendKind.Direct3D11)]
+        public void Resolve_ValidOverride_PreservesOriginalCaseAndWhitespace(string env, GpuBackendKind expected)
+        {
+            GpuBackendSelection selection = GpuBackendSelector.Resolve(env, OSPlatformKind.Linux);
+
+            Assert.Equal(expected, selection.Backend);
+            Assert.Equal(GpuBackendSource.EnvironmentOverride, selection.Source);
+            // The RAW value survives untrimmed and un-lowercased: normalizing it away would hide exactly the
+            // stray quoting / stray whitespace a reader needs to see in the log.
+            Assert.Equal(env, selection.RequestedOverride);
+        }
+
+        [Theory]
+        [InlineData(OSPlatformKind.MacOS, GpuBackendKind.Metal)]
+        [InlineData(OSPlatformKind.Windows, GpuBackendKind.Direct3D11)]
+        [InlineData(OSPlatformKind.Linux, GpuBackendKind.Vulkan)]
+        [InlineData(OSPlatformKind.Unknown, GpuBackendKind.Vulkan)]
+        public void Resolve_UnparseableOverride_FallsBackToProbeButKeepsWhatWasAsked(OSPlatformKind os, GpuBackendKind expected)
+        {
+            // "vulcan" is the realistic typo: close enough to look right in a launcher, silently not a backend.
+            GpuBackendSelection selection = GpuBackendSelector.Resolve("vulcan", os);
+
+            Assert.Equal(expected, selection.Backend);
+            Assert.Equal(GpuBackendSource.UnrecognizedOverride, selection.Source);
+            Assert.Equal("vulcan", selection.RequestedOverride);
+        }
+
+        [Theory]
+        [InlineData("")]
+        [InlineData("   ")]
+        [InlineData("\t")]
+        public void Resolve_BlankOverride_CountsAsNoOverrideAtAll(string env)
+        {
+            // A launcher that exports the var empty has not asked for anything, so it is not a misconfiguration.
+            GpuBackendSelection selection = GpuBackendSelector.Resolve(env, OSPlatformKind.Windows);
+
+            Assert.Equal(GpuBackendKind.Direct3D11, selection.Backend);
+            Assert.Equal(GpuBackendSource.OsProbe, selection.Source);
+            Assert.Null(selection.RequestedOverride);
+        }
+
+        // Anti-drift guard for keeping both APIs: Select is implemented on top of Resolve, and this fails if a
+        // future edit ever gives them two decision paths that can disagree.
+        [Fact]
+        public void Select_AndResolve_AgreeOnEveryInput()
+        {
+            string?[] overrides =
+            {
+                null, "", "   ", "\t", "vulcan", "directx", "nonsense",
+                "metal", "vulkan", "d3d11", "direct3d11", "gl", "opengl",
+                " Vulkan ", "METAL", "\tD3D11\n",
+            };
+
+            foreach (OSPlatformKind os in new[]
+                { OSPlatformKind.MacOS, OSPlatformKind.Windows, OSPlatformKind.Linux, OSPlatformKind.Unknown })
+            {
+                foreach (string? env in overrides)
+                {
+                    Assert.Equal(GpuBackendSelector.Select(env, os), GpuBackendSelector.Resolve(env, os).Backend);
+                }
+            }
+        }
     }
 }

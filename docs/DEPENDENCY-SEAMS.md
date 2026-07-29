@@ -430,6 +430,29 @@ standable surface in a column with its headroom to the hit above it, the same ST
 `INavColumnProvider.SampleColumn` with a one-line delegate. No new package, no new dependency edge either
 direction.
 
+## GPU backend-selection provenance: one new edge, `Gpu -> Diagnostics`
+
+Since 17.21.0 `KhaozEngine.Gpu` references `KhaozEngine.Diagnostics`, so `GpuDeviceContext` can log which
+backend it selected and where that decision came from:
+
+```
+KhaozEngine.Gpu -> KhaozEngine.Diagnostics   (logging only: one INFO line per created device naming the
+                                              backend and its origin, plus a WARN when KE_GRAPHICS_BACKEND
+                                              was set to something unparseable)
+```
+
+The edge is legitimate rather than a layering break. `Diagnostics` is a dependency-free leaf (its own catalog
+row is "Pure .NET") and is already referenced by GPU-stack peers `Audio`, `Gui`, and `Terrain`, so it adds
+nothing to any closure and changes no umbrella membership. It cannot reintroduce GPU into the GPU-free
+`Foundation` / `Server` closures either, because the edge runs FROM `Gpu`, not INTO it. `ArchitectureTests`
+needed no rule change: it constrains third-party `PackageReference` homes and umbrella membership, and this is
+an engine-internal `ProjectReference` that alters neither.
+
+Why it is worth an edge at all: without it, a mistyped `KE_GRAPHICS_BACKEND` is indistinguishable from the OS
+default. The selector falls back to the probe, the run produces a perfectly ordinary trace, and the result reads
+as "the requested backend did not help" when that backend never ran. `GpuBackendSelection` records the
+provenance and the raw override value, and this edge is what lets the engine say so out loud.
+
 ## Three flavours of the same idea
 
 The pattern is applied at the granularity the dependency warrants:

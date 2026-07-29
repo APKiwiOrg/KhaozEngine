@@ -15,6 +15,11 @@ Backend selection is centralized in `KhaozEngine.Gpu.GpuBackendSelector`:
 
 - `Select()` reads the `KE_GRAPHICS_BACKEND` env override (`metal` / `vulkan` / `d3d11` / `gl`,
   case-insensitive), otherwise probes the OS (macOS → Metal, Windows → Direct3D11, Linux/other → Vulkan).
+- `Resolve()` (17.21.0) answers the same question but also reports WHERE the answer came from, as a
+  `GpuBackendSelection` carrying `Source` (`OsProbe` / `EnvironmentOverride` / `UnrecognizedOverride`) and the
+  raw override value. `GpuDeviceContext` logs it once per device, and WARNs on an unrecognized override naming
+  the bad value and the backend it fell back to. Check that line before concluding a backend comparison: a
+  typo'd override silently uses the OS default and otherwise looks exactly like a successful run.
 - `CreateHeadless` builds the matching offscreen device (`GraphicsDevice.CreateVulkan` / `CreateD3D11` /
   Metal). No window - so the golden tests need no SDL2.
 

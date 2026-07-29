@@ -9,6 +9,15 @@ What it owns today:
   (`metal`/`vulkan`/`d3d11`/`gl`, case-insensitive) and otherwise probes the OS (macOS -> Metal,
   Windows -> Direct3D11, Linux -> Vulkan). `Select(string?, OSPlatformKind)` is the pure, headless-testable
   overload.
+- **`GpuBackendSelection` / `GpuBackendSource`** (17.21.0) - the same choice, reported with its provenance.
+  `Resolve()` and the pure `Resolve(string?, OSPlatformKind)` return `GpuBackendSelection(Backend, Source,
+  RequestedOverride)`, where `Source` is `OsProbe`, `EnvironmentOverride`, or `UnrecognizedOverride`, and
+  `RequestedOverride` is the RAW env value as read (untrimmed, original case) or null when none was present.
+  `Select` is implemented on top of `Resolve`, so there is one decision path and the two cannot drift. A blank
+  or whitespace-only value counts as no override at all. Only a non-blank unparseable value is
+  `UnrecognizedOverride`, and it still falls back to the OS probe for the backend. This exists because a typo'd
+  override is otherwise indistinguishable from the OS default: the run silently uses the default and reads as
+  "the requested backend did not help" when it never ran.
 - **`GpuCapabilities`** - `ClipSpaceYInverted` / `DepthRangeZeroToOne` (so renderers derive clip-Y / depth
   handling from the active backend instead of a baked Metal assumption), plus diagnostics: `DeviceName` (the GPU
   adapter/driver), `SamplerAnisotropy`, `SamplerLodBias` (whether those sampler levers are supported),
@@ -25,8 +34,9 @@ What it owns today:
   this package needs no reference to the windowing library.
 - **`GpuDeviceContext`** - `CreateForWindow(in GpuWindowHandle, width, height, syncToVerticalBlank = true)` (device
   + swapchain for a Silk.NET/GLFW window; the vsync flag feeds both the device options and the swapchain, since
-  9.23.0) and `CreateHeadless()` (offscreen device) on the selected backend. Exposes `Backend`,
-  `Capabilities`, and the engine-owned `IGpuDevice`; the raw Veldrid device is private to the context (the
+  9.23.0) and `CreateHeadless()` (offscreen device) on the selected backend. Exposes `Backend`, `Selection` (the
+  full `GpuBackendSelection`, since 17.21.0),
+  `Capabilities`, and the engine-owned `IGpuDevice`. The raw Veldrid device is private to the context (the
   transitional accessor that used to be here is gone, and `Capabilities` is read once so the context's copy and
   the device's cannot drift). Device creation and disposal are serialized process-wide behind a single static gate, on
   every backend: concurrent device creation races the Vulkan loader's dispatch setup (observed as

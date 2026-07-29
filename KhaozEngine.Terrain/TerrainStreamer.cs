@@ -131,6 +131,52 @@ namespace KhaozEngine.Terrain
         /// trigger. Unloads are never gated either, so a deferred chunk can still leave the ring.</para></summary>
         public IChunkBuildGate? BuildGate { get; set; }
 
+        /// <summary>Metres a player must travel INTO a new chunk before the ring re-centres on it.
+        /// <para>The tier pick has had a dead zone since it existed (<see cref="StreamerConfig.LodHysteresis"/>),
+        /// because a chunk parked on a tier boundary would otherwise re-tier on every step. The RING had none, and
+        /// it is the same failure one level up. Everything the ring scan decides per chunk (its residency ring, and
+        /// whether it is inside the load disk at all) is a function of the player's CHUNK COORD, so a player standing
+        /// on a chunk boundary with any jitter at all - a network reconciliation of a tenth of a millimetre is
+        /// enough - flips that coord every frame. Each flip shifts the whole disk by one chunk, which moves every
+        /// chunk's integer distance, which changes the ring for the band straddling
+        /// <see cref="StreamerConfig.LoadRadius"/> and the membership of the band straddling
+        /// <see cref="StreamerConfig.OuterRadius"/>. The result is a continuous rebuild storm on a player who is not
+        /// moving: measured at about nine builds and four applies per frame on a radius-5 disk, most of the builds
+        /// superseded before they could be applied (which is what shows up downstream as HLOD merges built and then
+        /// discarded).</para>
+        /// <para>Two metres is the smallest margin that clearly beats reconciliation jitter and animation-driven
+        /// sub-centimetre motion while staying far under a chunk (60 m typically), so a walking player re-centres
+        /// essentially where it always did.</para></summary>
+        public const float ChunkAnchorHysteresis = 2f;
+
+        // The chunk the ring is currently centred on. Not simply CoordOf(playerPos) - see ChunkAnchorHysteresis.
+        ChunkCoord _anchor;
+        bool _hasAnchor;
+
+        /// <summary>The chunk to centre this pass's ring on: the player's chunk, but only once they are
+        /// <see cref="ChunkAnchorHysteresis"/> metres inside it. The first call anchors undamped, so a fresh
+        /// streamer (and every <see cref="PrimeAround"/>) centres exactly where the player is.</summary>
+        ChunkCoord AnchorChunk(Vector3 playerPos)
+        {
+            float cs = _config.ChunkSize;
+            ChunkCoord c = ChunkGrid.CoordOf(playerPos.X, playerPos.Z, cs);
+            if (!_hasAnchor) { _anchor = c; _hasAnchor = true; return c; }
+            int dx = c.X - _anchor.X, dz = c.Z - _anchor.Z;
+            if (dx == 0 && dz == 0) return _anchor;
+            // A jump of more than one chunk is real movement (a teleport, a respawn, a warp), never boundary jitter,
+            // so it re-centres immediately. Only a step to a NEIGHBOUR can be a flip across a boundary.
+            if (dx < -1 || dx > 1 || dz < -1 || dz > 1) { _anchor = c; return c; }
+
+            // Re-centre only when the player is clear of every edge of the chunk they are now in, on the axes that
+            // actually changed. An axis that did not change is already clear by definition.
+            Vector2 center = ChunkGrid.CenterOf(c, cs);
+            float clear = cs * 0.5f - ChunkAnchorHysteresis;
+            bool deepX = dx == 0 || MathF.Abs(playerPos.X - center.X) <= clear;
+            bool deepZ = dz == 0 || MathF.Abs(playerPos.Z - center.Y) <= clear;
+            if (deepX && deepZ) _anchor = c;
+            return _anchor;
+        }
+
         /// <summary>The residency ring for a chunk at Euclidean chunk-distance-squared <paramref name="chunkDistSq"/>
         /// from the player's chunk: <see cref="ChunkRing.Gameplay"/> within <see cref="StreamerConfig.LoadRadius"/>,
         /// else <see cref="ChunkRing.Decor"/>.</summary>
@@ -168,6 +214,9 @@ namespace KhaozEngine.Terrain
                 _sink.Unload(kv.Key, kv.Value.Handle);
             _loaded.Clear();
             _scheduler?.Reset();
+            // A rebuild re-centres wherever the next Update puts the player, undamped: there is no ring left for the
+            // old anchor to be stale against.
+            _hasAnchor = false;
             // A rebuild is a fresh start: the field, the document, or the kit may be different now, so a chunk that
             // could not build against the OLD state has earned another go. FailedBuildCount is a life-of-streamer
             // total and deliberately keeps counting.
@@ -250,7 +299,7 @@ namespace KhaozEngine.Terrain
         bool UpdateSync(Vector3 playerPos)
         {
             float cs = _config.ChunkSize;
-            ChunkCoord pc = ChunkGrid.CoordOf(playerPos.X, playerPos.Z, cs);
+            ChunkCoord pc = AnchorChunk(playerPos);
 
             // 1. Unload chunks past the hysteresis radius, within this frame's budget.
             float unloadSq = _config.UnloadRadius * (float)_config.UnloadRadius;
@@ -319,7 +368,7 @@ namespace KhaozEngine.Terrain
         {
             ChunkBuildScheduler<object> sched = _scheduler!;
             float cs = _config.ChunkSize;
-            ChunkCoord pc = ChunkGrid.CoordOf(playerPos.X, playerPos.Z, cs);
+            ChunkCoord pc = AnchorChunk(playerPos);
             float unloadSq = _config.UnloadRadius * (float)_config.UnloadRadius;
 
             // 1a. Cancel in-flight/ready builds for chunks now beyond the unload radius. These were requested but never

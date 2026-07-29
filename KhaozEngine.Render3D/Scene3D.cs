@@ -2232,8 +2232,9 @@ namespace KhaozEngine.Render3D
                 _water.Draw(cl, _res, RelativeWaterPlanes(), vp,
                     Post.LightDirection, Post.LightColor, eye, Post.Water, Post.Sky, EffectTimeSeconds, _frameOrigin);
                 _frameStats.DrawCalls++;
-                // The ocean FFT's GPU drain (issue #398's missing cross-dispatch barrier) can land inside THIS
-                // transparents bracket as a Submit+WaitForIdle stall, which is not draw-call encode cost. The water
+                // The ocean FFT's remaining GPU drain (the one a frame pays to PRIME its cascades, since #398
+                // ping-ponged the per-frame one away) can land inside THIS transparents bracket as a
+                // Submit+WaitForIdle stall, which is not draw-call encode cost. The water
                 // renderer already isolates that exact span with its own Stopwatch (OceanFftProducer.LastStallMs),
                 // so read it here and carve it out of transparentsMs below into its own WaterSyncMs bucket (#374)
                 // instead of misattributing a sync stall as transparents cost.

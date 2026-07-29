@@ -63,6 +63,52 @@ The alternative considered was load-balancing cascades across frames, as the ref
 here: the fused shape already reaches one stall per frame at any cascade count, and staggering cascades would
 desynchronize their time evolution for nothing.
 
+### The last stall: the row pass moves a frame ahead (2026-07-29, [#398](https://github.com/APKiwiOrg/KhaozEngine/issues/398))
+
+One stall per frame is still one stall per frame. Ruinborne's frame-cost audit measured it in the field at
+**0.93 ms of blocked frame time**, and the position of the drain is what makes it expensive: `WaitForIdle` is a
+whole-device wait, so a drain in the middle of a frame blocks on everything already queued and then leaves the GPU
+idle while the CPU re-encodes. On an idle device the same call costs 0.0001 ms.
+
+A fence does not help. One in-order queue means waiting on the row buffer waits on everything ahead of it, which
+is the same wait.
+
+What removes it is removing the DEPENDENCY. The row intermediate is **ping-ponged across the frame boundary**:
+frame N's column pass consumes the rows frame N-1 wrote, frame N's row pass writes the other half for frame N+1,
+and the frame boundary is the ordering. Nothing in the frame waits for anything in the frame.
+
+**The compensation is exactly one frame, and the surface does not move.** Only the row pass carries time (it
+evolves `h0(k)` by `e^{-i omega t}` before transforming along X, after which the per-`k` phase is gone and no
+later stage can reinstate one - the column pass reads the delta, the choppiness and the foam knobs and never the
+time). So the only lever is which `t` the row pass is handed, and it is handed `t_N + dt`, the predicted time of
+the frame that will consume it. Under a steady frame delta the produced maps are bitwise what they were. The
+prediction is re-derived from the wave clock every frame rather than from the last prediction, so nothing
+accumulates: a delta that changes mid-run leaves the surface off by the CHANGE in the delta for one frame (16 ms
+becoming 50 ms renders 34 ms of wave motion early) and corrects itself on the next. `OceanFrameClock` owns that
+arithmetic and is tested headless, because it is a claim about a number rather than about a picture.
+
+A drain survives for PRIMING only: the first frame of an ocean has no pending rows, so it produces its own the
+old way and renders exactly what the pre-ping-pong code rendered. Same after a re-bake (the pending rows came
+from a spectrum that no longer exists) and after a wave-clock jump wider than the frame-delta clamp (the ocean
+was not drawn for a while, or the clock was scrubbed). All three are rare by construction, and the alternative to
+the drain on those frames is a stale sea.
+
+**The parameter block had to move onto the command list, and that was the whole difficulty.** The producer
+uploaded its UBO through `IGpuDevice.UpdateBuffer`, which lands when the CPU calls it, while the dispatches run
+when the list is submitted. The old mid-frame drain hid the gap by keeping the two in lockstep. Without it the
+CPU runs ahead and every queued dispatch reads the LAST block the CPU wrote rather than the one recorded with it.
+Measured, not reasoned about: the whole surface came out one frame ahead of the clock, byte for byte equal to the
+next frame's picture, while the producer in isolation was perfectly correct. Recording the update into the
+consuming list (which is what `WaterRenderer` already does for its own per-plane block) fixes it by construction,
+because the bytes are captured at record time and applied in list order.
+
+Measured on Metal at 960x600 with the shipping sea state, in blocks of frames submitted back to back and drained
+once at the end (a per-frame drain in the harness would reinstate the very bubble being measured): the FFT ocean
+cost **1.069 ms/frame over the procedural surface before, and nothing measurable after** (-0.021 ms, inside the
+run-to-run noise). The drain WAS the cost of the ocean in the frame loop.
+
+Two buffers instead of one is the price: 1.5 MB at the shipping defaults.
+
 ### In-place decimation-in-time, not Stockham
 
 15.2.0's proof kernel is Stockham, chosen there because it needs no bit-reversal pass and ping-pongs cleanly
@@ -170,9 +216,9 @@ sea.
 ### Foam is a buffer, and it crosses the frame boundary
 
 The foam accumulator is a plain storage buffer, one float per texel, read and rewritten by the single invocation
-that owns that texel - so there is no cross-invocation hazard and it needs no ordering of its own. It is the only
-state that survives a frame, and it survives across the frame's own submit boundary, which is what makes it safe
-under #311 by construction rather than by care.
+that owns that texel - so there is no cross-invocation hazard and it needs no ordering of its own. It was the only
+state that survived a frame (the row intermediate joined it in #398, above), and it survives across the frame's
+own submit boundary, which is what makes it safe under #311 by construction rather than by care.
 
 A ping-ponged texture pair was the alternative and is worse twice over: typed UAV loads are restricted to 32-bit
 formats on Direct3D11, and a within-frame sampled/storage usage flip on the same pair is exactly the case the

@@ -217,6 +217,24 @@ namespace KhaozEngine.Tests.Gpu
             }
         }
 
+        /// <summary>
+        /// Run one producer frame and read nothing back. What a caller needs before <see cref="Capture"/> when it
+        /// is measuring the STEADY state: the producer primes its cross-frame ping-pong on the first ocean frame
+        /// and holds that surface for one more (issue #398), so the first two frames of a producer's life are not
+        /// the running sea. Two warm frames at the frame rate the measurement uses put the third on the wave clock
+        /// exactly, and it is the same map the pre-ping-pong producer produced on its first.
+        /// </summary>
+        public static void Warm(IGpuDevice dev, OceanFftProducer producer, WaterSettings settings, float time)
+        {
+            using IGpuCommandList cl = dev.Factory.CreateCommandList();
+            cl.Begin();
+            Assert.True(producer.Update(cl, settings, time, wantOcean: true, wantMips: true),
+                "the producer refused to run on a compute device");
+            cl.End();
+            dev.Submit(cl);
+            dev.WaitForIdle();
+        }
+
         public static Ocean Capture(IGpuDevice dev, OceanFftProducer producer, WaterSettings settings, float time)
         {
             using (IGpuCommandList cl = dev.Factory.CreateCommandList())

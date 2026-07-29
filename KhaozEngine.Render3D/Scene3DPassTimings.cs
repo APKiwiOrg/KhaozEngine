@@ -36,10 +36,13 @@ namespace KhaozEngine.Render3D
         /// out into its own field rather than misattributed as transparents-pass encode cost.</summary>
         public float TransparentsMs { get; }
 
-        /// <summary>CPU time blocked on the ocean FFT's GPU sync stall (issue #398's missing cross-dispatch
-        /// barrier, paid for with a <c>Submit</c> + <c>WaitForIdle</c>), carved out of <see cref="TransparentsMs"/>
-        /// so a real stall is not counted as draw-call encode cost (issue #374). 0 when no queued water plane reads
-        /// the FFT ocean cascades this frame. Same number as <see cref="Scene3D.LastWaterStats"/>'s
+        /// <summary>CPU time blocked on the ocean FFT's GPU sync stall (#311's missing cross-dispatch barrier, paid
+        /// for with a <c>Submit</c> + <c>WaitForIdle</c>), carved out of <see cref="TransparentsMs"/> so a real
+        /// stall is not counted as draw-call encode cost (issue #374). <b>0 on a steady-state frame</b> since
+        /// #398's cross-frame ping-pong: what is left is the drain a frame pays to PRIME the cascades (the first
+        /// frame an ocean is drawn, the frame after a sea-state change, a frame whose wave clock jumped). Also 0
+        /// when no queued water plane reads the FFT ocean cascades this frame. Same number as
+        /// <see cref="Scene3D.LastWaterStats"/>'s
         /// <see cref="WaterFrameStats.OceanStallMs"/>, just gated behind <see cref="Scene3D.EnableTiming"/> like the
         /// rest of this struct instead of always-on.</summary>
         public float WaterSyncMs { get; }

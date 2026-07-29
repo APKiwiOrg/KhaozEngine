@@ -67,6 +67,10 @@ namespace KhaozEngine.Tests.Render3D
         // Submit+WaitForIdle stall, so a frame with an FFT ocean plane misattributed it as transparents-pass encode
         // cost (measured on the reference scene: 6.70 ms transparents of which 6.57 was the drain). WaterSyncMs now
         // carries that span separately, carved out of TransparentsMs rather than double-counted.
+        //
+        // ONE frame, deliberately: since #398 the drain exists only on the frame that primes the ocean's row
+        // buffers, which is the first one. The steady state has no stall to carve out at all and is the subject of
+        // LastWaterStats_OceanStalls_DropToZeroAfterThePrimingFrame below.
         [GpuFact]
         public void Enabling_timing_with_fft_ocean_water_reports_the_sync_stall_separately_from_transparents()
         {
@@ -131,6 +135,59 @@ namespace KhaozEngine.Tests.Render3D
 
             Assert.True(scene.LastWaterStats.ClipmapRebuilds > 0,
                 "expected the first-ever clipmap Draw to rebuild at least one grid");
+        }
+
+        /// <summary>
+        /// The regression guard for <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/398">#398</see>: the
+        /// water draw path drains the device on the frame that PRIMES the FFT ocean's row buffers and never again.
+        /// Asserted through the public diagnostics a consuming game reads (<see cref="Scene3D.LastWaterStats"/>),
+        /// on a real Scene3D render rather than on the producer in isolation, because what regressed would regress
+        /// here: a within-frame read-after-write reintroduced anywhere in the water path shows up as a nonzero
+        /// stall on a steady-state frame, whatever produced it.
+        /// </summary>
+        [GpuFact]
+        public void LastWaterStats_OceanStalls_DropToZeroAfterThePrimingFrame()
+        {
+            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
+            IGpuDevice gd = gpu.GpuDevice;
+            Assert.True(gd.Capabilities.SupportsCompute, $"{gd.Backend} reports no compute support");
+            var f = gd.Factory;
+
+            const int W = 64, H = 48;
+            using IGpuTexture finalTex = f.CreateTexture(GpuTextureDescription.Texture2D(
+                W, H, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
+            using IGpuFramebuffer finalFB = f.CreateFramebuffer(null, finalTex);
+
+            using var scene = new Scene3D(gd, finalFB.Outputs) { EnableTiming = true };
+            scene.Post.Water.WaveSource = WaterWaveSource.FftOcean;
+            using IGpuCommandList cl = f.CreateCommandList();
+
+            for (int frame = 0; frame < 8; frame++)
+            {
+                // A moving wave clock, so this is the live case rather than a frozen scene that could hold its
+                // surface without producing anything.
+                scene.EffectTimeSeconds = frame / 60f;
+                scene.Begin();
+                scene.DrawWater(new WaterPlane(centerX: 0f, surfaceY: 0f, centerZ: 0f, halfExtentX: 20f));
+                cl.Begin();
+                scene.RenderInternal(cl, W, H, finalFB);
+                cl.End();
+                gd.Submit(cl);
+                gd.WaitForIdle();
+
+                WaterFrameStats water = scene.LastWaterStats;
+                if (frame == 0)
+                {
+                    Assert.Equal(1, water.OceanStalls);
+                    Assert.True(water.OceanStallMs > 0d, $"the priming frame reported no measured drain ({water.OceanStallMs} ms)");
+                }
+                else
+                {
+                    Assert.Equal(0, water.OceanStalls);
+                    Assert.Equal(0d, water.OceanStallMs);
+                    Assert.Equal(0f, scene.PassTimingsMs.WaterSyncMs);
+                }
+            }
         }
 
         [GpuFact]

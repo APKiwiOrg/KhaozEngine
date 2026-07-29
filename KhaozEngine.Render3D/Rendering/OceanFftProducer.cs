@@ -13,22 +13,34 @@ namespace KhaozEngine.Render3D.Rendering
     /// water renderer and updated ONCE per frame regardless of how many <see cref="WaterPlane"/>s are queued -
     /// there is one ocean state, and every plane samples the same maps.
     /// <para>
-    /// <b>The frame costs exactly one GPU stall.</b> The seam has no cross-dispatch barrier (#311), so a
-    /// read-after-write between dispatches has to be paid for with <c>End + Submit + WaitForIdle</c>. Rather than
+    /// <b>The steady-state frame costs no GPU stall at all.</b> The seam has no cross-dispatch barrier (#311), so
+    /// a read-after-write between dispatches has to be paid for with <c>End + Submit + WaitForIdle</c>. Rather than
     /// pay it per FFT stage (14 per 2D transform at 128 points, per cascade), each axis is ONE dispatch that keeps
     /// its transform line in shared memory, and the surrounding work is fused in: the row pass carries the
-    /// spectrum's time evolution, the column pass carries the map assembly and the foam step. Every cascade's row
-    /// work is independent, so all of it shares one command list and one drain. The column pass is then recorded
-    /// into the SCENE's command list, immediately before the water draw that samples its output - which is the
+    /// spectrum's time evolution, the column pass carries the map assembly and the foam step. That left ONE
+    /// dependency and one drain per frame, which #398 then measured at 0.93 ms of blocked frame time, so the last
+    /// one is gone too: the row intermediate is PING-PONGED, frame N's column pass consumes the rows frame N-1
+    /// wrote, and the row pass is dispatched one frame ahead in time so the surface phase is unchanged (the
+    /// compensation, and why it is exact, is <see cref="OceanFrameClock"/>). Both dispatches are recorded into the
+    /// SCENE's command list, the column immediately before the water draw that samples its output - which is the
     /// seam's other guaranteed pattern (compute writes a <c>Storage | Sampled</c> texture, a graphics pass in the
-    /// same list samples it).
+    /// same list samples it). A drain is left only for PRIMING, on the first frame of an ocean and after a re-bake.
+    /// </para>
+    /// <para>
+    /// <b>The row buffers cross the frame boundary, exactly as the foam accumulator already does.</b> That is not a
+    /// new ordering assumption: the foam buffer has been read and rewritten across the frame's own submit boundary
+    /// since 16.3.0, on the same three backends, and the ping-pong's cross-frame read-after-write is the same
+    /// dependency between the same two submissions. It is also the weaker of the two, because the halves ALTERNATE:
+    /// a frame reads the buffer it did not write, so the two dispatches recorded into one list touch disjoint
+    /// storage and need no ordering with respect to each other at all.
     /// </para>
     /// <para>
     /// <b>Foam crosses the frame boundary on purpose.</b> The accumulator is a plain storage buffer, one float per
-    /// texel, read and rewritten by the single invocation that owns that texel. It is the only state that
-    /// survives a frame, and it survives across the frame's own submit boundary, so it needs no ordering of its
-    /// own. Keeping it in a BUFFER rather than a ping-ponged texture also sidesteps typed UAV loads (restricted to
-    /// 32-bit formats on Direct3D11) and any within-frame storage/sampled usage flip on the same texture.
+    /// texel, read and rewritten by the single invocation that owns that texel. It was the only state that
+    /// survived a frame before the ping-pong above, and it survives across the frame's own submit boundary, so it
+    /// needs no ordering of its own. Keeping it in a BUFFER rather than a ping-ponged texture also sidesteps typed
+    /// UAV loads (restricted to 32-bit formats on Direct3D11) and any within-frame storage/sampled usage flip on
+    /// the same texture.
     /// </para>
     /// </summary>
     internal sealed class OceanFftProducer : IDisposable
@@ -65,14 +77,23 @@ namespace KhaozEngine.Render3D.Rendering
         IGpuComputeShader? _rowShader, _colShader;
         IGpuComputePipeline? _rowPipe, _colPipe;
         IGpuResourceLayout? _rowLayout, _colLayout;
-        IGpuResourceSet? _rowSet, _colSet;
-        IGpuBuffer? _ubo, _h0, _work, _foam;
+
+        // The ping-pong: two row intermediates and the two resource sets that bind each. The row pass writes
+        // _work[1 - _pong] while the column pass reads _work[_pong], which is what the PREVIOUS frame's row pass
+        // wrote, and the pair swaps at the end of the frame. Two buffers rather than one is the whole cost: at the
+        // shipping defaults (3 cascades, 128 points, 4 complex fields) that is 1.5 MB more, and it buys back a full
+        // device drain per frame.
+        readonly IGpuResourceSet?[] _rowSets = new IGpuResourceSet?[2];
+        readonly IGpuResourceSet?[] _colSets = new IGpuResourceSet?[2];
+        readonly IGpuBuffer?[] _work = new IGpuBuffer?[2];
+        int _pong;
+
+        IGpuBuffer? _ubo, _h0, _foam;
         IGpuTexture? _map;
         IGpuTexture? _mipMap;
         Bake _baked;
         bool _hasBake;
-        float _lastTime;
-        bool _hasLastTime;
+        readonly OceanFrameClock _clock = new();
 
         public OceanFftProducer(IGpuDevice gd) => _gd = gd;
 
@@ -135,14 +156,19 @@ namespace KhaozEngine.Render3D.Rendering
         /// cascade tiles the world at its own period, so its edges must meet.</summary>
         public IGpuSampler Sampler => _sampler!;
 
-        /// <summary>Wall-clock milliseconds the last <see cref="Update"/> spent blocked on the row pass's drain -
-        /// the whole cost of #311's missing barrier, measured rather than assumed. 0 when inactive.</summary>
+        /// <summary>Wall-clock milliseconds the last <see cref="Update"/> spent blocked on a priming drain - the
+        /// residue of #311's missing barrier, measured rather than assumed. 0 on a steady-state frame, which since
+        /// #398's ping-pong is every frame but the priming ones.</summary>
         public double LastStallMs { get; private set; }
 
         /// <summary>GPU stalls (<c>Submit</c> + <c>WaitForIdle</c> pairs) the last <see cref="Update"/> cost.
-        /// 1 when active, 0 when not, independent of cascade count and resolution. <b>The mip chain adds none of
-        /// these</b>, which is the point: the copy and the <c>GenerateMipmaps</c> go in the scene list beside the
-        /// column dispatch, so they cost transfer bandwidth and no extra drain.</summary>
+        /// <b>0 in the steady state</b> (#398): a frame's column pass consumes the row output of the frame before
+        /// it, so nothing within the frame waits on anything. 1 on a PRIMING frame - the first frame of an ocean,
+        /// the frame after a sea-state re-bake, or a frame whose wave clock jumped past
+        /// <see cref="OceanFrameClock.MaxRowDrift"/> - where this frame's rows have to be produced and drained
+        /// before they can be consumed. Independent of cascade count and resolution either way. <b>The mip chain
+        /// adds none of these</b>, which is the point: the copy and the <c>GenerateMipmaps</c> go in the scene list
+        /// beside the column dispatch, so they cost transfer bandwidth and no drain.</summary>
         public int LastStallCount { get; private set; }
 
         /// <summary>Array-layer copies the last <see cref="Update"/> recorded to seed the mip chain's base level
@@ -151,9 +177,10 @@ namespace KhaozEngine.Render3D.Rendering
         public int LastMipCopies { get; private set; }
 
         /// <summary>
-        /// Bring the ocean maps up to <paramref name="timeSeconds"/>. Records the column pass (and the graphics
-        /// pass's dependency on it) into <paramref name="sceneList"/>, which MUST be the same command list the
-        /// water draw is recorded into, and must still be open.
+        /// Bring the ocean maps up to <paramref name="timeSeconds"/>. Records both compute dispatches (this frame's
+        /// column pass, and the row pass whose output the NEXT frame's column pass consumes) into
+        /// <paramref name="sceneList"/>, which MUST be the same command list the water draw is recorded into, and
+        /// must still be open.
         /// </summary>
         /// <param name="sceneList">The command list the water draw is recorded into.</param>
         /// <param name="settings">The frame's water settings. Read for the sea state and the wave clock only: the
@@ -198,32 +225,38 @@ namespace KhaozEngine.Render3D.Rendering
             Resolution = resolution;
             MaxMip = _mipMap != null ? _mipMap.MipLevels - 1 : 0f;
 
-            // Frame delta, from the same clock the surface is evaluated on. Clamped so a paused frame, a first
-            // frame, or a step backwards cannot inject a foam spike or run the dissipation backwards.
-            float dt = _hasLastTime ? Math.Clamp(timeSeconds - _lastTime, 0f, 0.1f) : 0f;
-            _lastTime = timeSeconds;
-            _hasLastTime = true;
-
-            var u = new OceanUbo
-            {
-                Cascade0 = new Vector4(TileMetres[0], 0f, 0f, 0f),
-                Cascade1 = new Vector4(cascades > 1 ? TileMetres[1] : TileMetres[0], 0f, 0f, 0f),
-                Cascade2 = new Vector4(cascades > 2 ? TileMetres[2] : TileMetres[0], 0f, 0f, 0f),
-                Timing = new Vector4(timeSeconds, dt, MathF.Max(sea.Choppiness, 0f), sea.DepthMetres),
-                Foaming = new Vector4(MathF.Max(sea.FoamGain, 0f), sea.FoamJacobianBias,
-                    MathF.Max(sea.FoamDissipationPerSecond, 0f), cascades),
-            };
-            _gd.UpdateBuffer(_ubo!, 0, u);
-
+            // The frame's clock: the delta the foam integrates over, the time the row pass runs AHEAD to, and
+            // whether the pending row output describes this frame at all. See OceanFrameClock for the whole phase
+            // argument - it is the fidelity claim of the ping-pong and it is tested headless.
+            OceanFrameTick tick = _clock.Advance(timeSeconds);
             uint groups = (uint)resolution;
-            DispatchRowPass(groups, (uint)cascades);
 
-            // The column pass goes in the SCENE's list, so the storage-image writes and the water draw that
-            // samples them share one command list. That is the seam's guaranteed compute-to-graphics ordering;
-            // splitting them across two lists is silently wrong on Vulkan.
-            sceneList.SetComputePipeline(_colPipe!);
-            sceneList.SetComputeResourceSet(0, _colSet!);
+            // PRIME. The column pass below consumes rows written by the PREVIOUS frame, so a frame that has none
+            // (the first of an ocean, the one after a re-bake, one whose wave clock jumped) produces its own the
+            // old way: one dispatch, one drain, this frame's own time. That frame then renders exactly what the
+            // pre-ping-pong code rendered, and every frame after it costs no drain at all.
+            if (tick.Prime) PrimeRowPass(sea, cascades, groups, timeSeconds, tick.Delta);
+
+            // ONE parameter block serves both passes even though they belong to different frames: the row pass is
+            // the only stage that reads Timing.x, and the column pass reads only the delta, the choppiness and the
+            // foam knobs, all of which are this frame's.
+            WriteUbo(sceneList, sea, cascades, tick.RowTime, tick.Delta);
+
+            // Both dispatches go in the SCENE's list, so the column pass's storage-image writes and the water draw
+            // that samples them share one command list. That is the seam's guaranteed compute-to-graphics ordering;
+            // splitting them across two lists is silently wrong on Vulkan. The two dispatches touch DISJOINT work
+            // buffers (the row pass writes the half the column pass is not reading), so they need no ordering with
+            // respect to each other and the row pass is recorded first, giving its output the whole rest of the
+            // frame to land before the next frame consumes it.
+            int read = _pong, write = 1 - _pong;
+            sceneList.SetComputePipeline(_rowPipe!);
+            sceneList.SetComputeResourceSet(0, _rowSets[write]!);
             sceneList.Dispatch(groups, (uint)cascades, 1);
+
+            sceneList.SetComputePipeline(_colPipe!);
+            sceneList.SetComputeResourceSet(0, _colSets[read]!);
+            sceneList.Dispatch(groups, (uint)cascades, 1);
+            _pong = write;
 
             BuildMipChain(sceneList, resolution, cascades);
 
@@ -261,15 +294,56 @@ namespace KhaozEngine.Render3D.Rendering
             LastMipCopies = (int)layers;
         }
 
-        /// <summary>The row pass on its own list, drained before the caller's list is submitted. This drain IS the
-        /// frame's single stall; it is timed so the cost of #311 stays a measured number rather than a belief.</summary>
-        void DispatchRowPass(uint groups, uint cascades)
+        /// <summary>
+        /// Record the frame's parameter block INTO <paramref name="list"/>, immediately before the dispatches that
+        /// read it. <paramref name="rowTime"/> is the wave-clock time the ROW pass evolves the spectrum to, which
+        /// is NOT the frame's own time in the steady state: it is one predicted frame ahead, because the rows are
+        /// consumed by the next frame's column pass (see <see cref="OceanFrameClock"/>). The column pass never
+        /// reads it, so one block serves both.
+        /// <para>
+        /// <b>Recorded into the list, not written through the device, and that is load-bearing.</b>
+        /// <c>IGpuDevice.UpdateBuffer</c> lands when the CPU calls it, while these dispatches run when the list is
+        /// submitted, so with no drain between the two the next frame's block can overwrite this one before this
+        /// frame's dispatches have read it. That is not theoretical: it is what the mid-frame drain used to hide.
+        /// Removing the drain with the write still on the device path shifted the whole surface a frame ahead,
+        /// because the CPU ran on and every queued dispatch read the LAST block written rather than its own. A
+        /// list-recorded update is copied at RECORD time and applied in list order, so each frame's dispatches read
+        /// the block recorded with them however far the CPU has run ahead. <c>WaterRenderer</c> already updates its
+        /// own per-plane block this way.
+        /// </para>
+        /// </summary>
+        void WriteUbo(IGpuCommandList list, WaterSeaState sea, int cascades, float rowTime, float dt)
+        {
+            var u = new OceanUbo
+            {
+                Cascade0 = new Vector4(TileMetres[0], 0f, 0f, 0f),
+                Cascade1 = new Vector4(cascades > 1 ? TileMetres[1] : TileMetres[0], 0f, 0f, 0f),
+                Cascade2 = new Vector4(cascades > 2 ? TileMetres[2] : TileMetres[0], 0f, 0f, 0f),
+                Timing = new Vector4(rowTime, dt, MathF.Max(sea.Choppiness, 0f), sea.DepthMetres),
+                Foaming = new Vector4(MathF.Max(sea.FoamGain, 0f), sea.FoamJacobianBias,
+                    MathF.Max(sea.FoamDissipationPerSecond, 0f), cascades),
+            };
+            list.UpdateBuffer(_ubo!, 0, u);
+        }
+
+        /// <summary>The row pass on its own list, drained before the caller's list is submitted, into the half of
+        /// the ping-pong this frame's column pass is about to read. The ONLY remaining drain (#311/#398): a frame
+        /// that has no pending row output has to produce it within the frame, and the seam's only ordering for a
+        /// dispatch that reads what a dispatch wrote is a submit and a device wait. It is timed so what is left of
+        /// #311's cost stays a measured number rather than a belief.
+        /// <para>
+        /// It carries its own parameter block, recorded into its own list: this pass evolves the spectrum to THIS
+        /// frame's time, while the scene list's block carries the next frame's, and each has to reach its own
+        /// dispatch (see <see cref="WriteUbo"/>).
+        /// </para></summary>
+        void PrimeRowPass(WaterSeaState sea, int cascades, uint groups, float timeSeconds, float dt)
         {
             using IGpuCommandList cl = _gd.Factory.CreateCommandList();
             cl.Begin();
+            WriteUbo(cl, sea, cascades, timeSeconds, dt);
             cl.SetComputePipeline(_rowPipe!);
-            cl.SetComputeResourceSet(0, _rowSet!);
-            cl.Dispatch(groups, cascades, 1);
+            cl.SetComputeResourceSet(0, _rowSets[_pong]!);
+            cl.Dispatch(groups, (uint)cascades, 1);
             cl.End();
             long start = System.Diagnostics.Stopwatch.GetTimestamp();
             _gd.Submit(cl);
@@ -307,8 +381,12 @@ namespace KhaozEngine.Render3D.Rendering
                 _ubo = Own(f.CreateBuffer(new GpuBufferDescription(UboBytes, GpuBufferUsage.UniformBuffer)));
                 _h0 = Own(f.CreateBuffer(new GpuBufferDescription(
                     (uint)(texels * cascades * 16), GpuBufferUsage.StructuredBufferReadWrite, 16)));
-                _work = Own(f.CreateBuffer(new GpuBufferDescription(
-                    (uint)(texels * cascades * OceanComputeShaders.Fields * 8), GpuBufferUsage.StructuredBufferReadWrite, 8)));
+                // Two row intermediates, ping-ponged across the frame boundary (see the class note): the frame
+                // writes one and reads the other, which is what removes the within-frame read-after-write and with
+                // it the drain that used to pay for it.
+                for (int i = 0; i < 2; i++)
+                    _work[i] = Own(f.CreateBuffer(new GpuBufferDescription(
+                        (uint)(texels * cascades * OceanComputeShaders.Fields * 8), GpuBufferUsage.StructuredBufferReadWrite, 8)));
                 _foam = Own(f.CreateBuffer(new GpuBufferDescription(
                     (uint)(texels * cascades * 4), GpuBufferUsage.StructuredBufferReadWrite, 4)));
                 _gd.UpdateBuffer(_foam, 0, new float[texels * cascades]);
@@ -359,6 +437,10 @@ namespace KhaozEngine.Render3D.Rendering
             SignificantHeight = WaterShoaling.SignificantHeight(heightVariance);
             _gd.UpdateBuffer(_h0!, 0, h0);
 
+            // Whatever rows are pending were evolved from the spectrum that just went away (or live in buffers that
+            // were just rebuilt), so the next frame primes rather than assembling a sea from the old sea state.
+            // A re-bake is a sea-state change, not a per-frame event, so the drain it costs is not a per-frame one.
+            _clock.Invalidate();
             _baked = want;
             _hasBake = true;
         }
@@ -381,8 +463,13 @@ namespace KhaozEngine.Render3D.Rendering
             _rowPipe = Own(f.CreateComputePipeline(new GpuComputePipelineDescription(_rowShader, _rowLayout)));
             _colPipe = Own(f.CreateComputePipeline(new GpuComputePipelineDescription(_colShader, _colLayout)));
 
-            _rowSet = Own(f.CreateResourceSet(new GpuResourceSetDescription(_rowLayout, _ubo!, _h0!, _work!)));
-            _colSet = Own(f.CreateResourceSet(new GpuResourceSetDescription(_colLayout, _ubo!, _work!, _foam!, _map!)));
+            // A resource set binds one concrete buffer, so the ping-pong needs a pair of each rather than one set
+            // rebound per frame. They are otherwise identical, and nothing else about either pass changes.
+            for (int i = 0; i < 2; i++)
+            {
+                _rowSets[i] = Own(f.CreateResourceSet(new GpuResourceSetDescription(_rowLayout, _ubo!, _h0!, _work[i]!)));
+                _colSets[i] = Own(f.CreateResourceSet(new GpuResourceSetDescription(_colLayout, _ubo!, _work[i]!, _foam!, _map!)));
+            }
         }
 
         /// <summary>The always-present bindings: the wrapping sampler and the 1x1 placeholder maps. Created once,
@@ -413,12 +500,15 @@ namespace KhaozEngine.Render3D.Rendering
         {
             if (!_hasBake) return;
             _gd.WaitForIdle();
-            Drop(ref _colSet); Drop(ref _rowSet);
+            for (int i = 0; i < 2; i++) { Drop(ref _colSets[i]); Drop(ref _rowSets[i]); }
             Drop(ref _colPipe); Drop(ref _rowPipe);
             Drop(ref _colShader); Drop(ref _rowShader);
             Drop(ref _colLayout); Drop(ref _rowLayout);
             Drop(ref _mipMap); Drop(ref _map);
-            Drop(ref _foam); Drop(ref _work); Drop(ref _h0); Drop(ref _ubo);
+            Drop(ref _foam);
+            for (int i = 0; i < 2; i++) Drop(ref _work[i]);
+            Drop(ref _h0); Drop(ref _ubo);
+            _pong = 0;
             _hasBake = false;
             Active = false;
             MaxMip = 0f;

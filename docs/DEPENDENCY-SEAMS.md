@@ -185,7 +185,7 @@ KhaozEngine.App -> KhaozEngine.Platform   (IProcessControl: resolve the running 
 `IProcessControl` gained one member in 17.23.0, `CurrentManagedEntryPath`, so the seam can name the app under
 `dotnet <app>.dll` where `CurrentExecutablePath` resolves to the shared dotnet muxer instead. It has a DEFAULT
 implementation returning null, which keeps an existing external implementation of a shipped public interface
-compiling; null simply means that shape is not repaired. No new edge: it reads `Environment` like the members
+compiling, and null simply means that shape is not repaired. No new edge: it reads `Environment` like the members
 beside it.
 
 `Platform` is a zero-ProjectReference leaf (pure BCL P/Invoke), so `App -> Platform` cannot cycle and keeps

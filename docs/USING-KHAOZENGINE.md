@@ -8001,7 +8001,7 @@ options.GraphicsBackendPreference = settings.GraphicsBackend;   // GpuBackendKin
 
 Precedence, highest first: the `KE_GRAPHICS_BACKEND` override, then the preference, then the OS probe. The
 override stays on top on purpose, so a developer can force a backend for a repro regardless of what the player
-picked. A custom `WindowFactory` must forward the preference itself, exactly like `PresentMode`; the
+picked. A custom `WindowFactory` must forward the preference itself, exactly like `PresentMode`. The
 `AppWindow` constructor and `AppWindow.Scaled` both take it as a trailing optional argument.
 
 ### Offer only backends that actually work

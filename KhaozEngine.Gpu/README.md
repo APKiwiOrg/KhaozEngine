@@ -23,7 +23,7 @@ What it owns today:
   OS probe, so the precedence is `KE_GRAPHICS_BACKEND` > preference > probe. The preference arrives as DATA and
   is never read from disk here: this package references only Diagnostics + Primitives, and a settings dependency
   would invert that. A game passes it via `GameAppOptions.GraphicsBackendPreference`. `GpuBackendSource` gains
-  an appended `UserPreference`; an unrecognized env value now falls through to the preference (it is not an
+  an appended `UserPreference`. An unrecognized env value now falls through to the preference (it is not an
   override if it does not parse) while still carrying its raw text for the warning. With a null preference the
   behaviour is identical to before.
 - **`IsBackendSupported` / `SupportedBackends()`** (17.23.0) - which backends this machine can actually run, as

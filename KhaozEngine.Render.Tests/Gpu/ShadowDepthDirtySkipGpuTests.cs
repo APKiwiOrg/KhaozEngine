@@ -71,11 +71,24 @@ namespace KhaozEngine.Tests.Gpu
             // Frame 1: first shadow frame - must RENDER the depth pass (no prior map to reuse).
             byte[] img1 = Read(gd, preview.Capture(DrawStatic));
             Assert.False(preview.Scene.ShadowPassSkippedLastFrame, "first shadow frame must render the depth pass");
+            Assert.True(preview.Scene.LastShadowPassDiagnostics.Active);
+            Assert.True(preview.Scene.LastShadowPassDiagnostics.Rendered);
+            Assert.False(preview.Scene.LastShadowPassDiagnostics.HadPrevious);
+            Assert.False(preview.Scene.LastShadowPassDiagnostics.ResolutionChanged);
+            Assert.False(preview.Scene.LastShadowPassDiagnostics.LightMatrixChanged);
+            Assert.False(preview.Scene.LastShadowPassDiagnostics.CasterDataChanged);
 
             // Frame 2: identical static scene - must SKIP (reuse the persistent map) and render identically.
             byte[] img2 = Read(gd, preview.Capture(DrawStatic));
             Assert.True(preview.Scene.ShadowPassSkippedLastFrame,
                 "an unchanged static shadow scene must skip the depth pass on the second frame");
+            ShadowPassDiagnostics staticDiagnostics = preview.Scene.LastShadowPassDiagnostics;
+            Assert.True(staticDiagnostics.Skipped);
+            Assert.True(staticDiagnostics.HadPrevious);
+            Assert.False(staticDiagnostics.AnySkinnedCaster);
+            Assert.False(staticDiagnostics.ResolutionChanged);
+            Assert.False(staticDiagnostics.LightMatrixChanged);
+            Assert.False(staticDiagnostics.CasterDataChanged);
 
             Assert.True(DarkPixels(img1) > 150, $"expected a visible shadow on the floor, got {DarkPixels(img1)} dark pixels");
             Assert.Equal(0, Diff(img1, img2));   // reusing the map must be byte-identical to re-rendering it
@@ -100,11 +113,38 @@ namespace KhaozEngine.Tests.Gpu
             byte[] a = Frame(-1.4f);                 // first frame: renders
             byte[] b = Frame(1.4f);                  // caster moved: must re-render (dirty)
             Assert.False(preview.Scene.ShadowPassSkippedLastFrame, "a moved caster must re-render the shadow map");
+            Assert.True(preview.Scene.LastShadowPassDiagnostics.CasterDataChanged);
             Assert.True(Diff(a, b) > 20000, $"moving the caster must move the shadow (image diff {Diff(a, b)})");
 
             // A third frame with the caster STILL at 1.4 is now static again, so it skips.
             Frame(1.4f);
             Assert.True(preview.Scene.ShadowPassSkippedLastFrame, "a re-settled static caster must skip again");
+        }
+
+        [GpuFact]
+        public void Moving_light_rerenders_and_reports_matrix_change()
+        {
+            using GpuDeviceContext ctx = GpuDeviceContext.CreateHeadless();
+            IGpuDevice gd = ctx.GpuDevice;
+            using var preview = new Render3DPreview(gd, W, H);
+            ConfigureShadowScene(preview.Scene);
+            MeshHandle floor = preview.Scene.LoadMesh(MeshPrimitives.Tile(10f, 0.1f));
+            MeshHandle box = preview.Scene.LoadMesh(MeshPrimitives.Box(1.2f));
+
+            void DrawStatic(Scene3D s)
+            {
+                s.Draw(floor, Matrix4x4.Identity);
+                s.Draw(box, Matrix4x4.CreateTranslation(-1.4f, 0.6f, -0.4f), new Color(0.15f, 0.75f, 0.2f, 1f));
+            }
+
+            preview.Capture(DrawStatic);
+            preview.Scene.Post.LightDirection = new Vector3(-0.35f, -0.8f, -0.45f);
+            preview.Capture(DrawStatic);
+
+            ShadowPassDiagnostics diagnostics = preview.Scene.LastShadowPassDiagnostics;
+            Assert.True(diagnostics.Rendered);
+            Assert.True(diagnostics.LightMatrixChanged);
+            Assert.False(diagnostics.CasterDataChanged);
         }
 
         [GpuFact]
@@ -132,6 +172,10 @@ namespace KhaozEngine.Tests.Gpu
             preview.Capture(DrawWithLimb);
             Assert.False(preview.Scene.ShadowPassSkippedLastFrame,
                 "any skinned caster present must force the shadow depth pass to re-render every frame");
+            ShadowPassDiagnostics skinnedDiagnostics = preview.Scene.LastShadowPassDiagnostics;
+            Assert.True(skinnedDiagnostics.Rendered);
+            Assert.True(skinnedDiagnostics.AnySkinnedCaster);
+            Assert.True(skinnedDiagnostics.SkinnedCasterCount > 0);
 
             limb.Dispose();
         }

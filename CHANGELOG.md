@@ -5,6 +5,25 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.20.0
+
+### GPU-skinned uniform uploads avoid D3D11's partial-write stall path
+
+GPU-skinned model and shadow slots are now packed into persistent CPU images and uploaded once as a whole buffer
+per pass. This removes two partial uniform-buffer writes per visible skinned model draw and one per caster per
+cascade in the shadow pass. D3D11 routes partial uniform-buffer writes through a staging path that can block while
+recycling an immediate-context staging buffer, so a crowd could turn command recording into a CPU/GPU sync chain.
+Slot layout, dynamic offsets, and rendered output are unchanged. GPU parity tests and a whole-buffer upload-shape
+test cover both the main and shadow UBOs. Fixes [#408](https://github.com/APKiwiOrg/KhaozEngine/issues/408).
+
+### Added
+- `Scene3D.LastShadowPassDiagnostics` (`ShadowPassDiagnostics`): a last-frame snapshot that says whether the shadow
+  depth pass was active, rendered, or skipped, and records whether a prior atlas existed plus the dirty reasons:
+  skinned casters, resolution, cascade-matrix, or rigid-caster changes. It also exposes the active cascade and
+  skinned-caster counts. This lets a
+  consumer diagnose a costly shadow pass without inferring its reason from timing alone. Added for the D3D11 field
+  investigation in [#410](https://github.com/APKiwiOrg/KhaozEngine/issues/410).
+
 ## 17.19.0
 
 ### Added

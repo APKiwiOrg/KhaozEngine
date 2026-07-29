@@ -2328,7 +2328,10 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       forces a re-render). An unchanged static scene reuses the prior atlas and skips every caster draw, so a
       mostly-static view stops repainting the shadow map each frame. A skipped pass contributes zero shadow draw
       calls to `LastFrameStats`. Read `Scene3D.ShadowPassSkippedLastFrame` (last rendered frame, always `false` when
-      the tier is not `ShadowMap`) for a HUD/diagnostics signal. The receiver tail (light matrix + bias/strength) is
+      the tier is not `ShadowMap`) for a HUD/diagnostics signal. `LastShadowPassDiagnostics` gives the full decision:
+      whether the pass rendered or skipped, whether a prior atlas existed, each dirty reason (skinned caster,
+      resolution, cascade matrix, or rigid caster data), and the skinned-caster/cascade counts. The receiver tail
+      (light matrix + bias/strength) is
       still applied on a skipped frame, so bias/strength tweaks take effect immediately and the receivers sample the
       map with the matrix it was baked against.
 - Edge outline: `Post.Outline` (off by default, opt-in per consumer) draws a depth/normal toon outline. `OutlineColor`,
@@ -4934,7 +4937,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.19.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.20.0" />
 ```
 
 ```csharp

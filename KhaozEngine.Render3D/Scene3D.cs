@@ -85,6 +85,7 @@ namespace KhaozEngine.Render3D
         // signature buffers are swapped (not copied) when a dirty pass commits, so the check stays allocation-free.
         bool _shadowPassRendered;             // a real depth pass has rendered since construction (map holds valid content)
         bool _shadowPassSkippedLastFrame;     // the last rendered frame reused the prior depth map (public signal below)
+        ShadowPassDiagnostics _lastShadowPassDiagnostics;
         // Per-cascade CPU (pre-GPU-clip-correct) fit matrices for THIS frame (0.._cascadeCount-1 valid). The GPU-clip
         // corrected RECEIVER matrices + the column-transformed DEPTH matrices are derived from them each frame.
         readonly Matrix4x4[] _cascadeCpuVps = new Matrix4x4[ShadowSettings.MaxCascades];
@@ -313,6 +314,10 @@ namespace KhaozEngine.Render3D
         /// <see cref="LastFrameStats"/>.
         /// </summary>
         public bool ShadowPassSkippedLastFrame => _shadowPassSkippedLastFrame;
+
+        /// <summary>Last-frame shadow depth-pass decision and its dirty reasons. This is default-valued when the
+        /// resolved shadow tier is not <see cref="ShadowMode.ShadowMap"/>. Diagnostics only.</summary>
+        public ShadowPassDiagnostics LastShadowPassDiagnostics => _lastShadowPassDiagnostics;
 
         /// <summary>
         /// GPU resources retired by a mid-life unload (a streamed chunk mesh freed while the scene keeps running)
@@ -1960,6 +1965,7 @@ namespace KhaozEngine.Render3D
             float shadowDepthMs = 0f, modelMs = 0f, transparentsMs = 0f, waterSyncMs = 0f, postMs = 0f;
             long timingStart = 0;
             _shadowPassSkippedLastFrame = false;
+            _lastShadowPassDiagnostics = default;
             if (shadowMapActive)
             {
                 timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
@@ -1968,14 +1974,23 @@ namespace KhaozEngine.Render3D
                 // persists across frames, so an unchanged static scene reuses it and skips every caster draw.
                 SetShadowReceiverTail();
                 BuildShadowCasterSpans(_shadowCasterRunsScratch, _shadowCasterModelsScratch);
+                bool hadPrevious = _shadowPassRendered;
+                bool resolutionChanged = hadPrevious && _model.ShadowMap.Resolution != _lastShadowResolution;
+                bool lightMatrixChanged = hadPrevious && ShadowCascadeVpsChanged(
+                    _cascadeCpuVps, _cascadeCount, _lastCascadeCpuVps, _lastShadowCascadeCount);
+                bool casterDataChanged = hadPrevious && ShadowCastersChanged(
+                    _shadowCasterRunsScratch, _shadowCasterModelsScratch, _lastShadowCasterRuns, _lastShadowCasterModels);
                 bool dirty = ShadowDepthPassDirty(
-                    hadPrevious: _shadowPassRendered,
+                    hadPrevious: hadPrevious,
                     anySkinnedCaster: skinnedCasterCount > 0,
-                    resolutionChanged: _model.ShadowMap.Resolution != _lastShadowResolution,
-                    // ANY cascade's fitted matrix moving (a camera pan past a texel, or a moving sun) re-renders.
-                    lightMatrixChanged: ShadowCascadeVpsChanged(_cascadeCpuVps, _cascadeCount, _lastCascadeCpuVps, _lastShadowCascadeCount),
-                    casterDataChanged: ShadowCastersChanged(
-                        _shadowCasterRunsScratch, _shadowCasterModelsScratch, _lastShadowCasterRuns, _lastShadowCasterModels));
+                    resolutionChanged: resolutionChanged,
+                    lightMatrixChanged: lightMatrixChanged,
+                    casterDataChanged: casterDataChanged);
+                _lastShadowPassDiagnostics = new ShadowPassDiagnostics(
+                    active: true, rendered: dirty, skipped: !dirty, hadPrevious: hadPrevious,
+                    anySkinnedCaster: skinnedCasterCount > 0, resolutionChanged: resolutionChanged,
+                    lightMatrixChanged: lightMatrixChanged, casterDataChanged: casterDataChanged,
+                    skinnedCasterCount: skinnedCasterCount, cascadeCount: _cascadeCount);
                 if (dirty)
                 {
                     // Split the one caster list into the sub-spans each cascade actually reaches, then draw. Only on
@@ -2098,15 +2113,18 @@ namespace KhaozEngine.Render3D
                 if (_gpuSkinnedDraws.Count > 0)
                 {
                     var boneSpan = CollectionsMarshal.AsSpan(_boneMatrices);
+                    bool packedMainSlots = false;
                     for (int d = 0; d < _gpuSkinnedDraws.Count; d++)
                     {
                         var dr = _gpuSkinnedDraws[d];
                         if (!dr.VisibleMain) continue;
-                        _model.PackSkinnedMainSlot(cl, dr.Slot, dr.World, dr.Tint, dr.Emissive, dr.SpecParams,
+                        _model.PackSkinnedMainSlot(dr.Slot, dr.World, dr.Tint, dr.Emissive, dr.SpecParams,
                             boneSpan.Slice(dr.BoneSpanStart, dr.BoneCount));
                         // header (Mvp/Model/P) + the per-draw frame block + this mesh's bones = the palette-only upload.
                         _frameStats.AddSkinnedUniformUpload((long)(ModelRenderer.SkinnedBonesOffset + (uint)dr.BoneCount * 64));
+                        packedMainSlots = true;
                     }
+                    if (packedMainSlots) _model.UploadSkinnedMainSlots(cl);
                     bool dissolveBound = false;
                     _model.BindSkinnedPass(cl);
                     for (int d = 0; d < _gpuSkinnedDraws.Count; d++)

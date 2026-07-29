@@ -121,7 +121,9 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   **dirty-skips**: it re-renders only when a shadow-relevant input changed (ANY cascade's fitted matrix, the rigid
   caster set/transforms, the resolution, or any animated skinned caster present) and otherwise reuses the prior atlas,
   so a mostly-static scene stops repainting it every frame. A skipped pass adds zero shadow draw calls to
-  `LastFrameStats`. Read `Scene3D.ShadowPassSkippedLastFrame` for a diagnostics signal.
+  `LastFrameStats`. Read `Scene3D.ShadowPassSkippedLastFrame` for a simple diagnostics signal, or
+  `Scene3D.LastShadowPassDiagnostics` to identify whether skinned casters, resolution, cascade matrices, or caster
+  data required the last depth pass.
   - Validate a menu choice with `Shadows.ResolveFor(caps)` and read `.Effective`/`.Degraded`/`.Reason` (same
   `ResolveFor`-clamps-a-request pattern as AA, never throws). With `Off` the blob queue is ignored and the shadow tail
   sits at strength 0 (never tapped), so existing scenes are byte-stable.
@@ -142,7 +144,8 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   the CPU (`SkinningMath.SkinVertex`), so the rest-pose vertex buffer uploads once at load and only the per-draw
   palette + matrices upload each frame - the win at MMO crowd scale. Pixel-parity with the CPU path, same culling +
   shadow pass. Built on the fold-matrix binding (one combined per-draw UBO read by both stages, material maps at set
-  1) that sidesteps the Metal one-uniform-buffer-per-pipeline limit (see `docs/DEPENDENCY-SEAMS.md`). Ships OFF
+  1) that sidesteps the Metal one-uniform-buffer-per-pipeline limit (see `docs/DEPENDENCY-SEAMS.md`). The packed
+  main and shadow slot buffers upload once per pass, avoiding D3D11's partial-uniform staging path. Ships OFF
   pending a windowed A/B against CPU skinning (the Showcase 3D room's F key + HUD). See `docs/USING-KHAOZENGINE.md`.
 - Per-pass timing: `Scene3D.EnableTiming` (default `false`, no cost when off - a single `bool` check, no
   `Stopwatch` call, no allocation) brackets each render pass with a CPU `Stopwatch` and exposes the result as

@@ -41,6 +41,9 @@ namespace KhaozEngine.Tests.Gpu
         const uint FrameUboBytes = 1008;
         // ShadowMapRenderer: MaxCascades (4) 256-byte dynamic slots.
         const uint ShadowCascadeUboBytes = 4 * 256;
+        // One GPU-skinned draw starts each growable UBO at its minimum eight slots.
+        const uint SkinnedMainUboBytes = 8 * 9472;
+        const uint SkinnedShadowUboBytes = 8 * 8448;
 
         static void AssertOneWholeBufferWrite(RecordingGpuCommandList rec, uint size, string what)
         {
@@ -105,6 +108,46 @@ namespace KhaozEngine.Tests.Gpu
 
             AssertOneWholeBufferWrite(rec, FrameUboBytes, "model frame UBO");
             AssertOneWholeBufferWrite(rec, ShadowCascadeUboBytes, "shadow cascade UBO");
+        }
+
+        [GpuFact]
+        public void A_shadowed_gpu_skinned_frame_uploads_the_main_and_shadow_slot_buffers_once_each()
+        {
+            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
+            IGpuDevice gd = gpu.GpuDevice;
+            var f = gd.Factory;
+
+            using IGpuTexture finalTex = f.CreateTexture(GpuTextureDescription.Texture2D(
+                W, H, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
+            using IGpuFramebuffer finalFB = f.CreateFramebuffer(null, finalTex);
+
+            using var scene = new Scene3D(gd, finalFB.Outputs);
+            scene.UseGpuSkinning = true;
+            scene.Post.Starfield = false;
+            scene.Post.Quality.Shadows.Mode = ShadowMode.ShadowMap;
+            scene.Post.LightDirection = new Vector3(-0.55f, -0.8f, -0.25f);
+            scene.Camera.Frame(new Vector3(0f, 0.4f, 0f), new Vector3(6f, 4.5f, 6f));
+
+            MeshHandle floor = scene.LoadMesh(MeshPrimitives.Tile(10f, 0.1f));
+            SkinnedGltfMesh tube = SkinnedMeshBuilder.BuildTube(0.5f, 4f, 10, 10, 6, Axis.Z);
+            SkinnedMeshHandle caster = scene.LoadSkinnedMesh(tube);
+
+            using IGpuCommandList real = f.CreateCommandList();
+            var rec = new RecordingGpuCommandList(real);
+
+            scene.Begin();
+            scene.Draw(floor, Matrix4x4.Identity);
+            scene.DrawSkinned(caster, tube.RestPose, Matrix4x4.CreateTranslation(0f, 0.6f, 0f), Color.White);
+            rec.Begin();
+            scene.RenderInternal(rec, W, H, finalFB);
+            rec.End();
+            gd.Submit(real);
+            gd.WaitForIdle();
+
+            Assert.False(scene.ShadowPassSkippedLastFrame,
+                "a GPU-skinned caster must keep the depth pass dirty so the shadow-slot upload is exercised");
+            AssertOneWholeBufferWrite(rec, SkinnedMainUboBytes, "skinned main UBO");
+            AssertOneWholeBufferWrite(rec, SkinnedShadowUboBytes, "skinned shadow UBO");
         }
     }
 }

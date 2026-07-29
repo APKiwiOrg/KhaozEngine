@@ -305,14 +305,17 @@ namespace KhaozEngine.Render3D
             {
                 var boneSpan = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_boneMatrices);
                 int gpuCount = _gpuSkinnedDraws.Count;
+                bool packedShadowSlots = false;
                 for (int c = 0; c < count; c++)
                     for (int d = 0; d < gpuCount; d++)
                     {
                         var dr = _gpuSkinnedDraws[d];
-                        _model.PackSkinnedShadowSlot(cl, (uint)(c * gpuCount + d), dr.World, _cascadeDepthVps[c],
+                        _model.PackSkinnedShadowSlot((uint)(c * gpuCount + d), dr.World, _cascadeDepthVps[c],
                             boneSpan.Slice(dr.BoneSpanStart, dr.BoneCount));
                         _frameStats.AddSkinnedUniformUpload((long)(1 + dr.BoneCount) * 64);
+                        packedShadowSlots = true;
                     }
+                if (packedShadowSlots) _model.UploadSkinnedShadowSlots(cl);
                 for (int c = 0; c < count; c++)
                 {
                     _model.BindShadowCascadeSkinned(cl, c);

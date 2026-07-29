@@ -80,6 +80,10 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuResourceLayout _skinnedLayout;   // set 0: combined { LightMvp; bones[128] } dynamic UBO, vertex only
         IGpuPipeline _skinnedPipeline = null!;         // rebuilt in EnsureLayout alongside _pipeline
         IGpuBuffer? _skinnedUbo; uint _skinnedSlots; IGpuResourceSet? _skinnedSet;
+        // Persistent CPU image of the complete skinned-depth UBO. D3D11 takes its cheap UpdateSubresource route only
+        // for a whole uniform-buffer write from offset 0, so every cascade/caster slot is packed here before one
+        // upload records the entire buffer.
+        byte[] _skinnedImage = Array.Empty<byte>();
         readonly List<IDisposable> _retiredSkinned = new();   // grown-out combined UBOs/sets (a prior frame may still read them)
         readonly Matrix4x4[] _skinnedScratch = new Matrix4x4[1 + SkinningMath.MaxBonesPerDraw];
 
@@ -404,6 +408,9 @@ namespace KhaozEngine.Render3D.Rendering
             if (_skinnedUbo != null) _retiredSkinned.Add(_skinnedUbo);
             if (_skinnedSet != null) _retiredSkinned.Add(_skinnedSet);
             _skinnedSlots = Math.Max(slotCount, _skinnedSlots == 0 ? 8u : _skinnedSlots * 2);
+            var image = new byte[checked((int)(_skinnedSlots * SkinnedDepthSlotBytes))];
+            _skinnedImage.AsSpan().CopyTo(image);
+            _skinnedImage = image;
             _skinnedUbo = _gd.Factory.CreateBuffer(
                 new GpuBufferDescription(_skinnedSlots * SkinnedDepthSlotBytes, GpuBufferUsage.UniformBuffer));
             _skinnedSet = _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(
@@ -414,12 +421,18 @@ namespace KhaozEngine.Render3D.Rendering
         /// folded per draw + the composed <paramref name="bones"/> (uploaded raw, read column-major = transpose).
         /// <paramref name="cascadeDepthMat"/> is the cascade's GPU-clip-corrected AND column-transformed matrix.
         /// Uploads only the mesh's bones (indices validated at load).</summary>
-        public void PackSkinnedShadowSlot(IGpuCommandList cl, uint slot, in Matrix4x4 model, in Matrix4x4 cascadeDepthMat, ReadOnlySpan<Matrix4x4> bones)
+        public void PackSkinnedShadowSlot(uint slot, in Matrix4x4 model, in Matrix4x4 cascadeDepthMat, ReadOnlySpan<Matrix4x4> bones)
         {
             _skinnedScratch[0] = model * cascadeDepthMat;   // System.Numerics order: p * model * cascadeDepthMat
             for (int b = 0; b < bones.Length; b++) _skinnedScratch[1 + b] = bones[b];
-            cl.UpdateBuffer(_skinnedUbo!, slot * SkinnedDepthSlotBytes, _skinnedScratch.AsSpan(0, 1 + bones.Length));
+            MemoryMarshal.AsBytes(_skinnedScratch.AsSpan(0, 1 + bones.Length)).CopyTo(
+                _skinnedImage.AsSpan(checked((int)(slot * SkinnedDepthSlotBytes)), checked((int)SkinnedDepthSlotBytes)));
         }
+
+        /// <summary>Upload every packed GPU-skinned shadow slot in one whole-buffer write. Slots not selected by a
+        /// depth draw this pass may retain old bytes because no dynamic offset binds them.</summary>
+        public void UploadSkinnedShadowSlots(IGpuCommandList cl)
+            => cl.UpdateBuffer(_skinnedUbo!, 0, (ReadOnlySpan<byte>)_skinnedImage);
 
         /// <summary>Bind cascade <paramref name="cascade"/> for the GPU-SKINNED caster draws: scissor to that cascade's
         /// atlas column and switch to the skinned depth pipeline. Call after the rigid caster runs, before the skinned

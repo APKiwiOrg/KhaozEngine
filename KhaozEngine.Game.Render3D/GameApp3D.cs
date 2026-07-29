@@ -39,13 +39,22 @@ namespace KhaozEngine.Game
         /// <summary>The whole-frame draw stats: the base 2D batch total plus this scene's <see cref="Scene3D.LastFrameStats"/>.</summary>
         protected override RenderFrameStats CollectFrameStats() => base.CollectFrameStats() + _surface3D.Scene.LastFrameStats;
 
+        /// <summary>The <see cref="Scene3D.EnableTiming"/> decision <see cref="OnRenderWorld"/> drives from the
+        /// built-in overlay: <c>hud.Visible</c> when the overlay exists, or null ("leave the flag alone") when it
+        /// does not, so a consumer that opted out via <see cref="GameAppOptions.DisableDiagnosticsOverlay"/> keeps
+        /// whatever it set on <see cref="Scene3D.EnableTiming"/> itself instead of it being forced false every frame
+        /// (issue #404). Pure and headless-testable, mirroring <c>GameApp.ShouldRaiseResume</c>: like that helper,
+        /// it exists because <see cref="OnRenderWorld"/> itself needs a real window (GameApp.Run's convention), so
+        /// only the decision is unit-tested, not the render loop.</summary>
+        internal static bool? DesiredEnableTiming(DiagnosticsHud? hud) => hud?.Visible;
+
         /// <summary>Drives the 3D pass each frame before the 2D batch. Couples the scene's per-pass timing to the HUD:
         /// timing is enabled ONLY while the overlay is visible (so it costs nothing when hidden), and the resulting
         /// per-pass milliseconds are fed into the HUD's rolling meter after the render.</summary>
         protected override void OnRenderWorld(Frame frame)
         {
             DiagnosticsHud? hud = Diagnostics;
-            _surface3D.Scene.EnableTiming = hud is { Visible: true };
+            if (DesiredEnableTiming(hud) is { } enableTiming) _surface3D.Scene.EnableTiming = enableTiming;
 
             _surface3D.Scene.Begin();
             OnDraw3D(_surface3D.Scene);

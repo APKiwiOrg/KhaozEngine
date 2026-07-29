@@ -5,6 +5,23 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.19.0
+
+### Added
+- `TerrainStreamer.BuildReasons` (`StreamerBuildReasons`): cumulative per-reason chunk build
+  counters, split by why the streamer asked. `FreshLoad`, `TierChange`, `RingChange`,
+  `Invalidate`, and `AnchorRecentre` (how many times the ring re-centred, the upstream cause
+  rather than a build count), plus a `Total` over the four build reasons. Read as a value
+  snapshot like `Scene3DChunkSink.MergeStats`, life-of-streamer totals that `UnloadAll` does not
+  reset, matching `FailedBuildCount`.
+
+  The merge counters say how much build work happened and how much was thrown away. They cannot
+  say why any of it was asked for, which is the only question left when a client rebuilds chunks
+  with its player standing still ([Ruinborne#388](https://github.com/APKiwiOrg/Ruinborne/issues/388)).
+  One row on a consuming game's diagnostics panel now separates a ring following a moving player
+  from one being wiped by something upstream of the streamer. Frame-thread counters, so plain
+  adds rather than the `Interlocked` the sink's merge counters need.
+
 ## 17.18.0
 
 ### A Windows client's encode stops stalling on the GPU mid-pass

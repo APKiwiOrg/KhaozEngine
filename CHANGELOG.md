@@ -5,6 +5,60 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.14.0
+
+### Each shadow cascade draws only the casters that reach it
+
+The cascaded shadow depth pass drew every caster into every cascade, so a near cascade
+fitted to a 19 m slice of the camera frustum still rasterized the whole world's casters,
+four times over, every frame the pass was dirty. On an MMO-shaped frame (16.5k casters,
+four cascades at 2048) that was 65928 caster instance-draws per frame to fill four small
+light-space rects.
+
+Each cascade now splits the shared caster list into the sub-spans that actually reach it:
+10982 instance-draws on the same frame, and the shadow pass drops from 1.36 to 1.14 ms.
+
+The test is light-space XY plus the far plane. For a directional light that is exact
+rather than conservative, because a caster and every point it shadows share the same
+light-space XY and a receiver only ever samples inside its cascade's rect, so a caster
+outside the rect rasterized nothing into it before either. The near plane is deliberately
+not a cull plane: the 17.13.0 depth pancake exists so a caster far up-light of it still
+shadows the ground, and culling there would undo exactly that.
+
+Output is unchanged, and the test suite proves it directly rather than by golden: four
+scenes render twice, with culling on and off, and must come out byte-identical.
+
+Nothing is required of a consumer. `Scene3D.ShadowCascadeCulling` is on by default and
+exists as a kill switch, not a quality setting. `ShadowCasterCandidateCount`,
+`ShadowCascadeCasterCount(i)` and `ShadowCascadeSpanCount(i)` are new diagnostics for
+what the last rendered depth pass considered and drew.
+
+Per-cascade re-render skipping was evaluated and rejected: a moving sun re-fits every
+cascade every frame (measured at 0 percent stable frames under a 30 minute day, and still
+0 percent with a static sun and a moving camera), so there is nothing for a per-cascade
+cache to hold.
+
+### Four measured frame-cost quick wins
+
+A frame-cost audit (Ruinborne#374) found four small, fidelity-identical engine costs: two per-frame
+closure allocations in paths documented allocation-free, two water diagnostics numbers a consuming game
+could never read, and one GPU sync stall misattributed as draw-call cost.
+
+**Two closures hoisted off the hot path.** `Scene3D`'s per-frame alpha-cutoff fold and
+`TerrainStreamer`'s nearest-first apply order each rebuilt a delegate closure on every call. Both are now
+bound once, at construction, with the varying state carried in restamped instance fields instead.
+Allocation tests pin both at zero bytes per call.
+
+**Water diagnostics are public.** `Scene3D.LastWaterStats` exposes the ocean FFT's GPU stall cost and the
+clipmap rebuild count, previously internal-only counters a consuming game had no way to read.
+
+**The ocean FFT's sync stall has its own timing bucket.** `Scene3DPassTimingsMs.WaterSyncMs` carries the
+FFT drain's Submit+WaitForIdle cost separately from `TransparentsMs`, which used to fold it in as
+draw-call encode cost and overstate the transparents pass by however long the drain took.
+
+No visual or behavioural change: rendering stays byte-identical (goldens unmoved) and every fixed path
+keeps its exact prior ordering and output.
+
 ## 17.13.0
 
 ### Shadows survive a grazing sun

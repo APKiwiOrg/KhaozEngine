@@ -146,11 +146,19 @@ namespace KhaozEngine.Render3D
         /// <see cref="ShadowCastersChanged"/>), so a caster set, transform, opt-out or dissolve that moved
         /// re-renders the atlas. Reused buffers (Cleared, not reallocated), so the per-frame check stays
         /// allocation-free.
+        /// <para>
+        /// The same walk also captures each caster's WORLD bounding sphere into <c>_shadowCasterSpheres</c>,
+        /// index-aligned to <paramref name="instances"/>, which is what the per-cascade cull then tests (see
+        /// Scene3D.ShadowCascadeCull.cs). Doing it here means one sphere transform per caster per frame rather than
+        /// one per caster PER CASCADE, and it is the only place a slot's mesh bounds and its world matrix are both
+        /// already in hand.
+        /// </para>
         /// </summary>
         void BuildShadowCasterSpans(List<ShadowCasterSpan> spans, List<ShadowCasterInstance> instances)
         {
             spans.Clear();
             instances.Clear();
+            _shadowCasterSpheres.Clear();
             foreach (var run in _runs)
             {
                 if (!_slots.IsValid(run.Mesh.Index, run.Mesh.Generation)) continue;
@@ -166,6 +174,8 @@ namespace KhaozEngine.Render3D
                     {
                         ModelRenderer.InstanceData d = _instanceData[(int)(span.Start + s)];
                         instances.Add(new ShadowCasterInstance(d.Model, d.Dissolve.X));
+                        mesh.Bounds.WorldSphere(d.Model, out Vector3 bc, out float br);
+                        _shadowCasterSpheres.Add(new Vector4(bc, br));
                     }
                 }
             }
@@ -223,9 +233,11 @@ namespace KhaozEngine.Render3D
         /// <summary>
         /// Render the key-light cascaded shadow depth pass for this frame using the already-fitted cascade DEPTH
         /// matrices in <see cref="_cascadeDepthVps"/> (from <see cref="SetShadowReceiverTail"/>): clear the atlas, then
-        /// draw every rigid + skinned caster into EACH cascade's atlas column (reusing the already-uploaded
-        /// instance/skinned buffers). The rigid casters come from <paramref name="spans"/>, this frame's caster draw
-        /// list (see <see cref="BuildShadowCasterSpans"/>): terrain (splat meshes) do NOT cast (model-only casting -
+        /// draw every skinned caster plus each cascade's REACHING rigid casters into that cascade's atlas column
+        /// (reusing the already-uploaded instance/skinned buffers). The rigid casters come from
+        /// <paramref name="spansPerCascade"/>, this frame's per-cascade caster draw lists (see
+        /// <see cref="BuildCascadeCasterSpans"/>, which splits the one list <see cref="BuildShadowCasterSpans"/>
+        /// built): terrain (splat meshes) do NOT cast (model-only casting -
         /// terrain self-shadowing is visually negligible in the test scenes and the flat MMO ground has no overhangs),
         /// and neither does anything the consumer opted out of. Terrain always RECEIVES via the shared lighting block.
         /// A dissolving span switches to the dissolve-aware depth pipeline (or its inverted sibling, for the merged
@@ -237,14 +249,14 @@ namespace KhaozEngine.Render3D
         /// skipped frame), so this only records depth. Runs only when the tier is ShadowMap AND the dirty check
         /// requires a re-render (see <see cref="ShadowDepthPassDirty"/>). An unchanged static scene reuses the atlas.
         /// </summary>
-        void RenderShadowDepthPass(IGpuCommandList cl, List<ShadowCasterSpan> spans)
+        void RenderShadowDepthPass(IGpuCommandList cl, List<ShadowCasterSpan>[] spansPerCascade)
         {
             // Cascaded depth pass: clear the whole atlas + upload every cascade's column-transformed matrix (plus the
-            // render origin the dissolve variant's world-anchored noise needs), then draw every rigid + skinned caster
-            // ONCE PER CASCADE into that cascade's atlas column (scissor-clipped). Reuses the instance buffer the
-            // model pass uploaded (no second upload). Each caster is drawn count times, so the depth-pass draw count
-            // scales with the cascade count (the accepted cost of cascaded coverage, measured by the GPU pass-timing
-            // tests).
+            // render origin the dissolve variant's world-anchored noise needs), then draw each cascade's own caster
+            // spans into its atlas column (scissor-clipped). Reuses the instance buffer the model pass uploaded (no
+            // second upload). Skinned casters are still drawn into every cascade (there are a handful of them, and
+            // their bounds move with the pose). The rigid spans are per-cascade, so a near cascade no longer
+            // rasterizes the whole world to fill a 19 m footprint.
             int count = _cascadeCount;
             _model.BeginShadowPass(cl, _cascadeDepthVps.AsSpan(0, count), count, _frameOrigin,
                 _cascadeNoiseScales.AsSpan(0, count));
@@ -258,7 +270,7 @@ namespace KhaozEngine.Render3D
                 // the last one (the same pattern the main pass's dissolve draws use), so an all-opaque frame binds
                 // once per cascade exactly as before.
                 ShadowCastKind bound = ShadowCastKind.Opaque;
-                foreach (ShadowCasterSpan span in spans)
+                foreach (ShadowCasterSpan span in spansPerCascade[c])
                 {
                     var m = _meshes[span.Index];
                     if (m is not { } mesh) continue;   // unloaded between the span build and here: skip its slice

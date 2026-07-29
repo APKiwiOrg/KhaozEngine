@@ -1975,7 +1975,13 @@ namespace KhaozEngine.Render3D
                         _shadowCasterRunsScratch, _shadowCasterModelsScratch, _lastShadowCasterRuns, _lastShadowCasterModels));
                 if (dirty)
                 {
-                    RenderShadowDepthPass(cl, _shadowCasterRunsScratch);
+                    // Split the one caster list into the sub-spans each cascade actually reaches, then draw. Only on
+                    // a dirty pass: a skipped frame draws nothing, so it must not pay for the split either. The
+                    // SIGNATURE above stays the FULL list on purpose - the cull is a pure function of the caster
+                    // transforms (already in that signature) and the cascade matrices (already in the light-matrix
+                    // compare), so it can never change the drawn set without one of those dirtying the pass first.
+                    BuildCascadeCasterSpans(_cascadeCount);
+                    RenderShadowDepthPass(cl, _cascadeCasterSpans);
                     // Commit this frame's signature as next frame's reference. Swap the reused buffers (no copy/alloc):
                     // the scratch now holds the just-rendered casters, so make it the kept copy and reuse the old kept
                     // copy as next frame's scratch.

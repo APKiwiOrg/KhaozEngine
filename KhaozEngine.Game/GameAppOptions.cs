@@ -172,6 +172,21 @@ namespace KhaozEngine.Game
         public bool DisableJobScheduler;
 
         /// <summary>
+        /// The player's STORED graphics-backend choice, or <c>null</c> (the default) to let the engine decide.
+        /// This is the in-game backend setting: the game reads it from its own settings store and hands it over
+        /// as data, because <c>KhaozEngine.Gpu</c> does no file IO and must not take a settings dependency.
+        /// <para>Precedence, highest first: the <c>KE_GRAPHICS_BACKEND</c> environment override (the debug lever,
+        /// which always wins), then this, then the OS probe. Applied at window creation, so it is honoured on the
+        /// default window; a custom <see cref="WindowFactory"/> must forward it itself.</para>
+        /// <para>A preference the machine cannot actually create a device on falls back to the OS-probe backend
+        /// rather than failing to boot. Read <see cref="GameApp.Window"/>'s <c>BackendSelection</c> after startup:
+        /// a <c>Source</c> of <see cref="KhaozEngine.Gpu.GpuBackendSource.FallbackAfterFailure"/> means the stored
+        /// preference did not work and the game MUST clear it, or the player retries the same broken choice on
+        /// every launch. Offer only <c>GpuBackendSelector.SupportedBackends()</c> in the settings UI.</para>
+        /// </summary>
+        public KhaozEngine.Gpu.GpuBackendKind? GraphicsBackendPreference;
+
+        /// <summary>
         /// Optional explicit worker cap for <see cref="GameApp.JobScheduler"/>. <c>null</c> (the default) sizes it
         /// to <c>Math.Max(1, Environment.ProcessorCount - 1)</c> (leaves one core free for the render/main thread).
         /// Ignored when <see cref="DisableJobScheduler"/> is set. Must be a positive value when set - forwarded

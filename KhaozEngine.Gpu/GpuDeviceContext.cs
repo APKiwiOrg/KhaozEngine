@@ -6,7 +6,7 @@ using KhaozEngine.Gpu.Internal;
 namespace KhaozEngine.Gpu
 {
     /// <summary>
-    /// Owns a Veldrid device created via <see cref="CreateForWindow"/> / <see cref="CreateHeadless()"/> plus the
+    /// Owns a Veldrid device created via <see cref="CreateForWindow(in GpuWindowHandle, uint, uint, bool)"/> / <see cref="CreateHeadless()"/> plus the
     /// engine-owned <see cref="GpuDevice"/> wrapping it. Centralizes backend selection (no hard-coded
     /// <c>GraphicsBackend.Metal</c>) and surfaces <see cref="GpuCapabilities"/>. Renderers consume
     /// <see cref="GpuDevice"/>; the raw Veldrid device stays a private implementation detail of this context.
@@ -77,17 +77,25 @@ namespace KhaozEngine.Gpu
         // remote perf comparison can be spent proving nothing.
         static void LogSelection(GpuBackendSelection selection)
         {
-            if (selection.Source == GpuBackendSource.UnrecognizedOverride)
+            // An unrecognized override is reported whenever one was present and did NOT decide the backend, which
+            // since 17.23.0 includes the case where a stored preference supplied the backend instead. Keying off
+            // the raw value rather than the source is what keeps that warning alive on the new path.
+            if (selection.RequestedOverride != null && selection.Source != GpuBackendSource.EnvironmentOverride)
             {
                 log.Warn($"{GpuBackendSelector.EnvVarName}='{selection.RequestedOverride}' is not a recognized "
-                    + $"backend (metal/vulkan/d3d11/gl). Falling back to {selection.Backend} from the OS probe.");
+                    + $"backend (metal/vulkan/d3d11/gl). Using {selection.Backend} instead.");
             }
 
+            // Every member is spelled out rather than leaning on a discard arm: an appended member must show up
+            // here as a compile-time gap to fill, not silently render as "OS probe" in a tester's log.
             string origin = selection.Source switch
             {
+                GpuBackendSource.OsProbe => "OS probe",
                 GpuBackendSource.EnvironmentOverride => $"{GpuBackendSelector.EnvVarName} override",
                 GpuBackendSource.UnrecognizedOverride => "OS probe, override not recognized",
-                _ => "OS probe",
+                GpuBackendSource.UserPreference => "stored user preference",
+                GpuBackendSource.FallbackAfterFailure => $"fallback, {selection.RequestedBackend} failed",
+                _ => $"unknown source {(int)selection.Source}",
             };
             log.Info($"GPU backend: {selection.Backend} ({origin})");
         }
@@ -121,6 +129,24 @@ namespace KhaozEngine.Gpu
         /// </summary>
         public static GpuDeviceContext CreateForWindow(in GpuWindowHandle window, uint width, uint height,
             bool syncToVerticalBlank = true)
+            => CreateForWindow(window, width, height, syncToVerticalBlank, preferredBackend: null);
+
+        /// <summary>
+        /// The same windowed device creation as <see cref="CreateForWindow(in GpuWindowHandle, uint, uint, bool)"/>,
+        /// with a stored USER PREFERENCE (the consuming game's in-game graphics setting) sitting between the
+        /// <c>KE_GRAPHICS_BACKEND</c> override and the OS probe. Null (the default path) resolves exactly as
+        /// before. The preference arrives as data: this package does no file IO and gains no settings dependency.
+        /// <para>Note the pairing with the <see cref="GpuBackendKind"/> overload below: a NULLABLE argument is a
+        /// preference that may be absent and is resolved against the environment, while a NON-NULLABLE argument
+        /// names the backend outright and skips resolution entirely.</para>
+        /// </summary>
+        public static GpuDeviceContext CreateForWindow(in GpuWindowHandle window, uint width, uint height,
+            bool syncToVerticalBlank, GpuBackendKind? preferredBackend)
+            => CreateForWindow(window, width, height, syncToVerticalBlank,
+                GpuBackendSelector.Resolve(preferredBackend));
+
+        static GpuDeviceContext CreateForWindow(in GpuWindowHandle window, uint width, uint height,
+            bool syncToVerticalBlank, GpuBackendSelection selection)
         {
             SwapchainSource source = window.Kind switch
             {
@@ -138,22 +164,26 @@ namespace KhaozEngine.Gpu
             var opts = new GraphicsDeviceOptions(false, null, syncToVerticalBlank, ResourceBindingModel.Improved, true, true);
             var scDesc = new SwapchainDescription(source, width, height, null, syncToVerticalBlank, false);
 
-            GpuBackendSelection selection = GpuBackendSelector.Resolve();
             GraphicsDevice gd;
             lock (_lifecycleGate)
             {
-                gd = selection.Backend switch
-                {
-                    GpuBackendKind.Metal => GraphicsDevice.CreateMetal(opts, scDesc),
-                    GpuBackendKind.Vulkan => GraphicsDevice.CreateVulkan(opts, scDesc),
-                    GpuBackendKind.Direct3D11 => GraphicsDevice.CreateD3D11(opts, scDesc),
-                    GpuBackendKind.OpenGL => throw new NotSupportedException(
-                        "Windowed OpenGL device-from-handle is not supported (Silk would need to own the GL context)."),
-                    _ => GraphicsDevice.CreateMetal(opts, scDesc),
-                };
+                gd = CreateWindowed(selection.Backend, opts, scDesc);
             }
             return new GpuDeviceContext(gd, selection, ownsDevice: true);
         }
+
+        // Creates a windowed device on `kind`, with no probing, no fallback, and no resolution. The single place
+        // that maps a backend onto a Veldrid factory for the windowed path.
+        static GraphicsDevice CreateWindowed(GpuBackendKind kind, GraphicsDeviceOptions opts, SwapchainDescription scDesc)
+            => kind switch
+            {
+                GpuBackendKind.Metal => GraphicsDevice.CreateMetal(opts, scDesc),
+                GpuBackendKind.Vulkan => GraphicsDevice.CreateVulkan(opts, scDesc),
+                GpuBackendKind.Direct3D11 => GraphicsDevice.CreateD3D11(opts, scDesc),
+                GpuBackendKind.OpenGL => throw new NotSupportedException(
+                    "Windowed OpenGL device-from-handle is not supported (Silk would need to own the GL context)."),
+                _ => GraphicsDevice.CreateMetal(opts, scDesc),
+            };
 
         /// <summary>
         /// Veldrid-free headless device for migrated consumers (Render2D) that must not reference Veldrid. Uses

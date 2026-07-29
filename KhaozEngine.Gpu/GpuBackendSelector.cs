@@ -10,19 +10,41 @@ namespace KhaozEngine.Gpu
     /// <c>KE_GRAPHICS_BACKEND</c> silently falls back to the OS probe and the run looks like the requested backend
     /// was tried and did not help.
     /// </summary>
+    /// <remarks>
+    /// The numeric values are a PUBLISHED CONTRACT: consuming games record <c>(int)GpuBackendSource</c> into
+    /// telemetry, and captured traces are read back against these numbers. Members are therefore pinned to
+    /// explicit values and may only ever be APPENDED. Never reorder, renumber, or remove one.
+    /// </remarks>
     public enum GpuBackendSource
     {
-        /// <summary>No override was present, so the backend came from the OS probe.</summary>
-        OsProbe,
+        /// <summary>No override or preference was present, so the backend came from the OS probe.</summary>
+        OsProbe = 0,
 
         /// <summary><c>KE_GRAPHICS_BACKEND</c> was set to a recognized backend, and it was honoured.</summary>
-        EnvironmentOverride,
+        EnvironmentOverride = 1,
 
         /// <summary>
-        /// <c>KE_GRAPHICS_BACKEND</c> was set to something unparseable, so the OS probe decided instead. The raw
-        /// value is kept on <see cref="GpuBackendSelection.RequestedOverride"/> for the diagnostic.
+        /// <c>KE_GRAPHICS_BACKEND</c> was set to something unparseable AND no stored preference was supplied, so
+        /// the OS probe decided instead. The raw value is kept on
+        /// <see cref="GpuBackendSelection.RequestedOverride"/> for the diagnostic.
         /// </summary>
-        UnrecognizedOverride,
+        UnrecognizedOverride = 2,
+
+        /// <summary>
+        /// The backend came from the STORED USER PREFERENCE the consuming game handed in (its in-game graphics
+        /// setting), with no environment override outranking it. Appended in 17.23.0.
+        /// </summary>
+        UserPreference = 3,
+
+        /// <summary>
+        /// Device creation on the requested backend FAILED (or the backend failed its support probe), so the
+        /// engine fell back to the OS-probe default to keep the app bootable.
+        /// <see cref="GpuBackendSelection.Backend"/> is what actually runs and
+        /// <see cref="GpuBackendSelection.RequestedBackend"/> is what was asked for and did not work. A consuming
+        /// game that stores a backend preference MUST clear it when it sees this, or the player retries the same
+        /// broken choice on every launch. Appended in 17.23.0.
+        /// </summary>
+        FallbackAfterFailure = 4,
     }
 
     /// <summary>
@@ -35,10 +57,18 @@ namespace KhaozEngine.Gpu
     /// The raw environment value exactly as read, or null when no non-blank override was present. Deliberately not
     /// normalized: the untouched string is what makes a typo (<c>vulcan</c>) or stray quoting obvious in a log.
     /// </param>
+    /// <param name="RequestedBackend">
+    /// The backend that was ASKED for but did not work, set only when <paramref name="Source"/> is
+    /// <see cref="GpuBackendSource.FallbackAfterFailure"/> (null otherwise). Paired with
+    /// <paramref name="Backend"/>, which is what actually runs, this is what lets a consuming game say "your
+    /// Vulkan choice failed, you are on Direct3D11" and clear the stored preference that caused it. Added in
+    /// 17.23.0 with a default so every existing three-argument construction still compiles.
+    /// </param>
     public readonly record struct GpuBackendSelection(
         GpuBackendKind Backend,
         GpuBackendSource Source,
-        string? RequestedOverride);
+        string? RequestedOverride,
+        GpuBackendKind? RequestedBackend = null);
 
     /// <summary>
     /// Centralizes graphics-backend selection. <see cref="Select()"/> reads the <c>KE_GRAPHICS_BACKEND</c>
@@ -69,11 +99,27 @@ namespace KhaozEngine.Gpu
             => Resolve(envOverride, os).Backend;
 
         /// <summary>
+        /// Pure backend selection with a stored USER PREFERENCE in the middle of the precedence chain
+        /// (environment override, then preference, then OS probe). See
+        /// <see cref="Resolve(string?, OSPlatformKind, GpuBackendKind?)"/>.
+        /// </summary>
+        public static GpuBackendKind Select(string? envOverride, OSPlatformKind os, GpuBackendKind? userPreference)
+            => Resolve(envOverride, os, userPreference).Backend;
+
+        /// <summary>
         /// The same decision <see cref="Select()"/> makes, read from the live environment, but reported with its
         /// provenance so callers can log it and spot a misconfigured override.
         /// </summary>
-        public static GpuBackendSelection Resolve()
-            => Resolve(Environment.GetEnvironmentVariable(EnvVarName), DetectOS());
+        public static GpuBackendSelection Resolve() => Resolve(userPreference: null);
+
+        /// <summary>
+        /// Resolve from the live environment with a stored user preference (the consuming game's in-game graphics
+        /// setting) sitting between the <c>KE_GRAPHICS_BACKEND</c> override and the OS probe. The engine never
+        /// reads that preference from disk itself: it arrives here as DATA, so <c>KhaozEngine.Gpu</c> keeps its
+        /// Diagnostics + Primitives dependency set and takes on no settings or persistence edge.
+        /// </summary>
+        public static GpuBackendSelection Resolve(GpuBackendKind? userPreference)
+            => Resolve(Environment.GetEnvironmentVariable(EnvVarName), DetectOS(), userPreference);
 
         /// <summary>
         /// Pure, headless-testable backend selection WITH provenance, and the one decision path
@@ -84,12 +130,38 @@ namespace KhaozEngine.Gpu
         /// the backend, but the raw value is preserved so the caller can say what was asked for.
         /// </summary>
         public static GpuBackendSelection Resolve(string? envOverride, OSPlatformKind os)
+            => Resolve(envOverride, os, userPreference: null);
+
+        /// <summary>
+        /// Pure, headless-testable backend selection with the full precedence chain, highest first:
+        /// <list type="number">
+        /// <item>a recognized <c>KE_GRAPHICS_BACKEND</c> value (the debug lever, and it must keep winning so a
+        /// developer can always force a backend regardless of what the player picked),</item>
+        /// <item><paramref name="userPreference"/>, the backend the player chose in game,</item>
+        /// <item>the <paramref name="os"/> probe.</item>
+        /// </list>
+        /// A non-blank <paramref name="envOverride"/> that fails to parse is NOT an override, so it falls through
+        /// to the preference like any other miss. Its raw text is still carried on
+        /// <see cref="GpuBackendSelection.RequestedOverride"/> either way, so the "you typed <c>vulcan</c>"
+        /// diagnostic survives even when a preference supplied the backend. With
+        /// <paramref name="userPreference"/> null this is byte-for-byte the pre-17.23.0 behaviour, which is what
+        /// keeps every existing call site unchanged.
+        /// </summary>
+        public static GpuBackendSelection Resolve(string? envOverride, OSPlatformKind os, GpuBackendKind? userPreference)
         {
-            if (string.IsNullOrWhiteSpace(envOverride))
-                return new GpuBackendSelection(ProbeOS(os), GpuBackendSource.OsProbe, null);
-            if (TryParseBackend(envOverride, out GpuBackendKind overridden))
+            bool hasOverride = !string.IsNullOrWhiteSpace(envOverride);
+            if (hasOverride && TryParseBackend(envOverride, out GpuBackendKind overridden))
                 return new GpuBackendSelection(overridden, GpuBackendSource.EnvironmentOverride, envOverride);
-            return new GpuBackendSelection(ProbeOS(os), GpuBackendSource.UnrecognizedOverride, envOverride);
+
+            // Preserved verbatim for the diagnostic: an unrecognized override is reported even when the backend
+            // ends up coming from the preference below, because "the env var you set did nothing" is exactly the
+            // thing a tester needs told.
+            string? raw = hasOverride ? envOverride : null;
+            if (userPreference is GpuBackendKind preferred)
+                return new GpuBackendSelection(preferred, GpuBackendSource.UserPreference, raw);
+
+            GpuBackendSource source = raw is null ? GpuBackendSource.OsProbe : GpuBackendSource.UnrecognizedOverride;
+            return new GpuBackendSelection(ProbeOS(os), source, raw);
         }
 
         /// <summary>Map a <c>KE_GRAPHICS_BACKEND</c> value to a backend. Case-insensitive; trims whitespace.</summary>

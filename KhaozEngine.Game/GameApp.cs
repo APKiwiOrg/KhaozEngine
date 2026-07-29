@@ -133,12 +133,13 @@ namespace KhaozEngine.Game
             // AdaptiveViewport for a responsive, display-fitted game); otherwise the plain defaults. The window is
             // born hidden (AppWindow's ctor); it is revealed by Show() below, after the icon is applied.
             _window = options.WindowFactory?.Invoke(options)
-                ?? new AppWindow(options.Title, options.Width, options.Height, options.PresentMode, requestedCap);
+                ?? new AppWindow(options.Title, options.Width, options.Height, options.PresentMode, requestedCap,
+                    options.GraphicsBackendPreference);
             _window.ClearColor = options.ClearColor;
             // FrameCap and BackgroundThrottle are post-construction properties, so they apply on BOTH the default
             // window (above) and a custom WindowFactory window (which cannot know these options otherwise). PresentMode
-            // selects the swapchain vsync at creation, so it is honoured only on the default window. A factory must
-            // forward it.
+            // and GraphicsBackendPreference both feed device/swapchain creation, so they are honoured only on the
+            // default window. A factory must forward them.
             _window.FrameCap = requestedCap;
             _window.BackgroundThrottle = options.BackgroundThrottle ?? BackgroundThrottlePolicy.Default;
             // WindowMode is a post-construction switch (the window is born windowed), so it applies on BOTH the

@@ -191,5 +191,97 @@ namespace KhaozEngine.Tests.Gpu
                 }
             }
         }
+
+        // --- The stored user preference (17.23.0): env override > preference > OS probe. The preference is the
+        // player's in-game graphics setting, handed in as data so KhaozEngine.Gpu does no file IO. ---
+
+        [Theory]
+        [InlineData(OSPlatformKind.Windows, GpuBackendKind.Vulkan)]
+        [InlineData(OSPlatformKind.MacOS, GpuBackendKind.Vulkan)]
+        [InlineData(OSPlatformKind.Linux, GpuBackendKind.Direct3D11)]
+        public void Resolve_PreferenceWithNoOverride_BeatsTheOsProbe(OSPlatformKind os, GpuBackendKind preference)
+        {
+            GpuBackendSelection selection = GpuBackendSelector.Resolve(null, os, preference);
+
+            Assert.Equal(preference, selection.Backend);
+            Assert.Equal(GpuBackendSource.UserPreference, selection.Source);
+            Assert.Null(selection.RequestedOverride);
+            Assert.Null(selection.RequestedBackend);
+        }
+
+        [Fact]
+        public void Resolve_EnvironmentOverride_OutranksThePreference()
+        {
+            // The whole point of keeping the env var on top: a developer must be able to force a backend for a
+            // repro no matter what the player picked in the settings screen.
+            GpuBackendSelection selection =
+                GpuBackendSelector.Resolve("metal", OSPlatformKind.Windows, GpuBackendKind.Vulkan);
+
+            Assert.Equal(GpuBackendKind.Metal, selection.Backend);
+            Assert.Equal(GpuBackendSource.EnvironmentOverride, selection.Source);
+            Assert.Equal("metal", selection.RequestedOverride);
+        }
+
+        [Fact]
+        public void Resolve_UnparseableOverride_FallsThroughToThePreferenceAndStillReportsTheBadValue()
+        {
+            // An override that does not parse is not an override, so it falls to the next rung rather than
+            // skipping the player's choice and landing on the OS probe. The raw text is still carried so the
+            // "your env var did nothing" warning survives.
+            GpuBackendSelection selection =
+                GpuBackendSelector.Resolve("vulcan", OSPlatformKind.Windows, GpuBackendKind.Vulkan);
+
+            Assert.Equal(GpuBackendKind.Vulkan, selection.Backend);
+            Assert.Equal(GpuBackendSource.UserPreference, selection.Source);
+            Assert.Equal("vulcan", selection.RequestedOverride);
+        }
+
+        [Theory]
+        [InlineData(OSPlatformKind.MacOS, GpuBackendKind.Metal)]
+        [InlineData(OSPlatformKind.Windows, GpuBackendKind.Direct3D11)]
+        [InlineData(OSPlatformKind.Linux, GpuBackendKind.Vulkan)]
+        [InlineData(OSPlatformKind.Unknown, GpuBackendKind.Vulkan)]
+        public void Resolve_NullPreference_IsIdenticalToTheTwoArgumentOverload(OSPlatformKind os, GpuBackendKind expected)
+        {
+            // The compatibility guarantee that keeps every pre-17.23.0 call site behaving exactly as it did.
+            foreach (string? env in new string?[] { null, "", "vulcan", "metal" })
+            {
+                Assert.Equal(GpuBackendSelector.Resolve(env, os), GpuBackendSelector.Resolve(env, os, null));
+            }
+            Assert.Equal(expected, GpuBackendSelector.Resolve(null, os, null).Backend);
+        }
+
+        [Fact]
+        public void Select_AndResolve_AgreeOnEveryInput_WithAPreferenceToo()
+        {
+            GpuBackendKind?[] preferences = { null, GpuBackendKind.Vulkan, GpuBackendKind.Metal, GpuBackendKind.Direct3D11 };
+            string?[] overrides = { null, "", "vulcan", "metal", "d3d11" };
+
+            foreach (OSPlatformKind os in new[]
+                { OSPlatformKind.MacOS, OSPlatformKind.Windows, OSPlatformKind.Linux, OSPlatformKind.Unknown })
+            {
+                foreach (string? env in overrides)
+                {
+                    foreach (GpuBackendKind? pref in preferences)
+                    {
+                        Assert.Equal(
+                            GpuBackendSelector.Select(env, os, pref),
+                            GpuBackendSelector.Resolve(env, os, pref).Backend);
+                    }
+                }
+            }
+        }
+
+        // The numeric values are a published telemetry contract (consumers persist (int)GpuBackendSource and read
+        // captured traces back against these numbers). This test is the thing that fails if anyone reorders them.
+        [Fact]
+        public void GpuBackendSource_NumericValues_ArePinned()
+        {
+            Assert.Equal(0, (int)GpuBackendSource.OsProbe);
+            Assert.Equal(1, (int)GpuBackendSource.EnvironmentOverride);
+            Assert.Equal(2, (int)GpuBackendSource.UnrecognizedOverride);
+            Assert.Equal(3, (int)GpuBackendSource.UserPreference);
+            Assert.Equal(4, (int)GpuBackendSource.FallbackAfterFailure);
+        }
     }
 }

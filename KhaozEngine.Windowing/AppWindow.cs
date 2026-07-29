@@ -50,7 +50,7 @@ namespace KhaozEngine.Windowing
     /// <summary>
     /// Owns the Silk.NET window + input + frame loop (GLFW natives bundled per-RID, so no <c>brew install sdl2</c>), the engine GPU
     /// device (<see cref="IGpuDevice"/>, backend GPU types hidden behind the KhaozEngine.Gpu seam), and presentation. The Veldrid
-    /// swapchain comes from the native window handle via <see cref="GpuDeviceContext.CreateForWindow"/>, on the backend
+    /// swapchain comes from the native window handle via <see cref="GpuDeviceContext.CreateForWindow(in GpuWindowHandle, uint, uint, bool)"/>, on the backend
     /// <see cref="GpuBackendSelector"/> picked, which <see cref="BackendSelection"/> reports with its provenance. Each frame pumps
     /// Silk input into an engine-native <see cref="InputState"/>, clears the swapchain, runs the callback, and presents.
     /// </summary>
@@ -441,8 +441,14 @@ namespace KhaozEngine.Windowing
         /// (<paramref name="frameCap"/>): <see cref="Windowing.FrameCap.Auto"/> (backend-aware default),
         /// <see cref="Windowing.FrameCap.Uncapped"/>, or a fixed <see cref="Windowing.FrameCap.Hz"/>. The cap can also
         /// be changed later via <see cref="FrameCap"/> / <see cref="FrameCapHz"/>.
+        /// <para><paramref name="backendPreference"/> is the player's stored graphics-backend choice, handed in as
+        /// data (this package reads no settings file). It outranks the OS probe and is outranked by
+        /// <c>KE_GRAPHICS_BACKEND</c>. A preference whose device cannot be created falls back to the OS-probe
+        /// backend, which <see cref="BackendSelection"/> then reports as
+        /// <see cref="GpuBackendSource.FallbackAfterFailure"/>.</para>
         /// </summary>
-        public AppWindow(string title, int width, int height, PresentMode presentMode, FrameCap frameCap)
+        public AppWindow(string title, int width, int height, PresentMode presentMode, FrameCap frameCap,
+            GpuBackendKind? backendPreference = null)
         {
             // WinExe support, belt-and-suspenders for a bare AppWindow host (one with no GameApp facade): a
             // Windows-subsystem exe has no console, so surface diagnostics like the Metal-vsync warning below
@@ -478,7 +484,7 @@ namespace KhaozEngine.Windowing
 
             GpuWindowHandle handle = BuildHandle(_window);
             _gpu = GpuDeviceContext.CreateForWindow(handle, (uint)width, (uint)height,
-                syncToVerticalBlank: presentMode == PresentMode.Vsync);
+                syncToVerticalBlank: presentMode == PresentMode.Vsync, preferredBackend: backendPreference);
             _device = _gpu.GpuDevice;
             _cl = _device.Factory.CreateCommandList();
 
@@ -502,65 +508,6 @@ namespace KhaozEngine.Windowing
                 Clipboard.RegisterTextProvider(
                     () => GlfwClipboard.ReadText(glfwWindow),
                     text => GlfwClipboard.WriteText(glfwWindow, text));
-            }
-        }
-
-        /// <summary>
-        /// Open a window for a fixed design resolution, sized up to fill the display. The window opens at the
-        /// largest multiple of (<paramref name="designWidth"/> x <paramref name="designHeight"/>) that preserves the
-        /// design aspect and fits within <paramref name="screenFraction"/> of the primary monitor's work area,
-        /// clamped to [1, <paramref name="maxScale"/>]. A small-tall (portrait) design on a desktop monitor thus
-        /// opens large enough to read instead of at life-size; pair with a <c>DesignViewport</c> (Fit) so the whole
-        /// UI scales uniformly. Never opens smaller than the design size, and falls back to it if the monitor size
-        /// is unavailable.
-        /// </summary>
-        public static AppWindow Scaled(string title, int designWidth, int designHeight,
-            float screenFraction = 0.9f, float maxScale = 2f,
-            PresentMode presentMode = PresentMode.Vsync, int frameCapHz = 0)
-        {
-            GlfwWindowing.RegisterPlatform();
-            var (sw, sh) = PrimaryScreenSize();
-            var (w, h) = FitToScreen(designWidth, designHeight, sw, sh, screenFraction, maxScale);
-            return new AppWindow(title, w, h, presentMode, frameCapHz);
-        }
-
-        /// <summary>
-        /// Pure window-sizing policy (no monitor / GPU access, so it is unit-testable): the largest size with the
-        /// design's aspect ratio that fits within <paramref name="screenFraction"/> of a
-        /// <paramref name="screenWidth"/> x <paramref name="screenHeight"/> display, expressed as a uniform scale of
-        /// the design clamped to [1, <paramref name="maxScale"/>]. Returns the design size unchanged when the screen
-        /// size is unknown (&lt;= 0) or too small to grow into.
-        /// </summary>
-        public static (int Width, int Height) FitToScreen(int designWidth, int designHeight,
-            int screenWidth, int screenHeight, float screenFraction = 0.9f, float maxScale = 2f)
-        {
-            if (designWidth <= 0 || designHeight <= 0) return (designWidth, designHeight);
-            if (screenWidth <= 0 || screenHeight <= 0) return (designWidth, designHeight);
-
-            float availW = screenWidth * screenFraction;
-            float availH = screenHeight * screenFraction;
-            // Uniform scale that keeps the design fully inside the available area on both axes.
-            float scale = ViewportMath.Fit(designWidth, designHeight, availW, availH);
-            scale = Math.Clamp(scale, 1f, MathF.Max(1f, maxScale));
-            return ((int)MathF.Round(designWidth * scale), (int)MathF.Round(designHeight * scale));
-        }
-
-        /// <summary>
-        /// The primary monitor's size in window coordinates, or (0, 0) if it cannot be determined. Requires the
-        /// Silk GLFW platform to be registered (the constructors / <see cref="Scaled"/> do this).
-        /// </summary>
-        public static (int Width, int Height) PrimaryScreenSize()
-        {
-            try
-            {
-                IMonitor? monitor = Monitor.GetMainMonitor(null);
-                if (monitor == null) return (0, 0);
-                Vector2D<int> size = monitor.Bounds.Size;
-                return (size.X, size.Y);
-            }
-            catch
-            {
-                return (0, 0); // headless / no display: caller falls back to the design size.
             }
         }
 

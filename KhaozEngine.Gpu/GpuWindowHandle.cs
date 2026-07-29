@@ -4,7 +4,7 @@ namespace KhaozEngine.Gpu
 {
     /// <summary>
     /// The native windowing platform a <see cref="GpuWindowHandle"/> belongs to. Picks which Veldrid
-    /// <c>SwapchainSource</c> factory <see cref="GpuDeviceContext.CreateForWindow"/> uses. Cocoa/Win32 carry
+    /// <c>SwapchainSource</c> factory <see cref="GpuDeviceContext.CreateForWindow(in GpuWindowHandle, uint, uint, bool)"/> uses. Cocoa/Win32 carry
     /// just the window handle; X11/Wayland also need the display pointer.
     /// </summary>
     public enum GpuWindowKind { Cocoa, Win32, X11, Wayland }

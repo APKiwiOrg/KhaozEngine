@@ -5,6 +5,32 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.17.0
+
+### The per-frame upload total now says which stream it is
+
+BufferUpdateBytes was one number over four unrelated streams, so a frame reporting
+megabytes of per-frame upload gave no way to say which one to go after. A live read on a
+consuming MMO client sat at 19.3 MB per frame and the rigid instance stream was assumed to
+be it. Measured on a scene built to that client's shape, the rigid instance stream is 471 KB
+and flat while one 13.6k-vertex character costs 853 KB per frame, so two dozen characters
+account for the whole reading and the instance stream is 2.3 percent of it.
+
+Four fields now partition the total exactly: InstanceUploadBytes, SkinnedUploadBytes,
+SkinnedUniformUploadBytes and SpriteUploadBytes. Producers record through AddInstanceUpload
+and its siblings, which bump the total and one bucket in one call, so the partition cannot
+drift from the total. The diagnostics overlay shows the split indented under the total.
+Additive: the total keeps its meaning and no rendered output moves.
+
+The same harness puts a number on the GPU skinning flag (Scene3D.UseGpuSkinning, still
+default off pending a windowed A/B). On one device, 24 characters at 13.6k vertices and 48
+bones over four cascades: frame upload 20,934 to 866 KB, a 24.2x cut, and 11.54 to 4.75 ms.
+CPU skinning re-uploads 64 bytes per vertex per character per frame, GPU skinning uploads 64
+bytes per bone. If a game draws more than a handful of skinned characters at once, that flag
+is the largest per-frame upload lever the engine has. The shadow-path UBO duplication that
+caps the win at shadow time is tracked as
+[#407](https://github.com/APKiwiOrg/KhaozEngine/issues/407).
+
 ## 17.16.0
 
 ### The FFT ocean stops draining the GPU every frame

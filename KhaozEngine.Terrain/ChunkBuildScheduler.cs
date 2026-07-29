@@ -106,6 +106,17 @@ namespace KhaozEngine.Terrain
         /// builds for chunks that fell outside the unload radius before they were applied.</summary>
         public IReadOnlyCollection<ChunkCoord> Tracked => _current.Keys;
 
+        /// <summary>Optional handler for a faulted build, invoked on the frame thread from <see cref="Pump"/> /
+        /// <see cref="Flush"/>. When it is null (the default) <see cref="Pump"/> THROWS the
+        /// <see cref="ChunkBuildException"/>, which is the original behaviour and is what a tool or a test that wants
+        /// a build bug to surface loudly relies on. When it is set, the fault is handed to it instead and the pump
+        /// keeps draining, so one bad chunk cannot abort the rest of the frame's completions or escape into the
+        /// caller's frame loop.
+        /// <para>Either way the chunk is dropped from the tracking set first, so a later <see cref="Request"/> for the
+        /// same coord builds again: the handler decides whether to retry it or leave it out (issue #402, where an
+        /// exception from one chunk's HLOD merge terminated the client mid-play).</para></summary>
+        public Action<ChunkBuildException>? BuildFailed { get; set; }
+
         /// <summary>The LOD of the most recent request for <paramref name="coord"/> (whether still running or already
         /// ready), or -1 if the scheduler is not tracking it. Lets the streamer avoid re-requesting a build it already
         /// asked for at the same LOD.</summary>
@@ -148,8 +159,9 @@ namespace KhaozEngine.Terrain
         }
 
         /// <summary>Move every finished build from the worker-thread queue into the ready set, dropping stale ones
-        /// (superseded or cancelled). Call once per frame before <see cref="TakeReady"/>. Re-throws a
-        /// <see cref="ChunkBuildException"/> if a still-current build faulted.</summary>
+        /// (superseded or cancelled). Call once per frame before <see cref="TakeReady"/>. A still-current build that
+        /// faulted is reported to <see cref="BuildFailed"/> when one is set, and otherwise re-thrown here as a
+        /// <see cref="ChunkBuildException"/>.</summary>
         public void Pump()
         {
             while (_done.TryDequeue(out Completion c))
@@ -160,7 +172,10 @@ namespace KhaozEngine.Terrain
                 if (c.Error is not null)
                 {
                     _current.Remove(c.Coord);   // clear so a later request for this coord can retry
-                    throw new ChunkBuildException(c.Coord, c.Lod, c.Error);
+                    var fault = new ChunkBuildException(c.Coord, c.Lod, c.Error);
+                    if (BuildFailed is null) throw fault;
+                    BuildFailed(fault);
+                    continue;                   // contained: keep draining the rest of this frame's completions
                 }
 
                 s.Ready = true;

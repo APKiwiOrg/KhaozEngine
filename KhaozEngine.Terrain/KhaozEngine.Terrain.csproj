@@ -9,6 +9,8 @@
     <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
     <!-- PropColliders.FromScatter turns scatter placements into a Collision.WorldColliders set. -->
     <ProjectReference Include="../KhaozEngine.Collision/KhaozEngine.Collision.csproj" />
+    <!-- TerrainStreamer logs a contained chunk-build failure at ERROR (a windowed client has no console to print to). -->
+    <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />

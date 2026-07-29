@@ -26,13 +26,22 @@ namespace KhaozEngine.Terrain
     /// <c>Update</c>, farthest first, so a ring shift spreads over frames instead of freeing a whole outgoing ring in
     /// one call. The rest are simply reconsidered next frame, which means a chunk that comes back into range before
     /// its turn is never unloaded at all (and so never reloaded). 0 or less opts out and frees everything at once.
-    /// <c>UnloadAll</c> is never budgeted: a teleport or world rebuild must free the whole ring on the spot.</para></summary>
-    public readonly record struct StreamerConfig(int LoadRadius, int UnloadRadius, int MaxLoadsPerFrame, float ChunkSize, bool Async = true, int DecorRadius = 0, TerrainLodConfig? LodConfig = null, float LodHysteresis = TerrainLodConfig.DefaultHysteresis, int MaxUnloadsPerFrame = StreamerConfig.DefaultMaxUnloadsPerFrame)
+    /// <c>UnloadAll</c> is never budgeted: a teleport or world rebuild must free the whole ring on the spot.</para>
+    /// <para><b>Build failures.</b> <see cref="MaxChunkBuildAttempts"/> caps how many times the async streamer rebuilds
+    /// a chunk whose background build keeps throwing. Each failure is logged at ERROR and the chunk is retried on a
+    /// later pass. At the cap it is abandoned and stays absent, so a permanently poisoned chunk leaves one hole in the
+    /// world instead of an error every frame forever. 1 disables retrying (fail once, abandon).</para></summary>
+    public readonly record struct StreamerConfig(int LoadRadius, int UnloadRadius, int MaxLoadsPerFrame, float ChunkSize, bool Async = true, int DecorRadius = 0, TerrainLodConfig? LodConfig = null, float LodHysteresis = TerrainLodConfig.DefaultHysteresis, int MaxUnloadsPerFrame = StreamerConfig.DefaultMaxUnloadsPerFrame, int MaxChunkBuildAttempts = StreamerConfig.DefaultMaxChunkBuildAttempts)
     {
         /// <summary>Default per-frame unload budget. A one-chunk ring shift exposes roughly a dozen chunks at the
         /// default radii, so 8 clears an ordinary shift in two frames while still capping the worst case (a long
         /// jump, or a slow frame that skipped several chunk boundaries at once).</summary>
         public const int DefaultMaxUnloadsPerFrame = 8;
+
+        /// <summary>Default cap on build attempts per chunk: 3. Enough that a genuinely transient failure (a
+        /// contended resource, a one-off allocation failure) recovers on its own, low enough that a deterministic one
+        /// stops costing work and log volume almost immediately.</summary>
+        public const int DefaultMaxChunkBuildAttempts = 3;
 
         /// <summary>LoadRadius 4 (~240 m gameplay disk), UnloadRadius 6 (2-chunk hysteresis band), 3 applies/frame,
         /// 60 m chunks, async build on, NO decor ring by default (games opt into a far horizon by setting

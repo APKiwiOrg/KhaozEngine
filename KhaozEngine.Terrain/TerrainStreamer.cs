@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using KhaozEngine.Diagnostics;
 
 namespace KhaozEngine.Terrain
 {
@@ -52,6 +53,15 @@ namespace KhaozEngine.Terrain
         float _nearestFirstChunkSize;
         readonly Comparison<ChunkCoord> _nearestFirst;
 
+        // Contained build failures (issue #402). _attempts counts consecutive failed builds per chunk and is cleared
+        // the moment one applies, so only a REPEATED failure counts toward the cap. _abandoned is the set that hit the
+        // cap: those are skipped by the ring scan, which is what stops a permanently poisoned chunk from being rebuilt
+        // (and re-logged) every single frame for the rest of the session.
+        readonly Dictionary<ChunkCoord, int> _attempts = new();
+        readonly HashSet<ChunkCoord> _abandoned = new();
+        int _failedBuilds;
+        ChunkBuildException? _lastBuildFault;   // kept so a total priming failure can report the real cause
+
         bool _disposed;
 
         sealed class Entry { public object Handle = null!; public int Lod; public ChunkRing Ring; }
@@ -74,8 +84,40 @@ namespace KhaozEngine.Terrain
             {
                 _async = true;
                 _asyncSink = asyncSink;
-                _scheduler = new ChunkBuildScheduler<object>(asyncSink.BuildCpu, dispatcher);
+                _scheduler = new ChunkBuildScheduler<object>(asyncSink.BuildCpu, dispatcher)
+                {
+                    // Contain a faulted background build here instead of letting it out of Update into the game's
+                    // frame loop, where it terminates the process (issue #402).
+                    BuildFailed = OnBuildFailed,
+                };
             }
+        }
+
+        /// <summary>A background chunk build threw. Log it, count it against this chunk's attempt budget, and either
+        /// leave it to be re-requested by the next ring scan or abandon it for good.
+        /// <para>This runs on the frame thread (the scheduler pumps completions back before invoking us), so touching
+        /// the streamer's own bookkeeping here is safe.</para></summary>
+        void OnBuildFailed(ChunkBuildException fault)
+        {
+            _failedBuilds++;
+            _lastBuildFault = fault;
+            int attempts = _attempts.TryGetValue(fault.Coord, out int n) ? n + 1 : 1;
+            _attempts[fault.Coord] = attempts;
+
+            int cap = _config.MaxChunkBuildAttempts;
+            if (attempts >= cap)
+            {
+                _attempts.Remove(fault.Coord);
+                _abandoned.Add(fault.Coord);
+                Log.For<TerrainStreamer>().Error(
+                    $"Terrain chunk {fault.Coord} failed to build {attempts} time(s) at LOD {fault.Lod}; abandoning it. " +
+                    "That chunk stays absent for this session and will not be requested again.", fault);
+                return;
+            }
+
+            Log.For<TerrainStreamer>().Error(
+                $"Terrain chunk {fault.Coord} failed to build at LOD {fault.Lod} (attempt {attempts} of {cap}); retrying on a later pass.",
+                fault);
         }
 
         /// <summary>Optional build gate. Null (the default) preserves today's behaviour byte for byte: every chunk
@@ -106,6 +148,16 @@ namespace KhaozEngine.Terrain
         /// render-only (no scatter or physics); a gameplay chunk is simulated.</summary>
         public ChunkRing? RingOf(ChunkCoord coord) => _loaded.TryGetValue(coord, out Entry? e) ? e.Ring : null;
 
+        /// <summary>How many background chunk builds have faulted over this streamer's life, counting every retry
+        /// separately. A boot step can report this after <see cref="PrimeAround"/> to say the world primed with
+        /// failures rather than silently shipping a world with holes in it.</summary>
+        public int FailedBuildCount => _failedBuilds;
+
+        /// <summary>Chunks whose builds failed <see cref="StreamerConfig.MaxChunkBuildAttempts"/> times and are no
+        /// longer requested. These are the permanent holes in the world: everything else either loaded or is still
+        /// being retried. Cleared by <see cref="UnloadAll"/>, so a world rebuild gives every chunk a fresh start.</summary>
+        public IReadOnlyCollection<ChunkCoord> AbandonedChunks => _abandoned;
+
         /// <summary>Unload every currently-loaded chunk through the sink and clear the ring (after this <see cref="Loaded"/>
         /// is empty), discarding any outstanding async builds. Call before a streaming rebuild that keeps the same
         /// sink/scene alive so the previous ring's GPU meshes are freed rather than leaked. Does NOT dispose the sink
@@ -116,6 +168,11 @@ namespace KhaozEngine.Terrain
                 _sink.Unload(kv.Key, kv.Value.Handle);
             _loaded.Clear();
             _scheduler?.Reset();
+            // A rebuild is a fresh start: the field, the document, or the kit may be different now, so a chunk that
+            // could not build against the OLD state has earned another go. FailedBuildCount is a life-of-streamer
+            // total and deliberately keeps counting.
+            _attempts.Clear();
+            _abandoned.Clear();
         }
 
         /// <summary>Flush the loaded ring (<see cref="UnloadAll"/>) then dispose the sink if it is
@@ -149,17 +206,29 @@ namespace KhaozEngine.Terrain
         /// (the ctor forces that radius past the outer load radius, so the two regions are disjoint), and an apply
         /// fills one of the finitely many chunks in range that are missing or on the wrong tier, which stays filled (a
         /// chunk applied at the tier the hysteresis picked re-picks that same tier next pass). A load budget of 0 or
-        /// less simply means no pass ever does work, so this returns after one.</para></summary>
+        /// less simply means no pass ever does work, so this returns after one.</para>
+        /// <para><b>Isolated build failures do not fail the prime</b> (issue #402). A chunk whose background build
+        /// throws is logged at ERROR and left out, and priming carries on with the rest: a world of 377 chunks missing
+        /// one beats no world. Read <see cref="FailedBuildCount"/> / <see cref="AbandonedChunks"/> afterwards to report
+        /// what was lost. A prime that loads NOTHING is still a real boot failure and throws, because at that point
+        /// there is no world to walk into - the exception carries the last underlying build fault as its cause.</para></summary>
         public void PrimeAround(Vector3 playerPos)
         {
+            int failedBefore = _failedBuilds;
             while (true)
             {
                 // Both run every pass: in async mode the requests go out in the update and the applies land in the
                 // flush, so either half on its own is an incomplete picture of the pass.
                 bool updated = UpdateOnce(playerPos);
                 bool flushed = FlushBuilds();
-                if (!updated && !flushed) return;
+                if (!updated && !flushed) break;
             }
+
+            int failed = _failedBuilds - failedBefore;
+            if (failed > 0 && _loaded.Count == 0)
+                throw new InvalidOperationException(
+                    $"Terrain priming around {playerPos} loaded no chunks at all: every build attempt failed ({failed} in total). " +
+                    "This is a world that cannot prime, not one chunk degrading.", _lastBuildFault);
         }
 
         /// <summary>Force every outstanding async build to complete and apply it now (GPU upload on this thread),
@@ -288,6 +357,9 @@ namespace KhaozEngine.Terrain
                 int chunkDistSq = dx * dx + dz * dz;
                 if (chunkDistSq > loadSq) continue;
                 var c = new ChunkCoord(pc.X + dx, pc.Z + dz);
+                // Abandoned: its build threw its way through MaxChunkBuildAttempts. Never request it again, which is
+                // what turns a permanently failing chunk into one hole instead of a per-frame rebuild + error (#402).
+                if (_abandoned.Contains(c)) continue;
                 if (BuildGate is { } gate && !gate.CanBuild(c)) continue;   // deferred: reconsidered next Update
 
                 Vector2 center = ChunkGrid.CenterOf(c, cs);
@@ -413,6 +485,9 @@ namespace KhaozEngine.Terrain
                 object? existing = _loaded.TryGetValue(rb.Coord, out Entry? e) ? e.Handle : null;
                 object handle = _asyncSink!.Apply(rb.Coord, rb.Lod, rb.Ring, rb.Payload, existing);
                 _loaded[rb.Coord] = new Entry { Handle = handle, Lod = rb.Lod, Ring = rb.Ring };
+                // A build that landed clears this chunk's failure streak, so the cap only ever counts CONSECUTIVE
+                // failures and a chunk that recovers is not abandoned later for damage it already walked off.
+                if (_attempts.Count > 0) _attempts.Remove(rb.Coord);
             }
             return builds.Count;
         }

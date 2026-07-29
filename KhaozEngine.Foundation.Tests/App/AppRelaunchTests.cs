@@ -249,5 +249,83 @@ namespace KhaozEngine.Tests.App
             Assert.Equal(1234, successor.LastWaitPid);
             Assert.Equal(new[] { "--level", "3" }, wait.Arguments);
         }
+
+        // --- Resolving the target across both shipped shapes (17.23.0). A self-contained apphost is named by
+        // Environment.ProcessPath directly; `dotnet <app>.dll` is not, because ProcessPath is then the SHARED
+        // muxer and the dll that says which app to run is dropped along with argv[0]. ---
+
+        [Theory]
+        [InlineData("/usr/local/share/dotnet/dotnet")]
+        [InlineData(@"C:\Program Files\dotnet\dotnet.exe")]   // the muxer is dotnet.exe on Windows
+        public void Restart_DotnetMuxerShape_PutsTheManagedEntryDllBackInFront(string muxer)
+        {
+            var pc = new FakeProcessControl
+            {
+                CurrentExecutablePath = muxer,
+                CurrentManagedEntryPath = "/apps/Game.dll",
+                CurrentCommandLineArguments = new[] { "--profile", "dev" },
+            };
+
+            AppRelaunch.Restart(new RelaunchRequest(), pc);
+
+            // Without the dll the successor would be a bare `dotnet` holding the game's arguments.
+            Assert.Equal(muxer, pc.LastStart!.FileName);
+            Assert.Equal(
+                new[] { "/apps/Game.dll", "--profile", "dev", AppRelaunch.PredecessorWaitFlag, Pid(pc) },
+                pc.LastStart!.Arguments);
+        }
+
+        [Fact]
+        public void Restart_ApphostShape_PrependsNothing()
+        {
+            // The shipped desktop shape. GetCommandLineArgs()[0] is still the dll here, so a rule that keyed off
+            // the dll alone rather than off the muxer would corrupt this, the common case.
+            var pc = new FakeProcessControl
+            {
+                CurrentExecutablePath = "/apps/Game",
+                CurrentManagedEntryPath = "/apps/Game.dll",
+                CurrentCommandLineArguments = new[] { "--profile", "dev" },
+            };
+
+            AppRelaunch.Restart(new RelaunchRequest(), pc);
+
+            Assert.Equal("/apps/Game", pc.LastStart!.FileName);
+            Assert.Equal(
+                new[] { "--profile", "dev", AppRelaunch.PredecessorWaitFlag, Pid(pc) },
+                pc.LastStart!.Arguments);
+        }
+
+        [Fact]
+        public void Restart_ExplicitExecutableOverride_IsNeverRewritten()
+        {
+            // The caller named its own target, so it owns the whole command line.
+            var pc = new FakeProcessControl
+            {
+                CurrentExecutablePath = "/usr/local/share/dotnet/dotnet",
+                CurrentManagedEntryPath = "/apps/Game.dll",
+            };
+            var req = new RelaunchRequest { ExecutablePath = "/apps/Other" };
+
+            AppRelaunch.Restart(req, pc);
+
+            Assert.Equal("/apps/Other", pc.LastStart!.FileName);
+            Assert.DoesNotContain("/apps/Game.dll", pc.LastStart!.Arguments);
+        }
+
+        [Fact]
+        public void Restart_DotnetMuxerWithNoResolvableEntry_StillStartsRatherThanRefusing()
+        {
+            // Degrades to the pre-17.23.0 behaviour instead of refusing to relaunch: a successor that may be
+            // wrong beats a request that silently does nothing, and Restart never shuts the app down unless the
+            // spawn succeeded anyway.
+            var pc = new FakeProcessControl
+            {
+                CurrentExecutablePath = "/usr/local/share/dotnet/dotnet",
+                CurrentManagedEntryPath = null,
+            };
+
+            Assert.Equal(RelaunchResult.Started, AppRelaunch.Restart(new RelaunchRequest(), pc));
+            Assert.Equal(new[] { AppRelaunch.PredecessorWaitFlag, Pid(pc) }, pc.LastStart!.Arguments);
+        }
     }
 }

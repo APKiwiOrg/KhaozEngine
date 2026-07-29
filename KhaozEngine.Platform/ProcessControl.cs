@@ -21,6 +21,19 @@ public sealed class ProcessControl : IProcessControl
     public int CurrentProcessId => Environment.ProcessId;
 
     /// <inheritdoc/>
+    public string? CurrentManagedEntryPath
+    {
+        get
+        {
+            // Element 0 is the managed entry assembly in BOTH shapes: the app's .dll for a self-contained
+            // apphost as well as for `dotnet <app>.dll`. Only the muxer case needs it, and AppRelaunch is what
+            // decides that, so this stays a plain accessor with no shape-sniffing of its own.
+            string[] all = Environment.GetCommandLineArgs();
+            return all.Length > 0 ? all[0] : null;
+        }
+    }
+
+    /// <inheritdoc/>
     public IReadOnlyList<string> CurrentCommandLineArguments
     {
         get

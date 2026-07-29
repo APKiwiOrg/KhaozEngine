@@ -14,6 +14,8 @@ namespace KhaozEngine.Tests.App
     {
         public string? CurrentExecutablePath { get; set; } = "/apps/Game.bin";
         public int CurrentProcessId { get; set; } = 4242;
+        /// <summary>The managed entry dll. Null by default: the apphost shape, where it is not consulted.</summary>
+        public string? CurrentManagedEntryPath { get; set; }
         public IReadOnlyList<string> CurrentCommandLineArguments { get; set; } = Array.Empty<string>();
 
         /// <summary>Ordered log of side effects. StartDetached appends "start"; the test's shutdown callback appends "shutdown".</summary>

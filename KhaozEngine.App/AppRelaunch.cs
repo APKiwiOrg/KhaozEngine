@@ -73,6 +73,18 @@ public static class AppRelaunch
         // Drop any handshake already present in the forwarded arguments so a relaunch-of-a-relaunch does not
         // accumulate flags or carry a stale predecessor pid, then append a fresh one for THIS process.
         RemovePredecessorFlag(arguments);
+
+        // `dotnet <app>.dll` shape: the resolved executable is the SHARED dotnet muxer, and the only thing
+        // naming the app is the managed entry dll, which CurrentCommandLineArguments deliberately drops with
+        // element 0. Without this the successor would be a bare `dotnet` holding the app's arguments. Skipped
+        // when the caller named its own executable, since it has then taken charge of the target.
+        if (request.ExecutablePath is null
+            && IsDotnetMuxer(executable)
+            && pc.CurrentManagedEntryPath is { Length: > 0 } managedEntry)
+        {
+            arguments.Insert(0, managedEntry);
+        }
+
         if (request.WaitForPredecessorExit)
         {
             arguments.Add(PredecessorWaitFlag);
@@ -133,6 +145,26 @@ public static class AppRelaunch
         int timeoutMs = ms >= int.MaxValue ? int.MaxValue : (int)Math.Max(0, ms);
         bool exited = pc.WaitForProcessExit(predecessorPid, timeoutMs);
         return new PredecessorWait(waitPerformed: true, predecessorExited: exited, cleaned);
+    }
+
+    static readonly char[] PathSeparators = { '/', '\\' };
+
+    /// <summary>
+    /// Whether <paramref name="executablePath"/> is the shared .NET host (<c>dotnet</c> / <c>dotnet.exe</c>)
+    /// rather than an application apphost. Compared case-insensitively on the trailing path segment with any
+    /// <c>.exe</c> removed, so the Windows muxer matches too.
+    /// </summary>
+    /// <remarks>
+    /// Both separators are handled explicitly rather than via <c>Path.GetFileName</c>, which honours only the
+    /// HOST's separator: a Windows path inspected on a POSIX host comes back whole and would never match. That
+    /// keeps this seam answering the same way wherever the test suite runs, which is the point of having it.
+    /// </remarks>
+    static bool IsDotnetMuxer(string executablePath)
+    {
+        int separator = executablePath.LastIndexOfAny(PathSeparators);
+        string name = separator >= 0 ? executablePath[(separator + 1)..] : executablePath;
+        if (name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) name = name[..^4];
+        return string.Equals(name, "dotnet", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>Removes every predecessor-wait handshake from <paramref name="arguments"/> in place.</summary>

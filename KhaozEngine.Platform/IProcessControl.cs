@@ -31,6 +31,24 @@ public interface IProcessControl
     int CurrentProcessId { get; }
 
     /// <summary>
+    /// The MANAGED entry path (<c>Environment.GetCommandLineArgs()[0]</c>), which is the application's
+    /// <c>.dll</c> in both shipped shapes, or null when it cannot be resolved.
+    /// <para>
+    /// It matters for exactly one of them. Launched as a self-contained apphost,
+    /// <see cref="CurrentExecutablePath"/> is the app and this is redundant. Launched as
+    /// <c>dotnet &lt;app&gt;.dll</c>, <see cref="CurrentExecutablePath"/> is the shared dotnet MUXER and the
+    /// dll is the only thing that says WHICH app to run, yet <see cref="CurrentCommandLineArguments"/> drops
+    /// it along with element 0. Relaunching on the muxer without it would start a bare <c>dotnet</c> holding
+    /// the app's arguments, so <c>AppRelaunch</c> reads this to put it back.
+    /// </para>
+    /// <para>
+    /// Defaulted to null so an existing external implementation of this interface keeps compiling. A null
+    /// simply means the muxer shape cannot be repaired, which is the pre-17.23.0 behaviour.
+    /// </para>
+    /// </summary>
+    string? CurrentManagedEntryPath => null;
+
+    /// <summary>
     /// The command-line arguments the running process was launched with, excluding the executable
     /// itself (i.e. <see cref="System.Environment.GetCommandLineArgs"/> without element 0). Carried
     /// forward to the successor by default so a relaunch reproduces the same invocation.

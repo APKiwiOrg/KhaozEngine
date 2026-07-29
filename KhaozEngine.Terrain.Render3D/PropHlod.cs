@@ -223,5 +223,42 @@ namespace KhaozEngine.Terrain
             float lo = hlodDistance - half;
             return Math.Clamp((distance - lo) / crossfadeWidth, 0f, 1f);
         }
+
+        // ---- Crossfade draw gates (issue #405). Near either end of the band one of the two halves is dithered
+        // almost fully away, so drawing it still pays full vertex/triangle cost for a side that contributes close to
+        // nothing on screen. Both the individual-props dither (ShaderSources.Model's ModelFrag / the shadow depth
+        // pass's ShadowDepthDissolveFrag) and the merged-mesh dither (the same frag, plus the issue #391 INVERTED
+        // shadow variant ShadowDepthDissolveInvertedFrag) discard `mask < threshold` (or its complement) against a
+        // world-space value-noise mask spread over the full 0..1 range, so a threshold's kept-fragment fraction is
+        // ~ (1 - threshold): that is the documented reading of "threshold: 0 = solid .. 1 = gone" on IDissolve.x.
+        //
+        // The props half's threshold IS t (dissolveFloor below), so its kept fraction is ~ (1 - t): past t = 0.97
+        // that is under 3 percent. The merged half's threshold is (1 - t) (hlodDissolve below, color and shadow
+        // alike per the derivation in ShadowDepthDissolveInvertedFrag), so ITS kept fraction is ~ t: below t = 0.03
+        // that is under 3 percent too. Both figures hold for the shadow pass as well as color, since the shadow
+        // dither reads the very same threshold (plain for props, inverted for merged) - so gating the one Draw /
+        // DrawProps call that feeds both the color instance and its shadow-caster registration keeps color and
+        // shadow skipped together, with no separate shadow-side gate needed.
+
+        /// <summary>The crossfade band's near-edge gate for the merged HLOD half (issue #405): below this its dither
+        /// keeps only a ~t fraction of fragments (see the derivation above), under 3 percent below this threshold.</summary>
+        public const float HlodMergedSkipAt = 0.03f;
+
+        /// <summary>The crossfade band's far-edge gate for the individual-props half (issue #405): at or above this
+        /// its dither keeps only a ~(1 - t) fraction of fragments (see the derivation above), under 3 percent from
+        /// this threshold on.</summary>
+        public const float HlodPropsSkipAt = 0.97f;
+
+        /// <summary>True while the individual props half of an HLOD crossfade is still worth drawing at fade
+        /// parameter <paramref name="t"/> (issue #405): below <see cref="HlodPropsSkipAt"/>. Also true for every t
+        /// outside the band's far edge (t stays below 1 there), so a hard swap (<see cref="CrossfadeAt"/> with a
+        /// non-positive width) is unaffected: it only ever produces t = 0 or t = 1 exactly, matching the pre-#405
+        /// `t &lt; 1f` gate at both ends.</summary>
+        public static bool DrawsHlodProps(float t) => t < HlodPropsSkipAt;
+
+        /// <summary>True while the merged HLOD mesh half of a crossfade is still worth drawing at fade parameter
+        /// <paramref name="t"/> (issue #405): above <see cref="HlodMergedSkipAt"/>. Mirrors <see cref="DrawsHlodProps"/>:
+        /// a hard swap's t = 0 or t = 1 matches the pre-#405 `t &gt; 0f` gate at both ends.</summary>
+        public static bool DrawsHlodMerged(float t) => t > HlodMergedSkipAt;
     }
 }

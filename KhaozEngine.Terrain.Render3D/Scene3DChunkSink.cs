@@ -589,11 +589,17 @@ namespace KhaozEngine.Terrain
                     {
                         // Crossfade: props dissolve out (floor = t) up to the far edge, the merged mesh dissolves in
                         // (1 - t) from the near edge. Skip whichever side is fully gone so the common near/far case is
-                        // one draw, and the band draws both complementary halves.
+                        // one draw, and the band draws both complementary halves. The gates are tightened a little
+                        // past the literal 0/1 ends (issue #405, PropHlod.DrawsHlodProps/DrawsHlodMerged): near
+                        // either edge the not-yet-fully-gone side's dither has already discarded well over 97 percent
+                        // of its fragments, so drawing it still paid full vertex/triangle cost for a sliver of
+                        // surviving pixels. The thresholds are provably invisible (see PropHlod's derivation) and
+                        // apply to the SAME call that also feeds the shadow-caster registration for that half, so
+                        // color and shadow are skipped together with no separate shadow-side gate.
                         float t = PropHlod.CrossfadeAt(chunkDist, layer.HlodDistance, layer.HlodCrossfadeWidth);
-                        if (t < 1f)
+                        if (PropHlod.DrawsHlodProps(t))
                             DrawLayerProps(load.LayerProps[i], layer, focus, dissolveFloor: t);
-                        if (t > 0f)
+                        if (PropHlod.DrawsHlodMerged(t))
                         {
                             // The merged mesh follows the layer's own casts-shadows policy, so the policy does not
                             // flip at the HLOD swap. Across the crossfade band both halves dissolve in the depth pass

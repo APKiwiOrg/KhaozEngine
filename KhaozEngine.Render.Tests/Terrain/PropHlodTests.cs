@@ -217,5 +217,58 @@ namespace KhaozEngine.Tests.Terrain
         {
             Assert.Equal(PropHlod.CrossfadeAt(105f, 100f, 40f), PropHlod.CrossfadeAt(105f, 100f, 40f));
         }
+
+        // ---- DrawsHlodProps / DrawsHlodMerged: the issue #405 crossfade draw gates. Pin the exact thresholds
+        // (0.97 / 0.03) so a future tweak has to touch this test, and prove a t strictly inside the band (away from
+        // both edges) still draws both halves, matching the pre-#405 t < 1f / t > 0f behaviour there. ----
+
+        [Fact]
+        public void DrawsHlodProps_TrueBelowThreshold_FalseAtOrAboveIt()
+        {
+            Assert.True(PropHlod.DrawsHlodProps(0f));      // near edge: full props, matches the old t < 1f gate
+            Assert.True(PropHlod.DrawsHlodProps(0.5f));     // band centre
+            Assert.True(PropHlod.DrawsHlodProps(0.9699f));  // just below the pinned threshold
+            Assert.False(PropHlod.DrawsHlodProps(0.97f));   // AT the pinned threshold: skipped
+            Assert.False(PropHlod.DrawsHlodProps(0.99f));
+            Assert.False(PropHlod.DrawsHlodProps(1f));      // far edge: matches the old t < 1f gate (false)
+        }
+
+        [Fact]
+        public void DrawsHlodMerged_FalseAtOrBelowThreshold_TrueAboveIt()
+        {
+            Assert.False(PropHlod.DrawsHlodMerged(0f));     // near edge: matches the old t > 0f gate (false)
+            Assert.False(PropHlod.DrawsHlodMerged(0.01f));
+            Assert.False(PropHlod.DrawsHlodMerged(0.03f));  // AT the pinned threshold: skipped
+            Assert.True(PropHlod.DrawsHlodMerged(0.0301f)); // just above the pinned threshold
+            Assert.True(PropHlod.DrawsHlodMerged(0.5f));    // band centre
+            Assert.True(PropHlod.DrawsHlodMerged(1f));      // far edge: matches the old t > 0f gate (true)
+        }
+
+        [Fact]
+        public void MidBand_t_StrictlyInsideTheGates_StillDrawsBothHalves()
+        {
+            // Values the crossfade GPU tests exercise (0.25, 0.5, 0.75) sit strictly between the two thresholds, so
+            // both the props half and the merged half keep drawing exactly as before the #405 tightening.
+            foreach (float t in new[] { 0.04f, 0.25f, 0.5f, 0.75f, 0.96f })
+            {
+                Assert.True(PropHlod.DrawsHlodProps(t), $"t={t} should still draw the props half");
+                Assert.True(PropHlod.DrawsHlodMerged(t), $"t={t} should still draw the merged half");
+            }
+        }
+
+        [Fact]
+        public void SkipGates_OnlyNarrowTheOldZeroOneBoundary_NeverWiden()
+        {
+            // The old gates were t < 1f (props) and t > 0f (merged): every t the old code drew, the new gate must
+            // still draw UNLESS it falls in the newly-carved sliver right at that edge (>= 0.97 for props, <= 0.03
+            // for merged), never the other way around.
+            for (float t = 0f; t <= 1f; t += 0.01f)
+            {
+                bool oldDrawsProps = t < 1f;
+                bool oldDrawsMerged = t > 0f;
+                if (PropHlod.DrawsHlodProps(t)) Assert.True(oldDrawsProps, $"t={t} draws props but the old gate did not");
+                if (PropHlod.DrawsHlodMerged(t)) Assert.True(oldDrawsMerged, $"t={t} draws merged but the old gate did not");
+            }
+        }
     }
 }

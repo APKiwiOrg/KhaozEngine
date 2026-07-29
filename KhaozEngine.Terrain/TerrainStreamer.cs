@@ -44,6 +44,14 @@ namespace KhaozEngine.Terrain
         readonly IAsyncChunkSink? _asyncSink;
         readonly ChunkBuildScheduler<object>? _scheduler;
 
+        // NearestFirst comparison state (issue #374): UpdateAsync used to build a fresh Comparison<ChunkCoord>
+        // closure over playerPos/cs on every call (once per frame on the streaming path). The comparison is now
+        // bound ONCE, at construction, to an instance method that reads these two fields instead. UpdateAsync just
+        // restamps them right before the single-threaded TakeReady call that consumes them.
+        Vector3 _nearestFirstPlayerPos;
+        float _nearestFirstChunkSize;
+        readonly Comparison<ChunkCoord> _nearestFirst;
+
         bool _disposed;
 
         sealed class Entry { public object Handle = null!; public int Lod; public ChunkRing Ring; }
@@ -55,6 +63,7 @@ namespace KhaozEngine.Terrain
         public TerrainStreamer(StreamerConfig config, IChunkSink sink, IChunkBuildDispatcher? dispatcher = null)
         {
             _sink = sink ?? throw new ArgumentNullException(nameof(sink));
+            _nearestFirst = NearestFirstCompare;
             if (config.UnloadRadius <= config.OuterRadius)
                 throw new ArgumentException(
                     $"UnloadRadius ({config.UnloadRadius}) must exceed the outer load radius ({config.OuterRadius}) so the hysteresis band stops churn.",
@@ -311,8 +320,13 @@ namespace KhaozEngine.Terrain
             }
 
             // 3. Apply completed builds, nearest-first, capped at MaxLoadsPerFrame (the GPU upload is what we budget).
+            // Restamp the comparison state, then reuse the bound delegate (_nearestFirst) rather than closing over
+            // playerPos/cs afresh: TakeReady's Sort call runs synchronously on this thread before either field could
+            // change again.
+            _nearestFirstPlayerPos = playerPos;
+            _nearestFirstChunkSize = cs;
             sched.Pump();
-            int applied = ApplyBuilds(sched.TakeReady(_config.MaxLoadsPerFrame, NearestFirst(playerPos, cs)));
+            int applied = ApplyBuilds(sched.TakeReady(_config.MaxLoadsPerFrame, _nearestFirst));
             return far.Count > 0 || applied > 0;
         }
 
@@ -403,12 +417,24 @@ namespace KhaozEngine.Terrain
             return builds.Count;
         }
 
-        static Comparison<ChunkCoord> NearestFirst(Vector3 playerPos, float cs) => (a, b) =>
+        // The comparison body itself, bound once into _nearestFirst at construction (see the field doc comment)
+        // rather than re-closed over playerPos/cs on every UpdateAsync call.
+        int NearestFirstCompare(ChunkCoord a, ChunkCoord b)
         {
-            Vector2 ca = ChunkGrid.CenterOf(a, cs), cb = ChunkGrid.CenterOf(b, cs);
-            float da = Dist2(ca, playerPos), db = Dist2(cb, playerPos);
+            Vector2 ca = ChunkGrid.CenterOf(a, _nearestFirstChunkSize), cb = ChunkGrid.CenterOf(b, _nearestFirstChunkSize);
+            float da = Dist2(ca, _nearestFirstPlayerPos), db = Dist2(cb, _nearestFirstPlayerPos);
             return da.CompareTo(db);
-        };
+        }
+
+        // Internal (not private): lets KhaozEngine.Render.Tests (InternalsVisibleTo) restamp the comparison state
+        // and hand back the bound delegate exactly the way UpdateAsync's call site does, to prove the delegate
+        // itself is not (re)allocated per call (issue #374).
+        internal Comparison<ChunkCoord> NearestFirstForTest(Vector3 playerPos, float cs)
+        {
+            _nearestFirstPlayerPos = playerPos;
+            _nearestFirstChunkSize = cs;
+            return _nearestFirst;
+        }
 
         static float Dist2(Vector2 center, Vector3 p)
         {

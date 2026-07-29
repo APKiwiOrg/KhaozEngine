@@ -79,6 +79,18 @@ the current app down - `ExecutableUnresolved` (`Environment.ProcessPath` was nul
 `StartFailed` (the OS refused to launch it). It only requests shutdown when the successor actually started, so a
 failed relaunch leaves the player's session running rather than stranding them with nothing.
 
+Both shipped deployment shapes resolve correctly (since 17.23.0). A self-contained apphost is named by
+`Environment.ProcessPath` directly. Under `dotnet <app>.dll` that path is the SHARED dotnet muxer, and the dll
+naming the app is element 0 of the command line, which `CurrentCommandLineArguments` drops, so `Restart` reads
+`IProcessControl.CurrentManagedEntryPath` and puts the dll back in front. Without it the successor would be a
+bare `dotnet` holding the app's arguments. It is keyed off the muxer, never off "argv[0] is a dll" (true of the
+apphost shape too), and skipped when the caller named its own `ExecutablePath`.
+
+**Applying a graphics-backend change is a typical caller.** `KhaozEngine.Gpu` picks the backend at device
+creation, so an in-game backend switcher has to restart to apply one. Wire the Apply button to `Restart` after
+saving the new preference, and read `AppWindow.BackendSelection` on the next boot to confirm it took (see
+`docs/USING-KHAOZENGINE.md`).
+
 `AwaitPredecessor` is a fast no-op when the arguments carry no handshake (every normal launch), so it is safe to
 call unconditionally. When a handshake is present it waits for the predecessor pid (default cap
 `AppRelaunch.DefaultPredecessorTimeout`, 15s), and `PredecessorWait.PredecessorExited` reports whether the old

@@ -108,6 +108,7 @@ IProcessControl pc = ProcessControl.System;
 string? exe = pc.CurrentExecutablePath;                 // Environment.ProcessPath (null if unresolvable)
 int pid     = pc.CurrentProcessId;                      // Environment.ProcessId
 var args    = pc.CurrentCommandLineArguments;           // launch args, excluding the executable
+string? dll = pc.CurrentManagedEntryPath;               // GetCommandLineArgs()[0], the managed entry (17.23.0)
 
 pc.StartDetached(new ProcessStartRequest                // fire-and-forget: the child outlives this process
 {
@@ -117,6 +118,11 @@ pc.StartDetached(new ProcessStartRequest                // fire-and-forget: the 
 
 bool gone = pc.WaitForProcessExit(pid, timeoutMilliseconds: 15000);  // true = exited (or already gone)
 ```
+
+`CurrentManagedEntryPath` (17.23.0) matters for exactly one deployment shape. It is the app's `.dll` in both,
+but under a self-contained apphost `CurrentExecutablePath` already names the app, while under
+`dotnet <app>.dll` that path is the shared dotnet MUXER and the dll is the only thing saying which app to run.
+It has a default implementation returning null, so an existing external `IProcessControl` keeps compiling.
 
 `ProcessControl.System` is the real implementation (`Environment` + `System.Diagnostics.Process`); pass any
 `IProcessControl` to `AppRelaunch` to fake the whole flow in a test. This is the generalized parent-pid-wait

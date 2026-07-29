@@ -18,6 +18,22 @@ What it owns today:
   `UnrecognizedOverride`, and it still falls back to the OS probe for the backend. This exists because a typo'd
   override is otherwise indistinguishable from the OS default: the run silently uses the default and reads as
   "the requested backend did not help" when it never ran.
+- **Stored user preference** (17.23.0) - `Resolve(string?, OSPlatformKind, GpuBackendKind?)` (and the matching
+  `Select` / `Resolve(GpuBackendKind?)`) put the game's saved graphics setting between the env override and the
+  OS probe, so the precedence is `KE_GRAPHICS_BACKEND` > preference > probe. The preference arrives as DATA and
+  is never read from disk here: this package references only Diagnostics + Primitives, and a settings dependency
+  would invert that. A game passes it via `GameAppOptions.GraphicsBackendPreference`. `GpuBackendSource` gains
+  an appended `UserPreference`; an unrecognized env value now falls through to the preference (it is not an
+  override if it does not parse) while still carrying its raw text for the warning. With a null preference the
+  behaviour is identical to before.
+- **`IsBackendSupported` / `SupportedBackends()`** (17.23.0) - which backends this machine can actually run, as
+  a FUNCTIONAL probe (Veldrid loads the library, creates an instance, enumerates devices, checks the required
+  Vulkan surface extensions), cached for the process lifetime. **A settings UI must offer only what
+  `SupportedBackends()` returns.** `OpenGL` always reports unsupported: there is no windowed GL device path.
+  Necessary but NOT sufficient, so it is paired with the creation fallback below rather than trusted alone.
+- **`AfterFallback(selection, fallbackBackend)`** (17.23.0) - the pure helper building the post-fallback report
+  (backend becomes what ran, source becomes `FallbackAfterFailure`, `RequestedBackend` keeps what was asked
+  for). Used by `GpuDeviceContext`, and by a consumer driving its own retry so both report identically.
 - **`GpuThreadingCaps` / `GpuThreadingDiagnostics`** (17.22.0) - the graphics driver's multi-threading
   capabilities, on **Direct3D11 only**: `DriverCommandLists` and `DriverConcurrentCreates`, read straight off the
   live device with `ID3D11Device::CheckFeatureSupport` (`D3D11_FEATURE_THREADING`) and surfaced on
@@ -50,7 +66,16 @@ What it owns today:
   this package needs no reference to the windowing library.
 - **`GpuDeviceContext`** - `CreateForWindow(in GpuWindowHandle, width, height, syncToVerticalBlank = true)` (device
   + swapchain for a Silk.NET/GLFW window; the vsync flag feeds both the device options and the swapchain, since
-  9.23.0) and `CreateHeadless()` (offscreen device) on the selected backend. Exposes `Backend`, `Selection` (the
+  9.23.0) and `CreateHeadless()` (offscreen device) on the selected backend. Two further `CreateForWindow`
+  overloads since 17.23.0: a nullable `GpuBackendKind?` preference (resolved against the environment, WITH the
+  fallback below) and a non-nullable `GpuBackendKind` (exactly that backend, no resolution and no fallback, the
+  "retry as X" lever). **Creation falls back** to the OS-probe backend when the requested backend fails, rather
+  than propagating, so a stored preference the machine cannot run cannot leave a player with a client that will
+  not start. It WARNs, reports `GpuBackendSource.FallbackAfterFailure` with `Selection.RequestedBackend`, and
+  **never clears the game's stored setting, which the game must do itself** (file IO is not this package's job).
+  The retry reuses the same `GpuWindowHandle`, so no second window is created. Skipped entirely when the request
+  already is the OS-probe default, which is every call with no override and no preference, so default macOS and
+  Linux paths are unchanged, as is `CreateHeadless`. Exposes `Backend`, `Selection` (the
   full `GpuBackendSelection`, since 17.21.0), `ThreadingCaps` (the D3D11 driver threading caps, since 17.22.0),
   `Capabilities`, and the engine-owned `IGpuDevice`. The raw Veldrid device is private to the context (the
   transitional accessor that used to be here is gone, and `Capabilities` is read once so the context's copy and

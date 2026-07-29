@@ -62,6 +62,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Diagnostics overlay + telemetry recording (`DiagnosticsOverlay` / `FrameStats` / `TelemetryRecorder` / `WorldClient.NetStats`)](#diagnostics-overlay-telemetry-recording-diagnosticsoverlay-framestats-telemetryrecorder-worldclientnetstats)
 - [Per-pass frame timing (`Scene3D.EnableTiming` / `PassTimings`)](#per-pass-frame-timing-scene3denabletiming-passtimings)
 - [Which graphics backend actually ran (`GpuBackendSelection`, 17.21.0)](#which-graphics-backend-actually-ran-gpubackendselection-17210)
+- [Letting the player choose the graphics backend (17.23.0)](#letting-the-player-choose-the-graphics-backend-17230)
 - [Is the D3D11 driver emulating command lists (`GpuThreadingCaps`, 17.22.0)](#is-the-d3d11-driver-emulating-command-lists-gputhreadingcaps-17220)
 - [Collision-shape debug overlay (`CollisionShapeOverlay` / `OverlayLegend`)](#collision-shape-debug-overlay-collisionshapeoverlay-overlaylegend)
 - [Install / update stamp (`KhaozEngine.App.AppInstallStamp`)](#install-update-stamp-khaozengineappappinstallstamp)
@@ -4939,7 +4940,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.22.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.23.0" />
 ```
 
 ```csharp
@@ -7932,7 +7933,9 @@ per created device, plus a WARN when the override was set but is not a recognize
 ```
 GPU backend: Vulkan (KE_GRAPHICS_BACKEND override)
 GPU backend: Direct3D11 (OS probe)
-KE_GRAPHICS_BACKEND='vulcan' is not a recognized backend (metal/vulkan/d3d11/gl). Falling back to Direct3D11 from the OS probe.
+GPU backend: Vulkan (stored user preference)
+GPU backend: Direct3D11 (fallback, Vulkan failed)
+KE_GRAPHICS_BACKEND='vulcan' is not a recognized backend (metal/vulkan/d3d11/gl). Using Direct3D11 instead.
 ```
 
 Read it yourself to put the backend on a game's own debug overlay. `GameApp.Window` is `protected`, so a
@@ -7943,11 +7946,19 @@ GpuBackendSelection sel = Window.BackendSelection;
 
 string line = sel.Source switch
 {
+    GpuBackendSource.OsProbe              => $"{sel.Backend} (OS probe)",
     GpuBackendSource.EnvironmentOverride  => $"{sel.Backend} (KE_GRAPHICS_BACKEND={sel.RequestedOverride})",
     GpuBackendSource.UnrecognizedOverride => $"{sel.Backend} (bad override '{sel.RequestedOverride}')",
-    _                                     => $"{sel.Backend} (OS probe)",
+    GpuBackendSource.UserPreference       => $"{sel.Backend} (your graphics setting)",
+    GpuBackendSource.FallbackAfterFailure => $"{sel.Backend} ({sel.RequestedBackend} failed to start)",
+    _                                     => sel.Backend.ToString(),
 };
 ```
+
+**Spell every member out and keep a catch-all arm.** `GpuBackendSource` grows by APPENDING (17.23.0 added two
+members), and an exhaustive `switch` with a throwing default arm compiles clean against a newer engine and then
+throws at runtime the first time the new member appears. The numeric values are stable and safe to persist into
+telemetry, but new ones do get added.
 
 `RequestedOverride` is the RAW environment value exactly as read, untrimmed and in its original case, and null
 when no non-blank override was present. It is deliberately not normalized: the untouched string is what makes a
@@ -7965,7 +7976,85 @@ GpuBackendSelection selection = GpuBackendSelector.Resolve();   // same backend,
 `Select(string?, OSPlatformKind)`, so the logic is headless-testable without touching the real environment. A
 null, empty, or whitespace-only override counts as no override at all (`OsProbe`, no raw value recorded), since a
 launcher exporting the variable empty has not asked for anything. Only a non-blank value that fails to parse is
-`UnrecognizedOverride`, and the OS probe still decides the backend in that case.
+`UnrecognizedOverride`, and with no stored preference in play the OS probe still decides the backend in that case.
+
+---
+
+## Letting the player choose the graphics backend (17.23.0)
+
+The backend is not always a detail the engine should decide alone. A Windows machine whose driver emulates D3D11
+command lists (the section above) can run many times faster on Vulkan on the same hardware, and
+`KE_GRAPHICS_BACKEND` is a developer lever, not something a player can be asked to set. So a game can put the
+backend in its own settings screen. The engine supplies selection, a support probe, a fallback, and the restart
+primitive; **the settings UI and the stored setting belong to the game.**
+
+### Wiring the preference
+
+Read the saved backend from your own settings store and hand it over as data. The engine never reads it from
+disk: `KhaozEngine.Gpu` depends only on `Primitives` and `Diagnostics`, and taking a settings dependency to load
+one enum would invert that layering.
+
+```csharp
+var options = GameAppOptions.For("My Game", 1280, 720);
+options.GraphicsBackendPreference = settings.GraphicsBackend;   // GpuBackendKind?, null = let the engine decide
+```
+
+Precedence, highest first: the `KE_GRAPHICS_BACKEND` override, then the preference, then the OS probe. The
+override stays on top on purpose, so a developer can force a backend for a repro regardless of what the player
+picked. A custom `WindowFactory` must forward the preference itself, exactly like `PresentMode`; the
+`AppWindow` constructor and `AppWindow.Scaled` both take it as a trailing optional argument.
+
+### Offer only backends that actually work
+
+```csharp
+foreach (GpuBackendKind kind in GpuBackendSelector.SupportedBackends())
+    dropdown.Add(kind);        // Metal / Vulkan / Direct3D11, whichever this machine can really run
+```
+
+`SupportedBackends()` is a FUNCTIONAL probe, not a platform guess: it loads each backend's library, creates an
+instance, enumerates physical devices, and for Vulkan checks the required surface extensions. Results are cached
+for the process lifetime, so a settings screen may call it freely. `IsBackendSupported(kind)` asks about one.
+`OpenGL` is never offered, because there is no windowed GL device path.
+
+### The fallback contract (this is the whole safety story)
+
+Probing is necessary but NOT sufficient. A broken or partial driver can report support and still fail at device
+creation. So creation is also wrapped: if the requested backend fails, the engine falls back to the OS-probe
+backend, WARNs, and boots anyway rather than leaving the player with a client that will not start and a setting
+they cannot reach to fix.
+
+**The engine reports the fallback. It never clears your setting.** Writing a setting is file IO, which
+`KhaozEngine.Gpu` does not do. Two obligations on the consuming game, and skipping the first one means the
+player retries the same broken choice on every single launch:
+
+```csharp
+GpuBackendSelection sel = Window.BackendSelection;
+if (sel.Source == GpuBackendSource.FallbackAfterFailure)
+{
+    // sel.RequestedBackend is what failed; sel.Backend is what actually runs.
+    settings.GraphicsBackend = null;     // 1. CLEAR the stored preference, and save.
+    settings.Save();
+    ShowNotice($"{sel.RequestedBackend} could not start on this machine. Running on {sel.Backend}.");
+}
+```
+
+1. **Clear the stored preference** when you see `FallbackAfterFailure`, and tell the player what happened.
+2. **Only ever offer `SupportedBackends()`** in the UI, so the common case is prevented rather than recovered.
+
+`GpuBackendSelector.AfterFallback(selection, fallbackBackend)` is the pure helper that builds that report, for a
+consumer driving its own retry through `GpuDeviceContext.CreateForWindow(handle, w, h, sync, backend)` (the
+explicit-backend overload: exactly that backend, no resolution and no fallback). Retrying needs no new window,
+since `GpuWindowHandle` is a readonly struct of native pointers carrying no device state.
+
+None of this changes an existing game. The fallback is skipped when the requested backend already IS the
+OS-probe default, which is every call with no override and no preference, and `CreateHeadless` never falls back.
+
+### Applying the change
+
+The backend is chosen once, at device creation, so applying a new one means restarting. Use
+`AppRelaunch.Restart` (see "Clean self-restart" below): save the preference first, then relaunch, and the fresh
+boot picks it up. `AppRelaunch` starts the successor before the current process shuts down and hands it a
+predecessor-pid handshake, so the new instance does not race the settings file the old one is still writing.
 
 ---
 
@@ -8223,6 +8312,17 @@ unconditionally. Process operations go through `KhaozEngine.Platform.IProcessCon
 headless-testable with a fake - pass an `IProcessControl` to either method. This is the generalized form of the
 desktop auto-updater's parent-pid-wait relaunch (`KhaozEngine.Updates`); the updater keeps its own tuned
 environment (antivirus/image-race retry, elevation, relocation), so the two share the pattern, not the code.
+
+Both shipped deployment shapes resolve correctly (since 17.23.0), and you do not have to do anything for it. A
+self-contained apphost is named by `Environment.ProcessPath` directly. Under `dotnet <app>.dll` that path is the
+SHARED dotnet muxer instead, and the dll naming the app is element 0 of the command line, which the launch
+arguments deliberately exclude, so `Restart` reads `IProcessControl.CurrentManagedEntryPath` and puts the dll
+back in front. Without it the successor would be a bare `dotnet` holding your arguments. A custom
+`IProcessControl` gets the default implementation (null, meaning the muxer shape is not repaired), so an
+existing one keeps compiling.
+
+Applying a graphics-backend change is a typical caller, since the backend is fixed at device creation: save the
+new preference, then `Restart`. See "Letting the player choose the graphics backend" above.
 
 ## Single-instance guard (`KhaozEngine.App.SingleInstanceGuard`, 10.110.0)
 

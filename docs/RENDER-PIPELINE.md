@@ -26,7 +26,7 @@ flowchart TD
 
     subgraph gpu["KhaozEngine.Gpu - the backend seam (nothing above touches Veldrid)"]
         DEV["GpuDeviceContext<br/>opaque device / buffers / pipelines / command list"]
-        SEL["GpuBackendSelector<br/>OS probe + KE_GRAPHICS_BACKEND override"]
+        SEL["GpuBackendSelector<br/>KE_GRAPHICS_BACKEND override > user preference > OS probe"]
         CAP["GpuCapabilities -> GpuClip<br/>clip-Y flip + depth range from the live device"]
     end
 
@@ -94,7 +94,8 @@ flowchart LR
    the GPU still reading an earlier, in-flight frame's copy). Nothing here references Veldrid.
 3. At frame end, `Render3DSurface` / `Render2DSurface` flush through `ModelRenderer` / the sprite shader, which
    record commands on `GpuDeviceContext` - the opaque seam (device, buffers, pipelines, command list).
-4. `GpuBackendSelector` picked the backend at startup (OS probe + `KE_GRAPHICS_BACKEND`), and `GpuCapabilities`
+4. `GpuBackendSelector` picked the backend at startup (`KE_GRAPHICS_BACKEND` override, then the game's stored
+   user preference, then the OS probe, with a fallback if that backend cannot create a device), and `GpuCapabilities`
    /`GpuClip` fold per-backend clip-Y and depth-range differences in so the renderers stay backend-agnostic.
 5. The seam drives **Veldrid**, which targets the chosen native backend (Metal / D3D11 / Vulkan). Shaders were
    cross-compiled from one SPIR-V blob at load, so the same GLSL runs everywhere.

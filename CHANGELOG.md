@@ -5,6 +5,100 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.23.0
+
+### A game can put the graphics backend in its own settings screen, safely
+
+A Windows tester runs at 15 fps on Direct3D11 and 144 fps on Vulkan on the same machine, which 17.22.0's
+threading probe explains but cannot fix. The only lever was `KE_GRAPHICS_BACKEND`, an environment variable, and
+players cannot be asked to set one. This release supplies the engine half of an in-game backend selector: a
+stored preference can drive selection, a bad choice cannot lock a player out, and the relaunch that applies the
+change is a tested primitive. The settings UI itself stays with the game.
+
+#### Backend selection takes a stored user preference (KhaozEngine.Gpu)
+
+`GpuBackendSelector.Resolve(string? envOverride, OSPlatformKind os, GpuBackendKind? userPreference)` and the
+matching `Select` / `Resolve(GpuBackendKind?)` overloads add a third input, with the precedence, highest first:
+
+1. the `KE_GRAPHICS_BACKEND` environment override (the debug lever, which must keep winning so a developer can
+   force a backend for a repro regardless of what the player picked),
+2. the stored user preference,
+3. the OS probe.
+
+**The preference arrives as DATA, a `GpuBackendKind?`, and the engine never reads it from disk.**
+`KhaozEngine.Gpu` references only `Primitives` and `Diagnostics`, and pulling in a settings or persistence
+dependency to load a single enum would invert that layering. The consuming game reads its own setting and hands
+it over via `GameAppOptions.GraphicsBackendPreference`, which `GameApp` forwards to `AppWindow`, which forwards
+it to `GpuDeviceContext.CreateForWindow`. A custom `WindowFactory` must forward it itself, like `PresentMode`.
+
+`GpuBackendSource` gains an **appended** `UserPreference`. Its numeric values are a published contract
+(consumers persist `(int)GpuBackendSource` into telemetry and read captured traces back against the numbers), so
+every member is now pinned to an explicit value, appending is the only permitted change, and a test asserts the
+numbers. `GpuBackendSelection` gains a `RequestedBackend`, defaulted so every existing three-argument
+construction still compiles.
+
+One behaviour change on an existing path: an unrecognized `KE_GRAPHICS_BACKEND` value now falls through to the
+preference rather than skipping it for the OS probe, since a value that does not parse is not an override. Its
+raw text is still carried on `RequestedOverride`, so the "your env var did nothing" warning survives on that
+path. **With no preference supplied the whole chain is byte-for-byte the pre-17.23.0 behaviour**, which is what
+leaves every existing call site alone.
+
+#### A backend that cannot start is survivable, not a lock-out
+
+A stored preference is a way for a player to brick their own client: choose Vulkan on a machine with no Vulkan
+ICD and the client cannot start, while the setting that caused it lives inside the client that will not start.
+Two guards, because neither is sufficient alone.
+
+**Probe.** `GpuBackendSelector.IsBackendSupported(GpuBackendKind)` and `SupportedBackends()` expose Veldrid's
+functional probe: it loads the backend's library, creates an instance, enumerates physical devices, and for
+Vulkan checks the required surface extensions. **A settings UI must offer only what `SupportedBackends()`
+returns.** Answers are cached for the process lifetime (machine capability does not change, and the Vulkan probe
+is not cheap enough for a settings screen to run per frame). `OpenGL` always reports unsupported: Veldrid may
+well support it, but `CreateForWindow` has no windowed GL path, so offering it would be offering a choice that
+cannot boot.
+
+**Fallback.** Probing alone is not enough, because a broken or partial driver can pass `IsBackendSupported` and
+still fail at device creation, so creation is wrapped too. A failure on the requested backend falls back to the
+OS-probe backend instead of propagating, and WARNs naming the requested backend, the failure, and what it fell
+back to. The retry needs no new window: `GpuWindowHandle` is a readonly struct of native pointers holding no
+device state, so the same handle is reused. The catch is deliberately broad, because the Vulkan leg throws
+`VeldridException`, the Direct3D11 leg surfaces `SharpGen.Runtime.SharpGenException` out of Vortice's
+`Result.CheckError` (whose only common ancestor with `VeldridException` is `System.Exception`), and a machine
+missing a loader library outright throws `DllNotFoundException` or `TypeInitializationException` from the
+P/Invoke layer before either type is reached. Naming the two known types would miss exactly the
+no-driver-installed case the fallback exists for.
+
+**The engine reports the fallback and never repairs it.** `GpuBackendSource` gains an appended
+`FallbackAfterFailure`, `Selection.Backend` is what actually runs, and `Selection.RequestedBackend` is what was
+asked for and did not work. **A consuming game that stores a backend preference MUST clear it when it sees that
+source**, or the player retries the same broken choice on every launch. The engine cannot do it: writing a
+setting is file IO, which this package does not do. `GpuBackendSelector.AfterFallback` is the pure helper that
+builds that report, so a consumer driving its own retry reports identically.
+
+Fallback is skipped entirely when the requested backend already IS the OS-probe default, which is every call
+with no override and no preference, so **the macOS and Linux default paths are untouched**. `CreateHeadless` is
+unchanged, so the golden-image path is unchanged.
+
+`GpuDeviceContext.CreateForWindow` gains two overloads alongside the existing signature: a nullable
+`GpuBackendKind?` preference (resolved against the environment, with fallback) and a non-nullable
+`GpuBackendKind` (exactly this backend, no resolution, no fallback) as the "retry as X" lever.
+
+#### The relaunch primitive resolves both shipped shapes (KhaozEngine.App / KhaozEngine.Platform)
+
+Applying a backend change means restarting the client. `AppRelaunch` already did this properly over the
+injectable `IProcessControl` seam, including launching the successor before the predecessor shuts down with a
+predecessor-pid handshake so the fresh boot does not race the save file. What it did not resolve correctly was
+the `dotnet <app>.dll` shape: `Environment.ProcessPath` is then the shared dotnet muxer rather than the app, and
+the dll naming the app is element 0 of the command line, which `CurrentCommandLineArguments` deliberately drops,
+so the successor would have been a bare `dotnet` holding the game's arguments.
+
+`IProcessControl` gains `CurrentManagedEntryPath`, **defaulted to null so an existing external implementation
+keeps compiling**, and `AppRelaunch.Restart` puts the dll back in front when the target is the muxer. Keyed off
+the muxer and never off "argv[0] is a dll", which is true of the apphost shape too and would corrupt the common
+case. Skipped when the caller named its own `ExecutablePath`. `UpdateService` is deliberately not refactored
+onto this: it keeps its own tuned environment (antivirus retry, elevation, relocation), and sharing the pattern
+rather than the code remains the existing decision.
+
 ## 17.22.0
 
 ### The engine can see when a Direct3D11 driver is emulating command lists, and says so

@@ -178,9 +178,15 @@ references an umbrella gets the ratchet.
 Cooperative self-restart (`KhaozEngine.App.AppRelaunch`) adds one edge, acyclic:
 
 ```
-KhaozEngine.App -> KhaozEngine.Platform   (IProcessControl: resolve the running exe/pid/args, spawn a
-                                           detached instance, wait for a pid to exit)
+KhaozEngine.App -> KhaozEngine.Platform   (IProcessControl: resolve the running exe/pid/args/managed entry,
+                                           spawn a detached instance, wait for a pid to exit)
 ```
+
+`IProcessControl` gained one member in 17.23.0, `CurrentManagedEntryPath`, so the seam can name the app under
+`dotnet <app>.dll` where `CurrentExecutablePath` resolves to the shared dotnet muxer instead. It has a DEFAULT
+implementation returning null, which keeps an existing external implementation of a shipped public interface
+compiling; null simply means that shape is not repaired. No new edge: it reads `Environment` like the members
+beside it.
 
 `Platform` is a zero-ProjectReference leaf (pure BCL P/Invoke), so `App -> Platform` cannot cycle and keeps
 `App` GPU-free. The process operations are behind `IProcessControl` (the seam) so the relaunch orchestration
@@ -452,6 +458,16 @@ Why it is worth an edge at all: without it, a mistyped `KE_GRAPHICS_BACKEND` is 
 default. The selector falls back to the probe, the run produces a perfectly ordinary trace, and the result reads
 as "the requested backend did not help" when that backend never ran. `GpuBackendSelection` records the
 provenance and the raw override value, and this edge is what lets the engine say so out loud.
+
+### The stored backend preference deliberately adds NO edge (17.23.0)
+
+Letting a player pick the backend in game is naturally read as "`Gpu` needs to load a setting", which would mean
+a settings or persistence reference and would invert the layering: `KhaozEngine.Gpu` sits at the bottom with
+only `Diagnostics` + `Primitives`, and the persistence stack sits above it. So the preference is DATA, a
+`GpuBackendKind?` passed down (`GameAppOptions` to `AppWindow` to `GpuDeviceContext`), and the engine does no
+file IO for it. The same rule is why the creation fallback only REPORTS
+(`GpuBackendSource.FallbackAfterFailure` plus `RequestedBackend`) and never clears the offending setting: the
+game owns that write. Direction of flow is what keeps the closure intact, not the size of the dependency.
 
 ## D3D11 driver-threading probe: a declared package, not a new seam
 

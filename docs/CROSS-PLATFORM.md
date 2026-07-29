@@ -16,12 +16,42 @@ Backend selection is centralized in `KhaozEngine.Gpu.GpuBackendSelector`:
 - `Select()` reads the `KE_GRAPHICS_BACKEND` env override (`metal` / `vulkan` / `d3d11` / `gl`,
   case-insensitive), otherwise probes the OS (macOS → Metal, Windows → Direct3D11, Linux/other → Vulkan).
 - `Resolve()` (17.21.0) answers the same question but also reports WHERE the answer came from, as a
-  `GpuBackendSelection` carrying `Source` (`OsProbe` / `EnvironmentOverride` / `UnrecognizedOverride`) and the
-  raw override value. `GpuDeviceContext` logs it once per device, and WARNs on an unrecognized override naming
+  `GpuBackendSelection` carrying `Source` (`OsProbe` / `EnvironmentOverride` / `UnrecognizedOverride` /
+  `UserPreference` / `FallbackAfterFailure`) and the raw override value. `GpuDeviceContext` logs it once per device, and WARNs on an unrecognized override naming
   the bad value and the backend it fell back to. Check that line before concluding a backend comparison: a
   typo'd override silently uses the OS default and otherwise looks exactly like a successful run.
+- A stored USER PREFERENCE (17.23.0) sits between the two, so the full precedence is `KE_GRAPHICS_BACKEND` >
+  preference > OS probe. The env override stays on top deliberately: a developer must be able to force a backend
+  for a repro regardless of what the player picked. The preference is passed in as a `GpuBackendKind?`
+  (`GameAppOptions.GraphicsBackendPreference`), never read from disk by the engine, and `Source` reports
+  `UserPreference` when it decided. With no preference the chain behaves exactly as it did before.
 - `CreateHeadless` builds the matching offscreen device (`GraphicsDevice.CreateVulkan` / `CreateD3D11` /
-  Metal). No window - so the golden tests need no SDL2.
+  Metal). No window - so the golden tests need no SDL2. It takes no preference and does not fall back, so the
+  golden path is unaffected by any of the above.
+
+### When the chosen backend cannot start (17.23.0)
+
+Letting a player pick a backend means letting them pick one their machine cannot run, and the setting that
+caused it lives inside the client that then will not start. Two mechanisms, and both are needed:
+
+- **`GpuBackendSelector.IsBackendSupported` / `SupportedBackends()`** are a FUNCTIONAL probe, not a guess:
+  Veldrid loads the backend's library, creates an instance, enumerates physical devices, and for Vulkan checks
+  the required surface extensions. A game's settings UI must offer only what `SupportedBackends()` returns.
+  Results are cached for the process lifetime. `OpenGL` is never reported supported, because there is no
+  windowed GL device path.
+- **Creation fallback.** A probe pass is necessary but not sufficient: a broken or partial driver can report
+  support and still fail at device creation. So `GpuDeviceContext.CreateForWindow` also catches a failed
+  creation and falls back to the OS-probe backend, WARNing with the requested backend, the failure, and what it
+  fell back to. The retry reuses the same `GpuWindowHandle` (a readonly struct of native pointers, no device
+  state), so no second window is created.
+
+The fallback is REPORTED, never repaired: `Source` becomes `FallbackAfterFailure`, `Backend` is what actually
+runs, and `RequestedBackend` is what failed. **A game storing a backend preference must clear it on seeing that
+source**, or the player retries the same broken choice every launch. The engine cannot, since writing a setting
+is file IO and `KhaozEngine.Gpu` does none.
+
+macOS and Linux default behaviour is unchanged. The fallback is skipped entirely when the requested backend
+already IS the OS-probe default, which is every call with no override and no preference.
 
 On Direct3D11 there is a second line worth reading before anything else, added in 17.22.0. `GpuDeviceContext`
 logs the driver's `D3D11_FEATURE_DATA_THREADING` (`GpuThreadingCaps`, also on `GpuDeviceContext.ThreadingCaps` /

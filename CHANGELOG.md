@@ -5,6 +5,46 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.18.0
+
+### A Windows client's encode stops stalling on the GPU mid-pass
+
+A frame's per-frame uniform blocks went up as a run of partial writes: five for the model
+pass's frame block (header, both light arrays, shadow tail, render origin) and three per
+cascade for the shadow depth pass. On D3D11 that is not a few extra commands, it is a
+different code path. Veldrid sends a partial write to a uniform buffer down its staging
+route, which Maps the immediate context with D3D11_MAP_WRITE and no DO_NOT_WAIT flag, so
+each one blocks until the GPU has finished with the staging buffer being recycled. Only a
+write covering the whole buffer from offset 0 takes the cheap path, because D3D11 forbids a
+partial box on a constant buffer.
+
+A reporting client's shadow and model passes were spending 12 to 17 ms each encoding a
+scene that encodes in under 1 ms on Metal, with the draw count flat. Twenty-two of those
+stalls per frame, each waiting out a fraction of however far behind the GPU had fallen.
+Field report: [Ruinborne#388](https://github.com/APKiwiOrg/Ruinborne/issues/388).
+
+Each block is now packed into one contiguous image and uploaded once. The model pass's own
+UBO is exactly the block size, so it leaves the staging route entirely; the cascade buffer
+gets a persistent CPU mirror uploaded whole; a GPU-skinned draw's slot costs two uploads
+instead of seven. Byte-identical uploads, so nothing rendered moves, and the other backends
+are simply issued fewer commands. A shape test (one whole-buffer write per block, running on
+the WARP leg in CI) keeps a partial per-frame write from returning to the hot path.
+
+### The terrain ring stops rebuilding itself around a standing player
+
+The tier pick has had a 10 m dead zone since it existed, because a chunk parked on a tier
+boundary would otherwise re-tier on every step. The residency ring had none, and it is the
+same failure one level up: the ring and the load disk are both decided from the player's
+chunk coord, so a player standing ON a chunk boundary flipped that coord on a tenth of a
+millimetre of network jitter, and every flip shifted the whole disk one chunk.
+
+Measured on a radius-5 disk with a player who never moved: 907 chunk builds and 407 applies
+over 100 passes, most of the builds thrown away before they could be applied. Now zero.
+
+The ring re-centres only once the player is 2 m inside a new chunk
+(`TerrainStreamer.ChunkAnchorHysteresis`). A teleport or respawn still re-centres
+immediately, and only a step to a neighbouring chunk is damped.
+
 ## 17.17.0
 
 ### The per-frame upload total now says which stream it is

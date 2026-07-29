@@ -292,6 +292,14 @@ namespace KhaozEngine.Render3D
         /// </summary>
         public RenderFrameStats LastFrameStats => _frameStats;
 
+        /// <summary>Last-frame water diagnostics (ocean FFT stall cost + clipmap rebuild count). Issue #374: these
+        /// used to be internal-only counters on the water renderer, reachable by KhaozEngine's own tests but not by
+        /// a consuming game. Always populated regardless of <see cref="EnableTiming"/> (the underlying counters are
+        /// plain fields/a Stopwatch read that already run unconditionally inside the water renderer, the same
+        /// always-on shape as <see cref="LastFrameStats"/>). See <see cref="WaterFrameStats"/> for exactly what each
+        /// field means and when it goes stale.</summary>
+        public WaterFrameStats LastWaterStats => new(_water.LastOceanCost.Stalls, _water.LastOceanCost.StallMs, _water.LastClipmapRebuilds);
+
         /// <summary>
         /// True when the last rendered frame SKIPPED the key-light shadow depth pass and reused the previous frame's
         /// shadow map. The pass is skipped only when every shadow-relevant input is unchanged since the last rendered

@@ -61,6 +61,38 @@ namespace KhaozEngine.Tests.Render3D
             Assert.True(t.PostMs > 0f, $"expected a nonzero post-chain encode time, got {t.PostMs}");
         }
 
+        // Issue #374's other exposure: LastClipmapRebuilds was internal-only on WaterRenderer before this, reachable
+        // from KhaozEngine's own tests but not from a consuming game. A fresh clipmap grid always rebuilds on the
+        // first Draw that uses it (nothing cached yet), so that is enough to prove the public passthrough is wired
+        // to the real counter rather than always reading 0.
+        [GpuFact]
+        public void LastWaterStats_ClipmapRebuilds_ReflectsAFreshGridsFirstRebuild()
+        {
+            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
+            IGpuDevice gd = gpu.GpuDevice;
+            var f = gd.Factory;
+
+            const int W = 64, H = 48;
+            using IGpuTexture finalTex = f.CreateTexture(GpuTextureDescription.Texture2D(
+                W, H, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
+            using IGpuFramebuffer finalFB = f.CreateFramebuffer(null, finalTex);
+
+            using var scene = new Scene3D(gd, finalFB.Outputs);
+            scene.Post.Water.GridMode = WaterGridMode.Clipmap;
+            using IGpuCommandList cl = f.CreateCommandList();
+
+            scene.Begin();
+            scene.DrawWater(new WaterPlane(centerX: 0f, surfaceY: 0f, centerZ: 0f, halfExtentX: 400f));
+            cl.Begin();
+            scene.RenderInternal(cl, W, H, finalFB);
+            cl.End();
+            gd.Submit(cl);
+            gd.WaitForIdle();
+
+            Assert.True(scene.LastWaterStats.ClipmapRebuilds > 0,
+                "expected the first-ever clipmap Draw to rebuild at least one grid");
+        }
+
         [GpuFact]
         public void Enabling_timing_with_shadow_map_populates_shadow_depth()
         {

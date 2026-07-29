@@ -33,9 +33,16 @@ namespace KhaozEngine.Gpu
         public GpuBackendKind Backend => Selection.Backend;
 
         /// <summary>
-        /// The backend choice WITH its provenance: OS probe, an honoured <c>KE_GRAPHICS_BACKEND</c> override, or an
-        /// unrecognized one that fell back to the probe (the raw value is kept). Logged once per created device, so
-        /// a session log answers "which backend actually ran" without the tester having to reproduce their shell.
+        /// The backend choice WITH its provenance: OS probe, an honoured <c>KE_GRAPHICS_BACKEND</c> override, an
+        /// unrecognized one (the raw value is kept), the game's stored user preference, or a fallback after the
+        /// requested backend failed to create. Logged once per created device, so a session log answers "which
+        /// backend actually ran" without the tester having to reproduce their shell.
+        /// <para>
+        /// A <see cref="GpuBackendSource.FallbackAfterFailure"/> source is the one a consuming game must ACT on:
+        /// <see cref="GpuBackendSelection.RequestedBackend"/> did not work on this machine, so a stored preference
+        /// naming it has to be cleared or the player retries the same broken choice on every launch. The engine
+        /// cannot clear it: writing settings would mean file IO, which this package does not do.
+        /// </para>
         /// </summary>
         public GpuBackendSelection Selection { get; }
 
@@ -145,8 +152,24 @@ namespace KhaozEngine.Gpu
             => CreateForWindow(window, width, height, syncToVerticalBlank,
                 GpuBackendSelector.Resolve(preferredBackend));
 
+        /// <summary>
+        /// Create a windowed device on EXACTLY <paramref name="backend"/>: no environment override, no stored
+        /// preference, no OS probe, and no fallback. This is the "retry as X" lever, for a consumer driving its
+        /// own recovery (the engine's built-in fallback does not need it). A failure propagates, because a caller
+        /// that named one backend outright is not asking to be quietly given a different one.
+        /// <para>Contrast the <see cref="GpuBackendKind"/>? overload above: nullable means "a preference, maybe
+        /// absent" and is resolved against the environment WITH fallback, non-nullable means "this one" and is
+        /// not. The resulting <see cref="Selection"/> reports
+        /// <see cref="GpuBackendSource.UserPreference"/>, since naming a backend from outside the engine is the
+        /// same provenance class as a stored preference: neither the environment nor the probe chose it.</para>
+        /// </summary>
+        public static GpuDeviceContext CreateForWindow(in GpuWindowHandle window, uint width, uint height,
+            bool syncToVerticalBlank, GpuBackendKind backend)
+            => CreateForWindow(window, width, height, syncToVerticalBlank,
+                new GpuBackendSelection(backend, GpuBackendSource.UserPreference, null), allowFallback: false);
+
         static GpuDeviceContext CreateForWindow(in GpuWindowHandle window, uint width, uint height,
-            bool syncToVerticalBlank, GpuBackendSelection selection)
+            bool syncToVerticalBlank, GpuBackendSelection selection, bool allowFallback = true)
         {
             SwapchainSource source = window.Kind switch
             {
@@ -165,11 +188,70 @@ namespace KhaozEngine.Gpu
             var scDesc = new SwapchainDescription(source, width, height, null, syncToVerticalBlank, false);
 
             GraphicsDevice gd;
+            GpuBackendSelection actual;
             lock (_lifecycleGate)
             {
-                gd = CreateWindowed(selection.Backend, opts, scDesc);
+                (gd, actual) = CreateOrFallBack(opts, scDesc, selection, allowFallback);
             }
-            return new GpuDeviceContext(gd, selection, ownsDevice: true);
+            // Constructed OUTSIDE the gate, as before: the gate exists to serialize Veldrid device creation and
+            // disposal, and capability reads / the D3D11 threading probe were never inside it.
+            return new GpuDeviceContext(gd, actual, ownsDevice: true);
+        }
+
+        /// <summary>
+        /// Creates the requested device, falling back to the OS-probe backend rather than propagating when the
+        /// requested one cannot be had. This is what stops a player from choosing a backend their machine cannot
+        /// run and ending up with a client that will not start and cannot be fixed from inside the game.
+        /// </summary>
+        /// <remarks>
+        /// Two guards, because neither alone is enough. The functional probe rules out the backend up front (no
+        /// Vulkan ICD, no required surface extension), and the try/catch covers the case the probe cannot see: a
+        /// broken or partial driver that answers "supported" and then fails at device creation anyway.
+        /// <para>
+        /// Retrying needs NO new window. The native window is already created and initialized by the time
+        /// <see cref="GpuWindowHandle"/> is built, and that handle is a plain readonly struct of native pointers
+        /// holding no device state, so the second attempt reuses it as-is.
+        /// </para>
+        /// </remarks>
+        static (GraphicsDevice Device, GpuBackendSelection Selection) CreateOrFallBack(
+            GraphicsDeviceOptions opts, SwapchainDescription scDesc, GpuBackendSelection selection, bool allowFallback)
+        {
+            GpuBackendKind requested = selection.Backend;
+            GpuBackendKind fallback = GpuBackendSelector.ProbeOS(GpuBackendSelector.DetectOS());
+
+            // Nothing to fall back TO when the request already IS the OS-probe default. That covers every call
+            // with no override and no preference, i.e. every pre-17.23.0 call site and the whole macOS/Linux
+            // default path, which therefore behaves exactly as it always did: create, and let a failure throw.
+            if (!allowFallback || requested == fallback)
+                return (CreateWindowed(requested, opts, scDesc), selection);
+
+            string? failure = GpuBackendSelector.IsBackendSupported(requested)
+                ? null
+                : "this machine reports no support for it";
+
+            if (failure is null)
+            {
+                try
+                {
+                    return (CreateWindowed(requested, opts, scDesc), selection);
+                }
+                catch (Exception ex)
+                {
+                    // Deliberately broad. The Vulkan leg throws VeldridException, the Direct3D11 leg surfaces
+                    // SharpGen.Runtime.SharpGenException out of Vortice's Result.CheckError (whose only common
+                    // ancestor with VeldridException is System.Exception), and a machine missing a loader library
+                    // outright throws DllNotFoundException or TypeInitializationException from the P/Invoke layer
+                    // before either type is reached. Naming the two known types would miss exactly the
+                    // no-driver-installed case this fallback exists for.
+                    failure = $"{ex.GetType().Name}: {ex.Message}";
+                }
+            }
+
+            log.Warn($"Could not create a {requested} graphics device ({failure}). Falling back to {fallback}. "
+                + "If this backend was chosen in the game's graphics settings, that stored choice does not work "
+                + "on this machine and should be cleared.");
+
+            return (CreateWindowed(fallback, opts, scDesc), GpuBackendSelector.AfterFallback(selection, fallback));
         }
 
         // Creates a windowed device on `kind`, with no probing, no fallback, and no resolution. The single place

@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using KhaozEngine.Gpu;
 using Xunit;
 
@@ -270,6 +273,70 @@ namespace KhaozEngine.Tests.Gpu
                     }
                 }
             }
+        }
+
+        // --- Support probe + fallback reporting (17.23.0). The probe decides what a settings UI may OFFER; the
+        // fallback decides what happens when a driver lies. Both are needed: a partial ICD can pass the probe and
+        // still fail at device creation. ---
+
+        [Fact]
+        public void IsBackendSupported_OpenGL_IsAlwaysFalse()
+        {
+            // Veldrid may well support GL, but CreateForWindow has no windowed GL path, so offering it to a
+            // player would be offering a choice that cannot boot.
+            Assert.False(GpuBackendSelector.IsBackendSupported(GpuBackendKind.OpenGL));
+        }
+
+        [Fact]
+        public void IsBackendSupported_NeverThrows_ForAnyBackend()
+        {
+            // The probe loads native libraries. On a machine without them it must answer "no", not blow up the
+            // settings screen that asked.
+            foreach (GpuBackendKind kind in Enum.GetValues<GpuBackendKind>())
+            {
+                GpuBackendSelector.IsBackendSupported(kind);
+            }
+        }
+
+        [Fact]
+        public void SupportedBackends_OffersOnlyRealWindowedBackends_InAStableOrder()
+        {
+            IReadOnlyList<GpuBackendKind> supported = GpuBackendSelector.SupportedBackends();
+
+            Assert.DoesNotContain(GpuBackendKind.OpenGL, supported);
+            Assert.All(supported, k => Assert.True(GpuBackendSelector.IsBackendSupported(k)));
+            Assert.Equal(supported.Distinct().Count(), supported.Count);
+
+            // Stable presentation order: a settings dropdown must not reshuffle itself between openings.
+            var order = new[] { GpuBackendKind.Metal, GpuBackendKind.Vulkan, GpuBackendKind.Direct3D11 };
+            Assert.Equal(supported.OrderBy(k => Array.IndexOf(order, k)).ToArray(), supported.ToArray());
+            Assert.Equal(supported, GpuBackendSelector.SupportedBackends());
+        }
+
+        [Fact]
+        public void AfterFallback_ReportsWhatRanAndWhatWasAskedFor()
+        {
+            // The exact contract a consuming game reads to decide "clear the stored preference".
+            var requested = new GpuBackendSelection(
+                GpuBackendKind.Vulkan, GpuBackendSource.UserPreference, null);
+
+            GpuBackendSelection fell = GpuBackendSelector.AfterFallback(requested, GpuBackendKind.Direct3D11);
+
+            Assert.Equal(GpuBackendKind.Direct3D11, fell.Backend);          // what actually runs
+            Assert.Equal(GpuBackendKind.Vulkan, fell.RequestedBackend);     // what the player picked and lost
+            Assert.Equal(GpuBackendSource.FallbackAfterFailure, fell.Source);
+        }
+
+        [Fact]
+        public void AfterFallback_KeepsTheRawOverrideTextForTheDiagnostic()
+        {
+            var requested = new GpuBackendSelection(
+                GpuBackendKind.Vulkan, GpuBackendSource.EnvironmentOverride, "vulkan");
+
+            GpuBackendSelection fell = GpuBackendSelector.AfterFallback(requested, GpuBackendKind.Metal);
+
+            Assert.Equal("vulkan", fell.RequestedOverride);
+            Assert.Equal(GpuBackendKind.Vulkan, fell.RequestedBackend);
         }
 
         // The numeric values are a published telemetry contract (consumers persist (int)GpuBackendSource and read

@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Veldrid;
 
@@ -185,6 +187,83 @@ namespace KhaozEngine.Gpu
             OSPlatformKind.Linux => GpuBackendKind.Vulkan,
             _ => GpuBackendKind.Vulkan,
         };
+
+        // The backends the engine can create a WINDOWED device on, in a stable presentation order. OpenGL is
+        // deliberately absent: CreateForWindow has no windowed GL path (Silk would have to own the GL context),
+        // so offering it to a player would be offering a choice that cannot boot.
+        static readonly GpuBackendKind[] _windowCandidates =
+            { GpuBackendKind.Metal, GpuBackendKind.Vulkan, GpuBackendKind.Direct3D11 };
+
+        // Machine capability does not change while the process runs, and the Vulkan probe is genuinely
+        // expensive (it loads the loader, creates an instance, and enumerates physical devices). A settings
+        // screen may ask every frame, so each answer is computed at most once.
+        static readonly ConcurrentDictionary<GpuBackendKind, bool> _supportCache = new();
+
+        /// <summary>
+        /// Whether this machine can actually run the given backend, as a FUNCTIONAL probe rather than a guess:
+        /// Veldrid loads the backend's library, creates an instance, and enumerates devices (for Vulkan that
+        /// includes checking the required surface extensions). Answers are cached for the process lifetime.
+        /// <para>
+        /// Always false for <see cref="GpuBackendKind.OpenGL"/>, which Veldrid may well support but the engine
+        /// has no windowed device path for. Never throws: a probe that blows up is reported as unsupported.
+        /// </para>
+        /// <para>
+        /// A true answer is NECESSARY but not SUFFICIENT. A broken or partial driver can pass this and still
+        /// fail at device creation, which is why <c>GpuDeviceContext.CreateForWindow</c> pairs the probe with a
+        /// try/catch fallback rather than trusting it alone. Use this to decide what to OFFER in a settings UI;
+        /// use the fallback to survive what actually happens.
+        /// </para>
+        /// </summary>
+        public static bool IsBackendSupported(GpuBackendKind backend)
+        {
+            if (backend == GpuBackendKind.OpenGL) return false;
+            return _supportCache.GetOrAdd(backend, static kind =>
+            {
+                try
+                {
+                    return GraphicsDevice.IsBackendSupported(ToVeldrid(kind));
+                }
+                catch (Exception)
+                {
+                    // A missing loader library throws out of the P/Invoke layer rather than returning false.
+                    // "We could not even ask" and "no" are the same answer to a settings screen.
+                    return false;
+                }
+            });
+        }
+
+        /// <summary>
+        /// Every backend this machine can actually run a windowed device on, in a stable order
+        /// (Metal, Vulkan, Direct3D11). This is the list a game's graphics settings screen must offer: presenting
+        /// a backend that is not on it hands the player a choice that cannot start, which is precisely the
+        /// lock-out the fallback exists to catch after the fact. Probed via <see cref="IsBackendSupported"/>, so
+        /// the first call pays the probe cost and later ones are cached.
+        /// </summary>
+        public static IReadOnlyList<GpuBackendKind> SupportedBackends()
+        {
+            var supported = new List<GpuBackendKind>(_windowCandidates.Length);
+            foreach (GpuBackendKind kind in _windowCandidates)
+            {
+                if (IsBackendSupported(kind)) supported.Add(kind);
+            }
+            return supported;
+        }
+
+        /// <summary>
+        /// The selection to report once device creation on <paramref name="original"/>'s backend has FAILED and
+        /// <paramref name="fallbackBackend"/> was created instead: the backend becomes what actually runs, the
+        /// source becomes <see cref="GpuBackendSource.FallbackAfterFailure"/>, and what was asked for is preserved
+        /// on <see cref="GpuBackendSelection.RequestedBackend"/>. Pure, so the reporting contract is testable with
+        /// no GPU. <c>GpuDeviceContext</c> uses this for its own fallback; a consumer driving its own retry through
+        /// the explicit-backend <c>CreateForWindow</c> overload should use it too, so both report identically.
+        /// </summary>
+        public static GpuBackendSelection AfterFallback(GpuBackendSelection original, GpuBackendKind fallbackBackend)
+            => original with
+            {
+                Backend = fallbackBackend,
+                Source = GpuBackendSource.FallbackAfterFailure,
+                RequestedBackend = original.Backend,
+            };
 
         /// <summary>Detect the running OS family via <see cref="RuntimeInformation"/>.</summary>
         public static OSPlatformKind DetectOS()

@@ -2952,6 +2952,21 @@ matrices upload each frame. It is **pixel-parity** with the CPU path (the shader
 frame. It **ships default-OFF** and should stay off until you have done a windowed A/B (below) - the win is
 only at MMO crowd scale, where the CPU skin loop (O(vertices x characters) per frame) dominates.
 
+**How big the win is, measured.** `FrameUploadAttributionGpuTests` runs both paths over the same streamed-world
+scene (3,894 rigid instances, 24 characters at 13.6k vertices and 48 bones, four cascades at 2048) on one
+device, and the CPU path's per-frame upload is almost entirely the skinned vertex stream:
+
+| path | frame upload | instance stream | CPU-skinned stream | skinning uniforms | frame |
+|---|---|---|---|---|---|
+| CPU skinning (default) | 20,934 KB | 471 KB | 20,463 KB | 0 KB | 11.54 ms |
+| GPU skinning | 866 KB | 471 KB | 0 KB | 394 KB | 4.75 ms |
+
+That is **24x** off the frame's upload and, on this harness, 2.4x off the frame. The reason the gap is that
+wide is the exponent: CPU skinning re-uploads 64 bytes per vertex per character per frame, GPU skinning
+uploads 64 bytes per BONE, and a character has hundreds of times more vertices than bones. If your game draws
+more than a handful of skinned characters at once, this flag is the single largest per-frame upload lever the
+engine has, and the windowed A/B below is the only thing standing between you and it.
+
 The GPU path exists on a specific binding shape because the naive GPU design fails on Metal. **The
 GPU-backend rule (know it if you write custom Render3D code):** Veldrid/SPIRV-Cross on Metal mis-binds any
 pipeline that reads more than ONE uniform buffer - a second UBO read by ANY stage (a second vertex UBO, or
@@ -7702,6 +7717,26 @@ Diagnostics?.SetNetStatsSource(() => (_scenes.Active as RoomNet)?.NetStats);   /
 tally in `KhaozEngine.Primitives.RenderFrameStats`: `DrawCalls`, `Instances`, `Triangles` (estimated from the
 indexed-draw sizes), `BufferUpdateBytes` (per-frame streaming), plus the 2D `Quads` / `Flushes` /
 `TextureSwitches`. Read them after the frame's draws and sum with `+`:
+
+**The upload split (read this before optimising an upload number).** `BufferUpdateBytes` is a TOTAL over four
+unrelated streams, so on its own it cannot tell you which one to go after. Four fields partition it exactly
+(they always sum back to it, and the HUD shows them indented under the total):
+
+| field | what streams into it | scales with |
+|---|---|---|
+| `InstanceUploadBytes` | the rigid instance stream, 124 bytes per queued instance | how many instances a frame submits |
+| `SkinnedUploadBytes` | CPU-skinned deformed vertices, 64 bytes each, plus 124 per skinned draw | the VERTEX count of every character skinned |
+| `SkinnedUniformUploadBytes` | GPU-skinning per-draw uniform slots (matrices + palette), main pass and one per cascade per skinned caster | bone count, not vertex count |
+| `SpriteUploadBytes` | 2D sprite/glyph vertices, 64 bytes each | HUD quads |
+
+The split exists because guessing this wrong is easy and expensive. A live read on a streamed MMO client put
+19.3 MB per frame on the total and it was assumed to be the instance stream. Measured
+(`FrameUploadAttributionGpuTests`), on a scene built to that client's shape - 447 resident chunk meshes, one
+merged HLOD cluster mesh per chunk, 3,000 in-ring props - the rigid instance stream is **471 KB and flat**,
+while ONE 13.6k-vertex character costs **853 KB per frame** on the CPU-skinning path. Two dozen characters
+account for the whole reading on their own, with the instance stream at 2.3 percent of it. Record uploads
+through `AddInstanceUpload` / `AddSkinnedUpload` / `AddSkinnedUniformUpload` / `AddSpriteUpload` rather than
+bumping `BufferUpdateBytes` directly, so the partition cannot drift from the total.
 
 ```csharp
 RenderFrameStats twoD  = Surface2D.Batch.FrameStats;     // KhaozEngine.Render2D

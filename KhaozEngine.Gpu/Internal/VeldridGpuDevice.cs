@@ -56,6 +56,9 @@ namespace KhaozEngine.Gpu.Internal
         public void Submit(IGpuCommandList cl)
             => GraphicsDevice.SubmitCommands(((VeldridGpuCommandList)cl).CommandList);
 
+        public void Submit(IGpuCommandList cl, IGpuFence fence)
+            => GraphicsDevice.SubmitCommands(((VeldridGpuCommandList)cl).CommandList, ((VeldridGpuFence)fence).Fence);
+
         public void WaitForIdle()
         {
             if (_liveness.Dead) return;   // a dead device has nothing to wait for (see the latch above)
@@ -356,6 +359,19 @@ namespace KhaozEngine.Gpu.Internal
 
         public IGpuCommandList CreateCommandList()
             => new VeldridGpuCommandList(_liveness, GraphicsDevice.ResourceFactory.CreateCommandList());
+
+        public IGpuFence CreateFence()
+        {
+            // Gate here rather than letting the caller hold a fence that signals on something other than GPU
+            // completion. Every backend HAS a Veldrid Fence, but only two of them signal it from the GPU (see
+            // VeldridMap.SupportsCompletionFences), and the difference is invisible at the call site.
+            if (!Capabilities.SupportsCompletionFences)
+                throw new NotSupportedException(
+                    $"The {Backend} device has no GPU-completion fence (its Veldrid fence is signaled by the submit " +
+                    "call itself, not by the GPU). Gate on GpuCapabilities.SupportsCompletionFences and fall back to " +
+                    "WaitForIdle.");
+            return new VeldridGpuFence(_liveness, GraphicsDevice.ResourceFactory.CreateFence(signaled: false));
+        }
 
         public void Dispose()
         {

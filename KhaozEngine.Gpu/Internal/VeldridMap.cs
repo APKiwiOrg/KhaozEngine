@@ -262,7 +262,24 @@ namespace KhaozEngine.Gpu.Internal
             gd.Features.SamplerLodBias,
             MaxMsaaSampleCount(gd),
             SupportsShadowMaps(gd),
-            gd.Features.ComputeShader);
+            gd.Features.ComputeShader,
+            SupportsCompletionFences(gd));
+
+        /// <summary>Whether a fence handed to <c>SubmitCommands(cl, fence)</c> is signaled by GPU COMPLETION on this
+        /// backend. Not a device query: it is a property of Veldrid's per-backend implementation, so it is decided
+        /// here from the backend kind and the default is the safe one.
+        /// <para>Vulkan passes the fence straight into <c>vkQueueSubmit</c>, and Metal registers it against the
+        /// command buffer and sets it from the completion handler, so both are real. Direct3D11 sets a
+        /// <c>ManualResetEvent</c> on the CPU the instant <c>ExecuteCommandList</c> returns, which is a submit
+        /// receipt and not a completion signal, and the OpenGL backend signals off its own command-executor thread
+        /// the same way. Freeing a resource behind either of those would be freeing it while the GPU may still be
+        /// reading it, which is precisely the crash the fence path exists to keep impossible.</para></summary>
+        public static bool SupportsCompletionFences(GraphicsDevice gd) => gd.BackendType switch
+        {
+            GraphicsBackend.Vulkan => true,
+            GraphicsBackend.Metal => true,
+            _ => false,
+        };
 
         /// <summary>Whether the device can drive the shadow-map path: R32_Float usable as BOTH a render target and a
         /// sampled texture (the manual-PCF depth-compare samples the depth target). Defensive: a query failure =>

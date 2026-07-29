@@ -34,7 +34,12 @@ namespace KhaozEngine.Terrain
         /// growing list: on a real cluster (the measured one is 41 props and 139,608 triangles) a doubling
         /// <see cref="List{T}"/> plus its closing <c>ToArray</c> spent roughly three times the final size in
         /// large-object allocations, all of it transient and none of it compacted (issue #393). The output is
-        /// byte-identical either way, since the fill order is unchanged.</para></summary>
+        /// byte-identical either way, since the fill order is unchanged.</para>
+        /// <para><b>The merged mesh always addresses its own vertices.</b> A source mesh with no vertices is skipped
+        /// like an absent id, and a source corner pointing past its own mesh's vertex array is collapsed onto that
+        /// mesh's first vertex instead of being rebased into nowhere. So no caller of the merged mesh (the weld, a GPU
+        /// upload, a bake) can be handed an index past the end, which is what issue #402 crashed on. Both rules are
+        /// the identity for a well-formed kit, so real output is unchanged.</para></summary>
         public static GltfMesh Merge(IReadOnlyList<PropPlacement> placements,
                                      IReadOnlyDictionary<string, GltfMesh> sourceMeshes)
         {
@@ -43,7 +48,7 @@ namespace KhaozEngine.Terrain
 
             int vertCount = 0, indexCount = 0;
             for (int p = 0; p < placements.Count; p++)
-                if (sourceMeshes.TryGetValue(placements[p].Id, out GltfMesh? m) && m != null)
+                if (Usable(sourceMeshes, placements[p].Id, out GltfMesh? m))
                 {
                     vertCount += m.Vertices.Length;
                     indexCount += m.Indices32.Length;
@@ -55,7 +60,7 @@ namespace KhaozEngine.Terrain
             for (int p = 0; p < placements.Count; p++)
             {
                 PropPlacement pl = placements[p];
-                if (!sourceMeshes.TryGetValue(pl.Id, out GltfMesh? mesh) || mesh == null) continue;
+                if (!Usable(sourceMeshes, pl.Id, out GltfMesh? mesh)) continue;
 
                 Matrix4x4 rot = Matrix4x4.CreateRotationY(pl.Yaw);
                 Matrix4x4 world = Matrix4x4.CreateScale(pl.Scale) * rot * Matrix4x4.CreateTranslation(pl.X, pl.Y, pl.Z);
@@ -70,9 +75,30 @@ namespace KhaozEngine.Terrain
                     verts[vi++] = v;
                 }
                 uint[] mi = mesh.Indices32;
-                for (int i = 0; i < mi.Length; i++) idx[ii++] = baseIndex + mi[i];
+                uint srcVerts = (uint)mv.Length;
+                for (int i = 0; i < mi.Length; i++)
+                {
+                    uint s = mi[i];
+                    // A source corner naming a vertex its own mesh does not have is collapsed onto that mesh's first
+                    // vertex rather than rebased blind (issue #402). Rebasing it would put an index past the merged
+                    // vertex array, which is what turned one malformed kit mesh into an IndexOutOfRangeException on a
+                    // worker thread. The ternary is the identity for every well-formed mesh, so the merged output is
+                    // byte-identical to before. A collapsed corner makes the triangle degenerate and Weld drops it.
+                    idx[ii++] = baseIndex + (s < srcVerts ? s : 0u);
+                }
             }
             return new GltfMesh(verts, idx);
+        }
+
+        /// <summary>A placement's source mesh, when the kit has one that can actually contribute geometry. A mesh with
+        /// no vertices is skipped exactly like an absent id: it has nothing to merge, and admitting it would size the
+        /// index array for corners that can never address a real vertex. Used by BOTH of <see cref="Merge"/>'s passes,
+        /// so the counting pass and the fill pass cannot disagree about which placements are in.</summary>
+        static bool Usable(IReadOnlyDictionary<string, GltfMesh> sourceMeshes, string id,
+                           [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out GltfMesh? mesh)
+        {
+            mesh = sourceMeshes.TryGetValue(id, out GltfMesh? m) && m != null && m.Vertices.Length > 0 ? m : null;
+            return mesh != null;
         }
 
         /// <summary>Vertex-cluster weld decimation: collapse every vertex whose position quantizes to the same cubic
@@ -84,7 +110,12 @@ namespace KhaozEngine.Terrain
         /// <para>Three passes, none of which grows a list: assign cells, accumulate into exactly-sized arrays, then
         /// count the surviving triangles before filling an exactly-sized index array. The accumulate pass repeats the
         /// same additions in the same per-cell order as the single-pass form it replaced, so the float sums (and
-        /// therefore the output) are bit-for-bit what they were.</para></summary>
+        /// therefore the output) are bit-for-bit what they were.</para>
+        /// <para><b>A malformed index buffer degrades, it does not throw.</b> A triangle with a corner past the end of
+        /// the vertex array is dropped like a degenerate one (issue #402), so this never throws
+        /// <see cref="IndexOutOfRangeException"/> whatever it is handed. Note that the weld CELL never indexes
+        /// anything: cell keys go into a <see cref="Dictionary{TKey,TValue}"/> and cell ids are dense, so however the
+        /// <c>(int)</c> cast of a quotient rounds on a given CPU, it cannot address out of range.</para></summary>
         public static GltfMesh Weld(GltfMesh mesh, float cellSize)
         {
             if (mesh == null) throw new ArgumentNullException(nameof(mesh));
@@ -130,22 +161,38 @@ namespace KhaozEngine.Terrain
             }
 
             uint[] si = mesh.Indices32;
+            uint vertexCount = (uint)src.Length;
             int kept = 0;
             for (int t = 0; t + 2 < si.Length; t += 3)
-            {
-                int a = remap[si[t]], b = remap[si[t + 1]], c = remap[si[t + 2]];
-                if (a != b && b != c && a != c) kept++;      // collapsed / degenerate triangles are dropped
-            }
+                if (Survives(si, t, vertexCount, remap, out _, out _, out _)) kept++;
 
             var outI = new uint[kept * 3];
             int o = 0;
             for (int t = 0; t + 2 < si.Length; t += 3)
             {
-                int a = remap[si[t]], b = remap[si[t + 1]], c = remap[si[t + 2]];
-                if (a == b || b == c || a == c) continue;
+                if (!Survives(si, t, vertexCount, remap, out int a, out int b, out int c)) continue;
                 outI[o++] = (uint)a; outI[o++] = (uint)b; outI[o++] = (uint)c;
             }
             return new GltfMesh(outV, outI);
+        }
+
+        /// <summary>Whether the triangle at <paramref name="t"/> makes it into the welded output, and its remapped
+        /// corners when it does. A triangle is dropped when it collapsed (two or three corners welded into one cell)
+        /// or when a corner names a vertex the mesh does not have.
+        /// <para>That second case is issue #402: <c>remap</c> is sized by the VERTEX count and was indexed by the
+        /// index buffer with no check, so a single out-of-range corner threw <see cref="IndexOutOfRangeException"/>
+        /// out of a background chunk build. An unrepresentable corner cannot be welded to anything, so the triangle is
+        /// dropped like a degenerate one instead: the mesh degrades by that triangle rather than the build dying. The
+        /// comparison is unsigned, so <c>uint.MaxValue</c> reads as out of range and never as a negative offset.</para>
+        /// <para>Both of <see cref="Weld"/>'s passes (count the survivors, then fill an exactly-sized array) run
+        /// through here, so they cannot drift apart and overrun the output.</para></summary>
+        static bool Survives(uint[] si, int t, uint vertexCount, int[] remap, out int a, out int b, out int c)
+        {
+            a = b = c = 0;
+            uint ia = si[t], ib = si[t + 1], ic = si[t + 2];
+            if (ia >= vertexCount || ib >= vertexCount || ic >= vertexCount) return false;
+            a = remap[ia]; b = remap[ib]; c = remap[ic];
+            return a != b && b != c && a != c;
         }
 
         /// <summary>Build a cluster's coarse HLOD mesh in one call: <see cref="Merge"/> the placements, then

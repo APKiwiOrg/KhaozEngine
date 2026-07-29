@@ -48,6 +48,10 @@ namespace KhaozEngine.Render3D
         // Slot-indexed GPU mesh storage parallel to _slots; a freed slot's entry is null until reused.
         readonly List<Mesh?> _meshes = new();
         readonly MeshSlotMap _slots = new();
+        // Bound once here (not rebuilt per call) so RenderInternal's per-frame ApplyAlphaCutoffs costs no closure
+        // allocation despite reading instance state (_slots, _meshes) a static delegate cannot see (issue #374).
+        // The method group capture happens once for this Scene3D's lifetime, see AlphaCutoffFor near ApplyAlphaCutoffs.
+        readonly Func<MeshHandle, float> _alphaCutoffLookup;
         readonly RetiredResourcePool _retired;   // mesh buffers freed mid-life, destroyed behind one drain per frame
         // Loaded albedo textures, indexed by TextureHandle.Index. Shared across meshes; disposed in Dispose.
         readonly List<IGpuTexture?> _textures = new();   // a slot is nulled by UnloadTexture (handle stays stable, not recycled)
@@ -378,6 +382,9 @@ namespace KhaozEngine.Render3D
         internal Scene3D(IGpuDevice gd, GpuOutputDescription targetOutput, ShadowSettings? initialShadows = null)
         {
             _gd = gd;
+            // Bound once, here, to a method group: the delegate object is allocated exactly once for this Scene3D's
+            // lifetime rather than once per frame (see the field doc comment above and AlphaCutoffFor below).
+            _alphaCutoffLookup = AlphaCutoffFor;
             _retired = new RetiredResourcePool(gd.WaitForIdle);
             _targetOutput = targetOutput;
             // Construction seam (issue #27): the shadow atlas is sized ONCE here (resolution x cascade count), and its
@@ -1818,7 +1825,7 @@ namespace KhaozEngine.Render3D
             // Fold each mesh's alpha-cutout threshold into its instances' SpecParams.z (the model fragment discards
             // texels below it, so MASK foliage renders as its silhouette). A mesh with cutoff 0 (OPAQUE, the default)
             // is untouched, so the instance data - and the render - stays byte-identical to the pre-cutout path.
-            ApplyAlphaCutoffs(_instanceData, _runs, _meshes);
+            ApplyAlphaCutoffs(_instanceData, _runs);
             // Reduced into a staging copy, so _instanceData stays absolute for the culling + caster reads below.
             UploadInstancesRelative(cl);
 
@@ -2994,10 +3001,22 @@ namespace KhaozEngine.Render3D
 
         // Fold each mesh's alpha-cutout threshold into its instances' SpecParams.z, reading the cutoff from the
         // loaded mesh slot (stale-handle runs resolve to 0 = no clip, matching the draw loop's stale skip). Thin
-        // wrapper over the pure overload below so the cutoff lookup stays private to Scene3D.
-        void ApplyAlphaCutoffs(List<ModelRenderer.InstanceData> instanceData, List<MeshRun> runs, List<Mesh?> meshes)
-            => ApplyAlphaCutoffs(instanceData, runs, h =>
-                _slots.IsValid(h.Index, h.Generation) && meshes[h.Index] is { } m ? m.AlphaCutoff : 0f);
+        // wrapper over the pure overload below so the cutoff lookup stays private to Scene3D. Reads _alphaCutoffLookup
+        // (bound once at construction, issue #374) instead of building a new closure over _slots/_meshes on every
+        // RenderInternal call: this runs once per rendered frame in a path documented allocation-free.
+        void ApplyAlphaCutoffs(List<ModelRenderer.InstanceData> instanceData, List<MeshRun> runs)
+            => ApplyAlphaCutoffs(instanceData, runs, _alphaCutoffLookup);
+
+        // Internal (not private): lets KhaozEngine.Render.Tests (InternalsVisibleTo) call the exact per-frame
+        // wrapper RenderInternal calls, without standing up a full render, to prove it allocates nothing (issue
+        // #374). Needs a live Scene3D (GPU-backed), so the test is a GpuFact, but skips the render itself.
+        internal void ApplyAlphaCutoffsForTest(List<ModelRenderer.InstanceData> instanceData, List<MeshRun> runs)
+            => ApplyAlphaCutoffs(instanceData, runs);
+
+        // The cutoff lookup body itself, bound once into _alphaCutoffLookup at construction rather than re-captured
+        // per call.
+        float AlphaCutoffFor(MeshHandle h) =>
+            _slots.IsValid(h.Index, h.Generation) && _meshes[h.Index] is { } m ? m.AlphaCutoff : 0f;
 
         /// <summary>Write each run's mesh alpha-cutout threshold (<paramref name="cutoffFor"/>) into that run's
         /// contiguous slice of <paramref name="instanceData"/> at <c>SpecParams.z</c>, so the model fragment

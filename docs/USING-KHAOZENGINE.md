@@ -78,7 +78,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Testing your game headlessly](#testing-your-game-headlessly)
 - [Device-free shader validation (`KhaozEngine.Gpu.ShaderValidation`)](#device-free-shader-validation-khaozenginegpushadervalidation)
 - [GPU compute shaders (`KhaozEngine.Gpu`, 15.2.0)](#gpu-compute-shaders-khaozenginegpu-1520)
-- [Drain before mid-life GPU resource disposal (`IGpuDevice.WaitForIdle`)](#drain-before-mid-life-gpu-resource-disposal-igpudevicewaitforidle)
+- [Deferred GPU resource disposal (`IGpuDevice.WaitForIdle` and completion fences)](#deferred-gpu-resource-disposal-igpudevicewaitforidle-and-completion-fences)
 - [Headless snapshots / screenshots (`KhaozEngine.Snapshot`)](#headless-snapshots-screenshots-khaozenginesnapshot)
 - [Multiplayer: transport seam + fixed-tick host (`KhaozEngine.Netcode` / `KhaozEngine.Simulation`)](#multiplayer-transport-seam-fixed-tick-host-khaozenginenetcode-khaozenginesimulation)
 - [Versioning & change process](#versioning-change-process)
@@ -8993,7 +8993,7 @@ public void MyComputeShaderCompilesEverywhere()
 
 ---
 
-## Drain before mid-life GPU resource disposal (`IGpuDevice.WaitForIdle`)
+## Deferred GPU resource disposal (`IGpuDevice.WaitForIdle` and completion fences)
 
 Disposing a GPU resource (texture, buffer, resource set) while queued GPU work might still reference it
 is a use-after-free. Most hardware drivers absorb it silently, but Mesa lavapipe's async queue-submit
@@ -9021,17 +9021,65 @@ resize-driven render target replacement (`RenderResources`, `Render3DPreview.Res
 set eviction and buffer growth (`SpriteBatch`). A custom renderer or content-streaming system built
 directly on `KhaozEngine.Gpu` should follow the same rule for anything it frees outside of full teardown.
 
-**Streamed MESH unload is the one path that does not drain per call.** `Scene3D.UnloadMesh` hands the
-mesh's vertex buffer, index buffer and material set to an internal frame-delayed pool instead. They are
-held for three frame boundaries and then destroyed behind a SINGLE drain from `Scene3D.Begin`, by which
-point the work that referenced them is several presented frames old, so the wait is the near-free
-already-idle case rather than a mid-frame pipeline stall. The rule above is unchanged, only batched: the
-free still happens after a drain. What a streaming world cannot afford is one drain PER resource, since
-walking across a chunk boundary unloads a dozen meshes at once and each drain stalled the frame that
-unloaded them. `Scene3D.Dispose` flushes the pool behind the drain it already does, so nothing outlives
-the scene. The sibling unload paths (texture, skinned mesh, splat material) still drain per call, none of
-them being on the streaming path, and moving them over is
+**Streamed MESH unload does not drain at all.** `Scene3D.UnloadMesh` hands the mesh's vertex buffer,
+index buffer and material set to an internal pool instead. At the next `Scene3D.Begin` the pool seals
+everything retired during the frame just ended into one batch and marks the submission stream with a
+fence, and it destroys that batch on the first later `Begin` whose fence polls signaled. Nothing blocks:
+retirement is event-driven, and the frame boundary costs one empty fenced submission on frames that
+retired something and nothing at all on frames that did not.
+
+The rule above is not weakened, it is proved rather than assumed. Every command that could reference a
+sealed resource lives in a frame whose command list was submitted before that boundary (hosts submit
+each frame's work between consecutive `Begin` calls), so the fence sits after all of it in the
+submission stream. Vulkan specifies `vkQueueWaitIdle` as equivalent to submitting a fence to the queue
+and waiting on it, which makes polling that fence signaled exactly the guarantee the drain gave, taken
+at seal time instead of at free time. Metal reaches the same place from the other side: a queue executes
+its command buffers in commit order and the fence is signaled from the buffer's completion handler.
+Batches are freed strictly oldest-first and the sweep stops at the first unsignaled fence, so no batch
+can jump ahead of an older one.
+
+What a streaming world cannot afford is one drain per resource, since walking across a chunk boundary
+unloads a dozen meshes at once. The batching alone fixed that. The fence removes what was left: a
+measured 1.5 to 1.6 ms on every frame that drained, at the very top of `Scene3D.Begin` where everything
+encoded after it ran against a deliberately idled GPU. On a 400 frame load-draw-unload churn the drains
+go from 396 to 0 and the frame cost from 1.909 to 0.376 ms.
+
+**On a backend with no GPU-completion fence the old behaviour is kept exactly.** Gate:
+`GpuCapabilities.SupportsCompletionFences`, true on Metal and Vulkan, false on Direct3D11 and OpenGL
+(Veldrid signals their `Fence` from the CPU as the submit call returns, so it is a submit receipt and
+not a completion signal). There, a batch waits out three frame boundaries and is destroyed behind a
+single drain, which is what every backend did before. `Scene3D.RetiredResourceCount` is the observable
+either way: a healthy streaming world shows a small number that returns to 0 shortly after a burst.
+Expect it to sit HIGHER on the fence path than it used to, because the CPU is no longer being stalled
+into lockstep with the GPU and is free to run ahead.
+
+`Scene3D.Dispose` flushes the pool behind the drain it already does, so nothing outlives the scene, and
+teardown keeps the drain on purpose (correctness over speed, and a poll would have to spin). The sibling
+unload paths (texture, skinned mesh, splat material) still drain per call, none of them being on the
+streaming path, and moving them over is
 [#383](https://github.com/APKiwiOrg/KhaozEngine/issues/383).
+
+**Building the same thing yourself.** The fence seam is public. `IGpuResourceFactory.CreateFence()`
+returns an unsignaled `IGpuFence` (and throws when the capability is false, rather than hand back one
+that lies), `IGpuDevice.Submit(cl, fence)` signals it on GPU completion, `IGpuFence.Signaled` polls
+without blocking, and `Reset()` returns it for reuse. There is deliberately no blocking wait on the
+seam: `WaitForIdle` already is one.
+
+```csharp
+if (!gd.Capabilities.SupportsCompletionFences)
+{
+    gd.WaitForIdle();          // no fence here: keep whatever you did before
+    old.Dispose();
+    return;
+}
+
+// Mark the stream after the frame whose work referenced `old`, then poll on later frames.
+using IGpuFence fence = gd.Factory.CreateFence();
+marker.Begin(); marker.End();
+gd.Submit(marker, fence);
+// ... on a later frame boundary:
+if (fence.Signaled) old.Dispose();
+```
 
 ---
 

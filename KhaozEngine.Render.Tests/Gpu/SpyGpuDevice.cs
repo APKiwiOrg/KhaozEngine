@@ -11,14 +11,39 @@ namespace KhaozEngine.Tests.Gpu
     internal sealed class SpyGpuDevice : IGpuDevice
     {
         readonly IGpuDevice _inner;
+        readonly bool _suppressFences;
 
-        public SpyGpuDevice(IGpuDevice inner) => _inner = inner;
+        /// <summary><paramref name="suppressFences"/> reports <see cref="GpuCapabilities.SupportsCompletionFences"/>
+        /// as false while forwarding everything else to a device that really does have them. That is how the
+        /// retired-resource A/B runs both ripeness policies in ONE process on ONE device: a number measured against
+        /// a second process is not comparable.</summary>
+        public SpyGpuDevice(IGpuDevice inner, bool suppressFences = false)
+        {
+            _inner = inner;
+            _suppressFences = suppressFences;
+        }
 
         /// <summary>How many times <see cref="WaitForIdle"/> has been called through this wrapper.</summary>
         public int WaitForIdleCalls { get; private set; }
 
+        /// <summary>How many times a fenced <see cref="Submit(IGpuCommandList,IGpuFence)"/> went through this
+        /// wrapper: the retirement barrier's empty submissions, and nothing else in the engine today.</summary>
+        public int FencedSubmitCalls { get; private set; }
+
         public GpuBackendKind Backend => _inner.Backend;
-        public GpuCapabilities Capabilities => _inner.Capabilities;
+
+        public GpuCapabilities Capabilities
+        {
+            get
+            {
+                GpuCapabilities c = _inner.Capabilities;
+                if (!_suppressFences) return c;
+                return new GpuCapabilities(c.ClipSpaceYInverted, c.DepthRangeZeroToOne, c.DeviceName,
+                    c.SamplerAnisotropy, c.SamplerLodBias, c.MaxMsaaSampleCount, c.SupportsShadowMaps,
+                    c.SupportsCompute, supportsCompletionFences: false);
+            }
+        }
+
         public IGpuResourceFactory Factory => _inner.Factory;
         public IGpuFramebuffer? SwapchainFramebuffer => _inner.SwapchainFramebuffer;
         public IGpuSampler PointSampler => _inner.PointSampler;
@@ -31,6 +56,12 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         public void Submit(IGpuCommandList cl) => _inner.Submit(cl);
+
+        public void Submit(IGpuCommandList cl, IGpuFence fence)
+        {
+            FencedSubmitCalls++;
+            _inner.Submit(cl, fence);
+        }
 
         public void WaitForIdle()
         {

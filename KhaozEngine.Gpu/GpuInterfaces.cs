@@ -52,6 +52,29 @@ namespace KhaozEngine.Gpu
     /// <summary>A GPU sampler handle. Engine wrapper over Veldrid <c>Sampler</c>.</summary>
     public interface IGpuSampler : IGpuBindableResource, IDisposable { }
 
+    /// <summary>A GPU completion fence: the signal a submission raises once the GPU has finished executing it.
+    /// Engine wrapper over Veldrid <c>Fence</c>. Created through <see cref="IGpuResourceFactory.CreateFence"/>,
+    /// handed to <see cref="IGpuDevice.Submit(IGpuCommandList,IGpuFence)"/>, then POLLED through
+    /// <see cref="Signaled"/>. There is deliberately no blocking wait on this seam: a caller that wants to block
+    /// already has <see cref="IGpuDevice.WaitForIdle"/>, and the whole reason the fence exists is to replace a
+    /// block with a poll.
+    /// <para>Only meaningful on a device whose <see cref="GpuCapabilities.SupportsCompletionFences"/> is true.
+    /// Read that flag before creating one: two of the four backends cannot signal on GPU completion, and the
+    /// factory throws rather than hand back a fence that would lie.</para></summary>
+    public interface IGpuFence : IDisposable
+    {
+        /// <summary>True once every command in the submission this fence was handed to has completed on the GPU.
+        /// Non-blocking: it polls and returns, it never waits. Reads true once the owning device has been
+        /// destroyed (a dead device has no outstanding work left to finish), mirroring the same no-op
+        /// <see cref="IGpuDevice.WaitForIdle"/> becomes after device disposal.</summary>
+        bool Signaled { get; }
+
+        /// <summary>Return this fence to the unsignaled state so it can be submitted again. A fence must be
+        /// unsignaled when it is submitted, so recycling one instead of creating a new one per submission goes
+        /// through here.</summary>
+        void Reset();
+    }
+
     /// <summary>A render-target framebuffer handle. Engine wrapper over Veldrid <c>Framebuffer</c>; exposes its
     /// <see cref="GpuOutputDescription"/> so a matching pipeline can be created.</summary>
     public interface IGpuFramebuffer : IDisposable
@@ -136,6 +159,12 @@ namespace KhaozEngine.Gpu
         IGpuComputePipeline CreateComputePipeline(in GpuComputePipelineDescription d);
         /// <summary>Create a command list.</summary>
         IGpuCommandList CreateCommandList();
+        /// <summary>Create an UNSIGNALED completion fence for
+        /// <see cref="IGpuDevice.Submit(IGpuCommandList,IGpuFence)"/>. Throws <see cref="NotSupportedException"/> on
+        /// a device whose <see cref="GpuCapabilities.SupportsCompletionFences"/> is false, the same way
+        /// <see cref="CreateComputePipeline"/> throws without compute: a fence that signals on something other than
+        /// GPU completion is worse than no fence, because the caller freeing resources behind it cannot tell.</summary>
+        IGpuFence CreateFence();
     }
 
     /// <summary>Records GPU commands for one submission. Engine mirror of Veldrid <c>CommandList</c>.</summary>
@@ -285,6 +314,18 @@ namespace KhaozEngine.Gpu
 
         /// <summary>Submit a finished command list for execution.</summary>
         void Submit(IGpuCommandList cl);
+
+        /// <summary>Submit a finished command list and signal <paramref name="fence"/> once the GPU has finished
+        /// executing it. The fence must be unsignaled (fresh from <see cref="IGpuResourceFactory.CreateFence"/>, or
+        /// <see cref="IGpuFence.Reset"/> since its last signal).
+        /// <para>THE ORDERING THIS BUYS, and it is the whole point: a fence handed to a submission made after some
+        /// earlier work signals only once the queue has drained through it, so polling it to
+        /// <see cref="IGpuFence.Signaled"/> is exactly the guarantee <see cref="WaitForIdle"/> gives at the moment
+        /// of the submit, without the block. Vulkan says so in as many words (<c>vkQueueWaitIdle</c> is specified as
+        /// equivalent to submitting a fence to the queue and waiting on it), and Metal executes a queue's command
+        /// buffers in commit order. Requires <see cref="GpuCapabilities.SupportsCompletionFences"/>.</para></summary>
+        void Submit(IGpuCommandList cl, IGpuFence fence);
+
         /// <summary>Block until the GPU is idle. After the device is disposed this is a safe no-op (a dead
         /// device has nothing to wait for), so a resource wrapper draining before its own disposal stays safe
         /// when it outlives the device at teardown. Calling it concurrently WITH device disposal remains a

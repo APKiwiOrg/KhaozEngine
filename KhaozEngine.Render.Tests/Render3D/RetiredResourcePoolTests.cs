@@ -1,4 +1,7 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Internal;
 using Xunit;
 
@@ -6,14 +9,55 @@ namespace KhaozEngine.Tests.Render3D
 {
     // The deferred-disposal pool behind Scene3D.UnloadMesh. It replaces the per-unload WaitForIdle that made every
     // terrain chunk unload and LOD flip drain the whole device on the frame thread. The contract these tests pin:
-    // retiring costs nothing, a resource is only ever destroyed AFTER a drain (the lavapipe use-after-free rule the
-    // per-unload drain was protecting), and one drain covers a whole batch instead of one per resource.
+    // retiring costs nothing, a resource is only ever destroyed once the GPU is provably done with it (the lavapipe
+    // use-after-free rule the per-unload drain was protecting), and neither path frees a batch out of order.
+    //
+    // Two ripeness policies live here, and both are covered. With a barrier (a device that signals a fence on GPU
+    // COMPLETION: Metal, Vulkan) a batch dies on the first frame boundary its fence polls signaled and nothing ever
+    // drains. Without one (Direct3D11, OpenGL) a batch waits out FrameDelay frame boundaries and dies behind one
+    // WaitForIdle, which is exactly what every backend did before fences. The no-barrier tests below are the
+    // original suite, unchanged on purpose: the fallback is meant to be bit-for-bit the old behaviour.
     public class RetiredResourcePoolTests
     {
         sealed class FakeResource : IDisposable
         {
             public int DisposeCount;
             public void Dispose() => DisposeCount++;
+        }
+
+        // A fence whose signal the test drives by hand, so ripeness is asserted at an exact frame instead of raced.
+        sealed class FakeFence : IGpuFence
+        {
+            public bool Signaled { get; set; }
+            public int Resets;
+            public int Disposes;
+            public void Reset() { Signaled = false; Resets++; }
+            public void Dispose() => Disposes++;
+        }
+
+        // Mirrors GpuRetireBarrier: hands out a fence per sealed batch, recycles the ones handed back.
+        sealed class FakeBarrier : IRetireBarrier
+        {
+            readonly Stack<FakeFence> _free = new();
+            public readonly List<FakeFence> Issued = new();
+            public int Submits, Releases, Disposes;
+            /// <summary>Makes Submit return null, the way a real barrier would if it could not issue a fence. The
+            /// batch then falls back to the frame count even though a barrier exists.</summary>
+            public bool CannotIssue;
+
+            public IGpuFence? Submit()
+            {
+                Submits++;
+                if (CannotIssue) return null;
+                FakeFence f;
+                if (_free.Count > 0) { f = _free.Pop(); f.Reset(); }
+                else f = new FakeFence();
+                Issued.Add(f);
+                return f;
+            }
+
+            public void Release(IGpuFence fence) { Releases++; _free.Push((FakeFence)fence); }
+            public void Dispose() => Disposes++;
         }
 
         // Records the drain order against disposals so a test can assert nothing was destroyed before the drain.
@@ -186,6 +230,163 @@ namespace KhaozEngine.Tests.Render3D
 
             Assert.Equal(1, res.DisposeCount);
             Assert.Equal(1, drains);
+        }
+
+        // ---- the fence path ----
+
+        [Fact]
+        public void A_batch_is_sealed_behind_one_fence_at_the_frame_boundary_after_it_was_retired()
+        {
+            var barrier = new FakeBarrier();
+            var pool = new RetiredResourcePool(() => Assert.Fail("the fence path must never drain"), barrier);
+            for (int i = 0; i < 16; i++) pool.Retire(new FakeResource());
+
+            Assert.Equal(0, barrier.Submits);   // retiring submits nothing
+
+            pool.BeginFrame();
+
+            Assert.Equal(1, barrier.Submits);   // one fence for sixteen resources
+            Assert.Equal(1, pool.SealedBatchCount);
+            Assert.Equal(16, pool.PendingCount);
+        }
+
+        [Fact]
+        public void A_sealed_batch_is_held_until_its_fence_signals_and_then_freed_without_a_drain()
+        {
+            var barrier = new FakeBarrier();
+            var pool = new RetiredResourcePool(() => Assert.Fail("the fence path must never drain"), barrier);
+            var res = new FakeResource();
+            pool.Retire(res);
+
+            pool.BeginFrame();                            // seals, fence unsignaled
+            for (int i = 0; i < 50; i++) pool.BeginFrame();
+            Assert.Equal(0, res.DisposeCount);            // no frame count can free it, only the fence
+            Assert.Equal(1, pool.PendingCount);
+
+            barrier.Issued[0].Signaled = true;
+            pool.BeginFrame();
+
+            Assert.Equal(1, res.DisposeCount);
+            Assert.Equal(0, pool.PendingCount);
+            Assert.Equal(0, pool.SealedBatchCount);
+        }
+
+        [Fact]
+        public void An_older_unsignaled_batch_holds_back_a_younger_signaled_one()
+        {
+            // The ordering that makes "this batch died" imply "every older batch died first". Freeing the younger
+            // batch early would destroy resources whose own submission the GPU may not have reached.
+            var barrier = new FakeBarrier();
+            var pool = new RetiredResourcePool(() => Assert.Fail("the fence path must never drain"), barrier);
+            var older = new FakeResource();
+            var younger = new FakeResource();
+
+            pool.Retire(older);
+            pool.BeginFrame();          // batch 0
+            pool.Retire(younger);
+            pool.BeginFrame();          // batch 1
+
+            barrier.Issued[1].Signaled = true;   // the YOUNGER fence signals first
+            pool.BeginFrame();
+
+            Assert.Equal(0, younger.DisposeCount);
+            Assert.Equal(0, older.DisposeCount);
+
+            barrier.Issued[0].Signaled = true;
+            pool.BeginFrame();
+
+            Assert.Equal(1, older.DisposeCount);
+            Assert.Equal(1, younger.DisposeCount);   // both go once the prefix is clear
+        }
+
+        [Fact]
+        public void An_idle_frame_seals_nothing_and_submits_no_fence()
+        {
+            var barrier = new FakeBarrier();
+            var pool = new RetiredResourcePool(() => Assert.Fail("the fence path must never drain"), barrier);
+
+            for (int i = 0; i < 100; i++) pool.BeginFrame();
+
+            Assert.Equal(0, barrier.Submits);   // a frame that retired nothing costs no submission at all
+        }
+
+        [Fact]
+        public void Fences_are_recycled_rather_than_allocated_per_batch()
+        {
+            var barrier = new FakeBarrier();
+            var pool = new RetiredResourcePool(() => Assert.Fail("the fence path must never drain"), barrier);
+
+            for (int i = 0; i < 20; i++)
+            {
+                pool.Retire(new FakeResource());
+                pool.BeginFrame();                                    // seal batch i
+                foreach (FakeFence f in barrier.Issued) f.Signaled = true;
+                pool.BeginFrame();                                    // free it, handing the fence back
+            }
+
+            Assert.Equal(20, barrier.Submits);
+            Assert.Equal(20, barrier.Releases);
+            Assert.Single(barrier.Issued.Distinct());   // one device fence served all twenty batches
+        }
+
+        [Fact]
+        public void A_barrier_that_cannot_issue_a_fence_falls_back_to_the_frame_count_and_drains()
+        {
+            var barrier = new FakeBarrier { CannotIssue = true };
+            int drains = 0;
+            var pool = new RetiredResourcePool(() => drains++, barrier, frameDelay: 3);
+            var res = new FakeResource();
+            pool.Retire(res);
+
+            pool.BeginFrame();
+            pool.BeginFrame();
+            Assert.Equal(0, res.DisposeCount);
+
+            pool.BeginFrame();
+
+            Assert.Equal(1, res.DisposeCount);
+            Assert.Equal(1, drains);            // the unfenced batch is destroyed behind a drain, as before
+            Assert.Equal(0, barrier.Releases);  // nothing to recycle: there was no fence
+        }
+
+        [Fact]
+        public void FlushAll_still_drains_on_the_fence_path()
+        {
+            // Teardown keeps the drain: correctness over speed, and a poll would have to spin.
+            var barrier = new FakeBarrier();
+            int drains = 0;
+            var pool = new RetiredResourcePool(() => drains++, barrier);
+            var a = new FakeResource();
+            var b = new FakeResource();
+            pool.Retire(a);
+            pool.BeginFrame();      // a is sealed behind an unsignaled fence
+            pool.Retire(b);         // b is not even sealed
+
+            pool.FlushAll();
+
+            Assert.Equal(1, drains);
+            Assert.Equal(1, a.DisposeCount);
+            Assert.Equal(1, b.DisposeCount);
+            Assert.Equal(0, pool.PendingCount);
+            Assert.Equal(0, pool.SealedBatchCount);
+            Assert.Equal(1, barrier.Releases);   // the in-flight fence goes back to the barrier, not to the floor
+        }
+
+        [Fact]
+        public void Dispose_flushes_the_tail_and_frees_the_barrier()
+        {
+            var barrier = new FakeBarrier();
+            int drains = 0;
+            var pool = new RetiredResourcePool(() => drains++, barrier);
+            var res = new FakeResource();
+            pool.Retire(res);
+            pool.BeginFrame();
+
+            pool.Dispose();
+
+            Assert.Equal(1, drains);
+            Assert.Equal(1, res.DisposeCount);
+            Assert.Equal(1, barrier.Disposes);
         }
     }
 }

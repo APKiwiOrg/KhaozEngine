@@ -50,6 +50,20 @@ namespace KhaozEngine.Gpu.Internal
         public void Dispose() { if (_owns && !_liveness.Dead) Sampler.Dispose(); }
     }
 
+    /// <summary>Wraps a Veldrid <see cref="Fence"/>. <see cref="Signaled"/> reads true once the device is dead:
+    /// the fence is a question about outstanding GPU work, and a destroyed device has none, so a consumer polling
+    /// a straggler fence at teardown gets "done" rather than a call into a freed device (same liveness contract as
+    /// <c>VeldridGpuDevice.WaitForIdle</c>).</summary>
+    internal sealed class VeldridGpuFence : IGpuFence
+    {
+        internal Fence Fence { get; }
+        readonly DeviceLiveness _liveness;
+        public VeldridGpuFence(DeviceLiveness liveness, Fence fence) { _liveness = liveness; Fence = fence; }
+        public bool Signaled => _liveness.Dead || Fence.Signaled;
+        public void Reset() { if (!_liveness.Dead) Fence.Reset(); }
+        public void Dispose() { if (!_liveness.Dead) Fence.Dispose(); }
+    }
+
     /// <summary>Wraps a Veldrid <see cref="Framebuffer"/>. <c>ownsFramebuffer</c> is false for the swapchain
     /// framebuffer (owned by the swapchain).</summary>
     internal sealed class VeldridGpuFramebuffer : IGpuFramebuffer

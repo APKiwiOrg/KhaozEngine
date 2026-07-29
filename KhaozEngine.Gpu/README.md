@@ -13,8 +13,9 @@ What it owns today:
   handling from the active backend instead of a baked Metal assumption), plus diagnostics: `DeviceName` (the GPU
   adapter/driver), `SamplerAnisotropy`, `SamplerLodBias` (whether those sampler levers are supported),
   `MaxMsaaSampleCount` (the largest MSAA sample count the engine's MRT formats support, for building/clamping an AA
-  menu), and `SupportsShadowMaps` (whether the device can render + sample an R32_Float depth target, gating the
-  `ShadowMode.ShadowMap` tier in Render3D). Read off the live device.
+  menu), `SupportsShadowMaps` (whether the device can render + sample an R32_Float depth target, gating the
+  `ShadowMode.ShadowMap` tier in Render3D), and `SupportsCompletionFences` (see **Completion fences** below).
+  Read off the live device.
 - **MSAA plumbing** - `GpuTextureDescription.SampleCount` (and `IGpuTexture.SampleCount`) make a multisampled render
   target; `GpuOutputDescription.SampleCount` / `WithSampleCount` carry the count so a pipeline matches its
   framebuffer (read a live multisampled framebuffer's count off `IGpuFramebuffer.Outputs`); and
@@ -36,6 +37,17 @@ What it owns today:
   reconfigures the main swapchain in place (no recreate, no leaked swapchain, size + depth preserved; on Metal it
   reaches `CAMetalLayer.displaySyncEnabled`). A no-op mirrored value on a headless device (Veldrid throws setting
   it with no main swapchain). `AppWindow.PresentMode` routes through it for runtime present-mode switching.
+- **Completion fences** - `IGpuResourceFactory.CreateFence()` makes an unsignaled `IGpuFence`,
+  `IGpuDevice.Submit(cl, fence)` signals it once the GPU has finished that submission, and `IGpuFence.Signaled`
+  polls it without blocking (`Reset()` returns it for reuse). There is no blocking wait on the seam: the point of a
+  fence here is to REPLACE a `WaitForIdle`, not to dress one up. A fence handed to a submission made after some
+  earlier work signals only once the queue has drained through that work, which is what makes it a drop-in for the
+  drain that guarded deferred GPU-resource destruction (Render3D's `RetiredResourcePool`).
+  - **Gate on `GpuCapabilities.SupportsCompletionFences`, and expect two backends to say no.** Metal and Vulkan
+    report true. Direct3D11 and OpenGL report FALSE even though Veldrid hands out a `Fence` on them, because on
+    those backends it is a `ManualResetEvent` set on the CPU as the submit call returns, which is a submit receipt
+    and says nothing about the GPU. `CreateFence()` throws there rather than return a fence that lies. A caller
+    that cannot get one keeps whatever it did before.
 - **Compute** (since 15.2.0) - `IGpuResourceFactory.CreateComputeShaderFromSpirv(computeGlsl)` compiles a GLSL 450
   compute source into an `IGpuComputeShader`, and `CreateComputePipeline(in GpuComputePipelineDescription)` builds an
   `IGpuComputePipeline` over it plus its resource layouts. Both handle types are separate from the graphics

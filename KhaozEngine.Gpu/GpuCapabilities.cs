@@ -54,10 +54,27 @@ namespace KhaozEngine.Gpu
         /// <c>CreateComputeShaderFromSpirv</c> / <c>CreateComputePipeline</c> throw on a device without it.</summary>
         public bool SupportsCompute { get; }
 
+        /// <summary>True if a fence handed to <see cref="IGpuDevice.Submit(IGpuCommandList,IGpuFence)"/> is signaled
+        /// by GPU COMPLETION rather than by the CPU-side submit call returning. Only a fence with that property can
+        /// stand in for <see cref="IGpuDevice.WaitForIdle"/>, which is what deferred GPU-resource destruction needs.
+        /// <para>Metal and Vulkan report true: Veldrid signals the Vulkan fence from <c>vkQueueSubmit</c> itself and
+        /// the Metal one from the command buffer's completion handler. Direct3D11 reports FALSE, and not because the
+        /// fence is missing: Veldrid's D3D11 fence is a <c>ManualResetEvent</c> set on the CPU immediately after
+        /// <c>ExecuteCommandList</c> returns, so it says nothing at all about what the GPU has finished. OpenGL
+        /// reports false for the same reason (its command executor signals off the submit thread). An unrecognized
+        /// backend reports false, so the safe answer is the default rather than something a new backend has to
+        /// remember to opt out of.</para>
+        /// <para>False does not mean "unsafe", it means a caller that would have polled a fence must keep whatever
+        /// it did before (for the retired-resource pool that is a frame-count delay behind one
+        /// <see cref="IGpuDevice.WaitForIdle"/>).</para></summary>
+        public bool SupportsCompletionFences { get; }
+
         public GpuCapabilities(bool clipSpaceYInverted, bool depthRangeZeroToOne,
             string deviceName = "", bool samplerAnisotropy = false, bool samplerLodBias = false,
-            int maxMsaaSampleCount = 1, bool supportsShadowMaps = true, bool supportsCompute = false)
+            int maxMsaaSampleCount = 1, bool supportsShadowMaps = true, bool supportsCompute = false,
+            bool supportsCompletionFences = false)
         {
+            SupportsCompletionFences = supportsCompletionFences;
             ClipSpaceYInverted = clipSpaceYInverted;
             DepthRangeZeroToOne = depthRangeZeroToOne;
             DeviceName = deviceName ?? "";

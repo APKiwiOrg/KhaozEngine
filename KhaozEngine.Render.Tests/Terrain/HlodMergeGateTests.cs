@@ -31,8 +31,11 @@ namespace KhaozEngine.Tests.Terrain
 
         static IReadOnlyDictionary<string, MeshHandle> NoMeshes() => new Dictionary<string, MeshHandle>();
 
-        // Frame boundaries a retired GPU resource waits before the pool destroys it (RetiredResourcePool.FrameDelay).
-        const int RetiredFrameDelay = 3;
+        // Frame boundaries to keep driving before giving up on the retired-resource pool emptying. It is a BOUND,
+        // not a delay: on a device with GPU-completion fences the pool frees a batch on the first boundary whose
+        // fence has signaled, which is an event and not a frame count, so a fixed number of Begin calls proves
+        // nothing (four of them in a tight loop can all land inside one command-buffer round trip).
+        const int RetiredDrainBoundaryLimit = 300;
 
         static TerrainField Flat(float height, float waterLevel = 0f) => new(new TerrainConfig
         {
@@ -299,10 +302,14 @@ namespace KhaozEngine.Tests.Terrain
 
             object handle = sink.Load(coord, lod: 0);
             sink.Unload(coord, handle);
-            Assert.True(scene.RetiredResourceCount > 0);         // freed mid-life, held for the frame delay
+            Assert.True(scene.RetiredResourceCount > 0);         // freed mid-life, held until the GPU is done with it
 
-            for (int i = 0; i <= RetiredFrameDelay; i++) scene.Begin();
-            Assert.Equal(0, scene.RetiredResourceCount);         // drained once the delay was waited out
+            for (int i = 0; i < RetiredDrainBoundaryLimit && scene.RetiredResourceCount > 0; i++)
+            {
+                scene.Begin();
+                if (scene.RetiredResourceCount > 0) System.Threading.Thread.Sleep(1);
+            }
+            Assert.Equal(0, scene.RetiredResourceCount);         // and released once it provably is
         });
     }
 }

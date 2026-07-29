@@ -11,18 +11,21 @@ namespace KhaozEngine.Tests.Render3D
     // Regression coverage for the lavapipe mode-2 crash documented alongside the device-lifecycle gate
     // (GpuDeviceContext remarks): Scene3D used to Dispose() a mid-life resource immediately on Unload*, racing any
     // upload or draw still queued on the device (Mesa lavapipe executes queued work on its own thread and segfaults
-    // on a resource freed out from under it). Scene3D drains the device (WaitForIdle) before disposing, and these
-    // tests pin WHERE that drain lands via a spy device (the drain-precedes-dispose ordering inside a method is not
-    // observable through the device seam). The texture path drains inside the unload call. The mesh path retires and
-    // drains once at a later frame boundary. Scene3DTextureUnloadTests is the behavioural (slot-freeing) coverage.
+    // on a resource freed out from under it). These tests pin WHERE the protection lands via a spy device (the
+    // ordering inside a method is not observable through the device seam). The texture path still drains inside the
+    // unload call. The mesh path retires, and how the retirement is proved safe now depends on the backend: a
+    // device that signals a fence on GPU completion polls that fence and never drains, and one that does not keeps
+    // the frame-count delay behind a single WaitForIdle. Both are covered below.
+    // Scene3DTextureUnloadTests is the behavioural (slot-freeing) coverage.
     public sealed class Scene3DUnloadDrainTests
     {
         static readonly byte[] Pixel = new byte[] { 255, 255, 255, 255 };   // 1x1 RGBA8
 
-        static (GpuDeviceContext Gpu, SpyGpuDevice Spy, Scene3D Scene, IGpuTexture Target, IGpuFramebuffer Fb) MakeScene()
+        static (GpuDeviceContext Gpu, SpyGpuDevice Spy, Scene3D Scene, IGpuTexture Target, IGpuFramebuffer Fb) MakeScene(
+            bool suppressFences = false)
         {
             GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
-            var spy = new SpyGpuDevice(gpu.GpuDevice);
+            var spy = new SpyGpuDevice(gpu.GpuDevice, suppressFences);
             var f = spy.Factory;
             IGpuTexture tex = f.CreateTexture(GpuTextureDescription.Texture2D(
                 16, 16, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
@@ -77,10 +80,12 @@ namespace KhaozEngine.Tests.Render3D
             }
         }
 
+        // The fallback policy, forced on by suppressing the fence capability so it is covered on a Metal box too:
+        // no GPU-completion fence means a batch waits out the frame delay and dies behind exactly one drain.
         [GpuFact]
-        public void RetiredMeshBuffers_AreFreedBehindOneDrainAtALaterFrame()
+        public void RetiredMeshBuffers_OnAnUnfencedDevice_AreFreedBehindOneDrainAtALaterFrame()
         {
-            var (gpu, spy, scene, tex, fb) = MakeScene();
+            var (gpu, spy, scene, tex, fb) = MakeScene(suppressFences: true);
             using (gpu) using (scene) using (tex) using (fb)
             {
                 for (int i = 0; i < 8; i++) scene.UnloadMesh(scene.LoadMesh(Triangle()));
@@ -89,9 +94,45 @@ namespace KhaozEngine.Tests.Render3D
                 for (int i = 0; i < RetiredResourcePool.DefaultFrameDelay; i++) scene.Begin();
 
                 Assert.Equal(before + 1, spy.WaitForIdleCalls);   // one drain for the whole batch, not one per mesh
+                Assert.Equal(0, scene.RetiredResourceCount);
 
                 scene.Begin();
                 Assert.Equal(before + 1, spy.WaitForIdleCalls);   // nothing left pending, so no further drains
+            }
+        }
+
+        // The shipped policy on Metal and Vulkan: the batch is sealed behind an empty fenced submission and freed
+        // by polling that fence, so the frame boundary never stalls the CPU on the GPU.
+        [GpuFact]
+        public void RetiredMeshBuffers_OnAFencedDevice_AreFreedWithoutEverDraining()
+        {
+            var (gpu, spy, scene, tex, fb) = MakeScene();
+            using (gpu) using (scene) using (tex) using (fb)
+            {
+                Assert.True(spy.Capabilities.SupportsCompletionFences,
+                    "this leg is meaningless on a device without GPU-completion fences");
+
+                for (int i = 0; i < 8; i++) scene.UnloadMesh(scene.LoadMesh(Triangle()));
+                int drainsBefore = spy.WaitForIdleCalls;
+                int fencedBefore = spy.FencedSubmitCalls;
+
+                Assert.True(scene.RetiredResourceCount >= 16,      // at least a vertex + index buffer per mesh
+                    $"expected the eight unloaded meshes to be held, got {scene.RetiredResourceCount}");
+
+                // Poll to ripeness. The batch is sealed on the first boundary and freed on the first boundary its
+                // fence has signaled, which may well be that same one: an empty submission behind an idle queue
+                // completes in microseconds. WHICH boundary it lands on is not the contract and is not asserted
+                // here (RetiredResourcePoolTests drives a fence by hand for that). The bound is generous only so a
+                // loaded machine cannot flake it.
+                for (int i = 0; i < 200 && scene.RetiredResourceCount > 0; i++)
+                {
+                    scene.Begin();
+                    if (scene.RetiredResourceCount > 0) System.Threading.Thread.Sleep(1);
+                }
+
+                Assert.Equal(0, scene.RetiredResourceCount);
+                Assert.Equal(fencedBefore + 1, spy.FencedSubmitCalls);   // one fence sealed the whole batch
+                Assert.Equal(drainsBefore, spy.WaitForIdleCalls);        // the cycle stalled the CPU exactly never
             }
         }
     }

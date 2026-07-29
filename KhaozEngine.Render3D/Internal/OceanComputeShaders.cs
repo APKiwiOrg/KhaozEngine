@@ -14,8 +14,10 @@ namespace KhaozEngine.Render3D.Internal
     /// keeps its whole line in workgroup shared memory and runs every butterfly stage with <c>barrier()</c>
     /// between them, and the work either side of the transform is FUSED into the same two dispatches: the
     /// spectrum's time evolution rides the row pass, and the displacement/derivative/foam map assembly rides the
-    /// column pass. One dependency remains (the column pass reads what the row pass wrote), so a frame costs
-    /// exactly ONE stall no matter how many cascades or fields are in flight.
+    /// column pass. That left one dependency (the column pass reads what the row pass wrote) and one stall per
+    /// frame; #398 then removed the last one by PING-PONGING the work buffer across the frame boundary, so the
+    /// column pass consumes the previous frame's rows and a steady-state frame drains the device not at all. See
+    /// <see cref="OceanFrameClock"/> for the one-frame time compensation that keeps the surface phase unchanged.
     /// </para>
     /// <para>
     /// <b>Four complex fields per cascade, carrying eight real ones.</b> Every field is Hermitian, so an inverse

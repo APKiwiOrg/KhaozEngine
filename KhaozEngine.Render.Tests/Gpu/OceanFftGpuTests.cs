@@ -296,19 +296,21 @@ namespace KhaozEngine.Tests.Gpu
         // ---- Cost ------------------------------------------------------------------------------------------
 
         /// <summary>
-        /// The producer's frame cost is ONE GPU stall, whatever the cascade count and resolution. That is the
-        /// structural claim the whole kernel design exists to make (see <c>OceanComputeShaders</c>): the seam has
-        /// no cross-dispatch barrier, so a per-FFT-stage ping-pong would drain the device 14 times per transform
-        /// per cascade, and fusing each axis into one shared-memory dispatch collapses that to the single
-        /// row-to-column dependency.
+        /// The producer's steady-state frame costs NO GPU stall, at every cascade count and resolution, and pays
+        /// exactly one on the frame it primes. That is the structural claim the kernel design plus the cross-frame
+        /// ping-pong exist to make (see <c>OceanComputeShaders</c> and <c>OceanFrameClock</c>): the seam has no
+        /// cross-dispatch barrier, so a per-FFT-stage ping-pong would drain the device 14 times per transform per
+        /// cascade. Fusing each axis into one shared-memory dispatch collapsed that to one drain per frame, and
+        /// ping-ponging the row intermediate across the frame boundary (#398) removed that one as well.
         /// <para>
         /// It asserts the COUNT and only logs the milliseconds. A wall-clock budget cannot be asserted here: two of
         /// the three backends this runs on are software rasterizers, where the number means nothing. The measured
-        /// Metal cost at the shipping defaults is in the release notes.
+        /// Metal cost at the shipping defaults is in the release notes, and
+        /// <c>OceanFftPingPongPerfGpuTests</c> is the harness that produces it.
         /// </para>
         /// </summary>
         [GpuFact]
-        public void OneStallPerFrameAtEveryCascadeCountAndResolution()
+        public void OnePrimingStallThenNoneAtEveryCascadeCountAndResolution()
         {
             using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
             IGpuDevice dev = gpu.GpuDevice;
@@ -322,18 +324,56 @@ namespace KhaozEngine.Tests.Gpu
                 WaterSettings settings = Settings(sea);
 
                 using var producer = new OceanFftProducer(dev);
-                double total = 0;
                 const int frames = 8;
                 for (int i = 0; i < frames; i++)
                 {
                     Assert.True(RunFrame(dev, producer, settings, i / 60f));
-                    Assert.Equal(1, producer.LastStallCount);
-                    total += producer.LastStallMs;
+                    // Frame 0 has no prior row output and produces its own, with the one drain that costs. Every
+                    // frame after it consumes what the frame before wrote, so nothing waits mid-frame.
+                    Assert.Equal(i == 0 ? 1 : 0, producer.LastStallCount);
+                    if (i > 0) Assert.Equal(0d, producer.LastStallMs);
                 }
                 Assert.Equal(cascades, producer.CascadeCount);
                 Assert.Equal(resolution, producer.Resolution);
-                Assert.True(total / frames >= 0d);   // pins the measurement path itself, not a budget
             }
+        }
+
+        /// <summary>
+        /// The ping-pong's fidelity claim, on the device rather than on the clock (<c>OceanFrameClockTests</c> owns
+        /// the arithmetic): a producer run frame after frame lands on the SAME maps a producer run once at that
+        /// frame's time does, because the row pass was dispatched one frame ahead in time. Bitwise, not within a
+        /// tolerance - the compensation is either exactly one frame or it is a phase shift.
+        /// <para>
+        /// The frame step is 1/64 s rather than 1/60 so that <c>t + dt</c> is exactly <c>t</c> of the next frame in
+        /// binary floating point. At 1/60 the extrapolation lands within half a float ULP of the next frame's time
+        /// instead of on it, which is nothing anyone can see (five orders of magnitude under the half-float maps'
+        /// own resolution) but is not a thing to assert bitwise.
+        /// </para>
+        /// </summary>
+        [GpuFact]
+        public void RunningFrameAfterFrameProducesTheSameMapsAsASingleFrameAtThatTime()
+        {
+            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
+            IGpuDevice dev = gpu.GpuDevice;
+            Assert.True(dev.Capabilities.SupportsCompute, $"{dev.Backend} reports no compute support");
+
+            WaterSeaState sea = Sea();
+            // The foam accumulator is deliberate frame-crossing state (a 6 frame run has integrated it and a single
+            // frame has not), so take it out of the comparison and leave the transform itself to answer.
+            sea.FoamGain = 0f;
+            WaterSettings settings = Settings(sea);
+            const int frames = 6;
+            const float step = 1f / 64f;
+
+            using var streamed = new OceanFftProducer(dev);
+            for (int i = 0; i < frames; i++) Assert.True(RunFrame(dev, streamed, settings, i * step));
+            float[] streamedDisplacement = ReadLayer(dev, streamed.Map, 0, N);
+            float[] streamedDerivatives = ReadLayer(dev, streamed.Map, (uint)sea.CascadeCount, N);
+
+            using var single = new OceanFftProducer(dev);
+            Assert.True(RunFrame(dev, single, settings, (frames - 1) * step));
+            Assert.Equal(ReadLayer(dev, single.Map, 0, N), streamedDisplacement);
+            Assert.Equal(ReadLayer(dev, single.Map, (uint)sea.CascadeCount, N), streamedDerivatives);
         }
 
         // ---- Motion direction (headless, CPU mirror only) --------------------------------------------------

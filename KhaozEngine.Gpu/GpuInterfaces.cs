@@ -332,11 +332,22 @@ namespace KhaozEngine.Gpu
         /// consumer ordering error.</summary>
         void WaitForIdle();
 
-        /// <summary>Upload a span of unmanaged elements into a buffer at <paramref name="offsetBytes"/>.</summary>
+        /// <summary>
+        /// Upload a span of unmanaged elements into a buffer at <paramref name="offsetBytes"/>.
+        /// <para>
+        /// <b>This write lands when you call it, OFF the command timeline.</b> Anything a submitted-later command
+        /// list reads is therefore whatever the CPU wrote most recently, not what was current when the list was
+        /// recorded, and the CPU can be several frames ahead of the GPU. For per-frame values a list reads
+        /// (uniforms, instance data) use <see cref="IGpuCommandList.UpdateBuffer{T}(IGpuBuffer, uint, in T)"/>
+        /// instead, which copies at RECORD time and applies in list order. This one is for uploads that happen
+        /// once (mesh vertices, an index buffer, a baked field) or that a drain already orders. The FFT ocean lost
+        /// a frame of surface phase to exactly this when the drain that had been hiding it went away (#398).
+        /// </para>
+        /// </summary>
         void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged;
-        /// <summary>Upload an array (convenience).</summary>
+        /// <summary>Upload an array (convenience). Off-timeline, per the span overload.</summary>
         void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, T[] data) where T : unmanaged;
-        /// <summary>Upload a single unmanaged struct (convenience).</summary>
+        /// <summary>Upload a single unmanaged struct (convenience). Off-timeline, per the span overload.</summary>
         void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, in T data) where T : unmanaged;
 
         /// <summary>Upload CPU RGBA (or format-matching) bytes into a texture sub-region (mip 0, layer 0).</summary>

@@ -112,6 +112,13 @@ namespace KhaozEngine.Tests.Gpu
             WaterSettings settings = Settings();
             using var producer = new OceanFftProducer(dev);
 
+            // Two warm frames first: this measurement compares CONSECUTIVE frames of a running sea, and a
+            // producer's first two are not that (it primes its cross-frame ping-pong on the first ocean frame and
+            // holds that surface for one more, #398). After them the pair below is exactly one frame apart on the
+            // wave clock, and `now` is the same map this test measured before the ping-pong existed.
+            WaterMirror.Warm(dev, producer, settings, FrozenTime - 2f * FrameDt);
+            WaterMirror.Warm(dev, producer, settings, FrozenTime - FrameDt);
+
             WaterMirror.Ocean now = WaterMirror.Capture(dev, producer, settings, FrozenTime);
             Assert.True(now.MaxMip > 0f, "the producer gave the clipmap no mip chain to band-limit against");
             WaterMirror.AssertTheGpuChainIsABoxFilter(dev, producer, now);

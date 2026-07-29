@@ -13,14 +13,18 @@ namespace KhaozEngine.Render3D
     public readonly struct WaterFrameStats
     {
         /// <summary>GPU stalls (<c>Submit</c> + <c>WaitForIdle</c> pairs) the ocean FFT paid in the water renderer's
-        /// last <c>Draw</c>: 1 when the FFT ocean cascades were updated, 0 when nothing this Draw read them (no
-        /// plane used <see cref="WaterWaveSource.FftOcean"/>, or the GPU lacks compute support). Independent of
-        /// cascade count and resolution. See <c>OceanFftProducer.LastStallCount</c> (issue #311).</summary>
+        /// last <c>Draw</c>. <b>0 on a steady-state frame</b> (issue #398): the ocean's two compute passes are
+        /// ping-ponged across the frame boundary, so nothing within a frame waits on anything. 1 on a frame that
+        /// PRIMED the cascades - the first frame an ocean is drawn, the frame after a sea-state change, or a frame
+        /// whose wave clock jumped - and 0 when nothing this Draw read the cascades at all (no plane used
+        /// <see cref="WaterWaveSource.FftOcean"/>, or the GPU lacks compute support). Independent of cascade count
+        /// and resolution. A steady stream of these is a bug, not a cost: see
+        /// <c>OceanFftProducer.LastStallCount</c>.</summary>
         public int OceanStalls { get; }
 
-        /// <summary>Wall-clock milliseconds the ocean FFT spent blocked on that drain: the whole cost of #311's
-        /// missing cross-dispatch barrier, measured rather than assumed. 0 when <see cref="OceanStalls"/> is 0. See
-        /// <c>OceanFftProducer.LastStallMs</c>.</summary>
+        /// <summary>Wall-clock milliseconds the ocean FFT spent blocked on that priming drain: what is left of
+        /// #311's missing cross-dispatch barrier, measured rather than assumed. 0 when <see cref="OceanStalls"/> is
+        /// 0, which since #398 is every frame but a priming one. See <c>OceanFftProducer.LastStallMs</c>.</summary>
         public double OceanStallMs { get; }
 
         /// <summary>Clipmap grids rebuilt AND re-uploaded in the water renderer's last <c>Draw</c>, across every

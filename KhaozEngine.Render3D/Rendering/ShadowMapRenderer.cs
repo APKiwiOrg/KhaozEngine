@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D.Internal;
@@ -50,6 +51,8 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuShaderSet _shaders;
         readonly IGpuResourceLayout _layout;    // set 0: the per-cascade light matrix (dynamic-offset UBO, vertex only)
         readonly IGpuBuffer _lightUbo;          // MaxCascades * 256: one light-clip matrix + the render origin per cascade slot
+        // CPU mirror of _lightUbo, uploaded whole once per depth pass (see BeginDepthPass).
+        readonly byte[] _lightImage = new byte[MaxCascades * CascadeSlotBytes];
         readonly IGpuResourceSet _set;          // 64-byte window over _lightUbo, rebased per cascade by a dynamic offset
         readonly IGpuSampler _sampler;          // clamp/POINT sampler the RECEIVERS use to PCF-sample the atlas (owned)
         IGpuPipeline _pipeline = null!;
@@ -298,15 +301,25 @@ namespace KhaozEngine.Render3D.Rendering
         {
             int count = Math.Min(cascadeCount, _cascadeCount);
             var origin = new Vector4(renderOrigin, 0f);
+            Span<byte> image = _lightImage;
             for (int i = 0; i < count; i++)
             {
                 Matrix4x4 m = depthMats[i];
                 float scale = i < noiseScales.Length ? noiseScales[i] : ShadowDissolveNoise.BaseScale;
                 var dissolveParams = new Vector4(scale, 0f, 0f, 0f);
-                cl.UpdateBuffer(_lightUbo, (uint)i * CascadeSlotBytes, in m);
-                cl.UpdateBuffer(_lightUbo, (uint)i * CascadeSlotBytes + 64, in origin);
-                cl.UpdateBuffer(_lightUbo, (uint)i * CascadeSlotBytes + 80, in dissolveParams);
+                Span<byte> slotBytes = image.Slice((int)((uint)i * CascadeSlotBytes), (int)CascadeSlotBytes);
+                MemoryMarshal.Write(slotBytes, in m);
+                MemoryMarshal.Write(slotBytes.Slice(64), in origin);
+                MemoryMarshal.Write(slotBytes.Slice(80), in dissolveParams);
             }
+            // ONE upload of the whole cascade buffer instead of three writes per cascade (twelve at four cascades).
+            // _lightImage is the CPU mirror of _lightUbo and nothing else writes that buffer, so carrying it across
+            // frames keeps every byte identical to what the per-slot writes left behind - including the slots past
+            // `count` and the unread tail of each slot, which the depth shaders never declare (the dissolve block
+            // stops at 96 of the 256 slot bytes). Covering offset 0 to SizeInBytes also matters on D3D11: only a
+            // whole-buffer write escapes Veldrid's partial-uniform-write staging route, which Maps the immediate
+            // context and stalls on the GPU (see the _frameImage note in ModelRenderer.FrameUbo.cs).
+            cl.UpdateBuffer(_lightUbo, 0, (ReadOnlySpan<byte>)_lightImage);
             cl.SetFramebuffer(_fb);
             cl.ClearColorTarget(0, new Color(1f, 1f, 1f, 1f));  // 1.0 = far plane = no caster (whole atlas)
             cl.ClearDepthStencil(1f);

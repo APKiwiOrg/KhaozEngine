@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D.Internal;
@@ -188,7 +189,9 @@ namespace KhaozEngine.Render3D.Rendering
         IGpuPipeline _skinnedDissolvePipeline = null!;
         readonly IGpuResourceSet _skinnedDefaultFragSet;   // frame UBO + white/flat/rough defaults (untextured skinned mesh)
         IGpuBuffer? _skinnedMainUbo; uint _skinnedMainSlots; IGpuResourceSet? _skinnedMainSet; // grow-with-retire combined UBO + single-slot window set
-        readonly Matrix4x4[] _skinnedHeaderScratch = new Matrix4x4[SkinnedHeaderMats]; // Mvp/Model/P, frame block + bones upload separately
+        readonly Matrix4x4[] _skinnedHeaderScratch = new Matrix4x4[SkinnedHeaderMats]; // Mvp/Model/P
+        // Header + frame block as one contiguous slot image (bones upload separately, their length varies per draw).
+        readonly byte[] _skinnedSlotScratch = new byte[SkinnedBonesOffset];
         // Instance buffers replaced by a grow are retired here (a prior in-flight frame may still read them);
         // disposed only in Dispose. Bounded by geometric growth.
         readonly List<IDisposable> _retired = new();
@@ -678,8 +681,14 @@ namespace KhaozEngine.Render3D.Rendering
                 emissive.X, emissive.Y, emissive.Z, emissive.W,
                 specParams.X, specParams.Y, specParams.Z, specParams.W,
                 isDynamic, 0f, 0f, 0f);
-            cl.UpdateBuffer(_skinnedMainUbo!, baseOff, (ReadOnlySpan<Matrix4x4>)_skinnedHeaderScratch);
-            WriteFrameUniformsTo(cl, _skinnedMainUbo!, baseOff + SkinnedFrameOffset);   // the fragment's lighting block
+            // Header + frame block go up as ONE contiguous write (they are adjacent: the frame block starts at
+            // SkinnedFrameOffset = 3 mats, and the bones start right after it at SkinnedBonesOffset), so a skinned
+            // draw costs two uploads instead of seven. On D3D11 every one of those was a staging round trip that
+            // Maps the immediate context and waits on the GPU - see the _frameImage note in ModelRenderer.FrameUbo.cs.
+            Span<byte> slotImage = _skinnedSlotScratch;
+            MemoryMarshal.AsBytes<Matrix4x4>(_skinnedHeaderScratch).CopyTo(slotImage);
+            FrameImage.CopyTo(slotImage.Slice((int)SkinnedFrameOffset));
+            cl.UpdateBuffer(_skinnedMainUbo!, baseOff, (ReadOnlySpan<byte>)_skinnedSlotScratch);
             if (bones.Length > 0) cl.UpdateBuffer(_skinnedMainUbo!, baseOff + SkinnedBonesOffset, bones);
         }
 

@@ -23,6 +23,14 @@ Backend selection is centralized in `KhaozEngine.Gpu.GpuBackendSelector`:
 - `CreateHeadless` builds the matching offscreen device (`GraphicsDevice.CreateVulkan` / `CreateD3D11` /
   Metal). No window - so the golden tests need no SDL2.
 
+On Direct3D11 there is a second line worth reading before anything else, added in 17.22.0. `GpuDeviceContext`
+logs the driver's `D3D11_FEATURE_DATA_THREADING` (`GpuThreadingCaps`, also on `GpuDeviceContext.ThreadingCaps` /
+`AppWindow.ThreadingCaps`) and WARNs when `DriverCommandLists` is FALSE. That case means the driver cannot build
+deferred-context command lists, so the D3D11 runtime emulates them in software and pays a fixed cost per recorded
+command. It is a plausible explanation for a Windows box being many times slower than the same hardware on
+Vulkan, and it is invisible without this line. Null on every other backend and off Windows, which is why the line
+only appears on D3D11.
+
 ## Backend-aware goldens
 
 `GoldenCompare.GoldenPath(name)` resolves `KhaozEngine.Render.Tests/Gpu/goldens/<name>.<backend>.txt` where

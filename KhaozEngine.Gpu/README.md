@@ -18,6 +18,22 @@ What it owns today:
   `UnrecognizedOverride`, and it still falls back to the OS probe for the backend. This exists because a typo'd
   override is otherwise indistinguishable from the OS default: the run silently uses the default and reads as
   "the requested backend did not help" when it never ran.
+- **`GpuThreadingCaps` / `GpuThreadingDiagnostics`** (17.22.0) - the graphics driver's multi-threading
+  capabilities, on **Direct3D11 only**: `DriverCommandLists` and `DriverConcurrentCreates`, read straight off the
+  live device with `ID3D11Device::CheckFeatureSupport` (`D3D11_FEATURE_THREADING`) and surfaced on
+  `GpuDeviceContext.ThreadingCaps` (and `AppWindow.ThreadingCaps`). `GpuThreadingDiagnostics.Describe` renders the
+  value, `ShouldWarn` says whether it is the bad case, and `EmulatedCommandListsWarning` is the wording the engine
+  logs. All three are pure, so a game's debug overlay shows exactly what the log says.
+  - **Why it exists.** A driver reporting `DriverCommandLists=FALSE` cannot build deferred-context command lists,
+    so the D3D11 runtime emulates them by recording every call into a token stream and replaying it. That is a
+    fixed cost on every recorded command, and Veldrid adds an extra `VSUnsetConstantBuffer` before each partial
+    constant-buffer bind on exactly this flag. The two compound, and the result reads as "this machine is just
+    slow". `GpuDeviceContext` logs an INFO line per created device and a WARN when the flag is false.
+  - **Null means no answer**, and that covers three cases on purpose: not a Direct3D11 device, not Windows, or the
+    query failed. None of them tells you anything about the driver, so none of them warns.
+  - **A hard no-op off Windows and off D3D11.** The guard returns before touching the device and before naming any
+    Vortice type, so that assembly never loads on macOS or Linux. Every failure path degrades to unknown instead
+    of throwing: this is a diagnostic, and it must not be able to break device creation.
 - **`GpuCapabilities`** - `ClipSpaceYInverted` / `DepthRangeZeroToOne` (so renderers derive clip-Y / depth
   handling from the active backend instead of a baked Metal assumption), plus diagnostics: `DeviceName` (the GPU
   adapter/driver), `SamplerAnisotropy`, `SamplerLodBias` (whether those sampler levers are supported),
@@ -35,7 +51,7 @@ What it owns today:
 - **`GpuDeviceContext`** - `CreateForWindow(in GpuWindowHandle, width, height, syncToVerticalBlank = true)` (device
   + swapchain for a Silk.NET/GLFW window; the vsync flag feeds both the device options and the swapchain, since
   9.23.0) and `CreateHeadless()` (offscreen device) on the selected backend. Exposes `Backend`, `Selection` (the
-  full `GpuBackendSelection`, since 17.21.0),
+  full `GpuBackendSelection`, since 17.21.0), `ThreadingCaps` (the D3D11 driver threading caps, since 17.22.0),
   `Capabilities`, and the engine-owned `IGpuDevice`. The raw Veldrid device is private to the context (the
   transitional accessor that used to be here is gone, and `Capabilities` is read once so the context's copy and
   the device's cannot drift). Device creation and disposal are serialized process-wide behind a single static gate, on

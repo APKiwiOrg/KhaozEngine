@@ -5,6 +5,65 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.22.0
+
+### The engine can see when a Direct3D11 driver is emulating command lists, and says so
+
+A Direct3D11 driver that reports `DriverCommandLists=FALSE` cannot build deferred-context command lists itself,
+so the D3D11 runtime emulates them: it records every call into a token stream and replays it on the immediate
+context at submit time. That puts a fixed cost on every single recorded command, and Veldrid compounds it by
+issuing an extra `VSUnsetConstantBuffer` before each partial constant-buffer bind, which it gates on exactly this
+flag. Nothing in the engine could read that flag, so a machine in this state was indistinguishable from a machine
+that was simply slow, and the only evidence was a tester reporting a large frame-rate gap between backends on the
+same hardware.
+
+`GpuDeviceContext` now reads `D3D11_FEATURE_DATA_THREADING` once at device creation and exposes it as
+`ThreadingCaps`. It logs an INFO line next to the backend line added in 17.21.0 (`D3D11 driver threading:
+DriverCommandLists=TRUE, DriverConcurrentCreates=TRUE (the driver builds command lists)`), and a WARN written for
+a reader with no graphics background when the driver reports FALSE, naming the severity and the one thing to try
+next. Backend selection is unchanged: this only observes and reports.
+
+It is a hard no-op everywhere else. The guard returns before any device access and before any Vortice type is
+named, so the assembly is never loaded on macOS or Linux, and every failure path degrades to "unknown" rather
+than throwing. A diagnostic that can break device creation is worse than the problem it diagnoses.
+
+`Vortice.Direct3D11` was already a transitive dependency of Veldrid 4.9.0 (it is Veldrid's own D3D11 binding). It
+is now a declared `PackageReference` on `KhaozEngine.Gpu`, pinned centrally to the same version Veldrid depends
+on and mapped to the same `Gpu` home as Veldrid in `ArchitectureTests`. No new native surface, no new seam.
+
+### A frame's command count is now a frozen, GPU-free regression guard
+
+The engine's recurring performance defect is per-command CPU work paid during recording, and nothing in the suite
+could see it. A golden image is identical whether a frame took 12 uploads or 220, and a wall-clock threshold on a
+shared runner is noise. Two regressions of exactly this shape have shipped (22 partial uniform writes per frame,
+then per-slot skinned UBO writes) and both were found by a field report weeks later rather than by CI.
+
+`FrameCommandCountShapeTests` now freezes how many command-list operations a fixed synthetic scene records, and of
+which kind. Counts only, no timings, so nothing here can become a flaky wall-clock gate. It runs on a new
+device-free `IGpuDevice`, which makes it a plain test in the ordinary `dotnet test` suite on every dev machine and
+on the Linux CI leg, rather than a GPU test that skips unless `KE_GPU_TESTS` is set. Covered: the shadow depth
+pass, the model pass, and the fullscreen post chain. Not covered, and still reachable only through a real device:
+compute-gated paths (the FFT ocean), the MSAA resolve, and passes driven by content this scene does not contain.
+
+Two of its assertions hold across renderer churn without anyone having to predict a number. Five DISTINCT meshes
+must record the same per-frame uniform uploads and the same pipeline binds as one mesh while issuing more indexed
+draws, and eight instances of ONE mesh must record byte-identical commands to a single instance. A change that
+packs a uniform per draw, or fans binds out per resource, breaks both immediately.
+
+### Added
+- `GpuThreadingCaps` (readonly record struct): `DriverCommandLists` and `DriverConcurrentCreates`, straight from
+  `D3D11_FEATURE_DATA_THREADING`, plus `CommandListsAreEmulated` for the case worth acting on.
+- `GpuThreadingDiagnostics` (static): `Describe(GpuThreadingCaps?)` for the one-line display form,
+  `ShouldWarn(GpuThreadingCaps?)`, `EmulatedCommandListsWarning`, and `UnknownDescription`. Pure and device-free,
+  so a game debug overlay can render the same wording the engine logs, and so the wording is testable on any
+  platform.
+- `GpuDeviceContext.ThreadingCaps` (`GpuThreadingCaps?`): read once at device creation. Null on every backend
+  other than Direct3D11, off Windows, and when the query failed. Those three are deliberately one bucket, since
+  none of them says anything about the driver.
+- `AppWindow.ThreadingCaps` (`GpuThreadingCaps?`): the same value reachable from a `GameApp` subclass, alongside
+  `BackendSelection`. `AppWindow` is now a partial class, with these read-only GPU-diagnostics accessors in
+  `AppWindow.Diagnostics.cs`. No behaviour change.
+
 ## 17.21.0
 
 ### Graphics-backend selection now records where the choice came from, and logs it

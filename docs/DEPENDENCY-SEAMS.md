@@ -48,7 +48,7 @@ this doc cannot silently drift apart.
 
 | Area | Seam (dependency-free) | Backend(s) | Third-party library |
 |---|---|---|---|
-| GPU / rendering | `KhaozEngine.Gpu` (`GpuDeviceContext` + `GpuInterfaces`, `GpuBackendSelector`) | (in-package) `Internal/VeldridGpuDevice` | Veldrid (+ Veldrid.SPIRV) |
+| GPU / rendering | `KhaozEngine.Gpu` (`GpuDeviceContext` + `GpuInterfaces`, `GpuBackendSelector`) | (in-package) `Internal/VeldridGpuDevice` | Veldrid (+ Veldrid.SPIRV, Vortice.Direct3D11) |
 | 3D physics | `KhaozEngine.Physics` (`IPhysicsWorld`, value-type shapes/poses/queries, and since the floating-origin release also the default-method `Origin` / `CanRebase` / `Rebase(newOrigin)`, so an existing implementer keeps compiling and correctly reports that it cannot rebase - the seam learns a plain `Vector3`, never a frame type, and keeps its zero project references) | `KhaozEngine.Physics.Bepu` (`BepuPhysicsWorld`, which overrides all three: bulk direct pose writes plus broadphase refits over every allocated body set and the statics, so sleeping bodies, contacts and constraints all survive a shift) | BepuPhysics v2 |
 | Netcode transport | `KhaozEngine.Netcode` (`INetTransport` incl. the default-method `Stats` -> `NetTransportStats`, `LoopbackTransport`) + `Netcode.Abstractions` | `KhaozEngine.Netcode.LiteNetLib` (fills `Stats` via `EnableStatistics`) | LiteNetLib |
 | Persistence | `KhaozEngine.WorldStore` (`IWorldStore`, `InMemoryWorldStore`) | `WorldStore.Sqlite`, `WorldStore.SqlServer` | Microsoft.Data.Sqlite / SqlClient |
@@ -452,6 +452,32 @@ Why it is worth an edge at all: without it, a mistyped `KE_GRAPHICS_BACKEND` is 
 default. The selector falls back to the probe, the run produces a perfectly ordinary trace, and the result reads
 as "the requested backend did not help" when that backend never ran. `GpuBackendSelection` records the
 provenance and the raw override value, and this edge is what lets the engine say so out loud.
+
+## D3D11 driver-threading probe: a declared package, not a new seam
+
+Since 17.22.0 `KhaozEngine.Gpu` declares a `PackageReference` to `Vortice.Direct3D11`, and
+`ArchitectureTests` maps it to the same `Gpu` home as `Veldrid`:
+
+```
+KhaozEngine.Gpu -> Vortice.Direct3D11   (diagnostics only: ID3D11Device::CheckFeatureSupport with
+                                         D3D11_FEATURE_THREADING, read once at device creation on
+                                         Windows on the Direct3D11 backend, and nowhere else)
+```
+
+This adds no dependency the engine did not already have. `Vortice.Direct3D11` IS Veldrid's own D3D11 binding and
+has been a transitive dependency of `Veldrid` 4.9.0 the whole time. What changed is that it is now DECLARED,
+because `ArchitectureTests.EveryThirdPartyPackage_IsDeliberatelyMapped` requires every third-party reference a
+packable library uses to be a deliberate edit rather than something inherited by accident. `Gpu` is the correct
+and only home: it is the same seam Veldrid is confined to, reached through the raw `ID3D11Device` pointer Veldrid
+itself publishes on `BackendInfoD3D11.Device`, and nothing outside `Internal/D3D11ThreadingProbe` names a Vortice
+type.
+
+It also does not widen what loads at runtime anywhere else. The probe's guard returns before any Vortice type is
+named, so on macOS and Linux, and on any non-Direct3D11 backend, that assembly is never loaded at all. The
+containment is therefore stronger than "confined to one package": it is confined to one method, on one OS, on one
+backend. Why it is worth having at all is in [USING-KHAOZENGINE.md](USING-KHAOZENGINE.md): a driver that cannot
+build command lists makes Windows emulate them in software, and until 17.22.0 nothing could tell that machine
+apart from one that was simply slow.
 
 ## Three flavours of the same idea
 

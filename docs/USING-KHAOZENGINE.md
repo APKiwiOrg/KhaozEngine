@@ -62,6 +62,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Diagnostics overlay + telemetry recording (`DiagnosticsOverlay` / `FrameStats` / `TelemetryRecorder` / `WorldClient.NetStats`)](#diagnostics-overlay-telemetry-recording-diagnosticsoverlay-framestats-telemetryrecorder-worldclientnetstats)
 - [Per-pass frame timing (`Scene3D.EnableTiming` / `PassTimings`)](#per-pass-frame-timing-scene3denabletiming-passtimings)
 - [Which graphics backend actually ran (`GpuBackendSelection`, 17.21.0)](#which-graphics-backend-actually-ran-gpubackendselection-17210)
+- [Is the D3D11 driver emulating command lists (`GpuThreadingCaps`, 17.22.0)](#is-the-d3d11-driver-emulating-command-lists-gputhreadingcaps-17220)
 - [Collision-shape debug overlay (`CollisionShapeOverlay` / `OverlayLegend`)](#collision-shape-debug-overlay-collisionshapeoverlay-overlaylegend)
 - [Install / update stamp (`KhaozEngine.App.AppInstallStamp`)](#install-update-stamp-khaozengineappappinstallstamp)
 - [Clean self-restart (`KhaozEngine.App.AppRelaunch`)](#clean-self-restart-khaozengineappapprelaunch)
@@ -4938,7 +4939,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.21.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.22.0" />
 ```
 
 ```csharp
@@ -7965,6 +7966,53 @@ GpuBackendSelection selection = GpuBackendSelector.Resolve();   // same backend,
 null, empty, or whitespace-only override counts as no override at all (`OsProbe`, no raw value recorded), since a
 launcher exporting the variable empty has not asked for anything. Only a non-blank value that fails to parse is
 `UnrecognizedOverride`, and the OS probe still decides the backend in that case.
+
+---
+
+## Is the D3D11 driver emulating command lists (`GpuThreadingCaps`, 17.22.0)
+
+A Direct3D11 driver reports whether it can build deferred-context command lists itself. When it cannot
+(`DriverCommandLists=FALSE`), the D3D11 runtime emulates them: it records every call into a token stream and
+replays it on the immediate context at submit time, so there is a fixed cost on every single recorded command.
+Veldrid compounds it by issuing an extra `VSUnsetConstantBuffer` before each partial constant-buffer bind, which
+it gates on exactly this flag. The two together can cost an order of magnitude of frame rate on hardware that is
+otherwise fine, and from the outside it just reads as "this machine is slow".
+
+`GpuDeviceContext` reads the flag once at device creation and logs it next to the backend line above:
+
+```
+D3D11 driver threading: DriverCommandLists=TRUE, DriverConcurrentCreates=TRUE (the driver builds command lists)
+D3D11 driver threading: DriverCommandLists=FALSE, DriverConcurrentCreates=TRUE (the D3D11 runtime is EMULATING command lists in software)
+```
+
+and raises a WARN on that second case, worded for a tester with no graphics background:
+
+```
+This graphics driver reports DriverCommandLists=FALSE, so Windows has to emulate Direct3D11 command lists in
+software instead of letting the driver build them. That is a KNOWN SEVERE performance risk: it puts a fixed cost
+on every single drawing command the game records, and the same machine can run many times faster on another
+backend. If this session feels slow, set KE_GRAPHICS_BACKEND=vulkan and compare before investigating anything else.
+```
+
+Read it for a game's own debug overlay, the same way as `BackendSelection`:
+
+```csharp
+GpuThreadingCaps? caps = Window.ThreadingCaps;          // GpuDeviceContext.ThreadingCaps behind it
+string row = GpuThreadingDiagnostics.Describe(caps);    // the exact wording the engine logs
+
+if (GpuThreadingDiagnostics.ShouldWarn(caps))
+    ShowInRed(GpuThreadingDiagnostics.EmulatedCommandListsWarning);
+```
+
+**Null means "no answer", and that is three cases on purpose**: the device is not Direct3D11, the host is not
+Windows, or the query failed. None of them says anything about the driver, so `Describe` renders all three as
+`UnknownDescription` and `ShouldWarn` returns false for all three. An unknown must never raise the alarm that a
+measured FALSE does, or the alarm stops meaning anything.
+
+**It is a hard no-op off Windows and off Direct3D11.** The guard returns before touching the device and before
+any Vortice type is named, so `Vortice.Direct3D11` never loads on macOS or Linux, and every failure path degrades
+to unknown rather than throwing. A diagnostic that can break device creation is worse than the problem it
+diagnoses.
 
 ## Collision-shape debug overlay (`CollisionShapeOverlay` / `OverlayLegend`)
 

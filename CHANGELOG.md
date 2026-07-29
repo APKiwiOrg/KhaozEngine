@@ -5,6 +5,58 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.16.0
+
+### The FFT ocean stops draining the GPU every frame
+
+Every frame that ran the FFT ocean paid a full device drain in the middle of it. The two
+compute passes are a read-after-write and the compute seam has no cross-dispatch barrier,
+so the only ordering available was Submit plus WaitForIdle between them. A frame-cost
+audit on a consuming game measured 0.93 ms of blocked frame time for it. Closes
+[#398](https://github.com/APKiwiOrg/KhaozEngine/issues/398).
+
+The row pass now runs a frame ahead. Its output is ping-ponged between two buffers, so a
+frame's column pass consumes the rows the frame before it wrote, and the frame boundary is
+the ordering. The row pass is handed the predicted time of the frame that will consume it,
+so under a steady frame rate the maps come out bitwise what they were: renders verified
+byte-identical against the previous build, not only against the goldens. One drain remains
+on the frame that primes the cascades. Steady-state OceanStalls and WaterSyncMs now read 0,
+and a test says a steady stream of stalls is a bug rather than a cost. The extra buffer
+costs 1.5 MB at the shipping defaults.
+
+IGpuDevice.UpdateBuffer is now documented as landing OFF the command timeline: a per-frame
+value a later-submitted list reads must be recorded with IGpuCommandList.UpdateBuffer, which
+is what the old drain had been concealing.
+
+### Retired GPU resources are freed on a fence poll, not a device drain
+
+The deferred-disposal pool destroyed retired buffers behind one WaitForIdle at the top of
+Scene3D.Begin, 1.5 to 1.6 ms on every frame it fired while streaming. Ripeness is now an
+event: each frame boundary seals what was retired into one batch marked with a GPU fence,
+and batches are freed oldest-first once their fence polls signaled. Drains measured 396 to 0
+on a 400 frame churn. Closes [#385](https://github.com/APKiwiOrg/KhaozEngine/issues/385).
+
+GpuCapabilities.SupportsCompletionFences is true only on Metal and Vulkan: Veldrid's D3D11
+and OpenGL fences signal from the CPU at submit, a receipt rather than completion, so those
+backends keep the previous three-boundary drain exactly. The fence seam is public:
+IGpuResourceFactory.CreateFence(), IGpuDevice.Submit(cl, fence), IGpuFence.Signaled and
+Reset(), with no blocking wait on the seam. Expect RetiredResourceCount to sit higher during
+sustained streaming: the CPU is no longer stalled into lockstep with the GPU.
+
+### GameApp3D no longer stomps a consumer's own pass-timing flag
+
+GameApp3D forced Scene3D.EnableTiming off every frame whenever a game opted out of the
+built-in diagnostics overlay, silently overwriting whatever the game had set. A game driving
+its own pass-timing HUD with the overlay disabled now keeps control of the flag. Closes
+[#404](https://github.com/APKiwiOrg/KhaozEngine/issues/404).
+
+### HLOD crossfade skips the fully-dissolved side near each band edge
+
+Near the ends of a chunk's HLOD crossfade band, the props or the merged mesh kept drawing at
+full geometry cost even though their dither had already discarded nearly every fragment. The
+draw is now skipped once the surviving fraction drops under about 3 percent, at the color and
+shadow passes together. Closes [#405](https://github.com/APKiwiOrg/KhaozEngine/issues/405).
+
 ## 17.15.0
 
 ### One bad chunk no longer takes the client with it

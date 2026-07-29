@@ -9,6 +9,10 @@
     <!-- GPU / windowing / render stack -->
     <PackageVersion Include="Veldrid" Version="4.9.0" />
     <PackageVersion Include="Veldrid.SPIRV" Version="1.0.15" />
+    <!-- Already a transitive dependency of Veldrid 4.9.0 (its own D3D11 binding), declared explicitly in
+         KhaozEngine.Gpu so the D3D11 driver-threading probe can call ID3D11Device::CheckFeatureSupport.
+         Keep this pinned to whatever Veldrid depends on, so there is one D3D11 binding in the graph. -->
+    <PackageVersion Include="Vortice.Direct3D11" Version="2.3.0" />
     <!-- CVE override: Veldrid.SPIRV drags in vulnerable Newtonsoft.Json 9.0.1 (NU1903). Not used directly. -->
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageVersion Include="Silk.NET.Windowing" Version="2.23.0" />

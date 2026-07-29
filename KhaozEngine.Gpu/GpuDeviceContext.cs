@@ -43,6 +43,15 @@ namespace KhaozEngine.Gpu
         public GpuCapabilities Capabilities { get; }
 
         /// <summary>
+        /// The graphics driver's multi-threading capabilities, on Direct3D11 only. Null on every other backend, off
+        /// Windows, and when the query failed: those all mean "no answer", and
+        /// <see cref="GpuThreadingDiagnostics.Describe"/> renders them the same way. Read once at device creation
+        /// and logged next to the backend line, so a tester's log answers whether their driver is emulating
+        /// command lists without them reproducing anything. A game debug overlay can surface it too.
+        /// </summary>
+        public GpuThreadingCaps? ThreadingCaps { get; }
+
+        /// <summary>
         /// The engine-owned GPU device wrapping the underlying Veldrid device. Renderers (Render2D / Render3D)
         /// consume this instead of the raw device, so Veldrid stays hidden. The wrapper is non-owning: disposal
         /// flows through this context's <see cref="Dispose"/>.
@@ -58,7 +67,9 @@ namespace KhaozEngine.Gpu
             // Non-owning wrapper: this context owns the raw device's disposal (see Dispose), so the wrapper must
             // not dispose it again.
             GpuDevice = new VeldridGpuDevice(device, selection.Backend, ownsDevice: false);
+            ThreadingCaps = Internal.D3D11ThreadingProbe.TryQuery(device, selection.Backend, out string? probeFailure);
             LogSelection(selection);
+            LogThreadingCaps(selection.Backend, ThreadingCaps, probeFailure);
         }
 
         // One line per created device saying which backend is live and who chose it. The warning arm is the
@@ -79,6 +90,22 @@ namespace KhaozEngine.Gpu
                 _ => "OS probe",
             };
             log.Info($"GPU backend: {selection.Backend} ({origin})");
+        }
+
+        // The Direct3D11 companion to the backend line. Silent on every other backend: a Metal or Vulkan log
+        // gains nothing from a line saying a D3D11 capability is unknown. The WARN arm is the one that matters,
+        // and it is a WARN precisely so it cannot be lost in a tester's log among the INFO chatter.
+        static void LogThreadingCaps(GpuBackendKind backend, GpuThreadingCaps? caps, string? probeFailure)
+        {
+            if (backend != GpuBackendKind.Direct3D11) return;
+
+            log.Info($"D3D11 driver threading: {GpuThreadingDiagnostics.Describe(caps)}");
+            if (GpuThreadingDiagnostics.ShouldWarn(caps))
+                log.Warn(GpuThreadingDiagnostics.EmulatedCommandListsWarning);
+            else if (probeFailure != null)
+                log.Warn($"Could not read the Direct3D11 driver threading capabilities ({probeFailure}). "
+                    + "Rendering is unaffected, but a slow-session report from this run cannot rule out a driver "
+                    + "that emulates command lists.");
         }
 
         /// <summary>

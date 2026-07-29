@@ -16,6 +16,10 @@
   <ItemGroup>
     <PackageReference Include="Veldrid" />
     <PackageReference Include="Veldrid.SPIRV" />
+    <!-- Veldrid's own D3D11 binding, already here transitively. Declared so the D3D11 driver-threading probe
+         (Internal/D3D11ThreadingProbe) can call ID3D11Device::CheckFeatureSupport on the raw device pointer
+         Veldrid publishes. Loaded only on Windows, only on the Direct3D11 backend. -->
+    <PackageReference Include="Vortice.Direct3D11" />
     <!-- Override the vulnerable Newtonsoft.Json 9.0.1 that Veldrid.SPIRV drags in (NU1903). -->
     <PackageReference Include="Newtonsoft.Json" />
     <None Include="README.md" Pack="true" PackagePath="\" />

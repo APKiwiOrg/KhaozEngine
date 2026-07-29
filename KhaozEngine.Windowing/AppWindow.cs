@@ -54,7 +54,7 @@ namespace KhaozEngine.Windowing
     /// <see cref="GpuBackendSelector"/> picked, which <see cref="BackendSelection"/> reports with its provenance. Each frame pumps
     /// Silk input into an engine-native <see cref="InputState"/>, clears the swapchain, runs the callback, and presents.
     /// </summary>
-    public sealed class AppWindow : IDisposable, IDisplaySettings
+    public sealed partial class AppWindow : IDisposable, IDisplaySettings
     {
         readonly IWindow _window;
         readonly IInputContext _input;

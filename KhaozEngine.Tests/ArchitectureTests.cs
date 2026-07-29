@@ -55,6 +55,9 @@ public class ArchitectureTests
         ["Veldrid.SPIRV"] = new[] { "Gpu" },
         // Pinned alongside Veldrid.SPIRV shader reflection, stays inside Gpu.
         ["Newtonsoft.Json"] = new[] { "Gpu" },
+        // Veldrid's own D3D11 binding, already transitive via Veldrid. Declared in Gpu for the driver-threading
+        // probe (Internal/D3D11ThreadingProbe) and confined to the same home as Veldrid: it is the same seam.
+        ["Vortice.Direct3D11"] = new[] { "Gpu" },
         // Windowing / input: only AppWindow (KhaozEngine.Windowing) touches Silk.NET / GLFW.
         ["Silk.NET.Windowing"] = new[] { "Windowing" },
         ["Silk.NET.Windowing.Glfw"] = new[] { "Windowing" },

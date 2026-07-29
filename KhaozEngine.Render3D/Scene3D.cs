@@ -1954,7 +1954,7 @@ namespace KhaozEngine.Render3D
             // taps the atlas). Set the shadow tail BEFORE SetFrameUniforms (which uploads the whole frame UBO incl. that
             // tail). shadowMapActive + the cascade fit were resolved above (before the CPU skin pass), so this reuses
             // the exact same matrices the skinned-visibility split was computed against.
-            float shadowDepthMs = 0f, modelMs = 0f, transparentsMs = 0f, postMs = 0f;
+            float shadowDepthMs = 0f, modelMs = 0f, transparentsMs = 0f, waterSyncMs = 0f, postMs = 0f;
             long timingStart = 0;
             _shadowPassSkippedLastFrame = false;
             if (shadowMapActive)
@@ -2226,6 +2226,12 @@ namespace KhaozEngine.Render3D
                 _water.Draw(cl, _res, RelativeWaterPlanes(), vp,
                     Post.LightDirection, Post.LightColor, eye, Post.Water, Post.Sky, EffectTimeSeconds, _frameOrigin);
                 _frameStats.DrawCalls++;
+                // The ocean FFT's GPU drain (issue #398's missing cross-dispatch barrier) can land inside THIS
+                // transparents bracket as a Submit+WaitForIdle stall, which is not draw-call encode cost. The water
+                // renderer already isolates that exact span with its own Stopwatch (OceanFftProducer.LastStallMs),
+                // so read it here and carve it out of transparentsMs below into its own WaterSyncMs bucket (#374)
+                // instead of misattributing a sync stall as transparents cost.
+                if (EnableTiming) waterSyncMs = (float)_water.LastOceanCost.StallMs;
             }
 
             // Modern particle sprites: after the sky + decals + water (so effects composite over water surfaces),
@@ -2283,7 +2289,10 @@ namespace KhaozEngine.Render3D
                     RelativeDistortionSprites());
             }
 
-            if (EnableTiming) transparentsMs += ElapsedMs(timingStart);
+            // The bracket's wall-clock elapsed time includes the water draw's ocean-FFT stall (waterSyncMs, captured
+            // above) alongside everything else recorded in it, so subtract that exact measured span rather than
+            // let it inflate transparentsMs (issue #374).
+            if (EnableTiming) transparentsMs += ElapsedMs(timingStart) - waterSyncMs;
             timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
             _post.Run(cl, _res, target, Post, runFxaa, distortionActive);
             if (EnableTiming) postMs = ElapsedMs(timingStart);
@@ -2330,7 +2339,7 @@ namespace KhaozEngine.Render3D
             if (EnableTiming)
             {
                 transparentsMs += ElapsedMs(timingStart);
-                _passTimingsMs = new Scene3DPassTimingsMs(shadowDepthMs, modelMs, transparentsMs, postMs);
+                _passTimingsMs = new Scene3DPassTimingsMs(shadowDepthMs, modelMs, transparentsMs, waterSyncMs, postMs);
             }
         }
 

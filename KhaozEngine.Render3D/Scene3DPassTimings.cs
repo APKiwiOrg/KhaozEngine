@@ -31,17 +31,28 @@ namespace KhaozEngine.Render3D
 
         /// <summary>CPU time recording transparents/decals: textured billboards, beams, overlay meshes, the MRT
         /// depth resolve, the sky background pass, shadow blob decals, ground decals, the colour/normal resolve,
-        /// and the post-blit overlay draws (fills, lines, billboards).</summary>
+        /// and the post-blit overlay draws (fills, lines, billboards). Excludes <see cref="WaterSyncMs"/> (issue
+        /// #374): the water draw itself is recorded here, but the ocean FFT's GPU drain it can trigger is carved
+        /// out into its own field rather than misattributed as transparents-pass encode cost.</summary>
         public float TransparentsMs { get; }
+
+        /// <summary>CPU time blocked on the ocean FFT's GPU sync stall (issue #398's missing cross-dispatch
+        /// barrier, paid for with a <c>Submit</c> + <c>WaitForIdle</c>), carved out of <see cref="TransparentsMs"/>
+        /// so a real stall is not counted as draw-call encode cost (issue #374). 0 when no queued water plane reads
+        /// the FFT ocean cascades this frame. Same number as <see cref="Scene3D.LastWaterStats"/>'s
+        /// <see cref="WaterFrameStats.OceanStallMs"/>, just gated behind <see cref="Scene3D.EnableTiming"/> like the
+        /// rest of this struct instead of always-on.</summary>
+        public float WaterSyncMs { get; }
 
         /// <summary>CPU time recording the pixel post-process chain.</summary>
         public float PostMs { get; }
 
-        internal Scene3DPassTimingsMs(float shadowDepthMs, float modelMs, float transparentsMs, float postMs)
+        internal Scene3DPassTimingsMs(float shadowDepthMs, float modelMs, float transparentsMs, float waterSyncMs, float postMs)
         {
             ShadowDepthMs = shadowDepthMs;
             ModelMs = modelMs;
             TransparentsMs = transparentsMs;
+            WaterSyncMs = waterSyncMs;
             PostMs = postMs;
         }
     }

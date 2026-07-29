@@ -33,6 +33,7 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(0f, t.ShadowDepthMs);
             Assert.Equal(0f, t.ModelMs);
             Assert.Equal(0f, t.TransparentsMs);
+            Assert.Equal(0f, t.WaterSyncMs);
             Assert.Equal(0f, t.PostMs);
         }
 
@@ -58,7 +59,46 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(0f, t.ShadowDepthMs);
             Assert.True(t.ModelMs >= 0f);
             Assert.True(t.TransparentsMs >= 0f);
+            Assert.Equal(0f, t.WaterSyncMs);   // no water queued, so nothing to carve out of transparentsMs
             Assert.True(t.PostMs > 0f, $"expected a nonzero post-chain encode time, got {t.PostMs}");
+        }
+
+        // Issue #374: the ocean FFT's GPU drain used to land inside the transparents bracket as an unmarked
+        // Submit+WaitForIdle stall, so a frame with an FFT ocean plane misattributed it as transparents-pass encode
+        // cost (measured on the reference scene: 6.70 ms transparents of which 6.57 was the drain). WaterSyncMs now
+        // carries that span separately, carved out of TransparentsMs rather than double-counted.
+        [GpuFact]
+        public void Enabling_timing_with_fft_ocean_water_reports_the_sync_stall_separately_from_transparents()
+        {
+            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
+            IGpuDevice gd = gpu.GpuDevice;
+            Assert.True(gd.Capabilities.SupportsCompute, $"{gd.Backend} reports no compute support");
+            var f = gd.Factory;
+
+            const int W = 64, H = 48;
+            using IGpuTexture finalTex = f.CreateTexture(GpuTextureDescription.Texture2D(
+                W, H, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
+            using IGpuFramebuffer finalFB = f.CreateFramebuffer(null, finalTex);
+
+            using var scene = new Scene3D(gd, finalFB.Outputs) { EnableTiming = true };
+            scene.Post.Water.WaveSource = WaterWaveSource.FftOcean;
+            using IGpuCommandList cl = f.CreateCommandList();
+
+            scene.Begin();
+            scene.DrawWater(new WaterPlane(centerX: 0f, surfaceY: 0f, centerZ: 0f, halfExtentX: 20f));
+            cl.Begin();
+            scene.RenderInternal(cl, W, H, finalFB);
+            cl.End();
+            gd.Submit(cl);
+            gd.WaitForIdle();
+
+            Scene3DPassTimingsMs t = scene.PassTimingsMs;
+            Assert.True(t.WaterSyncMs > 0f, $"expected a nonzero ocean FFT sync stall, got {t.WaterSyncMs}");
+            Assert.True(t.TransparentsMs >= 0f,
+                $"transparentsMs went negative after excluding the water sync stall: {t.TransparentsMs}");
+
+            // Same measured stall the always-on water diagnostics surface reports (#374's other half, LastWaterStats).
+            Assert.Equal(t.WaterSyncMs, (float)scene.LastWaterStats.OceanStallMs, 3);
         }
 
         // Issue #374's other exposure: LastClipmapRebuilds was internal-only on WaterRenderer before this, reachable

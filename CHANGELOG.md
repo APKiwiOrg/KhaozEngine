@@ -5,6 +5,41 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.15.0
+
+### One bad chunk no longer takes the client with it
+
+A background chunk build that threw propagated out of the streamer's Update into the
+game's frame loop and terminated the process. A win-x64 tester hit it mid-play through
+the HLOD prop weld, on a different chunk and LOD each time. Closes
+[#402](https://github.com/APKiwiOrg/KhaozEngine/issues/402), reported from
+[Ruinborne#383](https://github.com/APKiwiOrg/Ruinborne/issues/383).
+
+Two halves. The weld itself was unguarded: it rebuilt triangles by looking each corner up
+in a table sized by the VERTEX count, with no check that a corner named a vertex that
+exists, so one index past the end of a malformed prop mesh threw out of a worker thread.
+The weld now drops such a triangle exactly like a degenerate one, and the merge collapses
+a source corner that points past its own mesh rather than rebasing it into nowhere. Both
+are the identity for a well-formed kit, so output is byte-identical.
+
+The weld CELL was never the problem, despite being the obvious suspect: cell keys go into
+a dictionary and cell ids are dense, so however the float-to-int cast rounds on a given
+CPU it cannot address out of range. Boundary and non-finite tests pin that down.
+
+The second half is containment, which holds whatever the build throws. `TerrainStreamer`
+now catches a failed chunk build, logs it at ERROR, and retries that chunk on a later pass
+up to `StreamerConfig.MaxChunkBuildAttempts` (3 by default). At the cap the chunk is
+abandoned and stays absent, so a permanently failing chunk costs one hole in the world
+rather than a rebuild and an error every frame. Priming tolerates isolated failures too:
+a world missing one chunk beats no world. Read `FailedBuildCount` / `AbandonedChunks` to
+report what was lost. A prime that loads nothing at all is still a real boot failure.
+
+Nothing is required of a consumer. `ChunkBuildScheduler.Pump` still throws when no
+`BuildFailed` handler is set, so a tool or test that wants a build bug to surface loudly
+is unaffected. Producer-side index validation, which would make a recurrence conclusive
+rather than silently dropped, is tracked as
+[#403](https://github.com/APKiwiOrg/KhaozEngine/issues/403).
+
 ## 17.14.0
 
 ### Each shadow cascade draws only the casters that reach it

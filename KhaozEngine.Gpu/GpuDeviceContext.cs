@@ -261,7 +261,10 @@ namespace KhaozEngine.Gpu
             {
                 GpuBackendKind.Metal => GraphicsDevice.CreateMetal(opts, scDesc),
                 GpuBackendKind.Vulkan => GraphicsDevice.CreateVulkan(opts, scDesc),
-                GpuBackendKind.Direct3D11 => GraphicsDevice.CreateD3D11(opts, scDesc),
+                GpuBackendKind.Direct3D11 => GraphicsDevice.CreateD3D11(opts, new D3D11DeviceOptions
+                {
+                    UseImmediateContext = true,
+                }, scDesc),
                 GpuBackendKind.OpenGL => throw new NotSupportedException(
                     "Windowed OpenGL device-from-handle is not supported (Silk would need to own the GL context)."),
                 _ => GraphicsDevice.CreateMetal(opts, scDesc),
@@ -285,7 +288,10 @@ namespace KhaozEngine.Gpu
                 {
                     GpuBackendKind.Metal => GraphicsDevice.CreateMetal(options),
                     GpuBackendKind.Vulkan => GraphicsDevice.CreateVulkan(options),
-                    GpuBackendKind.Direct3D11 => GraphicsDevice.CreateD3D11(options),
+                    GpuBackendKind.Direct3D11 => GraphicsDevice.CreateD3D11(options, new D3D11DeviceOptions
+                    {
+                        UseImmediateContext = true,
+                    }),
                     GpuBackendKind.OpenGL => throw new NotSupportedException(
                         "Headless OpenGL device creation is not supported in Phase 3a (needs a context surface)."),
                     _ => GraphicsDevice.CreateMetal(options),

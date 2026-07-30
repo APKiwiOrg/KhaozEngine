@@ -50,6 +50,12 @@ What it owns today:
   - **A hard no-op off Windows and off D3D11.** The guard returns before touching the device and before naming any
     Vortice type, so that assembly never loads on macOS or Linux. Every failure path degrades to unknown instead
     of throwing: this is a diagnostic, and it must not be able to break device creation.
+- **Direct3D11 immediate-context recording** (17.23.1) - KhaozEngine creates every Direct3D11 device through its
+  Veldrid fork's `D3D11DeviceOptions.UseImmediateContext` mode. It records commands directly on the D3D11 immediate
+  context rather than creating and executing a deferred context per `IGpuCommandList`. This is deliberately
+  D3D11-only: Metal, Vulkan, and OpenGL use their existing Veldrid factories unchanged. The fork serializes a list
+  from `Begin` through `Submit`, which matches KhaozEngine's single render-thread command sequence. It addresses
+  the large D3D11 encoding cost observed in the field even when `DriverCommandLists=TRUE`.
 - **`GpuCapabilities`** - `ClipSpaceYInverted` / `DepthRangeZeroToOne` (so renderers derive clip-Y / depth
   handling from the active backend instead of a baked Metal assumption), plus diagnostics: `DeviceName` (the GPU
   adapter/driver), `SamplerAnisotropy`, `SamplerLodBias` (whether those sampler levers are supported),

@@ -5,6 +5,22 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.23.1
+
+### Direct3D11 records commands directly on the immediate context
+
+Field traces on the same Windows machine held Vulkan at the 144 fps cap while Direct3D11 spent about 20 ms in
+shadow command encoding and 7 ms in model encoding. The Direct3D11 driver reports
+`DriverCommandLists=TRUE`, so runtime command-list emulation is not the explanation. KhaozEngine now consumes its
+Veldrid 4.9.0 fork, which adds opt-in immediate-context recording, and enables it for every windowed and headless
+Direct3D11 device. A command list now records directly to the native D3D11 immediate context instead of Veldrid
+creating a deferred context and replaying it through `ExecuteCommandList` at submission.
+
+The fork serializes `Begin`, `End`, and `Submit` on the render thread, which matches KhaozEngine's existing frame
+recording sequence. Metal, Vulkan, and OpenGL device creation are unchanged. The fork adds Windows-only Veldrid
+buffer, render, resource-set, and texture correctness coverage. It must still be timing-validated on the reporting
+Windows NVIDIA machine before the field defect is considered resolved.
+
 ## 17.23.0
 
 ### A game can put the graphics backend in its own settings screen, safely

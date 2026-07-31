@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using KhaozEngine.Gpu;
 
 namespace KhaozEngine.Windowing
@@ -23,5 +24,26 @@ namespace KhaozEngine.Windowing
         /// </para>
         /// </summary>
         public GpuThreadingCaps? ThreadingCaps => _gpu.ThreadingCaps;
+
+        /// <summary>
+        /// The adapter this window's device is running on, or an empty string when the backend reports none. On
+        /// Direct3D11 it is exactly the DXGI adapter description, so it is the line a bug report needs to say
+        /// which physical card rendered. The same value as <c>Capabilities.DeviceName</c>, named for the reader
+        /// who is chasing a Direct3D11 problem and would not think to look under capabilities.
+        /// </summary>
+        public string AdapterDescription => _gpu.AdapterDescription;
+
+        /// <summary>
+        /// Known third-party overlay / capture software found hooked into this process when the device was
+        /// created, or null when nothing was scanned (off Windows, or the scan failed). An empty list means the
+        /// scan ran and found none, which is the opposite fact from null, so render it with
+        /// <see cref="GpuInjectedModules.Describe"/> rather than testing the count.
+        /// <para>
+        /// Worth a row in a debug overlay: this software injects itself into Direct3D and is a known cause of
+        /// stutter, corrupted frames, and driver crashes that look like engine bugs. The engine already warns in
+        /// the log when the list is non-empty.
+        /// </para>
+        /// </summary>
+        public IReadOnlyList<string>? InjectedModules => _gpu.InjectedModules;
     }
 }

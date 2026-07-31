@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Veldrid;
 using KhaozEngine.Diagnostics;
 using KhaozEngine.Gpu.Internal;
@@ -59,6 +60,32 @@ namespace KhaozEngine.Gpu
         public GpuThreadingCaps? ThreadingCaps { get; }
 
         /// <summary>
+        /// The adapter the device is running on, as the backend reports it, or an empty string when it reports
+        /// nothing. On Direct3D11 this is EXACTLY the DXGI adapter description (Veldrid reads
+        /// <c>IDXGIAdapter::GetDesc().Description</c> into <c>GraphicsDevice.DeviceName</c>), which is the string
+        /// that identifies the physical card in a bug report, so no Vortice interop is needed to get it.
+        /// <para>
+        /// The same value as <see cref="GpuCapabilities.DeviceName"/> on <see cref="Capabilities"/>, which stays
+        /// the single source. It is named again here because "adapter description" is what a reader chasing a
+        /// Direct3D11 problem goes looking for, and they will not guess to look under capabilities.
+        /// </para>
+        /// </summary>
+        public string AdapterDescription => Capabilities.DeviceName;
+
+        /// <summary>
+        /// The known third-party overlay / capture injectors loaded into this process at device creation, or null
+        /// when nothing was scanned (off Windows, or the scan failed). An EMPTY list is the opposite fact from
+        /// null: the scan ran and the process is clean. Render it with
+        /// <see cref="GpuInjectedModules.Describe"/>, which keeps those two apart.
+        /// <para>
+        /// Worth surfacing because software of this kind hooks Direct3D and causes stutter, corrupted frames, and
+        /// driver-level crashes that read as engine bugs. The engine logs a warning for a non-empty list at device
+        /// creation, so a debug overlay row is for the player who never opens a log.
+        /// </para>
+        /// </summary>
+        public IReadOnlyList<string>? InjectedModules { get; }
+
+        /// <summary>
         /// The engine-owned GPU device wrapping the underlying Veldrid device. Renderers (Render2D / Render3D)
         /// consume this instead of the raw device, so Veldrid stays hidden. The wrapper is non-owning: disposal
         /// flows through this context's <see cref="Dispose"/>.
@@ -75,8 +102,14 @@ namespace KhaozEngine.Gpu
             // not dispose it again.
             GpuDevice = new VeldridGpuDevice(device, selection.Backend, ownsDevice: false);
             ThreadingCaps = Internal.D3D11ThreadingProbe.TryQuery(device, selection.Backend, out string? probeFailure);
+            // Scanned per created device rather than cached process-wide, so a late-attaching overlay still shows
+            // up and there is no static state to reason about. Device creation is rare, and off Windows this is a
+            // guard and a return.
+            InjectedModules = Internal.InjectedModuleProbe.TryScan(out string? scanFailure);
             LogSelection(selection);
+            LogAdapter(Capabilities);
             LogThreadingCaps(selection.Backend, ThreadingCaps, probeFailure);
+            LogInjectedModules(InjectedModules, scanFailure);
         }
 
         // One line per created device saying which backend is live and who chose it. The warning arm is the
@@ -107,6 +140,18 @@ namespace KhaozEngine.Gpu
             log.Info($"GPU backend: {selection.Backend} ({origin})");
         }
 
+        // Which physical adapter the session actually ran on, right under the backend line. Logged on EVERY
+        // backend, unlike the D3D11 lines below, because an adapter name means something everywhere and a bug
+        // report that does not say which GPU rendered is a bug report nobody can reproduce. On Direct3D11 the
+        // string IS the DXGI adapter description (see AdapterDescription).
+        static void LogAdapter(GpuCapabilities capabilities)
+        {
+            string name = string.IsNullOrWhiteSpace(capabilities.DeviceName)
+                ? "unknown (the backend reported no adapter name)"
+                : capabilities.DeviceName;
+            log.Info($"GPU adapter: {name}");
+        }
+
         // The Direct3D11 companion to the backend line. Silent on every other backend: a Metal or Vulkan log
         // gains nothing from a line saying a D3D11 capability is unknown. The WARN arm is the one that matters,
         // and it is a WARN precisely so it cannot be lost in a tester's log among the INFO chatter.
@@ -121,6 +166,42 @@ namespace KhaozEngine.Gpu
                 log.Warn($"Could not read the Direct3D11 driver threading capabilities ({probeFailure}). "
                     + "Rendering is unaffected, but a slow-session report from this run cannot rule out a driver "
                     + "that emulates command lists.");
+        }
+
+        // Which third-party overlays were hooked into the process when the device was made. Gated on the SCAN
+        // rather than the backend: overlays inject on Windows whatever API is in use, so a Windows Vulkan session
+        // wants this line too, and off Windows there is no scan and therefore no line at all.
+        static void LogInjectedModules(IReadOnlyList<string>? modules, string? scanFailure)
+        {
+            if (modules is null)
+            {
+                if (scanFailure != null)
+                    log.Warn($"Could not check this process for graphics overlay software ({scanFailure}). "
+                        + "Rendering is unaffected, but a crash report from this run cannot rule out an injected "
+                        + "overlay.");
+                return;
+            }
+
+            log.Info($"Graphics overlay software: {GpuInjectedModules.Describe(modules)}");
+            if (GpuInjectedModules.ShouldWarn(modules))
+                log.Warn(GpuInjectedModules.Warning(modules));
+        }
+
+        // The Direct3D11 device options for both creation paths, plus the one-time log that proves whether the
+        // opt-in diagnostic flag is on. Shared so the windowed and headless sites cannot drift: a lever that works
+        // on only one of them is worse than no lever, because a tester setting it sees it do nothing in half their
+        // runs and concludes the flag is irrelevant.
+        static D3D11DeviceOptions BuildD3D11Options()
+        {
+            uint flags = GpuD3D11DeviceFlags.FromEnvironment(out string? unrecognized);
+            if (unrecognized != null) log.Warn(GpuD3D11DeviceFlags.UnrecognizedWarning(unrecognized));
+            else if (flags != 0) log.Info(GpuD3D11DeviceFlags.ActiveDescription);
+
+            return new D3D11DeviceOptions
+            {
+                UseImmediateContext = true,
+                DeviceCreationFlags = flags,
+            };
         }
 
         /// <summary>
@@ -261,10 +342,7 @@ namespace KhaozEngine.Gpu
             {
                 GpuBackendKind.Metal => GraphicsDevice.CreateMetal(opts, scDesc),
                 GpuBackendKind.Vulkan => GraphicsDevice.CreateVulkan(opts, scDesc),
-                GpuBackendKind.Direct3D11 => GraphicsDevice.CreateD3D11(opts, new D3D11DeviceOptions
-                {
-                    UseImmediateContext = true,
-                }, scDesc),
+                GpuBackendKind.Direct3D11 => GraphicsDevice.CreateD3D11(opts, BuildD3D11Options(), scDesc),
                 GpuBackendKind.OpenGL => throw new NotSupportedException(
                     "Windowed OpenGL device-from-handle is not supported (Silk would need to own the GL context)."),
                 _ => GraphicsDevice.CreateMetal(opts, scDesc),
@@ -288,10 +366,7 @@ namespace KhaozEngine.Gpu
                 {
                     GpuBackendKind.Metal => GraphicsDevice.CreateMetal(options),
                     GpuBackendKind.Vulkan => GraphicsDevice.CreateVulkan(options),
-                    GpuBackendKind.Direct3D11 => GraphicsDevice.CreateD3D11(options, new D3D11DeviceOptions
-                    {
-                        UseImmediateContext = true,
-                    }),
+                    GpuBackendKind.Direct3D11 => GraphicsDevice.CreateD3D11(options, BuildD3D11Options()),
                     GpuBackendKind.OpenGL => throw new NotSupportedException(
                         "Headless OpenGL device creation is not supported in Phase 3a (needs a context surface)."),
                     _ => GraphicsDevice.CreateMetal(options),

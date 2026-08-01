@@ -57,6 +57,21 @@ Windowing + input foundation for the custom MonoGame-free stack.
     `ApplyDisplay` clamps it on-screen before moving, so a stale saved position self-corrects.
   - All placement math is pure and headless-tested in `WindowPlacement` (`MonitorIndexFor` / `CenterOn` /
     `ClampVisible`) plus the `MonitorInfo` record; only `AppWindow` touches the Silk monitor statics.
+- **GPU diagnostics accessors on `AppWindow`** - read-only facts about the device the window created, for a
+  game's own debug overlay or bug-report dump. Every one of them is the value `KhaozEngine.Gpu` already logs at
+  device creation, so an overlay row and the log cannot disagree. `BackendSelection` (since 17.21.0) says which
+  backend ran and who chose it. The three below live on the `AppWindow.Diagnostics.cs` partial.
+  - `ThreadingCaps` (a `GpuThreadingCaps?`, since 17.22.0) - the Direct3D11 driver's multi-threading
+    capabilities. Null on every other backend, off Windows, and when the query failed, so render it with
+    `GpuThreadingDiagnostics.Describe`. A false `DriverCommandLists` is the case worth putting on screen.
+  - `AdapterDescription` (a `string`, since 17.24.0) - the adapter the device runs on, or empty when the backend
+    reports none. On Direct3D11 it is exactly the DXGI adapter description, so it is the line a bug report needs
+    to say which physical card rendered. The same value as `Capabilities.DeviceName`.
+  - `InjectedModules` (an `IReadOnlyList<string>?`, since 17.24.0) - known third-party overlay / capture software
+    found hooked into this process when the device was created. **Null (nothing was scanned, off Windows or the
+    scan failed) and empty (the scan ran and found none) are opposite facts**, so render it with
+    `GpuInjectedModules.Describe` rather than testing the count. Worth a row: this software injects itself into
+    Direct3D and is a known cause of stutter, corrupted frames, and driver crashes that look like engine bugs.
 - `InputState` - per-frame keyboard + mouse + gamepad + touch snapshot (`IsDown`/`WasPressed` for
   `Key`/`MouseButton`, mouse position/delta/scroll, `Gamepad(i)`). Immutable; no MonoGame. `WasRepeated(Key)` /
   `WasTyped(Key)` surface OS key auto-repeat (`AppWindow` fills it from GLFW's `REPEAT` action; `WasPressed` stays

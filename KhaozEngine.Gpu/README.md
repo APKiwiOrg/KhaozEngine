@@ -50,12 +50,43 @@ What it owns today:
   - **A hard no-op off Windows and off D3D11.** The guard returns before touching the device and before naming any
     Vortice type, so that assembly never loads on macOS or Linux. Every failure path degrades to unknown instead
     of throwing: this is a diagnostic, and it must not be able to break device creation.
-- **Direct3D11 immediate-context recording** (17.23.1) - KhaozEngine creates every Direct3D11 device through its
-  Veldrid fork's `D3D11DeviceOptions.UseImmediateContext` mode. It records commands directly on the D3D11 immediate
-  context rather than creating and executing a deferred context per `IGpuCommandList`. This is deliberately
-  D3D11-only: Metal, Vulkan, and OpenGL use their existing Veldrid factories unchanged. The fork serializes a list
-  from `Begin` through `Submit`, which matches KhaozEngine's single render-thread command sequence. It addresses
-  the large D3D11 encoding cost observed in the field even when `DriverCommandLists=TRUE`.
+- **`GpuInjectedModules`** (17.24.0) - the known third-party overlay / capture injectors hooked into this
+  process, surfaced on `GpuDeviceContext.InjectedModules` (and `AppWindow.InjectedModules`) and logged once per
+  created device, with a WARN on any match. The list covers Nahimic, Sonic Studio, RivaTuner / MSI Afterburner,
+  NVIDIA GeForce Experience, Discord, and OBS game-capture, in both their 32-bit and 64-bit spellings.
+  `Match(IEnumerable<string?>)`, `Describe`, `ShouldWarn`, `Warning`, and `KnownModuleNames` are all pure and
+  device-free, so a game overlay renders exactly what the log says and the wording is testable on any OS. Only
+  the module enumeration itself is Windows-only, and it is internal.
+  - **Why it exists.** This software injects itself into Direct3D to draw over the game and is a known cause of
+    stutter, corrupted frames, and driver-level crashes that read as engine bugs. A run that does not record
+    whether one was present cannot rule it out afterwards.
+  - **Null and empty are opposite facts.** Null = the scan never ran (not Windows, or it failed) and renders as
+    `UnknownDescription`. Empty = it ran and the process is clean, `NoneDescription`. `ShouldWarn` is false for
+    null, since "we could not look" is not evidence of a hook. Test with `Describe`, not with `Count`.
+  - Gated on the SCAN, not the backend: overlays inject on Windows whatever API is in use, so a Windows Vulkan
+    session logs the line too. Scanned per created device rather than cached process-wide, so a late-attaching
+    overlay still shows up.
+- **`GpuD3D11DeviceFlags`** (17.24.0) - the opt-in Direct3D11 device-creation flags and the env gate for them.
+  `KE_D3D11_PREVENT_THREADING_OPTIMIZATIONS=1` (or `true`/`yes`/`on`) ORs
+  `D3D11_CREATE_DEVICE_PREVENT_INTERNAL_THREADING_OPTIMIZATIONS` into both the windowed and the headless D3D11
+  creation path and logs `ActiveDescription`, so a tester's log proves the lever was on. An unrecognized value
+  WARNs (`UnrecognizedWarning`) instead of silently reading as off. `Resolve(string?, out string?)` is the pure
+  parse, `FromEnvironment` the one impure member.
+  **It is a DIAGNOSTIC lever, not a setting**: it stops the D3D11 runtime applying its internal threading
+  optimizations, which can cost performance, so nothing turns it on by default. The flag value is taken from
+  Vortice's enum as a compile-time constant, so it cannot drift and no Vortice type is named in the emitted code
+  (the assembly stays unloaded off Windows, as the threading probe requires).
+- **Direct3D11 immediate-context recording** (17.23.1) - KhaozEngine creates every Direct3D11 device through
+  its Veldrid fork's `D3D11DeviceOptions.UseImmediateContext` mode. It records commands directly on the D3D11
+  immediate context rather than creating and executing a deferred context per `IGpuCommandList`. This is
+  deliberately D3D11-only: Metal, Vulkan, and OpenGL use their existing Veldrid factories unchanged. The fork
+  serializes a list from `Begin` through `Submit`, which matches KhaozEngine's single render-thread command
+  sequence. It addresses the large D3D11 encoding cost observed in the field even when
+  `DriverCommandLists=TRUE`. The vendored fork is `4.9.101` since 17.24.0, which adds immediate-context hazard
+  fixes (cross-thread `Resize`/`Dispose` safe against a concurrent `Reset`, a throwing double `Begin`, and a
+  lock-order fix that kills a reachable two-thread deadlock) plus Direct3D11 bind batching (dirty tracking
+  flushed at draw and dispatch time, an offsets-only rebind fast path, bound-record dedup, a pipeline-switch
+  drain). No API change: see `vendor/veldrid/README.md`.
 - **`GpuCapabilities`** - `ClipSpaceYInverted` / `DepthRangeZeroToOne` (so renderers derive clip-Y / depth
   handling from the active backend instead of a baked Metal assumption), plus diagnostics: `DeviceName` (the GPU
   adapter/driver), `SamplerAnisotropy`, `SamplerLodBias` (whether those sampler levers are supported),
@@ -83,6 +114,9 @@ What it owns today:
   already is the OS-probe default, which is every call with no override and no preference, so default macOS and
   Linux paths are unchanged, as is `CreateHeadless`. Exposes `Backend`, `Selection` (the
   full `GpuBackendSelection`, since 17.21.0), `ThreadingCaps` (the D3D11 driver threading caps, since 17.22.0),
+  `AdapterDescription` (the adapter the device runs on, empty when the backend reports none, since 17.24.0 - the
+  same value as `Capabilities.DeviceName`, which stays the single source, and on Direct3D11 it is exactly the
+  DXGI adapter description), `InjectedModules` (the overlay scan result, since 17.24.0),
   `Capabilities`, and the engine-owned `IGpuDevice`. The raw Veldrid device is private to the context (the
   transitional accessor that used to be here is gone, and `Capabilities` is read once so the context's copy and
   the device's cannot drift). Device creation and disposal are serialized process-wide behind a single static gate, on

@@ -61,6 +61,19 @@ command. It is a plausible explanation for a Windows box being many times slower
 Vulkan, and it is invisible without this line. Null on every other backend and off Windows, which is why the line
 only appears on D3D11.
 
+17.24.0 adds two more lines under the same backend line. `GPU adapter: <name>` is logged on EVERY backend (on
+Direct3D11 it is exactly the DXGI adapter description), reachable as `GpuDeviceContext.AdapterDescription` /
+`AppWindow.AdapterDescription`. On Windows the engine also scans the process's loaded modules against a list of
+known overlay and capture injectors (`GpuInjectedModules`, on `GpuDeviceContext.InjectedModules` /
+`AppWindow.InjectedModules`) and WARNs on any match, because that software hooks Direct3D and causes stutter,
+corrupted frames, and driver crashes that read as engine bugs. That scan is gated on Windows rather than on the
+backend, so a Windows Vulkan session logs it too. A null result means the scan never ran and is deliberately
+distinct from an empty one, which means it ran and found nothing.
+
+For chasing a Direct3D11 threading stall specifically, `KE_D3D11_PREVENT_THREADING_OPTIMIZATIONS=1` adds
+`D3D11_CREATE_DEVICE_PREVENT_INTERNAL_THREADING_OPTIMIZATIONS` at device creation and logs an INFO line proving
+it was on. It is a probe, not a fix: it can cost performance, so it is off by default.
+
 ## Backend-aware goldens
 
 `GoldenCompare.GoldenPath(name)` resolves `KhaozEngine.Render.Tests/Gpu/goldens/<name>.<backend>.txt` where

@@ -459,6 +459,12 @@ default. The selector falls back to the probe, the run produces a perfectly ordi
 as "the requested backend did not help" when that backend never ran. `GpuBackendSelection` records the
 provenance and the raw override value, and this edge is what lets the engine say so out loud.
 
+The edge has since carried more per-device traffic without changing shape: the 17.22.0 Direct3D11 driver-threading
+line and its WARN, and 17.24.0's adapter line, its Windows overlay-injector line and WARN, and the INFO line for
+the `KE_D3D11_PREVENT_THREADING_OPTIMIZATIONS` flag. All of it is logging out of `Gpu` into `Diagnostics`, so the
+reasoning above is unchanged and no new reference was needed. The 17.24.0 module scan uses `System.Diagnostics.Process`
+from the BCL, not a new package.
+
 ### The stored backend preference deliberately adds NO edge (17.23.0)
 
 Letting a player pick the backend in game is naturally read as "`Gpu` needs to load a setting", which would mean

@@ -5,6 +5,103 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.24.0
+
+### A Direct3D11 session now says which card it ran on and what was hooked into it
+
+17.23.1 moved Direct3D11 recording onto the immediate context, and validating that on a tester's machine turned
+out to be blocked by a plainer problem: a session log that named the backend but not the adapter, and said
+nothing at all about the third-party overlays that hook Direct3D. Two field reports of Direct3D11 stalls could
+not be told apart from an injected-overlay problem, because no artifact from either run recorded whether one was
+present. This release adds the two lines that make a Windows performance report actionable, plus one env-gated
+probe for the driver-threading theory itself. Nothing here changes rendering, backend selection, or device
+behaviour by default.
+
+#### The adapter and the injectors are logged at device creation (#416)
+
+`GpuDeviceContext` logs `GPU adapter: <name>` directly under the existing backend line, on EVERY backend. On
+Direct3D11 it is exactly the DXGI adapter description (Veldrid reads `IDXGIAdapter::GetDesc().Description` into
+`GraphicsDevice.DeviceName`), so it needs no Vortice interop, and an adapter name is worth having on Metal and
+Vulkan too: a bug report that does not say which GPU rendered is a bug report nobody can reproduce.
+
+On Windows it also scans the modules loaded into the live process against a list of known overlay and capture
+injectors (Nahimic, Sonic Studio, RivaTuner / MSI Afterburner, NVIDIA GeForce Experience, Discord, OBS
+game-capture, 32-bit and 64-bit spellings of each), logs one INFO line naming what was found, and raises a WARN
+per populated result written for a tester with no graphics background. Software of this kind injects itself into
+Direct3D and is a known cause of stutter, corrupted frames, and driver-level crashes that read as engine bugs, so
+naming it turns a week of guessing into one line.
+
+The scan is gated on the SCAN, not on the backend: overlays inject on Windows whatever API is in use, so a
+Windows Vulkan session gets the line too, and off Windows there is no scan and therefore no line. It runs per
+created device rather than caching process-wide, so a late-attaching overlay still shows up and there is no
+static state to reason about. Every failure path degrades to "not checked" instead of throwing, on the same rule
+as 17.22.0's threading probe: a diagnostic that can break device creation is worse than the problem it
+diagnoses.
+
+**Null and empty are opposite facts, and the API keeps them apart.** Null means the scan never ran (off Windows,
+or it failed). An empty list means it ran and the process is clean. `GpuInjectedModules.Describe` renders those
+as two different strings and `ShouldWarn` returns false for null, because "we could not look" is not evidence
+that anything is hooked.
+
+#### An env-gated flag for the driver-threading theory (#417)
+
+`KE_D3D11_PREVENT_THREADING_OPTIMIZATIONS=1` ORs `D3D11_CREATE_DEVICE_PREVENT_INTERNAL_THREADING_OPTIMIZATIONS`
+into Direct3D11 device creation, on both the windowed and the headless path, and logs an INFO line naming the
+flag and the variable that set it so a tester's log PROVES the lever was on rather than the tester believing they
+set it. Recognized on values are `1`/`true`/`yes`/`on` and off values `0`/`false`/`no`/`off`, case-insensitive
+and trimmed. A value that is neither WARNs, because a mistyped gate that silently does nothing is
+indistinguishable from the default and can waste a whole test session.
+
+**This is a probe, not a fix.** It tells the Direct3D11 runtime to stop applying its own threading
+optimizations, which can cost performance, so nothing turns it on by default and there is no plan to. It exists
+so a tester chasing a driver-threading stall can prove whether those optimizations are part of the problem. The
+flag value is taken from Vortice's enum as a compile-time constant rather than hand-written, so the number cannot
+drift and no Vortice type is named in the emitted code, which keeps the assembly unloaded off Windows exactly as
+the 17.22.0 threading probe requires. A test pins it to the documented Windows SDK value, since the plausible
+hand-written guess, `0x800`, is `VideoSupport`.
+
+#### Veldrid fork 4.9.101: immediate-context hazards and Direct3D11 bind batching
+
+The vendored fork moves from `4.9.100` to `4.9.101` (`APKiwiOrg/veldrid` tag `v4.9.101`, commit
+`2dce75411fc869c4bdc36c4c313ca03fbda7a1cd`), which hardens the immediate-context mode 17.23.1 turned on and cuts
+its per-bind cost.
+
+Immediate-context hazard fixes (#415): cross-thread `Resize` and `Dispose` are now safe against a concurrent
+`Reset`, a double `Begin` throws instead of corrupting state, and a lock-order fix makes the immediate-context
+lock outermost, which kills a reachable two-thread deadlock. `Map` / `Present` serialization and same-thread
+`UpdateBuffer` reentrancy are now documented rather than implied.
+
+Direct3D11 bind batching (#418): dirty tracking with a flush at draw and dispatch time, an offsets-only rebind
+fast path, bound-record dedup, and a drain on pipeline switch. Fewer redundant native bind calls per recorded
+command, which is the cost that dominates on the immediate-context path.
+
+The fork's own Windows suite gained tests for both. They cannot execute on macOS, so the engine's Windows WARP CI
+leg is the executing gate for them.
+
+### Added
+- `GpuInjectedModules` (static, `KhaozEngine.Gpu`): the known-injector list and the pure matching around it.
+  `Match(IEnumerable<string?>)` returns the known injectors among a set of module names (case-insensitive, full
+  paths accepted, both separators honoured on every OS, duplicates removed, declaration order preserved),
+  `Describe(IReadOnlyList<string>?)` renders a match list for a log line or an overlay row,
+  `ShouldWarn(IReadOnlyList<string>?)`, `Warning(IReadOnlyList<string>)`, `KnownModuleNames`,
+  `UnknownDescription`, and `NoneDescription`. Pure and device-free, so it is headless-testable on any OS. The
+  Windows-only half that enumerates the live process's modules is internal.
+- `GpuD3D11DeviceFlags` (static, `KhaozEngine.Gpu`): `EnvVarName`
+  (`KE_D3D11_PREVENT_THREADING_OPTIMIZATIONS`), `PreventInternalThreadingOptimizations` (the raw flag value),
+  `Resolve(string?, out string?)`, `FromEnvironment(out string?)`, `ActiveDescription`, and
+  `UnrecognizedWarning(string)`. Everything except `FromEnvironment` is pure.
+- `GpuDeviceContext.AdapterDescription` (`string`): the adapter the device runs on, empty when the backend
+  reports none. The same value as `Capabilities.DeviceName`, which stays the single source, named again for the
+  reader chasing a Direct3D11 problem who would not think to look under capabilities.
+- `GpuDeviceContext.InjectedModules` (`IReadOnlyList<string>?`): the scan result, read once at device creation.
+- `AppWindow.AdapterDescription` and `AppWindow.InjectedModules`: the same two values reachable from a `GameApp`
+  subclass, alongside `ThreadingCaps` and `BackendSelection`, on the `AppWindow.Diagnostics.cs` partial. No
+  behaviour change.
+
+### Changed
+- The vendored Veldrid fork is `4.9.101` (was `4.9.100`). Same upstream `v4.9.0` base, same Vortice `2.3.0`, same
+  opt-in `D3D11DeviceOptions.UseImmediateContext` API. See `vendor/veldrid/README.md` for the hashes.
+
 ## 17.23.1
 
 ### Direct3D11 records commands directly on the immediate context

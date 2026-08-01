@@ -64,6 +64,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Which graphics backend actually ran (`GpuBackendSelection`, 17.21.0)](#which-graphics-backend-actually-ran-gpubackendselection-17210)
 - [Letting the player choose the graphics backend (17.23.0)](#letting-the-player-choose-the-graphics-backend-17230)
 - [Is the D3D11 driver emulating command lists (`GpuThreadingCaps`, 17.22.0)](#is-the-d3d11-driver-emulating-command-lists-gputhreadingcaps-17220)
+- [Which card ran, and what was hooked into the process (`AdapterDescription` / `GpuInjectedModules`, 17.24.0)](#which-card-ran-and-what-was-hooked-into-the-process-adapterdescription-gpuinjectedmodules-17240)
 - [Collision-shape debug overlay (`CollisionShapeOverlay` / `OverlayLegend`)](#collision-shape-debug-overlay-collisionshapeoverlay-overlaylegend)
 - [Install / update stamp (`KhaozEngine.App.AppInstallStamp`)](#install-update-stamp-khaozengineappappinstallstamp)
 - [Clean self-restart (`KhaozEngine.App.AppRelaunch`)](#clean-self-restart-khaozengineappapprelaunch)
@@ -4940,7 +4941,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.23.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.24.0" />
 ```
 
 ```csharp
@@ -8102,6 +8103,72 @@ measured FALSE does, or the alarm stops meaning anything.
 any Vortice type is named, so `Vortice.Direct3D11` never loads on macOS or Linux, and every failure path degrades
 to unknown rather than throwing. A diagnostic that can break device creation is worse than the problem it
 diagnoses.
+
+---
+
+## Which card ran, and what was hooked into the process (`AdapterDescription` / `GpuInjectedModules`, 17.24.0)
+
+Two more lines logged once per created device, both aimed at the same failure: a Windows performance report that
+nobody can act on because it does not say which GPU rendered or what was injected into the process.
+
+```
+GPU backend: Direct3D11 (OS probe)
+GPU adapter: NVIDIA GeForce RTX 4070
+Graphics overlay software: RTSSHooks64.dll (RivaTuner Statistics Server, as used by MSI Afterburner)
+```
+
+**`GPU adapter` is logged on EVERY backend**, unlike the D3D11 threading line above. On Direct3D11 it is exactly
+the DXGI adapter description (Veldrid reads `IDXGIAdapter::GetDesc().Description` into
+`GraphicsDevice.DeviceName`), so no Vortice interop is involved, but an adapter name means something on Metal and
+Vulkan too. `GpuDeviceContext.AdapterDescription` and `AppWindow.AdapterDescription` return it, and it is the
+same value as `Capabilities.DeviceName`, which stays the single source. It is named again because "adapter
+description" is what a reader chasing a Direct3D11 problem goes looking for.
+
+**The overlay line is Windows-only** and is gated on the scan rather than the backend, because overlays inject
+whatever graphics API is in use, so a Windows Vulkan session gets it too. The engine matches the modules loaded
+into the live process against a list of known overlay and capture injectors (Nahimic, Sonic Studio, RivaTuner /
+MSI Afterburner, NVIDIA GeForce Experience, Discord, OBS game-capture, in both their 32-bit and 64-bit
+spellings), and raises a WARN on any match: this software hooks Direct3D and is a known cause of stutter,
+corrupted frames, and driver-level crashes that read exactly like engine bugs.
+
+Read both for a game's own debug overlay, the same way as `ThreadingCaps`:
+
+```csharp
+string adapter = Window.AdapterDescription;                     // "" when the backend reports no name
+
+IReadOnlyList<string>? hooked = Window.InjectedModules;
+string row = GpuInjectedModules.Describe(hooked);               // the exact wording the engine logs
+
+if (GpuInjectedModules.ShouldWarn(hooked))
+    ShowInRed(GpuInjectedModules.Warning(hooked));
+```
+
+**Null and empty are opposite facts here, so test with `Describe`, not with `Count`.** Null means the scan never
+ran (not Windows, or it failed) and renders as `GpuInjectedModules.UnknownDescription`. An empty list means the
+scan ran and the process is clean, and renders as `GpuInjectedModules.NoneDescription`. `ShouldWarn` is false for
+null, because "we could not look" is not evidence that anything is hooked. `GpuInjectedModules.Match` and
+`Describe` are pure and device-free, so a game can screen any module list on any OS, and
+`GpuInjectedModules.KnownModuleNames` is the list being screened against, if you would rather show that than an
+unexplained verdict.
+
+### `KE_D3D11_PREVENT_THREADING_OPTIMIZATIONS` (a probe, not a setting)
+
+Set it to `1` (or `true` / `yes` / `on`) and Direct3D11 device creation adds
+`D3D11_CREATE_DEVICE_PREVENT_INTERNAL_THREADING_OPTIMIZATIONS`, on both the windowed and the headless path, with
+an INFO line proving the lever was on:
+
+```
+D3D11_CREATE_DEVICE_PREVENT_INTERNAL_THREADING_OPTIMIZATIONS is ACTIVE for this device (0x8, from
+KE_D3D11_PREVENT_THREADING_OPTIMIZATIONS). The Direct3D11 runtime will not apply its internal threading
+optimizations. This is a diagnostic lever and it can cost performance, so unset the variable to go back to the
+default.
+```
+
+Off values are `0` / `false` / `no` / `off` (and unset), all case-insensitive and trimmed. Anything else WARNs
+rather than silently doing nothing, since a mistyped gate is indistinguishable from the default and can cost a
+whole test session. **It exists to test a theory, not to fix anything**: it stops the D3D11 runtime applying its
+own threading optimizations, which can cost performance, so it is off by default and should stay off outside a
+repro. `GpuD3D11DeviceFlags.Resolve(envValue, out unrecognized)` is the pure parse behind it, testable anywhere.
 
 ## Collision-shape debug overlay (`CollisionShapeOverlay` / `OverlayLegend`)
 

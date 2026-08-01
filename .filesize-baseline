@@ -34,7 +34,7 @@
 
 4484 KhaozEngine.MapEditor.Tests/MapEditor/MapEditorSceneTests.cs
 3276 KhaozEngine.MapEditor/MapEditorScene.cs
-3130 KhaozEngine.Render3D/Scene3D.cs
+3088 KhaozEngine.Render3D/Scene3D.cs
 2710 KhaozEngine.MapEditor/EditorCommands.cs
 2329 KhaozEngine.MapEditor.Tests/MapEditor/EditorCommandsTests.cs
 1793 KhaozEngine.MapEditor.Tests/MapEditor/EditorToolTests.cs
@@ -44,9 +44,9 @@
 1077 KhaozEngine.MapEditor/EditorTool.cs
 1033 KhaozEngine.Updates/UpdateApplier.cs
 994 KhaozEngine.Game.Render3D/ReplicatedCharacterAnimators.cs
-957 KhaozEngine.Windowing/AppWindow.cs
 905 KhaozEngine.Game.Tests/Game/ReplicatedCharacterAnimatorsTests.cs
 905 KhaozEngine.Dungeon/Internal/RoomGrower.cs
+904 KhaozEngine.Windowing/AppWindow.cs
 865 KhaozEngine.Render2D/SpriteBatch.cs
 857 KhaozEngine.MapEditor.Tests/MapEditTool/MutationServiceProceduralTests.cs
 826 KhaozEngine.Audio/AudioSystem.cs

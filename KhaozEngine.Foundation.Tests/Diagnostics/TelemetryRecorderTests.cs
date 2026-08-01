@@ -24,6 +24,15 @@ public sealed class TelemetryRecorderTests
         return lines.ToArray();
     }
 
+    // Every recording opens with the session header, so the sample rows start at line 2. The header's own
+    // shape is covered in TelemetrySessionHeaderTests.
+    static string[] ReadSampleLines(string path)
+    {
+        string[] lines = ReadLinesShared(path);
+        Assert.NotEmpty(lines);
+        return lines[1..];
+    }
+
     [Fact]
     public void Lifecycle_flags_reflect_start_and_stop()
     {
@@ -51,7 +60,7 @@ public sealed class TelemetryRecorderTests
         rec.Sample(0.5, new[] { new TelemetryChannel("fps", 60.0), new TelemetryChannel("rttMs", 50) });
         rec.Stop();
 
-        string[] lines = ReadLinesShared(path);
+        string[] lines = ReadSampleLines(path);
         Assert.Equal(2, lines.Length);
 
         using JsonDocument d0 = JsonDocument.Parse(lines[0]);
@@ -74,7 +83,7 @@ public sealed class TelemetryRecorderTests
         rec.Sample(2.0, new[] { new TelemetryChannel("x", 2) });
         // No Stop(): simulate a crash; the flushed lines must already parse.
 
-        string[] lines = ReadLinesShared(path);
+        string[] lines = ReadSampleLines(path);
         Assert.Equal(2, lines.Length);
         foreach (string line in lines)
             using (JsonDocument.Parse(line)) { } // throws if any line is truncated/invalid
@@ -91,7 +100,7 @@ public sealed class TelemetryRecorderTests
         rec.Sample(0.0, new[] { new TelemetryChannel("nan", double.NaN), new TelemetryChannel("inf", double.PositiveInfinity) });
         rec.Stop();
 
-        string[] lines = ReadLinesShared(path);
+        string[] lines = ReadSampleLines(path);
         using JsonDocument d = JsonDocument.Parse(lines[0]); // must still be valid JSON
         Assert.Equal(JsonValueKind.Null, d.RootElement.GetProperty("nan").ValueKind);
         Assert.Equal(JsonValueKind.Null, d.RootElement.GetProperty("inf").ValueKind);
@@ -114,7 +123,7 @@ public sealed class TelemetryRecorderTests
         rec.Sample(0.0, new[] { new TelemetryChannel("a\"b", 1) });
         rec.Stop();
 
-        string[] lines = ReadLinesShared(path);
+        string[] lines = ReadSampleLines(path);
         using JsonDocument d = JsonDocument.Parse(lines[0]); // throws if escaping is wrong
         Assert.Equal(1, d.RootElement.GetProperty("a\"b").GetDouble());
     }

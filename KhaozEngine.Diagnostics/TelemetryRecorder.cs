@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
 using System.Text;
 
@@ -15,6 +14,11 @@ public readonly record struct TelemetryChannel(string Name, double Value);
 /// crash leaves a valid partial file. It records raw numeric channels, not the overlay's formatted display
 /// rows, so the output is chartable. Pure managed file IO, no renderer dependency.
 /// <para>
+/// Every recording opens with a <see cref="TelemetrySessionHeader"/> line, so a capture always says which
+/// engine, build, and backend produced it (see <see cref="Start(string, TelemetrySessionInfo)"/>). The header
+/// carries no <c>t</c> field and every sample row does, so a reader tells them apart on one key.
+/// </para>
+/// <para>
 /// Not thread-safe: drive it from one thread (the game loop). The arm/confirm UX is the game's concern; this
 /// is just the recording mechanism.
 /// </para>
@@ -24,17 +28,31 @@ public sealed class TelemetryRecorder : IDisposable
     StreamWriter? _writer;
     readonly StringBuilder _line = new(256);
 
-    /// <summary>True between <see cref="Start"/> and <see cref="Stop"/>.</summary>
+    /// <summary>True between <see cref="Start(string, TelemetrySessionInfo)"/> and <see cref="Stop"/>.</summary>
     public bool IsRecording => _writer != null;
 
     /// <summary>The file currently being written, or null when not recording.</summary>
     public string? CurrentPath { get; private set; }
 
     /// <summary>
-    /// Open <paramref name="path"/> for a fresh recording (truncating any existing file and creating parent
-    /// directories). Stops any recording already in progress first.
+    /// Open <paramref name="path"/> for a fresh recording carrying only the identity the engine knows on its
+    /// own (engine version and the set <c>KE_</c> levers). Prefer
+    /// <see cref="Start(string, TelemetrySessionInfo)"/>, which also records the app and GPU identity.
     /// </summary>
-    public void Start(string path)
+    public void Start(string path) => Start(path, null);
+
+    /// <summary>
+    /// Open <paramref name="path"/> for a fresh recording (truncating any existing file and creating parent
+    /// directories) and write the session header as its first line. Stops any recording already in progress
+    /// first. The header is resolved here, at start, so it describes the run being recorded and not whatever
+    /// the process looked like later.
+    /// </summary>
+    /// <param name="path">The file to write. Parent directories are created.</param>
+    /// <param name="session">
+    /// The app, GPU, and game-owned identity to record, or null for the engine-only header. The engine version
+    /// and the <c>KE_</c> environment levers are always read by the engine itself and are not taken from here.
+    /// </param>
+    public void Start(string path, TelemetrySessionInfo? session)
     {
         if (path is null) throw new ArgumentNullException(nameof(path));
         Stop();
@@ -46,6 +64,11 @@ public sealed class TelemetryRecorder : IDisposable
         var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read);
         _writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
         CurrentPath = path;
+
+        // Flushed like every other line, so even a recording that dies before its first sample still says
+        // what produced it.
+        _writer.WriteLine(TelemetrySessionHeader.Build(session));
+        _writer.Flush();
     }
 
     /// <summary>
@@ -59,16 +82,15 @@ public sealed class TelemetryRecorder : IDisposable
 
         _line.Clear();
         _line.Append("{\"t\":");
-        AppendNumber(_line, elapsedSeconds);
+        TelemetryJson.AppendNumber(_line, elapsedSeconds);
         if (channels != null)
         {
             for (int i = 0; i < channels.Count; i++)
             {
                 TelemetryChannel c = channels[i];
-                _line.Append(",\"");
-                AppendEscaped(_line, c.Name);
-                _line.Append("\":");
-                AppendNumber(_line, c.Value);
+                _line.Append(',');
+                TelemetryJson.AppendKey(_line, c.Name);
+                TelemetryJson.AppendNumber(_line, c.Value);
             }
         }
         _line.Append('}');
@@ -89,31 +111,4 @@ public sealed class TelemetryRecorder : IDisposable
 
     /// <inheritdoc/>
     public void Dispose() => Stop();
-
-    static void AppendNumber(StringBuilder sb, double v)
-    {
-        // JSON has no NaN / Infinity literal; record those as null so every line stays valid JSON.
-        if (double.IsNaN(v) || double.IsInfinity(v)) { sb.Append("null"); return; }
-        sb.Append(v.ToString(CultureInfo.InvariantCulture)); // shortest round-trippable form
-    }
-
-    static void AppendEscaped(StringBuilder sb, string? s)
-    {
-        if (string.IsNullOrEmpty(s)) return;
-        foreach (char ch in s)
-        {
-            switch (ch)
-            {
-                case '"': sb.Append("\\\""); break;
-                case '\\': sb.Append("\\\\"); break;
-                case '\n': sb.Append("\\n"); break;
-                case '\r': sb.Append("\\r"); break;
-                case '\t': sb.Append("\\t"); break;
-                default:
-                    if (ch < 0x20) sb.Append("\\u").Append(((int)ch).ToString("x4", CultureInfo.InvariantCulture));
-                    else sb.Append(ch);
-                    break;
-            }
-        }
-    }
 }

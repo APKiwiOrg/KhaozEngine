@@ -9,8 +9,11 @@ Windows Veldrid suite covers buffer, render, resource-set, and texture paths thr
 
 What `4.9.101` adds over `4.9.100`:
 
-- Immediate-context hazard fixes. Cross-thread `Resize` and `Dispose` are now safe against a concurrent
-  `Reset`, a double `Begin` throws instead of corrupting state, and a lock-order fix makes the
+- Immediate-context hazard fixes. A `Reset` issued from a foreign thread, which both `Swapchain.Resize` and
+  `CommandList.Dispose` do, is now a silent no-op instead of throwing `SynchronizationLockException` and
+  clobbering the render thread's in-flight recording. A concurrent resize is still not safe: `Resize` disposes
+  the framebuffer the render thread has bound, exactly as it does in deferred mode, so resize between frames
+  and never during one. A double `Begin` throws instead of corrupting state, and a lock-order fix makes the
   immediate-context lock outermost, which kills a reachable two-thread deadlock. `Map` and `Present`
   serialization plus same-thread `UpdateBuffer` reentrancy are now documented.
 - Direct3D11 bind batching. Dirty tracking with a draw-and-dispatch-time flush, an offsets-only rebind

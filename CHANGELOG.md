@@ -66,14 +66,18 @@ The vendored fork moves from `4.9.100` to `4.9.101` (`APKiwiOrg/veldrid` tag `v4
 `2dce75411fc869c4bdc36c4c313ca03fbda7a1cd`), which hardens the immediate-context mode 17.23.1 turned on and cuts
 its per-bind cost.
 
-Immediate-context hazard fixes (#415): cross-thread `Resize` and `Dispose` are now safe against a concurrent
-`Reset`, a double `Begin` throws instead of corrupting state, and a lock-order fix makes the immediate-context
-lock outermost, which kills a reachable two-thread deadlock. `Map` / `Present` serialization and same-thread
-`UpdateBuffer` reentrancy are now documented rather than implied.
+Immediate-context hazard fixes (#415): a `Reset` issued from a foreign thread, which both `Swapchain.Resize` and
+`CommandList.Dispose` do, is now a silent no-op instead of throwing `SynchronizationLockException` and clobbering
+the render thread's in-flight recording. That does not make a concurrent resize safe: `Resize` still disposes the
+framebuffer the render thread has bound, exactly as it does in deferred mode, so resize a swapchain between
+frames and never during one. A double `Begin` throws instead of corrupting state, and a lock-order fix makes the
+immediate-context lock outermost, which kills a reachable two-thread deadlock. `Map` / `Present` serialization
+and same-thread `UpdateBuffer` reentrancy are now documented rather than implied.
 
 Direct3D11 bind batching (#418): dirty tracking with a flush at draw and dispatch time, an offsets-only rebind
 fast path, bound-record dedup, and a drain on pipeline switch. Fewer redundant native bind calls per recorded
-command, which is the cost that dominates on the immediate-context path.
+command. Whether that per-bind cost is what dominates on the immediate-context path is the hypothesis Phase 1 is
+built to test, not a measured result.
 
 The fork's own Windows suite gained tests for both. They cannot execute on macOS, so the engine's Windows WARP CI
 leg is the executing gate for them.
@@ -81,7 +85,7 @@ leg is the executing gate for them.
 ### Added
 - `GpuInjectedModules` (static, `KhaozEngine.Gpu`): the known-injector list and the pure matching around it.
   `Match(IEnumerable<string?>)` returns the known injectors among a set of module names (case-insensitive, full
-  paths accepted, both separators honoured on every OS, duplicates removed, declaration order preserved),
+  paths accepted, both separators honoured on every OS, duplicates removed, first-seen input order preserved),
   `Describe(IReadOnlyList<string>?)` renders a match list for a log line or an overlay row,
   `ShouldWarn(IReadOnlyList<string>?)`, `Warning(IReadOnlyList<string>)`, `KnownModuleNames`,
   `UnknownDescription`, and `NoneDescription`. Pure and device-free, so it is headless-testable on any OS. The

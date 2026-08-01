@@ -83,10 +83,13 @@ What it owns today:
   serializes a list from `Begin` through `Submit`, which matches KhaozEngine's single render-thread command
   sequence. It addresses the large D3D11 encoding cost observed in the field even when
   `DriverCommandLists=TRUE`. The vendored fork is `4.9.101` since 17.24.0, which adds immediate-context hazard
-  fixes (cross-thread `Resize`/`Dispose` safe against a concurrent `Reset`, a throwing double `Begin`, and a
-  lock-order fix that kills a reachable two-thread deadlock) plus Direct3D11 bind batching (dirty tracking
-  flushed at draw and dispatch time, an offsets-only rebind fast path, bound-record dedup, a pipeline-switch
-  drain). No API change: see `vendor/veldrid/README.md`.
+  fixes plus Direct3D11 bind batching (dirty tracking flushed at draw and dispatch time, an offsets-only rebind
+  fast path, bound-record dedup, a pipeline-switch drain). The hazard fixes make a foreign-thread `Reset`, which
+  both `Swapchain.Resize` and `CommandList.Dispose` issue, a silent no-op rather than a
+  `SynchronizationLockException` that also clobbers the render thread's in-flight recording, throw on a double
+  `Begin`, and make the immediate-context lock outermost, which kills a reachable two-thread deadlock. Resizing
+  during recording stays unsafe regardless, because `Resize` still disposes the framebuffer the render thread has
+  bound, so resize between frames and never during one. No API change: see `vendor/veldrid/README.md`.
 - **`GpuCapabilities`** - `ClipSpaceYInverted` / `DepthRangeZeroToOne` (so renderers derive clip-Y / depth
   handling from the active backend instead of a baked Metal assumption), plus diagnostics: `DeviceName` (the GPU
   adapter/driver), `SamplerAnisotropy`, `SamplerLodBias` (whether those sampler levers are supported),

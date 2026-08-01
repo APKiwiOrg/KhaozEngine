@@ -8109,15 +8109,28 @@ diagnoses.
 ## Which card ran, and what was hooked into the process (`AdapterDescription` / `GpuInjectedModules`, 17.24.0)
 
 Two more lines logged once per created device, both aimed at the same failure: a Windows performance report that
-nobody can act on because it does not say which GPU rendered or what was injected into the process.
+nobody can act on because it does not say which GPU rendered or what was injected into the process. They are
+shown below in the whole Direct3D11 block they land in, so a tester's log can be read against it line for line.
 
 ```
+D3D11_CREATE_DEVICE_PREVENT_INTERNAL_THREADING_OPTIMIZATIONS is ACTIVE for this device (0x8, from
+KE_D3D11_PREVENT_THREADING_OPTIMIZATIONS). The Direct3D11 runtime will not apply its internal threading
+optimizations. This is a diagnostic lever and it can cost performance, so unset the variable to go back to the
+default.
 GPU backend: Direct3D11 (OS probe)
 GPU adapter: NVIDIA GeForce RTX 4070
+D3D11 driver threading: DriverCommandLists=TRUE, DriverConcurrentCreates=TRUE (the driver builds command lists)
 Graphics overlay software: RTSSHooks64.dll (RivaTuner Statistics Server, as used by MSI Afterburner)
 ```
 
-**`GPU adapter` is logged on EVERY backend**, unlike the D3D11 threading line above. On Direct3D11 it is exactly
+That is one real Windows session's block, in the order it is emitted. Only the first line is conditional: it
+comes from `KE_D3D11_PREVENT_THREADING_OPTIMIZATIONS` (below) and is absent unless that variable is set. It sits
+above the rest because the flag is read while the device is being created, before the context that logs the other
+four exists. `D3D11 driver threading` is the 17.22.0 line and is emitted on every Direct3D11 device, so it always
+falls between the adapter line and the overlay line. This session's overlay line also draws a WARN, since
+`RTSSHooks64.dll` is a match.
+
+**`GPU adapter` is logged on EVERY backend**, unlike the D3D11 threading line above it. On Direct3D11 it is exactly
 the DXGI adapter description (Veldrid reads `IDXGIAdapter::GetDesc().Description` into
 `GraphicsDevice.DeviceName`), so no Vortice interop is involved, but an adapter name means something on Metal and
 Vulkan too. `GpuDeviceContext.AdapterDescription` and `AppWindow.AdapterDescription` return it, and it is the

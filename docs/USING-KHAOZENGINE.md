@@ -7882,7 +7882,7 @@ _recorder.Start(path, session);       // header first, then Sample() rows as bef
 The line that lands:
 
 ```json
-{"session":{"v":1,"engine":"17.25.0+3f2a1c9","app":{"name":"Ruinborne","version":"0.7.3","build":"Sundered Ground"},"gpu":{"backend":"Direct3D11","backendSource":"FallbackAfterFailure","adapter":"NVIDIA GeForce RTX 4070","injectedModules":["RTSSHooks64.dll"],"threading":{"driverCommandLists":false,"driverConcurrentCreates":true}},"env":{"KE_GRAPHICS_BACKEND":"vulkan"},"game":{"worldSeed":"8812345","zone":"Ashfall"}}}
+{"session":{"v":1,"engine":"17.25.0+3f2a1c9","app":{"name":"Ruinborne","version":"0.7.3","build":"Sundered Ground"},"gpu":{"backend":"Direct3D11","backendSource":"FallbackAfterFailure","requestedBackend":"Vulkan","requestedOverride":"vulkan","adapter":"NVIDIA GeForce RTX 4070","injectedModules":["RTSSHooks64.dll"],"threading":{"driverCommandLists":false,"driverConcurrentCreates":true}},"env":{"KE_GRAPHICS_BACKEND":"vulkan"},"game":{"worldSeed":"8812345","zone":"Ashfall"}}}
 ```
 
 **Telling the header from a sample row is one key test.** The header has a `session` envelope and no `t`. Every
@@ -7898,10 +7898,19 @@ the levers that shaped the run and nothing else off the machine. You hand in the
 are the same fact to a reader.
 
 **The GPU block comes from one call.** `GpuTelemetry.WithGpu` (in `KhaozEngine.Gpu`) maps the backend, its
-provenance, the adapter, the injected-module scan, and the Direct3D11 threading caps into the header. Use
-`info.WithGpu(device)` when you hold a `GpuDeviceContext`, or the four-value overload above when you hold an
-`AppWindow`. `injectedModules` keeps null (never scanned) apart from `[]` (scanned, clean), exactly like
-`GpuInjectedModules.Describe`, and `threading` is null on every backend but Direct3D11.
+provenance, what was asked for, the adapter, the injected-module scan, and the Direct3D11 threading caps into
+the header. Use `info.WithGpu(device)` when you hold a `GpuDeviceContext`, or the four-value overload above when
+you hold an `AppWindow`. `injectedModules` keeps null (never scanned) apart from `[]` (scanned, clean), exactly
+like `GpuInjectedModules.Describe`, and `threading` is null on every backend but Direct3D11.
+
+**A fallback says what failed, not only that it fell back.** `requestedBackend` is the backend that was asked
+for and did not work, set only on a `FallbackAfterFailure` source and null otherwise. It matters most on a
+`UserPreference` fallback, where the request came from the player's own in-game graphics setting and is
+recoverable nowhere else in the capture. `requestedOverride` is the RAW `KE_GRAPHICS_BACKEND` value exactly as
+it was read, written verbatim and never normalized, because a typo (`vulcan`) or stray quoting is precisely what
+it exists to make obvious, and it is the whole diagnostic behind an `UnrecognizedOverride` source. Both come
+from `GpuBackendSelection`, so `WithGpu` fills them for you and the header carries what the
+`GPU backend: <kind> (fallback, <requested> failed)` log line beside it already said.
 
 **The game section is yours.** `AddGameValue(key, value)` / `AddGameValues(pairs)` land under `game`, so nothing
 you record can collide with an engine field. `AddGameValues` takes any

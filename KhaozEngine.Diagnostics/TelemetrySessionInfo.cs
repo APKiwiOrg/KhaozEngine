@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 
 namespace KhaozEngine.Diagnostics;
 
@@ -24,6 +25,10 @@ public readonly record struct TelemetryHeaderValue(string Key, string Value);
 public sealed class TelemetrySessionInfo
 {
     readonly List<TelemetryHeaderValue> _game = new();
+    readonly ReadOnlyCollection<TelemetryHeaderValue> _gameView;
+
+    /// <summary>Create an empty session info. Every field on it is optional.</summary>
+    public TelemetrySessionInfo() => _gameView = _game.AsReadOnly();
 
     /// <summary>The consuming app's name, e.g. <c>"Ruinborne"</c>. Null or blank omits it.</summary>
     public string? AppName { get; set; }
@@ -46,6 +51,23 @@ public sealed class TelemetrySessionInfo
     /// deliberate backend from one the engine fell back to, so a capture is readable without guessing.
     /// </summary>
     public string? GpuBackendSource { get; set; }
+
+    /// <summary>
+    /// The backend that was ASKED for and did not work, as a name, set only on a fallback. Null otherwise.
+    /// Paired with <see cref="GpuBackend"/>, which is what actually ran, this is the half that says WHAT failed,
+    /// and without it a fallback capture cannot answer the first question anyone asks of it. It matters most on
+    /// a <c>UserPreference</c> fallback, where the request came from the player's own in-game graphics setting
+    /// and is recoverable nowhere else in the capture.
+    /// </summary>
+    public string? GpuRequestedBackend { get; set; }
+
+    /// <summary>
+    /// The RAW <c>KE_GRAPHICS_BACKEND</c> value exactly as it was read, or null when no non-blank override was
+    /// present. Deliberately not normalized and written verbatim: the untouched string is what makes a typo
+    /// (<c>vulcan</c>) or stray quoting obvious, and it is the whole diagnostic behind an
+    /// <c>UnrecognizedOverride</c> source.
+    /// </summary>
+    public string? GpuRequestedOverride { get; set; }
 
     /// <summary>The adapter the device ran on (on Direct3D11 exactly the DXGI adapter description).</summary>
     public string? AdapterDescription { get; set; }
@@ -72,8 +94,13 @@ public sealed class TelemetrySessionInfo
     /// <summary>
     /// The game-owned durable values, in the order they were added. These land under the header's own
     /// <c>game</c> section, so nothing a game records can collide with an engine field.
+    /// <para>
+    /// A genuinely read-only view rather than the live list behind an interface, so a caller that casts it back
+    /// to <see cref="IList{T}"/> gets a <see cref="NotSupportedException"/> instead of a silent back door into
+    /// the recorded set. It still tracks later <see cref="AddGameValue"/> calls, since it wraps the same list.
+    /// </para>
     /// </summary>
-    public IReadOnlyList<TelemetryHeaderValue> GameValues => _game;
+    public IReadOnlyList<TelemetryHeaderValue> GameValues => _gameView;
 
     /// <summary>
     /// Record one game-owned durable value. A repeated key replaces the earlier value in place rather than

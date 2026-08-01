@@ -124,7 +124,11 @@ public sealed class TelemetrySessionHeaderTests
             Assert.True(app.TryGetProperty(field, out _), $"app.{field} missing");
 
         JsonElement gpu = session.GetProperty("gpu");
-        foreach (string field in new[] { "backend", "backendSource", "adapter", "injectedModules", "threading" })
+        foreach (string field in new[]
+                 {
+                     "backend", "backendSource", "requestedBackend", "requestedOverride", "adapter",
+                     "injectedModules", "threading",
+                 })
             Assert.True(gpu.TryGetProperty(field, out _), $"gpu.{field} missing");
 
         Assert.Equal(JsonValueKind.Object, session.GetProperty("env").ValueKind);
@@ -186,6 +190,47 @@ public sealed class TelemetrySessionHeaderTests
     }
 
     [Fact]
+    public void A_fallback_records_what_was_asked_for_and_not_only_that_it_fell_back()
+    {
+        // The whole point of the two requested fields: without them this capture says a fallback happened and
+        // cannot say what failed, which is strictly less than the session log beside it already carries.
+        var info = new TelemetrySessionInfo
+        {
+            GpuBackend = "Direct3D11",
+            GpuBackendSource = "FallbackAfterFailure",
+            GpuRequestedBackend = "Vulkan",
+            GpuRequestedOverride = "vulkan",
+        };
+
+        JsonElement gpu = Session(TelemetrySessionHeader.Build(info, NoEnvironment())).GetProperty("gpu");
+        Assert.Equal("Direct3D11", gpu.GetProperty("backend").GetString());
+        Assert.Equal("FallbackAfterFailure", gpu.GetProperty("backendSource").GetString());
+        Assert.Equal("Vulkan", gpu.GetProperty("requestedBackend").GetString());
+        Assert.Equal("vulkan", gpu.GetProperty("requestedOverride").GetString());
+    }
+
+    [Fact]
+    public void An_ordinary_selection_records_both_requested_fields_as_null()
+    {
+        var info = new TelemetrySessionInfo { GpuBackend = "Metal", GpuBackendSource = "OsProbe" };
+
+        JsonElement gpu = Session(TelemetrySessionHeader.Build(info, NoEnvironment())).GetProperty("gpu");
+        Assert.Equal(JsonValueKind.Null, gpu.GetProperty("requestedBackend").ValueKind);
+        Assert.Equal(JsonValueKind.Null, gpu.GetProperty("requestedOverride").ValueKind);
+    }
+
+    [Fact]
+    public void The_raw_requested_override_is_recorded_untouched()
+    {
+        // Deliberately NOT normalized: the untouched string is what makes a typo or stray quoting obvious, so
+        // it must survive surrounding whitespace and odd casing exactly as it was read.
+        var info = new TelemetrySessionInfo { GpuRequestedOverride = " Vulcan \"" };
+
+        JsonElement gpu = Session(TelemetrySessionHeader.Build(info, NoEnvironment())).GetProperty("gpu");
+        Assert.Equal(" Vulcan \"", gpu.GetProperty("requestedOverride").GetString());
+    }
+
+    [Fact]
     public void Threading_caps_are_null_when_the_backend_never_reported_them()
     {
         var info = new TelemetrySessionInfo { GpuBackend = "Metal" };
@@ -226,6 +271,25 @@ public sealed class TelemetrySessionHeaderTests
         Assert.Equal("1", levers[0].Value);
         Assert.Equal("KE_GRAPHICS_BACKEND", levers[1].Key);
         Assert.Equal("vulkan", levers[1].Value);
+    }
+
+    [Fact]
+    public void The_prefix_match_is_case_insensitive_and_that_is_pinned()
+    {
+        // Deliberate: on a host where env names are case-insensitive, a lever typed in the wrong case still
+        // resolves and still shaped the run, so a capture that dropped it would be lying by omission. Pinned
+        // here so tightening this to Ordinal (or loosening it further) cannot land silently.
+        IReadOnlyList<TelemetryHeaderValue> levers = TelemetrySessionHeader.SelectEngineVariables(new[]
+        {
+            new KeyValuePair<string, string?>("ke_graphics_backend", "vulkan"),
+            new KeyValuePair<string, string?>("Ke_Mixed_Case", "1"),
+            new KeyValuePair<string, string?>("NOT_KE_PREFIXED", "no"),
+        });
+
+        Assert.Equal(2, levers.Count);
+        Assert.Contains(levers, l => l.Key == "ke_graphics_backend");
+        Assert.Contains(levers, l => l.Key == "Ke_Mixed_Case");
+        Assert.DoesNotContain(levers, l => l.Key == "NOT_KE_PREFIXED");
     }
 
     [Fact]
@@ -317,5 +381,38 @@ public sealed class TelemetrySessionHeaderTests
         JsonElement session = Session(TelemetrySessionHeader.Build(info, NoEnvironment()));
         Assert.Equal("My\"Game\\\n", session.GetProperty("app").GetProperty("name").GetString());
         Assert.Equal("c\td", session.GetProperty("game").GetProperty("a\"b").GetString());
+    }
+
+    [Fact]
+    public void Non_ascii_header_values_survive_the_whole_write_and_read_path()
+    {
+        // Real adapter names carry these. Characters at or above 0x20 pass through unescaped and the file is
+        // written as UTF-8, so this covers the encoding path and not only the in-memory string.
+        const string adapter = "AMD Radeon™ RX 7900 XTX (日本語)";
+        string path = TempPath();
+
+        var rec = new TelemetryRecorder();
+        rec.Start(path, new TelemetrySessionInfo { AdapterDescription = adapter, AppName = "Ruïnborne" }
+            .AddGameValue("zone", "Aßhall ☃"));
+        rec.Stop();
+
+        JsonElement session = Session(ReadLines(path)[0]);
+        Assert.Equal(adapter, session.GetProperty("gpu").GetProperty("adapter").GetString());
+        Assert.Equal("Ruïnborne", session.GetProperty("app").GetProperty("name").GetString());
+        Assert.Equal("Aßhall ☃", session.GetProperty("game").GetProperty("zone").GetString());
+    }
+
+    [Fact]
+    public void GameValues_cannot_be_mutated_by_casting_it_back_to_a_list()
+    {
+        var info = new TelemetrySessionInfo().AddGameValue("zone", "Ashfall");
+
+        Assert.IsNotType<List<TelemetryHeaderValue>>(info.GameValues);
+        Assert.Throws<NotSupportedException>(
+            () => ((IList<TelemetryHeaderValue>)info.GameValues).Add(new TelemetryHeaderValue("sneaked", "in")));
+
+        // The view is live, so a later Add still shows through it.
+        info.AddGameValue("phase", "night");
+        Assert.Equal(2, info.GameValues.Count);
     }
 }

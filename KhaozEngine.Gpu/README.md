@@ -68,8 +68,8 @@ What it owns today:
     overlay still shows up.
 - **`GpuTelemetry`** (17.25.0) - the one-call bridge that fills a `KhaozEngine.Diagnostics`
   `TelemetrySessionInfo`'s GPU fields, so a telemetry recording's session header names the backend, its
-  provenance, the adapter, the injected overlays, and the Direct3D11 threading caps without the game re-deriving
-  any of it. `info.WithGpu(device)` for a live `GpuDeviceContext`, or
+  provenance, what was asked for when that differs, the adapter, the injected overlays, and the Direct3D11
+  threading caps without the game re-deriving any of it. `info.WithGpu(device)` for a live `GpuDeviceContext`, or
   `info.WithGpu(selection, adapterDescription, injectedModules, threadingCaps)` for a consumer holding an
   `AppWindow` (which surfaces the same four facts without handing out its device). Both return the instance so
   construction chains.
@@ -78,6 +78,10 @@ What it owns today:
     the package that owns the enums.
   - The enum NAMES are recorded, not the numbers. `GpuBackendKind` and `GpuBackendSource` members are append-only
     by contract, so the name is as stable as the number and says what it means to whoever reads the capture.
+  - **All four `GpuBackendSelection` members are carried**, so a fallback capture is not less informative than
+    the `GPU backend: <kind> (fallback, <requested> failed)` line logged beside it. `RequestedBackend` is the one
+    record of a player's own in-game backend choice on a `UserPreference` fallback, and `RequestedOverride` goes
+    in verbatim, since the untouched string is what makes a typo or stray quoting obvious.
   - The value overload is pure, so the whole mapping is testable with no device on any OS. Null and empty
     `injectedModules` stay apart, and `threadingCaps` null stays null.
 - **`GpuD3D11DeviceFlags`** (17.24.0) - the opt-in Direct3D11 device-creation flags and the env gate for them.

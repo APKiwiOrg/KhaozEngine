@@ -29,6 +29,59 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [Fact]
+        public void WithGpu_CarriesWhatWasAskedForOnAFallback()
+        {
+            // GpuDeviceContext already logs "fallback, {RequestedBackend} failed" beside the capture, so a
+            // header without this is strictly less informative than the log next to it.
+            var selection = new GpuBackendSelection(
+                GpuBackendKind.Direct3D11, GpuBackendSource.FallbackAfterFailure, "vulkan", GpuBackendKind.Vulkan);
+
+            var info = new TelemetrySessionInfo().WithGpu(selection, "", null, null);
+
+            Assert.Equal("Vulkan", info.GpuRequestedBackend);
+            Assert.Equal("vulkan", info.GpuRequestedOverride);
+        }
+
+        [Fact]
+        public void WithGpu_CarriesAUserPreferenceFallbackWhereTheRequestIsRecoverableNowhereElse()
+        {
+            // The 17.23.0 in-game picker: no env override at all, so RequestedOverride is null and
+            // RequestedBackend is the only record of what the player actually chose.
+            var original = new GpuBackendSelection(GpuBackendKind.Vulkan, GpuBackendSource.UserPreference, null);
+            GpuBackendSelection afterFallback = GpuBackendSelector.AfterFallback(original, GpuBackendKind.Metal);
+
+            var info = new TelemetrySessionInfo().WithGpu(afterFallback, "Apple M2", null, null);
+
+            Assert.Equal("Metal", info.GpuBackend);
+            Assert.Equal("FallbackAfterFailure", info.GpuBackendSource);
+            Assert.Equal("Vulkan", info.GpuRequestedBackend);
+            Assert.Null(info.GpuRequestedOverride);
+        }
+
+        [Fact]
+        public void WithGpu_LeavesBothRequestedFieldsNullOnAnOrdinaryProbe()
+        {
+            var selection = new GpuBackendSelection(GpuBackendKind.Metal, GpuBackendSource.OsProbe, null);
+
+            var info = new TelemetrySessionInfo().WithGpu(selection, "Apple M2", null, null);
+
+            Assert.Null(info.GpuRequestedBackend);
+            Assert.Null(info.GpuRequestedOverride);
+        }
+
+        [Fact]
+        public void WithGpu_KeepsTheRawUnrecognizedOverrideVerbatim()
+        {
+            // The typo IS the diagnostic here, so it must not be normalized on the way into the header.
+            GpuBackendSelection selection = GpuBackendSelector.Resolve("vulcan", OSPlatformKind.Windows);
+
+            var info = new TelemetrySessionInfo().WithGpu(selection, "", null, null);
+
+            Assert.Equal("UnrecognizedOverride", info.GpuBackendSource);
+            Assert.Equal("vulcan", info.GpuRequestedOverride);
+        }
+
+        [Fact]
         public void WithGpu_CarriesTheThreadingCapsApart()
         {
             var selection = new GpuBackendSelection(GpuBackendKind.Direct3D11, GpuBackendSource.OsProbe, null);

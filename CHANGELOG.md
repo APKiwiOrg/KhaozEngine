@@ -22,7 +22,7 @@ The first line of every recording is now a `session` envelope, and it deliberate
 reader tells it apart from a sample row on one key in either direction:
 
 ```json
-{"session":{"v":1,"engine":"17.25.0+3f2a1c9","app":{"name":"Ruinborne","version":"0.7.3","build":"Sundered Ground"},"gpu":{"backend":"Direct3D11","backendSource":"FallbackAfterFailure","adapter":"NVIDIA GeForce RTX 4070","injectedModules":["RTSSHooks64.dll"],"threading":{"driverCommandLists":false,"driverConcurrentCreates":true}},"env":{"KE_GRAPHICS_BACKEND":"vulkan"},"game":{"worldSeed":"8812345","zone":"Ashfall"}}}
+{"session":{"v":1,"engine":"17.25.0+3f2a1c9","app":{"name":"Ruinborne","version":"0.7.3","build":"Sundered Ground"},"gpu":{"backend":"Direct3D11","backendSource":"FallbackAfterFailure","requestedBackend":"Vulkan","requestedOverride":"vulkan","adapter":"NVIDIA GeForce RTX 4070","injectedModules":["RTSSHooks64.dll"],"threading":{"driverCommandLists":false,"driverConcurrentCreates":true}},"env":{"KE_GRAPHICS_BACKEND":"vulkan"},"game":{"worldSeed":"8812345","zone":"Ashfall"}}}
 ```
 
 `session.v` is a schema integer (`TelemetrySessionHeader.SchemaVersion`, currently 1) so a future reader can
@@ -67,6 +67,27 @@ capture.
 `injectedModules` keeps null and empty apart, because they are opposite facts: null means the scan never ran (not
 Windows, or it failed), an empty array means it ran and the process was clean. `threading` is null on every
 backend but Direct3D11, matching `GpuDeviceContext.ThreadingCaps`.
+
+All four `GpuBackendSelection` members are carried, not just the two that describe what ran. `requestedBackend`
+is the backend that was asked for and did not work, set only on a `FallbackAfterFailure` source, and
+`requestedOverride` is the RAW `KE_GRAPHICS_BACKEND` value written verbatim. Without them the header was
+strictly less informative than the `GPU backend: <kind> (fallback, <requested> failed)` line `GpuDeviceContext`
+already logs beside it, and on a `UserPreference` fallback (the 17.23.0 in-game picker) what the player actually
+chose was recoverable nowhere in the capture. The raw override is deliberately not normalized, because a typo
+(`vulcan`) or stray quoting is exactly what it exists to make obvious, and it is the whole diagnostic behind an
+`UnrecognizedOverride`.
+
+#### Two safety properties worth naming
+
+Writing the header is guarded, so it can never fail a recording. An unguarded throw would have left the recorder
+open and recording while the caller saw an exception, and it would have contradicted this package's standing
+"logging never throws" posture. A header the machine will not let us write degrades to a headerless recording
+instead, since the samples are the point. `Start` therefore keeps exactly the failure profile it had before the
+header existed.
+
+`TelemetrySessionInfo.GameValues` hands back a genuinely read-only view rather than the live list behind an
+interface, so a caller that casts it to `IList<T>` gets a `NotSupportedException` instead of a silent back door
+into the recorded set. The view still tracks later `AddGameValue` calls.
 
 #### Reading an existing recording
 

@@ -115,22 +115,31 @@ public static class TelemetrySessionHeader
     static void AppendApp(StringBuilder sb, TelemetrySessionInfo? session)
     {
         sb.Append(",\"app\":{\"name\":");
-        TelemetryJson.AppendString(sb, Trimmed(session?.AppName));
+        TelemetryJson.AppendString(sb, NullIfBlank(session?.AppName));
         sb.Append(",\"version\":");
-        TelemetryJson.AppendString(sb, Trimmed(session?.AppVersion));
+        TelemetryJson.AppendString(sb, NullIfBlank(session?.AppVersion));
         sb.Append(",\"build\":");
-        TelemetryJson.AppendString(sb, Trimmed(session?.BuildName));
+        TelemetryJson.AppendString(sb, NullIfBlank(session?.BuildName));
         sb.Append('}');
     }
 
     static void AppendGpu(StringBuilder sb, TelemetrySessionInfo? session)
     {
         sb.Append(",\"gpu\":{\"backend\":");
-        TelemetryJson.AppendString(sb, Trimmed(session?.GpuBackend));
+        TelemetryJson.AppendString(sb, NullIfBlank(session?.GpuBackend));
         sb.Append(",\"backendSource\":");
-        TelemetryJson.AppendString(sb, Trimmed(session?.GpuBackendSource));
+        TelemetryJson.AppendString(sb, NullIfBlank(session?.GpuBackendSource));
+
+        // What was asked for and did not work, so a fallback capture is not strictly less informative than the
+        // session log beside it. The raw override goes in VERBATIM: its whole value is being untouched, since a
+        // typo or stray quoting is what it exists to make obvious.
+        sb.Append(",\"requestedBackend\":");
+        TelemetryJson.AppendString(sb, NullIfBlank(session?.GpuRequestedBackend));
+        sb.Append(",\"requestedOverride\":");
+        TelemetryJson.AppendString(sb, session?.GpuRequestedOverride);
+
         sb.Append(",\"adapter\":");
-        TelemetryJson.AppendString(sb, Trimmed(session?.AdapterDescription));
+        TelemetryJson.AppendString(sb, NullIfBlank(session?.AdapterDescription));
 
         // null (never scanned) and [] (scanned, clean) are opposite facts, so the header keeps them apart.
         sb.Append(",\"injectedModules\":");
@@ -184,7 +193,7 @@ public static class TelemetrySessionHeader
     }
 
     // Blank and unset are the same fact to a reader, so both become JSON null rather than an empty string.
-    static string? Trimmed(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
+    static string? NullIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
 
     static string ResolveEngineVersion()
     {

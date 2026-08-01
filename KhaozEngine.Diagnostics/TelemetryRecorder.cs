@@ -67,8 +67,20 @@ public sealed class TelemetryRecorder : IDisposable
 
         // Flushed like every other line, so even a recording that dies before its first sample still says
         // what produced it.
-        _writer.WriteLine(TelemetrySessionHeader.Build(session));
-        _writer.Flush();
+        //
+        // Guarded because the header is an ADDITION to what Start used to do, and it must not add a way for
+        // Start to fail. An unguarded throw here would leave the recorder open and recording (the file is
+        // already created and CurrentPath is already set) while the caller sees an exception, which is the worst
+        // of both, and it would contradict this package's standing "logging never throws" posture. A header the
+        // machine would not let us write degrades to a headerless recording instead: the samples are the point.
+        try
+        {
+            _writer.WriteLine(TelemetrySessionHeader.Build(session));
+            _writer.Flush();
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+        catch (System.Security.SecurityException) { }
     }
 
     /// <summary>

@@ -7895,7 +7895,8 @@ informational version, SourceLink commit suffix included) and `env`, and resolve
 set `KE_`-prefixed variables, name and value, sorted by name. **Only** that prefix is read, so a capture carries
 the levers that shaped the run and nothing else off the machine. You hand in the app identity, the GPU block
 (via `WithGpu`, below), and the game values. A blank hand-in reads as JSON `null`, since unset and set-to-blank
-are the same fact to a reader.
+are the same fact to a reader. `gpu.requestedOverride` is the one exception and is written exactly as it was
+read, blank included, for the reason below.
 
 **The GPU block comes from one call.** `GpuTelemetry.WithGpu` (in `KhaozEngine.Gpu`) maps the backend, its
 provenance, what was asked for, the adapter, the injected-module scan, and the Direct3D11 threading caps into

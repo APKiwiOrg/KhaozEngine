@@ -79,11 +79,12 @@ chose was recoverable nowhere in the capture. The raw override is deliberately n
 
 #### Two safety properties worth naming
 
-Writing the header is guarded, so it can never fail a recording. An unguarded throw would have left the recorder
-open and recording while the caller saw an exception, and it would have contradicted this package's standing
-"logging never throws" posture. A header the machine will not let us write degrades to a headerless recording
-instead, since the samples are the point. `Start` therefore keeps exactly the failure profile it had before the
-header existed.
+Writing the header is guarded against IO, permission, and environment failures, so a header the machine will not
+let us write degrades to a headerless recording instead of failing the recording. The samples are the point. An
+unguarded throw would have left the recorder open and recording while the caller saw an exception, and it would
+have contradicted this package's standing "logging never throws" posture, so for those failures `Start` keeps
+exactly the profile it had before the header existed. It is deliberately not a blanket catch: something like an
+`OutOfMemoryException` still propagates, as it should.
 
 `TelemetrySessionInfo.GameValues` hands back a genuinely read-only view rather than the live list behind an
 interface, so a caller that casts it to `IList<T>` gets a `NotSupportedException` instead of a silent back door
@@ -93,7 +94,9 @@ into the recorded set. The view still tracks later `AddGameValue` calls.
 
 The header is a new FIRST line, so a reader that assumed every line has `t` needs one skip. Test for the header
 with `"session"` or for a row with `"t"`, not by line number, and a reader that iterates rows can filter on `t`
-alone. Blank hand-in values read as JSON `null` rather than `""`, since unset and set-to-blank are the same fact.
+alone. Blank hand-in values read as JSON `null` rather than `""`, since unset and set-to-blank are the same fact
+to a reader. The one exception is `gpu.requestedOverride`, which is written exactly as it was read, blank
+included, because being untouched is the whole point of that field.
 
 ## 17.24.0
 

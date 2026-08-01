@@ -4941,7 +4941,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.24.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.25.0" />
 ```
 
 ```csharp
@@ -7856,8 +7856,62 @@ _recorder.Sample(elapsedSeconds, new[]
 _recorder.Stop();                                        // flush + close (also via Dispose())
 ```
 
-Each line is one object: `{"t":12.34,"fps":59.7,"rttMs":48,"correctionM":0.02}`. Non-finite values serialize
-as JSON `null` so every line stays parseable.
+Each sample line is one object: `{"t":12.34,"fps":59.7,"rttMs":48,"correctionM":0.02}`. Non-finite values
+serialize as JSON `null` so every line stays parseable.
+
+### The session header (`TelemetrySessionHeader` / `TelemetrySessionInfo`, 17.25.0)
+
+**Every recording opens with a session-header line**, so a capture says what produced it instead of being a
+column of numbers an analyst has to take on trust. Without it a field report cannot be tied to a build, a
+backend, or an adapter, and a tester ends up screenshotting the F1 overlay for values the recording should carry
+itself.
+
+```csharp
+var session = new TelemetrySessionInfo
+{
+    AppName    = "Ruinborne",         // handed in: the engine does not know the game's identity
+    AppVersion = "0.7.3",             // your <Version>
+    BuildName  = "Sundered Ground",   // your <BuildName>, the minor-series codename
+}
+.WithGpu(Window.BackendSelection, Window.AdapterDescription, Window.InjectedModules, Window.ThreadingCaps)
+.AddGameValues(_overlayDurables);     // one call: any IEnumerable<KeyValuePair<string, string>>
+
+_recorder.Start(path, session);       // header first, then Sample() rows as before
+```
+
+The line that lands:
+
+```json
+{"session":{"v":1,"engine":"17.25.0+3f2a1c9","app":{"name":"Ruinborne","version":"0.7.3","build":"Sundered Ground"},"gpu":{"backend":"Direct3D11","backendSource":"FallbackAfterFailure","adapter":"NVIDIA GeForce RTX 4070","injectedModules":["RTSSHooks64.dll"],"threading":{"driverCommandLists":false,"driverConcurrentCreates":true}},"env":{"KE_GRAPHICS_BACKEND":"vulkan"},"game":{"worldSeed":"8812345","zone":"Ashfall"}}}
+```
+
+**Telling the header from a sample row is one key test.** The header has a `session` envelope and no `t`. Every
+sample row has a `t` and no `session`. Test for one of those, never for line number. `session.v` is the schema
+integer (`TelemetrySessionHeader.SchemaVersion`): fields may be appended inside the envelope without moving it,
+and it moves only when an existing field changes meaning or goes away.
+
+**What the engine fills in, and what you hand in.** The engine owns `engine` (the engine assembly's
+informational version, SourceLink commit suffix included) and `env`, and resolves both at `Start`. `env` is the
+set `KE_`-prefixed variables, name and value, sorted by name. **Only** that prefix is read, so a capture carries
+the levers that shaped the run and nothing else off the machine. You hand in the app identity, the GPU block
+(via `WithGpu`, below), and the game values. A blank hand-in reads as JSON `null`, since unset and set-to-blank
+are the same fact to a reader.
+
+**The GPU block comes from one call.** `GpuTelemetry.WithGpu` (in `KhaozEngine.Gpu`) maps the backend, its
+provenance, the adapter, the injected-module scan, and the Direct3D11 threading caps into the header. Use
+`info.WithGpu(device)` when you hold a `GpuDeviceContext`, or the four-value overload above when you hold an
+`AppWindow`. `injectedModules` keeps null (never scanned) apart from `[]` (scanned, clean), exactly like
+`GpuInjectedModules.Describe`, and `threading` is null on every backend but Direct3D11.
+
+**The game section is yours.** `AddGameValue(key, value)` / `AddGameValues(pairs)` land under `game`, so nothing
+you record can collide with an engine field. `AddGameValues` takes any
+`IEnumerable<KeyValuePair<string, string>>`, so a `Dictionary<string, string>` goes straight in, and an F1
+overlay's rows project in one line:
+`rows.Select(r => new KeyValuePair<string, string>(r.Label, r.Value))`. A repeated key replaces the earlier
+value in place, so the object stays well formed. The engine names no game type for any of this.
+
+`Start(path)` without a `TelemetrySessionInfo` still works and still writes a header, holding only what the
+engine knows on its own. **If you already parse these files, add one skip**: the header is a new first line.
 
 `DiagnosticsOverlay.Update`, `FrameStats`, and `TelemetryRecorder` are headless-testable (no GPU); only `Draw`
 needs a `SpriteBatch`. Like `UpdateOverlayView`, the widget never reads raw input - it consumes the immutable

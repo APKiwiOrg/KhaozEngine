@@ -5,6 +5,75 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.25.0
+
+### A telemetry recording now says what produced it
+
+Every `TelemetryRecorder` file opens with a session-header line carrying the engine version, the app identity the
+consumer hands in, the GPU facts the engine resolved at device creation, the set `KE_` environment levers, and
+whatever durable values the game wants to record. Until now a captured JSONL file was a column of numbers with no
+provenance, so an analyst had to take the reporter's word for which build, which backend, and which adapter
+produced it. That cost us twice this week, and it pushed testers into screenshotting the F1 overlay for values
+the recording should carry itself.
+
+#### The header line (`TelemetrySessionHeader` / `TelemetrySessionInfo`)
+
+The first line of every recording is now a `session` envelope, and it deliberately carries no `t` field, so a
+reader tells it apart from a sample row on one key in either direction:
+
+```json
+{"session":{"v":1,"engine":"17.25.0+3f2a1c9","app":{"name":"Ruinborne","version":"0.7.3","build":"Sundered Ground"},"gpu":{"backend":"Direct3D11","backendSource":"FallbackAfterFailure","adapter":"NVIDIA GeForce RTX 4070","injectedModules":["RTSSHooks64.dll"],"threading":{"driverCommandLists":false,"driverConcurrentCreates":true}},"env":{"KE_GRAPHICS_BACKEND":"vulkan"},"game":{"worldSeed":"8812345","zone":"Ashfall"}}}
+```
+
+`session.v` is a schema integer (`TelemetrySessionHeader.SchemaVersion`, currently 1) so a future reader can
+evolve without guessing. Fields may be APPENDED inside the envelope without moving `v`. It moves only when an
+existing field changes meaning or goes away.
+
+`TelemetryRecorder.Start(string, TelemetrySessionInfo)` is the new overload that carries the identity. The
+existing `Start(string)` still works and still writes a header, holding only what the engine knows on its own.
+The header is resolved at start, so it describes the run being recorded rather than whatever the process looked
+like later, and it is flushed like every other line, so a recording that dies before its first sample still says
+what produced it.
+
+Engine-owned content the consumer cannot get wrong: the engine version is the engine assembly's informational
+version (SourceLink commit suffix included, so a capture names the exact build), and the environment block is the
+set `KE_`-prefixed variables, name and value, sorted by name. **Only** the `KE_` prefix is read, so a capture
+carries the levers that shaped the run and nothing else from the machine.
+
+Consumer-supplied content: `AppName`, `AppVersion`, and `BuildName` (the fleet's minor-series codename), plus the
+GPU block filled by the bridge below.
+
+#### The game section, for a game's own durables
+
+`TelemetrySessionInfo.AddGameValue(key, value)` and `AddGameValues(pairs)` record string key/value pairs under
+the header's own `game` section, so nothing a game records can collide with an engine field. `AddGameValues`
+takes any `IEnumerable<KeyValuePair<string, string>>`, which is the one-call dump of an F1 overlay's durable
+rows. A repeated key replaces the earlier value in place rather than writing the key twice, and both methods
+return the instance so construction chains. The engine references no game type for this.
+
+#### `GpuTelemetry.WithGpu`, the one-call GPU fill (`KhaozEngine.Gpu`)
+
+`info.WithGpu(device)` fills the backend, its provenance, the adapter description, the injected-module list, and
+the Direct3D11 driver threading caps from a live `GpuDeviceContext`. The value overload
+(`info.WithGpu(window.BackendSelection, window.AdapterDescription, window.InjectedModules, window.ThreadingCaps)`)
+is what a consumer holding an `AppWindow` calls, and it is pure, so the mapping is testable with no device.
+
+The bridge lives in `KhaozEngine.Gpu` rather than `KhaozEngine.Diagnostics` because `Gpu` references
+`Diagnostics` and not the reverse, so the header's GPU fields are plain strings and nullable bools and the enum
+mapping sits in the package that owns the enums. The enum NAMES are recorded, not the numbers: the members are
+append-only by contract, so the name is as stable as the number and says what it means to whoever reads the
+capture.
+
+`injectedModules` keeps null and empty apart, because they are opposite facts: null means the scan never ran (not
+Windows, or it failed), an empty array means it ran and the process was clean. `threading` is null on every
+backend but Direct3D11, matching `GpuDeviceContext.ThreadingCaps`.
+
+#### Reading an existing recording
+
+The header is a new FIRST line, so a reader that assumed every line has `t` needs one skip. Test for the header
+with `"session"` or for a row with `"t"`, not by line number, and a reader that iterates rows can filter on `t`
+alone. Blank hand-in values read as JSON `null` rather than `""`, since unset and set-to-blank are the same fact.
+
 ## 17.24.0
 
 ### A Direct3D11 session now says which card it ran on and what was hooked into it

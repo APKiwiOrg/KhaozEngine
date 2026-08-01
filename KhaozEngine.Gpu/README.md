@@ -66,6 +66,20 @@ What it owns today:
   - Gated on the SCAN, not the backend: overlays inject on Windows whatever API is in use, so a Windows Vulkan
     session logs the line too. Scanned per created device rather than cached process-wide, so a late-attaching
     overlay still shows up.
+- **`GpuTelemetry`** (17.25.0) - the one-call bridge that fills a `KhaozEngine.Diagnostics`
+  `TelemetrySessionInfo`'s GPU fields, so a telemetry recording's session header names the backend, its
+  provenance, the adapter, the injected overlays, and the Direct3D11 threading caps without the game re-deriving
+  any of it. `info.WithGpu(device)` for a live `GpuDeviceContext`, or
+  `info.WithGpu(selection, adapterDescription, injectedModules, threadingCaps)` for a consumer holding an
+  `AppWindow` (which surfaces the same four facts without handing out its device). Both return the instance so
+  construction chains.
+  - It lives HERE, not in `KhaozEngine.Diagnostics`, because this package references that one and not the
+    reverse. The header's GPU fields are therefore plain strings and nullable bools, and the enum mapping sits in
+    the package that owns the enums.
+  - The enum NAMES are recorded, not the numbers. `GpuBackendKind` and `GpuBackendSource` members are append-only
+    by contract, so the name is as stable as the number and says what it means to whoever reads the capture.
+  - The value overload is pure, so the whole mapping is testable with no device on any OS. Null and empty
+    `injectedModules` stay apart, and `threadingCaps` null stays null.
 - **`GpuD3D11DeviceFlags`** (17.24.0) - the opt-in Direct3D11 device-creation flags and the env gate for them.
   `KE_D3D11_PREVENT_THREADING_OPTIMIZATIONS=1` (or `true`/`yes`/`on`) ORs
   `D3D11_CREATE_DEVICE_PREVENT_INTERNAL_THREADING_OPTIMIZATIONS` into both the windowed and the headless D3D11

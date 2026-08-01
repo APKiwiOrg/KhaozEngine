@@ -465,6 +465,16 @@ the `KE_D3D11_PREVENT_THREADING_OPTIMIZATIONS` flag. All of it is logging out of
 reasoning above is unchanged and no new reference was needed. The 17.24.0 module scan uses `System.Diagnostics.Process`
 from the BCL, not a new package.
 
+### 17.25.0 puts a `Diagnostics` TYPE in a `Gpu` signature for the first time
+
+`GpuTelemetry.WithGpu` fills a `KhaozEngine.Diagnostics.TelemetrySessionInfo` from a device, so the edge now
+carries an API surface and not only log calls. Still no new reference and still the same direction, but it is
+worth naming because it decided where the bridge lives. `Diagnostics` cannot map the GPU enums itself: it sits
+UNDER `Gpu` on this edge, and naming `GpuBackendKind` there would be a cycle. So the header's GPU fields are
+plain strings and nullable bools, and the mapping onto them is an extension method in the package that owns the
+enums. A consumer holding only an `AppWindow` calls the value overload, which is why `AppWindow` needs no new
+member and `Windowing` needs no new edge.
+
 ### The stored backend preference deliberately adds NO edge (17.23.0)
 
 Letting a player pick the backend in game is naturally read as "`Gpu` needs to load a setting", which would mean

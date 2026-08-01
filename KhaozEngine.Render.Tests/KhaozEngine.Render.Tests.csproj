@@ -32,6 +32,8 @@
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.App/KhaozEngine.App.csproj" />
     <ProjectReference Include="../KhaozEngine.Collision/KhaozEngine.Collision.csproj" />
+    <!-- Gpu/GpuTelemetryTests.cs names TelemetrySessionInfo, the telemetry session header's options type. -->
+    <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
     <!-- Dungeon/DungeonKitAssetTests.cs validates the greybox kit (DungeonKitMap/DungeonPiece) against the
          committed manifest, copied straight from the Showcase asset dir below (no Showcase project reference). -->
     <ProjectReference Include="../KhaozEngine.Dungeon/KhaozEngine.Dungeon.csproj" />

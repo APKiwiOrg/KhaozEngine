@@ -291,7 +291,7 @@ public static partial class CharacterMovement
                 // (not in the physics world) never shows. Vertical-only lifts it clear without the sideways shove;
                 // step 4 clamps the resting height on the surface. A steep (wall/riser) contact is NOT walkable, so it
                 // keeps the full MTV: a capsule walking INTO a wall still depenetrates horizontally, and a riser
-                // push-out is unchanged. (The ANALYTIC path does slide on a too-steep surface since 17.27.0. This is the
+                // push-out is unchanged. (The ANALYTIC path does slide on a too-steep surface since 17.28.0. This is the
                 // PROP path, which is still static-at-rest against a steep prop face: extending the slide to props is
                 // #438's contact-classification rebuild, and it would branch here on the non-walkable normal.)
                 // len > 1e-6 above, so mtv.Y >= cosMaxSlope*len is the divide-free normal.Y >= cosMaxSlope test.

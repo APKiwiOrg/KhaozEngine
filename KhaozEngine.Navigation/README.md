@@ -94,7 +94,7 @@ standable props become walkable without leaving a single `NavGrid` layer.
 prop top covering the point, so a creature stands on the prop instead of routing around it. A prop top
 also rescues ground the movement step would otherwise give no footing on, since the agent stands on the
 prop, not the hillside, and prop support always wins there (see `KhaozEngine.Locomotion`). What the rescue
-does NOT cover, since 17.27.0, is terrain that is itself RISING too steeply ahead: a route over props laid
+does NOT cover, since 17.28.0, is terrain that is itself RISING too steeply ahead: a route over props laid
 across such ground can still stop the agent at the face, because a move onto ground both past
 `MaxSlopeRadians` and more than a `StepHeight` above the feet is a wall contact whichever way the nav grid
 marked it, and a face the agent does reach gives it no footing to stand on. Note that `TerrainSurfaceProvider` always reports open-sky headroom

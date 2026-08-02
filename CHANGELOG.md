@@ -5,6 +5,106 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.28.0
+
+### Steep terrain slides instead of refusing (#442, subsumes #441)
+
+The analytic-terrain ascent gate is deleted and replaced by the standard model: a face too steep to walk is a
+surface you SLIDE on and a face you cannot reach over is a wall you slide ALONG, so no movement is ever refused
+outright. Two playtests took the gate apart from both sides. 17.26.0's version let a repeated jump ratchet up a
+sheer sea cliff (#440), because the raised feet discounted the rise. The 17.26.1 fence that closed that then
+blocked sideways movement into a face while jumping, which reads as an invisible wall eating lateral air control.
+Both are the same root cause - a gate REFUSES, and refusal is not how terrain behaves - so the third fix replaces
+the mechanism instead of retuning it. Full model in the 2026-08-02 addendum to
+`docs/design/PHYSICS-LOCOMOTION-DESIGN-2026-08-02.md`.
+
+**Wall slide.** A horizontal move whose destination is BOTH steeper than `MoveTuning.MaxSlopeRadians` AND more
+than `MoveTuning.StepHeight` above the feet is a wall contact: the into-face component dies, the along-face
+component survives. The face's horizontal direction is the destination normal's XZ projection, with the movement
+direction standing in when that projection is degenerate (which meets the face head-on and kills the whole move,
+the conservative direction). Both conditions are load-bearing: the steepness test is what leaves walkable ground
+untouched, since a fast run up a legal ramp can rise more than a `StepHeight` in one tick, and the height test is
+what makes this a contact rather than the old gate. Applies grounded and airborne, on the command path, the
+airborne-momentum path, `StepTowards` and the horizontal-only overload. This alone fixes the reported feel bug:
+strafing along a cliff mid-jump now keeps the whole lateral component it would have had with no cliff there
+(measured at 0.000 m of lateral travel before, matching a face-free control jump after).
+
+**No traction on steep ground.** A surface past `MaxSlopeRadians` never grants support: `Grounded` stays false,
+so there is no jump, no coyote refresh and no landing latch on the face. The character is still seated on it (the
+ground clamp still forbids penetration) but it slides - gravity is decomposed against the surface normal and the
+tangential component integrates into the carried `MoveState.VerticalVelocity` and `MoveState.HorizontalVelocity`,
+accelerating it down the fall line until walkable ground (where the landing fires `LandingImpactSpeed` from the
+fall the slide accumulated), open air, or the existing water hand-off.
+
+**A contact deletes the into-surface component and nothing else.** The surface frame is two unit vectors read off
+the normal: a down-slope tangent `T = (ny*hx, -h, ny*hz)` and a level contour `C = (-hz, 0, hx)`. The resolve
+projects the carried velocity onto those two and rebuilds from them, so the normal component is gone by
+construction and both survivors are kept in full. The CONTOUR speed is what a fast run across a face carries, and
+following it costs no drop at all, so brushing a wall you are running alongside no longer stops you dead (the
+first cut of this model carried the fall line alone and killed a 14 m/s parallel fall in one tick). The FALL-LINE
+speed is SIGNED, so a jump grazing a face keeps its up-slope motion and gravity decelerates, reverses and returns
+it, rather than a clamp deleting the launch outright. What carries the no-ascent property is having no FOOTING on
+the face, not a clamp on the sign: there is nothing to re-launch from up there, so a cycle hands the whole rise
+back and gains nothing across cycles (a transient apex sits at 2.22 m against a bare jump's 1.92 m at the shipped
+tuning, which is a frictionless face converting run speed into altitude). Because the rebuilt velocity lies
+entirely in the surface plane, the committed drop is precisely the drop the committed horizontal travel needs and
+the body stays glued to the face rather than bouncing off it. Input steers along the CONTOUR at the usual
+`MoveTuning.AirControl`-scaled speed and has no authority along the fall line in either direction, so there is no
+new knob. The steer is a per-tick term on the commanded velocity and is not folded into the carry, so contour
+momentum evolves by contact alone and holding a direction cannot pump it up.
+
+**A WEDGE is supported**, the one exception to no traction. A capsule pinched in a concave crease (a V-gully, the
+inside of a cleft) can neither be granted support by its own steep column nor slide out of it, because the fall
+line of either wall points into the other and the wall contact removes the whole horizontal, so the first cut
+soft-locked there: 0 grounded ticks in 400, with a held jump that could never fire. A tick whose accumulated fall
+is ARRESTED reports support instead: `Grounded` true, jump enabled, coyote refreshed, and the arrested fall
+latched as a landing. The test is stateless and tick-local (this tick's start position, resolved position,
+resolved vertical, dt and the tuning) and arms only past a downward speed of `Gravity * max(CoyoteTime, dt)` whose
+demanded descent the ground clamp swallowed, which is precisely what a jump-apex graze lacks, so the #440 ratchet
+gains nothing from it. Support is per-tick, so a character parked in a crease pulses grounded about one tick in
+five rather than standing. **Consumer note:** every pulse is an airborne-to-grounded transition, so
+`LandingImpactSpeed` latches on each one and a landing SOUND driven off the event alone will rattle there. Only
+the first latch carries the real fall (the rest carry the few ticks of gravity between pulses), so fall DAMAGE
+gated on the impact speed is unaffected. The same is true of a jagged crest whose columns alternate steep and
+walkable, and both are pinned by fixtures rather than left unknown.
+
+**Bounded by construction.** The slide's horizontal terminal is `MaxFallSpeed / tan(surface angle)`, so it is
+largest on the shallowest face the gate still calls steep, and the carry is clamped to the same per-axis ceiling
+`MovementState` replicates at - otherwise a gate below about 21 degrees would have the sim commit a velocity its
+own wire quantizes to a different one. The terminal divide's `h` is floored by the sine of a VALIDATED gate, so a
+degenerate `MaxSlopeRadians` of zero or less (which calls level ground steep) cannot divide `MaxFallSpeed` by the
+smallest non-zero magnitude a float normal can express. Neither is reachable at the shipped 45 degree gate, where
+the terminal horizontal is `MaxFallSpeed` itself.
+
+**Invariants kept.** Walkable ground is untouched, bit-for-bit: flat and legal-slope walking, running, jumping,
+step-up, step-down, the stair glide, wade, swim and the whole Bepu prop collide-and-slide path all produce
+identical output, and `MaxSlopeRadians` keeps its exact meaning as the traction threshold. Descent, walk-offs and
+jump-offs stay free (#369). Anti-tunnel survives without the refusal that used to carry it: the wall projection is
+re-tested and refused only in a concave corner, and the ground clamp does the rest, so an XZ can never be
+committed under terrain, and a per-tick X bound against the face line pins it on the axis the drift happens on.
+The #440 jump ratchet stays dead because landing on a face lands in a slide, and #441
+(prop-to-steep-face refusal) is subsumed, since stepping off a prop toward a face wall-slides like everything
+else. **Prop support always wins**: only the analytic terrain is traction-less, so a plank over a ravine or a
+stair against a mountain still carries a character.
+
+**No wire change.** The slide rides `MovementState.HorizontalVelocityXQ`/`ZQ` (wire generation 7) and the raw
+`VerticalVelocity`, both replicated unconditionally on both server heads and decoded unconditionally into the
+client's reconcile basis by `PlayerMoveState.From` - none of that has ever been gated on `MoveTuning.AirMomentum`,
+which was the one silent-desync candidate here, since the opt-in momentum path was previously the carry's only
+consumer. `WireProtocolVersion` stays at 10 and no carried state was added, the wedge rule included. New
+reconcile-parity coverage exercises a mid-slide correction with `AirMomentum` both off and on, on a 78.7 degree
+face and on a 48 degree one where the quantized horizontal carry is doing most of the work (measured replay drift
+0.05 mm and 0.17 mm against a 1 mm bar).
+
+**Compatibility.** Unconditional, not a knob, and a behaviour change for any game that leaned on the gate as a
+cliff guardrail: players fall off, and off a steep face they now slide down it. Use `WorldBounds` for a hard
+border. `AdvanceSlopeGated` and the 17.26.1 min-reference rule are deleted, and the refusal-era `#369`/`#440` test
+suites are rewritten to slide semantics with their intent preserved.
+
+New file `KhaozEngine.Locomotion/CharacterMovement.Slide.cs`. The prop-support probe block moved out of `StepCore`
+into `CharacterMovement.Collision.cs` as `PropSupportFloor` (a pure extraction, no behaviour change) to keep both
+files under the size cap.
+
 ## 17.27.0
 
 ### The windowed frame loop gains a pre-record phase, and the fork guardrail comes off hold
@@ -85,7 +185,10 @@ corruption, which is the intended trade. The fix for such a host is to queue and
 Tests: `FramePhasesTests` asserts the phase contract without a window, and `WindowedFramePrepareTests` covers the
 windowed prepare path. No golden changes, because nothing about what the GPU executes on an already-correct path
 moved.
-### Jumping at a cliff no longer climbs it (#440, staged as 17.26.1, ships in this release)
+
+## 17.26.1
+
+### Jumping at a cliff no longer climbs it (#440)
 
 The direction-aware slope gate measures its ascent from the LOWER of the character's feet and the ground under the
 current column, so vertical motion can no longer buy admission onto a too-steep face. This hardens the 17.26.0 gate

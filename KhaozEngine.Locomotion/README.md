@@ -74,7 +74,7 @@ optional steep-terrain wall slide via a ground-normal delegate):
   and it is the exact inverse of the camera basis the step resolves a command in. A non-finite angle and a zero
   vector both yield 0, which is a legal heading (facing -Z) rather than a sentinel.
 
-### Steep terrain: wall slide and no traction (17.27.0)
+### Steep terrain: wall slide and no traction (17.28.0)
 
 Supply a `groundNormal` delegate and ground steeper than `MoveTuning.MaxSlopeRadians` stops being walkable. Until
 17.26.1 that was a GATE which REFUSED a move outright, and refusal produced a bug at each setting of its own
@@ -107,12 +107,12 @@ fires, from the fall the slide accumulated), open air, or water.
 
 The surface frame is two unit vectors from the normal's Y and its horizontal direction: a down-slope tangent
 `T = (ny*hx, -h, ny*hz)` and a level contour `C = (-hz, 0, hx)`. Gravity along `T` is exactly `Gravity * h`, and
-along `C` exactly zero. **A contact deletes the into-surface component and nothing else** (17.28.0): the resolve
+along `C` exactly zero. **A contact deletes the into-surface component and nothing else**: the resolve
 projects the carried velocity onto `T` and `C` and rebuilds from those two, so the normal component is gone by
 construction and both survivors are kept in full.
 
 - The **contour** speed is what a fast run ACROSS a face carries, and following it costs no drop at all. Carrying
-  the fall line alone (as 17.27.0 did) stopped a 14 m/s fall running parallel to a wall dead on the tick it merely
+  the fall line alone (the first cut of this model did) stopped a 14 m/s fall running parallel to a wall dead on the tick it merely
   brushed the wall.
 - The **fall-line** speed is SIGNED. A jump grazing a face arrives with up-slope motion, and clamping it to zero
   deleted the launch outright. Gravity accumulates downward along it whatever the sign, so a rising slide
@@ -132,10 +132,10 @@ The steer is a per-tick term on the commanded velocity and is **not** folded int
 evolves only by contact and never by held input: a player steers across a slide at a fixed rate on top of whatever
 contour momentum the fall gave them, and cannot pump the two into each other.
 
-**A WEDGE is supported** (17.28.0), the one exception to rule 2. A capsule pinched in a concave crease (a V-gully,
+**A WEDGE is supported**, the one exception to rule 2. A capsule pinched in a concave crease (a V-gully,
 the inside of a cleft) can neither be granted support by its own steep column nor slide out, because the fall line
-of either wall points into the other and the wall contact removes the whole horizontal - so 17.27.0 soft-locked
-there, with a held jump that could never fire. A tick whose accumulated fall is ARRESTED (a downward speed past
+of either wall points into the other and the wall contact removes the whole horizontal, so the first cut of
+this model soft-locked there, with a held jump that could never fire. A tick whose accumulated fall is ARRESTED (a downward speed past
 `Gravity * max(CoyoteTime, dt)` whose demanded descent the ground clamp swallowed) reports support instead:
 `Grounded` true, jump enabled, coyote refreshed, and the arrested fall latched as a landing. The test is stateless
 and tick-local, and it cannot arm at a jump apex, where the vertical speed is near zero by definition - which is

@@ -218,7 +218,7 @@ Headless, in the existing per-area projects, following the both-heads parity idi
 - Reconsider `MaxSlopeRadians` 40, which was tightened specifically to act as the cliff guardrail
   this work retires.
 
-## Slope sliding and wall slide (2026-08-02 addendum, 17.27.0, #442)
+## Slope sliding and wall slide (2026-08-02 addendum, 17.28.0, #442)
 
 Playtest verdict on the shipped gate, two rounds in: 17.26.0's gate let a jump ratchet up a sheer
 face (#440), and the 17.26.1 fence that closed it blocks sideways movement into a face while
@@ -271,10 +271,10 @@ Relation to the phases: this is a slice of phase 2's semantics (surfaces as cont
 delivered early on the analytic path where the pain is. #438 still owns the full
 contact-classification rebuild over the physics-query path (props, buildings, Bepu geometry).
 
-### Correction, 2026-08-02 (17.28.0): what adversarial review changed in the model above
+### Correction: what adversarial review changed in the model above
 
-Three of the rules as written above are wrong, and this note records what replaced them rather than
-rewriting the history. Everything not named here still stands.
+Three of the rules as written above are wrong. Adversarial review caught all three before the release
+that carries them, and this note records what replaced them rather than rewriting the history. Everything not named here still stands.
 
 **The contact deletes the into-surface component and NOTHING else.** Point 2 said the tangential
 component integrates into the carried velocities, and the first implementation read that as the

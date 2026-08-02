@@ -8,7 +8,7 @@ namespace KhaozEngine.Tests.Locomotion;
 
 // WHAT A SLIDE CONTACT DOES TO CARRIED VELOCITY, and what a character WEDGED between two of them gets.
 //
-// The 17.27.0 slide model (#442) shipped three things review found wrong, and this suite is the pin for all
+// The first cut of the slide model (#442, 17.28.0) got three things wrong, and this suite is the pin for all
 // three. The behavioural half of SteepSlopeSlideTests (no ascent, no tunnel, descent free) is unchanged and
 // stays there; everything here is about the CONTACT ITSELF - which components of an incoming velocity die on
 // it, which survive, and what happens when two contacts oppose each other so that neither can be left.

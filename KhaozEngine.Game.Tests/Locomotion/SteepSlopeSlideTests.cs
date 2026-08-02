@@ -8,7 +8,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Locomotion;
 
-// STEEP GROUND IS A SURFACE YOU SLIDE ON, NOT A WALL YOU ARE DENIED AT (#442, the 17.27.0 model).
+// STEEP GROUND IS A SURFACE YOU SLIDE ON, NOT A WALL YOU ARE DENIED AT (#442, the 17.28.0 model).
 //
 // These tests were the refusal-era slope-gate suite (#369, then #440). Two playtests voted the gate down: the
 // 17.26.0 direction-aware gate let a repeated jump ratchet up a sheer face, and the 17.26.1 fence that closed
@@ -22,7 +22,7 @@ namespace KhaozEngine.Tests.Locomotion;
 //   - descent and walk-offs are free (unchanged: that was #369's whole point),
 //   - no tunnel: never inside terrain, and never popped above the face,
 //   - and the new invariants the model adds - lateral air control along a face survives, and a slide always
-//     terminates on walkable ground, in water, in open air, or WEDGED between opposing faces (17.28.0: a crease
+//     terminates on walkable ground, in water, in open air, or WEDGED between opposing faces (a crease
 //     is supported, because a pinched capsule is held up by the two faces).
 //
 // What a CONTACT does to the carried velocity (into-surface dies, contour and signed fall line survive) and what

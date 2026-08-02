@@ -4262,7 +4262,7 @@ nothing to drive today and facing still comes from `CharacterFacing` / the chara
 facing" in the netcode chapter below.
 
 Also since 17.26.0, walking off a steep drop is a real fall on the analytic-terrain path, not a wall, and since
-17.27.0 a face too steep to stand on is a surface you SLIDE down rather than one you are refused at. See "Bounded
+17.28.0 a face too steep to stand on is a surface you SLIDE down rather than one you are refused at. See "Bounded
 zones" above, which is a behaviour change for a game that leaned on the old gate to fence players onto a plateau.
 
 **Smooth stair climbing.** A step-up (curb or stair riser under `StepHeight`) is mounted without a jump, but it no
@@ -4845,7 +4845,7 @@ var terrain = new TerrainCollision(field);
 character.Update(input, dt, camera.Yaw, terrain.GroundHeight, terrain.GroundNormal);   // groundNormal = steep terrain
 ```
 
-**Steep ground is a surface you slide on, not a wall you are denied at** (17.27.0,
+**Steep ground is a surface you slide on, not a wall you are denied at** (17.28.0,
 [#442](https://github.com/APKiwiOrg/KhaozEngine/issues/442)). Through 17.26.1 this was a GATE that refused a
 move outright, which produced a bug at each setting of its own tightness: loose enough and a repeated jump
 ratcheted up a sheer face, tight enough to stop that and sideways movement into a face while jumping read as an
@@ -4864,13 +4864,13 @@ rules replace it, both unconditional and neither a knob:
   line) at the usual `MoveTuning.AirControl`-scaled speed and has no authority along the fall line at all, in
   either direction.
 
-**A contact deletes the into-surface component and nothing else** (17.28.0). Both in-plane survivors are kept in
+**A contact deletes the into-surface component and nothing else.** Both in-plane survivors are kept in
 full: the CONTOUR speed, so a fast run across a face is not stopped by brushing it, and the FALL-LINE speed, which
 is signed, so a jump grazing a face keeps its up-slope motion and gravity takes it back rather than a clamp
 deleting it. The steer is a per-tick term and is not folded into the carry, so contour momentum evolves only by
 contact and holding a direction cannot pump it up.
 
-**A WEDGE is supported** (17.28.0), the one exception. A capsule pinched in a concave crease can neither be
+**A WEDGE is supported**, the one exception. A capsule pinched in a concave crease can neither be
 granted support by its own steep column nor slide out of it, so a tick whose accumulated fall is ARRESTED reports
 support instead: `Grounded` true, jump enabled, coyote refreshed, and the arrested fall latched as a landing. It
 is per-tick, so a character parked in a crease pulses grounded (about one tick in five) rather than standing. That
@@ -5094,7 +5094,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.27.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.28.0" />
 ```
 
 ```csharp

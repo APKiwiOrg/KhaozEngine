@@ -8,7 +8,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Game;
 
-// THE RECONCILE-PARITY GUARD FOR THE SLOPE SLIDE (#442, 17.27.0), in the StairGlideReconcileParityTests shape.
+// THE RECONCILE-PARITY GUARD FOR THE SLOPE SLIDE (#442, 17.28.0), in the StairGlideReconcileParityTests shape.
 //
 // A slide is CARRIED velocity: this tick's fall-line speed is the previous tick's plus a tangential-gravity step,
 // held in MoveState.HorizontalVelocity and MoveState.VerticalVelocity. ClientPrediction.Reconcile rebuilds the
@@ -17,7 +17,7 @@ namespace KhaozEngine.Tests.Game;
 // carried components reach the basis through PlayerMoveState.From. They do, and - the load-bearing part - they do
 // it UNCONDITIONALLY, with no reference to MoveTuning.AirMomentum: HorizontalVelocityXQ/ZQ have ridden the wire
 // since generation 7, MovementState.From always quantizes them and PlayerMoveState.From always decodes them, on
-// both server heads. This suite is what pins that, because the field's ONLY consumer before 17.27.0 was the
+// both server heads. This suite is what pins that, because the field's ONLY consumer before 17.28.0 was the
 // opt-in momentum path, so "the carry is dead with the knob off" was a live and wrong assumption to hold.
 //
 // Both cases run: AirMomentum OFF (the shipped default, and the one that would silently desync if the carry were

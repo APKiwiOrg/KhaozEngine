@@ -129,6 +129,137 @@ the frame loop a real pre-record phase. The fork's guardrail commits, which turn
 of silent corruption, are held back until then (#428), so the two land together rather than converting a corrupted
 frame into a crash.
 
+### Characters walk off cliffs, land with a measurable impact, and can face the camera
+
+Phase 1 of `docs/design/PHYSICS-LOCOMOTION-DESIGN-2026-08-02.md`, which decides #371 and closes #369. Movement was
+already physics-query-driven (a kinematic capsule integrating gravity and resolving collision by swept
+collide-and-slide against the Bepu world), so the three player-visible asks were a model gap and two missing seams
+rather than a missing simulation: a slope gate that fenced characters onto clifftops, no trustworthy landing fact
+to read, and no authoritative facing anywhere in the command or replicated state. Position output is unchanged on
+any ground a character could already walk on, and facing feeds nothing in the move resolve, so a game that adopts
+neither new seam moves bit-identically.
+
+#### The slope gate is direction-aware and scale-free (#369)
+
+`AdvanceSlopeGated` refused any XZ move whose DESTINATION ground normal exceeded `MoveTuning.MaxSlopeRadians`,
+whichever way the tick was travelling. A steep normal says nothing about direction, so on the analytic-terrain
+path a cliff edge blocked walking OFF it exactly as it blocked walking INTO it. The move is now refused only when
+the destination is steep AND this tick climbs onto it faster than the gate's own gradient:
+
+    blocked iff steep(destNormal) && rise > max(1 mm, travel * tan(MaxSlopeRadians))
+
+`rise` is the destination ground height minus the character's FEET, and `travel` is the tick's intended horizontal
+distance. A descent or a level traverse falls through, the support-floor logic finds no walkable floor, the
+character goes airborne, and gravity does the rest. This is the same asymmetry the Bepu-backed collide-and-slide
+already applied to props, extended to the analytic terrain a game's cliffs actually use. It applies identically to
+the grounded path, the airborne-momentum path, and the horizontal-only `Step(Vector3, ...)` overload.
+
+**A game that used the gate as a cliff guardrail now gets real falls.** That is the point of the change, but it is
+a behaviour change and not an opt-in: a designed drop that previously read as an invisible wall is now walkable,
+jumpable and survivable only as far as the game's own fall rules allow. A game holding players on a plateau needs
+`WorldBounds` (the authoritative clamp) or terrain that does not present a walkable lip, not the slope gate.
+Ruinborne's `MaxSlopeRadians` of 40, tightened specifically to act as that guardrail, is worth revisiting.
+
+**The ascent allowance is a GRADIENT, not a height, and that is what makes it scale-free.** The first cut allowed a
+fixed rise (the skin width) and review found the hole: any mover whose per-tick rise stayed under it climbed an
+arbitrarily steep face a fraction of a centimetre at a time, so the same wall fenced a full-speed run and was
+walked up by a snared character or by a client at a high tick rate. Both sides of the gradient comparison carry the
+same `travel`, so a face steeper than the gate is refused at every speed and every tick rate, and a character on
+the flat below one can gain at most a single tick's ramp rise, once, before it is standing on the face and fenced.
+`tan(MaxSlopeRadians)` is the existing gate read as a gradient rather than a new knob, and the 1 mm term is a noise
+floor for a near-level traverse across a steep face, not an allowance. The comparison is against the FEET rather
+than the current ground, which keeps the anti-tunnel property: flying into a face whose ground stands above the
+feet is still refused, so an XZ can never be committed under terrain for a later ground clamp to pop up the cliff.
+
+#### A landing reports how hard it hit, and both servers gained `OnAfterTick`
+
+`VerticalVelocity` is zeroed by the ground contact, so the speed a landing erased was gone before anything
+downstream could read it, and a game wanting fall damage had to finite-difference a position across the very tick
+the ground clamp moved it.
+
+- **`MoveState.LandingImpactSpeed`** (float, m/s, non-negative) is the downward speed captured on exactly the tick
+  a character transitions airborne to grounded, and 0 on every other tick. Event-as-state, following `StepDeltaY`.
+  It reads the transition itself rather than instrumenting the four sites that set grounded, so any landing path
+  is covered. It is latched BEFORE the jump step, so a buffered jump firing on the landing tick still reports its
+  impact and a bunny-hop cannot cancel fall damage. Capped by `MaxFallSpeed`, which is terminal velocity and
+  therefore physical. Swimming never fabricates one (a swim tick is never grounded).
+- **Spawn and teleport report a tiny one, so consumers must threshold.** `default(MoveState).Grounded` is false, so
+  a state placed on the ground and stepped is a transition on its first tick and honestly reports the single tick
+  of gravity it fell (about 0.8 m/s at the shipped gravity and 30 Hz). No fall-damage curve starts near that, so
+  the same threshold that keeps a hop off the damage table already covers it. A teleport mid-fall reports only the
+  post-teleport fall.
+- **`WorldServer.OnAfterTick(float dt)` and `ShardedWorldServer.OnAfterTick(float dt)`** (`event Action<float>?`,
+  no-op until subscribed) are the mirror of `OnBeforeTick`: they fire at the END of a tick, after movement and
+  after every client has been served. This is where a game reads the landing and applies fall damage, because the
+  next tick overwrites the latch, so the same work done from `OnBeforeTick` always reads the previous tick's world.
+  A write made here reaches clients on the NEXT snapshot, which is the deliberate trade: the hook observes a
+  settled tick, and `OnBeforeTick` remains the place to author state that must ship in the same frame.
+- **One semantic on both heads: it fires after frames in which authoritative movement RAN.** The flat head steps
+  unconditionally, so every `Tick` qualifies and the rule costs it nothing. The sharded head drives its cells off a
+  fixed-tick accumulator, so a frame shorter than `TickSeconds` steps nothing, and firing there would re-deliver
+  the previous tick's landing once per short frame. That is a DUPLICATE application of fall damage rather than a
+  missed one, which is why the qualifier exists. `OnBeforeTick` stays unqualified on both heads.
+- **`MovementState.LandingImpactSpeed`** is the sharded head's sim-local mirror (the `ClimbRateEwma` precedent):
+  readable per slot through `TryGetPlayerState`, rides no wire and no migrate capture, and is explicitly zeroed for
+  an entity whose cell sim skipped it, so a skipped tick cannot leave a stale impact to read as a landing. A
+  landing that coincides with a cell handoff loses the one-tick signal, which is accepted rather than paid for with
+  a wire field on every snapshot. **`EntityRenderState.LandingImpactSpeed`** surfaces the local player's PREDICTED
+  landing for presentation (a land effect, a camera dip), and is always 0 for remotes, which derive the transition
+  from the `Grounded` flag and `VerticalVelocity` they already receive.
+- **The step's non-finite fallback now zeroes the latch.** The defence-in-depth path holds the last good state when
+  a misbehaving delegate injects a NaN, and a per-tick EVENT is not pose: handing the previous state back wholesale
+  re-emitted the landing tick's impact on every poisoned tick, so a game reading it from `OnAfterTick` would have
+  applied one landing's fall damage over and over for as long as the delegate misbehaved.
+
+#### Authoritative facing, and wire generation 10
+
+Character yaw existed nowhere in the command state or the replicated state. Servers derived facing from position
+deltas, so a stationary player could not turn at all, and a strafing one pointed where it was sliding.
+
+- **`MoveCommand.FaceCamera`** (bool, default false) asks the character to face `CameraYaw` instead of its travel
+  direction. It changes facing only and never position. The wire encoding reuses the move frame's `run` byte as a
+  FLAGS byte (bit 0 run, bit 1 faceCamera), so `MoveSize` stays 18 and the length-based client-to-server demux
+  contract is untouched. Unknown flag bits are ignored rather than rejected, because a frame with a stray bit is
+  still a well-formed move and dropping it would take that client out of the sim.
+- **`MoveState.FacingYaw`** (float, radians) is the carried heading, in the SAME convention as
+  `MoveCommand.CameraYaw`: 0 faces world -Z and a positive angle swings toward -X, which is the basis the step
+  already resolves a camera-relative command in. Canonical range `[-pi, pi)`, low end inclusive. While `FaceCamera`
+  is held with no other input the heading converges to `CameraYaw` exactly.
+- **`MoveTuning.FacingTurnSpeed`** (rad/s, default `float.PositiveInfinity`) rate-limits the turn, always along the
+  shortest arc, landing exactly on the target on the tick the remaining gap fits in one step's budget. The infinite
+  default SNAPS, which is the presentation feel every pre-facing consumer already had (a model pointed straight at
+  `CameraRelativeDir` with no smoothing). A finite value (2 to 10 rad/s is the usual range) leans the body into its
+  turns identically on the server, in prediction and on every remote. 0, which is what `default(MoveTuning)` reads,
+  freezes the heading rather than meaning "no limit". `CharacterController3D.FacingTurnSpeed` mirrors it for a
+  local, non-networked character.
+- **`CharacterMovement.WrapYaw(float)` and `CharacterMovement.FacingYawOf(Vector2)`** are the public conversions: a
+  canonicalise into `[-pi, pi)` (returning an already-canonical angle bit-identically, which is what makes the
+  "converges exactly" contract true rather than approximate) and a world XZ direction to a heading. A consumer
+  whose gameplay basis is the opposite converts at its own boundary, once.
+- **`StepTowards` faces the steering direction**, so server-authoritative NPCs inherit facing with no new plumbing
+  and no camera. The AI path always passes no camera target.
+- **`MovementState.FacingYawQ`** replicates it as a `short` at `MovementState.FacingYawQuantum` (`pi / 32768`, one
+  65536th of a turn, so the whole `short` range is exactly one revolution and every representable value is a legal
+  heading, at 0.0055 degree resolution). `QuantizeFacingYaw` WRAPS rather than clamps, because an angle has no
+  out-of-range value, only a non-canonical representative, and a clamp would park a character facing the wrong way
+  with no way to self-correct. It has to ride the wire for `HorizontalVelocityXQ`'s reason with the same sharper
+  failure: `PlayerMoveState.From` rebuilds the reconcile basis from the replicated components ALONE and
+  `Reconcile` overwrites unconditionally, so a heading missing from that seed would not lag behind the server, it
+  would reset to 0 on every correction and restart the turn from due -Z several times a second.
+- **`EntityRenderState.FacingYaw`** surfaces it: the predicted un-quantized heading for the local player, the
+  decoded replicated one for remotes, discrete-sampled to the same delayed render time as the interpolated
+  position. It is the feed `CharacterSample.FacingYaw` wants, though the two bases differ by half a turn (the
+  bridge reads 0 as +Z) and nothing wires them automatically.
+- **This is a wire break: generation 9 to 10.** One bump covers the flags byte and `FacingYawQ` together. The
+  movement built-in is not length-prefixed, so an old client cannot skip the two bytes and is rejected at connect
+  by the always-on `WireGenerationAuthenticator`. **Client and server must ship together.**
+
+`EntityRenderState` gained two constructor overloads for the new fields, so every existing construction site
+compiles and reads 0 for both. Headless coverage lands in `KhaozEngine.Game.Tests` (the direction-aware gate at
+four speeds and two tick rates, the landing latch, the facing rule and its wrap seam) and `KhaozEngine.Server.Tests`
+(both heads' `OnAfterTick` including the short sharded frame, facing replication and quantizer round-trip, and a
+reconcile-parity fixture pinning a mid-turn heading through a replay).
+
 ## 17.25.0
 
 ### A telemetry recording now says what produced it

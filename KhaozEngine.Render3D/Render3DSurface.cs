@@ -41,9 +41,9 @@ namespace KhaozEngine.Render3D
         /// the call below no-ops (#429). A host driving a surface off a raw <see cref="AppWindow"/> should do the
         /// same: queue and prepare the scene in the <c>onPrepare</c> callback, and call this from <c>onFrame</c>.
         /// <b>A host that does not still nests</b>, because the call below then runs inside the frame's recording.
-        /// It renders correctly on every backend that treats a command list as a real list, and once the Veldrid
-        /// fork's <c>4.9.103</c> guardrail is vendored that residual becomes a loud <c>VeldridException</c> naming
-        /// the fix (pass the pre-record phase) instead of silent corruption, which is the intended trade.
+        /// It renders correctly on every backend that treats a command list as a real list, and under the Veldrid
+        /// fork's <c>4.9.103</c> guardrail (vendored since 17.27.0) that residual is a loud <c>VeldridException</c>
+        /// naming the fix (pass the pre-record phase) instead of silent corruption, which is the intended trade.
         /// </para></summary>
         public void Render(Frame frame)
         {

@@ -31,9 +31,9 @@ namespace KhaozEngine.Tests.Gpu
     /// switch.
     /// </para>
     /// <para>
-    /// Rows 6 and 8 are asserted in <see cref="GpuBackendKindAppendAuditRegistryTests"/> instead of here, because
-    /// they are the only two that REGISTER a provider under the real kind and so cannot share the parallel pool.
-    /// Everything in this class is pure, so it does.
+    /// Rows 3, 6 and 8 are asserted in <see cref="GpuBackendKindAppendAuditRegistryTests"/> instead of here,
+    /// because they are the ones that touch the process-wide provider registry under the REAL kind and so cannot
+    /// share the parallel pool. Everything in this class is pure, so it does.
     /// </para>
     /// </summary>
     public sealed class GpuBackendKindAppendAuditTests
@@ -103,23 +103,10 @@ namespace KhaozEngine.Tests.Gpu
                 Assert.Equal(kind.IsDirect3D11(), D3D11ThreadingProbe.IsApplicable(kind, isWindows: true));
         }
 
-        // --- row 3: the CreateForWindow / CreateHeadless Veldrid switches, the worst of the three ---
-
-        /// <summary>
-        /// The native kind never reaches the Veldrid creation switch, because every entry into that path branches
-        /// on <see cref="GpuBackendProviders.RequiresProvider"/> first. With nothing registered the observable
-        /// outcome is the provider-missing exception naming the one line that fixes it, NOT a Veldrid failure
-        /// about Metal, which is what the discard arm produced before this change.
-        /// </summary>
-        [Fact]
-        public void CreateForWindow_OnTheNativeKind_NeverAsksVeldridForAMetalDevice()
-        {
-            GpuBackendProviderMissingException ex = Assert.Throws<GpuBackendProviderMissingException>(
-                () => GpuDeviceContext.CreateForWindow(default, 640, 480, true, GpuBackendKind.Direct3D11Native));
-
-            Assert.Equal(GpuBackendKind.Direct3D11Native, ex.Backend);
-            Assert.DoesNotContain("Metal", ex.Message);
-        }
+        // --- row 3: the CreateForWindow / CreateHeadless Veldrid switches, the worst of the three. Asserted in
+        // GpuBackendKindAppendAuditRegistryTests below, because pinning "nothing registered" is now itself a
+        // registry mutation: KhaozEngine.Gpu.D3D11 exists and this assembly registers its real provider at load
+        // (Gpu/D3D11BackendRegistration.cs). ---
 
         /// <summary>
         /// The fourteenth site, and the one section 4.3 does not list because it did not exist when the table was
@@ -372,23 +359,53 @@ namespace KhaozEngine.Tests.Gpu
     }
 
     /// <summary>
-    /// Rows 6 and 8 of the append audit, split out of <see cref="GpuBackendKindAppendAuditTests"/> because they
-    /// are the two that REGISTER a fake provider under the real
+    /// Rows 3, 6 and 8 of the append audit, split out of <see cref="GpuBackendKindAppendAuditTests"/> because
+    /// they are the ones that touch the provider registry under the real
     /// <see cref="GpuBackendKind.Direct3D11Native"/> kind, and the registry plus the support cache behind it are
     /// process-wide.
     /// <para>
     /// What that costs on the parallel pool is a rare red with no bug under it:
     /// <c>GpuBackendSelectorTests.IsBackendSupported_NeverThrows_ForAnyBackend</c> walks every enum member and
-    /// probes it, so a concurrent run of it lands on this fake in the window where it is registered and bumps the
+    /// probes it, so a concurrent run of it lands on a fake in the window where it is registered and bumps the
     /// very probe counter row 6 asserts is exactly one. Registering under a SENTINEL kind is the other way out and
-    /// is what <c>GpuBackendProvidersTests</c> does, but these two rows are auditing the REAL member, which is the
-    /// whole point of them, so the collection is the fix. The cost is two tests off the pool, not the other
+    /// is what <c>GpuBackendProvidersTests</c> does, but these rows are auditing the REAL member, which is the
+    /// whole point of them, so the collection is the fix. The cost is three tests off the pool, not the other
     /// twenty-odd pure ones.
+    /// </para>
+    /// <para>
+    /// Every row here that means "nothing is registered" now says so with an explicit
+    /// <c>BackendProviderScope(kind, provider: null)</c>, because nothing is no longer the ambient state:
+    /// <c>KhaozEngine.Gpu.D3D11</c> exists and this assembly registers its REAL provider at load
+    /// (<c>Gpu/D3D11BackendRegistration.cs</c>), which is the module initializer section 4.1 allows inside a test
+    /// assembly. Pinning the unregistered behaviour explicitly is the stronger form anyway: it asserts what the
+    /// code does when no provider is present rather than what it happens to do given today's ambient
+    /// registration, so it keeps holding the day a second backend package registers here too.
     /// </para>
     /// </summary>
     [Collection("GraphicsBackendGlobalState")]
     public sealed class GpuBackendKindAppendAuditRegistryTests
     {
+        // --- row 3: the CreateForWindow / CreateHeadless Veldrid switches, the worst of the three ---
+
+        /// <summary>
+        /// The native kind never reaches the Veldrid creation switch, because every entry into that path branches
+        /// on <see cref="GpuBackendProviders.RequiresProvider"/> first. With nothing registered the observable
+        /// outcome is the provider-missing exception naming the one line that fixes it, NOT a Veldrid failure
+        /// about Metal, which is what the discard arm produced before this change.
+        /// </summary>
+        [Fact]
+        public void CreateForWindow_OnTheNativeKind_NeverAsksVeldridForAMetalDevice()
+        {
+            using (Unregistered(GpuBackendKind.Direct3D11Native))
+            {
+                GpuBackendProviderMissingException ex = Assert.Throws<GpuBackendProviderMissingException>(
+                    () => GpuDeviceContext.CreateForWindow(default, 640, 480, true, GpuBackendKind.Direct3D11Native));
+
+                Assert.Equal(GpuBackendKind.Direct3D11Native, ex.Backend);
+                Assert.DoesNotContain("Metal", ex.Message);
+            }
+        }
+
         // --- row 6: GpuBackendSelector.IsBackendSupported ---
 
         /// <summary>
@@ -399,16 +416,19 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void IsBackendSupported_AsksTheNativeProvider_NotVeldrid()
         {
-            Assert.False(GpuBackendSelector.IsBackendSupported(GpuBackendKind.Direct3D11Native));
-
-            var provider = new FakeBackendProvider(GpuBackendKind.Direct3D11Native) { Supported = true };
-            using (Registered(GpuBackendKind.Direct3D11Native, provider))
+            using (Unregistered(GpuBackendKind.Direct3D11Native))
             {
-                Assert.True(GpuBackendSelector.IsBackendSupported(GpuBackendKind.Direct3D11Native));
-                Assert.Equal(1, provider.SupportProbes);
-            }
+                Assert.False(GpuBackendSelector.IsBackendSupported(GpuBackendKind.Direct3D11Native));
 
-            Assert.False(GpuBackendSelector.IsBackendSupported(GpuBackendKind.Direct3D11Native));
+                var provider = new FakeBackendProvider(GpuBackendKind.Direct3D11Native) { Supported = true };
+                using (Registered(GpuBackendKind.Direct3D11Native, provider))
+                {
+                    Assert.True(GpuBackendSelector.IsBackendSupported(GpuBackendKind.Direct3D11Native));
+                    Assert.Equal(1, provider.SupportProbes);
+                }
+
+                Assert.False(GpuBackendSelector.IsBackendSupported(GpuBackendKind.Direct3D11Native));
+            }
         }
 
         // --- row 8: GpuBackendSelector._windowCandidates, unchanged until default-ready (I4) ---
@@ -430,6 +450,11 @@ namespace KhaozEngine.Tests.Gpu
 
         static BackendProviderScope Registered(GpuBackendKind backend, IGpuBackendProvider provider)
             => new(backend, provider);
+
+        // Temporarily takes the backend OUT of the registry and puts back whatever was there. Named so a reader
+        // sees the intent at the call site: these rows assert what happens with no provider, which is a state the
+        // test has to create now rather than one it inherits.
+        static BackendProviderScope Unregistered(GpuBackendKind backend) => new(backend, provider: null);
     }
 
     /// <summary>

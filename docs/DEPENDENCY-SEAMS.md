@@ -37,9 +37,14 @@ These graph rules are not just prose. Headless architecture tests in `KhaozEngin
   seam/backend home, and any new one must be added to the allowlist deliberately), the layering invariants
   (`Primitives` is the zero-dependency leaf, `Simulation` may reference `Determinism` and nothing else, the
   Foundation umbrella stays GPU-free, `App` never references `Gui`), the locked ProjectReference membership of the four umbrellas, opt-in backends staying out of
-  every umbrella's transitive closure, and `Render3D` staying seams-only.
-- `GpuPublicApiTests.cs` - a reflection guard that walks the public and protected surface of `KhaozEngine.Gpu`
-  and fails if any Veldrid type leaks through it, proving the GPU seam keeps Veldrid contained.
+  every umbrella's transitive closure, `Render3D` staying seams-only, and the native Direct3D 11 backend
+  declaring no `Veldrid` package of its own.
+- `GpuPublicApiTests.cs` - reflection guards that walk the public and protected surface of `KhaozEngine.Gpu` and
+  fail if any Veldrid type leaks through it, proving the GPU seam keeps Veldrid contained. The same walk runs
+  over `KhaozEngine.Gpu.D3D11` for `Veldrid`, `Vortice` and `SharpGen`, since a Direct3D type in a public
+  signature would load a Windows-only assembly on a platform that has none. A third guard reads that assembly's
+  own references and fails on any `Veldrid` one, which is the only way to catch a Veldrid type crossing through
+  an INTERNAL API that no surface scan looks at.
 
 Changing a documented edge therefore means changing the matching expectation in these tests, so the graph and
 this doc cannot silently drift apart.
@@ -48,7 +53,7 @@ this doc cannot silently drift apart.
 
 | Area | Seam (dependency-free) | Backend(s) | Third-party library |
 |---|---|---|---|
-| GPU / rendering | `KhaozEngine.Gpu` (`GpuDeviceContext` + `GpuInterfaces`, `GpuBackendSelector`, and `GpuBackendProviders` / `IGpuBackendProvider` for a backend that ships outside this package) | (in-package) `Internal/VeldridGpuDevice`, plus any registered out-of-package provider | Veldrid (+ Veldrid.SPIRV, Vortice.Direct3D11) |
+| GPU / rendering | `KhaozEngine.Gpu` (`GpuDeviceContext` + `GpuInterfaces`, `GpuBackendSelector`, and `GpuBackendProviders` / `IGpuBackendProvider` for a backend that ships outside this package) | (in-package) `Internal/VeldridGpuDevice`, plus `KhaozEngine.Gpu.D3D11` (the engine-owned native Direct3D 11 backend, opt-in and in no umbrella, registered by `KhaozEngineD3D11.Register()`) and any other registered out-of-package provider | Veldrid (+ Veldrid.SPIRV, Vortice.Direct3D11) in the seam. Vortice.Direct3D11 + Vortice.D3DCompiler in the native backend, which declares no Veldrid package of its own |
 | 3D physics | `KhaozEngine.Physics` (`IPhysicsWorld`, value-type shapes/poses/queries, and since the floating-origin release also the default-method `Origin` / `CanRebase` / `Rebase(newOrigin)`, so an existing implementer keeps compiling and correctly reports that it cannot rebase - the seam learns a plain `Vector3`, never a frame type, and keeps its zero project references) | `KhaozEngine.Physics.Bepu` (`BepuPhysicsWorld`, which overrides all three: bulk direct pose writes plus broadphase refits over every allocated body set and the statics, so sleeping bodies, contacts and constraints all survive a shift) | BepuPhysics v2 |
 | Netcode transport | `KhaozEngine.Netcode` (`INetTransport` incl. the default-method `Stats` -> `NetTransportStats`, `LoopbackTransport`) + `Netcode.Abstractions` | `KhaozEngine.Netcode.LiteNetLib` (fills `Stats` via `EnableStatistics`) | LiteNetLib |
 | Persistence | `KhaozEngine.WorldStore` (`IWorldStore`, `InMemoryWorldStore`) | `WorldStore.Sqlite`, `WorldStore.SqlServer` | Microsoft.Data.Sqlite / SqlClient |
@@ -500,9 +505,15 @@ This adds no dependency the engine did not already have. `Vortice.Direct3D11` IS
 has been a transitive dependency of `Veldrid` 4.9.0 the whole time. What changed is that it is now DECLARED,
 because `ArchitectureTests.EveryThirdPartyPackage_IsDeliberatelyMapped` requires every third-party reference a
 packable library uses to be a deliberate edit rather than something inherited by accident. `Gpu` is the correct
-and only home: it is the same seam Veldrid is confined to, reached through the raw `ID3D11Device` pointer Veldrid
-itself publishes on `BackendInfoD3D11.Device`, and nothing outside `Internal/D3D11ThreadingProbe` names a Vortice
-type.
+home for THIS use: it is the same seam Veldrid is confined to, reached through the raw `ID3D11Device` pointer
+Veldrid itself publishes on `BackendInfoD3D11.Device`, and nothing outside `Internal/D3D11ThreadingProbe` names a
+Vortice type inside this package.
+
+`Vortice.Direct3D11` now has a SECOND home, `KhaozEngine.Gpu.D3D11`, and that is a different use rather than a
+widening of this one: that package IS the Direct3D 11 interop, so the binding is its subject matter and not a
+diagnostic borrowed from a neighbour. Both homes pin the same Vortice 2.3.0 line, which is what Veldrid depends
+on, so there is exactly one D3D11 binding and one `SharpGen.Runtime` in the graph. The native backend adds
+`Vortice.D3DCompiler` on the same line for its own FXC call, and that one is its alone.
 
 It also does not widen what loads at runtime anywhere else. The probe's guard returns before any Vortice type is
 named, so on macOS and Linux, and on any non-Direct3D11 backend, that assembly is never loaded at all. The
@@ -537,16 +548,49 @@ and reported through the existing `FallbackAfterFailure` path). Full reasoning i
 [design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md](design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md), section 4.1
 and decisions P4 and I2.
 
+### What the backend package may reference, and the one edge it may NOT
+
+`KhaozEngine.Gpu.D3D11` references `KhaozEngine.Gpu`, `KhaozEngine.Diagnostics` (so the support probe can say
+WHY a machine is unsupported instead of answering a bare false), `Vortice.Direct3D11` and `Vortice.D3DCompiler`.
+It declares NO `Veldrid` package, and that is decision P2 rather than an accident of ordering.
+
+The shader path needs SPIRV-Cross, which arrives as `Veldrid.SPIRV`. Referencing it from the backend would be
+the obvious shortcut and is rejected twice over: blessing a Veldrid package inside a backend whose entire premise
+is being Veldrid-free is a bad signal no guard would catch, and it would scatter the eventual SPIRV-Cross
+replacement across three packages instead of one. The edge stays in `KhaozEngine.Gpu` behind the internal
+`Internal/SpirvCrossCompile` helper plus `InternalsVisibleTo`, which is where it already belongs: this package
+owns `ShaderValidation`, which uses precisely that static API with no device in existence.
+
+```
+KhaozEngine.Gpu.D3D11 -> Vortice.Direct3D11, Vortice.D3DCompiler   (its subject matter)
+KhaozEngine.Gpu.D3D11 -> Veldrid*                                  (never, asserted two ways)
+```
+
+Two ways, because one of them alone would not bind. `ArchitectureTests.GpuD3D11_DeclaresNoVeldridPackage` reads
+the project file, which catches the deliberate edit. It cannot catch the subtler failure: Veldrid is in the
+backend's transitive closure through `KhaozEngine.Gpu` whatever the project file says, so an INTERNAL helper
+signature mentioning a Veldrid type would compile, would put a Veldrid assembly reference in the backend's IL,
+and would be invisible to every public-surface scan there is. `GpuPublicApiTests.GpuD3D11_ReferencesNoVeldridAssembly`
+reflects over the built assembly's references and closes exactly that gap, which is why the helper's whole
+contract is expressed in engine mirrors (`CrossCompiledPair` / `ShaderReflection` over `GpuVertexElement` and
+`GpuResourceLayoutDescription`).
+
+The same `InternalsVisibleTo` carries the other internal the backend needs, `IGpuDeviceLifecycle`: a natively
+created device implements it to get the same disposal latch the Veldrid wrapper has, so a resource wrapper
+disposed after the device no-ops instead of calling into freed driver objects.
+
 ## Three flavours of the same idea
 
 The pattern is applied at the granularity the dependency warrants:
 
 1. **Separate opt-in backend package** (the strongest split): GPU, physics, netcode transport, persistence,
    the commerce wallet. The third-party reference lives in its own package so consumers pick it explicitly.
-   Physics, worldstore, and commerce SQL backends are genuinely opt-in (excluded from umbrellas); the Veldrid
-   binding ships inside `KhaozEngine.Gpu` because rendering is not optional for a windowed game, and the
-   LiteNetLib transport backend is deliberately bundled into the `Server` umbrella because a server needs a
-   real transport out of the box.
+   Physics, worldstore, commerce SQL and the native Direct3D 11 GPU backends are genuinely opt-in (excluded
+   from umbrellas). The Veldrid binding still ships inside `KhaozEngine.Gpu` because rendering is not optional
+   for a windowed game and every consumer needs SOME device out of the box, and the LiteNetLib transport
+   backend is deliberately bundled into the `Server` umbrella because a server needs a real transport out of
+   the box. `KhaozEngine.Gpu.D3D11` is the first GPU backend to leave the seam package, which it can because it
+   is an ALTERNATIVE implementation of a backend that already works rather than the only way to get a device.
 2. **Seam + default + null, one package** (audio): the contract, the real OpenAL backend, and a no-op
    `Null*` backend live together. The null backend keeps audio headless-testable and lets a server run with
    no device, while still being one `add` for a game that wants sound.

@@ -26,6 +26,65 @@ public class GpuPublicApiTests
             "contained in Internal/VeldridGpuDevice):\n" + string.Join("\n", leaks));
     }
 
+    /// <summary>
+    /// The same no-leak property for the native Direct3D 11 backend, which falls outside the scan above as
+    /// written: it is a different assembly, and its forbidden set is different too.
+    /// <para>
+    /// <c>Veldrid</c> because the backend's whole premise is being Veldrid-free (decision P2). <c>Vortice</c> and
+    /// <c>SharpGen</c> because of decision P1: the package targets <c>net10.0</c> and therefore ships to macOS
+    /// and Linux, where its correctness depends on the Direct3D interop never being resolved. A Vortice type in a
+    /// public signature would defeat that, since the JIT resolves a member's signature types when it compiles the
+    /// member, and a consumer that merely READS such a signature would load the Windows-only assembly on a
+    /// platform that has none. The guarded <c>NoInlining</c> bodies are what keep those types inside method
+    /// implementations, and this asserts that they stayed there.
+    /// </para>
+    /// </summary>
+    [Theory]
+    [InlineData("Veldrid")]
+    [InlineData("Vortice")]
+    [InlineData("SharpGen")]
+    public void GpuD3D11PublicApi_DoesNotLeakBackendTypes(string forbidden)
+    {
+        Assembly backend = typeof(KhaozEngine.Gpu.D3D11.KhaozEngineD3D11).Assembly;
+        List<string> leaks = FindLeakedTypes(backend, forbidden);
+
+        bool clean = leaks.Count == 0;
+        Assert.True(clean,
+            $"KhaozEngine.Gpu.D3D11 exposes {forbidden} types on its externally visible surface. Its public " +
+            "surface is one class with one method and one guard property, on purpose, and every type from the " +
+            "Direct3D interop belongs inside a NoInlining body behind KhaozEngineD3D11.IsPlatformSupported:\n" +
+            string.Join("\n", leaks));
+    }
+
+    /// <summary>
+    /// The IL half of the no-Veldrid-edge guard (decision P2), and the half that actually binds.
+    /// <c>ArchitectureTests</c> asserts the backend declares no Veldrid <c>PackageReference</c>, which catches a
+    /// deliberate edit to the project file. It cannot catch the subtler failure: the backend reaches Veldrid
+    /// through <c>KhaozEngine.Gpu</c>'s transitive closure whatever the project file says, so an INTERNAL helper
+    /// signature that mentioned a Veldrid type would compile, would put a Veldrid assembly reference in this
+    /// assembly's IL, and would be invisible to every public-surface scan there is. That is precisely why the
+    /// cross-compile helper's signatures are engine types, and this is what proves it.
+    /// </summary>
+    [Fact]
+    public void GpuD3D11_ReferencesNoVeldridAssembly()
+    {
+        Assembly backend = typeof(KhaozEngine.Gpu.D3D11.KhaozEngineD3D11).Assembly;
+
+        string[] veldrid = backend.GetReferencedAssemblies()
+            .Select(a => a.Name ?? "")
+            .Where(n => n.StartsWith("Veldrid", StringComparison.Ordinal))
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(n => n, StringComparer.Ordinal)
+            .ToArray();
+
+        bool clean = veldrid.Length == 0;
+        Assert.True(clean,
+            "KhaozEngine.Gpu.D3D11 names a type from a Veldrid assembly: [" + string.Join(", ", veldrid) + "]. " +
+            "The SPIRV-Cross edge stays behind KhaozEngine.Gpu's internal SpirvCrossCompile helper, whose " +
+            "signatures are engine types (CrossCompiledPair / ShaderReflection over GpuVertexElement and " +
+            "GpuResourceLayoutDescription) exactly so calling it adds no Veldrid reference here.");
+    }
+
     // Walks the externally visible (public + protected) surface of every exported type in <paramref name="assembly"/>
     // and returns each place a type declared in an assembly whose simple name starts with
     // <paramref name="forbiddenAssemblyPrefix"/> is reachable. Kept generic (assembly + prefix) so the no-leak

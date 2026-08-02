@@ -34,6 +34,11 @@ public class ArchitectureTests
         "Physics.Bepu", "WorldStore.Sqlite", "WorldStore.SqlServer",
         "Server.Admin", "Social.Discord", "Commerce.Sqlite", "Commerce.SqlServer",
         "Identity.Oidc", "Identity.Discord",
+        // The engine-owned native Direct3D11 backend. Opt-in for the usual pay-for-what-you-use reason and for a
+        // second one specific to it: welding a Direct3D backend into a graph every consumer carries would make
+        // the D3D11 interop non-optional for the Linux server heads (decision P1 of
+        // docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md).
+        "Gpu.D3D11",
     };
 
     // The GPU / runtime stack. None of these may appear in the Foundation or Server umbrella closures (both
@@ -56,8 +61,12 @@ public class ArchitectureTests
         // Pinned alongside Veldrid.SPIRV shader reflection, stays inside Gpu.
         ["Newtonsoft.Json"] = new[] { "Gpu" },
         // Veldrid's own D3D11 binding, already transitive via Veldrid. Declared in Gpu for the driver-threading
-        // probe (Internal/D3D11ThreadingProbe) and confined to the same home as Veldrid: it is the same seam.
-        ["Vortice.Direct3D11"] = new[] { "Gpu" },
+        // probe (Internal/D3D11ThreadingProbe), and in Gpu.D3D11 because that package IS the Direct3D11 interop.
+        // Two homes, one binding: both pin the same Vortice 2.3.0 line, which is what Veldrid depends on, so
+        // there is exactly one D3D11 binding and one SharpGen.Runtime in the graph.
+        ["Vortice.Direct3D11"] = new[] { "Gpu", "Gpu.D3D11" },
+        // FXC, for the native backend's own D3DCompile call. Only the backend compiles shaders to DXBC.
+        ["Vortice.D3DCompiler"] = new[] { "Gpu.D3D11" },
         // Windowing / input: only AppWindow (KhaozEngine.Windowing) touches Silk.NET / GLFW.
         ["Silk.NET.Windowing"] = new[] { "Windowing" },
         ["Silk.NET.Windowing.Glfw"] = new[] { "Windowing" },
@@ -307,6 +316,41 @@ public class ArchitectureTests
 
         bool clean = violations.Count == 0;
         Assert.True(clean, "Opt-in backends must stay out of every umbrella (pay-for-what-you-use): " + string.Join("; ", violations));
+    }
+
+    /// <summary>
+    /// Decision P2: the engine-owned native Direct3D11 backend declares NO Veldrid package of its own. The
+    /// shader path needs SPIRV-Cross, which ships as <c>Veldrid.SPIRV</c>, and the tempting shortcut is to
+    /// reference it straight from the backend and bless the edge above. That is rejected: blessing a Veldrid
+    /// package inside a backend whose entire premise is being Veldrid-free is a bad signal no other guard would
+    /// ever catch, and it would scatter the eventual SPIRV-Cross replacement across three packages instead of
+    /// one. The edge stays in <c>KhaozEngine.Gpu</c> behind an internal, Veldrid-free cross-compile helper
+    /// (<c>Internal/SpirvCrossCompile</c>) plus <c>InternalsVisibleTo</c>.
+    /// <para>
+    /// What is asserted is the DECLARED edge, which is the one a person adds. Veldrid is of course still in the
+    /// backend's transitive closure, through <c>KhaozEngine.Gpu</c>, and must be: that is where the helper lives.
+    /// The property that actually matters is that no Veldrid TYPE is reachable from the backend's IL, and a
+    /// project-file scan cannot see types, so <c>GpuPublicApiTests</c> asserts that half by reflecting over the
+    /// built assembly's references. The two together are the guard.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void GpuD3D11_DeclaresNoVeldridPackage()
+    {
+        IReadOnlyDictionary<string, Project> graph = LoadGraph();
+        Project backend = graph["KhaozEngine.Gpu.D3D11"];
+
+        string[] veldrid = backend.PackageRefs
+            .Where(p => p.StartsWith("Veldrid", StringComparison.Ordinal))
+            .OrderBy(p => p, StringComparer.Ordinal)
+            .ToArray();
+
+        bool clean = veldrid.Length == 0;
+        Assert.True(clean,
+            "KhaozEngine.Gpu.D3D11 declares a Veldrid PackageReference: [" + string.Join(", ", veldrid) + "]. " +
+            "The native backend is Veldrid-free by construction. If this was added for the SPIRV-Cross shader " +
+            "path, put the call behind KhaozEngine.Gpu's internal SpirvCrossCompile helper instead, whose " +
+            "signatures are Veldrid-free precisely so this edge never has to exist.");
     }
 
     [Fact]

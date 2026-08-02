@@ -41,6 +41,11 @@
     <ProjectReference Include="../KhaozEngine.Game/KhaozEngine.Game.csproj" />
     <ProjectReference Include="../KhaozEngine.Game.Render3D/KhaozEngine.Game.Render3D.csproj" />
     <ProjectReference Include="../KhaozEngine.Gpu/KhaozEngine.Gpu.csproj" />
+    <!-- The opt-in native Direct3D11 backend. Referenced UNCONDITIONALLY, which is only possible because the
+         package targets net10.0 rather than net10.0-windows (decision P1): its device-free tests then run on the
+         Linux and macOS legs too, and Gpu/D3D11BackendRegistration.cs registers it for the whole test process
+         through the one [ModuleInitializer] section 4.1 allows, here where assembly load is guaranteed. -->
+    <ProjectReference Include="../KhaozEngine.Gpu.D3D11/KhaozEngine.Gpu.D3D11.csproj" />
     <!-- 7 Gpu-folder golden tests render Gui widgets (BootScreen, PatchNotesView, PopupPanel, SlotGrid, TabBar). -->
     <ProjectReference Include="../KhaozEngine.Gui/KhaozEngine.Gui.csproj" />
     <ProjectReference Include="../KhaozEngine.Imaging/KhaozEngine.Imaging.csproj" />

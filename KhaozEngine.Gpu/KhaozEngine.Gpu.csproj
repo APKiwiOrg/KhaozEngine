@@ -26,5 +26,11 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
+    <!-- The native Direct3D11 backend package (decision P2). It reads two internals of this package and nothing
+         else: the Veldrid-free SPIRV cross-compile helper (Internal/SpirvCrossCompile), which is what keeps the
+         Veldrid.SPIRV edge out of a backend whose premise is being Veldrid-free, and IGpuDeviceLifecycle, the
+         disposal hook a natively created device implements so it gets the same liveness latch the Veldrid
+         wrapper has. Both are internal on purpose: neither is API a consumer should see. -->
+    <InternalsVisibleTo Include="KhaozEngine.Gpu.D3D11" />
   </ItemGroup>
 </Project>

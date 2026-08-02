@@ -8339,6 +8339,36 @@ registered.
 `GpuProviderDevice`, which carries the `IGpuDevice` plus the driver threading caps the provider probed, and both
 run inside the engine's process-wide device-creation gate, so a provider needs no lifecycle lock of its own.
 
+### The native Direct3D 11 package (`KhaozEngine.Gpu.D3D11`)
+
+Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
+
+```xml
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.28.0" />
+```
+
+```csharp
+using KhaozEngine.Gpu.D3D11;
+
+KhaozEngineD3D11.Register();   // unconditionally, on every OS
+```
+
+**Device creation is still being built.** Registration, the platform guard and the machine probe are live, and
+the two creation entry points currently throw a message saying so, which the fallback path turns into a WARN and
+a boot on `Direct3D11`. So today the package is what makes the backend selectable and reportable, not yet
+runnable. `GpuBackendKind.Direct3D11` is the working Direct3D 11 backend and stays selectable indefinitely.
+
+Call `Register()` unconditionally. It is safe on macOS and Linux and names no Direct3D type: the package targets
+`net10.0` rather than `net10.0-windows`, and every body that touches the interop sits behind
+`KhaozEngineD3D11.IsPlatformSupported`, a `[SupportedOSPlatformGuard("windows")]` predicate you can read yourself.
+Off Windows that guard is the whole answer, so the Windows-only native binding is never loaded there.
+
+Registering is a fact about your app's WIRING. Whether the machine can run it is the separate question
+`IsBackendSupported` answers, through this package's own probe: a throwaway feature level 11_0 device (default
+hardware adapter, then WARP) and two hard requirements read off it, `ConstantBufferOffsetting` and
+`MapNoOverwriteOnDynamicConstantBuffer`. A machine missing either cannot run the backend at all, and answering
+that up front is what routes it through the reported fallback instead of a crash on the first frame.
+
 ---
 
 ## Is the D3D11 driver emulating command lists (`GpuThreadingCaps`, 17.22.0)

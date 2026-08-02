@@ -15,6 +15,13 @@
          KhaozEngine.Gpu so the D3D11 driver-threading probe can call ID3D11Device::CheckFeatureSupport.
          Keep this pinned to whatever Veldrid depends on, so there is one D3D11 binding in the graph. -->
     <PackageVersion Include="Vortice.Direct3D11" Version="2.3.0" />
+    <!-- FXC for the engine-owned native Direct3D11 backend (KhaozEngine.Gpu.D3D11), which compiles the
+         cross-compiled HLSL to DXBC itself. Pinned to the SAME 2.3.0 Vortice line as Vortice.Direct3D11 above,
+         not to the newest 3.x: both 2.3.0 packages resolve SharpGen.Runtime 2.0.0-beta.13 and
+         Vortice.Mathematics 1.4.25, so the graph keeps one COM interop layer. A 3.x D3DCompiler beside a 2.3.0
+         Direct3D11 would drag a second SharpGen.Runtime major into the same process, and Direct3D11 cannot move
+         because it is pinned to what Veldrid depends on. -->
+    <PackageVersion Include="Vortice.D3DCompiler" Version="2.3.0" />
     <!-- CVE override: Veldrid.SPIRV drags in vulnerable Newtonsoft.Json 9.0.1 (NU1903). Not used directly. -->
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageVersion Include="Silk.NET.Windowing" Version="2.23.0" />

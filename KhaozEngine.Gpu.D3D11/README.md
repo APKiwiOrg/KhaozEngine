@@ -1,0 +1,84 @@
+# KhaozEngine.Gpu.D3D11
+
+The engine's own native Direct3D 11 backend for the [KhaozEngine.Gpu](../KhaozEngine.Gpu) seam. Opt-in and in
+NO umbrella: a consumer adds this package explicitly, the same pattern as `Physics.Bepu` or
+`WorldStore.Sqlite`, and nothing that does not want the Direct3D interop ever carries it.
+
+> **Status: the package skeleton.** Registration, the platform guards and the machine-capability probe are
+> live. Device creation is not built yet, so `CreateForWindow` and `CreateHeadless` throw a message saying so.
+> `GpuBackendKind.Direct3D11` remains the working Direct3D 11 backend and stays selectable indefinitely.
+
+## Opting in
+
+```csharp
+using KhaozEngine.Gpu.D3D11;
+
+KhaozEngineD3D11.Register();   // once, at startup, on every OS
+```
+
+That is the whole surface. Registration is a fact about the app's WIRING, so call it unconditionally: it is
+safe on macOS and Linux, where the backend simply reports itself unsupported. After the call,
+`GpuBackendKind.Direct3D11Native` is creatable through the ordinary `GpuDeviceContext` entry points, and
+selectable by the `d3d11-native` / `direct3d11-native` tokens through `KE_GRAPHICS_BACKEND`.
+
+Registration is explicit on purpose. A `[ModuleInitializer]` in this package would run only when the CLR
+happens to load the assembly, which a package reference with no static type use does not guarantee, and that
+failure is silent and machine-dependent. Reflection probing by assembly name is trim and AOT hostile and turns
+a missing reference into a runtime string mismatch. A package reference plus one line is compile-time visible,
+trim-safe and testable.
+
+Forgetting the call is loud rather than quiet: asking for `Direct3D11Native` with nothing registered throws
+`GpuBackendProviderMissingException` naming the line that fixes it, and never falls back to another backend. A
+run that quietly used a backend other than the one it was asked for would report its frame times, its telemetry
+session header and its golden images under the wrong name.
+
+## What the machine probe checks
+
+`GpuBackendSelector.IsBackendSupported(GpuBackendKind.Direct3D11Native)` routes to this package's own
+functional probe (Veldrid cannot answer for a backend it does not implement). The probe creates a throwaway
+feature level 11_0 device on the default hardware adapter, falling back to WARP, and reads
+`D3D11_FEATURE_D3D11_OPTIONS` off it. Two features are hard requirements:
+
+- **`ConstantBufferOffsetting`** - every constant-buffer bind goes through `*SetConstantBuffers1` with an
+  explicit first constant and constant count.
+- **`MapNoOverwriteOnDynamicConstantBuffer`** - the per-frame uniform ring is mapped `MAP_WRITE_NO_OVERWRITE`
+  for the whole record phase.
+
+A machine missing either one cannot run the backend at all. Answering that here is what routes it through the
+reported fallback instead of a crash on the first frame. The probe never throws: a probe that blows up and a
+probe that answers no are the same answer to the settings screen that asked, so a failure is logged with its
+reason and reported as unsupported. WARP counts as supported deliberately, since it is the rasterizer the
+committed Direct3D 11 goldens are baked on and the one CI pins.
+
+An incapable machine and a missing registration are kept strictly apart: the first falls back and reports
+`FallbackAfterFailure`, the second throws. Collapsing them would let a soak session silently measure the
+incumbent backend and file the numbers under this one.
+
+## Platform boundary
+
+The assembly targets `net10.0`, **not** `net10.0-windows`, so it compiles and its device-free tests run on the
+Linux and macOS CI legs and `KhaozEngine.Render.Tests` can reference it unconditionally. The Windows boundary
+is carried in code instead: `KhaozEngineD3D11.IsPlatformSupported` is a
+`[SupportedOSPlatformGuard("windows")]` predicate, and every body that names a Vortice type is
+`[MethodImpl(MethodImplOptions.NoInlining)]` plus `[SupportedOSPlatform("windows")]` behind it. That is the
+pattern `KhaozEngine.Gpu`'s driver-threading probe already proves keeps the Vortice assembly off the load path
+on macOS and Linux, and with warnings as errors CA1416 makes the compiler enforce it rather than a convention.
+
+## No Veldrid edge
+
+This package references `KhaozEngine.Gpu`, `KhaozEngine.Diagnostics`, `Vortice.Direct3D11` and
+`Vortice.D3DCompiler`, and nothing else. It carries no `Veldrid` package reference of its own and names no
+Veldrid type, which is asserted two ways: the architecture tests reject a `Veldrid*` package reference on this
+project, and a reflection test rejects a `Veldrid*` assembly reference in the built IL.
+
+The shader path still needs SPIRV-Cross, which arrives as `Veldrid.SPIRV`. That edge stays in
+`KhaozEngine.Gpu`, behind an internal, Veldrid-free cross-compile helper plus `InternalsVisibleTo`.
+`KhaozEngine.Gpu` already owns `ShaderValidation`, which uses precisely that static API with no device in
+existence, so the helper is at home there, and it becomes the single seat for the eventual SPIRV-Cross
+replacement. Blessing a Veldrid package inside a backend whose premise is being Veldrid-free would be a bad
+signal that no guard would ever catch.
+
+## Design
+
+`docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md` in the engine repo, section 3 (package and layering),
+section 4.1 (getting the assembly loaded), and decisions P1, P2, P4 and I2.

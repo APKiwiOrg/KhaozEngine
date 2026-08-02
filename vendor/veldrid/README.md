@@ -13,8 +13,13 @@ command list reaching `Begin` while another holds the immediate context throw in
 `ClearState` on the live context. They were held back because the windowed `GameApp3D` path forced exactly that
 second list open: `AppWindow.Run` opened the frame's command list before calling back into the app, so a guardrail
 would have turned a corrupted frame into a hard throw on Windows. KhaozEngine issue #429 removed that by giving
-the frame loop a pre-record phase, which is where the ocean prime runs now, so no windowed path opens a nested
-list any more. Vendoring the guardrail commits is KhaozEngine issue #428, and it is no longer blocked.
+the frame loop a pre-record phase, which is where the ocean prime runs now, so no engine-shipped windowed host
+opens a nested list any more. One residual remains by design: a host driving a `Render3DSurface` off a raw
+`AppWindow.Run(onFrame)` without passing `onPrepare` still nests, because the surface's safety-net
+`Scene3D.PrepareFrame` then runs inside the frame's recording. Once the `4.9.103` guardrail is vendored that
+residual becomes a loud `VeldridException` naming the fix (pass the pre-record phase) instead of silent
+corruption, which is the intended trade. Vendoring the guardrail commits is KhaozEngine issue #428, and it is no
+longer blocked.
 
 What `4.9.102` adds over `4.9.101`:
 

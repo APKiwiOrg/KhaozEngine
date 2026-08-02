@@ -468,7 +468,9 @@ namespace KhaozEngine.Game
         public void Run()
         {
             OnLoad();
-            _window.Run(RecordPhase, PreparePhase);
+            // Named, because the two parameters are the same delegate type and swapping them would compile and then
+            // put every draw pass outside the frame's command list.
+            _window.Run(onFrame: RecordPhase, onPrepare: PreparePhase);
         }
 
         /// <summary>

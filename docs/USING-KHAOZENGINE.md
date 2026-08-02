@@ -411,9 +411,20 @@ callback keeps writing one.
 
 ```csharp
 window.Run(
-    onFrame:   frame => surface3D.Render(frame),            // records into frame.Commands
-    onPrepare: frame => { scene.Begin(); DrawTheWorld(scene); scene.PrepareFrame(); });
+    onFrame: frame =>
+    {
+        if (frame.RenderSuppressed) return;                 // minimized: no list was opened, so record nothing
+        surface3D.Render(frame);                            // records into frame.Commands
+    },
+    onPrepare: frame =>
+    {
+        if (frame.RenderSuppressed) return;                 // update-only frame, nothing to queue or prepare
+        scene.Begin(); DrawTheWorld(scene); scene.PrepareFrame();
+    });
 ```
+
+Name the arguments. Both are `Action<Frame>`, so swapping them compiles and silently moves every draw outside
+the frame's command list.
 
 **Why it exists.** Some per-frame GPU work cannot be recorded into the frame's list at all: a compute dispatch
 whose output another dispatch reads in the same frame has no dispatch-to-dispatch barrier at the GPU seam, so its

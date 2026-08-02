@@ -7,10 +7,10 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Game
 {
-    // GameApp3D.OnRenderWorld drives Scene3D.EnableTiming from the built-in diagnostics overlay, but the render loop
+    // GameApp3D.OnPrepareWorld drives Scene3D.EnableTiming from the built-in diagnostics overlay, but the frame loop
     // itself needs a real window (mirrors GameAppResumeTests' note on GameApp.Run), so the DECISION is factored into
     // the pure GameApp3D.DesiredEnableTiming helper and tested headlessly here, exactly like GameApp.ShouldRaiseResume.
-    // Issue #404: with the overlay opted out (DisableDiagnosticsOverlay = true), OnRenderWorld's hud is null, and the
+    // Issue #404: with the overlay opted out (DisableDiagnosticsOverlay = true), OnPrepareWorld's hud is null, and the
     // old unconditional `EnableTiming = hud is { Visible: true }` forced the flag false every frame, silently
     // overwriting whatever a consumer with no hud set on EnableTiming itself.
     public sealed class GameApp3DTimingTests
@@ -52,14 +52,14 @@ namespace KhaozEngine.Tests.Game
         // The regression itself: with no hud, an externally set EnableTiming must survive the decision (a consumer
         // driving the scene's own timing while the built-in overlay is disabled must not be silently overwritten,
         // which is exactly what `if (DesiredEnableTiming(hud) is { } enableTiming) Scene.EnableTiming = enableTiming;`
-        // in OnRenderWorld relies on).
+        // in OnPrepareWorld relies on).
         [Fact]
         public void With_no_hud_an_externally_set_flag_survives_the_decision()
         {
             bool? decision = GameApp3D.DesiredEnableTiming(null);
 
             bool externallySetEnableTiming = true;
-            if (decision is { } d) externallySetEnableTiming = d;   // OnRenderWorld's exact gating
+            if (decision is { } d) externallySetEnableTiming = d;   // OnPrepareWorld's exact gating
 
             Assert.True(externallySetEnableTiming);
         }

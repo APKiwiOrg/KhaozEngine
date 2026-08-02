@@ -119,10 +119,15 @@ What it owns today:
   `GameApp3D` path forced that second list open (`AppWindow.Run` opened the frame's command list before calling
   back into the app), so adopting them would have converted a corrupted frame into a hard throw on Windows. The
   frame loop now has a pre-record phase and the ocean prime runs there
-  ([#429](https://github.com/APKiwiOrg/KhaozEngine/issues/429)), so nothing windowed opens a nested list any more.
-  Vendoring the guardrails is [#428](https://github.com/APKiwiOrg/KhaozEngine/issues/428), no longer blocked. The
-  rule for engine code is unchanged either way: do not open a command list while another is recording on
-  Direct3D11, and put work that needs its own list in `Scene3D.PrepareFrame` or the loop's pre-record phase.
+  ([#429](https://github.com/APKiwiOrg/KhaozEngine/issues/429)), so no engine-shipped windowed host opens a nested
+  list any more. One residual remains by design: a host driving a `Render3DSurface` off a raw
+  `AppWindow.Run(onFrame)` without passing `onPrepare` still nests, because the surface's safety-net
+  `Scene3D.PrepareFrame` then runs inside the frame's recording. Once the `4.9.103` guardrail is vendored that
+  residual becomes a loud `VeldridException` naming the fix (pass the pre-record phase) instead of silent
+  corruption, which is the intended trade. Vendoring the guardrails is
+  [#428](https://github.com/APKiwiOrg/KhaozEngine/issues/428), no longer blocked. The rule for engine code is
+  unchanged either way: do not open a command list while another is recording on Direct3D11, and put work that
+  needs its own list in `Scene3D.PrepareFrame` or the loop's pre-record phase.
 - **`GpuCapabilities`** - `ClipSpaceYInverted` / `DepthRangeZeroToOne` (so renderers derive clip-Y / depth
   handling from the active backend instead of a baked Metal assumption), plus diagnostics: `DeviceName` (the GPU
   adapter/driver), `SamplerAnisotropy`, `SamplerLodBias` (whether those sampler levers are supported),

@@ -142,6 +142,13 @@ failure is a test error, never a skip, so CI cannot go green with zero GPU cover
 arbitrary machines: a one-per-process headless device probe runs the tests when a device exists and
 skips them with the probe's failure reason when it does not.
 
+A test may additionally declare a device CAPABILITY it needs: `[GpuFact(RequiresCompletionFences = true)]`
+skips, naming the backend, on a device that reports no `GpuCapabilities.SupportsCompletionFences` (a
+Vulkan and Metal capability today, so the D3D11 leg skips those two retire-fence tests instead of failing
+an assertion it can never satisfy - issue #423). This is the only skip strict mode allows, and it is not a
+hole in it: if no device can be created at all, the capability probe reports nothing and the test still
+errors, so a leg with a broken device can never go quiet.
+
 ### Golden test flavors
 
 Two flavors of golden test exist, both conventionally named with `Golden` for discoverability (grep-ability,

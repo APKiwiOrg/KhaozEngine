@@ -107,15 +107,16 @@ namespace KhaozEngine.Tests.Gpu
             return (drains, fenced, ms, peak);
         }
 
-        [GpuFact]
+        // Fences are a Vulkan and Metal capability (VeldridMap), so this SKIPS rather than fails on a backend
+        // without them: asserting a capability the device cannot have is a red test for a feature that was never
+        // claimed (#423). The two surfaces that publish it must still agree, which is asserted below.
+        [GpuFact(RequiresCompletionFences = true)]
         public void Mesh_churn_survives_hundreds_of_frames_and_the_fence_path_removes_every_drain()
         {
             using GpuDeviceContext ctx = GpuDeviceContext.CreateHeadless();
             IGpuDevice gd = ctx.GpuDevice;
-            Assert.True(gd.Capabilities.SupportsCompletionFences,
-                $"the {gd.Backend} device reports no GPU-completion fence, so this test is measuring the wrong thing");
-            // The two surfaces that publish capabilities must agree: they are read through one function for exactly
-            // this reason, and this flag is the newest member to have been able to drift.
+            // They are read through one function for exactly this reason, and this flag is the newest member to
+            // have been able to drift.
             Assert.Equal(gd.Capabilities.SupportsCompletionFences, ctx.Capabilities.SupportsCompletionFences);
 
             // Round-robin the two policies so machine drift under the run lands on both equally.

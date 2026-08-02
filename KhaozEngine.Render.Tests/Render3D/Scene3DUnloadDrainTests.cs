@@ -102,16 +102,15 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         // The shipped policy on Metal and Vulkan: the batch is sealed behind an empty fenced submission and freed
-        // by polling that fence, so the frame boundary never stalls the CPU on the GPU.
-        [GpuFact]
+        // by polling that fence, so the frame boundary never stalls the CPU on the GPU. On a backend with no
+        // completion fences there is no such policy to measure, so this skips with the backend named rather than
+        // failing an assertion it can never satisfy (#423).
+        [GpuFact(RequiresCompletionFences = true)]
         public void RetiredMeshBuffers_OnAFencedDevice_AreFreedWithoutEverDraining()
         {
             var (gpu, spy, scene, tex, fb) = MakeScene();
             using (gpu) using (scene) using (tex) using (fb)
             {
-                Assert.True(spy.Capabilities.SupportsCompletionFences,
-                    "this leg is meaningless on a device without GPU-completion fences");
-
                 for (int i = 0; i < 8; i++) scene.UnloadMesh(scene.LoadMesh(Triangle()));
                 int drainsBefore = spy.WaitForIdleCalls;
                 int fencedBefore = spy.FencedSubmitCalls;

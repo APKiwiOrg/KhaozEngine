@@ -48,5 +48,30 @@ namespace KhaozEngine.Tests.Gpu
             Assert.NotNull(reason);
             Assert.Contains("KE_GPU_TESTS", reason);
         }
+
+        // The capability gate (#423): a device that cannot signal a completion fence skips the tests that measure
+        // the fence path, instead of failing an assertion no Direct3D11 run can ever satisfy.
+        [Fact]
+        public void A_device_without_completion_fences_skips_with_the_backend_named()
+        {
+            string? reason = GpuFactAttribute.CompletionFenceSkipReason(("Direct3D11", false));
+            Assert.NotNull(reason);
+            Assert.Contains("Direct3D11", reason);
+            Assert.Contains("SupportsCompletionFences", reason);
+        }
+
+        [Fact]
+        public void A_device_with_completion_fences_runs()
+        {
+            Assert.Null(GpuFactAttribute.CompletionFenceSkipReason(("Metal", true)));
+        }
+
+        [Fact]
+        public void No_device_at_all_runs_so_the_failure_stays_an_error()
+        {
+            // Strict mode's whole point: a leg whose device is broken must go red, never quiet. A capability
+            // requirement is about what a device CAN do and must not swallow a device that is not there.
+            Assert.Null(GpuFactAttribute.CompletionFenceSkipReason(null));
+        }
     }
 }

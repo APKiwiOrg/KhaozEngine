@@ -15,9 +15,11 @@ namespace KhaozEngine.Tests.Locomotion;
 // same asymmetry the Bepu-backed collide-and-slide already applies to props, extended to the analytic terrain
 // the overworld cliffs are actually made of.
 //
-// The comparison is against the FEET, not the current ground height, and that is the anti-tunnel property:
-// flying into a cliff face whose ground stands above your feet stays blocked, so the XZ can never be committed
-// under terrain and left waiting for a ground clamp to pop the capsule up the cliff.
+// The rise is measured from the LOWER of the feet and the ground under the current column, which is both the
+// anti-tunnel property (flying into a cliff face whose ground stands above your feet stays blocked, so the XZ can
+// never be committed under terrain and left waiting for a ground clamp to pop the capsule up the cliff) and the
+// close of the jump-climb exploit (#440): reading the rise from the feet ALONE let a jump pay for the ascent,
+// because at the apex the face's local ground sits level with the raised feet and the climb reads as free.
 public class DirectionAwareSlopeGateTests
 {
     const float Dt = 1f / 30f;
@@ -265,6 +267,104 @@ public class DirectionAwareSlopeGateTests
         Assert.True(s.Position.X > EdgeX + 5f, $"the arc was frozen over the canyon, x={s.Position.X:F3}");
         Assert.Equal(20f, s.HorizontalVelocity.Length(), 2);
         Assert.True(s.VerticalVelocity < 0f);
+    }
+
+    // ---- #440: airtime must never buy admission onto a too-steep face ----
+
+    // Walk east with the jump button HELD: the jump buffer re-fires it on every landing tick, so the character runs a
+    // continuous jump-hop cycle into whatever is in front of it - which is exactly how the exploit was played.
+    static MoveCommand EastJump(bool run = false) => new(new Vector2(1f, 0f), run, cameraYaw: 0f, jump: true);
+
+    // A jump's own apex above its launch height, discrete-integration slack included. Nothing in these fixtures may
+    // ever be higher than this above the base: exceeding it means the face itself gave the character altitude.
+    static float JumpApex(in MoveTuning t) => t.JumpSpeed * t.JumpSpeed / (2f * t.Gravity) + 0.05f;
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]     // the carried-velocity path takes the same gate, so the exploit closes on both
+    public void Repeated_jumping_into_a_steep_face_gains_no_altitude(bool airMomentum)
+    {
+        // THE PLAYTESTED EXPLOIT (#440), reproduced on a 78.7 deg sea cliff. Jumping raises the feet, and the gate used
+        // to measure its ascent from the feet alone: at the apex the face's local ground was level with them, the rise
+        // read as ~0, the sideways drift onto the face was admitted, the ground clamp seated the character on the face,
+        // and the next jump repeated - about a jump height of free climb per cycle, up a face no walk can enter.
+        MoveTuning t = Tuning with { AirMomentum = airMomentum };
+        Func<float, float, float> ground = RisingFacePastEdge;
+        var s = new MoveState { Position = new Vector3(EdgeX - 0.05f, t.CapsuleHalfHeight, 0f), Grounded = true };
+        float baseFeetY = s.Position.Y - t.CapsuleHalfHeight;
+        float apex = JumpApex(t);
+
+        // ~24 ticks per arc at 30 Hz (2 * 9.798 / 25 = 0.784 s), so 400 ticks is 16 full jump cycles.
+        int jumps = 0;
+        for (int i = 0; i < 400; i++)
+        {
+            s = CharacterMovement.Step(s, EastJump(), Dt, ground, t, RisingFaceNormalPastEdge);
+            if (s.VerticalVelocity == t.JumpSpeed) jumps++;   // the launch tick stamps the speed exactly
+            Assert.True(s.Position.X <= EdgeX + 1e-3f, $"tick {i} entered the face, x={s.Position.X:F5}");
+            Assert.True(s.Position.Y - t.CapsuleHalfHeight <= baseFeetY + apex,
+                $"tick {i} rose higher than one jump above the base, feetY={s.Position.Y - t.CapsuleHalfHeight:F5}");
+        }
+        Assert.True(jumps >= 10, $"the fixture never ran 10 jump cycles, jumps={jumps}");
+
+        // Release the button and let the last arc settle, so the final altitude is a landed one and not mid-flight.
+        for (int i = 0; i < 60; i++) s = CharacterMovement.Step(s, East(), Dt, ground, t, RisingFaceNormalPastEdge);
+        Assert.True(s.Grounded, "the character never settled");
+        Assert.InRange(s.Position.Y - t.CapsuleHalfHeight, baseFeetY - 1e-3f, baseFeetY + t.StepHeight);
+        Assert.True(s.Position.X <= EdgeX + 1e-3f, $"the run ended on the face, x={s.Position.X:F5}");
+    }
+
+    [Fact]
+    public void A_jump_off_a_clifftop_still_carries_out_over_the_face_and_lands_below()
+    {
+        // The descent half, at airtime: a destination column BELOW the current one is below BOTH terms of the new
+        // reference, so a clifftop jump reads its 10 m drop as the descent it is on every airborne tick and the arc
+        // carries out over the face exactly as before. Blocking this would turn every cliff into flypaper.
+        var t = Tuning;
+        const float Top = 10f;
+        Func<float, float, float> ground = (x, z) => x < EdgeX ? Top : 0f;
+        var s = new MoveState { Position = new Vector3(EdgeX - 0.5f, Top + t.CapsuleHalfHeight, 0f), Grounded = true };
+
+        bool clearedTheEdgeInFlight = false, descended = false;
+        for (int i = 0; i < 120; i++)
+        {
+            // Jump on the first tick only: one clean jump-off, then the fall is gravity's.
+            var cmd = new MoveCommand(new Vector2(1f, 0f), run: true, cameraYaw: 0f, jump: i == 0);
+            s = CharacterMovement.Step(s, cmd, Dt, ground, t, NormalSteepPastEdge);
+            if (!s.Grounded && s.Position.X > EdgeX) clearedTheEdgeInFlight = true;
+            if (s.Position.Y < Top) descended = true;
+        }
+
+        Assert.True(clearedTheEdgeInFlight, "the jump never carried past the cliff edge");
+        Assert.True(descended, "the character never fell past the clifftop");
+        Assert.True(s.Grounded, "the character never landed");
+        Assert.Equal(t.CapsuleHalfHeight, s.Position.Y, 3);      // seated on the low ground, not hung on the face
+        Assert.True(s.Position.X > EdgeX + 1f, $"the landing was not out past the face, x={s.Position.X:F3}");
+    }
+
+    [Fact]
+    public void Falling_alongside_a_steep_face_while_steering_into_it_never_seats_mid_face()
+    {
+        // The exploit's passive twin, and the reason the fix is not a jump special case: ANY airtime used to discount
+        // the face, so a character falling past one while holding "into" it drifted onto its footprint and was seated
+        // by the ground clamp partway up (from 20 m this landed ~14 m up a 5:1 face). The toe is the only altitude a
+        // fall beside this face may end at.
+        var t = Tuning;
+        Func<float, float, float> ground = RisingFacePastEdge;
+        var s = new MoveState
+        {
+            Position = new Vector3(EdgeX - 0.5f, t.CapsuleHalfHeight + 20f, 0f),
+            Grounded = false,
+            TimeSinceGrounded = 1f,
+        };
+
+        for (int i = 0; i < 180; i++)
+        {
+            s = CharacterMovement.Step(s, East(run: true), Dt, ground, t, RisingFaceNormalPastEdge);
+            Assert.True(s.Position.X <= EdgeX + 1e-3f, $"tick {i} drifted onto the face, x={s.Position.X:F5}");
+            if (s.Grounded)
+                Assert.Equal(t.CapsuleHalfHeight, s.Position.Y, 3);   // the toe: the only ground there is to land on
+        }
+        Assert.True(s.Grounded, "the fall never landed");
     }
 
     // ---- Regression guard: the step-up path is untouched ----

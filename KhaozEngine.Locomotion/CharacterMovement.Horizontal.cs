@@ -57,9 +57,10 @@ public static partial class CharacterMovement
     // (ResolveCameraRelative) or a world-space steering direction (ResolveWorldDir), so player and AI share this exact input/slope
     // section. Prop collision is resolved separately by the swept collide-and-slide block in StepCore. moveDir is a unit vector when
     // speedFraction > 0. The advance + gate itself is AdvanceSlopeGated (CharacterMovement.Momentum.cs), shared with the airborne
-    // momentum path, and it is DIRECTION-AWARE: a too-steep destination refuses the move only while its ground rises above feetY
-    // (the capsule centre minus the half-height) faster than the gate's own gradient does over this tick's travel, so walking off
-    // a cliff falls through to gravity while climbing one is refused at every speed and every tick rate.
+    // momentum path, and it is DIRECTION-AWARE: a too-steep destination refuses the move only while its ground rises above the LOWER
+    // of feetY (the capsule centre minus the half-height) and the ground under the current column, faster than the gate's own gradient
+    // does over this tick's travel. So walking off a cliff falls through to gravity, climbing one is refused at every speed and every
+    // tick rate, and no amount of vertical motion (a jump, a fall) discounts the ascent.
     // Returns the resolved speed alongside the position so StepCore can export it as MoveState.CommandedVelocity: it is reported
     // UNCONDITIONALLY, including on a slope-gate block, because the anomaly check needs the ask, not what survived. 0 when idle.
     private static (float x, float z, float speed) DesiredHorizontalCore(float x, float z, Vector2 moveDir,

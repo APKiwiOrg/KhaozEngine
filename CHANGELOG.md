@@ -5,6 +5,37 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.26.1
+
+### Jumping at a cliff no longer climbs it (#440)
+
+The direction-aware slope gate measures its ascent from the LOWER of the character's feet and the ground under the
+current column, so vertical motion can no longer buy admission onto a too-steep face. This hardens the 17.26.0 gate
+and closes a Ruinborne playtest exploit. Nothing else about the rule changes.
+
+`AdvanceSlopeGated` (`KhaozEngine.Locomotion`) still blocks a move iff the destination normal reads steep AND
+`rise > max(1 mm, travel * tan(MaxSlopeRadians))`. What changes is `rise`, which was
+`groundHeight(dest) - feetY` and is now `groundHeight(dest) - min(feetY, groundHeight(current))`.
+
+The feet alone were the wrong reference because a jump raises them. Near the apex a steep face's local ground sat
+level with the raised feet, the rise read as about zero, the sideways drift onto the face was admitted, the
+analytic ground clamp seated the character on the face, and the next jump repeated. A player reproduced it on
+Ruinborne's 78 degree sea cliff, gaining roughly a jump height per cycle up a face no walk can enter. It was never
+jump-specific either: any airtime discounted the face the same way, so a character merely falling past one while
+steering into it was seated partway up it. The floor of the two terms cannot be raised by leaving the ground,
+because a character in the air still measures against the ground it left.
+
+What is preserved, and pinned by tests. Grounded motion is unchanged, since the feet ARE the ground there and the
+minimum is a no-op. Genuine descents stay open at any airtime (a destination column below the current one is below
+both terms), so walk-offs, jump-offs, falling past a face and landing at a cliff toe are untouched. The gate only
+ever became more conservative, which is what makes the anti-tunnel property survive for free. And the arithmetic is
+still pure scalar in a fixed order over the same delegates on both heads, so prediction and reconciliation are
+unaffected: it costs one extra `groundHeight` sample, taken only inside the already-steep branch.
+
+One behaviour change off the exploit path: a character standing on a PROP above the terrain measures its rise from
+the terrain UNDER the prop rather than from the prop top, so stepping off a prop straight onto a steep face is now
+refused. That is the same climb by a slower elevator, and the analytic gate has no prop height to read in any case.
+
 ## 17.26.0
 
 ### The FFT ocean stops opening a command list inside the frame's

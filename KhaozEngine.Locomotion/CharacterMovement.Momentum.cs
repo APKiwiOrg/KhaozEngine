@@ -53,10 +53,11 @@ public static partial class CharacterMovement
         float targetSpeed = (run ? t.RunSpeed : t.WalkSpeed) * wade * s.SpeedScale * speedFraction;
         Vector2 v = ResolveAirborneVelocity(s.HorizontalVelocity, moveDir, targetSpeed, dt, t);
         // The slope gate still applies: a momentum flight into ground steeper than MaxSlopeRadians standing above the
-        // feet is blocked exactly as a commanded step into the same face is. Momentum changes where the velocity
-        // comes from, never what the world is willing to let it reach. An arc flying OUT over a canyon meets the same
-        // steep normal with its ground far below the feet and carries on, which is what stops a cliff edge from
-        // freezing a flight in mid-air.
+        // gate's rise reference (the LOWER of the feet and the ground beneath them) is blocked exactly as a commanded
+        // step into the same face is. Momentum changes where the velocity comes from, never what the world is willing
+        // to let it reach, and it buys no more admission onto a face than a jump does. An arc flying OUT over a canyon
+        // meets the same steep normal with its destination ground below both terms and carries on, which is what stops
+        // a cliff edge from freezing a flight in mid-air.
         (float x, float z) = AdvanceSlopeGated(s.Position.X, s.Position.Z, v, v != Vector2.Zero, dt, t, groundNormal,
             groundHeight, s.Position.Y - t.CapsuleHalfHeight);
         return (x, z, v);
@@ -156,11 +157,29 @@ public static partial class CharacterMovement
     /// apart, and an overworld cliff edge behaved as a wall. A descent or a level traverse now falls through, the
     /// support floor finds nothing walkable, and gravity does the rest - the same asymmetry the Bepu-backed
     /// collide-and-slide already applies to props (<c>CharacterMovement.Collision.cs</c>).</para>
-    /// <para>The comparison is against the FEET, not the ground the character is currently standing on, and that is
-    /// what keeps the gate anti-tunnel while airborne: flying into a cliff face whose ground stands above the feet is
-    /// still refused, so an XZ can never be committed under terrain and left for a later ground clamp to pop the
-    /// capsule up the cliff. Standing on a prop at the cliff top raises the feet with it, so stepping off still
-    /// reads as the descent it is.</para>
+    /// <para>THE RISE IS MEASURED FROM THE LOWER OF THE FEET AND THE GROUND UNDER THE CURRENT COLUMN, and that is what
+    /// stops vertical motion from buying an ascent. Reading it from the feet ALONE let a jump pay for the climb: a jump
+    /// raises the feet, so near the apex a steep face's local ground stands level with them, the rise reads about zero,
+    /// the sideways drift onto the face is admitted, the analytic ground clamp seats the character on the face, and the
+    /// next jump repeats - about a jump height of free ascent per cycle, up a face no walk can enter. That is the
+    /// playtested #440 exploit, and it is not a jump special case: any airtime discounted the face the same way, so a
+    /// character merely FALLING past one while steering into it was seated partway up it. The floor of the two terms
+    /// cannot be inflated by vertical motion, because a character that leaves the ground still measures against the
+    /// ground it left.</para>
+    /// <para>What that reference preserves. GROUNDED motion is untouched: the feet sit on the ground, so the minimum is
+    /// a no-op and every walking case reads exactly as it did. A genuine DESCENT still falls through at any airtime,
+    /// since a destination column below the current one is below both terms - walk-offs, jump-offs, falling past a
+    /// face, and landing at a cliff toe are unchanged. And the gate only ever became MORE conservative (the reference
+    /// can only move down, so the rise can only grow), which is what makes the ANTI-TUNNEL property survive for free:
+    /// flying into a cliff face whose ground stands above the feet is refused exactly as before, so an XZ can never be
+    /// committed under terrain and left for a later ground clamp to pop the capsule up the cliff.</para>
+    /// <para>The one behaviour that changes off the exploit path is a character standing on a PROP above the terrain:
+    /// its rise is now measured from the terrain under the prop rather than from the prop top, so stepping off a prop
+    /// straight onto a steep face is refused where it used to be admitted. That is the same climb by a slower elevator,
+    /// and the analytic gate has no prop height to read in any case - <c>groundHeight</c> is the terrain, and the prop
+    /// support the swept collide-and-slide resolves is not known here. It costs one extra <c>groundHeight</c> sample,
+    /// taken only inside the too-steep branch, so a walkable tick still pays exactly the delegate calls it always
+    /// did.</para>
     /// <para>THE ASCENT ALLOWANCE IS A GRADIENT, NOT A HEIGHT, and that is what makes the gate scale-free. The rise is
     /// measured against the horizontal travel this tick actually intended: the move is refused when
     /// <c>rise &gt; max(SlopeAscentNoise, travel * tan(MaxSlopeRadians))</c>, which asks whether the tick climbs faster
@@ -185,9 +204,9 @@ public static partial class CharacterMovement
     /// <para><c>active</c> false is a tick with nothing to advance, and it skips the gate entirely rather than
     /// evaluating the delegate at the unchanged position. It is passed in rather than derived from the velocity so an
     /// idle tick and a rooted-at-zero-speed tick keep their existing, and different, delegate-call behaviour: the
-    /// rooted one still probes the normal at the position it did not move to, exactly as it did before. The height is
-    /// sampled only when the normal already read steep, so a walkable tick costs exactly the delegate calls it always
-    /// did, and both heads short-circuit identically.</para>
+    /// rooted one still probes the normal at the position it did not move to, exactly as it did before. Both heights
+    /// are sampled only when the normal already read steep, so a walkable tick costs exactly the delegate calls it
+    /// always did, and both heads short-circuit identically.</para>
     /// <para><c>feetY</c> is the world Y of the character's FEET this tick: the capsule centre minus
     /// <see cref="MoveTuning.CapsuleHalfHeight"/>, since <see cref="MoveState.Position"/> is the capsule CENTRE.</para></summary>
     private static (float x, float z) AdvanceSlopeGated(float x, float z, Vector2 velocity, bool active, float dt,
@@ -202,10 +221,11 @@ public static partial class CharacterMovement
             float ny = Math.Clamp(groundNormal(nx, nz).Y, 0f, 1f);
             if (MathF.Acos(ny) > tuning.MaxSlopeRadians)
             {
-                // Pure scalar arithmetic in a fixed order, evaluated in the same sequence on both heads. The rise is
-                // read first because a descent or a level traverse (the common steep-destination case, a cliff edge)
-                // settles it without the travel or the tangent being touched at all.
-                float rise = groundHeight(nx, nz) - feetY;
+                // Pure scalar arithmetic in a fixed order, evaluated in the same sequence on both heads (destination
+                // sample first, current column second). The rise is read first because a descent or a level traverse
+                // (the common steep-destination case, a cliff edge) settles it without the travel or the tangent
+                // being touched at all.
+                float rise = groundHeight(nx, nz) - MathF.Min(feetY, groundHeight(x, z));
                 if (rise > SlopeAscentNoise)
                 {
                     float travel = MathF.Sqrt(velocity.X * velocity.X + velocity.Y * velocity.Y) * dt;

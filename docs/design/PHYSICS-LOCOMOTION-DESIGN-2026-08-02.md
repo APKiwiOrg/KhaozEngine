@@ -99,6 +99,16 @@ destination ground normal exceeds `MaxSlopeRadians`, regardless of direction. Ne
 - Applies identically to the grounded path (`DesiredHorizontalCore`) and the airborne-momentum path.
 - Pure scalar math, fixed operation order, same delegates on both heads: prediction-safe.
 
+**Addendum, 17.26.1** ([#440](https://github.com/APKiwiOrg/KhaozEngine/issues/440)). The feet turned out to be
+the wrong reference on their own, because vertical motion inflates them. A Ruinborne playtest climbed a 78
+degree sea cliff by jumping at it repeatedly: near the apex the face's local ground sits level with the raised
+feet, so the rise reads about zero, the drift onto the face is admitted, the ground clamp seats the character
+on the face, and the next jump repeats. Nor was it jump-specific, since any airtime discounted the face the
+same way and seated a character merely FALLING past one while steering into it. The rise reference is now the
+LOWER of the feet and the ground under the current column, which airtime cannot raise, and which leaves
+grounded motion, genuine descents, and the anti-tunnel property exactly as specified above (the gate only ever
+became more conservative). The rest of the rule, the gradient allowance included, is unchanged.
+
 ### 2. Landing-impact seam (unblocks Ruinborne#292)
 
 - `MoveState.LandingImpactSpeed`: float, meters per second, set to the downward speed on exactly the

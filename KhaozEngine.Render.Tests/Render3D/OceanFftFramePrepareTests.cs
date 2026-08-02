@@ -47,6 +47,25 @@ namespace KhaozEngine.Tests.Render3D
             device.Submit(frameList);
         }
 
+        // The harness first. Every assertion below is "the peak never reached 2", which a tracker that counted
+        // nothing would also satisfy, so prove it counts: this is the shape the ocean prime had before #423, and
+        // the tracker must see it.
+        [Fact]
+        public void The_tracker_sees_a_nested_begin_when_there_is_one()
+        {
+            using var device = new OpenListTrackingGpuDevice();
+            using IGpuCommandList outer = device.Factory.CreateCommandList();
+            using IGpuCommandList inner = device.Factory.CreateCommandList();
+
+            outer.Begin();
+            inner.Begin();      // what PrimeRowPass used to do from inside the water pass
+            inner.End();
+            outer.End();
+
+            Assert.Equal(2, device.PeakOpenLists);
+            Assert.Equal(0, device.OpenLists);
+        }
+
         [Fact]
         public void No_second_command_list_is_opened_while_the_frame_list_is_recording()
         {

@@ -116,10 +116,12 @@ public sealed class PlayerMovementSystem : ISystem
         {
             if (world.Has<Ghost>(e) || world.Has<Migrating>(e))
             {
-                // Owner is the only simulator. Zero the commanded velocity on the way out: this entity did not step, so
-                // leaving last tick's velocity behind would have the post-tick anomaly check measure a motionless entity
-                // against a full stride of intended travel and read it as a denial.
+                // Owner is the only simulator. Zero the per-tick step OUTPUTS on the way out: this entity did not step,
+                // so leaving last tick's velocity behind would have the post-tick anomaly check measure a motionless
+                // entity against a full stride of intended travel and read it as a denial, and leaving last tick's
+                // landing impact behind would read as a second landing on a tick where nothing moved at all.
                 ms.CommandedVelocity = Vector2.Zero;
+                ms.LandingImpactSpeed = 0f;
                 return;
             }
 
@@ -176,6 +178,10 @@ public sealed class PlayerMovementSystem : ISystem
             // Persist the step's commanded velocity so ShardedWorldServer's post-tick anomaly check can read it back
             // (rides no wire, and the single-World head reads the step output directly, never this).
             ms.CommandedVelocity = state.CommandedVelocity;
+            // Persist the step's landing impact for the same reason, and note it is NOT carried back IN above: it is a
+            // per-tick EVENT, so a fresh MoveState reading 0 is exactly right and re-seeding it would double-report the
+            // landing on the following tick. Written unconditionally, so a non-landing tick clears the previous one.
+            ms.LandingImpactSpeed = state.LandingImpactSpeed;
             // Write the carried arc back OUT so it both survives to the next tick and replicates. Both halves matter
             // here: without the write-back the sharded head re-reads its spawn value every tick and no player on a
             // sharded server ever carries momentum at all, and without it reaching the wire the client's reconcile

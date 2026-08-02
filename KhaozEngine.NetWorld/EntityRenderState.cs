@@ -43,6 +43,11 @@ public readonly struct EntityRenderState
     }
 
     public EntityRenderState(NetId id, Vector3 position, bool isLocal, string? displayName, bool grounded, float verticalVelocity, bool swimming, float climbRate, float stepCumulativeY)
+        : this(id, position, isLocal, displayName, grounded, verticalVelocity, swimming, climbRate, stepCumulativeY, 0f)
+    {
+    }
+
+    public EntityRenderState(NetId id, Vector3 position, bool isLocal, string? displayName, bool grounded, float verticalVelocity, bool swimming, float climbRate, float stepCumulativeY, float landingImpactSpeed)
     {
         Id = id;
         Position = position;
@@ -53,6 +58,7 @@ public readonly struct EntityRenderState
         Swimming = swimming;
         ClimbRate = climbRate;
         StepCumulativeY = stepCumulativeY;
+        LandingImpactSpeed = landingImpactSpeed;
     }
 
     /// <summary>The entity's network identity (stable server/client).</summary>
@@ -97,4 +103,17 @@ public readonly struct EntityRenderState
     /// wire - a remote's single step is softened by its existing 2-tick position interpolation), so a remote accumulates no
     /// mesh offset. 0 on a position-only sample too.</summary>
     public float StepCumulativeY { get; }
+
+    /// <summary>The LOCAL player's PREDICTED landing impact this frame (m/s, non-negative, from
+    /// <c>MoveState.LandingImpactSpeed</c>): the downward speed the predicted landing erased on the tick it landed, and 0
+    /// on every other tick. It lets client presentation react on the PREDICTED landing tick - a land effect, a camera
+    /// dip, an impact sound scaled by severity - instead of a round trip later. It holds for the frames of that one
+    /// predicted tick and returns to 0 on the next one, so a consumer that must fire exactly once should edge-detect it
+    /// rather than sample it. Authoritative damage stays server-side (<c>WorldServer.OnAfterTick</c> /
+    /// <c>ShardedWorldServer.OnAfterTick</c>): this is presentation, and it is predicted, so a correction can retract it.
+    /// <para>Always 0 for REMOTES: the latch is deliberately absent from the movement codec, so nothing a remote receives
+    /// carries it. A consumer that wants remote landing effects derives them from the replicated <see cref="Grounded"/>
+    /// transition (false -&gt; true) it already receives, with <see cref="VerticalVelocity"/> for the severity.</para>
+    /// 0 on a position-only sample too.</summary>
+    public float LandingImpactSpeed { get; }
 }

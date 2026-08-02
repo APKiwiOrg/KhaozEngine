@@ -163,4 +163,30 @@ public struct MoveState
     /// the local owner reads it, at the client-prediction Predict boundary (exactly-once per real tick, never re-counted on
     /// a reconciliation replay). <c>default</c> 0 is byte-identical to a pre-feature state.</summary>
     public float StepDeltaY;
+
+    /// <summary>SIM-LOCAL landing impact (NOT replicated): the DOWNWARD speed in m/s, NON-NEGATIVE, that this tick's
+    /// landing erased - captured BEFORE the ground contact zeroes <see cref="VerticalVelocity"/>. It is set on exactly the
+    /// tick the character transitions AIRBORNE to GROUNDED and is 0 on every other tick, including every tick that stays
+    /// grounded and every tick that stays airborne. It is the authoritative fall-damage input: the speed itself is gone by
+    /// the time anything downstream can read the state, so without this export a game has to finite-difference a position
+    /// across the very tick the ground clamp moved it, which is exactly the reconstruction
+    /// <see cref="CommandedVelocity"/> and <see cref="StepDeltaY"/> exist to retire. Event-as-state, following the
+    /// <see cref="StepDeltaY"/> precedent of exporting the fact the sim already computed.
+    /// <para>Inherently CAPPED BY <see cref="MoveTuning.MaxFallSpeed"/>, which is terminal velocity: the vertical
+    /// integrate clamps to it before the landing reads it, so the reported value is <c>min(actual fall speed,
+    /// MaxFallSpeed)</c>. That is physical, not a data loss - a longer fall genuinely does not arrive faster.</para>
+    /// <para>SWIMMING NEVER FABRICATES ONE. A surface-swim tick returns <see cref="Grounded"/> <c>false</c>
+    /// unconditionally (gravity and ground-snap are suspended, see <c>CharacterMovement.SwimStep</c>), so no swim tick is
+    /// an airborne -&gt; grounded transition and the tick a character falls INTO water reports nothing. The jump hop-out
+    /// leaves the water rising, so it is not a landing either. Only the hysteresis EXIT tick runs the land path, and if it
+    /// grounds (wading out into shallows) it reports the honest speed the buoyancy settle plus one tick of gravity left,
+    /// which is a fraction of a metre per second - never the entry fall, because the settle already bled it.</para>
+    /// <para>A landing that a BUFFERED JUMP re-launches on the same tick still reports its impact, so the final
+    /// <see cref="Grounded"/> may be <c>false</c> while this is nonzero. The character did absorb the impact, and
+    /// suppressing it would let a bunny-hop cancel fall damage.</para>
+    /// It is zeroed every tick (<c>default</c> is 0) and set only on a landing tick, so it is a per-tick EVENT, not
+    /// carried state, and it rides NO wire (mirrored server-side onto <c>MovementState.LandingImpactSpeed</c> as a
+    /// sim-local field). A remote that wants landing VFX derives the transition from the replicated <c>Grounded</c> and
+    /// <see cref="VerticalVelocity"/> it already receives. <c>default</c> 0 is byte-identical to a pre-feature state.</summary>
+    public float LandingImpactSpeed;
 }

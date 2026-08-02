@@ -469,6 +469,18 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
     /// clients in the same tick. No-op until subscribed, so existing behaviour is unchanged.</summary>
     public event Action<float>? OnBeforeTick;
 
+    /// <summary>Raised at the END of every <see cref="Tick"/>, with the tick <c>dt</c>: after every cell's authoritative
+    /// movement step, after handoff and ghosting, and after each client has been served, on the SAME tick. This is the
+    /// mirror of <see cref="OnBeforeTick"/> and the place to read POST-STEP state - most usefully the one-tick landing
+    /// impact (<see cref="TryGetPlayerState"/> then <c>state.Move.LandingImpactSpeed</c>), which the next tick
+    /// overwrites, so a game applying fall damage from <see cref="OnBeforeTick"/> would always be reading the previous
+    /// tick's world. Because it fires after handoff, a player read here is read from whichever cell now owns it. A write
+    /// made here reaches clients on the NEXT tick's snapshot (this tick's has already gone out), which is the deliberate
+    /// trade: the hook exists to OBSERVE a settled tick, while <see cref="OnBeforeTick"/> remains the place to author
+    /// state that must ship in the same frame. No-op until subscribed. The single-cell equivalent is
+    /// <see cref="WorldServer.OnAfterTick"/>.</summary>
+    public event Action<float>? OnAfterTick;
+
     /// <summary>Steps one authoritative server frame across every cell, then serves each client its home-cell AoI.</summary>
     public void Tick(float dt)
     {
@@ -552,6 +564,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         drain.Advance(dt);
         selfRescueClock += dt;   // advance the self-rescue cooldown clock
         admin.Publish(BuildOnlineSnapshot());
+        OnAfterTick?.Invoke(dt);   // consumer post-step observers (landing impacts, …) run after movement + serving
     }
 
     /// <inheritdoc/>

@@ -253,7 +253,7 @@ public static partial class CharacterMovement
         float jumpBuffer = jump ? t.JumpBuffer : MathF.Max(0f, s.JumpBufferRemaining - dt);
         float vVel = s.VerticalVelocity - t.Gravity * dt;
         if (vVel < -t.MaxFallSpeed) vVel = -t.MaxFallSpeed;
-        float desiredY = s.Position.Y + vVel * dt;
+        float fallSpeed = vVel, desiredY = s.Position.Y + vVel * dt;   // fallSpeed: this tick's vertical BEFORE a landing zeroes it, the impact latch's source
 
         // 3. Candidate position: SWEEP from the current pose to the target (collide-and-slide), then settle.
         // The swept move can never cross a face (substepped to a fraction of the capsule radius), so the capsule
@@ -744,7 +744,7 @@ public static partial class CharacterMovement
             if (stepDownSeated) stepDeltaY = stepDownDeltaY;
             else if (stepUpRose && grounded && vVel <= 0f) stepDeltaY = MathF.Max(0f, pos.Y - s.Position.Y);
         }
-
+        float landingImpact = LandingImpact(s.Grounded, grounded, fallSpeed);   // latched BEFORE step 5: a buffered jump on the landing tick must not cancel the impact
         // 5. Jump after contact (UNCHANGED): grounded or within coyote-time, consume both windows.
         if (jumpRequested && (grounded || tSinceGround <= t.CoyoteTime))
         {
@@ -753,7 +753,6 @@ public static partial class CharacterMovement
             tSinceGround = t.CoyoteTime + dt;
             jumpBuffer = 0f;
         }
-
         var result = new MoveState
         {
             Position = pos,
@@ -764,6 +763,7 @@ public static partial class CharacterMovement
             ClimbRate = climbRate,
             ClimbRateEwma = climbEwma,
             StepDeltaY = stepDeltaY,
+            LandingImpactSpeed = landingImpact, // a per-tick EVENT: the downward speed this tick's landing erased, else 0
             SpeedScale = state.SpeedScale,   // a movement INPUT: carried through unchanged, never derived by the step
             CommandedVelocity = commandedVel, // a per-tick OUTPUT: what the step asked for, before anything denied it
             // Carried inertia, stamped on EVERY tick (grounded included) and consumed only when AirMomentum is on:

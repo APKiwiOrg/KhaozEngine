@@ -128,6 +128,31 @@ public struct MovementState : IComponent
     /// velocity behind for the anomaly check to measure a motionless entity against.</summary>
     public Vector2 CommandedVelocity;
 
+    /// <summary>SIM-LOCAL landing-impact storage (NOT replicated, NOT migrated): the per-entity slot for
+    /// <see cref="KhaozEngine.Locomotion.MoveState.LandingImpactSpeed"/>, the downward speed (m/s, non-negative) the
+    /// step's ground contact erased on the ONE tick the entity landed, and 0 on every other tick. It exists for the same
+    /// reason <see cref="CommandedVelocity"/> does: the sharded per-cell step (<see cref="PlayerMovementSystem"/>)
+    /// reconstructs a fresh <see cref="KhaozEngine.Locomotion.MoveState"/> from this component every tick, so a step
+    /// OUTPUT has nowhere else to survive to the end of <see cref="ShardedWorldServer.Tick"/> - which is where a game
+    /// reads it, per slot, from <see cref="ShardedWorldServer.OnAfterTick"/> (via
+    /// <see cref="ShardedWorldServer.TryGetPlayerState"/>, which rebuilds through
+    /// <see cref="PlayerMoveState.From(System.Numerics.Vector3, in MovementState)"/>). The single-<see cref="World"/>
+    /// <see cref="WorldServer"/> never reads this field: it holds the whole <see cref="PlayerMoveState"/> per slot and
+    /// reads the step's own output directly.
+    /// <para>DELIBERATELY absent from the movement codec (see <see cref="MoveProtocol.CreateRegistry"/>): the server
+    /// computes fall damage from its own authoritative step, and a remote client that wants a landing effect already
+    /// receives <see cref="Grounded"/> and <see cref="VerticalVelocity"/> and can derive the transition, so replicating
+    /// it would widen the built-in wire for nothing. It is therefore always 0 on a client. It is likewise NOT part of the
+    /// <see cref="KhaozEngine.Replication.ReplicationChannels.Migrate"/> capture, so a landing that COINCIDES with a cell
+    /// handoff drops the one-tick signal (the entity is reconstructed via the codec, not copied wholesale). That is
+    /// accepted: it is a single tick, at a cell border, and the alternative is a wire field every client pays for on
+    /// every snapshot.</para>
+    /// <see cref="PlayerMovementSystem"/> writes it every tick and explicitly zeroes it for an entity its cell sim
+    /// skipped (a <see cref="KhaozEngine.Sharding.Ghost"/> or a <see cref="KhaozEngine.Sharding.Migrating"/> entity), so
+    /// a skipped tick cannot leave a stale impact behind to read as a landing that never happened. <c>default</c> is 0
+    /// (byte-identical to a pre-feature state).</summary>
+    public float LandingImpactSpeed;
+
     /// <summary>Fixed wire scale for <see cref="ClimbRateQ"/> (m/s per quantum unit): 0.05, giving +/-6.35 m/s over an
     /// <see cref="sbyte"/> at 0.05 m/s resolution. Consumer-agnostic (independent of any consumer's
     /// <see cref="KhaozEngine.Locomotion.MoveTuning.MaxStepClimbSpeed"/>), so the codec round-trips the same for every game.</summary>

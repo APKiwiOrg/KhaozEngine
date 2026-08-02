@@ -535,7 +535,7 @@ public sealed partial class WorldClient : IDisposable
             float verticalVelocity;
             bool swimming;
             float climbRate;
-            float stepCumulativeY = 0f;
+            float stepCumulativeY = 0f, landingImpact = 0f;   // local-only signals: a remote receives neither (see EntityRenderState)
             if (isLocal)
             {
                 // The local avatar's exact movement state is the predicted/reconciled state, converted to ABSOLUTE
@@ -545,7 +545,7 @@ public sealed partial class WorldClient : IDisposable
                 grounded = rs.Grounded;
                 verticalVelocity = rs.VerticalVelocity;
                 swimming = rs.Swimming;
-                climbRate = rs.Move.ClimbRate;   // local: the exact predicted step-climb rate (un-quantized)
+                climbRate = rs.Move.ClimbRate; landingImpact = rs.Move.LandingImpactSpeed;   // local: the exact predicted climb rate + landing impact (un-quantized)
                 // The local step-smoothing accumulator (rides no wire): a mesh smoother diffs it to ease isolated steps
                 // the continuous glide renders raw. Read from the predictor (not the rendered state, whose Move.StepDeltaY
                 // is a per-tick event, not the running sum). Remotes leave it 0 (their singles ride position interpolation).
@@ -569,7 +569,7 @@ public sealed partial class WorldClient : IDisposable
                 climbRate = hasMs ? MovementState.DecodeClimbRate(ms.ClimbRateQ) : 0f;
             }
             string? name = world.TryGet(kv.Value, out PlayerIdentity identity) ? identity.DisplayName : null;
-            list.Add(new EntityRenderState(new NetId(kv.Key), pos, isLocal, name, grounded, verticalVelocity, swimming, climbRate, stepCumulativeY));
+            list.Add(new EntityRenderState(new NetId(kv.Key), pos, isLocal, name, grounded, verticalVelocity, swimming, climbRate, stepCumulativeY, landingImpact));
         }
         return list;
     }

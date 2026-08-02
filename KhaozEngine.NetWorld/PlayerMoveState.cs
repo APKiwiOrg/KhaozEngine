@@ -171,6 +171,12 @@ public struct PlayerMoveState : IPredictedState<PlayerMoveState>
             // check measures against the velocity the cell sim actually asked for. Rides no wire, so on a client (and
             // across a shard handoff) this is zero, which reads as no denial rather than a spurious one.
             CommandedVelocity = movement.CommandedVelocity,
+            // Carry the sharded head's sim-local landing impact back out, for the same reason one line up: this is the
+            // read path ShardedWorldServer.TryGetPlayerState rebuilds through, so a game reading the landing per slot
+            // from OnAfterTick sees the cell sim's own step output. Rides no wire, so on a client (and across a shard
+            // handoff, where a coinciding landing loses its one-tick signal) this is zero - which reads as "did not land
+            // this tick", the safe direction: a missed landing costs a fall-damage event, a fabricated one costs health.
+            LandingImpactSpeed = movement.LandingImpactSpeed,
         },
         TeleportEpoch = movement.TeleportEpoch,
     };

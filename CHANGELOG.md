@@ -46,15 +46,21 @@ scene is recorded into.
   clock with a zero delta and hand the frame a surface one frame behind, silently. Safe idempotency means a host
   that prepares by hand and then hands the scene to `Render3DSurface.Render` does not prepare twice.
 - **Queueing a draw AFTER preparing is the loud failure**, and stays one. The water pass throws when the plane
-  queue moved between prepare and draw.
+  queue moved between prepare and draw. That now includes the case where the prepare saw an EMPTY queue: the
+  demand latch is cleared on that path rather than left at the last frame's value, so a late plane still lands on
+  the guard that names the queue instead of falling through to the producer's less specific "never prepared".
 - **Skipping the call entirely throws too**, from the water pass, with a message that names the fix rather than
   rendering a stale ocean.
 - **A frame that queues no water pays nothing.**
+- **A scene records ONCE per `Begin`.** Recording consumes the prepared frame, so a host wanting the same scene
+  recorded twice (two viewports, a split screen) calls `Begin` again and re-queues rather than rendering twice off
+  one preparation. This is not new behaviour, but it was not written down before.
 
 Every host the engine ships calls it: `Render3DSurface.Render` (so `GameApp3D` and any surface a consumer builds
 directly are both covered, which the previous arrangement did not manage), `Render3DPreview.Capture` and
-`Render3DSnapshot.Capture`. Only a host driving `Scene3D.RenderInternal` on a command list of its own has to call
-it itself. No game needs a change.
+`Render3DSnapshot.Capture`. Those are the only ways a scene is rendered, since the record entry point is internal,
+so no consumer-reachable path is left having to call it and a by-hand call is an early no-op. No game needs a
+change.
 
 A prepared frame that is then never recorded now invalidates the ocean clock's pending rows. `OceanFrameClock`
 decides and publishes "rows exist" in one step, but the dispatch that produces them lives in Record, so a host
@@ -78,7 +84,7 @@ can DO: a probe that cannot create a device at all reports nothing and the test 
 broken device can never go quiet. The pure decision is factored out and unit-tested headlessly for all three
 cases, since the skip path itself cannot be observed on a Mac.
 
-#### The retire settle loop drains each poll and is bounded by wall clock (#426)
+#### The retire settle loop drains each poll and is bounded by wall clock (#423)
 
 The settle loop submitted a full scene render per iteration and blocked on nothing, so on a device whose frame
 costs roughly ten times what the loop iteration does (lavapipe) the queue grew monotonically and 300 iterations
@@ -91,6 +97,11 @@ because an iteration is not a unit of time on an unknown device. A fence that ne
 long it runs, so a genuine leak still fails, now with the count and the elapsed time in the message. The drain,
 fenced-submit and peak-pending counters are all sampled before the loop, so the added waits cannot contaminate the
 zero-drain assertions that are the point of the test.
+
+Separately, `RetireBarrier`'s command-list comment claimed a Veldrid submission model the immediate-context fork
+invalidated, and is corrected (#426). The barrier's design is unchanged and was always right: a submit-signalled
+fence takes its guarantee from submission ORDER, not from a backend handing out a fresh command buffer per
+`Begin`.
 
 #### Veldrid fork 4.9.102: dynamic offsets above the fixed capacity (#422)
 

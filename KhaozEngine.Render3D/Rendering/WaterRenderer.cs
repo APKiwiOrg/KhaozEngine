@@ -521,7 +521,15 @@ namespace KhaozEngine.Render3D.Rendering
         /// </summary>
         public void PrepareFrame(in FramePrepare frame)
         {
-            if (frame.WaterPlanes.Length == 0) return;
+            if (frame.WaterPlanes.Length == 0)
+            {
+                // Cleared rather than left at the previous frame's value. A host that prepares an empty frame and
+                // then queues an ocean plane would otherwise carry a stale true into Draw, satisfy the demand
+                // compare, and fail on the producer's less specific "never prepared" error instead of the guard
+                // that names what actually went wrong.
+                _preparedWantOcean = false;
+                return;
+            }
             _preparedWantOcean = AnyPlaneWantsOcean(frame.WaterPlanes, frame.Water);
             _ocean.Prepare(frame.Water, frame.TimeSeconds, _preparedWantOcean,
                 wantMips: frame.Water.GridMode == WaterGridMode.Clipmap);

@@ -39,6 +39,11 @@ namespace KhaozEngine.Render3D
         /// <see cref="Begin"/>, so it is the FRAME that is prepared once, not the scene. Queueing a draw after
         /// preparing is the misuse this cannot absorb, and the water pass throws for it.
         /// </para>
+        /// <para>
+        /// The other side of that latch: recording CONSUMES the prepared frame, so a scene records once per
+        /// <see cref="Begin"/>. A host that wants the same scene recorded twice (two viewports, a split screen)
+        /// begins again and re-queues, rather than rendering a second time off one preparation.
+        /// </para>
         /// </summary>
         public void PrepareFrame()
         {

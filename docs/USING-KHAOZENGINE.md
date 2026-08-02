@@ -1954,8 +1954,10 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
 - **`PrepareFrame()`, the frame's pre-recording phase.** Runs once per frame, after every `Draw*`
   call for that frame and **before the command list the scene renders into is opened**. Every host the engine
   ships calls it for you - `Render3DSurface.Render` (so `GameApp3D` and any surface you build yourself are both
-  covered), `Render3DPreview.Capture`, `Render3DSnapshot.Capture` - so a game needs no change. Only a host driving
-  `Scene3D.RenderInternal` on a command list of its own has to call it itself:
+  covered), `Render3DPreview.Capture`, `Render3DSnapshot.Capture` - so a game needs no change. Every way of
+  rendering a `Scene3D` goes through one of those (the record entry point itself is internal), so no
+  consumer-reachable path is left having to call it, and calling it by hand is only ever an early no-op. The order
+  it enforces, which is what those hosts do internally, is:
 
 ```csharp
 scene.Begin();
@@ -1975,6 +1977,11 @@ cl.Begin();
   stale ocean. Calling it twice for one `Begin` is harmless: the second call is a no-op, so a host that prepares by
   hand and then hands the scene to `Render3DSurface.Render` does not prepare the frame twice. Queueing a draw AFTER
   preparing is the one thing that is not harmless, and the water pass throws for it.
+
+  **A `Scene3D` records ONCE per `Begin`.** Recording consumes the prepared frame, so a host that wants the same
+  scene recorded twice (two viewports, a split screen, a preview beside the world) calls `Begin` again and re-queues
+  the draws for the second recording. Rendering twice off one `Begin` throws from the water pass, because the second
+  `PrepareFrame` sees a frame that is already prepared and no-ops rather than preparing again.
 
 - **Mip policy (`TextureMipPolicy`).** A full chain is right for a tiled albedo and wrong for an image whose
   regions are independent, because every level averages content that should never mix. Both `LoadTexture` overloads

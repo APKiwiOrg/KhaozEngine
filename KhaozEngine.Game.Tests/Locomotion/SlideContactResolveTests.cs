@@ -16,8 +16,9 @@ namespace KhaozEngine.Tests.Locomotion;
 //   - CONCAVE-CREASE SOFT-LOCK. A character in a V-gully reads a steep column, so it never gets support, and
 //     the fall line of either wall points straight into the other, so the wall slide removes the whole
 //     horizontal every tick. Nothing moved, nothing grounded, and a held jump could never fire: measured
-//     0 grounded ticks in 400. A capsule wedged between opposing faces is PHYSICALLY SUPPORTED, so the resolve
-//     now says so on the ticks the crease actually arrests a fall.
+//     0 grounded ticks in 400. A capsule whose descent the world is SWALLOWING is physically supported, so the
+//     resolve now says so on the ticks it is. (The crease is that rule's motivating case, not its condition -
+//     see SlideWedged for the arming test itself and for the harmless open-face transient it also admits.)
 //   - CONTOUR MOMENTUM. The resolve kept only the fall-line component of the carried velocity, so a fast run
 //     ACROSS a face (perpendicular to its fall line, needing no drop at all to follow) was deleted on the
 //     contact tick. Only the INTO-SURFACE component may die.
@@ -101,6 +102,13 @@ public class SlideContactResolveTests
         Assert.True(firstLatch > 5f, $"the arrival was not latched as a real landing. {measured}");
         Assert.True(loudestAfterFirst < 0.5f * firstLatch,
             $"a repeat pulse latched a full fall rather than the gap's worth of gravity. {measured}");
+        // And an ABSOLUTE pin beside the relative one, because the relative bound only says the pulses are quieter
+        // than the arrival - which stays true if BOTH grow, and the consumer claim being made here is not relative.
+        // What a game needs to know is that no pulse ever reaches a speed it would take fall damage at. Measured at
+        // the shipped tuning, over 400 ticks and over 4000: 4.01 m/s, the few ticks of gravity between pulses. 6 m/s
+        // covers it with margin and is a fall of under 2 m, far below any sane damage threshold.
+        Assert.True(loudestAfterFirst < 6f,
+            $"a repeat pulse latched a speed a consumer could plausibly take fall damage at. {measured}");
     }
 
     [Fact]
@@ -195,6 +203,141 @@ public class SlideContactResolveTests
             $"the into-surface component survived the contact: x carry {one.HorizontalVelocity.X:F3} m/s of 20");
         Assert.True(one.Position.Y - t.CapsuleHalfHeight >= RisingFace(one.Position.X, one.Position.Z) - 1e-3f,
             $"the capsule was driven under the face, feetY={one.Position.Y - t.CapsuleHalfHeight:F5}");
+    }
+
+    // ---- The round-two blocker: a held steer must not erode the carry through the collision clip ----
+
+    // The contour axis on RisingFace is world Z (the face's outward horizontal is due west, so the level
+    // direction across it is Z). A camera-relative (0, 1) at yaw 0 is world -Z, so against a carry running +Z it
+    // is the steer whose contour component OPPOSES the carried one - which is the case that eroded the carry.
+    static MoveCommand AgainstTheContour(bool run = false)
+        => new(new Vector2(0f, 1f), run, cameraYaw: 0f, jump: false);
+
+    static MoveState Slide(MoveState seed, MoveCommand cmd, int ticks, in MoveTuning t)
+    {
+        MoveState s = seed;
+        for (int i = 0; i < ticks; i++) s = CharacterMovement.Step(s, cmd, Dt, RisingFace, t, RisingFaceNormals);
+        return s;
+    }
+
+    [Fact]
+    public void A_held_contour_steer_leaves_the_carry_exactly_where_idle_input_leaves_it()
+    {
+        // THE BLOCKER. A slide tick ADVANCES by the commanded velocity (the carry PLUS this tick's contour
+        // steer), but the carry was clipped against the carry ALONE. So ClipToAchieved measured a displacement
+        // the steer had helped produce against a vector that did not contain the steer, read the difference as a
+        // collision denial, and rescaled the WHOLE carry - fall line included - by it. Measured on this fixture
+        // before the fix: the 14 m/s contour carry fell to 8.001 m/s on the first tick and to 0.000 by the tenth,
+        // while ten ticks of idle input kept all 14. That is the documented rule inverted. Input has no fall-line
+        // authority and does not accumulate into the contour, which means it adds nothing to the carry AND takes
+        // nothing from it: the carry may only ever be shed by GEOMETRY.
+        //
+        // Nothing here is denied by geometry (the face is planar and the contour needs no drop), so the two runs
+        // must agree exactly, not approximately. The tolerance is float noise only.
+        var t = Tuning;
+        const float StartX = EdgeX + 2f;
+        var seed = new MoveState
+        {
+            Position = new Vector3(StartX, RisingFace(StartX, 0f) + t.CapsuleHalfHeight, 0f),
+            Grounded = false,
+            TimeSinceGrounded = 1f,
+            HorizontalVelocity = new Vector2(0f, 14f),
+        };
+
+        foreach (int ticks in new[] { 1, 10 })
+        {
+            Vector2 idle = Slide(seed, MoveCommand.Idle, ticks, t).HorizontalVelocity;
+            Vector2 steered = Slide(seed, AgainstTheContour(), ticks, t).HorizontalVelocity;
+            string measured = $"at tick {ticks}: steered carry ({steered.X:F4}, {steered.Y:F4}) against an idle " +
+                              $"({idle.X:F4}, {idle.Y:F4})";
+            Assert.True(MathF.Abs(steered.Y - idle.Y) < 1e-3f, $"the steer eroded the CONTOUR carry {measured}");
+            Assert.True(MathF.Abs(steered.X - idle.X) < 1e-3f, $"the steer eroded the FALL-LINE carry {measured}");
+        }
+    }
+
+    [Fact]
+    public void One_tick_of_opposing_strafe_does_not_destroy_the_fall_line_component()
+    {
+        // The same fault seen on the component it has no business touching at all. A MIXED carry (running down
+        // the fall line AND across the contour) met one tick of run-speed steer opposing the contour, and because
+        // the clip rescaled along the carry's own direction, the FALL LINE was scaled by the same factor the
+        // contour shortfall produced. Input has no fall-line authority in either direction, so a fall-line
+        // component that changes when a strafe key is tapped is the rule failing, not a tuning question.
+        //
+        // On this face the carry's X IS the fall-line axis (the outward horizontal is due west) and its Z is the
+        // contour, so the two components can be read straight off the vector.
+        var t = Tuning;
+        const float StartX = EdgeX + 2f;
+        var seed = new MoveState
+        {
+            Position = new Vector3(StartX, RisingFace(StartX, 0f) + t.CapsuleHalfHeight, 0f),
+            Grounded = false,
+            TimeSinceGrounded = 1f,
+            HorizontalVelocity = new Vector2(-8f, 14f),   // 8 m/s down the fall line, 14 across the contour
+        };
+
+        Vector2 idle = Slide(seed, MoveCommand.Idle, 1, t).HorizontalVelocity;
+        Vector2 steered = Slide(seed, AgainstTheContour(run: true), 1, t).HorizontalVelocity;
+        string measured = $"one tick of opposing run-speed strafe left ({steered.X:F4}, {steered.Y:F4}) " +
+                          $"against an idle ({idle.X:F4}, {idle.Y:F4})";
+        Assert.True(MathF.Abs(steered.X - idle.X) < 1e-3f, $"the fall-line carry was destroyed: {measured}");
+        Assert.True(MathF.Abs(steered.Y - idle.Y) < 1e-3f, $"the contour carry was destroyed: {measured}");
+    }
+
+    [Fact]
+    public void A_wall_contact_sheds_the_same_carry_whether_or_not_a_steer_is_held()
+    {
+        // THE OTHER HALF, so "the steer cannot erode the carry" does not quietly become "geometry cannot either".
+        // The seed slides UP the fall line into a sheer block standing on the face a centimetre above it - a
+        // genuine wall contact, its ground 30 m over the feet - while carrying 14 m/s across the contour, which
+        // needs no drop and is denied nothing. The face is 46 degrees rather than the file's 78.7, because a
+        // near-gate face converts an up-slope horizontal into fall-line speed almost whole (ny is 0.69 there
+        // against 0.20), which is what makes the denied share of the carry large enough to measure.
+        //
+        // The block's outward direction is the fall-line axis and the steer lies on the contour axis, so the
+        // steer contributes exactly nothing to what the wall removed. The two runs must therefore agree EXACTLY,
+        // not approximately: the clip hands the steer's own share of the displacement back before it measures, so
+        // what is left to measure is the carry's own denied travel and nothing else.
+        var t = Tuning;
+        const float StartX = EdgeX + 2f;
+        const float BlockX = StartX + 0.01f;      // sheer, 40 m tall, outward horizontal due west
+        float grade = MathF.Tan(46f * MathF.PI / 180f);
+        Vector3 faceNormal = Vector3.Normalize(new Vector3(-grade, 1f, 0f));
+        Func<float, float, float> face = (x, z) => x >= BlockX ? 40f : (x < EdgeX ? 0f : (x - EdgeX) * grade);
+        Func<float, float, Vector3> normals = (x, z) => x >= BlockX ? new Vector3(-1f, 0f, 0f)
+            : x < EdgeX ? Vector3.UnitY : faceNormal;
+        var seed = new MoveState
+        {
+            Position = new Vector3(StartX, face(StartX, 0f) + t.CapsuleHalfHeight, 0f),
+            Grounded = false,
+            TimeSinceGrounded = 1f,
+            HorizontalVelocity = new Vector2(20f, 14f),   // 20 up-slope INTO the block, 14 across the contour
+        };
+
+        MoveState Run(MoveCommand cmd, in MoveTuning tuning)
+            => CharacterMovement.Step(seed, cmd, Dt, face, tuning, normals);
+
+        MoveState idle = Run(MoveCommand.Idle, t);
+        MoveState steered = Run(AgainstTheContour(run: true), t);
+        // The unclipped resolve, for the same tick with the wall test disarmed: a StepHeight past anything on the
+        // fixture admits every destination, so nothing is ever a wall contact and the carry is the raw in-plane
+        // velocity. Only the wall test reads StepHeight, so this changes nothing else about the tick.
+        Vector2 unclipped = Run(MoveCommand.Idle, t with { StepHeight = 100f }).HorizontalVelocity;
+
+        string measured = $"steered ({steered.HorizontalVelocity.X:F4}, {steered.HorizontalVelocity.Y:F4}), " +
+                          $"idle ({idle.HorizontalVelocity.X:F4}, {idle.HorizontalVelocity.Y:F4}), " +
+                          $"unclipped ({unclipped.X:F4}, {unclipped.Y:F4})";
+        // The wall genuinely bit on both runs: the up-slope travel died and the contour travel did not.
+        Assert.True(idle.Position.X <= StartX + 1e-4f, $"the idle run climbed the face, x={idle.Position.X:F5}");
+        Assert.True(steered.Position.X <= StartX + 1e-4f, $"the steered run climbed the face, x={steered.Position.X:F5}");
+        Assert.True(MathF.Abs(idle.Position.Z) > 0.4f, $"the contour travel died too, z={idle.Position.Z:F5}");
+        Assert.True(idle.HorizontalVelocity.Length() < 0.99f * unclipped.Length(),
+            $"the wall shed nothing from the carry, so this fixture tests nothing: {measured}");
+        // And the shed is the same shed with a steer held.
+        Assert.True(MathF.Abs(steered.HorizontalVelocity.X - idle.HorizontalVelocity.X) < 1e-3f,
+            $"the steer changed what the wall shed on the fall-line axis: {measured}");
+        Assert.True(MathF.Abs(steered.HorizontalVelocity.Y - idle.HorizontalVelocity.Y) < 1e-3f,
+            $"the steer changed what the wall shed on the contour axis: {measured}");
     }
 
     // ---- S4: the fall-line speed is signed ----

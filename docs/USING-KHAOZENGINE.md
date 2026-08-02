@@ -4867,20 +4867,35 @@ rules replace it, both unconditional and neither a knob:
 **A contact deletes the into-surface component and nothing else.** Both in-plane survivors are kept in
 full: the CONTOUR speed, so a fast run across a face is not stopped by brushing it, and the FALL-LINE speed, which
 is signed, so a jump grazing a face keeps its up-slope motion and gravity takes it back rather than a clamp
-deleting it. The steer is a per-tick term and is not folded into the carry, so contour momentum evolves only by
-contact and holding a direction cannot pump it up.
+deleting it. The steer is a per-tick term and is not folded into the carry, and the collision clip measures its
+denial against the COMMANDED velocity that drove the tick rather than against the carry alone, so **input adds
+nothing to the carry and takes nothing from it** - holding a direction can neither pump the contour up nor bleed
+it (or the fall line) down. Only geometry sheds the carry.
 
-**A WEDGE is supported**, the one exception. A capsule pinched in a concave crease can neither be
-granted support by its own steep column nor slide out of it, so a tick whose accumulated fall is ARRESTED reports
-support instead: `Grounded` true, jump enabled, coyote refreshed, and the arrested fall latched as a landing. It
-is per-tick, so a character parked in a crease pulses grounded (about one tick in five) rather than standing. That
-pulse latches `LandingImpactSpeed` each time, so **a landing SOUND driven off the event alone will rattle there**;
-gate on the impact SPEED (only the first latch carries the real fall) and fall damage is unaffected.
+**Riding a face upward is a real, intended payout, and it is big.** Because the contact keeps the run INTO the
+face too, the reach up a face is the launch's whole kinetic energy, `v^2 / (2 * Gravity)`, whatever the angle. A
+running jump at the shipped tuning launches at 15.5 m/s and is worth 4.8 m of reach against a bare vertical apex
+of 1.92 m, so about 2.4x (measured 4.91 m on a near-gate 46 degree face). Players keep none of it: with no footing
+up there to re-launch from, the whole rise is handed back on the way down.
+
+**A SWALLOWED DESCENT is supported**, the one exception. A tick that carried a real fall and committed measurably
+less descent than that fall demanded is being held up by the world, so it reports support instead: `Grounded`
+true, jump enabled, coyote refreshed, and the swallowed fall latched as a landing. Its motivating case is a
+concave crease, where a capsule can neither be granted support by its own steep column nor slide out, and that is
+where the rule's `SlideWedged` name comes from - but the detector reads one number, the shortfall, not a shape.
+**Any concave curvature under one tick's travel can arm it**, so an open creaseless face can grant a transient
+supported tick and a held jump can fire from it. That is known and harmless: it can only ever arm on the way DOWN,
+the gap is a fraction of one tick's travel and shrinks quadratically with the tick rate, and a parabolic bowl wall
+measured zero net altitude gain over 4000 ticks (one supported tick 1.29 m up at moderate curvature, two at 5.74 m
+at sharp curvature). Support is per-tick, so a character parked in a crease pulses grounded (about one tick in
+five) rather than standing. That pulse latches `LandingImpactSpeed` each time, so **a landing SOUND driven off the
+event alone will rattle there**. Gate on the impact SPEED (only the first latch carries the real fall, 11.2 m/s
+against 4.0 m/s for every pulse after it) and fall damage is unaffected.
 
 Climbing therefore self-defeats rather than being fenced: there is no footing on the face to climb from, and the
-jump ratchet is dead because landing on a face lands in a slide. The wedge rule cannot revive it either, since it
-needs an arrested accumulated fall, which is exactly what an apex graze lacks. Nothing can end up under terrain
-either - the wall projection plus the ground clamp carry that between them.
+jump ratchet is dead because landing on a face lands in a slide. The support rule cannot revive it either, since
+it needs an accumulated fall to swallow, which is exactly what an apex graze lacks. Nothing can end up under
+terrain either - the wall projection plus the ground clamp carry that between them.
 
 Two consequences worth knowing. **Prop support always wins**: only the analytic terrain is traction-less, so a
 plank over a ravine, a ledge bolted to a cliff, or a stair against a mountain all still carry a character exactly

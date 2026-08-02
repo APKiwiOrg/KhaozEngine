@@ -45,23 +45,32 @@ first cut of this model carried the fall line alone and killed a 14 m/s parallel
 speed is SIGNED, so a jump grazing a face keeps its up-slope motion and gravity decelerates, reverses and returns
 it, rather than a clamp deleting the launch outright. What carries the no-ascent property is having no FOOTING on
 the face, not a clamp on the sign: there is nothing to re-launch from up there, so a cycle hands the whole rise
-back and gains nothing across cycles (a transient apex sits at 2.22 m against a bare jump's 1.92 m at the shipped
-tuning, which is a frictionless face converting run speed into altitude). Because the rebuilt velocity lies
+back and gains nothing across cycles. The transient rise is LARGE and that is intended - the contact keeps the run
+INTO the face too, so the reach is the launch's whole kinetic energy, `v^2 / (2 * Gravity)` at any face angle. A
+running jump launches at 15.5 m/s at the shipped tuning and is worth 4.8 m against a bare vertical apex of 1.92 m,
+about 2.4x (measured 4.91 m on a near-gate 46 degree face). The anti-ratchet fixtures bound the reach by that
+energy rather than by a bare apex, and cover run speed as well as walk. Because the rebuilt velocity lies
 entirely in the surface plane, the committed drop is precisely the drop the committed horizontal travel needs and
 the body stays glued to the face rather than bouncing off it. Input steers along the CONTOUR at the usual
 `MoveTuning.AirControl`-scaled speed and has no authority along the fall line in either direction, so there is no
 new knob. The steer is a per-tick term on the commanded velocity and is not folded into the carry, so contour
-momentum evolves by contact alone and holding a direction cannot pump it up.
+momentum evolves by contact alone and holding a direction cannot pump it up. **Nor can it erode it:** the
+collision clip reads its denial verdict from the commanded velocity that drove the tick rather than from the carry
+alone, so held input adds nothing to the carry and takes nothing from it, and only geometry ever sheds it.
 
-**A WEDGE is supported**, the one exception to no traction. A capsule pinched in a concave crease (a V-gully, the
-inside of a cleft) can neither be granted support by its own steep column nor slide out of it, because the fall
+**A SWALLOWED DESCENT is supported**, the one exception to no traction. A tick that carried a real fall and
+committed measurably less descent than that fall demanded is being held up by the world, so it reports support:
+`Grounded` true, jump enabled, coyote refreshed, and the swallowed fall latched as a landing. The test is
+stateless and tick-local (this tick's start position, resolved position, resolved vertical, dt and the tuning) and
+arms only past a downward speed of `Gravity * max(CoyoteTime, dt)` whose demanded descent the ground clamp
+swallowed, which is precisely what a jump-apex graze lacks, so the #440 ratchet gains nothing from it. The
+motivating case, and the source of the internal `SlideWedged` name, is a concave crease (a V-gully, the inside of
+a cleft): a capsule there can neither be granted support by its own steep column nor slide out, because the fall
 line of either wall points into the other and the wall contact removes the whole horizontal, so the first cut
-soft-locked there: 0 grounded ticks in 400, with a held jump that could never fire. A tick whose accumulated fall
-is ARRESTED reports support instead: `Grounded` true, jump enabled, coyote refreshed, and the arrested fall
-latched as a landing. The test is stateless and tick-local (this tick's start position, resolved position,
-resolved vertical, dt and the tuning) and arms only past a downward speed of `Gravity * max(CoyoteTime, dt)` whose
-demanded descent the ground clamp swallowed, which is precisely what a jump-apex graze lacks, so the #440 ratchet
-gains nothing from it. Support is per-tick, so a character parked in a crease pulses grounded about one tick in
+soft-locked there at 0 grounded ticks in 400 with a held jump that could never fire. The detector reads the
+shortfall, though, not a shape, so ANY concave curvature under one tick's travel can arm it and an open creaseless
+face gets a transient supported tick. That is known and harmless: it can only arm on the way down, the gap shrinks
+quadratically with the tick rate, and a parabolic bowl wall measured zero net altitude gain over 4000 ticks. Support is per-tick, so a character parked in a crease pulses grounded about one tick in
 five rather than standing. **Consumer note:** every pulse is an airborne-to-grounded transition, so
 `LandingImpactSpeed` latches on each one and a landing SOUND driven off the event alone will rattle there. Only
 the first latch carries the real fall (the rest carry the few ticks of gravity between pulses), so fall DAMAGE

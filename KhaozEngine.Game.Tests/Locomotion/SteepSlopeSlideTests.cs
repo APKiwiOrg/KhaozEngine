@@ -22,8 +22,8 @@ namespace KhaozEngine.Tests.Locomotion;
 //   - descent and walk-offs are free (unchanged: that was #369's whole point),
 //   - no tunnel: never inside terrain, and never popped above the face,
 //   - and the new invariants the model adds - lateral air control along a face survives, and a slide always
-//     terminates on walkable ground, in water, in open air, or WEDGED between opposing faces (a crease
-//     is supported, because a pinched capsule is held up by the two faces).
+//     terminates on walkable ground, in water, in open air, or WHERE THE WORLD SWALLOWS ITS DESCENT (a
+//     capsule the world is holding up is supported, the concave crease being the case that motivates it).
 //
 // What a CONTACT does to the carried velocity (into-surface dies, contour and signed fall line survive) and what
 // a wedge grants is SlideContactResolveTests, beside this file. This file is the behaviour half.
@@ -65,12 +65,30 @@ public class SteepSlopeSlideTests
     // Walk east (+X): with yaw 0 the camera-relative right axis IS +X.
     static MoveCommand East(bool run = false) => new(new Vector2(1f, 0f), run, cameraYaw: 0f, jump: false);
 
-    // Walk east with the jump button HELD: the jump buffer re-fires it on every landing tick, so the character runs a
-    // continuous jump-hop cycle into whatever is in front of it - which is exactly how the #440 exploit was played.
-    static MoveCommand EastJump() => new(new Vector2(1f, 0f), run: false, cameraYaw: 0f, jump: true);
+    // Walk or run east with the jump button HELD: the jump buffer re-fires it on every landing tick, so the character
+    // runs a continuous jump-hop cycle into whatever is in front of it - exactly how the #440 exploit was played.
+    static MoveCommand EastJump(bool run = false) => new(new Vector2(1f, 0f), run, cameraYaw: 0f, jump: true);
 
-    // A jump's own apex above its launch height, discrete-integration slack included.
-    static float JumpApex(in MoveTuning t) => t.JumpSpeed * t.JumpSpeed / (2f * t.Gravity) + 0.05f;
+    // THE ENERGY BOUND on how far a frictionless face lets a body ride UP it, and the ceiling every fixture below
+    // measures against. It is NOT the bare jump apex, which is what these fixtures used to compare with.
+    //
+    // A contact deletes only the into-surface component, so everything else - the run INTO the face included -
+    // survives as in-plane motion, and the SIGNED fall line converts it to altitude until gravity takes it back.
+    // Gravity decelerates the fall-line speed at g*h, and each metre travelled along the fall line is h metres of
+    // altitude, so the two h's cancel and the rise is v^2 / (2g) whatever the face angle: the launch's whole kinetic
+    // energy, cashed as height. The bound is therefore the TOTAL launch speed (the horizontal, plus the jump's
+    // vertical when there is one), squared, over 2g - plus the one StepHeight a ground clamp may seat a falling body
+    // onto, plus a tick of discrete-integration slack.
+    //
+    // At the shipped tuning a RUNNING JUMP launches at sqrt(9.798^2 + 12^2) = 15.5 m/s and is worth 4.8 m of reach
+    // against a bare vertical apex of 1.92 m. That 2.4x is a real and INTENDED property of the signed fall line, not
+    // a leak: a player can briefly ride a face upward on jump energy and cannot keep any of it, because there is no
+    // footing up there to re-launch from and the whole rise is handed back on the way down. Measuring against
+    // apex + StepHeight was measuring against a bound the model never claimed, and the 78.7 degree fixture breached
+    // it the moment its input ran instead of walking (measured 2.456 m against a 2.370 m ceiling).
+    static float FaceReachCeiling(in MoveTuning t, float launchSpeed, bool jumping)
+        => (launchSpeed * launchSpeed + (jumping ? t.JumpSpeed * t.JumpSpeed : 0f)) / (2f * t.Gravity)
+           + t.StepHeight + 0.05f;
 
     // ---- Descent and walk-offs are free (the #369 half, unchanged) ----
 
@@ -200,17 +218,19 @@ public class SteepSlopeSlideTests
     }
 
     [Theory]
-    [InlineData(1f / 30f)]   // the shipped server tick
-    [InlineData(0.001f)]     // 1000 Hz: the per-tick rise of a 46 deg face falls under any fixed height tolerance
-    public void A_face_just_past_the_gate_gives_no_net_ascent_at_any_tick_rate(float dt)
+    [InlineData(1f / 30f, false)]   // the shipped server tick
+    [InlineData(1f / 30f, true)]    // and at RUN speed, which carries four times the energy onto the face
+    [InlineData(0.001f, false)]     // 1000 Hz: the per-tick rise of a 46 deg face falls under any fixed height tolerance
+    [InlineData(0.001f, true)]
+    public void A_face_just_past_the_gate_gives_no_net_ascent_at_any_tick_rate(float dt, bool run)
     {
         // 46 deg is one degree past the default gate: the hardest case, and the one a fixed tolerance loses first.
-        // The bound is a bound rather than a fence, and it has two terms. A tick MAY step onto the toe of the face
-        // (anything higher is a wall contact), which is the StepHeight. And a walk that steps on carries its walk
-        // speed onto the surface, where the SIGNED fall line converts it to up-slope motion until gravity takes it
-        // back - a frictionless face turning run into altitude, capped by the energy that arrived, so at most
-        // WalkSpeed^2 / 2g. There is no footing up there to re-launch from, so this is a one-shot conversion and
-        // not a ratchet, and the second half of the run may still not sit above the first.
+        // The bound is a bound rather than a fence: a tick MAY step onto the toe of the face (anything higher is a
+        // wall contact), and the speed that steps on is converted to altitude by the signed fall line until gravity
+        // takes it back. That is FaceReachCeiling, read with this row's own launch speed and no jump term, so the
+        // run rows are measured against the energy they actually arrive with (3.33 m) rather than the walk's (1.17).
+        // There is no footing up there to re-launch from, so the conversion is one-shot and not a ratchet, and the
+        // second half of the run may still not sit above the first.
         var t = Tuning;
         float grade = MathF.Tan(46f * MathF.PI / 180f);
         Func<float, float, float> ground = (x, z) => x < EdgeX ? 0f : (x - EdgeX) * grade;
@@ -220,24 +240,32 @@ public class SteepSlopeSlideTests
         var s = new MoveState { Position = new Vector3(EdgeX - 0.05f, t.CapsuleHalfHeight, 0f), Grounded = true };
         float baseFeet = s.Position.Y - t.CapsuleHalfHeight;
 
-        float ceiling = baseFeet + t.StepHeight + t.WalkSpeed * t.WalkSpeed / (2f * t.Gravity);
-        float firstHalfMax = 0f, secondHalfMax = 0f;
-        for (int i = 0; i < 600; i++)
+        float ceiling = baseFeet + FaceReachCeiling(t, run ? t.RunSpeed : t.WalkSpeed, jumping: false);
+        // The window is TIME, not ticks, so the 1 kHz rows cover the same 40 seconds of contact the 30 Hz ones do
+        // rather than 0.6 s of it. The first 8 seconds are the APPROACH and are excluded from the comparison: the
+        // charge into the face is the run's largest single excursion (measured 1.467 m at run speed, against a
+        // steady state that settles at the toe), so a first half containing it swamps any creep a second half could
+        // show, which is exactly how a contaminated window hides a ratchet instead of catching one.
+        int ticks = (int)(40f / dt), settled = (int)(8f / dt), halfPoint = settled + (ticks - settled) / 2;
+        float firstHalfMax = float.MinValue, secondHalfMax = float.MinValue;
+        for (int i = 0; i < ticks; i++)
         {
-            s = CharacterMovement.StepTowards(s, new Vector2(1f, 0f), run: false, dt, ground, t, normal);
+            s = CharacterMovement.StepTowards(s, new Vector2(1f, 0f), run, dt, ground, t, normal);
             float feet = s.Position.Y - t.CapsuleHalfHeight;
             AssertOnOrAboveTheSurface(s, t, ground, i);
             AssertNoFootingOnTheFace(s, t, ground, i);
             Assert.True(feet <= ceiling, $"tick {i} climbed the face, feetY={feet:F5} against a ceiling {ceiling:F5}");
-            if (i < 300) firstHalfMax = MathF.Max(firstHalfMax, feet);
+            if (i < settled) continue;
+            if (i < halfPoint) firstHalfMax = MathF.Max(firstHalfMax, feet);
             else secondHalfMax = MathF.Max(secondHalfMax, feet);
         }
-        // THE RATCHET TEST PROPER, and the tolerance is the measured PHASE swing of the enter-and-slide-back cycle,
-        // not a fudge. Over 4000 ticks the per-octile maximum here oscillates inside 5 mm at 30 Hz and 2 mm at
-        // 1 kHz with no trend in either, so two halves can land on opposite phases and differ by that much while
-        // accumulating exactly nothing. 20 mm covers it with margin and is still three orders below a real
-        // ratchet: a face that kept even one tick's ramp rise per cycle would be metres up by the 600th tick.
-        Assert.True(secondHalfMax <= firstHalfMax + 2e-2f,
+        // THE RATCHET TEST PROPER, and the tolerance is the measured swing of the settled enter-and-slide-back
+        // cycle, not a fudge. Over the compared 32 seconds the four rows land at -2.16, +0.05, -1.37 and -0.07 mm,
+        // all of them at or below zero, and the per-octile maximum inside the window swings by at most 28 mm at
+        // 30 Hz and 1.2 mm at 1 kHz with no upward trend in either. Each half takes its maximum over 16 seconds,
+        // so it averages that swing out. 10 mm is about five times the worst measured half difference and is the
+        // DETECTION FLOOR: it catches any creep past 0.63 mm per second of continuous contact.
+        Assert.True(secondHalfMax <= firstHalfMax + 1e-2f,
             $"the face accumulated altitude: first half {firstHalfMax:F5}, second half {secondHalfMax:F5}");
     }
 
@@ -268,9 +296,11 @@ public class SteepSlopeSlideTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]     // the carried-velocity path slides the same, so the exploit closes on both
-    public void Repeated_jumping_into_a_steep_face_gains_no_altitude(bool airMomentum)
+    [InlineData(false, false)]
+    [InlineData(true, false)]     // the carried-velocity path slides the same, so the exploit closes on both
+    [InlineData(false, true)]     // and at RUN speed, which is how the #440 cliff was actually climbed
+    [InlineData(true, true)]
+    public void Repeated_jumping_into_a_steep_face_gains_no_altitude(bool airMomentum, bool run)
     {
         // THE PLAYTESTED #440 EXPLOIT, on a 78.7 deg sea cliff. The gate closed it by refusing the drift onto the
         // face. The slide closes it by making the face worthless once reached - landing on it lands in a SLIDE, so
@@ -281,38 +311,50 @@ public class SteepSlopeSlideTests
         //
         // NOTE ON THE CEILING under the signed fall line. A contact deletes only the into-surface component, so an
         // arc that meets the face converts the REST of its speed - the run into the face included - into along-face
-        // motion, and a frictionless face can turn that into altitude. So a cycle transiently reaches slightly
-        // HIGHER than a bare vertical jump would (measured peak 2.22 m above the base against a bare apex of 1.92),
-        // which is correct physics rather than a leak, and it is still inside the one-arc ceiling below because the
-        // arc is what pays for it. The invariants that matter are unchanged: never grounded on the face, and no net
-        // gain across cycles.
+        // motion, and a frictionless face can turn that into altitude. So a cycle transiently reaches HIGHER than a
+        // bare vertical jump would (measured peak 2.224 m above the base at walk speed and 2.456 m at run speed,
+        // against a bare apex of 1.920), which is correct physics rather than a leak. That is why the ceiling is
+        // FaceReachCeiling and not apex + StepHeight: the bound is the energy the launch arrived with, and the run
+        // rows breach the old bound honestly. The invariants that matter are unchanged: never grounded on the face,
+        // and no net gain across cycles.
         MoveTuning t = Tuning with { AirMomentum = airMomentum };
         var s = new MoveState { Position = new Vector3(EdgeX - 0.05f, t.CapsuleHalfHeight, 0f), Grounded = true };
         float baseFeetY = s.Position.Y - t.CapsuleHalfHeight;
-        float ceiling = baseFeetY + JumpApex(t) + t.StepHeight;
+        float ceiling = baseFeetY + FaceReachCeiling(t, run ? t.RunSpeed : t.WalkSpeed, jumping: true);
 
-        // ~24 ticks per arc at 30 Hz (2 * 9.798 / 25 = 0.784 s), so 400 ticks is 16 full jump cycles.
+        // ~26 ticks per arc at 30 Hz, so 6000 ticks is over 200 full jump cycles. The window is long BECAUSE the
+        // detector is a half-against-half comparison: the creep it can resolve is the tolerance divided by the
+        // cycles in the second half, so cycles are what buy sensitivity. The first 200 ticks are the APPROACH and
+        // are excluded from the comparison - the character crosses to the face and settles into the cycle there,
+        // and a first half carrying that transient reads 21-26 mm high all by itself, which is most of the old
+        // 30 mm tolerance spent on hiding the very thing the assertion is for.
+        const int Ticks = 6000, Settled = 200;
+        const int HalfPoint = Settled + (Ticks - Settled) / 2;
         int jumps = 0;
         float firstHalfMax = baseFeetY, secondHalfMax = baseFeetY;
-        for (int i = 0; i < 400; i++)
+        for (int i = 0; i < Ticks; i++)
         {
-            s = CharacterMovement.Step(s, EastJump(), Dt, RisingFace, t, RisingFaceNormals);
+            s = CharacterMovement.Step(s, EastJump(run), Dt, RisingFace, t, RisingFaceNormals);
             if (s.VerticalVelocity == t.JumpSpeed) jumps++;   // the launch tick stamps the speed exactly
             AssertOnOrAboveTheSurface(s, t, RisingFace, i);
             AssertNoFootingOnTheFace(s, t, RisingFace, i);
             float feet = s.Position.Y - t.CapsuleHalfHeight;
-            Assert.True(feet <= ceiling, $"tick {i} rose past one arc above the base, feetY={feet:F5}");
-            if (i < 200) firstHalfMax = MathF.Max(firstHalfMax, feet);
+            Assert.True(feet <= ceiling, $"tick {i} rose past the launch energy above the base, feetY={feet:F5} " +
+                                         $"against a ceiling {ceiling:F5}");
+            if (i < Settled) continue;
+            if (i < HalfPoint) firstHalfMax = MathF.Max(firstHalfMax, feet);
             else secondHalfMax = MathF.Max(secondHalfMax, feet);
         }
-        Assert.True(jumps >= 10, $"the fixture never ran 10 jump cycles, jumps={jumps}");
-        // The ratchet test proper: 8 more jump cycles bought no more height than the first 8 did. The tolerance is
-        // the measured PHASE swing of the cycle, not a fudge. Over 4000 ticks the per-octile maximum oscillates
-        // inside 10 mm (2.2147 to 2.2245) with no trend at all, and the halves of THIS 400-tick window differ by
-        // 21 mm because the first half also carries the approach ticks before the cycle settles. 30 mm covers both
-        // and is still two orders below one riser of a real ratchet, which is what the #440 playtest climbed a
-        // whole sea cliff with.
-        Assert.True(secondHalfMax <= firstHalfMax + 3e-2f,
+        Assert.True(jumps >= 100, $"the fixture never ran 100 jump cycles, jumps={jumps}");
+        // THE RATCHET TEST PROPER: a hundred-odd more jump cycles bought no more height than the first hundred did.
+        // The tolerance is the measured swing of the settled cycle, not a fudge. Over the compared window the four
+        // rows land at +0.36, +0.36, -3.92 and -3.92 mm, and the per-octile maximum inside it swings by at most
+        // 10.7 mm with no trend. 20 mm is about twice that worst swing, and it is the DETECTION FLOOR: the sparsest
+        // row runs ~107 cycles per half, so it catches any creep past 19 mm per 100 cycles here, and past 35 mm per
+        // 100 cycles on the sparsest fixture in this file (the near-gate running jump below, ~57 cycles per half).
+        // Either way it is well inside the 5 cm per 100 cycles a creep would have to stay under to hide - and the
+        // #440 playtest that climbed a whole sea cliff was orders above that.
+        Assert.True(secondHalfMax <= firstHalfMax + 2e-2f,
             $"the jump cycle ratcheted: first half {firstHalfMax:F5}, second half {secondHalfMax:F5}");
 
         // Release the button and let the last arc settle, so the final altitude is a landed one and not mid-flight.
@@ -322,6 +364,60 @@ public class SteepSlopeSlideTests
         // And it settled west of the face line: sixteen jump cycles bought no ground either, which the height
         // check alone does not say (the toe of the face is at the base height too).
         Assert.True(s.Position.X < EdgeX, $"the run ended on the face, x={s.Position.X:F5}");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_running_jump_up_a_near_gate_face_rides_far_past_a_bare_apex_and_keeps_none_of_it(bool airMomentum)
+    {
+        // THE 2.4x REACH, pinned rather than left as prose, because it is the fact that made the old ceilings
+        // wrong. A near-gate face is the best converter there is: at 46 degrees almost all of a horizontal run
+        // survives the contact as in-plane motion, so a running jump into one rides it far higher than any bare
+        // vertical jump reaches. Measured here: 4.913 m above the base, against a bare apex of 1.920 m - a factor
+        // of 2.6 - and inside the 5.25 m the launch energy pays for. That is the signed fall line working as
+        // designed, and it is exactly what a frictionless surface does with speed.
+        //
+        // What it does NOT do is keep any of it. There is no footing on the face to re-launch from, so every metre
+        // of the ride is handed back on the way down, which the half-against-half comparison is what proves.
+        MoveTuning t = Tuning with { AirMomentum = airMomentum };
+        float grade = MathF.Tan(46f * MathF.PI / 180f);
+        Func<float, float, float> ground = (x, z) => x < EdgeX ? 0f : (x - EdgeX) * grade;
+        Vector3 faceNormal = Vector3.Normalize(new Vector3(-grade, 1f, 0f));
+        Func<float, float, Vector3> normal = (x, z) => x < EdgeX ? Vector3.UnitY : faceNormal;
+
+        var s = new MoveState { Position = new Vector3(EdgeX - 0.05f, t.CapsuleHalfHeight, 0f), Grounded = true };
+        float baseFeetY = s.Position.Y - t.CapsuleHalfHeight;
+        float bareApex = t.JumpSpeed * t.JumpSpeed / (2f * t.Gravity);
+        float ceiling = baseFeetY + FaceReachCeiling(t, t.RunSpeed, jumping: true);
+
+        const int Ticks = 6000, Settled = 200;
+        const int HalfPoint = Settled + (Ticks - Settled) / 2;
+        int jumps = 0;
+        float peak = baseFeetY, firstHalfMax = baseFeetY, secondHalfMax = baseFeetY;
+        for (int i = 0; i < Ticks; i++)
+        {
+            s = CharacterMovement.Step(s, EastJump(run: true), Dt, ground, t, normal);
+            if (s.VerticalVelocity == t.JumpSpeed) jumps++;
+            AssertOnOrAboveTheSurface(s, t, ground, i);
+            AssertNoFootingOnTheFace(s, t, ground, i);
+            float feet = s.Position.Y - t.CapsuleHalfHeight;
+            peak = MathF.Max(peak, feet);
+            Assert.True(feet <= ceiling, $"tick {i} rose past the launch energy, feetY={feet:F5} against a " +
+                                         $"ceiling {ceiling:F5}");
+            if (i < Settled) continue;
+            if (i < HalfPoint) firstHalfMax = MathF.Max(firstHalfMax, feet);
+            else secondHalfMax = MathF.Max(secondHalfMax, feet);
+        }
+
+        Assert.True(jumps >= 50, $"the fixture never ran 50 jump cycles, jumps={jumps}");
+        Assert.True(peak > 2f * bareApex,
+            $"the face did not convert the run into altitude, peak {peak:F4} against a bare apex {bareApex:F4}");
+        // Same detector, same measured basis as the 78.7 fixture above: the compared halves land at +0.88 mm and
+        // the tolerance is 20 mm. This is the sparsest cycle in the file (~119 launches over 6000 ticks, so ~57
+        // per half), which makes it the fixture that sets the file's detection floor at 35 mm per 100 cycles.
+        Assert.True(secondHalfMax <= firstHalfMax + 2e-2f,
+            $"the near-gate cycle ratcheted: first half {firstHalfMax:F5}, second half {secondHalfMax:F5}");
     }
 
     // ---- Anti-tunnel: never inside terrain, never popped above the face ----

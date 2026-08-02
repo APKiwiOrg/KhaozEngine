@@ -118,6 +118,11 @@ construction and both survivors are kept in full.
   deleted the launch outright. Gravity accumulates downward along it whatever the sign, so a rising slide
   decelerates, reverses, and comes back down. What carries the no-ascent property is having no FOOTING, not a
   clamp: there is nothing to re-launch from up there, so a cycle hands the whole rise back.
+  **The payout is large, and intended.** The contact keeps the run INTO the face too, so the reach up a face is
+  the launch's whole kinetic energy, `v^2 / (2 * Gravity)`, whatever the angle. A running jump at the shipped
+  tuning launches at `sqrt(JumpSpeed^2 + RunSpeed^2)` = 15.5 m/s and is worth 4.8 m of reach against a bare
+  vertical apex of 1.92 m, so 2.4x (measured 4.91 m on a near-gate 46 degree face, the best converter there is).
+  Players can briefly ride a face upward on jump energy. They cannot keep any of it.
 
 Because the rebuilt velocity lies entirely in the surface plane, the committed drop is precisely the drop the
 committed horizontal travel needs, so the character stays glued to the face instead of bouncing off it. Terminal
@@ -130,20 +135,35 @@ fall line in either direction - no new knob. Up-slope authority would be tractio
 authority buys a hop off the surface on every tick it is held, which is a visible bounce on any moderate slope.
 The steer is a per-tick term on the commanded velocity and is **not** folded into the carry, so contour speed
 evolves only by contact and never by held input: a player steers across a slide at a fixed rate on top of whatever
-contour momentum the fall gave them, and cannot pump the two into each other.
+contour momentum the fall gave them, and cannot pump the two into each other. That rule is symmetric, and the
+collision clip is what makes it so. The advance is driven by the COMMANDED velocity, so the clip reads its denial
+verdict from that same vector and sheds only the carry's own share of the committed displacement. Measuring the
+carry alone against a displacement the steer helped produce reads the steer's travel as a collision denial and
+rescales the whole carry, fall line included. **Input adds nothing to the carry and takes nothing from it. Only
+geometry may shed it.**
 
-**A WEDGE is supported**, the one exception to rule 2. A capsule pinched in a concave crease (a V-gully,
-the inside of a cleft) can neither be granted support by its own steep column nor slide out, because the fall line
-of either wall points into the other and the wall contact removes the whole horizontal, so the first cut of
-this model soft-locked there, with a held jump that could never fire. A tick whose accumulated fall is ARRESTED (a downward speed past
-`Gravity * max(CoyoteTime, dt)` whose demanded descent the ground clamp swallowed) reports support instead:
-`Grounded` true, jump enabled, coyote refreshed, and the arrested fall latched as a landing. The test is stateless
-and tick-local, and it cannot arm at a jump apex, where the vertical speed is near zero by definition - which is
-what keeps the #440 ratchet dead. Support is per-tick, so a character parked in a crease reports a
-low-duty-cycle grounded pulse (about one tick in five) rather than steady footing. **Consumer note:** each pulse
-is an airborne-to-grounded transition, so `LandingImpactSpeed` latches on each one and a landing SOUND driven off
-the event alone will rattle. Only the first latch carries the real fall, so gate on the impact SPEED for fall
-damage and nothing changes.
+**A SWALLOWED DESCENT is supported**, the one exception to rule 2. A tick that carried a real fall (a downward
+speed past `Gravity * max(CoyoteTime, dt)`) and committed measurably less descent than that fall demanded is being
+held up by the world, so it reports support: `Grounded` true, jump enabled, coyote refreshed, and the swallowed
+fall latched as a landing. The test is stateless and tick-local, and it cannot arm at a jump apex, where the
+vertical speed is near zero by definition, which is what keeps the #440 ratchet dead.
+
+The motivating case is a **concave crease** (a V-gully, the inside of a cleft), which is where the rule's
+`SlideWedged` name comes from: a capsule there can neither be granted support by its own steep column nor slide
+out, because the fall line of either wall points into the other and the wall contact removes the whole horizontal,
+so the first cut of this model soft-locked, with a held jump that could never fire. But the detector looks at one
+number, the shortfall, not at a shape. **Any concave curvature under one tick's travel can arm it**, so an open
+creaseless face can grant a transient supported tick, and a held jump can fire from it. That is known and
+harmless: the gap is a fraction of one tick's travel and shrinks quadratically with the tick rate, and it can only
+ever fire on the way DOWN. Measured on a parabolic bowl wall with no crease anywhere, over 4000 ticks: nothing at
+gentle curvature, then one supported tick 1.29 m up as it sharpens, one at 2.79 m, two at 5.74 m, and zero net
+altitude gain in every case.
+
+Support is per-tick, so a character parked in a crease reports a low-duty-cycle grounded pulse (about one tick in
+five) rather than steady footing. **Consumer note:** each pulse is an airborne-to-grounded transition, so
+`LandingImpactSpeed` latches on each one and a landing SOUND driven off the event alone will rattle. Only the
+first latch carries the real fall (11.2 m/s on the fixture, against 4.0 m/s for every pulse after it), so gate on
+the impact SPEED for fall damage and nothing changes.
 
 Consequences worth knowing. **Climbing self-defeats** rather than being fenced, so the #440 jump ratchet is dead:
 landing on a face lands in a slide. **Prop support always wins** - only the analytic terrain is traction-less, so

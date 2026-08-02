@@ -291,31 +291,57 @@ called that "the whole no-ascent property". It is not: it deleted a jump's upwar
 the instant the jump grazed a face. What actually carries the no-ascent property is having no
 FOOTING on steep ground, which point 3 already said. So the speed is signed, gravity accumulates
 downward along it whatever the sign, and a rising slide decelerates, reverses, and comes back down.
-A cycle may transiently reach slightly higher than a bare jump would (a frictionless face converts
-run speed into altitude, measured 2.22 m against a bare apex of 1.92 m at the shipped tuning), and
-it gains nothing across cycles, because the whole rise is handed back on the way down. The exploit
-invariants are unchanged and still pinned: never grounded on the face, and no net altitude across
-cycles.
+It gains nothing across cycles, because the whole rise is handed back on the way down, and the
+exploit invariants are unchanged and still pinned: never grounded on the face, and no net altitude
+across cycles.
 
-**A WEDGE is supported, and it is the one exception to point 2's "never grants support".** As
-written, a character in a concave crease (a V-gully, the inside of a cleft) soft-locks: its column
-reads steep so support is refused, the fall line of either wall points into the other so the wall
-contact removes the whole horizontal, and the ground clamp then swallows the descent that horizontal
-was meant to pay for. Measured 0 grounded ticks in 400, with a held jump that could never fire. So
-the termination invariant gains a fourth end: a slide terminates on walkable ground, in water, in
-open air, **or wedged between opposing faces**. The detector is stateless and tick-local (this
-tick's start position, resolved position, resolved vertical, dt and the tuning), and it arms only on
-an accumulated downward speed past `Gravity * max(CoyoteTime, dt)` whose demanded descent was
-swallowed - which is precisely what a jump-apex graze lacks, so the retired #440 ratchet gains
-nothing from it. Support is granted for that tick, so a character parked in a crease reports a
-low-duty-cycle grounded pulse (measured about one tick in five) rather than steady footing. That is
-enough to jump out, to refresh coyote, and to latch the arrested fall as a landing. **Consumer
-consequence, deliberately not designed around:** every pulse is an airborne-to-grounded transition,
-so `LandingImpactSpeed` latches on each one and a game reading it for a landing SOUND gets a rattle
-while the character sits in a crease. Only the first latch carries the real fall, and the rest carry
-the few ticks of gravity between pulses, so a consumer gating on impact speed for fall DAMAGE is
-unaffected. The same is true of a jagged crest whose columns alternate steep and walkable, which is
-pinned by its own fixture rather than left unknown.
+What the transient rise is WORTH was understated here at first (this note originally said "slightly
+higher than a bare jump", measured 2.22 m against 1.92 m on a 78.7 degree face at walk speed). That
+was the mildest case, not the property. The contact keeps the run INTO the face as well, so the
+reach up a face is the launch's whole kinetic energy: gravity decelerates the fall-line speed at
+`Gravity * h` and each metre along the fall line is `h` metres of height, the two cancel, and the
+rise is `v^2 / (2 * Gravity)` at any face angle. At the shipped tuning a RUNNING JUMP launches at
+`sqrt(JumpSpeed^2 + RunSpeed^2)` = 15.5 m/s and buys 4.8 m of reach against a bare vertical apex of
+1.92 m, which is **2.4x** - measured 4.91 m on a near-gate 46 degree face, the best converter there
+is, and 2.46 m on the 78.7 degree one once its input runs instead of walking. That is intended
+behaviour and correct physics for a frictionless surface: players briefly ride a face upward on jump
+energy and keep none of it. The anti-ratchet fixtures bound the reach by that ENERGY now rather than
+by a bare apex, which the run rows breached honestly (2.456 m against a 2.370 m ceiling).
+
+**A SWALLOWED DESCENT is supported, and it is the one exception to point 2's "never grants
+support".** As written, a character in a concave crease (a V-gully, the inside of a cleft)
+soft-locks: its column reads steep so support is refused, the fall line of either wall points into
+the other so the wall contact removes the whole horizontal, and the ground clamp then swallows the
+descent that horizontal was meant to pay for. Measured 0 grounded ticks in 400, with a held jump
+that could never fire. So the termination invariant gains a fourth end: a slide terminates on
+walkable ground, in water, in open air, **or where the world is absorbing its descent**. The
+detector is stateless and tick-local (this tick's start position, resolved position, resolved
+vertical, dt and the tuning), and it arms only on an accumulated downward speed past
+`Gravity * max(CoyoteTime, dt)` whose demanded descent was swallowed - which is precisely what a
+jump-apex graze lacks, so the retired #440 ratchet gains nothing from it.
+
+The crease is the MOTIVATING case and the source of the `SlideWedged` name, not the condition: the
+detector looks at one number, the shortfall, and never at a shape. Any concave curvature under one
+tick's travel produces a real shortfall, because the resolve commits the drop the tangent plane at
+the START of the tick needs while the ground clamp seats the capsule on the actual surface at the
+end of it. So an OPEN creaseless face can grant a transient supported tick, and a held jump can fire
+from it. Known and harmless, and left documented rather than fenced: it can only arm on the way
+down, the gap is a fraction of one tick's travel and shrinks quadratically with the tick rate, and a
+slide down a bowl briefly finding its feet is the honest physical answer anyway. Measured on a
+parabolic bowl wall over 4000 ticks of sliding into it: nothing at gentle curvature, one supported
+tick 1.29 m up as the curvature sharpens, one at 2.79 m, two at 5.74 m, each firing a launch with
+the jump held, and **zero net altitude gain in every case** (the peak never passed the height the
+slide started from).
+
+Support is granted for that tick, so a character parked in a crease reports a low-duty-cycle
+grounded pulse (measured about one tick in five) rather than steady footing. That is enough to jump
+out, to refresh coyote, and to latch the swallowed fall as a landing. **Consumer consequence,
+deliberately not designed around:** every pulse is an airborne-to-grounded transition, so
+`LandingImpactSpeed` latches on each one and a game reading it for a landing SOUND gets a rattle
+while the character sits in a crease. Only the first latch carries the real fall (11.2 m/s on the
+fixture), and the rest carry the few ticks of gravity between pulses (4.0 m/s), so a consumer gating
+on impact speed for fall DAMAGE is unaffected. The same is true of a jagged crest whose columns
+alternate steep and walkable, which is pinned by its own fixture rather than left unknown.
 
 Two smaller corrections in the same pass. The slide's horizontal carry is clamped to the wire's own
 per-axis ceiling, because a slide's horizontal terminal is `MaxFallSpeed / tan(surface angle)` and a
@@ -323,4 +349,30 @@ gate below about 21 degrees puts that past what `MovementState` can replicate - 
 otherwise commit a velocity its own wire quantizes to a different one. And the terminal divide's
 `h` is floored by the sine of a VALIDATED gate, so a degenerate `MaxSlopeRadians` of zero or less
 (which calls level ground steep) cannot turn `MaxFallSpeed / h` into a division by the smallest
-non-zero magnitude a float normal can express.
+non-zero magnitude a float normal can express. Both clamps are per-axis and horizontal-only, which
+mirrors the wire and is theoretical at any shipped tuning: the fastest fall-line speed a slide can
+be handed on its up phase is the 15.5 m/s launch that arrived, and the down phase saturates at
+50 m/s at the 45 degree gate, both far under the 127 ceiling on either axis.
+
+### Correction, round two: the steer must not erode the carry
+
+The rule above ("the steer is a per-tick term, not folded into the carry") was implemented one-way
+only. A sliding tick ADVANCES by the commanded velocity, carry plus steer, but the carry was clipped
+against the CARRY ALONE, so the collision clip measured a displacement the steer had helped produce
+against a vector that did not contain the steer, read the difference as a denial, and rescaled the
+whole carry by it - fall line included, which input is supposed to have no authority over in either
+direction. Measured: a held steer whose contour component opposed a 14 m/s carried contour took it
+to 8.0 m/s on the first tick and 0.0 by the tenth, where ten ticks of idle input kept all 14, and one
+tick of opposing run-speed strafe removed 85% of a mixed carry's fall-line component.
+
+The fix is to let the clip see the vector that actually drove the tick. The denial VERDICT is read
+from the commanded velocity, so an unobstructed steered tick returns the carry untouched and exact
+rather than re-deriving it from a position the steer moved. The denial AMOUNT is read from the
+carry's own share of the committed displacement, the travel with the steer's contribution handed
+back, so a genuine contact sheds exactly what it would have shed with no steer held whenever the
+steer lies along the contact face - which the slide's steer does by construction against any face
+whose outward direction is the fall line, since the steer is confined to the contour axis. The
+clamp into `[0, |carry|]` is unchanged, so collision may still only ever clip the carry. Every path
+but a steered slide drives with the carry itself, so this is the original measurement, byte for
+byte, everywhere else. The rule is symmetric now, which is what it always claimed to be: input adds
+nothing to the carry and takes nothing from it, and only geometry sheds it.

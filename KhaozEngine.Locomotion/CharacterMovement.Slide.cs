@@ -23,9 +23,11 @@ namespace KhaozEngine.Locomotion;
 //   2. NO TRACTION. Ground steeper than MoveTuning.MaxSlopeRadians grants no support, so gravity decomposes
 //      against the surface and the character accelerates down the fall line until it reaches walkable ground, open
 //      air, or water. Climbing self-defeats because there is no footing to climb from, which is what retires the
-//      ascent gate rather than patching it a third time. The ONE exception is a WEDGE (SlideWedged): a capsule
-//      whose fall is being arrested by opposing faces is physically held up by them, so that tick is supported.
-//      Without it a concave crease is a soft-lock, since the character can neither slide out of it nor jump.
+//      ascent gate rather than patching it a third time. The ONE exception is a SWALLOWED DESCENT (SlideWedged):
+//      a tick that carried a real fall and committed measurably less of it than that fall demanded is being held
+//      up by the world, so it is supported. Its motivating case is the concave crease, which without it is a
+//      soft-lock (the character can neither slide out of it nor jump), and it is named for that case rather than
+//      defined by it - see SlideWedged for what actually arms it and for the harmless open-face transient.
 //
 // Everything here is pure scalar arithmetic in a fixed order over the same pure delegates both heads hold, so a
 // slide replays bit-identically through ClientPrediction.Reconcile. It adds NO carried state: the fall-line and
@@ -73,6 +75,14 @@ public static partial class CharacterMovement
     // slide every tick instead of never. That is the honest degradation for a tuning whose slides are faster
     // than its own replication can describe, and it is strictly better than replicating a different number than
     // the one the sim used. A test pins this value against the NetWorld constant it mirrors.
+    //
+    // IT IS PER-AXIS AND HORIZONTAL-ONLY, because the wire's clamp is, and mirroring the wire is the whole job. So
+    // it is a square box rather than a disc (a diagonal carry may reach 127 on each axis, sqrt(2) times the speed
+    // an axis-aligned one may), and the vertical is untouched by it (that axis is bounded by MaxFallSpeed through
+    // the terminal above). Both asymmetries are theoretical at any shipped tuning: the fastest fall-line speed a
+    // slide can be handed on its UP phase is the launch that arrived, sqrt(JumpSpeed^2 + RunSpeed^2) = 15.5 m/s at
+    // the defaults, and the down phase saturates at MaxFallSpeed / tan(gate) = 50 m/s at the 45 degree gate. Both
+    // are far under 127 on either axis, so the clamp never binds and the shape it binds with cannot matter.
     private const float SlideCarrySpeedCeiling = 127f;
 
     /// <summary>True when a ground normal is steeper than the tuning's walkable gate. The single reading of
@@ -226,10 +236,19 @@ public static partial class CharacterMovement
     /// accumulates DOWNWARD along the fall line whatever the sign, so a rising slide decelerates, reverses, and comes
     /// back down on its own. That is not a route back to the #440 jump ratchet: the ratchet needed FOOTING on the
     /// face to re-launch from, steep ground grants none, and the one thing that does grant it here (the wedge rule
-    /// below) cannot arm on a rising or apex tick because it requires an accumulated DOWNWARD speed. So a cycle may
-    /// reach a transiently higher apex than a bare jump would - the face converts run speed into altitude, which is
-    /// what a frictionless surface does - and it gains nothing across cycles, because the whole rise is handed back
-    /// on the way down.</item>
+    /// below) cannot arm on a rising or apex tick because it requires an accumulated DOWNWARD speed.
+    /// <para>SO A FACE IS A RAMP THAT PAYS OUT AND TAKES BACK, and the payout is LARGE - much larger than a jump.
+    /// A contact keeps everything but the into-surface component, so the run INTO the face survives as in-plane
+    /// motion and the signed fall line cashes it as altitude. Gravity decelerates the fall-line speed at
+    /// <c>Gravity * h</c> and each metre along the fall line is <c>h</c> metres of height, so the two cancel and
+    /// the reach is <c>v^2 / (2 * Gravity)</c> whatever the face angle: the launch's whole kinetic energy. A
+    /// RUNNING JUMP at the shipped tuning launches at <c>sqrt(JumpSpeed^2 + RunSpeed^2)</c> = 15.5 m/s and is
+    /// worth 4.8 m of reach against a bare vertical apex of 1.92 m, which is 2.4x. Measured on a near-gate
+    /// 46 degree face, the best converter there is: 4.91 m above the base. That is INTENDED and is what a
+    /// frictionless surface does with speed - players can briefly ride a face upward on jump energy, and cannot
+    /// keep any of it, because the whole rise is handed back on the way down and nothing accumulates across
+    /// cycles. The fixtures bound it by that energy rather than by a bare apex, which the run rows breach
+    /// honestly.</para></item>
     /// </list>
     /// Because the rebuilt velocity lies entirely in the surface plane, on a planar face the committed drop is
     /// precisely the drop the committed horizontal travel needs: the ground clamp never has to correct the slide and
@@ -246,11 +265,22 @@ public static partial class CharacterMovement
     /// CARRY (what feeds the next tick) is the plane-resolved velocity plus gravity's fall-line step and NOTHING
     /// ELSE - the steer is not folded into it. The COMMANDED velocity for this tick is that carry plus one tick's
     /// steer. So the contour speed evolves only by CONTACT (a new face re-resolves it, a wall slide sheds it through
-    /// <c>ClipToAchieved</c>) and never by held input, while the steer is a per-tick term of at most the
-    /// air-control-scaled walk or run speed that appears the tick a direction is held and is gone the tick it is
-    /// released. A player therefore steers across a slide at a fixed rate ON TOP OF whatever contour momentum the
-    /// fall gave them, and cannot pump the two into each other: holding a direction for a hundred ticks adds one
-    /// tick's worth of speed, a hundred times over, to the position, and zero to the carry.</para>
+    /// the clip) and never by held input, while the steer is a per-tick term of at most the air-control-scaled walk
+    /// or run speed that appears the tick a direction is held and is gone the tick it is released. A player therefore
+    /// steers across a slide at a fixed rate ON TOP OF whatever contour momentum the fall gave them, and cannot pump
+    /// the two into each other: holding a direction for a hundred ticks adds one tick's worth of speed, a hundred
+    /// times over, to the position, and zero to the carry.</para>
+    ///
+    /// <para>WHICH MAKES THE CLIP READ THE COMMANDED VELOCITY, not the carry. The advance above is computed from
+    /// <c>commanded</c>, so the displacement it commits contains the steer's travel, and
+    /// <see cref="ClipCarryToAchieved"/> is handed BOTH vectors: the denial verdict is read from the commanded
+    /// velocity that actually drove the tick, and the amount shed is read from the carry's own share of the
+    /// displacement. Measuring the carry alone against that displacement instead - which the first cut of this
+    /// model did - reads the steer's own travel as a collision denial and rescales the whole carry, fall line
+    /// included, so a held steer opposing the carried contour erased a 14 m/s carry inside ten ticks and one tick
+    /// of opposing strafe took 85% of a mixed carry's fall-line speed. The rule is symmetric and it is the rule
+    /// this whole paragraph rests on: input adds NOTHING to the carry, and takes nothing from it either. Only
+    /// geometry may shed it.</para>
     ///
     /// <para>TERMINAL VELOCITY is <see cref="MoveTuning.MaxFallSpeed"/>, read through the surface: the clamp is
     /// applied to the fall-line speed as <c>MaxFallSpeed / h</c> so that the VERTICAL component lands exactly on the
@@ -306,40 +336,57 @@ public static partial class CharacterMovement
         return new SlideStep(x, z, commanded, carry, vVel);
     }
 
-    /// <summary>Whether this SLIDING tick's fall was ARRESTED by opposing geometry rather than delivered: the
-    /// character is wedged between two faces neither of which it can slide off, and a wedged capsule is physically
+    /// <summary>Whether this SLIDING tick's fall was SWALLOWED by the geometry rather than delivered: the tick
+    /// carried a real accumulated fall, and the position it committed descended measurably less than that fall
+    /// demanded. A body whose descent the world is absorbing is being held up by the world, so that tick is
     /// supported whatever its column's normal says.
     ///
-    /// <para>THE BUG THIS CLOSES. In a concave crease - a V-gully, the inside of a rock cleft - the column under the
-    /// feet reads steep, so support is refused. The fall line of either wall points straight into the other, so
-    /// <see cref="AdvanceWallSlide"/> removes the whole horizontal, and the ground clamp then swallows the entire
-    /// descent that horizontal was supposed to pay for. Nothing moves, nothing grounds, and a held jump can never
-    /// fire because the character is never grounded and its coyote window expired long ago. Measured: 0 grounded
-    /// ticks in 400, with the horizontal sign-flipping between the two walls forever.</para>
+    /// <para>THE MOTIVATING CASE, which is a crease, and which is NOT the definition. In a concave crease - a
+    /// V-gully, the inside of a rock cleft - the column under the feet reads steep, so support is refused. The fall
+    /// line of either wall points straight into the other, so <see cref="AdvanceWallSlide"/> removes the whole
+    /// horizontal, and the ground clamp then swallows the entire descent that horizontal was supposed to pay for.
+    /// Nothing moves, nothing grounds, and a held jump can never fire because the character is never grounded and
+    /// its coyote window expired long ago. Measured: 0 grounded ticks in 400, with the horizontal sign-flipping
+    /// between the two walls forever. That is the soft-lock this closes, and it is where the name comes from. But
+    /// the detector does not look for two faces, or for a pinch, or for any shape at all - it looks at one number,
+    /// the shortfall - so read the name as shorthand, not as the condition.</para>
     ///
     /// <para>THE TEST, and why it is exactly two conjuncts. First, the tick's resolved vertical must be
-    /// significantly DOWNWARD, so that gravity has genuinely accumulated a fall for the geometry to arrest. The bar
+    /// significantly DOWNWARD, so that gravity has genuinely accumulated a fall for the geometry to absorb. The bar
     /// is <c>Gravity * max(CoyoteTime, dt)</c>: the coyote window is the tuning's own statement of how long a body
     /// may be off the ground before that counts as a real fall rather than a blip, so the speed gravity reaches over
     /// it is the tuning's own reading of "actually falling", and the one-tick floor keeps a tuning with no coyote
     /// window at all from lowering the bar to any downward motion whatsoever. Second, the committed descent must
-    /// fall SHORT of the descent the resolved velocity demanded, by at least one arming tick's worth. On a planar
+    /// fall SHORT of the descent the resolved velocity demanded, by at least one arming tick's worth. On a PLANAR
     /// face those two are equal by construction (the resolve puts the velocity in the surface plane, so the drop the
-    /// travel needs is exactly the drop it takes), so the shortfall is float noise and this never fires. Only
-    /// geometry pushing back produces a real one.</para>
+    /// travel needs is exactly the drop it takes), so the shortfall is float noise and this never fires there.</para>
+    ///
+    /// <para>THE OPEN-FACE TRANSIENT, known and harmless. A crease is not the only way to produce a real shortfall:
+    /// ANY concave curvature can, because the resolve commits the drop the TANGENT PLANE at the start of the tick
+    /// needs while the ground clamp seats the capsule on the actual surface at the end of it, and on a face that
+    /// curves upward under one tick's travel the second is higher than the first. When that gap exceeds an arming
+    /// tick's descent, an open creaseless face grants a supported tick, and a held jump fires from it. Measured on a
+    /// parabolic bowl wall with no crease anywhere, over 4000 ticks of sliding into it: nothing at all at gentle
+    /// curvature, then one supported tick 1.29 m up as the curvature sharpens, one at 2.79 m, two at 5.74 m, each
+    /// firing a launch when the jump was held. It is bounded by construction and it is not a ratchet: the gap is a
+    /// fraction of ONE tick's travel, it shrinks quadratically as the tick rate rises, and the same fixtures
+    /// measured ZERO net altitude gain over those 4000 ticks (the peak never once passed the height the slide
+    /// started from). A slide down a bowl briefly finding its feet is also the honest answer physically, which is
+    /// why this is documented rather than fenced.</para>
     ///
     /// <para>WHY THE JUMP RATCHET CANNOT EXPLOIT IT. The arming condition is precisely what a jump-apex graze
     /// LACKS. At an apex the vertical speed is near zero by definition, and it stays under the bar for the whole
     /// 0.125 m either side of the top at the shipped tuning - so a character grazing a face at the top of its arc
     /// gets no footing, no re-launch, and no ratchet. Getting footing requires arriving with a real accumulated
-    /// fall AND having it arrested, which is a wedge and not an apex.</para>
+    /// fall AND having it swallowed, and the fall is exactly what an apex does not have. That holds for the
+    /// open-face transient above too, which is why it buys no altitude: it can only ever fire on the way DOWN.</para>
     ///
     /// <para>STATELESS AND TICK-LOCAL. Every input is this tick's own: the position it started at, the position it
     /// resolved to, its resolved vertical, dt and the tuning. Nothing is carried, nothing new rides the wire, and a
     /// reconcile replay of the same tick reaches the same answer. Support is granted for THAT TICK only, so a
     /// character left sitting in a crease reports a low-duty-cycle grounded pulse (support, then the next tick's
     /// fresh gravity, then support again) rather than steady footing - which is enough to jump, to refresh coyote,
-    /// and to latch the arrested fall as a landing, and is honest about a surface that is genuinely not a floor.
+    /// and to latch the swallowed fall as a landing, and is honest about a surface that is genuinely not a floor.
     /// </para></summary>
     /// <param name="startY">The capsule-centre Y the tick began at.</param>
     /// <param name="resolvedY">The capsule-centre Y the tick committed, after the ground clamp.</param>

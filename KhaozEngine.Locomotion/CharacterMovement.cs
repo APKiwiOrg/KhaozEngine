@@ -413,15 +413,16 @@ public static partial class CharacterMovement
             tSinceGround = s.TimeSinceGrounded + dt;
         }
 
-        // 4-wedge. THE ONE EXCEPTION TO "STEEP GROUND GRANTS NOTHING". A capsule pinched between two faces neither
-        //    of which it can slide off is HELD UP by them, whatever the normal under its own column says, and the
-        //    rule above refusing it support is what made a concave crease a soft-lock: no support, no slide out (the
+        // 4-wedge. THE ONE EXCEPTION TO "STEEP GROUND GRANTS NOTHING". A capsule whose descent the world is
+        //    SWALLOWING is being held up by the world, whatever the normal under its own column says, and the rule
+        //    above refusing it support is what made a concave crease a soft-lock: no support, no slide out (the
         //    wall contact removes the whole horizontal), and no jump either, since the character is never grounded
-        //    and its coyote window expired long ago. SlideWedged (CharacterMovement.Slide.cs) reads that arrest off
-        //    this tick alone - a real accumulated fall, and a committed descent far short of the one the resolved
-        //    velocity demanded - and it cannot arm at a jump apex, which is what keeps the #440 ratchet dead.
-        //    Support is granted for THIS TICK: the landing latch below then fires from the arrested fall, exactly as
-        //    a landing anywhere else does, because this IS one.
+        //    and its coyote window expired long ago. SlideWedged (CharacterMovement.Slide.cs) reads that off this
+        //    tick alone - a real accumulated fall, and a committed descent far short of the one the resolved
+        //    velocity demanded - and it cannot arm at a jump apex, which is what keeps the #440 ratchet dead. The
+        //    crease is its motivating case rather than its condition, so any concave curvature can arm it for a
+        //    tick (documented there, and worth no altitude). Support is granted for THIS TICK: the landing latch
+        //    below then fires from the swallowed fall, exactly as a landing anywhere else does, because this IS one.
         if (!grounded && sliding && SlideWedged(s.Position.Y, pos.Y, vVel, dt, t))
         {
             grounded = true;
@@ -739,8 +740,11 @@ public static partial class CharacterMovement
             SpeedScale = state.SpeedScale,   // a movement INPUT: carried through unchanged, never derived by the step
             CommandedVelocity = commandedVel, // a per-tick OUTPUT: what the step asked for, before anything denied it
             // Carried inertia, stamped on EVERY tick (grounded included) and consumed only when AirMomentum is on:
-            // the intended velocity clipped to what survived, so collision can shed it but never inject into it.
-            HorizontalVelocity = ClipToAchieved(carrySeed, start, pos, dt),
+            // the intended velocity clipped to what survived, so collision can shed it but never inject into it. The
+            // clip is measured against commandedVel because that is the vector this tick's advance was computed
+            // from. On a slide it carries a contour steer the carry does not, and reading the carry alone against a
+            // displacement the steer helped produce would clip the carry for the steer's travel (see there).
+            HorizontalVelocity = ClipCarryToAchieved(carrySeed, commandedVel, start, pos, dt),
         };
         // Defense-in-depth: a finite input state must never produce a non-finite result. A pathological command is
         // gated out upstream, but a misbehaving ground/bound/tuning value could inject a NaN/Inf that would slip

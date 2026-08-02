@@ -135,6 +135,58 @@ public static partial class CharacterMovement
         return dir * Math.Clamp(along, 0f, len);
     }
 
+    /// <summary>The carried horizontal velocity for the next tick: <paramref name="carry"/> with whatever the geometry
+    /// removed from it shed, measured against the vector that ACTUALLY DROVE the advance.
+    ///
+    /// <para>THE RULE, exactly. On every path but a steered slide the drive IS the carry, and this is
+    /// <see cref="ClipToAchieved"/> called on it, unchanged and byte for byte. A SLIDING tick is the one case where
+    /// the two differ: it advances by the COMMANDED velocity (the carry plus this tick's contour steer) while only
+    /// the in-plane carry survives to the next tick. Measuring the carry alone against a displacement the steer
+    /// helped produce reads the steer's own travel as a collision verdict, so a held steer whose contour component
+    /// opposed the carried one shed the WHOLE carry, fall line included, at up to one steer-speed's worth per tick
+    /// (measured: a 14 m/s contour carry gone by the tenth tick, and 85% of a mixed carry's fall-line component gone
+    /// to a single tick of opposing strafe). That inverts the model's own rule, which is that input has no fall-line
+    /// authority and never accumulates into the contour - so it adds nothing to the carry AND takes nothing from it,
+    /// and only GEOMETRY may shed it.</para>
+    ///
+    /// <para>So the denial VERDICT is read from the drive (was this tick denied at all?) and the denial AMOUNT is
+    /// read from the carry's own share of the displacement (the committed travel with the steer's contribution
+    /// handed back). Both halves matter. The verdict on the drive is what makes an unobstructed steered tick return
+    /// the carry untouched and exact, rather than re-deriving it from a position the steer moved. The amount from
+    /// the carry's own share is what makes a genuine contact shed EXACTLY what it would have shed with no steer
+    /// held, whenever the steer lies along the contact face - which the slide's steer does by construction against
+    /// any face whose outward direction is the fall line, since the steer is confined to the contour axis. The
+    /// clamp into <c>[0, |carry|]</c> is the same one <see cref="ClipToAchieved"/> carries and for the same reason:
+    /// collision may only ever clip the carry, never inject into it or reverse it.</para>
+    ///
+    /// <para>A drive that rounds to nothing (a steer that exactly cancels the carry) asked for no travel, so
+    /// nothing was denied and the carry survives whole - which falls out of the arithmetic rather than needing a
+    /// case, since handing the steer back to a zero displacement reconstructs the carry.</para></summary>
+    /// <param name="carry">The velocity that feeds the next tick: the commanded velocity everywhere except on a
+    /// slide, where it is the in-plane part alone (fall line plus contour, no steer).</param>
+    /// <param name="drive">The velocity this tick's advance was actually computed from
+    /// (<see cref="MoveState.CommandedVelocity"/>).</param>
+    /// <param name="start">The capsule-centre position the tick started from.</param>
+    /// <param name="resolved">The capsule-centre position the tick actually committed.</param>
+    /// <param name="dt">Timestep in seconds. A non-positive dt has no velocity to measure, so nothing is carried.</param>
+    private static Vector2 ClipCarryToAchieved(Vector2 carry, Vector2 drive, in Vector3 start, in Vector3 resolved,
+        float dt)
+    {
+        Vector2 steer = drive - carry;
+        if (steer == Vector2.Zero) return ClipToAchieved(carry, start, resolved, dt);
+        float len = carry.Length();
+        if (len <= MomentumEpsilon || dt <= 0f) return Vector2.Zero;
+        var achieved = new Vector2((resolved.X - start.X) / dt, (resolved.Z - start.Z) / dt);
+        float driveLen = drive.Length();
+        // The VERDICT, on the drive: a tick that reached essentially all of what it drove for was denied nothing, so
+        // the carry is handed through exactly as it was rather than re-measured off a position the steer moved.
+        if (driveLen > MomentumEpsilon &&
+            Vector2.Dot(achieved, drive / driveLen) >= driveLen * (1f - ClipUndeniedTolerance)) return carry;
+        // The AMOUNT, on the carry's own share: the committed travel less the steer's contribution to it.
+        float along = Vector2.Dot(achieved - steer, carry / len);
+        return carry / len * Math.Clamp(along, 0f, len);
+    }
+
     /// <summary>True when both components of <paramref name="v"/> are finite (neither NaN nor infinite). The Vector2
     /// companion to the Vector3 guard, for the carried horizontal velocity: it is the one new field that FEEDS the
     /// next tick, so a NaN reaching it would not merely corrupt one frame but permanently strand the character.</summary>

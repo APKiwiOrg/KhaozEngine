@@ -28,10 +28,11 @@ namespace KhaozEngine.Tests.Locomotion;
 // What a CONTACT does to the carried velocity (into-surface dies, contour and signed fall line survive) and what
 // a wedge grants is SlideContactResolveTests, beside this file. This file is the behaviour half.
 //
-// The two mechanisms under test are wall slide (a horizontal move whose destination ground stands more than
-// StepHeight above the feet keeps only its along-face component) and no traction (ground steeper than
-// MaxSlopeRadians never grants support, so gravity decomposes against the surface and the character accelerates
-// down the fall line).
+// The two mechanisms under test are wall slide (a horizontal move whose destination ground stands above what the
+// tick can reach keeps only its along-face component - a StepHeight while grounded, and the tick's own resolved
+// upward motion when not, see #468 and ClampRatchetTests) and no traction (ground steeper than MaxSlopeRadians
+// never grants support, so gravity decomposes against the surface and the character accelerates down the fall
+// line).
 public class SteepSlopeSlideTests
 {
     const float Dt = 1f / 30f;
@@ -391,7 +392,15 @@ public class SteepSlopeSlideTests
         float bareApex = t.JumpSpeed * t.JumpSpeed / (2f * t.Gravity);
         float ceiling = baseFeetY + FaceReachCeiling(t, t.RunSpeed, jumping: true);
 
-        const int Ticks = 6000, Settled = 200;
+        // THE APPROACH TAKES LONGER TO SETTLE SINCE #468, so the excluded window is longer and the run is longer to
+        // keep the compared halves fat. The cycle used to reach its final orbit within 200 ticks. Now it holds one
+        // orbit (peak 4.247 m) for about 5300 ticks, steps once to a second (4.495 m), and stays there. Measured
+        // over 48000 ticks - 1086 launches, eight times this window - it steps exactly once and never again, and
+        // the run's global maximum stays the 4.913 m of the very first approach. That is a discrete stepper settling
+        // between two periodic orbits, not a creep, so the fix is to compare halves that sit on the SAME orbit
+        // rather than to widen the tolerance: 20 mm is the detector, and weakening it to swallow a 247 mm orbit step
+        // would blind the test to the ratchet it exists for.
+        const int Ticks = 20000, Settled = 6000;
         const int HalfPoint = Settled + (Ticks - Settled) / 2;
         int jumps = 0;
         float peak = baseFeetY, firstHalfMax = baseFeetY, secondHalfMax = baseFeetY;

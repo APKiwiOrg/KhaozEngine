@@ -48,8 +48,12 @@ public static partial class CharacterMovement
 
         (Vector2 moveDir, float speedFraction) = ResolveCameraRelative(cmd);
         float wade = WadeSpeedScale(position.X, position.Z, position.Y - tuning.CapsuleHalfHeight, tuning, medium);
+        // A StepHeight reach, unchanged: this overload has no vertical physics at all (it clamps Y to the ground
+        // every tick, so the character is always standing), and therefore no resolved vertical motion for the
+        // no-footing allowance to read. Byte-identical to every release before #468.
         (float x, float z, _) = DesiredHorizontalCore(position.X, position.Z, moveDir, speedFraction, cmd.Run, dt,
-            tuning, groundNormal, groundHeight, position.Y - tuning.CapsuleHalfHeight, speedScale: wade);
+            tuning, groundNormal, groundHeight, position.Y - tuning.CapsuleHalfHeight, speedScale: wade,
+            reach: tuning.StepHeight);
         var result = new Vector3(x, groundHeight(x, z) + tuning.CapsuleHalfHeight, z);
         // Defense-in-depth: never return a non-finite position from a finite input. A pathological command is
         // already neutralized by the move gate, but a misbehaving groundHeight/bound could still inject a NaN/Inf
@@ -233,7 +237,7 @@ public static partial class CharacterMovement
         }
         else
         {
-            (dx, dz, float commandedSpeed) = DesiredHorizontalCore(s.Position.X, s.Position.Z, moveDir, speedFraction, run, dt, t, groundNormal, groundHeight, s.Position.Y - halfH, speedScale);
+            (dx, dz, float commandedSpeed) = DesiredHorizontalCore(s.Position.X, s.Position.Z, moveDir, speedFraction, run, dt, t, groundNormal, groundHeight, s.Position.Y - halfH, speedScale, NoFootingReach(s, t, dt));
             commandedVel = moveDir * commandedSpeed;
             if (t.AirMomentum && !s.Grounded)
                 (dx, dz, commandedVel) = AirborneMomentumMove(s, moveDir, speedFraction, run, dt, t, groundNormal, groundHeight, wade);
@@ -247,8 +251,7 @@ public static partial class CharacterMovement
         //    horizontal travel needs and the ground clamp never has to correct it.
         bool jumpRequested = jump || s.JumpBufferRemaining > 0f;
         float jumpBuffer = jump ? t.JumpBuffer : MathF.Max(0f, s.JumpBufferRemaining - dt);
-        float vVel = s.VerticalVelocity - t.Gravity * dt;
-        if (vVel < -t.MaxFallSpeed) vVel = -t.MaxFallSpeed;
+        float vVel = FallIntegrate(s.VerticalVelocity, t, dt);   // the same call NoFootingReach read above, so the two cannot drift
         if (sliding) vVel = slideVVel;
         float fallSpeed = vVel, desiredY = s.Position.Y + vVel * dt;   // fallSpeed: this tick's vertical BEFORE a landing zeroes it, the impact latch's source
 
@@ -423,7 +426,7 @@ public static partial class CharacterMovement
         //    crease is its motivating case rather than its condition, so any concave curvature can arm it for a
         //    tick (documented there, and worth no altitude). Support is granted for THIS TICK: the landing latch
         //    below then fires from the swallowed fall, exactly as a landing anywhere else does, because this IS one.
-        if (!grounded && sliding && SlideWedged(s.Position.Y, pos.Y, vVel, dt, t))
+        if (!grounded && sliding && SlideWedged(s.Position.Y, pos.Y, vVel, dt, t, pos, groundNormal))
         {
             grounded = true;
             tSinceGround = 0f;
@@ -715,6 +718,7 @@ public static partial class CharacterMovement
             else if (stepUpRose && grounded && vVel <= 0f) stepDeltaY = MathF.Max(0f, pos.Y - s.Position.Y);
         }
         float landingImpact = LandingImpact(s.Grounded, grounded, fallSpeed);   // latched BEFORE step 5: a buffered jump on the landing tick must not cancel the impact
+        bool supportGranted = grounded;   // and so is the footing grant, for the same reason: step 5 consumes the support it launches from
         // 5. Jump after contact (UNCHANGED): grounded or within coyote-time, consume both windows.
         if (jumpRequested && (grounded || tSinceGround <= t.CoyoteTime))
         {
@@ -734,6 +738,8 @@ public static partial class CharacterMovement
             ClimbRateEwma = climbEwma,
             StepDeltaY = stepDeltaY,
             LandingImpactSpeed = landingImpact, // a per-tick EVENT: the downward speed this tick's landing erased, else 0
+            SupportGranted = supportGranted,    // and the fact the jump above just consumed: did this tick resolve footing at all
+
             // CARRIED heading, turned shortest-arc toward the camera (FaceCamera) or the commanded direction. A pure
             // OUTPUT: nothing above reads it, so the position this step commits is untouched by it.
             FacingYaw = ResolveFacing(s.FacingYaw, moveDir, faceYaw, dt, t),
@@ -752,11 +758,13 @@ public static partial class CharacterMovement
         // The fallback holds the last good POSE, and a per-tick EVENT is not pose: LandingImpactSpeed is zeroed on the
         // way out, because handing back the previous state wholesale re-emits the landing tick's impact on EVERY
         // poisoned tick, and a consumer reading it from OnAfterTick would apply that one landing's fall damage over
-        // and over for as long as the delegate misbehaves.
+        // and over for as long as the delegate misbehaves. SupportGranted is zeroed with it and for the same reason:
+        // a held state did not resolve footing this tick, and re-emitting a grant per poisoned tick would read to an
+        // anomaly check as a character standing on nothing forever.
         return IsFinite(result.Position) && float.IsFinite(result.VerticalVelocity) &&
                float.IsFinite(result.ClimbRate) && float.IsFinite(result.ClimbRateEwma) &&
                float.IsFinite(result.StepDeltaY) && IsFinite(result.HorizontalVelocity) && float.IsFinite(result.FacingYaw)
-            ? result : state with { LandingImpactSpeed = 0f };
+            ? result : state with { LandingImpactSpeed = 0f, SupportGranted = false };
     }
 
     /// <summary>True when every component of <paramref name="v"/> is finite (neither NaN nor infinite).</summary>

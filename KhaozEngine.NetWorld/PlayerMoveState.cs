@@ -185,6 +185,9 @@ public struct PlayerMoveState : IPredictedState<PlayerMoveState>
             // handoff, where a coinciding landing loses its one-tick signal) this is zero - which reads as "did not land
             // this tick", the safe direction: a missed landing costs a fall-damage event, a fabricated one costs health.
             LandingImpactSpeed = movement.LandingImpactSpeed,
+            // And the sharded head's sim-local footing grant, same read path and same reasoning: false on a client and
+            // across a handoff, which reads as "found no footing this tick".
+            SupportGranted = movement.SupportGranted,
         },
         TeleportEpoch = movement.TeleportEpoch,
     };

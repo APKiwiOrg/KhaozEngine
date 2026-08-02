@@ -319,10 +319,19 @@ public class SlideContactResolveTests
 
         MoveState idle = Run(MoveCommand.Idle, t);
         MoveState steered = Run(AgainstTheContour(run: true), t);
-        // The unclipped resolve, for the same tick with the wall test disarmed: a StepHeight past anything on the
-        // fixture admits every destination, so nothing is ever a wall contact and the carry is the raw in-plane
-        // velocity. Only the wall test reads StepHeight, so this changes nothing else about the tick.
-        Vector2 unclipped = Run(MoveCommand.Idle, t with { StepHeight = 100f }).HorizontalVelocity;
+        // The unclipped resolve: the same seed, the same tuning and the same face with the BLOCK TAKEN AWAY, so
+        // nothing in front of the capsule is a wall contact and the carry is the raw in-plane velocity.
+        //
+        // This reference used to be built by handing the tick a StepHeight of 100 instead, which admitted every
+        // destination because the wall test read StepHeight. Since #468 a tick with no footing is measured against
+        // its OWN RESOLVED VERTICAL MOTION, which no tuning can inflate, so that lever is gone - and it was never
+        // an honest "unobstructed" tick anyway: admitting the destination put the capsule 38 m inside the block and
+        // left the ground clamp to pop it out the top, which is the exact behaviour #468 retires. Removing the
+        // obstacle is what "unobstructed" always meant.
+        Func<float, float, float> openFace = (x, z) => x < EdgeX ? 0f : (x - EdgeX) * grade;
+        Func<float, float, Vector3> openNormals = (x, z) => x < EdgeX ? Vector3.UnitY : faceNormal;
+        Vector2 unclipped = CharacterMovement.Step(seed, MoveCommand.Idle, Dt, openFace, t, openNormals)
+            .HorizontalVelocity;
 
         string measured = $"steered ({steered.HorizontalVelocity.X:F4}, {steered.HorizontalVelocity.Y:F4}), " +
                           $"idle ({idle.HorizontalVelocity.X:F4}, {idle.HorizontalVelocity.Y:F4}), " +

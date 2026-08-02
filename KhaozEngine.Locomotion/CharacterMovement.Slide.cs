@@ -16,18 +16,23 @@ namespace KhaozEngine.Locomotion;
 // raised feet discounted the rise) and one that a tighter fence caused (sideways movement into a face while jumping
 // reading as an invisible wall). The model here has neither failure mode available to it, because it never says no:
 //
-//   1. WALL SLIDE. A horizontal move whose destination ground stands more than MoveTuning.StepHeight above the feet
-//      is a wall contact. The into-face component of the move dies and the along-face component survives, so
-//      strafing along a cliff mid-jump keeps its lateral travel. Grounded and airborne, command path and momentum
-//      path, one function.
+//   1. WALL SLIDE. A horizontal move whose destination ground stands above what the tick can REACH is a wall
+//      contact. The into-face component of the move dies and the along-face component survives, so strafing along
+//      a cliff mid-jump keeps its lateral travel. Grounded and airborne, command path and momentum path, one
+//      function. The reach is a MoveTuning.StepHeight while the character is GROUNDED, because a step is what
+//      footing buys, and the tick's OWN RESOLVED UPWARD MOTION when it is not (#468, 17.29.0): a tick with no
+//      footing may never end higher than its own velocity carried it, so altitude on steep ground never comes
+//      from the ground clamp. See NoFootingReach and SlideReach.
 //   2. NO TRACTION. Ground steeper than MoveTuning.MaxSlopeRadians grants no support, so gravity decomposes
 //      against the surface and the character accelerates down the fall line until it reaches walkable ground, open
 //      air, or water. Climbing self-defeats because there is no footing to climb from, which is what retires the
 //      ascent gate rather than patching it a third time. The ONE exception is a SWALLOWED DESCENT (SlideWedged):
 //      a tick that carried a real fall and committed measurably less of it than that fall demanded is being held
 //      up by the world, so it is supported. Its motivating case is the concave crease, which without it is a
-//      soft-lock (the character can neither slide out of it nor jump), and it is named for that case rather than
-//      defined by it - see SlideWedged for what actually arms it and for the harmless open-face transient.
+//      soft-lock (the character can neither slide out of it nor jump). A shortfall alone cannot tell a gully from
+//      a face, though, so support also requires the ground under the capsule to FOLD BACK ON ITSELF: some pair of
+//      fall lines across the footprint ring must oppose by more than 120 degrees (#468). See SlideWedged and
+//      OpposingFallLines.
 //
 // Everything here is pure scalar arithmetic in a fixed order over the same pure delegates both heads hold, so a
 // slide replays bit-identically through ClientPrediction.Reconcile. It adds NO carried state: the fall-line and
@@ -123,16 +128,22 @@ public static partial class CharacterMovement
 
     /// <summary>Advance an XZ position by a horizontal velocity for one tick, WALL-SLIDING off analytic terrain that
     /// the step cannot reach: when the destination's ground normal is steeper than
-    /// <see cref="MoveTuning.MaxSlopeRadians"/> AND its ground stands more than <see cref="MoveTuning.StepHeight"/>
-    /// above the feet, the move keeps only its along-face component. Shared by the ordinary command path
+    /// <see cref="MoveTuning.MaxSlopeRadians"/> AND its ground stands more than <paramref name="reach"/> above the
+    /// feet, the move keeps only its along-face component. Shared by the ordinary command path
     /// (<c>DesiredHorizontalCore</c>), the airborne momentum path, and the slide, so the rule cannot come to mean
     /// three different things depending on which one drove the tick.
     /// <para>BOTH CONDITIONS ARE LOAD-BEARING. The steepness test is what leaves walkable ground untouched: a fast
     /// run up a legal ramp can rise more than a StepHeight in one tick, and treating that as a wall would turn every
     /// steep-but-walkable hill into a fence at high speed. The height test is what makes this a CONTACT rather than
-    /// the retired gate: ground within a step of the feet is something the character can be seated on, so it is
-    /// admitted, and the no-traction rule (see <c>ResolveSlide</c>) is what makes doing so worthless rather than a
-    /// climb.</para>
+    /// the retired gate: ground the character can be seated on is admitted, and the no-traction rule (see
+    /// <c>ResolveSlide</c>) is what makes doing so worthless rather than a climb.</para>
+    /// <para>WHAT THE REACH IS, and why it is not always <see cref="MoveTuning.StepHeight"/> (#468). A step is
+    /// something FOOTING buys: it is the height a character standing on the ground can lift a foot onto. A tick with
+    /// no footing has bought nothing, so its reach is its OWN RESOLVED UPWARD MOTION and nothing else - zero while it
+    /// falls. See <see cref="NoFootingReach"/> for the rule and for what a StepHeight reach cost when it was handed to
+    /// every tick alike: a two-tick limit cycle walked up a 74 degree sea cliff at 2.5 m/s, because the clamp seated
+    /// the capsule onto every column the admission let it reach and the admission asked only whether that column was
+    /// within a step.</para>
     /// <para>THE PROJECTION IS THE WHOLE FIX FOR THE REPORTED FEEL BUG. The retired gate refused the entire move the
     /// moment any of it pointed at a face, so holding a direction 45 degrees into a cliff while jumping lost the
     /// lateral half too - an invisible wall eating air control. Removing only the into-face component leaves the
@@ -148,7 +159,7 @@ public static partial class CharacterMovement
     /// is the capsule CENTRE.</para></summary>
     private static (float x, float z) AdvanceWallSlide(float x, float z, Vector2 velocity, bool active, float dt,
         in MoveTuning tuning, Func<float, float, Vector3>? groundNormal, Func<float, float, float> groundHeight,
-        float feetY)
+        float feetY, float reach)
     {
         if (!active) return (x, z);
         float nx = x + velocity.X * dt;
@@ -158,18 +169,98 @@ public static partial class CharacterMovement
         // walkable tick costs exactly the one delegate call the retired gate cost it.
         Vector3 destNormal = groundNormal(nx, nz);
         if (!IsSteepGround(destNormal, tuning)) return (nx, nz);
-        if (groundHeight(nx, nz) - feetY <= tuning.StepHeight) return (nx, nz);
+        if (groundHeight(nx, nz) - feetY <= reach) return (nx, nz);
 
         (float fx, float fz) = FaceDirection(destNormal, velocity);
         float into = velocity.X * fx + velocity.Y * fz;
-        if (into >= 0f) return (nx, nz);        // travelling away from the face: the wall is behind, nothing to remove
+        // Travelling AWAY from the destination's face: the wall is behind, so there is nothing to remove. The face
+        // direction is that column's own DOWNHILL, so on any continuous height field an outward move is a move down
+        // the plane it is landing on - it cannot be climbing that column, whatever the reach says about the height
+        // difference from where the tick began.
+        if (into >= 0f) return (nx, nz);
         float sx = velocity.X - into * fx;
         float sz = velocity.Y - into * fz;
         float tx = x + sx * dt;
         float tz = z + sz * dt;
         Vector3 tangentNormal = groundNormal(tx, tz);
-        if (IsSteepGround(tangentNormal, tuning) && groundHeight(tx, tz) - feetY > tuning.StepHeight) return (x, z);
+        if (IsSteepGround(tangentNormal, tuning) && groundHeight(tx, tz) - feetY > reach) return (x, z);
         return (tx, tz);
+    }
+
+    /// <summary>The height a tick may find its destination ground standing above its feet and still be SEATED on it
+    /// rather than stopped by it (<see cref="AdvanceWallSlide"/>'s <c>reach</c>), for the paths whose horizontal is
+    /// arbitrary with respect to the surface: the command path and the airborne momentum path.
+    ///
+    /// <para>A GROUNDED tick keeps <see cref="MoveTuning.StepHeight"/> exactly as before, so every walkable path -
+    /// a step-up, a step-down, a stair glide, a walk into the toe of a cliff - is byte-identical to every release
+    /// since the wall slide shipped. Footing is what a step is bought with, and a grounded character has it (the
+    /// support decision at the end of the previous tick refused to ground it on steep terrain, so it is standing on
+    /// walkable ground or on a prop).</para>
+    ///
+    /// <para>A TICK WITH NO FOOTING GETS ITS OWN RESOLVED UPWARD MOTION, and nothing else: <c>max(0, vVel * dt)</c>
+    /// against the gravity integrate step 2 is about to commit. So a falling tick may be seated only at or below the
+    /// height it started at (it can still meet a face and slide down it, and it can still land on ground it fell
+    /// onto - what it cannot do is END HIGHER than it began), and a rising one may reach exactly as far up as its own
+    /// velocity carries it and no further. That is the whole invariant of #468 stated as one number: ALTITUDE ON
+    /// STEEP GROUND COMES ONLY FROM REAL VELOCITY, NEVER FROM THE GROUND CLAMP.</para>
+    ///
+    /// <para>WHY IT IS ENFORCED HERE AND NOT AT THE CLAMP. The clamp cannot be capped: its job is to forbid
+    /// penetration, and a clamp that refuses to raise a capsule leaves it INSIDE the terrain, trading a climb exploit
+    /// for a tunnel. So the rule lands on the horizontal that would have needed the raise - which is exactly what the
+    /// wall contact already is. A move whose destination stands above the allowance is a WALL, its into-face component
+    /// dies, and its along-face component survives untouched, so a character sliding down a face, strafing across one,
+    /// or falling past one keeps everything it had. Only the part of the move that was buying altitude is removed.</para>
+    ///
+    /// <para>THE SLIDING TICK TAKES THE SAME RULE through <see cref="SlideReach"/>, which is this one plus a float
+    /// slack it needs and this one does not - see there.</para></summary>
+    private static float NoFootingReach(in MoveState state, in MoveTuning tuning, float dt)
+        => state.Grounded
+            ? tuning.StepHeight
+            : MathF.Max(0f, FallIntegrate(state.VerticalVelocity, tuning, dt) * dt);
+
+    // The float slack on a SLIDING tick's rise allowance, in metres, and the one number in this rule that is a
+    // tolerance rather than a physical quantity.
+    //
+    // WHY THE SLIDE NEEDS ONE AND NO OTHER PATH DOES. A sliding tick advances by a velocity that lies IN THE SURFACE
+    // PLANE by construction, so on a planar face the rise it asks for EQUALS its own resolved vertical motion - the
+    // allowance and the ask are the same number computed two different ways, and which side of the comparison they
+    // land on is then decided by rounding. Getting that wrong is not cosmetic: a rising graze is a move INTO the
+    // face, so a false wall verdict sheds its whole up-slope component and deletes the signed fall line's ride,
+    // which is behaviour 17.28.0 shipped deliberately and pins with its own fixtures. The two sides are differences
+    // of world heights, so their rounding is proportional to the height magnitude (about 1e-7 of it per operand):
+    // a millimetre covers several kilometres of world height, which is orders past anything the fleet authors.
+    //
+    // WHY IT CANNOT BE AIMED AT. On every other path the per-tick travel is the PLAYER's (a held speed, a steering
+    // vector), so any slack there is a rate an exploiter can dial into: pick the input that makes the destination
+    // land just inside it and climb at slack-per-tick forever. That is exactly how the retired StepHeight admission
+    // was played. On a slide the travel is the fall line's own speed, which input has no authority over in either
+    // direction, so there is no dial - a slack here can only ever be collected by GEOMETRY that happens to rise by
+    // less than a millimetre per tick more than the tick's own descent, and a face that flat is not a face anyone
+    // climbs.
+    private const float SlideRiseSlack = 1e-3f;
+
+    /// <summary>The rise allowance for a SLIDING tick: the same rule <see cref="NoFootingReach"/> states (a tick
+    /// with no footing may end no higher than its own resolved vertical motion carries it) read off the SLIDE's own
+    /// resolved vertical rather than the gravity integrate, plus <see cref="SlideRiseSlack"/>.
+    /// <para>It is not a formality here. The 17.28.0 slide keeps the capsule glued to a PLANAR face by construction -
+    /// the committed drop is exactly the drop the committed travel needs - but nothing makes a consumer's normal
+    /// delegate agree with its own height field, and a smoothed or lower-resolution normal field over a heightmap
+    /// (which is what a real terrain sampler hands back) disagrees everywhere. There the tangent plane's drop is not
+    /// the surface's drop, and without this the ground clamp seats the difference as ALTITUDE on a sliding tick:
+    /// measured on the #468 cliff patch at 120 Hz, 31 consecutive sliding ticks each seated 0.085 m higher than the
+    /// last while <c>VerticalVelocity</c> read -2 to -8 m/s, for 2.26 m of climb out of nothing. A tick that is
+    /// falling may not end higher than it started, and that is as true of a slide as of a fall.</para></summary>
+    private static float SlideReach(float slideVVel, float dt)
+        => MathF.Max(0f, slideVVel * dt) + SlideRiseSlack;
+
+    /// <summary>One tick of gravity on the carried vertical velocity, terminal clamp included: the ordinary
+    /// (non-sliding) vertical integrate, lifted out of <c>StepCore</c> step 2 so that <see cref="NoFootingReach"/>
+    /// reads the SAME number step 2 is about to commit rather than a second copy of the arithmetic that could drift
+    /// away from it.</summary>
+    private static float FallIntegrate(float verticalVelocity, in MoveTuning tuning, float dt)
+    {
+        float v = verticalVelocity - tuning.Gravity * dt;
+        return v < -tuning.MaxFallSpeed ? -tuning.MaxFallSpeed : v;
     }
 
     /// <summary>Whether the character is IN CONTACT with ground too steep to stand on, which is the one condition
@@ -332,7 +423,8 @@ public static partial class CharacterMovement
         }
 
         (float x, float z) = AdvanceWallSlide(state.Position.X, state.Position.Z, commanded,
-            commanded != Vector2.Zero, dt, tuning, groundNormal, groundHeight, state.Position.Y - halfHeight);
+            commanded != Vector2.Zero, dt, tuning, groundNormal, groundHeight, state.Position.Y - halfHeight,
+            SlideReach(vVel, dt));
         return new SlideStep(x, z, commanded, carry, vVel);
     }
 
@@ -361,18 +453,23 @@ public static partial class CharacterMovement
     /// face those two are equal by construction (the resolve puts the velocity in the surface plane, so the drop the
     /// travel needs is exactly the drop it takes), so the shortfall is float noise and this never fires there.</para>
     ///
-    /// <para>THE OPEN-FACE TRANSIENT, known and harmless. A crease is not the only way to produce a real shortfall:
-    /// ANY concave curvature can, because the resolve commits the drop the TANGENT PLANE at the start of the tick
-    /// needs while the ground clamp seats the capsule on the actual surface at the end of it, and on a face that
-    /// curves upward under one tick's travel the second is higher than the first. When that gap exceeds an arming
-    /// tick's descent, an open creaseless face grants a supported tick, and a held jump fires from it. Measured on a
-    /// parabolic bowl wall with no crease anywhere, over 4000 ticks of sliding into it: nothing at all at gentle
-    /// curvature, then one supported tick 1.29 m up as the curvature sharpens, one at 2.79 m, two at 5.74 m, each
-    /// firing a launch when the jump was held. It is bounded by construction and it is not a ratchet: the gap is a
-    /// fraction of ONE tick's travel, it shrinks quadratically as the tick rate rises, and the same fixtures
-    /// measured ZERO net altitude gain over those 4000 ticks (the peak never once passed the height the slide
-    /// started from). A slide down a bowl briefly finding its feet is also the honest answer physically, which is
-    /// why this is documented rather than fenced.</para>
+    /// <para>THE OPEN-FACE TRANSIENT WAS NOT HARMLESS, AND THE THIRD CONJUNCT IS WHAT ANSWERS IT (#468). A crease is
+    /// not the only way to produce a real shortfall: ANY concave curvature can, because the resolve commits the drop
+    /// the TANGENT PLANE at the start of the tick needs while the ground clamp seats the capsule on the actual
+    /// surface at the end of it. 17.28.0 measured that on a parabolic bowl (a handful of transient supported ticks
+    /// over 4000, worth no altitude) and documented it as harmless. On a real cliff it is not: where the ground
+    /// NORMAL is smoothed over a wider stencil than the height field's own detail - which is what an ordinary terrain
+    /// sampler does - every tick's tangent plane disagrees with the surface under it, the shortfall is structural
+    /// rather than occasional, and the open face granted support steadily. Measured on the authored sea cliff: five
+    /// grants inside one climb, each one a full jump for a player holding the button, with the probe ring reading
+    /// 0 of 8 samples walkable and its fall lines spread across a mere 1 to 3 degrees. That is not a wedge, it is a
+    /// FACE - and a face is exactly the thing steep ground is supposed to grant nothing on.</para>
+    ///
+    /// <para>SO SUPPORT ALSO REQUIRES THE FALL LINES TO GENUINELY OPPOSE (<see cref="OpposingFallLines"/>). A wedge
+    /// is a place with no way out along the ground, which is a statement about SHAPE, and the shortfall alone cannot
+    /// see shape. The ring can: an open face's samples all fall the same way (measured 1 to 3 degrees apart), a true
+    /// gully's oppose across the crease at about 180. The soft-lock this rule exists for keeps its escape and the
+    /// face stops paying out.</para>
     ///
     /// <para>WHY THE JUMP RATCHET CANNOT EXPLOIT IT. The arming condition is precisely what a jump-apex graze
     /// LACKS. At an apex the vertical speed is near zero by definition, and it stays under the bar for the whole
@@ -393,12 +490,71 @@ public static partial class CharacterMovement
     /// <param name="slideVVel">The vertical velocity the slide resolved for this tick (negative when falling).</param>
     /// <param name="dt">Timestep in seconds.</param>
     /// <param name="tuning">Carries the gravity and coyote window the arming speed is read from.</param>
-    private static bool SlideWedged(float startY, float resolvedY, float slideVVel, float dt, in MoveTuning tuning)
+    /// <param name="resolved">The capsule-centre position the tick committed, the centre of the probe ring.</param>
+    /// <param name="groundNormal">The ground-normal delegate the ring is sampled through. Null cannot reach here (a
+    /// slide requires it), and reads as "no shape to see", so no wedge.</param>
+    private static bool SlideWedged(float startY, float resolvedY, float slideVVel, float dt, in MoveTuning tuning,
+        in Vector3 resolved, Func<float, float, Vector3>? groundNormal)
     {
         float arming = tuning.Gravity * MathF.Max(tuning.CoyoteTime, dt);
         if (slideVVel > -arming) return false;
         float demanded = -slideVVel * dt;       // > 0: what this tick's velocity asked the capsule to descend
         float delivered = startY - resolvedY;   // what the ground clamp actually let through
-        return demanded - delivered >= arming * dt;
+        if (demanded - delivered < arming * dt) return false;
+        // The shape test LAST: it is the only conjunct that costs a fan of delegate calls, and the two cheap ones
+        // above already reject every ordinary tick.
+        return groundNormal is not null && OpposingFallLines(resolved.X, resolved.Z, tuning.CapsuleRadius, groundNormal);
+    }
+
+    // HOW FAR APART two of the probe ring's fall lines must point before the ground under the capsule counts as a
+    // WEDGE rather than a face, as a cosine (-0.5 is 120 degrees).
+    //
+    // The two cases this separates were both measured, and they are nowhere near each other: an open cliff face
+    // spreads its fall lines by 1 to 3 degrees across the ring (they are all the same face, so they all fall the
+    // same way), and a true gully opposes at about 180 (the whole point of a gully is that its two walls fall into
+    // each other). Anything from about 10 to about 170 degrees would separate the measured pair, so the threshold is
+    // chosen on what the number MEANS rather than by splitting that range: at 120 degrees two unit fall lines sum to
+    // a vector of magnitude 2*cos(60) = 1, no longer than either of them alone. Below that the ring still agrees on
+    // a direction to leave by and the ground is a face, however folded. Past it the samples cancel each other and
+    // there is no downhill left to take, which IS the wedge. It leaves 40x margin on the open-face side and 60
+    // degrees on the gully side, so neither case is anywhere near the edge.
+    private const float WedgeOpposingCos = -0.5f;
+
+    /// <summary>Whether the ground under the capsule FOLDS BACK ON ITSELF: whether any two samples of a fixed ring
+    /// have horizontal fall lines pointing more than <see cref="WedgeOpposingCos"/> apart. This is the shape half of
+    /// the wedge rule - see <see cref="SlideWedged"/> for why a shortfall alone cannot tell a gully from a face, and
+    /// what an open face cost when it was allowed to.
+    ///
+    /// <para>THE RING IS <c>TreadFanOffsets</c>, the established footprint fan (the centre plus rings at 0.65 and
+    /// 0.95 of the capsule radius, eight directions each), reused rather than reinvented so there is ONE statement in
+    /// the engine of what "under the capsule" spans. It is read here through the analytic ground-normal delegate
+    /// instead of the physics ray fan, which is the only difference: same offsets, same fixed order.</para>
+    ///
+    /// <para>A sample whose normal has no horizontal component is LEVEL and contributes no fall line, so it is
+    /// skipped rather than given an invented direction - level ground under part of the footprint is walkable ground,
+    /// and if the capsule could be supported by it the support decision would already have said so. Everything else
+    /// is pure scalar arithmetic in a fixed order over the same delegate both heads hold, so a reconcile replay of
+    /// this tick reaches the same verdict, and the early exit on the first opposing pair cannot change it because ANY
+    /// opposing pair is the answer.</para></summary>
+    private static bool OpposingFallLines(float x, float z, float radius, Func<float, float, Vector3> groundNormal)
+    {
+        Vector2[] offsets = TreadFanOffsets;
+        Span<float> fx = stackalloc float[offsets.Length];
+        Span<float> fz = stackalloc float[offsets.Length];
+        int n = 0;
+        foreach (Vector2 off in offsets)
+        {
+            Vector3 normal = groundNormal(x + off.X * radius, z + off.Y * radius);
+            float lenSq = normal.X * normal.X + normal.Z * normal.Z;
+            if (lenSq <= FaceNormalEpsilonSq) continue;
+            float inv = 1f / MathF.Sqrt(lenSq);
+            fx[n] = normal.X * inv;
+            fz[n] = normal.Z * inv;
+            n++;
+        }
+        for (int i = 0; i < n; i++)
+            for (int j = i + 1; j < n; j++)
+                if (fx[i] * fx[j] + fz[i] * fz[j] < WedgeOpposingCos) return true;
+        return false;
     }
 }

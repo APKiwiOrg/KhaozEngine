@@ -197,6 +197,28 @@ public struct MoveState
     /// <see cref="VerticalVelocity"/> it already receives. <c>default</c> 0 is byte-identical to a pre-feature state.</summary>
     public float LandingImpactSpeed;
 
+    /// <summary>SIM-LOCAL footing grant (NOT replicated): <c>true</c> on a tick that RESOLVED SUPPORT, read BEFORE the
+    /// jump consumes it. <see cref="Grounded"/> is the state the tick ENDED in, and those are not the same fact: step 5
+    /// launches off the support the tick just found and sets <see cref="Grounded"/> <c>false</c> on its way out, so a
+    /// player holding the jump button reports <c>false</c> on every single tick while bunny-hopping across a field, and
+    /// a support grant on ground a character should never have found footing on is INVISIBLE to anything reading the
+    /// step output. That is not a theoretical gap: the #468 climber-bot's first sweep read ZERO footing grants over a
+    /// 21 m cliff climb that was in fact taking a wedge grant every few seconds, because the jump was held throughout
+    /// and consumed each one. This field is the missing half of that signal, and it is what a server-side anomaly check
+    /// or telemetry recorder needs to see "this character keeps finding footing where the terrain grants none".
+    /// <para>Set on EVERY supported tick, not only on transitions: ordinary grounded walking reports <c>true</c>, and so
+    /// does every path that can grant support (the terrain/prop seat, the swallowed-descent wedge, the stair-climb
+    /// grounded holds, the paced climb). It is the union, deliberately - a consumer asking "did the sim decide this tick
+    /// had footing" wants one answer, not one per mechanism - and a transition is still derivable by comparing it with
+    /// the PREVIOUS tick's, exactly as <see cref="Grounded"/> was used for before this existed.</para>
+    /// <para>A SWIM TICK REPORTS <c>false</c>, matching its <see cref="Grounded"/>: gravity and the ground snap are
+    /// suspended, so no support is resolved at all.</para>
+    /// It is a per-tick EVENT, not carried state (<c>default</c> <c>false</c>, byte-identical to a pre-feature state),
+    /// and it rides NO wire - mirrored server-side onto <c>MovementState.SupportGranted</c> as a sim-local field, the
+    /// same way <see cref="LandingImpactSpeed"/> is. It affects no position output: the step writes it and nothing
+    /// reads it back.</summary>
+    public bool SupportGranted;
+
     /// <summary>The character's AUTHORITATIVE heading this tick, in radians, in the SAME CONVENTION as
     /// <see cref="MoveCommand.CameraYaw"/>: 0 faces world -Z and a positive angle swings toward -X, which is the basis
     /// <c>CharacterMovement</c> already resolves a camera-relative command in (forward is

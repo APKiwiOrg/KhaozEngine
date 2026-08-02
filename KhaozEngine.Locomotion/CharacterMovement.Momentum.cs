@@ -42,13 +42,15 @@ public static partial class CharacterMovement
     {
         float targetSpeed = (run ? t.RunSpeed : t.WalkSpeed) * wade * s.SpeedScale * speedFraction;
         Vector2 v = ResolveAirborneVelocity(s.HorizontalVelocity, moveDir, targetSpeed, dt, t);
-        // The wall slide still applies: a momentum flight into a face whose ground stands more than a StepHeight above
-        // the feet keeps only its along-face component, exactly as a commanded step into the same face does. Momentum
+        // The wall slide still applies: a momentum flight into a face whose ground stands above what this tick can
+        // REACH keeps only its along-face component, exactly as a commanded step into the same face does. Momentum
         // changes where the velocity comes from, never what the world is willing to let it reach, and an arc flying OUT
         // over a canyon meets a steep destination normal whose ground is far below the feet and carries on - which is
-        // what stops a cliff edge from freezing a flight in mid-air.
+        // what stops a cliff edge from freezing a flight in mid-air. This path is airborne by definition, so the reach
+        // is always the tick's own resolved upward motion (NoFootingReach): an arc may be seated as high as its own
+        // velocity carries it and no higher.
         (float x, float z) = AdvanceWallSlide(s.Position.X, s.Position.Z, v, v != Vector2.Zero, dt, t, groundNormal,
-            groundHeight, s.Position.Y - t.CapsuleHalfHeight);
+            groundHeight, s.Position.Y - t.CapsuleHalfHeight, NoFootingReach(s, t, dt));
         return (x, z, v);
     }
 

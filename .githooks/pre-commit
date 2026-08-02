@@ -1,6 +1,7 @@
 #!/bin/sh
-# pre-commit: ban em/en-dashes in staged .md/.cs additions, and enforce the
-# version<->changelog coupling. Shared via core.hooksPath=.githooks. Bypass with --no-verify.
+# pre-commit: ban em/en-dashes in staged .md/.cs additions, ban prose semicolons in staged .md
+# additions (scripts/check-prose.sh), and enforce the version<->changelog coupling. Shared via
+# core.hooksPath=.githooks. Bypass with --no-verify.
 fail=0
 
 # 1) Em/en-dash in staged ADDED lines of shipped text (.md, .cs). Pre-existing dashes elsewhere
@@ -10,6 +11,17 @@ if printf '%s' "$added" | LC_ALL=C grep -qF -e '—' -e '–'; then
   echo "pre-commit: staged .md/.cs additions contain an em-dash or en-dash (banned in shipped text)." >&2
   echo "            Fix them, or 'git commit --no-verify' to override." >&2
   fail=1
+fi
+
+# 1b) Prose-semicolon ban in staged ADDED lines of .md (scripts/check-prose.sh). Same staged contract
+#     as the dash check above: semicolons already in the file are ignored, only what you are adding
+#     counts, and code (fenced blocks, indented blocks, inline spans) is stripped before looking. Not
+#     in CI yet: the docs predate the rule, so --tree still reports pre-existing hits fleet-wide.
+if [ -f scripts/check-prose.sh ]; then
+  if ! sh scripts/check-prose.sh; then
+    echo "            Fix them, or 'git commit --no-verify' to override." >&2
+    fail=1
+  fi
 fi
 
 # 2) version<->changelog coupling. Engine (has check-doc-versions.sh) couples any version tag;

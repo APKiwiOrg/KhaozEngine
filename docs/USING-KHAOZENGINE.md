@@ -1970,8 +1970,8 @@ cl.Begin();
   command list of its own. Opening one while the frame's list is recording is not harmless: with Direct3D11 in
   immediate-context mode a command list IS the device's immediate context, so opening one resets the state the
   frame's list believes is still bound and the device faults a few draws later (issue #423). A frame that queues no
-  water does nothing here; a host that skips the call gets an exception from the water pass rather than a stale
-  ocean.
+  water does nothing here, and a host that skips the call gets an exception from the water pass rather than a
+  stale ocean.
 
 - **Mip policy (`TextureMipPolicy`).** A full chain is right for a tiled albedo and wrong for an image whose
   regions are independent, because every level averages content that should never mix. Both `LoadTexture` overloads

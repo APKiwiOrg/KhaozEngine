@@ -11,7 +11,7 @@ namespace KhaozEngine.Render3D
     public sealed partial class Scene3D
     {
         // Built on first use rather than in the constructor, so this phase costs a scene that never renders
-        // nothing at all. One entry today; the array is the registration, not a placeholder for generality.
+        // nothing at all. One entry today, and the array is the registration, not a placeholder for generality.
         IFramePreparer[]? _preparers;
 
         /// <summary>

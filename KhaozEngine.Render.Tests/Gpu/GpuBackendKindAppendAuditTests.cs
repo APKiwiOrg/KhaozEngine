@@ -30,6 +30,11 @@ namespace KhaozEngine.Tests.Gpu
     /// creation-path row is asserted through its observable behaviour below rather than by naming a private
     /// switch.
     /// </para>
+    /// <para>
+    /// Rows 6 and 8 are asserted in <see cref="GpuBackendKindAppendAuditRegistryTests"/> instead of here, because
+    /// they are the only two that REGISTER a provider under the real kind and so cannot share the parallel pool.
+    /// Everything in this class is pure, so it does.
+    /// </para>
     /// </summary>
     public sealed class GpuBackendKindAppendAuditTests
     {
@@ -202,27 +207,8 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal("d3d11-native", selection.RequestedOverride);
         }
 
-        // --- row 6: GpuBackendSelector.IsBackendSupported ---
-
-        /// <summary>
-        /// Veldrid cannot answer for a backend it does not implement, so the native kind is routed to its
-        /// provider's own functional probe. With no provider the answer is false, and it is not cached as false,
-        /// so registering later still gets to answer for real.
-        /// </summary>
-        [Fact]
-        public void IsBackendSupported_AsksTheNativeProvider_NotVeldrid()
-        {
-            Assert.False(GpuBackendSelector.IsBackendSupported(GpuBackendKind.Direct3D11Native));
-
-            var provider = new FakeBackendProvider(GpuBackendKind.Direct3D11Native) { Supported = true };
-            using (Registered(GpuBackendKind.Direct3D11Native, provider))
-            {
-                Assert.True(GpuBackendSelector.IsBackendSupported(GpuBackendKind.Direct3D11Native));
-                Assert.Equal(1, provider.SupportProbes);
-            }
-
-            Assert.False(GpuBackendSelector.IsBackendSupported(GpuBackendKind.Direct3D11Native));
-        }
+        // --- row 6: GpuBackendSelector.IsBackendSupported, asserted in GpuBackendKindAppendAuditRegistryTests
+        // below. It registers a provider under the real kind, so it belongs off the parallel pool. ---
 
         // --- row 7: GpuBackendSelector.ProbeOS, unchanged until the flip (I4) ---
 
@@ -242,22 +228,8 @@ namespace KhaozEngine.Tests.Gpu
             Assert.NotEqual(GpuBackendKind.Direct3D11Native, GpuBackendSelector.ProbeOS(os));
         }
 
-        // --- row 8: GpuBackendSelector._windowCandidates, unchanged until default-ready (I4) ---
-
-        /// <summary>
-        /// A settings screen offers an API, not an implementation of one. Two entries both reading "Direct3D 11"
-        /// is a choice nobody outside this repo can make, so the native kind stays off the offered list until it
-        /// becomes what "Direct3D 11" means.
-        /// </summary>
-        [Fact]
-        public void SupportedBackends_NeverOffersTheNativeKind_ToAPlayer()
-        {
-            using (Registered(GpuBackendKind.Direct3D11Native,
-                new FakeBackendProvider(GpuBackendKind.Direct3D11Native) { Supported = true }))
-            {
-                Assert.DoesNotContain(GpuBackendKind.Direct3D11Native, GpuBackendSelector.SupportedBackends());
-            }
-        }
+        // --- row 8: GpuBackendSelector._windowCandidates, likewise asserted in
+        // GpuBackendKindAppendAuditRegistryTests below, for the same reason. ---
 
         // --- rows 9 and 10: FrameCap.Resolve and DisplaySettings.RequiresFrameCapWarning ---
         // Correct by DEFAULT (the native kind falls into the uncapped arm, identical to the incumbent), recorded
@@ -397,6 +369,64 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(info.DriverCommandLists);
             Assert.False(info.DriverConcurrentCreates);
         }
+    }
+
+    /// <summary>
+    /// Rows 6 and 8 of the append audit, split out of <see cref="GpuBackendKindAppendAuditTests"/> because they
+    /// are the two that REGISTER a fake provider under the real
+    /// <see cref="GpuBackendKind.Direct3D11Native"/> kind, and the registry plus the support cache behind it are
+    /// process-wide.
+    /// <para>
+    /// What that costs on the parallel pool is a rare red with no bug under it:
+    /// <c>GpuBackendSelectorTests.IsBackendSupported_NeverThrows_ForAnyBackend</c> walks every enum member and
+    /// probes it, so a concurrent run of it lands on this fake in the window where it is registered and bumps the
+    /// very probe counter row 6 asserts is exactly one. Registering under a SENTINEL kind is the other way out and
+    /// is what <c>GpuBackendProvidersTests</c> does, but these two rows are auditing the REAL member, which is the
+    /// whole point of them, so the collection is the fix. The cost is two tests off the pool, not the other
+    /// twenty-odd pure ones.
+    /// </para>
+    /// </summary>
+    [Collection("GraphicsBackendGlobalState")]
+    public sealed class GpuBackendKindAppendAuditRegistryTests
+    {
+        // --- row 6: GpuBackendSelector.IsBackendSupported ---
+
+        /// <summary>
+        /// Veldrid cannot answer for a backend it does not implement, so the native kind is routed to its
+        /// provider's own functional probe. With no provider the answer is false, and it is not cached as false,
+        /// so registering later still gets to answer for real.
+        /// </summary>
+        [Fact]
+        public void IsBackendSupported_AsksTheNativeProvider_NotVeldrid()
+        {
+            Assert.False(GpuBackendSelector.IsBackendSupported(GpuBackendKind.Direct3D11Native));
+
+            var provider = new FakeBackendProvider(GpuBackendKind.Direct3D11Native) { Supported = true };
+            using (Registered(GpuBackendKind.Direct3D11Native, provider))
+            {
+                Assert.True(GpuBackendSelector.IsBackendSupported(GpuBackendKind.Direct3D11Native));
+                Assert.Equal(1, provider.SupportProbes);
+            }
+
+            Assert.False(GpuBackendSelector.IsBackendSupported(GpuBackendKind.Direct3D11Native));
+        }
+
+        // --- row 8: GpuBackendSelector._windowCandidates, unchanged until default-ready (I4) ---
+
+        /// <summary>
+        /// A settings screen offers an API, not an implementation of one. Two entries both reading "Direct3D 11"
+        /// is a choice nobody outside this repo can make, so the native kind stays off the offered list until it
+        /// becomes what "Direct3D 11" means.
+        /// </summary>
+        [Fact]
+        public void SupportedBackends_NeverOffersTheNativeKind_ToAPlayer()
+        {
+            using (Registered(GpuBackendKind.Direct3D11Native,
+                new FakeBackendProvider(GpuBackendKind.Direct3D11Native) { Supported = true }))
+            {
+                Assert.DoesNotContain(GpuBackendKind.Direct3D11Native, GpuBackendSelector.SupportedBackends());
+            }
+        }
 
         static BackendProviderScope Registered(GpuBackendKind backend, IGpuBackendProvider provider)
             => new(backend, provider);
@@ -408,12 +438,12 @@ namespace KhaozEngine.Tests.Gpu
     /// from the live environment, so before the token existed no environment value could name a provider-backed
     /// kind and the branch could only be reasoned about.
     /// <para>
-    /// It needs a process-wide environment mutation, hence its own non-parallel collection. That is not
+    /// It needs a process-wide environment mutation, hence the non-parallel collection. That is not
     /// bookkeeping: <c>GoldenCompare</c> reads the same variable to pick a golden family, so a golden test running
     /// concurrently with this one would look for a reference under whichever backend this test had set.
     /// </para>
     /// </summary>
-    [Collection("GraphicsBackendEnv")]
+    [Collection("GraphicsBackendGlobalState")]
     public sealed class HeadlessProviderCreationTests
     {
         /// <summary>
@@ -471,12 +501,19 @@ namespace KhaozEngine.Tests.Gpu
     }
 
     /// <summary>
-    /// Groups the tests that mutate <c>KE_GRAPHICS_BACKEND</c>, which is process-wide. <c>DisableParallelization</c>
-    /// keeps them off the parallel pool entirely, so no other collection is running while the variable is
-    /// temporarily something other than what the run was launched with.
+    /// Groups the tests that mutate PROCESS-WIDE graphics backend state, of which there are two kinds and both
+    /// belong here: <c>KE_GRAPHICS_BACKEND</c>, which <c>GoldenCompare</c> also reads to pick a golden family, and
+    /// the <c>GpuBackendProviders</c> registry (plus the support cache keyed off it) whenever the kind being
+    /// registered under is a REAL one. <c>DisableParallelization</c> keeps the whole group off the parallel pool,
+    /// so nothing else is running while either is temporarily something other than what the run was launched with.
+    /// <para>
+    /// Named for the state rather than for the env var on purpose. The registry half was the miss: a test that
+    /// registers a fake under a real kind reads as ordinary local setup, right up until a concurrent collection
+    /// enumerating <c>GpuBackendKind</c> probes that fake and moves its counters.
+    /// </para>
     /// </summary>
-    [CollectionDefinition("GraphicsBackendEnv", DisableParallelization = true)]
-    public sealed class GraphicsBackendEnvCollection { }
+    [CollectionDefinition("GraphicsBackendGlobalState", DisableParallelization = true)]
+    public sealed class GraphicsBackendGlobalStateCollection { }
 
     /// <summary>Sets an environment variable for the duration of a test and puts the previous value back,
     /// including putting back "not set at all", which is not the same thing as empty.</summary>

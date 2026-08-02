@@ -88,6 +88,78 @@ on the open face went from 111 in 2400 ticks to 0. Every 17.28.0 invariant is un
 slide to the toe, no jump from the face, lateral air control along a face, contour momentum, the signed fall
 line's 2.4x reach, gully escape, the landing latch, and walkable-ground byte-identity.
 
+**Those measurements were all true and the release was not closed, which is what the next section is.** Each one
+is a heading somebody had thought to name. The circle they were drawn from had not been swept.
+
+### The slide's geometry comes from the height field, and the normal only classifies (#468, round four)
+
+A 360-heading sweep of the fixture above found the reach rule had closed every heading it had been shown and left
+44 of 360 still climbing at 120 Hz, the worst gaining 389 m in 20 seconds - no jump, not one footing grant, and
+`VerticalVelocity` reading +21 to +24 m/s. The reach rule was correct and was being measured against the wrong
+surface.
+
+**Root cause: two delegates, two different surfaces.** A consumer hands the step a ground-NORMAL delegate and a
+ground-HEIGHT field, and a real terrain sampler smooths the first over a stencil wider than the second's own
+detail, so they describe different planes everywhere. The slide resolved against the normal's plane and the
+ground clamp seated the capsule on the height field, and the resolve-then-clamp cycle pumps energy wherever the
+two disagree: the resolve commits the drop ITS plane needs, the clamp puts the capsule somewhere else, and the
+difference is altitude nothing paid for. Tightening the admission could not reach it, because the admission was
+computed from the same disagreeing plane.
+
+**The fix is a split of responsibility, not another bound.**
+
+- The HEIGHT FIELD is the geometry. On a no-footing tick the fall-line tangent, the contour direction, the
+  wall-contact face direction and the reach admission all come from a plane read off the heights by a central
+  difference at `MoveTuning.CapsuleRadius` either side of the point, in a fixed order (`HeightPlaneNormal`). The
+  invariant that buys, and the one this round is really about: THE PLANE THE SLIDE RESOLVES AGAINST IS THE
+  SURFACE THE CLAMP SEATS TO, so the clamp can never hand back altitude the resolve did not account for. A
+  central difference rather than a cheaper forward one because a forward stencil is asymmetric, and its bias is a
+  dial a heading can be aimed at.
+- The NORMAL delegate CLASSIFIES and does nothing else: is this ground too steep to stand on, and does the ground
+  under the footprint fold back on itself. Smoothing is a stability feature there and costs nothing, because a
+  classification decides what a tick is and never where the capsule ends up.
+
+**The `into >= 0` early-out is gone with it.** A move reading as outward was admitted without a reach check, on
+the argument that a column's own downhill cannot be climbed. That holds only when the direction and the heights
+describe the same surface: under a smoothed normal it was worth a measured 4.4 m/s of clamp-fed climb during a
+fall at 30 Hz. An outward move that the heights say rises past the reach is now a wall contact like any other.
+
+**A slide re-seats DOWN onto the surface, never up.** The clamp covers a capsule that ends below the terrain and
+nothing covered one that ends above it, so a sampled plane's own float noise (about `ulp(worldHeight) * speed *
+dt / CapsuleRadius` of drop error per tick) accumulated in one direction until the capsule left slide contact in
+mid-face and parked its whole carry. Measured on the 20 degree gate fixture: 2.4e-4 m a tick at 1300 m of world
+height and 96 m/s. The correction only ever lowers the committed vertical, so every bound stated as "no higher
+than" survives it untouched.
+
+**Wedge support gained the body-scale reading it needed.** The shortfall test asks whether a fall the tick
+DEMANDED went undelivered, and a slide resolving against the body-scale plane correctly demands no fall at all in
+a crease bottom, because the capsule spans both walls and that plane is level. So the soft-lock came back (0
+grounded ticks in 400, a held jump that never fires). Support now also arms when the plane the heights describe
+across the capsule's own footprint is standable. The fold test is required either way, which is what keeps
+footing off the TOE of a cliff, where a capsule also spans mostly flat ground but every fall line still points
+the same way. The crease escape survives with a tighter pulse: 194 grounded ticks in 400 against the old 86, and
+the `LandingImpactSpeed` rattle a parked character used to emit is gone (8 latches over 400 ticks and the same 8
+over 4000, loudest after the arrival 1.3 m/s against the old 4.0).
+
+**Also in this round.** `OpposingFallLines` skips samples whose normal points downward, so an inverted overhang
+normal can no longer manufacture an opposing pair out of one bad sample. Two comments claiming the support
+decision was the only route to `Grounded` on steep terrain now name `SlideWedged` as the third. The wedge fan's
+cost is stated honestly (its two cheap conjuncts pass on essentially every sliding tick past about 2.5 m/s on
+smoothed-normal terrain, so budget the 17-sample ring once per sliding character per tick, ~68 height fetches
+through a typical normal delegate). `SlideRiseSlack` documents that it is a distance per tick and therefore a
+worst case that scales with the tick rate, with the honest reason it is unreachable (gravity's fall-line pull is
+compulsory, so the contour hold that would collect it cannot be sustained) in place of an argument about input
+authority that was true and beside the point.
+
+**Measured, by sweep rather than by case.** 360 headings at one degree, four tick rates, walk and run, with and
+without a held jump: 5760 rides and 4.9 million ticks, now the acceptance bar in `ClampRatchetTests`. Every ride
+ends between 641 and 895 metres BELOW its start, zero headings climb, zero footing grants and zero jumps anywhere
+on the face. A per-tick invariant assertion runs on every tick of every case in the file (a tick that began
+without footing may not end higher than its own resolved vertical motion allows): it fired 274 to 65939 times per
+rate before this change and zero times after, and the worst tick in the swept run exceeds its allowance by
+exactly the 1 mm `SlideRiseSlack` and nothing more. No additional bound on the fall line was needed - consistent
+geometry alone closed the pump.
+
 **What this release does NOT close, stated so it is not read as closed.**
 [#469](https://github.com/APKiwiOrg/KhaozEngine/issues/469) is the same round's sibling and the other side of the
 same point-sample coin: near a crest the interpolated normal reads past `MaxSlopeRadians` before the visual lip,

@@ -436,3 +436,63 @@ before step 5's jump consumes it. `Grounded` is the state a tick ended in, and a
 different on every tick of a hop cycle - which is why the climber-bot's first sweep read zero footing grants
 over a 21 m climb that was in fact taking a wedge grant every few seconds. A signal a jump can hide is not a
 signal an anti-cheat check can use.
+
+### Correction, round four (2026-08-03, 17.29.0, #468): the resolve and the clamp must read the SAME surface
+
+Round three above closed every heading it had been shown. A 360-heading sweep of its own fixture found 44 of 360
+still climbing at 120 Hz, the worst gaining 389 m in 20 seconds with no jump, no footing grant, and
+`VerticalVelocity` reading +21 to +24 m/s. So this correction is not a constant and not another bound. Round three
+was measuring a correct rule against the wrong surface.
+
+**The root cause is that there are TWO surfaces and the model never said which one was real.** A consumer hands
+the step a ground-NORMAL delegate and a ground-HEIGHT field. Round three's own text already noted, as a caveat on
+the slide's float slack, that "nothing makes a consumer's normal delegate agree with its own height field". That
+was not a caveat. It was the bug. The slide resolved its fall line, its contour and its wall contacts against the
+plane the NORMAL reported, while the ground clamp seated the capsule on the HEIGHT FIELD - and the
+resolve-then-clamp cycle pumps energy wherever those two disagree. The resolve commits the drop its plane needs,
+the clamp puts the capsule somewhere else, and the difference is altitude that no velocity paid for. Reaching for
+the admission again could not have closed it, because the admission was computed from the same disagreeing plane.
+That is why round three's reach rule, which is correct and is retained in full, still left a third of the circle
+climbing.
+
+**The resolution is to give each delegate exactly one job.** The HEIGHT FIELD is the geometry: on a tick with no
+footing, the fall-line tangent, the contour, the wall-contact face direction and the reach admission all come from
+a plane sampled off the heights themselves, a central difference at `CapsuleRadius` either side of the point in a
+fixed order. The NORMAL delegate CLASSIFIES: too steep to stand on, and folds back on itself. Smoothing is a
+stability feature in a classification and a liability in a geometry, which is the whole of the distinction.
+
+**The invariant this buys, and it is the one worth carrying forward: the plane the slide resolves against IS the
+surface the clamp seats to.** So the clamp can only ever be correcting float noise, and it can never hand back
+energy the resolve did not already account for. Stated that way it is checkable rather than argued, and the sweep
+checks it: 360 headings, four tick rates, walk and run, with and without a held jump, 4.9 million ticks, no
+heading ending above its start and no tick rising past its own resolved vertical motion.
+
+**Three consequences worth recording, because each one was a decision.**
+
+- *The stencil is a fixed tuning value and a CENTRAL difference.* It has to span movement scale rather than sample
+  scale, or the plane is as noisy as the height field and the slide resolves against detail the capsule cannot
+  stand on. It must not depend on tick rate, speed or heading, because anything a player controls is a dial an
+  exploiter can turn - that is exactly how the retired `StepHeight` admission was played. A forward stencil would
+  be one delegate read cheaper and is asymmetric, so on a creased face there are headings whose stencil straddles
+  a crease on one side only. The symmetric one has no preferred direction to aim at.
+- *A sampled plane carries the height field's float noise, and it accumulates.* The clamp covers a capsule that
+  ends BELOW the terrain and nothing covered one that ends above it, so the error is re-committed every tick and
+  drifts in one direction until the capsule leaves slide contact in mid-face and drops its carry. A slide now
+  re-seats DOWN onto the surface within the contact skin, never up, which makes the model's own claim ("a slide
+  holds the capsule on the surface") true rather than approximate. Down-only is what makes it safe by
+  construction rather than by argument: every bound here is stated as "no higher than".
+- *The wedge needed a body-scale reading, and it is the better statement of the rule anyway.* The shortfall test
+  asks whether a fall the tick DEMANDED went undelivered. A slide resolving against the body-scale plane correctly
+  demands no fall in a crease bottom, because a capsule spanning both walls is on level ground - so the symptom
+  the rule was watching for stopped occurring and the soft-lock returned. Support now also arms when the plane the
+  heights describe across the footprint is standable, which is the wedge's actual question (is the world holding
+  this body up) asked of geometry instead of inferred from a symptom. The fold test is required either way, and
+  that is load-bearing: a capsule a centimetre past the TOE of a cliff also spans mostly flat ground, and granting
+  footing there would put footing on the face.
+
+**What the round says about the method, since this is the fourth correction to the same model.** Every prior round
+was verified against the headings someone had named, and every prior round shipped with a hole somewhere else on
+the circle. The two measurements that found this one are both cheap and neither is case-based: a swept parameter
+(all 360 headings, not the interesting ones) and a per-tick invariant asserted on every tick of every fixture (not
+a total at the end of a run, which cannot see a tick stealing 20 cm inside a ride that nets -700 m). Both are now
+permanent. An aggregate that passes is not evidence that the ticks under it did.

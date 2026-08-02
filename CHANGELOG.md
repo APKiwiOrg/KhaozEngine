@@ -110,16 +110,27 @@ It is the right question for anything that talks to the D3D11 API or reports on 
 driver underneath is the same one whichever implementation drove it, and the wrong question for anything mapping
 a kind onto a Veldrid backend.
 
-**Three of the thirteen sites degraded SILENTLY on an appended member, and all three are closed.**
-`GpuBackendSelector.ToVeldrid` had a discard arm answering `Metal`, so the new member would have asked Veldrid
-for a Metal device on Windows and failed naming an API nobody selected. It throws a message saying what actually
-went wrong instead. The threading log gate tested equality against `Direct3D11`, which would have dropped the
-driver line and the two telemetry threading fields it feeds on the one backend the probe was written for. It uses
-`IsDirect3D11` now, and a test pins that gate against the probe's own gate on every member. The golden filename
-token was derived inline from the enum name at two sites, which would have orphaned 36 committed goldens behind a
-name nothing had ever baked. The remaining sites were each decided and the reasoning recorded in place rather
-than left implicit: `FrameCap.Resolve` and `DisplaySettings.RequiresFrameCapWarning` keep their equality against
-`Metal` on purpose, since the native backend's present throttles the CPU from vsync exactly as the incumbent's
+**Three of the thirteen sites degraded SILENTLY on an appended member, and all three are closed.** The threading
+log gate in `GpuDeviceContext` tested equality against `Direct3D11`, so the native leg would have lost the driver
+threading INFO line and the WARN arm that reports a driver emulating command lists.
+`D3D11ThreadingProbe.IsApplicable` carried the same equality, and it is the one that decides whether the driver
+is asked at all, so `ThreadingCaps` would have stayed null and the telemetry session header's
+`driverCommandLists` and `driverConcurrentCreates` would have gone missing on the one backend those two fields
+exist to diagnose. Both read the single `IsDirect3D11` predicate now, and a test walks every member holding the
+log gate's predicate against the probe's own gate so the two cannot drift apart later. The third is the worst,
+and it is the one that does not throw: `CreateWindowed` and `CreateHeadless` both carried a
+`_ => GraphicsDevice.CreateMetal(...)` discard, so the appended member did not hit a `SwitchExpressionException`
+at all, it asked Veldrid for a METAL device on Windows and failed naming an API nobody selected, from a stack
+saying nothing about the backend actually requested. Both switches carry an explicit throwing arm now.
+
+**Two further sites are hardened the same way, with consequences of their own.**
+`GpuBackendSelector.ToVeldrid` had a discard answering `Metal` too, but its only caller is `IsBackendSupported`,
+so it would have made the SUPPORT PROBE answer for Metal rather than created anything. It throws saying what
+actually went wrong, as the belt to the braces of every caller branching on `RequiresProvider` first. The golden
+filename token was derived inline from the enum name at two sites, which would have orphaned 36 committed goldens
+behind a name nothing had ever baked. The remaining sites were each decided and the reasoning recorded in place
+rather than left implicit: `FrameCap.Resolve` and `DisplaySettings.RequiresFrameCapWarning` keep their equality
+against `Metal` on purpose, since the native backend's present throttles the CPU from vsync exactly as the incumbent's
 does and it must behave identically to the implementation it is being A/B'd against.
 
 **Both Direct3D 11 implementations SHARE one golden family.** `GoldenCompare.GoldenBackendToken(kind)` is a
@@ -147,8 +158,12 @@ the two creation entry points throw a message saying so, which the fallback path
 
 **It targets `net10.0`, deliberately not `net10.0-windows`.** The Windows boundary is
 `[SupportedOSPlatformGuard("windows")]` entry points over `NoInlining` Vortice bodies, so the assembly compiles
-and its device-free tests run on Linux and macOS while the interop stays off the load path there, and CA1416
-enforces the boundary at compile time rather than leaving it to review. `Register()` is therefore safe to call
+and its device-free tests run on Linux and macOS while the interop stays off the load path there. CA1416 binds
+half of that at compile time, the guard-before-call half, over the engine's own `[SupportedOSPlatform("windows")]`
+members. It cannot bind the other half: Vortice 2.3.0 ships no platform annotations on the API this backend
+calls, so a body that names a Vortice type without the attribute compiles perfectly clean, and what catches it is
+the runtime load-path test `OffWindows_NothingInThisPackagePullsInTheDirect3DInterop`, which registers and probes
+off Windows and then asserts no `Vortice` or `SharpGen` assembly is in the process. `Register()` is safe to call
 unconditionally on every OS, and `KhaozEngineD3D11.IsPlatformSupported` is the predicate a consumer can read for
 itself.
 

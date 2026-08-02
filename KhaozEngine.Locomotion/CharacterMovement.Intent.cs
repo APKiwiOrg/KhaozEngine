@@ -7,12 +7,12 @@ namespace KhaozEngine.Locomotion;
 // The INTENT half of the movement step: where a command WOULD have reached this tick with nothing denying it.
 // Distinct from the step itself, which is about where the capsule actually lands. Nothing in the step calls
 // these - they exist for the server-side movement-anomaly check, which subtracts the two to measure exactly
-// what the slope gate, static collision, or the play-area bound denied. Same partial type, same camera basis
+// what the wall slide, static collision, or the play-area bound denied. Same partial type, same camera basis
 // the step resolves commands with, so the comparison can never drift from the thing it is comparing against.
 public static partial class CharacterMovement
 {
     /// <summary>The unconstrained horizontal target the camera-relative move would reach in one step, before the
-    /// slope gate, static collision, or play-area clamp deny any of it. The XZ distance from this to the position a
+    /// wall slide, static collision, or play-area clamp deny any of it. The XZ distance from this to the position a
     /// constrained <see cref="Step(in MoveState, in MoveCommand, float, Func{float, float, float}, in MoveTuning, Func{float, float, Vector3}?, IPhysicsWorld?, Func{float, float, Vector2}?, Func{float, float, float, MovementMedium}?)"/>
     /// actually produced is the authoritative "correction" the server applied this tick - a server-side anti-cheat
     /// signal: a client repeatedly driving into a wall, slope, or boundary keeps this large. Pass

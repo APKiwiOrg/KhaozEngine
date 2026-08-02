@@ -92,11 +92,12 @@ standable props become walkable without leaving a single `NavGrid` layer.
 
 `TerrainSurfaceProvider` is the shipped default: analytic terrain height raised to any `WorldSurfaces`
 prop top covering the point, so a creature stands on the prop instead of routing around it. A prop top
-also rescues ground the slope gate would otherwise block, since the agent stands on the prop, not the
-hillside. That rescue is narrower since 17.26.1: the movement step's slope gate measures a tick's rise
-from the terrain under the agent rather than from the prop it is standing on (so that airtime cannot buy
-a climb, see `KhaozEngine.Locomotion`), so a route over props laid across terrain that is itself RISING
-steeply ahead can still be refused by the movement step even though the nav grid marked it walkable. Note that `TerrainSurfaceProvider` always reports open-sky headroom
+also rescues ground the movement step would otherwise give no footing on, since the agent stands on the
+prop, not the hillside, and prop support always wins there (see `KhaozEngine.Locomotion`). What the rescue
+does NOT cover, since 17.27.0, is terrain that is itself RISING too steeply ahead: a route over props laid
+across such ground can still stop the agent at the face, because a move onto ground both past
+`MaxSlopeRadians` and more than a `StepHeight` above the feet is a wall contact whichever way the nav grid
+marked it, and a face the agent does reach gives it no footing to stand on. Note that `TerrainSurfaceProvider` always reports open-sky headroom
 (`float.PositiveInfinity`), so with the default provider the `agentHeight` half of the rule never blocks
 a cell. Real vertical clearance takes effect only with a game-supplied provider that reports actual
 headroom. `DelegateSurfaceProvider` wraps a plain delegate for a game that wants to supply its own source,

@@ -90,7 +90,7 @@ public struct MoveState
     public Vector2 HorizontalVelocity;
 
     /// <summary>SIM-LOCAL step OUTPUT (NOT replicated): the UNCONSTRAINED horizontal VELOCITY in m/s this step actually
-    /// commanded, before the slope gate, static collision, and the play-area clamp denied any of it. Its magnitude is
+    /// commanded, before the wall slide, static collision, and the play-area clamp denied any of it. Its magnitude is
     /// the whole speed product the step resolved - walk/run (or <see cref="MoveTuning.SwimSpeed"/> while swimming) times
     /// the grounded/<see cref="MoveTuning.AirControl"/> term, the medium's wade ramp and zone scale, the per-entity
     /// <see cref="SpeedScale"/>, and (on the world-space NPC path) the steering vector's speed fraction - so with

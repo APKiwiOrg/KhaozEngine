@@ -30,8 +30,8 @@ namespace KhaozEngine.Terrain
     /// plateau, so you cannot see/walk past it), modulated by a coordinate-hash jagged crest (<c>Ruggedness</c>,
     /// reusing <see cref="TerrainNoise"/>) so it reads as mountains not a smooth berm. <c>Passes</c> cut corridors
     /// through the wall so a road can leave. The visual/diegetic border; the authoritative hard stop is
-    /// <c>KhaozEngine.NetWorld.WorldBounds</c>, and the rim is kept un-climbable by the movement slope gate
-    /// (pass <see cref="TerrainCollision.GroundNormal"/> as the <c>groundNormal</c> delegate).
+    /// <c>KhaozEngine.NetWorld.WorldBounds</c>, and the rim stays un-climbable because the movement step gives no
+    /// footing on it (pass <see cref="TerrainCollision.GroundNormal"/> as the <c>groundNormal</c> delegate).
     /// MVP is circular: <see cref="Apply"/> is shaped around a "distance to the play-area boundary" (here the
     /// distance from <c>Center</c>) so a rect/polygon variant can swap the distance metric and reuse the ramp.
     /// Pure in (x, z) like every <see cref="ITerrainFeature"/>.

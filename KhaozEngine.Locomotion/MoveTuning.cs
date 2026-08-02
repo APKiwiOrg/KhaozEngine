@@ -38,8 +38,8 @@ public readonly record struct MoveTuning(
     float FacingTurnSpeed = float.PositiveInfinity)
 {
     /// <summary>Walkable-slice defaults: walk 6 m/s, run 12 m/s, capsule half-height 0.9 m, max slope 45 deg
-    /// (steep enough for normal hills, low enough that a RimFeature mountain wall is rejected, so the slope gate
-    /// keeps the rim un-climbable when a <c>groundNormal</c> delegate is supplied), capsule footprint radius
+    /// (steep enough for normal hills, low enough that a RimFeature mountain wall is too steep to stand on, so the
+    /// rim stays un-climbable when a <c>groundNormal</c> delegate is supplied), capsule footprint radius
     /// 0.4 m used by static-world collision, plus vertical physics: gravity 25 m/s^2, jump launch 9.79796 m/s
     /// (= 8 * sqrt(1.5), +50% apex vs the old 8f: apex ~1.92 m, matching Ruinborne's deliberate jump-height
     /// value), terminal fall 50 m/s, 0.1 s coyote-time + jump-buffer, full (1.0) air control, and a 0.3 m

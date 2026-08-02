@@ -137,10 +137,12 @@ player uses, orientation slerped between snapshots.
 
 1. A `MoveCommand` (move axes, yaw, jump bit, face-camera flag) reaches `CharacterMovement.Step` from the local
    `CharacterController3D`, the server's `PlayerMoveSimulator`, or the client's `ClientPrediction`.
-2. `Step` runs the horizontal core (camera-relative move, the direction-aware slope gate via the `groundNormal`
-   delegate plus the `groundHeight` one, which is what lets it refuse a climb while letting a descent fall
-   through) and the
-   vertical physics (gravity terminal-clamp, jump with coyote/buffer, air control), then resolves against the
+2. `Step` runs the horizontal core (camera-relative move, plus the steep-terrain wall slide via the
+   `groundNormal` delegate and the `groundHeight` one: a destination both past `MaxSlopeRadians` and more than a
+   `StepHeight` above the feet keeps only its along-face component, while a descent falls through) and the
+   vertical physics (gravity terminal-clamp, jump with coyote/buffer, air control). A tick that starts in contact
+   with too-steep ground takes the SLIDE instead: no traction means `Grounded` false, and gravity decomposed
+   against the surface accelerates it down the fall line. Then it resolves against the
    world: a capsule **sweep** along the move, a downward **support probe** so the character stands on prop
    tops, and a **depenetration** push-out (`ComputePenetration`, iterated) to collide-and-slide. A `null`
    world means terrain-only (the analytic field still clamps Y).

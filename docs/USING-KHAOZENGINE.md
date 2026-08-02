@@ -39,7 +39,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Prop scatter + asset pipeline (`AssetManifest` / `PropScatter` / `Scene3D.DrawProps`)](#prop-scatter-asset-pipeline-assetmanifest-propscatter-scene3ddrawprops)
 - [Procedural dungeons (`KhaozEngine.Dungeon`)](#procedural-dungeons-khaozenginedungeon)
 - [NPC navigation (`KhaozEngine.Navigation`)](#npc-navigation-khaozenginenavigation)
-- [Bounded zones (`RimFeature` + `WorldBounds` + the slope gate)](#bounded-zones-rimfeature-worldbounds-the-slope-gate)
+- [Bounded zones (`RimFeature` + `WorldBounds` + steep terrain)](#bounded-zones-rimfeature-worldbounds-steep-terrain)
 - [3D physics (`KhaozEngine.Physics` / `KhaozEngine.Physics.Bepu`)](#3d-physics-khaozenginephysics-khaozenginephysicsbepu)
 - [Baking prop collision (`ke-propbake`)](#baking-prop-collision-ke-propbake)
 - [Static world collision (`WorldColliders` / `WorldSurfaces`) - legacy](#static-world-collision-worldcolliders-worldsurfaces---legacy)
@@ -4047,7 +4047,7 @@ space, and the default `SamplerSpace.World` silently misses every ray and flatte
 
 **Server-authoritative AI agents move with the player's collision (`CharacterMovement.StepTowards`, 10.64.0).**
 A non-player, server-simulated agent (an enemy NPC) needs the SAME collision the player gets - swept
-collide-and-slide + `StepHeight` step-up against the `IPhysicsWorld`, the terrain support floor, the slope gate,
+collide-and-slide + `StepHeight` step-up against the `IPhysicsWorld`, the terrain support floor, the wall slide,
 and the play-area clamp - but it steers by an actual **world heading** (toward its target), not a camera yaw.
 Drive it with `StepTowards`, which takes a world-space XZ direction whose length scales speed in `[0,1]`:
 
@@ -4203,9 +4203,9 @@ nothing to drive today and facing still comes from `CharacterFacing` / the chara
 [#436](https://github.com/APKiwiOrg/KhaozEngine/issues/436). The networked path is complete: see "Authoritative
 facing" in the netcode chapter below.
 
-Also since 17.26.0, walking off a steep drop is a real fall on the analytic-terrain path, not a wall. See "Bounded
-zones" above for the direction-aware slope gate, which is a behaviour change for a game that leaned on the old
-gate to fence players onto a plateau.
+Also since 17.26.0, walking off a steep drop is a real fall on the analytic-terrain path, not a wall, and since
+17.27.0 a face too steep to stand on is a surface you SLIDE down rather than one you are refused at. See "Bounded
+zones" above, which is a behaviour change for a game that leaned on the old gate to fence players onto a plateau.
 
 **Smooth stair climbing.** A step-up (curb or stair riser under `StepHeight`) is mounted without a jump, but it no
 longer snaps a whole riser up in one tick - the per-tick vertical rise onto step/prop support is paced to
@@ -4756,7 +4756,7 @@ limitations, and the full config surface.
 
 ---
 
-## Bounded zones (`RimFeature` + `WorldBounds` + the slope gate)
+## Bounded zones (`RimFeature` + `WorldBounds` + steep terrain)
 
 A designed zone (a start town/lake ringed by impassable mountains with one road out) wants a border that is both
 **diegetic** (you see why you can't pass) and **enforced** (the authoritative server won't let you). Three pieces
@@ -4777,43 +4777,47 @@ var rim = new RimFeature(
 var field = new TerrainField(TerrainPresets.BoundedClearing());   // meadow ringed by a rim, one +Z pass, a lake
 ```
 
-**2. The slope gate (so the wall can't be climbed).** `CharacterMovement.Step` refuses to CLIMB ground steeper
-than `MoveTuning.MaxSlopeRadians` (default 45 deg) - but only when a `groundNormal` delegate is supplied.
-Pass `TerrainCollision.GroundNormal` as that delegate everywhere movement runs, so the steep rim blocks and the
-gentle pass corridor stays walkable. Local controller:
+**2. Steep terrain (so the wall can't be climbed).** Ground steeper than `MoveTuning.MaxSlopeRadians`
+(default 45 deg) grants no footing, and a face you cannot reach over is a wall you slide along - but only when a
+`groundNormal` delegate is supplied. Pass `TerrainCollision.GroundNormal` as that delegate everywhere movement
+runs, so the steep rim cannot be climbed and the gentle pass corridor stays walkable. Local controller:
 
 ```csharp
 var terrain = new TerrainCollision(field);
-character.Update(input, dt, camera.Yaw, terrain.GroundHeight, terrain.GroundNormal);   // groundNormal = the slope gate
+character.Update(input, dt, camera.Yaw, terrain.GroundHeight, terrain.GroundNormal);   // groundNormal = steep terrain
 ```
 
-**The gate is direction-aware since 17.26.0, and it used to not be.** It refused any step whose DESTINATION normal
-was too steep, whichever way you were going, so a cliff edge blocked walking OFF it exactly as it blocked walking
-INTO it. It now refuses only an ASCENT:
+**Steep ground is a surface you slide on, not a wall you are denied at** (17.27.0,
+[#442](https://github.com/APKiwiOrg/KhaozEngine/issues/442)). Through 17.26.1 this was a GATE that refused a
+move outright, which produced a bug at each setting of its own tightness: loose enough and a repeated jump
+ratcheted up a sheer face, tight enough to stop that and sideways movement into a face while jumping read as an
+invisible wall eating lateral air control. Refusal is not how terrain behaves, so there is no gate any more. Two
+rules replace it, both unconditional and neither a knob:
 
-    blocked iff steep(destination normal) && rise > max(1 mm, travel * tan(MaxSlopeRadians))
+- **Wall slide.** A horizontal move whose destination is BOTH steeper than `MaxSlopeRadians` AND more than
+  `MoveTuning.StepHeight` above your feet is a wall contact: the into-face component of the move dies and the
+  along-face component survives. So strafing along a cliff mid-jump keeps its lateral travel, and walking head-on
+  into one makes no headway. It applies grounded and airborne, on the command path and the momentum path alike.
+- **No traction.** A surface steeper than `MaxSlopeRadians` never grants support: `Grounded` stays false, so no
+  jump, no coyote refresh and no landing latch on the face. You are still seated on it (the ground clamp forbids
+  penetration) but you slide - gravity decomposes against the surface normal and its tangential component
+  accelerates you down the fall line until you reach walkable ground (that landing is where `LandingImpactSpeed`
+  fires, from the fall the slide accumulated), open air, or water. Input steers ACROSS the fall line at the usual
+  `MoveTuning.AirControl`-scaled speed and has no authority along it at all, in either direction.
 
-`rise` is the destination ground height minus the LOWER of your feet and the ground under them, and `travel` is the
-tick's intended horizontal distance. So the allowance is a GRADIENT, not a height: it asks whether this tick climbs
-faster than the steepest walkable ramp would over the same ground, which makes the answer independent of speed and
-tick rate. A descent or a level traverse falls through, the support floor finds nothing walkable, you go airborne,
-and gravity does the rest. Flying into a face whose ground stands above your feet is still refused, so you can never
-end up under terrain.
+Climbing therefore self-defeats rather than being fenced: there is no footing on the face to climb from, and the
+jump ratchet is dead because landing on a face lands in a slide. Nothing can end up under terrain either - the
+wall projection plus the ground clamp carry that between them.
 
-**The rise is measured from the lower of your feet and the ground beneath them so that jumping cannot discount an
-ascent** (17.26.1, [#440](https://github.com/APKiwiOrg/KhaozEngine/issues/440)). Measured from the feet alone it
-could: a jump raises them, so near the apex a steep face's local ground sat level with the feet, the rise read as
-~0, the drift onto the face was admitted, the ground clamp seated you on it, and the next jump repeated - roughly a
-jump height of free climb per cycle up a face no walk can enter. It was never a jump-only hole either, since any
-airtime discounted the face the same way. Walking is unaffected (on the ground the two terms are the same number),
-descents stay open at any airtime, and the gate only ever got more conservative. One consequence for content: a
-character standing on a PROP measures the rise from the terrain UNDER the prop, so stepping off a prop straight onto
-a steep face is refused. The gate reads your `groundHeight` delegate and cannot see prop support.
+Two consequences worth knowing. **Prop support always wins**: only the analytic terrain is traction-less, so a
+plank over a ravine, a ledge bolted to a cliff, or a stair against a mountain all still carry a character exactly
+as before. And **a `MaxSlopeRadians` you tightened as a guardrail now reads as "this is slippery"** rather than
+"this is a fence" - the threshold's meaning is unchanged, but what it buys you is not.
 
-**If your game leaned on the gate as a cliff guardrail, players now fall off.** That is the fix (#369), and it is
-a behaviour change rather than an opt-in. A rim you want players held inside needs `WorldBounds` below, or terrain
-that presents no walkable lip - a tightened `MaxSlopeRadians` no longer buys you a fence you can stand on. Nothing
-new to wire: the gate reads the `groundHeight` delegate every step already takes.
+**If your game leaned on any of this as a cliff guardrail, players now fall off, and off a steep face they slide
+down it.** That is the fix (#369 then #442), and it is a behaviour change rather than an opt-in. A rim you want
+players held inside needs `WorldBounds` below, or terrain that presents no walkable lip. Nothing new to wire: both
+rules read the `groundHeight` and `groundNormal` delegates every step already takes.
 
 **3. `WorldBounds` (the authoritative hard stop, `KhaozEngine.NetWorld`).** A play-area shape the server clamps
 movement to every tick, so the rim can't be glitched past. `WorldBounds.Clamp(x, z)` returns the nearest in-bounds
@@ -4831,7 +4835,8 @@ var client = new WorldClient(transport, terrain.GroundHeight, MoveTuning.Default
 // ShardedWorldServer takes the same (groundNormal, bounds) params - the clamp is authoritative across the cell grid.
 ```
 
-`RimFeature` makes the edge *look* enclosed; the slope gate stops you walking up it; `WorldBounds` *guarantees* it.
+`RimFeature` makes the edge *look* enclosed, steep terrain gives you nothing to climb it with, and `WorldBounds`
+*guarantees* it.
 A `RimPass` corresponds to an opening in the play area (or the bounds is simply larger than the walled region until
 gate/zone-transition content exists - those are later). The 3D World room in `KhaozEngine.Showcase` uses this bounded preset:
 held inside by the mountains, out through the +Z pass. The circular rim is the MVP; a
@@ -5016,7 +5021,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.26.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.27.0" />
 ```
 
 ```csharp
@@ -6799,7 +6804,7 @@ the [`KhaozEngine.MapEdit.Tool` README](../KhaozEngine.MapEdit.Tool/README.md) a
 The movement math lives in one render-free place so local feel and networked feel are the same code.
 `KhaozEngine.Locomotion` (leaf, `Foundation` umbrella) is `CharacterMovement.Step` (camera-relative move from a
 `MoveCommand` (WASD axis + run + camera yaw + jump) over a timestep, normalized diagonals, ground-clamped via a
-height delegate + optional slope gate) and one `MoveTuning`. It has two overloads: the horizontal-only
+height delegate + optional ground-normal delegate) and one `MoveTuning`. It has two overloads: the horizontal-only
 `Step(Vector3,...) -> Vector3` (Y clamped to the ground each tick), and the vertical-physics
 `Step(in MoveState,...) -> MoveState` that adds gravity, jump (coyote-time + jump-buffer), and air control over the
 carried `MoveState` (position + vertical velocity + grounded + feel timers). The local `CharacterController3D`
@@ -7329,7 +7334,7 @@ server.OnSuspiciousActivity += a =>
 };
 ```
 
-`MovementCorrection` fires when the authoritative sim has to deny a player's *intended* move (the slope gate,
+`MovementCorrection` fires when the authoritative sim has to deny a player's *intended* move (a wall slide,
 static collision, or play-area bound pulls them back) by more than `MaxCorrectionDistance` for `CorrectionStreak`
 consecutive ticks. A cheat hammering a wall trips it, a legitimate player brushing one does not. It is a
 server-side proxy: the authoritative model carries no client position to reconcile against, so the engine measures
@@ -10827,8 +10832,8 @@ Full rationale and the per-tick resolve: `docs/design/AIRBORNE-MOMENTUM-DESIGN-2
 
 ### Fall damage: reading a landing (`LandingImpactSpeed` / `OnAfterTick`, since 17.26.0)
 
-A character that walks off a cliff now falls (see the direction-aware slope gate under "Bounded zones"), which
-raises the question the engine could not answer before: how hard did it land? The ground contact zeroes
+A character that walks off a cliff now falls, and one on a face too steep to stand on slides down it (see
+"Bounded zones" above), which raises the question the engine could not answer before: how hard did it land? The ground contact zeroes
 `VerticalVelocity`, so the speed the landing erased was gone before anything downstream could read it, and the
 only way to recover it was to finite-difference a position across the very tick the ground clamp moved it.
 

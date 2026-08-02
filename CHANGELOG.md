@@ -5,6 +5,69 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.27.0
+
+### Steep terrain slides instead of refusing (#442, subsumes #441)
+
+The analytic-terrain ascent gate is deleted and replaced by the standard model: a face too steep to walk is a
+surface you SLIDE on and a face you cannot reach over is a wall you slide ALONG, so no movement is ever refused
+outright. Two playtests took the gate apart from both sides. 17.26.0's version let a repeated jump ratchet up a
+sheer sea cliff (#440), because the raised feet discounted the rise. The 17.26.1 fence that closed that then
+blocked sideways movement into a face while jumping, which reads as an invisible wall eating lateral air control.
+Both are the same root cause - a gate REFUSES, and refusal is not how terrain behaves - so the third fix replaces
+the mechanism instead of retuning it. Full model in the 2026-08-02 addendum to
+`docs/design/PHYSICS-LOCOMOTION-DESIGN-2026-08-02.md`.
+
+**Wall slide.** A horizontal move whose destination is BOTH steeper than `MoveTuning.MaxSlopeRadians` AND more
+than `MoveTuning.StepHeight` above the feet is a wall contact: the into-face component dies, the along-face
+component survives. The face's horizontal direction is the destination normal's XZ projection, with the movement
+direction standing in when that projection is degenerate (which meets the face head-on and kills the whole move,
+the conservative direction). Both conditions are load-bearing: the steepness test is what leaves walkable ground
+untouched, since a fast run up a legal ramp can rise more than a `StepHeight` in one tick, and the height test is
+what makes this a contact rather than the old gate. Applies grounded and airborne, on the command path, the
+airborne-momentum path, `StepTowards` and the horizontal-only overload. This alone fixes the reported feel bug:
+strafing along a cliff mid-jump now keeps the whole lateral component it would have had with no cliff there
+(measured at 0.000 m of lateral travel before, matching a face-free control jump after).
+
+**No traction on steep ground.** A surface past `MaxSlopeRadians` never grants support: `Grounded` stays false,
+so there is no jump, no coyote refresh and no landing latch on the face. The character is still seated on it (the
+ground clamp still forbids penetration) but it slides - gravity is decomposed against the surface normal and the
+tangential component integrates into the carried `MoveState.VerticalVelocity` and `MoveState.HorizontalVelocity`,
+accelerating it down the fall line until walkable ground (where the landing fires `LandingImpactSpeed` from the
+fall the slide accumulated), open air, or the existing water hand-off. The whole slide is one scalar along the
+surface's unit down-slope tangent `T = (ny*hx, -h, ny*hz)`, accelerated by `Gravity * h`: resolving the carried
+velocity onto `T` every tick keeps the horizontal and the vertical exactly consistent with the surface, so the
+committed drop is precisely the drop the committed horizontal travel needs and the body stays glued to the face
+rather than bouncing off it. The speed is clamped non-negative, which is the no-ascent property in one line: a
+surface you have no purchase on cannot carry you up it. Input steers ACROSS the fall line at the usual
+`MoveTuning.AirControl`-scaled speed and has no authority along it in either direction, so there is no new knob.
+
+**Invariants kept.** Walkable ground is untouched, bit-for-bit: flat and legal-slope walking, running, jumping,
+step-up, step-down, the stair glide, wade, swim and the whole Bepu prop collide-and-slide path all produce
+identical output, and `MaxSlopeRadians` keeps its exact meaning as the traction threshold. Descent, walk-offs and
+jump-offs stay free (#369). Anti-tunnel survives without the refusal that used to carry it: the wall projection is
+re-tested and refused only in a concave corner, and the ground clamp does the rest, so an XZ can never be
+committed under terrain. The #440 jump ratchet stays dead because landing on a face lands in a slide, and #441
+(prop-to-steep-face refusal) is subsumed, since stepping off a prop toward a face wall-slides like everything
+else. **Prop support always wins**: only the analytic terrain is traction-less, so a plank over a ravine or a
+stair against a mountain still carries a character.
+
+**No wire change.** The slide rides `MovementState.HorizontalVelocityXQ`/`ZQ` (wire generation 7) and the raw
+`VerticalVelocity`, both replicated unconditionally on both server heads and decoded unconditionally into the
+client's reconcile basis by `PlayerMoveState.From` - none of that has ever been gated on `MoveTuning.AirMomentum`,
+which was the one silent-desync candidate here, since the opt-in momentum path was previously the carry's only
+consumer. `WireProtocolVersion` stays at 10 and no carried state was added. New reconcile-parity coverage exercises
+a mid-slide correction with `AirMomentum` both off and on.
+
+**Compatibility.** Unconditional, not a knob, and a behaviour change for any game that leaned on the gate as a
+cliff guardrail: players fall off, and off a steep face they now slide down it. Use `WorldBounds` for a hard
+border. `AdvanceSlopeGated` and the 17.26.1 min-reference rule are deleted, and the refusal-era `#369`/`#440` test
+suites are rewritten to slide semantics with their intent preserved.
+
+New file `KhaozEngine.Locomotion/CharacterMovement.Slide.cs`. The prop-support probe block moved out of `StepCore`
+into `CharacterMovement.Collision.cs` as `PropSupportFloor` (a pure extraction, no behaviour change) to keep both
+files under the size cap.
+
 ## 17.26.1
 
 ### Jumping at a cliff no longer climbs it (#440)

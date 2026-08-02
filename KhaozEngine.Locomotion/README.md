@@ -7,7 +7,7 @@ run identical code.
 ## API
 
 Two overloads share one horizontal core (camera-relative WASD axis, normalised diagonals, walk/run speed,
-optional direction-aware slope gate via a ground-normal delegate):
+optional steep-terrain wall slide via a ground-normal delegate):
 
 - **`Step(Vector3, in MoveCommand, float, groundHeight, in MoveTuning, groundNormal?, medium?) -> Vector3`**
   Horizontal-only step. Y is clamped to `groundHeight(x, z) + halfHeight` every tick. No air, no vertical
@@ -46,7 +46,7 @@ optional direction-aware slope gate via a ground-normal delegate):
 - **`StepTowards(in MoveState, Vector2 worldDir, bool run, float, groundHeight, in MoveTuning, groundNormal?, IPhysicsWorld?, clampXz?, medium?) -> MoveState`** (10.64.0)
   The world-space kinematic step for **server-authoritative, non-player agents (enemy NPCs)**. It drives the SAME
   collision resolution the player gets - swept collide-and-slide + `StepHeight` step-up against the `IPhysicsWorld`,
-  the analytic terrain support floor, the `groundNormal` slope gate, and the `clampXz` bounds - but from a
+  the analytic terrain support floor, the `groundNormal` wall slide, and the `clampXz` bounds - but from a
   **world-space steering direction** instead of a camera yaw. `worldDir` is an XZ direction whose length scales speed
   in `[0,1]` (unit = full speed, shorter = a slower saunter, longer clamped to full; near-zero = idle). Per-agent
   capsule radius / half-height / walk-run speed come from `MoveTuning`, so different creatures get different sizes and
@@ -74,44 +74,58 @@ optional direction-aware slope gate via a ground-normal delegate):
   and it is the exact inverse of the camera basis the step resolves a command in. A non-finite angle and a zero
   vector both yield 0, which is a legal heading (facing -Z) rather than a sentinel.
 
-### Slope gate (direction-aware since 17.26.0)
+### Steep terrain: wall slide and no traction (17.27.0)
 
-Supply a `groundNormal` delegate and the step refuses to CLIMB ground steeper than `MoveTuning.MaxSlopeRadians`.
-Until 17.26.0 it refused ANY move whose destination normal was too steep, whichever direction the tick was
-travelling, so on the analytic-terrain path a cliff edge blocked walking OFF it exactly as it blocked walking INTO
-it. The rule is now:
+Supply a `groundNormal` delegate and ground steeper than `MoveTuning.MaxSlopeRadians` stops being walkable. Until
+17.26.1 that was a GATE which REFUSED a move outright, and refusal produced a bug at each setting of its own
+tightness: loose enough and a repeated jump ratcheted up a sheer face
+([#440](https://github.com/APKiwiOrg/KhaozEngine/issues/440)), tight enough to stop that and sideways movement
+into a face while jumping read as an invisible wall eating lateral air control. Terrain does not refuse, so
+[#442](https://github.com/APKiwiOrg/KhaozEngine/issues/442) replaced the gate with two rules. Both are
+unconditional, neither is a knob, and `MaxSlopeRadians` keeps its exact meaning as the traction threshold.
 
-    blocked iff steep(destination normal) && rise > max(1 mm, travel * tan(MaxSlopeRadians))
+**1. Wall slide.** A horizontal move whose destination is BOTH steeper than `MaxSlopeRadians` AND more than
+`MoveTuning.StepHeight` above the feet is a wall contact:
 
-`rise` is the destination ground height minus the **lower of the character's FEET (the capsule centre minus
-`CapsuleHalfHeight`) and the ground height under the current column**, and `travel` is the tick's intended
-horizontal distance, so the ascent allowance is a **gradient, not a height**:
-it asks whether this tick climbs faster than the steepest walkable ramp would over the same ground, which makes
-the answer independent of speed and of tick rate. A fixed allowance could not, and the version that tried let a
-slowed character, a short steering vector or a high tick rate walk up an arbitrarily steep face a fraction of a
-centimetre per tick. The 1 mm term is only a noise floor for a near-level traverse across a steep face. Neither
-term is a new knob: `tan(MaxSlopeRadians)` is the existing gate read as a gradient.
+    the into-face component of the move dies, the along-face component survives
 
-A descent or a level traverse now falls through, the support floor finds no walkable ground, the character goes
-airborne, and gravity does the rest. Flying into a face whose ground stands above the feet is still refused, so an
-XZ can never be committed under terrain.
+The face's horizontal direction is the destination normal's XZ projection (the movement direction stands in when
+that projection is degenerate, which meets the face head-on and kills the whole move - the conservative
+direction). Both conditions are load-bearing. The steepness test is what leaves walkable ground untouched, since a
+fast run up a legal ramp can rise more than a `StepHeight` in one tick. The height test is what makes this a
+CONTACT rather than the old gate: ground within a step of the feet is something the character can be seated on, so
+it is admitted, and rule 2 is what makes doing so worthless. The projected move is re-tested and refused outright
+only if it still lands in a wall, which happens in a concave corner and is what keeps an XZ from ever being
+committed under terrain.
 
-**Vertical motion buys no admission** (17.26.1, [#440](https://github.com/APKiwiOrg/KhaozEngine/issues/440)). The
-rise reference is the LOWER of the feet and the ground under them because the feet alone were inflatable: a jump
-raises them, so near the apex a steep face's local ground stood level with the feet, the rise read as ~0, the drift
-onto the face was admitted, the ground clamp seated the character on it, and the next jump repeated - a jump height
-of free climb per cycle up a sea cliff no walk could enter. Any airtime did it, so a character merely falling past
-a face while steering into it was seated partway up. The floor of the two terms cannot be raised by leaving the
-ground. Grounded motion is unchanged (the feet ARE the ground, so the minimum is a no-op), genuine descents stay
-open at any airtime (a destination column below the current one is below both terms), and because the gate only
-ever got more conservative the anti-tunnel property is untouched. One consequence off the exploit path: a character
-elevated on a PROP measures its rise from the terrain under the prop, not from the prop top, so stepping off a prop
-straight onto a steep face is now refused - the analytic gate reads `groundHeight`, and prop support is not visible
-to it.
+**2. No traction.** A surface steeper than `MaxSlopeRadians` never grants support. `Grounded` stays false, so
+there is no jump, no coyote refresh and no landing latch on the face. The character is still SEATED on it (the
+ground clamp forbids penetration) but it slides: gravity is decomposed against the surface normal and the
+tangential component integrates into the carried `MoveState.VerticalVelocity` and `MoveState.HorizontalVelocity`,
+accelerating it down the fall line until it reaches walkable ground (that landing is where `LandingImpactSpeed`
+fires, from the fall the slide accumulated), open air, or water. The whole thing is one scalar: the surface has a
+unit down-slope tangent `T = (ny*hx, -h, ny*hz)` from the normal's Y and its horizontal direction, gravity along
+it is exactly `Gravity * h`, and the velocity is that speed times `T`. Resolving the carried velocity onto `T`
+every tick is what keeps the horizontal and the vertical exactly consistent with the surface, so the committed
+drop is precisely the drop the committed horizontal travel needs and the character stays glued to the face
+instead of bouncing off it. The speed is never negative, which is the whole no-ascent property: a surface you have
+no purchase on cannot carry you UP it. Terminal is `MaxFallSpeed`, read through the surface so the vertical
+component lands exactly on it.
 
-It applies identically to the grounded path, the airborne-momentum path and the horizontal-only overload, and it
-needs no new wiring (it reads the `groundHeight` delegate every step already takes). **A game that used the gate
-as a cliff guardrail now gets real falls** - that is the fix, and it is a behaviour change rather than an opt-in.
+Input while sliding steers ACROSS the fall line at the usual `AirControl`-scaled speed and has no authority along
+it in either direction - no new knob. Up-slope authority would be traction by another name, and down-slope
+authority buys a hop off the surface on every tick it is held, which is a visible bounce on any moderate slope.
+
+Consequences worth knowing. **Climbing self-defeats** rather than being fenced, so the #440 jump ratchet is dead:
+landing on a face lands in a slide. **Prop support always wins** - only the analytic terrain is traction-less, so
+a plank over a ravine or a stair against a mountain still carries a character exactly as before. Descent, walk-offs
+and jump-offs are unchanged. And it needs no new wiring, no carried state and no wire change: the slide rides
+`HorizontalVelocity` and `VerticalVelocity`, both of which already replicate, so it replays bit-identically
+through `ClientPrediction.Reconcile`.
+
+Everything applies identically to the grounded path, the airborne-momentum path, `StepTowards` (the NPC path) and
+the horizontal-only overload. **A game that used the gate as a cliff guardrail now gets real falls, and a steep
+face now slides** - that is the fix, and it is a behaviour change rather than an opt-in.
 
 ### Movement medium (wading)
 
@@ -175,7 +189,7 @@ decision. **A null provider never engages swim.** The swim flag replicates via N
   replicated as `MovementState.SpeedScaleQ`). A server-only NPC or a single-player controller just sets it.
 - **`MoveState.CommandedVelocity`** (16.0.0, was the `float CommandedSpeed` field in 14.27.0) - sim-local step
   OUTPUT (not replicated): the unconstrained horizontal VELOCITY in m/s the step actually commanded this tick,
-  before the slope gate, collision, or the play-area clamp denied any of it. Its magnitude is the whole speed
+  before the wall slide, collision, or the play-area clamp denied any of it. Its magnitude is the whole speed
   product (walk/run or `SwimSpeed`, times air control, the wade ramp, the zone scale, and `SpeedScale`), so with
   nothing denying the move the step travels exactly `CommandedVelocity * dt`. `(0,0)` on an idle tick.
   `CommandedSpeed` survives as a computed readonly property (`CommandedVelocity.Length()`), so reads still compile

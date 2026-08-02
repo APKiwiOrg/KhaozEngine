@@ -29,7 +29,7 @@ public sealed class AntiCheatConfig
     // --- Movement-correction anomaly. Disabled by default. ---
 
     /// <summary>Per-tick authoritative correction distance (world units) above which a tick counts as "corrected":
-    /// the client's intended move was denied at least this far by the slope gate, static collision, or play-area
+    /// the client's intended move was denied at least this far by the wall slide, static collision, or play-area
     /// bound. 0 (default) = disabled. A legitimate player brushing a wall produces brief, isolated corrections; a
     /// cheat that hammers the constraints produces a sustained streak.</summary>
     public float MaxCorrectionDistance { get; init; }

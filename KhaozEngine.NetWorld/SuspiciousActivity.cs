@@ -11,7 +11,7 @@ public enum SuspiciousReason
     RateLimited,
 
     /// <summary>The authoritative sim repeatedly had to correct a player's intended move beyond the configured
-    /// distance - the client kept driving into the slope gate, static collision, or play-area boundary.</summary>
+    /// distance - the client kept driving into a wall slide, static collision, or the play-area boundary.</summary>
     MovementCorrection,
 
     /// <summary>A client sent a game message (<see cref="WorldClient.SendGameMessage"/>) whose payload exceeded the

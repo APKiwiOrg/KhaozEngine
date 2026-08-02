@@ -8,7 +8,7 @@ namespace KhaozEngine.NetWorld;
 /// Shared server-side movement-anomaly math, so <see cref="WorldServer"/> and <see cref="ShardedWorldServer"/>
 /// detect "the client keeps fighting the authoritative constraints" identically. The per-tick correction distance
 /// is how far the constrained authoritative position fell short of the client's intended unconstrained move (the
-/// slope gate, static collision, or play-area bound denied it). A streak of corrected ticks - not a single one -
+/// wall slide, static collision, or play-area bound denied it). A streak of corrected ticks - not a single one -
 /// raises the signal, so a legitimate player brushing a wall does not trip it.
 /// </summary>
 internal static class MovementAnomaly

@@ -16,7 +16,7 @@ public enum SamplerSpace
     /// <c>PhysicsGroundProbe</c> over a rebased <c>IPhysicsWorld</c>) REQUIRES <see cref="Frame"/> instead: that
     /// world raycasts in its own rebased space, so wrapping the call back out to absolute coordinates makes every
     /// ray miss and the probe silently return its fallback height and a +Y normal, flattening the ground and
-    /// disabling the slope gate. The zero-work adoption step for a genuinely absolute sampler, and the
+    /// disabling the steep-terrain rules entirely. The zero-work adoption step for a genuinely absolute sampler, and the
     /// default.</summary>
     World = 0,
 

@@ -34,6 +34,10 @@ namespace KhaozEngine.Tests.Gpu
         const int W = 320, H = 200;
         const int Frames = 400;          // hundreds of frames of load-draw-unload
         const int MeshesPerFrame = 6;
+        // How long the post-churn settle may take before a still-populated pool is called a leak. Generous on
+        // purpose: it bounds a hang, it does not gate performance. A software rasterizer draining ~400 sealed
+        // batches one completed frame at a time is the slowest legitimate case, and it is minutes below this.
+        const int SettleTimeoutMs = 60_000;
 
         readonly ITestOutputHelper _out;
         public RetireFenceGpuTests(ITestOutputHelper o) => _out = o;
@@ -95,27 +99,39 @@ namespace KhaozEngine.Tests.Gpu
             int fenced = spy.FencedSubmitCalls - fencedBefore;
 
             // Settle: unload the tail and run the pool until it is empty, so "drains to zero at idle" is a real
-            // assertion and not a snapshot taken mid-burst.
+            // assertion and not a snapshot taken mid-burst. Every poll WAITS for the frame it just submitted.
+            // Without that the loop submits a full scene render per iteration and blocks on nothing, so on a device
+            // whose frame costs more than the iteration does (lavapipe, roughly 10x) the queue depth grows
+            // monotonically and no fixed iteration count ever catches up. That is what read as a dead fence on the
+            // Vulkan leg in #423 while the fence path was in fact working - it had freed exactly the batches whose
+            // frames had completed. The bound is wall clock for the same reason: an iteration is not a unit of time
+            // on an unknown device. A genuine leak (a fence that never signals) frees nothing however long it runs,
+            // so it still fails here, just at the deadline instead of on iteration 300.
             foreach (MeshHandle h in previous) scene.UnloadMesh(h);
-            for (int i = 0; i < 300 && scene.RetiredResourceCount > 0; i++)
+            long settleStart = Stopwatch.GetTimestamp();
+            double SettleMs() => (Stopwatch.GetTimestamp() - settleStart) * 1000.0 / Stopwatch.Frequency;
+            while (scene.RetiredResourceCount > 0 && SettleMs() < SettleTimeoutMs)
             {
                 preview.Capture(_ => { });
-                if (scene.RetiredResourceCount > 0) System.Threading.Thread.Sleep(1);
+                inner.WaitForIdle();   // the raw device, so this drain is not one the spy counts (already sampled)
             }
-            Assert.Equal(0, scene.RetiredResourceCount);
+            Assert.True(scene.RetiredResourceCount == 0,
+                $"the retired pool still holds {scene.RetiredResourceCount} resources after {SettleMs():F0} ms of "
+                + "settling with a device drain per poll, so the retirement fence never signaled");
 
             return (drains, fenced, ms, peak);
         }
 
-        [GpuFact]
+        // Fences are a Vulkan and Metal capability (VeldridMap), so this SKIPS rather than fails on a backend
+        // without them: asserting a capability the device cannot have is a red test for a feature that was never
+        // claimed (#423). The two surfaces that publish it must still agree, which is asserted below.
+        [GpuFact(RequiresCompletionFences = true)]
         public void Mesh_churn_survives_hundreds_of_frames_and_the_fence_path_removes_every_drain()
         {
             using GpuDeviceContext ctx = GpuDeviceContext.CreateHeadless();
             IGpuDevice gd = ctx.GpuDevice;
-            Assert.True(gd.Capabilities.SupportsCompletionFences,
-                $"the {gd.Backend} device reports no GPU-completion fence, so this test is measuring the wrong thing");
-            // The two surfaces that publish capabilities must agree: they are read through one function for exactly
-            // this reason, and this flag is the newest member to have been able to drift.
+            // They are read through one function for exactly this reason, and this flag is the newest member to
+            // have been able to drift.
             Assert.Equal(gd.Capabilities.SupportsCompletionFences, ctx.Capabilities.SupportsCompletionFences);
 
             // Round-robin the two policies so machine drift under the run lands on both equally.

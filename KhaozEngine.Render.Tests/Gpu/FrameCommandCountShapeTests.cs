@@ -116,6 +116,7 @@ namespace KhaozEngine.Tests.Gpu
             {
                 scene.Begin();
                 drawFrame(frame);
+                scene.PrepareFrame();
                 cl.Clear();
                 cl.Begin();
                 scene.RenderInternal(cl, W, H, fb);

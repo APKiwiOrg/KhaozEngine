@@ -1942,7 +1942,8 @@ scene.DrawBillboard(pos, size, color, BillboardBlend.Additive);
 scene.DebugCircle(center, up, radius, color);                        // immediate-mode debug overlay
 ```
 
-- `Scene3D`: `LoadMesh`/`LoadTexture`/`UnloadMesh`/`UnloadTexture`, `Begin()`, `Draw(handle, transform[, tint[, material]])`,
+- `Scene3D`: `LoadMesh`/`LoadTexture`/`UnloadMesh`/`UnloadTexture`, `Begin()`, `PrepareFrame()` (below),
+  `Draw(handle, transform[, tint[, material]])`,
   billboards, a debug-draw overlay (`DebugLine/Ray/Box/Grid/Axes/Circle`), and depth-tested debug wire volumes
   (`DebugWireSphere/Dome/Cylinder/Circle`, see below). `LoadTexture` builds and generates a
   full mip chain for each texture (from 9.2.0), so model/prop surfaces stay smooth at distance instead of aliasing
@@ -1950,6 +1951,38 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
   to build (see below). `Post` is the
   `PixelPostProcess` (pixelation / quantize / dither / cel bands / palette for the chunky retro look; the smooth
   look is the default).
+- **`PrepareFrame()`, the frame's pre-recording phase.** Runs once per frame, after every `Draw*`
+  call for that frame and **before the command list the scene renders into is opened**. Every host the engine
+  ships calls it for you - `Render3DSurface.Render` (so `GameApp3D` and any surface you build yourself are both
+  covered), `Render3DPreview.Capture`, `Render3DSnapshot.Capture` - so a game needs no change. Every way of
+  rendering a `Scene3D` goes through one of those (the record entry point itself is internal), so no
+  consumer-reachable path is left having to call it, and calling it by hand is only ever an early no-op. The order
+  it enforces, which is what those hosts do internally, is:
+
+```csharp
+scene.Begin();
+DrawTheWorld(scene);        // every Draw / DrawWater / DrawParticle for the frame
+scene.PrepareFrame();       // <- producers submit their own GPU work here, with NO list open
+cl.Begin();
+// ... record the scene, submit cl
+```
+
+  Some per-frame GPU work cannot be recorded into the frame's list at all. The FFT ocean's priming pass is a
+  compute dispatch whose output another dispatch reads in the same frame, and the GPU seam has no
+  dispatch-to-dispatch barrier, so the only ordering available is a submit plus a device wait - which means a
+  command list of its own. Opening one while the frame's list is recording is not harmless: with Direct3D11 in
+  immediate-context mode a command list IS the device's immediate context, so opening one resets the state the
+  frame's list believes is still bound and the device faults a few draws later (issue #423). A frame that queues no
+  water does nothing here, and a host that skips the call gets an exception from the water pass rather than a
+  stale ocean. Calling it twice for one `Begin` is harmless: the second call is a no-op, so a host that prepares by
+  hand and then hands the scene to `Render3DSurface.Render` does not prepare the frame twice. Queueing a draw AFTER
+  preparing is the one thing that is not harmless, and the water pass throws for it.
+
+  **A `Scene3D` records ONCE per `Begin`.** Recording consumes the prepared frame, so a host that wants the same
+  scene recorded twice (two viewports, a split screen, a preview beside the world) calls `Begin` again and re-queues
+  the draws for the second recording. Rendering twice off one `Begin` throws from the water pass, because the second
+  `PrepareFrame` sees a frame that is already prepared and no-ops rather than preparing again.
+
 - **Mip policy (`TextureMipPolicy`).** A full chain is right for a tiled albedo and wrong for an image whose
   regions are independent, because every level averages content that should never mix. Both `LoadTexture` overloads
   take an optional trailing policy, defaulting to `TextureMipPolicy.Full`, so an omitted argument is exactly the
@@ -4941,7 +4974,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.25.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.26.0" />
 ```
 
 ```csharp

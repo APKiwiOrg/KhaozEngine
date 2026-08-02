@@ -16,6 +16,11 @@ namespace KhaozEngine.Tests.Gpu
     ///   may or may not be present and a skip is preferable to a hard error.</description></item>
     /// </list>
     /// Anything else (unset, empty, or any other value) skips with a "set KE_GPU_TESTS" reason.
+    /// <para>
+    /// A test may also declare a device CAPABILITY it needs (<see cref="RequiresCompletionFences"/>), which skips
+    /// with the backend named on a device that lacks it, in either mode. That is the only skip strict mode allows,
+    /// and it is about what the device can do rather than whether it exists.
+    /// </para>
     /// </summary>
     public sealed class GpuFactAttribute : FactAttribute
     {
@@ -27,6 +32,11 @@ namespace KhaozEngine.Tests.Gpu
         /// so both attributes hit the SAME once-per-process device probe instead of each keeping their own.</summary>
         internal static string? ProbeReasonValue() => ProbeReason.Value;
 
+        // The capability probe, separate from the device probe above and equally once-per-process: the backend name
+        // and whether that backend signals a fence on GPU completion. Null when no device could be created, which
+        // deliberately does NOT skip - see RequiresCompletionFences.
+        static readonly Lazy<(string Backend, bool Fences)?> Caps = new(ProbeCapabilities);
+
         public GpuFactAttribute()
         {
             string? reason = SkipReason(
@@ -34,6 +44,42 @@ namespace KhaozEngine.Tests.Gpu
                 ProbeReasonValue);
             if (reason != null) Skip = reason;
         }
+
+        /// <summary>
+        /// Declare that this test needs <see cref="KhaozEngine.Gpu.GpuCapabilities.SupportsCompletionFences"/>, so
+        /// it SKIPS with a reason naming the backend on a device that has none, instead of failing an assertion it
+        /// can never satisfy. Fences are a Vulkan and Metal capability today, so a Direct3D11 leg reported two red
+        /// tests for a feature it does not have (part of <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/423">#423</see>).
+        /// <para>
+        /// This is the ONE thing that skips in strict mode, and it is not the hole strict mode exists to close: a
+        /// missing capability is a property of the device, decided by <c>VeldridMap</c>, not a device that failed
+        /// to come up. If no device can be created at all, this skips nothing and the test still errors, so a CI
+        /// leg with a broken device can never go quiet.
+        /// </para>
+        /// </summary>
+        public bool RequiresCompletionFences
+        {
+            get => _requiresCompletionFences;
+            set
+            {
+                _requiresCompletionFences = value;
+                // Attribute properties are assigned after the constructor, so the decision is applied here. An
+                // existing Skip (the env gate) wins: it is the more fundamental reason.
+                if (value && Skip == null) Skip = CompletionFenceSkipReason(Caps.Value);
+            }
+        }
+
+        bool _requiresCompletionFences;
+
+        /// <summary>Pure decision for <see cref="RequiresCompletionFences"/>: the skip reason for the probed
+        /// <paramref name="caps"/>, or null to RUN. A null probe (no device could be created) runs, so a broken
+        /// device errors downstream instead of being reported as a capability skip. Factored out to be unit-tested
+        /// headlessly, exactly like <see cref="SkipReason"/>.</summary>
+        internal static string? CompletionFenceSkipReason((string Backend, bool Fences)? caps)
+            => caps is { Fences: false } c
+                ? $"the {c.Backend} device reports no GPU-completion fence support "
+                    + "(GpuCapabilities.SupportsCompletionFences), which is what this test measures"
+                : null;
 
         /// <summary>
         /// Pure decision for whether a <see cref="GpuFactAttribute"/> should skip, given the raw
@@ -54,6 +100,21 @@ namespace KhaozEngine.Tests.Gpu
             if (envValue == "probe")
                 return probe();                               // null => run, else the probe's skip reason.
             return "set KE_GPU_TESTS=1 (strict) or KE_GPU_TESTS=probe (skip if no device) to run GPU golden tests";
+        }
+
+        /// <summary>Create a headless device once, read what it can do, dispose it. Null when it could not be
+        /// created: a capability requirement never turns a dead device into a skip.</summary>
+        static (string Backend, bool Fences)? ProbeCapabilities()
+        {
+            try
+            {
+                using var ctx = KhaozEngine.Gpu.GpuDeviceContext.CreateHeadless();
+                return (ctx.GpuDevice.Backend.ToString(), ctx.Capabilities.SupportsCompletionFences);
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         static string? ProbeHeadlessDevice()

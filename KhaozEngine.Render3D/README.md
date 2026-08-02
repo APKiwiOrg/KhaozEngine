@@ -48,6 +48,16 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   (sphere/dome/cylinder/circle), composited into the window. `UnloadTexture`/`UnloadMesh`/`UnloadSkinnedMesh`/
   `UnloadSplatMaterial` drain the device (`IGpuDevice.WaitForIdle`) before disposing GPU resources, since a
   queued upload or draw may still reference them.
+- `Scene3D.PrepareFrame()` - the frame's pre-recording phase. Call it once per frame, after the frame's
+  `Draw*` calls and BEFORE opening the command list the scene is recorded into. Subsystems whose per-frame GPU work
+  cannot go in the frame's list (the FFT ocean's priming dispatch, which needs a submit + device wait of its own)
+  run there instead: opening a second command list while the frame's is recording resets the device's immediate
+  context on Direct3D11 and corrupts the frame (issue #423). `Render3DSurface.Render`,
+  `Render3DPreview.Capture` and `Render3DSnapshot.Capture` all call it for you, so every consumer of the surface
+  gets the phase rather than only `GameApp3D`, and since the record entry point is internal those are the only
+  ways a scene is rendered: nothing outside the engine is left having to call it, and a by-hand call is an early
+  no-op. Recording consumes the prepared frame, so a scene records once per `Begin` and a second viewport means a
+  second `Begin`. Costs nothing on a frame that queues no water.
 - `TextureMipPolicy` - an optional trailing argument on both `LoadTexture` overloads choosing how much of the mip
   chain to build. `Full` (the default, and what `default(TextureMipPolicy)` is, so every existing call is
   unchanged), `None` for level 0 only, and `AtlasGrid(columns, rows, minCellTexels = 4)` to stop at the coarsest

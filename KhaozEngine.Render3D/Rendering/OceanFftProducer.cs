@@ -65,6 +65,11 @@ namespace KhaozEngine.Render3D.Rendering
             float Spread, float Swell, float SwellDirection, float Cutoff, int Seed,
             int Cascades, float Tile, float Ratio, int Resolution, bool Mipped);
 
+        /// <summary>What <see cref="Prepare"/> decided for the frame and <see cref="Record"/> then records. Null
+        /// means there is nothing to record (no plane wanted the ocean, or the device has no compute).</summary>
+        readonly record struct Frame(WaterSeaState Sea, int Cascades, int Resolution, uint Groups,
+            float RowTime, float Delta);
+
         readonly IGpuDevice _gd;
         readonly List<IDisposable> _owned = new();
 
@@ -95,9 +100,15 @@ namespace KhaozEngine.Render3D.Rendering
         bool _hasBake;
         readonly OceanFrameClock _clock = new();
 
+        // The frame split (#423). _prepared is the contract check - Record refuses to run on a frame nobody
+        // prepared, rather than quietly preparing itself back inside the frame's recording. _pending is what
+        // Prepare decided, and is null on a frame with no ocean to record.
+        bool _prepared;
+        Frame? _pending;
+
         public OceanFftProducer(IGpuDevice gd) => _gd = gd;
 
-        /// <summary>True once <see cref="Update"/> has produced maps this frame. False when no plane asked for the
+        /// <summary>True once <see cref="Record"/> has produced maps this frame. False when no plane asked for the
         /// ocean (every effective wave source is <see cref="WaterWaveSource.Procedural"/>), and on any device
         /// without compute support.</summary>
         public bool Active { get; private set; }
@@ -156,12 +167,12 @@ namespace KhaozEngine.Render3D.Rendering
         /// cascade tiles the world at its own period, so its edges must meet.</summary>
         public IGpuSampler Sampler => _sampler!;
 
-        /// <summary>Wall-clock milliseconds the last <see cref="Update"/> spent blocked on a priming drain - the
+        /// <summary>Wall-clock milliseconds the last <see cref="Prepare"/> spent blocked on a priming drain - the
         /// residue of #311's missing barrier, measured rather than assumed. 0 on a steady-state frame, which since
         /// #398's ping-pong is every frame but the priming ones.</summary>
         public double LastStallMs { get; private set; }
 
-        /// <summary>GPU stalls (<c>Submit</c> + <c>WaitForIdle</c> pairs) the last <see cref="Update"/> cost.
+        /// <summary>GPU stalls (<c>Submit</c> + <c>WaitForIdle</c> pairs) the last <see cref="Prepare"/> cost.
         /// <b>0 in the steady state</b> (#398): a frame's column pass consumes the row output of the frame before
         /// it, so nothing within the frame waits on anything. 1 on a PRIMING frame - the first frame of an ocean,
         /// the frame after a sea-state re-bake, or a frame whose wave clock jumped past
@@ -171,18 +182,26 @@ namespace KhaozEngine.Render3D.Rendering
         /// beside the column dispatch, so they cost transfer bandwidth and no drain.</summary>
         public int LastStallCount { get; private set; }
 
-        /// <summary>Array-layer copies the last <see cref="Update"/> recorded to seed the mip chain's base level
+        /// <summary>Array-layer copies the last <see cref="Record"/> recorded to seed the mip chain's base level
         /// (0 when no chain is wanted). One per layer, plus one <c>GenerateMipmaps</c>; all in the scene list, so
         /// this is a transfer count and not a stall count.</summary>
         public int LastMipCopies { get; private set; }
 
         /// <summary>
-        /// Bring the ocean maps up to <paramref name="timeSeconds"/>. Records both compute dispatches (this frame's
-        /// column pass, and the row pass whose output the NEXT frame's column pass consumes) into
-        /// <paramref name="sceneList"/>, which MUST be the same command list the water draw is recorded into, and
-        /// must still be open.
+        /// PHASE 1 of the frame, and it runs with NO frame command list open (see
+        /// <see cref="IFramePreparer"/>): bring the bake up to date with the sea state, advance the wave clock, and
+        /// - only on a priming frame - produce this frame's rows on a command list of its own, submitted and
+        /// drained here. Then <see cref="Record"/> records the frame's dispatches into the scene's list.
+        /// <para>
+        /// <b>Why the prime cannot live in phase 2.</b> It opens, submits and drains a SECOND command list. With
+        /// Direct3D11 in immediate-context mode a command list is the device's immediate context and opening one
+        /// resets it, so doing that while the frame's list is recording wipes the bindings the frame believes are
+        /// live and the device faults a few draws later
+        /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/423">#423</see>). Splitting the frame here
+        /// changes only WHEN the CPU records the prime, never what the GPU executes: the prime is submitted and
+        /// waited on before the frame's list is submitted either way, so the maps are bit-for-bit what they were.
+        /// </para>
         /// </summary>
-        /// <param name="sceneList">The command list the water draw is recorded into.</param>
         /// <param name="settings">The frame's water settings. Read for the sea state and the wave clock only: the
         /// decision of whether to run at all is <paramref name="wantOcean"/>'s.</param>
         /// <param name="timeSeconds">The wave clock.</param>
@@ -196,10 +215,19 @@ namespace KhaozEngine.Render3D.Rendering
         /// them will ask for a level above 0). Only <see cref="WaterGridMode.Clipmap"/> does. Off, the maps and the
         /// work are exactly what shipped through 16.6.0; on, a second SAMPLED texture is kept alongside the compute
         /// target and its chain regenerated per frame.</param>
-        /// <returns>True when the maps are live and the water shader should read them.</returns>
-        public bool Update(IGpuCommandList sceneList, WaterSettings settings, float timeSeconds, bool wantOcean,
-            bool wantMips = false)
+        public void Prepare(WaterSettings settings, float timeSeconds, bool wantOcean, bool wantMips = false)
         {
+            // A frame still pending here is a frame that was PLANNED and never RECORDED: the host prepared and then
+            // did not render (a dropped frame, a host that bailed between the two phases). The wave clock counted
+            // it as having produced rows, because Advance decides and publishes in one step, but the row dispatch
+            // lives in Record and never happened. Left alone, the next frame would consume the frame-before-last's
+            // rows as if they were current, silently and with no drain to notice. Dropping them re-primes instead,
+            // which is what Rebake does for the same reason and is the clock's documented escape hatch. Costs one
+            // drain on a frame that was already anomalous, and nothing at all on the paired path, where Record has
+            // always cleared this by now.
+            if (_pending is not null) _clock.Invalidate();
+            _prepared = true;
+            _pending = null;
             EnsureIdle();
             LastStallCount = 0;
             LastStallMs = 0d;
@@ -210,7 +238,7 @@ namespace KhaozEngine.Render3D.Rendering
                 Active = false;
                 CascadeCount = 0;
                 MaxMip = 0f;
-                return false;
+                return;
             }
 
             WaterSeaState sea = settings.SeaState;
@@ -231,16 +259,41 @@ namespace KhaozEngine.Render3D.Rendering
             OceanFrameTick tick = _clock.Advance(timeSeconds);
             uint groups = (uint)resolution;
 
-            // PRIME. The column pass below consumes rows written by the PREVIOUS frame, so a frame that has none
-            // (the first of an ocean, the one after a re-bake, one whose wave clock jumped) produces its own the
-            // old way: one dispatch, one drain, this frame's own time. That frame then renders exactly what the
-            // pre-ping-pong code rendered, and every frame after it costs no drain at all.
+            // PRIME. The column pass recorded by Record consumes rows written by the PREVIOUS frame, so a frame
+            // that has none (the first of an ocean, the one after a re-bake, one whose wave clock jumped) produces
+            // its own the old way: one dispatch, one drain, this frame's own time. That frame then renders exactly
+            // what the pre-ping-pong code rendered, and every frame after it costs no drain at all.
             if (tick.Prime) PrimeRowPass(sea, cascades, groups, timeSeconds, tick.Delta);
+
+            _pending = new Frame(sea, cascades, resolution, groups, tick.RowTime, tick.Delta);
+        }
+
+        /// <summary>
+        /// PHASE 2 of the frame: record both compute dispatches (this frame's column pass, and the row pass whose
+        /// output the NEXT frame's column pass consumes) into <paramref name="sceneList"/>, which MUST be the same
+        /// command list the water draw is recorded into, and must still be open. Records only - it opens no list,
+        /// submits nothing and never blocks, so it is safe to call mid-recording on every backend.
+        /// </summary>
+        /// <param name="sceneList">The command list the water draw is recorded into.</param>
+        /// <returns>True when the maps are live and the water shader should read them.</returns>
+        /// <exception cref="InvalidOperationException"><see cref="Prepare"/> was not called for this frame. The
+        /// producer cannot fall back to preparing itself here, because that is exactly the nested command list the
+        /// split exists to remove.</exception>
+        public bool Record(IGpuCommandList sceneList)
+        {
+            if (!_prepared)
+                throw new InvalidOperationException(
+                    "OceanFftProducer.Record was called without a Prepare for this frame. The host must call "
+                    + "Scene3D.PrepareFrame() after queueing the frame's draws and before opening the frame's "
+                    + "command list (see IFramePreparer).");
+            _prepared = false;
+            if (_pending is not { } frame) return false;
+            _pending = null;
 
             // ONE parameter block serves both passes even though they belong to different frames: the row pass is
             // the only stage that reads Timing.x, and the column pass reads only the delta, the choppiness and the
             // foam knobs, all of which are this frame's.
-            WriteUbo(sceneList, sea, cascades, tick.RowTime, tick.Delta);
+            WriteUbo(sceneList, frame.Sea, frame.Cascades, frame.RowTime, frame.Delta);
 
             // Both dispatches go in the SCENE's list, so the column pass's storage-image writes and the water draw
             // that samples them share one command list. That is the seam's guaranteed compute-to-graphics ordering;
@@ -251,14 +304,14 @@ namespace KhaozEngine.Render3D.Rendering
             int read = _pong, write = 1 - _pong;
             sceneList.SetComputePipeline(_rowPipe!);
             sceneList.SetComputeResourceSet(0, _rowSets[write]!);
-            sceneList.Dispatch(groups, (uint)cascades, 1);
+            sceneList.Dispatch(frame.Groups, (uint)frame.Cascades, 1);
 
             sceneList.SetComputePipeline(_colPipe!);
             sceneList.SetComputeResourceSet(0, _colSets[read]!);
-            sceneList.Dispatch(groups, (uint)cascades, 1);
+            sceneList.Dispatch(frame.Groups, (uint)frame.Cascades, 1);
             _pong = write;
 
-            BuildMipChain(sceneList, resolution, cascades);
+            BuildMipChain(sceneList, frame.Resolution, frame.Cascades);
 
             Active = true;
             return true;

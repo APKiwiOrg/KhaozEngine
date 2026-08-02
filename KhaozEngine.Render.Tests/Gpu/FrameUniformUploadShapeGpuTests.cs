@@ -95,6 +95,7 @@ namespace KhaozEngine.Tests.Gpu
                 scene.Begin();
                 scene.Draw(floor, Matrix4x4.CreateTranslation(0f, 0f, 0f));
                 scene.Draw(box, Matrix4x4.CreateTranslation(-1.2f + frame * 0.35f, 0.7f, -0.4f));
+                scene.PrepareFrame();
                 rec.Clear();
                 rec.Begin();
                 scene.RenderInternal(rec, W, H, finalFB);
@@ -138,6 +139,7 @@ namespace KhaozEngine.Tests.Gpu
             scene.Begin();
             scene.Draw(floor, Matrix4x4.Identity);
             scene.DrawSkinned(caster, tube.RestPose, Matrix4x4.CreateTranslation(0f, 0.6f, 0f), Color.White);
+            scene.PrepareFrame();
             rec.Begin();
             scene.RenderInternal(rec, W, H, finalFB);
             rec.End();

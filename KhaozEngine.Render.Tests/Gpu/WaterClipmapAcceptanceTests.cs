@@ -420,6 +420,47 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(moved > 0, "a 40 m camera jump rebuilt no plane, so the cache is stuck rather than warm");
         }
 
+        /// <summary>
+        /// Preparing an EMPTY frame and then queueing a plane must fail on the guard that names the cause, not on
+        /// the producer's generic one. The empty prepare returns before it reads the queue, so the demand latch
+        /// used to keep whatever the last frame put in it: a previous ocean frame left it true, the late plane
+        /// compared equal to it, and the frame fell through to <c>OceanFftProducer.Record</c>, whose message says
+        /// the host never prepared at all. It did prepare. It prepared the wrong queue, which is a different
+        /// mistake with a different fix, and the error a host reads is the whole value of having two of them.
+        /// <para>
+        /// This is a GPU test only because <see cref="WaterRenderer"/> cannot be built without one: its constructor
+        /// cross-compiles the water shaders and creates a pipeline, so the fake-device harness the rest of the
+        /// #423 prepare coverage runs on cannot carry it.
+        /// </para>
+        /// </summary>
+        [GpuFact]
+        public void PreparingAnEmptyFrameAndThenQueueingAPlaneNamesTheQueueRatherThanThePrepare()
+        {
+            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
+            IGpuDevice dev = gpu.GpuDevice;
+            Assert.True(dev.Capabilities.SupportsCompute, $"{dev.Backend} reports no compute support");
+
+            WaterSettings settings = Settings();
+            WaterSeaState sea = settings.SeaState;
+            sea.CascadeCount = 1;
+            settings.SeaState = sea;
+
+            var plane = new WaterPlane(centerX: 0f, surfaceY: 0f, centerZ: 0f, halfExtentX: 400f);
+            WaterPlane[] one = { plane };
+            var eye = new Vector3(0f, 12f, -4f);
+
+            using var res = new WaterHarness(dev);
+
+            // A normal ocean frame first, which is what leaves the latch true and makes the stale read reachable.
+            res.Frame(one, eye, settings, 0f);
+
+            // Now prepare nothing and draw one. Without the clear this reports the producer's "never prepared".
+            Exception? thrown = res.Frame(ReadOnlySpan<WaterPlane>.Empty, one, eye, settings, 0.016f);
+
+            Assert.NotNull(thrown);
+            Assert.Contains("changed between PrepareFrame and Draw", thrown!.Message, StringComparison.Ordinal);
+        }
+
         /// <summary>A minimal Scene3D-free rig around <see cref="WaterRenderer"/>: enough render targets to record
         /// a water pass, so a test can drive frames and read the rebuild counter without a full scene.</summary>
         sealed class WaterHarness : IDisposable
@@ -438,16 +479,37 @@ namespace KhaozEngine.Tests.Gpu
             /// <summary>Record and submit one water frame; returns the clipmap grids rebuilt in it.</summary>
             public int Frame(ReadOnlySpan<WaterPlane> planes, Vector3 eye, WaterSettings settings, float time)
             {
+                Assert.Null(Frame(planes, planes, eye, settings, time));
+                return _water.LastClipmapRebuilds;
+            }
+
+            /// <summary>One water frame whose PREPARE sees <paramref name="prepared"/> and whose DRAW sees
+            /// <paramref name="drawn"/>, so a test can drive the queue-moved-under-us misuse. Returns what the draw
+            /// threw, or null. The command list is closed and submitted either way, because disposing one
+            /// mid-recording is itself a contract violation Vulkan enforces.</summary>
+            public Exception? Frame(ReadOnlySpan<WaterPlane> prepared, ReadOnlySpan<WaterPlane> drawn, Vector3 eye,
+                WaterSettings settings, float time)
+            {
                 Matrix4x4 view = Matrix4x4.CreateLookAt(eye, eye + new Vector3(0f, -0.5f, 1f), Vector3.UnitY);
                 Matrix4x4 proj = Matrix4x4.CreatePerspectiveFieldOfView(1.0f, 320f / 240f, 0.5f, 4000f);
+                // The pre-recording phase Scene3D.PrepareFrame drives, here driven by hand (#423).
+                _water.PrepareFrame(new FramePrepare(settings, prepared, time));
                 using IGpuCommandList cl = _dev.Factory.CreateCommandList();
                 cl.Begin();
-                _water.Draw(cl, _res, planes, view * proj, new Vector3(-0.45f, -0.75f, -0.4f),
-                    new Color(1f, 1f, 1f, 1f), eye, settings, new SkySettings(), time);
+                Exception? thrown = null;
+                try
+                {
+                    _water.Draw(cl, _res, drawn, view * proj, new Vector3(-0.45f, -0.75f, -0.4f),
+                        new Color(1f, 1f, 1f, 1f), eye, settings, new SkySettings(), time);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    thrown = ex;
+                }
                 cl.End();
                 _dev.Submit(cl);
                 _dev.WaitForIdle();
-                return _water.LastClipmapRebuilds;
+                return thrown;
             }
 
             public void Dispose()
@@ -543,10 +605,11 @@ namespace KhaozEngine.Tests.Gpu
             IGpuResourceFactory f = dev.Factory;
             using IGpuTexture staging = f.CreateTexture(GpuTextureDescription.Texture2D(
                 (uint)size, (uint)size, GpuPixelFormat.R16G16B16A16Float, GpuTextureUsage.Staging));
+            producer.Prepare(settings, time, wantOcean: true, wantMips: true);
             using (IGpuCommandList cl = f.CreateCommandList())
             {
                 cl.Begin();
-                Assert.True(producer.Update(cl, settings, time, wantOcean: true, wantMips: true));
+                Assert.True(producer.Record(cl));
                 cl.CopyTextureSubresource(producer.Map, 1, layer, staging, (uint)size, (uint)size);
                 cl.End();
                 dev.Submit(cl);

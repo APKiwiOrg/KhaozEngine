@@ -64,6 +64,7 @@ namespace KhaozEngine.Tests.Render3D
 
             scene.Begin();
             scene.Draw(handle, Matrix4x4.Identity, Color.White);
+            scene.PrepareFrame();
             cl.Begin();
             scene.RenderInternal(cl, W, H, finalFB);
             cl.End();

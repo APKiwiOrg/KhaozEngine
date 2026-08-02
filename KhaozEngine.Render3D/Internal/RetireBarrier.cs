@@ -61,9 +61,15 @@ namespace KhaozEngine.Render3D.Internal
         GpuRetireBarrier(IGpuDevice gd)
         {
             _gd = gd;
-            // One command list for the whole scene lifetime. Re-Begin-ing it while an earlier submission is still
-            // in flight is the same thing AppWindow's frame loop does with its own command list every frame: the
-            // backends hand out a fresh command buffer per Begin and recycle the old one behind its own fence.
+            // One command list for the whole scene lifetime, re-Begun per sealed batch. What makes that safe is
+            // submission ORDER, not any claim about how a backend recycles command buffers: the fence handed to a
+            // submission signals when that submission completes, and everything submitted before it has completed
+            // by then (see the class note). Reusing the list cannot reorder that.
+            // What it is NOT safe against is being Begun while ANOTHER list is recording. With Direct3D11 in
+            // immediate-context mode a command list is the device's immediate context and Begin resets it, so this
+            // Submit inside Scene3D.Begin would wipe an open frame's bindings (#423, and #424 for the site list).
+            // Unreachable today because TryCreate returns null on Direct3D11, which reports no completion fences,
+            // and it becomes live the day that backend gets them.
             _cl = gd.Factory.CreateCommandList();
         }
 

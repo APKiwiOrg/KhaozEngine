@@ -9,7 +9,7 @@
     <!-- GPU / windowing / render stack -->
     <!-- APKiwi Veldrid 4.9.0 fork with opt-in serialized Direct3D11 immediate-context recording. See
          KhaozEngine.Gpu/GpuDeviceContext.cs for the D3D11-only opt-in and KhaozEngine #410 for field evidence. -->
-     <PackageVersion Include="Veldrid" Version="4.9.101" />
+    <PackageVersion Include="Veldrid" Version="4.9.102" />
     <PackageVersion Include="Veldrid.SPIRV" Version="1.0.15" />
     <!-- Already a transitive dependency of Veldrid 4.9.0 (its own D3D11 binding), declared explicitly in
          KhaozEngine.Gpu so the D3D11 driver-threading probe can call ID3D11Device::CheckFeatureSupport.

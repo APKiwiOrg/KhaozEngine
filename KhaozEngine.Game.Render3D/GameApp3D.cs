@@ -58,6 +58,8 @@ namespace KhaozEngine.Game
 
             _surface3D.Scene.Begin();
             OnDraw3D(_surface3D.Scene);
+            // Render runs the frame's pre-recording phase (Scene3D.PrepareFrame) itself, so every consumer of the
+            // surface gets it, not just this one. See Render3DSurface.Render for the windowed loop's caveat (#429).
             _surface3D.Render(frame);
 
             if (_surface3D.Scene.EnableTiming && hud?.PassTimings is { } pt)

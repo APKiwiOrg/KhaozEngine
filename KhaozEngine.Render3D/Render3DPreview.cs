@@ -122,6 +122,8 @@ namespace KhaozEngine.Render3D
         {
             Scene.Begin();
             drawFrame?.Invoke(Scene);
+            // Producers with GPU work of their own run here, while no list is open (see Scene3D.PrepareFrame).
+            Scene.PrepareFrame();
             _cl.Begin();
             Scene.RenderInternal(_cl, Width, Height, _fb);
             _cl.End();

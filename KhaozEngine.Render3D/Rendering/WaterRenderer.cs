@@ -19,7 +19,7 @@ namespace KhaozEngine.Render3D.Rendering
     /// per-decal slot pattern so multiple planes never share/overwrite one slot regardless of backend buffer-write
     /// ordering).
     /// </summary>
-    internal sealed class WaterRenderer : IDisposable
+    internal sealed class WaterRenderer : IDisposable, IFramePreparer
     {
         /// <summary>Packed water-plane UBO matching the <c>Water</c> block in <see cref="ShaderSources.WaterFrag"/>
         /// (2 mat4 + 34 vec4; every member 16-byte aligned, so std140 needs no extra padding).</summary>
@@ -109,6 +109,10 @@ namespace KhaozEngine.Render3D.Rendering
         // compute-to-graphics ordering. Updated ONCE per Draw, before the per-plane loop: one ocean state serves
         // every queued plane.
         readonly OceanFftProducer _ocean;
+
+        // What PrepareFrame decided the frame's ocean demand was, so Draw can prove the queue did not move under
+        // it. Not the producer's business: the producer is told whether the ocean is wanted, it does not ask.
+        bool _preparedWantOcean;
         // The consumer's depth field on the GPU. Owned here for the same reason the ocean is: it is bound into
         // this pass's resource set, and nothing else in the engine reads it.
         readonly WaterBathymetryMap _bathymetry;
@@ -508,6 +512,29 @@ namespace KhaozEngine.Render3D.Rendering
             return false;
         }
 
+        /// <summary>
+        /// The pre-recording half of the frame (<see cref="IFramePreparer"/>): the ocean producer's bake, wave
+        /// clock and priming drain, all of which want a command list of their own and so must not run while the
+        /// frame's list is open (#423). A frame that queues no water plane prepares nothing at all, exactly as it
+        /// draws nothing: the ocean is demand-driven, so a scene that never touches water never builds its
+        /// placeholder maps either.
+        /// </summary>
+        public void PrepareFrame(in FramePrepare frame)
+        {
+            if (frame.WaterPlanes.Length == 0)
+            {
+                // Cleared rather than left at the previous frame's value. A host that prepares an empty frame and
+                // then queues an ocean plane would otherwise carry a stale true into Draw, satisfy the demand
+                // compare, and fail on the producer's less specific "never prepared" error instead of the guard
+                // that names what actually went wrong.
+                _preparedWantOcean = false;
+                return;
+            }
+            _preparedWantOcean = AnyPlaneWantsOcean(frame.WaterPlanes, frame.Water);
+            _ocean.Prepare(frame.Water, frame.TimeSeconds, _preparedWantOcean,
+                wantMips: frame.Water.GridMode == WaterGridMode.Clipmap);
+        }
+
         /// <summary>Draw all queued water planes into ColorDepthFB (lit colour + read-only scene depth). Caller
         /// guarantees the model + sky + decal passes are complete and the framebuffer is free to rebind. No-op when
         /// <paramref name="planes"/> is empty.
@@ -541,9 +568,16 @@ namespace KhaozEngine.Render3D.Rendering
             // body of water (WaterLook cannot override it, and the design doc says why). What IS per plane is
             // whether a plane reads them at all, so the producer runs on DEMAND rather than on the scene default -
             // otherwise a Procedural scene with one FftOcean plane would render that plane procedurally, silently.
-            // The producer records its final dispatch into THIS command list, so the storage writes and the draws
-            // that sample them share a list - the seam's guaranteed ordering.
-            _ocean.Update(cl, settings, timeSeconds, AnyPlaneWantsOcean(planes, settings), wantMips: clipmap);
+            // The producer records its dispatches into THIS command list, so the storage writes and the draws that
+            // sample them share a list - the seam's guaranteed ordering. Everything the producer needs a list of
+            // its OWN for already ran in PrepareFrame, before this list was opened.
+            // The demand is re-derived here and compared: a host that queued a plane AFTER preparing would
+            // otherwise render an ocean plane procedurally with nothing to show for it.
+            if (AnyPlaneWantsOcean(planes, settings) != _preparedWantOcean)
+                throw new InvalidOperationException(
+                    "The water planes changed between PrepareFrame and Draw. Queue every plane before calling "
+                    + "Scene3D.PrepareFrame() (see IFramePreparer).");
+            _ocean.Record(cl);
             var oceanMaps = OceanMaps.From(_ocean);
             // The depth field, likewise once per frame and ahead of BindTargets. Uploads only on a revision
             // change, so the steady state is a compare and nothing else.

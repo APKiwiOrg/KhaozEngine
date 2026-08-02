@@ -92,14 +92,20 @@ flowchart LR
 2. `Scene3D` accumulates draws as instances keyed by `MeshHandle` (geometry was uploaded once via `LoadMesh`);
    `SpriteBatch` packs quads into per-frame ring-buffered vertex buffers (rotated so a frame's write never races
    the GPU still reading an earlier, in-flight frame's copy). Nothing here references Veldrid.
-3. At frame end, `Render3DSurface` / `Render2DSurface` flush through `ModelRenderer` / the sprite shader, which
+3. Before anything is recorded, `Scene3D.PrepareFrame()` runs the frame's pre-recording phase: the subsystems
+   whose per-frame GPU work needs a command list of their OWN (the FFT ocean's priming dispatch, which is a
+   compute read-after-write and so needs a submit plus a device wait) do it here, where no frame list is open.
+   `Render3DSurface.Render`, `Render3DPreview.Capture` and `Render3DSnapshot.Capture` all call it. Opening a
+   second command list while the frame's is recording resets the device's immediate context on Direct3D11 and
+   corrupts the frame (issue #423).
+4. At frame end, `Render3DSurface` / `Render2DSurface` flush through `ModelRenderer` / the sprite shader, which
    record commands on `GpuDeviceContext` - the opaque seam (device, buffers, pipelines, command list).
-4. `GpuBackendSelector` picked the backend at startup (`KE_GRAPHICS_BACKEND` override, then the game's stored
+5. `GpuBackendSelector` picked the backend at startup (`KE_GRAPHICS_BACKEND` override, then the game's stored
    user preference, then the OS probe, with a fallback if that backend cannot create a device), and `GpuCapabilities`
    /`GpuClip` fold per-backend clip-Y and depth-range differences in so the renderers stay backend-agnostic.
-5. The seam drives **Veldrid**, which targets the chosen native backend (Metal / D3D11 / Vulkan). Shaders were
+6. The seam drives **Veldrid**, which targets the chosen native backend (Metal / D3D11 / Vulkan). Shaders were
    cross-compiled from one SPIR-V blob at load, so the same GLSL runs everywhere.
-6. The GPU runs the vertex shader (world x view x proj), rasterizes to triangles + fragments, runs the fragment
+7. The GPU runs the vertex shader (world x view x proj), rasterizes to triangles + fragments, runs the fragment
    shader (lit / cel / textured), and writes the framebuffer. `AppWindow` calls `Present()` to put the
    swapchain image on screen.
 

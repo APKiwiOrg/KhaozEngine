@@ -38,6 +38,10 @@ namespace KhaozEngine.Render3D
             {
                 scene.Begin();
                 drawFrame(scene);
+                // Every producer with GPU work of its own goes here, between the queue being filled and the frame's
+                // list being opened. See Scene3D.PrepareFrame - opening a second list after renderCl.Begin() is
+                // what corrupts the device on Direct3D11 in immediate-context mode (#423).
+                scene.PrepareFrame();
                 renderCl.Begin();
                 scene.RenderInternal(renderCl, width, height, finalFB);
                 renderCl.End();

@@ -66,7 +66,11 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   the single-`World` `WorldServer` and the sharded `PlayerMovementSystem`), so an animator
   bridge reads them straight instead of finite-differencing the terrain-following position - swim in particular is
   impossible to derive from position (a swimmer glides horizontally like a walker), so the replicated bit is the only
-  source. Read-only local-avatar shorthands: `LocalRenderState` (whose `.Swimming` mirrors the flag) / `LocalGrounded`
+  source. Since 17.26.0 the same list carries **`FacingYaw`** (the authoritative heading, decoded from
+  `MovementState.FacingYawQ` for a remote and predicted un-quantized for the local player), which the position
+  delta could not supply at all for a stationary entity. **`LandingImpactSpeed`** rides alongside it but is
+  LOCAL-ONLY (always 0 for remotes, whose landing effects come from the replicated `Grounded` transition), and is
+  the local player's PREDICTED landing so presentation can react on the predicted tick. Read-only local-avatar shorthands: `LocalRenderState` (whose `.Swimming` mirrors the flag) / `LocalGrounded`
   / `LocalVerticalVelocity`, plus
   `LocalHorizontalSpeed` (since 8.7.0) - the predicted planar speed in m/s straight off
   `ClientPrediction.PredictedHorizontalSpeed`, computed per prediction tick and immune to reconciliation snaps,
@@ -229,7 +233,8 @@ on a snapshot it cannot decode. Both are additive: the wire and existing ctors a
   `DisconnectReasonDetail`, and never proceeds to snapshots. A legacy/version-less client decodes as version
   `""`, so the rule can reject it; a compatible version delegates the inner token to `inner` unchanged
   (subject + display-name resolution identical).
-  - **Wire-format generation (enforced automatically since 10.2.0).** `MoveProtocol.WireProtocolVersion` (= 8) labels
+  - **Wire-format generation (enforced automatically since 10.2.0).** `MoveProtocol.WireProtocolVersion` (= 10)
+    labels
     the incompatible on-the-wire generations. 1 was the pre-10.0.0 32-bit line, and 2 was 10.0.0 widening `NetId` to
     64-bit (the snapshot/delta id field and the frame header, `[localNetId:long][ackSeq:int]`, grown 8 -> 12 bytes).
     Generations 3 to 7 each added a field to the movement built-in codec, which is NOT length-prefixed, so an old
@@ -239,7 +244,10 @@ on a snapshot it cannot decode. Both are additive: the wire and existing ctors a
     mid-flight rebuilds it from the wire instead of resetting it). 8 added a whole new built-in component,
     `PickupState` at id 5 (world pickups, see below): unframed like every built-in, so a client whose registry has no
     id 5 would hard-fail its decode the first time a pickup entered its area of interest, mid-session rather than at
-    connect. There is no
+    connect. 9 was the floating-origin wire (`ReplicatedPosition` as a frame stamp plus a frame-local offset, see
+    below), and 10 is authoritative facing: the move frame's `run` byte became a flags byte (bit 1 is
+    `MoveCommand.FaceCamera`, and `MoveSize` stays 18) and the movement built-in gained
+    `MovementState.FacingYawQ`, one bump for both. There is no
     dual-format wire, so peers on
     different generations MUST reject each other at connect rather than misparse a frame. As of 10.2.0 the engine
     enforces this for you: `WorldClient` always folds the
@@ -422,6 +430,70 @@ it survive a correction, plus one anti-cheat change that had to land with it.
 - **This is a wire break: generation 6 -> 7.** Client and server must ship together, gated at the handshake by
   the always-on `WireGenerationAuthenticator`.
 
+## Authoritative facing and the landing seam (since 17.26.0)
+
+Phase 1 of `docs/design/PHYSICS-LOCOMOTION-DESIGN-2026-08-02.md`. The locomotion half (the `FaceCamera` flag, the
+`FacingYaw` convention, the `FacingTurnSpeed` knob, the `LandingImpactSpeed` latch) is in
+`KhaozEngine.Locomotion/README.md`. What NetWorld adds is the replication, the server read seam, and the two
+render-state exports.
+
+- **`MovementState.FacingYawQ`** replicates `MoveState.FacingYaw` as a `short` at the fixed
+  `MovementState.FacingYawQuantum` (`pi / 32768`, one 65536th of a full turn), so the `short`'s entire range is
+  exactly one revolution, every representable value is a legal heading, and the resolution is 9.6e-5 rad (0.0055
+  degrees). `QuantizeFacingYaw` / `DecodeFacingYaw` are the pair. Decoded 0 is exactly 0 radians, a legal heading
+  facing -Z rather than a sentinel, so a spawn, a missed `TryGet` and a pre-facing save all read as facing
+  forward. A plain scaled encoding is right here where `SpeedScaleQ` needed an offset-from-1 one, for the same
+  underlying reason: the zero default has to mean the harmless thing.
+- **`QuantizeFacingYaw` WRAPS rather than clamps.** An angle has no out-of-range VALUE, only a non-canonical
+  representative, so clamping a character handed `3*pi` would park it at the range's edge facing the wrong way,
+  and since the heading is carried state it would never self-correct. The one integer that can fall out of range
+  is `pi` itself (32768 units), and the unchecked cast wraps it to -32768, which decodes to `-pi`: the same
+  heading, so the wrap is correct arithmetic rather than a defect.
+- **The quantum is an exact negative power of two multiple of `pi`,** for `HorizontalVelocityQuantum`'s reason and
+  with the same bite. A heading is simulation state that FEEDS THE NEXT TICK, so a decimal quantum's rounding
+  inside the multiply would not wash out on the following frame, it would sit between the two heads for the whole
+  length of a turn.
+- **It has to ride the wire at all** for `HorizontalVelocityXQ`'s reason: `PlayerMoveState.From` rebuilds the
+  reconcile basis from the replicated components ALONE and `ClientPrediction.Reconcile` overwrites
+  unconditionally, so a heading missing from that seed does not lag behind the server, it RESETS to 0 on every
+  correction and the character restarts its turn from due -Z several times a second.
+- **`MoveCommand.FaceCamera` rides the move frame's flags byte** (bit 0 run, bit 1 faceCamera), which was a bare
+  run bool through generation 9. Packing rather than appending is load-bearing: the client-to-server demux keys a
+  move on LENGTH 18 (the game-message encoder pads specifically to avoid landing on 18), so a 19-byte move frame
+  would have been read as a game message by every server. Unknown flag bits are ignored rather than rejected: a
+  frame with a stray bit is still a well-formed move, and rejecting it would drop that client out of the sim
+  entirely instead of mis-reading one command bit.
+- **`WorldServer.OnAfterTick(float dt)` / `ShardedWorldServer.OnAfterTick(float dt)`** (`event Action<float>?`,
+  no-op until subscribed) are the mirror of `OnBeforeTick` and the read seam for `MoveState.LandingImpactSpeed`
+  (`TryGetPlayerState(slot, out var p)` then `p.Move.LandingImpactSpeed`). The next tick overwrites the latch, so
+  the same work done from `OnBeforeTick` always measures the previous tick's world.
+- **One semantic on both heads: it fires after frames in which authoritative movement RAN.** `WorldServer` steps
+  unconditionally, so every `Tick` qualifies and the qualifier costs it nothing. `ShardedWorldServer` drives its
+  cells off a fixed-tick accumulator, so a frame shorter than `TickSeconds` produces no movement sub-tick and the
+  hook stays silent. Without that, a short frame would re-deliver the previous tick's landing once per short
+  frame, which is a DUPLICATE application of fall damage rather than a missed one. It is gated on the sum of every
+  cell's tick counter taken either side of the cell step, because cells hold independent accumulators and no
+  single cell's counter answers for the frame.
+- **`MovementState.LandingImpactSpeed`** is the sharded head's SIM-LOCAL slot for the same value (the
+  `ClimbRateEwma` precedent), because `PlayerMovementSystem` rebuilds a fresh `MoveState` from the component every
+  tick and a step OUTPUT has nowhere else to survive to the end of `Tick`. It is deliberately absent from the
+  movement codec and from the `Migrate` capture, so it costs no wire bytes, is always 0 on a client, and a landing
+  that coincides with a cell handoff drops the one-tick signal. `PlayerMovementSystem` zeroes it explicitly for a
+  `Ghost` or `Migrating` entity its cell sim skipped, so a skipped tick cannot leave a stale impact behind to read
+  as a landing that never happened. Carried state (the heading, the arc, the swim flag) is deliberately NOT zeroed
+  there, because zeroing a carried field on a skipped tick would spin every ghost back to facing -Z.
+- **`EntityRenderState.FacingYaw` and `EntityRenderState.LandingImpactSpeed`** are the client-side exports. The
+  heading is predicted un-quantized for the local player and the decoded replicated value for a remote,
+  discrete-sampled to the same delayed render time as the interpolated position, so a remote's flags, heading and
+  feet never skew apart. It is exactly the feed `CharacterSample.FacingYaw` / `ReplicatedCharacterAnimators` want,
+  though the two bases sit half a turn apart (the bridge reads 0 as +Z, the sim reads 0 as -Z) and nothing wires
+  them for you: pass it through `WithFacingYaw` and carry the half turn on
+  `CharacterAnimatorTuning.FacingYawOffset`. `EntityRenderState` gained two constructor overloads for the pair, so
+  every existing construction site compiles and reads 0 for both.
+- **This is a wire break: generation 9 -> 10.** One bump covers the flags byte and `FacingYawQ` together. The
+  movement built-in is not length-prefixed, so an old client cannot skip the two bytes and is rejected cleanly at
+  connect by the always-on `WireGenerationAuthenticator`. **Client and server must ship together.**
+
 ## Island frames and the frame-relative wire (the floating-origin MAJOR)
 
 Simulating at 100 km from the world origin costs precision: float32's quantum out there is 7.8 mm, and the
@@ -565,7 +637,10 @@ per entity. All four pieces are additive and default to today's behaviour.
   floor). Persisted with its cell, replicated through the normal AoI + ghost + handoff pipeline.
 - **Brain.** **`OnBeforeTick`** (`event Action<float>?`, both servers) fires at the start of `Tick(dt)` before the
   snapshot pass, where a consumer NPC / enemy brain writes each entity's `ReplicatedPosition` so its move reaches
-  clients the same tick.
+  clients the same tick. Its mirror **`OnAfterTick`** (17.26.0, both servers) fires at the END of a tick, after
+  movement and after every client has been served, and is where post-step state is OBSERVED (the landing impact,
+  below). A write made there reaches clients on the next tick's snapshot, so authoring state that must ship in the
+  same frame stays `OnBeforeTick`'s job.
 - **Read.** **`WorldClient.TryGetComponent<T>(int netId, out T)`** reads a replicated component off the entity with
   that net id (the `EntityRenderState.Id` value). Use it to read a server-assigned discriminator (NPC kind, HP,
   faction) and pick a model. Returns `false` against an older server that never sends `T` (no handshake, no

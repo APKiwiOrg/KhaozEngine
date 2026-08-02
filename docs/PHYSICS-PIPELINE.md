@@ -135,9 +135,11 @@ player uses, orientation slerped between snapshots.
 
 ## The same path in words
 
-1. A `MoveCommand` (move axes, yaw, jump bit) reaches `CharacterMovement.Step` from the local
+1. A `MoveCommand` (move axes, yaw, jump bit, face-camera flag) reaches `CharacterMovement.Step` from the local
    `CharacterController3D`, the server's `PlayerMoveSimulator`, or the client's `ClientPrediction`.
-2. `Step` runs the horizontal core (camera-relative move, slope gate via the `groundNormal` delegate) and the
+2. `Step` runs the horizontal core (camera-relative move, the direction-aware slope gate via the `groundNormal`
+   delegate plus the `groundHeight` one, which is what lets it refuse a climb while letting a descent fall
+   through) and the
    vertical physics (gravity terminal-clamp, jump with coyote/buffer, air control), then resolves against the
    world: a capsule **sweep** along the move, a downward **support probe** so the character stands on prop
    tops, and a **depenetration** push-out (`ComputePenetration`, iterated) to collide-and-slide. A `null`

@@ -98,8 +98,11 @@ fills in seams.
 hardware ──► AppWindow (the only Silk.NET/GLFW toucher) ──► InputState (immutable per-frame snapshot)
                                                                   │
                               GameApp.Run() drives, each frame, in order:
+                            ── pre-record phase (the frame's command list is not open) ──
                                   Clock.Update(dt) → Viewport.Update(w,h) → OnResize? →
                                   Pointer.Update(Input, Viewport) → OnResume? → OnUpdate(dt) →
+                                  OnPrepareWorld(frame)  [3D queue fill + Scene3D.PrepareFrame]
+                            ── record phase (the frame's command list is open + cleared) ──
                                   OnRenderWorld(frame)  [3D pass]  →  Batch.Begin(Viewport) → OnDraw2D → End
                                                                   │
                  ┌────────────────────────────────────────────────┼─────────────────────────────┐
@@ -394,10 +397,57 @@ Cmd-Tab. `GameApp` fixes this automatically: when `WindowIconPath` is set, on ma
 `AppWindow.SetMacDockIcon(...)` directly. It returns `false` (never throws) off macOS or on empty input. A packaged
 `.app` bundle with its own `.icns` still owns the Dock icon the normal way; this is for the unbundled dev/run case.
 
-`GameApp` seams: `OnLoad()`, `OnUpdate(float dt)`, `OnRenderWorld(Frame)` (the 3D pass; empty in 2D),
-`OnDraw2D(SpriteBatch)`, `OnResize(int, int)`, `OnResume(TimeSpan)` (see below), `OnDispose()`. Properties you
-read: `Window`, `Clock`, `Viewport`, `Pointer`, `Input` (the frame's `InputState`), `Surface2D`, `Batch`,
-`FrameWidth`/`FrameHeight`/`Dt`, `ClearColor`. Call `Quit()` to exit.
+`GameApp` seams: `OnLoad()`, `OnUpdate(float dt)`, `OnPrepareWorld(Frame)` + `OnRenderWorld(Frame)` (the world
+pass, in two phases, both empty in 2D), `OnDraw2D(SpriteBatch)`, `OnResize(int, int)`, `OnResume(TimeSpan)` (see
+below), `OnDispose()`. Properties you read: `Window`, `Clock`, `Viewport`, `Pointer`, `Input` (the frame's
+`InputState`), `Surface2D`, `Batch`, `FrameWidth`/`FrameHeight`/`Dt`, `ClearColor`. Call `Quit()` to exit.
+
+### The frame's pre-record phase (`AppWindow.Run(onFrame, onPrepare)`, `GameApp.OnPrepareWorld`)
+
+The windowed loop runs **two** callbacks per frame. `onPrepare` runs first, after the frame's `Dt` / `Input` /
+size are latched and **before** the frame's command list is opened. `onFrame` runs second, with that list open,
+bound to the swapchain and cleared. `Run(onFrame)` is exactly `Run(onFrame, null)`, so a host that wants one
+callback keeps writing one.
+
+```csharp
+window.Run(
+    onFrame: frame =>
+    {
+        if (frame.RenderSuppressed) return;                 // minimized: no list was opened, so record nothing
+        surface3D.Render(frame);                            // records into frame.Commands
+    },
+    onPrepare: frame =>
+    {
+        if (frame.RenderSuppressed) return;                 // update-only frame, nothing to queue or prepare
+        scene.Begin(); DrawTheWorld(scene); scene.PrepareFrame();
+    });
+```
+
+Name the arguments. Both are `Action<Frame>`, so swapping them compiles and silently moves every draw outside
+the frame's command list.
+
+**Why it exists.** Some per-frame GPU work cannot be recorded into the frame's list at all: a compute dispatch
+whose output another dispatch reads in the same frame has no dispatch-to-dispatch barrier at the GPU seam, so its
+only ordering is a submit plus a device wait, which means a command list of its own. With Direct3D11 in
+immediate-context mode a command list IS the device's immediate context and `Begin` calls `ClearState` on it, so
+opening a second list while the frame's is recording wipes every binding the frame believes is live and the
+device faults a few draws later (issue #423). The headless hosts (`Render3DSnapshot.Capture`,
+`Render3DPreview.Capture`) open the frame's list themselves and could already honour that ordering. The windowed
+loop opened it before calling back, so no host running on a window could (issue #429). This phase is the fix.
+
+**What belongs where.** `onPrepare` is for update-side work and for filling the frame's queues, which is what
+puts a producer's own command list before the frame's. Do **not** record into `Frame.Commands` there: the list is
+not open yet, and on a render-suppressed (minimized) frame it is never opened at all. Draws belong in `onFrame`.
+Both callbacks run on a render-suppressed frame, so simulation keeps advancing while iconified.
+
+**On `GameApp` / `GameApp3D` this is already wired**, and a game needs no change. `GameApp` splits its own body at
+the same seam: everything through `OnUpdate` and the diagnostics-HUD tick runs in the prepare phase and ends on
+`OnPrepareWorld(Frame)`. `OnRenderWorld(Frame)` and the 2D / UI / overlay passes run in the record phase. The
+order a game sees is unchanged (`OnUpdate` still precedes `OnDraw3D`, which still precedes the 2D passes).
+`GameApp3D` runs `Scene.Begin()` -> `OnDraw3D(Scene)` -> `Scene.PrepareFrame()` in `OnPrepareWorld`, leaving
+`Surface3D.Render(frame)` in `OnRenderWorld` - so `Render3DSurface.Render`'s own `PrepareFrame` call finds the
+frame already prepared and no-ops, which is exactly what its documented idempotency is for. Override
+`OnPrepareWorld` yourself only if you have per-frame GPU work of your own that needs its own command list.
 
 **Resume after OS sleep/suspend (`OnResume`).** The frame `dt` is clamped to 0.1s (a spiral-of-death guard) and
 comes from a `Stopwatch`-style timer that does not reliably advance across an OS sleep/S3/hibernate, so a game
@@ -509,8 +559,10 @@ mechanics live in [UPDATER.md](UPDATER.md).
 ### 3D (`GameApp3D`, `IGameScene3D`, `SceneManager.Draw3D`)
 
 `GameApp3D : GameApp` adds a `Render3DSurface` (`Surface3D`) and a `Scene3D` (`Scene`), and a new seam
-`OnDraw3D(Scene3D scene)` (it overrides `OnRenderWorld` to run the 3D pass behind the 2D HUD). A scene that draws
-3D implements `IGameScene3D` (`void OnDraw3D(Scene3D scene)`), and the app's `OnDraw3D` calls the
+`OnDraw3D(Scene3D scene)`. It overrides both world seams to run the 3D pass behind the 2D HUD: `OnPrepareWorld`
+does `Scene.Begin()` -> `OnDraw3D(Scene)` -> `Scene.PrepareFrame()` in the frame's pre-record phase, and
+`OnRenderWorld` records it with `Surface3D.Render(frame)` (see "The frame's pre-record phase" above). A scene that
+draws 3D implements `IGameScene3D` (`void OnDraw3D(Scene3D scene)`), and the app's `OnDraw3D` calls the
 `SceneManager.Draw3D(scene)` extension to render the visible scene set.
 
 ```csharp
@@ -1977,6 +2029,12 @@ cl.Begin();
   stale ocean. Calling it twice for one `Begin` is harmless: the second call is a no-op, so a host that prepares by
   hand and then hands the scene to `Render3DSurface.Render` does not prepare the frame twice. Queueing a draw AFTER
   preparing is the one thing that is not harmless, and the water pass throws for it.
+
+  **On a windowed host the effective call is the earlier one.** `Render3DSurface.Render` runs inside the frame's
+  command list, so its `PrepareFrame` is a safety net, not the pre-recording phase. Queue and prepare the scene in
+  the loop's pre-record phase instead (`AppWindow.Run`'s `onPrepare`, or `GameApp.OnPrepareWorld` - see "The
+  frame's pre-record phase" above), and the surface's own call then finds the frame prepared and no-ops. `GameApp3D`
+  already does this, so a game on it needs no change.
 
   **A `Scene3D` records ONCE per `Begin`.** Recording consumes the prepared frame, so a host that wants the same
   scene recorded twice (two viewports, a split screen, a preview beside the world) calls `Begin` again and re-queues
@@ -4193,6 +4251,20 @@ the character into airborne horizontal momentum, so a jump travels its whole arc
 command. At the defaults the jump is exactly what it was before. See "Airborne momentum" in the netcode chapter
 below for the full model - it applies identically to a local controller, minus the wire.
 
+Since 17.26.0 there is `FacingTurnSpeed` (rad/s, default `float.PositiveInfinity`), mirroring
+`MoveTuning.FacingTurnSpeed`: the maximum rate the character's own heading turns toward the direction it is
+commanded to travel, always along the shortest arc. The infinite default snaps in one tick, which is the
+presentation feel a local character already had, and a finite value (2 to 10 rad/s is the usual range) leans the
+body into its turns. **The controller does not surface the resulting heading yet** (there is no `FacingYaw`
+accessor and no way to set `MoveCommand.FaceCamera` from `Update`), so on a purely local character the knob has
+nothing to drive today and facing still comes from `CharacterFacing` / the character bridge. Tracked as
+[#436](https://github.com/APKiwiOrg/KhaozEngine/issues/436). The networked path is complete: see "Authoritative
+facing" in the netcode chapter below.
+
+Also since 17.26.0, walking off a steep drop is a real fall on the analytic-terrain path, not a wall. See "Bounded
+zones" above for the direction-aware slope gate, which is a behaviour change for a game that leaned on the old
+gate to fence players onto a plateau.
+
 **Smooth stair climbing.** A step-up (curb or stair riser under `StepHeight`) is mounted without a jump, but it no
 longer snaps a whole riser up in one tick - the per-tick vertical rise onto step/prop support is paced to
 `MaxStepClimbSpeed` (m/s, default 3.5 on both `CharacterController3D` and `MoveTuning`), so a dungeon stair run
@@ -4763,8 +4835,8 @@ var rim = new RimFeature(
 var field = new TerrainField(TerrainPresets.BoundedClearing());   // meadow ringed by a rim, one +Z pass, a lake
 ```
 
-**2. The slope gate (so the wall can't be climbed).** `CharacterMovement.Step` already rejects a step onto ground
-steeper than `MoveTuning.MaxSlopeRadians` (default 45 deg) - but only when a `groundNormal` delegate is supplied.
+**2. The slope gate (so the wall can't be climbed).** `CharacterMovement.Step` refuses to CLIMB ground steeper
+than `MoveTuning.MaxSlopeRadians` (default 45 deg) - but only when a `groundNormal` delegate is supplied.
 Pass `TerrainCollision.GroundNormal` as that delegate everywhere movement runs, so the steep rim blocks and the
 gentle pass corridor stays walkable. Local controller:
 
@@ -4772,6 +4844,34 @@ gentle pass corridor stays walkable. Local controller:
 var terrain = new TerrainCollision(field);
 character.Update(input, dt, camera.Yaw, terrain.GroundHeight, terrain.GroundNormal);   // groundNormal = the slope gate
 ```
+
+**The gate is direction-aware since 17.26.0, and it used to not be.** It refused any step whose DESTINATION normal
+was too steep, whichever way you were going, so a cliff edge blocked walking OFF it exactly as it blocked walking
+INTO it. It now refuses only an ASCENT:
+
+    blocked iff steep(destination normal) && rise > max(1 mm, travel * tan(MaxSlopeRadians))
+
+`rise` is the destination ground height minus the LOWER of your feet and the ground under them, and `travel` is the
+tick's intended horizontal distance. So the allowance is a GRADIENT, not a height: it asks whether this tick climbs
+faster than the steepest walkable ramp would over the same ground, which makes the answer independent of speed and
+tick rate. A descent or a level traverse falls through, the support floor finds nothing walkable, you go airborne,
+and gravity does the rest. Flying into a face whose ground stands above your feet is still refused, so you can never
+end up under terrain.
+
+**The rise is measured from the lower of your feet and the ground beneath them so that jumping cannot discount an
+ascent** (17.26.1, [#440](https://github.com/APKiwiOrg/KhaozEngine/issues/440)). Measured from the feet alone it
+could: a jump raises them, so near the apex a steep face's local ground sat level with the feet, the rise read as
+~0, the drift onto the face was admitted, the ground clamp seated you on it, and the next jump repeated - roughly a
+jump height of free climb per cycle up a face no walk can enter. It was never a jump-only hole either, since any
+airtime discounted the face the same way. Walking is unaffected (on the ground the two terms are the same number),
+descents stay open at any airtime, and the gate only ever got more conservative. One consequence for content: a
+character standing on a PROP measures the rise from the terrain UNDER the prop, so stepping off a prop straight onto
+a steep face is refused. The gate reads your `groundHeight` delegate and cannot see prop support.
+
+**If your game leaned on the gate as a cliff guardrail, players now fall off.** That is the fix (#369), and it is
+a behaviour change rather than an opt-in. A rim you want players held inside needs `WorldBounds` below, or terrain
+that presents no walkable lip - a tightened `MaxSlopeRadians` no longer buys you a fence you can stand on. Nothing
+new to wire: the gate reads the `groundHeight` delegate every step already takes.
 
 **3. `WorldBounds` (the authoritative hard stop, `KhaozEngine.NetWorld`).** A play-area shape the server clamps
 movement to every tick, so the rim can't be glitched past. `WorldBounds.Clamp(x, z)` returns the nearest in-bounds
@@ -4974,7 +5074,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.26.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.27.0" />
 ```
 
 ```csharp
@@ -10468,7 +10568,7 @@ A mismatch surfaces on the client as `DisconnectReason.IncompatibleVersion` with
 
 3. *Graceful decode (last resort).* Even if both above are bypassed, an undecodable snapshot (an unregistered BUILT-IN component type id from a newer core protocol) becomes a clean `DisconnectReason.IncompatibleVersion` disconnect plus a `SnapshotDecodeFailed` event - never an unhandled exception in your frame loop. (An unregistered consumer *extension* id, at/above `ReplicationRegistry.FirstExtensionTypeId`, is skipped instead, so a newer server's added component never disconnects an older client - see the server-owned NPCs section above.)
 
-**Engine wire generation (enforced automatically since 10.2.0).** 10.0.0 widened `NetId` to 64-bit on the wire (the snapshot/delta id field and the frame header, `[localNetId:long][ackSeq:int]`, grown 8 -> 12 bytes) with NO dual-format wire, so a 10.0.0 peer and a pre-10.0.0 peer MUST reject each other at connect rather than misparse a 64-bit frame as 32-bit. As of 10.2.0 the engine does this for you, independent of your `ProtocolVersion`: `WorldClient` always folds `MoveProtocol.WireProtocolVersion` (= 8 as of the world-pickup feature, up from 1 for the pre-10.0.0 32-bit line, with generations 3 to 7 each adding a field to the movement built-in codec and 8 adding the whole new `PickupState` built-in) into its Hello even with no `ProtocolVersion`, and `WorldServer` / `ShardedWorldServer` always install a `WireGenerationAuthenticator` that rejects a wire-generation mismatch, or a peer that presents none (a pre-10.2.0 / 9.x client), cleanly as `DisconnectReason.IncompatibleVersion`. You no longer fold `;wire{N}` into your `ProtocolVersion` (the pre-10.2.0 advice is obsolete): the `ProtocolVersion` gate above is now purely your GAME version, checked on top of the automatic wire gate. Both skew directions produce the clean disconnect. Consequences are unchanged from 10.0.0: adopt client and server together across a wire bump (the break is not one-sided), and a server that has written 64-bit cell blobs cannot be downgraded (an old build treats a v2 blob as `SkippedTooNew` and quarantines it). A bare `NetClient` driven straight into a `WorldServer` / `ShardedWorldServer`, bypassing `WorldClient`, must present the wire layer itself via `ProtocolHandshake.BuildClientToken(MoveProtocol.WireProtocolVersion, consumerVersion, innerToken)`.
+**Engine wire generation (enforced automatically since 10.2.0).** 10.0.0 widened `NetId` to 64-bit on the wire (the snapshot/delta id field and the frame header, `[localNetId:long][ackSeq:int]`, grown 8 -> 12 bytes) with NO dual-format wire, so a 10.0.0 peer and a pre-10.0.0 peer MUST reject each other at connect rather than misparse a 64-bit frame as 32-bit. As of 10.2.0 the engine does this for you, independent of your `ProtocolVersion`: `WorldClient` always folds `MoveProtocol.WireProtocolVersion` (= 10 as of authoritative facing, up from 1 for the pre-10.0.0 32-bit line, with generations 3 to 7 each adding a field to the movement built-in codec, 8 adding the whole new `PickupState` built-in, 9 the floating-origin frame-relative position, and 10 the move frame's flags byte plus `MovementState.FacingYawQ` together) into its Hello even with no `ProtocolVersion`, and `WorldServer` / `ShardedWorldServer` always install a `WireGenerationAuthenticator` that rejects a wire-generation mismatch, or a peer that presents none (a pre-10.2.0 / 9.x client), cleanly as `DisconnectReason.IncompatibleVersion`. You no longer fold `;wire{N}` into your `ProtocolVersion` (the pre-10.2.0 advice is obsolete): the `ProtocolVersion` gate above is now purely your GAME version, checked on top of the automatic wire gate. Both skew directions produce the clean disconnect. Consequences are unchanged from 10.0.0: adopt client and server together across a wire bump (the break is not one-sided), and a server that has written 64-bit cell blobs cannot be downgraded (an old build treats a v2 blob as `SkippedTooNew` and quarantines it). A bare `NetClient` driven straight into a `WorldServer` / `ShardedWorldServer`, bypassing `WorldClient`, must present the wire layer itself via `ProtocolHandshake.BuildClientToken(MoveProtocol.WireProtocolVersion, consumerVersion, innerToken)`.
 
 ```csharp
 client.SnapshotDecodeFailed += err => ShowOutOfDateUI(err);   // "client out of date, please update"
@@ -10782,6 +10882,150 @@ the new `CommandedVelocity` so the check reads the sim's direction of travel, or
 legitimate momentum flight with released input would have been reported as speed hacking.
 
 Full rationale and the per-tick resolve: `docs/design/AIRBORNE-MOMENTUM-DESIGN-2026-07-26.md`.
+
+### Fall damage: reading a landing (`LandingImpactSpeed` / `OnAfterTick`, since 17.26.0)
+
+A character that walks off a cliff now falls (see the direction-aware slope gate under "Bounded zones"), which
+raises the question the engine could not answer before: how hard did it land? The ground contact zeroes
+`VerticalVelocity`, so the speed the landing erased was gone before anything downstream could read it, and the
+only way to recover it was to finite-difference a position across the very tick the ground clamp moved it.
+
+`MoveState.LandingImpactSpeed` is that speed: metres per second, non-negative, set on exactly the tick a character
+transitions airborne to grounded, and 0 on every other tick.
+**`WorldServer.OnAfterTick` / `ShardedWorldServer.OnAfterTick`** (`event Action<float>?`, both heads, no-op until
+subscribed) is where you read it:
+
+```csharp
+const float SafeLandingSpeed = 12f;   // your number: below this, no damage
+
+server.OnAfterTick += dt =>
+{
+    foreach (int slot in server.JoinedSlots)
+    {
+        if (!server.TryGetPlayerState(slot, out PlayerMoveState p)) continue;
+        float impact = p.Move.LandingImpactSpeed;      // 0 on every tick that was not a landing
+        if (impact <= SafeLandingSpeed) continue;
+        game.ApplyFallDamage(slot, impact);            // your curve. The engine owns no damage model.
+    }
+};
+```
+
+**Read it from `OnAfterTick`, not `OnBeforeTick`.** The latch is overwritten by the next tick, so the same loop
+run at the top of a tick always measures the previous tick's world and misses a landing whenever the tick that
+followed it was not itself a landing. `OnAfterTick` fires after movement AND after every client has been served,
+which is also its one trade: a write you make there reaches clients on the NEXT snapshot. `OnBeforeTick` remains
+the place to author state that must ship in the same frame (an NPC brain), and `OnAfterTick` is for observing a
+settled tick.
+
+**Threshold it. A spawn or a teleport reports a tiny impact and that is correct.** `default(MoveState).Grounded`
+is false, so a state placed on the ground and stepped is an airborne-to-grounded transition on its very first
+tick, and it honestly reports the one tick of gravity it fell: about `Gravity * dt`, so roughly 0.8 m/s at the
+shipped 25 m/s^2 and 30 Hz. That is the correct reading of the state it was handed, not a fabrication, and any
+sane damage curve is already far above it (a survivable drop lands at several metres per second). The same
+threshold that keeps a hop off the damage table covers every spawn and every teleport. A teleport mid-fall resets
+the vertical bookkeeping, so the landing after it reports only the post-teleport fall.
+
+**One semantic on both heads, with one qualifier that matters on the sharded one.** `OnAfterTick` fires after
+frames in which authoritative movement RAN. `WorldServer` steps unconditionally, so every `Tick` qualifies.
+`ShardedWorldServer` drives its cells off a fixed-tick accumulator, so a frame shorter than `TickSeconds` steps
+nothing, and the hook stays silent for it. Without that qualifier a short frame would re-deliver the previous
+tick's landing, once per short frame, which is a DUPLICATE fall-damage application rather than a missed one.
+
+**The value is capped, and the cap is physical.** `MoveTuning.MaxFallSpeed` (default 50 m/s) is terminal velocity
+and the vertical integrate clamps to it before the landing reads it, so a very long fall reports 50 rather than
+something larger. A longer fall genuinely does not arrive faster. Two more edges worth knowing: a buffered jump
+firing on the landing tick still reports its impact (the tick ends airborne with a nonzero impact, deliberately,
+so a bunny-hop cannot cancel fall damage), and swimming never fabricates one (a swim tick is never grounded, so
+falling INTO water reports nothing).
+
+**Client-side presentation is a separate, predicted signal.** `EntityRenderState.LandingImpactSpeed` carries the
+LOCAL player's predicted landing, so a land effect, camera dip or impact sound fires on the predicted tick instead
+of a round trip later. It holds for the frames of that one predicted tick, so edge-detect it if you must fire
+exactly once, and remember a correction can retract it. It is always **0 for remotes**: the latch is deliberately
+absent from the movement codec, and a remote landing effect is derived from the replicated `Grounded` transition
+(false to true) with `VerticalVelocity` for the severity. Authoritative damage stays server-side.
+
+**Sharded internals you only need if you are reading raw components.** `MovementState.LandingImpactSpeed` is the
+sharded head's sim-local slot for the value (the `ClimbRateEwma` precedent), because its per-cell step rebuilds a
+fresh `MoveState` from the component every tick. It rides no wire and is not in the migrate capture, so a landing
+that coincides with a cell handoff drops the one-tick signal. That is accepted: one tick, at a cell border,
+against a wire field every client would pay for on every snapshot.
+
+### Authoritative facing: turning on the spot (`FaceCamera` / `FacingYaw`, since 17.26.0)
+
+Holding the orbit button swings the camera. Making the CHARACTER turn to match, so the server agrees and every
+other player sees it, was impossible before this: character yaw existed nowhere in the command state or the
+replicated state, servers derived facing from position deltas, and a stationary player therefore could not turn
+at all.
+
+**Client: set the flag on the command you already send.**
+
+```csharp
+bool faceCamera = input.IsDown(MouseButton.Right);   // whatever your binding is
+client.SendInput(new MoveCommand(move, run, camera.Yaw, jump, faceCamera));
+```
+
+**Presentation: read the heading off the render state.**
+
+```csharp
+foreach (EntityRenderState e in client.Snapshot())
+{
+    // e.FacingYaw is authoritative for every entity: predicted for the local player, replicated for remotes.
+    samples.Add(new CharacterSample(e.Id.Value, feet, e.IsLocal, e.Grounded, e.VerticalVelocity, e.Swimming)
+        .WithFacingYaw(e.FacingYaw));
+}
+animators.Update(samples, dt);
+```
+
+**The convention, stated once.** `MoveState.FacingYaw`, `EntityRenderState.FacingYaw` and
+`MoveCommand.CameraYaw` all share ONE basis: **0 faces world -Z and a positive angle swings toward -X**, which is
+the basis `CharacterMovement` already resolves a camera-relative command in (forward is
+`(-sin yaw, 0, -cos yaw)`). So a character walking straight forward under camera yaw `y` faces exactly `y`, and
+while `FaceCamera` is held with no other input the heading converges to `CameraYaw` exactly. The canonical range
+is `[-pi, pi)`, low end inclusive, and every value the step writes is wrapped into it, so a long camera sweep
+never accumulates. `CharacterMovement.FacingYawOf(Vector2 dirXz)` converts a world XZ direction into it and
+`CharacterMovement.WrapYaw(float)` canonicalises one. A game whose own basis is the opposite converts at its own
+boundary, once.
+
+**The character bridge is NOT auto-wired, and its basis differs by half a turn.**
+`EntityRenderState.FacingYaw` is exactly the signal `CharacterSample.FacingYaw` /
+`ReplicatedCharacterAnimators` want (that seam already exists, takes server authority over the position-derived
+heading, and turns a stationary entity in place), but nothing connects them for you: pass it through
+`WithFacingYaw` as above. The bridge reads a yaw whose 0 faces **+Z**, so the two bases sit half a turn apart. Add
+that half turn once, on `CharacterAnimatorTuning.FacingYawOffset`, which already composes on top of both the
+derived and the explicit facing and is where your asset's own rest-pose correction lives:
+
+```csharp
+tuning.FacingYawOffset += MathF.PI;   // sim yaw 0 = -Z, bridge yaw 0 = +Z
+```
+
+**The turn rate is a sim knob, not a presentation smoother.** `MoveTuning.FacingTurnSpeed` (rad/s, default
+`float.PositiveInfinity`) rate-limits the turn, always along the shortest arc, landing exactly on the target on
+the tick the remaining gap fits inside one step's budget. The infinite default SNAPS, which is deliberately the
+default rather than some plausible finite rate: before facing became authoritative state, a consumer pointed its
+model straight at `CharacterMovement.CameraRelativeDir` with no smoothing, so an infinite rate is the feel every
+existing game already has. Set a finite value (2 to 10 rad/s is the usual range) and every head agrees on the
+turn, because it is part of the authoritative step rather than a smoother each end runs its own version of. A
+value of 0, which is what a bare `default(MoveTuning)` reads, FREEZES the heading rather than meaning "no limit".
+Remotes still receive the heading discrete-sampled (one value per snapshot), so presentation may ease toward the
+sampled value, but it should never invent a heading of its own.
+
+**NPCs get it for free.** `CharacterMovement.StepTowards` faces its steering direction, so a server-authoritative
+creature turns correctly with no camera and no new plumbing.
+
+**This is a wire break: generation 9 to 10.** One bump covers both halves. `MoveCommand.FaceCamera` rides bit 1 of
+the move frame's flags byte (bit 0 is run), which was a bare run bool through generation 9 - packed rather than
+appended because the client-to-server demux keys a move on its LENGTH of 18 bytes, so a 19-byte frame would have
+been read as a game message. And `MoveState.FacingYaw` replicates as `MovementState.FacingYawQ`, a `short` at
+`MovementState.FacingYawQuantum` (`pi / 32768`, one 65536th of a turn, so the whole range is exactly one
+revolution at 0.0055 degree resolution). It has to ride the wire because facing is CARRIED state that the next
+tick turns FROM: `PlayerMoveState.From` rebuilds the client's reconcile basis from the replicated components
+ALONE, so a heading missing from that seed would not lag behind the server, it would reset to 0 on every
+correction and restart the turn from due -Z several times a second. The movement built-in is not length-prefixed,
+so an old client is rejected at connect by the always-on `WireGenerationAuthenticator`. **Client and server must
+ship together.**
+
+Full rationale and the phase plan: `docs/design/PHYSICS-LOCOMOTION-DESIGN-2026-08-02.md`.
 
 ### World pickups (walk-over collectibles)
 

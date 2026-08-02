@@ -95,6 +95,12 @@ namespace KhaozEngine.Game
         /// <see cref="AirMomentum"/> is on, stopping there and never going below it (see
         /// <see cref="MoveTuning.AirBrakeAccel"/>). Default 0 (pure conservation).</summary>
         public float AirBrakeAccel = 0f;
+        /// <summary>Maximum rate (radians per second) the heading turns toward the commanded travel direction, taking
+        /// the shortest arc (see <see cref="MoveTuning.FacingTurnSpeed"/>). Default
+        /// <see cref="float.PositiveInfinity"/>, which snaps in one tick and is the presentation feel every
+        /// pre-facing consumer already had. A finite value (2-10 rad/s is the usual range) leans the body into its
+        /// turns. 0 freezes the heading.</summary>
+        public float FacingTurnSpeed = float.PositiveInfinity;
 
         /// <summary>
         /// Advance the character for one frame. <paramref name="cameraYaw"/> is the follow camera's yaw (radians);
@@ -129,6 +135,7 @@ namespace KhaozEngine.Game
                 GroundedEpsilon = GroundedEpsilon, StepHeight = StepHeight,
                 MaxStepClimbSpeed = MaxStepClimbSpeed,
                 AirMomentum = AirMomentum, AirBrakeAccel = AirBrakeAccel,
+                FacingTurnSpeed = FacingTurnSpeed,
             };
             _state = CharacterMovement.Step(_state, cmd, dt, groundHeight, tuning, groundNormal, world: physics, medium: medium);
         }

@@ -5,6 +5,115 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.27.0
+
+### The windowed frame loop gains a pre-record phase, and the fork guardrail comes off hold
+
+`AppWindow.Run` takes an optional `onPrepare` callback that runs before the frame's command list opens, `GameApp`
+routes its whole update side through it via the new `OnPrepareWorld` seam, and the Veldrid fork moves to `4.9.103`
+so a second command list opened mid-recording throws instead of silently corrupting the frame. Those two ship
+together on purpose: the guardrail was held for four fork releases precisely because the windowed loop forced the
+violation it would have caught, so the cause had to go first.
+
+#### The frame loop is two phases now, not one (#429)
+
+17.26.0 gave `Scene3D` a `PrepareFrame()` phase and moved the FFT ocean's priming pass into it, which fixed every
+headless host. It could not fix a windowed one. `AppWindow.Run` opened the frame's command list before calling
+back into the app, so by the time any app code ran there was already a list recording, and a producer that needs a
+list of its own had nowhere to put it. That was the last live path in
+[#423](https://github.com/APKiwiOrg/KhaozEngine/issues/423): on Direct3D11 in immediate-context mode a command
+list IS the device's immediate context, so opening a second one runs `ClearState` on the live context and wipes
+every binding the frame believes is bound, and the device faults a few draws later.
+
+`AppWindow.Run(Action<Frame> onFrame, Action<Frame>? onPrepare)` is the new overload. `onPrepare` runs each frame
+after the frame's dt, input and size are latched and BEFORE the command list is opened, so a callback may create,
+submit and drain lists of its own. `onFrame` then runs with the frame's list open, bound to the swapchain and
+cleared, exactly as before. The existing single-callback `Run(onFrame)` is now `Run(onFrame, null)` and behaves
+identically, so nothing that compiles today changes.
+
+The phase ORDER itself moved out of the loop into an internal `FramePhases` type, which is what makes it
+assertable without a window. It is deliberately ignorant of 3D, water, and what a producer is: it guarantees only
+WHEN the two callbacks run relative to the frame's command list, which is the one fact a producer cannot
+establish for itself.
+Both callbacks still run on a render-suppressed (minimized) frame, where no list is opened and nothing is
+presented, so update-side simulation keeps advancing while iconified.
+
+Do not record into `Frame.Commands` from `onPrepare`. The list has not been begun during that callback, and on a
+render-suppressed frame it is never begun at all. Draws belong in `onFrame`.
+
+#### `GameApp` grows an `OnPrepareWorld` seam, and its update side moves ahead of the list
+
+`GameApp.Run` now calls `_window.Run(onFrame: RecordPhase, onPrepare: PreparePhase)`. Everything up to and
+including the new `protected virtual void OnPrepareWorld(Frame frame)` runs in the prepare phase, and the draw
+passes run inside the frame's list. `GameApp3D` overrides it to run `Scene.Begin()`, its 3D draws, and
+`Scene3D.PrepareFrame()` there, so by the time `Render3DSurface.Render` runs the frame is already prepared and its
+safety-net `PrepareFrame` call no-ops. No engine-shipped windowed host opens a nested list any more.
+
+**Phase-order note, and the one thing to check when adopting.** The order a game SEES is unchanged: `OnUpdate`
+still precedes `OnPrepareWorld`, which still precedes `OnRenderWorld` and the 2D passes. What changed is where
+that ordering sits relative to the command list. `OnUpdate` and `OnResize` now run BEFORE the frame's list is
+opened rather than inside its recording. A game that recorded into `Frame.Commands` from `OnUpdate` would break,
+because the list is not open yet. The fleet was checked rather than assumed: no game records into the frame from
+`OnUpdate`, so all four adopt without a source change.
+
+#### Vendored Veldrid fork `4.9.103`: the second-recorder guardrail (#428)
+
+The fork moves from `4.9.102` to `4.9.103` (`APKiwiOrg/veldrid` tag `v4.9.103`, commit
+`74e523607843f49cd8f6969815c94b37cd047bb7`, branch `fix/d3d11-immediate-4.9.0`). The vendored line moves back onto
+the main fork branch, because the guardrail commits it was deliberately sitting below are the content of this
+release.
+
+A second `Begin` on a DIFFERENT command list, while the first still holds the immediate context, now throws a
+`VeldridException` naming the situation and pointing at `UseImmediateContext`. It previously ran `ClearState` on
+the live context and silently wiped the open recording. A second `Begin` on the SAME list has thrown since
+`4.9.101` and is a separate case. The refusal happens before anything is touched, ahead of the deferred list
+disposal, the `ClearState` and the lock, so the open recorder carries on unharmed and the refused instance begins
+normally once the context is free. Deferred mode never reaches any of this. A follow-up commit hardens the guard
+against an interrupted lock acquisition: `Monitor.Enter` takes the ref-bool overload, because a
+`ThreadInterruptedException` delivered after acquisition is otherwise indistinguishable from a failed one, and the
+bare overload's catch was dropping the claim on a lock the thread still held, wedging the next `Begin` forever.
+
+#### The residual, stated rather than glossed
+
+One nesting path survives by design. A host driving a `Render3DSurface` off a raw `AppWindow.Run(onFrame)`,
+without passing `onPrepare`, still nests, because the surface's safety-net `Scene3D.PrepareFrame` then runs inside
+the frame's recording. That is not an engine-shipped host and no engine host does it, but it is reachable from
+consumer code. With `4.9.103` vendored it is now a loud `VeldridException` naming the fix rather than silent
+corruption, which is the intended trade. The fix for such a host is to queue and prepare the scene in the
+`onPrepare` callback and call `Render` from `onFrame`.
+
+Tests: `FramePhasesTests` asserts the phase contract without a window, and `WindowedFramePrepareTests` covers the
+windowed prepare path. No golden changes, because nothing about what the GPU executes on an already-correct path
+moved.
+### Jumping at a cliff no longer climbs it (#440, staged as 17.26.1, ships in this release)
+
+The direction-aware slope gate measures its ascent from the LOWER of the character's feet and the ground under the
+current column, so vertical motion can no longer buy admission onto a too-steep face. This hardens the 17.26.0 gate
+and closes a Ruinborne playtest exploit. Nothing else about the rule changes.
+
+`AdvanceSlopeGated` (`KhaozEngine.Locomotion`) still blocks a move iff the destination normal reads steep AND
+`rise > max(1 mm, travel * tan(MaxSlopeRadians))`. What changes is `rise`, which was
+`groundHeight(dest) - feetY` and is now `groundHeight(dest) - min(feetY, groundHeight(current))`.
+
+The feet alone were the wrong reference because a jump raises them. Near the apex a steep face's local ground sat
+level with the raised feet, the rise read as about zero, the sideways drift onto the face was admitted, the
+analytic ground clamp seated the character on the face, and the next jump repeated. A player reproduced it on
+Ruinborne's 78 degree sea cliff, gaining roughly a jump height per cycle up a face no walk can enter. It was never
+jump-specific either: any airtime discounted the face the same way, so a character merely falling past one while
+steering into it was seated partway up it. The floor of the two terms cannot be raised by leaving the ground,
+because a character in the air still measures against the ground it left.
+
+What is preserved, and pinned by tests. Grounded motion is unchanged, since the feet ARE the ground there and the
+minimum is a no-op. Genuine descents stay open at any airtime (a destination column below the current one is below
+both terms), so walk-offs, jump-offs, falling past a face and landing at a cliff toe are untouched. The gate only
+ever became more conservative, which is what makes the anti-tunnel property survive for free. And the arithmetic is
+still pure scalar in a fixed order over the same delegates on both heads, so prediction and reconciliation are
+unaffected: it costs one extra `groundHeight` sample, taken only inside the already-steep branch.
+
+One behaviour change off the exploit path: a character standing on a PROP above the terrain measures its rise from
+the terrain UNDER the prop rather than from the prop top, so stepping off a prop straight onto a steep face is now
+refused. That is the same climb by a slower elevator, and the analytic gate has no prop height to read in any case.
+
 ## 17.26.0
 
 ### The FFT ocean stops opening a command list inside the frame's
@@ -128,6 +237,137 @@ it is exactly what shipped before, so this release neither fixes nor worsens the
 the frame loop a real pre-record phase. The fork's guardrail commits, which turn that nesting into a throw instead
 of silent corruption, are held back until then (#428), so the two land together rather than converting a corrupted
 frame into a crash.
+
+### Characters walk off cliffs, land with a measurable impact, and can face the camera
+
+Phase 1 of `docs/design/PHYSICS-LOCOMOTION-DESIGN-2026-08-02.md`, which decides #371 and closes #369. Movement was
+already physics-query-driven (a kinematic capsule integrating gravity and resolving collision by swept
+collide-and-slide against the Bepu world), so the three player-visible asks were a model gap and two missing seams
+rather than a missing simulation: a slope gate that fenced characters onto clifftops, no trustworthy landing fact
+to read, and no authoritative facing anywhere in the command or replicated state. Position output is unchanged on
+any ground a character could already walk on, and facing feeds nothing in the move resolve, so a game that adopts
+neither new seam moves bit-identically.
+
+#### The slope gate is direction-aware and scale-free (#369)
+
+`AdvanceSlopeGated` refused any XZ move whose DESTINATION ground normal exceeded `MoveTuning.MaxSlopeRadians`,
+whichever way the tick was travelling. A steep normal says nothing about direction, so on the analytic-terrain
+path a cliff edge blocked walking OFF it exactly as it blocked walking INTO it. The move is now refused only when
+the destination is steep AND this tick climbs onto it faster than the gate's own gradient:
+
+    blocked iff steep(destNormal) && rise > max(1 mm, travel * tan(MaxSlopeRadians))
+
+`rise` is the destination ground height minus the character's FEET, and `travel` is the tick's intended horizontal
+distance. A descent or a level traverse falls through, the support-floor logic finds no walkable floor, the
+character goes airborne, and gravity does the rest. This is the same asymmetry the Bepu-backed collide-and-slide
+already applied to props, extended to the analytic terrain a game's cliffs actually use. It applies identically to
+the grounded path, the airborne-momentum path, and the horizontal-only `Step(Vector3, ...)` overload.
+
+**A game that used the gate as a cliff guardrail now gets real falls.** That is the point of the change, but it is
+a behaviour change and not an opt-in: a designed drop that previously read as an invisible wall is now walkable,
+jumpable and survivable only as far as the game's own fall rules allow. A game holding players on a plateau needs
+`WorldBounds` (the authoritative clamp) or terrain that does not present a walkable lip, not the slope gate.
+Ruinborne's `MaxSlopeRadians` of 40, tightened specifically to act as that guardrail, is worth revisiting.
+
+**The ascent allowance is a GRADIENT, not a height, and that is what makes it scale-free.** The first cut allowed a
+fixed rise (the skin width) and review found the hole: any mover whose per-tick rise stayed under it climbed an
+arbitrarily steep face a fraction of a centimetre at a time, so the same wall fenced a full-speed run and was
+walked up by a snared character or by a client at a high tick rate. Both sides of the gradient comparison carry the
+same `travel`, so a face steeper than the gate is refused at every speed and every tick rate, and a character on
+the flat below one can gain at most a single tick's ramp rise, once, before it is standing on the face and fenced.
+`tan(MaxSlopeRadians)` is the existing gate read as a gradient rather than a new knob, and the 1 mm term is a noise
+floor for a near-level traverse across a steep face, not an allowance. The comparison is against the FEET rather
+than the current ground, which keeps the anti-tunnel property: flying into a face whose ground stands above the
+feet is still refused, so an XZ can never be committed under terrain for a later ground clamp to pop up the cliff.
+
+#### A landing reports how hard it hit, and both servers gained `OnAfterTick`
+
+`VerticalVelocity` is zeroed by the ground contact, so the speed a landing erased was gone before anything
+downstream could read it, and a game wanting fall damage had to finite-difference a position across the very tick
+the ground clamp moved it.
+
+- **`MoveState.LandingImpactSpeed`** (float, m/s, non-negative) is the downward speed captured on exactly the tick
+  a character transitions airborne to grounded, and 0 on every other tick. Event-as-state, following `StepDeltaY`.
+  It reads the transition itself rather than instrumenting the four sites that set grounded, so any landing path
+  is covered. It is latched BEFORE the jump step, so a buffered jump firing on the landing tick still reports its
+  impact and a bunny-hop cannot cancel fall damage. Capped by `MaxFallSpeed`, which is terminal velocity and
+  therefore physical. Swimming never fabricates one (a swim tick is never grounded).
+- **Spawn and teleport report a tiny one, so consumers must threshold.** `default(MoveState).Grounded` is false, so
+  a state placed on the ground and stepped is a transition on its first tick and honestly reports the single tick
+  of gravity it fell (about 0.8 m/s at the shipped gravity and 30 Hz). No fall-damage curve starts near that, so
+  the same threshold that keeps a hop off the damage table already covers it. A teleport mid-fall reports only the
+  post-teleport fall.
+- **`WorldServer.OnAfterTick(float dt)` and `ShardedWorldServer.OnAfterTick(float dt)`** (`event Action<float>?`,
+  no-op until subscribed) are the mirror of `OnBeforeTick`: they fire at the END of a tick, after movement and
+  after every client has been served. This is where a game reads the landing and applies fall damage, because the
+  next tick overwrites the latch, so the same work done from `OnBeforeTick` always reads the previous tick's world.
+  A write made here reaches clients on the NEXT snapshot, which is the deliberate trade: the hook observes a
+  settled tick, and `OnBeforeTick` remains the place to author state that must ship in the same frame.
+- **One semantic on both heads: it fires after frames in which authoritative movement RAN.** The flat head steps
+  unconditionally, so every `Tick` qualifies and the rule costs it nothing. The sharded head drives its cells off a
+  fixed-tick accumulator, so a frame shorter than `TickSeconds` steps nothing, and firing there would re-deliver
+  the previous tick's landing once per short frame. That is a DUPLICATE application of fall damage rather than a
+  missed one, which is why the qualifier exists. `OnBeforeTick` stays unqualified on both heads.
+- **`MovementState.LandingImpactSpeed`** is the sharded head's sim-local mirror (the `ClimbRateEwma` precedent):
+  readable per slot through `TryGetPlayerState`, rides no wire and no migrate capture, and is explicitly zeroed for
+  an entity whose cell sim skipped it, so a skipped tick cannot leave a stale impact to read as a landing. A
+  landing that coincides with a cell handoff loses the one-tick signal, which is accepted rather than paid for with
+  a wire field on every snapshot. **`EntityRenderState.LandingImpactSpeed`** surfaces the local player's PREDICTED
+  landing for presentation (a land effect, a camera dip), and is always 0 for remotes, which derive the transition
+  from the `Grounded` flag and `VerticalVelocity` they already receive.
+- **The step's non-finite fallback now zeroes the latch.** The defence-in-depth path holds the last good state when
+  a misbehaving delegate injects a NaN, and a per-tick EVENT is not pose: handing the previous state back wholesale
+  re-emitted the landing tick's impact on every poisoned tick, so a game reading it from `OnAfterTick` would have
+  applied one landing's fall damage over and over for as long as the delegate misbehaved.
+
+#### Authoritative facing, and wire generation 10
+
+Character yaw existed nowhere in the command state or the replicated state. Servers derived facing from position
+deltas, so a stationary player could not turn at all, and a strafing one pointed where it was sliding.
+
+- **`MoveCommand.FaceCamera`** (bool, default false) asks the character to face `CameraYaw` instead of its travel
+  direction. It changes facing only and never position. The wire encoding reuses the move frame's `run` byte as a
+  FLAGS byte (bit 0 run, bit 1 faceCamera), so `MoveSize` stays 18 and the length-based client-to-server demux
+  contract is untouched. Unknown flag bits are ignored rather than rejected, because a frame with a stray bit is
+  still a well-formed move and dropping it would take that client out of the sim.
+- **`MoveState.FacingYaw`** (float, radians) is the carried heading, in the SAME convention as
+  `MoveCommand.CameraYaw`: 0 faces world -Z and a positive angle swings toward -X, which is the basis the step
+  already resolves a camera-relative command in. Canonical range `[-pi, pi)`, low end inclusive. While `FaceCamera`
+  is held with no other input the heading converges to `CameraYaw` exactly.
+- **`MoveTuning.FacingTurnSpeed`** (rad/s, default `float.PositiveInfinity`) rate-limits the turn, always along the
+  shortest arc, landing exactly on the target on the tick the remaining gap fits in one step's budget. The infinite
+  default SNAPS, which is the presentation feel every pre-facing consumer already had (a model pointed straight at
+  `CameraRelativeDir` with no smoothing). A finite value (2 to 10 rad/s is the usual range) leans the body into its
+  turns identically on the server, in prediction and on every remote. 0, which is what `default(MoveTuning)` reads,
+  freezes the heading rather than meaning "no limit". `CharacterController3D.FacingTurnSpeed` mirrors it for a
+  local, non-networked character.
+- **`CharacterMovement.WrapYaw(float)` and `CharacterMovement.FacingYawOf(Vector2)`** are the public conversions: a
+  canonicalise into `[-pi, pi)` (returning an already-canonical angle bit-identically, which is what makes the
+  "converges exactly" contract true rather than approximate) and a world XZ direction to a heading. A consumer
+  whose gameplay basis is the opposite converts at its own boundary, once.
+- **`StepTowards` faces the steering direction**, so server-authoritative NPCs inherit facing with no new plumbing
+  and no camera. The AI path always passes no camera target.
+- **`MovementState.FacingYawQ`** replicates it as a `short` at `MovementState.FacingYawQuantum` (`pi / 32768`, one
+  65536th of a turn, so the whole `short` range is exactly one revolution and every representable value is a legal
+  heading, at 0.0055 degree resolution). `QuantizeFacingYaw` WRAPS rather than clamps, because an angle has no
+  out-of-range value, only a non-canonical representative, and a clamp would park a character facing the wrong way
+  with no way to self-correct. It has to ride the wire for `HorizontalVelocityXQ`'s reason with the same sharper
+  failure: `PlayerMoveState.From` rebuilds the reconcile basis from the replicated components ALONE and
+  `Reconcile` overwrites unconditionally, so a heading missing from that seed would not lag behind the server, it
+  would reset to 0 on every correction and restart the turn from due -Z several times a second.
+- **`EntityRenderState.FacingYaw`** surfaces it: the predicted un-quantized heading for the local player, the
+  decoded replicated one for remotes, discrete-sampled to the same delayed render time as the interpolated
+  position. It is the feed `CharacterSample.FacingYaw` wants, though the two bases differ by half a turn (the
+  bridge reads 0 as +Z) and nothing wires them automatically.
+- **This is a wire break: generation 9 to 10.** One bump covers the flags byte and `FacingYawQ` together. The
+  movement built-in is not length-prefixed, so an old client cannot skip the two bytes and is rejected at connect
+  by the always-on `WireGenerationAuthenticator`. **Client and server must ship together.**
+
+`EntityRenderState` gained two constructor overloads for the new fields, so every existing construction site
+compiles and reads 0 for both. Headless coverage lands in `KhaozEngine.Game.Tests` (the direction-aware gate at
+four speeds and two tick rates, the landing latch, the facing rule and its wrap seam) and `KhaozEngine.Server.Tests`
+(both heads' `OnAfterTick` including the short sharded frame, facing replication and quantizer round-trip, and a
+reconcile-parity fixture pinning a mid-turn heading through a replay).
 
 ## 17.25.0
 

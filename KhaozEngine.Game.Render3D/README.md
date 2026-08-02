@@ -2,8 +2,18 @@
 
 The 3D integration for `KhaozEngine.Game`, split out so a 2D game pulls **no 3D renderer**. Three pieces:
 
-- **`GameApp3D : GameApp`** - a `GameApp` that builds a `Render3DSurface` and drives the 3D pass in the
-  `OnRenderWorld` seam (before the 2D HUD). Subclass it and override `OnDraw3D(Scene3D)`.
+- **`GameApp3D : GameApp`** - a `GameApp` that builds a `Render3DSurface` and drives the 3D pass across the frame's
+  two phases, before the 2D HUD. Subclass it and override `OnDraw3D(Scene3D)`.
+  - In `OnPrepareWorld` (the pre-record phase, before the frame's command list opens): `Scene.Begin()` ->
+    `OnDraw3D(Scene)` -> `Scene.PrepareFrame()`. So `OnDraw3D` runs after `OnUpdate` on the same frame, as it
+    always did, but now at a point where a producer may still submit GPU work on a command list of its own. That is
+    what the FFT ocean's priming pass needs, and nesting it inside the frame's recording faults a Direct3D11 device
+    in immediate-context mode ([#423](https://github.com/APKiwiOrg/KhaozEngine/issues/423),
+    [#429](https://github.com/APKiwiOrg/KhaozEngine/issues/429)).
+  - In `OnRenderWorld` (the record phase): `Surface3D.Render(frame)`, plus feeding the per-pass timings to the
+    diagnostics HUD. `Render3DSurface.Render` calls `Scene.PrepareFrame()` too, and on this path it finds the frame
+    already prepared and no-ops - the phase's call is the effective one.
+  - No game code changes for this: `OnDraw3D` sees the same scene at the same point in the frame's logic.
 - **`IGameScene3D`** - a `GameScene` implements this (in addition to deriving `GameScene`) to submit a 3D world
   pass. Keeps 3D out of the base `GameScene`.
 - **`SceneManager.Draw3D(scene)`** extension - draws the visible scenes that implement `IGameScene3D`, the same
@@ -94,7 +104,11 @@ of spinning to chase it. For a server-authoritative facing (a server-owned NPC t
 turret, a mount, a player standing still and turning) a sample can carry an EXPLICIT facing yaw via
 `new CharacterSample(id, position, facingYaw, isLocal)` or `sample.WithFacingYaw(yaw)`: it turns the character in place
 even while stationary and wins over the derived heading while moving. `FacingYawOffset` still composes.
-See `docs/USING-KHAOZENGINE.md`.
+Since 17.26.0 the engine replicates such a yaw itself: `EntityRenderState.FacingYaw` (NetWorld) is the
+authoritative heading for every entity, predicted for the local player and replicated for remotes, and it is
+exactly what this seam wants. Nothing wires the two automatically, and their bases sit HALF A TURN apart (this
+bridge reads yaw 0 as +Z, the sim reads 0 as -Z), so pass it through `WithFacingYaw` and add that half turn once
+on `FacingYawOffset`, alongside whatever your asset's rest pose needs. See `docs/USING-KHAOZENGINE.md`.
 
 The bridge also SMOOTHS the drawn feet height on stairs. The paced stair-climb sim deliberately produces a per-riser
 vertical sawtooth (a ~120-140 mm render-Y bob at 4-9 Hz on a 0.30/0.40 staircase; the sim is unchanged), which reads as

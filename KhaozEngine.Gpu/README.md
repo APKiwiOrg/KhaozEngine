@@ -100,7 +100,8 @@ What it owns today:
   deliberately D3D11-only: Metal, Vulkan, and OpenGL use their existing Veldrid factories unchanged. The fork
   serializes a list from `Begin` through `Submit`, which matches KhaozEngine's single render-thread command
   sequence. It addresses the large D3D11 encoding cost observed in the field even when
-  `DriverCommandLists=TRUE`. The vendored fork is `4.9.102` since 17.26.0, which fixes
+  `DriverCommandLists=TRUE`. The vendored fork is `4.9.103` since 17.27.0, which adds the second-recorder
+  guardrail described below. `4.9.102` before it, since 17.26.0, fixed
   `SmallFixedOrDynamicArray` reading pool garbage for a resource set with more than five dynamic offsets (every
   backend, not just this mode). `4.9.101` before it, since 17.24.0, added immediate-context hazard fixes plus
   Direct3D11 bind batching (dirty tracking flushed at draw and dispatch time, an offsets-only rebind fast path,
@@ -110,17 +111,23 @@ What it owns today:
   kills a reachable two-thread deadlock. Resizing during recording stays unsafe regardless, because `Resize` still
   disposes the framebuffer the render thread has bound, so resize between frames and never during one. No API
   change: see `vendor/veldrid/README.md`.
-- **What the fork does NOT yet reject, and why.** A second `Begin` on the SAME `IGpuCommandList` throws, and has
-  since `4.9.101`. A second `Begin` on a DIFFERENT one, while the first still holds the immediate context, does
-  not: it runs `ClearState` on the live context and silently wipes the open recording's bindings, which is exactly
-  the corruption behind
-  [#423](https://github.com/APKiwiOrg/KhaozEngine/issues/423). The fork commits that turn that case into a throw
-  exist but are deliberately NOT vendored, because the windowed `GameApp3D` path still opens that second list
-  (`AppWindow.Run` opens the frame's list before calling back into the app), so adopting them today would convert
-  a corrupted frame into a hard throw on Windows. They land with the frame loop's pre-record phase
-  ([#429](https://github.com/APKiwiOrg/KhaozEngine/issues/429)), tracked by
-  [#428](https://github.com/APKiwiOrg/KhaozEngine/issues/428). Until then, do not open a command list while
-  another is recording on Direct3D11: the engine's own producers use `Scene3D.PrepareFrame` for this.
+- **What the fork rejects, and the one residual.** Both nesting cases now throw, and they are different guards. A
+  second `Begin` on the SAME `IGpuCommandList` has thrown since `4.9.101`. A second `Begin` on a DIFFERENT one,
+  while the first still holds the immediate context, throws as of `4.9.103`
+  ([#428](https://github.com/APKiwiOrg/KhaozEngine/issues/428)). Before that it ran `ClearState` on the live
+  context and silently wiped the open recording's bindings, which is exactly the corruption behind
+  [#423](https://github.com/APKiwiOrg/KhaozEngine/issues/423). The guardrail was held back for four fork releases
+  because the windowed `GameApp3D` path forced that second list open (`AppWindow.Run` opened the frame's command
+  list before calling back into the app), so adopting it would have converted a corrupted frame into a hard throw
+  on Windows. The frame loop now has a pre-record phase and the ocean prime runs there
+  ([#429](https://github.com/APKiwiOrg/KhaozEngine/issues/429)), so no engine-shipped windowed host opens a nested
+  list any more, and the two ship together in 17.27.0 with the cause removed first. One residual remains by
+  design: a host driving a `Render3DSurface` off a raw `AppWindow.Run(onFrame)` without passing `onPrepare` still
+  nests, because the surface's safety-net `Scene3D.PrepareFrame` then runs inside the frame's recording. That
+  residual is now a loud `VeldridException` naming the fix (pass the pre-record phase) instead of silent
+  corruption, which is the intended trade. The rule for engine code is unchanged either way: do not open a command
+  list while another is recording on Direct3D11, and put work that needs its own list in `Scene3D.PrepareFrame` or
+  the loop's pre-record phase.
 - **`GpuCapabilities`** - `ClipSpaceYInverted` / `DepthRangeZeroToOne` (so renderers derive clip-Y / depth
   handling from the active backend instead of a baked Metal assumption), plus diagnostics: `DeviceName` (the GPU
   adapter/driver), `SamplerAnisotropy`, `SamplerLodBias` (whether those sampler levers are supported),

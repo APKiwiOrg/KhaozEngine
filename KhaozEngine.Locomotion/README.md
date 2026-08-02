@@ -7,7 +7,7 @@ run identical code.
 ## API
 
 Two overloads share one horizontal core (camera-relative WASD axis, normalised diagonals, walk/run speed,
-optional slope gate via a ground-normal delegate):
+optional direction-aware slope gate via a ground-normal delegate):
 
 - **`Step(Vector3, in MoveCommand, float, groundHeight, in MoveTuning, groundNormal?, medium?) -> Vector3`**
   Horizontal-only step. Y is clamped to `groundHeight(x, z) + halfHeight` every tick. No air, no vertical
@@ -53,7 +53,9 @@ optional slope gate via a ground-normal delegate):
   speeds with no extra plumbing. **No jump bit** (NPCs do not jump in v1) and **no client prediction** (AI is
   server-only). Both the camera-relative player `Step` and this world-space `StepTowards` resolve their input to one
   shape (a unit direction + a speed fraction) and share a single collision core, so player and AI can never drift
-  apart - the player path stays byte-for-byte identical to before.
+  apart - the player path stays byte-for-byte identical to before. Since 17.26.0 it also turns
+  `MoveState.FacingYaw` toward the steering direction, so an NPC's heading is authoritative with no camera and no
+  extra plumbing (the AI path never has a `FaceCamera` target: there is no camera on it).
 
 - **`CameraRelativeDir(in MoveCommand) -> Vector2`** (14.9.0)
   The **commanded** camera-relative travel direction as a unit XZ vector (`Vector2.Zero` when idle, inside the
@@ -63,6 +65,53 @@ optional slope gate via a ground-normal delegate):
   `MathF.Atan2(dir.X, dir.Y)` (world radians about +Y, 0 = +Z), gated on the vector being non-zero. Shares the ONE
   camera basis the step uses (`forward = (-sinYaw, -cosYaw)`, `right = (cosYaw, -sinYaw)`), so the public facing and
   the resolved movement can never drift apart.
+
+- **`WrapYaw(float) -> float`** and **`FacingYawOf(Vector2 dirXz) -> float`** (17.26.0)
+  The two public conversions for `MoveState.FacingYaw`. `WrapYaw` reduces any angle to the canonical
+  `[-pi, pi)` (low end inclusive), returning an already-canonical angle **bit-identically**, which is what makes
+  the "the heading converges to `CameraYaw` exactly" contract true rather than approximate. `FacingYawOf` is the
+  heading of a world-space XZ direction (`X` = world +X, `Y` = world +Z, matching `CameraRelativeDir`'s output),
+  and it is the exact inverse of the camera basis the step resolves a command in. A non-finite angle and a zero
+  vector both yield 0, which is a legal heading (facing -Z) rather than a sentinel.
+
+### Slope gate (direction-aware since 17.26.0)
+
+Supply a `groundNormal` delegate and the step refuses to CLIMB ground steeper than `MoveTuning.MaxSlopeRadians`.
+Until 17.26.0 it refused ANY move whose destination normal was too steep, whichever direction the tick was
+travelling, so on the analytic-terrain path a cliff edge blocked walking OFF it exactly as it blocked walking INTO
+it. The rule is now:
+
+    blocked iff steep(destination normal) && rise > max(1 mm, travel * tan(MaxSlopeRadians))
+
+`rise` is the destination ground height minus the **lower of the character's FEET (the capsule centre minus
+`CapsuleHalfHeight`) and the ground height under the current column**, and `travel` is the tick's intended
+horizontal distance, so the ascent allowance is a **gradient, not a height**:
+it asks whether this tick climbs faster than the steepest walkable ramp would over the same ground, which makes
+the answer independent of speed and of tick rate. A fixed allowance could not, and the version that tried let a
+slowed character, a short steering vector or a high tick rate walk up an arbitrarily steep face a fraction of a
+centimetre per tick. The 1 mm term is only a noise floor for a near-level traverse across a steep face. Neither
+term is a new knob: `tan(MaxSlopeRadians)` is the existing gate read as a gradient.
+
+A descent or a level traverse now falls through, the support floor finds no walkable ground, the character goes
+airborne, and gravity does the rest. Flying into a face whose ground stands above the feet is still refused, so an
+XZ can never be committed under terrain.
+
+**Vertical motion buys no admission** (17.26.1, [#440](https://github.com/APKiwiOrg/KhaozEngine/issues/440)). The
+rise reference is the LOWER of the feet and the ground under them because the feet alone were inflatable: a jump
+raises them, so near the apex a steep face's local ground stood level with the feet, the rise read as ~0, the drift
+onto the face was admitted, the ground clamp seated the character on it, and the next jump repeated - a jump height
+of free climb per cycle up a sea cliff no walk could enter. Any airtime did it, so a character merely falling past
+a face while steering into it was seated partway up. The floor of the two terms cannot be raised by leaving the
+ground. Grounded motion is unchanged (the feet ARE the ground, so the minimum is a no-op), genuine descents stay
+open at any airtime (a destination column below the current one is below both terms), and because the gate only
+ever got more conservative the anti-tunnel property is untouched. One consequence off the exploit path: a character
+elevated on a PROP measures its rise from the terrain under the prop, not from the prop top, so stepping off a prop
+straight onto a steep face is now refused - the analytic gate reads `groundHeight`, and prop support is not visible
+to it.
+
+It applies identically to the grounded path, the airborne-momentum path and the horizontal-only overload, and it
+needs no new wiring (it reads the `groundHeight` delegate every step already takes). **A game that used the gate
+as a cliff guardrail now gets real falls** - that is the fix, and it is a behaviour change rather than an opt-in.
 
 ### Movement medium (wading)
 
@@ -95,7 +144,11 @@ decision. **A null provider never engages swim.** The swim flag replicates via N
 
 ## Types
 
-- **`MoveCommand`** - movement intent: camera-relative XZ axis, run flag, camera yaw, jump bit.
+- **`MoveCommand`** - movement intent: camera-relative XZ axis, run flag, camera yaw, jump bit, and (17.26.0) the
+  `FaceCamera` flag, which asks the character to face `CameraYaw` instead of its travel direction. `FaceCamera`
+  changes `MoveState.FacingYaw` only and never the position, so a strafing character keeps its body pointed at the
+  camera and - the case that is impossible without it - a character with NO movement input can turn on the spot.
+  `false` (the default, and what every pre-facing construction site produces) is the pre-facing behaviour exactly.
 - **`MoveState`** - carried kinematic state: position, `VerticalVelocity`, `Grounded`, coyote/buffer timers,
   `Swimming` (surface-swim flag, carried tick-to-tick for the enter/exit hysteresis), and `SpeedScale` (see below).
   Also the stair-glide
@@ -149,6 +202,22 @@ decision. **A null provider never engages swim.** The swim flag replicates via N
   Pair it with `CommandedVelocity`. This is the form the movement-anomaly check uses.
 - **`MovementMedium`** - the fluid medium at one world sample the medium provider returns: `WaterSurfaceY`,
   `InWater`, `WadeSpeedScale` (a per-sample zone multiplier, default 1). `default` / `MovementMedium.Dry` is dry land.
+- **`MoveState.LandingImpactSpeed`** (17.26.0) - sim-local step OUTPUT (not replicated): the DOWNWARD speed in m/s,
+  non-negative, that this tick's landing erased, captured before the ground contact zeroes `VerticalVelocity`. Set
+  on exactly the tick a character transitions airborne to grounded and 0 on every other tick, so it is a per-tick
+  EVENT rather than carried state. It is the authoritative fall-damage input, following the `StepDeltaY` precedent
+  of exporting the fact the sim already computed: the speed is gone by the time anything downstream can read the
+  state, so without it a game has to finite-difference a position across the very tick the ground clamp moved it.
+  Inherently capped by `MaxFallSpeed`, which is terminal velocity and therefore physical. A landing that a
+  BUFFERED JUMP re-launches on the same tick still reports its impact (so `Grounded` may be false while this is
+  nonzero), because suppressing it would let a bunny-hop cancel fall damage. Swimming never fabricates one (a swim
+  tick is never grounded). A spawn or teleport reports about `Gravity * dt` on its first tick, honestly, since
+  `default(MoveState).Grounded` is false, so **consumers should threshold** rather than treat any nonzero value as
+  a fall. The server-side read path is NetWorld's `WorldServer.OnAfterTick` / `ShardedWorldServer.OnAfterTick`.
+- **`MoveState.FacingYaw`** (17.26.0) - the CARRIED heading in radians, in the same convention as
+  `MoveCommand.CameraYaw`: 0 faces world -Z, a positive angle swings toward -X, canonical range `[-pi, pi)` with
+  the low end inclusive. See "Authoritative facing" below. It affects NO position output, which is what makes
+  every existing game bit-identical across the feature. Replicated as `MovementState.FacingYawQ`.
 - **`MoveTuning`** - all speed and feel constants:
   `WalkSpeed` / `RunSpeed` / `CapsuleHalfHeight` / `MaxSlopeRadians` / `CapsuleRadius` (default 0.4) /
   `StepHeight` (default 0.4) /
@@ -156,7 +225,8 @@ decision. **A null provider never engages swim.** The swim flag replicates via N
   `WadeStartDepthFraction` (default 0.15) / `WadeEndDepthFraction` (default 0.65) / `WadeMinSpeedScale` (default 0.45) /
   `SwimEnterDepthFraction` (default 0.65) / `SwimExitDepthFraction` (default 0.55) / `SwimSpeed` (default 2.5) /
   `SwimSurfaceSubmersionFraction` (default 0.6) / `SwimBuoyancyStiffness` (default 8) /
-  `MaxStepClimbSpeed` (default 3.5) / `AirMomentum` (default false) / `AirBrakeAccel` (default 0).
+  `MaxStepClimbSpeed` (default 3.5) / `AirMomentum` (default false) / `AirBrakeAccel` (default 0) /
+  `FacingTurnSpeed` (default `float.PositiveInfinity`, which snaps).
 
 ## Airborne momentum (16.0.0, opt-in)
 
@@ -180,6 +250,36 @@ never accelerates: braking is its job alone and steering is the blend's, and the
 Networked play needs nothing extra - the carried velocity replicates and survives a reconcile - but it is a wire
 break, see `KhaozEngine.NetWorld/README.md`. Rationale and the full per-tick resolve are in
 `docs/design/AIRBORNE-MOMENTUM-DESIGN-2026-07-26.md`.
+
+## Authoritative facing (17.26.0)
+
+Which way a character POINTS is now part of the movement model rather than something each presentation layer
+re-derived from a position delta. That derivation cannot turn a stationary character at all, and it reads a fast
+diagonal or a slope walk as a turn that never happened.
+
+`MoveCommand.FaceCamera` selects the target: with it set the character turns toward `CameraYaw` whatever the move
+axis is doing, and without it toward the yaw of the commanded world-space move direction while there is input, or
+the current heading when there is none (an idle character holds its heading rather than snapping to a default).
+The result is `MoveState.FacingYaw`, carried tick to tick, radians, **0 faces world -Z and a positive angle swings
+toward -X** - the basis the step already resolves a camera-relative command in (forward is
+`(-sin yaw, 0, -cos yaw)`), so a character walking straight forward under camera yaw `y` faces exactly `y`.
+Canonical range `[-pi, pi)`, low end inclusive. Convert with `CharacterMovement.FacingYawOf` and
+`CharacterMovement.WrapYaw`. A consumer whose gameplay basis is the opposite converts at its own boundary, once.
+
+`MoveTuning.FacingTurnSpeed` (rad/s) rate-limits the turn, always along the SHORTEST ARC, and lands exactly on the
+target on the tick the remaining gap fits inside one step's budget - so a rate changes how long a turn takes and
+never where it ends. The default `float.PositiveInfinity` SNAPS, deliberately rather than some plausible finite
+rate: before facing became authoritative state a consumer pointed its model straight at `CameraRelativeDir` with
+no smoothing, so infinite is the feel every existing game already has. A finite value (2 to 10 rad/s is the usual
+range) leans the body into its turns and does so identically on the server, in client prediction and on every
+remote, because the turn is part of the authoritative step rather than a smoother each end runs its own version
+of. A value of 0, which is what a bare `default(MoveTuning)` reads, FREEZES the heading rather than meaning "no
+limit": treating 0 as unlimited would make the un-configured case the most aggressive setting there is.
+
+Facing is an OUTPUT and nothing else. No position, velocity or grounded value is derived from it anywhere, so
+every existing game is bit-identical on position across the feature. Networked play needs the heading on the wire
+(it is carried state that the next tick turns FROM), which is a wire break: see `KhaozEngine.NetWorld/README.md`.
+Rationale and the phase plan are in `docs/design/PHYSICS-LOCOMOTION-DESIGN-2026-08-02.md`.
 
 ## Usage
 

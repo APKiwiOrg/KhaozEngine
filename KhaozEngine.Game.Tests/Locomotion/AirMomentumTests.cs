@@ -341,10 +341,13 @@ public class AirMomentumTests
     [Fact]
     public void The_slope_gate_still_blocks_a_momentum_flight()
     {
-        // Momentum changes where the velocity comes from, never what the world is willing to let it reach.
+        // Momentum changes where the velocity comes from, never what the world is willing to let it reach. The face
+        // stands ABOVE the flight (feet at Y=50, the cliff top at 60), which is what the direction-aware gate refuses:
+        // a steep normal whose ground sits BELOW the feet is a descent and the arc is allowed to fly out over it.
         MoveTuning t = Base with { AirMomentum = true };
-        Func<float, float, Vector3> cliff = (x, z) => z < -0.05f ? new Vector3(0.99f, 0.14f, 0f) : Vector3.UnitY;
-        MoveState after = CharacterMovement.Step(Airborne(new Vector2(0f, -30f)), Idle, Dt, FarBelow, t, cliff);
+        Func<float, float, Vector3> cliff = (x, z) => z < -0.05f ? new Vector3(0f, 0.14f, 0.99f) : Vector3.UnitY;
+        Func<float, float, float> cliffTop = (x, z) => z < -0.05f ? 60f : -1000f;
+        MoveState after = CharacterMovement.Step(Airborne(new Vector2(0f, -30f)), Idle, Dt, cliffTop, t, cliff);
 
         Assert.Equal(0f, after.Position.Z);                     // the whole move refused, exactly as a command is
         Assert.Equal(Vector2.Zero, after.HorizontalVelocity);   // and nothing denied survives into the carry

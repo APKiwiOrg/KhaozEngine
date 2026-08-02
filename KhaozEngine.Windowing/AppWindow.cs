@@ -138,7 +138,7 @@ namespace KhaozEngine.Windowing
         bool _warnedMetalVsync;
 
         /// <summary>
-        /// Software frame-rate cap in Hz for <see cref="Run"/>, paced by a monotonic-clock <see cref="FrameLimiter"/>
+        /// Software frame-rate cap in Hz for <see cref="Run(Action{Frame})"/>, paced by a monotonic-clock <see cref="FrameLimiter"/>
         /// independent of the swapchain's vsync, so a game can pin the render rate to an integer multiple of its fixed
         /// tick (e.g. 60/120 for a 30 Hz tick) - the deterministic cap where vsync does not throttle (notably the
         /// Veldrid Metal path). Settable any time, and takes effect next frame.
@@ -155,7 +155,7 @@ namespace KhaozEngine.Windowing
         }
 
         /// <summary>
-        /// The frame-cap intent for <see cref="Run"/>: <see cref="Windowing.FrameCap.Auto"/> (the default -
+        /// The frame-cap intent for <see cref="Run(Action{Frame})"/>: <see cref="Windowing.FrameCap.Auto"/> (the default -
         /// backend-aware, a real cap on Metal + vsync, uncapped where vsync throttles), <see cref="Windowing.FrameCap.Uncapped"/>,
         /// or a fixed <see cref="Windowing.FrameCap.Hz"/>. A consumer-set value always wins over Auto. Settable any
         /// time, and the resolved cap (see <see cref="FrameCapHz"/>) takes effect next frame. This is the richer form
@@ -541,8 +541,8 @@ namespace KhaozEngine.Windowing
         /// <summary>
         /// Reveal the window (it is born hidden - see the ctor). Call once the runtime icon has been applied so
         /// that on Windows the taskbar button is created with the correct icon rather than GLFW's generic default.
-        /// Idempotent: the first call shows the window, later calls no-op. <see cref="Run"/> also calls this, so a
-        /// host that drives <see cref="Run"/> without ever calling <see cref="Show"/> still gets a visible window
+        /// Idempotent: the first call shows the window, later calls no-op. <see cref="Run(Action{Frame})"/> also calls this, so a
+        /// host that drives <see cref="Run(Action{Frame})"/> without ever calling <see cref="Show"/> still gets a visible window
         /// (just without the pre-show icon guarantee unless it set the icon first). The GameApp facade calls
         /// <see cref="SetIcon"/> then <see cref="Show"/> in its constructor.
         /// </summary>
@@ -559,8 +559,8 @@ namespace KhaozEngine.Windowing
         /// <c>KhaozEngine.App.SingleInstanceGuard</c> drives when a second launch attempt hands control back to
         /// this already-running instance instead of opening a second window - see <c>GameApp</c>'s constructor
         /// and per-frame foreground-request check. MUST be called from the main/window thread (the same thread
-        /// that pumps <see cref="Run"/>): GLFW itself is not thread-safe for this call, which is why
-        /// <c>GameApp</c> only ever calls it from inside its <see cref="Run"/> frame callback, never from the
+        /// that pumps <see cref="Run(Action{Frame})"/>): GLFW itself is not thread-safe for this call, which is why
+        /// <c>GameApp</c> only ever calls it from inside its <see cref="Run(Action{Frame})"/> frame callback, never from the
         /// background thread that listens for the request. Best-effort: a no-op on a non-GLFW backend or once
         /// the window has started closing, and never throws (an OS focus-steal denial, e.g. Windows' foreground
         /// lock, just leaves the window unfocused - no worse than the status quo).
@@ -670,77 +670,8 @@ namespace KhaozEngine.Windowing
             return raw;
         }
 
-        /// <summary>Run the frame loop until the window closes, calling <paramref name="onFrame"/> each frame. The loop
-        /// is paced to the resolved <see cref="FrameCapHz"/> with a monotonic-clock limiter after present (independent
-        /// of the swapchain's vsync). The <see cref="BackgroundThrottle"/> policy adjusts pacing when the window is
-        /// backgrounded: an unfocused-but-visible window drops to a low cap, and a minimized window skips render +
-        /// present entirely (<see cref="Frame.RenderSuppressed"/> is set) while still running <paramref name="onFrame"/>
-        /// each idle tick so update-side simulation keeps advancing.</summary>
-        public void Run(Action<Frame> onFrame)
-        {
-            Show(); // ensure visible even if the host never called Show() (GameApp calls it after SetIcon). Idempotent.
-            var clock = System.Diagnostics.Stopwatch.StartNew();
-            _window.Render += dt =>
-            {
-                float fdt = (float)Math.Min(dt, 0.1);
-                InputState input = BuildInput();
-                int w = _window.FramebufferSize.X, h = _window.FramebufferSize.Y;
-
-                // Background-throttle decision for this frame (pure). A minimized window skips render + present. An
-                // unfocused-but-visible one still renders at a lowered cap. A focused window renders at the base cap.
-                FramePlan plan = _backgroundThrottle.Plan(new WindowActivity(_accumulator.IsFocused, _minimized), _effectiveBaseCapHz);
-                bool render = plan.RenderAndPresent;
-
-                _frame.Dt = fdt; _frame.Input = input; _frame.Width = w; _frame.Height = h;
-                _frame.LogicalWidth = _window.Size.X; _frame.LogicalHeight = _window.Size.Y;
-                _frame.Commands = _cl;
-                _frame.RenderSuppressed = !render;
-
-                if (render)
-                {
-                    _cl.Begin();
-                    _cl.SetFramebuffer(_device.SwapchainFramebuffer!);
-                    _cl.ClearColorTarget(0, ClearColor);
-                }
-
-                onFrame(_frame); // always runs: update advances even on a render-suppressed (minimized) frame.
-
-                // Advance rumble pulse envelopes (decay + auto-stop) and push effective motor levels to the device.
-                // Only if a game actually touched Rumble this session, so a rumble-free window pays nothing.
-                _rumble?.Tick(fdt);
-
-                if (render)
-                {
-                    _cl.End();
-                    _device.Submit(_cl);
-                    _device.Present();
-                }
-
-                // Pace the loop to the plan's cap. Silk's own loop runs the callback as fast as the GPU allows (the
-                // Veldrid Metal present does not throttle the CPU), so idle here to hold the target cadence - the base
-                // cap when focused, a low cap when unfocused, an idle rate when minimized. Rebuild the limiter only when
-                // the target Hz changes (a focus / minimize transition), so steady-state pacing keeps a stable anchor.
-                if (plan.CapHz != _paceHz) { _paceHz = plan.CapHz; _paceLimiter = new FrameLimiter(plan.CapHz); }
-                if (_paceLimiter.Enabled)
-                {
-                    double wait = _paceLimiter.WaitBeforeNext(clock.Elapsed.TotalSeconds);
-                    if (wait > 0) PreciseIdle(clock, wait);
-                }
-
-                if (_maxFrames > 0 && ++_frameCount >= _maxFrames) _window.Close();
-            };
-            _window.Run();
-        }
-
-        /// <summary>Idle for <paramref name="seconds"/> using the monotonic <paramref name="clock"/>: sleep the bulk
-        /// (leaving a ~1 ms margin so the OS timer granularity can't overshoot the cap), then spin the remainder.</summary>
-        static void PreciseIdle(System.Diagnostics.Stopwatch clock, double seconds)
-        {
-            double deadline = clock.Elapsed.TotalSeconds + seconds;
-            int bulkMs = (int)(seconds * 1000.0) - 1;
-            if (bulkMs > 0) System.Threading.Thread.Sleep(bulkMs);
-            while (clock.Elapsed.TotalSeconds < deadline) System.Threading.Thread.SpinWait(64);
-        }
+        // The frame loop (both Run overloads + the pacing idle) lives in AppWindow.Frames.cs, and the per-frame
+        // phase order it drives in FramePhases.
 
         void WireInput()
         {

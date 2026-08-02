@@ -78,7 +78,7 @@ version/release work.
   with every renderer feature. It was split into `ShaderSources.<Domain>.cs` partials instead (14.8.1).
 
 ## Build / test / release
-- `dotnet test` (root, runs `KhaozEngine.slnx` - all 17 test assemblies) - every new behaviour ships with a headless test in its matching per-area project.
+- `dotnet test` (root, runs `KhaozEngine.slnx` - all 18 test assemblies) - every new behaviour ships with a headless test in its matching per-area project.
 - **`ci.yml` runs two paths.** Tag pushes and `workflow_dispatch` run the full sequence (restore, build,
   full test, determinism double-pass, pack, publish). Ordinary pushes and PRs run
   `scripts/ci-selective-test.sh`, which builds and tests only the test projects `dotnet-affected` marks

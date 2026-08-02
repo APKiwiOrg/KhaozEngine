@@ -47,6 +47,28 @@ public class CharacterMovementNanGuardTests
         Assert.True(float.IsFinite(r.VerticalVelocity), $"non-finite vVel {r.VerticalVelocity}");
     }
 
+    [Fact]
+    public void A_poisoned_tick_reports_no_landing_impact()
+    {
+        // The fallback holds the last good POSE, which is the point of it - but a per-tick EVENT is not pose. Returning
+        // the previous state wholesale re-emits the landing tick's LandingImpactSpeed, and a fall-damage consumer
+        // reading it from OnAfterTick applies that same impact again on every poisoned tick, so one 15 m/s landing
+        // behind a misbehaving delegate kills the character outright.
+        const float Dt = 1f / 30f;
+        var s = new MoveState { Position = new Vector3(0f, T.CapsuleHalfHeight + 12f, 0f) };
+        for (int i = 0; i < 120 && s.LandingImpactSpeed == 0f; i++)
+            s = CharacterMovement.Step(s, MoveCommand.Idle, Dt, Flat, T);
+        Assert.True(s.LandingImpactSpeed > 10f, $"the fixture never landed hard ({s.LandingImpactSpeed:F2} m/s)");
+
+        MoveState landed = s;
+        MoveState poisoned = CharacterMovement.Step(landed, MoveCommand.Idle, Dt, Flat, T,
+            clampXz: (x, z) => new Vector2(float.NaN, float.NaN));
+
+        Assert.Equal(0f, poisoned.LandingImpactSpeed);          // the event does not repeat
+        Assert.Equal(landed.Position, poisoned.Position);       // while the last good pose is still held
+        Assert.Equal(landed.Grounded, poisoned.Grounded);
+    }
+
     // --- The move gate already neutralizes a pathological command (regression lock). ---
 
     [Theory]

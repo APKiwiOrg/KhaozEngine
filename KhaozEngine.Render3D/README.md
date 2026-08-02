@@ -57,7 +57,10 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   gets the phase rather than only `GameApp3D`, and since the record entry point is internal those are the only
   ways a scene is rendered: nothing outside the engine is left having to call it, and a by-hand call is an early
   no-op. Recording consumes the prepared frame, so a scene records once per `Begin` and a second viewport means a
-  second `Begin`. Costs nothing on a frame that queues no water.
+  second `Begin`. Costs nothing on a frame that queues no water. On a WINDOWED host, `Render3DSurface.Render`'s own
+  call is a safety net rather than the effective one - the frame's list is already open by then - so queue and
+  prepare the scene in `AppWindow.Run`'s `onPrepare` callback instead (`GameApp3D` does, in `OnPrepareWorld`, see
+  issue #429).
 - `TextureMipPolicy` - an optional trailing argument on both `LoadTexture` overloads choosing how much of the mip
   chain to build. `Full` (the default, and what `default(TextureMipPolicy)` is, so every existing call is
   unchanged), `None` for level 0 only, and `AtlasGrid(columns, rows, minCellTexels = 4)` to stop at the coarsest

@@ -7,7 +7,8 @@ namespace KhaozEngine.Locomotion;
 /// controller, the server sim, and client prediction. <see cref="Default"/> matches the walkable-slice
 /// CharacterController3D defaults (walk 6, run 12, half-height 0.9 for a 1.8 m capsule, 45 deg max slope,
 /// footprint radius 0.4 for static-world collision) plus the vertical-physics feel (gravity 25, jump 9.79796,
-/// terminal 50, 0.1 s coyote + buffer, full air control, 0.3 m grounded skin, airborne momentum OFF).
+/// terminal 50, 0.1 s coyote + buffer, full air control, 0.3 m grounded skin, airborne momentum OFF, facing
+/// turn rate infinite so the heading snaps).
 /// </summary>
 public readonly record struct MoveTuning(
     float WalkSpeed,
@@ -33,7 +34,8 @@ public readonly record struct MoveTuning(
     float SwimBuoyancyStiffness = 8f,
     float MaxStepClimbSpeed = 3.5f,
     bool AirMomentum = false,
-    float AirBrakeAccel = 0f)
+    float AirBrakeAccel = 0f,
+    float FacingTurnSpeed = float.PositiveInfinity)
 {
     /// <summary>Walkable-slice defaults: walk 6 m/s, run 12 m/s, capsule half-height 0.9 m, max slope 45 deg
     /// (steep enough for normal hills, low enough that a RimFeature mountain wall is rejected, so the slope gate
@@ -43,7 +45,8 @@ public readonly record struct MoveTuning(
     /// value), terminal fall 50 m/s, 0.1 s coyote-time + jump-buffer, full (1.0) air control, and a 0.3 m
     /// grounded skin so a downhill run does not jitter between grounded and airborne, and airborne momentum OFF
     /// (<see cref="AirMomentum"/> false, <see cref="AirBrakeAccel"/> 0), so a jump arc behaves exactly as it did
-    /// before momentum existed. This matches
+    /// before momentum existed, and an infinite <see cref="FacingTurnSpeed"/>, so the heading snaps to its target
+    /// exactly as a pre-facing consumer's commanded-facing presentation did. This matches
     /// CharacterController3D's own field defaults exactly (same literal + comment in both places), so a caller
     /// building either way gets identical feel.</summary>
     public static MoveTuning Default => new(
@@ -168,4 +171,20 @@ public readonly record struct MoveTuning(
     /// toward the pre-momentum feel without turning momentum off entirely (a large value collapses the arc to the
     /// command within a tick or two). Ignored entirely while <see cref="AirMomentum"/> is off.</para></summary>
     public float AirBrakeAccel { get; init; } = AirBrakeAccel;
+
+    /// <summary>Maximum rate (RADIANS PER SECOND) at which <see cref="MoveState.FacingYaw"/> turns toward its target -
+    /// the camera yaw while <see cref="MoveCommand.FaceCamera"/> is held, otherwise the yaw of the commanded travel
+    /// direction. The turn always takes the SHORTEST ARC and lands exactly on the target on the tick the last of the
+    /// gap fits inside one step's budget, so a rate changes how long a turn takes and never where it ends.
+    /// <para>Default <see cref="float.PositiveInfinity"/>, which SNAPS the heading to the target in one tick. That is
+    /// deliberately the default rather than some plausible finite rate: before facing became authoritative state, a
+    /// consumer pointed its model straight at <see cref="CharacterMovement.CameraRelativeDir"/> with no smoothing at
+    /// all, so an infinite rate is the presentation feel every existing game already has. A game that wants a body
+    /// that leans into its turns sets a finite value (2-10 rad/s is the usual range) and gets it identically on the
+    /// server, in client prediction, and on every remote, because the turn is part of the authoritative step rather
+    /// than a presentation smoother each end runs its own version of.</para>
+    /// A value of 0 (which is what a struct <c>default(MoveTuning)</c> reads, exactly as it reads 0 for
+    /// <see cref="WalkSpeed"/>) FREEZES the heading. That is the harmless degradation for an accidental default:
+    /// treating 0 as "no limit" would make the un-configured case the most aggressive setting there is.</summary>
+    public float FacingTurnSpeed { get; init; } = FacingTurnSpeed;
 }

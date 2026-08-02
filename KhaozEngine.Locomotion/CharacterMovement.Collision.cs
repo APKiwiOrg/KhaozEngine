@@ -20,6 +20,13 @@ public static partial class CharacterMovement
     private const float SubstepFraction = 0.5f;
     private const int   SlideIterations = 4;
     private const float SkinWidth       = 0.01f;
+    // A small "standing on a prop" skin (NOT the larger GroundedEpsilon mount band): a capsule whose carried Y is
+    // above terrain by more than this is genuinely on a prop, so the support sweep keeps following the prop surface
+    // (e.g. down the far side of a dome it mounted), while one at terrain level walking into a flank is below it and
+    // the sweep stays off (depenetration blocks the base). Too large a skin would snap the capsule off the prop
+    // surface onto terrain mid-descent and clip it into the prop. Read by PropSupportFloor and by StepCore's
+    // stair-climb ground-stick and paced-climb blocks, which all mean the same "genuinely up on a step" by it.
+    private const float OnPropSkin      = 0.05f;
     // Downward reach of the wall-slide gravity GATE (NOT the support height itself, which step 4 owns): a walkable
     // floor within this far below the feet means "supported", so the wall slide keeps its usual on-slope projection;
     // beyond it the slide must not cancel gravity. > StepHeight + SkinWidth (a step you could mount still counts as
@@ -650,5 +657,93 @@ public static partial class CharacterMovement
             return true;
         }
         return false;
+    }
+
+    /// <summary>The PHYSICS-WORLD contribution to step 4's support floor, lifted out of <c>StepCore</c> so the main
+    /// step file stays about the step itself and every prop PROBE lives in one place. Two mechanisms, in order, both
+    /// of which can only ever RAISE the floor above the analytic terrain the caller resolved:
+    /// the downward capsule sweep that finds a prop surface under the footprint, and the staircase-BASE tread-find
+    /// that catches the one case the sweep provably misses.</summary>
+    /// <param name="world">The physics world holding the props (the terrain is analytic and is the caller's floor).</param>
+    /// <param name="capsule">The character capsule.</param>
+    /// <param name="pos">The capsule-centre position resolved so far this tick.</param>
+    /// <param name="startPos">The capsule-centre position the tick STARTED at (several guards below read the previous
+    /// tick's elevation rather than the current one - see their comments, the reason is the same each time).</param>
+    /// <param name="wasGrounded">The carried <see cref="MoveState.Grounded"/> from the start of the tick.</param>
+    /// <param name="t">The tuning.</param>
+    /// <param name="halfH">The capsule half-height.</param>
+    /// <param name="terrainGroundY">The analytic terrain support height (capsule centre) at the resolved XZ.</param>
+    /// <param name="groundY">The support height resolved so far (terrain, plus any stepped ledge).</param>
+    /// <param name="steppedUp">Whether the swept step-up mounted a riser this tick.</param>
+    /// <returns>The support height, never below <paramref name="groundY"/>.</returns>
+    private static float PropSupportFloor(IPhysicsWorld world, in CapsuleShape capsule, in Vector3 pos,
+        in Vector3 startPos, bool wasGrounded, in MoveTuning t, float halfH, float terrainGroundY, float groundY,
+        bool steppedUp)
+    {
+        bool overProp = !wasGrounded || startPos.Y > terrainGroundY + OnPropSkin || steppedUp;
+        if (overProp)
+        {
+            float probeStart = pos.Y + 2f * halfH;                 // above the head, clear of a standable prop
+            float maxProbe = (probeStart - terrainGroundY) + 2f * halfH;
+            // The hit must be a FLOOR genuinely under the capsule, not a graze on the SIDE of a prop the capsule is
+            // pressed against. A swept-down capsule beside a tall prop (trunk / rock / building wall) grazes that
+            // prop ~one radius off the axis; treating that as floor used to HAUL the capsule up the prop's side, or
+            // hang it there mid-air, instead of letting it fall - the "float up trees/rocks/walls" bug. Two guards:
+            // (a) the contact is walkable-up (n.Y >= cos(maxSlope)), so a steep wall face / degenerate zero-normal
+            // side contact is rejected; and (b) its XZ point sits under the capsule footprint (near the axis), not
+            // out at the side. A real prop top under the feet passes both; a sideways graze fails both.
+            float cosMaxSlope = MathF.Cos(t.MaxSlopeRadians);
+            if (world.SweepCapsule(capsule, Pose.At(new Vector3(pos.X, probeStart, pos.Z)),
+                    -Vector3.UnitY, maxProbe, out SweepHit floorHit) &&
+                floorHit.Normal.Y >= cosMaxSlope &&
+                UnderFootprint(floorHit.Point, pos, capsule.Radius))
+            {
+                float propCentreY = probeStart - floorHit.Distance; // capsule centre resting on the prop surface
+                // Accept only a surface the capsule rests ON / lands ON / mounts within a step - NOT a downward-
+                // facing overhang (eave / awning / soffit) the capsule is BELOW. Bepu's downward sweep registers a
+                // thin overhang quad from above with an up-pointing contact normal that passes the walkable-up guard,
+                // so without this height cap a capsule jumping up under an eave has its feet snapped onto it - the
+                // "float up onto the awning/roof" bug. A real floor/dome-top under the feet sits at or just above the
+                // capsule centre (the swept move stops the capsule there); an overhang sits well above it.
+                if (propCentreY > groundY && propCentreY <= pos.Y + t.StepHeight) groundY = propCentreY;
+            }
+        }
+
+        // 4-tread-find. The downward capsule sweep above MISSES the tread at a staircase BASE when the footprint
+        // STRADDLES a tread shallower than the capsule diameter: the sweep grazes the vertical riser front face, returns
+        // a steep, off-footprint normal both of its guards (walkable-up + under-footprint) reject, and groundY stays at
+        // terrainGroundY. A single step below, that terrain sits within GroundedEpsilon of the partially-mounted capsule,
+        // so the onGround snap DROPS it a whole riser back onto the flat - the sticky / collapse-bob bottom stair (mid
+        // climb the terrain is metres below, so the same miss collapses to nothing reachable and never shows; only the
+        // base misbehaves). When the sweep contributed NO support (groundY still at terrain) yet the capsule was grounded
+        // and elevated on a step, drop a RADIUS-LESS ray fan over the footprint: a ray finds the tread top through the
+        // clear air above it where the full-radius sweep cannot. If a walkable tread sits in the step band (at or above
+        // the feet, within StepHeight), set groundY to it and the normal onGround snap seats the capsule UP onto the
+        // tread instead of collapsing; the paced step-up (4b) still caps the rise, so the mount stays smooth. The fan
+        // sources only real raycast hits at/above the feet, so it cannot invent support in open air: a genuine ledge
+        // walk-off (open air below the feet) finds no tread, groundY stays at terrain, and gravity still releases the
+        // capsule - the ledge-release invariant holds. Guarded behind the sweep miss + grounded + elevated, so it runs
+        // only on the rare base-handoff tick, never on a normal climb or flat tick.
+        // Gate on the PREVIOUS tick's elevation (startPos.Y), not the current pos.Y: the collapse tick has already
+        // depenetrated the deeply-embedded footprint back down toward terrain by the time this runs, so the current Y
+        // reads at the flat and would skip the fix - it is precisely that collapse we are catching. The same reason the
+        // overProp sweep above gates on startPos.Y. treadCentreY is bounded into the step band by the fan itself, so
+        // the upper guard only defends against a marginal skin overshoot.
+        //
+        // Scoped to the BASE by pos.Y <= terrainGroundY + GroundedEpsilon: the collapse ONLY fires where the onGround
+        // snap below can reach the terrain, i.e. within one GroundedEpsilon of it - the first riser. A step or more up,
+        // the capsule sits well above that band, so onGround never snaps it to terrain and there is nothing to fix; MID
+        // CLIMB the same sweep miss is harmless (the terrain is metres below, out of the snap band), so the fan MUST NOT
+        // run there or it would re-seat the height on a mid-climb miss and add penetration on a fast small-radius run.
+        // This fires the fan on exactly the ticks the collapse would fire the snap-down, and nowhere else.
+        if (wasGrounded && groundY <= terrainGroundY + 1e-4f &&
+            startPos.Y > terrainGroundY + OnPropSkin && pos.Y <= terrainGroundY + t.GroundedEpsilon &&
+            WalkableTreadUnderFeet(world, capsule, pos, t, out float treadCentreY) &&
+            treadCentreY > groundY && treadCentreY <= pos.Y + t.StepHeight + SkinWidth)
+        {
+            groundY = treadCentreY;
+        }
+
+        return groundY;
     }
 }

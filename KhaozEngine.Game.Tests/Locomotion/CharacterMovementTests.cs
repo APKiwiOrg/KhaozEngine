@@ -67,10 +67,12 @@ public class CharacterMovementTests
     [Fact]
     public void Step_onto_too_steep_ground_is_rejected()
     {
-        // A near-vertical face rising toward -Z, which is where Cmd(0,1) at yaw 0 travels. The normal and the height
-        // describe ONE surface on purpose: the gate is direction-aware, so a steep normal over ground that does not
-        // stand above the feet is a DESCENT and would (correctly) not be refused.
-        Func<float, float, Vector3> steep = (x, z) => Vector3.Normalize(new Vector3(0f, 0.05f, 1f));
+        // A near-vertical face rising toward -Z, which is where Cmd(0,1) at yaw 0 travels: a WALL contact, and a
+        // head-on one, so the whole move is into-face and none of it survives the projection. The normal and the
+        // height describe ONE surface on purpose, and only the face itself reads steep: a steep normal over the
+        // ground under the character's own feet would mean no footing at all.
+        Func<float, float, Vector3> steep =
+            (x, z) => z < 0f ? Vector3.Normalize(new Vector3(0f, 0.05f, 1f)) : Vector3.UnitY;
         Func<float, float, float> wall = (x, z) => MathF.Max(0f, -z) * 20f;
         Vector3 p = CharacterMovement.Step(Vector3.Zero, Cmd(0f, 1f), 1f, wall, Tuning, steep);
         Assert.True(MathF.Abs(p.X) < 1e-6f && MathF.Abs(p.Z) < 1e-6f, p.ToString());

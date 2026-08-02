@@ -339,18 +339,23 @@ public class AirMomentumTests
     }
 
     [Fact]
-    public void The_slope_gate_still_blocks_a_momentum_flight()
+    public void The_wall_slide_still_stops_a_head_on_momentum_flight()
     {
         // Momentum changes where the velocity comes from, never what the world is willing to let it reach. The face
-        // stands ABOVE the flight (feet at Y=50, the cliff top at 60), which is what the direction-aware gate refuses:
-        // a steep normal whose ground sits BELOW the feet is a descent and the arc is allowed to fly out over it.
+        // stands more than a StepHeight ABOVE the flight (feet at Y=50, the cliff top at 60), so it is a wall
+        // contact, and a HEAD-ON one: the flight is straight into the face's own normal, so the whole velocity is
+        // into-face and nothing survives the projection. A glancing flight would keep its along-face half, and one
+        // whose destination ground sits BELOW the feet is a descent that carries on out over the cliff.
         MoveTuning t = Base with { AirMomentum = true };
         Func<float, float, Vector3> cliff = (x, z) => z < -0.05f ? new Vector3(0f, 0.14f, 0.99f) : Vector3.UnitY;
         Func<float, float, float> cliffTop = (x, z) => z < -0.05f ? 60f : -1000f;
         MoveState after = CharacterMovement.Step(Airborne(new Vector2(0f, -30f)), Idle, Dt, cliffTop, t, cliff);
 
-        Assert.Equal(0f, after.Position.Z);                     // the whole move refused, exactly as a command is
-        Assert.Equal(Vector2.Zero, after.HorizontalVelocity);   // and nothing denied survives into the carry
+        // To the projection's own float residue rather than exactly zero: a tangent is computed, not a refusal, and
+        // this fixture's normal is not exactly unit so the removed component does not cancel to the last bit.
+        Assert.Equal(0f, after.Position.Z, 5);
+        Assert.True(after.HorizontalVelocity.Length() < 1e-4f,   // and nothing denied survives into the carry
+            $"a head-on wall must clip the carry to ~0, got {after.HorizontalVelocity}");
     }
 
     // ---- Water ----

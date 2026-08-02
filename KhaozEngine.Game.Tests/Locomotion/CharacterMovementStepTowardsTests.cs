@@ -12,7 +12,7 @@ namespace KhaozEngine.Tests.Locomotion;
 /// <summary>
 /// The kinematic AI movement seam: <see cref="CharacterMovement.StepTowards"/> drives a server-authoritative NPC
 /// through the SAME collision resolution as the player (swept collide-and-slide against an
-/// <see cref="IPhysicsWorld"/>, the terrain support floor, the groundNormal slope gate, and the clampXz bounds),
+/// <see cref="IPhysicsWorld"/>, the terrain support floor, the groundNormal wall slide, and the clampXz bounds),
 /// but from a WORLD-SPACE steering direction rather than a camera-relative <see cref="MoveCommand"/>. The parity
 /// test pins the headline guarantee: an axis-aligned world direction resolves bit-identically to the equivalent
 /// camera-relative command, so the AI and player share one collision implementation by construction.
@@ -35,8 +35,8 @@ public class CharacterMovementStepTowardsTests
 
     // A ground normal leaning in -X so the surface slope (angle from +Y) is exactly `degrees`: it rises toward +X,
     // the direction the steering tests below drive, so steering east is steering UP it (mirrors the player
-    // slope-gate tests). Paired with SlopeGround so the normal and the height are one surface, which the
-    // direction-aware gate needs: a steep normal over ground that does not stand above the feet is a descent.
+    // steep-terrain tests). Paired with SlopeGround so the normal and the height are one surface, which the
+    // model needs: everything about it is directional, so a mismatched pair would test nothing.
     static Func<float, float, Vector3> SlopeNormal(float degrees)
     {
         float a = degrees * MathF.PI / 180f;
@@ -96,24 +96,33 @@ public class CharacterMovementStepTowardsTests
     }
 
     [Fact]
-    public void SteeringUpASlopePastMaxSlope_IsBlocked()
+    public void SteeringUpASlopePastMaxSlope_GetsNoFootingAndSlidesBack()
     {
-        // No physics world: pure terrain slope gate. A normal tilted to 47 deg exceeds the 45 deg default budget, so
-        // any horizontal advance onto it is denied - the agent stays put in XZ.
+        // No physics world: the pure analytic surface. A 47 deg slope exceeds the 45 deg default budget, so it
+        // grants no TRACTION - the agent never gets footing on it, cannot steer up the fall line at all, and slides
+        // back down instead. (Through 17.26.1 this fixture asserted the move was REFUSED and the agent stayed put.
+        // #442 replaced refusal with sliding, so the honest assertion is that it goes DOWN.)
         var s = new MoveState { Position = new Vector3(0f, Tuning.CapsuleHalfHeight, 0f), Grounded = true };
         Vector3 startPos = s.Position;
         for (int i = 0; i < 60; i++)
+        {
             s = CharacterMovement.StepTowards(s, new Vector2(1f, 0f), run: true, Dt, SlopeGround(47f), Tuning, SlopeNormal(47f));
-
-        Assert.Equal(startPos.X, s.Position.X, 5);
-        Assert.Equal(startPos.Z, s.Position.Z, 5);
+            Assert.False(s.Grounded, $"tick {i} found footing on a 47 deg slope");
+            // The only altitude available is the single StepHeight the ground clamp may seat the first tick's move
+            // onto, which is what turns the agent into a slider. Nothing after it can climb.
+            Assert.True(s.Position.Y <= startPos.Y + Tuning.StepHeight,
+                $"tick {i} climbed the slope, y={s.Position.Y:F5}");
+            Assert.Equal(startPos.Z, s.Position.Z, 5);   // nothing steers the agent off the fall line
+        }
+        Assert.True(s.Position.X < startPos.X - 0.5f, $"the agent never slid back down, x={s.Position.X:F5}");
+        Assert.True(s.Position.Y < startPos.Y, $"the agent ended no lower than it started, y={s.Position.Y:F5}");
     }
 
     [Fact]
     public void SteeringUpAGentleSlope_Advances()
     {
-        // Control for the block test: a 30 deg slope is under the budget, so the same steer DOES advance (the gate
-        // only rejects the too-steep case, it does not block all sloped ground).
+        // Control for the slide test: a 30 deg slope is under the budget, so it carries the agent normally and the
+        // same steer DOES advance up it. Only the too-steep case loses its footing.
         var s = new MoveState { Position = new Vector3(0f, Tuning.CapsuleHalfHeight, 0f), Grounded = true };
         for (int i = 0; i < 60; i++)
             s = CharacterMovement.StepTowards(s, new Vector2(1f, 0f), run: true, Dt, SlopeGround(30f), Tuning, SlopeNormal(30f));

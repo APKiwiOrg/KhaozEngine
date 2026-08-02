@@ -5,15 +5,15 @@ namespace KhaozEngine.Locomotion;
 
 // The HORIZONTAL-INTENT half of the movement step: how a command becomes a desired XZ position, before any collision
 // runs. Three pieces, one concern - resolve the caller's input to the shared shape (a unit direction plus a speed
-// fraction), then turn that into a slope-gated advance. The camera-relative player path and the world-space AI path
+// fraction), then turn that into a wall-sliding advance. The camera-relative player path and the world-space AI path
 // differ ONLY in which resolver they enter through, which is what makes their parity structural rather than a thing
 // two copies of the same arithmetic have to keep agreeing about.
 //
 // Split out of the main CharacterMovement.cs so that file - already the engine's largest, and frozen by the file-size
 // ratchet - does not grow, exactly as CharacterMovement.Fluid.cs, CharacterMovement.Momentum.cs,
 // CharacterMovement.Landing.cs and CharacterMovement.Facing.cs did. Same partial type, same shared private core: the
-// advance and the gate themselves are AdvanceSlopeGated (CharacterMovement.Momentum.cs), shared with the airborne
-// momentum path, and the public seam over the camera resolver is CharacterMovement.CameraRelativeDir.cs.
+// advance itself is AdvanceWallSlide (CharacterMovement.Slide.cs), shared with the airborne momentum path and the
+// slide, and the public seam over the camera resolver is CharacterMovement.CameraRelativeDir.cs.
 public static partial class CharacterMovement
 {
     /// <summary>Resolve a camera-relative <see cref="MoveCommand"/> into the unit world-space move direction (XZ) and
@@ -52,24 +52,24 @@ public static partial class CharacterMovement
         return (Vector2.Zero, 0f);
     }
 
-    // Desired world XZ position after applying the resolved horizontal move (unit direction + speed fraction) and the slope gate,
+    // Desired world XZ position after applying the resolved horizontal move (unit direction + speed fraction) and the wall slide,
     // WITHOUT collision. The direction + speed fraction are resolved upstream from either a camera-relative MoveCommand
-    // (ResolveCameraRelative) or a world-space steering direction (ResolveWorldDir), so player and AI share this exact input/slope
+    // (ResolveCameraRelative) or a world-space steering direction (ResolveWorldDir), so player and AI share this exact input/surface
     // section. Prop collision is resolved separately by the swept collide-and-slide block in StepCore. moveDir is a unit vector when
-    // speedFraction > 0. The advance + gate itself is AdvanceSlopeGated (CharacterMovement.Momentum.cs), shared with the airborne
-    // momentum path, and it is DIRECTION-AWARE: a too-steep destination refuses the move only while its ground rises above the LOWER
-    // of feetY (the capsule centre minus the half-height) and the ground under the current column, faster than the gate's own gradient
-    // does over this tick's travel. So walking off a cliff falls through to gravity, climbing one is refused at every speed and every
-    // tick rate, and no amount of vertical motion (a jump, a fall) discounts the ascent.
+    // speedFraction > 0. The advance itself is AdvanceWallSlide (CharacterMovement.Slide.cs), shared with the airborne momentum path
+    // and the slide: a destination that is both too steep to walk and more than a StepHeight above the feet is a WALL, and the move
+    // keeps only its along-face component instead of being refused. So walking off a cliff falls through to gravity, strafing along
+    // one keeps its lateral travel, and walking into one makes no headway - and where a too-steep destination IS within reach, the
+    // move is admitted and the no-traction rule slides the character straight back off it.
     // Returns the resolved speed alongside the position so StepCore can export it as MoveState.CommandedVelocity: it is reported
-    // UNCONDITIONALLY, including on a slope-gate block, because the anomaly check needs the ask, not what survived. 0 when idle.
+    // UNCONDITIONALLY, including on a wall contact, because the anomaly check needs the ask, not what survived. 0 when idle.
     private static (float x, float z, float speed) DesiredHorizontalCore(float x, float z, Vector2 moveDir,
         float speedFraction, bool run, float dt, in MoveTuning tuning, Func<float, float, Vector3>? groundNormal,
         Func<float, float, float> groundHeight, float feetY, float speedScale)
     {
         bool moving = speedFraction > 0f;
         float speed = moving ? (run ? tuning.RunSpeed : tuning.WalkSpeed) * speedScale * speedFraction : 0f;
-        (x, z) = AdvanceSlopeGated(x, z, moveDir * speed, moving, dt, tuning, groundNormal, groundHeight, feetY);
+        (x, z) = AdvanceWallSlide(x, z, moveDir * speed, moving, dt, tuning, groundNormal, groundHeight, feetY);
         return (x, z, speed);
     }
 }

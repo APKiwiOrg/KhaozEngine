@@ -7,7 +7,7 @@ namespace KhaozEngine.Locomotion;
 /// <summary>
 /// Character locomotion: the single movement step run by the local controller, the authoritative server sim,
 /// and client-side prediction alike. Every entry point funnels a resolved horizontal move (unit direction + a
-/// speed fraction in [0,1]), walk/run speed, and an optional slope gate through ONE collision core, so a
+/// speed fraction in [0,1]), walk/run speed, and an optional steep-terrain wall slide through ONE collision core, so a
 /// camera-relative player command and a world-space AI steering direction resolve identically - parity by
 /// construction, not by copy:
 /// <list type="bullet">
@@ -19,7 +19,7 @@ namespace KhaozEngine.Locomotion;
 /// (substepped <see cref="IPhysicsWorld.SweepCapsule"/> + step-up probe), over the carried <see cref="MoveState"/>.</item>
 /// <item><see cref="StepTowards(in MoveState, Vector2, bool, float, Func{float, float, float}, in MoveTuning, Func{float, float, Vector3}?, IPhysicsWorld?, Func{float, float, Vector2}?, Func{float, float, float, MovementMedium}?)"/>
 /// is the WORLD-SPACE kinematic step for server-authoritative NPCs (enemy AI): the identical terrain follow,
-/// swept collide-and-slide + step-up, slope gate, and bounds clamp, driven by a world-space steering direction
+/// swept collide-and-slide + step-up, wall slide, and bounds clamp, driven by a world-space steering direction
 /// instead of a camera yaw. No jump and no client prediction (AI is server-only).</item>
 /// </list>
 /// No input, render, or netcode dependency.
@@ -101,7 +101,7 @@ public static partial class CharacterMovement
     /// <summary>The WORLD-SPACE kinematic movement step for server-authoritative, non-player agents (enemy NPCs):
     /// it drives the SAME collision resolution the player gets - swept collide-and-slide + step-up against the
     /// <paramref name="world"/> (<see cref="IPhysicsWorld.SweepCapsule"/>), the analytic terrain support floor, the
-    /// <paramref name="groundNormal"/> slope gate, and the <paramref name="clampXz"/> bounds - but from a world-space
+    /// <paramref name="groundNormal"/> wall slide, and the <paramref name="clampXz"/> bounds - but from a world-space
     /// steering direction instead of a camera yaw, so an agent moves through the world exactly as a player would.
     /// Per-agent capsule radius / half-height / walk-run speed all come from <paramref name="tuning"/>, so different
     /// creatures get different sizes and speeds with no extra plumbing. There is no jump bit (NPCs do not jump in
@@ -142,7 +142,7 @@ public static partial class CharacterMovement
     /// and the world-space AI <see cref="StepTowards(in MoveState, Vector2, bool, float, Func{float, float, float}, in MoveTuning, Func{float, float, Vector3}?, IPhysicsWorld?, Func{float, float, Vector2}?, Func{float, float, float, MovementMedium}?)"/>.
     /// Both callers resolve their input to the same shape - a unit <paramref name="moveDir"/> (XZ) plus a
     /// <paramref name="speedFraction"/> in [0,1] - then hand off here, so terrain follow, swept collide-and-slide,
-    /// step-up, the slope gate, and the bounds clamp are byte-for-byte the same for player and AI.
+    /// step-up, the wall slide, and the bounds clamp are byte-for-byte the same for player and AI.
     /// <para><paramref name="faceYaw"/> is the one thing the two paths cannot share: the camera yaw the player asked
     /// to FACE (<see cref="MoveCommand.FaceCamera"/>), or null for "no camera target this tick", which is what the
     /// AI path always passes because it has no camera. Everything else the facing update needs is
@@ -203,25 +203,47 @@ public static partial class CharacterMovement
         if (swimming)
             return SwimStep(s, moveDir, speedFraction, jump, dt, t, medNow, groundHeight, clampXz, halfH, faceYaw);
 
-        // 1. Horizontal desired (UNCHANGED when dry): resolved unit move direction + speed fraction + terrain slope
-        //    gate. The grounded/air scale composes with the wade scale (1 when no provider or out of water) and with
-        //    the per-entity haste/slow multiplier (1 by default), so an unmodified dry path is untouched. An AIRBORNE
-        //    tick under MoveTuning.AirMomentum takes the momentum resolve instead (CharacterMovement.Momentum.cs),
-        //    which flies the carried velocity rather than recomputing the horizontal from scratch. Grounded ticks and
-        //    the default (knob off) never reach it, so they are arithmetically identical to the pre-momentum step.
+        // 0b. SLIDE CONTACT: is this tick standing against ground too steep to stand on? Read from the START of the
+        //    tick (the carried position and the ground under its own column), so it is a pure function of carried
+        //    state and a reconcile replay reaches the same answer. See CharacterMovement.Slide.cs for the model. The
+        //    short version is that a too-steep surface grants no support, so gravity decomposes against it and the
+        //    character rides the fall line instead of walking, jumping, or being refused at it.
+        bool sliding = SlideContact(s, t, halfH, groundHeight, groundNormal, out Vector3 slideNormal);
+
+        // 1. Horizontal desired (UNCHANGED when dry): resolved unit move direction + speed fraction + the terrain
+        //    wall slide. The grounded/air scale composes with the wade scale (1 when no provider or out of water) and
+        //    with the per-entity haste/slow multiplier (1 by default), so an unmodified dry path is untouched. An
+        //    AIRBORNE tick under MoveTuning.AirMomentum takes the momentum resolve instead
+        //    (CharacterMovement.Momentum.cs), which flies the carried velocity rather than recomputing the horizontal
+        //    from scratch. Grounded ticks and the default (knob off) never reach it, so they are arithmetically
+        //    identical to the pre-momentum step. A SLIDING tick overrides BOTH: its horizontal is the fall line, not
+        //    the command, whatever the momentum knob says (the knob governs free flight, which a slide is not).
         float wade = WadeSpeedScale(s.Position.X, s.Position.Z, s.Position.Y - halfH, t, medium);
         float speedScale = (s.Grounded ? 1f : t.AirControl) * wade * s.SpeedScale;
         (float dx, float dz, float commandedSpeed) = DesiredHorizontalCore(s.Position.X, s.Position.Z, moveDir, speedFraction, run, dt, t, groundNormal, groundHeight, s.Position.Y - halfH, speedScale);
         Vector2 commandedVel = moveDir * commandedSpeed;
         if (t.AirMomentum && !s.Grounded)
             (dx, dz, commandedVel) = AirborneMomentumMove(s, moveDir, speedFraction, run, dt, t, groundNormal, groundHeight, wade);
+        // What CARRIES to the next tick, which is the commanded velocity everywhere except on a slide: there it is
+        // the FALL-LINE part alone, so the across-slope input steer cannot accumulate into the carry tick after tick.
+        Vector2 carrySeed = commandedVel;
+        float slideVVel = 0f;
+        if (sliding)
+        {
+            SlideStep slide = ResolveSlide(s, moveDir, speedFraction, run, dt, t, slideNormal, groundNormal, groundHeight, speedScale, halfH);
+            (dx, dz, commandedVel, carrySeed, slideVVel) = (slide.X, slide.Z, slide.Commanded, slide.Carry, slide.VerticalVelocity);
+        }
         if (clampXz is not null) { Vector2 c = clampXz(dx, dz); dx = c.X; dz = c.Y; }
 
-        // 2. Vertical integrate (UNCHANGED math): jump-buffer countdown, gravity, terminal clamp.
+        // 2. Vertical integrate (UNCHANGED math): jump-buffer countdown, gravity, terminal clamp. On a SLIDING tick
+        //    the ordinary integrate is replaced wholesale by the fall-line one resolved above, which is the same
+        //    gravity decomposed against the surface - so the committed drop is exactly the drop the committed
+        //    horizontal travel needs and the ground clamp never has to correct it.
         bool jumpRequested = jump || s.JumpBufferRemaining > 0f;
         float jumpBuffer = jump ? t.JumpBuffer : MathF.Max(0f, s.JumpBufferRemaining - dt);
         float vVel = s.VerticalVelocity - t.Gravity * dt;
         if (vVel < -t.MaxFallSpeed) vVel = -t.MaxFallSpeed;
+        if (sliding) vVel = slideVVel;
         float fallSpeed = vVel, desiredY = s.Position.Y + vVel * dt;   // fallSpeed: this tick's vertical BEFORE a landing zeroes it, the impact latch's source
 
         // 3. Candidate position: SWEEP from the current pose to the target (collide-and-slide), then settle.
@@ -263,8 +285,9 @@ public static partial class CharacterMovement
                 // (not in the physics world) never shows. Vertical-only lifts it clear without the sideways shove;
                 // step 4 clamps the resting height on the surface. A steep (wall/riser) contact is NOT walkable, so it
                 // keeps the full MTV: a capsule walking INTO a wall still depenetrates horizontally, and a riser
-                // push-out is unchanged. (Future seam: a steep-face slide policy, if ever wanted, would branch here on
-                // the non-walkable normal; today static-at-rest below the gate is the design, matching analytic terrain.)
+                // push-out is unchanged. (The ANALYTIC path does slide on a too-steep surface since 17.27.0. This is the
+                // PROP path, which is still static-at-rest against a steep prop face: extending the slide to props is
+                // #438's contact-classification rebuild, and it would branch here on the non-walkable normal.)
                 // len > 1e-6 above, so mtv.Y >= cosMaxSlope*len is the divide-free normal.Y >= cosMaxSlope test.
                 if (restHold && mtv.Y >= cosMaxSlopeSettle * len) correction = new Vector3(0f, correction.Y, 0f);
                 pos += correction;
@@ -341,75 +364,13 @@ public static partial class CharacterMovement
             if (steppedFloorY > groundY) groundY = steppedFloorY;
             propGrounded = true;   // standing on the stepped ledge
         }
-        // A small "standing on a prop" skin (NOT the larger GroundedEpsilon mount band): a capsule whose carried
-        // Y is above terrain by more than this is genuinely on a prop, so the sweep keeps following the prop
-        // surface (e.g. down the far side of a dome it mounted), while one at terrain level walking into a flank
-        // is below it and the sweep stays off (depenetration blocks the base). Too large a skin would snap the
-        // capsule off the prop surface onto terrain mid-descent and clip it into the prop.
-        const float OnPropSkin = 0.05f;
-        bool overProp = !s.Grounded || s.Position.Y > terrainGroundY + OnPropSkin || steppedUp;
-        if (world is not null && overProp)
-        {
-            float probeStart = pos.Y + 2f * halfH;                 // above the head, clear of a standable prop
-            float maxProbe = (probeStart - terrainGroundY) + 2f * halfH;
-            // The hit must be a FLOOR genuinely under the capsule, not a graze on the SIDE of a prop the capsule is
-            // pressed against. A swept-down capsule beside a tall prop (trunk / rock / building wall) grazes that
-            // prop ~one radius off the axis; treating that as floor used to HAUL the capsule up the prop's side, or
-            // hang it there mid-air, instead of letting it fall - the "float up trees/rocks/walls" bug. Two guards:
-            // (a) the contact is walkable-up (n.Y >= cos(maxSlope)), so a steep wall face / degenerate zero-normal
-            // side contact is rejected; and (b) its XZ point sits under the capsule footprint (near the axis), not
-            // out at the side. A real prop top under the feet passes both; a sideways graze fails both.
-            float cosMaxSlope = MathF.Cos(t.MaxSlopeRadians);
-            if (world.SweepCapsule(capsule, Pose.At(new Vector3(pos.X, probeStart, pos.Z)),
-                    -Vector3.UnitY, maxProbe, out SweepHit floorHit) &&
-                floorHit.Normal.Y >= cosMaxSlope &&
-                UnderFootprint(floorHit.Point, pos, capsule.Radius))
-            {
-                float propCentreY = probeStart - floorHit.Distance; // capsule centre resting on the prop surface
-                // Accept only a surface the capsule rests ON / lands ON / mounts within a step - NOT a downward-
-                // facing overhang (eave / awning / soffit) the capsule is BELOW. Bepu's downward sweep registers a
-                // thin overhang quad from above with an up-pointing contact normal that passes the walkable-up guard,
-                // so without this height cap a capsule jumping up under an eave has its feet snapped onto it - the
-                // "float up onto the awning/roof" bug. A real floor/dome-top under the feet sits at or just above the
-                // capsule centre (the swept move stops the capsule there); an overhang sits well above it.
-                if (propCentreY > groundY && propCentreY <= pos.Y + t.StepHeight) groundY = propCentreY;
-            }
-        }
-
-        // 4-tread-find. The downward capsule sweep above MISSES the tread at a staircase BASE when the footprint
-        // STRADDLES a tread shallower than the capsule diameter: the sweep grazes the vertical riser front face, returns
-        // a steep, off-footprint normal both of its guards (walkable-up + under-footprint) reject, and groundY stays at
-        // terrainGroundY. A single step below, that terrain sits within GroundedEpsilon of the partially-mounted capsule,
-        // so the onGround snap DROPS it a whole riser back onto the flat - the sticky / collapse-bob bottom stair (mid
-        // climb the terrain is metres below, so the same miss collapses to nothing reachable and never shows; only the
-        // base misbehaves). When the sweep contributed NO support (groundY still at terrain) yet the capsule was grounded
-        // and elevated on a step, drop a RADIUS-LESS ray fan over the footprint: a ray finds the tread top through the
-        // clear air above it where the full-radius sweep cannot. If a walkable tread sits in the step band (at or above
-        // the feet, within StepHeight), set groundY to it and the normal onGround snap seats the capsule UP onto the
-        // tread instead of collapsing; the paced step-up (4b) still caps the rise, so the mount stays smooth. The fan
-        // sources only real raycast hits at/above the feet, so it cannot invent support in open air: a genuine ledge
-        // walk-off (open air below the feet) finds no tread, groundY stays at terrain, and gravity still releases the
-        // capsule - the ledge-release invariant holds. Guarded behind the sweep miss + grounded + elevated, so it runs
-        // only on the rare base-handoff tick, never on a normal climb or flat tick.
-        // Gate on the PREVIOUS tick's elevation (s.Position.Y), not the current pos.Y: the collapse tick has already
-        // depenetrated the deeply-embedded footprint back down toward terrain by the time this runs, so the current Y
-        // reads at the flat and would skip the fix - it is precisely that collapse we are catching. The same reason the
-        // overProp sweep above gates on s.Position.Y. treadCentreY is bounded into the step band by the fan itself, so
-        // the upper guard only defends against a marginal skin overshoot.
-        //
-        // Scoped to the BASE by pos.Y <= terrainGroundY + GroundedEpsilon: the collapse ONLY fires where the onGround
-        // snap below can reach the terrain, i.e. within one GroundedEpsilon of it - the first riser. A step or more up,
-        // the capsule sits well above that band, so onGround never snaps it to terrain and there is nothing to fix; MID
-        // CLIMB the same sweep miss is harmless (the terrain is metres below, out of the snap band), so the fan MUST NOT
-        // run there or it would re-seat the height on a mid-climb miss and add penetration on a fast small-radius run.
-        // This fires the fan on exactly the ticks the collapse would fire the snap-down, and nowhere else.
-        if (world is not null && s.Grounded && groundY <= terrainGroundY + 1e-4f &&
-            s.Position.Y > terrainGroundY + OnPropSkin && pos.Y <= terrainGroundY + t.GroundedEpsilon &&
-            WalkableTreadUnderFeet(world, capsule, pos, t, out float treadCentreY) &&
-            treadCentreY > groundY && treadCentreY <= pos.Y + t.StepHeight + SkinWidth)
-        {
-            groundY = treadCentreY;
-        }
+        // The PHYSICS-WORLD contribution to the support floor - the prop surface under the capsule (a downward
+        // capsule sweep, guarded against side grazes and overhangs) plus the staircase-BASE tread-find fallback -
+        // lives in CharacterMovement.Collision.cs beside the probes it drives. It can only ever RAISE the floor
+        // above the analytic terrain, and it is skipped entirely on a terrain-only step.
+        if (world is not null)
+            groundY = PropSupportFloor(world, capsule, pos, s.Position, s.Grounded, t, halfH, terrainGroundY, groundY,
+                steppedUp);
 
         bool grounded;
         float tSinceGround;
@@ -419,7 +380,22 @@ public static partial class CharacterMovement
         bool onGround = vVel <= 0f && (pos.Y <= groundY + (world is not null ? SkinWidth : 0f) || (s.Grounded && pos.Y <= groundY + t.GroundedEpsilon));
         if (onGround) pos.Y = groundY;          // snap onto the support surface (generalizes the old terrain clamp)
         if (pos.Y < groundY) pos.Y = groundY;   // and never rest below it, even on a tick that is not "onGround"
-        if (onGround || propGrounded)
+        // NO TRACTION ON STEEP GROUND. A terrain surface steeper than MaxSlopeRadians SEATS the capsule (the clamp
+        // above still forbids penetration) but grants it nothing else: no Grounded, so no jump, no coyote refresh,
+        // and no landing latch on the face - the landing is at the bottom, and LandingImpactSpeed reports there from
+        // the fall the slide accumulated. This is the rule that retires the ascent gate rather than patching it:
+        // climbing self-defeats when there is no footing to climb from, and the #440 jump ratchet stays dead because
+        // landing on the face lands in a slide.
+        //   - PROP SUPPORT ALWAYS WINS. Only the ANALYTIC terrain can be traction-less here: `groundY <=
+        //     terrainGroundY` says no prop raised the floor, and propGrounded says no prop is pushing the capsule up.
+        //     A plank bridging a ravine, a ledge bolted to a cliff, or a stair against a mountain all still carry a
+        //     character, exactly as they did.
+        //   - The normal is sampled at the RESOLVED position rather than the start one, because it is THIS tick's
+        //     support being decided, and only on a tick that would otherwise ground on terrain - so an airborne tick
+        //     and a prop-supported tick pay nothing for the rule at all.
+        bool noTraction = onGround && !propGrounded && groundY <= terrainGroundY && groundNormal is not null &&
+                          IsSteepGround(groundNormal(pos.X, pos.Z), t);
+        if ((onGround || propGrounded) && !noTraction)
         {
             grounded = true;
             tSinceGround = 0f;
@@ -483,7 +459,9 @@ public static partial class CharacterMovement
         //     Seat pos.Y onto that support this tick (a one-tick step-down snap, exactly what a within-GroundedEpsilon
         //     step-down already does); the render-height smoother glides the grounded drop instead of hard-cutting a
         //     ballistic one.
-        if (!grounded && vVel <= 0f && s.Grounded)
+        //     Skipped on a traction-less tick: stepping DOWN onto a too-steep face is a slide, not a step, so the
+        //     hold must not seat the character grounded on the very surface the support decision just refused.
+        if (!grounded && vVel <= 0f && s.Grounded && !noTraction)
         {
             float stepDrop = s.Position.Y - groundY;
             if (stepDrop > 0f && stepDrop <= t.StepHeight)
@@ -740,7 +718,7 @@ public static partial class CharacterMovement
             CommandedVelocity = commandedVel, // a per-tick OUTPUT: what the step asked for, before anything denied it
             // Carried inertia, stamped on EVERY tick (grounded included) and consumed only when AirMomentum is on:
             // the intended velocity clipped to what survived, so collision can shed it but never inject into it.
-            HorizontalVelocity = ClipToAchieved(commandedVel, start, pos, dt),
+            HorizontalVelocity = ClipToAchieved(carrySeed, start, pos, dt),
         };
         // Defense-in-depth: a finite input state must never produce a non-finite result. A pathological command is
         // gated out upstream, but a misbehaving ground/bound/tuning value could inject a NaN/Inf that would slip

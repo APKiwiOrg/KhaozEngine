@@ -110,11 +110,13 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void Step_onto_too_steep_ground_is_rejected()
         {
-            // Normal nearly horizontal => slope ~90 deg, exceeds MaxSlope => horizontal move rejected. The face rises
-            // toward -Z, which is where W at yaw 0 travels, and the normal and the height describe ONE surface on
-            // purpose: the gate is direction-aware, so a steep normal over ground that does not stand above the feet
-            // is a DESCENT and would (correctly) not be refused.
-            Func<float, float, Vector3> steep = (x, z) => Vector3.Normalize(new Vector3(0f, 0.05f, 1f));
+            // Normal nearly horizontal => slope ~90 deg, exceeds MaxSlope => a WALL contact, and a head-on one, so
+            // the whole move is into-face and none of it survives the projection. The face rises toward -Z, which is
+            // where W at yaw 0 travels, and the normal and the height describe ONE surface on purpose: only the face
+            // itself reads steep, so the flat the character is standing on still carries it (a steep normal over the
+            // ground under its own feet would mean no footing, and it would slide rather than stand).
+            Func<float, float, Vector3> steep =
+                (x, z) => z < 0f ? Vector3.Normalize(new Vector3(0f, 0.05f, 1f)) : Vector3.UnitY;
             Func<float, float, float> wall = (x, z) => MathF.Max(0f, -z) * 20f;
             var c = new CharacterController3D { CapsuleHalfHeight = 0f };
             c.Update(Keys(Key.W), dt: 1f, cameraYaw: 0f, wall, steep);

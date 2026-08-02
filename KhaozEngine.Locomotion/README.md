@@ -84,10 +84,21 @@ into a face while jumping read as an invisible wall eating lateral air control. 
 [#442](https://github.com/APKiwiOrg/KhaozEngine/issues/442) replaced the gate with two rules. Both are
 unconditional, neither is a knob, and `MaxSlopeRadians` keeps its exact meaning as the traction threshold.
 
-**1. Wall slide.** A horizontal move whose destination is BOTH steeper than `MaxSlopeRadians` AND more than
-`MoveTuning.StepHeight` above the feet is a wall contact:
+**1. Wall slide.** A horizontal move whose destination is BOTH steeper than `MaxSlopeRadians` AND above what this
+tick can REACH is a wall contact:
 
     the into-face component of the move dies, the along-face component survives
+
+The REACH is a `MoveTuning.StepHeight` while the character is GROUNDED, and the tick's OWN RESOLVED UPWARD MOTION
+when it is not - `max(0, vVel * dt)`, so zero while it falls (17.29.0, [#468](https://github.com/APKiwiOrg/KhaozEngine/issues/468)).
+A step is what footing buys, so a tick with no footing has bought nothing: it may be seated at or below the height
+it began at, and a rising one exactly as far up as its own velocity carries it. **Altitude on steep ground comes
+only from real velocity, never from the ground clamp.** Read as a single `StepHeight` for every tick alike, this
+admission was a climb: the clamp seats the capsule on whatever column the admission reaches, so walking at a 74
+degree cliff gained 2.3 to 2.7 m/s while `VerticalVelocity` reported falling at 5 to 7 (and paid MORE at a higher
+tick rate, the ceiling being a `StepHeight` per tick against gravity's `g*dt` takeback). A SLIDING tick takes the
+same allowance read off the slide's own resolved vertical, plus a 1 mm float slack it alone needs, because its
+advance lies in the surface plane and its rise therefore EQUALS its resolved vertical to the last float.
 
 The face's horizontal direction is the destination normal's XZ projection (the movement direction stands in when
 that projection is degenerate, which meets the face head-on and kills the whole move - the conservative
@@ -277,6 +288,16 @@ decision. **A null provider never engages swim.** The swim flag replicates via N
   tick is never grounded). A spawn or teleport reports about `Gravity * dt` on its first tick, honestly, since
   `default(MoveState).Grounded` is false, so **consumers should threshold** rather than treat any nonzero value as
   a fall. The server-side read path is NetWorld's `WorldServer.OnAfterTick` / `ShardedWorldServer.OnAfterTick`.
+- **`MoveState.SupportGranted`** (17.29.0) - sim-local step OUTPUT (not replicated): `true` on a tick that RESOLVED
+  support, read BEFORE the jump consumes it. `Grounded` is the state the tick ENDED in, and those are not the same
+  fact: the jump step launches off the support the tick just found and sets `Grounded` false on the way out, so a
+  player holding the button reports false on every tick of a hop cycle and any support granted underneath is
+  invisible. That gap is what let a 21 m cliff climb read as ZERO footing grants while it was taking a wedge grant
+  every few seconds ([#468](https://github.com/APKiwiOrg/KhaozEngine/issues/468)), so this is the signal a
+  server-side anomaly check or a telemetry recorder needs to see a character finding footing where the terrain
+  grants none. Set on EVERY supported tick rather than only on transitions (a transition is still derivable by
+  comparing it with the previous tick's), `false` on a swim tick, and mirrored server-side onto
+  `MovementState.SupportGranted` as a sim-local field exactly as `LandingImpactSpeed` is.
 - **`MoveState.FacingYaw`** (17.26.0) - the CARRIED heading in radians, in the same convention as
   `MoveCommand.CameraYaw`: 0 faces world -Z, a positive angle swings toward -X, canonical range `[-pi, pi)` with
   the low end inclusive. See "Authoritative facing" below. It affects NO position output, which is what makes

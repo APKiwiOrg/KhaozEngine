@@ -138,8 +138,11 @@ player uses, orientation slerped between snapshots.
 1. A `MoveCommand` (move axes, yaw, jump bit, face-camera flag) reaches `CharacterMovement.Step` from the local
    `CharacterController3D`, the server's `PlayerMoveSimulator`, or the client's `ClientPrediction`.
 2. `Step` runs the horizontal core (camera-relative move, plus the steep-terrain wall slide via the
-   `groundNormal` delegate and the `groundHeight` one: a destination both past `MaxSlopeRadians` and more than a
-   `StepHeight` above the feet keeps only its along-face component, while a descent falls through) and the
+   `groundNormal` delegate and the `groundHeight` one: a destination both past `MaxSlopeRadians` and above what
+   this tick can REACH keeps only its along-face component, while a descent falls through. The reach is a
+   `StepHeight` while the character is GROUNDED, since a step is what footing buys, and the tick's own resolved
+   upward motion when it is not - zero while it falls - so the ground clamp can never seat a body higher than its
+   own velocity carried it, 17.29.0/#468) and the
    vertical physics (gravity terminal-clamp, jump with coyote/buffer, air control). A tick that starts in contact
    with too-steep ground takes the SLIDE instead: no traction means `Grounded` false, and gravity decomposed
    against the surface accelerates it down the fall line (the contact deletes only the into-surface component, so

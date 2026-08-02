@@ -5,6 +5,109 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.29.0
+
+### The ground clamp stops lifting capsules that have no footing (#468)
+
+No-traction ticks stop taking altitude from the ground clamp, wedge support now requires the probe ring's fall
+lines to genuinely oppose, and a footing grant a jump consumes is exported instead of vanishing. Third round of
+the steep-terrain chain (#440 jump ratchet, #442 slide model), and the first one driven by a measured repro
+rather than a hypothesis: a Ruinborne playtest climbed the authored NNE sea cliff, and a climber-bot sweep
+(Ruinborne `feature/climb-repro`, 401 of 2040 input patterns climbing past 3 m, best 20.6 m of a 21 m face)
+found the reported hypothesis wrong in the specific and the real mechanism simpler and worse.
+
+**What the repro found.** `AdvanceWallSlide` admitted ANY horizontal move whose destination column stood within
+`StepHeight` of the feet - on a 74 degree face exactly as on a doorstep - and step 4's ground clamp then raised
+the capsule onto that column unconditionally. Two ticks made a limit cycle: the slide tick committed its drop,
+the next tick was out of slide contact and had its full up-slope command admitted, and the clamp seated it 0.29
+to 0.39 m higher. Net climb 2.3 to 2.7 m/s while `VerticalVelocity` reported falling at 5 to 7 m/s. WALKING
+STRAIGHT UP a 73 degree face gained 19.9 m with zero jumps and zero footing grants (the walk's per-tick ask of
+0.33 m sat under `StepHeight` 0.40, and a run asked 0.65 and was refused, which is the playtest's "walking up works,
+running up does not"). A diagonal was never a separate mechanism, only a way to shrink the per-tick ask by the
+cosine of the offset. And it paid MORE the faster the server ran, because the ceiling is `StepHeight` per tick
+against gravity's `g*dt` takeback: 3.9 m at 15 Hz against 20.3 m at 120 Hz over the same 20 seconds.
+
+**The new invariant: a tick without footing may never end higher than its own resolved vertical motion allows.**
+Altitude on steep ground comes only from real velocity, never from the ground clamp. It is enforced at the
+ADMISSION rather than at the clamp, because the clamp cannot be capped - its job is to forbid penetration, and a
+clamp that refuses to raise leaves the capsule INSIDE the terrain, trading a climb exploit for a tunnel. So the
+rule lands on the horizontal that would have needed the raise, which is what a wall contact already is: a move
+whose destination stands above the allowance keeps only its along-face component, exactly as one into a sheer
+wall does. `AdvanceWallSlide` therefore takes a REACH rather than reading `StepHeight` itself:
+
+- a GROUNDED tick keeps `StepHeight`, so every walkable path (step-up, step-down, stair glide, the walk into the
+  toe of a cliff) is byte-identical - a step is what footing buys, and a grounded character has it,
+- a tick with NO FOOTING gets `max(0, vVel * dt)` against the gravity integrate the vertical step is about to
+  commit, so a falling tick may be seated at or below the height it began at and a rising one may reach exactly
+  as far up as its own velocity carries it,
+- a SLIDING tick gets the same allowance read off the slide's own resolved vertical, plus a 1 mm float slack it
+  alone needs (its advance lies in the surface plane by construction, so its rise EQUALS its resolved vertical
+  and the comparison is otherwise decided by rounding - and a false wall verdict there would delete the signed
+  fall line's up-slope ride). The slack cannot be aimed at, because a slide's per-tick travel is the fall line's
+  own speed and input has no authority over it.
+
+The sliding case is not a formality: nothing makes a consumer's normal delegate agree with its own height field,
+and a smoothed or lower-resolution normal field over a heightmap (what a real terrain sampler hands back)
+disagrees everywhere. Measured on the repro's cliff patch at 120 Hz, 31 consecutive sliding ticks each seated
+0.085 m higher than the last while `VerticalVelocity` read -2 to -8 m/s, for 2.26 m of climb out of nothing.
+
+**Wedge support now requires opposing fall lines.** `SlideWedged` grants support to a tick whose demanded descent
+the world swallowed, which is what keeps a concave crease from being a soft-lock. But its arming test is a
+SHORTFALL, and any curvature under one tick's travel produces one, so on a face whose normal is smoothed the
+OPEN face granted support steadily - five grants inside one measured climb, each a full 9.8 m/s launch for a
+player holding the jump button, with the probe ring reading 0 of 8 samples walkable and its fall lines spread
+across 1 to 3 degrees. 17.28.0 measured that transient on a parabolic bowl, found it worth no altitude, and
+documented it as harmless. On a real cliff it is not. Support now also requires the ground under the capsule to
+FOLD BACK ON ITSELF: the ground normal is sampled over the established `TreadFanOffsets` footprint ring (centre
+plus rings at 0.65 and 0.95 of the capsule radius, eight directions each, read through the analytic delegate
+instead of the physics ray fan), each sample's horizontal fall line is taken, and some pair must disagree by more
+than 120 degrees. At 120 degrees two unit fall lines sum to a vector no longer than either alone: below it the
+ring still agrees on a direction to leave by and the ground is a face however folded, past it the samples cancel
+and there is no downhill left to take, which IS the wedge. It leaves 40x margin on the measured open-face spread
+and 60 degrees on the measured gully, and the V-gully escape fixtures are unchanged.
+
+**`MoveState.SupportGranted`** (bool, sim-local, rides no wire) is `true` on a tick that RESOLVED support, read
+BEFORE step 5's jump consumes it. `Grounded` is the state a tick ENDED in, and those are not the same fact: a
+player holding the jump button reports `Grounded` false on every tick of a hop cycle, so support granted on
+ground a character should never have found footing on was invisible to everything reading the step output. That
+is not theoretical - the climber-bot's first sweep read ZERO footing grants over a 21 m climb that was taking a
+wedge grant every few seconds, and concluded footing was not involved. It is set on every supported tick rather
+than only on transitions (a consumer asking "did the sim decide this tick had footing" wants one answer, not one
+per mechanism), and a transition is still derivable by comparing it with the previous tick's. Mirrored onto
+**`MovementState.SupportGranted`** as a sim-local field for the sharded head, exactly as `LandingImpactSpeed` is,
+so server-side telemetry and anomaly checks can read it per slot from `OnAfterTick`. Deliberately absent from the
+codec and the migrate capture, so it is `false` on a client and across a handoff, which reads as "found no
+footing this tick" - the safe direction for an anomaly check.
+
+**Measured.** The repro's cliff patch is now an engine fixture (`ClampRatchetTests`): a piecewise-planar face
+with creases every 4 m whose four planes run 68.6 to 77.1 degrees, under a normal smoothed over a stencil wider
+than the crease spacing. Walking straight up it climbed 17.15 m before and 0.000 m after. A running held jump 50
+degrees off the fall line climbed 404.6 m before and 0.000 m after, and the same input at 15, 60 and 120 Hz
+climbed 76.7, 1059.0 and 1438.6 m before against 0.000, 0.000 and a single 0.620 m transient after. Wedge grants
+on the open face went from 111 in 2400 ticks to 0. Every 17.28.0 invariant is unchanged and still pinned: the
+slide to the toe, no jump from the face, lateral air control along a face, contour momentum, the signed fall
+line's 2.4x reach, gully escape, the landing latch, and walkable-ground byte-identity.
+
+**What this release does NOT close, stated so it is not read as closed.**
+[#469](https://github.com/APKiwiOrg/KhaozEngine/issues/469) is the same round's sibling and the other side of the
+same point-sample coin: near a crest the interpolated normal reads past `MaxSlopeRadians` before the visual lip,
+so support is DENIED on ground that looks flat and the slide then drags the player seaward. Nothing here touches
+the footing decision, which still reads one normal at the feet column, and the fix it wants is region-based
+support (a capsule-wide walkable patch, the analytic twin of `WalkableTreadUnderFeet`). The fall-line ring added
+here is the machinery that fix would build on: it already samples the footprint through the analytic delegate in a
+fixed order. [#470](https://github.com/APKiwiOrg/KhaozEngine/issues/470), the step-down hold's missing traction
+test, is likewise untouched and is neither widened nor narrowed - it arms only on a tick whose PREVIOUS state was
+grounded, and a grounded tick keeps the `StepHeight` reach, so every input it reads is byte-identical.
+
+Two existing fixtures needed their SCAFFOLDING changed, with every assertion kept. The wall-contact carry test
+built its "unclipped" reference by inflating `StepHeight` to 100, which only ever worked because the wall test
+read `StepHeight`. That reference was in any case unobstructed only in the sense that the capsule was admitted
+38 m inside a block and popped out the top by the clamp, which is the behaviour this release retires, so it now
+builds the reference by removing the block. And the near-gate ride's approach takes longer to settle, holding one
+periodic orbit (peak 4.247 m) for about 5300 ticks before stepping once to a second (4.495 m) and staying there
+for the 48000 ticks measured, so its excluded window and run length grew rather than its 20 mm tolerance, which
+is the detector.
+
 ## 17.28.0
 
 ### Steep terrain slides instead of refusing (#442, subsumes #441)

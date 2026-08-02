@@ -482,6 +482,16 @@ render-state exports.
   `Ghost` or `Migrating` entity its cell sim skipped, so a skipped tick cannot leave a stale impact behind to read
   as a landing that never happened. Carried state (the heading, the arc, the swim flag) is deliberately NOT zeroed
   there, because zeroing a carried field on a skipped tick would spin every ghost back to facing -Z.
+- **`MovementState.SupportGranted`** (17.29.0) is the sharded head's SIM-LOCAL slot for
+  `MoveState.SupportGranted`, on the same reasoning and with the same handling (absent from the codec and from
+  `Migrate`, cleared explicitly for a skipped `Ghost` or `Migrating` entity). It says whether the step RESOLVED
+  support this tick, read before the jump consumed it, which is the fact `Grounded` beside it cannot carry: a
+  player holding the jump button reports `Grounded` false on every tick of a hop cycle, so a support grant on
+  ground a character should never have found footing on is invisible to a server-side anomaly check
+  ([#468](https://github.com/APKiwiOrg/KhaozEngine/issues/468) measured a 21 m cliff climb reading zero footing
+  grants while taking one every few seconds). `false` on a client and across a handoff, which reads as "found no
+  footing this tick" - the safe direction, since a missed grant costs one sample and a fabricated one accuses a
+  legitimate player.
 - **`EntityRenderState.FacingYaw` and `EntityRenderState.LandingImpactSpeed`** are the client-side exports. The
   heading is predicted un-quantized for the local player and the decoded replicated value for a remote,
   discrete-sampled to the same delayed render time as the interpolated position, so a remote's flags, heading and

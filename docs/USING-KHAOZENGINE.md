@@ -4852,10 +4852,15 @@ ratcheted up a sheer face, tight enough to stop that and sideways movement into 
 invisible wall eating lateral air control. Refusal is not how terrain behaves, so there is no gate any more. Two
 rules replace it, both unconditional and neither a knob:
 
-- **Wall slide.** A horizontal move whose destination is BOTH steeper than `MaxSlopeRadians` AND more than
-  `MoveTuning.StepHeight` above your feet is a wall contact: the into-face component of the move dies and the
-  along-face component survives. So strafing along a cliff mid-jump keeps its lateral travel, and walking head-on
-  into one makes no headway. It applies grounded and airborne, on the command path and the momentum path alike.
+- **Wall slide.** A horizontal move whose destination is BOTH steeper than `MaxSlopeRadians` AND above what that
+  tick can REACH is a wall contact: the into-face component of the move dies and the along-face component
+  survives. So strafing along a cliff mid-jump keeps its lateral travel, and walking head-on into one makes no
+  headway. It applies grounded and airborne, on the command path and the momentum path alike. The REACH is a
+  `MoveTuning.StepHeight` while you are GROUNDED, and your own resolved upward motion for that tick when you are
+  not - zero while you fall (17.29.0). A step is what footing buys, so **a tick with no footing may never end
+  higher than its own velocity carried it**: altitude on steep ground comes from velocity, never from the ground
+  clamp. With a flat `StepHeight` for every tick alike it did come from the clamp, and walking at a 74 degree
+  cliff climbed it at 2.3 to 2.7 m/s while `VerticalVelocity` reported a 5 to 7 m/s fall.
 - **No traction.** A surface steeper than `MaxSlopeRadians` grants no support: `Grounded` stays false, so no
   jump, no coyote refresh and no landing latch on the face. You are still seated on it (the ground clamp forbids
   penetration) but you slide - gravity decomposes against the surface normal and its tangential component
@@ -4883,11 +4888,14 @@ less descent than that fall demanded is being held up by the world, so it report
 true, jump enabled, coyote refreshed, and the swallowed fall latched as a landing. Its motivating case is a
 concave crease, where a capsule can neither be granted support by its own steep column nor slide out, and that is
 where the rule's `SlideWedged` name comes from - but the detector reads one number, the shortfall, not a shape.
-**Any concave curvature under one tick's travel can arm it**, so an open creaseless face can grant a transient
-supported tick and a held jump can fire from it. That is known and harmless: it can only ever arm on the way DOWN,
-the gap is a fraction of one tick's travel and shrinks quadratically with the tick rate, and a parabolic bowl wall
-measured zero net altitude gain over 4000 ticks (one supported tick 1.29 m up at moderate curvature, two at 5.74 m
-at sharp curvature). Support is per-tick, so a character parked in a crease pulses grounded (about one tick in
+**Any concave curvature under one tick's travel can arm it**, so the shortfall alone cannot tell a gully from a
+face - and on a face whose NORMAL is smoothed over a wider stencil than its height field's own detail, which is
+what a real terrain sampler hands back, it arms steadily rather than occasionally (measured on an authored sea
+cliff: five grants inside one climb, each a full launch for a player holding jump). So since 17.29.0 support also
+requires the ground under the capsule to FOLD BACK ON ITSELF: the normal is sampled over the capsule's footprint
+ring and some pair of horizontal fall lines must oppose by more than 120 degrees, where two of them sum to a
+vector no longer than either alone. A gully opposes at about 180 and still escapes. An open face's samples all
+fall the same way (measured 1 to 3 degrees apart) and it grants nothing. Support is per-tick, so a character parked in a crease pulses grounded (about one tick in
 five) rather than standing. That pulse latches `LandingImpactSpeed` each time, so **a landing SOUND driven off the
 event alone will rattle there**. Gate on the impact SPEED (only the first latch carries the real fall, 11.2 m/s
 against 4.0 m/s for every pulse after it) and fall damage is unaffected.
@@ -5109,7 +5117,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.28.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.29.0" />
 ```
 
 ```csharp
@@ -10924,6 +10932,15 @@ A character that walks off a cliff now falls, and one on a face too steep to sta
 "Bounded zones" above), which raises the question the engine could not answer before: how hard did it land? The ground contact zeroes
 `VerticalVelocity`, so the speed the landing erased was gone before anything downstream could read it, and the
 only way to recover it was to finite-difference a position across the very tick the ground clamp moved it.
+
+`MoveState.SupportGranted` (17.29.0) sits beside it and answers the other question a jump erases: **did this tick
+resolve footing at all?** The jump step launches off the support the tick just found and sets `Grounded` false on
+its way out, so a player holding the button reports `Grounded` false on every tick of a hop cycle. It is `true` on
+every supported tick, `false` on a swim tick, rides no wire, and is mirrored server-side onto
+`MovementState.SupportGranted` for the sharded head. Read it from the same `OnAfterTick` seam when you want
+telemetry or an anomaly check that can see a character finding footing on ground that grants none - which
+`Grounded` alone cannot show you, and did not: the climb that motivated it read zero footing grants over 21 m of
+cliff while taking a wedge grant every few seconds.
 
 `MoveState.LandingImpactSpeed` is that speed: metres per second, non-negative, set on exactly the tick a character
 transitions airborne to grounded, and 0 on every other tick.

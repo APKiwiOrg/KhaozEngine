@@ -6,6 +6,18 @@ Windowing + input foundation for the custom MonoGame-free stack.
   frame loop. `Run(onFrame)` clears + presents around your callback; each `Frame` gives `Dt`, an engine-native
   `InputState`, framebuffer size, and the GPU command list to draw into. `AppWindow.Scaled(...)` fits a
   design-sized window to the display.
+- **The frame's pre-record phase.** `Run(onFrame, onPrepare)` is the same loop with a second
+  callback, invoked each frame after the frame's `Dt` / input / size are latched and **before** the frame's command
+  list is opened. `Run(onFrame)` is exactly `Run(onFrame, null)`, so nothing changes for a host that does not want
+  it. Reach for it when something in your frame has to submit GPU work on a command list of its **own**: with
+  Direct3D11 in immediate-context mode a command list IS the device's immediate context, so opening one while the
+  frame's list is recording wipes the frame's bindings and faults the device a few draws later
+  ([#423](https://github.com/APKiwiOrg/KhaozEngine/issues/423),
+  [#429](https://github.com/APKiwiOrg/KhaozEngine/issues/429)). That is where a `Scene3D`'s `Begin` + draws +
+  `PrepareFrame` belong on a windowed host. `GameApp` / `GameApp3D` already run there, so a game on those needs no
+  change. Do NOT record into `Frame.Commands` from `onPrepare` - the list is not open yet (and on a
+  render-suppressed frame never is). Both callbacks run on a render-suppressed frame, so update-side work keeps
+  advancing while minimized.
 - **Present mode + frame cap** (since 9.23.0). The `AppWindow` ctor / `Scaled(...)` take a `PresentMode`
   (`Vsync` default, or `Immediate` = no vertical-blank sync) which selects the swapchain's `SyncToVerticalBlank`
   at creation. `AppWindow.FrameCapHz` (settable any time) paces `Run` to a target Hz with a monotonic-clock

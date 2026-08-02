@@ -2,7 +2,7 @@
   <PropertyGroup>
     <PackageId>KhaozEngine.Game.Render3D</PackageId>
     <Version>$(KhaozEngineVersion)</Version>
-    <Description>3D integration for the KhaozEngine.Game loop/scene framework, kept separate so a 2D game (KhaozEngine.Game) pulls no 3D renderer. Adds GameApp3D (a GameApp that stands up a Render3DSurface and drives the 3D pass in the OnRenderWorld seam), the IGameScene3D scene hook (a GameScene that also submits a 3D world pass), and a SceneManager.Draw3D extension that draws the same visible scene set as Draw2D. Depends on KhaozEngine.Game, KhaozEngine.Render3D, KhaozEngine.Locomotion, and KhaozEngine.Physics (the character controller stack).</Description>
+    <Description>3D integration for the KhaozEngine.Game loop/scene framework, kept separate so a 2D game (KhaozEngine.Game) pulls no 3D renderer. Adds GameApp3D (a GameApp that stands up a Render3DSurface and drives the 3D pass across the frame's OnPrepareWorld / OnRenderWorld seams), the IGameScene3D scene hook (a GameScene that also submits a 3D world pass), and a SceneManager.Draw3D extension that draws the same visible scene set as Draw2D. Depends on KhaozEngine.Game, KhaozEngine.Render3D, KhaozEngine.Locomotion, and KhaozEngine.Physics (the character controller stack).</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>
@@ -14,5 +14,8 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.Game.Tests" />
+    <!-- GameApp3D.PrepareScene's ordering is asserted against a real Scene3D on the open-list tracking device,
+         which lives in KhaozEngine.Render.Tests alongside the rest of the #423/#429 frame-phase coverage. -->
+    <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
   </ItemGroup>
 </Project>

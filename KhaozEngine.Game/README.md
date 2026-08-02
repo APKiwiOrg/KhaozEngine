@@ -6,14 +6,24 @@ per-frame composition + ordering so a game can't get it wrong:
 ```
 OnLoad();
 each frame:
+  --- pre-record phase: the frame's command list is NOT open yet ---
   Clock.Update(dt)
   Viewport.Update(window size)   -> OnResize on change
   Pointer.Update(input, Viewport)
   OnResume(wallGap)              // only when the wall-clock gap exceeds the threshold (OS sleep/suspend/hang)
   OnUpdate(Dt)
-  OnRenderWorld(frame)           // empty by default; a subclass renders a world here (e.g. a 3D scene)
+  OnPrepareWorld(frame)          // empty by default. A subclass fills a world's queues here (e.g. a 3D scene)
+  --- record phase: the frame's command list is open and cleared ---
+  OnRenderWorld(frame)           // empty by default. A subclass records the world pass here
   Surface2D.NewFrame(frame); Batch.Begin(Viewport); OnDraw2D(Batch); Batch.End()
 ```
+
+The two-phase split is the windowed loop's (`AppWindow.Run(onFrame, onPrepare)`), and the order a game sees is
+unchanged by it: `OnUpdate` still precedes `OnPrepareWorld`, which still precedes `OnRenderWorld` and the 2D
+passes. What it buys is a point in the frame where a world pass may still submit GPU work on a command list of its
+**own** - which is a device fault if done while the frame's list is recording
+([#429](https://github.com/APKiwiOrg/KhaozEngine/issues/429)). Do not record into `Frame.Commands` from
+`OnPrepareWorld`. Draw in `OnRenderWorld`. Both seams are skipped on a render-suppressed (minimized) frame.
 
 Subclass it and override `OnLoad` / `OnUpdate(dt)` / `OnDraw2D(batch)` / `OnResize(w, h)`; call
 `Quit()` to close. Construct with `GameAppOptions.For(title, w, h)` (set `DesignWidth/Height`,

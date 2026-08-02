@@ -40,7 +40,7 @@ namespace KhaozEngine.Game
         /// <summary>
         /// Optional EXPLICIT software frame-rate cap in Hz. A positive value OVERRIDES <see cref="FrameCap"/> with a
         /// fixed cap. The default 0 leaves <see cref="FrameCap"/> in charge (which defaults to the backend-aware
-        /// <see cref="Windowing.FrameCap.Auto"/>). When a cap is in force, <see cref="AppWindow.Run"/> paces the loop
+        /// <see cref="Windowing.FrameCap.Auto"/>). When a cap is in force, <see cref="AppWindow.Run(System.Action{Frame})"/> paces the loop
         /// to it with a monotonic-clock limiter (<see cref="FrameLimiter"/>) independent of the swapchain's vsync - so
         /// a game can pin the render rate to an integer multiple of its fixed tick (e.g. 60 or 120 for a 30 Hz tick).
         /// Applied on both the default and a custom <see cref="WindowFactory"/> window (set post-construction), so a

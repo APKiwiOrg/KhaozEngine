@@ -5,9 +5,87 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 17.26.1
+## 17.27.0
 
-### Jumping at a cliff no longer climbs it (#440)
+### The windowed frame loop gains a pre-record phase, and the fork guardrail comes off hold
+
+`AppWindow.Run` takes an optional `onPrepare` callback that runs before the frame's command list opens, `GameApp`
+routes its whole update side through it via the new `OnPrepareWorld` seam, and the Veldrid fork moves to `4.9.103`
+so a second command list opened mid-recording throws instead of silently corrupting the frame. Those two ship
+together on purpose: the guardrail was held for four fork releases precisely because the windowed loop forced the
+violation it would have caught, so the cause had to go first.
+
+#### The frame loop is two phases now, not one (#429)
+
+17.26.0 gave `Scene3D` a `PrepareFrame()` phase and moved the FFT ocean's priming pass into it, which fixed every
+headless host. It could not fix a windowed one. `AppWindow.Run` opened the frame's command list before calling
+back into the app, so by the time any app code ran there was already a list recording, and a producer that needs a
+list of its own had nowhere to put it. That was the last live path in
+[#423](https://github.com/APKiwiOrg/KhaozEngine/issues/423): on Direct3D11 in immediate-context mode a command
+list IS the device's immediate context, so opening a second one runs `ClearState` on the live context and wipes
+every binding the frame believes is bound, and the device faults a few draws later.
+
+`AppWindow.Run(Action<Frame> onFrame, Action<Frame>? onPrepare)` is the new overload. `onPrepare` runs each frame
+after the frame's dt, input and size are latched and BEFORE the command list is opened, so a callback may create,
+submit and drain lists of its own. `onFrame` then runs with the frame's list open, bound to the swapchain and
+cleared, exactly as before. The existing single-callback `Run(onFrame)` is now `Run(onFrame, null)` and behaves
+identically, so nothing that compiles today changes.
+
+The phase ORDER itself moved out of the loop into an internal `FramePhases` type, which is what makes it
+assertable without a window. It is deliberately ignorant of 3D, water, and what a producer is: it guarantees only
+WHEN the two callbacks run relative to the frame's command list, which is the one fact a producer cannot
+establish for itself.
+Both callbacks still run on a render-suppressed (minimized) frame, where no list is opened and nothing is
+presented, so update-side simulation keeps advancing while iconified.
+
+Do not record into `Frame.Commands` from `onPrepare`. The list has not been begun during that callback, and on a
+render-suppressed frame it is never begun at all. Draws belong in `onFrame`.
+
+#### `GameApp` grows an `OnPrepareWorld` seam, and its update side moves ahead of the list
+
+`GameApp.Run` now calls `_window.Run(onFrame: RecordPhase, onPrepare: PreparePhase)`. Everything up to and
+including the new `protected virtual void OnPrepareWorld(Frame frame)` runs in the prepare phase, and the draw
+passes run inside the frame's list. `GameApp3D` overrides it to run `Scene.Begin()`, its 3D draws, and
+`Scene3D.PrepareFrame()` there, so by the time `Render3DSurface.Render` runs the frame is already prepared and its
+safety-net `PrepareFrame` call no-ops. No engine-shipped windowed host opens a nested list any more.
+
+**Phase-order note, and the one thing to check when adopting.** The order a game SEES is unchanged: `OnUpdate`
+still precedes `OnPrepareWorld`, which still precedes `OnRenderWorld` and the 2D passes. What changed is where
+that ordering sits relative to the command list. `OnUpdate` and `OnResize` now run BEFORE the frame's list is
+opened rather than inside its recording. A game that recorded into `Frame.Commands` from `OnUpdate` would break,
+because the list is not open yet. The fleet was checked rather than assumed: no game records into the frame from
+`OnUpdate`, so all four adopt without a source change.
+
+#### Vendored Veldrid fork `4.9.103`: the second-recorder guardrail (#428)
+
+The fork moves from `4.9.102` to `4.9.103` (`APKiwiOrg/veldrid` tag `v4.9.103`, commit
+`74e523607843f49cd8f6969815c94b37cd047bb7`, branch `fix/d3d11-immediate-4.9.0`). The vendored line moves back onto
+the main fork branch, because the guardrail commits it was deliberately sitting below are the content of this
+release.
+
+A second `Begin` on a DIFFERENT command list, while the first still holds the immediate context, now throws a
+`VeldridException` naming the situation and pointing at `UseImmediateContext`. It previously ran `ClearState` on
+the live context and silently wiped the open recording. A second `Begin` on the SAME list has thrown since
+`4.9.101` and is a separate case. The refusal happens before anything is touched, ahead of the deferred list
+disposal, the `ClearState` and the lock, so the open recorder carries on unharmed and the refused instance begins
+normally once the context is free. Deferred mode never reaches any of this. A follow-up commit hardens the guard
+against an interrupted lock acquisition: `Monitor.Enter` takes the ref-bool overload, because a
+`ThreadInterruptedException` delivered after acquisition is otherwise indistinguishable from a failed one, and the
+bare overload's catch was dropping the claim on a lock the thread still held, wedging the next `Begin` forever.
+
+#### The residual, stated rather than glossed
+
+One nesting path survives by design. A host driving a `Render3DSurface` off a raw `AppWindow.Run(onFrame)`,
+without passing `onPrepare`, still nests, because the surface's safety-net `Scene3D.PrepareFrame` then runs inside
+the frame's recording. That is not an engine-shipped host and no engine host does it, but it is reachable from
+consumer code. With `4.9.103` vendored it is now a loud `VeldridException` naming the fix rather than silent
+corruption, which is the intended trade. The fix for such a host is to queue and prepare the scene in the
+`onPrepare` callback and call `Render` from `onFrame`.
+
+Tests: `FramePhasesTests` asserts the phase contract without a window, and `WindowedFramePrepareTests` covers the
+windowed prepare path. No golden changes, because nothing about what the GPU executes on an already-correct path
+moved.
+### Jumping at a cliff no longer climbs it (#440, staged as 17.26.1, ships in this release)
 
 The direction-aware slope gate measures its ascent from the LOWER of the character's feet and the ground under the
 current column, so vertical motion can no longer buy admission onto a too-steep face. This hardens the 17.26.0 gate

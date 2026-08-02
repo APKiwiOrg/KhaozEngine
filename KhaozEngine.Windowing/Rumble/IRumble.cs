@@ -63,7 +63,7 @@ namespace KhaozEngine.Windowing.Rumble
         /// <summary>
         /// Advance all live pulses by <paramref name="dt"/> seconds, recompute each player's effective motor levels
         /// (sustained MAX live pulses), and push them to the device. The engine loop calls this once per frame; a
-        /// game driving <see cref="AppWindow.Run"/> directly should call it once per frame too. Idempotent for
+        /// game driving <see cref="AppWindow.Run(System.Action{Frame})"/> directly should call it once per frame too. Idempotent for
         /// <paramref name="dt"/> &lt;= 0 (pushes current levels without advancing time).
         /// </summary>
         void Tick(float dt);

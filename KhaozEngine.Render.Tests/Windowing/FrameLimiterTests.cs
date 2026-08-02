@@ -5,7 +5,7 @@ using Xunit;
 namespace KhaozEngine.Tests.Windowing;
 
 /// <summary>
-/// The software frame-rate cap that <see cref="AppWindow.Run"/> uses to pace the loop to a target Hz (so a game can
+/// The software frame-rate cap that <see cref="AppWindow.Run(System.Action{Frame})"/> uses to pace the loop to a target Hz (so a game can
 /// pin its render rate to an integer multiple of its network tick regardless of whether the swapchain's vsync
 /// actually throttles on a given backend). Pure scheduling math, fed a monotonic clock; the loop does the waiting.
 /// </summary>

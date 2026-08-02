@@ -6,8 +6,11 @@ namespace KhaozEngine.Gpu.Internal
 {
     /// <summary>
     /// The engine's single seat for GLSL 450 to SPIR-V to HLSL cross-compilation, device-free and entirely on the
-    /// CPU. Everything that needs SPIRV-Cross goes through here, and nothing outside this file in the whole
-    /// engine-owned Direct3D 11 path names a <c>Veldrid.SPIRV</c> type.
+    /// CPU. This is the native Direct3D 11 backend's only SPIRV-Cross entry point, and the one place the phase 3
+    /// SPIRV-Cross replacement changes for that path: nothing outside this file in the engine-owned Direct3D 11
+    /// path names a <c>Veldrid.SPIRV</c> type. Two other seats still call <c>SpirvCompilation</c> directly,
+    /// <see cref="ShaderValidation"/> and the Veldrid wrapper <see cref="VeldridGpuDevice"/>, and both remain
+    /// direct callers because they leave the graph only when Veldrid itself does.
     /// <para>
     /// WHY IT LIVES IN <c>KhaozEngine.Gpu</c> RATHER THAN IN THE BACKEND (decision P2, section 3 of
     /// <c>docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md</c>). The shader path needs SPIRV-Cross, and

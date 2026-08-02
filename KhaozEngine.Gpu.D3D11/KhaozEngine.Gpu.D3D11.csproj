@@ -11,7 +11,7 @@
          KhaozEngine.Gpu's own D3D11ThreadingProbe already proves keeps the Vortice assembly off the load path on
          macOS and Linux. With warnings as errors, CA1416 turns that boundary into a compiler-enforced rule rather
          than a convention. -->
-    <Description>Engine-owned native Direct3D 11 backend for the KhaozEngine.Gpu seam (opt-in, NOT in any umbrella; add explicitly like Physics.Bepu). Registers an IGpuBackendProvider for GpuBackendKind.Direct3D11Native through the one public entry point KhaozEngineD3D11.Register(), so a consumer opts in with a package reference plus one line at startup rather than a module initializer the CLR may never run. Targets net10.0 (not net10.0-windows) with [SupportedOSPlatformGuard("windows")] entry points over NoInlining Vortice bodies, so the assembly compiles and its device-free tests run on Linux and macOS while the Vortice.Direct3D11 interop stays off the load path there. The machine-capability probe checks the two hard device requirements the backend cannot work without, ConstantBufferOffsetting and MapNoOverwriteOnDynamicConstantBuffer. Carries no Veldrid edge of its own: the SPIRV-Cross shader path stays behind an internal, Veldrid-free cross-compile helper in KhaozEngine.Gpu.</Description>
+    <Description>Engine-owned native Direct3D 11 backend for the KhaozEngine.Gpu seam (opt-in, NOT in any umbrella, add explicitly like Physics.Bepu). Registers an IGpuBackendProvider for GpuBackendKind.Direct3D11Native through the one public entry point KhaozEngineD3D11.Register(), so a consumer opts in with a package reference plus one line at startup rather than a module initializer the CLR may never run. Targets net10.0 (not net10.0-windows) with [SupportedOSPlatformGuard("windows")] entry points over NoInlining Vortice bodies, so the assembly compiles and its device-free tests run on Linux and macOS while the Vortice.Direct3D11 interop stays off the load path there. The machine-capability probe checks the two hard device requirements the backend cannot work without, ConstantBufferOffsetting and MapNoOverwriteOnDynamicConstantBuffer. Carries no Veldrid edge of its own: the SPIRV-Cross shader path stays behind an internal, Veldrid-free cross-compile helper in KhaozEngine.Gpu.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>
@@ -27,7 +27,7 @@
     <PackageReference Include="Vortice.Direct3D11" />
     <!-- FXC. The backend calls D3DCompile itself to vs_5_0 / ps_5_0 / cs_5_0 (decision S1), which is what buys the
          disk DXBC cache, the register numbering and a CPU-only FXC leg in CI. Declared here with the package it
-         belongs to; the compile call itself lands with the shader path. -->
+         belongs to, the compile call itself lands with the shader path. -->
     <PackageReference Include="Vortice.D3DCompiler" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>

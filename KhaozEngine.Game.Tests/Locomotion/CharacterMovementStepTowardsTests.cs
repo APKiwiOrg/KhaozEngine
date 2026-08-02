@@ -104,14 +104,19 @@ public class CharacterMovementStepTowardsTests
         // #442 replaced refusal with sliding, so the honest assertion is that it goes DOWN.)
         var s = new MoveState { Position = new Vector3(0f, Tuning.CapsuleHalfHeight, 0f), Grounded = true };
         Vector3 startPos = s.Position;
+        // The altitude available has exactly two sources, and neither is a climb. One is the single StepHeight the
+        // ground clamp may seat the first tick's move onto, which is what turns the agent into a slider. The other
+        // is the run speed it arrives with: a contact deletes only the into-surface component, so the rest becomes
+        // signed up-slope motion on a frictionless face, worth at most RunSpeed^2 / 2g before gravity takes it all
+        // back. Measured peak here is 0.48 m of the 3.28 m that bounds it. Nothing REPEATS either of them, because
+        // there is no footing up there to arrive a second time from.
+        float ceiling = startPos.Y + Tuning.StepHeight + Tuning.RunSpeed * Tuning.RunSpeed / (2f * Tuning.Gravity);
         for (int i = 0; i < 60; i++)
         {
             s = CharacterMovement.StepTowards(s, new Vector2(1f, 0f), run: true, Dt, SlopeGround(47f), Tuning, SlopeNormal(47f));
             Assert.False(s.Grounded, $"tick {i} found footing on a 47 deg slope");
-            // The only altitude available is the single StepHeight the ground clamp may seat the first tick's move
-            // onto, which is what turns the agent into a slider. Nothing after it can climb.
-            Assert.True(s.Position.Y <= startPos.Y + Tuning.StepHeight,
-                $"tick {i} climbed the slope, y={s.Position.Y:F5}");
+            Assert.True(s.Position.Y <= ceiling,
+                $"tick {i} climbed the slope, y={s.Position.Y:F5} against a ceiling {ceiling:F5}");
             Assert.Equal(startPos.Z, s.Position.Z, 5);   // nothing steers the agent off the fall line
         }
         Assert.True(s.Position.X < startPos.X - 0.5f, $"the agent never slid back down, x={s.Position.X:F5}");

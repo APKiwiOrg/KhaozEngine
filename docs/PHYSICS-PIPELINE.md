@@ -142,7 +142,9 @@ player uses, orientation slerped between snapshots.
    `StepHeight` above the feet keeps only its along-face component, while a descent falls through) and the
    vertical physics (gravity terminal-clamp, jump with coyote/buffer, air control). A tick that starts in contact
    with too-steep ground takes the SLIDE instead: no traction means `Grounded` false, and gravity decomposed
-   against the surface accelerates it down the fall line. Then it resolves against the
+   against the surface accelerates it down the fall line (the contact deletes only the into-surface component, so
+   contour momentum and a signed up-slope fall line both survive it, and a capsule wedged between opposing faces
+   is supported for the tick its fall is arrested). Then it resolves against the
    world: a capsule **sweep** along the move, a downward **support probe** so the character stands on prop
    tops, and a **depenetration** push-out (`ComputePenetration`, iterated) to collide-and-slide. A `null`
    world means terrain-only (the analytic field still clamps Y).

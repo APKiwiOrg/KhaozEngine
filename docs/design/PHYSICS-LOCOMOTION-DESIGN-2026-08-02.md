@@ -270,3 +270,57 @@ or open air).
 Relation to the phases: this is a slice of phase 2's semantics (surfaces as contacts, not gates)
 delivered early on the analytic path where the pain is. #438 still owns the full
 contact-classification rebuild over the physics-query path (props, buildings, Bepu geometry).
+
+### Correction, 2026-08-02 (17.28.0): what adversarial review changed in the model above
+
+Three of the rules as written above are wrong, and this note records what replaced them rather than
+rewriting the history. Everything not named here still stands.
+
+**The contact deletes the into-surface component and NOTHING else.** Point 2 said the tangential
+component integrates into the carried velocities, and the first implementation read that as the
+FALL LINE alone: it resolved the carried velocity onto the down-slope tangent and rebuilt from that
+one scalar. That silently deleted the CONTOUR component, the horizontal in-plane direction
+perpendicular to the fall line, which costs no drop to follow at all. A 14 m/s fall running parallel
+to a wall was therefore stopped dead on the tick it merely brushed the wall. The resolve is now a
+full in-plane decomposition onto a fall-line tangent and a contour axis: only the normal component
+is dropped, both survivors are kept in full, and gravity accumulates on the fall line alone (it has
+no contour component to give, because the contour is level by construction).
+
+**The fall-line speed is SIGNED.** The first implementation clamped it non-negative and the code
+called that "the whole no-ascent property". It is not: it deleted a jump's upward along-face motion
+the instant the jump grazed a face. What actually carries the no-ascent property is having no
+FOOTING on steep ground, which point 3 already said. So the speed is signed, gravity accumulates
+downward along it whatever the sign, and a rising slide decelerates, reverses, and comes back down.
+A cycle may transiently reach slightly higher than a bare jump would (a frictionless face converts
+run speed into altitude, measured 2.22 m against a bare apex of 1.92 m at the shipped tuning), and
+it gains nothing across cycles, because the whole rise is handed back on the way down. The exploit
+invariants are unchanged and still pinned: never grounded on the face, and no net altitude across
+cycles.
+
+**A WEDGE is supported, and it is the one exception to point 2's "never grants support".** As
+written, a character in a concave crease (a V-gully, the inside of a cleft) soft-locks: its column
+reads steep so support is refused, the fall line of either wall points into the other so the wall
+contact removes the whole horizontal, and the ground clamp then swallows the descent that horizontal
+was meant to pay for. Measured 0 grounded ticks in 400, with a held jump that could never fire. So
+the termination invariant gains a fourth end: a slide terminates on walkable ground, in water, in
+open air, **or wedged between opposing faces**. The detector is stateless and tick-local (this
+tick's start position, resolved position, resolved vertical, dt and the tuning), and it arms only on
+an accumulated downward speed past `Gravity * max(CoyoteTime, dt)` whose demanded descent was
+swallowed - which is precisely what a jump-apex graze lacks, so the retired #440 ratchet gains
+nothing from it. Support is granted for that tick, so a character parked in a crease reports a
+low-duty-cycle grounded pulse (measured about one tick in five) rather than steady footing. That is
+enough to jump out, to refresh coyote, and to latch the arrested fall as a landing. **Consumer
+consequence, deliberately not designed around:** every pulse is an airborne-to-grounded transition,
+so `LandingImpactSpeed` latches on each one and a game reading it for a landing SOUND gets a rattle
+while the character sits in a crease. Only the first latch carries the real fall, and the rest carry
+the few ticks of gravity between pulses, so a consumer gating on impact speed for fall DAMAGE is
+unaffected. The same is true of a jagged crest whose columns alternate steep and walkable, which is
+pinned by its own fixture rather than left unknown.
+
+Two smaller corrections in the same pass. The slide's horizontal carry is clamped to the wire's own
+per-axis ceiling, because a slide's horizontal terminal is `MaxFallSpeed / tan(surface angle)` and a
+gate below about 21 degrees puts that past what `MovementState` can replicate - the sim would
+otherwise commit a velocity its own wire quantizes to a different one. And the terminal divide's
+`h` is floored by the sine of a VALIDATED gate, so a degenerate `MaxSlopeRadians` of zero or less
+(which calls level ground steep) cannot turn `MaxFallSpeed / h` into a division by the smallest
+non-zero magnitude a float normal can express.

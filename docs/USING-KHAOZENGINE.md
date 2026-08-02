@@ -4798,16 +4798,31 @@ rules replace it, both unconditional and neither a knob:
   `MoveTuning.StepHeight` above your feet is a wall contact: the into-face component of the move dies and the
   along-face component survives. So strafing along a cliff mid-jump keeps its lateral travel, and walking head-on
   into one makes no headway. It applies grounded and airborne, on the command path and the momentum path alike.
-- **No traction.** A surface steeper than `MaxSlopeRadians` never grants support: `Grounded` stays false, so no
+- **No traction.** A surface steeper than `MaxSlopeRadians` grants no support: `Grounded` stays false, so no
   jump, no coyote refresh and no landing latch on the face. You are still seated on it (the ground clamp forbids
   penetration) but you slide - gravity decomposes against the surface normal and its tangential component
   accelerates you down the fall line until you reach walkable ground (that landing is where `LandingImpactSpeed`
-  fires, from the fall the slide accumulated), open air, or water. Input steers ACROSS the fall line at the usual
-  `MoveTuning.AirControl`-scaled speed and has no authority along it at all, in either direction.
+  fires, from the fall the slide accumulated), open air, or water. Input steers along the CONTOUR (across the fall
+  line) at the usual `MoveTuning.AirControl`-scaled speed and has no authority along the fall line at all, in
+  either direction.
+
+**A contact deletes the into-surface component and nothing else** (17.28.0). Both in-plane survivors are kept in
+full: the CONTOUR speed, so a fast run across a face is not stopped by brushing it, and the FALL-LINE speed, which
+is signed, so a jump grazing a face keeps its up-slope motion and gravity takes it back rather than a clamp
+deleting it. The steer is a per-tick term and is not folded into the carry, so contour momentum evolves only by
+contact and holding a direction cannot pump it up.
+
+**A WEDGE is supported** (17.28.0), the one exception. A capsule pinched in a concave crease can neither be
+granted support by its own steep column nor slide out of it, so a tick whose accumulated fall is ARRESTED reports
+support instead: `Grounded` true, jump enabled, coyote refreshed, and the arrested fall latched as a landing. It
+is per-tick, so a character parked in a crease pulses grounded (about one tick in five) rather than standing. That
+pulse latches `LandingImpactSpeed` each time, so **a landing SOUND driven off the event alone will rattle there**;
+gate on the impact SPEED (only the first latch carries the real fall) and fall damage is unaffected.
 
 Climbing therefore self-defeats rather than being fenced: there is no footing on the face to climb from, and the
-jump ratchet is dead because landing on a face lands in a slide. Nothing can end up under terrain either - the
-wall projection plus the ground clamp carry that between them.
+jump ratchet is dead because landing on a face lands in a slide. The wedge rule cannot revive it either, since it
+needs an arrested accumulated fall, which is exactly what an apex graze lacks. Nothing can end up under terrain
+either - the wall projection plus the ground clamp carry that between them.
 
 Two consequences worth knowing. **Prop support always wins**: only the analytic terrain is traction-less, so a
 plank over a ravine, a ledge bolted to a cliff, or a stair against a mountain all still carry a character exactly

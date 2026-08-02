@@ -20,14 +20,17 @@ namespace KhaozEngine.Locomotion;
 //      is a wall contact. The into-face component of the move dies and the along-face component survives, so
 //      strafing along a cliff mid-jump keeps its lateral travel. Grounded and airborne, command path and momentum
 //      path, one function.
-//   2. NO TRACTION. Ground steeper than MoveTuning.MaxSlopeRadians never grants support, so gravity decomposes
+//   2. NO TRACTION. Ground steeper than MoveTuning.MaxSlopeRadians grants no support, so gravity decomposes
 //      against the surface and the character accelerates down the fall line until it reaches walkable ground, open
 //      air, or water. Climbing self-defeats because there is no footing to climb from, which is what retires the
-//      ascent gate rather than patching it a third time.
+//      ascent gate rather than patching it a third time. The ONE exception is a WEDGE (SlideWedged): a capsule
+//      whose fall is being arrested by opposing faces is physically held up by them, so that tick is supported.
+//      Without it a concave crease is a soft-lock, since the character can neither slide out of it nor jump.
 //
 // Everything here is pure scalar arithmetic in a fixed order over the same pure delegates both heads hold, so a
-// slide replays bit-identically through ClientPrediction.Reconcile. It adds NO carried state: the fall-line speed
-// lives in MoveState.HorizontalVelocity and MoveState.VerticalVelocity, both of which already ride the wire.
+// slide replays bit-identically through ClientPrediction.Reconcile. It adds NO carried state: the fall-line and
+// contour speeds both live in MoveState.HorizontalVelocity and MoveState.VerticalVelocity, both of which already
+// ride the wire, and the wedge rule reads nothing but the current tick's own values.
 public static partial class CharacterMovement
 {
     // How close the feet must be to steep ground under the CURRENT column for the character to be sliding ON it
@@ -48,6 +51,30 @@ public static partial class CharacterMovement
     // scale the command dead-zones and the momentum epsilon already use, squared for a length-squared test.
     private const float FaceNormalEpsilonSq = 1e-12f;
 
+    // The smallest slope gate the SLIDE will read, in radians (~0.06 degrees). Not a clamp on the tuning: a game
+    // keeps whatever MaxSlopeRadians it set, and the support decision, the wall contact and the slide contact all
+    // still ask IsSteepGround about the raw value. This floors ONE thing, the terminal divide's view of the gate,
+    // because that divide reads MaxFallSpeed / h and h is bounded below by sin(gate). A gate of zero (or negative,
+    // which calls even level ground steep) makes that bound zero, and the smallest non-zero h a float normal can
+    // express is about 3.5e-4 - so an unfloored divide hands back a terminal of ~144000 m/s on a surface a
+    // fraction of a degree off level. Floored, the worst case is MaxFallSpeed / sin(this), and the wire ceiling
+    // below is the second, independent bound on what can actually be committed.
+    private const float MinSlideGateRadians = 1e-3f;
+
+    // Per-axis ceiling on the horizontal velocity a slide may carry, in m/s, MIRRORING the wire's own clamp
+    // (KhaozEngine.NetWorld MovementState.MaxHorizontalSpeed, which Locomotion sits below and cannot reference).
+    // A slide's horizontal terminal is MaxFallSpeed / tan(surface angle), so it is largest on the SHALLOWEST face
+    // the gate still calls steep: 50 m/s at the shipped 45 degree gate, but 137 m/s at a 20 degree one and
+    // unbounded as the gate approaches level. Past this the wire would clamp what the sim committed, so the two
+    // heads and the replicated copy would disagree about the same tick. Clamping here instead means they cannot.
+    // SHALLOW-GATE CONSEQUENCE, and the reason this is a ceiling rather than a re-scale: when the clamp binds
+    // (any gate below about 21 degrees at the default MaxFallSpeed) the committed horizontal no longer matches
+    // the committed drop, so the velocity leaves the surface plane and the ground clamp starts correcting the
+    // slide every tick instead of never. That is the honest degradation for a tuning whose slides are faster
+    // than its own replication can describe, and it is strictly better than replicating a different number than
+    // the one the sim used. A test pins this value against the NetWorld constant it mirrors.
+    private const float SlideCarrySpeedCeiling = 127f;
+
     /// <summary>True when a ground normal is steeper than the tuning's walkable gate. The single reading of
     /// "too steep" for the whole step: the support decision, the wall contact, and the slide contact all ask this one
     /// question of the same value, in the same way the retired gate asked it - <see cref="MathF.Acos"/> of the
@@ -63,7 +90,13 @@ public static partial class CharacterMovement
     /// mismatched normal/height delegate pair can also produce) there is no face direction to read, so the movement
     /// direction stands in as the face's own: the face is met head-on and the whole move dies. That is the
     /// conservative direction, and the only one that keeps a mismatched pair from admitting a move under
-    /// terrain.</para></summary>
+    /// terrain.</para>
+    /// <para>THE RESULT IS NOT ALWAYS A UNIT VECTOR. When BOTH the normal's XZ and the velocity are degenerate there
+    /// is no direction to be had from either source, and the return is the ZERO vector rather than an invented axis.
+    /// Callers must read that as "this surface has no fall line", which is what it means: <c>AdvanceWallSlide</c>
+    /// removes nothing from the move (the into-face dot is 0), and <c>ResolveSlide</c>'s tangent collapses to
+    /// straight down, so the slide degenerates into the ordinary fall it should be. Only a mismatched normal/height
+    /// delegate pair can reach it at a sane gate, because a vertical-only normal is not steep ground.</para></summary>
     private static (float x, float z) FaceDirection(in Vector3 normal, Vector2 velocity)
     {
         float lenSq = normal.X * normal.X + normal.Z * normal.Z;
@@ -152,84 +185,173 @@ public static partial class CharacterMovement
 
     /// <summary>What one SLIDING tick resolves to: the advanced XZ, the velocity the step is asking for (which
     /// <see cref="MoveState.CommandedVelocity"/> exports and the server anomaly check measures denial against), the
-    /// FALL-LINE part of that velocity alone (which is what carries to the next tick), and the vertical velocity that
-    /// replaces the ordinary gravity integrate for this tick.</summary>
+    /// IN-PLANE part of that velocity (fall line plus contour, which is what carries to the next tick, and which
+    /// excludes the per-tick input steer), and the vertical velocity that replaces the ordinary gravity integrate
+    /// for this tick.</summary>
     private readonly record struct SlideStep(float X, float Z, Vector2 Commanded, Vector2 Carry, float VerticalVelocity);
 
-    /// <summary>One tick on ground too steep to stand on: gravity decomposed against the surface, integrated along
-    /// the fall line, and advanced through the same wall slide every other path uses.
+    /// <summary>The floor the terminal divide reads for a surface's horizontal normal magnitude: the sine of the
+    /// tuning's slope gate, VALIDATED into <c>[MinSlideGateRadians, pi/2]</c> first. A steep normal always has
+    /// <c>h > sin(MaxSlopeRadians)</c> by construction (the caller established <c>acos(ny) > MaxSlopeRadians</c>),
+    /// so on any sane tuning this floor is never the binding value and the divide is exactly what it always was.
+    /// It exists for the degenerate gate, where that guarantee is vacuous - see <see cref="MinSlideGateRadians"/>.
+    /// </summary>
+    private static float SlideFallLineFloor(in MoveTuning tuning)
+        => MathF.Sin(Math.Clamp(tuning.MaxSlopeRadians, MinSlideGateRadians, MathF.PI * 0.5f));
+
+    /// <summary>One tick on ground too steep to stand on: the carried velocity resolved into the surface plane,
+    /// gravity accumulated along the fall line, and the result advanced through the same wall slide every other path
+    /// uses.
     ///
-    /// <para>THE MATH, in one sentence: the surface has a unit down-slope tangent
-    /// <c>T = (ny*hx, -h, ny*hz)</c> - where <c>ny</c> is the normal's Y, <c>h = sqrt(1 - ny*ny)</c> is its
-    /// horizontal magnitude, and <c>(hx, hz)</c> is its XZ direction - gravity along that tangent is exactly
-    /// <c>g . T = Gravity * h</c>, and the whole slide is the scalar speed along <c>T</c>, integrated by that one
-    /// acceleration and read back out as <c>speed * T</c>. So the horizontal acceleration is
-    /// <c>Gravity * ny * h</c> down the fall line and the vertical is <c>-Gravity * h * h</c>, which are the two
-    /// components of <c>g - (g.n)n</c> written from the same two numbers. A vertical wall (<c>ny</c> 0, <c>h</c> 1)
+    /// <para>THE SURFACE FRAME. The surface has a unit down-slope tangent <c>T = (ny*hx, -h, ny*hz)</c> and a unit
+    /// CONTOUR <c>C = (-hz, 0, hx)</c> - where <c>ny</c> is the normal's Y, <c>h = sqrt(1 - ny*ny)</c> is its
+    /// horizontal magnitude, and <c>(hx, hz)</c> is its XZ direction. <c>T</c>, <c>C</c> and the normal are mutually
+    /// perpendicular unit vectors, so any velocity splits into exactly three scalars with nothing left over. Gravity
+    /// along the tangent is exactly <c>g . T = Gravity * h</c>, and along the contour exactly zero (the contour is
+    /// level by construction, which is why following it costs no drop). A vertical wall (<c>ny</c> 0, <c>h</c> 1)
     /// gives free fall with no horizontal, and a 45 degree face gives an equal split - both correct by
     /// inspection.</para>
     ///
-    /// <para>WHY A SCALAR AND NOT TWO INTEGRATORS. Resolving the carried velocity onto <c>T</c> and rebuilding it
-    /// from the result keeps the horizontal and the vertical EXACTLY consistent with the surface, every tick, for
-    /// free. Two consequences fall out. The tick a character first meets the face, its into-surface velocity is
-    /// discarded and its along-surface velocity is kept, which is the inelastic contact a real fall onto a cliff has
-    /// (grazing a near-vertical face keeps essentially all of the fall, hitting a 46 degree one keeps about
-    /// seven-tenths). And on a planar face the committed drop is precisely the drop the committed horizontal travel
-    /// needs, so the ground clamp never has to correct the slide and the character stays glued to the surface
-    /// instead of bouncing off it.</para>
+    /// <para>WHAT DIES AT CONTACT, exactly: the INTO-SURFACE component alone. It is not subtracted, it is simply
+    /// never read - the resolve projects onto <c>T</c> and <c>C</c> and rebuilds from those two, so the normal
+    /// component is gone by construction. That is the inelastic half of the contact and the only thing about it that
+    /// is inelastic. BOTH survivors are kept in full:
+    /// <list type="bullet">
+    /// <item>the CONTOUR speed, which is what a fast run ACROSS a face carries. Deleting it (which the first cut of
+    /// this model did, by carrying the fall line alone) stopped a 14 m/s fall running parallel to a wall dead in one
+    /// tick, on the tick it merely BRUSHED the wall it was running alongside. Gravity never touches it, so on a
+    /// planar face it is conserved, and the character keeps running along the contour while it slides.</item>
+    /// <item>the FALL-LINE speed, and it is SIGNED. A negative value is motion UP the face, which is exactly what a
+    /// jump grazing one arrives with, and clamping it to zero deleted the whole launch on the contact tick. Gravity
+    /// accumulates DOWNWARD along the fall line whatever the sign, so a rising slide decelerates, reverses, and comes
+    /// back down on its own. That is not a route back to the #440 jump ratchet: the ratchet needed FOOTING on the
+    /// face to re-launch from, steep ground grants none, and the one thing that does grant it here (the wedge rule
+    /// below) cannot arm on a rising or apex tick because it requires an accumulated DOWNWARD speed. So a cycle may
+    /// reach a transiently higher apex than a bare jump would - the face converts run speed into altitude, which is
+    /// what a frictionless surface does - and it gains nothing across cycles, because the whole rise is handed back
+    /// on the way down.</item>
+    /// </list>
+    /// Because the rebuilt velocity lies entirely in the surface plane, on a planar face the committed drop is
+    /// precisely the drop the committed horizontal travel needs: the ground clamp never has to correct the slide and
+    /// the character stays glued to the surface instead of bouncing off it.</para>
     ///
-    /// <para>THE SPEED NEVER GOES NEGATIVE, and that is the whole no-ascent property. A negative fall-line speed is
-    /// motion UP the face, and a surface you have no purchase on cannot carry you up it: clamping at zero is what
-    /// makes the retired jump-ratchet exploit (#440) structurally unavailable rather than fenced off. Combined with
-    /// the input rule below, the total horizontal velocity of a sliding character never has an up-slope component at
-    /// all, so its destination column is never above its current one and the ground clamp has nothing to lift.</para>
-    ///
-    /// <para>INPUT STEERS ACROSS THE FALL LINE ONLY, at the same <see cref="MoveTuning.AirControl"/>-scaled speed the
+    /// <para>INPUT STEERS ALONG THE CONTOUR ONLY, at the same <see cref="MoveTuning.AirControl"/>-scaled speed the
     /// ordinary airborne path already commands - no new knob. The fall-line component of the command is removed in
     /// BOTH directions, not only up-slope: a character with no footing can neither push itself up the face nor push
-    /// itself down it, and the across-slope direction is also the only one that keeps the body on the surface (it
-    /// follows the contour, so it needs no drop to pay for). Allowing a down-slope push instead buys a hop off the
-    /// surface every tick it is held, which is a visible bounce on any moderate slope.</para>
+    /// itself down it, and the contour is also the only direction that keeps the body on the surface (it needs no
+    /// drop to pay for). Allowing a down-slope push instead buys a hop off the surface every tick it is held, which
+    /// is a visible bounce on any moderate slope.</para>
+    ///
+    /// <para>HOW THE STEER COMPOSES WITH THE CONTOUR MOMENTUM, exactly, because both now live on the same axis. The
+    /// CARRY (what feeds the next tick) is the plane-resolved velocity plus gravity's fall-line step and NOTHING
+    /// ELSE - the steer is not folded into it. The COMMANDED velocity for this tick is that carry plus one tick's
+    /// steer. So the contour speed evolves only by CONTACT (a new face re-resolves it, a wall slide sheds it through
+    /// <c>ClipToAchieved</c>) and never by held input, while the steer is a per-tick term of at most the
+    /// air-control-scaled walk or run speed that appears the tick a direction is held and is gone the tick it is
+    /// released. A player therefore steers across a slide at a fixed rate ON TOP OF whatever contour momentum the
+    /// fall gave them, and cannot pump the two into each other: holding a direction for a hundred ticks adds one
+    /// tick's worth of speed, a hundred times over, to the position, and zero to the carry.</para>
     ///
     /// <para>TERMINAL VELOCITY is <see cref="MoveTuning.MaxFallSpeed"/>, read through the surface: the clamp is
     /// applied to the fall-line speed as <c>MaxFallSpeed / h</c> so that the VERTICAL component lands exactly on the
     /// terminal the ordinary fall obeys, and the horizontal stays consistent with it rather than growing without
-    /// bound and floating the character off the face. <c>h</c> is at least <c>sin(MaxSlopeRadians)</c> here (the
-    /// caller has already established a steep normal), so the divide is safe.</para></summary>
+    /// bound and floating the character off the face. It is applied to the MAGNITUDE, so the (unreachable at any
+    /// shipped tuning) up-slope side is bounded too. <c>h</c> is floored by <see cref="SlideFallLineFloor"/> so a
+    /// degenerate gate cannot turn the divide into a near-zero one, and the rebuilt horizontal is then clamped to
+    /// <see cref="SlideCarrySpeedCeiling"/> so the sim can never commit a velocity its own wire cannot
+    /// carry.</para></summary>
     private static SlideStep ResolveSlide(in MoveState state, Vector2 moveDir, float speedFraction, bool run,
         float dt, in MoveTuning tuning, in Vector3 normal, Func<float, float, Vector3>? groundNormal,
         Func<float, float, float> groundHeight, float speedScale, float halfHeight)
     {
-        // The surface frame. ny is clamped and h is DERIVED from it rather than measured, so the tangent is a unit
-        // vector by construction even if a consumer's delegate hands back a normal that is not quite normalized.
-        // Only the DIRECTION comes from the raw XZ.
+        // The surface frame. ny is clamped and h is DERIVED from it rather than measured, so the tangent and the
+        // contour are unit vectors by construction even if a consumer's delegate hands back a normal that is not
+        // quite normalized. Only the DIRECTION comes from the raw XZ - and when that is degenerate too,
+        // FaceDirection hands back the zero vector and the frame collapses to a straight-down tangent (see there).
         float ny = Math.Clamp(normal.Y, 0f, 1f);
         float h = MathF.Sqrt(MathF.Max(0f, 1f - ny * ny));
         (float hx, float hz) = FaceDirection(normal, moveDir);
         float tx = ny * hx, ty = -h, tz = ny * hz;
+        float cx = -hz, cz = hx;
 
-        // The carried velocity read as a fall-line speed, never upward, then accelerated by gravity along the
-        // tangent and capped at the terminal the vertical axis obeys.
-        float speed = state.HorizontalVelocity.X * tx + state.VerticalVelocity * ty + state.HorizontalVelocity.Y * tz;
-        if (speed < 0f) speed = 0f;
-        speed += tuning.Gravity * h * dt;
-        float terminal = h > FaceNormalEpsilonSq ? tuning.MaxFallSpeed / h : tuning.MaxFallSpeed;
-        if (speed > terminal) speed = terminal;
-        var carry = new Vector2(speed * tx, speed * tz);
-        float vVel = speed * ty;
+        // The carried velocity split onto the two in-plane axes. The third component (along the normal) is never
+        // read, and that omission IS the contact.
+        float fall = state.HorizontalVelocity.X * tx + state.VerticalVelocity * ty + state.HorizontalVelocity.Y * tz;
+        float contour = state.HorizontalVelocity.X * cx + state.HorizontalVelocity.Y * cz;
 
-        // The steer: the commanded velocity with its whole fall-line component removed.
+        // Gravity accumulates along the fall line alone, then the terminal the vertical axis obeys, read through
+        // the surface and floored against a degenerate gate.
+        fall += tuning.Gravity * h * dt;
+        float terminal = tuning.MaxFallSpeed / MathF.Max(h, SlideFallLineFloor(tuning));
+        if (fall > terminal) fall = terminal;
+        else if (fall < -terminal) fall = -terminal;
+
+        var carry = new Vector2(
+            Math.Clamp(fall * tx + contour * cx, -SlideCarrySpeedCeiling, SlideCarrySpeedCeiling),
+            Math.Clamp(fall * tz + contour * cz, -SlideCarrySpeedCeiling, SlideCarrySpeedCeiling));
+        float vVel = fall * ty;
+
+        // The steer: this tick's commanded velocity with its whole fall-line component removed, which leaves it on
+        // the contour axis alone. Added to the commanded velocity only, never to the carry.
         Vector2 commanded = carry;
         if (speedFraction > 0f)
         {
             float inputSpeed = (run ? tuning.RunSpeed : tuning.WalkSpeed) * speedScale * speedFraction;
-            float ux = moveDir.X * inputSpeed, uz = moveDir.Y * inputSpeed;
-            float fall = ux * hx + uz * hz;
-            commanded = new Vector2(carry.X + (ux - fall * hx), carry.Y + (uz - fall * hz));
+            float steer = moveDir.X * inputSpeed * cx + moveDir.Y * inputSpeed * cz;
+            commanded = new Vector2(carry.X + steer * cx, carry.Y + steer * cz);
         }
 
         (float x, float z) = AdvanceWallSlide(state.Position.X, state.Position.Z, commanded,
             commanded != Vector2.Zero, dt, tuning, groundNormal, groundHeight, state.Position.Y - halfHeight);
         return new SlideStep(x, z, commanded, carry, vVel);
+    }
+
+    /// <summary>Whether this SLIDING tick's fall was ARRESTED by opposing geometry rather than delivered: the
+    /// character is wedged between two faces neither of which it can slide off, and a wedged capsule is physically
+    /// supported whatever its column's normal says.
+    ///
+    /// <para>THE BUG THIS CLOSES. In a concave crease - a V-gully, the inside of a rock cleft - the column under the
+    /// feet reads steep, so support is refused. The fall line of either wall points straight into the other, so
+    /// <see cref="AdvanceWallSlide"/> removes the whole horizontal, and the ground clamp then swallows the entire
+    /// descent that horizontal was supposed to pay for. Nothing moves, nothing grounds, and a held jump can never
+    /// fire because the character is never grounded and its coyote window expired long ago. Measured: 0 grounded
+    /// ticks in 400, with the horizontal sign-flipping between the two walls forever.</para>
+    ///
+    /// <para>THE TEST, and why it is exactly two conjuncts. First, the tick's resolved vertical must be
+    /// significantly DOWNWARD, so that gravity has genuinely accumulated a fall for the geometry to arrest. The bar
+    /// is <c>Gravity * max(CoyoteTime, dt)</c>: the coyote window is the tuning's own statement of how long a body
+    /// may be off the ground before that counts as a real fall rather than a blip, so the speed gravity reaches over
+    /// it is the tuning's own reading of "actually falling", and the one-tick floor keeps a tuning with no coyote
+    /// window at all from lowering the bar to any downward motion whatsoever. Second, the committed descent must
+    /// fall SHORT of the descent the resolved velocity demanded, by at least one arming tick's worth. On a planar
+    /// face those two are equal by construction (the resolve puts the velocity in the surface plane, so the drop the
+    /// travel needs is exactly the drop it takes), so the shortfall is float noise and this never fires. Only
+    /// geometry pushing back produces a real one.</para>
+    ///
+    /// <para>WHY THE JUMP RATCHET CANNOT EXPLOIT IT. The arming condition is precisely what a jump-apex graze
+    /// LACKS. At an apex the vertical speed is near zero by definition, and it stays under the bar for the whole
+    /// 0.125 m either side of the top at the shipped tuning - so a character grazing a face at the top of its arc
+    /// gets no footing, no re-launch, and no ratchet. Getting footing requires arriving with a real accumulated
+    /// fall AND having it arrested, which is a wedge and not an apex.</para>
+    ///
+    /// <para>STATELESS AND TICK-LOCAL. Every input is this tick's own: the position it started at, the position it
+    /// resolved to, its resolved vertical, dt and the tuning. Nothing is carried, nothing new rides the wire, and a
+    /// reconcile replay of the same tick reaches the same answer. Support is granted for THAT TICK only, so a
+    /// character left sitting in a crease reports a low-duty-cycle grounded pulse (support, then the next tick's
+    /// fresh gravity, then support again) rather than steady footing - which is enough to jump, to refresh coyote,
+    /// and to latch the arrested fall as a landing, and is honest about a surface that is genuinely not a floor.
+    /// </para></summary>
+    /// <param name="startY">The capsule-centre Y the tick began at.</param>
+    /// <param name="resolvedY">The capsule-centre Y the tick committed, after the ground clamp.</param>
+    /// <param name="slideVVel">The vertical velocity the slide resolved for this tick (negative when falling).</param>
+    /// <param name="dt">Timestep in seconds.</param>
+    /// <param name="tuning">Carries the gravity and coyote window the arming speed is read from.</param>
+    private static bool SlideWedged(float startY, float resolvedY, float slideVVel, float dt, in MoveTuning tuning)
+    {
+        float arming = tuning.Gravity * MathF.Max(tuning.CoyoteTime, dt);
+        if (slideVVel > -arming) return false;
+        float demanded = -slideVVel * dt;       // > 0: what this tick's velocity asked the capsule to descend
+        float delivered = startY - resolvedY;   // what the ground clamp actually let through
+        return demanded - delivered >= arming * dt;
     }
 }

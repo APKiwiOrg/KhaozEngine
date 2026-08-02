@@ -98,23 +98,52 @@ it is admitted, and rule 2 is what makes doing so worthless. The projected move 
 only if it still lands in a wall, which happens in a concave corner and is what keeps an XZ from ever being
 committed under terrain.
 
-**2. No traction.** A surface steeper than `MaxSlopeRadians` never grants support. `Grounded` stays false, so
-there is no jump, no coyote refresh and no landing latch on the face. The character is still SEATED on it (the
-ground clamp forbids penetration) but it slides: gravity is decomposed against the surface normal and the
-tangential component integrates into the carried `MoveState.VerticalVelocity` and `MoveState.HorizontalVelocity`,
+**2. No traction.** A surface steeper than `MaxSlopeRadians` grants no support. `Grounded` stays false, so there
+is no jump, no coyote refresh and no landing latch on the face. The character is still SEATED on it (the ground
+clamp forbids penetration) but it slides: gravity is decomposed against the surface normal and the tangential
+component integrates into the carried `MoveState.VerticalVelocity` and `MoveState.HorizontalVelocity`,
 accelerating it down the fall line until it reaches walkable ground (that landing is where `LandingImpactSpeed`
-fires, from the fall the slide accumulated), open air, or water. The whole thing is one scalar: the surface has a
-unit down-slope tangent `T = (ny*hx, -h, ny*hz)` from the normal's Y and its horizontal direction, gravity along
-it is exactly `Gravity * h`, and the velocity is that speed times `T`. Resolving the carried velocity onto `T`
-every tick is what keeps the horizontal and the vertical exactly consistent with the surface, so the committed
-drop is precisely the drop the committed horizontal travel needs and the character stays glued to the face
-instead of bouncing off it. The speed is never negative, which is the whole no-ascent property: a surface you have
-no purchase on cannot carry you UP it. Terminal is `MaxFallSpeed`, read through the surface so the vertical
-component lands exactly on it.
+fires, from the fall the slide accumulated), open air, or water.
 
-Input while sliding steers ACROSS the fall line at the usual `AirControl`-scaled speed and has no authority along
-it in either direction - no new knob. Up-slope authority would be traction by another name, and down-slope
+The surface frame is two unit vectors from the normal's Y and its horizontal direction: a down-slope tangent
+`T = (ny*hx, -h, ny*hz)` and a level contour `C = (-hz, 0, hx)`. Gravity along `T` is exactly `Gravity * h`, and
+along `C` exactly zero. **A contact deletes the into-surface component and nothing else** (17.28.0): the resolve
+projects the carried velocity onto `T` and `C` and rebuilds from those two, so the normal component is gone by
+construction and both survivors are kept in full.
+
+- The **contour** speed is what a fast run ACROSS a face carries, and following it costs no drop at all. Carrying
+  the fall line alone (as 17.27.0 did) stopped a 14 m/s fall running parallel to a wall dead on the tick it merely
+  brushed the wall.
+- The **fall-line** speed is SIGNED. A jump grazing a face arrives with up-slope motion, and clamping it to zero
+  deleted the launch outright. Gravity accumulates downward along it whatever the sign, so a rising slide
+  decelerates, reverses, and comes back down. What carries the no-ascent property is having no FOOTING, not a
+  clamp: there is nothing to re-launch from up there, so a cycle hands the whole rise back.
+
+Because the rebuilt velocity lies entirely in the surface plane, the committed drop is precisely the drop the
+committed horizontal travel needs, so the character stays glued to the face instead of bouncing off it. Terminal
+is `MaxFallSpeed`, read through the surface so the vertical component lands exactly on it, and the horizontal
+carry is clamped to the wire's own per-axis ceiling so the sim can never commit a velocity `MovementState` would
+replicate as a different number (only reachable on a gate below about 21 degrees).
+
+Input while sliding steers along the CONTOUR at the usual `AirControl`-scaled speed and has no authority along the
+fall line in either direction - no new knob. Up-slope authority would be traction by another name, and down-slope
 authority buys a hop off the surface on every tick it is held, which is a visible bounce on any moderate slope.
+The steer is a per-tick term on the commanded velocity and is **not** folded into the carry, so contour speed
+evolves only by contact and never by held input: a player steers across a slide at a fixed rate on top of whatever
+contour momentum the fall gave them, and cannot pump the two into each other.
+
+**A WEDGE is supported** (17.28.0), the one exception to rule 2. A capsule pinched in a concave crease (a V-gully,
+the inside of a cleft) can neither be granted support by its own steep column nor slide out, because the fall line
+of either wall points into the other and the wall contact removes the whole horizontal - so 17.27.0 soft-locked
+there, with a held jump that could never fire. A tick whose accumulated fall is ARRESTED (a downward speed past
+`Gravity * max(CoyoteTime, dt)` whose demanded descent the ground clamp swallowed) reports support instead:
+`Grounded` true, jump enabled, coyote refreshed, and the arrested fall latched as a landing. The test is stateless
+and tick-local, and it cannot arm at a jump apex, where the vertical speed is near zero by definition - which is
+what keeps the #440 ratchet dead. Support is per-tick, so a character parked in a crease reports a
+low-duty-cycle grounded pulse (about one tick in five) rather than steady footing. **Consumer note:** each pulse
+is an airborne-to-grounded transition, so `LandingImpactSpeed` latches on each one and a landing SOUND driven off
+the event alone will rattle. Only the first latch carries the real fall, so gate on the impact SPEED for fall
+damage and nothing changes.
 
 Consequences worth knowing. **Climbing self-defeats** rather than being fenced, so the #440 jump ratchet is dead:
 landing on a face lands in a slide. **Prop support always wins** - only the analytic terrain is traction-less, so

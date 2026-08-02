@@ -216,22 +216,28 @@ public static partial class CharacterMovement
         //    AIRBORNE tick under MoveTuning.AirMomentum takes the momentum resolve instead
         //    (CharacterMovement.Momentum.cs), which flies the carried velocity rather than recomputing the horizontal
         //    from scratch. Grounded ticks and the default (knob off) never reach it, so they are arithmetically
-        //    identical to the pre-momentum step. A SLIDING tick overrides BOTH: its horizontal is the fall line, not
-        //    the command, whatever the momentum knob says (the knob governs free flight, which a slide is not).
+        //    identical to the pre-momentum step. A SLIDING tick takes NEITHER: its horizontal is the surface plane,
+        //    not the command, whatever the momentum knob says (the knob governs free flight, which a slide is not),
+        //    so the slide is evaluated FIRST and the two discarded resolves are never run at all.
+        // `carrySeed` is what CARRIES to the next tick: the commanded velocity everywhere except on a slide, where it
+        // is the IN-PLANE part alone (fall line plus contour), so the contour input steer cannot accumulate into the
+        // carry tick after tick.
         float wade = WadeSpeedScale(s.Position.X, s.Position.Z, s.Position.Y - halfH, t, medium);
         float speedScale = (s.Grounded ? 1f : t.AirControl) * wade * s.SpeedScale;
-        (float dx, float dz, float commandedSpeed) = DesiredHorizontalCore(s.Position.X, s.Position.Z, moveDir, speedFraction, run, dt, t, groundNormal, groundHeight, s.Position.Y - halfH, speedScale);
-        Vector2 commandedVel = moveDir * commandedSpeed;
-        if (t.AirMomentum && !s.Grounded)
-            (dx, dz, commandedVel) = AirborneMomentumMove(s, moveDir, speedFraction, run, dt, t, groundNormal, groundHeight, wade);
-        // What CARRIES to the next tick, which is the commanded velocity everywhere except on a slide: there it is
-        // the FALL-LINE part alone, so the across-slope input steer cannot accumulate into the carry tick after tick.
-        Vector2 carrySeed = commandedVel;
-        float slideVVel = 0f;
+        float dx, dz, slideVVel = 0f;
+        Vector2 commandedVel, carrySeed;
         if (sliding)
         {
             SlideStep slide = ResolveSlide(s, moveDir, speedFraction, run, dt, t, slideNormal, groundNormal, groundHeight, speedScale, halfH);
             (dx, dz, commandedVel, carrySeed, slideVVel) = (slide.X, slide.Z, slide.Commanded, slide.Carry, slide.VerticalVelocity);
+        }
+        else
+        {
+            (dx, dz, float commandedSpeed) = DesiredHorizontalCore(s.Position.X, s.Position.Z, moveDir, speedFraction, run, dt, t, groundNormal, groundHeight, s.Position.Y - halfH, speedScale);
+            commandedVel = moveDir * commandedSpeed;
+            if (t.AirMomentum && !s.Grounded)
+                (dx, dz, commandedVel) = AirborneMomentumMove(s, moveDir, speedFraction, run, dt, t, groundNormal, groundHeight, wade);
+            carrySeed = commandedVel;
         }
         if (clampXz is not null) { Vector2 c = clampXz(dx, dz); dx = c.X; dz = c.Y; }
 
@@ -405,6 +411,22 @@ public static partial class CharacterMovement
         {
             grounded = false;
             tSinceGround = s.TimeSinceGrounded + dt;
+        }
+
+        // 4-wedge. THE ONE EXCEPTION TO "STEEP GROUND GRANTS NOTHING". A capsule pinched between two faces neither
+        //    of which it can slide off is HELD UP by them, whatever the normal under its own column says, and the
+        //    rule above refusing it support is what made a concave crease a soft-lock: no support, no slide out (the
+        //    wall contact removes the whole horizontal), and no jump either, since the character is never grounded
+        //    and its coyote window expired long ago. SlideWedged (CharacterMovement.Slide.cs) reads that arrest off
+        //    this tick alone - a real accumulated fall, and a committed descent far short of the one the resolved
+        //    velocity demanded - and it cannot arm at a jump apex, which is what keeps the #440 ratchet dead.
+        //    Support is granted for THIS TICK: the landing latch below then fires from the arrested fall, exactly as
+        //    a landing anywhere else does, because this IS one.
+        if (!grounded && sliding && SlideWedged(s.Position.Y, pos.Y, vVel, dt, t))
+        {
+            grounded = true;
+            tSinceGround = 0f;
+            if (vVel < 0f) vVel = 0f;
         }
 
         // 4a. Stair-climb ground-stick (with a step-contact hysteresis). The paced step-up (4b) commits the capsule

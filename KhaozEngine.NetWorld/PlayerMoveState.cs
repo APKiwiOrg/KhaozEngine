@@ -167,6 +167,14 @@ public struct PlayerMoveState : IPredictedState<PlayerMoveState>
             HorizontalVelocity = new Vector2(
                 MovementState.DecodeHorizontalVelocity(movement.HorizontalVelocityXQ),
                 MovementState.DecodeHorizontalVelocity(movement.HorizontalVelocityZQ)),
+            // Restore the CARRIED heading into the reconcile basis, for the same reason as the two lines above and
+            // with the same shape of failure. With a finite MoveTuning.FacingTurnSpeed this tick's heading is the
+            // previous tick's plus a bounded shortest-arc step, so a replay needs the authoritative heading to know
+            // where it is turning FROM. Absent from this seed it would not lag: Reconcile's unconditional overwrite
+            // would reset it to 0 on every correction and the character would restart its turn from due -Z several
+            // times a second. Reads 0 - a legal heading, facing -Z - for a pre-facing state, so an old basis degrades
+            // to a definite direction rather than to a NaN or a spin.
+            FacingYaw = MovementState.DecodeFacingYaw(movement.FacingYawQ),
             // Carry the sharded head's sim-local commanded velocity back out, so ShardedWorldServer's post-tick anomaly
             // check measures against the velocity the cell sim actually asked for. Rides no wire, so on a client (and
             // across a shard handoff) this is zero, which reads as no denial rather than a spurious one.

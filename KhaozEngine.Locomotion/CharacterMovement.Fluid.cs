@@ -44,10 +44,13 @@ public static partial class CharacterMovement
     /// the buoyancy settle velocity while swimming (gravity does not run), so a leftover fall/jump velocity eases out
     /// through the same damped settle rather than snapping. The terrain floor is still respected (the capsule never
     /// sinks below ground + half-height, e.g. in shallow water at the edge). Deterministic: pure float math over the
-    /// pure provider sample.</summary>
+    /// pure provider sample.
+    /// <para>It is its OWN facing site. This method returns early out of <c>StepCore</c>, so the heading update has to
+    /// run here too or a swimmer would be the one path on which the character silently cannot turn - the rule itself
+    /// is the same <c>ResolveFacing</c> every other path calls, with the same camera-or-command target.</para></summary>
     private static MoveState SwimStep(in MoveState state, Vector2 moveDir, float speedFraction, bool jump, float dt,
         in MoveTuning t, in MovementMedium medium, Func<float, float, float> groundHeight,
-        Func<float, float, Vector2>? clampXz, float halfH)
+        Func<float, float, Vector2>? clampXz, float halfH, float? faceYaw = null)
     {
         // Horizontal: swim speed (run has no effect while swimming), scaled by the medium's zone multiplier so a
         // swamp/current still composes, clamped >= 0 so a hostile negative zone scale cannot reverse travel. Uses the
@@ -129,10 +132,14 @@ public static partial class CharacterMovement
             // rather than clipped from it, so a character who flies into a lake drops the arc at the waterline
             // instead of skating across the surface at its takeoff speed for the next second.
             HorizontalVelocity = commandedVel,
+            // The heading turns while swimming exactly as it does on land: the water changes what the body does, not
+            // which way it points. Carried, so a mid-turn survives the swim rather than restarting at the shoreline.
+            FacingYaw = ResolveFacing(state.FacingYaw, moveDir, faceYaw, dt, t),
         };
         // Defense-in-depth (as the land path): a finite input must never yield a non-finite result; hold the last
         // good state if a misbehaving provider/ground/tuning injected a NaN/Inf.
-        return IsFinite(result.Position) && float.IsFinite(result.VerticalVelocity) ? result : state;
+        return IsFinite(result.Position) && float.IsFinite(result.VerticalVelocity) &&
+               float.IsFinite(result.FacingYaw) ? result : state;
     }
 
     /// <summary>The horizontal-speed multiplier the fluid medium imposes at a sample: 1 (no penalty) on dry land or

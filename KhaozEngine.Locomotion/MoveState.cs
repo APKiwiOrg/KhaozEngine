@@ -189,4 +189,29 @@ public struct MoveState
     /// sim-local field). A remote that wants landing VFX derives the transition from the replicated <c>Grounded</c> and
     /// <see cref="VerticalVelocity"/> it already receives. <c>default</c> 0 is byte-identical to a pre-feature state.</summary>
     public float LandingImpactSpeed;
+
+    /// <summary>The character's AUTHORITATIVE heading this tick, in radians, in the SAME CONVENTION as
+    /// <see cref="MoveCommand.CameraYaw"/>: 0 faces world -Z and a positive angle swings toward -X, which is the basis
+    /// <c>CharacterMovement</c> already resolves a camera-relative command in (forward is
+    /// <c>(-sin yaw, 0, -cos yaw)</c>). So a character walking straight forward under camera yaw <c>y</c> faces exactly
+    /// <c>y</c>, and while <see cref="MoveCommand.FaceCamera"/> is held the heading converges to
+    /// <see cref="MoveCommand.CameraYaw"/> EXACTLY - bit-identically at the default
+    /// <see cref="MoveTuning.FacingTurnSpeed"/>, which snaps, and exactly on the tick a finite rate closes the last of
+    /// the gap. Use <see cref="CharacterMovement.FacingYawOf"/> to convert a world XZ direction into it, and
+    /// <see cref="CharacterMovement.WrapYaw"/> to canonicalise one. A consumer whose gameplay basis is the opposite
+    /// (yaw 0 = +Z, or a left-handed sweep) converts at its own boundary, once.
+    /// <para>CANONICAL RANGE <c>[-pi, pi)</c>, low end inclusive: every value the step writes is wrapped into it, so a
+    /// long camera sweep can never accumulate a growing angle and the wire quantizer has a bounded input. <c>default</c>
+    /// is 0, which is a legal heading (-Z) rather than a sentinel, so a state that never went through a step reads as
+    /// facing forward.</para>
+    /// <para>It is CARRIED state, not a per-tick fact: with a finite <see cref="MoveTuning.FacingTurnSpeed"/> this
+    /// tick's heading is the previous tick's plus a bounded shortest-arc step, so it must survive reconciliation.
+    /// That is why it rides the wire as <c>MovementState.FacingYawQ</c> (a 16-bit turn fraction) where the one-tick
+    /// <see cref="LandingImpactSpeed"/> latch deliberately does not: <c>PlayerMoveState.From</c> rebuilds the whole
+    /// reconcile basis from the replicated components ALONE, so a heading missing from that seed would not lag behind
+    /// the server, it would reset to 0 on every correction and restart the turn from due -Z several times a second.</para>
+    /// It affects NO position output. The step reads it, turns it, and writes it back, and nothing downstream of it
+    /// feeds the move resolve - which is what makes every existing game bit-identical on position across this
+    /// feature.</summary>
+    public float FacingYaw;
 }

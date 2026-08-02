@@ -119,7 +119,9 @@ public sealed class PlayerMovementSystem : ISystem
                 // Owner is the only simulator. Zero the per-tick step OUTPUTS on the way out: this entity did not step,
                 // so leaving last tick's velocity behind would have the post-tick anomaly check measure a motionless
                 // entity against a full stride of intended travel and read it as a denial, and leaving last tick's
-                // landing impact behind would read as a second landing on a tick where nothing moved at all.
+                // landing impact behind would read as a second landing on a tick where nothing moved at all. CARRIED
+                // state is deliberately left alone here (the heading, the arc, the swim flag), because zeroing a
+                // carried field on a skipped tick would spin every ghost back to facing -Z rather than clear an event.
                 ms.CommandedVelocity = Vector2.Zero;
                 ms.LandingImpactSpeed = 0f;
                 return;
@@ -161,6 +163,14 @@ public sealed class PlayerMovementSystem : ISystem
                 HorizontalVelocity = new Vector2(
                     MovementState.DecodeHorizontalVelocity(ms.HorizontalVelocityXQ),
                     MovementState.DecodeHorizontalVelocity(ms.HorizontalVelocityZQ)),
+                // Carry the heading IN for the same reason as the arc above, and it is not optional even at the
+                // snapping default: with a finite MoveTuning.FacingTurnSpeed the step turns FROM this value, so a
+                // heading re-derived from 0 every tick would never get anywhere at all on this head. It costs the
+                // same per-tick round trip through the wire quantum, and a heading mid-turn is an INTEGRATOR (this
+                // tick's value is the last one plus a fixed step), so unlike the arc the remainder rounds the same
+                // way every tick and accumulates - bounded by half a quantum per turning tick, a fraction of a
+                // degree over any real turn, and it unwinds the moment the turn lands exactly on its target.
+                FacingYaw = MovementState.DecodeFacingYaw(ms.FacingYawQ),
             };
             state = CharacterMovement.Step(state, move.Command, dt, ground, tuning, normal, physics, clampXz, fluid);
 
@@ -189,6 +199,9 @@ public sealed class PlayerMovementSystem : ISystem
             // MovementState.From per tick, so the per-cell step has to do it here.
             ms.HorizontalVelocityXQ = MovementState.QuantizeHorizontalVelocity(state.HorizontalVelocity.X);
             ms.HorizontalVelocityZQ = MovementState.QuantizeHorizontalVelocity(state.HorizontalVelocity.Y);
+            // And the heading back OUT, both halves again: without the write-back this head's characters never turn,
+            // and without it reaching the wire a corrected client restarts its turn on every correction.
+            ms.FacingYawQ = MovementState.QuantizeFacingYaw(state.FacingYaw);
         });
     }
 }

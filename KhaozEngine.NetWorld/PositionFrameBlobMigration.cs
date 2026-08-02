@@ -111,7 +111,7 @@ public static class PositionFrameBlobMigration
     // Throws on an unknown built-in id (an undecodable body, which the driver quarantines).
     private static int BuiltinPayloadLength(ushort typeId, BinaryReader br, MemoryStream input, BinaryWriter bw) => typeId switch
     {
-        MoveProtocol.MovementTypeId => 24,   // float + bool + 2 float + bool + uint + 2 sbyte + 2 short
+        MoveProtocol.MovementTypeId => 26,   // float + bool + 2 float + bool + uint + 2 sbyte + 3 short
         MoveProtocol.IdentityTypeId => CopyIdentityLengthPrefix(br, input, bw),   // [ushort len] then len utf8 bytes
         MoveProtocol.DynamicBodyTypeId => 40,   // quaternion + 2 * Vector3
         MoveProtocol.PickupTypeId => 16,        // 2 * long

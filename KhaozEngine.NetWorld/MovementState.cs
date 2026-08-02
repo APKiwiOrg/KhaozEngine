@@ -93,6 +93,29 @@ public struct MovementState : IComponent
     /// boundaries: no normalisation to renormalise, and no direction to lose when the magnitude is zero.</summary>
     public short HorizontalVelocityZQ;
 
+    /// <summary>The character's AUTHORITATIVE heading (<see cref="KhaozEngine.Locomotion.MoveState.FacingYaw"/>,
+    /// radians in the <c>MoveCommand.CameraYaw</c> convention) quantized to a <see cref="short"/> at the fixed wire
+    /// scale <see cref="FacingYawQuantum"/> - a 16-bit TURN FRACTION, so the <see cref="short"/>'s whole range is
+    /// exactly one turn and every representable value is a legal heading. Decoded heading =
+    /// <c>q * FacingYawQuantum</c>, so <b>0 is exactly 0 radians</b>, which is a legal heading (facing world -Z) and
+    /// not a sentinel: a spawn, a missed <c>TryGet</c> and a pre-facing save all read as facing forward rather than as
+    /// facing nowhere. A plain scaled encoding is right here where <see cref="SpeedScaleQ"/> needed an offset-from-1
+    /// one, for the same underlying reason - the zero default has to mean the harmless thing.
+    /// <para>It must ride the wire because <see cref="KhaozEngine.Locomotion.MoveState.FacingYaw"/> is CARRIED state:
+    /// with a finite <see cref="KhaozEngine.Locomotion.MoveTuning.FacingTurnSpeed"/> this tick's heading is the
+    /// previous tick's plus a bounded shortest-arc step, so a replay needs the authoritative heading to know where it
+    /// is turning FROM. <see cref="PlayerMoveState.From(System.Numerics.Vector3, in MovementState)"/> rebuilds the
+    /// client's reconcile basis from the replicated components ALONE and <c>Reconcile</c> overwrites the whole
+    /// predicted state with it, so a heading absent from that seed would not lag behind the server: it would reset to
+    /// 0 on every correction and the character would restart its turn from due -Z several times a second. This is the
+    /// same failure <see cref="SpeedScaleQ"/> and <see cref="HorizontalVelocityXQ"/> were added to fix, and it is why
+    /// the heading rides the wire where the one-tick <see cref="LandingImpactSpeed"/> latch deliberately does not:
+    /// that one feeds nothing, this one feeds the next tick.</para>
+    /// Added on the wire in generation 10 (<see cref="MoveProtocol.WireProtocolVersion"/>), together with the move
+    /// frame's flags byte. A mismatched peer is rejected at connect by the always-on
+    /// <see cref="WireGenerationAuthenticator"/>.</summary>
+    public short FacingYawQ;
+
     /// <summary>SIM-LOCAL ascent-EWMA storage (NOT replicated, NOT migrated): the sharded head's per-entity, tick-to-tick
     /// slot for <see cref="KhaozEngine.Locomotion.MoveState.ClimbRateEwma"/> (the exponentially-weighted moving average of
     /// the actually-applied per-tick rise over a paced stair run). It exists ONLY because the sharded per-cell step
@@ -248,6 +271,45 @@ public struct MovementState : IComponent
     /// anomaly check both already measure.</summary>
     public static float DecodeHorizontalVelocity(short q) => q * HorizontalVelocityQuantum;
 
+    /// <summary>Fixed wire scale for <see cref="FacingYawQ"/> (radians per quantum unit): <c>pi / 32768</c>, i.e. one
+    /// 65536th of a full turn, so the <see cref="short"/>'s entire range maps onto exactly one revolution with no
+    /// value wasted and no reachable heading unrepresentable. Resolution is 9.6e-5 rad (0.0055 degrees), which is a
+    /// twentieth of a pixel of body rotation at any sane viewing distance.
+    /// <para>Deliberately an exact NEGATIVE POWER OF TWO multiple of <c>pi</c>, for
+    /// <see cref="HorizontalVelocityQuantum"/>'s reason and with the same bite. Dividing <c>pi</c> by 32768 is exact
+    /// (it only shifts the exponent), so the decode <c>q * quantum</c> rounds exactly once, identically on both heads,
+    /// and the range's own endpoints land dead on. Like a carried velocity and unlike a climb rate, a heading is
+    /// SIMULATION state that FEEDS THE NEXT TICK: the client decodes it into its reconcile basis and turns from it
+    /// while the server turns from its own copy, so a decimal quantum's rounding inside the multiply would not wash
+    /// out on the following frame, it would sit between the two heads for the whole length of a turn.</para></summary>
+    public const float FacingYawQuantum = MathF.PI / 32768f;
+
+    /// <summary>Quantizes a heading (radians) to the wire <see cref="short"/>: NaN and infinity read as 0 (the default
+    /// heading), the angle is WRAPPED into <c>[-pi, pi)</c> rather than clamped, and the result is rounded to the
+    /// nearest <see cref="FacingYawQuantum"/>.
+    /// <para>Wrapping rather than clamping is the whole difference between this and every other quantizer on this
+    /// component. An angle has no out-of-range VALUE, only a non-canonical representative, so a clamp would park a
+    /// character handed <c>3*pi</c> at the range's edge and leave it facing the wrong way - and since the heading is
+    /// carried state, it would never self-correct. The one integer that can fall out of range is <c>pi</c> itself
+    /// (exactly 32768 units), and the unchecked cast wraps it to -32768, which decodes to <c>-pi</c>: the SAME
+    /// heading, so the wrap is not a defect here but the correct arithmetic for the quantity.</para></summary>
+    public static short QuantizeFacingYaw(float yaw)
+    {
+        // WrapYaw bounds the operand before the divide, so the rounded value cannot overflow the int cast, and it maps
+        // every non-finite (and every absurd-but-finite) angle onto 0 before it gets here.
+        float wrapped = KhaozEngine.Locomotion.CharacterMovement.WrapYaw(yaw);
+        return unchecked((short)(int)MathF.Round(wrapped / FacingYawQuantum));
+    }
+
+    /// <summary>Decodes a wire <see cref="FacingYawQ"/> back to a heading in radians: <c>q * FacingYawQuantum</c>,
+    /// which lands in <c>[-pi, pi)</c> - <see cref="KhaozEngine.Locomotion.MoveState.FacingYaw"/>'s canonical range -
+    /// for every representable <c>q</c>, so a decoded heading needs no re-wrapping downstream. 0 decodes to exactly 0
+    /// (facing -Z). There is deliberately no floor or ceiling on the way out, unlike <see cref="DecodeSpeedScale"/>:
+    /// there a corrupt low value decodes NEGATIVE and drives the character backwards against its own command, while
+    /// here every representable value IS a legal heading and the worst a corrupt frame can do is point a character
+    /// somewhere odd, which its own next command corrects.</summary>
+    public static float DecodeFacingYaw(short q) => q * FacingYawQuantum;
+
     /// <summary>The vertical part of a full <see cref="PlayerMoveState"/> (the position is in
     /// <see cref="ReplicatedPosition"/>).</summary>
     public static MovementState From(in PlayerMoveState state) => new()
@@ -263,5 +325,7 @@ public struct MovementState : IComponent
         // The carried airborne arc, one axis each (MoveState.HorizontalVelocity is an XZ Vector2, so its Y is world Z).
         HorizontalVelocityXQ = QuantizeHorizontalVelocity(state.Move.HorizontalVelocity.X),
         HorizontalVelocityZQ = QuantizeHorizontalVelocity(state.Move.HorizontalVelocity.Y),
+        // The carried heading, so a client corrected mid-turn keeps turning from where the server says it is.
+        FacingYawQ = QuantizeFacingYaw(state.Move.FacingYaw),
     };
 }

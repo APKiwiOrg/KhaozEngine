@@ -534,7 +534,7 @@ public sealed partial class WorldClient : IDisposable
             bool grounded;
             float verticalVelocity;
             bool swimming;
-            float climbRate;
+            float climbRate, facingYaw;
             float stepCumulativeY = 0f, landingImpact = 0f;   // local-only signals: a remote receives neither (see EntityRenderState)
             if (isLocal)
             {
@@ -545,7 +545,7 @@ public sealed partial class WorldClient : IDisposable
                 grounded = rs.Grounded;
                 verticalVelocity = rs.VerticalVelocity;
                 swimming = rs.Swimming;
-                climbRate = rs.Move.ClimbRate; landingImpact = rs.Move.LandingImpactSpeed;   // local: the exact predicted climb rate + landing impact (un-quantized)
+                climbRate = rs.Move.ClimbRate; landingImpact = rs.Move.LandingImpactSpeed; facingYaw = rs.Move.FacingYaw;   // local: the exact predicted values (un-quantized)
                 // The local step-smoothing accumulator (rides no wire): a mesh smoother diffs it to ease isolated steps
                 // the continuous glide renders raw. Read from the predictor (not the rendered state, whose Move.StepDeltaY
                 // is a per-tick event, not the running sum). Remotes leave it 0 (their singles ride position interpolation).
@@ -566,10 +566,10 @@ public sealed partial class WorldClient : IDisposable
                 grounded = hasMs ? ms.Grounded : true;
                 verticalVelocity = ms.VerticalVelocity;
                 swimming = hasMs && ms.Swimming;
-                climbRate = hasMs ? MovementState.DecodeClimbRate(ms.ClimbRateQ) : 0f;
+                climbRate = hasMs ? MovementState.DecodeClimbRate(ms.ClimbRateQ) : 0f;   facingYaw = hasMs ? MovementState.DecodeFacingYaw(ms.FacingYawQ) : 0f;
             }
             string? name = world.TryGet(kv.Value, out PlayerIdentity identity) ? identity.DisplayName : null;
-            list.Add(new EntityRenderState(new NetId(kv.Key), pos, isLocal, name, grounded, verticalVelocity, swimming, climbRate, stepCumulativeY, landingImpact));
+            list.Add(new EntityRenderState(new NetId(kv.Key), pos, isLocal, name, grounded, verticalVelocity, swimming, climbRate, stepCumulativeY, landingImpact, facingYaw));
         }
         return list;
     }

@@ -7,70 +7,85 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.27.0
 
-### Steep terrain slides instead of refusing (#442, subsumes #441)
+### The windowed frame loop gains a pre-record phase, and the fork guardrail comes off hold
 
-The analytic-terrain ascent gate is deleted and replaced by the standard model: a face too steep to walk is a
-surface you SLIDE on and a face you cannot reach over is a wall you slide ALONG, so no movement is ever refused
-outright. Two playtests took the gate apart from both sides. 17.26.0's version let a repeated jump ratchet up a
-sheer sea cliff (#440), because the raised feet discounted the rise. The 17.26.1 fence that closed that then
-blocked sideways movement into a face while jumping, which reads as an invisible wall eating lateral air control.
-Both are the same root cause - a gate REFUSES, and refusal is not how terrain behaves - so the third fix replaces
-the mechanism instead of retuning it. Full model in the 2026-08-02 addendum to
-`docs/design/PHYSICS-LOCOMOTION-DESIGN-2026-08-02.md`.
+`AppWindow.Run` takes an optional `onPrepare` callback that runs before the frame's command list opens, `GameApp`
+routes its whole update side through it via the new `OnPrepareWorld` seam, and the Veldrid fork moves to `4.9.103`
+so a second command list opened mid-recording throws instead of silently corrupting the frame. Those two ship
+together on purpose: the guardrail was held for four fork releases precisely because the windowed loop forced the
+violation it would have caught, so the cause had to go first.
 
-**Wall slide.** A horizontal move whose destination is BOTH steeper than `MoveTuning.MaxSlopeRadians` AND more
-than `MoveTuning.StepHeight` above the feet is a wall contact: the into-face component dies, the along-face
-component survives. The face's horizontal direction is the destination normal's XZ projection, with the movement
-direction standing in when that projection is degenerate (which meets the face head-on and kills the whole move,
-the conservative direction). Both conditions are load-bearing: the steepness test is what leaves walkable ground
-untouched, since a fast run up a legal ramp can rise more than a `StepHeight` in one tick, and the height test is
-what makes this a contact rather than the old gate. Applies grounded and airborne, on the command path, the
-airborne-momentum path, `StepTowards` and the horizontal-only overload. This alone fixes the reported feel bug:
-strafing along a cliff mid-jump now keeps the whole lateral component it would have had with no cliff there
-(measured at 0.000 m of lateral travel before, matching a face-free control jump after).
+#### The frame loop is two phases now, not one (#429)
 
-**No traction on steep ground.** A surface past `MaxSlopeRadians` never grants support: `Grounded` stays false,
-so there is no jump, no coyote refresh and no landing latch on the face. The character is still seated on it (the
-ground clamp still forbids penetration) but it slides - gravity is decomposed against the surface normal and the
-tangential component integrates into the carried `MoveState.VerticalVelocity` and `MoveState.HorizontalVelocity`,
-accelerating it down the fall line until walkable ground (where the landing fires `LandingImpactSpeed` from the
-fall the slide accumulated), open air, or the existing water hand-off. The whole slide is one scalar along the
-surface's unit down-slope tangent `T = (ny*hx, -h, ny*hz)`, accelerated by `Gravity * h`: resolving the carried
-velocity onto `T` every tick keeps the horizontal and the vertical exactly consistent with the surface, so the
-committed drop is precisely the drop the committed horizontal travel needs and the body stays glued to the face
-rather than bouncing off it. The speed is clamped non-negative, which is the no-ascent property in one line: a
-surface you have no purchase on cannot carry you up it. Input steers ACROSS the fall line at the usual
-`MoveTuning.AirControl`-scaled speed and has no authority along it in either direction, so there is no new knob.
+17.26.0 gave `Scene3D` a `PrepareFrame()` phase and moved the FFT ocean's priming pass into it, which fixed every
+headless host. It could not fix a windowed one. `AppWindow.Run` opened the frame's command list before calling
+back into the app, so by the time any app code ran there was already a list recording, and a producer that needs a
+list of its own had nowhere to put it. That was the last live path in
+[#423](https://github.com/APKiwiOrg/KhaozEngine/issues/423): on Direct3D11 in immediate-context mode a command
+list IS the device's immediate context, so opening a second one runs `ClearState` on the live context and wipes
+every binding the frame believes is bound, and the device faults a few draws later.
 
-**Invariants kept.** Walkable ground is untouched, bit-for-bit: flat and legal-slope walking, running, jumping,
-step-up, step-down, the stair glide, wade, swim and the whole Bepu prop collide-and-slide path all produce
-identical output, and `MaxSlopeRadians` keeps its exact meaning as the traction threshold. Descent, walk-offs and
-jump-offs stay free (#369). Anti-tunnel survives without the refusal that used to carry it: the wall projection is
-re-tested and refused only in a concave corner, and the ground clamp does the rest, so an XZ can never be
-committed under terrain. The #440 jump ratchet stays dead because landing on a face lands in a slide, and #441
-(prop-to-steep-face refusal) is subsumed, since stepping off a prop toward a face wall-slides like everything
-else. **Prop support always wins**: only the analytic terrain is traction-less, so a plank over a ravine or a
-stair against a mountain still carries a character.
+`AppWindow.Run(Action<Frame> onFrame, Action<Frame>? onPrepare)` is the new overload. `onPrepare` runs each frame
+after the frame's dt, input and size are latched and BEFORE the command list is opened, so a callback may create,
+submit and drain lists of its own. `onFrame` then runs with the frame's list open, bound to the swapchain and
+cleared, exactly as before. The existing single-callback `Run(onFrame)` is now `Run(onFrame, null)` and behaves
+identically, so nothing that compiles today changes.
 
-**No wire change.** The slide rides `MovementState.HorizontalVelocityXQ`/`ZQ` (wire generation 7) and the raw
-`VerticalVelocity`, both replicated unconditionally on both server heads and decoded unconditionally into the
-client's reconcile basis by `PlayerMoveState.From` - none of that has ever been gated on `MoveTuning.AirMomentum`,
-which was the one silent-desync candidate here, since the opt-in momentum path was previously the carry's only
-consumer. `WireProtocolVersion` stays at 10 and no carried state was added. New reconcile-parity coverage exercises
-a mid-slide correction with `AirMomentum` both off and on.
+The phase ORDER itself moved out of the loop into an internal `FramePhases` type, which is what makes it
+assertable without a window. It is deliberately ignorant of 3D, water, and what a producer is: it guarantees only
+WHEN the two callbacks run relative to the frame's command list, which is the one fact a producer cannot
+establish for itself.
+Both callbacks still run on a render-suppressed (minimized) frame, where no list is opened and nothing is
+presented, so update-side simulation keeps advancing while iconified.
 
-**Compatibility.** Unconditional, not a knob, and a behaviour change for any game that leaned on the gate as a
-cliff guardrail: players fall off, and off a steep face they now slide down it. Use `WorldBounds` for a hard
-border. `AdvanceSlopeGated` and the 17.26.1 min-reference rule are deleted, and the refusal-era `#369`/`#440` test
-suites are rewritten to slide semantics with their intent preserved.
+Do not record into `Frame.Commands` from `onPrepare`. The list has not been begun during that callback, and on a
+render-suppressed frame it is never begun at all. Draws belong in `onFrame`.
 
-New file `KhaozEngine.Locomotion/CharacterMovement.Slide.cs`. The prop-support probe block moved out of `StepCore`
-into `CharacterMovement.Collision.cs` as `PropSupportFloor` (a pure extraction, no behaviour change) to keep both
-files under the size cap.
+#### `GameApp` grows an `OnPrepareWorld` seam, and its update side moves ahead of the list
 
-## 17.26.1
+`GameApp.Run` now calls `_window.Run(onFrame: RecordPhase, onPrepare: PreparePhase)`. Everything up to and
+including the new `protected virtual void OnPrepareWorld(Frame frame)` runs in the prepare phase, and the draw
+passes run inside the frame's list. `GameApp3D` overrides it to run `Scene.Begin()`, its 3D draws, and
+`Scene3D.PrepareFrame()` there, so by the time `Render3DSurface.Render` runs the frame is already prepared and its
+safety-net `PrepareFrame` call no-ops. No engine-shipped windowed host opens a nested list any more.
 
-### Jumping at a cliff no longer climbs it (#440)
+**Phase-order note, and the one thing to check when adopting.** The order a game SEES is unchanged: `OnUpdate`
+still precedes `OnPrepareWorld`, which still precedes `OnRenderWorld` and the 2D passes. What changed is where
+that ordering sits relative to the command list. `OnUpdate` and `OnResize` now run BEFORE the frame's list is
+opened rather than inside its recording. A game that recorded into `Frame.Commands` from `OnUpdate` would break,
+because the list is not open yet. The fleet was checked rather than assumed: no game records into the frame from
+`OnUpdate`, so all four adopt without a source change.
+
+#### Vendored Veldrid fork `4.9.103`: the second-recorder guardrail (#428)
+
+The fork moves from `4.9.102` to `4.9.103` (`APKiwiOrg/veldrid` tag `v4.9.103`, commit
+`74e523607843f49cd8f6969815c94b37cd047bb7`, branch `fix/d3d11-immediate-4.9.0`). The vendored line moves back onto
+the main fork branch, because the guardrail commits it was deliberately sitting below are the content of this
+release.
+
+A second `Begin` on a DIFFERENT command list, while the first still holds the immediate context, now throws a
+`VeldridException` naming the situation and pointing at `UseImmediateContext`. It previously ran `ClearState` on
+the live context and silently wiped the open recording. A second `Begin` on the SAME list has thrown since
+`4.9.101` and is a separate case. The refusal happens before anything is touched, ahead of the deferred list
+disposal, the `ClearState` and the lock, so the open recorder carries on unharmed and the refused instance begins
+normally once the context is free. Deferred mode never reaches any of this. A follow-up commit hardens the guard
+against an interrupted lock acquisition: `Monitor.Enter` takes the ref-bool overload, because a
+`ThreadInterruptedException` delivered after acquisition is otherwise indistinguishable from a failed one, and the
+bare overload's catch was dropping the claim on a lock the thread still held, wedging the next `Begin` forever.
+
+#### The residual, stated rather than glossed
+
+One nesting path survives by design. A host driving a `Render3DSurface` off a raw `AppWindow.Run(onFrame)`,
+without passing `onPrepare`, still nests, because the surface's safety-net `Scene3D.PrepareFrame` then runs inside
+the frame's recording. That is not an engine-shipped host and no engine host does it, but it is reachable from
+consumer code. With `4.9.103` vendored it is now a loud `VeldridException` naming the fix rather than silent
+corruption, which is the intended trade. The fix for such a host is to queue and prepare the scene in the
+`onPrepare` callback and call `Render` from `onFrame`.
+
+Tests: `FramePhasesTests` asserts the phase contract without a window, and `WindowedFramePrepareTests` covers the
+windowed prepare path. No golden changes, because nothing about what the GPU executes on an already-correct path
+moved.
+### Jumping at a cliff no longer climbs it (#440, staged as 17.26.1, ships in this release)
 
 The direction-aware slope gate measures its ascent from the LOWER of the character's feet and the ground under the
 current column, so vertical motion can no longer buy admission onto a too-steep face. This hardens the 17.26.0 gate

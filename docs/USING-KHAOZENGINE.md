@@ -8349,7 +8349,7 @@ an assembly lazily on first type reference, so a `[ModuleInitializer]` inside th
 some machines and not on others, which is the worst possible shape for a switch whose whole job is attributing a
 measurement to a backend. One explicit call is compile-time visible, trim-safe and testable.
 
-**Two failure modes, and they are deliberately different.**
+**Three failure modes, and they are deliberately different.**
 
 - **You forgot the `Register()` call.** Creating a device on that backend throws
   `GpuBackendProviderMissingException`, naming the backend and the call that fixes it. It does NOT fall back. A
@@ -8358,6 +8358,13 @@ measurement to a backend. One explicit call is compile-time visible, trim-safe a
 - **The machine cannot run it.** That is the ordinary story above: the provider's own functional probe answers
   `IsBackendSupported`, and creation falls back to the OS-probe backend, WARNs, and reports
   `GpuBackendSource.FallbackAfterFailure` with `RequestedBackend`. Your two obligations are unchanged.
+- **The provider itself is broken.** A creation call that returns an empty `GpuProviderDevice`, or one carrying a
+  device whose own `Backend` disagrees with the selection, throws (`InvalidOperationException` and
+  `ArgumentException` respectively) and does NOT fall back, even where a fallback was allowed. Falling back would
+  answer a provider bug with the report reserved for an incapable machine, and the run would continue on a
+  backend nobody chose. Anything the provider already created is disposed on the way out. This is the contract
+  behind "throws on failure" in `IGpuBackendProvider`: a provider that cannot create a device throws a reason,
+  it does not return nothing.
 
 So `IsBackendSupported(kind)` is false for a provider-backed backend that has no provider registered, because a
 settings screen must not offer a backend whose code is not in the process. That answer is not cached, so

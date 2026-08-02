@@ -489,16 +489,18 @@ namespace KhaozEngine.Gpu
 
             if (failure is null)
             {
+                // Seeded so the catch below needs no assignment of its own. Nothing ever adopts this value: the
+                // only path past the guard below is the one where creation returned, and creation either assigns
+                // or throws.
+                GpuProviderDevice created = default;
                 try
                 {
-                    GpuProviderDevice created;
                     // Inside the same process-wide gate the Veldrid path uses. Device creation is serialized on
                     // every backend, so a provider needs no lifecycle lock of its own and cannot race one.
                     lock (_lifecycleGate)
                     {
                         created = provider.CreateForWindow(request);
                     }
-                    return Adopt(created, selection);
                 }
                 catch (Exception ex) when (canFallBack)
                 {
@@ -507,6 +509,15 @@ namespace KhaozEngine.Gpu
                     // no-driver case is exactly the one this fallback exists for.
                     failure = $"{ex.GetType().Name}: {ex.Message}";
                 }
+
+                // Adoption sits OUTSIDE that try, and the CREATION call is the only thing inside it. The catch
+                // answers one question, "can this machine run the backend", and the fallback shape it produces (a
+                // WARN telling a player their stored graphics choice does not work here, then a boot on another
+                // backend) is the answer to that question and to nothing else. Adopt validates what the provider
+                // HANDED BACK, so both of its throws report a bug in the provider instead. Inside the try they
+                // would come out as the machine-incapability answer, which is the exact misattribution both of
+                // those guards exist to prevent, and it would ship as a green run on a different backend.
+                if (failure is null) return Adopt(created, selection);
             }
 
             WarnFallback(selection.Backend, failure, fallback);
@@ -519,6 +530,9 @@ namespace KhaozEngine.Gpu
 
         // The provider path's construction step, shared by the windowed and headless entries so the guard and the
         // ownership decision cannot drift apart between them.
+        //
+        // Every throw out of here is a BUG IN THE PROVIDER, never a machine that cannot run the backend, which is
+        // why the windowed entry calls this outside its fallback catch. See the comment at that call site.
         static GpuDeviceContext Adopt(in GpuProviderDevice created, GpuBackendSelection selection)
         {
             if (created.Device is null)
@@ -529,10 +543,45 @@ namespace KhaozEngine.Gpu
                     + "back an empty result the caller has to guess at.");
             }
 
-            // The provider built it, so this context owns its disposal, exactly as it owns the raw Veldrid device
-            // on the other path.
-            return new GpuDeviceContext(created.Device, created.ThreadingCaps, created.ThreadingProbeFailure,
-                selection, ownsDevice: true);
+            try
+            {
+                // The provider built it, so this context owns its disposal, exactly as it owns the raw Veldrid
+                // device on the other path.
+                return new GpuDeviceContext(created.Device, created.ThreadingCaps, created.ThreadingProbeFailure,
+                    selection, ownsDevice: true);
+            }
+            catch
+            {
+                // Ownership transfers on a SUCCESSFUL construction only. A rejected device has no context to
+                // dispose it and no other reference anywhere, so without this its adapter, swapchain and driver
+                // allocations live until the process exits. Rejecting the device is exactly the case where the
+                // provider is already misbehaving, so it is also the case least likely to have cleaned up after
+                // itself.
+                DisposeRejected(created.Device);
+                throw;
+            }
+        }
+
+        // Releases a device that adoption refused, without letting the release replace the reason for the refusal.
+        // A provider handing back a device the engine will not adopt is misbehaving by definition, so its Dispose
+        // may be equally broken, and an exception thrown here would unwind in place of the provider-bug exception
+        // the caller has to see. Under the same gate the ordinary teardown uses, because it is the same
+        // destruction.
+        static void DisposeRejected(IGpuDevice device)
+        {
+            try
+            {
+                lock (_lifecycleGate)
+                {
+                    device.Dispose();
+                }
+            }
+            catch (Exception ex)
+            {
+                log.Warn($"Disposing the device adoption refused threw {ex.GetType().Name}: {ex.Message}. This is "
+                    + "the cleanup, not the fault: the refusal it was disposed for is the exception coming out of "
+                    + "device creation, and that is the one to act on.");
+            }
         }
 
         // Creates a windowed device on `kind`, with no probing, no fallback, and no resolution. The single place

@@ -29,10 +29,12 @@ namespace KhaozEngine.Gpu
     }
 
     /// <summary>
-    /// Pure, device-free formatting for <see cref="GpuThreadingCaps"/>: the one-line INFO description, whether the
-    /// capability warrants a warning, and the warning text itself. Split out from the probe so the wording is
-    /// headless-testable on any platform (the native query behind it can only run on Windows, on Direct3D11).
-    /// A game debug overlay can use <see cref="Describe"/> directly.
+    /// Pure, device-free formatting AND warn decisions for <see cref="GpuThreadingCaps"/>: the one-line INFO
+    /// description, which of the two warnings (an emulating driver, or a probe that faulted) belongs under it, and
+    /// both warning bodies. Split out from the probe so the wording and the decision are headless-testable on any
+    /// platform, since the native query behind them can only run on Windows, on Direct3D11, while both device
+    /// creation paths that consume them can be driven anywhere. A game debug overlay can use <see cref="Describe"/>
+    /// directly.
     /// </summary>
     public static class GpuThreadingDiagnostics
     {
@@ -69,6 +71,35 @@ namespace KhaozEngine.Gpu
             + "risk: it puts a fixed cost on every single drawing command the game records, and the same machine "
             + "can run many times faster on another backend. If this session feels slow, set "
             + $"{GpuBackendSelector.EnvVarName}=vulkan and compare before investigating anything else.";
+
+        /// <summary>
+        /// The WARN body for a probe that was ATTEMPTED and produced no answer, naming <paramref name="failure"/>
+        /// as the reason. A different fact from <see cref="EmulatedCommandListsWarning"/>, which reports a driver
+        /// that answered badly: this one reports that nothing was learned, so it says what a later report cannot
+        /// rule out rather than telling the reader to change something.
+        /// </summary>
+        internal static string ProbeFailureWarning(string failure)
+            => $"Could not read the Direct3D11 driver threading capabilities ({failure}). "
+                + "Rendering is unaffected, but a slow-session report from this run cannot rule out a driver "
+                + "that emulates command lists.";
+
+        /// <summary>
+        /// The one WARN (if any) belonging under the Direct3D11 threading INFO line, given the caps and the probe's
+        /// failure reason. Null means no warning at all. A known-bad driver wins over a failure reason: caps that
+        /// came back are the actionable fact, and in practice the two arms are exclusive anyway, since a probe that
+        /// failed has no caps to be bad.
+        /// <para>
+        /// Pure and separate from the logging so both device-creation paths can be pinned headlessly. The failure
+        /// string is the one input an ADOPTED native device must supply for itself (there is no Veldrid device for
+        /// the context to probe), and a provider whose raw-pointer probe faulted has to still produce this warning
+        /// instead of a bare "unknown" INFO line.
+        /// </para>
+        /// </summary>
+        internal static string? WarningFor(GpuThreadingCaps? caps, string? probeFailure)
+        {
+            if (ShouldWarn(caps)) return EmulatedCommandListsWarning;
+            return probeFailure is null ? null : ProbeFailureWarning(probeFailure);
+        }
 
         static string Yes(bool value) => value ? "TRUE" : "FALSE";
     }

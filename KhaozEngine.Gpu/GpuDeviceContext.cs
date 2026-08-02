@@ -76,6 +76,15 @@ namespace KhaozEngine.Gpu
         public GpuThreadingCaps? ThreadingCaps { get; }
 
         /// <summary>
+        /// Why the Direct3D11 driver-threading probe produced no answer, or null when it answered or there was
+        /// nothing to ask (any other backend, off Windows). <see cref="ThreadingCaps"/> being null cannot tell
+        /// those two apart on its own, and the difference is exactly whether a WARN belongs under the threading
+        /// line, so the reason is carried rather than discarded. Internal because the public surface exposes the
+        /// ANSWER and not the plumbing behind it: the reason is already in the session log.
+        /// </summary>
+        internal string? ThreadingProbeFailure { get; }
+
+        /// <summary>
         /// The adapter the device is running on, as the backend reports it, or an empty string when it reports
         /// nothing. On Direct3D11 this is EXACTLY the DXGI adapter description (Veldrid reads
         /// <c>IDXGIAdapter::GetDesc().Description</c> into <c>GraphicsDevice.DeviceName</c>), which is the string
@@ -119,11 +128,12 @@ namespace KhaozEngine.Gpu
             // VeldridMap.ReadCapabilities stays the single source, and it is now read ONCE, inside the wrapper.
             Capabilities = GpuDevice.Capabilities;
             ThreadingCaps = Internal.D3D11ThreadingProbe.TryQuery(device, selection.Backend, out string? probeFailure);
+            ThreadingProbeFailure = probeFailure;
             // Scanned per created device rather than cached process-wide, so a late-attaching overlay still shows
             // up and there is no static state to reason about. Device creation is rare, and off Windows this is a
             // guard and a return.
             InjectedModules = Internal.InjectedModuleProbe.TryScan(out string? scanFailure);
-            LogCreation(selection, Capabilities, ThreadingCaps, probeFailure, InjectedModules, scanFailure);
+            LogCreation(selection, Capabilities, ThreadingCaps, ThreadingProbeFailure, InjectedModules, scanFailure);
         }
 
         /// <summary>
@@ -137,23 +147,47 @@ namespace KhaozEngine.Gpu
         /// <see cref="GpuTelemetry"/> feed, and the same process-wide lifecycle gate around disposal.
         /// </para>
         /// <para>
-        /// <paramref name="threadingCaps"/> null means "no answer", exactly as it does on the Veldrid path, and it
-        /// arrives without a failure string: whoever created the device already logged or discarded the reason, and
-        /// a fault the context cannot attribute is worse than no line at all. <paramref name="ownsDevice"/> false
-        /// makes disposal a no-op, so a caller can hand in a device it keeps owning.
+        /// <paramref name="threadingCaps"/> null means "no answer", exactly as it does on the Veldrid path, and
+        /// <paramref name="threadingProbeFailure"/> is the reason when the probe was ATTEMPTED and did not answer
+        /// (null when it answered, and null when there was nothing to ask). That pair is precisely what the
+        /// raw-pointer entry on <see cref="Internal.D3D11ThreadingProbe"/> hands back, so a provider whose probe
+        /// faulted still gets the WARN line rather than a bare "unknown" INFO line that reads like an ordinary
+        /// non-Direct3D11 session. <paramref name="ownsDevice"/> false makes disposal a no-op, so a caller can hand
+        /// in a device it keeps owning.
+        /// </para>
+        /// <para>
+        /// <paramref name="device"/>'s own <see cref="IGpuDevice.Backend"/> MUST agree with
+        /// <paramref name="selection"/>'s, and a mismatch throws. The Veldrid path gets that invariant for free,
+        /// because it builds the wrapper from the same selection. Here the two arrive independently, and different
+        /// consumers downstream read different halves of the pair (the golden image filename, the telemetry session
+        /// header, the Direct3D11 threading gate), so a mismatched pair would not fail the run, it would
+        /// misattribute it. Silent misattribution is the worst outcome for a rollout whose whole purpose is
+        /// attributing field measurements to a backend.
         /// </para>
         /// </summary>
-        internal GpuDeviceContext(IGpuDevice device, GpuThreadingCaps? threadingCaps,
+        internal GpuDeviceContext(IGpuDevice device, GpuThreadingCaps? threadingCaps, string? threadingProbeFailure,
             GpuBackendSelection selection, bool ownsDevice)
         {
+            if (device.Backend != selection.Backend)
+            {
+                throw new ArgumentException(
+                    $"The adopted device reports backend {device.Backend}, but the selection it is being adopted "
+                    + $"with says {selection.Backend}. Everything that attributes this session to a backend reads "
+                    + "one or the other of those two (the golden image filename, the telemetry session header, the "
+                    + "Direct3D11 threading line), so a mismatched pair misattributes the run instead of failing "
+                    + "it. Hand in the selection the device was actually created on.",
+                    nameof(selection));
+            }
+
             _device = null;
             Selection = selection;
             _ownsDevice = ownsDevice;
             GpuDevice = device;
             Capabilities = device.Capabilities;
             ThreadingCaps = threadingCaps;
+            ThreadingProbeFailure = threadingProbeFailure;
             InjectedModules = Internal.InjectedModuleProbe.TryScan(out string? scanFailure);
-            LogCreation(selection, Capabilities, ThreadingCaps, probeFailure: null, InjectedModules, scanFailure);
+            LogCreation(selection, Capabilities, ThreadingCaps, ThreadingProbeFailure, InjectedModules, scanFailure);
         }
 
         // The four diagnostic lines every created device emits, in this order, whichever path created it. One
@@ -212,18 +246,16 @@ namespace KhaozEngine.Gpu
 
         // The Direct3D11 companion to the backend line. Silent on every other backend: a Metal or Vulkan log
         // gains nothing from a line saying a D3D11 capability is unknown. The WARN arm is the one that matters,
-        // and it is a WARN precisely so it cannot be lost in a tester's log among the INFO chatter.
+        // and it is a WARN precisely so it cannot be lost in a tester's log among the INFO chatter. Which warning
+        // (if any) belongs there is GpuThreadingDiagnostics.WarningFor, pure so both creation paths can be pinned
+        // headlessly rather than only the one a Windows Direct3D11 machine can reach.
         static void LogThreadingCaps(GpuBackendKind backend, GpuThreadingCaps? caps, string? probeFailure)
         {
             if (backend != GpuBackendKind.Direct3D11) return;
 
             log.Info($"D3D11 driver threading: {GpuThreadingDiagnostics.Describe(caps)}");
-            if (GpuThreadingDiagnostics.ShouldWarn(caps))
-                log.Warn(GpuThreadingDiagnostics.EmulatedCommandListsWarning);
-            else if (probeFailure != null)
-                log.Warn($"Could not read the Direct3D11 driver threading capabilities ({probeFailure}). "
-                    + "Rendering is unaffected, but a slow-session report from this run cannot rule out a driver "
-                    + "that emulates command lists.");
+            string? warning = GpuThreadingDiagnostics.WarningFor(caps, probeFailure);
+            if (warning != null) log.Warn(warning);
         }
 
         // Which third-party overlays were hooked into the process when the device was made. Gated on the SCAN

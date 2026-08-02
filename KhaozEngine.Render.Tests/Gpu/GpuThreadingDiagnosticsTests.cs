@@ -78,6 +78,57 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Contains(GpuBackendSelector.EnvVarName + "=vulkan", warning);
         }
 
+        /// <summary>
+        /// The failure arm's own body. It reports that NOTHING was learned, which is a different fact from a
+        /// driver that answered badly, so it names the reason and says what a later report cannot rule out rather
+        /// than telling the reader to change a setting.
+        /// </summary>
+        [Fact]
+        public void ProbeFailureWarning_NamesTheReason_AndWhatItCosts()
+        {
+            string warning = GpuThreadingDiagnostics.ProbeFailureWarning("the device did not answer");
+
+            Assert.Contains("Could not read the Direct3D11 driver threading capabilities", warning);
+            Assert.Contains("the device did not answer", warning);
+            Assert.Contains("cannot rule out", warning);
+            // Not the emulating-driver alarm: that one claims a KNOWN problem, and this arm knows nothing.
+            Assert.DoesNotContain("SEVERE", warning);
+        }
+
+        /// <summary>
+        /// The whole warn decision under the threading INFO line, as one pure function, so BOTH device-creation
+        /// paths can be pinned on a machine with no Direct3D11 anywhere. The failure string is the one input an
+        /// adopted native device must supply for itself, and without it a faulted probe renders exactly like an
+        /// ordinary non-Direct3D11 session: "unknown", and no warning at all.
+        /// </summary>
+        [Fact]
+        public void WarningFor_PicksTheFailureArm_WhenTheProbeFaulted()
+        {
+            string? warning = GpuThreadingDiagnostics.WarningFor(caps: null, probeFailure: "boom");
+
+            Assert.Equal(GpuThreadingDiagnostics.ProbeFailureWarning("boom"), warning);
+        }
+
+        [Fact]
+        public void WarningFor_IsSilent_WhenThereIsNothingToReport()
+        {
+            // Answered, and the answer is good.
+            Assert.Null(GpuThreadingDiagnostics.WarningFor(new GpuThreadingCaps(true, true), null));
+            // Never asked: not applicable is not a fault, so it warns about nothing.
+            Assert.Null(GpuThreadingDiagnostics.WarningFor(null, null));
+        }
+
+        /// <summary>
+        /// A driver that answered badly outranks a failure reason. Caps that came back are the actionable fact,
+        /// and the reader gets one warning rather than two competing ones.
+        /// </summary>
+        [Fact]
+        public void WarningFor_PrefersAKnownBadDriver_OverAFailureReason()
+        {
+            Assert.Equal(GpuThreadingDiagnostics.EmulatedCommandListsWarning,
+                GpuThreadingDiagnostics.WarningFor(new GpuThreadingCaps(false, true), "boom"));
+        }
+
         [Fact]
         public void CommandListsAreEmulated_IsTheInverseOfTheDriverFlag()
         {

@@ -32,11 +32,50 @@ namespace KhaozEngine.Tests.Gpu
         public void AdoptedDevice_IsHandedBackAsIs_WithItsSelection()
         {
             var device = new RecordingGpuDevice();
-            using var ctx = new GpuDeviceContext(device, threadingCaps: null, Selection(), ownsDevice: true);
+            using var ctx = new GpuDeviceContext(device, threadingCaps: null, threadingProbeFailure: null,
+                Selection(), ownsDevice: true);
 
             Assert.Same(device, ctx.GpuDevice);
             Assert.Equal(GpuBackendKind.Direct3D11, ctx.Backend);
             Assert.Equal(GpuBackendSource.UserPreference, ctx.Selection.Source);
+        }
+
+        /// <summary>
+        /// The device and the selection arrive independently here, unlike the Veldrid path where the wrapper is
+        /// built FROM the selection, so the invariant that path gets by construction has to be enforced. A
+        /// mismatched pair does not fail the run, it misattributes it: different readers downstream take the kind
+        /// from different halves of the pair, so the golden image would be filed under one backend while the
+        /// session header names the other.
+        /// </summary>
+        [Theory]
+        [InlineData(GpuBackendKind.Direct3D11, GpuBackendKind.Vulkan)]
+        [InlineData(GpuBackendKind.Vulkan, GpuBackendKind.Direct3D11)]
+        [InlineData(GpuBackendKind.Metal, GpuBackendKind.OpenGL)]
+        public void AdoptedDevice_MustAgreeWithTheSelectionAboutTheBackend(
+            GpuBackendKind deviceBackend, GpuBackendKind selectionBackend)
+        {
+            var device = new RecordingGpuDevice(deviceBackend);
+
+            ArgumentException ex = Assert.Throws<ArgumentException>(
+                () => new GpuDeviceContext(device, threadingCaps: null, threadingProbeFailure: null,
+                    Selection(selectionBackend), ownsDevice: true));
+
+            Assert.Contains(deviceBackend.ToString(), ex.Message);
+            Assert.Contains(selectionBackend.ToString(), ex.Message);
+        }
+
+        [Theory]
+        [InlineData(GpuBackendKind.Metal)]
+        [InlineData(GpuBackendKind.Vulkan)]
+        [InlineData(GpuBackendKind.Direct3D11)]
+        [InlineData(GpuBackendKind.OpenGL)]
+        public void AdoptedDevice_IsAcceptedOnEveryBackend_WhenThePairAgrees(GpuBackendKind backend)
+        {
+            using var ctx = new GpuDeviceContext(new RecordingGpuDevice(backend), threadingCaps: null,
+                threadingProbeFailure: null, Selection(backend), ownsDevice: true);
+
+            Assert.Equal(backend, ctx.Backend);
+            Assert.Equal(backend, ctx.GpuDevice.Backend);
         }
 
         /// <summary>
@@ -49,7 +88,8 @@ namespace KhaozEngine.Tests.Gpu
         public void Capabilities_AreReadFromTheDevice_FieldForField()
         {
             var device = new RecordingGpuDevice();
-            using var ctx = new GpuDeviceContext(device, threadingCaps: null, Selection(), ownsDevice: true);
+            using var ctx = new GpuDeviceContext(device, threadingCaps: null, threadingProbeFailure: null,
+                Selection(), ownsDevice: true);
 
             GpuCapabilities expected = device.Capabilities;
             GpuCapabilities actual = ctx.Capabilities;
@@ -77,11 +117,50 @@ namespace KhaozEngine.Tests.Gpu
         public void ThreadingCaps_AreWhateverTheCallerProbed()
         {
             var caps = new GpuThreadingCaps(DriverCommandLists: false, DriverConcurrentCreates: true);
-            using var probed = new GpuDeviceContext(new RecordingGpuDevice(), caps, Selection(), ownsDevice: true);
-            using var unprobed = new GpuDeviceContext(new RecordingGpuDevice(), null, Selection(), ownsDevice: true);
+            using var probed = new GpuDeviceContext(new RecordingGpuDevice(), caps, threadingProbeFailure: null,
+                Selection(), ownsDevice: true);
+            using var unprobed = new GpuDeviceContext(new RecordingGpuDevice(), null, threadingProbeFailure: null,
+                Selection(), ownsDevice: true);
 
             Assert.Equal(caps, probed.ThreadingCaps);
             Assert.Null(unprobed.ThreadingCaps);
+        }
+
+        /// <summary>
+        /// A provider whose raw-pointer threading probe FAULTED has a channel for the reason, and it reaches the
+        /// warn decision the threading line is logged from. Without it, null caps plus no reason renders as the
+        /// plain "unknown" INFO line, which is what an ordinary non-Direct3D11 session looks like, and the WARN
+        /// that says a slow-session report cannot rule out an emulating driver never fires. That warning is the
+        /// diagnostic the move off Veldrid is meant to keep, on exactly the backend it was written for.
+        /// </summary>
+        [Fact]
+        public void ThreadingProbeFailure_IsCarried_AndSelectsTheWarning()
+        {
+            const string failure = "the Direct3D11 threading query threw SharpGenException: HRESULT 0x80004005";
+            using var ctx = new GpuDeviceContext(new RecordingGpuDevice(), threadingCaps: null, failure,
+                Selection(), ownsDevice: true);
+
+            Assert.Equal(failure, ctx.ThreadingProbeFailure);
+
+            string? warning = GpuThreadingDiagnostics.WarningFor(ctx.ThreadingCaps, ctx.ThreadingProbeFailure);
+            Assert.NotNull(warning);
+            Assert.Contains("Could not read the Direct3D11 driver threading capabilities", warning);
+            Assert.Contains(failure, warning);
+        }
+
+        /// <summary>
+        /// The other half: a probe that ANSWERED, or one that was never applicable, carries no reason, so the
+        /// adopted path stays silent exactly where the Veldrid path does. A warning that fires on a healthy
+        /// session is worse than none, because it trains the reader to skip the one that matters.
+        /// </summary>
+        [Fact]
+        public void NoThreadingProbeFailure_MeansNoWarning()
+        {
+            using var ctx = new GpuDeviceContext(new RecordingGpuDevice(), new GpuThreadingCaps(true, true),
+                threadingProbeFailure: null, Selection(), ownsDevice: true);
+
+            Assert.Null(ctx.ThreadingProbeFailure);
+            Assert.Null(GpuThreadingDiagnostics.WarningFor(ctx.ThreadingCaps, ctx.ThreadingProbeFailure));
         }
 
         /// <summary>
@@ -93,7 +172,8 @@ namespace KhaozEngine.Tests.Gpu
         public void Dispose_LatchesTheDeviceBeforeDisposingIt()
         {
             var device = new RecordingGpuDevice();
-            var ctx = new GpuDeviceContext(device, threadingCaps: null, Selection(), ownsDevice: true);
+            var ctx = new GpuDeviceContext(device, threadingCaps: null, threadingProbeFailure: null,
+                Selection(), ownsDevice: true);
 
             ctx.Dispose();
 
@@ -105,7 +185,8 @@ namespace KhaozEngine.Tests.Gpu
         public void Dispose_TouchesNothingWhenTheContextDoesNotOwnTheDevice()
         {
             var device = new RecordingGpuDevice();
-            var ctx = new GpuDeviceContext(device, threadingCaps: null, Selection(), ownsDevice: false);
+            var ctx = new GpuDeviceContext(device, threadingCaps: null, threadingProbeFailure: null,
+                Selection(), ownsDevice: false);
 
             ctx.Dispose();
 
@@ -121,7 +202,9 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void Dispose_DoesNotRequireTheDeviceToBeTheVeldridWrapper()
         {
-            var ctx = new GpuDeviceContext(new FakeGpuDevice(), threadingCaps: null, Selection(), ownsDevice: true);
+            var device = new FakeGpuDevice(GpuBackendKind.Direct3D11);
+            var ctx = new GpuDeviceContext(device, threadingCaps: null, threadingProbeFailure: null,
+                Selection(), ownsDevice: true);
 
             ctx.Dispose();
         }

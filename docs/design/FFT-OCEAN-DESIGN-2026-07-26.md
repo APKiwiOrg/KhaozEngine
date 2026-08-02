@@ -91,7 +91,10 @@ A drain survives for PRIMING only: the first frame of an ocean has no pending ro
 old way and renders exactly what the pre-ping-pong code rendered. Same after a re-bake (the pending rows came
 from a spectrum that no longer exists) and after a wave-clock jump wider than the frame-delta clamp (the ocean
 was not drawn for a while, or the clock was scrubbed). All three are rare by construction, and the alternative to
-the drain on those frames is a stale sea.
+the drain on those frames is a stale sea. That surviving drain needs a command list of its own, which is why
+17.26.0 moved it out of frame recording and into `Scene3D.PrepareFrame`: opening a second list while the frame's
+is recording resets the immediate context on Direct3D11
+([#423](https://github.com/APKiwiOrg/KhaozEngine/issues/423)).
 
 **The parameter block had to move onto the command list, and that was the whole difficulty.** The producer
 uploaded its UBO through `IGpuDevice.UpdateBuffer`, which lands when the CPU calls it, while the dispatches run

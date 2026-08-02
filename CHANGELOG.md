@@ -5,6 +5,119 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.26.0
+
+### The FFT ocean stops opening a command list inside the frame's
+
+`Scene3D` gains a public pre-recording phase, `PrepareFrame()`, and the FFT ocean's priming pass moves into it, so
+the only engine site that opened a second command list mid-recording no longer does. That nesting is what took the
+Windows WARP leg down with 25 `DEVICE_REMOVED` failures in #423, and it is a real corruption rather than a test
+artifact. Two further failures in the same run were a capability assertion the Direct3D11 backend can never
+satisfy, and the Vulkan leg's third symptom turned out to be a test that could not keep up with a slow device
+rather than a dead fence. All three are fixed here. Nothing about what the GPU executes changes on a path that was
+already correct, so every golden is bit-for-bit what it was.
+
+#### Root cause: in immediate-context mode a command list IS the device's context (#423)
+
+`OceanFftProducer.PrimeRowPass` opens, submits and drains a command list of its own, because the two FFT passes
+are a read-after-write chain and the GPU seam has no dispatch-to-dispatch barrier (#311). The only ordering
+available for that pair is a submit plus a device wait, which cannot be recorded into a list that is still open.
+It ran from `Update`, which the water pass calls while the scene's frame list is recording.
+
+With Direct3D11 in immediate-context mode (how `GpuDeviceContext` creates the device since 17.23.1) a command list
+IS the device's immediate context, and `Begin` calls `ClearState` on it. So the prime wiped every binding the
+frame's list believed was still bound, the managed binding cache skipped re-binding them because nothing in ITS
+model had changed, and the device faulted a few draws later. Recording the prime into the frame's list instead was
+rejected for the barrier reason above.
+
+#### The frame-prepare seam and the `PrepareFrame` contract
+
+The frame is now two phases. Prepare does the bake, the wave clock and the priming submission with no frame list
+open. Record only records, so it is safe mid-recording on every backend. `Scene3D.PrepareFrame()` runs every
+internal `IFramePreparer` once, between the frame's queues being filled and the host opening the frame's list, and
+`WaterRenderer` declares itself one. `FramePrepare` is what a preparer is told about the frame: the scene-wide
+water look, the frame's queued planes in the render frame, and the effect clock.
+
+The contract, in order: `Begin()`, every `Draw*` for the frame, `PrepareFrame()`, then open the command list the
+scene is recorded into.
+
+- **A doubled call is a no-op, and that is load-bearing.** The prepared latch is per frame and cleared by
+  `Begin()`. Two engine paths can now both reach the call, and a second preparation would re-advance the wave
+  clock with a zero delta and hand the frame a surface one frame behind, silently. Safe idempotency means a host
+  that prepares by hand and then hands the scene to `Render3DSurface.Render` does not prepare twice.
+- **Queueing a draw AFTER preparing is the loud failure**, and stays one. The water pass throws when the plane
+  queue moved between prepare and draw.
+- **Skipping the call entirely throws too**, from the water pass, with a message that names the fix rather than
+  rendering a stale ocean.
+- **A frame that queues no water pays nothing.**
+
+Every host the engine ships calls it: `Render3DSurface.Render` (so `GameApp3D` and any surface a consumer builds
+directly are both covered, which the previous arrangement did not manage), `Render3DPreview.Capture` and
+`Render3DSnapshot.Capture`. Only a host driving `Scene3D.RenderInternal` on a command list of its own has to call
+it itself. No game needs a change.
+
+A prepared frame that is then never recorded now invalidates the ocean clock's pending rows. `OceanFrameClock`
+decides and publishes "rows exist" in one step, but the dispatch that produces them lives in Record, so a host
+that prepared and did not render left the clock believing in rows nothing ran, and the next frame would have
+consumed the frame-before-last's rows with no drain to notice. `Invalidate` retracts the intent for one drain on a
+frame that was already anomalous.
+
+`WaterSyncMs` still reports the measured prime stall, but the transparents bracket no longer subtracts it, since
+the stall no longer lands inside that bracket.
+
+#### Two GPU tests skip where the device has no completion fences
+
+`RetireFenceGpuTests` and `Scene3DUnloadDrainTests` each asserted `SupportsCompletionFences` with `Assert.True`.
+The engine's Veldrid map enables that capability on Vulkan and Metal only, so on the Direct3D11 leg the assertion
+could never pass: two red tests for a feature the backend does not claim. `GpuFactAttribute` gains
+`RequiresCompletionFences`, which skips with the backend named, reusing the once-per-process headless device probe
+the attribute already had.
+
+This is the only skip strict `KE_GPU_TESTS=1` allows, and it is not a hole in it. The gate is about what a device
+can DO: a probe that cannot create a device at all reports nothing and the test still errors, so a leg with a
+broken device can never go quiet. The pure decision is factored out and unit-tested headlessly for all three
+cases, since the skip path itself cannot be observed on a Mac.
+
+#### The retire settle loop drains each poll and is bounded by wall clock (#426)
+
+The settle loop submitted a full scene render per iteration and blocked on nothing, so on a device whose frame
+costs roughly ten times what the loop iteration does (lavapipe) the queue grew monotonically and 300 iterations
+could never catch up. It read as a dead fence on the Vulkan leg, and the arithmetic says otherwise: 4800
+disposables retired, 4560 and 4584 still held across runs, so 240 and 216 were freed, exactly 20 and 18 whole
+frame batches. A dead fence frees zero, deterministically.
+
+Each poll now waits for the frame it just submitted, and the iteration cap becomes a 60 s wall-clock bound,
+because an iteration is not a unit of time on an unknown device. A fence that never signals frees nothing however
+long it runs, so a genuine leak still fails, now with the count and the elapsed time in the message. The drain,
+fenced-submit and peak-pending counters are all sampled before the loop, so the added waits cannot contaminate the
+zero-drain assertions that are the point of the test.
+
+#### Veldrid fork 4.9.102: dynamic offsets above the fixed capacity (#422)
+
+The vendored fork moves from `4.9.101` to `4.9.102` (`APKiwiOrg/veldrid` tag `v4.9.102`, commit
+`20650ed392bcbf6a6c0ef214b9141bc1f6007950`, branch `release/4.9.102`).
+
+`SmallFixedOrDynamicArray` rented from `ArrayPool` once the count passed its five-value fixed buffer and then
+never copied the offsets in, so `Get(i)` returned whatever the previous renter had left there. Every backend read
+garbage dynamic offsets for a resource set with more than five dynamic bindings, Direct3D11 turned that into a
+wild `firstConstant`, and both `BoundResourceSetInfo.Equals` overloads compared garbage. The regression test
+poisons the pool bucket first, because a never-used pool hands back a zeroed array and zero is a plausible dynamic
+offset. The Veldrid assembly gains an `InternalsVisibleTo` for `Veldrid.Tests` so that test can reach the two
+internal types without a device. The fork README also gained accuracy corrections.
+
+`release/4.9.102` sits deliberately below the unreleased immediate-mode guardrail commits on the fork's
+`fix/d3d11-immediate-4.9.0`, per the hold below.
+
+#### Still open: the windowed path keeps the corruption until #429 lands
+
+`AppWindow.Run` opens the frame's command list BEFORE it calls back into the app, so on the windowed `GameApp3D`
+path the prepare runs at the right point in the frame's LOGIC with the window's list already recording, and the
+ocean prime still nests inside it on Direct3D11. That is the frame loop's limitation rather than this seam's, and
+it is exactly what shipped before, so this release neither fixes nor worsens the windowed case. #429 tracks giving
+the frame loop a real pre-record phase. The fork's guardrail commits, which turn that nesting into a throw instead
+of silent corruption, are held back until then (#428), so the two land together rather than converting a corrupted
+frame into a crash.
+
 ## 17.25.0
 
 ### A telemetry recording now says what produced it

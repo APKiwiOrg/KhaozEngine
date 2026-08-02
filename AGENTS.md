@@ -7,17 +7,27 @@ This is the canonical, tool-neutral instruction file for every agent (Claude Cod
 other) and human contributor. `CLAUDE.md` is a thin `@AGENTS.md` import so Claude Code reads the same
 source; Codex reads this file directly.
 
+## Global policy, restated for Codex
+
+Claude loads the full versions from ~/.claude/CLAUDE.md every session. Codex does not, so the rules are restated here in brief:
+
+- Work in a worktree, never loose on main. Finish: fetch, merge main into YOUR branch, build and test there, then merge back and push main right away. Tagging is never automatic.
+- Ride the staged version: if the version is ahead of the newest tag, append to its changelog entry, roll the date, no bump, no asking. Nothing in flight: cut exactly ONE fresh version and leave it untagged. Only the user starts a release.
+- Ask about releasing only when git worktree list shows you are the last chat standing, once, as the last line of the report.
+- A validated result exists as a pushed commit before you move on. A backlog entry is a pointer to a sha, never the only home of a fix.
+- Discovered work becomes an issue at discovery and is never actioned mid-task. Resolved means closed on the spot. A decline is closed as not planned with its written reason. Cross-repo handoffs are full URLs, short forms do not backlink private repos.
+- No em/en dashes and no prose semicolons in shipped text.
+
+`scripts/check-dashes.sh --tree` is the sweep for that last rule: it checks every tracked `.md`/`.cs`
+file as it stands, so an orchestrator runs it across the whole branch diff before merging. The
+pre-commit hook only sees staged additions, and implementers of every tier emit dashes and then
+report clean.
+
+Everything below binds those rules to this engine's own mechanics, and wins where it differs.
+
 ## Before starting ANY engine work (concurrent-dev rule)
-This section is the engine's instance of the global "Branching, worktrees, and finishing work"
-default (worktree per change; finish by merge to `main` + commit + push). It wins where it differs:
-heavy parallel dev makes the worktree mandatory (with the trivial-change exception below), and
-finishing a piece of work is merge to `main` + push `main` + pack to `local-feed`. **Push `main`
-right away** - do NOT hold or batch the push, and don't ask. That authorizes the push and nothing
-else: a `vX.Y.Z` tag is a release, and a release is never automatic (see the release ritual and the
-version-bump rule below for the one exception, a game pinned-and-waiting on the change). **There is
-always parallel development on this engine, so NEVER assume your intended version or tag is free:**
-re-read the current version + tags on the up-to-date `main` right before you bump/tag, and if yours
-is taken, take the next FREE version/tag and auto-resolve (see the release-collision rule below).
+Heavy parallel dev makes the worktree mandatory here (the trivial-change exception below is the only
+way out), and finishing a piece of work is merge to `main` + push `main` + pack to `local-feed`.
 Before you touch anything:
 1. Check for ongoing parallel work first: `git worktree list`, `git branch -a`,
    and `git fetch && git status` to see other branches/trees in flight.
@@ -26,8 +36,8 @@ Before you touch anything:
    loose on `main` or pile onto an unrelated branch). Isolate the change in its
    own tree so concurrent work does not collide.
 
-This applies to every change with one exception below: code, tests, docs, and
-version/release work.
+That covers every change: code, tests, docs, and version/release work. The one
+exception is the trivial-change case below.
 
 - **How to create the tree:** prefer the native `EnterWorktree` tool, not
   `git worktree add`. The native tool is what the parallel-dev workflow expects.
@@ -35,8 +45,10 @@ version/release work.
   auto-pushes, `origin/main` is normally current, but a concurrent chat may have just
   landed work - `git fetch` first. If your change builds on local `main` work not yet
   on `origin` (a just-merged commit mid-push), create the tree from local HEAD instead:
-  `git worktree add .claude/worktrees/<name> -b worktree-<name> main`, then
-  `EnterWorktree` with its `path` to switch in.
+  `git worktree add .claude/worktrees/<name> -b worktree-<name> main`, then rename the branch
+  immediately (`git branch -m feature/<name>`, or `fix/<name>`) so it obeys the naming rule below,
+  then `EnterWorktree` with its `path` to switch in. `EnterWorktree` names its branch
+  `worktree-<slug>` too, so it gets the same immediate rename.
 - **Branch / tree naming:** `feature/<short-name>` for new features, `fix/<short-name>`
   for bug fixes, `<batchN>-promote` for game-code-into-engine promotion batches
   (e.g. `batch1-promote`). Keep the worktree directory name matching the branch.
@@ -85,17 +97,14 @@ version/release work.
   affected by the diff, skips entirely on a docs-only diff, and forces full on a
   workflow/scripts/props/slnx/tool-manifest change or a missing base sha. See
   `docs/design/CI-SELECTIVE-TESTS-DESIGN-2026-07-18.md` for the full design.
-- **Private repo, one self-hosted leg.** `KhaozEngine` is a private repo under the `APKiwiOrg` org, so
-  GitHub-hosted minutes bill (Linux 1x, Windows 2x, macOS 10x). The only expensive work is the macOS
-  Metal golden leg at 10x, so that ONE leg is self-hosted on the native `mac-native-arm64` runner (real
-  Metal, where the metal golden is baked); it kills the 10x. Everything else stays GitHub-hosted, where
-  it's cheap and native-complete: `ci.yml` build/test/pack/publish on x64 `ubuntu-latest` (1x, ~2 min,
-  within the free tier - and it MUST be x64: the engine test suite needs x64-only natives like
-  `libveldrid-spirv`, which ships linux-x64 but not linux-arm64, so it can't run on the arm64
-  self-hosted container), plus the `cross-platform-gpu.yml` D3D11 (Windows/WARP, 2x) and Vulkan
-  (Linux/lavapipe, 1x) golden legs (no local host, software rasterizers, path-gated so trivial spend).
-  The games' fleet-wide CI model (org, both runners, secretless OIDC, macOS arm64-only) is in
-  `game-template/docs/CI-AND-RUNNERS.md`.
+- **Private repo, one self-hosted leg.** Private-repo minutes bill, and macOS is the only rate that
+  hurts, so the macOS Metal golden leg is the ONE self-hosted leg, on the native `mac-native-arm64`
+  runner (real Metal, where the metal golden is baked). Everything else stays GitHub-hosted:
+  `ci.yml` build/test/pack/publish on **x64** `ubuntu-latest` (x64 is load-bearing, the test suite
+  needs x64-only natives like `libveldrid-spirv`, which ships linux-x64 but not linux-arm64, so it
+  cannot run on the arm64 self-hosted container), plus the path-gated `cross-platform-gpu.yml` D3D11
+  (Windows/WARP) and Vulkan (Linux/lavapipe) golden legs. The games' fleet-wide CI model (org, both
+  runners, secretless OIDC, macOS arm64-only) is in `GameTemplate/docs/CI-AND-RUNNERS.md`.
 - **Warnings are errors.** `<TreatWarningsAsErrors>true</TreatWarningsAsErrors>` in `Directory.Build.props`
   (every config), so any compiler/analyzer warning fails the build, the tests, and CI. Keep the engine at zero
   warnings and fix them at the source, not with `<NoWarn>` / `#pragma warning disable` / `TreatWarningsAsErrors=false`
@@ -107,23 +116,22 @@ version/release work.
   "history over time" view. It goes in the SAME commit as the `Directory.Build.props` version bump. Never bump
   the version (or tag a release) without it. (There is no separate `CHANGENOTES.md` - it was folded into
   `CHANGELOG.md`; one file is the single source of truth.)
-- **Before merging back / releasing, re-check for concurrent work and integrate it FIRST.** Parallel dev is
-  heavy here and local `main` is routinely ahead of `origin/main`, so always assume `main` moved under you. `git
-  fetch`; if `main` advanced past your tree's base, merge `main` INTO your tree first, resolve every conflict and
-  re-run the build + tests on the merged result THERE, so the merge back is clean (never resolve a pile of
-  conflicts on `main`). The shared `<KhaozEngineVersion>` line collides constantly: a concurrent chat may have
-  already bumped it and tagged that `vX.Y.Z`, so re-read the current version on the up-to-date `main` and take the
-  next FREE version for your bump + tag (and rebase your `CHANGELOG.md` entry onto it).
+- **The shared `<KhaozEngineVersion>` line collides constantly.** Parallel dev is heavy here and
+  local `main` is routinely ahead of `origin/main`, so never assume your intended version or tag is
+  free. A concurrent chat may have already bumped it and tagged that `vX.Y.Z`, so re-read the current
+  version and `git tag` on the up-to-date `main` right before you bump, take the next FREE version
+  for your bump + tag, and rebase your `CHANGELOG.md` entry onto it. That collision is auto-resolved,
+  no asking.
 - Finishing ritual, in order: bump `<KhaozEngineVersion>` in `Directory.Build.props`, unless you are
-  riding an in-flight bump (see the version-bump rule below), in which case skip this step → add the
+  riding an in-flight bump (global policy above), in which case skip this step → add the
   `CHANGELOG.md` entry (or append your notes to the in-flight entry when riding) → update the
   engine-version declarations the guard checks (EVERY `README.md` `<PackageReference>` example line,
   one per umbrella) → close any issue this work resolves (`gh issue close`, or `Closes #123` in the
   commit) if it is somehow still open, a backstop only: that should already have happened when the
   work landed, per the Discovered work section → `dotnet pack -c Release -o ./local-feed` (cumulative,
   and happens on every finish whether or not a tag follows) → commit → push `main` right away, don't
-  hold or ask. Stop there: a `vX.Y.Z` tag is a separate, deliberate act, never automatic (see the
-  version-bump rule below for who starts one and when). When a release IS due, cut it with
+  hold or ask. Stop there: a `vX.Y.Z` tag is a separate, deliberate act, never automatic (the user
+  starts one, with the single pinned-and-waiting exception below). When a release IS due, cut it with
   `scripts/tag-release.sh` (creates the annotated tag `vX.Y.Z` with the canonical
   `area(<version>): summary`, reading `<KhaozEngineVersion>`, and do NOT hand-type `git tag vX.Y.Z`, a
   lightweight tag is rejected by `pre-push` and is how merge-commit subjects leaked into old tags),
@@ -202,11 +210,8 @@ version/release work.
     `ProjectReference` set is the authority on what it carries - read it, do not trust a prose list.
     A `netstandard2.0` Roslyn analyzer `KhaozEngine.Localization.Analyzers` (KELOC001/002/003) flows to consumers via the `Game2D`/`Game3D` umbrellas.
     The four umbrellas (`Foundation`, `Game2D`, `Game3D`, `Server`) are code-free dependency groups.
-  - **Gotchas / history:** the package id is `KhaozEngine.Sharding`, NOT `KhaozEngine.World` (a `World` leaf would
-    shadow the ECS `World` type). The legacy 4.x MonoGame line + its six packages
-    (`UI`/`Graphics`/`Screens`/`Sprites`/`Input`/`Time`) were DELETED - there is no 4.x line; all consumers are on
-    the 7.x/8.x line (each consumer pins its own version in its `Directory.Build.props`). The line dropped `-experimental` at `5.31.0`; the foundation
-    graduated onto it at `5.46.0`. See `CHANGELOG.md` (top) for the MonoGame-free pivot history.
+  - **Gotcha:** the package id is `KhaozEngine.Sharding`, NOT `KhaozEngine.World` (a `World` leaf would
+    shadow the ECS `World` type). Older package history is in `CHANGELOG.md`.
 - **Commit subjects:** conventional-commit style `area(scope): summary`, e.g.
   `audio(4.3.1): MacOsMusicBackend loads built .ogg` or `docs(readme): ...`.
   On a release/version-bump commit, use the new version as the scope (`audio(4.3.1):`).
@@ -217,33 +222,12 @@ version/release work.
   standalone fix landing alongside other small work: fold it into that shared bump rather than cutting
   its own `vX.Y.Z`, and lean on the trivial-change exception (no bump at all) for anything that ships no
   package, so the engine version does not creep through a run of one-line releases.
-- **Ride the staged version. Never tag on your own initiative.** Releases are deliberately consolidated:
-  one tag carrying a lot of content, not a trickle of one-change versions. So the default end of every
-  piece of work is merge, push `main`, pack to `local-feed`, stop. Do NOT tag, and never treat "my feature
-  is finished and tested" or "that version has a lot in it now" as a reason to tag.
-  - **A bump already in flight is RIDDEN.** In flight means `<KhaozEngineVersion>` is ahead of the newest
-    `vX.Y.Z` tag: staged, not yet released. Append your notes to that version's existing `CHANGELOG.md`
-    entry, keep the version as it is, and do not bump. Riding is the assumption, so do not ask which. This
-    replaces the old batch gate, which asked at this moment. It no longer does.
-  - **Nothing in flight means cut exactly ONE fresh version.** When `<KhaozEngineVersion>` is already
-    tagged, bump once for your work, write its `CHANGELOG.md` entry, and leave it UNTAGGED for the next
-    chat to ride. Also without asking.
-  - **Tag immediately, without asking, when a game is pinned-and-waiting on this change.** The
-    engine-first rule pauses the dependent game's work until the upgrade ships, so holding the tag holds
-    that game. This is the one case the engine tags on its own initiative.
-  - **Otherwise only the user starts a release**, either by saying so or by answering the end-of-run
-    question below. When they do: `git fetch`, re-read the current `<KhaozEngineVersion>` and `git tag`
-    on the up-to-date `main`, take the next FREE version if yours is taken (that collision is still
-    auto-resolved without asking) and rebase the `CHANGELOG.md` entry onto it, then make the tag with
-    `scripts/tag-release.sh` and push it.
-- **The release ask: only when you look like the last chat standing.** At your checkpoint, before you
-  report back, run `git worktree list`. If it shows any worktree besides your own and the main checkout,
-  another chat is mid-flight: say nothing about releasing, and assume that chat rides your work and tags
-  at its end. If yours is the only one left, you may ask ONCE, as the last line of your report, whether to
-  release now or keep stacking. Name the staged version and summarise what has accumulated in its entry,
-  so the answer is an informed one. Never tag before the answer comes back. A stale worktree nobody
-  cleaned up will silence the ask, and that is the correct failure direction: an unasked question costs a
-  release cycle, an unwanted tag costs a release.
+- **The one sanctioned divergence from the global rule: tag immediately, without asking, when a game
+  is pinned-and-waiting on this change.** The engine-first rule pauses the dependent game's work until
+  the upgrade ships, so holding the tag holds that game. This is the one case the engine tags on its
+  own initiative, and the only place in this file where an automatic tag is authorized at all. Riding,
+  cutting a fresh version, and the release ask are the global policy at the top of this file, unchanged.
+  The default end of a piece of work here is merge, push `main`, pack to `local-feed`, stop.
 - `local-feed/` is gitignored but MUST exist before `dotnet restore` (`mkdir -p local-feed`).
 - **SessionStart injects the discovered-work ledger** into every session: the open backlog count, via
   `scripts/session-context.sh` on top of `scripts/ledger.sh`. Informational, never blocks. There is no
@@ -256,19 +240,15 @@ version/release work.
 - **The ledger needs a token, and it will tell you so.** The backlog is GitHub Issues in a private repo,
   so there is no anonymous read: `scripts/ledger.sh` needs `gh auth login` or `GH_TOKEN` exported. Codex
   and CI generally need the env var. When it cannot read, it says `BACKLOG: UNKNOWN` or `STALE MIRROR` and
-  names the fix. **It never says `0`.** That is deliberate and is the one invariant worth protecting here:
-  `gh issue list` exits non-zero with empty stdout on dead auth, and the obvious `gh issue list | jq length`
-  renders that as `0 open`, which is not a degraded answer but an inverted one. "0 open" reads as "the
-  sweep is clean" at the precise moment the tool has no idea what is open. So a count is only ever printed
-  when it was actually read, and everything else is loud.
+  names the fix. **It never says `0`**, deliberately, because a count is only ever printed when it was
+  actually read (the full case is in the `ledger.sh` header).
 - net10.0, MonoGame-free: Silk.NET (windowing + input, GLFW natives bundled per-RID), Veldrid behind
   `KhaozEngine.Gpu` (GPU), Silk.NET.OpenAL (audio), xUnit (tests).
 
-### Agent build workaround: .buildhome (macOS gitconfig TCC)
+### Agent build workaround: .buildhome (unreadable ~/.gitconfig)
 
-On the primary dev Mac, `~/.gitconfig` is an iCloud-symlinked file behind macOS TCC, so
-`dotnet build` / `dotnet test` can fail with an error about reading `~/.gitconfig` when run from
-sandboxed or agent contexts. When, and only when, that specific failure appears, rerun with a
+`dotnet build` / `dotnet test` can fail with an error about reading `~/.gitconfig` when run from a
+sandboxed or agent context. When, and only when, that specific failure appears, rerun with a
 scratch HOME inside the working tree and the real NuGet cache pinned, so restore does not
 re-download:
 
@@ -279,31 +259,15 @@ HOME="$PWD/.buildhome" NUGET_PACKAGES="$real_home/.nuget/packages" dotnet build 
 ```
 
 Same prefix for `dotnet test`. `.buildhome/` is gitignored fleet-wide (game-template standard):
-never commit it, avoid `git add -A` around it, and let it die with the worktree. On machines
-without the TCC quirk this rule is a harmless no-op.
+never commit it, avoid `git add -A` around it, and let it die with the worktree. Where the build
+reads `~/.gitconfig` fine, this rule never fires.
 
 ## Discovered work (follow-ups and chips)
 
-Two rules. The first one matters more.
-
-### Durable work product first
-
-A validated result must exist as a pushed commit before you move on. Not only in a container, a scratch
-clone, a sandbox, a subagent's context, or a chat transcript. If you built and validated a fix, a repro,
-a bake, or a measurement, push it to a branch and then carry on. A backlog entry about that work is a
-POINTER to the sha, never a prose description of a fix that exists nowhere.
-
-On 2026-07-17 a validated GPU crash fix evaporated with the throwaway container it was built in, while
-its sibling fix survived as a commit on a pushed branch. The note later written about the lost one
-preserved the knowledge that a fix had existed and none of the fix. A note hardens the memory of work.
-Only a push hardens the work.
-
 ### The ledger
 
-Work you notice but do not do becomes a **GitHub issue** before you carry on. Not your head, not only a
-chat chip. A chip is a notification, its id does not survive a restart, and the chat that finds a
-problem is usually not the chat that fixes it. The issue is the only durable record. There is no
-`docs/TODO.md` and no `docs/ROADMAP.md` any more, and no file to keep in sync.
+The backlog is **GitHub Issues** in this repo. There is no `docs/TODO.md` and no `docs/ROADMAP.md`
+any more, and no file to keep in sync.
 
 ```
 gh issue create --label kind/backlog --label confidence/lead --title "..." --body "..."
@@ -317,43 +281,25 @@ Use it, not GitHub's search box: GitHub tokenizes, so it will not reliably find 
 most valuable result it can give you, because it usually means "this was investigated and declined,
 here is why".
 
-**Raise it at discovery.** The moment you notice it (something you would spawn a chip for, a TODO you
-would otherwise leave in code, a gap a bake or a consumer adopt exposes, a workaround you accept to keep
-moving), file it. Before you continue the current task, not at the end. The end of a task is where
-context runs out and the item evaporates. Spawning a chip does not discharge this. The chip is the
-notification, the issue is the record, so do both.
-
-**Never action it mid-task.** A discovered item must NEVER redefine the scope of the work in flight.
-That is how a chat sent to fix X quietly ships Y instead. Action open items at your next checkpoint,
-which is the moment you are about to end your turn and report back. That moment is reachable in every
-session, including the debug and playtest sessions that never cut a release. "The current sub-task feels
-finished" is NOT a checkpoint: that boundary is drawn by the same agent that wants to go do the
-interesting thing it just found.
-
-At the checkpoint, anything small and self-contained is a subagent job, so do it then and say you did.
-Anything needing its own design, its own release, or another repo is handed off and reported, not
-started.
+**At your checkpoint.** Discovery here usually happens in a bake or a consumer adopt. The checkpoint
+is the moment you are about to end your turn and report back, reachable in every session including the
+ones that never cut a release. Anything small and self-contained is a subagent job then, so do it and
+say you did. Anything needing its own design, its own release, or another repo is handed off and
+reported, not started.
 
 **Say how much to trust it.** Every backlog issue carries a `confidence/*` label, and it is required
 (`.github/workflows/issue-confidence.yml` flags anything filed without one, CLI included). This is the
 thing most often lost: a checked finding and an unverified guess look identical once they are both just
 an issue in a list, and acting on a guess as though it were a finding wastes exactly the time the guess
 was meant to save. `confidence/verified` = checked against the code. `confidence/lead` = surfaced, not
-checked, may well be wrong. `confidence/authored` = written deliberately, with the context.
+checked, may well be wrong. `confidence/authored` = written deliberately, with the context. A decline
+carries `confidence/refuted` alongside its written reason.
 
-**A handoff is a cross-repo issue reference, and you write it as a full URL**
-(`https://github.com/APKiwiOrg/Nullwake/issues/45`), never the short `APKiwiOrg/Nullwake#45` form. The
-short form renders as a link and creates NO backlink between these private repos, so the handoff reads
-as filed while being invisible from the other end. That is not hypothetical: SpaceGame#69 sat on
-`needs/upstream` pointing at nothing for exactly this reason, and `scripts/check-handoffs.sh` was
-retired on the belief that the short form linked both sides. Plain `#123` is still correct WITHIN one
-repo. Written as a URL it does backlink both sides, so there is nothing left to keep reciprocal by
-hand. Label yours `needs/upstream`. This is the common
-direction here: the engine is upstream of four games, so a consumer-side item the engine is blocking
-(or a game-side gap an engine change creates) is a reference, not a pair of hand-written entries. For
-something that cannot answer back (a branch, a chat, a person), just say so in the body. A branch is
-not a party, and a scoping prompt pasted into another chat is not a handoff either, because that chat
-can drift and nothing records that it was ever asked.
+**Handoffs go out labelled `needs/upstream`, written as a full URL**
+(`https://github.com/APKiwiOrg/Nullwake/issues/45`). Plain `#123` is still correct WITHIN this repo.
+Cross-repo is the common direction here: the engine is upstream of four games, so a consumer-side item
+the engine is blocking (or a game-side gap an engine change creates) is a reference, not a pair of
+hand-written entries.
 
 **Consumer fit-failure pairs are the decline ledger's inflow, and the engine treats them as a primary
 API-gap signal.** A game that cannot adopt an engine type files a pair: a `needs/upstream` record on
@@ -368,20 +314,6 @@ https://github.com/APKiwiOrg/SpaceGame/issues/82 (SpaceGame). The consumer-side 
 these lives in `GameTemplate/docs/ENGINE-INTEGRATION.md` and the games' own
 `docs/ENGINE-INTEGRATION.md`, and is not restated here.
 
-**Resolved means CLOSED, on the spot. Close it, do not delete it.** The moment an item is done, close
-the issue, in the same sitting, ideally from the commit that resolved it (`Closes #123`). Closing is
-what a tick could never be: it takes the item out of the open pile AND keeps the whole record
-searchable forever. That is the one real gain of issues over a file, so do not throw it away by
-deleting anything.
-
-**A decline is CLOSED AS NOT PLANNED, with the reason in the issue and `confidence/refuted` on it.**
-Never silently. "Forgotten" is not a disposition. Write what you ruled out and why, in the issue, then
-close it as not planned. It stays greppable via `ledger.sh search`, which is the entire point: an item
-declined once and then unfindable gets re-raised by the next agent that reads the same suggestive
-comment, and then again by the one after that. Four separate agents re-raised the same `SwingCooldowns`
-non-bug because the record of the first decline had been deleted. Closed-with-a-reason is what stops
-that. If you are not willing to write the reason, the item is not declined and stays open.
-
 ### Filing
 
 - Use the issue forms (**Backlog item** / **Roadmap item**). Blank issues are off, because a blank issue
@@ -389,8 +321,9 @@ that. If you are not willing to write the reason, the item is not declined and s
 - **Backlog vs roadmap** is the old TODO-vs-ROADMAP split, now two labels instead of two files.
   `kind/backlog` is the chip pile. `kind/roadmap` is the program list: anything that earns its own design
   spec and its own release. **If it needs a spec, it is a roadmap item. Otherwise it is a TODO.** That is
-  the whole test, and it did not change when the files went away. A roadmap item's spec still lands as a
-  `docs/*-DESIGN.md` in this repo, with the issue pointing at it.
+  the whole test, and it did not change when the files went away. A roadmap item's spec lands in
+  `docs/design/` (`<TOPIC>-DESIGN-<YYYY-MM-DD>.md`), never `docs/` root, with the issue pointing at it
+  and a row added to `docs/INDEX.md`'s design table.
 - Title it the way you would say it out loud. Then, in the body, write enough context and file links to
   action it without the chat that found it: paths, symbols, line numbers, what you already ruled out.
   Do not compress what you know into a task title. The next reader has none of your context, and

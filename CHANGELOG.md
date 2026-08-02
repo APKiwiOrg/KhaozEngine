@@ -5,6 +5,175 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.30.0
+
+### The four prerequisites of the native Direct3D 11 backend (#444, #445, #446, #447)
+
+The seam work an engine-owned Direct3D 11 backend needs before it can render a single pixel: `GpuDeviceContext`
+now ADOPTS an `IGpuDevice` instead of only building one, a backend that ships outside `KhaozEngine.Gpu` arrives
+through the explicit `GpuBackendProviders` registry, `GpuBackendKind` gains an appended `Direct3D11Native`, and
+the opt-in `KhaozEngine.Gpu.D3D11` package exists with its Windows guards, its machine probe and its architecture
+guards. Nothing renders differently and nothing switches over: the native backend's two device-creation entry
+points still throw, the Windows OS probe still answers `Direct3D11`, `SupportedBackends()` still never offers the
+new kind to a player, and no golden moved. Full reasoning, including the rollout gates that govern when the
+default flips, in `docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md`.
+
+#### `GpuDeviceContext` is inverted onto `IGpuDevice` (#444)
+
+The context used to hold a Veldrid `GraphicsDevice` and build the engine wrapper from it, which made that wrapper
+the only `IGpuDevice` a consumer could ever be handed. A new internal constructor adopts an `IGpuDevice` the
+engine created itself, with no Veldrid device behind it, and everything a consumer or a session log observes is
+identical on both paths: the same capabilities, the same four ordered diagnostic lines (now emitted from one
+shared `LogCreation` rather than two copies), the same `GpuTelemetry` feed, and the same process-wide lifecycle
+gate around disposal.
+
+**`Capabilities` is read off the device now, not derived a second time.** `VeldridMap.ReadCapabilities` stays the
+single source and is read ONCE, inside the wrapper. The two copies had already disagreed in practice (the device
+name and the sampler feature flags were populated on one and dropped on the other), and an adopted device has no
+shared reader a second derivation could point at anyway.
+
+**Teardown ordering moved from a cast onto an interface.** Disposal read
+`((VeldridGpuDevice)GpuDevice).MarkDeviceDisposed()`, so any other `IGpuDevice` implementation would have thrown
+`InvalidCastException` at teardown. That one cast is what actually pinned the seam shut. It is now the optional
+internal `IGpuDeviceLifecycle`, and a device with no liveness token of its own simply does not implement it.
+
+**The driver threading probe gained a raw-pointer entry.** `D3D11ThreadingProbe.TryQuery(IntPtr, out string?)`
+runs the same `D3D11_FEATURE_DATA_THREADING` query against an `ID3D11Device` a caller already holds, because a
+natively created device has no Veldrid `GraphicsDevice` to read `BackendInfoD3D11.Device` off. Both entry points
+share one wording for the two failure strings, or a reader comparing two session logs would be comparing the
+wording of two probes rather than the answers of two drivers. Ownership of the pointer stays with the caller and
+its refcount is left exactly as found.
+
+**The probe FAILURE now has a channel of its own.** `ThreadingCaps` being null cannot distinguish "the probe
+faulted" from "there was nothing to ask", and that difference is exactly whether a WARN belongs under the
+threading line. `GpuDeviceContext.ThreadingProbeFailure` (internal, since the public surface exposes the answer
+rather than the plumbing) carries the reason, and the pure `GpuThreadingDiagnostics.WarningFor(caps, failure)`
+takes the decision so both creation paths are pinned headlessly instead of only the one a Windows Direct3D11
+machine can reach. A known-bad driver wins over a failure reason.
+
+**An adopted device's `Backend` must agree with the selection it is adopted with**, and a mismatch throws
+`ArgumentException`. The Veldrid path gets that invariant for free by building the wrapper from the same
+selection. Here the two arrive independently and different consumers read different halves of the pair (the
+golden image filename, the telemetry session header, the Direct3D11 threading gate), so a mismatched pair would
+not fail the run, it would misattribute it.
+
+#### Backends can ship in their own package (`GpuBackendProviders`, #445)
+
+Every backend before this one lived inside `KhaozEngine.Gpu`, so the selector could just construct it. A backend
+in its own opt-in package cannot work that way (`Gpu` referencing it is a cycle) and folding it back into `Gpu`
+would make its interop non-optional for every consumer, Linux server heads included. So the edge is inverted:
+`KhaozEngine.Gpu` declares `IGpuBackendProvider` plus a `GpuBackendProviders` registry keyed by `GpuBackendKind`,
+the backend package implements the interface, and the consuming app joins the two with one explicit call at
+startup.
+
+`IGpuBackendProvider` has three members: `IsSupported()` (the functional probe, which must never throw),
+`CreateForWindow(in GpuWindowedDeviceRequest)` and `CreateHeadless()`. Both creation calls return a
+`GpuProviderDevice` carrying the `IGpuDevice` plus the driver threading caps the provider probed, and both run
+inside the engine's existing process-wide device-creation gate, so a provider needs no lifecycle lock of its own.
+
+**Registration is EXPLICIT, and that is a decision rather than an omission.** No `[ModuleInitializer]` and no
+reflection by assembly name: the CLR loads an assembly lazily on first type reference, so a package reference
+with no static type use does not guarantee an initializer ever runs. A silent, machine-dependent failure is the
+worst possible shape for a switch whose entire purpose is attributing a measurement to a backend. One explicit
+call is compile-time visible, trim-safe and testable.
+
+**A missing provider THROWS `GpuBackendProviderMissingException` and never falls back.** A run that quietly used a
+different backend than the one asked for would file its frame times, its telemetry session header and its golden
+images under the wrong name. An incapable MACHINE is a genuinely different fact and keeps its existing story: the
+provider's own `IsSupported()` answers `IsBackendSupported`, and creation falls back to the OS-probe backend,
+WARNs, and reports `GpuBackendSource.FallbackAfterFailure` with `RequestedBackend`.
+
+`IsBackendSupported` routes a provider-backed kind to that provider's probe, because Veldrid cannot answer for a
+backend it does not implement. With nothing registered the answer is false and is deliberately NOT cached, so a
+later registration still gets a real probe, and registering or replacing a provider invalidates the cached answer
+for that kind. That false is for a settings screen only. It is never why a creation fails, since the creation
+path asks the registry first and throws. `RequiresProvider(kind)` is stated as everything this package does not
+build itself, so an appended kind is provider-backed by default with no edit to the registry.
+
+#### `GpuBackendKind.Direct3D11Native` is appended, and all thirteen switch sites are decided (#446)
+
+`GpuBackendKind` members are now pinned to explicit ordinals and documented as APPEND-ONLY. A game persists the
+player's backend choice as a stored preference and hands it back as a `GpuBackendKind`, so renumbering would
+silently repoint every saved graphics setting. `Direct3D11Native = 4` is Direct3D 11 through the engine's own
+backend rather than through Veldrid, and it is a separate member precisely so a session log, a telemetry header
+and a frame time each name the implementation that actually ran.
+
+`KE_GRAPHICS_BACKEND` recognizes `d3d11-native` and `direct3d11-native`. The whole token is matched, so neither
+can be confused with `d3d11` or `direct3d11`, and a typo'd suffix gets the `UnrecognizedOverride` diagnostic
+rather than a silent run on the incumbent implementation under the new name. The unrecognized-override warning
+text lists the new token. The OS probe deliberately still answers `Direct3D11` on Windows, and
+`SupportedBackends()` still does not offer the native kind, because a settings screen showing two entries that
+both read "Direct3D 11" is a choice nobody outside this repo can make.
+
+**New public API: `GpuBackendKinds.IsDirect3D11(kind)`**, an extension answering true for both implementations.
+It is the right question for anything that talks to the D3D11 API or reports on the D3D11 driver, since the
+driver underneath is the same one whichever implementation drove it, and the wrong question for anything mapping
+a kind onto a Veldrid backend.
+
+**Three of the thirteen sites degraded SILENTLY on an appended member, and all three are closed.**
+`GpuBackendSelector.ToVeldrid` had a discard arm answering `Metal`, so the new member would have asked Veldrid
+for a Metal device on Windows and failed naming an API nobody selected. It throws a message saying what actually
+went wrong instead. The threading log gate tested equality against `Direct3D11`, which would have dropped the
+driver line and the two telemetry threading fields it feeds on the one backend the probe was written for. It uses
+`IsDirect3D11` now, and a test pins that gate against the probe's own gate on every member. The golden filename
+token was derived inline from the enum name at two sites, which would have orphaned 36 committed goldens behind a
+name nothing had ever baked. The remaining sites were each decided and the reasoning recorded in place rather
+than left implicit: `FrameCap.Resolve` and `DisplaySettings.RequiresFrameCapWarning` keep their equality against
+`Metal` on purpose, since the native backend's present throttles the CPU from vsync exactly as the incumbent's
+does and it must behave identically to the implementation it is being A/B'd against.
+
+**Both Direct3D 11 implementations SHARE one golden family.** `GoldenCompare.GoldenBackendToken(kind)` is a
+mapping rather than the enum name, and `Direct3D11Native` resolves to `direct3d11`. Holding the native backend to
+the incumbent's already-committed references, unmodified, on the same WARP rasterizer at the same tolerance is
+the strongest free proof the port has. So it is guarded in the other direction too: `KE_UPDATE_GOLDENS` REFUSES
+to write when the running backend does not OWN its family, unless `KE_GOLDEN_FAMILY_OVERRIDE=1` says the shared
+family is being moved on purpose. Without that guard a bake on the native leg would overwrite both the reference
+it is being checked against and the incumbent's, and the file it wrote would be exactly the file it would then
+compare against, so nothing downstream could notice. An unmapped kind throws rather than inventing a family, and
+`GpuBackendKindAppendAuditTests` walks every member so that failure arrives from a device-free test rather than
+from a GPU leg.
+
+#### The `KhaozEngine.Gpu.D3D11` package (#447)
+
+A new opt-in package carrying the engine's own native Direct3D 11 backend. It is in NO umbrella and is added
+explicitly, like `Physics.Bepu`. One public entry point, `KhaozEngineD3D11.Register()`, registers an
+`IGpuBackendProvider` for `GpuBackendKind.Direct3D11Native`, so opting in is a package reference plus one line at
+startup.
+
+**Device creation is still being built.** Registration, the platform guard and the machine probe are live, and
+the two creation entry points throw a message saying so, which the fallback path turns into a WARN and a boot on
+`Direct3D11`. Today the package is what makes the backend selectable and reportable, not yet runnable.
+`GpuBackendKind.Direct3D11` is the working Direct3D 11 backend and stays selectable indefinitely.
+
+**It targets `net10.0`, deliberately not `net10.0-windows`.** The Windows boundary is
+`[SupportedOSPlatformGuard("windows")]` entry points over `NoInlining` Vortice bodies, so the assembly compiles
+and its device-free tests run on Linux and macOS while the interop stays off the load path there, and CA1416
+enforces the boundary at compile time rather than leaving it to review. `Register()` is therefore safe to call
+unconditionally on every OS, and `KhaozEngineD3D11.IsPlatformSupported` is the predicate a consumer can read for
+itself.
+
+**The machine probe checks the two hard device requirements**, `ConstantBufferOffsetting` and
+`MapNoOverwriteOnDynamicConstantBuffer`, read off a throwaway feature level 11_0 device (default hardware
+adapter, then WARP). A machine missing either cannot run the backend at all, and answering that up front is what
+routes it through the reported fallback instead of a crash on the first frame.
+
+**It declares NO `Veldrid` package, and that is asserted two ways.** The shader path needs SPIRV-Cross, which
+arrives as `Veldrid.SPIRV`, and referencing it from a backend whose entire premise is being Veldrid-free would be
+a bad signal no guard catches, as well as scattering the eventual SPIRV-Cross replacement across three packages
+instead of one. The edge stays in `KhaozEngine.Gpu` behind the new internal, Veldrid-free
+`Internal/SpirvCrossCompile` helper and `ShaderCrossCompileResult` plus `InternalsVisibleTo`, which is where it
+already belonged since that package owns `ShaderValidation`. `ArchitectureTests.GpuD3D11_DeclaresNoVeldridPackage`
+reads the project file, which catches the deliberate edit, and a second guard reads the BUILT assembly's own
+references, which is the only way to catch a Veldrid type crossing an internal API no surface scan looks at.
+`GpuPublicApiTests` additionally walks the package's public surface for `Veldrid`, `Vortice` and `SharpGen` leaks,
+since a Direct3D type in a public signature would load a Windows-only assembly on a platform that has none.
+
+Vortice pins the same 2.3.0 line Veldrid depends on, so there is exactly one D3D11 binding and one
+`SharpGen.Runtime` in the graph. `Vortice.D3DCompiler` rides the same line for the backend's own FXC call and is
+its alone. Docs updated across the README package catalog and repo layout, `docs/USING-KHAOZENGINE.md`,
+`docs/DEPENDENCY-SEAMS.md` (a new inverted-edge section) and `docs/CROSS-PLATFORM.md` (the shared golden family
+and its bake refusal).
+
 ## 17.28.0
 
 ### Steep terrain slides instead of refusing (#442, subsumes #441)

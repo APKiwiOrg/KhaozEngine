@@ -5109,7 +5109,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.28.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.30.0" />
 ```
 
 ```csharp
@@ -8158,6 +8158,11 @@ case-insensitive, aliases `direct3d11`, `direct3d11-native` and `opengl`). `d3d1
 Direct3D11 implementation rather than the Veldrid one, and it is a separate value precisely so a session log, a
 telemetry header and a frame time say which of the two ran.
 
+Because the two are separate values, code that cares about the API rather than the implementation asks
+`kind.IsDirect3D11()` (the `GpuBackendKinds` extension, 17.30.0), which is true for both `Direct3D11` and
+`Direct3D11Native`. Use it for anything that talks to the D3D11 API or reports on the D3D11 driver, and plain
+equality against `GpuBackendKind.Direct3D11` for anything that means Veldrid's implementation specifically.
+
 The trap is what happens when the override is wrong. A typo, a variable set in the wrong shell,
 or a launcher that drops the environment all fall back to the OS probe, and the run looks completely normal. If
 you were comparing backends, the trace then reads as "the backend I asked for did not help" when that backend
@@ -8295,7 +8300,7 @@ predecessor-pid handshake, so the new instance does not race the settings file t
 
 ---
 
-## Backends that ship in their own package (`GpuBackendProviders`)
+## Backends that ship in their own package (`GpuBackendProviders`, 17.30.0)
 
 Most backends are built by `KhaozEngine.Gpu` itself. A backend that lives in its own opt-in package cannot be,
 because the seam package referencing a backend package would be a dependency cycle. Those backends register
@@ -8339,12 +8344,12 @@ registered.
 `GpuProviderDevice`, which carries the `IGpuDevice` plus the driver threading caps the provider probed, and both
 run inside the engine's process-wide device-creation gate, so a provider needs no lifecycle lock of its own.
 
-### The native Direct3D 11 package (`KhaozEngine.Gpu.D3D11`)
+### The native Direct3D 11 package (`KhaozEngine.Gpu.D3D11`, 17.30.0)
 
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.28.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.30.0" />
 ```
 
 ```csharp

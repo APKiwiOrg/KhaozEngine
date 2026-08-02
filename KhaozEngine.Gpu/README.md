@@ -6,11 +6,11 @@ What it owns today:
 
 - **`GpuBackendKind`** - Metal / Vulkan / Direct3D11 / OpenGL / Direct3D11Native. Members are pinned to explicit
   values and are APPEND-ONLY: a game persists the player's backend choice as a stored preference and hands it back
-  as a `GpuBackendKind`, so renumbering repoints every saved graphics setting. `Direct3D11Native` is Direct3D 11
-  through the engine's own backend (`KhaozEngine.Gpu.D3D11`) rather than through Veldrid, and it is a separate
-  member so a session log, a telemetry header and a frame time each name the implementation that actually ran.
-  `GpuBackendKinds.IsDirect3D11(kind)` is the family predicate for anything that talks to the D3D11 API or reports
-  on the D3D11 driver, and it answers true for both.
+  as a `GpuBackendKind`, so renumbering repoints every saved graphics setting. `Direct3D11Native` (17.30.0) is
+  Direct3D 11 through the engine's own backend (`KhaozEngine.Gpu.D3D11`) rather than through Veldrid, and it is a
+  separate member so a session log, a telemetry header and a frame time each name the implementation that actually
+  ran. `GpuBackendKinds.IsDirect3D11(kind)` (17.30.0) is the family predicate for anything that talks to the D3D11
+  API or reports on the D3D11 driver, and it answers true for both.
 - **`GpuBackendSelector`** - `Select()` reads the `KE_GRAPHICS_BACKEND` env override
   (`metal`/`vulkan`/`d3d11`/`d3d11-native`/`gl`, case-insensitive) and otherwise probes the OS (macOS -> Metal,
   Windows -> Direct3D11, Linux -> Vulkan). The Windows probe stays on the Veldrid `Direct3D11` until the native
@@ -38,7 +38,7 @@ What it owns today:
   Vulkan surface extensions), cached for the process lifetime. **A settings UI must offer only what
   `SupportedBackends()` returns.** `OpenGL` always reports unsupported: there is no windowed GL device path.
   Necessary but NOT sufficient, so it is paired with the creation fallback below rather than trusted alone.
-- **`GpuBackendProviders` / `IGpuBackendProvider`** - the registry for a backend that ships in its own opt-in
+- **`GpuBackendProviders` / `IGpuBackendProvider`** (17.30.0) - the registry for a backend that ships in its own opt-in
   package, which this package cannot reference without a cycle. The consuming app registers it with one explicit
   call at startup (`KhaozEngineD3D11.Register()` for `KhaozEngine.Gpu.D3D11`), and `GpuDeviceContext` then creates
   through the provider. No `[ModuleInitializer]` and no reflection: the CLR loads an assembly lazily on first type

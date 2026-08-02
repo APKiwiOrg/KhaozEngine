@@ -1041,7 +1041,7 @@ namespace KhaozEngine.Render3D
             _beamItems.Clear();
             _trailItems.Clear();
             _trailSamples.Clear();
-            _billboardBasisValid = false;
+            _billboardBasisValid = false; _framePrepared = false;   // per-frame latches (see PrepareFrame)
         }
 
         /// <summary>Queue one instance: draw <paramref name="mesh"/> at world transform <paramref name="world"/> (no tint).</summary>

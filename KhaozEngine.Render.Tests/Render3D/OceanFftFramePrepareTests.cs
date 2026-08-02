@@ -138,6 +138,32 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(1, producer.LastStallCount);
         }
 
+        // The atomicity gap between the two phases: Advance decides AND publishes "rows exist" in one step, but the
+        // row dispatch lives in Record. A frame prepared and then never recorded (a host that bailed between the
+        // phases, a dropped frame) would otherwise leave the clock believing in rows nothing produced, and the next
+        // frame would consume the frame-before-last's rows silently, with no drain to notice it.
+        [Fact]
+        public void A_prepared_frame_that_never_recorded_re_primes_instead_of_consuming_rows_nobody_produced()
+        {
+            using var device = new OpenListTrackingGpuDevice();
+            using var producer = new OceanFftProducer(device);
+            using IGpuCommandList frameList = device.Factory.CreateCommandList();
+            WaterSettings settings = OceanSettings();
+
+            float time = 0f;
+            Frame(device, producer, settings, time, frameList);          // primes, records, rows are real
+            Assert.Equal(1, producer.LastStallCount);
+
+            producer.Prepare(settings, time += Dt, wantOcean: true);     // planned, and then the frame is dropped
+            Assert.Equal(0, producer.LastStallCount);
+
+            Frame(device, producer, settings, time += Dt, frameList);
+            Assert.Equal(1, producer.LastStallCount);                    // re-primed rather than trusting the drop
+
+            Frame(device, producer, settings, time + Dt, frameList);
+            Assert.Equal(0, producer.LastStallCount);                    // and the steady state resumes
+        }
+
         [Fact]
         public void Record_refuses_a_frame_that_was_never_prepared()
         {

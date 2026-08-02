@@ -81,9 +81,14 @@ namespace KhaozEngine.Render3D.Internal
         }
 
         /// <summary>Drop the pending row output, so the next <see cref="Advance"/> primes. Called when the rows
-        /// stop describing the sea: a re-bake changed the spectrum they were evolved from, or the buffers holding
-        /// them were rebuilt. The frame delta is deliberately NOT reset - the foam integrates over real elapsed
-        /// time either way, and a re-bake is not a discontinuity in the clock.</summary>
+        /// stop describing the sea: a re-bake changed the spectrum they were evolved from, the buffers holding them
+        /// were rebuilt, or the frame that <see cref="Advance"/> planned them for was never recorded, so the
+        /// dispatch that would have produced them never ran. The frame delta is deliberately NOT reset - the foam
+        /// integrates over real elapsed time either way, and none of these is a discontinuity in the clock.
+        /// <para>
+        /// That last case is why <see cref="Advance"/> deciding and publishing in one step is safe: it publishes an
+        /// INTENT, and the producer owning the dispatch retracts it here if the intent was not carried out.
+        /// </para></summary>
         public void Invalidate() => _hasRows = false;
     }
 }

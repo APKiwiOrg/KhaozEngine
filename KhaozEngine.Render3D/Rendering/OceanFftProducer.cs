@@ -217,6 +217,15 @@ namespace KhaozEngine.Render3D.Rendering
         /// target and its chain regenerated per frame.</param>
         public void Prepare(WaterSettings settings, float timeSeconds, bool wantOcean, bool wantMips = false)
         {
+            // A frame still pending here is a frame that was PLANNED and never RECORDED: the host prepared and then
+            // did not render (a dropped frame, a host that bailed between the two phases). The wave clock counted
+            // it as having produced rows, because Advance decides and publishes in one step, but the row dispatch
+            // lives in Record and never happened. Left alone, the next frame would consume the frame-before-last's
+            // rows as if they were current, silently and with no drain to notice. Dropping them re-primes instead,
+            // which is what Rebake does for the same reason and is the clock's documented escape hatch. Costs one
+            // drain on a frame that was already anomalous, and nothing at all on the paired path, where Record has
+            // always cleared this by now.
+            if (_pending is not null) _clock.Invalidate();
             _prepared = true;
             _pending = null;
             EnsureIdle();

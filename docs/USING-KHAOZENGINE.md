@@ -1951,10 +1951,11 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
   to build (see below). `Post` is the
   `PixelPostProcess` (pixelation / quantize / dither / cel bands / palette for the chunky retro look; the smooth
   look is the default).
-- **`PrepareFrame()`, the frame's pre-recording phase.** Call it once per frame, after every `Draw*`
-  call for that frame and **before opening the command list the scene renders into**. The engine's own hosts
-  (`Render3DSurface` via `GameApp3D`, `Render3DPreview.Capture`, `Render3DSnapshot.Capture`) already do, so a game
-  on `GameApp3D` needs no change. Only a host driving `Scene3D` on its own command list has to add it:
+- **`PrepareFrame()`, the frame's pre-recording phase.** Runs once per frame, after every `Draw*`
+  call for that frame and **before the command list the scene renders into is opened**. Every host the engine
+  ships calls it for you - `Render3DSurface.Render` (so `GameApp3D` and any surface you build yourself are both
+  covered), `Render3DPreview.Capture`, `Render3DSnapshot.Capture` - so a game needs no change. Only a host driving
+  `Scene3D.RenderInternal` on a command list of its own has to call it itself:
 
 ```csharp
 scene.Begin();
@@ -1971,7 +1972,9 @@ cl.Begin();
   immediate-context mode a command list IS the device's immediate context, so opening one resets the state the
   frame's list believes is still bound and the device faults a few draws later (issue #423). A frame that queues no
   water does nothing here, and a host that skips the call gets an exception from the water pass rather than a
-  stale ocean.
+  stale ocean. Calling it twice for one `Begin` is harmless: the second call is a no-op, so a host that prepares by
+  hand and then hands the scene to `Render3DSurface.Render` does not prepare the frame twice. Queueing a draw AFTER
+  preparing is the one thing that is not harmless, and the water pass throws for it.
 
 - **Mip policy (`TextureMipPolicy`).** A full chain is right for a tiled albedo and wrong for an image whose
   regions are independent, because every level averages content that should never mix. Both `LoadTexture` overloads

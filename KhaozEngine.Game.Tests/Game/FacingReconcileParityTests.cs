@@ -112,7 +112,7 @@ public class FacingReconcileParityTests
         // Position is untouched by facing, and the sim is deterministic with matching inputs, so the replayed
         // positions are EXACT. This is also the harness's own check that the reconcile is not merely doing nothing.
         Assert.Equal(0f, maxPosErr);
-        Assert.True(maxFacingGap <= 2f * Quantum, metrics + " - the replayed heading is more than a quantum off");
+        Assert.True(maxFacingGap <= 2f * Quantum, metrics + " - the replayed heading is more than two quanta off");
     }
 
     [Fact]

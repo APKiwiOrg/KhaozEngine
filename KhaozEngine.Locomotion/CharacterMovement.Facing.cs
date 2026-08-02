@@ -26,8 +26,11 @@ public static partial class CharacterMovement
     /// <para>A non-finite angle is not an angle, and returns 0 (the default heading, -Z). Facing is CARRIED state, so
     /// a NaN reaching it would not corrupt one frame: it would strand the heading for the rest of the session, and
     /// every later comparison against it (including the shortest-arc step) would be false. An absurd but finite angle
-    /// (past roughly 1e7 radians, where one float step of the value already spans more than a full turn, so no
-    /// reduction can recover a heading from it) lands on the same 0 rather than on arithmetic noise.</para></summary>
+    /// lands on that same 0 only once the reduction can no longer land inside the range at all: a float's own step
+    /// passes a full turn at 2^26 radians and exceeds it everywhere past 2^27, so beyond that every value falls back.
+    /// Below it the fallback is occasional rather than absolute (<c>WrapYaw(1e7f)</c> comes back as 2, not 0). That is
+    /// the last line and not the edge of usefulness: one float step at 1e7 radians is already more than a radian, so
+    /// what a magnitude like that reduces to is noise that happens to sit in range, never a recovered heading.</para></summary>
     /// <param name="yaw">Any angle in radians.</param>
     /// <returns>The same heading, expressed in <c>[-pi, pi)</c>.</returns>
     public static float WrapYaw(float yaw)
@@ -48,7 +51,8 @@ public static partial class CharacterMovement
     /// so travelling along the camera forward under yaw <c>y</c> yields exactly <c>y</c> and the two halves of the
     /// facing rule - the <see cref="MoveCommand.FaceCamera"/> target and the commanded-direction target - cannot
     /// disagree by a constant offset nobody can see. Cardinal readings: <c>-Z</c> is 0, <c>-X</c> is <c>+pi/2</c>,
-    /// <c>+Z</c> is <c>pi</c>. A zero vector has no direction and yields 0.</summary>
+    /// <c>+Z</c> is <c>-pi</c> - the low end of the canonical range, which is the half-open range's inclusive one, so
+    /// due south has exactly one representation rather than two. A zero vector has no direction and yields 0.</summary>
     /// <param name="dirXz">A world-space XZ direction (need not be normalized).</param>
     /// <returns>Its heading in radians, in <c>[-pi, pi)</c>.</returns>
     public static float FacingYawOf(Vector2 dirXz) =>

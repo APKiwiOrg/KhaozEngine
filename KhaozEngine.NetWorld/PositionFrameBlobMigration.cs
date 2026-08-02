@@ -26,7 +26,7 @@ namespace KhaozEngine.NetWorld;
 /// </summary>
 /// <remarks>
 /// The built-in payload lengths below are the CURRENT layout of each built-in other than position. The cell-blob
-/// schema version was never bumped as the movement built-in grew across wire generations 3 to 8, so a blob written
+/// schema version was never bumped as the movement built-in grew across wire generations 3 to 10, so a blob written
 /// by one of those older builds already walks wrong here, exactly as it does in
 /// <see cref="NetIdBlobMigration"/>'s own chain. That is a pre-existing gap in the schema chain rather than one this
 /// step introduces, and it is filed rather than papered over.

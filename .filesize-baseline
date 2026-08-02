@@ -52,4 +52,3 @@
 826 KhaozEngine.Audio/AudioSystem.cs
 824 KhaozEngine.Platform/ClipboardInterop.cs
 806 KhaozEngine.Game.Tests/Physics/ConstraintTests.cs
-802 KhaozEngine.NetWorld/WorldClient.cs

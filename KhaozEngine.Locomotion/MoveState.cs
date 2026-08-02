@@ -184,6 +184,13 @@ public struct MoveState
     /// <para>A landing that a BUFFERED JUMP re-launches on the same tick still reports its impact, so the final
     /// <see cref="Grounded"/> may be <c>false</c> while this is nonzero. The character did absorb the impact, and
     /// suppressing it would let a bunny-hop cancel fall damage.</para>
+    /// <para>A SPAWN OR TELEPORT REPORTS A TINY ONE. <c>default</c> <see cref="Grounded"/> is <c>false</c>, so a state
+    /// placed on the ground and stepped is an airborne-to-grounded transition on its very first tick, and it honestly
+    /// reports the one tick of gravity it fell: about <c>Gravity * dt</c>, so ~0.8 m/s at the shipped 25 m/s^2 and
+    /// 30 Hz. That is the correct reading of the state it was handed, not a fabrication, and CONSUMERS SHOULD
+    /// THRESHOLD rather than treat any nonzero value as a fall. No fall-damage curve starts anywhere near it (a
+    /// survivable drop lands at several metres per second), so the same threshold that keeps a hop off the damage
+    /// table already covers every spawn and every teleport.</para>
     /// It is zeroed every tick (<c>default</c> is 0) and set only on a landing tick, so it is a per-tick EVENT, not
     /// carried state, and it rides NO wire (mirrored server-side onto <c>MovementState.LandingImpactSpeed</c> as a
     /// sim-local field). A remote that wants landing VFX derives the transition from the replicated <c>Grounded</c> and

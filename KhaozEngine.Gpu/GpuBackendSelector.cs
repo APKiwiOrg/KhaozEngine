@@ -204,6 +204,15 @@ namespace KhaozEngine.Gpu
         /// Veldrid loads the backend's library, creates an instance, and enumerates devices (for Vulkan that
         /// includes checking the required surface extensions). Answers are cached for the process lifetime.
         /// <para>
+        /// A backend supplied by a registered <see cref="IGpuBackendProvider"/> is answered by that provider's own
+        /// functional probe instead, because Veldrid cannot answer for a backend it does not implement. With no
+        /// provider registered the answer is false and is NOT cached, so a later registration still gets to answer
+        /// for real. That false is for a settings screen only: it is not why a device creation fails, since the
+        /// creation path asks the registry FIRST and throws
+        /// (<see cref="GpuBackendProviders.Require"/>), which is what keeps a forgotten registration from reading
+        /// as an incapable machine and falling back to a different backend (decision I2).
+        /// </para>
+        /// <para>
         /// Always false for <see cref="GpuBackendKind.OpenGL"/>, which Veldrid may well support but the engine
         /// has no windowed device path for. Never throws: a probe that blows up is reported as unsupported.
         /// </para>
@@ -217,6 +226,8 @@ namespace KhaozEngine.Gpu
         public static bool IsBackendSupported(GpuBackendKind backend)
         {
             if (backend == GpuBackendKind.OpenGL) return false;
+            if (GpuBackendProviders.RequiresProvider(backend)) return ProviderSupport(backend);
+
             return _supportCache.GetOrAdd(backend, static kind =>
             {
                 try
@@ -231,6 +242,34 @@ namespace KhaozEngine.Gpu
                 }
             });
         }
+
+        // The provider-backed half of the probe. Nothing is cached until a provider exists to answer, because a
+        // cached "no" from before registration would outlive the registration for the rest of the process and
+        // freeze a settings screen on a backend that is now perfectly available.
+        static bool ProviderSupport(GpuBackendKind backend)
+        {
+            if (!GpuBackendProviders.TryGet(backend, out IGpuBackendProvider? provider) || provider is null)
+                return false;
+
+            return _supportCache.GetOrAdd(backend, static (_, probe) =>
+            {
+                try
+                {
+                    return probe.IsSupported();
+                }
+                catch (Exception)
+                {
+                    // Same rule as the Veldrid probe above, and the interface says so: a probe that blows up is an
+                    // answer of no, never an exception out of the settings screen that asked.
+                    return false;
+                }
+            }, provider);
+        }
+
+        // Drops the cached support answer for one backend, so the next call re-probes. Called when a provider is
+        // registered or replaced: the cached value came from a different answerer, or from no answerer at all.
+        internal static void InvalidateSupportCache(GpuBackendKind backend)
+            => _supportCache.TryRemove(backend, out _);
 
         /// <summary>
         /// Every backend this machine can actually run a windowed device on, in a stable order

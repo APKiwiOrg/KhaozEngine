@@ -48,7 +48,7 @@ this doc cannot silently drift apart.
 
 | Area | Seam (dependency-free) | Backend(s) | Third-party library |
 |---|---|---|---|
-| GPU / rendering | `KhaozEngine.Gpu` (`GpuDeviceContext` + `GpuInterfaces`, `GpuBackendSelector`) | (in-package) `Internal/VeldridGpuDevice` | Veldrid (+ Veldrid.SPIRV, Vortice.Direct3D11) |
+| GPU / rendering | `KhaozEngine.Gpu` (`GpuDeviceContext` + `GpuInterfaces`, `GpuBackendSelector`, and `GpuBackendProviders` / `IGpuBackendProvider` for a backend that ships outside this package) | (in-package) `Internal/VeldridGpuDevice`, plus any registered out-of-package provider | Veldrid (+ Veldrid.SPIRV, Vortice.Direct3D11) |
 | 3D physics | `KhaozEngine.Physics` (`IPhysicsWorld`, value-type shapes/poses/queries, and since the floating-origin release also the default-method `Origin` / `CanRebase` / `Rebase(newOrigin)`, so an existing implementer keeps compiling and correctly reports that it cannot rebase - the seam learns a plain `Vector3`, never a frame type, and keeps its zero project references) | `KhaozEngine.Physics.Bepu` (`BepuPhysicsWorld`, which overrides all three: bulk direct pose writes plus broadphase refits over every allocated body set and the statics, so sleeping bodies, contacts and constraints all survive a shift) | BepuPhysics v2 |
 | Netcode transport | `KhaozEngine.Netcode` (`INetTransport` incl. the default-method `Stats` -> `NetTransportStats`, `LoopbackTransport`) + `Netcode.Abstractions` | `KhaozEngine.Netcode.LiteNetLib` (fills `Stats` via `EnableStatistics`) | LiteNetLib |
 | Persistence | `KhaozEngine.WorldStore` (`IWorldStore`, `InMemoryWorldStore`) | `WorldStore.Sqlite`, `WorldStore.SqlServer` | Microsoft.Data.Sqlite / SqlClient |
@@ -510,6 +510,32 @@ containment is therefore stronger than "confined to one package": it is confined
 backend. Why it is worth having at all is in [USING-KHAOZENGINE.md](USING-KHAOZENGINE.md): a driver that cannot
 build command lists makes Windows emulate them in software, and until 17.22.0 nothing could tell that machine
 apart from one that was simply slow.
+
+## Out-of-package graphics backends: an INVERTED edge, `GpuBackendProviders`
+
+Every backend before this one lived inside `KhaozEngine.Gpu`, so the seam and its implementation shared an
+assembly and the selector could just construct one. A backend that ships in its own opt-in package (the native
+Direct3D11 backend is the first) cannot work that way: `Gpu` referencing it would be a cycle, and folding it back
+into `Gpu` would make its interop non-optional for every consumer including the Linux server heads.
+
+So the edge is inverted. `KhaozEngine.Gpu` declares `IGpuBackendProvider` and a `GpuBackendProviders` registry
+keyed by `GpuBackendKind`, the backend package implements the interface, and the CONSUMING APP joins the two with
+one explicit call at startup:
+
+```
+KhaozEngine.Gpu.D3D11 -> KhaozEngine.Gpu      (the only direction. Gpu never references a backend package)
+consumer              -> both                 (and calls KhaozEngineD3D11.Register() once)
+```
+
+Two properties are load-bearing, and both are decisions rather than conveniences. Registration is EXPLICIT, not a
+`[ModuleInitializer]` and not reflection by assembly name: the CLR loads an assembly lazily on first type
+reference, so a package reference with no static type use does not guarantee an initializer runs, and a silent,
+machine-dependent failure is the worst shape for a switch whose purpose is attributing measurements to a backend.
+And a MISSING registration throws rather than falling back, which keeps it distinguishable from the genuinely
+different fact that a machine cannot run the backend (that one is answered by the provider's own functional probe
+and reported through the existing `FallbackAfterFailure` path). Full reasoning in
+[design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md](design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md), section 4.1
+and decisions P4 and I2.
 
 ## Three flavours of the same idea
 

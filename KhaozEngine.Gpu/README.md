@@ -31,6 +31,17 @@ What it owns today:
   Vulkan surface extensions), cached for the process lifetime. **A settings UI must offer only what
   `SupportedBackends()` returns.** `OpenGL` always reports unsupported: there is no windowed GL device path.
   Necessary but NOT sufficient, so it is paired with the creation fallback below rather than trusted alone.
+- **`GpuBackendProviders` / `IGpuBackendProvider`** - the registry for a backend that ships in its own opt-in
+  package, which this package cannot reference without a cycle. The consuming app registers it with one explicit
+  call at startup (`KhaozEngineD3D11.Register()` for `KhaozEngine.Gpu.D3D11`), and `GpuDeviceContext` then creates
+  through the provider. No `[ModuleInitializer]` and no reflection: the CLR loads an assembly lazily on first type
+  reference, so a package reference alone would not guarantee self-registration ever runs, and that failure is
+  silent and machine-dependent. **A missing registration THROWS `GpuBackendProviderMissingException` and never
+  falls back**, because a run that quietly used a different backend would file its measurements under the wrong
+  name. An incapable MACHINE is the other case entirely: the provider's own `IsSupported()` functional probe
+  answers `IsBackendSupported`, and it reports through the ordinary `FallbackAfterFailure` path.
+  `RequiresProvider(kind)` says which kinds go through the registry, stated as everything this package does not
+  build itself, so an appended kind is provider-backed by default.
 - **`AfterFallback(selection, fallbackBackend)`** (17.23.0) - the pure helper building the post-fallback report
   (backend becomes what ran, source becomes `FallbackAfterFailure`, `RequestedBackend` keeps what was asked
   for). Used by `GpuDeviceContext`, and by a consumer driving its own retry so both report identically.

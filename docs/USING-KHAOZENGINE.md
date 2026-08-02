@@ -8291,6 +8291,48 @@ predecessor-pid handshake, so the new instance does not race the settings file t
 
 ---
 
+## Backends that ship in their own package (`GpuBackendProviders`)
+
+Most backends are built by `KhaozEngine.Gpu` itself. A backend that lives in its own opt-in package cannot be,
+because the seam package referencing a backend package would be a dependency cycle. Those backends register
+themselves into `GpuBackendProviders` instead, and the consuming app makes that call once at startup:
+
+```csharp
+KhaozEngineD3D11.Register();   // one line, at startup, before the first device is created
+```
+
+Referencing the package is not enough on its own, and that is deliberate rather than an oversight. The CLR loads
+an assembly lazily on first type reference, so a `[ModuleInitializer]` inside the backend package would run on
+some machines and not on others, which is the worst possible shape for a switch whose whole job is attributing a
+measurement to a backend. One explicit call is compile-time visible, trim-safe and testable.
+
+**Two failure modes, and they are deliberately different.**
+
+- **You forgot the `Register()` call.** Creating a device on that backend throws
+  `GpuBackendProviderMissingException`, naming the backend and the call that fixes it. It does NOT fall back. A
+  run that quietly used a different backend than the one you asked for would report its frame times, its
+  telemetry session header and its golden images under the wrong name.
+- **The machine cannot run it.** That is the ordinary story above: the provider's own functional probe answers
+  `IsBackendSupported`, and creation falls back to the OS-probe backend, WARNs, and reports
+  `GpuBackendSource.FallbackAfterFailure` with `RequestedBackend`. Your two obligations are unchanged.
+
+So `IsBackendSupported(kind)` is false for a provider-backed backend that has no provider registered, because a
+settings screen must not offer a backend whose code is not in the process. That answer is not cached, so
+registering later still gets a real probe.
+
+Registering a provider yourself is the same one call, with the backend named:
+
+```csharp
+GpuBackendProviders.Register(GpuBackendKind.Direct3D11, myProvider);   // IGpuBackendProvider
+```
+
+`IGpuBackendProvider` has three members: `IsSupported()` (the functional probe, which must never throw),
+`CreateForWindow(in GpuWindowedDeviceRequest)` and `CreateHeadless()`. Both creation calls return a
+`GpuProviderDevice`, which carries the `IGpuDevice` plus the driver threading caps the provider probed, and both
+run inside the engine's process-wide device-creation gate, so a provider needs no lifecycle lock of its own.
+
+---
+
 ## Is the D3D11 driver emulating command lists (`GpuThreadingCaps`, 17.22.0)
 
 A Direct3D11 driver reports whether it can build deferred-context command lists itself. When it cannot

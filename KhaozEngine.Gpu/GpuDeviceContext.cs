@@ -342,6 +342,13 @@ namespace KhaozEngine.Gpu
         static GpuDeviceContext CreateForWindow(in GpuWindowHandle window, uint width, uint height,
             bool syncToVerticalBlank, GpuBackendSelection selection, bool allowFallback = true)
         {
+            // A backend this package cannot reference is created by its registered provider instead, and the
+            // branch is taken up here rather than inside CreateOrFallBack because the two paths share none of
+            // their inputs: a native device wants no SwapchainSource and no GraphicsDeviceOptions, and building
+            // them anyway would put Veldrid work on the creation path of a backend whose premise is having none.
+            if (GpuBackendProviders.RequiresProvider(selection.Backend))
+                return CreateFromProvider(window, width, height, syncToVerticalBlank, selection, allowFallback);
+
             SwapchainSource source = window.Kind switch
             {
                 GpuWindowKind.Cocoa => SwapchainSource.CreateNSWindow(window.Handle),
@@ -396,9 +403,7 @@ namespace KhaozEngine.Gpu
             if (!allowFallback || requested == fallback)
                 return (CreateWindowed(requested, opts, scDesc), selection);
 
-            string? failure = GpuBackendSelector.IsBackendSupported(requested)
-                ? null
-                : "this machine reports no support for it";
+            string? failure = GpuBackendSelector.IsBackendSupported(requested) ? null : NoMachineSupport;
 
             if (failure is null)
             {
@@ -418,11 +423,112 @@ namespace KhaozEngine.Gpu
                 }
             }
 
-            log.Warn($"Could not create a {requested} graphics device ({failure}). Falling back to {fallback}. "
+            WarnFallback(requested, failure, fallback);
+
+            return (CreateWindowed(fallback, opts, scDesc), GpuBackendSelector.AfterFallback(selection, fallback));
+        }
+
+        // The reason a requested backend could not be had, when the machine itself says so. Shared by the Veldrid
+        // and provider paths: the two probe different things (Veldrid's own loader check, and a registered
+        // provider's functional probe) but they are the SAME answer to a reader, and two wordings would read as
+        // two different problems in a session log.
+        const string NoMachineSupport = "this machine reports no support for it";
+
+        // The one fallback warning, in one place, for the same reason. It is the line that tells a player their
+        // stored graphics choice does not work here, and a provider-backed backend that fell back has to say it
+        // identically or a support reply is written against wording that depends on which backend was asked for.
+        static void WarnFallback(GpuBackendKind requested, string failure, GpuBackendKind fallback)
+            => log.Warn($"Could not create a {requested} graphics device ({failure}). Falling back to {fallback}. "
                 + "If this backend was chosen in the game's graphics settings, that stored choice does not work "
                 + "on this machine and should be cleared.");
 
-            return (CreateWindowed(fallback, opts, scDesc), GpuBackendSelector.AfterFallback(selection, fallback));
+        /// <summary>
+        /// The decision a provider-backed request gets BEFORE anything is created, and the single place decision
+        /// I2's two failure modes are told apart. Pure enough to pin headlessly, which matters because the
+        /// alternative is only reachable on a machine that has the backend.
+        /// <para>
+        /// A backend with NO registered provider throws <see cref="GpuBackendProviderMissingException"/> here, and
+        /// it throws FIRST, before the support probe below can answer false for the same request and turn a
+        /// forgotten one-line registration into a run on a quietly different backend. That ordering is the whole
+        /// invariant: a missing registration is a wiring fault in the app, an unsupported machine is a fact about
+        /// the hardware, and only the second one is allowed to fall back.
+        /// </para>
+        /// <para>
+        /// Returns null when creation should be attempted, or the reason to warn with and fall back on. With
+        /// <paramref name="allowFallback"/> false there is nothing to fall back to, so the probe is skipped
+        /// entirely and a real failure throws, exactly as the Veldrid path treats a caller that named one backend
+        /// outright.
+        /// </para>
+        /// </summary>
+        internal static string? PreflightProvider(GpuBackendKind backend, bool allowFallback,
+            out IGpuBackendProvider provider)
+        {
+            provider = GpuBackendProviders.Require(backend);
+            if (!allowFallback) return null;
+            return GpuBackendSelector.IsBackendSupported(backend) ? null : NoMachineSupport;
+        }
+
+        // The provider-backed half of windowed creation. Same two guards as the Veldrid path and in the same
+        // order: rule the backend out up front with the functional probe, then catch what the probe cannot see (a
+        // driver that answers "supported" and fails at device creation anyway).
+        static GpuDeviceContext CreateFromProvider(in GpuWindowHandle window, uint width, uint height,
+            bool syncToVerticalBlank, GpuBackendSelection selection, bool allowFallback)
+        {
+            GpuBackendKind fallback = GpuBackendSelector.ProbeOS(GpuBackendSelector.DetectOS());
+            // The same "nothing to fall back TO" guard the Veldrid path carries, and it matters here from the day
+            // the OS probe starts answering with a provider-backed kind: falling back onto the backend that just
+            // refused would warn about a change that is not one, then fail again for the same reason.
+            bool canFallBack = allowFallback && selection.Backend != fallback;
+
+            string? failure = PreflightProvider(selection.Backend, canFallBack, out IGpuBackendProvider provider);
+            var request = new GpuWindowedDeviceRequest(window, width, height, syncToVerticalBlank);
+
+            if (failure is null)
+            {
+                try
+                {
+                    GpuProviderDevice created;
+                    // Inside the same process-wide gate the Veldrid path uses. Device creation is serialized on
+                    // every backend, so a provider needs no lifecycle lock of its own and cannot race one.
+                    lock (_lifecycleGate)
+                    {
+                        created = provider.CreateForWindow(request);
+                    }
+                    return Adopt(created, selection);
+                }
+                catch (Exception ex) when (canFallBack)
+                {
+                    // Deliberately broad, for the reason the Veldrid path spells out: the failure can be anything
+                    // from a driver HRESULT wrapper to a DllNotFoundException out of the P/Invoke layer, and the
+                    // no-driver case is exactly the one this fallback exists for.
+                    failure = $"{ex.GetType().Name}: {ex.Message}";
+                }
+            }
+
+            WarnFallback(selection.Backend, failure, fallback);
+            // Back through the ordinary entry with the fallback's own selection and no further fallback, so the
+            // fallback device is created by whichever path owns it and the post-fallback report is the same
+            // AfterFallback record a Veldrid-path fallback produces.
+            return CreateForWindow(window, width, height, syncToVerticalBlank,
+                GpuBackendSelector.AfterFallback(selection, fallback), allowFallback: false);
+        }
+
+        // The provider path's construction step, shared by the windowed and headless entries so the guard and the
+        // ownership decision cannot drift apart between them.
+        static GpuDeviceContext Adopt(in GpuProviderDevice created, GpuBackendSelection selection)
+        {
+            if (created.Device is null)
+            {
+                throw new InvalidOperationException(
+                    $"The {selection.Backend} backend provider returned no device. A provider that cannot create "
+                    + "one must throw, so the failure carries a reason the fallback can log, instead of handing "
+                    + "back an empty result the caller has to guess at.");
+            }
+
+            // The provider built it, so this context owns its disposal, exactly as it owns the raw Veldrid device
+            // on the other path.
+            return new GpuDeviceContext(created.Device, created.ThreadingCaps, created.ThreadingProbeFailure,
+                selection, ownsDevice: true);
         }
 
         // Creates a windowed device on `kind`, with no probing, no fallback, and no resolution. The single place
@@ -449,6 +555,22 @@ namespace KhaozEngine.Gpu
         internal static GpuDeviceContext CreateHeadless(GraphicsDeviceOptions options)
         {
             GpuBackendSelection selection = GpuBackendSelector.Resolve();
+
+            // No probe and no fallback here, which is exactly what the Veldrid headless path has always done:
+            // headless creation propagates its failure. A headless run that quietly changed backend would file its
+            // golden images under a backend that never rendered them, and a missing registration throws with a
+            // message naming the one line that fixes it.
+            if (GpuBackendProviders.RequiresProvider(selection.Backend))
+            {
+                IGpuBackendProvider provider = GpuBackendProviders.Require(selection.Backend);
+                GpuProviderDevice created;
+                lock (_lifecycleGate)
+                {
+                    created = provider.CreateHeadless();
+                }
+                return Adopt(created, selection);
+            }
+
             GraphicsDevice gd;
             lock (_lifecycleGate)
             {

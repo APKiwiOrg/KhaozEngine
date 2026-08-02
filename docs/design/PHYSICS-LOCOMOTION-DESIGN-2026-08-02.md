@@ -217,3 +217,56 @@ Headless, in the existing per-area projects, following the both-heads parity idi
   authoritative `FacingYaw` (convention conversion at `FacingConventions`).
 - Reconsider `MaxSlopeRadians` 40, which was tightened specifically to act as the cliff guardrail
   this work retires.
+
+## Slope sliding and wall slide (2026-08-02 addendum, 17.27.0, #442)
+
+Playtest verdict on the shipped gate, two rounds in: 17.26.0's gate let a jump ratchet up a sheer
+face (#440), and the 17.26.1 fence that closed it blocks sideways movement into a face while
+jumping, which reads as an invisible wall eating lateral air control. Both are the same root cause:
+a GATE refuses movement, and refusal is not how terrain behaves. The user's ask is the standard
+model (WoW-style terrain): steep ground is a surface you slide on, not a wall you are denied at.
+The reconcile constraint never forbade this. Sliding is carried velocity plus pure surface math,
+both of which the stepper already has. Phase 1 avoided it to protect tuned feel, and the playtest
+has now voted against that caution, so the gate is replaced rather than patched a third time.
+
+The model, replacing `AdvanceSlopeGated` entirely on the analytic-terrain path:
+
+1. **Wall slide instead of refusal.** When a tick's horizontal move reaches a destination whose
+   ground rises beyond what the step can reach (more than `StepHeight` above the feet), that is a
+   wall contact. Project the horizontal movement onto the face's horizontal tangent: the into-face
+   component dies, the along-face component survives. Applies grounded and airborne, on both the
+   command path and the momentum path. This alone fixes the reported feel bug: strafing along a
+   cliff mid-jump keeps its lateral motion. The face's horizontal normal comes from the ground
+   normal's XZ projection (fall back to the movement direction when the normal is vertical-only),
+   pure scalar math, fixed order.
+2. **No traction on steep ground.** A surface steeper than `MaxSlopeRadians` never grants support:
+   `Grounded` stays false, no jump, no coyote refresh, no landing latch (a slide onto walkable
+   ground at the bottom is the landing, and `LandingImpactSpeed` reports there from the accumulated
+   fall). The character seats on the surface (the ground clamp still forbids penetration) but
+   slides: gravity is decomposed against the surface normal, the tangential component integrates
+   into the carried velocities (`VerticalVelocity` plus `HorizontalVelocity`), and the character
+   accelerates down-slope until walkable ground, a free fall past the surface, or water (the
+   existing medium transition handles the swim hand-off). Input while sliding steers weakly via the
+   existing `AirControl` semantics rather than granting a new knob.
+3. **The ascent gate is deleted, subsumed.** Climbing self-defeats because there is no footing on
+   the face. The jump ratchet stays dead because landing on the face lands in a slide. Anti-tunnel
+   is carried by the wall-contact projection plus the ground clamp instead of a refusal. The
+   `min(feet, current ground)` rise rule from 17.26.1 goes with the gate, and #441
+   (prop-to-steep-face refusal) is subsumed: stepping from a prop toward a face wall-slides like
+   everything else.
+4. **No wire change expected.** Slide motion rides the already-replicated carried fields, so
+   `Grounded` false plus surface contact is derivable per head and the wire generation stays at 10.
+   If implementation finds a carried value that must survive reconcile and does not fit the
+   existing fields, that is a finding to surface, not to improvise around.
+
+Compatibility call: unconditional, not a knob. The gate semantics this replaces were themselves
+17.26.0 behavior changes, the Locomotion blast radius is Ruinborne-only, and the requesting
+playtest is Ruinborne. `MaxSlopeRadians` keeps its exact meaning as the traction threshold. The
+#369 and #440 test suites' refusal assertions are rewritten to slide semantics with their intent
+preserved: no net ascent by any input pattern, no tunnel, descent free, and the new invariants
+(lateral air control along a face survives, a slide always terminates on walkable ground, water,
+or open air).
+
+Relation to the phases: this is a slice of phase 2's semantics (surfaces as contacts, not gates)
+delivered early on the analytic path where the pain is. #438 still owns the full
+contact-classification rebuild over the physics-query path (props, buildings, Bepu geometry).

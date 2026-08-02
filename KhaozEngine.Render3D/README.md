@@ -48,7 +48,7 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   (sphere/dome/cylinder/circle), composited into the window. `UnloadTexture`/`UnloadMesh`/`UnloadSkinnedMesh`/
   `UnloadSplatMaterial` drain the device (`IGpuDevice.WaitForIdle`) before disposing GPU resources, since a
   queued upload or draw may still reference them.
-- `Scene3D.PrepareFrame()` - the frame's pre-recording phase (17.25.0). Call it once per frame, after the frame's
+- `Scene3D.PrepareFrame()` - the frame's pre-recording phase. Call it once per frame, after the frame's
   `Draw*` calls and BEFORE opening the command list the scene is recorded into. Subsystems whose per-frame GPU work
   cannot go in the frame's list (the FFT ocean's priming dispatch, which needs a submit + device wait of its own)
   run there instead: opening a second command list while the frame's is recording resets the device's immediate

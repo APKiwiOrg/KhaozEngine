@@ -1951,7 +1951,7 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
   to build (see below). `Post` is the
   `PixelPostProcess` (pixelation / quantize / dither / cel bands / palette for the chunky retro look; the smooth
   look is the default).
-- **`PrepareFrame()`, the frame's pre-recording phase (17.25.0).** Call it once per frame, after every `Draw*`
+- **`PrepareFrame()`, the frame's pre-recording phase.** Call it once per frame, after every `Draw*`
   call for that frame and **before opening the command list the scene renders into**. The engine's own hosts
   (`Render3DSurface` via `GameApp3D`, `Render3DPreview.Capture`, `Render3DSnapshot.Capture`) already do, so a game
   on `GameApp3D` needs no change. Only a host driving `Scene3D` on its own command list has to add it:

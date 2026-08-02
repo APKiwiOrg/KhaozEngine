@@ -8,7 +8,7 @@ namespace KhaozEngine.Gpu.Internal
     /// <summary>The Veldrid-backed <see cref="IGpuDevice"/> + <see cref="IGpuResourceFactory"/>. Wraps a
     /// <see cref="GraphicsDevice"/>; all Veldrid types stay confined here. The wrapped device is the same
     /// underlying object <see cref="GpuDeviceContext"/> owns, so the 2D and 3D renderers share one device.</summary>
-    internal sealed class VeldridGpuDevice : IGpuDevice, IGpuResourceFactory
+    internal sealed class VeldridGpuDevice : IGpuDevice, IGpuResourceFactory, IGpuDeviceLifecycle
     {
         internal GraphicsDevice GraphicsDevice { get; }
         readonly bool _ownsDevice;
@@ -48,8 +48,11 @@ namespace KhaozEngine.Gpu.Internal
         // destroyed device, and device destruction already freed all child objects anyway).
         readonly DeviceLiveness _liveness = new();
 
-        // Called by GpuDeviceContext.Dispose (inside the lifecycle gate) just before it destroys the device.
-        internal void MarkDeviceDisposed() => _liveness.Dead = true;
+        // Called by GpuDeviceContext.Dispose (inside the lifecycle gate) just before it destroys the device, via
+        // IGpuDeviceLifecycle rather than a cast to this type, so a non-Veldrid device can come back through the
+        // same creation path. Public because it implements an interface member: the class itself is internal, so
+        // this is still assembly-scoped.
+        public void MarkDeviceDisposed() => _liveness.Dead = true;
 
         // ---- IGpuDevice ----
 

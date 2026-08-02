@@ -1,3 +1,4 @@
+using System;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Internal;
 using Xunit;
@@ -101,6 +102,35 @@ namespace KhaozEngine.Tests.Gpu
         public void Probe_RunsOnlyOnWindowsDirect3D11(GpuBackendKind backend, bool isWindows, bool expected)
         {
             Assert.Equal(expected, D3D11ThreadingProbe.IsApplicable(backend, isWindows));
+        }
+
+        /// <summary>
+        /// The raw-pointer entry the native backend feeds carries the same no-op guarantee on the same shape of
+        /// pure predicate. There is no backend argument, because a caller holding an <c>ID3D11Device</c> has
+        /// already answered that question, so what stands in for it is whether a device was supplied at all.
+        /// </summary>
+        [Theory]
+        [InlineData(1, true, true)]
+        [InlineData(1, false, false)]
+        [InlineData(0, true, false)]
+        [InlineData(0, false, false)]
+        public void RawPointerProbe_RunsOnlyOnWindowsWithADevice(int pointer, bool isWindows, bool expected)
+        {
+            Assert.Equal(expected, D3D11ThreadingProbe.IsApplicable(new IntPtr(pointer), isWindows));
+        }
+
+        /// <summary>
+        /// And the entry point itself degrades rather than throwing when there is nothing to ask, on every OS this
+        /// suite runs on. Null caps with a NULL failure is the not-applicable answer, kept distinct from a probe
+        /// that was attempted and faulted, which reports a reason.
+        /// </summary>
+        [Fact]
+        public void RawPointerProbe_WithNoDevice_AnswersUnknownWithoutAFailure()
+        {
+            GpuThreadingCaps? caps = D3D11ThreadingProbe.TryQuery(IntPtr.Zero, out string? failure);
+
+            Assert.Null(caps);
+            Assert.Null(failure);
         }
     }
 }

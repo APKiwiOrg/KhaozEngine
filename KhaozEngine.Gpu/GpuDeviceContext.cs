@@ -10,7 +10,12 @@ namespace KhaozEngine.Gpu
     /// Owns a Veldrid device created via <see cref="CreateForWindow(in GpuWindowHandle, uint, uint, bool)"/> / <see cref="CreateHeadless()"/> plus the
     /// engine-owned <see cref="GpuDevice"/> wrapping it. Centralizes backend selection (no hard-coded
     /// <c>GraphicsBackend.Metal</c>) and surfaces <see cref="GpuCapabilities"/>. Renderers consume
-    /// <see cref="GpuDevice"/>; the raw Veldrid device stays a private implementation detail of this context.
+    /// <see cref="GpuDevice"/>, and the raw Veldrid device stays a private implementation detail of this context.
+    /// <para>
+    /// It is ALSO the only path a device gets handed back to a consumer on, which is why it additionally adopts an
+    /// <see cref="IGpuDevice"/> the engine created itself, with no Veldrid device behind it (the internal
+    /// constructor below). Everything a consumer or a session log sees is the same on both paths.
+    /// </para>
     /// </summary>
     /// <remarks>
     /// Device creation and disposal are serialized process-wide behind a single static gate, on every backend.
@@ -28,7 +33,9 @@ namespace KhaozEngine.Gpu
         static readonly ILogger log = Log.For<GpuDeviceContext>();
 
         readonly bool _ownsDevice;
-        readonly GraphicsDevice _device;
+        // The raw Veldrid device, on the Veldrid creation path only. NULL on the adopted-device path: a device the
+        // engine built itself has no GraphicsDevice behind it and disposes through IGpuDevice instead (see Dispose).
+        readonly GraphicsDevice? _device;
 
         /// <summary>The selected graphics backend (from <see cref="GpuBackendSelector"/>).</summary>
         public GpuBackendKind Backend => Selection.Backend;
@@ -47,7 +54,16 @@ namespace KhaozEngine.Gpu
         /// </summary>
         public GpuBackendSelection Selection { get; }
 
-        /// <summary>Clip-space / depth conventions of the live device (see <see cref="GpuCapabilities"/>).</summary>
+        /// <summary>
+        /// Clip-space / depth conventions of the live device (see <see cref="GpuCapabilities"/>).
+        /// <para>
+        /// Read straight off <see cref="GpuDevice"/> rather than derived a second time here, so the two copies
+        /// cannot say different things. They did once: the device name and the sampler feature flags were
+        /// populated on one and dropped on the other. One reader is what fixed it, and reading the device's own
+        /// answer is what keeps it fixed for a device the engine built itself, which has no shared reader to
+        /// point a second derivation at.
+        /// </para>
+        /// </summary>
         public GpuCapabilities Capabilities { get; }
 
         /// <summary>
@@ -86,9 +102,9 @@ namespace KhaozEngine.Gpu
         public IReadOnlyList<string>? InjectedModules { get; }
 
         /// <summary>
-        /// The engine-owned GPU device wrapping the underlying Veldrid device. Renderers (Render2D / Render3D)
-        /// consume this instead of the raw device, so Veldrid stays hidden. The wrapper is non-owning: disposal
-        /// flows through this context's <see cref="Dispose"/>.
+        /// The engine-owned GPU device: on the Veldrid path, the wrapper around the underlying Veldrid device.
+        /// Renderers (Render2D / Render3D) consume this instead of the raw device, so Veldrid stays hidden. That
+        /// wrapper is non-owning, and disposal flows through this context's <see cref="Dispose"/> either way.
         /// </summary>
         public IGpuDevice GpuDevice { get; }
 
@@ -97,19 +113,61 @@ namespace KhaozEngine.Gpu
             _device = device;
             Selection = selection;
             _ownsDevice = ownsDevice;
-            Capabilities = Internal.VeldridMap.ReadCapabilities(device);
             // Non-owning wrapper: this context owns the raw device's disposal (see Dispose), so the wrapper must
             // not dispose it again.
             GpuDevice = new VeldridGpuDevice(device, selection.Backend, ownsDevice: false);
+            // VeldridMap.ReadCapabilities stays the single source, and it is now read ONCE, inside the wrapper.
+            Capabilities = GpuDevice.Capabilities;
             ThreadingCaps = Internal.D3D11ThreadingProbe.TryQuery(device, selection.Backend, out string? probeFailure);
             // Scanned per created device rather than cached process-wide, so a late-attaching overlay still shows
             // up and there is no static state to reason about. Device creation is rare, and off Windows this is a
             // guard and a return.
             InjectedModules = Internal.InjectedModuleProbe.TryScan(out string? scanFailure);
+            LogCreation(selection, Capabilities, ThreadingCaps, probeFailure, InjectedModules, scanFailure);
+        }
+
+        /// <summary>
+        /// Adopt an <see cref="IGpuDevice"/> the engine created ITSELF, with no Veldrid device behind it. This is
+        /// the path a native backend comes back through: its provider creates the device, probes its own driver
+        /// capabilities (via the raw-pointer entry on <see cref="Internal.D3D11ThreadingProbe"/>, since there is no
+        /// Veldrid device to read a pointer off), and hands both here.
+        /// <para>
+        /// Everything a consumer or a session log observes is identical to the Veldrid path: the same
+        /// capabilities-from-the-device rule, the same four ordered diagnostic lines, the same
+        /// <see cref="GpuTelemetry"/> feed, and the same process-wide lifecycle gate around disposal.
+        /// </para>
+        /// <para>
+        /// <paramref name="threadingCaps"/> null means "no answer", exactly as it does on the Veldrid path, and it
+        /// arrives without a failure string: whoever created the device already logged or discarded the reason, and
+        /// a fault the context cannot attribute is worse than no line at all. <paramref name="ownsDevice"/> false
+        /// makes disposal a no-op, so a caller can hand in a device it keeps owning.
+        /// </para>
+        /// </summary>
+        internal GpuDeviceContext(IGpuDevice device, GpuThreadingCaps? threadingCaps,
+            GpuBackendSelection selection, bool ownsDevice)
+        {
+            _device = null;
+            Selection = selection;
+            _ownsDevice = ownsDevice;
+            GpuDevice = device;
+            Capabilities = device.Capabilities;
+            ThreadingCaps = threadingCaps;
+            InjectedModules = Internal.InjectedModuleProbe.TryScan(out string? scanFailure);
+            LogCreation(selection, Capabilities, ThreadingCaps, probeFailure: null, InjectedModules, scanFailure);
+        }
+
+        // The four diagnostic lines every created device emits, in this order, whichever path created it. One
+        // place, so a log from an adopted native device and a log from a Veldrid device answer the same questions
+        // in the same order. Two copies of this sequence would be two logs a reader cannot compare, which is the
+        // whole reason the lines exist.
+        static void LogCreation(GpuBackendSelection selection, GpuCapabilities capabilities,
+            GpuThreadingCaps? threadingCaps, string? probeFailure, IReadOnlyList<string>? modules,
+            string? scanFailure)
+        {
             LogSelection(selection);
-            LogAdapter(Capabilities);
-            LogThreadingCaps(selection.Backend, ThreadingCaps, probeFailure);
-            LogInjectedModules(InjectedModules, scanFailure);
+            LogAdapter(capabilities);
+            LogThreadingCaps(selection.Backend, threadingCaps, probeFailure);
+            LogInjectedModules(modules, scanFailure);
         }
 
         // One line per created device saying which backend is live and who chose it. The warning arm is the
@@ -380,10 +438,16 @@ namespace KhaozEngine.Gpu
             if (!_ownsDevice) return;
             lock (_lifecycleGate)
             {
-                // Latch the wrapper first (still inside the gate) so any later straggling drain from a
+                // Latch the device first (still inside the gate) so any later straggling drain from a
                 // resource wrapper disposed after this context no-ops instead of waiting on a dead device.
-                ((VeldridGpuDevice)GpuDevice).MarkDeviceDisposed();
-                _device.Dispose();
+                // Through IGpuDeviceLifecycle, not a cast to the Veldrid wrapper: the cast is what confined this
+                // context to one implementation of IGpuDevice. A device with nothing to latch skips it.
+                (GpuDevice as IGpuDeviceLifecycle)?.MarkDeviceDisposed();
+                // On the Veldrid path this context owns the RAW device and the wrapper is non-owning, so the raw
+                // device is what gets destroyed. An adopted device owns whatever it is built on, so it disposes
+                // itself.
+                if (_device != null) _device.Dispose();
+                else GpuDevice.Dispose();
             }
         }
     }

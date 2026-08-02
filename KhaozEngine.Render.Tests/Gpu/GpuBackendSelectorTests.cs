@@ -68,6 +68,8 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData("vulkan", true, GpuBackendKind.Vulkan)]
         [InlineData("d3d11", true, GpuBackendKind.Direct3D11)]
         [InlineData("direct3d11", true, GpuBackendKind.Direct3D11)]   // alias matching GpuBackendKind.ToString()
+        [InlineData("d3d11-native", true, GpuBackendKind.Direct3D11Native)]
+        [InlineData("direct3d11-native", true, GpuBackendKind.Direct3D11Native)]
         [InlineData("gl", true, GpuBackendKind.OpenGL)]
         [InlineData("opengl", true, GpuBackendKind.OpenGL)]           // alias matching GpuBackendKind.ToString()
         [InlineData("nonsense", false, default(GpuBackendKind))]
@@ -180,9 +182,9 @@ namespace KhaozEngine.Tests.Gpu
         {
             string?[] overrides =
             {
-                null, "", "   ", "\t", "vulcan", "directx", "nonsense",
-                "metal", "vulkan", "d3d11", "direct3d11", "gl", "opengl",
-                " Vulkan ", "METAL", "\tD3D11\n",
+                null, "", "   ", "\t", "vulcan", "directx", "nonsense", "d3d11native",
+                "metal", "vulkan", "d3d11", "direct3d11", "d3d11-native", "direct3d11-native", "gl", "opengl",
+                " Vulkan ", "METAL", "\tD3D11\n", " D3D11-Native ",
             };
 
             foreach (OSPlatformKind os in new[]

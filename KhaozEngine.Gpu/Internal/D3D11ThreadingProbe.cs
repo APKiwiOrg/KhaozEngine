@@ -101,6 +101,13 @@ namespace KhaozEngine.Gpu.Internal
         /// also what keeps the Vortice assembly unloaded on macOS and Linux: this returning false is the reason
         /// <c>QueryWindows</c> never gets JIT-compiled there.
         /// <para>
+        /// "Direct3D11" here means EITHER implementation
+        /// (<see cref="GpuBackendKinds.IsDirect3D11"/>), because what is being asked about is the DRIVER, and the
+        /// driver is the same one whichever implementation drove it. This is the source of the session header's
+        /// <c>driverCommandLists</c> and <c>driverConcurrentCreates</c>, so an equality check against the Veldrid
+        /// kind alone would drop both fields on the native leg, silently, with the session still looking healthy.
+        /// </para>
+        /// <para>
         /// <see cref="SupportedOSPlatformGuardAttribute"/> is what lets the ONE guard serve both readers: the
         /// platform-compatibility analyzer treats a false return as ruling Windows out, so
         /// <c>QueryWindows</c> keeps its <c>[SupportedOSPlatform("windows")]</c> contract without the call
@@ -109,7 +116,7 @@ namespace KhaozEngine.Gpu.Internal
         /// </summary>
         [SupportedOSPlatformGuard("windows")]
         internal static bool IsApplicable(GpuBackendKind backend, bool isWindows)
-            => isWindows && backend == GpuBackendKind.Direct3D11;
+            => isWindows && backend.IsDirect3D11();
 
         /// <summary>
         /// The raw-pointer entry's half of the same guarantee: Windows, and a device actually supplied. Pure and

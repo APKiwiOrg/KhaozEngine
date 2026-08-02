@@ -74,8 +74,9 @@ namespace KhaozEngine.Gpu
 
     /// <summary>
     /// Centralizes graphics-backend selection. <see cref="Select()"/> reads the <c>KE_GRAPHICS_BACKEND</c>
-    /// environment variable as an override (values <c>metal</c>/<c>vulkan</c>/<c>d3d11</c>/<c>gl</c>,
-    /// case-insensitive) and otherwise probes the OS (macOS -> Metal, Windows -> Direct3D11, Linux -> Vulkan,
+    /// environment variable as an override (case-insensitive, one of
+    /// <c>metal</c>/<c>vulkan</c>/<c>d3d11</c>/<c>d3d11-native</c>/<c>gl</c>) and otherwise probes the OS
+    /// (macOS -> Metal, Windows -> Direct3D11, Linux -> Vulkan,
     /// with Vulkan as the catch-all default). <see cref="Resolve()"/> answers the same question but also reports
     /// WHERE the answer came from, via <see cref="GpuBackendSelection"/>. The pure overloads
     /// <see cref="Select(string?, OSPlatformKind)"/> / <see cref="Resolve(string?, OSPlatformKind)"/> make the
@@ -94,8 +95,8 @@ namespace KhaozEngine.Gpu
 
         /// <summary>
         /// Pure backend-selection logic. If <paramref name="envOverride"/> is a recognized backend name
-        /// (case-insensitive; <c>metal</c>/<c>vulkan</c>/<c>d3d11</c>/<c>gl</c>) it wins; otherwise (null,
-        /// empty, or unrecognized) the choice falls through to the <paramref name="os"/> probe.
+        /// (case-insensitive, one of <c>metal</c>/<c>vulkan</c>/<c>d3d11</c>/<c>d3d11-native</c>/<c>gl</c>) it wins,
+        /// otherwise (null, empty, or unrecognized) the choice falls through to the <paramref name="os"/> probe.
         /// </summary>
         public static GpuBackendKind Select(string? envOverride, OSPlatformKind os)
             => Resolve(envOverride, os).Backend;
@@ -166,7 +167,15 @@ namespace KhaozEngine.Gpu
             return new GpuBackendSelection(ProbeOS(os), source, raw);
         }
 
-        /// <summary>Map a <c>KE_GRAPHICS_BACKEND</c> value to a backend. Case-insensitive; trims whitespace.</summary>
+        /// <summary>
+        /// Map a <c>KE_GRAPHICS_BACKEND</c> value to a backend. Case-insensitive, and it trims whitespace.
+        /// <para>
+        /// Every backend is reachable by name, including the ones the OS probe never picks, because naming one
+        /// variable is the whole ergonomic story of a field soak: <c>d3d11</c> and <c>d3d11-native</c> are two
+        /// implementations of the same API and the difference between them is exactly what a soak session is
+        /// measuring, so it has to be expressible in the variable a tester already knows.
+        /// </para>
+        /// </summary>
         public static bool TryParseBackend(string? value, out GpuBackendKind backend)
         {
             switch (value?.Trim().ToLowerInvariant())
@@ -174,12 +183,26 @@ namespace KhaozEngine.Gpu
                 case "metal": backend = GpuBackendKind.Metal; return true;
                 case "vulkan": backend = GpuBackendKind.Vulkan; return true;
                 case "d3d11": case "direct3d11": backend = GpuBackendKind.Direct3D11; return true;
+                // Suffixed rather than a second variable. The whole token is matched, so these can never be
+                // confused with the two above, and a tester who typo'd the suffix gets the UnrecognizedOverride
+                // diagnostic rather than a silent run on the incumbent implementation under the new name.
+                case "d3d11-native": case "direct3d11-native":
+                    backend = GpuBackendKind.Direct3D11Native; return true;
                 case "gl": case "opengl": backend = GpuBackendKind.OpenGL; return true;
                 default: backend = default; return false;
             }
         }
 
-        /// <summary>The default backend for an OS family (macOS -> Metal, Windows -> D3D11, else Vulkan).</summary>
+        /// <summary>
+        /// The default backend for an OS family (macOS -> Metal, Windows -> D3D11, else Vulkan).
+        /// <para>
+        /// Windows deliberately still answers <see cref="GpuBackendKind.Direct3D11"/>, the Veldrid implementation,
+        /// and keeps answering it until the native backend has passed all five rollout gates (decision I4 and
+        /// section 14 of <c>docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md</c>). Flipping the default is the
+        /// LAST step of that program, not a side effect of the member existing: until then the native leg is
+        /// exercised by naming it, through <c>KE_GRAPHICS_BACKEND</c> and its own CI matrix leg.
+        /// </para>
+        /// </summary>
         public static GpuBackendKind ProbeOS(OSPlatformKind os) => os switch
         {
             OSPlatformKind.MacOS => GpuBackendKind.Metal,
@@ -191,6 +214,12 @@ namespace KhaozEngine.Gpu
         // The backends the engine can create a WINDOWED device on, in a stable presentation order. OpenGL is
         // deliberately absent: CreateForWindow has no windowed GL path (Silk would have to own the GL context),
         // so offering it to a player would be offering a choice that cannot boot.
+        //
+        // Direct3D11Native is absent for a different reason, and stays absent until the default flip (decision I4).
+        // This list is what a game's graphics settings screen OFFERS, and a player picks an API, not an
+        // implementation of one: two entries both reading "Direct3D 11" is a choice nobody outside this repo can
+        // make. The native leg is named explicitly instead, through KE_GRAPHICS_BACKEND, until it becomes what
+        // "Direct3D 11" means.
         static readonly GpuBackendKind[] _windowCandidates =
             { GpuBackendKind.Metal, GpuBackendKind.Vulkan, GpuBackendKind.Direct3D11 };
 
@@ -313,14 +342,30 @@ namespace KhaozEngine.Gpu
             return OSPlatformKind.Unknown;
         }
 
-        /// <summary>Map an engine <see cref="GpuBackendKind"/> to the Veldrid backend (internal: Veldrid stays here).</summary>
+        /// <summary>
+        /// Map an engine <see cref="GpuBackendKind"/> to the Veldrid backend (internal: Veldrid stays here).
+        /// <para>
+        /// Provider-backed kinds have no Veldrid equivalent and throw rather than mapping onto the nearest thing,
+        /// which is what the discard arm used to do: it answered <c>Metal</c> for anything it did not recognize, so
+        /// an appended member asked Veldrid for a Metal device on Windows and failed naming an API nobody had
+        /// selected. Nothing reaches here for such a kind today, because every caller branches on
+        /// <see cref="GpuBackendProviders.RequiresProvider"/> first. The arm is the belt to that braces, and it
+        /// fails saying what actually went wrong.
+        /// </para>
+        /// </summary>
         internal static GraphicsBackend ToVeldrid(GpuBackendKind kind) => kind switch
         {
             GpuBackendKind.Metal => GraphicsBackend.Metal,
             GpuBackendKind.Vulkan => GraphicsBackend.Vulkan,
             GpuBackendKind.Direct3D11 => GraphicsBackend.Direct3D11,
             GpuBackendKind.OpenGL => GraphicsBackend.OpenGL,
-            _ => GraphicsBackend.Metal,
+            GpuBackendKind.Direct3D11Native => throw NotAVeldridBackend(kind),
+            _ => throw NotAVeldridBackend(kind),
         };
+
+        static NotSupportedException NotAVeldridBackend(GpuBackendKind kind)
+            => new($"{kind} is not a Veldrid backend, so it has no GraphicsBackend to map onto. It is created by "
+                + "its registered provider instead (GpuBackendProviders), and every path that could reach here "
+                + "checks GpuBackendProviders.RequiresProvider first. Reaching this means that check was skipped.");
     }
 }

@@ -49,9 +49,71 @@ namespace KhaozEngine.Tests.Gpu
         /// </summary>
         public static void AssertOrUpdate(string name, byte[] rgba, int w, int h)
         {
-            string backend = KhaozEngine.Gpu.GpuBackendSelector.Select().ToString().ToLowerInvariant();
-            AssertOrUpdate(name, rgba, w, h, GoldenDir(), EvidenceDir(), backend,
-                Environment.GetEnvironmentVariable("KE_UPDATE_GOLDENS") == "1");
+            KhaozEngine.Gpu.GpuBackendKind kind = KhaozEngine.Gpu.GpuBackendSelector.Select();
+            AssertOrUpdate(name, rgba, w, h, GoldenDir(), EvidenceDir(), GoldenBackendToken(kind),
+                Environment.GetEnvironmentVariable("KE_UPDATE_GOLDENS") == "1",
+                BakeRefusal(kind, Environment.GetEnvironmentVariable(FamilyOverrideEnvVar) == "1"));
+        }
+
+        /// <summary>The env var that lets a bake write into a golden family the running backend does not OWN.</summary>
+        public const string FamilyOverrideEnvVar = "KE_GOLDEN_FAMILY_OVERRIDE";
+
+        /// <summary>
+        /// The golden FAMILY a backend's references live in: the <c>&lt;backend&gt;</c> token in
+        /// <c>&lt;name&gt;.&lt;backend&gt;.txt</c>. Usually just the kind's own lower-cased name, which is what the
+        /// two filename sites used to derive inline, one each.
+        /// <para>
+        /// The exception is the whole point (decision I3 of
+        /// <c>docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md</c>).
+        /// <see cref="KhaozEngine.Gpu.GpuBackendKind.Direct3D11Native"/> is a second IMPLEMENTATION of Direct3D 11,
+        /// not a second API, so it renders the same images on the same rasterizer and SHARES the
+        /// <c>direct3d11</c> family. That sharing is not a convenience: holding the native backend to the
+        /// incumbent's already-committed references, unmodified, at the existing tolerance, is the strongest free
+        /// proof the whole port has, and deriving the token from the enum name would have thrown it away by
+        /// orphaning 36 goldens behind a name nothing had ever baked.
+        /// </para>
+        /// <para>
+        /// No discard that guesses. An appended kind lands on the throwing arm rather than silently inventing a
+        /// family nobody baked, and <c>GpuBackendKindAppendAuditTests</c> walks every member so the failure
+        /// arrives from a device-free test rather than from a GPU leg.
+        /// </para>
+        /// </summary>
+        public static string GoldenBackendToken(KhaozEngine.Gpu.GpuBackendKind kind) => kind switch
+        {
+            KhaozEngine.Gpu.GpuBackendKind.Metal => "metal",
+            KhaozEngine.Gpu.GpuBackendKind.Vulkan => "vulkan",
+            KhaozEngine.Gpu.GpuBackendKind.Direct3D11 => "direct3d11",
+            KhaozEngine.Gpu.GpuBackendKind.Direct3D11Native => "direct3d11",
+            KhaozEngine.Gpu.GpuBackendKind.OpenGL => "opengl",
+            _ => throw new NotSupportedException(
+                $"No golden family is decided for {kind}. Appending a GpuBackendKind member means deciding "
+                + "whether it owns a family or shares one, because the filename is derived from this and nothing "
+                + "else fails when it is wrong: the run just compares against a golden that does not exist."),
+        };
+
+        /// <summary>
+        /// Why <c>KE_UPDATE_GOLDENS</c> must NOT write on <paramref name="kind"/>, or null when baking is allowed.
+        /// <para>
+        /// A backend that is a GUEST in another backend's family (its token is not its own name) would, on a bake,
+        /// overwrite both the reference it is itself being checked against and the owning implementation's, from a
+        /// run that proves nothing about either. There is no way to notice afterwards: the file it wrote is
+        /// exactly the file it would have compared against. So the refusal is the guard, and
+        /// <see cref="FamilyOverrideEnvVar"/> is the deliberate way past it for the one case that is legitimate,
+        /// moving the shared family on purpose.
+        /// </para>
+        /// </summary>
+        public static string? BakeRefusal(KhaozEngine.Gpu.GpuBackendKind kind, bool familyOverride)
+        {
+            if (familyOverride) return null;
+
+            string token = GoldenBackendToken(kind);
+            if (string.Equals(token, kind.ToString(), StringComparison.OrdinalIgnoreCase)) return null;
+
+            return $"KE_UPDATE_GOLDENS refused on {kind}: it does not own the '{token}' golden family, it shares "
+                + "it. Baking here would overwrite the very references this backend is being CHECKED against, and "
+                + "the owning implementation's with them, which is the one proof the shared family exists to buy. "
+                + $"Re-bake on the backend that owns '{token}', or set {FamilyOverrideEnvVar}=1 if you really do "
+                + "mean to move the shared family.";
         }
 
         /// <summary>
@@ -62,12 +124,17 @@ namespace KhaozEngine.Tests.Gpu
         /// <c>&lt;evidenceDir&gt;/&lt;name&gt;.&lt;backend&gt;.{got,want,diff,bake}.png</c>.
         /// </summary>
         internal static void AssertOrUpdate(string name, byte[] rgba, int w, int h,
-            string goldenDir, string evidenceDir, string backend, bool updateGoldens)
+            string goldenDir, string evidenceDir, string backend, bool updateGoldens,
+            string? bakeRefusal = null)
         {
             float[] grid = Downsample(rgba, w, h);
             string path = Path.Combine(goldenDir, name + "." + backend + ".txt");
             if (updateGoldens)
             {
+                // Fails rather than quietly degrading to a compare. The operator asked to overwrite a reference
+                // and must be told they did not get one, or the next run's green is read as the bake having
+                // worked.
+                if (bakeRefusal != null) Assert.Fail(bakeRefusal);
                 Directory.CreateDirectory(goldenDir);
                 File.WriteAllText(path, Serialize(grid));
                 // Evidence: the full-res capture, so CI bake artifacts are viewable.
@@ -155,15 +222,19 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// Resolve <c>Gpu/goldens/&lt;name&gt;.&lt;backend&gt;.txt</c> next to this source file, where
         /// <c>&lt;backend&gt;</c> is the active <see cref="KhaozEngine.Gpu.GpuBackendSelector.Select()"/> result
-        /// lower-cased (metal / vulkan / direct3d11 / opengl). Each backend gets its own reference grid because a
-        /// software rasterizer (lavapipe, WARP) won't match Metal pixel-for-pixel. Using
+        /// mapped through <see cref="GoldenBackendToken"/> (metal / vulkan / direct3d11 / opengl). Each rendering
+        /// API gets its own reference grid because a software rasterizer (lavapipe, WARP) won't match Metal
+        /// pixel-for-pixel, and two implementations of ONE api share a grid for the opposite reason. Using
         /// <see cref="CallerFilePathAttribute"/> makes the path independent of <c>dotnet test</c>'s working
         /// directory and the build output layout, so generated references and checks always hit the committed
         /// source tree.
         /// </summary>
         public static string GoldenPath(string name, [CallerFilePath] string thisFile = "")
         {
-            string backend = KhaozEngine.Gpu.GpuBackendSelector.Select().ToString().ToLowerInvariant();
+            // Through GoldenBackendToken, the same as the compare/bake site above. These are the TWO places the
+            // kind becomes a filename, and a copy that derived it differently would have a bake path and a compare
+            // path disagreeing about which family a backend belongs to.
+            string backend = GoldenBackendToken(KhaozEngine.Gpu.GpuBackendSelector.Select());
             return Path.Combine(GoldenDir(thisFile), name + "." + backend + ".txt");
         }
 

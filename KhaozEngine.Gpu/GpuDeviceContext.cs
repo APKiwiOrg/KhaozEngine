@@ -215,7 +215,7 @@ namespace KhaozEngine.Gpu
             if (selection.RequestedOverride != null && selection.Source != GpuBackendSource.EnvironmentOverride)
             {
                 log.Warn($"{GpuBackendSelector.EnvVarName}='{selection.RequestedOverride}' is not a recognized "
-                    + $"backend (metal/vulkan/d3d11/gl). Using {selection.Backend} instead.");
+                    + $"backend (metal/vulkan/d3d11/d3d11-native/gl). Using {selection.Backend} instead.");
             }
 
             // Every member is spelled out rather than leaning on a discard arm: an appended member must show up
@@ -251,7 +251,11 @@ namespace KhaozEngine.Gpu
         // headlessly rather than only the one a Windows Direct3D11 machine can reach.
         static void LogThreadingCaps(GpuBackendKind backend, GpuThreadingCaps? caps, string? probeFailure)
         {
-            if (backend != GpuBackendKind.Direct3D11) return;
+            // BOTH Direct3D11 implementations, via IsDirect3D11. The driver underneath is the same one whichever
+            // implementation drove it, so an emulating-command-lists driver is exactly as worth warning about on
+            // the native leg. An equality check against Direct3D11 alone would have dropped this line and the two
+            // telemetry threading fields it feeds on the one backend the probe was written for.
+            if (!backend.IsDirect3D11()) return;
 
             log.Info($"D3D11 driver threading: {GpuThreadingDiagnostics.Describe(caps)}");
             string? warning = GpuThreadingDiagnostics.WarningFor(caps, probeFailure);
@@ -541,8 +545,21 @@ namespace KhaozEngine.Gpu
                 GpuBackendKind.Direct3D11 => GraphicsDevice.CreateD3D11(opts, BuildD3D11Options(), scDesc),
                 GpuBackendKind.OpenGL => throw new NotSupportedException(
                     "Windowed OpenGL device-from-handle is not supported (Silk would need to own the GL context)."),
-                _ => GraphicsDevice.CreateMetal(opts, scDesc),
+                GpuBackendKind.Direct3D11Native => throw NotCreatedByVeldrid(kind),
+                _ => throw NotCreatedByVeldrid(kind),
             };
+
+        // The arm an appended member used to fall into, and the reason this audit exists. A switch expression over
+        // an enum does NOT throw SwitchExpressionException for an unlisted member when it carries a discard, and
+        // both of these carried one that read `GraphicsDevice.CreateMetal(...)`. So a new backend did not fail
+        // here: it silently asked Veldrid for a METAL device, which on Windows fails naming an API the caller
+        // never selected, from a stack that says nothing about the backend actually requested.
+        static NotSupportedException NotCreatedByVeldrid(GpuBackendKind kind)
+            => new($"{kind} is not created here. It is a provider-backed backend, built by the "
+                + "IGpuBackendProvider registered for it (GpuBackendProviders) and adopted through the "
+                + "IGpuDevice constructor, and every entry into this path branches on "
+                + "GpuBackendProviders.RequiresProvider before reaching the Veldrid switch. Reaching this means "
+                + "that branch was bypassed.");
 
         /// <summary>
         /// Veldrid-free headless device for migrated consumers (Render2D) that must not reference Veldrid. Uses
@@ -581,7 +598,8 @@ namespace KhaozEngine.Gpu
                     GpuBackendKind.Direct3D11 => GraphicsDevice.CreateD3D11(options, BuildD3D11Options()),
                     GpuBackendKind.OpenGL => throw new NotSupportedException(
                         "Headless OpenGL device creation is not supported in Phase 3a (needs a context surface)."),
-                    _ => GraphicsDevice.CreateMetal(options),
+                    GpuBackendKind.Direct3D11Native => throw NotCreatedByVeldrid(selection.Backend),
+                    _ => throw NotCreatedByVeldrid(selection.Backend),
                 };
             }
             return new GpuDeviceContext(gd, selection, ownsDevice: true);

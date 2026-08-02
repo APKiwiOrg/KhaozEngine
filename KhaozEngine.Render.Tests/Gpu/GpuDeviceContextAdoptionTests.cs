@@ -28,6 +28,13 @@ namespace KhaozEngine.Tests.Gpu
         static GpuBackendSelection Selection(GpuBackendKind kind = GpuBackendKind.Direct3D11)
             => new(kind, GpuBackendSource.UserPreference, null);
 
+        public static TheoryData<GpuBackendKind> EveryBackendKind()
+        {
+            var data = new TheoryData<GpuBackendKind>();
+            foreach (GpuBackendKind kind in Enum.GetValues<GpuBackendKind>()) data.Add(kind);
+            return data;
+        }
+
         [Fact]
         public void AdoptedDevice_IsHandedBackAsIs_WithItsSelection()
         {
@@ -64,11 +71,15 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Contains(selectionBackend.ToString(), ex.Message);
         }
 
+        /// <summary>
+        /// Every member, enumerated rather than listed, because "an adopted device is accepted" is true of every
+        /// backend by construction and stays true of one appended later. (Contrast
+        /// <c>GpuBackendProvidersTests.RequiresProvider_IsFalse_ForEveryBackendTheEngineBuildsItself</c>, which
+        /// spells its members out on purpose: an appended kind is correctly NOT in that set, so enumerating there
+        /// would turn a right answer into a red build.)
+        /// </summary>
         [Theory]
-        [InlineData(GpuBackendKind.Metal)]
-        [InlineData(GpuBackendKind.Vulkan)]
-        [InlineData(GpuBackendKind.Direct3D11)]
-        [InlineData(GpuBackendKind.OpenGL)]
+        [MemberData(nameof(EveryBackendKind))]
         public void AdoptedDevice_IsAcceptedOnEveryBackend_WhenThePairAgrees(GpuBackendKind backend)
         {
             using var ctx = new GpuDeviceContext(new RecordingGpuDevice(backend), threadingCaps: null,

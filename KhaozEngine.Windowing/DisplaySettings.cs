@@ -39,6 +39,12 @@ namespace KhaozEngine.Windowing
         /// Metal - where the Veldrid Metal present does not throttle the CPU from vsync alone (a Mac client free-runs
         /// well above the refresh). Pure and headless-testable; <see cref="AppWindow"/> uses it to emit a one-time
         /// warning so a consumer knows to set <see cref="FrameCapHz"/> for a real cap on macOS.
+        /// <para>
+        /// Equality against Metal, not a family predicate, and deliberately so: this is the same arm as
+        /// <see cref="FrameCap.Resolve"/> and it takes the same decision. An appended backend warns about nothing,
+        /// which is correct for <see cref="GpuBackendKind.Direct3D11Native"/>, whose vsync throttles the CPU
+        /// exactly as the incumbent Direct3D11 path's does.
+        /// </para>
         /// </summary>
         public static bool RequiresFrameCapWarning(GpuBackendKind backend, PresentMode presentMode, int frameCapHz)
             => backend == GpuBackendKind.Metal && presentMode == PresentMode.Vsync && frameCapHz <= 0;

@@ -69,6 +69,11 @@ namespace KhaozEngine.Windowing
             {
                 CapKind.Fixed => Value,
                 CapKind.Uncapped => 0,
+                // Equality against Metal, not a family predicate, and deliberately so. An appended backend falls
+                // into the uncapped arm, which is the right answer for Direct3D11Native: its present throttles
+                // the CPU from vsync exactly as the incumbent's does, so it needs no software cap and must behave
+                // identically to the implementation it is being A/B'd against. Recorded rather than left implicit
+                // because this is the arm #380's present-pacing work will revisit.
                 _ => backend == GpuBackendKind.Metal && present == PresentMode.Vsync
                         ? (displayRefreshHz > 0 ? displayRefreshHz : DefaultMetalAutoCapHz)
                         : 0,

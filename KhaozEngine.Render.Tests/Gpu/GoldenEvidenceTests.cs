@@ -119,6 +119,43 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(h, img.Height);
         }
 
+        /// <summary>
+        /// The bake refusal, wired (decision I3). The pure decision is pinned in
+        /// <c>GpuBackendKindAppendAuditTests</c>. What matters here is that a refusal actually STOPS the write and
+        /// fails loudly, because the file a shared-family bake would produce is exactly the file it would then
+        /// have compared against, so nothing downstream could ever notice the reference had been replaced by the
+        /// run that was supposed to be checked against it.
+        /// </summary>
+        [Fact]
+        public void ARefusedBake_WritesNothing_AndFailsSayingHowToProceed()
+        {
+            const int w = 64, h = 36;
+            const string name = "refused";
+            const string refusal = "KE_UPDATE_GOLDENS refused on TestNative: set KE_GOLDEN_FAMILY_OVERRIDE=1";
+
+            var ex = Assert.Throws<Xunit.Sdk.FailException>(() =>
+                GoldenCompare.AssertOrUpdate(name, Solid(w, h, 10, 20, 30), w, h,
+                    _goldenDir, _evidenceDir, Backend, updateGoldens: true, bakeRefusal: refusal));
+
+            Assert.Contains(refusal, ex.Message);
+            Assert.False(File.Exists(Path.Combine(_goldenDir, $"{name}.{Backend}.txt")),
+                "a refused bake must not write the golden text");
+            Assert.Empty(Directory.GetFiles(_evidenceDir));
+        }
+
+        /// <summary>The other half: no refusal means the bake behaves exactly as it always did, so the guard costs
+        /// an ordinary rebake nothing and does not get worked around.</summary>
+        [Fact]
+        public void ANullRefusal_LeavesTheBakeExactlyAsItWas()
+        {
+            const int w = 64, h = 36;
+            const string name = "allowed";
+            GoldenCompare.AssertOrUpdate(name, Solid(w, h, 10, 20, 30), w, h,
+                _goldenDir, _evidenceDir, Backend, updateGoldens: true, bakeRefusal: null);
+
+            Assert.True(File.Exists(Path.Combine(_goldenDir, $"{name}.{Backend}.txt")));
+        }
+
         [Fact]
         public void PassingCompare_WritesNothingToEvidenceDir()
         {

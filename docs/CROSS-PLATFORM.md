@@ -77,10 +77,19 @@ it was on. It is a probe, not a fix: it can cost performance, so it is off by de
 ## Backend-aware goldens
 
 `GoldenCompare.GoldenPath(name)` resolves `KhaozEngine.Render.Tests/Gpu/goldens/<name>.<backend>.txt` where
-`<backend>` = `GpuBackendSelector.Select().ToString().ToLowerInvariant()`. Each backend has its own reference
-grid because a software rasterizer (lavapipe, WARP) does not match Apple Metal pixel-for-pixel; per-backend
-goldens absorb that while still catching real shader / UBO / blend / winding / orientation regressions (coarse
-32×18 grid, per-channel tolerance).
+`<backend>` = `GoldenCompare.GoldenBackendToken(GpuBackendSelector.Select())`. Each rendering API has its own
+reference grid because a software rasterizer (lavapipe, WARP) does not match Apple Metal pixel-for-pixel.
+Per-backend goldens absorb that while still catching real shader / UBO / blend / winding / orientation
+regressions (coarse 32×18 grid, per-channel tolerance).
+
+The token is a mapping rather than the enum name, because two IMPLEMENTATIONS of one API share a family.
+`GpuBackendKind.Direct3D11Native` resolves to `direct3d11`, so the native backend is held to the incumbent's
+already-committed references, unmodified, on the same WARP rasterizer at the same tolerance. That sharing is the
+strongest free proof the native port has, so it is guarded in the other direction too: `KE_UPDATE_GOLDENS`
+REFUSES to write when the running backend does not OWN its family, unless `KE_GOLDEN_FAMILY_OVERRIDE=1` says the
+shared family is being moved on purpose. Without that guard a bake on the native leg would overwrite both the
+reference it is being checked against and the incumbent's, and the file it wrote would be exactly the file it
+would then have compared against, so nothing downstream could notice.
 
 The Metal goldens (`scene2d.metal.txt`, `scene3d.metal.txt`), the Direct3D11 goldens
 (`scene2d.direct3d11.txt`, `scene3d.direct3d11.txt`, baked on WARP), and the Vulkan goldens

@@ -18,10 +18,10 @@ namespace KhaozEngine.Tests.Gpu
     /// </summary>
     public sealed class GpuBackendProvidersTests
     {
-        // The ordinal decision I1 reserves for the appended Direct3D11Native member. Used ONLY in the read-only
-        // assertions here: once that member exists, registering a fake provider under this value would fight the
-        // real one the test assembly registers for it.
-        const GpuBackendKind AppendedKind = (GpuBackendKind)4;
+        // The appended member itself, which decision I1 reserved ordinal 4 for and which now exists. Used ONLY in
+        // the read-only assertions here: once KhaozEngine.Gpu.D3D11 ships, registering a fake provider under this
+        // kind would fight the real one the test assembly registers for it.
+        const GpuBackendKind AppendedKind = GpuBackendKind.Direct3D11Native;
 
         // A value no GpuBackendKind member will plausibly ever take, for every test that REGISTERS something. It
         // behaves identically to an appended kind (the registry is keyed by value and knows nothing else about

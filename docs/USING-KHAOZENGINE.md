@@ -8153,8 +8153,12 @@ Scene3D render-path GPU tests.
 
 ## Which graphics backend actually ran (`GpuBackendSelection`, 17.21.0)
 
-`KE_GRAPHICS_BACKEND` overrides the OS probe (`metal` / `vulkan` / `d3d11` / `gl`, case-insensitive, aliases
-`direct3d11` and `opengl`). The trap is what happens when it is wrong. A typo, a variable set in the wrong shell,
+`KE_GRAPHICS_BACKEND` overrides the OS probe (`metal` / `vulkan` / `d3d11` / `d3d11-native` / `gl`,
+case-insensitive, aliases `direct3d11`, `direct3d11-native` and `opengl`). `d3d11-native` is the engine's own
+Direct3D11 implementation rather than the Veldrid one, and it is a separate value precisely so a session log, a
+telemetry header and a frame time say which of the two ran.
+
+The trap is what happens when the override is wrong. A typo, a variable set in the wrong shell,
 or a launcher that drops the environment all fall back to the OS probe, and the run looks completely normal. If
 you were comparing backends, the trace then reads as "the backend I asked for did not help" when that backend
 never ran at all. This costs the most in exactly the case you can least afford it, a remote tester on a machine
@@ -8168,7 +8172,7 @@ GPU backend: Vulkan (KE_GRAPHICS_BACKEND override)
 GPU backend: Direct3D11 (OS probe)
 GPU backend: Vulkan (stored user preference)
 GPU backend: Direct3D11 (fallback, Vulkan failed)
-KE_GRAPHICS_BACKEND='vulcan' is not a recognized backend (metal/vulkan/d3d11/gl). Using Direct3D11 instead.
+KE_GRAPHICS_BACKEND='vulcan' is not a recognized backend (metal/vulkan/d3d11/d3d11-native/gl). Using Direct3D11 instead.
 ```
 
 Read it yourself to put the backend on a game's own debug overlay. `GameApp.Window` is `protected`, so a

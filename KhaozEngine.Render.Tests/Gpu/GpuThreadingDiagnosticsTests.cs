@@ -137,13 +137,20 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// The no-op guarantee, asserted rather than claimed: the probe asks a driver ONLY on Windows on the
+        /// The no-op guarantee, asserted rather than claimed: the probe asks a driver ONLY on Windows on a
         /// Direct3D11 backend. Everything else returns before any device access and before the Vortice types are
         /// ever named, which is what keeps that assembly unloaded on macOS and Linux.
+        /// <para>
+        /// "A Direct3D11 backend" is BOTH implementations. What is being asked about is the driver, and the driver
+        /// is the same one whichever implementation drove it, so the native leg gets the same INFO line, the same
+        /// emulated-command-lists WARN, and the same two telemetry fields.
+        /// </para>
         /// </summary>
         [Theory]
         [InlineData(GpuBackendKind.Direct3D11, true, true)]
         [InlineData(GpuBackendKind.Direct3D11, false, false)]
+        [InlineData(GpuBackendKind.Direct3D11Native, true, true)]
+        [InlineData(GpuBackendKind.Direct3D11Native, false, false)]
         [InlineData(GpuBackendKind.Metal, true, false)]
         [InlineData(GpuBackendKind.Metal, false, false)]
         [InlineData(GpuBackendKind.Vulkan, true, false)]

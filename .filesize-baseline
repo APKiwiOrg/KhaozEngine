@@ -46,9 +46,9 @@
 994 KhaozEngine.Game.Render3D/ReplicatedCharacterAnimators.cs
 905 KhaozEngine.Game.Tests/Game/ReplicatedCharacterAnimatorsTests.cs
 905 KhaozEngine.Dungeon/Internal/RoomGrower.cs
-904 KhaozEngine.Windowing/AppWindow.cs
 865 KhaozEngine.Render2D/SpriteBatch.cs
 857 KhaozEngine.MapEditor.Tests/MapEditTool/MutationServiceProceduralTests.cs
+835 KhaozEngine.Windowing/AppWindow.cs
 826 KhaozEngine.Audio/AudioSystem.cs
 824 KhaozEngine.Platform/ClipboardInterop.cs
 819 KhaozEngine.Locomotion/CharacterMovement.cs

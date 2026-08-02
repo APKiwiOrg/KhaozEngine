@@ -5,7 +5,7 @@ namespace KhaozEngine.Windowing
     /// render rate to an integer multiple of its fixed simulation/network tick regardless of whether the swapchain's
     /// vsync actually throttles on a given backend (notably the Veldrid Metal path, which can free-run well above the
     /// display refresh even with <c>SyncToVerticalBlank</c> on). Pure scheduling math driven by a caller-supplied
-    /// monotonic time; <see cref="AppWindow.Run"/> owns the actual waiting. Deterministic and headless-testable.
+    /// monotonic time. <see cref="AppWindow.Run(System.Action{Frame})"/> owns the actual waiting. Deterministic and headless-testable.
     /// </summary>
     public sealed class FrameLimiter
     {

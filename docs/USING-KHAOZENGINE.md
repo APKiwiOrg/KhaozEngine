@@ -8323,8 +8323,12 @@ registering later still gets a real probe.
 Registering a provider yourself is the same one call, with the backend named:
 
 ```csharp
-GpuBackendProviders.Register(GpuBackendKind.Direct3D11, myProvider);   // IGpuBackendProvider
+GpuBackendProviders.Register(GpuBackendKind.Direct3D11Native, myProvider);   // IGpuBackendProvider
 ```
+
+`Direct3D11Native` is the first provider-backed kind. Registering a provider under a built-in kind (Metal,
+Vulkan, Direct3D11, OpenGL) has no effect, because the built-in Veldrid path serves those regardless of what is
+registered.
 
 `IGpuBackendProvider` has three members: `IsSupported()` (the functional probe, which must never throw),
 `CreateForWindow(in GpuWindowedDeviceRequest)` and `CreateHeadless()`. Both creation calls return a

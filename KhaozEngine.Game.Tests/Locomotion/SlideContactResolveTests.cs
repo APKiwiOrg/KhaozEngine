@@ -16,9 +16,10 @@ namespace KhaozEngine.Tests.Locomotion;
 //   - CONCAVE-CREASE SOFT-LOCK. A character in a V-gully reads a steep column, so it never gets support, and
 //     the fall line of either wall points straight into the other, so the wall slide removes the whole
 //     horizontal every tick. Nothing moved, nothing grounded, and a held jump could never fire: measured
-//     0 grounded ticks in 400. A capsule whose descent the world is SWALLOWING is physically supported, so the
-//     resolve now says so on the ticks it is. (The crease is that rule's motivating case, not its condition -
-//     see SlideWedged for the arming test itself and for the harmless open-face transient it also admits.)
+//     0 grounded ticks in 400. A capsule the world is HOLDING UP is physically supported, so the resolve now
+//     says so on the ticks it is. (The crease is that rule's motivating case, not its condition - see
+//     SlideWedged for the two readings that arm it and for the fold test both of them require, which is what
+//     keeps an open face and the toe of a cliff from granting anything.)
 //   - CONTOUR MOMENTUM. The resolve kept only the fall-line component of the carried velocity, so a fast run
 //     ACROSS a face (perpendicular to its fall line, needing no drop at all to follow) was deleted on the
 //     contact tick. Only the INTO-SURFACE component may die.
@@ -89,24 +90,30 @@ public class SlideContactResolveTests
         Assert.True(deepestFall < 0.5f * t.MaxFallSpeed,
             $"the wedged capsule accelerated toward terminal in place. {measured}");
 
-        // THE PULSE, pinned because it is what "support for THAT TICK" honestly costs. Support is granted on the
-        // ticks the crease actually arrests a fall, so a character parked in one reports a repeating cycle -
-        // support, four or five ticks of fresh gravity, support again - rather than steady footing. Measured at
-        // the shipped tuning: 86 grounded ticks in 400, about a fifth.
-        Assert.InRange(groundedTicks, 40, 160);
-        // CONSUMER CONSEQUENCE. Every one of those is an airborne-to-grounded transition, so LandingImpactSpeed
-        // latches on every one: a game reading it for a landing SOUND gets a rattle while the character sits in
-        // the crease. What it does not get is repeated fall DAMAGE, because only the FIRST latch carries the real
-        // fall (11.2 m/s here, the slide down the wall) and every later one is the few ticks of gravity between
-        // pulses (4.0 m/s at the shipped tuning). A consumer that gates on impact speed is therefore unaffected.
+        // THE PULSE, pinned because it is what "support for THAT TICK" honestly costs, and it TIGHTENED in 17.29.0.
+        // The wedge now also arms on the body-scale reading (the plane the HEIGHTS describe across the capsule's own
+        // footprint is standable, which at a crease floor it is, because the capsule spans both walls), so the crease
+        // grants on every tick it is asked. It is asked on every OTHER tick: a grant ends the tick grounded, a
+        // grounded tick is not a slide contact, so the tick after it takes the ordinary path where the point-sampled
+        // normal still reads 78.7 degrees and refuses support - and the tick after THAT is a slide again. That is a
+        // structural 1-in-2 cycle rather than the old 1-in-5. Measured at the shipped tuning: 194 grounded ticks in
+        // 400 (48.5%) and 1994 in 4000 (49.8%), so it is a steady duty cycle and not a settling transient.
+        Assert.InRange(groundedTicks, 150, 250);
+        // CONSUMER CONSEQUENCE, and this one IMPROVED. The old 1-in-5 pulse latched LandingImpactSpeed on every
+        // grant, so a game reading it for a landing sound got a rattle for as long as the character sat in the
+        // crease. It does not any more: the latch needs a real fall to report and one tick of gravity between
+        // grants is not one, so the stream stops once the body settles. Measured at the shipped tuning: 8 latches
+        // over 400 ticks AND 8 over 4000 - the same 8, all of them during the arrival - against 194 and 1994
+        // grounded ticks. Only the FIRST carries the real fall (7.4 m/s, the slide down the wall). The loudest
+        // after it is 1.3 m/s.
         Assert.True(firstLatch > 5f, $"the arrival was not latched as a real landing. {measured}");
         Assert.True(loudestAfterFirst < 0.5f * firstLatch,
             $"a repeat pulse latched a full fall rather than the gap's worth of gravity. {measured}");
         // And an ABSOLUTE pin beside the relative one, because the relative bound only says the pulses are quieter
         // than the arrival - which stays true if BOTH grow, and the consumer claim being made here is not relative.
         // What a game needs to know is that no pulse ever reaches a speed it would take fall damage at. Measured at
-        // the shipped tuning, over 400 ticks and over 4000: 4.01 m/s, the few ticks of gravity between pulses. 6 m/s
-        // covers it with margin and is a fall of under 2 m, far below any sane damage threshold.
+        // the shipped tuning, over 400 ticks and over 4000: 1.35 m/s, a fall of under 10 cm. 6 m/s covers it with a
+        // wide margin and is a fall of under 2 m, far below any sane damage threshold.
         Assert.True(loudestAfterFirst < 6f,
             $"a repeat pulse latched a speed a consumer could plausibly take fall damage at. {measured}");
     }

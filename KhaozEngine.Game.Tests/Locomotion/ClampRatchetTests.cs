@@ -39,7 +39,9 @@ namespace KhaozEngine.Tests.Locomotion;
 // the walk window is a slit around 3 m/s (measured: 17.15 m of climb at walk 3.0, nothing at 2.5 or 3.5). With a
 // diagonal, which shrinks the per-tick ask by cos of the offset, it is wide open at every rate and every speed
 // (measured at the engine default tuning: 76.7 m at 15 Hz, 404.6 at 30, 1059.0 at 60, 1438.6 at 120).
-public class ClampRatchetTests
+// The 360-heading acceptance sweep that this file's named cases are single rows of lives beside it in
+// ClampRatchetSweepTests.cs, on the same partial class so it shares this fixture and this Ride.
+public partial class ClampRatchetTests
 {
     const float Dt = 1f / 30f;
 
@@ -132,6 +134,10 @@ public class ClampRatchetTests
         int ticks = (int)(seconds / dt);
         for (int i = 0; i < ticks; i++)
         {
+            bool startedGrounded = s.Grounded;
+            float feetStart = s.Position.Y - t.CapsuleHalfHeight;
+            float vStart = s.VerticalVelocity;
+
             s = CharacterMovement.Step(s, Toward(heading, run, jump), dt, Ground, t, Normals);
             float feet = s.Position.Y - t.CapsuleHalfHeight;
             peak = MathF.Max(peak, feet - startFeet);
@@ -142,6 +148,31 @@ public class ClampRatchetTests
             Assert.True(feet >= Face(s.Position.X, s.Position.Z) - 1e-3f,
                 $"tick {i} left the capsule under terrain, feet={feet:F5}, " +
                 $"ground={Face(s.Position.X, s.Position.Z):F5}");
+
+            // THE PER-TICK INVARIANT, checked on EVERY tick of EVERY case in this file rather than as a case of its
+            // own. It is the aggregate assertions' missing half: every other measurement here is a total (a peak, a
+            // net, a grant count), and a total cannot see per-tick theft once the character has descended - a tick
+            // that steals 20 cm from the clamp is invisible inside a ride that nets -700 m, and the round-four review
+            // found exactly that hiding under green aggregates at all four tick rates.
+            //
+            // It states #468 directly: a tick that began without footing may not END higher than its own resolved
+            // vertical motion carried it. The allowance reads the LARGER of the tick's entry and exit vertical
+            // velocity, because the tick's own resolve may legitimately replace one with the other (a slide swaps the
+            // gravity integrate for the fall-line one, and a wedge grant zeroes a fall), and the invariant is about
+            // altitude that NO velocity paid for.
+            //
+            // The epsilon is the slide's own documented rise slack (SlideRiseSlack, 1 mm) plus as much again for the
+            // float rounding of a difference of world heights. It is not slop chosen to make the test pass: measured
+            // across the full sweep - 4 tick rates, 4 input combinations, 360 headings, 4.9 million ticks - the worst
+            // tick in the run exceeds its own allowance by exactly 0.0010 m, which is that slack to the digit and
+            // nothing more.
+            if (!startedGrounded)
+            {
+                float allowed = MathF.Max(0f, MathF.Max(vStart, s.VerticalVelocity) * dt) + PerTickRiseEpsilon;
+                Assert.True(feet - feetStart <= allowed,
+                    $"tick {i} rose {feet - feetStart:F5} m with no footing, past the {allowed:F5} m its own " +
+                    $"vertical motion allows (vStart {vStart:F3}, vEnd {s.VerticalVelocity:F3}, dt {dt:F5})");
+            }
         }
         return (peak, s.Position.Y - t.CapsuleHalfHeight - startFeet, grants, jumps);
     }
@@ -155,6 +186,11 @@ public class ClampRatchetTests
     // first half second and never returns there over the remaining 9500 ticks. One metre carries that with margin
     // and is still 76x under the SMALLEST climb the ratchet bought (76.7 m at 15 Hz) and 1400x under the largest.
     const float SlideTransient = 1f;
+
+    // The per-tick rise allowance's tolerance, in metres: the slide's own documented SlideRiseSlack (1 mm) and as
+    // much again for the float rounding of a difference of world heights. See the assertion in Ride for what the
+    // sweep measured against it.
+    const float PerTickRiseEpsilon = 2e-3f;
 
     // ---- (a) walking straight up the fall line ----
 

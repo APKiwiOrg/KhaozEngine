@@ -426,7 +426,7 @@ public static partial class CharacterMovement
         //    crease is its motivating case rather than its condition, so any concave curvature can arm it for a
         //    tick (documented there, and worth no altitude). Support is granted for THIS TICK: the landing latch
         //    below then fires from the swallowed fall, exactly as a landing anywhere else does, because this IS one.
-        if (!grounded && sliding && SlideWedged(s.Position.Y, pos.Y, vVel, dt, t, pos, groundNormal))
+        if (!grounded && sliding && SlideWedged(s.Position.Y, pos.Y, vVel, dt, t, pos, groundNormal, groundHeight))
         {
             grounded = true;
             tSinceGround = 0f;

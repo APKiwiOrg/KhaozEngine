@@ -138,13 +138,20 @@ player uses, orientation slerped between snapshots.
 1. A `MoveCommand` (move axes, yaw, jump bit, face-camera flag) reaches `CharacterMovement.Step` from the local
    `CharacterController3D`, the server's `PlayerMoveSimulator`, or the client's `ClientPrediction`.
 2. `Step` runs the horizontal core (camera-relative move, plus the steep-terrain wall slide via the
-   `groundNormal` delegate and the `groundHeight` one: a destination both past `MaxSlopeRadians` and more than a
-   `StepHeight` above the feet keeps only its along-face component, while a descent falls through) and the
+   `groundNormal` delegate and the `groundHeight` one: a destination both past `MaxSlopeRadians` and above what
+   this tick can REACH keeps only its along-face component, while a descent falls through. The reach is a
+   `StepHeight` while the character is GROUNDED, since a step is what footing buys, and the tick's own resolved
+   upward motion when it is not - zero while it falls - so the ground clamp can never seat a body higher than its
+   own velocity carried it, 17.29.0/#468) and the
    vertical physics (gravity terminal-clamp, jump with coyote/buffer, air control). A tick that starts in contact
    with too-steep ground takes the SLIDE instead: no traction means `Grounded` false, and gravity decomposed
    against the surface accelerates it down the fall line (the contact deletes only the into-surface component, so
-   contour momentum and a signed up-slope fall line both survive it, and a tick whose descent the world swallowed
-   is supported, a concave crease being the case that motivates it). Then it resolves against the
+   contour momentum and a signed up-slope fall line both survive it, and a body the world is holding up is
+   supported, a concave crease being the case that motivates it). The slide's GEOMETRY - the fall line, the
+   contour, the face of a wall contact - is read from the ground-HEIGHT field by a central difference at capsule
+   scale, not from the ground-normal delegate, which only classifies steepness and folds (17.29.0/#468): the plane
+   the slide resolves against has to be the surface the ground clamp seats to, or the two pump energy every tick.
+   Then it resolves against the
    world: a capsule **sweep** along the move, a downward **support probe** so the character stands on prop
    tops, and a **depenetration** push-out (`ComputePenetration`, iterated) to collide-and-slide. A `null`
    world means terrain-only (the analytic field still clamps Y).

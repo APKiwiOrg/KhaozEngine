@@ -176,6 +176,25 @@ public struct MovementState : IComponent
     /// (byte-identical to a pre-feature state).</summary>
     public float LandingImpactSpeed;
 
+    /// <summary>SIM-LOCAL footing-grant storage (NOT replicated, NOT migrated): the per-entity slot for
+    /// <see cref="KhaozEngine.Locomotion.MoveState.SupportGranted"/>, whether the step RESOLVED SUPPORT this tick,
+    /// read before the jump consumed it. It exists for exactly the reason
+    /// <see cref="LandingImpactSpeed"/> does - the sharded per-cell step (<see cref="PlayerMovementSystem"/>) rebuilds
+    /// a fresh <see cref="KhaozEngine.Locomotion.MoveState"/> every tick, so a step OUTPUT has nowhere else to survive
+    /// to the end of <see cref="ShardedWorldServer.Tick"/>, which is where a game or an anomaly check reads it per slot
+    /// from <see cref="ShardedWorldServer.OnAfterTick"/>. <see cref="Grounded"/> beside it is the state the tick ENDED
+    /// in, which a held jump leaves <c>false</c> on every tick of a hop cycle: this is the signal that says the sim
+    /// found footing at all.
+    /// <para>DELIBERATELY absent from the movement codec and from the
+    /// <see cref="KhaozEngine.Replication.ReplicationChannels.Migrate"/> capture, on the same reasoning: it is a
+    /// server-side telemetry and anti-cheat input, so it is always <c>false</c> on a client and across a cell handoff.
+    /// <c>false</c> reads as "found no footing this tick", which is the safe direction for an anomaly check (a missed
+    /// grant costs one sample, a fabricated one accuses a legitimate player).</para>
+    /// <see cref="PlayerMovementSystem"/> writes it every tick and explicitly clears it for an entity its cell sim
+    /// skipped, so a skipped tick cannot leave a stale grant behind. <c>default</c> is <c>false</c> (byte-identical to
+    /// a pre-feature state).</summary>
+    public bool SupportGranted;
+
     /// <summary>Fixed wire scale for <see cref="ClimbRateQ"/> (m/s per quantum unit): 0.05, giving +/-6.35 m/s over an
     /// <see cref="sbyte"/> at 0.05 m/s resolution. Consumer-agnostic (independent of any consumer's
     /// <see cref="KhaozEngine.Locomotion.MoveTuning.MaxStepClimbSpeed"/>), so the codec round-trips the same for every game.</summary>

@@ -124,6 +124,7 @@ public sealed class PlayerMovementSystem : ISystem
                 // carried field on a skipped tick would spin every ghost back to facing -Z rather than clear an event.
                 ms.CommandedVelocity = Vector2.Zero;
                 ms.LandingImpactSpeed = 0f;
+                ms.SupportGranted = false;
                 return;
             }
 
@@ -192,6 +193,9 @@ public sealed class PlayerMovementSystem : ISystem
             // per-tick EVENT, so a fresh MoveState reading 0 is exactly right and re-seeding it would double-report the
             // landing on the following tick. Written unconditionally, so a non-landing tick clears the previous one.
             ms.LandingImpactSpeed = state.LandingImpactSpeed;
+            // Same again for the footing grant: a per-tick EVENT, never carried back IN, written unconditionally so a
+            // tick that found no support clears the previous one.
+            ms.SupportGranted = state.SupportGranted;
             // Write the carried arc back OUT so it both survives to the next tick and replicates. Both halves matter
             // here: without the write-back the sharded head re-reads its spawn value every tick and no player on a
             // sharded server ever carries momentum at all, and without it reaching the wire the client's reconcile

@@ -84,19 +84,31 @@ into a face while jumping read as an invisible wall eating lateral air control. 
 [#442](https://github.com/APKiwiOrg/KhaozEngine/issues/442) replaced the gate with two rules. Both are
 unconditional, neither is a knob, and `MaxSlopeRadians` keeps its exact meaning as the traction threshold.
 
-**1. Wall slide.** A horizontal move whose destination is BOTH steeper than `MaxSlopeRadians` AND more than
-`MoveTuning.StepHeight` above the feet is a wall contact:
+**1. Wall slide.** A horizontal move whose destination is BOTH steeper than `MaxSlopeRadians` AND above what this
+tick can REACH is a wall contact:
 
     the into-face component of the move dies, the along-face component survives
 
-The face's horizontal direction is the destination normal's XZ projection (the movement direction stands in when
-that projection is degenerate, which meets the face head-on and kills the whole move - the conservative
-direction). Both conditions are load-bearing. The steepness test is what leaves walkable ground untouched, since a
-fast run up a legal ramp can rise more than a `StepHeight` in one tick. The height test is what makes this a
-CONTACT rather than the old gate: ground within a step of the feet is something the character can be seated on, so
-it is admitted, and rule 2 is what makes doing so worthless. The projected move is re-tested and refused outright
-only if it still lands in a wall, which happens in a concave corner and is what keeps an XZ from ever being
-committed under terrain.
+The REACH is a `MoveTuning.StepHeight` while the character is GROUNDED, and the tick's OWN RESOLVED UPWARD MOTION
+when it is not - `max(0, vVel * dt)`, so zero while it falls (17.29.0, [#468](https://github.com/APKiwiOrg/KhaozEngine/issues/468)).
+A step is what footing buys, so a tick with no footing has bought nothing: it may be seated at or below the height
+it began at, and a rising one exactly as far up as its own velocity carries it. **Altitude on steep ground comes
+only from real velocity, never from the ground clamp.** Read as a single `StepHeight` for every tick alike, this
+admission was a climb: the clamp seats the capsule on whatever column the admission reaches, so walking at a 74
+degree cliff gained 2.3 to 2.7 m/s while `VerticalVelocity` reported falling at 5 to 7 (and paid MORE at a higher
+tick rate, the ceiling being a `StepHeight` per tick against gravity's `g*dt` takeback). A SLIDING tick takes the
+same allowance read off the slide's own resolved vertical, plus a 1 mm float slack it alone needs, because its
+advance lies in the surface plane and its rise therefore EQUALS its resolved vertical to the last float.
+
+The face's horizontal direction is the XZ projection of the HEIGHT-DERIVED plane at the destination (see "Which
+delegate answers what" below), with the movement direction standing in when that projection is degenerate, which
+meets the face head-on and kills the whole move - the conservative direction. Both conditions are load-bearing.
+The steepness test is what leaves walkable ground untouched, since a fast run up a legal ramp can rise more than a
+`StepHeight` in one tick. The height test is what makes this a CONTACT rather than the old gate: ground within a
+step of the feet is something the character can be seated on, so it is admitted, and rule 2 is what makes doing so
+worthless. The projected move is re-tested and refused outright only if it still lands in a wall, which happens in
+a concave corner and is what keeps an XZ from ever being committed under terrain. There is no outward-move
+exemption: a move that the heights say rises past the reach is a wall contact whichever way it points.
 
 **2. No traction.** A surface steeper than `MaxSlopeRadians` grants no support. `Grounded` stays false, so there
 is no jump, no coyote refresh and no landing latch on the face. The character is still SEATED on it (the ground
@@ -142,28 +154,59 @@ carry alone against a displacement the steer helped produce reads the steer's tr
 rescales the whole carry, fall line included. **Input adds nothing to the carry and takes nothing from it. Only
 geometry may shed it.**
 
-**A SWALLOWED DESCENT is supported**, the one exception to rule 2. A tick that carried a real fall (a downward
-speed past `Gravity * max(CoyoteTime, dt)`) and committed measurably less descent than that fall demanded is being
-held up by the world, so it reports support: `Grounded` true, jump enabled, coyote refreshed, and the swallowed
-fall latched as a landing. The test is stateless and tick-local, and it cannot arm at a jump apex, where the
-vertical speed is near zero by definition, which is what keeps the #440 ratchet dead.
+**A BODY THE WORLD IS HOLDING UP is supported**, the one exception to rule 2, and there are two ways to read that
+off a tick. Either the plane the HEIGHT FIELD describes across the capsule's own footprint is standable (the
+body-scale reading, 17.29.0), or the tick carried a real fall (a downward speed past `Gravity * max(CoyoteTime,
+dt)`) and committed measurably less descent than that fall demanded (the dynamic reading). Support means `Grounded`
+true, jump enabled, coyote refreshed, and the swallowed fall latched as a landing. The test is stateless and
+tick-local, and the dynamic half cannot arm at a jump apex, where the vertical speed is near zero by definition,
+which is what keeps the #440 ratchet dead.
+
+**Either reading also requires the ground to FOLD BACK ON ITSELF** (17.29.0). The normal is sampled over the
+capsule's footprint ring and some pair of horizontal fall lines must oppose by more than 120 degrees, where two
+unit fall lines sum to a vector no longer than either alone. Below that the ring still agrees on a direction to
+leave by, which is a face however folded. Past it there is no downhill left to take, which is the wedge. Without
+it, a shortfall alone could not tell a gully from a face - and on a face whose normal is smoothed over a wider
+stencil than its height field's detail (what a real terrain sampler hands back) the shortfall is structural rather
+than occasional, so an open cliff granted support steadily: five grants inside one measured climb, each a full
+launch for a player holding jump, with the ring reading 0 of 8 samples walkable and its fall lines spread over 1
+to 3 degrees. The fold test is equally what keeps footing off the TOE of a cliff, where a capsule a centimetre
+past the knee spans mostly flat ground (so the body-scale reading alone would grant) while every fall line there
+still points the same way.
 
 The motivating case is a **concave crease** (a V-gully, the inside of a cleft), which is where the rule's
 `SlideWedged` name comes from: a capsule there can neither be granted support by its own steep column nor slide
 out, because the fall line of either wall points into the other and the wall contact removes the whole horizontal,
-so the first cut of this model soft-locked, with a held jump that could never fire. But the detector looks at one
-number, the shortfall, not at a shape. **Any concave curvature under one tick's travel can arm it**, so an open
-creaseless face can grant a transient supported tick, and a held jump can fire from it. That is known and
-harmless: the gap is a fraction of one tick's travel and shrinks quadratically with the tick rate, and it can only
-ever fire on the way DOWN. Measured on a parabolic bowl wall with no crease anywhere, over 4000 ticks: nothing at
-gentle curvature, then one supported tick 1.29 m up as it sharpens, one at 2.79 m, two at 5.74 m, and zero net
-altitude gain in every case.
+so the first cut of this model soft-locked, with a held jump that could never fire.
 
-Support is per-tick, so a character parked in a crease reports a low-duty-cycle grounded pulse (about one tick in
-five) rather than steady footing. **Consumer note:** each pulse is an airborne-to-grounded transition, so
-`LandingImpactSpeed` latches on each one and a landing SOUND driven off the event alone will rattle. Only the
-first latch carries the real fall (11.2 m/s on the fixture, against 4.0 m/s for every pulse after it), so gate on
-the impact SPEED for fall damage and nothing changes.
+Support is per-tick, so a character parked in a crease reports a grounded PULSE rather than steady footing: about
+one tick in two, since a grant ends the tick grounded, a grounded tick is not a slide contact, and the tick after
+it is refused again by the point-sampled normal. Measured at the shipped tuning: 194 grounded ticks in 400 and
+1994 in 4000. **Consumer note:** the pulse does not rattle `LandingImpactSpeed`, because one tick of gravity
+between grants is not a fall worth latching - measured, 8 latches over 400 ticks and the same 8 over 4000, all of
+them during the arrival, the first at 7.4 m/s and the loudest after it at 1.3. Gate a landing sound on the impact
+SPEED anyway, which is what makes it robust to the tuning as well.
+
+**Which delegate answers what (17.29.0).** You supply two descriptions of the same surface and they do not have to
+agree, because a smoothed or lower-resolution normal field over a heightmap disagrees with its own heights
+everywhere. So each has one job:
+
+| Question | Answered by |
+| --- | --- |
+| Is this ground too steep to stand on? | the `groundNormal` delegate |
+| Does the ground under the footprint fold back on itself? | the `groundNormal` delegate |
+| Which way is the fall line, the contour, the face of this wall? | the `groundHeight` field |
+| How far above my feet is the ground I am moving onto? | the `groundHeight` field |
+
+The geometry answers come from a plane sampled off the heights by a central difference at `CapsuleRadius` either
+side of the point, in a fixed order, so a reconcile replay derives the same plane bit for bit. **The invariant that
+buys: the plane the slide resolves against IS the surface the ground clamp seats to**, so the clamp can never hand
+back altitude the resolve did not account for. Before it, the two disagreeing pumped energy every tick and 44 of
+360 headings still climbed a creased 74 degree face at 120 Hz, the worst by 389 m in 20 seconds with no jump and
+no footing grant. Nothing to configure: an analytic surface whose normal IS its own gradient behaves exactly as
+before, and where the two differ the heights now win. A slide also re-seats DOWN onto the surface within the
+contact skin (never up), so the sampled plane's float noise cannot drift the capsule off the face over a long
+fast slide.
 
 Consequences worth knowing. **Climbing self-defeats** rather than being fenced, so the #440 jump ratchet is dead:
 landing on a face lands in a slide. **Prop support always wins** - only the analytic terrain is traction-less, so
@@ -277,6 +320,16 @@ decision. **A null provider never engages swim.** The swim flag replicates via N
   tick is never grounded). A spawn or teleport reports about `Gravity * dt` on its first tick, honestly, since
   `default(MoveState).Grounded` is false, so **consumers should threshold** rather than treat any nonzero value as
   a fall. The server-side read path is NetWorld's `WorldServer.OnAfterTick` / `ShardedWorldServer.OnAfterTick`.
+- **`MoveState.SupportGranted`** (17.29.0) - sim-local step OUTPUT (not replicated): `true` on a tick that RESOLVED
+  support, read BEFORE the jump consumes it. `Grounded` is the state the tick ENDED in, and those are not the same
+  fact: the jump step launches off the support the tick just found and sets `Grounded` false on the way out, so a
+  player holding the button reports false on every tick of a hop cycle and any support granted underneath is
+  invisible. That gap is what let a 21 m cliff climb read as ZERO footing grants while it was taking a wedge grant
+  every few seconds ([#468](https://github.com/APKiwiOrg/KhaozEngine/issues/468)), so this is the signal a
+  server-side anomaly check or a telemetry recorder needs to see a character finding footing where the terrain
+  grants none. Set on EVERY supported tick rather than only on transitions (a transition is still derivable by
+  comparing it with the previous tick's), `false` on a swim tick, and mirrored server-side onto
+  `MovementState.SupportGranted` as a sim-local field exactly as `LandingImpactSpeed` is.
 - **`MoveState.FacingYaw`** (17.26.0) - the CARRIED heading in radians, in the same convention as
   `MoveCommand.CameraYaw`: 0 faces world -Z, a positive angle swings toward -X, canonical range `[-pi, pi)` with
   the low end inclusive. See "Authoritative facing" below. It affects NO position output, which is what makes

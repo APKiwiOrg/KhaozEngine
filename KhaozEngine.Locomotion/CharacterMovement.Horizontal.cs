@@ -57,19 +57,21 @@ public static partial class CharacterMovement
     // (ResolveCameraRelative) or a world-space steering direction (ResolveWorldDir), so player and AI share this exact input/surface
     // section. Prop collision is resolved separately by the swept collide-and-slide block in StepCore. moveDir is a unit vector when
     // speedFraction > 0. The advance itself is AdvanceWallSlide (CharacterMovement.Slide.cs), shared with the airborne momentum path
-    // and the slide: a destination that is both too steep to walk and more than a StepHeight above the feet is a WALL, and the move
-    // keeps only its along-face component instead of being refused. So walking off a cliff falls through to gravity, strafing along
-    // one keeps its lateral travel, and walking into one makes no headway - and where a too-steep destination IS within reach, the
-    // move is admitted and the no-traction rule slides the character straight back off it.
+    // and the slide: a destination that is both too steep to walk and above what this tick can REACH is a WALL, and the move keeps
+    // only its along-face component instead of being refused. So walking off a cliff falls through to gravity, strafing along one
+    // keeps its lateral travel, and walking into one makes no headway - and where a too-steep destination IS within reach, the
+    // move is admitted and the no-traction rule slides the character straight back off it. The reach is NoFootingReach: a
+    // StepHeight while the character is grounded (a step is what footing buys), and the tick's own resolved upward motion when it
+    // is not (#468 - the clamp may not lift a capsule that has no footing).
     // Returns the resolved speed alongside the position so StepCore can export it as MoveState.CommandedVelocity: it is reported
     // UNCONDITIONALLY, including on a wall contact, because the anomaly check needs the ask, not what survived. 0 when idle.
     private static (float x, float z, float speed) DesiredHorizontalCore(float x, float z, Vector2 moveDir,
         float speedFraction, bool run, float dt, in MoveTuning tuning, Func<float, float, Vector3>? groundNormal,
-        Func<float, float, float> groundHeight, float feetY, float speedScale)
+        Func<float, float, float> groundHeight, float feetY, float speedScale, float reach)
     {
         bool moving = speedFraction > 0f;
         float speed = moving ? (run ? tuning.RunSpeed : tuning.WalkSpeed) * speedScale * speedFraction : 0f;
-        (x, z) = AdvanceWallSlide(x, z, moveDir * speed, moving, dt, tuning, groundNormal, groundHeight, feetY);
+        (x, z) = AdvanceWallSlide(x, z, moveDir * speed, moving, dt, tuning, groundNormal, groundHeight, feetY, reach);
         return (x, z, speed);
     }
 }

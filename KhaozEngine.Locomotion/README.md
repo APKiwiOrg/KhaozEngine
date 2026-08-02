@@ -83,8 +83,9 @@ it. The rule is now:
 
     blocked iff steep(destination normal) && rise > max(1 mm, travel * tan(MaxSlopeRadians))
 
-`rise` is the destination ground height minus the character's FEET (the capsule centre minus `CapsuleHalfHeight`)
-and `travel` is the tick's intended horizontal distance, so the ascent allowance is a **gradient, not a height**:
+`rise` is the destination ground height minus the **lower of the character's FEET (the capsule centre minus
+`CapsuleHalfHeight`) and the ground height under the current column**, and `travel` is the tick's intended
+horizontal distance, so the ascent allowance is a **gradient, not a height**:
 it asks whether this tick climbs faster than the steepest walkable ramp would over the same ground, which makes
 the answer independent of speed and of tick rate. A fixed allowance could not, and the version that tried let a
 slowed character, a short steering vector or a high tick rate walk up an arbitrarily steep face a fraction of a
@@ -92,8 +93,22 @@ centimetre per tick. The 1 mm term is only a noise floor for a near-level traver
 term is a new knob: `tan(MaxSlopeRadians)` is the existing gate read as a gradient.
 
 A descent or a level traverse now falls through, the support floor finds no walkable ground, the character goes
-airborne, and gravity does the rest. The comparison is against the feet rather than the current ground, so flying
-into a face whose ground stands above the feet is still refused and an XZ can never be committed under terrain.
+airborne, and gravity does the rest. Flying into a face whose ground stands above the feet is still refused, so an
+XZ can never be committed under terrain.
+
+**Vertical motion buys no admission** (17.26.1, [#440](https://github.com/APKiwiOrg/KhaozEngine/issues/440)). The
+rise reference is the LOWER of the feet and the ground under them because the feet alone were inflatable: a jump
+raises them, so near the apex a steep face's local ground stood level with the feet, the rise read as ~0, the drift
+onto the face was admitted, the ground clamp seated the character on it, and the next jump repeated - a jump height
+of free climb per cycle up a sea cliff no walk could enter. Any airtime did it, so a character merely falling past
+a face while steering into it was seated partway up. The floor of the two terms cannot be raised by leaving the
+ground. Grounded motion is unchanged (the feet ARE the ground, so the minimum is a no-op), genuine descents stay
+open at any airtime (a destination column below the current one is below both terms), and because the gate only
+ever got more conservative the anti-tunnel property is untouched. One consequence off the exploit path: a character
+elevated on a PROP measures its rise from the terrain under the prop, not from the prop top, so stepping off a prop
+straight onto a steep face is now refused - the analytic gate reads `groundHeight`, and prop support is not visible
+to it.
+
 It applies identically to the grounded path, the airborne-momentum path and the horizontal-only overload, and it
 needs no new wiring (it reads the `groundHeight` delegate every step already takes). **A game that used the gate
 as a cliff guardrail now gets real falls** - that is the fix, and it is a behaviour change rather than an opt-in.

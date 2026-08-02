@@ -4851,11 +4851,22 @@ INTO it. It now refuses only an ASCENT:
 
     blocked iff steep(destination normal) && rise > max(1 mm, travel * tan(MaxSlopeRadians))
 
-`rise` is the destination ground height minus your FEET, and `travel` is the tick's intended horizontal distance.
-So the allowance is a GRADIENT, not a height: it asks whether this tick climbs faster than the steepest walkable
-ramp would over the same ground, which makes the answer independent of speed and tick rate. A descent or a level
-traverse falls through, the support floor finds nothing walkable, you go airborne, and gravity does the rest.
-Flying into a face whose ground stands above your feet is still refused, so you can never end up under terrain.
+`rise` is the destination ground height minus the LOWER of your feet and the ground under them, and `travel` is the
+tick's intended horizontal distance. So the allowance is a GRADIENT, not a height: it asks whether this tick climbs
+faster than the steepest walkable ramp would over the same ground, which makes the answer independent of speed and
+tick rate. A descent or a level traverse falls through, the support floor finds nothing walkable, you go airborne,
+and gravity does the rest. Flying into a face whose ground stands above your feet is still refused, so you can never
+end up under terrain.
+
+**The rise is measured from the lower of your feet and the ground beneath them so that jumping cannot discount an
+ascent** (17.26.1, [#440](https://github.com/APKiwiOrg/KhaozEngine/issues/440)). Measured from the feet alone it
+could: a jump raises them, so near the apex a steep face's local ground sat level with the feet, the rise read as
+~0, the drift onto the face was admitted, the ground clamp seated you on it, and the next jump repeated - roughly a
+jump height of free climb per cycle up a face no walk can enter. It was never a jump-only hole either, since any
+airtime discounted the face the same way. Walking is unaffected (on the ground the two terms are the same number),
+descents stay open at any airtime, and the gate only ever got more conservative. One consequence for content: a
+character standing on a PROP measures the rise from the terrain UNDER the prop, so stepping off a prop straight onto
+a steep face is refused. The gate reads your `groundHeight` delegate and cannot see prop support.
 
 **If your game leaned on the gate as a cliff guardrail, players now fall off.** That is the fix (#369), and it is
 a behaviour change rather than an opt-in. A rim you want players held inside needs `WorldBounds` below, or terrain

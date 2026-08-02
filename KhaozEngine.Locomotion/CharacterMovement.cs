@@ -49,7 +49,7 @@ public static partial class CharacterMovement
         (Vector2 moveDir, float speedFraction) = ResolveCameraRelative(cmd);
         float wade = WadeSpeedScale(position.X, position.Z, position.Y - tuning.CapsuleHalfHeight, tuning, medium);
         (float x, float z, _) = DesiredHorizontalCore(position.X, position.Z, moveDir, speedFraction, cmd.Run, dt,
-            tuning, groundNormal, speedScale: wade);
+            tuning, groundNormal, groundHeight, position.Y - tuning.CapsuleHalfHeight, speedScale: wade);
         var result = new Vector3(x, groundHeight(x, z) + tuning.CapsuleHalfHeight, z);
         // Defense-in-depth: never return a non-finite position from a finite input. A pathological command is
         // already neutralized by the move gate, but a misbehaving groundHeight/bound could still inject a NaN/Inf
@@ -242,10 +242,10 @@ public static partial class CharacterMovement
         //    the default (knob off) never reach it, so they are arithmetically identical to the pre-momentum step.
         float wade = WadeSpeedScale(s.Position.X, s.Position.Z, s.Position.Y - halfH, t, medium);
         float speedScale = (s.Grounded ? 1f : t.AirControl) * wade * s.SpeedScale;
-        (float dx, float dz, float commandedSpeed) = DesiredHorizontalCore(s.Position.X, s.Position.Z, moveDir, speedFraction, run, dt, t, groundNormal, speedScale);
+        (float dx, float dz, float commandedSpeed) = DesiredHorizontalCore(s.Position.X, s.Position.Z, moveDir, speedFraction, run, dt, t, groundNormal, groundHeight, s.Position.Y - halfH, speedScale);
         Vector2 commandedVel = moveDir * commandedSpeed;
         if (t.AirMomentum && !s.Grounded)
-            (dx, dz, commandedVel) = AirborneMomentumMove(s, moveDir, speedFraction, run, dt, t, groundNormal, wade);
+            (dx, dz, commandedVel) = AirborneMomentumMove(s, moveDir, speedFraction, run, dt, t, groundNormal, groundHeight, wade);
         if (clampXz is not null) { Vector2 c = clampXz(dx, dz); dx = c.X; dz = c.Y; }
 
         // 2. Vertical integrate (UNCHANGED math): jump-buffer countdown, gravity, terminal clamp.
@@ -798,22 +798,22 @@ public static partial class CharacterMovement
     public static CapsuleShape CapsuleFor(in MoveTuning tuning)
         => new(tuning.CapsuleRadius, MathF.Max(0.01f, 2f * tuning.CapsuleHalfHeight - 2f * tuning.CapsuleRadius));
 
-    // Desired world XZ position after applying the resolved horizontal move (unit direction + speed fraction) and the
-    // slope gate, WITHOUT collision. The direction + speed fraction are resolved upstream from either a
-    // camera-relative MoveCommand (ResolveCameraRelative) or a world-space steering direction (ResolveWorldDir), so
-    // player and AI share this exact input/slope section; prop collision is resolved separately by the swept
-    // collide-and-slide block in StepCore. moveDir is a unit vector when speedFraction > 0. The advance + gate itself
-    // is AdvanceSlopeGated (CharacterMovement.Momentum.cs), shared with the airborne momentum path.
-    // Returns the resolved speed alongside the position so StepCore can export it as MoveState.CommandedVelocity: the
-    // speed is reported UNCONDITIONALLY, including on a slope-gate block, because the anomaly check downstream needs
-    // what the command asked for, not what survived. 0 on an idle tick.
+    // Desired world XZ position after applying the resolved horizontal move (unit direction + speed fraction) and the slope gate,
+    // WITHOUT collision. The direction + speed fraction are resolved upstream from either a camera-relative MoveCommand
+    // (ResolveCameraRelative) or a world-space steering direction (ResolveWorldDir), so player and AI share this exact input/slope
+    // section. Prop collision is resolved separately by the swept collide-and-slide block in StepCore. moveDir is a unit vector when
+    // speedFraction > 0. The advance + gate itself is AdvanceSlopeGated (CharacterMovement.Momentum.cs), shared with the airborne
+    // momentum path, and it is DIRECTION-AWARE: a too-steep destination refuses the move only while its ground stands above feetY
+    // (the capsule centre minus the half-height), so walking off a cliff falls through to gravity while climbing one is refused.
+    // Returns the resolved speed alongside the position so StepCore can export it as MoveState.CommandedVelocity: it is reported
+    // UNCONDITIONALLY, including on a slope-gate block, because the anomaly check needs the ask, not what survived. 0 when idle.
     private static (float x, float z, float speed) DesiredHorizontalCore(float x, float z, Vector2 moveDir,
         float speedFraction, bool run, float dt, in MoveTuning tuning, Func<float, float, Vector3>? groundNormal,
-        float speedScale)
+        Func<float, float, float> groundHeight, float feetY, float speedScale)
     {
         bool moving = speedFraction > 0f;
         float speed = moving ? (run ? tuning.RunSpeed : tuning.WalkSpeed) * speedScale * speedFraction : 0f;
-        (x, z) = AdvanceSlopeGated(x, z, moveDir * speed, moving, dt, tuning, groundNormal);
+        (x, z) = AdvanceSlopeGated(x, z, moveDir * speed, moving, dt, tuning, groundNormal, groundHeight, feetY);
         return (x, z, speed);
     }
 }

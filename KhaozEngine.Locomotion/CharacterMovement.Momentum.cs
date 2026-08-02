@@ -28,6 +28,16 @@ public static partial class CharacterMovement
     // never a thousandth of it.
     private const float ClipUndeniedTolerance = 1e-3f;
 
+    // How far above the FEET a too-steep destination's ground may stand and still be walked onto, in metres. This is
+    // the whole difference between an ascent and a descent in AdvanceSlopeGated, so it is deliberately the surface-
+    // contact skin (SkinWidth, CharacterMovement.Collision.cs) and not a new tuning knob: the same epsilon that
+    // decides "the capsule is resting on this surface" decides "the ground is at my feet rather than above them",
+    // and one constant cannot be tuned into a free climb the way a knob could. It has to be big enough to absorb
+    // float noise in the height comparison (~1e-4 m at overworld altitudes, so 100x margin) and small enough that a
+    // real ascent never fits under it: even at the 45 deg gate itself, one 30 Hz walk step rises 0.2 m, twenty times
+    // this, so a steep face is refused on the first tick that meets it whatever the tick rate.
+    private const float SlopeAscentTolerance = SkinWidth;
+
     /// <summary>One airborne tick under <see cref="MoveTuning.AirMomentum"/>: resolve the intended velocity from the
     /// carried one plus the command, then advance the XZ through the same slope gate the ordinary command path uses.
     /// Returns the desired position and the velocity that produced it, which is also what
@@ -38,14 +48,17 @@ public static partial class CharacterMovement
     /// half-control character's reachable airborne speed at half of what it can run at on the ground.</para></summary>
     private static (float x, float z, Vector2 velocity) AirborneMomentumMove(in MoveState s, Vector2 moveDir,
         float speedFraction, bool run, float dt, in MoveTuning t, Func<float, float, Vector3>? groundNormal,
-        float wade)
+        Func<float, float, float> groundHeight, float wade)
     {
         float targetSpeed = (run ? t.RunSpeed : t.WalkSpeed) * wade * s.SpeedScale * speedFraction;
         Vector2 v = ResolveAirborneVelocity(s.HorizontalVelocity, moveDir, targetSpeed, dt, t);
-        // The slope gate still applies: a momentum flight that would land on ground steeper than MaxSlopeRadians is
-        // blocked exactly as a commanded step into the same normal is. Momentum changes where the velocity comes
-        // from, never what the world is willing to let it reach.
-        (float x, float z) = AdvanceSlopeGated(s.Position.X, s.Position.Z, v, v != Vector2.Zero, dt, t, groundNormal);
+        // The slope gate still applies: a momentum flight into ground steeper than MaxSlopeRadians standing above the
+        // feet is blocked exactly as a commanded step into the same face is. Momentum changes where the velocity
+        // comes from, never what the world is willing to let it reach. An arc flying OUT over a canyon meets the same
+        // steep normal with its ground far below the feet and carries on, which is what stops a cliff edge from
+        // freezing a flight in mid-air.
+        (float x, float z) = AdvanceSlopeGated(s.Position.X, s.Position.Z, v, v != Vector2.Zero, dt, t, groundNormal,
+            groundHeight, s.Position.Y - t.CapsuleHalfHeight);
         return (x, z, v);
     }
 
@@ -132,17 +145,33 @@ public static partial class CharacterMovement
         return dir * Math.Clamp(along, 0f, len);
     }
 
-    /// <summary>Advance an XZ position by a horizontal velocity for one tick, subject to the terrain slope gate: when
-    /// a <paramref name="groundNormal"/> delegate is supplied and the ground at the DESTINATION is steeper than
-    /// <see cref="MoveTuning.MaxSlopeRadians"/>, the whole move is refused and the position is unchanged. Shared by
-    /// the ordinary command path (<c>DesiredHorizontalCore</c>) and the momentum path above, so the gate cannot come
-    /// to mean two different things depending on which one drove the tick.
+    /// <summary>Advance an XZ position by a horizontal velocity for one tick, subject to the DIRECTION-AWARE terrain
+    /// slope gate: when a <paramref name="groundNormal"/> delegate is supplied, the ground at the DESTINATION is
+    /// steeper than <see cref="MoveTuning.MaxSlopeRadians"/>, AND that ground stands more than
+    /// <c>SlopeAscentTolerance</c> above <paramref name="feetY"/>, the whole move is refused and the position is
+    /// unchanged. Shared by the ordinary command path (<c>DesiredHorizontalCore</c>) and the momentum path above, so
+    /// the gate cannot come to mean two different things depending on which one drove the tick.
+    /// <para>Only an ASCENT is refused. A steep normal alone says nothing about direction, so reading it on its own
+    /// blocked walking OFF a cliff exactly like walking INTO one: the analytic-terrain path had no way to tell the two
+    /// apart, and an overworld cliff edge behaved as a wall. A descent or a level traverse now falls through, the
+    /// support floor finds nothing walkable, and gravity does the rest - the same asymmetry the Bepu-backed
+    /// collide-and-slide already applies to props (<c>CharacterMovement.Collision.cs</c>).</para>
+    /// <para>The comparison is against the FEET, not the ground the character is currently standing on, and that is
+    /// what keeps the gate anti-tunnel while airborne: flying into a cliff face whose ground stands above the feet is
+    /// still refused, so an XZ can never be committed under terrain and left for a later ground clamp to pop the
+    /// capsule up the cliff. Standing on a prop at the cliff top raises the feet with it, so stepping off still
+    /// reads as the descent it is.</para>
     /// <para><c>active</c> false is a tick with nothing to advance, and it skips the gate entirely rather than
     /// evaluating the delegate at the unchanged position. It is passed in rather than derived from the velocity so an
     /// idle tick and a rooted-at-zero-speed tick keep their existing, and different, delegate-call behaviour: the
-    /// rooted one still probes the normal at the position it did not move to, exactly as it did before.</para></summary>
+    /// rooted one still probes the normal at the position it did not move to, exactly as it did before. The height is
+    /// sampled only when the normal already read steep, so a walkable tick costs exactly the delegate calls it always
+    /// did, and both heads short-circuit identically.</para>
+    /// <para><c>feetY</c> is the world Y of the character's FEET this tick: the capsule centre minus
+    /// <see cref="MoveTuning.CapsuleHalfHeight"/>, since <see cref="MoveState.Position"/> is the capsule CENTRE.</para></summary>
     private static (float x, float z) AdvanceSlopeGated(float x, float z, Vector2 velocity, bool active, float dt,
-        in MoveTuning tuning, Func<float, float, Vector3>? groundNormal)
+        in MoveTuning tuning, Func<float, float, Vector3>? groundNormal, Func<float, float, float> groundHeight,
+        float feetY)
     {
         if (!active) return (x, z);
         float nx = x + velocity.X * dt;
@@ -150,7 +179,8 @@ public static partial class CharacterMovement
         if (groundNormal is not null)
         {
             float ny = Math.Clamp(groundNormal(nx, nz).Y, 0f, 1f);
-            if (MathF.Acos(ny) > tuning.MaxSlopeRadians) return (x, z);
+            if (MathF.Acos(ny) > tuning.MaxSlopeRadians && groundHeight(nx, nz) > feetY + SlopeAscentTolerance)
+                return (x, z);
         }
         return (nx, nz);
     }

@@ -440,6 +440,8 @@ namespace KhaozEngine.Tests.Gpu
             {
                 Matrix4x4 view = Matrix4x4.CreateLookAt(eye, eye + new Vector3(0f, -0.5f, 1f), Vector3.UnitY);
                 Matrix4x4 proj = Matrix4x4.CreatePerspectiveFieldOfView(1.0f, 320f / 240f, 0.5f, 4000f);
+                // The pre-recording phase Scene3D.PrepareFrame drives, here driven by hand (#423).
+                _water.PrepareFrame(new FramePrepare(settings, planes, time));
                 using IGpuCommandList cl = _dev.Factory.CreateCommandList();
                 cl.Begin();
                 _water.Draw(cl, _res, planes, view * proj, new Vector3(-0.45f, -0.75f, -0.4f),
@@ -543,10 +545,11 @@ namespace KhaozEngine.Tests.Gpu
             IGpuResourceFactory f = dev.Factory;
             using IGpuTexture staging = f.CreateTexture(GpuTextureDescription.Texture2D(
                 (uint)size, (uint)size, GpuPixelFormat.R16G16B16A16Float, GpuTextureUsage.Staging));
+            producer.Prepare(settings, time, wantOcean: true, wantMips: true);
             using (IGpuCommandList cl = f.CreateCommandList())
             {
                 cl.Begin();
-                Assert.True(producer.Update(cl, settings, time, wantOcean: true, wantMips: true));
+                Assert.True(producer.Record(cl));
                 cl.CopyTextureSubresource(producer.Map, 1, layer, staging, (uint)size, (uint)size);
                 cl.End();
                 dev.Submit(cl);

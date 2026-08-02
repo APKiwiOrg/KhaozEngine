@@ -1942,7 +1942,8 @@ scene.DrawBillboard(pos, size, color, BillboardBlend.Additive);
 scene.DebugCircle(center, up, radius, color);                        // immediate-mode debug overlay
 ```
 
-- `Scene3D`: `LoadMesh`/`LoadTexture`/`UnloadMesh`/`UnloadTexture`, `Begin()`, `Draw(handle, transform[, tint[, material]])`,
+- `Scene3D`: `LoadMesh`/`LoadTexture`/`UnloadMesh`/`UnloadTexture`, `Begin()`, `PrepareFrame()` (below),
+  `Draw(handle, transform[, tint[, material]])`,
   billboards, a debug-draw overlay (`DebugLine/Ray/Box/Grid/Axes/Circle`), and depth-tested debug wire volumes
   (`DebugWireSphere/Dome/Cylinder/Circle`, see below). `LoadTexture` builds and generates a
   full mip chain for each texture (from 9.2.0), so model/prop surfaces stay smooth at distance instead of aliasing
@@ -1950,6 +1951,28 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
   to build (see below). `Post` is the
   `PixelPostProcess` (pixelation / quantize / dither / cel bands / palette for the chunky retro look; the smooth
   look is the default).
+- **`PrepareFrame()`, the frame's pre-recording phase (17.25.0).** Call it once per frame, after every `Draw*`
+  call for that frame and **before opening the command list the scene renders into**. The engine's own hosts
+  (`Render3DSurface` via `GameApp3D`, `Render3DPreview.Capture`, `Render3DSnapshot.Capture`) already do, so a game
+  on `GameApp3D` needs no change. Only a host driving `Scene3D` on its own command list has to add it:
+
+```csharp
+scene.Begin();
+DrawTheWorld(scene);        // every Draw / DrawWater / DrawParticle for the frame
+scene.PrepareFrame();       // <- producers submit their own GPU work here, with NO list open
+cl.Begin();
+// ... record the scene, submit cl
+```
+
+  Some per-frame GPU work cannot be recorded into the frame's list at all. The FFT ocean's priming pass is a
+  compute dispatch whose output another dispatch reads in the same frame, and the GPU seam has no
+  dispatch-to-dispatch barrier, so the only ordering available is a submit plus a device wait - which means a
+  command list of its own. Opening one while the frame's list is recording is not harmless: with Direct3D11 in
+  immediate-context mode a command list IS the device's immediate context, so opening one resets the state the
+  frame's list believes is still bound and the device faults a few draws later (issue #423). A frame that queues no
+  water does nothing here; a host that skips the call gets an exception from the water pass rather than a stale
+  ocean.
+
 - **Mip policy (`TextureMipPolicy`).** A full chain is right for a tiled albedo and wrong for an image whose
   regions are independent, because every level averages content that should never mix. Both `LoadTexture` overloads
   take an optional trailing policy, defaulting to `TextureMipPolicy.Full`, so an omitted argument is exactly the

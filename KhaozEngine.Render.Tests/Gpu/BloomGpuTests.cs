@@ -19,6 +19,7 @@ namespace KhaozEngine.Tests.Gpu
         static void Render(IGpuDevice gd, IGpuCommandList cl, Scene3D scene, IGpuFramebuffer target, int w, int h)
         {
             scene.Begin();
+            scene.PrepareFrame();
             cl.Begin();
             scene.RenderInternal(cl, w, h, target);
             cl.End();

@@ -58,6 +58,14 @@ namespace KhaozEngine.Game
 
             _surface3D.Scene.Begin();
             OnDraw3D(_surface3D.Scene);
+            // The frame's queues are full, so the producers that submit GPU work of their own run now, before the
+            // scene is recorded (Scene3D.PrepareFrame). CAVEAT, and it is the windowed loop's rather than this
+            // seam's: AppWindow.Run opens the frame's command list BEFORE it calls back into the app, so this runs
+            // at the right point in the frame's logic but with that list already recording. On Direct3D11 in
+            // immediate-context mode the ocean prime therefore still nests here, exactly as it did before #423,
+            // until the frame loop grows a pre-record phase:
+            // https://github.com/APKiwiOrg/KhaozEngine/issues/429
+            _surface3D.Scene.PrepareFrame();
             _surface3D.Render(frame);
 
             if (_surface3D.Scene.EnableTiming && hud?.PassTimings is { } pt)

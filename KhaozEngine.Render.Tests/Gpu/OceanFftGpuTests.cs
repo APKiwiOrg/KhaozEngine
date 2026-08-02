@@ -275,11 +275,12 @@ namespace KhaozEngine.Tests.Gpu
 
             using var producer = new OceanFftProducer(dev);
             var settings = new WaterSettings();   // Procedural is the default
-            using IGpuCommandList cl = dev.Factory.CreateCommandList();
-            cl.Begin();
             // No plane wants the ocean, which is what the renderer computes for a Procedural scene with no
             // per-plane override. The gate is the caller's demand now, not settings.WaveSource.
-            bool active = producer.Update(cl, settings, 1f, wantOcean: false);
+            producer.Prepare(settings, 1f, wantOcean: false);
+            using IGpuCommandList cl = dev.Factory.CreateCommandList();
+            cl.Begin();
+            bool active = producer.Record(cl);
             cl.End();
             dev.Submit(cl);
             dev.WaitForIdle();
@@ -461,13 +462,15 @@ namespace KhaozEngine.Tests.Gpu
 
         // ---- harness ---------------------------------------------------------------------------------------
 
-        /// <summary>One producer frame on its own command list, exactly as the water renderer drives it: the
-        /// column pass is recorded into the caller's list, so the list is submitted afterwards.</summary>
+        /// <summary>One producer frame in the two phases the water renderer drives it in: prepare (the bake, the
+        /// clock and any priming submission) with no list open, then record the dispatches into the caller's list,
+        /// which is submitted afterwards.</summary>
         static bool RunFrame(IGpuDevice dev, OceanFftProducer producer, WaterSettings settings, float time)
         {
+            producer.Prepare(settings, time, wantOcean: true);
             using IGpuCommandList cl = dev.Factory.CreateCommandList();
             cl.Begin();
-            bool active = producer.Update(cl, settings, time, wantOcean: true);
+            bool active = producer.Record(cl);
             cl.End();
             dev.Submit(cl);
             dev.WaitForIdle();

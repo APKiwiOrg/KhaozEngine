@@ -59,14 +59,15 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(0f, t.ShadowDepthMs);
             Assert.True(t.ModelMs >= 0f);
             Assert.True(t.TransparentsMs >= 0f);
-            Assert.Equal(0f, t.WaterSyncMs);   // no water queued, so nothing to carve out of transparentsMs
+            Assert.Equal(0f, t.WaterSyncMs);   // no water queued, so no ocean prime to report
             Assert.True(t.PostMs > 0f, $"expected a nonzero post-chain encode time, got {t.PostMs}");
         }
 
         // Issue #374: the ocean FFT's GPU drain used to land inside the transparents bracket as an unmarked
         // Submit+WaitForIdle stall, so a frame with an FFT ocean plane misattributed it as transparents-pass encode
-        // cost (measured on the reference scene: 6.70 ms transparents of which 6.57 was the drain). WaterSyncMs now
-        // carries that span separately, carved out of TransparentsMs rather than double-counted.
+        // cost (measured on the reference scene: 6.70 ms transparents of which 6.57 was the drain). WaterSyncMs
+        // carries that span separately. Since #423 the drain is paid in PrepareFrame, before the frame's command
+        // list opens, so it is outside the bracket rather than carved out of it - the reported number is the same.
         //
         // ONE frame, deliberately: since #398 the drain exists only on the frame that primes the ocean's row
         // buffers, which is the first one. The steady state has no stall to carve out at all and is the subject of
@@ -90,6 +91,7 @@ namespace KhaozEngine.Tests.Render3D
 
             scene.Begin();
             scene.DrawWater(new WaterPlane(centerX: 0f, surfaceY: 0f, centerZ: 0f, halfExtentX: 20f));
+            scene.PrepareFrame();
             cl.Begin();
             scene.RenderInternal(cl, W, H, finalFB);
             cl.End();
@@ -127,6 +129,7 @@ namespace KhaozEngine.Tests.Render3D
 
             scene.Begin();
             scene.DrawWater(new WaterPlane(centerX: 0f, surfaceY: 0f, centerZ: 0f, halfExtentX: 400f));
+            scene.PrepareFrame();
             cl.Begin();
             scene.RenderInternal(cl, W, H, finalFB);
             cl.End();
@@ -169,6 +172,7 @@ namespace KhaozEngine.Tests.Render3D
                 scene.EffectTimeSeconds = frame / 60f;
                 scene.Begin();
                 scene.DrawWater(new WaterPlane(centerX: 0f, surfaceY: 0f, centerZ: 0f, halfExtentX: 20f));
+                scene.PrepareFrame();
                 cl.Begin();
                 scene.RenderInternal(cl, W, H, finalFB);
                 cl.End();
@@ -214,6 +218,7 @@ namespace KhaozEngine.Tests.Render3D
         static void Render(IGpuDevice gd, IGpuCommandList cl, Scene3D scene, IGpuFramebuffer target, int w, int h)
         {
             scene.Begin();
+            scene.PrepareFrame();
             cl.Begin();
             scene.RenderInternal(cl, w, h, target);
             cl.End();

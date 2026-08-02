@@ -31,14 +31,15 @@ namespace KhaozEngine.Render3D
 
         /// <summary>CPU time recording transparents/decals: textured billboards, beams, overlay meshes, the MRT
         /// depth resolve, the sky background pass, shadow blob decals, ground decals, the colour/normal resolve,
-        /// and the post-blit overlay draws (fills, lines, billboards). Excludes <see cref="WaterSyncMs"/> (issue
-        /// #374): the water draw itself is recorded here, but the ocean FFT's GPU drain it can trigger is carved
-        /// out into its own field rather than misattributed as transparents-pass encode cost.</summary>
+        /// and the post-blit overlay draws (fills, lines, billboards). Encode cost only, so it never contains
+        /// <see cref="WaterSyncMs"/> (issue #374): the water draw is recorded here, but the ocean FFT's GPU drain
+        /// is paid before the frame's command list is opened at all (#423) and reported in its own field.</summary>
         public float TransparentsMs { get; }
 
         /// <summary>CPU time blocked on the ocean FFT's GPU sync stall (#311's missing cross-dispatch barrier, paid
-        /// for with a <c>Submit</c> + <c>WaitForIdle</c>), carved out of <see cref="TransparentsMs"/> so a real
-        /// stall is not counted as draw-call encode cost (issue #374). <b>0 on a steady-state frame</b> since
+        /// for with a <c>Submit</c> + <c>WaitForIdle</c>), reported on its own so a real stall is never counted as
+        /// draw-call encode cost (issue #374). Measured in <see cref="Scene3D.PrepareFrame"/>, which is where the
+        /// prime runs since #423, so it sits beside the recorded brackets rather than inside one. <b>0 on a steady-state frame</b> since
         /// #398's cross-frame ping-pong: what is left is the drain a frame pays to PRIME the cascades (the first
         /// frame an ocean is drawn, the frame after a sea-state change, a frame whose wave clock jumped). Also 0
         /// when no queued water plane reads the FFT ocean cascades this frame. Same number as

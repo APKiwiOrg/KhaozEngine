@@ -2254,11 +2254,11 @@ namespace KhaozEngine.Render3D
                     Post.LightDirection, Post.LightColor, eye, Post.Water, Post.Sky, EffectTimeSeconds, _frameOrigin);
                 _frameStats.DrawCalls++;
                 // The ocean FFT's remaining GPU drain (the one a frame pays to PRIME its cascades, since #398
-                // ping-ponged the per-frame one away) can land inside THIS transparents bracket as a
-                // Submit+WaitForIdle stall, which is not draw-call encode cost. The water
-                // renderer already isolates that exact span with its own Stopwatch (OceanFftProducer.LastStallMs),
-                // so read it here and carve it out of transparentsMs below into its own WaterSyncMs bucket (#374)
-                // instead of misattributing a sync stall as transparents cost.
+                // ping-ponged the per-frame one away) is a Submit+WaitForIdle stall, not draw-call encode cost, so
+                // it gets its own WaterSyncMs bucket (#374) rather than being misattributed to transparents. It no
+                // longer lands INSIDE this bracket: since #423 the prime runs in PrepareFrame, before the frame's
+                // list is even open, so there is nothing to carve out of transparentsMs - only to report. The water
+                // renderer times that exact span with its own Stopwatch (OceanFftProducer.LastStallMs).
                 if (EnableTiming) waterSyncMs = (float)_water.LastOceanCost.StallMs;
             }
 
@@ -2317,10 +2317,10 @@ namespace KhaozEngine.Render3D
                     RelativeDistortionSprites());
             }
 
-            // The bracket's wall-clock elapsed time includes the water draw's ocean-FFT stall (waterSyncMs, captured
-            // above) alongside everything else recorded in it, so subtract that exact measured span rather than
-            // let it inflate transparentsMs (issue #374).
-            if (EnableTiming) transparentsMs += ElapsedMs(timingStart) - waterSyncMs;
+            // Pure encode cost now: the ocean-FFT prime stall this bracket used to swallow (issue #374) is paid in
+            // PrepareFrame, outside the frame's list and outside this bracket, so there is nothing to subtract.
+            // WaterSyncMs still reports it, from the same measured span (#423).
+            if (EnableTiming) transparentsMs += ElapsedMs(timingStart);
             timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
             _post.Run(cl, _res, target, Post, runFxaa, distortionActive);
             if (EnableTiming) postMs = ElapsedMs(timingStart);

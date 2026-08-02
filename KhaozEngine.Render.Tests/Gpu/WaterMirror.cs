@@ -226,10 +226,12 @@ namespace KhaozEngine.Tests.Gpu
         /// </summary>
         public static void Warm(IGpuDevice dev, OceanFftProducer producer, WaterSettings settings, float time)
         {
+            // Prepare before the list opens, exactly as the scene does (#423): the priming pass submits a list of
+            // its own, and on Direct3D11 in immediate-context mode opening one mid-recording resets the device.
+            producer.Prepare(settings, time, wantOcean: true, wantMips: true);
             using IGpuCommandList cl = dev.Factory.CreateCommandList();
             cl.Begin();
-            Assert.True(producer.Update(cl, settings, time, wantOcean: true, wantMips: true),
-                "the producer refused to run on a compute device");
+            Assert.True(producer.Record(cl), "the producer refused to run on a compute device");
             cl.End();
             dev.Submit(cl);
             dev.WaitForIdle();
@@ -237,11 +239,11 @@ namespace KhaozEngine.Tests.Gpu
 
         public static Ocean Capture(IGpuDevice dev, OceanFftProducer producer, WaterSettings settings, float time)
         {
+            producer.Prepare(settings, time, wantOcean: true, wantMips: true);
             using (IGpuCommandList cl = dev.Factory.CreateCommandList())
             {
                 cl.Begin();
-                Assert.True(producer.Update(cl, settings, time, wantOcean: true, wantMips: true),
-                    "the producer refused to run on a compute device");
+                Assert.True(producer.Record(cl), "the producer refused to run on a compute device");
                 cl.End();
                 dev.Submit(cl);
                 dev.WaitForIdle();

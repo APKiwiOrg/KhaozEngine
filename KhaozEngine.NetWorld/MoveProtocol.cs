@@ -12,7 +12,13 @@ public static class MoveProtocol
 {
     /// <summary>
     /// The engine wire-format generation. Bumped only on a breaking change to the on-the-wire snapshot / delta /
-    /// frame-header layout, so it labels the incompatible generations. It is <c>9</c> as of the floating-origin wire:
+    /// frame-header layout, so it labels the incompatible generations. It is <c>10</c> as of AUTHORITATIVE FACING,
+    /// which changed the wire in two places at once and takes ONE bump for both. The client-to-server move frame's
+    /// <c>run</c> byte became a FLAGS byte (bit 0 run, bit 1 <see cref="MoveCommand.FaceCamera"/>), reusing a byte
+    /// that carried a bare bool through generation 9 rather than widening the frame - <c>MoveSize</c> stays 18, which
+    /// the length-based client-to-server demux contract below depends on. And the movement built-in gained the
+    /// quantized heading (<see cref="MovementState.FacingYawQ"/>, 2 bytes), which has to replicate because it is
+    /// CARRIED state that a reconciliation replay turns FROM. <c>9</c> was the floating-origin wire:
     /// <see cref="ReplicatedPosition"/> stopped encoding three absolute float32s and now encodes its island-frame
     /// STAMP plus a frame-local offset (<c>[frameX:short][frameZ:short][localX,localY,localZ:float]</c>, 16 bytes
     /// against the old 12). The four extra bytes buy a wire whose float payload is bounded at a couple of hundred
@@ -51,7 +57,7 @@ public static class MoveProtocol
     /// <see cref="WorldClientConfig.ProtocolVersion"/> game-version gate still layers on top via
     /// <see cref="VersionCheckingAuthenticator"/>.
     /// </summary>
-    public const int WireProtocolVersion = 9;
+    public const int WireProtocolVersion = 10;
 
     /// <summary>Type id of <see cref="ReplicatedPosition"/> in the shared registry.</summary>
     public const ushort PositionTypeId = 1;
@@ -140,6 +146,7 @@ public static class MoveProtocol
                 bw.Write(m.SpeedScaleQ);    // wire generation 6: the quantized haste/slow multiplier (0 = unmodified, 1.0)
                 bw.Write(m.HorizontalVelocityXQ);   // wire generation 7: carried airborne velocity, world X (0 = none)
                 bw.Write(m.HorizontalVelocityZQ);   // wire generation 7: carried airborne velocity, world Z (0 = none)
+                bw.Write(m.FacingYawQ);     // wire generation 10: the carried heading as a 16-bit turn fraction (0 = -Z)
             },
             read: br => new MovementState
             {
@@ -153,6 +160,7 @@ public static class MoveProtocol
                 SpeedScaleQ = br.ReadSByte(),
                 HorizontalVelocityXQ = br.ReadInt16(),   // wire generation 7: carried airborne velocity, world X
                 HorizontalVelocityZQ = br.ReadInt16(),   // wire generation 7: carried airborne velocity, world Z
+                FacingYawQ = br.ReadInt16(),             // wire generation 10: the carried heading
             });
         // Display name. Length-prefixed UTF-8, capped at MaxDisplayNameBytes. Not interpolated (strings do not blend);
         // re-sent in every AoI snapshot (names are static, so this is wasteful but simple and consistent at the
@@ -231,24 +239,34 @@ public static class MoveProtocol
         return Encoding.UTF8.GetString(bytes);
     }
 
-    // Move: [seq:int][move.x:float][move.y:float][run:byte][cameraYaw:float][jump:byte] = 18 bytes.
+    // Move: [seq:int][move.x:float][move.y:float][flags:byte][cameraYaw:float][jump:byte] = 18 bytes.
+    //
+    // The flags byte at [12] carried a BARE RUN BOOL through wire generation 9 and became a bit field in generation 10,
+    // when MoveCommand.FaceCamera arrived. Packing into it rather than appending a byte is deliberate and load-bearing:
+    // the client-to-server demux keys a move on LENGTH 18 (see the aliasing contract at the game-message encoder, which
+    // pads specifically to avoid landing on 18), so a 19-byte move frame would have been read as a game message by
+    // every server. Bit 0 is run, bit 1 is faceCamera, and the remaining six are free for the next command bit.
     private const int MoveSize = 4 + 4 + 4 + 1 + 4 + 1;
+    private const byte MoveFlagRun = 0x01;
+    private const byte MoveFlagFaceCamera = 0x02;
 
-    /// <summary>Encodes a client move command (including the jump bit).</summary>
+    /// <summary>Encodes a client move command (including the jump bit and the flags byte's run + face-camera bits).</summary>
     public static byte[] EncodeMove(int seq, in MoveCommand cmd)
     {
         var b = new byte[MoveSize];
         BitConverter.TryWriteBytes(b.AsSpan(0, 4), seq);
         BitConverter.TryWriteBytes(b.AsSpan(4, 4), cmd.Move.X);
         BitConverter.TryWriteBytes(b.AsSpan(8, 4), cmd.Move.Y);
-        b[12] = cmd.Run ? (byte)1 : (byte)0;
+        b[12] = (byte)((cmd.Run ? MoveFlagRun : 0) | (cmd.FaceCamera ? MoveFlagFaceCamera : 0));
         BitConverter.TryWriteBytes(b.AsSpan(13, 4), cmd.CameraYaw);
         b[17] = cmd.Jump ? (byte)1 : (byte)0;
         return b;
     }
 
     /// <summary>Decodes a client move command. False (hostile-safe) if the payload is malformed: too short, or
-    /// carrying a NaN/infinite move axis or camera yaw.</summary>
+    /// carrying a NaN/infinite move axis or camera yaw. Every one of the 256 flag-byte values is accepted: unknown
+    /// bits are IGNORED rather than rejected, because a frame with a stray bit is still a well-formed move and
+    /// rejecting it would drop that client out of the sim entirely instead of merely mis-reading one command bit.</summary>
     public static bool TryDecodeMove(ReadOnlySpan<byte> data, out int seq, out MoveCommand cmd)
     {
         if (data.Length >= MoveSize)
@@ -267,9 +285,10 @@ public static class MoveProtocol
                 return false;
             }
             seq = BitConverter.ToInt32(data.Slice(0, 4));
-            bool run = data[12] != 0;
+            byte flags = data[12];
             bool jump = data[17] != 0;
-            cmd = new MoveCommand(new Vector2(moveX, moveY), run, yaw, jump);
+            cmd = new MoveCommand(new Vector2(moveX, moveY), (flags & MoveFlagRun) != 0, yaw, jump,
+                (flags & MoveFlagFaceCamera) != 0);
             return true;
         }
         seq = -1;

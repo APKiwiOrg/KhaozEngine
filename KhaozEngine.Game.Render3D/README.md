@@ -104,7 +104,11 @@ of spinning to chase it. For a server-authoritative facing (a server-owned NPC t
 turret, a mount, a player standing still and turning) a sample can carry an EXPLICIT facing yaw via
 `new CharacterSample(id, position, facingYaw, isLocal)` or `sample.WithFacingYaw(yaw)`: it turns the character in place
 even while stationary and wins over the derived heading while moving. `FacingYawOffset` still composes.
-See `docs/USING-KHAOZENGINE.md`.
+Since 17.26.0 the engine replicates such a yaw itself: `EntityRenderState.FacingYaw` (NetWorld) is the
+authoritative heading for every entity, predicted for the local player and replicated for remotes, and it is
+exactly what this seam wants. Nothing wires the two automatically, and their bases sit HALF A TURN apart (this
+bridge reads yaw 0 as +Z, the sim reads 0 as -Z), so pass it through `WithFacingYaw` and add that half turn once
+on `FacingYawOffset`, alongside whatever your asset's rest pose needs. See `docs/USING-KHAOZENGINE.md`.
 
 The bridge also SMOOTHS the drawn feet height on stairs. The paced stair-climb sim deliberately produces a per-riser
 vertical sawtooth (a ~120-140 mm render-Y bob at 4-9 Hz on a 0.30/0.40 staircase; the sim is unchanged), which reads as

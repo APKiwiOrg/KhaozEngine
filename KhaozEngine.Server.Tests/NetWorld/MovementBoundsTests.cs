@@ -40,9 +40,12 @@ public class MovementBoundsTests
     [Fact]
     public void Slope_gate_blocks_a_step_onto_too_steep_ground()
     {
-        // a near-vertical wall for x>2 (normal.Y ~ 0) -> stepping east past x=2 is blocked.
-        Func<float, float, Vector3> normal = (x, z) => x > 2f ? new Vector3(1f, 0.05f, 0f) : new Vector3(0f, 1f, 0f);
-        var sim = new PlayerMoveSimulator((x, z) => 0f, MoveTuning.Default, groundNormal: normal);
+        // a near-vertical wall for x>2 (normal.Y ~ 0) whose ground RISES past x=2 -> stepping east into it is blocked.
+        // The normal leans -X and the height climbs toward +X, so the two describe one surface: the gate is
+        // direction-aware, and a steep normal over ground that does not stand above the feet is a descent, not a wall.
+        Func<float, float, Vector3> normal = (x, z) => x > 2f ? new Vector3(-1f, 0.05f, 0f) : new Vector3(0f, 1f, 0f);
+        Func<float, float, float> ground = (x, z) => x > 2f ? (x - 2f) * 20f : 0f;
+        var sim = new PlayerMoveSimulator(ground, MoveTuning.Default, groundNormal: normal);
         var s = new PlayerMoveState { Position = Vector3.Zero };
         for (int i = 0; i < 200; i++) s = sim.Step(s, East, 1f / 30f);
         Assert.True(s.Position.X <= 2f + 1e-3f, $"climbed the steep wall to x={s.Position.X}");
@@ -51,12 +54,13 @@ public class MovementBoundsTests
     [Fact]
     public void Server_and_client_sims_gate_a_steep_slope_identically()
     {
-        // A near-vertical wall for x>2; the authoritative server sim and the client prediction sim share the
-        // same groundNormal, so the slope gate decides identically every tick - a hacked client can't climb the
-        // rim, and prediction never diverges from the server at the wall.
-        Func<float, float, Vector3> normal = (x, z) => x > 2f ? new Vector3(1f, 0.05f, 0f) : new Vector3(0f, 1f, 0f);
-        var serverSim = new PlayerMoveSimulator((x, z) => 0f, MoveTuning.Default, groundNormal: normal);
-        var clientSim = new PlayerMoveSimulator((x, z) => 0f, MoveTuning.Default, groundNormal: normal);
+        // A near-vertical wall for x>2 whose ground rises with it. The authoritative server sim and the client
+        // prediction sim share the same groundNormal AND the same ground height, so the direction-aware slope gate
+        // decides identically every tick - a hacked client can't climb the rim, and prediction never diverges at the wall.
+        Func<float, float, Vector3> normal = (x, z) => x > 2f ? new Vector3(-1f, 0.05f, 0f) : new Vector3(0f, 1f, 0f);
+        Func<float, float, float> ground = (x, z) => x > 2f ? (x - 2f) * 20f : 0f;
+        var serverSim = new PlayerMoveSimulator(ground, MoveTuning.Default, groundNormal: normal);
+        var clientSim = new PlayerMoveSimulator(ground, MoveTuning.Default, groundNormal: normal);
         var server = new PlayerMoveState { Position = Vector3.Zero };
         var client = new PlayerMoveState { Position = Vector3.Zero };
         for (int i = 0; i < 200; i++)

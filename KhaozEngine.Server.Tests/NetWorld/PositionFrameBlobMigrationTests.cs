@@ -18,10 +18,11 @@ namespace KhaozEngine.Tests.NetWorld;
 /// <para>
 /// This is the empirical proof the final release review demanded: with
 /// <see cref="PositionFrameBlobMigration"/>'s <c>MovementTypeId</c> payload length wrongly stated as 26, a body
-/// containing a <see cref="MovementState"/> throws during migration, because the walk reads 2 bytes too many out of
-/// the movement payload and then misreads the following bytes as the next component's type id. The real length is
-/// 24 (float + bool + float + float + bool + uint + sbyte + sbyte + short + short =
-/// 4+1+4+4+1+4+1+1+2+2), which is also what the comment beside the constant already said.
+/// containing a <see cref="MovementState"/> throws during migration, because the walk reads the wrong number of bytes
+/// out of the movement payload and then misreads the following bytes as the next component's type id. The length is
+/// whatever the CURRENT movement layout is, and it MOVES whenever that built-in grows: 26 as of wire generation 10
+/// (float + bool + float + float + bool + uint + sbyte + sbyte + short + short + short =
+/// 4+1+4+4+1+4+1+1+2+2+2), which is also what the comment beside the constant says.
 /// </para>
 /// </summary>
 public class PositionFrameBlobMigrationTests
@@ -53,6 +54,7 @@ public class PositionFrameBlobMigrationTests
                 bw.Write(m.SpeedScaleQ);
                 bw.Write(m.HorizontalVelocityXQ);
                 bw.Write(m.HorizontalVelocityZQ);
+                bw.Write(m.FacingYawQ);
             },
             read: _ => throw new NotSupportedException("The v2 registry only seeds the pre-migration body; it never reads."));
         r.Register<PlayerIdentity>(
@@ -102,6 +104,7 @@ public class PositionFrameBlobMigrationTests
             SpeedScaleQ = -3,
             HorizontalVelocityXQ = 1000,
             HorizontalVelocityZQ = -2000,
+            FacingYawQ = 12345,
         };
         server.Set(player, movement);
         server.Set(player, new PlayerIdentity { DisplayName = "Runner" });
@@ -142,6 +145,7 @@ public class PositionFrameBlobMigrationTests
         Assert.Equal(movement.SpeedScaleQ, roundTrippedMovement.SpeedScaleQ);
         Assert.Equal(movement.HorizontalVelocityXQ, roundTrippedMovement.HorizontalVelocityXQ);
         Assert.Equal(movement.HorizontalVelocityZQ, roundTrippedMovement.HorizontalVelocityZQ);
+        Assert.Equal(movement.FacingYawQ, roundTrippedMovement.FacingYawQ);
         Assert.Equal("Runner", clientWorld.Get<PlayerIdentity>(clientPlayer).DisplayName);
 
         Assert.True(view.TryGetEntity(2, out Entity clientProp));

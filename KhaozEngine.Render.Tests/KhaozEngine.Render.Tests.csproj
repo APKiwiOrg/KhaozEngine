@@ -44,6 +44,9 @@
     <!-- 7 Gpu-folder golden tests render Gui widgets (BootScreen, PatchNotesView, PopupPanel, SlotGrid, TabBar). -->
     <ProjectReference Include="../KhaozEngine.Gui/KhaozEngine.Gui.csproj" />
     <ProjectReference Include="../KhaozEngine.Imaging/KhaozEngine.Imaging.csproj" />
+    <!-- Render3D/CharacterController3DTests.cs names MoveTuning to pin the controller's knob mirrors against the
+         tuning's own defaults. Already in the transitive closure via Game.Render3D, so selection is unchanged. -->
+    <ProjectReference Include="../KhaozEngine.Locomotion/KhaozEngine.Locomotion.csproj" />
     <!-- ParticlesRender3D folder is the Particles->Render3D seam and needs the Particles package plus its
          Render3D companion (ParticleSceneExtensions lives in KhaozEngine.Particles.Render3D, base namespace). -->
     <ProjectReference Include="../KhaozEngine.Particles/KhaozEngine.Particles.csproj" />

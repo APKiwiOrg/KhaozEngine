@@ -26,7 +26,7 @@ namespace KhaozEngine.NetWorld;
 /// </summary>
 /// <remarks>
 /// The built-in payload lengths below are the CURRENT layout of each built-in other than position. The cell-blob
-/// schema version was never bumped as the movement built-in grew across wire generations 3 to 8, so a blob written
+/// schema version was never bumped as the movement built-in grew across wire generations 3 to 10, so a blob written
 /// by one of those older builds already walks wrong here, exactly as it does in
 /// <see cref="NetIdBlobMigration"/>'s own chain. That is a pre-existing gap in the schema chain rather than one this
 /// step introduces, and it is filed rather than papered over.
@@ -111,7 +111,7 @@ public static class PositionFrameBlobMigration
     // Throws on an unknown built-in id (an undecodable body, which the driver quarantines).
     private static int BuiltinPayloadLength(ushort typeId, BinaryReader br, MemoryStream input, BinaryWriter bw) => typeId switch
     {
-        MoveProtocol.MovementTypeId => 24,   // float + bool + 2 float + bool + uint + 2 sbyte + 2 short
+        MoveProtocol.MovementTypeId => 26,   // float + bool + 2 float + bool + uint + 2 sbyte + 3 short
         MoveProtocol.IdentityTypeId => CopyIdentityLengthPrefix(br, input, bw),   // [ushort len] then len utf8 bytes
         MoveProtocol.DynamicBodyTypeId => 40,   // quaternion + 2 * Vector3
         MoveProtocol.PickupTypeId => 16,        // 2 * long

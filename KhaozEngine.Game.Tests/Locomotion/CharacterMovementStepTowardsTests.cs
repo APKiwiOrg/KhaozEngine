@@ -33,13 +33,22 @@ public class CharacterMovementStepTowardsTests
         return (CompoundShape)PhysicsShapeScale.Uniform(shape, Scale);
     }
 
-    // A ground normal tilted in +X so the surface slope (angle from +Y) is exactly `degrees` (mirrors the player
-    // slope-gate tests).
+    // A ground normal leaning in -X so the surface slope (angle from +Y) is exactly `degrees`: it rises toward +X,
+    // the direction the steering tests below drive, so steering east is steering UP it (mirrors the player
+    // slope-gate tests). Paired with SlopeGround so the normal and the height are one surface, which the
+    // direction-aware gate needs: a steep normal over ground that does not stand above the feet is a descent.
     static Func<float, float, Vector3> SlopeNormal(float degrees)
     {
         float a = degrees * MathF.PI / 180f;
-        var n = new Vector3(MathF.Sin(a), MathF.Cos(a), 0f);
+        var n = new Vector3(-MathF.Sin(a), MathF.Cos(a), 0f);
         return (x, z) => n;
+    }
+
+    // The height field of that same surface.
+    static Func<float, float, float> SlopeGround(float degrees)
+    {
+        float grade = MathF.Tan(degrees * MathF.PI / 180f);
+        return (x, z) => x * grade;
     }
 
     [Fact]
@@ -94,7 +103,7 @@ public class CharacterMovementStepTowardsTests
         var s = new MoveState { Position = new Vector3(0f, Tuning.CapsuleHalfHeight, 0f), Grounded = true };
         Vector3 startPos = s.Position;
         for (int i = 0; i < 60; i++)
-            s = CharacterMovement.StepTowards(s, new Vector2(1f, 0f), run: true, Dt, Flat, Tuning, SlopeNormal(47f));
+            s = CharacterMovement.StepTowards(s, new Vector2(1f, 0f), run: true, Dt, SlopeGround(47f), Tuning, SlopeNormal(47f));
 
         Assert.Equal(startPos.X, s.Position.X, 5);
         Assert.Equal(startPos.Z, s.Position.Z, 5);
@@ -107,7 +116,7 @@ public class CharacterMovementStepTowardsTests
         // only rejects the too-steep case, it does not block all sloped ground).
         var s = new MoveState { Position = new Vector3(0f, Tuning.CapsuleHalfHeight, 0f), Grounded = true };
         for (int i = 0; i < 60; i++)
-            s = CharacterMovement.StepTowards(s, new Vector2(1f, 0f), run: true, Dt, Flat, Tuning, SlopeNormal(30f));
+            s = CharacterMovement.StepTowards(s, new Vector2(1f, 0f), run: true, Dt, SlopeGround(30f), Tuning, SlopeNormal(30f));
 
         Assert.True(s.Position.X > 0.1f, $"a 30 deg slope should be walkable, x={s.Position.X:F3}");
     }

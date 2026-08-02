@@ -163,4 +163,62 @@ public struct MoveState
     /// the local owner reads it, at the client-prediction Predict boundary (exactly-once per real tick, never re-counted on
     /// a reconciliation replay). <c>default</c> 0 is byte-identical to a pre-feature state.</summary>
     public float StepDeltaY;
+
+    /// <summary>SIM-LOCAL landing impact (NOT replicated): the DOWNWARD speed in m/s, NON-NEGATIVE, that this tick's
+    /// landing erased - captured BEFORE the ground contact zeroes <see cref="VerticalVelocity"/>. It is set on exactly the
+    /// tick the character transitions AIRBORNE to GROUNDED and is 0 on every other tick, including every tick that stays
+    /// grounded and every tick that stays airborne. It is the authoritative fall-damage input: the speed itself is gone by
+    /// the time anything downstream can read the state, so without this export a game has to finite-difference a position
+    /// across the very tick the ground clamp moved it, which is exactly the reconstruction
+    /// <see cref="CommandedVelocity"/> and <see cref="StepDeltaY"/> exist to retire. Event-as-state, following the
+    /// <see cref="StepDeltaY"/> precedent of exporting the fact the sim already computed.
+    /// <para>Inherently CAPPED BY <see cref="MoveTuning.MaxFallSpeed"/>, which is terminal velocity: the vertical
+    /// integrate clamps to it before the landing reads it, so the reported value is <c>min(actual fall speed,
+    /// MaxFallSpeed)</c>. That is physical, not a data loss - a longer fall genuinely does not arrive faster.</para>
+    /// <para>SWIMMING NEVER FABRICATES ONE. A surface-swim tick returns <see cref="Grounded"/> <c>false</c>
+    /// unconditionally (gravity and ground-snap are suspended, see <c>CharacterMovement.SwimStep</c>), so no swim tick is
+    /// an airborne -&gt; grounded transition and the tick a character falls INTO water reports nothing. The jump hop-out
+    /// leaves the water rising, so it is not a landing either. Only the hysteresis EXIT tick runs the land path, and if it
+    /// grounds (wading out into shallows) it reports the honest speed the buoyancy settle plus one tick of gravity left,
+    /// which is a fraction of a metre per second - never the entry fall, because the settle already bled it.</para>
+    /// <para>A landing that a BUFFERED JUMP re-launches on the same tick still reports its impact, so the final
+    /// <see cref="Grounded"/> may be <c>false</c> while this is nonzero. The character did absorb the impact, and
+    /// suppressing it would let a bunny-hop cancel fall damage.</para>
+    /// <para>A SPAWN OR TELEPORT REPORTS A TINY ONE. <c>default</c> <see cref="Grounded"/> is <c>false</c>, so a state
+    /// placed on the ground and stepped is an airborne-to-grounded transition on its very first tick, and it honestly
+    /// reports the one tick of gravity it fell: about <c>Gravity * dt</c>, so ~0.8 m/s at the shipped 25 m/s^2 and
+    /// 30 Hz. That is the correct reading of the state it was handed, not a fabrication, and CONSUMERS SHOULD
+    /// THRESHOLD rather than treat any nonzero value as a fall. No fall-damage curve starts anywhere near it (a
+    /// survivable drop lands at several metres per second), so the same threshold that keeps a hop off the damage
+    /// table already covers every spawn and every teleport.</para>
+    /// It is zeroed every tick (<c>default</c> is 0) and set only on a landing tick, so it is a per-tick EVENT, not
+    /// carried state, and it rides NO wire (mirrored server-side onto <c>MovementState.LandingImpactSpeed</c> as a
+    /// sim-local field). A remote that wants landing VFX derives the transition from the replicated <c>Grounded</c> and
+    /// <see cref="VerticalVelocity"/> it already receives. <c>default</c> 0 is byte-identical to a pre-feature state.</summary>
+    public float LandingImpactSpeed;
+
+    /// <summary>The character's AUTHORITATIVE heading this tick, in radians, in the SAME CONVENTION as
+    /// <see cref="MoveCommand.CameraYaw"/>: 0 faces world -Z and a positive angle swings toward -X, which is the basis
+    /// <c>CharacterMovement</c> already resolves a camera-relative command in (forward is
+    /// <c>(-sin yaw, 0, -cos yaw)</c>). So a character walking straight forward under camera yaw <c>y</c> faces exactly
+    /// <c>y</c>, and while <see cref="MoveCommand.FaceCamera"/> is held the heading converges to
+    /// <see cref="MoveCommand.CameraYaw"/> EXACTLY - bit-identically at the default
+    /// <see cref="MoveTuning.FacingTurnSpeed"/>, which snaps, and exactly on the tick a finite rate closes the last of
+    /// the gap. Use <see cref="CharacterMovement.FacingYawOf"/> to convert a world XZ direction into it, and
+    /// <see cref="CharacterMovement.WrapYaw"/> to canonicalise one. A consumer whose gameplay basis is the opposite
+    /// (yaw 0 = +Z, or a left-handed sweep) converts at its own boundary, once.
+    /// <para>CANONICAL RANGE <c>[-pi, pi)</c>, low end inclusive: every value the step writes is wrapped into it, so a
+    /// long camera sweep can never accumulate a growing angle and the wire quantizer has a bounded input. <c>default</c>
+    /// is 0, which is a legal heading (-Z) rather than a sentinel, so a state that never went through a step reads as
+    /// facing forward.</para>
+    /// <para>It is CARRIED state, not a per-tick fact: with a finite <see cref="MoveTuning.FacingTurnSpeed"/> this
+    /// tick's heading is the previous tick's plus a bounded shortest-arc step, so it must survive reconciliation.
+    /// That is why it rides the wire as <c>MovementState.FacingYawQ</c> (a 16-bit turn fraction) where the one-tick
+    /// <see cref="LandingImpactSpeed"/> latch deliberately does not: <c>PlayerMoveState.From</c> rebuilds the whole
+    /// reconcile basis from the replicated components ALONE, so a heading missing from that seed would not lag behind
+    /// the server, it would reset to 0 on every correction and restart the turn from due -Z several times a second.</para>
+    /// It affects NO position output. The step reads it, turns it, and writes it back, and nothing downstream of it
+    /// feeds the move resolve - which is what makes every existing game bit-identical on position across this
+    /// feature.</summary>
+    public float FacingYaw;
 }

@@ -67,17 +67,29 @@ public class CharacterMovementTests
     [Fact]
     public void Step_onto_too_steep_ground_is_rejected()
     {
-        Func<float, float, Vector3> steep = (x, z) => Vector3.Normalize(new Vector3(1f, 0.05f, 0f));
-        Vector3 p = CharacterMovement.Step(Vector3.Zero, Cmd(0f, 1f), 1f, FlatGround, Tuning, steep);
+        // A near-vertical face rising toward -Z, which is where Cmd(0,1) at yaw 0 travels. The normal and the height
+        // describe ONE surface on purpose: the gate is direction-aware, so a steep normal over ground that does not
+        // stand above the feet is a DESCENT and would (correctly) not be refused.
+        Func<float, float, Vector3> steep = (x, z) => Vector3.Normalize(new Vector3(0f, 0.05f, 1f));
+        Func<float, float, float> wall = (x, z) => MathF.Max(0f, -z) * 20f;
+        Vector3 p = CharacterMovement.Step(Vector3.Zero, Cmd(0f, 1f), 1f, wall, Tuning, steep);
         Assert.True(MathF.Abs(p.X) < 1e-6f && MathF.Abs(p.Z) < 1e-6f, p.ToString());
     }
 
-    // A ground normal tilted in +X so the surface slope (angle from +Y) is exactly `degrees`.
+    // A ground normal leaning in +Z so the surface slope (angle from +Y) is exactly `degrees`: it rises toward -Z,
+    // the direction Cmd(0,1) travels at yaw 0, so walking forward is walking UP it.
     static Func<float, float, Vector3> SlopeNormal(float degrees)
     {
         float a = degrees * MathF.PI / 180f;
-        var n = new Vector3(MathF.Sin(a), MathF.Cos(a), 0f);
+        var n = new Vector3(0f, MathF.Cos(a), MathF.Sin(a));
         return (x, z) => n;
+    }
+
+    // The height field of that same surface, so the normal and the ground the gate samples cannot disagree.
+    static Func<float, float, float> SlopeGround(float degrees)
+    {
+        float grade = MathF.Tan(degrees * MathF.PI / 180f);
+        return (x, z) => -z * grade;
     }
 
     [Fact]
@@ -85,7 +97,7 @@ public class CharacterMovementTests
     {
         // The rim mountains read as "too steep to climb": the default budget must reject a 47 deg slope
         // (it did NOT at the old 50 deg default - that let you walk up near-cliffs).
-        Vector3 p = CharacterMovement.Step(Vector3.Zero, Cmd(0f, 1f), 1f, FlatGround, Tuning, SlopeNormal(47f));
+        Vector3 p = CharacterMovement.Step(Vector3.Zero, Cmd(0f, 1f), 1f, SlopeGround(47f), Tuning, SlopeNormal(47f));
         Assert.True(MathF.Abs(p.X) < 1e-6f && MathF.Abs(p.Z) < 1e-6f, $"climbed a 47 deg wall: {p}");
     }
 
@@ -93,7 +105,7 @@ public class CharacterMovementTests
     public void Default_max_slope_allows_a_gentle_30_degree_slope()
     {
         // A walkable hill (well under the budget) still moves - the gate only blocks the rim, not normal terrain.
-        Vector3 p = CharacterMovement.Step(Vector3.Zero, Cmd(0f, 1f), 1f, FlatGround, Tuning, SlopeNormal(30f));
+        Vector3 p = CharacterMovement.Step(Vector3.Zero, Cmd(0f, 1f), 1f, SlopeGround(30f), Tuning, SlopeNormal(30f));
         Assert.True(MathF.Abs(p.Z) > 0.1f, $"a 30 deg slope should be walkable: {p}");
     }
 

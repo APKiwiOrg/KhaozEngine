@@ -51,6 +51,4 @@
 835 KhaozEngine.Windowing/AppWindow.cs
 826 KhaozEngine.Audio/AudioSystem.cs
 824 KhaozEngine.Platform/ClipboardInterop.cs
-819 KhaozEngine.Locomotion/CharacterMovement.cs
 806 KhaozEngine.Game.Tests/Physics/ConstraintTests.cs
-802 KhaozEngine.NetWorld/WorldClient.cs

@@ -17,10 +17,13 @@ namespace KhaozEngine.Game
     /// Optional 2D game-loop facade over <see cref="AppWindow"/>: owns the per-frame composition + ordering
     /// (clock, design viewport, pointer, 2D batch) so a game subclass only overrides
     /// <see cref="OnLoad"/>/<see cref="OnUpdate"/>/<see cref="OnDraw2D"/>/<see cref="OnResize"/> and can't get
-    /// the frame ordering wrong. The <see cref="OnRenderWorld"/> seam runs before the 2D pass for a subclass that
-    /// renders a world first (e.g. <c>GameApp3D</c> in <c>KhaozEngine.Game.Render3D</c> drives a 3D scene there) -
-    /// this package stays free of any renderer beyond Render2D. A game with special needs can still drive
-    /// <see cref="AppWindow.Run"/> directly; that path stays public and unchanged.
+    /// the frame ordering wrong. The <see cref="OnPrepareWorld"/> + <see cref="OnRenderWorld"/> seam pair runs before
+    /// the 2D pass for a subclass that renders a world first (e.g. <c>GameApp3D</c> in
+    /// <c>KhaozEngine.Game.Render3D</c> drives a 3D scene there) - this package stays free of any renderer beyond
+    /// Render2D. The pair straddles the window's two frame phases: queues are filled in
+    /// <see cref="OnPrepareWorld"/> before the frame's command list opens, and recorded in
+    /// <see cref="OnRenderWorld"/> inside it. A game with special needs can still drive
+    /// <see cref="AppWindow.Run(Action{Frame}, Action{Frame})"/> directly, and that path stays public and unchanged.
     /// </summary>
     public abstract class GameApp : IDisposable
     {
@@ -381,8 +384,23 @@ namespace KhaozEngine.Game
         /// <summary>Per-frame simulation step. <paramref name="dt"/> is the scaled delta (<see cref="Dt"/>).</summary>
         protected virtual void OnUpdate(float dt) { }
         /// <summary>
+        /// Fill a world pass's queues for this frame, BEFORE the frame's command list is opened (empty by default).
+        /// Runs after <see cref="OnUpdate"/> on the same frame, so a queue filled here carries this frame's state.
+        /// <para>
+        /// This is the seam for per-frame GPU work that needs a command list of its OWN, which cannot be opened while
+        /// the frame's list is recording (<c>GameApp3D</c> queues its 3D draws and runs <c>Scene3D.PrepareFrame</c>
+        /// here for exactly that reason - see <see cref="KhaozEngine.Windowing.AppWindow.Run(Action{Frame}, Action{Frame})"/>
+        /// and <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/429">#429</see>). Do NOT record into
+        /// <see cref="Frame.Commands"/> here: the frame's list is not open yet. Draw in <see cref="OnRenderWorld"/>.
+        /// </para>
+        /// <para>Skipped on a render-suppressed (minimized) frame, exactly like <see cref="OnRenderWorld"/>.</para>
+        /// </summary>
+        protected virtual void OnPrepareWorld(Frame frame) { }
+        /// <summary>
         /// Render a world pass BEFORE the 2D batch each frame (empty by default). A subclass that owns its own
-        /// render surface (e.g. a 3D scene) drives it here; <see cref="GameApp"/> itself stays 2D-only.
+        /// render surface (e.g. a 3D scene) drives it here, and <see cref="GameApp"/> itself stays 2D-only. The frame's
+        /// command list is recording by now, so anything that has to run before it opened goes in
+        /// <see cref="OnPrepareWorld"/>.
         /// </summary>
         protected virtual void OnRenderWorld(Frame frame) { }
         /// <summary>Draw the 2D scene / HUD. <paramref name="batch"/>.Begin(Viewport) is already called.</summary>
@@ -435,89 +453,119 @@ namespace KhaozEngine.Game
             }
         }
 
-        /// <summary>Run the fixed, correct per-frame ordering until the window closes.</summary>
+        /// <summary>
+        /// Run the fixed, correct per-frame ordering until the window closes.
+        /// <para>
+        /// The body is split across the window's two frame phases (see
+        /// <see cref="KhaozEngine.Windowing.AppWindow.Run(Action{Frame}, Action{Frame})"/>): everything up to and
+        /// including <see cref="OnPrepareWorld"/> runs BEFORE the frame's command list is opened, and the draw passes
+        /// run inside it. The order a game sees is unchanged by that split - <see cref="OnUpdate"/> still precedes
+        /// <see cref="OnPrepareWorld"/>, which still precedes <see cref="OnRenderWorld"/> and the 2D passes - but the
+        /// world's queues are now filled at a point where a subsystem may still open a command list of its own
+        /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/429">#429</see>).
+        /// </para>
+        /// </summary>
         public void Run()
         {
             OnLoad();
-            _window.Run(frame =>
+            _window.Run(RecordPhase, PreparePhase);
+        }
+
+        /// <summary>
+        /// The frame's PRE-RECORD phase: clock, input, viewports, pointers, <see cref="OnUpdate"/>, the diagnostics
+        /// HUD tick and <see cref="OnPrepareWorld"/>. Nothing here records into <see cref="Frame.Commands"/>, and the
+        /// frame's command list is not open yet, so a world pass may submit GPU work on a list of its own.
+        /// </summary>
+        void PreparePhase(Frame frame)
+        {
+            // A losing second launch (single-instance guard conflict) asked us to come to the foreground.
+            // Consume the flag and drive the actual OS focus call here, on the main/window thread - see
+            // AppWindow.RequestForeground's thread-safety note.
+            if (_foregroundRequested)
             {
-                // A losing second launch (single-instance guard conflict) asked us to come to the foreground.
-                // Consume the flag and drive the actual OS focus call here, on the main/window thread - see
-                // AppWindow.RequestForeground's thread-safety note.
-                if (_foregroundRequested)
-                {
-                    _foregroundRequested = false;
-                    _window.RequestForeground();
-                }
+                _foregroundRequested = false;
+                _window.RequestForeground();
+            }
 
-                _clock.Update(frame.Dt);
-                _input = frame.Input;
-                _dt = _clock.ScaledDeltaSeconds;
+            _clock.Update(frame.Dt);
+            _input = frame.Input;
+            _dt = _clock.ScaledDeltaSeconds;
 
-                // Minimized (render-suppressed) frames still tick simulation so netcode / physics / timers keep
-                // advancing, but skip everything render-facing (frame size, viewport, pointer, draw) - the window has
-                // no drawable while iconified, and the last-known frame size stays put for any FrameWidth read.
-                if (frame.RenderSuppressed)
-                {
-                    if (ShouldRaiseResume(_clock.RealWallGapSeconds, _resumeGapThresholdSeconds))
-                        OnResume(TimeSpan.FromSeconds(_clock.RealWallGapSeconds));
-                    OnUpdate(_dt);
-                    return;
-                }
-
-                _frameWidth = frame.Width;
-                _frameHeight = frame.Height;
-
-                _viewport.Update(frame.Width, frame.Height);
-                if (frame.Width != _lastW || frame.Height != _lastH)
-                {
-                    OnResize(frame.Width, frame.Height);
-                    _lastW = frame.Width;
-                    _lastH = frame.Height;
-                }
-
-                _pointer.Update(_input, _viewport);
-
-                // Point-space UI viewport + pointer: 1 logical point = the DPI scale in device pixels, reflowing to
-                // the logical window size (stable per display, so DpiFont atlases re-bake only on a DPI change).
-                _ui.Update(frame);
-                _uiPointer.Update(_input, _ui);
-
-                // A supra-threshold wall-clock gap means the OS slept/suspended (or the app hung) between frames.
-                // Raise OnResume before OnUpdate so a game can catch up offline / re-sync timers for this frame.
+            // Minimized (render-suppressed) frames still tick simulation so netcode / physics / timers keep
+            // advancing, but skip everything render-facing (frame size, viewport, pointer, draw) - the window has
+            // no drawable while iconified, and the last-known frame size stays put for any FrameWidth read.
+            if (frame.RenderSuppressed)
+            {
                 if (ShouldRaiseResume(_clock.RealWallGapSeconds, _resumeGapThresholdSeconds))
                     OnResume(TimeSpan.FromSeconds(_clock.RealWallGapSeconds));
-
                 OnUpdate(_dt);
+                return;
+            }
 
-                // Advance the diagnostics HUD (sample FPS from the RAW frame delta, process the F1 toggle + fade)
-                // BEFORE the world render, so a 3D subclass can gate this frame's pass timing on its visibility.
-                _hud?.Update(_input, frame.Dt);
+            _frameWidth = frame.Width;
+            _frameHeight = frame.Height;
 
-                OnRenderWorld(frame);
+            _viewport.Update(frame.Width, frame.Height);
+            if (frame.Width != _lastW || frame.Height != _lastH)
+            {
+                OnResize(frame.Width, frame.Height);
+                _lastW = frame.Width;
+                _lastH = frame.Height;
+            }
 
-                _surface2D.NewFrame(frame);
-                _surface2D.Batch.Begin(_viewport);
-                OnDraw2D(_surface2D.Batch);
-                _surface2D.Batch.End();
+            _pointer.Update(_input, _viewport);
 
-                // Point-space UI pass: a second begin in the DPI-aware UiViewport, so DPI UI draws crisp on top of
-                // the (letterboxed) design-space field. Empty by default, so a game that only uses OnDraw2D is unaffected.
+            // Point-space UI viewport + pointer: 1 logical point = the DPI scale in device pixels, reflowing to
+            // the logical window size (stable per display, so DpiFont atlases re-bake only on a DPI change).
+            _ui.Update(frame);
+            _uiPointer.Update(_input, _ui);
+
+            // A supra-threshold wall-clock gap means the OS slept/suspended (or the app hung) between frames.
+            // Raise OnResume before OnUpdate so a game can catch up offline / re-sync timers for this frame.
+            if (ShouldRaiseResume(_clock.RealWallGapSeconds, _resumeGapThresholdSeconds))
+                OnResume(TimeSpan.FromSeconds(_clock.RealWallGapSeconds));
+
+            OnUpdate(_dt);
+
+            // Advance the diagnostics HUD (sample FPS from the RAW frame delta, process the F1 toggle + fade)
+            // BEFORE the world pass, so a 3D subclass can gate this frame's pass timing on its visibility.
+            _hud?.Update(_input, frame.Dt);
+
+            // The world's queues, filled with this frame's state and with no command list open.
+            OnPrepareWorld(frame);
+        }
+
+        /// <summary>
+        /// The frame's RECORD phase: the world pass and the 2D / UI / overlay passes, all into the frame's command
+        /// list, which is open and cleared by now. A render-suppressed frame skips it entirely.
+        /// </summary>
+        void RecordPhase(Frame frame)
+        {
+            if (frame.RenderSuppressed) return;
+
+            OnRenderWorld(frame);
+
+            _surface2D.NewFrame(frame);
+            _surface2D.Batch.Begin(_viewport);
+            OnDraw2D(_surface2D.Batch);
+            _surface2D.Batch.End();
+
+            // Point-space UI pass: a second begin in the DPI-aware UiViewport, so DPI UI draws crisp on top of
+            // the (letterboxed) design-space field. Empty by default, so a game that only uses OnDraw2D is unaffected.
+            _surface2D.Batch.Begin(_ui);
+            OnDrawUi(_surface2D.Batch);
+            _surface2D.Batch.End();
+
+            // Diagnostics HUD on top, in its own point-space UI pass (crisp on HiDPI). The aggregated draw stats
+            // (2D batch + any 3D scene, via CollectFrameStats) are handed in just before the panel draws. No-op
+            // while hidden (the overlay draws nothing and the throttled provider builds no sections).
+            if (_hud is { } hud)
+            {
+                hud.SetDrawStats(CollectFrameStats());
                 _surface2D.Batch.Begin(_ui);
-                OnDrawUi(_surface2D.Batch);
+                hud.Draw(_surface2D.Batch, _hudFont!.For(_ui.DpiScale), _hudWhite!, _ui.DesignBounds);
                 _surface2D.Batch.End();
-
-                // Diagnostics HUD on top, in its own point-space UI pass (crisp on HiDPI). The aggregated draw stats
-                // (2D batch + any 3D scene, via CollectFrameStats) are handed in just before the panel draws. No-op
-                // while hidden (the overlay draws nothing and the throttled provider builds no sections).
-                if (_hud is { } hud)
-                {
-                    hud.SetDrawStats(CollectFrameStats());
-                    _surface2D.Batch.Begin(_ui);
-                    hud.Draw(_surface2D.Batch, _hudFont!.For(_ui.DpiScale), _hudWhite!, _ui.DesignBounds);
-                    _surface2D.Batch.End();
-                }
-            });
+            }
         }
 
         /// <summary>Dispose a subclass's own resources (e.g. a 3D surface) before the 2D surface + window tear down.</summary>

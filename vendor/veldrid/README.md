@@ -10,11 +10,11 @@ Windows Veldrid suite covers buffer, render, resource-set, and texture paths thr
 `release/4.9.102` sits deliberately BELOW the unreleased immediate-mode guardrail commits on
 `fix/d3d11-immediate-4.9.0`, and that is the point of it being its own branch. Those commits make a SECOND
 command list reaching `Begin` while another holds the immediate context throw instead of silently running
-`ClearState` on the live context. The windowed `GameApp3D` path still opens exactly that second list today,
-because `AppWindow.Run` opens the frame's list before calling back into the app, so vendoring the guardrails now
-would turn the corrupted frame this release fixes elsewhere into a hard throw on Windows. They are held back
-until KhaozEngine issue #429 gives the frame loop a pre-record phase, and the two ship together. KhaozEngine
-issue #428 tracks the hold.
+`ClearState` on the live context. They were held back because the windowed `GameApp3D` path forced exactly that
+second list open: `AppWindow.Run` opened the frame's command list before calling back into the app, so a guardrail
+would have turned a corrupted frame into a hard throw on Windows. KhaozEngine issue #429 removed that by giving
+the frame loop a pre-record phase, which is where the ocean prime runs now, so no windowed path opens a nested
+list any more. Vendoring the guardrail commits is KhaozEngine issue #428, and it is no longer blocked.
 
 What `4.9.102` adds over `4.9.101`:
 

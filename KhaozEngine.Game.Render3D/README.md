@@ -2,8 +2,18 @@
 
 The 3D integration for `KhaozEngine.Game`, split out so a 2D game pulls **no 3D renderer**. Three pieces:
 
-- **`GameApp3D : GameApp`** - a `GameApp` that builds a `Render3DSurface` and drives the 3D pass in the
-  `OnRenderWorld` seam (before the 2D HUD). Subclass it and override `OnDraw3D(Scene3D)`.
+- **`GameApp3D : GameApp`** - a `GameApp` that builds a `Render3DSurface` and drives the 3D pass across the frame's
+  two phases, before the 2D HUD. Subclass it and override `OnDraw3D(Scene3D)`.
+  - In `OnPrepareWorld` (the pre-record phase, before the frame's command list opens): `Scene.Begin()` ->
+    `OnDraw3D(Scene)` -> `Scene.PrepareFrame()`. So `OnDraw3D` runs after `OnUpdate` on the same frame, as it
+    always did, but now at a point where a producer may still submit GPU work on a command list of its own. That is
+    what the FFT ocean's priming pass needs, and nesting it inside the frame's recording faults a Direct3D11 device
+    in immediate-context mode ([#423](https://github.com/APKiwiOrg/KhaozEngine/issues/423),
+    [#429](https://github.com/APKiwiOrg/KhaozEngine/issues/429)).
+  - In `OnRenderWorld` (the record phase): `Surface3D.Render(frame)`, plus feeding the per-pass timings to the
+    diagnostics HUD. `Render3DSurface.Render` calls `Scene.PrepareFrame()` too, and on this path it finds the frame
+    already prepared and no-ops - the phase's call is the effective one.
+  - No game code changes for this: `OnDraw3D` sees the same scene at the same point in the frame's logic.
 - **`IGameScene3D`** - a `GameScene` implements this (in addition to deriving `GameScene`) to submit a 3D world
   pass. Keeps 3D out of the base `GameScene`.
 - **`SceneManager.Draw3D(scene)`** extension - draws the visible scenes that implement `IGameScene3D`, the same

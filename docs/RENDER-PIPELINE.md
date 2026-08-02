@@ -13,7 +13,7 @@ flowchart TD
     end
 
     subgraph win["KhaozEngine.Windowing - AppWindow (Silk.NET / GLFW)"]
-        LOOP["Run(onFrame): the per-frame loop<br/>pump input -> build Frame -> onFrame(frame) -> Present()"]
+        LOOP["Run(onFrame, onPrepare): the per-frame loop<br/>pump input -> build Frame -> onPrepare(frame)<br/>-> open the frame's list -> onFrame(frame) -> Present()"]
     end
 
     subgraph r3["KhaozEngine.Render3D"]
@@ -87,17 +87,21 @@ flowchart LR
 
 ## The same path in words
 
-1. Your game calls `Scene3D.Draw(...)` (3D) or `SpriteBatch.Draw(...)` (2D) inside the `Frame` callback that
-   `AppWindow.Run` invokes once per frame.
+1. Your game calls `Scene3D.Draw(...)` (3D) or `SpriteBatch.Draw(...)` (2D) inside a `Frame` callback that
+   `AppWindow.Run` invokes once per frame. The loop runs TWO callbacks per frame, in this order: `onPrepare`
+   with no command list open, then `onFrame` with the frame's list open and cleared. `GameApp` splits its own
+   body across them (`OnUpdate` + `OnPrepareWorld` in the first, `OnRenderWorld` + the 2D passes in the second),
+   so a 3D game's `OnDraw3D` runs in the prepare phase and its recording in the record phase.
 2. `Scene3D` accumulates draws as instances keyed by `MeshHandle` (geometry was uploaded once via `LoadMesh`);
    `SpriteBatch` packs quads into per-frame ring-buffered vertex buffers (rotated so a frame's write never races
    the GPU still reading an earlier, in-flight frame's copy). Nothing here references Veldrid.
 3. Before anything is recorded, `Scene3D.PrepareFrame()` runs the frame's pre-recording phase: the subsystems
    whose per-frame GPU work needs a command list of their OWN (the FFT ocean's priming dispatch, which is a
    compute read-after-write and so needs a submit plus a device wait) do it here, where no frame list is open.
-   `Render3DSurface.Render`, `Render3DPreview.Capture` and `Render3DSnapshot.Capture` all call it. Opening a
-   second command list while the frame's is recording resets the device's immediate context on Direct3D11 and
-   corrupts the frame (issue #423).
+   `Render3DSurface.Render`, `Render3DPreview.Capture` and `Render3DSnapshot.Capture` all call it. On a windowed
+   host the effective call is the one `GameApp3D` makes in the loop's prepare phase, and the surface's is then a
+   no-op (issue #429). Opening a second command list while the frame's is recording resets the device's immediate
+   context on Direct3D11 and corrupts the frame (issue #423).
 4. At frame end, `Render3DSurface` / `Render2DSurface` flush through `ModelRenderer` / the sprite shader, which
    record commands on `GpuDeviceContext` - the opaque seam (device, buffers, pipelines, command list).
 5. `GpuBackendSelector` picked the backend at startup (`KE_GRAPHICS_BACKEND` override, then the game's stored

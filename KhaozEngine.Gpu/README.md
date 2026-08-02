@@ -115,12 +115,14 @@ What it owns today:
   not: it runs `ClearState` on the live context and silently wipes the open recording's bindings, which is exactly
   the corruption behind
   [#423](https://github.com/APKiwiOrg/KhaozEngine/issues/423). The fork commits that turn that case into a throw
-  exist but are deliberately NOT vendored, because the windowed `GameApp3D` path still opens that second list
-  (`AppWindow.Run` opens the frame's list before calling back into the app), so adopting them today would convert
-  a corrupted frame into a hard throw on Windows. They land with the frame loop's pre-record phase
-  ([#429](https://github.com/APKiwiOrg/KhaozEngine/issues/429)), tracked by
-  [#428](https://github.com/APKiwiOrg/KhaozEngine/issues/428). Until then, do not open a command list while
-  another is recording on Direct3D11: the engine's own producers use `Scene3D.PrepareFrame` for this.
+  exist and are still NOT vendored, but the reason they were held back is gone. They were held because the windowed
+  `GameApp3D` path forced that second list open (`AppWindow.Run` opened the frame's command list before calling
+  back into the app), so adopting them would have converted a corrupted frame into a hard throw on Windows. The
+  frame loop now has a pre-record phase and the ocean prime runs there
+  ([#429](https://github.com/APKiwiOrg/KhaozEngine/issues/429)), so nothing windowed opens a nested list any more.
+  Vendoring the guardrails is [#428](https://github.com/APKiwiOrg/KhaozEngine/issues/428), no longer blocked. The
+  rule for engine code is unchanged either way: do not open a command list while another is recording on
+  Direct3D11, and put work that needs its own list in `Scene3D.PrepareFrame` or the loop's pre-record phase.
 - **`GpuCapabilities`** - `ClipSpaceYInverted` / `DepthRangeZeroToOne` (so renderers derive clip-Y / depth
   handling from the active backend instead of a baked Metal assumption), plus diagnostics: `DeviceName` (the GPU
   adapter/driver), `SamplerAnisotropy`, `SamplerLodBias` (whether those sampler levers are supported),

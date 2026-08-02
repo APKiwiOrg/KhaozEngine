@@ -7,8 +7,9 @@ namespace KhaozEngine.Render3D
     /// A 3D scene bound to an <see cref="AppWindow"/>: builds a <see cref="Scene3D"/> on the window's GPU device
     /// and renders it into the window's frames, so a Render2D HUD can draw on top. The window owns the device
     /// and the frame loop; this records into the frame's command list. Composition order, per frame:
-    /// <see cref="Scene3D.Begin"/> + submit instances, <see cref="Render"/> (which runs
-    /// <see cref="Scene3D.PrepareFrame"/> for you, then fills the frame), then the 2D surface draws the HUD over it.
+    /// <see cref="Scene3D.Begin"/> + submit instances + <see cref="Scene3D.PrepareFrame"/> in the window's pre-record
+    /// phase, then <see cref="Render"/> in the record phase, then the 2D surface draws the HUD over it. A host that
+    /// does not use the pre-record phase still gets a correct frame: <see cref="Render"/> prepares if nobody did.
     /// </summary>
     public sealed class Render3DSurface : IDisposable
     {
@@ -32,11 +33,14 @@ namespace KhaozEngine.Render3D
         /// pre-recording phase without having to know it exists (the queues are full by now and the scene is about
         /// to be recorded, which is exactly where it belongs).
         /// <para>
-        /// One caveat, and it is the windowed frame loop's rather than this class's: <see cref="AppWindow.Run"/>
-        /// opens the frame's command list BEFORE calling back into the app, so this prepare runs at the right point
-        /// in the frame's logic with that list already recording. A producer that submits its own list therefore
-        /// still nests inside it on Direct3D11 in immediate-context mode, exactly as it did before, until the frame
-        /// loop grows a pre-record phase: https://github.com/APKiwiOrg/KhaozEngine/issues/429
+        /// On a windowed host that call is a SAFETY NET, not the effective one, and it is meant to be. The frame's
+        /// command list is already recording by the time this runs, so a producer preparing here would still nest a
+        /// list inside it. The fix is upstream, in the loop: <see cref="AppWindow.Run(Action{Frame}, Action{Frame})"/>
+        /// takes a pre-record callback, and <c>GameApp3D</c> runs <c>Scene.Begin()</c> -> its draws ->
+        /// <see cref="Scene3D.PrepareFrame"/> there, so by the time this method runs the frame is already prepared and
+        /// the call below no-ops (#429). A host driving a surface off a raw <see cref="AppWindow"/> should do the
+        /// same: queue and prepare the scene in the <c>onPrepare</c> callback, and call this from <c>onFrame</c>. A
+        /// host that does not still renders correctly on every backend that treats a command list as a real list.
         /// </para></summary>
         public void Render(Frame frame)
         {

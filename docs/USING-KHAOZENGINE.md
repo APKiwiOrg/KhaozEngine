@@ -98,8 +98,11 @@ fills in seams.
 hardware ──► AppWindow (the only Silk.NET/GLFW toucher) ──► InputState (immutable per-frame snapshot)
                                                                   │
                               GameApp.Run() drives, each frame, in order:
+                            ── pre-record phase (the frame's command list is not open) ──
                                   Clock.Update(dt) → Viewport.Update(w,h) → OnResize? →
                                   Pointer.Update(Input, Viewport) → OnResume? → OnUpdate(dt) →
+                                  OnPrepareWorld(frame)  [3D queue fill + Scene3D.PrepareFrame]
+                            ── record phase (the frame's command list is open + cleared) ──
                                   OnRenderWorld(frame)  [3D pass]  →  Batch.Begin(Viewport) → OnDraw2D → End
                                                                   │
                  ┌────────────────────────────────────────────────┼─────────────────────────────┐
@@ -394,10 +397,46 @@ Cmd-Tab. `GameApp` fixes this automatically: when `WindowIconPath` is set, on ma
 `AppWindow.SetMacDockIcon(...)` directly. It returns `false` (never throws) off macOS or on empty input. A packaged
 `.app` bundle with its own `.icns` still owns the Dock icon the normal way; this is for the unbundled dev/run case.
 
-`GameApp` seams: `OnLoad()`, `OnUpdate(float dt)`, `OnRenderWorld(Frame)` (the 3D pass; empty in 2D),
-`OnDraw2D(SpriteBatch)`, `OnResize(int, int)`, `OnResume(TimeSpan)` (see below), `OnDispose()`. Properties you
-read: `Window`, `Clock`, `Viewport`, `Pointer`, `Input` (the frame's `InputState`), `Surface2D`, `Batch`,
-`FrameWidth`/`FrameHeight`/`Dt`, `ClearColor`. Call `Quit()` to exit.
+`GameApp` seams: `OnLoad()`, `OnUpdate(float dt)`, `OnPrepareWorld(Frame)` + `OnRenderWorld(Frame)` (the world
+pass, in two phases, both empty in 2D), `OnDraw2D(SpriteBatch)`, `OnResize(int, int)`, `OnResume(TimeSpan)` (see
+below), `OnDispose()`. Properties you read: `Window`, `Clock`, `Viewport`, `Pointer`, `Input` (the frame's
+`InputState`), `Surface2D`, `Batch`, `FrameWidth`/`FrameHeight`/`Dt`, `ClearColor`. Call `Quit()` to exit.
+
+### The frame's pre-record phase (`AppWindow.Run(onFrame, onPrepare)`, `GameApp.OnPrepareWorld`)
+
+The windowed loop runs **two** callbacks per frame. `onPrepare` runs first, after the frame's `Dt` / `Input` /
+size are latched and **before** the frame's command list is opened. `onFrame` runs second, with that list open,
+bound to the swapchain and cleared. `Run(onFrame)` is exactly `Run(onFrame, null)`, so a host that wants one
+callback keeps writing one.
+
+```csharp
+window.Run(
+    onFrame:   frame => surface3D.Render(frame),            // records into frame.Commands
+    onPrepare: frame => { scene.Begin(); DrawTheWorld(scene); scene.PrepareFrame(); });
+```
+
+**Why it exists.** Some per-frame GPU work cannot be recorded into the frame's list at all: a compute dispatch
+whose output another dispatch reads in the same frame has no dispatch-to-dispatch barrier at the GPU seam, so its
+only ordering is a submit plus a device wait, which means a command list of its own. With Direct3D11 in
+immediate-context mode a command list IS the device's immediate context and `Begin` calls `ClearState` on it, so
+opening a second list while the frame's is recording wipes every binding the frame believes is live and the
+device faults a few draws later (issue #423). The headless hosts (`Render3DSnapshot.Capture`,
+`Render3DPreview.Capture`) open the frame's list themselves and could already honour that ordering. The windowed
+loop opened it before calling back, so no host running on a window could (issue #429). This phase is the fix.
+
+**What belongs where.** `onPrepare` is for update-side work and for filling the frame's queues, which is what
+puts a producer's own command list before the frame's. Do **not** record into `Frame.Commands` there: the list is
+not open yet, and on a render-suppressed (minimized) frame it is never opened at all. Draws belong in `onFrame`.
+Both callbacks run on a render-suppressed frame, so simulation keeps advancing while iconified.
+
+**On `GameApp` / `GameApp3D` this is already wired**, and a game needs no change. `GameApp` splits its own body at
+the same seam: everything through `OnUpdate` and the diagnostics-HUD tick runs in the prepare phase and ends on
+`OnPrepareWorld(Frame)`. `OnRenderWorld(Frame)` and the 2D / UI / overlay passes run in the record phase. The
+order a game sees is unchanged (`OnUpdate` still precedes `OnDraw3D`, which still precedes the 2D passes).
+`GameApp3D` runs `Scene.Begin()` -> `OnDraw3D(Scene)` -> `Scene.PrepareFrame()` in `OnPrepareWorld`, leaving
+`Surface3D.Render(frame)` in `OnRenderWorld` - so `Render3DSurface.Render`'s own `PrepareFrame` call finds the
+frame already prepared and no-ops, which is exactly what its documented idempotency is for. Override
+`OnPrepareWorld` yourself only if you have per-frame GPU work of your own that needs its own command list.
 
 **Resume after OS sleep/suspend (`OnResume`).** The frame `dt` is clamped to 0.1s (a spiral-of-death guard) and
 comes from a `Stopwatch`-style timer that does not reliably advance across an OS sleep/S3/hibernate, so a game
@@ -509,8 +548,10 @@ mechanics live in [UPDATER.md](UPDATER.md).
 ### 3D (`GameApp3D`, `IGameScene3D`, `SceneManager.Draw3D`)
 
 `GameApp3D : GameApp` adds a `Render3DSurface` (`Surface3D`) and a `Scene3D` (`Scene`), and a new seam
-`OnDraw3D(Scene3D scene)` (it overrides `OnRenderWorld` to run the 3D pass behind the 2D HUD). A scene that draws
-3D implements `IGameScene3D` (`void OnDraw3D(Scene3D scene)`), and the app's `OnDraw3D` calls the
+`OnDraw3D(Scene3D scene)`. It overrides both world seams to run the 3D pass behind the 2D HUD: `OnPrepareWorld`
+does `Scene.Begin()` -> `OnDraw3D(Scene)` -> `Scene.PrepareFrame()` in the frame's pre-record phase, and
+`OnRenderWorld` records it with `Surface3D.Render(frame)` (see "The frame's pre-record phase" above). A scene that
+draws 3D implements `IGameScene3D` (`void OnDraw3D(Scene3D scene)`), and the app's `OnDraw3D` calls the
 `SceneManager.Draw3D(scene)` extension to render the visible scene set.
 
 ```csharp
@@ -1977,6 +2018,12 @@ cl.Begin();
   stale ocean. Calling it twice for one `Begin` is harmless: the second call is a no-op, so a host that prepares by
   hand and then hands the scene to `Render3DSurface.Render` does not prepare the frame twice. Queueing a draw AFTER
   preparing is the one thing that is not harmless, and the water pass throws for it.
+
+  **On a windowed host the effective call is the earlier one.** `Render3DSurface.Render` runs inside the frame's
+  command list, so its `PrepareFrame` is a safety net, not the pre-recording phase. Queue and prepare the scene in
+  the loop's pre-record phase instead (`AppWindow.Run`'s `onPrepare`, or `GameApp.OnPrepareWorld` - see "The
+  frame's pre-record phase" above), and the surface's own call then finds the frame prepared and no-ops. `GameApp3D`
+  already does this, so a game on it needs no change.
 
   **A `Scene3D` records ONCE per `Begin`.** Recording consumes the prepared frame, so a host that wants the same
   scene recorded twice (two viewports, a split screen, a preview beside the world) calls `Begin` again and re-queues

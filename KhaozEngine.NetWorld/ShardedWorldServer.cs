@@ -469,16 +469,26 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
     /// clients in the same tick. No-op until subscribed, so existing behaviour is unchanged.</summary>
     public event Action<float>? OnBeforeTick;
 
-    /// <summary>Raised at the END of every <see cref="Tick"/>, with the tick <c>dt</c>: after every cell's authoritative
-    /// movement step, after handoff and ghosting, and after each client has been served, on the SAME tick. This is the
-    /// mirror of <see cref="OnBeforeTick"/> and the place to read POST-STEP state - most usefully the one-tick landing
-    /// impact (<see cref="TryGetPlayerState"/> then <c>state.Move.LandingImpactSpeed</c>), which the next tick
-    /// overwrites, so a game applying fall damage from <see cref="OnBeforeTick"/> would always be reading the previous
-    /// tick's world. Because it fires after handoff, a player read here is read from whichever cell now owns it. A write
-    /// made here reaches clients on the NEXT tick's snapshot (this tick's has already gone out), which is the deliberate
-    /// trade: the hook exists to OBSERVE a settled tick, while <see cref="OnBeforeTick"/> remains the place to author
-    /// state that must ship in the same frame. No-op until subscribed. The single-cell equivalent is
-    /// <see cref="WorldServer.OnAfterTick"/>.</summary>
+    /// <summary>Raised at the end of every <see cref="Tick"/> IN WHICH AUTHORITATIVE MOVEMENT RAN, with the tick
+    /// <c>dt</c>: after every cell's movement step, after handoff and ghosting, and after each client has been served,
+    /// on the SAME tick. That qualifier is the one place this head differs from <see cref="WorldServer.OnAfterTick"/>,
+    /// and it is what makes the two agree on the SEMANTIC. This head drives its cells through a fixed-tick accumulator
+    /// (<see cref="KhaozEngine.Sharding.CellSim.Tick"/>, one sub-tick per frame), so a frame shorter than
+    /// <see cref="ShardedWorldServerConfig.TickSeconds"/> produces no movement sub-tick at all: nothing steps, nothing
+    /// rewrites the per-tick step outputs, and firing there would hand a consumer the PREVIOUS tick's landing a second
+    /// time, once per short frame. The flat head steps unconditionally per <see cref="WorldServer.Tick"/>, so on it
+    /// every Tick is a movement frame and this rule costs it nothing. <see cref="OnBeforeTick"/> is unqualified and
+    /// fires on every frame, which is where per-frame work that is not tied to a movement step belongs.
+    /// <para>This is the mirror of <see cref="OnBeforeTick"/> and the place to read POST-STEP state - most usefully the
+    /// one-tick landing impact (<see cref="TryGetPlayerState"/> then <c>state.Move.LandingImpactSpeed</c>), which the
+    /// next tick overwrites, so a game applying fall damage from <see cref="OnBeforeTick"/> would always be reading the
+    /// previous tick's world. That per-tick latch is only meaningful FROM HERE: it is state, so polling
+    /// <see cref="TryGetPlayerState"/> between frames returns whatever the last movement sub-tick left, which on a
+    /// frame that stepped nothing is the last step's output unchanged. Because it fires after handoff, a player read
+    /// here is read from whichever cell now owns it. A write made here reaches clients on the NEXT tick's snapshot
+    /// (this tick's has already gone out), which is the deliberate trade: the hook exists to OBSERVE a settled tick,
+    /// while <see cref="OnBeforeTick"/> remains the place to author state that must ship in the same frame. No-op until
+    /// subscribed. The single-cell equivalent is <see cref="WorldServer.OnAfterTick"/>.</para></summary>
     public event Action<float>? OnAfterTick;
 
     /// <summary>Steps one authoritative server frame across every cell, then serves each client its home-cell AoI.</summary>
@@ -512,8 +522,12 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         // 2. Make sure every (possibly newly-created) cell runs the movement system.
         foreach (CellSim cell in host.Cells) EnsureWired(cell);
 
-        // 3. Authoritative movement: one fixed sub-tick per frame, fanned across the scheduler.
+        // 3. Authoritative movement: one fixed sub-tick per frame, fanned across the scheduler. Bracketed by the cells'
+        //    own tick counters, because a frame shorter than TickSeconds only feeds the accumulator and steps nothing -
+        //    the reading OnAfterTick is gated on at the bottom of this method.
+        long cellTicksBefore = TotalCellTicks();
         host.Tick(dt, maxTicksPerFrame: 1);
+        bool movementRan = TotalCellTicks() != cellTicksBefore;
 
         // 4. Authority follows entities across boundaries (exactly-once), then refresh border ghosts.
         host.ProcessHandoffs();
@@ -564,7 +578,22 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         drain.Advance(dt);
         selfRescueClock += dt;   // advance the self-rescue cooldown clock
         admin.Publish(BuildOnlineSnapshot());
-        OnAfterTick?.Invoke(dt);   // consumer post-step observers (landing impacts, …) run after movement + serving
+        // Consumer post-step observers (landing impacts, …) run after movement + serving, and ONLY after a frame that
+        // actually stepped. A frame too short to fill any cell's accumulator leaves every per-tick step output exactly
+        // as the last real sub-tick wrote it, so firing here would re-deliver that tick's landing as a fresh one.
+        if (movementRan) OnAfterTick?.Invoke(dt);
+    }
+
+    // The sum of every cell's fixed-tick counter: the honest reading of "did authoritative movement actually run",
+    // taken either side of host.Tick. It is a SUM rather than a flag because cells hold independent accumulators (a
+    // cell created mid-run is out of phase with its neighbours, and an evicted-then-restored one starts again), so no
+    // single cell's counter answers for the frame. Cells are neither created nor removed inside host.Tick, so the two
+    // readings span the same set.
+    private long TotalCellTicks()
+    {
+        long total = 0;
+        foreach (CellSim cell in host.Cells) total += cell.TickCount;
+        return total;
     }
 
     /// <inheritdoc/>

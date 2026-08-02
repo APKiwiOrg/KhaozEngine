@@ -436,8 +436,12 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
     /// subscribed. The multi-cell equivalent is <see cref="ShardedWorldServer.OnBeforeTick"/>.</summary>
     public event Action<float>? OnBeforeTick;
 
-    /// <summary>Raised at the END of every <see cref="Tick"/>, with the tick <c>dt</c>: after the authoritative movement
-    /// step AND after every client has been served, on the SAME tick. This is the mirror of <see cref="OnBeforeTick"/>
+    /// <summary>Raised at the end of every <see cref="Tick"/> IN WHICH AUTHORITATIVE MOVEMENT RAN, with the tick
+    /// <c>dt</c>: after the movement step AND after every client has been served, on the SAME tick. This head steps
+    /// every player on every <see cref="Tick"/> whatever the <c>dt</c>, so every Tick IS a movement frame and the
+    /// qualifier never withholds an event here - it is stated because it is the shared semantic with
+    /// <see cref="ShardedWorldServer.OnAfterTick"/>, whose cells run off a fixed-tick accumulator and therefore skip
+    /// frames shorter than one tick. This is the mirror of <see cref="OnBeforeTick"/>
     /// and the place to read POST-STEP state - most usefully the one-tick landing impact
     /// (<see cref="TryGetPlayerState"/> then <c>state.Move.LandingImpactSpeed</c>), which the next tick overwrites, so a
     /// game applying fall damage from <see cref="OnBeforeTick"/> would always be reading the previous tick's world. A

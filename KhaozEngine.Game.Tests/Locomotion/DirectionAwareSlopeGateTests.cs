@@ -83,19 +83,115 @@ public class DirectionAwareSlopeGateTests
     }
 
     [Theory]
-    [InlineData(0.002f, true)]    // inside the ascent tolerance: level enough to walk across
-    [InlineData(0.05f, false)]    // outside it: a rise the gate must refuse
-    public void The_ascent_tolerance_is_small(float rise, bool expectAdvance)
+    [InlineData(1f, true)]        // 0.05 m over a 0.2 m walk step is a ~14 deg ascent: well inside the 45 deg gate
+    [InlineData(0.01f, false)]    // the SAME rise over a 0.002 m crawl step is ~88 deg: refused, however slowly it is met
+    public void The_ascent_gate_is_relative_to_the_tick_s_travel(float steeringLength, bool expectAdvance)
     {
-        // Pins the tolerance into (0.002, 0.05) m without turning it into a knob: it exists only to absorb the
-        // surface-contact skin and float noise in the height comparison, never to grant a free climb.
+        // The gate's ascent allowance is SCALE-FREE: what it permits is a gradient (rise per metre of intended
+        // horizontal travel), not a fixed height. One fixture, one rise, two speeds, opposite answers - which is the
+        // whole property, and which an absolute tolerance cannot express: under one it was the SPEED that decided
+        // whether a face was climbable, so a slow enough mover walked up anything.
         var t = Tuning;
-        Func<float, float, float> ground = HeightPastEdge(rise);
-        var s = new MoveState { Position = new Vector3(EdgeX - 0.95f, t.CapsuleHalfHeight, 0f), Grounded = true };
+        Func<float, float, float> ground = HeightPastEdge(0.05f);
+        var s = new MoveState { Position = new Vector3(EdgeX - 0.05f, t.CapsuleHalfHeight, 0f), Grounded = true };
 
-        for (int i = 0; i < 60; i++) s = CharacterMovement.Step(s, East(), Dt, ground, t, NormalSteepPastEdge);
+        for (int i = 0; i < 600; i++)
+            s = CharacterMovement.StepTowards(s, new Vector2(steeringLength, 0f), run: false, Dt, ground, t, NormalSteepPastEdge);
 
-        Assert.Equal(expectAdvance, s.Position.X > EdgeX + 0.5f);
+        Assert.Equal(expectAdvance, s.Position.X > EdgeX + 0.05f);
+    }
+
+    // ---- The gate is scale-free: a face steeper than it blocks at EVERY speed and EVERY tick rate ----
+
+    // A 5:1 face (78.7 deg) east of the edge, with its OWN agreeing normal rather than the fixture normal above, so
+    // the height field and the normal describe one surface and nothing rides on them disagreeing.
+    const float SteepGrade = 5f;
+    static Func<float, float, float> RisingFacePastEdge => (x, z) => x < EdgeX ? 0f : (x - EdgeX) * SteepGrade;
+    static readonly Vector3 RisingFaceNormal = Vector3.Normalize(new Vector3(-SteepGrade, 1f, 0f));
+    static Func<float, float, Vector3> RisingFaceNormalPastEdge => (x, z) => x < EdgeX ? Vector3.UnitY : RisingFaceNormal;
+
+    [Theory]
+    [InlineData(1f)]        // full walk speed: 0.2 m per tick
+    [InlineData(0.02f)]     // 0.004 m per tick
+    [InlineData(0.01f)]     // 0.002 m per tick - the rise per tick lands exactly ON the old absolute tolerance
+    [InlineData(0.005f)]    // 0.001 m per tick - and under it, which is a free climb
+    public void No_steering_length_creeps_up_a_steep_face(float steeringLength)
+    {
+        // The regression this closes: the ascent allowance used to be an absolute 0.01 m, so any mover whose per-tick
+        // rise stayed under it climbed an arbitrarily steep face one sub-centimetre at a time. A 5:1 face rises five
+        // times the tick's travel, so it is past the gate at every one of these steering lengths and must be refused
+        // at all of them.
+        var t = Tuning;
+        Func<float, float, float> ground = RisingFacePastEdge;
+        var s = new MoveState { Position = new Vector3(EdgeX - 0.05f, t.CapsuleHalfHeight, 0f), Grounded = true };
+        float startY = s.Position.Y;
+
+        for (int i = 0; i < 600; i++)
+        {
+            s = CharacterMovement.StepTowards(s, new Vector2(steeringLength, 0f), run: false, Dt, ground, t,
+                RisingFaceNormalPastEdge);
+            Assert.True(s.Position.X <= EdgeX + 1e-3f, $"tick {i} climbed onto the face, x={s.Position.X:F5}");
+            Assert.True(s.Position.Y <= startY + 1e-3f, $"tick {i} gained height on the face, y={s.Position.Y:F5}");
+        }
+    }
+
+    [Theory]
+    [InlineData(1f / 30f)]   // the shipped server tick
+    [InlineData(0.001f)]     // 1000 Hz: the per-tick rise of a 46 deg face falls under any fixed height tolerance
+    public void A_face_just_past_the_gate_blocks_at_every_tick_rate(float dt)
+    {
+        // 46 deg is one degree past the default gate, which is the hardest case for a relative rule and the one a
+        // fixed tolerance loses first: raise the tick rate and the per-tick rise shrinks without the face getting any
+        // shallower. The mover may enter by at most what a gate-angle ramp would have granted it for one tick's
+        // travel, and then it is fenced for good.
+        var t = Tuning;
+        float grade = MathF.Tan(46f * MathF.PI / 180f);
+        Func<float, float, float> ground = (x, z) => x < EdgeX ? 0f : (x - EdgeX) * grade;
+        Vector3 faceNormal = Vector3.Normalize(new Vector3(-grade, 1f, 0f));
+        Func<float, float, Vector3> normal = (x, z) => x < EdgeX ? Vector3.UnitY : faceNormal;
+
+        var s = new MoveState { Position = new Vector3(EdgeX - 0.05f, t.CapsuleHalfHeight, 0f), Grounded = true };
+        float startY = s.Position.Y;
+        float travel = t.WalkSpeed * dt;                     // one tick's intended horizontal travel
+        float allowance = travel + 1e-3f;                    // tan(45 deg) is 1, so the gate's own rise over that travel
+
+        Vector3 halfway = Vector3.Zero;
+        for (int i = 0; i < 600; i++)
+        {
+            s = CharacterMovement.StepTowards(s, new Vector2(1f, 0f), run: false, dt, ground, t, normal);
+            if (i == 299) halfway = s.Position;
+            Assert.True(s.Position.X <= EdgeX + allowance, $"tick {i} walked up the face, x={s.Position.X:F5}");
+            Assert.True(s.Position.Y <= startY + allowance, $"tick {i} climbed the face, y={s.Position.Y:F5}");
+        }
+        // The real proof that it is FENCED and not merely slow: nothing moved over the second half of the run.
+        Assert.Equal(halfway.X, s.Position.X, 4);
+        Assert.Equal(halfway.Y, s.Position.Y, 4);
+    }
+
+    [Theory]
+    [InlineData(0.05f)]     // a heavy slow
+    [InlineData(0.01f)]     // near-rooted: 0.002 m per tick, under the old absolute tolerance
+    public void A_slowed_character_cannot_creep_up_a_steep_face(float speedScale)
+    {
+        // SpeedScale is a movement multiplier the server owns (haste/slow/root). A slow must not turn into a climbing
+        // aid, which is what a fixed height tolerance made it: the smaller the scale, the smaller the per-tick rise,
+        // and below the tolerance the face stopped being a wall.
+        var t = Tuning;
+        Func<float, float, float> ground = RisingFacePastEdge;
+        var s = new MoveState
+        {
+            Position = new Vector3(EdgeX - 0.05f, t.CapsuleHalfHeight, 0f),
+            Grounded = true,
+            SpeedScale = speedScale,
+        };
+        float startY = s.Position.Y;
+
+        for (int i = 0; i < 600; i++)
+        {
+            s = CharacterMovement.Step(s, East(), Dt, ground, t, RisingFaceNormalPastEdge);
+            Assert.True(s.Position.X <= EdgeX + 1e-3f, $"tick {i} climbed onto the face, x={s.Position.X:F5}");
+            Assert.True(s.Position.Y <= startY + 1e-3f, $"tick {i} gained height on the face, y={s.Position.Y:F5}");
+        }
     }
 
     // ---- Airborne: the anti-tunnel property survives ----

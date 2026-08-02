@@ -204,6 +204,86 @@ public class LandingImpactSeamTests
         Assert.Equal(0f, ecs.Get<MovementState>(e).LandingImpactSpeed);
     }
 
+    [Fact]
+    public void ShardedWorldServer_AFrameWithNoSubTick_DoesNotReReportTheLanding()
+    {
+        // The sharded head drives its cells through a fixed-tick accumulator (CellSim.Tick, maxTicksPerFrame: 1), so a
+        // frame shorter than TickSeconds produces NO movement sub-tick at all: PlayerMovementSystem never runs, nothing
+        // rewrites MovementState.LandingImpactSpeed, and a hook that fired anyway would hand a fall-damage consumer the
+        // PREVIOUS landing a second time, once per short frame. The flat head steps unconditionally per Tick and never
+        // had the gap, which is exactly why the two heads have to agree on one semantic: the hook fires after frames in
+        // which authoritative movement RAN.
+        (ShardedWorldServer server, NetClient client, ShardedWorldServerConfig cfg) = ConnectSharded();
+
+        int calls = 0;
+        var impacts = new List<float>();
+        server.OnAfterTick += _ =>
+        {
+            calls++;
+            if (server.TryGetPlayerState(client.Slot, out PlayerMoveState st) && st.Move.LandingImpactSpeed != 0f)
+                impacts.Add(st.Move.LandingImpactSpeed);
+        };
+
+        // Jump, then step FULL frames (one sub-tick each) up to and including the landing tick, so the short frames
+        // below start on the one tick where the latch is actually loaded.
+        client.Send(MoveProtocol.EncodeMove(0, Jump), NetChannelReliability.ReliableOrdered);
+        int frames = 0;
+        while (impacts.Count == 0 && frames < 90)
+        {
+            client.Send(MoveProtocol.EncodeMove(++frames, MoveCommand.Idle), NetChannelReliability.ReliableOrdered);
+            client.Poll(); server.Poll(); server.Tick(cfg.TickSeconds);
+        }
+        Assert.True(server.TryGetPlayerState(client.Slot, out PlayerMoveState landed) && landed.Grounded);
+        Assert.InRange(Assert.Single(impacts), 8f, 11f);
+        Assert.Equal(frames, calls);   // one hook call per full frame
+
+        // Three frames of a fifth of a tick each: 0.6 of a tick between them, so no sub-tick can run. The hook must
+        // not fire at all, and the landing it already reported must not be observable a second time.
+        int callsAfterLanding = calls;
+        for (int i = 0; i < 3; i++) { client.Poll(); server.Poll(); server.Tick(cfg.TickSeconds * 0.2f); }
+        Assert.Single(impacts);
+        Assert.Equal(callsAfterLanding, calls);
+
+        // Three more short frames DO complete a tick between them: exactly one movement sub-tick, so exactly one hook
+        // call, and it observes post-step state in which the latch has been rewritten to 0.
+        for (int i = 0; i < 3; i++) { client.Poll(); server.Poll(); server.Tick(cfg.TickSeconds * 0.2f); }
+        Assert.Equal(callsAfterLanding + 1, calls);
+        Assert.Single(impacts);
+    }
+
+    [Fact]
+    public void WorldServer_ShortFramesStillStepAndReportExactlyOneLanding()
+    {
+        // The mirror on the flat head, which has no accumulator: every Tick runs movement whatever the dt, so a short
+        // frame IS a movement frame - it fires the hook AND it rewrites the latch. The unified semantic therefore
+        // costs this head nothing, and the landing stays a single event across a run of short frames.
+        (WorldServer server, NetClient client, WorldServerConfig cfg) = ConnectSingle();
+
+        int calls = 0;
+        var impacts = new List<float>();
+        server.OnAfterTick += _ =>
+        {
+            calls++;
+            if (server.TryGetPlayerState(client.Slot, out PlayerMoveState st) && st.Move.LandingImpactSpeed != 0f)
+                impacts.Add(st.Move.LandingImpactSpeed);
+        };
+
+        client.Send(MoveProtocol.EncodeMove(0, Jump), NetChannelReliability.ReliableOrdered);
+        int frames = 0;
+        while (impacts.Count == 0 && frames < 90)
+        {
+            client.Send(MoveProtocol.EncodeMove(++frames, MoveCommand.Idle), NetChannelReliability.ReliableOrdered);
+            client.Poll(); server.Poll(); server.Tick(cfg.TickSeconds);
+        }
+        Assert.True(server.TryGetPlayerState(client.Slot, out PlayerMoveState landed) && landed.Grounded);
+        Assert.InRange(Assert.Single(impacts), 8f, 11f);
+        Assert.Equal(frames, calls);
+
+        for (int i = 0; i < 6; i++) { client.Poll(); server.Poll(); server.Tick(cfg.TickSeconds * 0.2f); }
+        Assert.Equal(frames + 6, calls);   // every Tick stepped movement, so every Tick fired the hook
+        Assert.Single(impacts);            // and none of them re-reported the landing
+    }
+
     // ---- Teleport ----
 
     [Fact]

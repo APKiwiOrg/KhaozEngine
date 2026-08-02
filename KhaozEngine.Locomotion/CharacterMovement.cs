@@ -745,10 +745,14 @@ public static partial class CharacterMovement
         // Defense-in-depth: a finite input state must never produce a non-finite result. A pathological command is
         // gated out upstream, but a misbehaving ground/bound/tuning value could inject a NaN/Inf that would slip
         // past every clamp and replicate; hold the last good state instead of propagating a poisoned position.
+        // The fallback holds the last good POSE, and a per-tick EVENT is not pose: LandingImpactSpeed is zeroed on the
+        // way out, because handing back the previous state wholesale re-emits the landing tick's impact on EVERY
+        // poisoned tick, and a consumer reading it from OnAfterTick would apply that one landing's fall damage over
+        // and over for as long as the delegate misbehaves.
         return IsFinite(result.Position) && float.IsFinite(result.VerticalVelocity) &&
                float.IsFinite(result.ClimbRate) && float.IsFinite(result.ClimbRateEwma) &&
                float.IsFinite(result.StepDeltaY) && IsFinite(result.HorizontalVelocity) && float.IsFinite(result.FacingYaw)
-            ? result : state;
+            ? result : state with { LandingImpactSpeed = 0f };
     }
 
     /// <summary>True when every component of <paramref name="v"/> is finite (neither NaN nor infinite).</summary>

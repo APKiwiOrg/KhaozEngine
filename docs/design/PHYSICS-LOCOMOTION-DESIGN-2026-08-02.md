@@ -76,12 +76,19 @@ current stepper now.** #371 closes with this spec as its answer. Phase 2 gets it
 `AdvanceSlopeGated` (`CharacterMovement.Momentum.cs:144`) currently rejects any XZ move whose
 destination ground normal exceeds `MaxSlopeRadians`, regardless of direction. New rule:
 
-> A too-steep destination blocks the move only when its ground height is above the character's feet
-> by more than an ascent tolerance. Descent and level traversal fall through to gravity.
+> A too-steep destination blocks the move only when this tick climbs onto it faster than the gate's
+> own gradient. Descent and level traversal fall through to gravity.
 
 - The gate gains the `groundHeight` delegate alongside `groundNormal`. Blocked iff
-  `steep(destNormal) && groundHeight(dest) > feetY + tolerance`. The tolerance is a small constant
-  tied to the existing skin/step constants, chosen by the implementation with tests, not a new knob.
+  `steep(destNormal) && rise > max(noise, travel * tan(MaxSlopeRadians))`, where `rise` is
+  `groundHeight(dest) - feetY` and `travel` is the tick's intended horizontal distance. The
+  allowance is a GRADIENT, not a height: it asks whether the tick rises faster than the steepest
+  walkable ramp would over the same ground, so a face past the gate blocks at every speed and every
+  tick rate. The first cut used a fixed height (the skin width) and review found the hole that
+  leaves: any mover whose per-tick rise stayed under it (a slowed character, a short steering
+  vector, a high tick rate) climbed an arbitrarily steep face a fraction of a centimetre at a time.
+  The absolute term survives only as a noise floor for a near-level traverse across a steep face.
+  Neither term is a knob: `tan(MaxSlopeRadians)` is the existing gate read as a gradient.
 - Grounded walk toward a cliff edge now proceeds, the support-floor logic finds no walkable floor,
   the character goes airborne, and gravity does the rest. This is the same asymmetry the Bepu-backed
   collide-and-slide already applies (`CharacterMovement.Collision.cs:232-252`), extended to the
@@ -107,6 +114,11 @@ destination ground normal exceeds `MaxSlopeRadians`, regardless of direction. Ne
   post-movement hook, the mirror of `OnBeforeTick`. This is a genuine missing seam (Ruinborne's
   `DeadPlayerMovementLock.cs:8-13` documents working around its absence) and is where a game reads
   landing impacts, applies fall damage, and generally observes post-step state without waiting a tick.
+  One semantic on both heads: it fires after frames in which authoritative movement RAN. That is
+  every `Tick` on the flat head, which steps unconditionally, and only the frames that produce a
+  sub-tick on the sharded head, whose cells run off a fixed-tick accumulator. Without the qualifier
+  a sharded frame shorter than `TickSeconds` re-delivers the previous landing, once per short frame,
+  which is a duplicate application of fall damage rather than a missed one.
 - Surfaced on `EntityRenderState` for the local player (predicted), so client presentation can react
   on the predicted landing tick.
 - Teleports must not fabricate an impact: a teleport mid-fall resets the vertical bookkeeping, and a
@@ -169,10 +181,13 @@ Headless, in the existing per-area projects, following the both-heads parity idi
 
 - Slope gate: grounded walk off a steep edge proceeds and goes airborne. Grounded walk into a steep
   rise stays blocked. Airborne drift into a face is blocked (no tunnel, no pop-up). Step-up onto a
-  legal riser is unaffected. Air-momentum path gets the same four.
+  legal riser is unaffected. Air-momentum path gets the same four. Scale-freeness gets its own set:
+  a steep face fences a full-speed walk, a crawling steering vector, a heavy slow, and a 1000 Hz
+  tick alike, and one fixture at one rise gives opposite answers at two speeds.
 - Landing: impact speed equals the pre-landing downward speed on exactly the landing tick and is
   zero before and after. Jump-and-land round trip. Teleport mid-fall reports only the post-teleport
-  fall. `OnAfterTick` fires after movement with post-step state visible, on both heads.
+  fall. `OnAfterTick` fires after movement with post-step state visible, on both heads, and a
+  sharded frame too short to produce a sub-tick fires nothing rather than re-reporting the landing.
 - Facing: converges to camera yaw under `FaceCamera` while stationary and while strafing. Follows
   the move direction without it. Holds heading when idle. Shortest-arc wrap at the seam. Finite
   `FacingTurnSpeed` turns at the configured rate identically on both heads. Reconcile parity: a

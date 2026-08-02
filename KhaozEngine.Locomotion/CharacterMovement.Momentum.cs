@@ -28,15 +28,15 @@ public static partial class CharacterMovement
     // never a thousandth of it.
     private const float ClipUndeniedTolerance = 1e-3f;
 
-    // How far above the FEET a too-steep destination's ground may stand and still be walked onto, in metres. This is
-    // the whole difference between an ascent and a descent in AdvanceSlopeGated, so it is deliberately the surface-
-    // contact skin (SkinWidth, CharacterMovement.Collision.cs) and not a new tuning knob: the same epsilon that
-    // decides "the capsule is resting on this surface" decides "the ground is at my feet rather than above them",
-    // and one constant cannot be tuned into a free climb the way a knob could. It has to be big enough to absorb
-    // float noise in the height comparison (~1e-4 m at overworld altitudes, so 100x margin) and small enough that a
-    // real ascent never fits under it: even at the 45 deg gate itself, one 30 Hz walk step rises 0.2 m, twenty times
-    // this, so a steep face is refused on the first tick that meets it whatever the tick rate.
-    private const float SlopeAscentTolerance = SkinWidth;
+    // The floor under the slope gate's ascent test, in metres: a rise smaller than this is noise, not a climb, and is
+    // never refused however slow the tick. It exists only to keep a near-level traverse ACROSS a steep face (where the
+    // analytic height ripples by a rounding step) from reading as an ascent. It is NOT the ascent allowance - that is a
+    // gradient, see AdvanceSlopeGated - and it can never be ridden into a climb, because it only outranks the gradient
+    // term below a millimetre of travel per tick (3 cm/s at 30 Hz), where a fully permitted 1 mm rise is a crawl no
+    // player is doing on purpose. Sized an order of magnitude above the float noise the height comparison carries at
+    // ordinary overworld altitudes (~1e-4 m, and a couple of ulps even at 4 km up, where a float's own step is ~5e-4 m),
+    // and 200x below what one 30 Hz walk step is allowed to rise at the default 45 deg gate.
+    private const float SlopeAscentNoise = 1e-3f;
 
     /// <summary>One airborne tick under <see cref="MoveTuning.AirMomentum"/>: resolve the intended velocity from the
     /// carried one plus the command, then advance the XZ through the same slope gate the ordinary command path uses.
@@ -147,10 +147,10 @@ public static partial class CharacterMovement
 
     /// <summary>Advance an XZ position by a horizontal velocity for one tick, subject to the DIRECTION-AWARE terrain
     /// slope gate: when a <paramref name="groundNormal"/> delegate is supplied, the ground at the DESTINATION is
-    /// steeper than <see cref="MoveTuning.MaxSlopeRadians"/>, AND that ground stands more than
-    /// <c>SlopeAscentTolerance</c> above <paramref name="feetY"/>, the whole move is refused and the position is
-    /// unchanged. Shared by the ordinary command path (<c>DesiredHorizontalCore</c>) and the momentum path above, so
-    /// the gate cannot come to mean two different things depending on which one drove the tick.
+    /// steeper than <see cref="MoveTuning.MaxSlopeRadians"/>, AND this tick's rise onto it is steeper than the gate
+    /// itself (see the ascent rule below), the whole move is refused and the position is unchanged. Shared by the
+    /// ordinary command path (<c>DesiredHorizontalCore</c>) and the momentum path above, so the gate cannot come to
+    /// mean two different things depending on which one drove the tick.
     /// <para>Only an ASCENT is refused. A steep normal alone says nothing about direction, so reading it on its own
     /// blocked walking OFF a cliff exactly like walking INTO one: the analytic-terrain path had no way to tell the two
     /// apart, and an overworld cliff edge behaved as a wall. A descent or a level traverse now falls through, the
@@ -161,6 +161,27 @@ public static partial class CharacterMovement
     /// still refused, so an XZ can never be committed under terrain and left for a later ground clamp to pop the
     /// capsule up the cliff. Standing on a prop at the cliff top raises the feet with it, so stepping off still
     /// reads as the descent it is.</para>
+    /// <para>THE ASCENT ALLOWANCE IS A GRADIENT, NOT A HEIGHT, and that is what makes the gate scale-free. The rise is
+    /// measured against the horizontal travel this tick actually intended: the move is refused when
+    /// <c>rise &gt; max(SlopeAscentNoise, travel * tan(MaxSlopeRadians))</c>, which asks whether the tick climbs faster
+    /// than the steepest WALKABLE ramp would have climbed over the same ground. A fixed height cannot ask that
+    /// question, and the version that tried made the answer depend on speed: the same face was refused at 6 m/s and
+    /// walked up at 6 cm/s, because a slow enough tick (a snared or slowed character, a short steering vector, a high
+    /// tick rate) rises less than ANY fixed number. Two properties come out of the gradient form. A character standing
+    /// ON a face of angle <c>a</c> rises <c>travel * tan(a)</c> per tick, and both sides of the comparison carry the
+    /// same <c>travel</c>, so a face steeper than the gate is refused at every speed and every tick rate. And a
+    /// character still on the flat below such a face can only enter the fraction of it that keeps the rise inside the
+    /// ramp's, so the most it ever gains is ONE tick's ramp rise, once, after which it is standing on the face and
+    /// fenced. Nothing accumulates, which is the whole failure mode being closed.</para>
+    /// <para><c>tan(MaxSlopeRadians)</c> is the gate angle read as a gradient, not a new knob: there is nothing here to
+    /// tune that the gate does not already say. It cannot be frozen into a literal either, because it has to follow the
+    /// consumer's gate - pin it at 1 (the default 45 deg) and a game running a 30 deg gate would let a 40 deg face
+    /// through, since that face rises 0.84 m per metre while the literal demands 1. The tangent is evaluated only
+    /// inside the too-steep branch, where <see cref="MathF.Acos"/> has already established a gate below <c>pi/2</c>, so
+    /// it is finite and positive there. A nonsense negative gate yields a negative one and the noise floor takes
+    /// over, which refuses the ascent, the safe direction. It is one more transcendental on a line that already runs
+    /// <see cref="MathF.Acos"/> on the same tuning value, so the two heads' agreement rests on exactly what it rested
+    /// on before.</para>
     /// <para><c>active</c> false is a tick with nothing to advance, and it skips the gate entirely rather than
     /// evaluating the delegate at the unchanged position. It is passed in rather than derived from the velocity so an
     /// idle tick and a rooted-at-zero-speed tick keep their existing, and different, delegate-call behaviour: the
@@ -179,8 +200,18 @@ public static partial class CharacterMovement
         if (groundNormal is not null)
         {
             float ny = Math.Clamp(groundNormal(nx, nz).Y, 0f, 1f);
-            if (MathF.Acos(ny) > tuning.MaxSlopeRadians && groundHeight(nx, nz) > feetY + SlopeAscentTolerance)
-                return (x, z);
+            if (MathF.Acos(ny) > tuning.MaxSlopeRadians)
+            {
+                // Pure scalar arithmetic in a fixed order, evaluated in the same sequence on both heads. The rise is
+                // read first because a descent or a level traverse (the common steep-destination case, a cliff edge)
+                // settles it without the travel or the tangent being touched at all.
+                float rise = groundHeight(nx, nz) - feetY;
+                if (rise > SlopeAscentNoise)
+                {
+                    float travel = MathF.Sqrt(velocity.X * velocity.X + velocity.Y * velocity.Y) * dt;
+                    if (rise > travel * MathF.Tan(tuning.MaxSlopeRadians)) return (x, z);
+                }
+            }
         }
         return (nx, nz);
     }

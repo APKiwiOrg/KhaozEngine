@@ -21,8 +21,8 @@ namespace KhaozEngine.Tests.Gpu
     /// logic rather than a copy of it.
     /// </para>
     /// <para>
-    /// NOTHING CONSTRUCTS ONE OF THESE ON A SHIPPED PATH YET. Device creation still throws, so the swapchain has
-    /// no caller until the device row wires it up, exactly like every row before this one.
+    /// THE CALLER IS THE DEVICE, which builds one on the windowed path and none when headless, and drives the
+    /// present boundary through it. Everything asserted here is still device-free, over a fake surface.
     /// </para>
     /// </summary>
     public sealed class D3D11SwapchainTests

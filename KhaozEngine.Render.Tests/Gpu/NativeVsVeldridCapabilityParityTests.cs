@@ -14,23 +14,22 @@ namespace KhaozEngine.Tests.Gpu
     /// field, with <see cref="GpuCapabilities.SupportsCompletionFences"/> asserted as the ONE permitted
     /// difference (decisions G1 and C5, section 11 of the design doc).
     ///
-    /// <para><b>THE SPLIT, STATED PLAINLY, because half of what T4 asks for cannot exist yet.</b> The native
-    /// device is not creatable: <c>D3D11BackendProvider.CreateHeadless</c> still throws, so nothing in this
-    /// process can produce a native <see cref="GpuCapabilities"/> off a real device today. Rather than pretend
-    /// otherwise, this file is two halves:
+    /// <para><b>THE SPLIT, AND THE DORMANCY THAT ENDED.</b> This file is two halves, and the second one went
+    /// live with the device row (https://github.com/APKiwiOrg/KhaozEngine/issues/497):
     /// <list type="bullet">
-    ///   <item><description><b>The device-free half runs everywhere, now.</b> Everything that DECIDES a
+    ///   <item><description><b>The device-free half runs everywhere.</b> Everything that DECIDES a
     ///   capability from a probed input is engine logic in <see cref="D3D11CapabilityRead"/>: the five constants,
     ///   the descending sample-count walk, the min-over-three-formats fold, the adapter-name NUL cut, and the
     ///   out-of-range sample-count guard. Those are plain <c>[Fact]</c>s here, on macOS and Linux, driven off
     ///   fakes. So is the COMPARER itself, plus a reflection check that it covers every member of
     ///   <see cref="GpuCapabilities"/>, which is the guard that matters most: a member appended to that struct
     ///   without being added to the comparison would otherwise make the parity assertion silently weaker.</description></item>
-    ///   <item><description><b>The two-device half is a <c>[GpuFact]</c> and lands DORMANT.</b> It creates both
-    ///   devices in one process and compares them, and it returns early on the exact exception the unbuilt
-    ///   provider raises. That dormancy is keyed to <see cref="NotSupportedException"/>, which is what
-    ///   <c>D3D11BackendProvider</c> throws while creation is unbuilt, so the day the device row lands this test
-    ///   starts running with no edit here. Every other failure fails.</description></item>
+    ///   <item><description><b>The two-device half is a <c>[GpuFact]</c> and it now CREATES BOTH DEVICES.</b> It
+    ///   landed dormant, keyed to the <see cref="NotSupportedException"/> the unbuilt provider raised, and that
+    ///   key is gone: creation is real, so a native device that refuses to be created is a failure rather than a
+    ///   reason to skip. The two early returns left are facts about the MACHINE (not Windows, or an incumbent
+    ///   that did not come up on Direct3D11), and they are what make it a parity test rather than a Windows-only
+    ///   one.</description></item>
     /// </list></para>
     ///
     /// <para><b>Why the MSAA member is the one to care about.</b> A different answer there silently changes what
@@ -222,19 +221,19 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         // ---------------------------------------------------------------------------------------------------
-        // The two-device half. Dormant until the device row lands.
+        // The two-device half. Live since the device row.
         // ---------------------------------------------------------------------------------------------------
 
         /// <summary>
         /// DECISION T4 ITSELF: both devices in one process, both capability sets read, every member compared, and
         /// completion fences asserted as the only difference.
         /// <para>
-        /// Returns early, having asserted nothing, in three cases, and each is a fact about the machine rather
-        /// than about the code: not Windows, the incumbent device is not Direct3D11 (so there is nothing to be at
-        /// parity WITH), or the native provider cannot create a device yet. That third one is keyed to
-        /// <see cref="NotSupportedException"/>, which is exactly what <c>D3D11BackendProvider</c> throws while
-        /// creation is unbuilt, so this becomes live on its own the day that changes. Every other exception fails
-        /// the test.
+        /// Returns early, having asserted nothing, in TWO cases, and both are facts about the machine rather than
+        /// about the code: not Windows, or the incumbent device did not come up on Direct3D11, so there is
+        /// nothing to be at parity WITH. The third early return this test shipped with is gone: it caught the
+        /// <see cref="NotSupportedException"/> the provider raised while creation was unbuilt, and creation is
+        /// built, so a native device that will not create is now a failure of exactly the kind this test exists
+        /// to report.
         /// </para>
         /// </summary>
         [GpuFact]
@@ -254,16 +253,7 @@ namespace KhaozEngine.Tests.Gpu
             }
 
             IGpuBackendProvider provider = GpuBackendProviders.Require(GpuBackendKind.Direct3D11Native);
-            GpuProviderDevice created;
-            try
-            {
-                created = provider.CreateHeadless();
-            }
-            catch (NotSupportedException ex)
-            {
-                _out.WriteLine($"dormant: the native backend cannot create a device yet ({ex.Message})");
-                return;
-            }
+            GpuProviderDevice created = provider.CreateHeadless();
 
             using IGpuDevice native = created.Device;
             GpuCapabilities fromVeldrid = incumbent.Capabilities;

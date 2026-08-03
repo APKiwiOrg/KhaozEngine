@@ -242,6 +242,20 @@ from 46 and 47 degrees to 49 (one past gate plus band), and the wire-ceiling fix
 `KhaozEngine.Locomotion/CharacterMovement.Traction.cs`, with `TractionHysteresisTests` carrying the chatter repro,
 its zero-knob control, the asymmetry, the band ceiling and the four ramp probe points.
 
+**Review folds.** The acceptance sweep gained a SECOND face, this one INSIDE the ramp: 46.0 to 47.1 degree planes
+under the same smoothing stencil, at a friction scale of 0.12 to 0.26, ridden by the same 360 headings at the same
+four tick rates from a no-footing start. It reports 0 climbers, 0 footing grants, 0 jumps and a worst peak of
+0.000 m across its own 5760 rides, every one of which ends 226 to 579 m below its start. The bar now covers the
+domain where the new arithmetic actually runs, not only the one where it saturates. `CharacterController3D`'s knob
+defaults are pinned against `MoveTuning.Default` by reflection over every mirrored field, so the
+literal-for-literal claim is enforced rather than hand-maintained. Two comments were corrected rather than
+softened: a friction scale of exactly zero at the gate FREEZES the fall line, so gravity's pull is not compulsory
+there, and the slide's 1 mm rise slack is then exposed at up to a millimetre a tick, which needs both a normal
+delegate that disagrees with its own height field and a rising contour, and creeps only onto ground the height
+field itself reads walkable. The band's surprising play consequence is now stated where the knob is documented: on
+band-held ground a jump converts a stable stand into a slide, because the launch tick ends un-grounded and the
+landing is judged at the bare gate.
+
 ## 17.29.0
 
 ### The ground clamp stops lifting capsules that have no footing (#468)

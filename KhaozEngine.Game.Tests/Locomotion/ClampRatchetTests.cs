@@ -84,15 +84,21 @@ public partial class ClampRatchetTests
     static float Face(float x, float z) => Ramp(x, GradXLow, GradXHigh) + Ramp(z, GradZLow, GradZHigh);
 
     // The SMOOTHED normal: a central difference over a stencil wider than the crease spacing.
-    static Vector3 FaceNormal(float x, float z)
+    static Vector3 SmoothedNormal(Func<float, float, float> face, float x, float z)
     {
-        float dhdx = (Face(x + NormalStencil, z) - Face(x - NormalStencil, z)) / (2f * NormalStencil);
-        float dhdz = (Face(x, z + NormalStencil) - Face(x, z - NormalStencil)) / (2f * NormalStencil);
+        float dhdx = (face(x + NormalStencil, z) - face(x - NormalStencil, z)) / (2f * NormalStencil);
+        float dhdz = (face(x, z + NormalStencil) - face(x, z - NormalStencil)) / (2f * NormalStencil);
         return Vector3.Normalize(new Vector3(-dhdx, 1f, -dhdz));
     }
 
-    static Func<float, float, float> Ground => Face;
-    static Func<float, float, Vector3> Normals => FaceNormal;
+    static Vector3 FaceNormal(float x, float z) => SmoothedNormal(Face, x, z);
+
+    // A face a case rides: the height field the capsule stands on, and the normal delegate the engine classifies
+    // with. They are carried as a PAIR because their disagreement is the engine of every failure in this file, so a
+    // case that rides one without the other is not riding this fixture at all. The sweep file adds a second one.
+    internal readonly record struct Fixture(Func<float, float, float> Ground, Func<float, float, Vector3> Normals);
+
+    static Fixture Cliff => new(Face, FaceNormal);
 
     // The UPHILL horizontal direction at a point, read off the same smoothed normal the engine reads: the normal's
     // XZ projection points DOWN the fall line, so its negation points up it.
@@ -115,19 +121,20 @@ public partial class ClampRatchetTests
 
     const float StartX = 2f, StartZ = 2f;
 
-    static MoveState Seed(in MoveTuning t) => new()
+    static MoveState Seed(in MoveTuning t, in Fixture f) => new()
     {
-        Position = new Vector3(StartX, Face(StartX, StartZ) + t.CapsuleHalfHeight, StartZ),
+        Position = new Vector3(StartX, f.Ground(StartX, StartZ) + t.CapsuleHalfHeight, StartZ),
         Grounded = false,
         TimeSinceGrounded = 1f,   // the coyote window is long expired, so no jump can fire off the seed
     };
 
     // The whole run in one shape: hold a heading for a window of TIME (so the tick-rate rows all cover the same
-    // seconds of contact) and report what the face gave back.
-    static (float peak, float final, int grants, int jumps) Ride(in MoveTuning t, Vector2 heading, bool run,
-        bool jump, float dt, float seconds)
+    // seconds of contact) and report what the face gave back. The seed is deliberately UN-grounded on every face
+    // this takes, so every ride is judged at the bare gate and no hysteresis band is ever in play.
+    static (float peak, float final, int grants, int jumps) Ride(in MoveTuning t, in Fixture f, Vector2 heading,
+        bool run, bool jump, float dt, float seconds)
     {
-        MoveState s = Seed(t);
+        MoveState s = Seed(t, f);
         float startFeet = s.Position.Y - t.CapsuleHalfHeight;
         float peak = 0f;
         int grants = 0, jumps = 0;
@@ -138,16 +145,16 @@ public partial class ClampRatchetTests
             float feetStart = s.Position.Y - t.CapsuleHalfHeight;
             float vStart = s.VerticalVelocity;
 
-            s = CharacterMovement.Step(s, Toward(heading, run, jump), dt, Ground, t, Normals);
+            s = CharacterMovement.Step(s, Toward(heading, run, jump), dt, f.Ground, t, f.Normals);
             float feet = s.Position.Y - t.CapsuleHalfHeight;
             peak = MathF.Max(peak, feet - startFeet);
             if (s.Grounded || s.SupportGranted) grants++;
             if (s.VerticalVelocity == t.JumpSpeed) jumps++;
             // NEVER INSIDE TERRAIN: the ground clamp still forbids penetration, which is the property the fix must
             // not trade away. Refusing the raise outright would buy the invariant with a tunnel.
-            Assert.True(feet >= Face(s.Position.X, s.Position.Z) - 1e-3f,
+            Assert.True(feet >= f.Ground(s.Position.X, s.Position.Z) - 1e-3f,
                 $"tick {i} left the capsule under terrain, feet={feet:F5}, " +
-                $"ground={Face(s.Position.X, s.Position.Z):F5}");
+                $"ground={f.Ground(s.Position.X, s.Position.Z):F5}");
 
             // THE PER-TICK INVARIANT, checked on EVERY tick of EVERY case in this file rather than as a case of its
             // own. It is the aggregate assertions' missing half: every other measurement here is a total (a peak, a
@@ -202,7 +209,7 @@ public partial class ClampRatchetTests
         // Measured here before the fix: 17.15 m over 80 seconds, with zero footing grants and zero jumps - the
         // ratchet needs neither, which is what makes it invisible to every anti-cheat signal the sim exported.
         var t = WalkUpTuning;
-        (float peak, float final, int grants, int jumps) = Ride(t, Uphill(StartX, StartZ), run: false, jump: false,
+        (float peak, float final, int grants, int jumps) = Ride(t, Cliff, Uphill(StartX, StartZ), run: false, jump: false,
             Dt, seconds: 80f);
 
         string measured = $"peak {peak:F3} m above the start, final {final:F3} m, grants {grants}, jumps {jumps}";
@@ -221,7 +228,7 @@ public partial class ClampRatchetTests
         // line shrinks the per-tick ask by cos(50) and slips a full-speed run under the StepHeight admission that
         // refuses it head-on. Measured before the fix at the engine default tuning: 404.6 m in 80 seconds.
         var t = Tuning;
-        (float peak, float final, int grants, int jumps) = Ride(t, Rotate(Uphill(StartX, StartZ), 50f), run: true,
+        (float peak, float final, int grants, int jumps) = Ride(t, Cliff, Rotate(Uphill(StartX, StartZ), 50f), run: true,
             jump: true, Dt, seconds: 80f);
 
         string measured = $"peak {peak:F3} m above the start, final {final:F3} m, grants {grants}, jumps {jumps}";
@@ -244,7 +251,7 @@ public partial class ClampRatchetTests
         // 76.7 m at 15 Hz, 404.6 at 30, 1059.0 at 60 and 1438.6 at 120. The fix is scale-free instead - the
         // allowance IS the tick's own resolved vertical motion, which shrinks with dt exactly as the ask does.
         var t = Tuning;
-        (float peak, float final, _, _) = Ride(t, Rotate(Uphill(StartX, StartZ), 50f), run: true, jump: true, dt,
+        (float peak, float final, _, _) = Ride(t, Cliff, Rotate(Uphill(StartX, StartZ), 50f), run: true, jump: true, dt,
             seconds: 80f);
 
         Assert.True(peak <= SlideTransient,
@@ -265,7 +272,7 @@ public partial class ClampRatchetTests
         // 1 to 3 degrees. Measured here before the fix: 111 grants in 2400 ticks. A face is not a wedge, whatever
         // the shortfall says, and the fall-line fan is what tells the two apart.
         var t = Tuning;
-        (_, _, int grants, _) = Ride(t, Uphill(StartX, StartZ), run: false, jump: false, Dt, seconds: 80f);
+        (_, _, int grants, _) = Ride(t, Cliff, Uphill(StartX, StartZ), run: false, jump: false, Dt, seconds: 80f);
 
         Assert.Equal(0, grants);
     }

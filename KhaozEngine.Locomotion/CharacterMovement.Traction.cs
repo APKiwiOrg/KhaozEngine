@@ -103,9 +103,13 @@ public static partial class CharacterMovement
     ///
     /// <para>AT OR UNDER THE GATE THE SCALE IS ZERO, which a sliding tick can only reach when the consumer's
     /// classification and its height field disagree about a patch (the classification called it steep, the heights
-    /// say it is standable). The body then keeps whatever carry it arrived with and gains nothing, which is the same
-    /// honest rest the <c>h ~ 0</c> case already produced there. It is never a climb: no acceleration is no
-    /// altitude.</para>
+    /// say it is standable). The fall line is then FROZEN: the body keeps whatever carry it arrived with, and gravity
+    /// neither adds to it nor takes from it, which is the same honest rest the <c>h ~ 0</c> case already produced
+    /// there. "No acceleration is no altitude" was the claim here, and it was too strong. A frozen fall line is the
+    /// one state in which a body can hold a RISING contour, so it can creep upward at up to the slide's rise slack
+    /// per tick (1 mm), and only across ground the height field itself reads walkable, since the scale leaves zero
+    /// the moment the plane under the capsule passes the gate. See <c>SlideRiseSlack</c> in
+    /// <c>CharacterMovement.Slide.cs</c> for that bound and why it is the ramp's honest cost.</para>
     ///
     /// <para>A ramp that is zero, negative, or NaN turns friction OFF (scale 1, the pre-17.30.0 full-strength slide),
     /// which is what a <c>default(MoveTuning)</c> reads and is the same harmless direction

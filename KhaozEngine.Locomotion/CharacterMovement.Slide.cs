@@ -91,9 +91,10 @@ public static partial class CharacterMovement
 
     // The smallest slope gate the SLIDE will read, in radians (~0.06 degrees). Not a clamp on the tuning: a game
     // keeps whatever MaxSlopeRadians it set, and the support decision, the wall contact and the slide contact all
-    // still ask IsSteepGround about the raw value. This floors ONE thing, the terminal divide's view of the gate,
-    // because that divide reads MaxFallSpeed / h and h is bounded below by sin(gate). A gate of zero (or negative,
-    // which calls even level ground steep) makes that bound zero, and the smallest non-zero h a float normal can
+    // still ask IsSteepGround about the tick's resolved gate (TractionGate) with no floor of their own. This floors
+    // ONE thing, the terminal divide's view of that gate, because that divide reads MaxFallSpeed / h and h is
+    // bounded below by sin(gate). A gate of zero (or negative, which calls even level ground steep) makes that
+    // bound zero, and the smallest non-zero h a float normal can
     // express is about 3.5e-4 - so an unfloored divide hands back a terminal of ~144000 m/s on a surface a
     // fraction of a degree off level. Floored, the worst case is MaxFallSpeed / sin(this), and the wire ceiling
     // below is the second, independent bound on what can actually be committed.
@@ -329,16 +330,26 @@ public static partial class CharacterMovement
     // this one constant is not. It stays a constant anyway: it covers the ROUNDING of a difference of world heights,
     // and rounding does not get smaller when the tick does.
     //
-    // WHY THE WORST CASE IS NOT REACHABLE, stated honestly - the earlier argument here ("input has no authority over
-    // the fall line, so there is no dial") was true and beside the point, because the collector would be geometry
-    // rather than input. The real reason is that COLLECTING IT REQUIRES HOLDING A CONTOUR AND GRAVITY WILL NOT LET
-    // YOU. To bank a millimetre every tick the surface under the capsule must rise, tick after tick, by between zero
-    // and one millimetre more than that tick's own descent - which is to say the body must track a near-level contour
-    // across the face indefinitely. It cannot: gravity's pull along the fall line is compulsory and accumulates every
-    // tick regardless of input, the steer is confined to the contour axis and adds nothing to the carry, so any body
-    // that starts on a contour is accelerating off it down the fall line by the next tick. A contour hold is not a
-    // thing a player can sustain, so neither is the worst case. The heading sweep in ClampRatchetTests measures this
-    // rather than arguing it: 360 headings at four tick rates, none of which nets above its start.
+    // WHY THE WORST CASE IS OUT OF REACH WHERE GRAVITY IS PULLING. To bank a millimetre every tick the surface under
+    // the capsule must rise, tick after tick, by between zero and one millimetre more than that tick's own descent,
+    // which is to say the body must hold a near-level contour across the face indefinitely. Wherever the friction
+    // scale is non-zero it cannot: the fall-line pull accumulates every tick regardless of input, the steer is
+    // confined to the contour axis and adds nothing to the carry, so a body that starts on a contour is accelerating
+    // off it down the fall line by the next tick.
+    //
+    // THE SCALE CAN BE EXACTLY ZERO, THOUGH, so that pull is NOT compulsory, and the earlier claim here that it was
+    // is corrected rather than softened. SlideFrictionScale returns 0 at or under the gate, which FREEZES the fall
+    // line: the carry neither grows nor decays, and a body with contour speed holds its line for as long as it has
+    // one. The exposure that opens is bounded on three sides. It is this slack per tick and no more (0.03 m/s at
+    // 30 Hz, 0.12 at 120). It needs BOTH a consumer whose normal delegate calls a patch steep while that consumer's
+    // own height field calls it standable, which is the only way a sliding tick reaches a zero scale at all, and a
+    // contour under the body that RISES. And it creeps only across ground the height field itself reads walkable,
+    // because the scale leaves zero the moment the plane under the capsule passes the gate. A millimetre a tick onto
+    // ground the consumer's own geometry says a character could have walked up is the honest cost of the 17.30.0
+    // ramp, and it is not the #440 ratchet, which bought altitude on ground nothing could stand on.
+    //
+    // The heading sweeps in ClampRatchetSweepTests measure both regimes rather than arguing them: 360 headings at
+    // four tick rates on a face far past the ramp, and the same circle on a face inside it.
     private const float SlideRiseSlack = 1e-3f;
 
     /// <summary>The rise allowance for a SLIDING tick: the same rule <see cref="NoFootingReach"/> states (a tick

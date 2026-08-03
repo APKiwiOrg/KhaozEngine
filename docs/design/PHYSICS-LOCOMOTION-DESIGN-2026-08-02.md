@@ -520,15 +520,19 @@ to `MaxSlopeRadians + MoveTuning.TractionHysteresisRadians`. A character that ha
 `MaxSlopeRadians`. That is the whole rule. The band is a ceiling on what footing may KEEP and never a route to
 footing, so landing on, sliding onto, or grazing ground past the gate still grants nothing, and the steepest ground a
 body can end up standing on is exactly gate plus band by any route it takes. The memory is `MoveState.Grounded`,
-which the sim already carries and the wire has replicated since generation 10, so this adds no state anywhere and
-survives a reconcile replay for free. The default band is 3 degrees, which covers every straddle in the measurements
+which the sim already carries and the wire has replicated since the movement state's first generation (it predates
+every "added in generation N" annotation on `MovementState`), so this adds no state anywhere and survives a
+reconcile replay for free. The default band is 3 degrees, which covers every straddle in the measurements
 above (the worst excursion above a gate was 2.8 degrees) with margin, and stays inside terrain a player still reads
 as a steep hillside.
 
 **The consequence that IS the mechanism, stated plainly so nobody reads it as a leak.** A uniform face at gate plus
 two is now walkable, indefinitely, by a character that walks onto it from adjacent walkable ground. That is not a
 side effect of hysteresis, it is hysteresis. The same face refuses a body that arrives falling. Two characters on the
-same column can disagree about whether it holds them, and the one that is already standing is right.
+same column can disagree about whether it holds them, and the one that is already standing is right. The play
+consequence that surprises, and is correct: on band-held ground a JUMP converts a stable stand into a slide, because
+the launch tick ends un-grounded and the landing is judged at the bare gate, so the column that was holding the
+character refuses it on the way back down.
 
 **Slide friction: the fall-line acceleration ramps in.** The scale is
 `clamp((surface slope - MaxSlopeRadians) / MoveTuning.SlideFrictionRampRadians, 0, 1)`, default ramp 8 degrees, and
@@ -570,3 +574,10 @@ BIT-IDENTICAL rather than merely passing: its face runs 68.6 to 77.1 degrees, mo
 ramp so the friction scale is 1 and short-circuits, and it never grants footing so the gate is never widened.
 Measured with both mechanisms active, 5760 rides and 4.9 million ticks: 0 climbers, 0 footing grants, 0 jumps, worst
 peak 0.000 m at every rate.
+
+That last sentence is also the instrument's own gap, and review folded a SECOND sweep in beside it: same circle,
+same four rates, same bound, on a face whose planes run 46.0 to 47.1 degrees under the same smoothing stencil, so
+the friction scale is 0.12 to 0.26 and the arithmetic this round added is what the sweep is measuring. A weak pull
+is the adversarial direction for round three rather than a gentler one, because the ratchet was a race between a
+command tick's rise and a slide tick's drop and this face shrinks the drop. Another 5760 rides: 0 climbers, 0
+grants, 0 jumps, worst peak 0.000 m, every ride ending 226 to 579 m below its start.

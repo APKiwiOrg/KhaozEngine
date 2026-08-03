@@ -191,8 +191,9 @@ public class SlopeSlideReconcileParityTests
         // WHY THIS EXISTS. #475 made the walkability decision STATE-DEPENDENT: a character that already has footing
         // keeps it up to MaxSlopeRadians plus a band, and one that does not is judged at the bare gate. That gives the
         // decision a MEMORY, and a memory is the thing a reconcile has to be able to reproduce. The memory chosen is
-        // MoveState.Grounded, precisely because it has ridden the wire since generation 7 and
-        // PlayerMoveState.From already decodes it - so there is nothing new to replicate. This case is what turns
+        // MoveState.Grounded, precisely because it has ridden the wire since the movement state's FIRST generation
+        // (it predates every "added in generation N" annotation on MovementState) and PlayerMoveState.From already
+        // decodes it - so there is nothing new to replicate. This case is what turns
         // that from an argument into a measurement.
         //
         // The fixture is 47 degrees, two past the shipped 45 degree gate and inside the 3 degree band. A character

@@ -211,7 +211,9 @@ public readonly record struct MoveTuning(
     /// <para>The band is a ceiling on what footing may KEEP and never a route to footing: a character with no footing
     /// is judged at the bare <see cref="MaxSlopeRadians"/>, so landing on, sliding onto, or grazing ground past the
     /// gate grants nothing. The steepest ground a character can end up standing on is therefore exactly
-    /// <c>MaxSlopeRadians + this</c>, by any route.</para>
+    /// <c>MaxSlopeRadians + this</c>, by any route. One play consequence of that surprises and is correct: on ground
+    /// only the band is holding, a JUMP converts a stable stand into a slide, because the launch tick ends
+    /// un-grounded and the landing is judged at the bare <see cref="MaxSlopeRadians"/>.</para>
     /// <para>0 (which is what a struct <c>default(MoveTuning)</c> reads, exactly as it reads 0 for
     /// <see cref="WalkSpeed"/>) turns hysteresis OFF and restores the bare per-tick threshold of every release before
     /// 17.30.0. A negative or NaN value reads the same way. That is the harmless degradation for an accidental

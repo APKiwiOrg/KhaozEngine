@@ -38,7 +38,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// </para>
     /// </summary>
     [SupportedOSPlatform("windows")]
-    internal sealed class D3D11GraphicsPipeline : IGpuPipeline, ID3D11PipelineState
+    internal sealed class D3D11GraphicsPipeline : IGpuPipeline, ID3D11PipelineState, ID3D11PipelineLayouts
     {
         readonly D3D11DeviceLiveness _liveness;
 
@@ -154,6 +154,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         /// <inheritdoc/>
         uint ID3D11PipelineState.PrimitiveTopology => _primitiveTopology;
+
+        /// <summary>The same array as <see cref="ResourceLayouts"/>, reached through the seam the bind flush asks
+        /// through. Explicit because the typed property is internal and an interface implementation cannot be, and
+        /// separate from <see cref="ID3D11PipelineState"/> because a compute pipeline answers this one and none of
+        /// the seven.</summary>
+        D3D11ResourceLayout[] ID3D11PipelineLayouts.ResourceLayouts => ResourceLayouts;
 
         public void Dispose()
         {

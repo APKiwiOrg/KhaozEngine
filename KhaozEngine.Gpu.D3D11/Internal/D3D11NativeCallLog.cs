@@ -27,20 +27,31 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         readonly List<string> _trace = new();
         readonly Dictionary<object, int> _ids = new(ReferenceEqualityComparer.Instance);
 
-        /// <summary>Every call so far, in order, one line each.</summary>
+        /// <summary>Every entry so far, in order, one line each. Longer than <see cref="TotalCalls"/> by the
+        /// number of <see cref="D3D11NativeCall.ResourceSetPending"/> markers in it.</summary>
         internal IReadOnlyList<string> Trace => _trace;
 
-        /// <summary>Total native calls recorded.</summary>
+        /// <summary>
+        /// Total NATIVE calls recorded, which is what decision T2's budget is made of.
+        /// <para>
+        /// <see cref="D3D11NativeCall.ResourceSetPending"/> is EXCLUDED, because it is not a call. A resource-set
+        /// bind records only and issues nothing at the device, and the flush that follows it is where the calls
+        /// appear. Counting the marker would add one to the total for every set a frame binds, which is a number
+        /// that grows with the recording rather than with the device work, and a budget built on it would move
+        /// whenever a renderer bound the same set a second time.
+        /// </para>
+        /// </summary>
         internal int TotalCalls { get; private set; }
 
-        /// <summary>How many times one call was issued.</summary>
+        /// <summary>How many times one call was issued. Answers for the pending marker too, which is how a test
+        /// asserts that a bind recorded and did not emit.</summary>
         internal int Count(D3D11NativeCall call) => _counts.TryGetValue(call, out int n) ? n : 0;
 
-        /// <summary>Record one call.</summary>
+        /// <summary>Record one call, or the one marker that is not one.</summary>
         internal void Record(D3D11NativeCall call, string arguments = "")
         {
             _counts[call] = Count(call) + 1;
-            TotalCalls++;
+            if (call != D3D11NativeCall.ResourceSetPending) TotalCalls++;
             _trace.Add(call + "(" + arguments + ")");
         }
 

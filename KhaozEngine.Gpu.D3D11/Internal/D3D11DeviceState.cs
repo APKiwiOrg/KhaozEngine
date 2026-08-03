@@ -47,6 +47,23 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         uint _topology;
         IGpuFramebuffer? _framebuffer;
 
+        /// <summary>
+        /// Build the device's one state object.
+        /// </summary>
+        /// <param name="binds">The device's one bind flush, or null for the default one (no
+        /// <c>!DriverCommandLists</c> workaround and no ring unmap, which is every device-free test and the
+        /// deferred driver). It is composed HERE rather than handed to each emitter beside the state, so "the
+        /// device owns exactly one" is one object to get right instead of two that could be paired up wrongly, and
+        /// so <see cref="Reset"/> drops the schedule and the caches together.</param>
+        internal D3D11DeviceState(D3D11BindFlush? binds = null) => Binds = binds ?? new D3D11BindFlush();
+
+        /// <summary>
+        /// THE BIND FLUSH OF DECISION R5, one per device, reached through the state every emitter already holds.
+        /// The resource-set half of what is bound on the context, exactly as the seven cache slots above are the
+        /// pipeline half.
+        /// </summary>
+        internal D3D11BindFlush Binds { get; }
+
         /// <summary>The framebuffer the context is rendering into, or null when nothing is bound.</summary>
         internal IGpuFramebuffer? BoundFramebuffer => _framebuffer;
 
@@ -68,12 +85,20 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// path and issue nothing. The frame would then rasterise into no target with no viewport, which is the
         /// failure mode 9.4 describes for missing the implicit behaviour entirely.
         /// </para>
+        /// <para>
+        /// THE BIND FLUSH IS RESET WITH IT, which is the same reason a second time. After a <c>ClearState</c> the
+        /// context holds no resource sets either, so a keyed record that still described the last replay would let
+        /// a rebind of the same set at the same offset be marked clean and the draw would run against registers
+        /// holding nothing. The current pipeline's layouts go too, since <c>ClearState</c> unbinds the shaders and
+        /// a retained layout array would number the next replay's first set under the last replay's pipeline.
+        /// </para>
         /// </summary>
         internal void Reset()
         {
             Array.Clear(_bound);
             _topology = 0u;
             _framebuffer = null;
+            Binds.Reset();
         }
 
         /// <summary>

@@ -83,11 +83,81 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <summary>
         /// NOT A NATIVE CALL, and the one member here that is not an <c>ID3D11DeviceContext</c> method. A
         /// resource-set bind RECORDS ONLY under decision R5's schedule and flushes at the next draw or dispatch,
-        /// and that flush, its three-state dirty tracking and its array-batched fan-out into
-        /// <c>*SetConstantBuffers1</c>, <c>*SetShaderResources</c> and <c>*SetSamplers</c> are the bind flush of
-        /// work-breakdown row 9. This member holds the bind's PLACE IN THE ORDER so a trace taken here is still a
-        /// faithful sequence, and it is named for what it is so nobody adds it into a native-call total.
+        /// so the bind itself reaches the device as nothing at all. This member holds its PLACE IN THE ORDER, so a
+        /// trace shows where a set was recorded as well as where the flush issued it, and it is named for what it
+        /// is. <see cref="D3D11NativeCallLog.TotalCalls"/> EXCLUDES it by name, because a budget made partly of
+        /// non-calls is not a budget.
         /// </summary>
         ResourceSetPending = 25,
+
+        // ---- The bind flush of decision R5, one array call per register file per stage (R6, R7) ----
+        //
+        // Six stages times three files, plus the compute-only unordered-access setter. Written out rather than
+        // reduced to one member per file with the stage in the arguments, because the whole point of the budget is
+        // to count calls per stage: "one VSSetConstantBuffers1" and "one PSSetShaderResources" are the assertions,
+        // and a test that had to parse an argument string to make them would be pinning a format instead of a
+        // count. D3D11NativeCallName is the one place a (file, stage) pair turns into one of these.
+
+        /// <summary>Constant buffers for the vertex stage. ALWAYS the <c>1</c> overload (decision R7).</summary>
+        VSSetConstantBuffers1 = 26,
+        /// <summary>Constant buffers for the hull stage.</summary>
+        HSSetConstantBuffers1 = 27,
+        /// <summary>Constant buffers for the domain stage.</summary>
+        DSSetConstantBuffers1 = 28,
+        /// <summary>Constant buffers for the geometry stage.</summary>
+        GSSetConstantBuffers1 = 29,
+        /// <summary>Constant buffers for the pixel stage.</summary>
+        PSSetConstantBuffers1 = 30,
+        /// <summary>Constant buffers for the compute stage.</summary>
+        CSSetConstantBuffers1 = 31,
+
+        /// <summary>Shader resources for the vertex stage. Sampled textures and read-only structured buffers
+        /// share the <c>t</c> file, so one call may carry both.</summary>
+        VSSetShaderResources = 32,
+        /// <summary>Shader resources for the hull stage.</summary>
+        HSSetShaderResources = 33,
+        /// <summary>Shader resources for the domain stage.</summary>
+        DSSetShaderResources = 34,
+        /// <summary>Shader resources for the geometry stage.</summary>
+        GSSetShaderResources = 35,
+        /// <summary>Shader resources for the pixel stage.</summary>
+        PSSetShaderResources = 36,
+        /// <summary>Shader resources for the compute stage.</summary>
+        CSSetShaderResources = 37,
+
+        /// <summary>Samplers for the vertex stage.</summary>
+        VSSetSamplers = 38,
+        /// <summary>Samplers for the hull stage.</summary>
+        HSSetSamplers = 39,
+        /// <summary>Samplers for the domain stage.</summary>
+        DSSetSamplers = 40,
+        /// <summary>Samplers for the geometry stage.</summary>
+        GSSetSamplers = 41,
+        /// <summary>Samplers for the pixel stage.</summary>
+        PSSetSamplers = 42,
+        /// <summary>Samplers for the compute stage.</summary>
+        CSSetSamplers = 43,
+
+        /// <summary>Unordered access views for the compute stage, which is the only stage Direct3D 11 binds them
+        /// through a stage setter at all: a pixel-shader UAV rides
+        /// <c>OMSetRenderTargetsAndUnorderedAccessViews</c> alongside the render targets.</summary>
+        CSSetUnorderedAccessViews = 44,
+
+        // ---- The uniform ring's two context calls (decisions U1 and U2) ----
+
+        /// <summary>
+        /// <c>Map</c> on a constant-buffer ring, always <c>MAP_WRITE_NO_OVERWRITE</c>. Made through
+        /// <see cref="ID3D11RingMemory"/> rather than by any emitter, and named here so decision T2's structural
+        /// invariant "zero <c>Map</c> or <c>Unmap</c> during replay" is a statement the budget's trace can
+        /// actually carry. Without a member for it the invariant would pass by having no vocabulary to fail in.
+        /// </summary>
+        Map = 45,
+
+        /// <summary>
+        /// <c>Unmap</c> on a constant-buffer ring. Belongs at the head of a <c>Submit</c>, before the replay, and
+        /// under <c>KE_D3D11_RECORD=immediate</c> at each bind-flush point, never between the
+        /// <see cref="ClearState"/> and the end of a replay.
+        /// </summary>
+        Unmap = 46,
     }
 }

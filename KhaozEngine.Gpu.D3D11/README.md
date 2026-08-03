@@ -575,11 +575,15 @@ device-free `[Fact]`s that run on macOS and Linux.
 C5). Five of the nine members are CONSTANTS of the feature levels this backend requires rather than device
 answers: `ClipSpaceYInverted` false, `DepthRangeZeroToOne` true, `SamplerAnisotropy` true, `SamplerLodBias` true
 and `SupportsCompute` true. The four a device answers are `DeviceName` (the DXGI adapter description, cut at the
-first NUL because it arrives out of a fixed 128-wide-char buffer), `MaxMsaaSampleCount` (the MIN over
-`R8G8B8A8_UNORM`, `R32_FLOAT` and `D32_FLOAT_S8X24_UINT` via `CheckMultisampleQualityLevels`, walked DOWNWARD
-from 32 because the supported counts are not required to be contiguous, and any query failure yields 1),
-`SupportsShadowMaps` (`CheckFormatSupport(R32_FLOAT)` for `Texture2D | RenderTarget | ShaderSample`), and
+first NUL because it arrives out of a fixed 128-wide-char buffer, and otherwise raw: the incumbent does not trim
+the vendor's padding either, and the two strings are compared character for character), `MaxMsaaSampleCount` (the
+MIN over `R8G8B8A8_UNORM`, `R32_FLOAT` and `R32G8X24_TYPELESS` via `CheckMultisampleQualityLevels`, walked
+DOWNWARD from 32 because the supported counts are not required to be contiguous, and any query failure yields 1),
+`SupportsShadowMaps` (`CheckFormatSupport(R32_FLOAT)` for `RenderTarget | ShaderSample`), and
 `SupportsCompletionFences` (from the fence subsystem, so the capability and the fence path cannot disagree).
+The depth format is the TYPELESS sibling on purpose: the incumbent's depth-flagged `D32_Float_S8_UInt` becomes
+`R32G8X24_Typeless` in `D3D11Formats.ToDxgiFormat` before it queries, so both backends ask the driver about the
+same DXGI format and the parity assertion is satisfiable by construction.
 
 `MaxMsaaSampleCount` is the member the parity assertion exists for. A different answer changes what
 `AntiAliasing.ResolveFor` picks, which changes the field look and the golden output, and it would neither throw

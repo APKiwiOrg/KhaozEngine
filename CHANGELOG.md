@@ -322,13 +322,18 @@ reaches any of it.
 Five of the nine `GpuCapabilities` members are CONSTANTS of the feature levels this backend requires rather than
 device answers (`ClipSpaceYInverted` false, `DepthRangeZeroToOne` true, `SamplerAnisotropy` true,
 `SamplerLodBias` true, `SupportsCompute` true). Four come off a device: `DeviceName` from
-`IDXGIAdapter::GetDesc().Description` cut at the first NUL, because it arrives out of a fixed 128-wide-char
-buffer and the padding would otherwise reach the session header and every bug report that quotes it,
-`MaxMsaaSampleCount` as the MIN over `R8G8B8A8_UNORM`, `R32_FLOAT` and `D32_FLOAT_S8X24_UINT` via
-`CheckMultisampleQualityLevels`, `SupportsShadowMaps` from `CheckFormatSupport(R32_FLOAT)` for
-`Texture2D | RenderTarget | ShaderSample`, and `SupportsCompletionFences` from the fence subsystem rather than as
-a literal, so the capability and the fence path cannot disagree. That last one is the ONE permitted difference
-from the incumbent, true here and false there.
+`IDXGIAdapter::GetDesc().Description` cut at the first NUL and otherwise raw, exactly as the incumbent reports it
+(the cut is defensive, since the marshaller already stops at the terminator, and there is deliberately no
+whitespace trim: some vendors pad the description with a space, but the incumbent keeps that padding and
+`DeviceName` is compared string for string, so trimming on one path alone would fail parity rather than tidy
+anything), `MaxMsaaSampleCount` as the MIN over `R8G8B8A8_UNORM`, `R32_FLOAT` and `R32G8X24_TYPELESS` via
+`CheckMultisampleQualityLevels` (the typeless sibling because that is what `D3D11Formats.ToDxgiFormat` turns the
+incumbent's depth-flagged `D32_Float_S8_UInt` into before it queries, so both backends ask the driver the same
+question), `SupportsShadowMaps` from `CheckFormatSupport(R32_FLOAT)` for `RenderTarget | ShaderSample` (two bits,
+which is what the incumbent's `GetPixelFormatSupportCore` reduces its `Texture2D` plus
+`RenderTarget | Sampled` call to, the texture type selecting no bit), and `SupportsCompletionFences` from the
+fence subsystem rather than as a literal, so the capability and the fence path cannot disagree. That last one is
+the ONE permitted difference from the incumbent, true here and false there.
 
 The per-format walk is DOWNWARD from 32 rather than upward, which is a correctness point rather than a style one:
 the supported sample counts are not required to be contiguous, so a driver supporting 4x and 16x but not 8x would

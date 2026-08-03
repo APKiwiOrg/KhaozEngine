@@ -7,7 +7,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// <c>docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md</c> carries a field-by-field table saying where
     /// each <see cref="GpuCapabilities"/> member comes from on this backend, and five of the nine members are
     /// CONSTANTS of the feature levels this backend requires rather than answers a device gives. Those five, the
-    /// fold that turns three per-format sample-count answers into one number, the adapter-name trimming and the
+    /// fold that turns three per-format sample-count answers into one number, the adapter-name NUL cut and the
     /// out-of-range sample-count guard are all here, so every rule that decides what the engine believes about
     /// the device is a plain <c>[Fact]</c> on macOS and Linux.
     /// <para>
@@ -64,13 +64,24 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         /// <summary>
         /// THE ADAPTER NAME, READ AS A C STRING. <c>DXGI_ADAPTER_DESC::Description</c> is a fixed 128-wide-char
-        /// buffer, so the driver's name is followed by padding, and a naive read carries that padding into the
-        /// session header, the golden filename comparisons and every bug report that quotes it. Cutting at the
-        /// first NUL is what "trailing nulls trimmed" means for a fixed-size buffer, and the surrounding
-        /// whitespace goes with it because at least one vendor pads with a space.
+        /// buffer, so cutting at the first NUL is what "trailing nulls trimmed" means for it. The cut is
+        /// DEFENSIVE and is expected to find nothing: the Vortice marshaller already stops at the first NUL on
+        /// the native path and on the incumbent's, so the string that arrives here normally has no terminator
+        /// left in it. It stays because a marshalling change that stopped doing that would otherwise put 100-odd
+        /// NULs into the session header.
         /// <para>
-        /// Null and a name that is nothing but padding both come back as the empty string, which is the same
-        /// "the backend reported no adapter name" the seam already documents on
+        /// NO WHITESPACE TRIM, AND THAT IS A PARITY DECISION RATHER THAN AN OVERSIGHT. The padding observation is
+        /// real: at least one vendor pads its description with a space, so a trim would produce a tidier name.
+        /// The incumbent does not trim (<c>D3D11GraphicsDevice</c> assigns <c>desc.Description</c> to its device
+        /// name raw), and <see cref="GpuCapabilities.DeviceName"/> is compared string for string by
+        /// <c>NativeVsVeldridCapabilityParityTests</c>, so trimming on one path alone converts a cosmetic
+        /// improvement into a parity failure on every machine whose vendor pads. Parity with the incumbent
+        /// outranks cosmetics here. A trim is still allowed later, but it has to change BOTH paths and decision
+        /// T4's assertion in the same commit.
+        /// </para>
+        /// <para>
+        /// Null and a description whose first character is the terminator both come back as the empty string,
+        /// which is the same "the backend reported no adapter name" the seam already documents on
         /// <see cref="GpuCapabilities.DeviceName"/> and which <c>GpuDeviceContext.LogAdapter</c> already renders.
         /// </para>
         /// </summary>
@@ -79,8 +90,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             if (string.IsNullOrEmpty(description)) return string.Empty;
 
             int terminator = description.IndexOf('\0', StringComparison.Ordinal);
-            string text = terminator >= 0 ? description.Substring(0, terminator) : description;
-            return text.Trim();
+            return terminator >= 0 ? description.Substring(0, terminator) : description;
         }
 
         /// <summary>
@@ -113,10 +123,18 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <summary>
         /// DECISION C4's FOLD: the MIN over the three formats the 3D scene's MRT renders into, because every
         /// attachment of a framebuffer must support the count the framebuffer is created at. The colour target is
-        /// <c>R8G8B8A8_UNORM</c>, the linear-depth target is <c>R32_FLOAT</c> and the depth-stencil target is
-        /// <c>D32_FLOAT_S8X24_UINT</c>, which is the same three
-        /// <c>KhaozEngine.Gpu.Internal.VeldridMap.MaxMsaaSampleCount</c> folds over, in the same order, so the two
-        /// answers are comparable by construction rather than by coincidence.
+        /// <c>R8G8B8A8_UNORM</c>, the linear-depth target is <c>R32_FLOAT</c> and the depth-stencil target is the
+        /// engine's <c>D32_FLOAT_S8X24_UINT</c>, which is the same three
+        /// <c>KhaozEngine.Gpu.Internal.VeldridMap.MaxMsaaSampleCount</c> folds over, in the same order.
+        /// <para>
+        /// THE DEPTH ATTACHMENT IS ASKED ABOUT AS <c>R32G8X24_TYPELESS</c> ON BOTH PATHS, which is what makes
+        /// "comparable by construction" true rather than nearly true. The incumbent asks for the sample-count
+        /// limit of <c>PixelFormat.D32_Float_S8_UInt</c> with its depth flag set, and Veldrid's
+        /// <c>D3D11Formats.ToDxgiFormat</c> maps that pair to <c>Format.R32G8X24_Typeless</c> BEFORE the
+        /// <c>CheckMultisampleQualityLevels</c> call, so the DXGI format the driver is handed is the typeless
+        /// sibling and not the fully typed one. <see cref="D3D11DxgiQueries"/> passes that same typeless format
+        /// for exactly this reason, and the note is here because this fold is where the parity claim lives.
+        /// </para>
         /// <para>
         /// Anything at or below zero folds to <see cref="NoMultisampling"/>, which is how a failed query reaches
         /// here: the Windows caller answers 1 for a query that threw, and this keeps a negative or zero from any

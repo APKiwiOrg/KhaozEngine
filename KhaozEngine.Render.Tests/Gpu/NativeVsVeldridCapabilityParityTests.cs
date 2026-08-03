@@ -21,7 +21,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <list type="bullet">
     ///   <item><description><b>The device-free half runs everywhere, now.</b> Everything that DECIDES a
     ///   capability from a probed input is engine logic in <see cref="D3D11CapabilityRead"/>: the five constants,
-    ///   the descending sample-count walk, the min-over-three-formats fold, the adapter-name trimming, and the
+    ///   the descending sample-count walk, the min-over-three-formats fold, the adapter-name NUL cut, and the
     ///   out-of-range sample-count guard. Those are plain <c>[Fact]</c>s here, on macOS and Linux, driven off
     ///   fakes. So is the COMPARER itself, plus a reflection check that it covers every member of
     ///   <see cref="GpuCapabilities"/>, which is the guard that matters most: a member appended to that struct
@@ -86,19 +86,22 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal("", D3D11CapabilityRead.Assemble(null!, 1, true, true).DeviceName);
         }
 
-        /// <summary><c>DXGI_ADAPTER_DESC::Description</c> is a fixed 128-wide-char buffer, so the driver's name
-        /// arrives followed by padding. Cutting at the first NUL is what "trailing nulls trimmed" means for a
-        /// fixed-size buffer, and the surrounding whitespace goes with it because at least one vendor pads with a
-        /// space.</summary>
+        /// <summary><c>DXGI_ADAPTER_DESC::Description</c> is a fixed 128-wide-char buffer, so cutting at the first
+        /// NUL is what "trailing nulls trimmed" means for it, and that cut is the whole of what this does.
+        /// WHITESPACE SURVIVES, which the two padded cases below pin deliberately: at least one vendor pads its
+        /// description with a space, the incumbent reports <c>desc.Description</c> raw, and
+        /// <see cref="GpuCapabilities.DeviceName"/> is compared string for string by the parity assertion, so
+        /// trimming here alone would fail parity on exactly those machines. A trim is allowed later only if both
+        /// paths and that assertion move together.</summary>
         [Theory]
         [InlineData("Microsoft Basic Render Driver\0\0\0\0", "Microsoft Basic Render Driver")]
-        [InlineData("Radeon RX 7900 XT  ", "Radeon RX 7900 XT")]
-        [InlineData("  Intel(R) UHD Graphics\0junk", "Intel(R) UHD Graphics")]
+        [InlineData("Radeon RX 7900 XT  ", "Radeon RX 7900 XT  ")]
+        [InlineData("  Intel(R) UHD Graphics\0junk", "  Intel(R) UHD Graphics")]
         [InlineData("\0\0\0", "")]
         [InlineData("", "")]
         [InlineData(null, "")]
         [InlineData("Apple M2", "Apple M2")]
-        public void TrimAdapterName_ReadsTheDescriptionAsACString(string? raw, string expected)
+        public void TrimAdapterName_ReadsTheDescriptionAsACStringAndKeepsWhatIsInsideIt(string? raw, string expected)
         {
             Assert.Equal(expected, D3D11CapabilityRead.TrimAdapterName(raw));
         }

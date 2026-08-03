@@ -8674,7 +8674,8 @@ day it lands.
 `SupportsCompletionFences`, which is `true` there and `false` on the incumbent. Nothing you write against
 capabilities needs a backend check, and in particular `MaxMsaaSampleCount` is asserted identical, because a
 different answer would silently change what `AntiAliasing.ResolveFor` picks and therefore what the frame looks
-like. `DeviceName` is the DXGI adapter description with its trailing padding trimmed, exactly as before.
+like. `DeviceName` is the DXGI adapter description exactly as the incumbent reports it, character for character,
+including any whitespace the vendor padded it with.
 
 **One capability behaves differently on purpose: an out-of-range MSAA request THROWS.** Creating a texture whose
 `GpuTextureDescription.SampleCount` is above `GpuCapabilities.MaxMsaaSampleCount` raises an `ArgumentException`

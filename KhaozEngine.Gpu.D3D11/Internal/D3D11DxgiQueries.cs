@@ -53,9 +53,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 supportsCompletionFences);
         }
 
-        /// <summary>The adapter description, trimmed. <c>IDXGIAdapter::GetDesc().Description</c>, which is the
-        /// exact string the incumbent reports through <c>GraphicsDevice.DeviceName</c>, so the two backends name
-        /// the same card the same way and the parity assertion on it is identical by construction.</summary>
+        /// <summary>The adapter description, exactly as DXGI gives it.
+        /// <c>IDXGIAdapter::GetDesc().Description</c> through
+        /// <see cref="D3D11CapabilityRead.TrimAdapterName"/>, which cuts at the first NUL and changes nothing
+        /// else, so this is the same string the incumbent reports through <c>GraphicsDevice.DeviceName</c> (it
+        /// assigns <c>desc.Description</c> raw) and the parity assertion on it holds by construction. Whitespace
+        /// a vendor padded with is KEPT, for the reason recorded on
+        /// <see cref="D3D11CapabilityRead.TrimAdapterName"/>.</summary>
         [MethodImpl(MethodImplOptions.NoInlining)]
         [SupportedOSPlatform("windows")]
         internal static string AdapterNameWindows(IDXGIAdapter adapter)
@@ -74,6 +78,16 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// Decision C4's answer: the MIN over the three formats the 3D scene's MRT renders into. Any query failure
         /// yields 1 for the WHOLE fold rather than for one format, because a device that will not answer one of
         /// the three has not told us the other two are usable together either.
+        /// <para>
+        /// THE DEPTH ATTACHMENT GOES IN AS <c>R32G8X24_TYPELESS</c>, not as the fully typed
+        /// <c>D32_FLOAT_S8X24_UINT</c>, because the typeless sibling is the format the incumbent ACTUALLY hands
+        /// <c>CheckMultisampleQualityLevels</c>. Its <c>GetSampleCountLimit(D32_Float_S8_UInt, depthFormat:
+        /// true)</c> runs the pair through <c>D3D11Formats.ToDxgiFormat</c> first, and that mapping answers
+        /// <c>Format.R32G8X24_Typeless</c> for a depth-flagged <c>D32_Float_S8_UInt</c>
+        /// (<c>src/Veldrid/D3D11/D3D11Formats.cs</c> lines 131 to 133). Asking about the typed format here would
+        /// be a DIFFERENT question, and a driver that answered the two differently would move
+        /// <c>MaxMsaaSampleCount</c> off parity with nothing able to say why.
+        /// </para>
         /// </summary>
         [MethodImpl(MethodImplOptions.NoInlining)]
         [SupportedOSPlatform("windows")]
@@ -84,7 +98,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 return D3D11CapabilityRead.MinOverFormats(
                     HighestSampleCountWindows(device, Format.R8G8B8A8_UNorm),
                     HighestSampleCountWindows(device, Format.R32_Float),
-                    HighestSampleCountWindows(device, Format.D32_Float_S8X24_UInt));
+                    HighestSampleCountWindows(device, Format.R32G8X24_Typeless));
             }
             catch
             {
@@ -95,8 +109,18 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <summary>
         /// Whether R32_FLOAT is usable as BOTH a render target and a sampled 2D texture, which is what the
         /// directional shadow map needs (it renders depth into an R32_FLOAT target and samples that target for the
-        /// manual PCF compare). The same three bits <c>VeldridMap.SupportsShadowMaps</c> asks Veldrid for through
-        /// <c>GetPixelFormatSupport(R32_Float, Texture2D, RenderTarget | Sampled)</c>.
+        /// manual PCF compare).
+        /// <para>
+        /// TWO BITS, WHICH IS EXACTLY WHAT THE INCUMBENT ENDS UP CHECKING.
+        /// <c>VeldridMap.SupportsShadowMaps</c> calls
+        /// <c>GetPixelFormatSupport(R32_Float, Texture2D, RenderTarget | Sampled)</c>, and Veldrid's
+        /// <c>D3D11GraphicsDevice.GetPixelFormatSupportCore</c> turns that USAGE pair into a
+        /// <c>RenderTarget</c> test and a <c>ShaderSample</c> test against the result of
+        /// <c>CheckFormatSupport</c>. The texture TYPE selects no bit at all there, so requiring
+        /// <c>FormatSupport.Texture2D</c> as well would be a stricter question than the incumbent asks and could
+        /// report false where the incumbent reports true, which is the shadow path silently degrading to blob
+        /// shadows on one backend only.
+        /// </para>
         /// </summary>
         [MethodImpl(MethodImplOptions.NoInlining)]
         [SupportedOSPlatform("windows")]
@@ -104,8 +128,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         {
             try
             {
-                const FormatSupport required =
-                    FormatSupport.Texture2D | FormatSupport.RenderTarget | FormatSupport.ShaderSample;
+                const FormatSupport required = FormatSupport.RenderTarget | FormatSupport.ShaderSample;
                 return (device.CheckFormatSupport(Format.R32_Float) & required) == required;
             }
             catch
@@ -208,9 +231,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         // THE FORMAT TRAVELS THROUGH THE CLOSURE AS ITS ORDINAL, and that is the package's no-Vortice-value-type-
         // field rule reaching a place nothing else in it does. A lambda capturing the enum puts a Format FIELD on
         // the compiler-generated display class, and that class is a type in this assembly like any other, so a
-        // reflection walk that loads every type in the package (which the boundary tests do, deliberately)
-        // computes its layout and resolves the interop assembly on macOS. The device travels as itself, because
-        // it is a reference and a reference field needs no layout from the type it points at.
+        // reflection walk that loads every type in the package computes its layout and resolves the interop
+        // assembly on macOS. There is exactly one such walk and it is deliberate:
+        // D3D11ResourceModelTests.OffWindows_LoadingEveryTypeInTheBackend_PullsInNoInterop. Its sibling
+        // D3D11DiagnosticsBoundaryTests explicitly forbids adding a second one, because what both assert is a
+        // process-wide fact. The device travels as itself, because it is a reference and a reference field needs
+        // no layout from the type it points at.
         [MethodImpl(MethodImplOptions.NoInlining)]
         [SupportedOSPlatform("windows")]
         static int HighestSampleCountWindows(ID3D11Device device, Format format)

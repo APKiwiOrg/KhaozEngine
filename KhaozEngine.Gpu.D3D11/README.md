@@ -124,8 +124,12 @@ One counter per device, on either of two mechanisms, chosen once at device creat
 - **`ID3D11Query(Event)`**, one per signal, polled with `DO_NOT_FLUSH` and retired in submission order, for
   anything older. Queries are recycled, so the pool stays at the number of submissions in flight.
 
-Both are real completion signals, so nothing above the timeline branches on which one it got. Which one is live
-is reported for the session log and for nothing else.
+Both are real completion signals, so nothing above the timeline branches on which one it got, and which one is
+live is reported for the session log and for nothing else. Where the two genuinely differ, they report the
+capability rather than the name: the monotonic fence offers a blocking wait (which is what the drain uses) and a
+lock-free poll, and the event-query fallback offers neither, so a fence poll there is serialised against
+submission and can wait as long as a replay. On the primary path, which is every machine from Windows 10 1703
+on, a fence poll waits for nothing.
 
 An `IGpuFence` is a remembered value on that counter and holds no device object of its own. A fresh one is
 unarmed and reads unsignalled, `Submit` arms it with the value that submission raised, and `Reset` unarms it so
@@ -133,11 +137,17 @@ the next submission arms it with a strictly higher one. Submitting a fence that 
 than overwriting its target.
 
 **`WaitForIdle` is a real fence drain**, replacing the empty method body the Veldrid Direct3D 11 path has. It
-signals a fresh point and polls until the GPU reaches it, holding the submit lock for one call at a time and
-never across the wait. `KE_D3D11_REAL_DRAIN=0` restores the no-op for the measurement window, and the drain
-count plus the total drain duration of each frame are recorded so the cost is a number rather than an argument.
-After device death the drain returns immediately and every fence reads signalled, since a destroyed device has
-no outstanding work to finish.
+signals a fresh point, flushes the context ONCE so the driver actually has that signal, and then waits for the
+GPU to reach it. The submit lock is held for the signal and the flush and released before the wait, so a drain
+never blocks the submission that would let it finish. The wait itself is `ID3D11Fence.SetEventOnCompletion` on
+the primary mechanism and a yielding spin on the fallback, and neither ever sleeps a millisecond: one such sleep
+is more than the whole per-frame drain budget the drain is measured against. `KE_D3D11_REAL_DRAIN=0` restores
+the no-op for the measurement window, and the drain count plus the total drain duration of each frame are
+recorded so the cost is a number rather than an argument. After device death the drain returns immediately and
+every fence reads signalled, since a destroyed device has no outstanding work to finish.
+
+The fence poll does NOT flush, deliberately. Only the drain has decided to wait, so only the drain pays to have
+the work handed over, and `IGpuFence.Signaled` stays as cheap as the seam's contract expects.
 
 ## Design
 

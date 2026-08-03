@@ -330,7 +330,17 @@ The fallback, for a runtime older than Windows 10 1703, is a pool of `ID3D11Quer
 every operating system, because that path runs on no CI leg and no development machine, and the first machine to
 take it is a player's. The choice is taken once at device creation and nothing above the timeline may re-take
 it: a caller that branched on which mechanism it got would be building a second, quieter fallback on top of the
-one that already works.
+one that already works. Where the two do differ, they report the CAPABILITY and never the name. The monotonic
+fence has a blocking wait and a free-threaded poll, the event-query fallback has neither, and the drain asks
+what this timeline can do rather than which of the two it is.
+
+**A fence poll takes no lock on the primary mechanism, and that difference is documented rather than levelled.**
+`GetCompletedValue` is a read on the fence object, so `IGpuFence.Signaled` there waits for nothing, which is
+what the seam says a poll does. The event-query fallback polls the immediate context, which is not
+free-threaded, so its poll takes the device submit lock, and under decision W4 that lock covers a whole replay:
+a poll from a thread that is not the submitting one can therefore wait for one. Making the primary path take the
+lock too, purely so the two read alike, would be paying a real cost on every machine to hide a difference on
+almost none.
 
 **A fence is a remembered value on that counter, not a device object.** Unarmed reads unsignalled, which is what
 the seam requires of a fence being submitted. `Submit` arms it with the value that submission signalled, and
@@ -338,7 +348,11 @@ the seam requires of a fence being submitted. `Submit` arms it with the value th
 device-wide monotonic counter and does not need to, since the fresh target the seam asks for is exactly what the
 next signal produces. Submitting a fence that is still armed THROWS rather than overwriting its target, because
 overwriting makes the earlier submission's completion unobservable and a consumer polling for it frees resources
-the GPU is still reading.
+the GPU is still reading. A rejected submit still spends its timeline value, because the submission consumed it
+before the fence could refuse, and monotonicity is what matters there rather than the gap. The fence itself is
+left exactly as it was. The one check that runs before the device-liveness no-op is the foreign-fence type
+check, so another backend's fence is rejected even during teardown, which is where staying quiet about it would
+hide it best.
 
 **`WaitForIdle` replaces an empty method body.** Veldrid's `WaitForIdleCore` on Direct3D 11 does nothing, so
 every drain in the engine currently does nothing there, including one half of the only ordering guarantee the
@@ -350,6 +364,18 @@ currently times an empty call, and because a real drain can only ever be MORE co
 the risk is performance and therefore measurable rather than latent. `KE_D3D11_REAL_DRAIN=0` restores the no-op
 for the soak window, and drain count plus total drain duration per frame are recorded in the shape
 `WaterFrameStats` already uses. That pair is the M2 measurement, whose exit criterion removes the switch.
+
+**The drain flushes once, and never sleeps.** Two things the first cut of it got wrong, both of which would have
+shown up as a bad M2 number rather than as a failure. It signals a fresh point and then FLUSHES the immediate
+context exactly once, before its first poll, because the context buffers commands and a signal the driver has
+never been handed is a point the GPU may never reach (the fallback's poll is `DO_NOT_FLUSH`, which Direct3D
+documents as able to loop forever for precisely this reason). And no iteration of the loop sleeps a millisecond:
+the monotonic mechanism blocks on `ID3D11Fence.SetEventOnCompletion`, which wakes on the GPU's own signal with
+no granularity cost, and the fallback spins with `sleep1Threshold: -1` so it yields without ever sleeping. A
+plain `SpinWait.SpinOnce()` escalates to a one-millisecond sleep after 20 spins, and one of those is more than
+the entire 0.2 ms per-frame budget M2 gates on, so a drain that escalated would have settled decision C6 on a
+measurement of the scheduler. The flush and the wait are both engine-owned timeline members, so the loop stays
+device-free testable. The fence poll on the seam side still does not flush and still does not wait.
 
 **Two ends are left open on purpose, and both are one small commit at merge.** The signal at the end of replay
 is DEFINED here and not wired, because the replay loop is a sibling row being built in parallel and editing the

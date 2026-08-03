@@ -151,8 +151,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// result taken here. If the present just reported the device gone, <c>ResizeBuffers</c> reports the same
         /// thing and throws from inside this call, so the caller would get an exception instead of the
         /// <c>HRESULT</c> it was going to latch. The queued size survives, because nothing consumed it. Naming
-        /// the removal, calling <c>GetDeviceRemovedReason</c> at the fault site and latching it are row 16's, and
-        /// are not built here.
+        /// the removal, calling <c>GetDeviceRemovedReason</c> at the fault site and latching it are
+        /// <see cref="D3D11DeviceLossLatch"/>'s, and the DEVICE is the caller that hands this result to it.
         /// </para>
         /// </summary>
         internal int Present()
@@ -206,10 +206,21 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// </para>
         /// <para>
         /// A THROW FROM THE MIDDLE LEAVES THE FRAMEBUFFER POINTING AT RELEASED VIEWS, and that is a known, narrow
-        /// open end rather than an oversight. In v1 the only way to reach it is device loss, since the arguments
-        /// are already validated and the surface makes no other failing call, and device loss is what row 16's
-        /// latch turns into a reported fault. There is no repair available that does not require holding the old
-        /// views across the resize, which is precisely what <c>ResizeBuffers</c> forbids.
+        /// open end rather than an oversight (issue #489). In v1 the only way to reach it is device loss, since
+        /// the arguments are already validated and the surface makes no other failing call. There is no repair
+        /// available that does not require holding the old views across the resize, which is precisely what
+        /// <c>ResizeBuffers</c> forbids, so the answer is the latch rather than a rollback: once the device is
+        /// known dead, nothing binds again.
+        /// </para>
+        /// <para>
+        /// THE MACHINERY FOR THAT NOW EXISTS AND THIS TYPE DELIBERATELY DOES NOT CALL IT.
+        /// <see cref="D3D11DeviceLossLatch.CheckAfterFault"/> is the handler, and the device wraps its call to
+        /// <see cref="Present"/> and <see cref="ApplyPendingResize"/> in it, for the same reason the other three
+        /// device-loss check sites are at the device: the latch is the device's, this type has no reference to
+        /// one, and giving it one would put a fourth constructor argument on a class whose entire test surface is
+        /// device-free. Until the device row lands that wrapping, a throw out of here still propagates with the
+        /// reason unread. The ordinary removal path is already clean, because <see cref="Present"/> reports the
+        /// removal as an HRESULT and a failed present skips the queued resize entirely.
         /// </para>
         /// </summary>
         bool ApplyPendingResizeCore()

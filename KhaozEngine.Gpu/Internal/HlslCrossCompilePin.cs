@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace KhaozEngine.Gpu.Internal
 {
     /// <summary>
@@ -74,8 +76,28 @@ namespace KhaozEngine.Gpu.Internal
         /// A stable one-line rendering of the pinned set, for a cache key. Any change to a value above MUST change
         /// this string, because it is what makes a compiled-shader cache entry belong to the options it was
         /// emitted under: a cache hit keyed without it would hand back bytes from the old set forever.
+        /// <para>
+        /// BUILT FROM THE VALUES, not typed out beside them, which is the whole reason that MUST holds. A
+        /// hand-maintained literal is one careless pin change away from a cache bug with no failing test in front
+        /// of it: flip a value, forget the string, and every warm entry under the same engine version keeps
+        /// serving DXBC emitted under the old options until someone deletes the directory. Deriving it moves every
+        /// cache key by construction instead of by remembering.
+        /// </para>
+        /// <para>
+        /// The token SHAPE is exactly the literal this replaced, so no existing cache key moved.
+        /// <c>D3D11ShaderPathTests</c> asserts the whole string against that literal, which is what keeps the
+        /// derivation honest about it.
+        /// </para>
         /// </summary>
-        internal const string Identity =
-            "spirv-cross/hlsl;fixClipSpaceZ=0;invertVertexOutputY=0;normalizeResourceNames=0;specializations=0";
+        internal static readonly string Identity =
+            "spirv-cross/hlsl"
+            + ";fixClipSpaceZ=" + Bit(FixClipSpaceZ)
+            + ";invertVertexOutputY=" + Bit(InvertVertexOutputY)
+            + ";normalizeResourceNames=" + Bit(NormalizeResourceNames)
+            + ";specializations=" + SpecializationConstantCount.ToString(CultureInfo.InvariantCulture);
+
+        // 1 / 0 rather than true / false: nothing but a hash reads this token, and the short form is what the
+        // shipped keys were already built with.
+        static string Bit(bool value) => value ? "1" : "0";
     }
 }

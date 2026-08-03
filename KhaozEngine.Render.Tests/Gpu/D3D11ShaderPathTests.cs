@@ -371,7 +371,14 @@ namespace KhaozEngine.Tests.Gpu
         /// The pinned values, stated here as well as in the pin, so flipping one is a two-file change with a
         /// visible diff rather than an edit inside a doc comment. The identity string is what a cache key uses to
         /// tell entries emitted under one set from entries emitted under another, so it MUST move when a value
-        /// does.
+        /// does, and it is DERIVED from the four values for exactly that reason.
+        /// <para>
+        /// The whole token is asserted, not just its parts, because it is a live cache key: entries on developer
+        /// machines are already filed under this exact string, so a rendering change that means the same thing
+        /// (an added field, a reordered pair, <c>true</c> for <c>1</c>) silently orphans every one of them. The
+        /// literal below is the value the shipped keys were built with. Change it only alongside a value above,
+        /// which is the case where orphaning warm entries is the POINT.
+        /// </para>
         /// </summary>
         [Fact]
         public void TheCrossCompileOptions_ArePinnedToTheLibraryDefaults()
@@ -380,6 +387,10 @@ namespace KhaozEngine.Tests.Gpu
             Assert.False(HlslCrossCompilePin.InvertVertexOutputY);
             Assert.False(HlslCrossCompilePin.NormalizeResourceNames);
             Assert.Equal(0, HlslCrossCompilePin.SpecializationConstantCount);
+
+            Assert.Equal(
+                "spirv-cross/hlsl;fixClipSpaceZ=0;invertVertexOutputY=0;normalizeResourceNames=0;specializations=0",
+                HlslCrossCompilePin.Identity);
 
             Assert.Contains("fixClipSpaceZ=0", HlslCrossCompilePin.Identity, StringComparison.Ordinal);
             Assert.Contains("invertVertexOutputY=0", HlslCrossCompilePin.Identity, StringComparison.Ordinal);

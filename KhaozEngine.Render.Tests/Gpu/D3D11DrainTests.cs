@@ -222,27 +222,49 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// The duration is real wall-clock time and never negative, AND A LOOP OF HUNDREDS OF POLLS IS NOT
-        /// MILLISECONDS OF SLEEP. This ran against a plain <c>SpinWait.SpinOnce()</c> before, whose default
-        /// <c>sleep1Threshold</c> is 20, so a 200-poll fake drain spent about 207 ms sleeping and the test passed
-        /// anyway, because "at least zero" is true of any number. One such sleep is more than the entire 0.2 ms
-        /// per-frame budget M2 measures against, so a drain that escalated would settle decision C6 on a
-        /// measurement of the scheduler.
+        /// NO ITERATION OF THE DRAIN EVER SLEEPS A MILLISECOND, asserted STRUCTURALLY on the constant that
+        /// decides it. <c>SpinWait.SpinOnce()</c> escalates to <c>Thread.Sleep(1)</c> after
+        /// <c>sleep1Threshold</c> spins, defaulting to 20, and one such sleep is more than the whole 0.2 ms
+        /// per-frame drain budget the M2 measurement is taken against (more again at Windows' default timer
+        /// resolution, where it lasts about 15.6 ms), so a drain that escalated would settle decision C6 on a
+        /// measurement of the scheduler. Minus one is the value that disables the escalation, which is why it is
+        /// pinned here rather than left as a bare literal at the call site: the mistake this guards against is a
+        /// <c>SpinOnce()</c> with the threshold dropped or a non-negative number put in its place, and both of
+        /// those compile cleanly and read like the same line.
         /// <para>
-        /// The bound below is loose on purpose, and it is chosen by arithmetic rather than by feel. A loop that
-        /// sleeps a millisecond per iteration cannot finish all 400 polls in under 400 ms, because
-        /// <c>Thread.Sleep(1)</c> never returns in under a millisecond on any platform, so a 350 ms bound still
-        /// discriminates that failure shape with room to spare. Typical is a fraction of a millisecond here on an
-        /// idle machine, since the fake completes on a poll count and nothing in the loop waits for anything
-        /// real, but this also has to clear shared, contended CI hardware: a loaded 2-core GitHub ubuntu runner
-        /// measured 171.2 ms for this same 400-poll yielding spin (CI run 30783329046) against the previous 100 ms
-        /// bound, which is a real scheduling cost, not a sleep, and a 350 ms bound passes it with real margin.
+        /// This assertion replaces a wall-clock one. See
+        /// <see cref="TheDrainDuration_IsRealElapsedTimeAndTheDrainAlwaysCompletes"/> for why elapsed time could
+        /// not carry the property.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void TheDrainSpin_TakesTheThresholdThatNeverEscalatesToASleep()
+            => Assert.Equal(-1, D3D11DrainSpin.Sleep1Threshold);
+
+        /// <summary>
+        /// The duration is real wall-clock time, never negative, and the drain terminates. This is a SMOKE bound
+        /// now, not a discriminator: it catches a hang and the coarsest sleeping shape and nothing finer.
+        /// <para>
+        /// WHY IT WAS DEMOTED (issue 491). A 100 ms bound fell to ordinary contention on a 2-core GitHub ubuntu
+        /// runner, which measured 171.2 ms for this same 400-poll yielding spin (CI run 30783329046). The 350 ms
+        /// bound that replaced it then fell on both runner classes, at 407.8 ms on the shared ubuntu leg (run
+        /// 30793439879) and at 839.8 ms on the self-hosted macOS leg (run 30795099275), where a concurrent build
+        /// had saturated every core and each yield donated a full scheduler slice. Elapsed time cannot tell a
+        /// yielding loop from a sleeping one on a machine that is not idle, because a yield under load costs what
+        /// a sleep costs, so no bound fixes this and the no-sleep property is asserted on the constant instead, in
+        /// <see cref="TheDrainSpin_TakesTheThresholdThatNeverEscalatesToASleep"/>.
+        /// </para>
+        /// <para>
+        /// Ten seconds is what is left worth asserting. It still catches a drain that never returns, and it still
+        /// catches the sleeping shape at Windows' default timer resolution, where 400 sleeps of about 15.6 ms
+        /// come to over 6 seconds. Nothing observed on the yielding path approaches it: the worst measurement on
+        /// any runner is the 839.8 ms above, an order of magnitude clear.
         /// </para>
         /// <para>The fallback shape is the one under test (no blocking wait), because that is the path that
         /// spins. The monotonic path blocks on the fence and never reaches the spin at all.</para>
         /// </summary>
         [Fact]
-        public void TheDrainDuration_IsRealElapsedTimeAndTheSpinNeverSleeps()
+        public void TheDrainDuration_IsRealElapsedTimeAndTheDrainAlwaysCompletes()
         {
             var timeline = new FakeD3D11FenceTimeline
             {
@@ -258,12 +280,12 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(1, fences.LastFrameDrain.Count);
             Assert.Equal(400, timeline.PollCount);
             Assert.True(fences.LastFrameDrain.TotalMs >= 0d);
-            Assert.True(fences.LastFrameDrain.TotalMs < 350d,
-                $"A 400-poll fake drain took {fences.LastFrameDrain.TotalMs:F1} ms, which is the shape of a loop "
-                + "that sleeps a millisecond per iteration rather than one that spins: Thread.Sleep(1) never "
-                + "returns in under a millisecond, so 400 sleeping polls cannot finish under 400 ms, and this "
-                + "350 ms bound still catches that shape with margin. SpinOnce must be called with "
-                + "sleep1Threshold: -1, and a mechanism with a blocking wait must use it instead.");
+            Assert.True(fences.LastFrameDrain.TotalMs < 10_000d,
+                $"A 400-poll fake drain took {fences.LastFrameDrain.TotalMs:F1} ms. This bound is a smoke test "
+                + "for a drain that hangs or sleeps at timer granularity (400 sleeps of 15.6 ms is over 6 "
+                + "seconds), not a check on the spin's shape: the worst a yielding spin has measured on a loaded "
+                + "runner is 839.8 ms. The no-sleep property lives on D3D11DrainSpin.Sleep1Threshold, so read "
+                + "this failure as the loop not terminating rather than as the threshold having moved.");
         }
 
         /// <summary>

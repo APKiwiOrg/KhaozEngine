@@ -231,8 +231,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <c>Thread.Sleep(1)</c> is more than the whole 0.2 ms per-frame drain budget this is measured against
         /// (M2), and more again at Windows' default timer resolution, so a drain that escalated to one would make
         /// the soak a measurement of the scheduler and settle decision C6 on a number about nothing. A plain
-        /// <c>SpinWait.SpinOnce()</c> escalates to exactly that after 20 iterations, which is why it is not used
-        /// here. The monotonic mechanism blocks on the fence itself, which wakes on the GPU's own signal with no
+        /// <c>SpinWait.SpinOnce()</c> escalates to exactly that after 20 iterations, which is why the spin below
+        /// goes through <see cref="D3D11DrainSpin"/> and its documented <c>sleep1Threshold</c> instead. The
+        /// monotonic mechanism blocks on the fence itself, which wakes on the GPU's own signal with no
         /// granularity cost, and the event-query fallback yields without ever sleeping.
         /// </para>
         /// <para>
@@ -263,9 +264,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             {
                 if (ReadCompleted() >= target) break;
 
-                // The wait, or the spin for a mechanism that has none. sleep1Threshold: -1 is the whole point of
-                // spelling this out: the parameterless overload starts sleeping a millisecond after 20 spins.
-                if (!_timeline.TryWaitForValue(target, DrainWaitSliceMs)) spin.SpinOnce(sleep1Threshold: -1);
+                // The wait, or the spin for a mechanism that has none. The spin goes through D3D11DrainSpin
+                // rather than being written out here, so the threshold that keeps it from sleeping a millisecond
+                // is a named constant with the reason attached instead of a bare -1 nobody would query.
+                if (!_timeline.TryWaitForValue(target, DrainWaitSliceMs)) D3D11DrainSpin.SpinOnce(ref spin);
             }
 
             _drainCount++;

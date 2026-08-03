@@ -110,6 +110,13 @@ namespace KhaozEngine.Tests.Gpu
         /// the earlier submission's completion unobservable, and a consumer polling for it frees resources the
         /// GPU is still reading. <c>GpuRetireBarrier</c> is the shipped consumer and it resets before every
         /// reuse, so nothing legitimate reaches this.
+        /// <para>
+        /// The throw is also where the timeline's behaviour on a rejected submit is pinned. The submission had
+        /// already consumed a value by the time <c>Arm</c> could throw, so the timeline HAS advanced and that
+        /// value is spent. It is deliberate, and it is what keeps the counter monotonic: nothing is handed out
+        /// twice, the gap is read by nobody, and the fence keeps the target it already had rather than being
+        /// quietly retargeted by a submission that failed.
+        /// </para>
         /// </summary>
         [Fact]
         public void ArmingAnAlreadyArmedFence_ThrowsInsteadOfOverwritingTheTarget()
@@ -123,12 +130,16 @@ namespace KhaozEngine.Tests.Gpu
             InvalidOperationException ex =
                 Assert.Throws<InvalidOperationException>(() => fences.SignalEndOfReplay(fence));
             Assert.Contains("Reset", ex.Message, StringComparison.Ordinal);
+
+            Assert.Equal(2, timeline.SignalCount);              // the failed submit still signalled
+            Assert.Equal(1UL, ((D3D11GpuFence)fence).Target);   // and did not retarget the fence
         }
 
         /// <summary>A fence from another backend cannot be armed, and saying so beats an
-        /// <c>InvalidCastException</c> with no backend name in it.</summary>
+        /// <c>InvalidCastException</c> with no backend name in it. Unlike the two throws above, this one costs
+        /// the timeline nothing: the type check runs before anything is signalled.</summary>
         [Fact]
-        public void AFenceFromAnotherBackend_IsRejectedByName()
+        public void AFenceFromAnotherBackend_IsRejectedByNameBeforeAnythingIsSignalled()
         {
             var timeline = new FakeD3D11FenceTimeline();
             using D3D11FenceSubsystem fences = Subsystem(timeline);
@@ -136,11 +147,30 @@ namespace KhaozEngine.Tests.Gpu
             ArgumentException ex =
                 Assert.Throws<ArgumentException>(() => fences.SignalEndOfReplay(new ForeignFence()));
             Assert.Contains(nameof(ForeignFence), ex.Message, StringComparison.Ordinal);
+            Assert.Equal(0, timeline.SignalCount);
+        }
+
+        /// <summary>
+        /// THE FOREIGN-FENCE CHECK OUTLIVES THE DEVICE, which is the one place decision X3's quiet no-op does not
+        /// apply. Handing this device another backend's fence is a programming error at any point in a device's
+        /// life, and teardown is exactly where staying quiet would hide it: the retire pool is still running
+        /// there, and a fence it believes was armed is one it waits on forever.
+        /// </summary>
+        [Fact]
+        public void AFenceFromAnotherBackend_IsStillRejectedAfterTheDeviceIsDead()
+        {
+            var timeline = new FakeD3D11FenceTimeline();
+            var liveness = new FakeD3D11DeviceLiveness { IsDead = true };
+            using D3D11FenceSubsystem fences = Subsystem(timeline, liveness);
+
+            Assert.Throws<ArgumentException>(() => fences.SignalEndOfReplay(new ForeignFence()));
+            Assert.Equal(0, timeline.SignalCount);
         }
 
         /// <summary>Arming a disposed fence is a defect on the path where it matters (it is reached from
         /// <c>Submit</c>), while polling and resetting one stay quiet, because those are reached at teardown
-        /// where a wrapper outliving its owner is normal.</summary>
+        /// where a wrapper outliving its owner is normal. This throw spends a timeline value too, for the same
+        /// reason the already-armed one does: the value belongs to the submission, not to the fence.</summary>
         [Fact]
         public void ADisposedFence_ThrowsOnArmingAndStaysQuietOnPollingAndResetting()
         {
@@ -153,6 +183,9 @@ namespace KhaozEngine.Tests.Gpu
             Assert.False(fence.Signaled);
             fence.Reset();
             Assert.Throws<ObjectDisposedException>(() => fences.SignalEndOfReplay(fence));
+
+            Assert.Equal(1, timeline.SignalCount);
+            Assert.Equal(0UL, ((D3D11GpuFence)fence).Target);
         }
 
         /// <summary>
@@ -171,27 +204,85 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(2, timeline.SignalCount);
         }
 
-        /// <summary>The capability is a constant and true on both mechanisms (decision C5, the one permitted
-        /// difference from the incumbent Direct3D 11 backend).</summary>
+        /// <summary>
+        /// THE CAPABILITY IS A CONSTANT (decision C5, the one permitted difference from the incumbent Direct3D 11
+        /// backend), and the mechanism is reported verbatim for the session log. One test over both enum values,
+        /// because that is the honest shape of the claim: the answer does not depend on the input, and two tests
+        /// varying an input that feeds nothing asserted a hardcoded true twice.
+        /// <para>
+        /// The fallback is the half a reader is most likely to assume is a degraded mode. It is not, as far as
+        /// this capability goes: an event query is a completion signal too. Where the mechanisms DO differ is the
+        /// lock-free poll and the blocking wait, and those are asserted against the timeline capability
+        /// properties themselves, below and in <c>D3D11DrainTests</c>, rather than against the enum.
+        /// </para>
+        /// </summary>
         [Fact]
-        public void CompletionFencesAreSupported_OnTheMonotonicFence()
-            => AssertCompletionFencesSupported(D3D11FenceMechanism.MonotonicFence);
-
-        /// <summary>The same on the fallback, which is the half of C5 a reader is most likely to assume is a
-        /// degraded mode. It is not: an event query is a completion signal too.</summary>
-        [Fact]
-        public void CompletionFencesAreSupported_OnTheEventQueryFallback()
-            => AssertCompletionFencesSupported(D3D11FenceMechanism.EventQuery);
-
-        // Not a [Theory], because an InlineData carrying the mechanism would need the enum to be public and it is
-        // deliberately internal to this backend.
-        static void AssertCompletionFencesSupported(D3D11FenceMechanism mechanism)
+        public void CompletionFencesAreSupported_AndTheMechanismIsReportedVerbatim()
         {
-            var timeline = new FakeD3D11FenceTimeline { Mechanism = mechanism };
-            using D3D11FenceSubsystem fences = Subsystem(timeline);
+            // Not a [Theory], because an InlineData carrying the mechanism would need the enum to be public and
+            // it is deliberately internal to this backend.
+            foreach (D3D11FenceMechanism mechanism in
+                new[] { D3D11FenceMechanism.MonotonicFence, D3D11FenceMechanism.EventQuery })
+            {
+                var timeline = new FakeD3D11FenceTimeline { Mechanism = mechanism };
+                using D3D11FenceSubsystem fences = Subsystem(timeline);
 
-            Assert.True(fences.SupportsCompletionFences);
-            Assert.Equal(mechanism, fences.Mechanism);
+                Assert.True(fences.SupportsCompletionFences);
+                Assert.Equal(mechanism, fences.Mechanism);
+            }
+        }
+
+        // ---- The submit lock, and the poll that does not take it ----
+
+        /// <summary>
+        /// A POLL ON THE PRIMARY MECHANISM TAKES NO LOCK, which is what makes the seam's "a fence poll never
+        /// waits" literally true there. <c>GetCompletedValue</c> is a read on a free-threaded fence object, and
+        /// under decision W4 the submit lock covers a whole replay, so a poll that took it could wait for one.
+        /// The signal in the same test still takes the lock, because signalling is a context call on every
+        /// mechanism, and asserting the pair is what stops a future edit from making the signal lock-free too.
+        /// </summary>
+        [Fact]
+        public void OnTheMonotonicFence_APollTakesNoSubmitLockWhileTheSignalStillDoes()
+        {
+            var submitLock = new object();
+            var timeline = new FakeD3D11FenceTimeline { SubmitLock = submitLock };
+            using var fences = new D3D11FenceSubsystem(timeline, submitLock);
+            IGpuFence fence = fences.CreateFence();
+
+            fences.SignalEndOfReplay(fence);
+            Assert.True(timeline.LastSignalHeldTheSubmitLock);
+
+            _ = fence.Signaled;
+            Assert.False(timeline.LastPollHeldTheSubmitLock);
+
+            _ = fences.CompletedValue;
+            Assert.False(timeline.LastPollHeldTheSubmitLock);
+        }
+
+        /// <summary>
+        /// ON THE FALLBACK THE POLL IS SERIALISED, and that deviation is pinned here rather than left as prose.
+        /// The event-query poll runs on the immediate context, which is not free-threaded, so it has to take the
+        /// submit lock and a cross-thread poll can therefore wait as long as a replay. Keeping the difference
+        /// costs one branch on a mechanism nearly no machine takes, and levelling it would cost a lock on every
+        /// poll on the mechanism nearly every machine takes.
+        /// </summary>
+        [Fact]
+        public void OnTheEventQueryFallback_APollIsSerialisedByTheSubmitLock()
+        {
+            var submitLock = new object();
+            var timeline = new FakeD3D11FenceTimeline
+            {
+                SubmitLock = submitLock,
+                Mechanism = D3D11FenceMechanism.EventQuery,
+                PollIsFreeThreaded = false,
+            };
+            using var fences = new D3D11FenceSubsystem(timeline, submitLock);
+            IGpuFence fence = fences.CreateFence();
+
+            fences.SignalEndOfReplay(fence);
+            _ = fence.Signaled;
+
+            Assert.True(timeline.LastPollHeldTheSubmitLock);
         }
 
         /// <summary>The subsystem owns the timeline, which is what lets the device dispose one object rather than

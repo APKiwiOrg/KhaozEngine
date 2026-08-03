@@ -5178,7 +5178,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.30.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.31.0" />
 ```
 
 ```csharp
@@ -8441,7 +8441,7 @@ run inside the engine's process-wide device-creation gate, so a provider needs n
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.30.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.31.0" />
 ```
 
 ```csharp

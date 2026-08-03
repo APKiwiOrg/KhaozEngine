@@ -5,20 +5,160 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+
+## 17.31.0
+
+### The native Direct3D 11 backend: the replay contract, and the three cross-row wirings (#449, #451)
+
+The replay rules the 17.30.0 recording model shipped without land here (one `ClearState` per submit, the
+redundancy caches, the precise scrub on disposal and the framebuffer-guarded viewport), and the three
+integration points the 17.30.0 rows deliberately left unwired while they were built in parallel are joined.
+Nothing renders differently and nothing switches over: the native backend's two device-creation entry points
+still throw, so no shipped path reaches any of it, and no golden moved.
+
+#### What a replay does to the device: caches, the scrub, and the implicit viewport (#449)
+
+The rules the native backend applies while replaying a recording, and the contract that says how many recordings
+may be open while it does. Still reached by nothing, since device creation throws. Sections 2.1, 2.3, 5.2, 5.3
+and 9.4 of the design doc, decisions R3, R4, R6, R8 and W6.
+
+**The deferred driver's recording contract is executable now, not a sentence in a document.** A device-free
+`[Fact]` opens three recorders, interleaves commands across them, submits them in an order that is neither the
+record order nor its reverse, and asserts the replayed sequence is exactly per-list order concatenated in SUBMIT
+order with exactly one `ClearState` at the head of each replay. An empty recording still costs one `ClearState`,
+because the invariant is per submit rather than per command, and a list submitted twice costs two. Four lists
+recorded on four threads at once do not corrupt each other, which is what "N lists may record concurrently"
+means when nothing is shared. Concurrent recording stays structurally permitted and neither exercised nor
+supported as a shipped contract. All of that is the DEFAULT driver's shape and none of it holds under
+`KE_D3D11_RECORD=immediate`, where `Begin` clears the device state at record time, there is no `ClearState` at
+the submit head, and the interleaving IS the emission order, which is why the contract test is deferred-only.
+
+**A command list is reusable, and a second recording REPLACES the first**, asserted on both drivers because they
+reach it differently. The frame loop opens, records, submits and reopens one list forever, so a recording that
+accumulated would grow without bound and replay last frame's draws under this frame's state. There was no
+permanent test for that until now.
+
+**`D3D11DeviceState` holds what is bound on the context, and a device owns exactly one.** The redundancy caches
+of R6 cover the seven pipeline-level objects (vertex shader, pixel shader, blend, depth-stencil, rasterizer,
+input layout and topology), so rebinding the pipeline already bound costs ZERO native calls and switching
+between two pipelines that share a blend state, a depth-stencil state, a rasterizer state, an input layout and a
+topology costs the two shaders. The caches are per OBJECT rather than per pipeline for exactly that reason: a
+cache keyed on pipeline identity would issue seven calls for a change of two, which is the same fan-out defect
+one level up. They are reset by the one `ClearState`, and that reset includes the bound framebuffer, which is
+the subtle half: `ClearState` drops the render targets and the viewport, so a cache that still claimed the
+framebuffer was bound would send the next bind down the redundant path and the frame would rasterise into no
+target.
+
+**Disposal scrubs precisely and unbinds, and never reaches for a `ClearState` (R8).** Disposing a bound object
+clears exactly the cache slots that named it and issues one unbind per slot, so the next draw pays for the one
+object that went away rather than for a full rebind of the pipeline, the buffers and every shader resource. A
+resource that was never bound, or was replaced before it was disposed, scrubs to nothing and issues nothing,
+which is the common case. The single `ClearState` of R3 covers the start of a replay and says nothing about the
+middle of one, which is where a disposal lands.
+
+**One emitter state per device is enforced now rather than a discipline (#476).** The seam's readonly-struct
+rule keeps mutable state behind a class reference, but a struct that news up its own state in its constructor
+satisfies that rule and still gives every command list its own caches, which is the defect the rule exists to
+prevent. So an emitter carrying device state must RECEIVE it as a constructor parameter, checked by reflection
+over the backend assembly, with behavioural tests that two lists created from one emitter value share one set of
+caches and that a rebind through the second list is still redundant.
+
+**`SetFramebuffer` carries the viewport, on a CHANGE only (W6).** There is no `SetViewport` on the seam at all,
+and the engine gets one because Veldrid's base `SetFramebuffer` auto-applies a full viewport and a full scissor.
+A framebuffer change therefore replays as `OMSetRenderTargets` plus `RSSetViewports(1, full)` plus
+`RSSetScissorRects(1, full)`, and a redundant re-bind of the framebuffer already bound emits NOTHING. That is a
+correctness rule and not a saved call: on the shipped sequence `SetFramebuffer(fb)`, `SetScissorRect(...)`,
+draw, `SetFramebuffer(fb)`, draw an unconditional emit would silently restore the full scissor and the second
+draw would render outside the intended rectangle, which is golden-visible. A later explicit `SetScissorRect`
+overrides the scissor and nothing undoes it. Two of decision T2's four structural invariants are exactly these
+tallies, and both are device-free `[Fact]`s: one viewport call and one scissor call per framebuffer CHANGE, zero
+for a redundant re-bind.
+
+**`IGpuCommandList.Begin` and `End` finally say how many recordings may be open (R4).** They documented "begin
+recording" and "finish recording" and nothing else, so the portable rule existed only as a test and as tribal
+knowledge. The portable contract is written on them now, ONE open recording per device, with the reason
+(Veldrid Direct3D11 rejects a second recorder, and with Direct3D11 in immediate-context mode a command list IS
+the device's immediate context, so a second `Begin` wipes the first list's state). The native backend's
+tolerance of nested recording is written alongside as a property of its DEFAULT DRIVER that code does not port
+off, together with the immediate driver's opposite shape (record-time `ClearState`, record order observable, a
+second concurrent recording wiping the first one's emitted state), plus a `docs/USING-KHAOZENGINE.md` section
+stating all of it and which one contract a consumer may rely on, which is the portable one. This is not a
+reason to close #424: those hazards are on the Veldrid leg, which stays selectable indefinitely.
+
+**How all of that is asserted with no Direct3D device on the machine.** The guards live in `D3D11DeviceState`,
+which the real emitter will use unchanged, and `D3D11NativeTraceEmitter` applies them and writes the
+`ID3D11DeviceContext` calls it would have made into a `D3D11NativeCallLog` instead of making them. So the tests
+pin the shipped decision rather than a copy of it in a harness. The native-call vocabulary is deliberately a
+separate type from the seam-call one, because the whole argument of 5.3 is that those are different numbers and
+one enum over both would make them interchangeable at the call site. The bind flush is not modelled here, so a
+resource-set bind appears in the trace as `ResourceSetPending`, which holds its place in the order and is named
+for what it is.
+
+#### The three cross-row wirings (#449, #450, #451)
+
+The three integration points the 17.30.0 rows deliberately left unwired while they were built in parallel, joined
+now that all three are in one tree. No new behaviour, three seams meeting: the submit path raises the
+end-of-replay signal, the device's liveness latch is the one the fences read, and the pipeline handle answers
+the cache seam.
+
+**The submit path carries the signal, through a one-member seam rather than the subsystem itself.**
+`ID3D11SubmitSignal` has exactly `SignalEndOfReplay(IGpuFence?)` on it, `D3D11FenceSubsystem` is its one
+implementation, and the driver submit takes it as an OPTIONAL trailing pair alongside the submission's fence. A
+submit that names neither replays exactly as it did, which is every call site there is while nothing constructs
+a device yet, so the wiring is reachable by a test and by the device row without every existing caller having to
+name a fence subsystem. The signal is raised inside the submit lock and after the replay, which puts it after
+the last command of that submission on BOTH drivers: the deferred one has just emitted its whole stream, and the
+immediate one emitted during record and has nothing left to emit. Raising it before the replay instead would
+name a point the GPU reaches before the submission is issued, so a fence polled there would report work complete
+that has not been issued and a retire pool would free resources the GPU is still reading. A fenceless submit
+still signals, because the timeline has to advance with the submission stream for a later fence's value to cover
+the earlier work at all. A rejected submit (an unsealed or foreign list) signals nothing, since the replay throws
+first and nothing was emitted to name. A fence handed to a submit with no sink is refused rather than accepted
+quietly, because nothing would ever arm it and an unarmed fence reads unsignalled forever, which is a hang in
+the retire pool rather than a wrong pixel. A device that already holds the lock and calls `Replay` directly owes
+the signal itself, and that is written on `Replay`.
+
+**`D3D11DeviceLiveness` implements `ID3D11DeviceLiveness`**, so the resources row's volatile token rides the
+fence subsystem's liveness argument with no adapter between them. The interface is the READ half only, which is
+the point of it: the fence work asks whether the device is dead and has no business flipping it, so `MarkDead`
+stays off the interface and the device's teardown remains its only caller. The X3 behaviours were already
+asserted against a fake, and they are asserted against the real latch too, because the fake is the shape one row
+assumed and the latch is the shape the other row built.
+
+**`D3D11GraphicsPipeline` implements `ID3D11PipelineState`**, so the redundancy caches of decision R6 can read a
+real pipeline instead of refusing it by name. Seven get-only members over state the pipeline already stored,
+implemented explicitly because six of them collide with the typed properties the emitter reads to make the
+calls, and each returns a stored field because the cache compares by reference identity and a value built per
+access is never equal to the last one. The topology is the one field added, a `uint` resolved once at
+construction behind a `NoInlining` helper with no interop type in its signature, never a Vortice enum field,
+which is the package constraint above. Its test is structural (the type takes an `ID3D11Device` and builds four
+state objects in its constructor, so there is no way to make one off Windows) and reads the interface MAP rather
+than the type's own properties, because reading a property type there resolves an `ID3D11VertexShader` and loads
+the interop. The behaviour is already pinned device-free through a fake that implements the same interface, and
+the values land on the Windows leg with device creation.
+
+### Map regions get a runtime: BuildRegions + RegionAt (#481)
+
+`MapRuntime.BuildRegions(doc)` (`KhaozEngine.MapDoc`) resolves the document's authored regions
+into a `MapRegionSet`: shapes converted to `IArea2D` once, document order preserved, null-shape
+entries skipped like the scatter builder. `RegionAt(x, z, filter)` returns the containing region
+nearest by shape center, the same tiebreak the editor's overlay picking has always used, and the
+editor now runs on this resolver, so editor picking and game runtime can never disagree.
+`MapShapeGeometry.TryCenter` moves down from the editor so the center rule ships to games.
+
 ## 17.30.0
 
-### The native Direct3D 11 backend: four prerequisites, the recording model with its replay contract, then the resources and real fences (#444, #445, #446, #447, #473, #448, #449, #450, #451)
+### The native Direct3D 11 backend: four prerequisites, the recording model, then the resources and real fences (#444, #445, #446, #447, #473, #448, #450, #451)
 
 The seam work an engine-owned Direct3D 11 backend needs before it can render a single pixel: `GpuDeviceContext`
 now ADOPTS an `IGpuDevice` instead of only building one, a backend that ships outside `KhaozEngine.Gpu` arrives
 through the explicit `GpuBackendProviders` registry, `GpuBackendKind` gains an appended `Direct3D11Native`, and
 the opt-in `KhaozEngine.Gpu.D3D11` package exists with its Windows guards, its machine probe and its architecture
 guards. On top of those four, the backend's recording model lands whole with both of its drivers behind the
-`KE_D3D11_RECORD` kill switch, then the rules a replay applies to the device (one `ClearState` per submit, the
-redundancy caches, the precise scrub on disposal and the framebuffer-guarded viewport) land on top of it, the
-resource model lands beside them, the fence primitive lands ahead of the constant-buffer ring that depends on
-it, and the adoption path stops answering a provider bug with the fallback reserved for a machine that cannot
-run the backend. Nothing renders differently and nothing switches over: the native
+`KE_D3D11_RECORD` kill switch, the resource model lands on top of that, the fence primitive lands ahead of the
+constant-buffer ring that depends on it, and the adoption path stops answering a provider bug with the fallback
+reserved
+for a machine that cannot run the backend. Nothing renders differently and nothing switches over: the native
 backend's two device-creation entry points still throw, so no shipped path reaches the recorder, the Windows OS
 probe still answers `Direct3D11`, `SupportedBackends()` still never offers the new kind to a player, and no
 golden moved. Full reasoning, including the rollout gates that govern when the default flips, in
@@ -309,84 +449,6 @@ the reason the encoder is written AS an emitter rather than under one. Nothing a
 stream exists, because Vulkan and Metal have real deferred command buffers and their emitters would record
 straight into them, where a CPU op stream is pure overhead.
 
-#### What a replay does to the device: caches, the scrub, and the implicit viewport (#449)
-
-The rules the native backend applies while replaying a recording, and the contract that says how many recordings
-may be open while it does. Still reached by nothing, since device creation throws. Sections 2.1, 2.3, 5.2, 5.3
-and 9.4 of the design doc, decisions R3, R4, R6, R8 and W6.
-
-**The deferred driver's recording contract is executable now, not a sentence in a document.** A device-free
-`[Fact]` opens three recorders, interleaves commands across them, submits them in an order that is neither the
-record order nor its reverse, and asserts the replayed sequence is exactly per-list order concatenated in SUBMIT
-order with exactly one `ClearState` at the head of each replay. An empty recording still costs one `ClearState`,
-because the invariant is per submit rather than per command, and a list submitted twice costs two. Four lists
-recorded on four threads at once do not corrupt each other, which is what "N lists may record concurrently"
-means when nothing is shared. Concurrent recording stays structurally permitted and neither exercised nor
-supported as a shipped contract. All of that is the DEFAULT driver's shape and none of it holds under
-`KE_D3D11_RECORD=immediate`, where `Begin` clears the device state at record time, there is no `ClearState` at
-the submit head, and the interleaving IS the emission order, which is why the contract test is deferred-only.
-
-**A command list is reusable, and a second recording REPLACES the first**, asserted on both drivers because they
-reach it differently. The frame loop opens, records, submits and reopens one list forever, so a recording that
-accumulated would grow without bound and replay last frame's draws under this frame's state. There was no
-permanent test for that until now.
-
-**`D3D11DeviceState` holds what is bound on the context, and a device owns exactly one.** The redundancy caches
-of R6 cover the seven pipeline-level objects (vertex shader, pixel shader, blend, depth-stencil, rasterizer,
-input layout and topology), so rebinding the pipeline already bound costs ZERO native calls and switching
-between two pipelines that share a blend state, a depth-stencil state, a rasterizer state, an input layout and a
-topology costs the two shaders. The caches are per OBJECT rather than per pipeline for exactly that reason: a
-cache keyed on pipeline identity would issue seven calls for a change of two, which is the same fan-out defect
-one level up. They are reset by the one `ClearState`, and that reset includes the bound framebuffer, which is
-the subtle half: `ClearState` drops the render targets and the viewport, so a cache that still claimed the
-framebuffer was bound would send the next bind down the redundant path and the frame would rasterise into no
-target.
-
-**Disposal scrubs precisely and unbinds, and never reaches for a `ClearState` (R8).** Disposing a bound object
-clears exactly the cache slots that named it and issues one unbind per slot, so the next draw pays for the one
-object that went away rather than for a full rebind of the pipeline, the buffers and every shader resource. A
-resource that was never bound, or was replaced before it was disposed, scrubs to nothing and issues nothing,
-which is the common case. The single `ClearState` of R3 covers the start of a replay and says nothing about the
-middle of one, which is where a disposal lands.
-
-**One emitter state per device is enforced now rather than a discipline (#476).** The seam's readonly-struct
-rule keeps mutable state behind a class reference, but a struct that news up its own state in its constructor
-satisfies that rule and still gives every command list its own caches, which is the defect the rule exists to
-prevent. So an emitter carrying device state must RECEIVE it as a constructor parameter, checked by reflection
-over the backend assembly, with behavioural tests that two lists created from one emitter value share one set of
-caches and that a rebind through the second list is still redundant.
-
-**`SetFramebuffer` carries the viewport, on a CHANGE only (W6).** There is no `SetViewport` on the seam at all,
-and the engine gets one because Veldrid's base `SetFramebuffer` auto-applies a full viewport and a full scissor.
-A framebuffer change therefore replays as `OMSetRenderTargets` plus `RSSetViewports(1, full)` plus
-`RSSetScissorRects(1, full)`, and a redundant re-bind of the framebuffer already bound emits NOTHING. That is a
-correctness rule and not a saved call: on the shipped sequence `SetFramebuffer(fb)`, `SetScissorRect(...)`,
-draw, `SetFramebuffer(fb)`, draw an unconditional emit would silently restore the full scissor and the second
-draw would render outside the intended rectangle, which is golden-visible. A later explicit `SetScissorRect`
-overrides the scissor and nothing undoes it. Two of decision T2's four structural invariants are exactly these
-tallies, and both are device-free `[Fact]`s: one viewport call and one scissor call per framebuffer CHANGE, zero
-for a redundant re-bind.
-
-**`IGpuCommandList.Begin` and `End` finally say how many recordings may be open (R4).** They documented "begin
-recording" and "finish recording" and nothing else, so the portable rule existed only as a test and as tribal
-knowledge. The portable contract is written on them now, ONE open recording per device, with the reason
-(Veldrid Direct3D11 rejects a second recorder, and with Direct3D11 in immediate-context mode a command list IS
-the device's immediate context, so a second `Begin` wipes the first list's state). The native backend's
-tolerance of nested recording is written alongside as a property of its DEFAULT DRIVER that code does not port
-off, together with the immediate driver's opposite shape (record-time `ClearState`, record order observable, a
-second concurrent recording wiping the first one's emitted state), plus a `docs/USING-KHAOZENGINE.md` section
-stating all of it and which one contract a consumer may rely on, which is the portable one. This is not a
-reason to close #424: those hazards are on the Veldrid leg, which stays selectable indefinitely.
-
-**How all of that is asserted with no Direct3D device on the machine.** The guards live in `D3D11DeviceState`,
-which the real emitter will use unchanged, and `D3D11NativeTraceEmitter` applies them and writes the
-`ID3D11DeviceContext` calls it would have made into a `D3D11NativeCallLog` instead of making them. So the tests
-pin the shipped decision rather than a copy of it in a harness. The native-call vocabulary is deliberately a
-separate type from the seam-call one, because the whole argument of 5.3 is that those are different numbers and
-one enum over both would make them interchangeable at the call site. The bind flush is not modelled here, so a
-resource-set bind appears in the trace as `ResourceSetPending`, which holds its place in the order and is named
-for what it is.
-
 #### Real completion fences, and a `WaitForIdle` that drains (#451)
 
 Decisions C5 and C6. The backend gains one device-wide monotonic completion timeline, the `IGpuFence` that sits
@@ -457,14 +519,13 @@ the entire 0.2 ms per-frame budget M2 gates on, so a drain that escalated would 
 measurement of the scheduler. The flush and the wait are both engine-owned timeline members, so the loop stays
 device-free testable. The fence poll on the seam side still does not flush and still does not wait.
 
-**Two ends were left open while the rows were built in parallel, and both are wired now** (see the wiring
-subsection below). The signal at the end of replay was DEFINED here and not raised by anything, because the
-replay loop was a sibling row and editing the shared submit path from two branches is how a merge silently drops
-one of them. The device liveness latch is the resources row's, so decision X3 (after device death a fence reads
-signalled and the drain is a no-op) is implemented against a hook this package owns, defaulting to alive. Alive
-is the safe default: defaulting to dead would make every fence read signalled before anything had died, which
-frees live resources and reads as corruption somewhere else entirely, and it stays the default for a submit path
-that names no liveness token.
+**Two ends are left open on purpose, and both are one small commit at merge.** The signal at the end of replay
+is DEFINED here and not wired, because the replay loop is a sibling row being built in parallel and editing the
+shared submit path from two branches is how a merge silently drops one of them. The device liveness latch is the
+resources row's, so decision X3 (after device death a fence reads signalled and the drain is a no-op) is
+implemented against a hook this package owns, defaulting to alive. Alive is the safe default: defaulting to dead
+would make every fence read signalled before anything had died, which frees live resources and reads as
+corruption somewhere else entirely.
 
 #### Resources, eager views, the register scheme and the state objects (#450)
 
@@ -532,49 +593,6 @@ and turns every off-Windows load-path assertion in the run red, pointing at whic
 afterwards. The fix costs nothing measurable: keep the engine value in the field and expose the Direct3D reading
 as a computed property. A new guard asserts it directly, so the next occurrence names the cause instead of the
 symptom.
-
-#### The three cross-row wirings (#449, #450, #451)
-
-The three integration points the rows above deliberately left unwired while they were built in parallel, joined
-now that all three are in one tree. No new behaviour, three seams meeting: the submit path raises the
-end-of-replay signal, the device's liveness latch is the one the fences read, and the pipeline handle answers
-the cache seam.
-
-**The submit path carries the signal, through a one-member seam rather than the subsystem itself.**
-`ID3D11SubmitSignal` has exactly `SignalEndOfReplay(IGpuFence?)` on it, `D3D11FenceSubsystem` is its one
-implementation, and the driver submit takes it as an OPTIONAL trailing pair alongside the submission's fence. A
-submit that names neither replays exactly as it did, which is every call site there is while nothing constructs
-a device yet, so the wiring is reachable by a test and by the device row without every existing caller having to
-name a fence subsystem. The signal is raised inside the submit lock and after the replay, which puts it after
-the last command of that submission on BOTH drivers: the deferred one has just emitted its whole stream, and the
-immediate one emitted during record and has nothing left to emit. Raising it before the replay instead would
-name a point the GPU reaches before the submission is issued, so a fence polled there would report work complete
-that has not been issued and a retire pool would free resources the GPU is still reading. A fenceless submit
-still signals, because the timeline has to advance with the submission stream for a later fence's value to cover
-the earlier work at all. A rejected submit (an unsealed or foreign list) signals nothing, since the replay throws
-first and nothing was emitted to name. A fence handed to a submit with no sink is refused rather than accepted
-quietly, because nothing would ever arm it and an unarmed fence reads unsignalled forever, which is a hang in
-the retire pool rather than a wrong pixel. A device that already holds the lock and calls `Replay` directly owes
-the signal itself, and that is written on `Replay`.
-
-**`D3D11DeviceLiveness` implements `ID3D11DeviceLiveness`**, so the resources row's volatile token rides the
-fence subsystem's liveness argument with no adapter between them. The interface is the READ half only, which is
-the point of it: the fence work asks whether the device is dead and has no business flipping it, so `MarkDead`
-stays off the interface and the device's teardown remains its only caller. The X3 behaviours were already
-asserted against a fake, and they are asserted against the real latch too, because the fake is the shape one row
-assumed and the latch is the shape the other row built.
-
-**`D3D11GraphicsPipeline` implements `ID3D11PipelineState`**, so the redundancy caches of decision R6 can read a
-real pipeline instead of refusing it by name. Seven get-only members over state the pipeline already stored,
-implemented explicitly because six of them collide with the typed properties the emitter reads to make the
-calls, and each returns a stored field because the cache compares by reference identity and a value built per
-access is never equal to the last one. The topology is the one field added, a `uint` resolved once at
-construction behind a `NoInlining` helper with no interop type in its signature, never a Vortice enum field,
-which is the package constraint above. Its test is structural (the type takes an `ID3D11Device` and builds four
-state objects in its constructor, so there is no way to make one off Windows) and reads the interface MAP rather
-than the type's own properties, because reading a property type there resolves an `ID3D11VertexShader` and loads
-the interop. The behaviour is already pinned device-free through a fake that implements the same interface, and
-the values land on the Windows leg with device creation.
 
 ### Traction hysteresis and slide friction soften the gate boundary (#475)
 
@@ -657,15 +675,6 @@ delegate that disagrees with its own height field and a rising contour, and cree
 field itself reads walkable. The band's surprising play consequence is now stated where the knob is documented: on
 band-held ground a jump converts a stable stand into a slide, because the launch tick ends un-grounded and the
 landing is judged at the bare gate.
-
-### Map regions get a runtime: BuildRegions + RegionAt (#481)
-
-`MapRuntime.BuildRegions(doc)` (`KhaozEngine.MapDoc`) resolves the document's authored regions
-into a `MapRegionSet`: shapes converted to `IArea2D` once, document order preserved, null-shape
-entries skipped like the scatter builder. `RegionAt(x, z, filter)` returns the containing region
-nearest by shape center, the same tiebreak the editor's overlay picking has always used, and the
-editor now runs on this resolver, so editor picking and game runtime can never disagree.
-`MapShapeGeometry.TryCenter` moves down from the editor so the center rule ships to games.
 
 ### Strafing and backing up can cost speed while the character faces the camera (#479)
 

@@ -457,13 +457,14 @@ the entire 0.2 ms per-frame budget M2 gates on, so a drain that escalated would 
 measurement of the scheduler. The flush and the wait are both engine-owned timeline members, so the loop stays
 device-free testable. The fence poll on the seam side still does not flush and still does not wait.
 
-**Two ends are left open on purpose, and both are one small commit at merge.** The signal at the end of replay
-is DEFINED here and not wired, because the replay loop is a sibling row being built in parallel and editing the
-shared submit path from two branches is how a merge silently drops one of them. The device liveness latch is the
-resources row's, so decision X3 (after device death a fence reads signalled and the drain is a no-op) is
-implemented against a hook this package owns, defaulting to alive. Alive is the safe default: defaulting to dead
-would make every fence read signalled before anything had died, which frees live resources and reads as
-corruption somewhere else entirely.
+**Two ends were left open while the rows were built in parallel, and both are wired now** (see the wiring
+subsection below). The signal at the end of replay was DEFINED here and not raised by anything, because the
+replay loop was a sibling row and editing the shared submit path from two branches is how a merge silently drops
+one of them. The device liveness latch is the resources row's, so decision X3 (after device death a fence reads
+signalled and the drain is a no-op) is implemented against a hook this package owns, defaulting to alive. Alive
+is the safe default: defaulting to dead would make every fence read signalled before anything had died, which
+frees live resources and reads as corruption somewhere else entirely, and it stays the default for a submit path
+that names no liveness token.
 
 #### Resources, eager views, the register scheme and the state objects (#450)
 
@@ -531,6 +532,49 @@ and turns every off-Windows load-path assertion in the run red, pointing at whic
 afterwards. The fix costs nothing measurable: keep the engine value in the field and expose the Direct3D reading
 as a computed property. A new guard asserts it directly, so the next occurrence names the cause instead of the
 symptom.
+
+#### The three cross-row wirings (#449, #450, #451)
+
+The three integration points the rows above deliberately left unwired while they were built in parallel, joined
+now that all three are in one tree. No new behaviour, three seams meeting: the submit path raises the
+end-of-replay signal, the device's liveness latch is the one the fences read, and the pipeline handle answers
+the cache seam.
+
+**The submit path carries the signal, through a one-member seam rather than the subsystem itself.**
+`ID3D11SubmitSignal` has exactly `SignalEndOfReplay(IGpuFence?)` on it, `D3D11FenceSubsystem` is its one
+implementation, and the driver submit takes it as an OPTIONAL trailing pair alongside the submission's fence. A
+submit that names neither replays exactly as it did, which is every call site there is while nothing constructs
+a device yet, so the wiring is reachable by a test and by the device row without every existing caller having to
+name a fence subsystem. The signal is raised inside the submit lock and after the replay, which puts it after
+the last command of that submission on BOTH drivers: the deferred one has just emitted its whole stream, and the
+immediate one emitted during record and has nothing left to emit. Raising it before the replay instead would
+name a point the GPU reaches before the submission is issued, so a fence polled there would report work complete
+that has not been issued and a retire pool would free resources the GPU is still reading. A fenceless submit
+still signals, because the timeline has to advance with the submission stream for a later fence's value to cover
+the earlier work at all. A rejected submit (an unsealed or foreign list) signals nothing, since the replay throws
+first and nothing was emitted to name. A fence handed to a submit with no sink is refused rather than accepted
+quietly, because nothing would ever arm it and an unarmed fence reads unsignalled forever, which is a hang in
+the retire pool rather than a wrong pixel. A device that already holds the lock and calls `Replay` directly owes
+the signal itself, and that is written on `Replay`.
+
+**`D3D11DeviceLiveness` implements `ID3D11DeviceLiveness`**, so the resources row's volatile token rides the
+fence subsystem's liveness argument with no adapter between them. The interface is the READ half only, which is
+the point of it: the fence work asks whether the device is dead and has no business flipping it, so `MarkDead`
+stays off the interface and the device's teardown remains its only caller. The X3 behaviours were already
+asserted against a fake, and they are asserted against the real latch too, because the fake is the shape one row
+assumed and the latch is the shape the other row built.
+
+**`D3D11GraphicsPipeline` implements `ID3D11PipelineState`**, so the redundancy caches of decision R6 can read a
+real pipeline instead of refusing it by name. Seven get-only members over state the pipeline already stored,
+implemented explicitly because six of them collide with the typed properties the emitter reads to make the
+calls, and each returns a stored field because the cache compares by reference identity and a value built per
+access is never equal to the last one. The topology is the one field added, a `uint` resolved once at
+construction behind a `NoInlining` helper with no interop type in its signature, never a Vortice enum field,
+which is the package constraint above. Its test is structural (the type takes an `ID3D11Device` and builds four
+state objects in its constructor, so there is no way to make one off Windows) and reads the interface MAP rather
+than the type's own properties, because reading a property type there resolves an `ID3D11VertexShader` and loads
+the interop. The behaviour is already pinned device-free through a fake that implements the same interface, and
+the values land on the Windows leg with device creation.
 
 ### Traction hysteresis and slide friction soften the gate boundary (#475)
 

@@ -9,8 +9,10 @@ NO umbrella: a consumer adds this package explicitly, the same pattern as `Physi
 > two drivers" below) lands behind `KE_D3D11_RECORD`, the replay's own rules (see "What a replay does to the
 > device") land on top of it, the resource model (see "Resources, views and state objects") lands beside them,
 > and the fence subsystem (see "Completion fences, and a `WaitForIdle` that drains") lands behind
-> `KE_D3D11_REAL_DRAIN`, but device creation is still not built, so `CreateForWindow` and `CreateHeadless` throw
-> a message saying so, and nothing shipped constructs any of them. `GpuBackendKind.Direct3D11` remains the
+> `KE_D3D11_REAL_DRAIN`. Those rows were built in parallel and are joined: the submit path raises the
+> end-of-replay signal, the fence subsystem reads the device's own liveness latch, and the pipeline handle
+> answers the redundancy caches. Device creation is still not built, so `CreateForWindow` and `CreateHeadless`
+> throw a message saying so, and nothing shipped constructs any of them. `GpuBackendKind.Direct3D11` remains the
 > working Direct3D 11 backend and stays selectable indefinitely.
 
 ## Opting in
@@ -151,7 +153,10 @@ typed `object` on purpose: a redundancy cache asks only whether the same instanc
 identity answers it without a Direct3D type appearing in the signature of the one type the device-free tests
 drive hardest. It costs the real emitter nothing, because that emitter already casts to its own concrete
 pipeline type and reads TYPED fields to make the call. This interface answers what changed, the concrete type
-answers with what.
+answers with what. `D3D11GraphicsPipeline` implements it EXPLICITLY, since six of the seven members collide by
+name with those typed properties, and every member hands back a stored field: a value built per access would
+never compare equal, so every bind would report a change and the whole cache would be defeated with nothing
+thrown and nothing logged.
 
 **Every emitter value the device hands out points at that one state object, and an emitter RECEIVES it.** The
 readonly-struct rule keeps mutable state behind a class reference, but a struct that allocates its own state in
@@ -204,6 +209,15 @@ unarmed and reads unsignalled, `Submit` arms it with the value that submission r
 the next submission arms it with a strictly higher one. Submitting a fence that is still armed throws rather
 than overwriting its target.
 
+**The signal is raised by the submit path, once per submit, after the last command and under the submit lock.**
+`ID3D11SubmitSignal` is the one-member seam between the two: the driver submit takes it, and the submission's
+fence, as an optional trailing pair, so a submit that names neither replays exactly as it always did. That is
+every call site while nothing constructs a device. Placing the signal after the replay is what makes it name a
+point the GPU reaches only when the submission is finished, on both drivers, and a fenceless submit signals too,
+because a later fence's value covers earlier work only if the earlier work took a value of its own. A submit the
+drivers reject signals nothing, and a fence handed to a submit with no sink is refused rather than left unarmed
+for something to wait on forever.
+
 **`WaitForIdle` is a real fence drain**, replacing the empty method body the Veldrid Direct3D 11 path has. It
 signals a fresh point, flushes the context ONCE so the driver actually has that signal, and then waits for the
 GPU to reach it. The submit lock is held for the signal and the flush and released before the wait, so a drain
@@ -251,7 +265,9 @@ so the incumbent's was dropped.
 **Disposal after device death is a no-op.** `D3D11DeviceLiveness` is a volatile token the device flips inside
 its lifecycle lock before the real device is released, and every wrapper's `Dispose` reads it. Destroying the
 device already freed every child object, so a wrapper disposed afterwards must do nothing rather than release
-twice.
+twice. It is also the one implementation of `ID3D11DeviceLiveness`, which is the READ half the fence subsystem
+was built against: a fence asks whether the device is dead so it can answer signalled, and it has no business
+flipping the token, so `MarkDead` stays off that interface and the device's teardown remains its only caller.
 
 ## Design
 

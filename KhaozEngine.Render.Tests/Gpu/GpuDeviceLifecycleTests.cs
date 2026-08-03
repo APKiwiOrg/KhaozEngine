@@ -11,7 +11,16 @@ namespace KhaozEngine.Tests.Gpu
     /// threads each cycle CreateHeadless -> trivial device use -> Dispose repeatedly, all running at once. This is
     /// the exact configuration that aborted the Vulkan loader on Mesa lavapipe under full-suite parallelism (two
     /// threads simultaneously inside vkCreateDevice / vkGetDeviceQueue), so a green run here is the regression
-    /// sentinel for that crash on the Vulkan CI leg.</summary>
+    /// sentinel for that crash on the Vulkan CI leg.
+    /// <para>
+    /// THE NATIVE DIRECT3D 11 THREADING CONTRACT IS ITS OWN FILE, and this is the pointer to it:
+    /// <see cref="D3D11ThreadingContractTests"/> carries decision W4's clauses, including the foreign-thread
+    /// device-level update racing a submit and the concurrent resize racing a present. Those are device-free, so
+    /// they run everywhere rather than only where a real device can be created, which is why they are not here.
+    /// This file stays what it is, the real-device concurrency smoke over the process-wide create and dispose
+    /// gate that every backend shares.
+    /// </para>
+    /// </summary>
     public class GpuDeviceLifecycleTests
     {
         const int ThreadCount = 4;

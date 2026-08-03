@@ -34,8 +34,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// <summary>
     /// WHAT A BIND OR A SCRUB ACTUALLY CHANGED, so the caller issues exactly the native calls the change earned
     /// and nothing else. The seven pipeline-level flags mirror <see cref="D3D11StateSlot"/> plus the topology,
-    /// and <see cref="Framebuffer"/> exists only for the scrub of decision R8, since a bound framebuffer is not a
-    /// pipeline object and is never part of a pipeline bind.
+    /// and the last three exist only for the scrub of decision R8: a bound framebuffer, a vertex stream and an
+    /// index buffer are none of them pipeline objects, and none is ever part of a pipeline bind.
     /// <para>
     /// A flags enum rather than a list, because the two consumers both want a fixed-order walk with no
     /// allocation: an emitter turning a change into native calls, and disposal turning a scrub into precise
@@ -68,5 +68,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <summary>The bound framebuffer, which only a scrub can report. A framebuffer bind answers with a plain
         /// bool, because decision W6 turns on one question: did the framebuffer CHANGE.</summary>
         Framebuffer = 1 << 7,
+
+        /// <summary>One or more vertex streams, which only a scrub can report. WHICH slots is a contiguous span
+        /// answered beside the flags, since there are 32 of them and one unbind covers a range of them
+        /// (<see cref="D3D11DeviceState.Scrub"/>). An ordinary vertex bind is recorded rather than issued and is
+        /// paid at the next draw, so it never reports through here.</summary>
+        VertexBuffers = 1 << 8,
+
+        /// <summary>The bound index buffer, which only a scrub can report. An ordinary index bind answers with a
+        /// plain bool, since <c>IASetIndexBuffer</c> binds exactly one.</summary>
+        IndexBuffer = 1 << 9,
     }
 }

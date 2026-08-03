@@ -28,17 +28,19 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         readonly Dictionary<object, int> _ids = new(ReferenceEqualityComparer.Instance);
 
         /// <summary>Every entry so far, in order, one line each. Longer than <see cref="TotalCalls"/> by the
-        /// number of <see cref="D3D11NativeCall.ResourceSetPending"/> markers in it.</summary>
+        /// number of <see cref="D3D11NativeCall.ResourceSetPending"/> and
+        /// <see cref="D3D11NativeCall.VertexBufferPending"/> markers in it.</summary>
         internal IReadOnlyList<string> Trace => _trace;
 
         /// <summary>
         /// Total NATIVE calls recorded, which is what decision T2's budget is made of.
         /// <para>
-        /// <see cref="D3D11NativeCall.ResourceSetPending"/> is EXCLUDED, because it is not a call. A resource-set
-        /// bind records only and issues nothing at the device, and the flush that follows it is where the calls
-        /// appear. Counting the marker would add one to the total for every set a frame binds, which is a number
-        /// that grows with the recording rather than with the device work, and a budget built on it would move
-        /// whenever a renderer bound the same set a second time.
+        /// <see cref="D3D11NativeCall.ResourceSetPending"/> and <see cref="D3D11NativeCall.VertexBufferPending"/>
+        /// are EXCLUDED, because neither is a call. Both binds record only and issue nothing at the device, and
+        /// the flush at the next draw is where the calls appear. Counting a marker would add one to the total for
+        /// every set and every stream a frame binds, which is a number that grows with the recording rather than
+        /// with the device work, and a budget built on it would move whenever a renderer bound the same thing a
+        /// second time.
         /// </para>
         /// </summary>
         internal int TotalCalls { get; private set; }
@@ -51,7 +53,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         internal void Record(D3D11NativeCall call, string arguments = "")
         {
             _counts[call] = Count(call) + 1;
-            if (call != D3D11NativeCall.ResourceSetPending) TotalCalls++;
+            if (call != D3D11NativeCall.ResourceSetPending && call != D3D11NativeCall.VertexBufferPending)
+                TotalCalls++;
             _trace.Add(call + "(" + arguments + ")");
         }
 

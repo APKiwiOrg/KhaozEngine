@@ -124,10 +124,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 _log.Record(D3D11NativeCall.VSSetShader, _log.Id(state.VertexShader));
             if (Has(changed, D3D11StateChange.PixelShader))
                 _log.Record(D3D11NativeCall.PSSetShader, _log.Id(state.PixelShader));
+            // The two calls that carry an argument riding the pipeline (issue #454). The factor and the reference
+            // are in the TRACE as well as in the key, because a trace that showed only the state object could not
+            // tell the two pipelines of the hazard apart and a test over it would pass either way.
             if (Has(changed, D3D11StateChange.BlendState))
-                _log.Record(D3D11NativeCall.OMSetBlendState, _log.Id(state.BlendState));
+                _log.Record(D3D11NativeCall.OMSetBlendState,
+                    $"{_log.Id(state.BlendState)},{Factor(state.BlendFactor)}");
             if (Has(changed, D3D11StateChange.DepthStencilState))
-                _log.Record(D3D11NativeCall.OMSetDepthStencilState, _log.Id(state.DepthStencilState));
+                _log.Record(D3D11NativeCall.OMSetDepthStencilState,
+                    $"{_log.Id(state.DepthStencilState)},{N(state.StencilReference)}");
             if (Has(changed, D3D11StateChange.RasterizerState))
                 _log.Record(D3D11NativeCall.RSSetState, _log.Id(state.RasterizerState));
             if (Has(changed, D3D11StateChange.InputLayout))
@@ -155,12 +160,27 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             _state.Binds.RecordGraphics(slot, set, dynamicOffset, hasDynamicOffset: true);
         }
 
+        /// <summary>
+        /// RECORDED, NOT EMITTED, which is what makes 5.3's <c>IASetVertexBuffers(0, 2, ...)</c> reachable: two
+        /// per-stream calls cannot be collapsed after they have been made, and the stride the call needs comes
+        /// from the pipeline rather than from this bind. The next draw issues the batch. The trace line is
+        /// <see cref="D3D11NativeCall.VertexBufferPending"/>, which holds the bind's place and counts as no
+        /// native call.
+        /// </summary>
         public void SetVertexBuffer(uint slot, IGpuBuffer buffer, uint offsetBytes)
-            => _log.Record(D3D11NativeCall.IASetVertexBuffers,
-                $"{N(slot)},1,{_log.Id(buffer)},{N(offsetBytes)}");
+        {
+            _log.Record(D3D11NativeCall.VertexBufferPending, $"{N(slot)},{_log.Id(buffer)},{N(offsetBytes)}");
+            _state.Vertices.RecordVertexBuffer(slot, buffer, offsetBytes);
+        }
 
+        /// <summary>Issued at the bind, guarded by the redundancy cache over the pair (buffer, format). There is
+        /// nothing to batch an index bind with, since <c>IASetIndexBuffer</c> binds exactly one.</summary>
         public void SetIndexBuffer(IGpuBuffer buffer, GpuIndexFormat format)
-            => _log.Record(D3D11NativeCall.IASetIndexBuffer, $"{_log.Id(buffer)},{format}");
+        {
+            if (!_state.Vertices.BindIndexBuffer(buffer, format)) return;
+
+            _log.Record(D3D11NativeCall.IASetIndexBuffer, $"{_log.Id(buffer)},{format}");
+        }
 
         /// <summary>
         /// An explicit scissor overrides whatever a framebuffer bind left behind, and nothing undoes it: the only
@@ -186,12 +206,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             _log.Record(D3D11NativeCall.RSSetScissorRects, FullScissor(framebuffer));
         }
 
-        /// <summary>Decision R5, rule 2: the pre-command hook first, then the draw. Everything else a draw path
-        /// owes (the vertex and index binds, the topology, the blend factor) is work-breakdown row 10 and hangs
-        /// off the same hook in the same position.</summary>
+        /// <summary>Decision R5, rule 2, in the order every draw path in this backend takes: the resource-set
+        /// flush FIRST, then the batched vertex streams, then the draw. The topology and the blend factor were
+        /// paid at the pipeline bind, which is where they ride (5.3).</summary>
         public void Draw(uint vertexCount, uint instanceCount, uint vertexStart, uint instanceStart)
         {
             FlushGraphicsBinds();
+            FlushVertexBuffers();
             _log.Record(D3D11NativeCall.DrawInstanced,
                 $"{N(vertexCount)},{N(instanceCount)},{N(vertexStart)},{N(instanceStart)}");
         }
@@ -201,6 +222,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             uint instanceStart)
         {
             FlushGraphicsBinds();
+            FlushVertexBuffers();
             _log.Record(D3D11NativeCall.DrawIndexedInstanced,
                 $"{N(indexCount)},{N(instanceCount)},{N(indexStart)},{N(vertexOffset)},{N(instanceStart)}");
         }
@@ -289,6 +311,27 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             _state.Binds.FlushCompute(ref sink);
         }
 
+        /// <summary>
+        /// THE BATCHED VERTEX FLUSH: one <c>IASetVertexBuffers</c> over the contiguous span of dirty slots, or
+        /// nothing when no stream changed. The span may sweep in a clean slot between two dirty ones, which
+        /// rebinds it to what it already holds and keeps the law at one call.
+        /// </summary>
+        internal void FlushVertexBuffers()
+        {
+            if (!_state.Vertices.TakeFlush(out uint startSlot, out int count)) return;
+
+            var text = new System.Text.StringBuilder();
+            text.Append(N(startSlot)).Append(',').Append(N(count));
+            for (uint slot = startSlot; slot < startSlot + (uint)count; slot++)
+            {
+                text.Append(',').Append(_log.Id(_state.Vertices.BufferAt(slot)))
+                    .Append('@').Append(N(_state.Vertices.OffsetAt(slot)))
+                    .Append('/').Append(N(_state.Vertices.StrideAt(slot)));
+            }
+
+            _log.Record(D3D11NativeCall.IASetVertexBuffers, text.ToString());
+        }
+
         // ---- ID3D11BindSink: the naming translation, and the only thing a device-free budget can drift in ----
 
         /// <inheritdoc/>
@@ -365,7 +408,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// </summary>
         internal void ScrubDisposed(object resource)
         {
-            D3D11StateChange scrubbed = _state.Scrub(resource);
+            D3D11StateChange scrubbed = _state.Scrub(resource, out uint vertexStart, out int vertexCount);
             if (scrubbed == D3D11StateChange.None) return;
 
             if (Has(scrubbed, D3D11StateChange.VertexShader))
@@ -373,13 +416,17 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             if (Has(scrubbed, D3D11StateChange.PixelShader))
                 _log.Record(D3D11NativeCall.PSSetShader, "null");
             if (Has(scrubbed, D3D11StateChange.BlendState))
-                _log.Record(D3D11NativeCall.OMSetBlendState, "null");
+                _log.Record(D3D11NativeCall.OMSetBlendState, $"null,{Factor(D3D11DeviceState.ClearedBlendFactor)}");
             if (Has(scrubbed, D3D11StateChange.DepthStencilState))
-                _log.Record(D3D11NativeCall.OMSetDepthStencilState, "null");
+                _log.Record(D3D11NativeCall.OMSetDepthStencilState, "null,0");
             if (Has(scrubbed, D3D11StateChange.RasterizerState))
                 _log.Record(D3D11NativeCall.RSSetState, "null");
             if (Has(scrubbed, D3D11StateChange.InputLayout))
                 _log.Record(D3D11NativeCall.IASetInputLayout, "null");
+            if (Has(scrubbed, D3D11StateChange.VertexBuffers))
+                _log.Record(D3D11NativeCall.IASetVertexBuffers, $"{N(vertexStart)},{N(vertexCount)},null");
+            if (Has(scrubbed, D3D11StateChange.IndexBuffer))
+                _log.Record(D3D11NativeCall.IASetIndexBuffer, "null");
             if (Has(scrubbed, D3D11StateChange.Framebuffer))
                 _log.Record(D3D11NativeCall.OMSetRenderTargets, "null");
         }
@@ -394,6 +441,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         // Every output at once, matching SetFullScissorRects, and the same RECT shape as an explicit rect.
         static string FullScissor(IGpuFramebuffer framebuffer)
             => $"all:1,0,0,{N(framebuffer.Width)},{N(framebuffer.Height)}";
+
+        // A blend factor as the four components OMSetBlendState takes, so two pipelines that share a state object
+        // and differ only here are visibly different in the trace.
+        static string Factor(System.Numerics.Vector4 factor)
+            => $"{N(factor.X)}|{N(factor.Y)}|{N(factor.Z)}|{N(factor.W)}";
 
         // Invariant culture throughout, so a trace compares equal on a machine whose decimal separator is a
         // comma, matching the emitter call log.

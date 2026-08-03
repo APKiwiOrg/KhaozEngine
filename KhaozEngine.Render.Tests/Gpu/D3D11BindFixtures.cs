@@ -181,6 +181,7 @@ namespace KhaozEngine.Tests.Gpu
                     if (line.StartsWith("DrawIndexedInstanced(", StringComparison.Ordinal)) continue;
                     if (line.StartsWith("Dispatch(", StringComparison.Ordinal)) continue;
                     if (line.StartsWith("ResourceSetPending(", StringComparison.Ordinal)) continue;
+                    if (line.StartsWith("VertexBufferPending(", StringComparison.Ordinal)) continue;
                     lines.Add(line);
                 }
 

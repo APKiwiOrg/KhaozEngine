@@ -9,9 +9,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// Sharing one enum between the two would make a seam tally readable as a native tally, which is the
     /// confusion the seam's own remarks exist to prevent.
     /// <para>
-    /// Every member is a real <c>ID3D11DeviceContext</c> method name, with one deliberate exception named as such
-    /// (<see cref="ResourceSetPending"/>). Names are the D3D11 ones rather than engine ones so a trace can be
-    /// read straight against a capture or against the incumbent's call sequence.
+    /// Every member is a real <c>ID3D11DeviceContext</c> method name, with two deliberate exceptions named as
+    /// such (<see cref="ResourceSetPending"/> and <see cref="VertexBufferPending"/>, the two binds that record
+    /// rather than issue). Names are the D3D11 ones rather than engine ones so a trace can be read straight
+    /// against a capture or against the incumbent's call sequence.
     /// </para>
     /// </summary>
     internal enum D3D11NativeCall
@@ -159,5 +160,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <see cref="ClearState"/> and the end of a replay.
         /// </summary>
         Unmap = 46,
+
+        /// <summary>
+        /// NOT A NATIVE CALL EITHER, and the second of the two markers. A vertex-buffer bind RECORDS ONLY, because
+        /// <c>IASetVertexBuffers</c> takes an array and two per-stream calls cannot be batched into one after they
+        /// have been made, and because the stride the call needs comes from the pipeline (5.3, issue #454). The
+        /// draw issues the batch. This member holds the bind's place in the order the way
+        /// <see cref="ResourceSetPending"/> does, and <see cref="D3D11NativeCallLog.TotalCalls"/> excludes it by
+        /// name for the same reason.
+        /// </summary>
+        VertexBufferPending = 47,
     }
 }

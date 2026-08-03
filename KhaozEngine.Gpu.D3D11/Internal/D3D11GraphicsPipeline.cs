@@ -30,11 +30,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// </para>
     /// <para>
     /// IT ALSO ANSWERS <see cref="ID3D11PipelineState"/>, which is how the redundancy caches of decision R6 read
-    /// it: seven get-only members over the state above, EXPLICITLY implemented because six of them collide by
+    /// it: get-only members over the state above, EXPLICITLY implemented because most of them collide by
     /// name with the typed properties the emitter uses to make the calls. That is the split the interface
     /// describes, with this seam answering what changed and the typed members answering with what, and it costs
     /// no downcast per bind either way. Every member returns a stored field, because the caches compare by
-    /// reference identity and a value built per access is never equal to the last one.
+    /// reference identity and a value built per access is never equal to the last one. Two of them are the
+    /// ARGUMENTS that ride a state object (the blend factor and the stencil reference, issue #454) rather than
+    /// objects, so those are compared by value.
     /// </para>
     /// </summary>
     [SupportedOSPlatform("windows")]
@@ -151,7 +153,18 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         object? ID3D11PipelineState.BlendState => BlendState;
 
         /// <inheritdoc/>
+        System.Numerics.Vector4 ID3D11PipelineState.BlendFactor => BlendFactor;
+
+        /// <inheritdoc/>
         object? ID3D11PipelineState.DepthStencilState => DepthStencilState;
+
+        /// <summary>
+        /// ALWAYS ZERO, and stated here rather than left implicit. The GPU seam carries no stencil state at all,
+        /// so <see cref="CreateDepthStencilStateWindows"/> builds every object with <c>StencilEnable = false</c>
+        /// and there is no engine value a reference could come from. It is part of the depth-stencil cache key
+        /// anyway (issue #454), so the day the seam grows a stencil pass the key is already right.
+        /// </summary>
+        uint ID3D11PipelineState.StencilReference => 0u;
 
         /// <inheritdoc/>
         object? ID3D11PipelineState.RasterizerState => RasterizerState;
@@ -161,6 +174,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         /// <inheritdoc/>
         uint ID3D11PipelineState.PrimitiveTopology => _primitiveTopology;
+
+        /// <inheritdoc/>
+        uint[] ID3D11PipelineState.VertexStrides => VertexStrides;
 
         /// <summary>The same array as <see cref="ResourceLayouts"/>, reached through the seam the bind flush asks
         /// through. Explicit because the typed property is internal and an interface implementation cannot be, and

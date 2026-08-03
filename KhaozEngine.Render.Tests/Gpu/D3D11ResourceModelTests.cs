@@ -479,8 +479,8 @@ namespace KhaozEngine.Tests.Gpu
         /// <para>
         /// Reading the interface MAP rather than the type's own properties is not incidental: reading a property
         /// type on this class resolves an <c>ID3D11VertexShader</c> and loads the Direct3D interop, which would
-        /// turn the two load-path assertions below red in whichever test happened to run afterwards. The map's
-        /// members are all <c>object</c> and <c>uint</c>, so it stays inside the boundary.
+        /// turn the two load-path assertions below red in whichever test happened to run afterwards. Every member
+        /// of the map is a BCL type, so it stays inside the boundary.
         /// </para>
         /// </summary>
         [Fact]
@@ -493,13 +493,17 @@ namespace KhaozEngine.Tests.Gpu
             InterfaceMapping map = typeof(D3D11GraphicsPipeline)
                 .GetInterfaceMap(typeof(ID3D11PipelineState));
 
-            Assert.Equal(7, map.InterfaceMethods.Length);
+            Assert.Equal(10, map.InterfaceMethods.Length);
             Assert.All(map.TargetMethods, m => Assert.Equal(typeof(D3D11GraphicsPipeline), m.DeclaringType));
 
-            // The six object slots plus the uint topology, which is the shape the cache compares by reference
-            // identity and the reason no member here is a Direct3D type.
+            // The six object slots the cache compares by reference identity, plus the four VALUES: the topology,
+            // the blend factor and the stencil reference that ride the two calls carrying an argument beside
+            // their state object (issue #454), and the per-slot vertex strides a bind of a stream needs. Not one
+            // of the ten is a Direct3D type, which is what keeps this seam and its tests device-free.
             Assert.Equal(6, map.InterfaceMethods.Count(m => m.ReturnType == typeof(object)));
-            Assert.Equal(1, map.InterfaceMethods.Count(m => m.ReturnType == typeof(uint)));
+            Assert.Equal(2, map.InterfaceMethods.Count(m => m.ReturnType == typeof(uint)));
+            Assert.Equal(1, map.InterfaceMethods.Count(m => m.ReturnType == typeof(System.Numerics.Vector4)));
+            Assert.Equal(1, map.InterfaceMethods.Count(m => m.ReturnType == typeof(uint[])));
         }
 
         // ---- the platform boundary -----------------------------------------------------------------------

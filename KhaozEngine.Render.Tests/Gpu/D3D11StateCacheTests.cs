@@ -215,8 +215,8 @@ namespace KhaozEngine.Tests.Gpu
                     "ClearState()",
                     $"VSSetShader({log.Id(pipeline.VertexShader)})",
                     $"PSSetShader({log.Id(pipeline.PixelShader)})",
-                    $"OMSetBlendState({log.Id(pipeline.BlendState)})",
-                    $"OMSetDepthStencilState({log.Id(pipeline.DepthStencilState)})",
+                    $"OMSetBlendState({log.Id(pipeline.BlendState)},1|1|1|1)",
+                    $"OMSetDepthStencilState({log.Id(pipeline.DepthStencilState)},0)",
                     $"RSSetState({log.Id(pipeline.RasterizerState)})",
                     $"IASetInputLayout({log.Id(pipeline.InputLayout)})",
                     "IASetPrimitiveTopology(4)",
@@ -373,7 +373,7 @@ namespace KhaozEngine.Tests.Gpu
 
             emitter.ScrubDisposed(shared);
 
-            Assert.Equal(new[] { "VSSetShader(null)", "OMSetDepthStencilState(null)" }, log.Trace);
+            Assert.Equal(new[] { "VSSetShader(null)", "OMSetDepthStencilState(null,0)" }, log.Trace);
         }
 
         /// <summary>The common case, and it must be free: most disposed resources were never bound, or were
@@ -435,10 +435,12 @@ namespace KhaozEngine.Tests.Gpu
             }
         }
 
-        /// <summary>And the flags that are not slots are the two that cannot be: a topology is a value rather
-        /// than an object, and a framebuffer is not part of a pipeline.</summary>
+        /// <summary>And the flags that are not slots are the four that cannot be: a topology is a value rather
+        /// than an object, and a framebuffer, a vertex stream and an index buffer are none of them part of a
+        /// pipeline. Pinned as a LIST rather than a count, so a fifth arrives here as a decision to state rather
+        /// than as a number nobody reads.</summary>
         [Fact]
-        public void TheOnlyChangeFlagsWithoutASlot_AreTopologyAndFramebuffer()
+        public void TheOnlyChangeFlagsWithoutASlot_AreTopologyTheFramebufferAndTheInputAssembler()
         {
             string[] slots = Enum.GetNames<D3D11StateSlot>();
             string[] extra = Enum.GetNames<D3D11StateChange>()
@@ -446,7 +448,13 @@ namespace KhaozEngine.Tests.Gpu
                 .ToArray();
 
             Assert.Equal(
-                new[] { nameof(D3D11StateChange.PrimitiveTopology), nameof(D3D11StateChange.Framebuffer) },
+                new[]
+                {
+                    nameof(D3D11StateChange.PrimitiveTopology),
+                    nameof(D3D11StateChange.Framebuffer),
+                    nameof(D3D11StateChange.VertexBuffers),
+                    nameof(D3D11StateChange.IndexBuffer),
+                },
                 extra);
         }
 
@@ -459,6 +467,21 @@ namespace KhaozEngine.Tests.Gpu
         /// frame meets.</summary>
         internal static FakeD3D11Pipeline Pipeline(uint topology = 4u) => new(
             new object(), new object(), new object(), new object(), new object(), new object(), topology);
+
+        /// <summary>
+        /// A pipeline that SHARES another one's blend state object and depth-stencil state object and differs
+        /// only in the two arguments those calls carry. The shape issue #454's cache key exists for: everything a
+        /// cache keyed on the objects alone would call redundant.
+        /// </summary>
+        internal static FakeD3D11Pipeline SharingStateObjects(FakeD3D11Pipeline other,
+            System.Numerics.Vector4 blendFactor, uint stencilReference)
+            => new(other.VertexShader, other.PixelShader, other.BlendState, other.DepthStencilState,
+                other.RasterizerState, other.InputLayout, other.PrimitiveTopology)
+            {
+                BlendFactor = blendFactor,
+                StencilReference = stencilReference,
+                VertexStrides = other.VertexStrides,
+            };
 
         /// <summary>
         /// A graphics pipeline that can answer what it is made of, which is what the redundancy caches compare
@@ -494,6 +517,19 @@ namespace KhaozEngine.Tests.Gpu
             public object? InputLayout { get; }
             public uint PrimitiveTopology { get; }
             public D3D11ResourceLayout[] ResourceLayouts { get; }
+
+            /// <summary>The blend factor this pipeline is bound with. Defaults to what a cleared context already
+            /// holds, so a fixture that does not care about the factor never makes the blend cache report a change
+            /// it did not mean to test.</summary>
+            public System.Numerics.Vector4 BlendFactor { get; init; } = D3D11DeviceState.ClearedBlendFactor;
+
+            /// <summary>The stencil reference, defaulting to the cleared context's zero for the same reason.
+            /// </summary>
+            public uint StencilReference { get; init; }
+
+            /// <summary>Per-slot vertex strides. Empty by default, which is a pipeline with no vertex inputs, so
+            /// the fixtures in this file bind no streams and pay for none.</summary>
+            public uint[] VertexStrides { get; init; } = Array.Empty<uint>();
 
             public void Dispose()
             {

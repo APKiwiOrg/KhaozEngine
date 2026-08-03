@@ -183,10 +183,14 @@ namespace KhaozEngine.Gpu
         /// </para>
         /// <para>
         /// A BACKEND MAY BE MORE PERMISSIVE, AND THAT IS NOT PART OF THIS CONTRACT. The engine's own native
-        /// Direct3D11 backend records into an engine-owned command stream and touches no device state here, so N
-        /// lists may record concurrently there and submit order is the observable order. That is a property of
-        /// that backend, not a promise of this interface, and code written against it does not port. Rely only on
-        /// the one-open-recording rule above.
+        /// Direct3D11 backend is more permissive on its DEFAULT driver, which records into an engine-owned
+        /// command stream and touches no device state here, so N lists may record concurrently there and submit
+        /// order is the observable order. That holds for one of its two drivers rather than for the backend:
+        /// under <c>KE_D3D11_RECORD=immediate</c> the same backend emits as it records, so this method clears
+        /// the device state when it is called, record order is the observable order, and a second concurrent
+        /// recording wipes what the first already emitted. Concurrent recording is therefore not tolerated
+        /// there either. Neither shape is a promise of this interface, code written against either does not
+        /// port, and the one-open-recording rule above is the only thing to rely on.
         /// </para>
         /// </summary>
         void Begin();

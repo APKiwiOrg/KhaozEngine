@@ -109,12 +109,19 @@ row 9's decision, written out on `D3D11CountingEmitter`. It is deliberately not 
 
 ## What a replay does to the device
 
-**One `ClearState` per submit, at the head of the replay, and nowhere else.** `Begin` resets the recording and
-touches no device state, `End` seals, and `Submit` takes the device's lock and replays. So N lists may record
-concurrently, a nested `Begin` cannot corrupt another recording (two recorders are two arrays), and the
-observable order is SUBMIT order rather than record order. That is the NATIVE backend's contract. The portable
-`IGpuCommandList` contract is unchanged at one open recording per device, which is what a consumer may rely on,
-and it is written on `IGpuCommandList.Begin` and in `docs/USING-KHAOZENGINE.md`.
+**One `ClearState` per submit, at the head of the replay, and nowhere else. That is the DEFERRED driver's law,
+not the package's.** On the default driver `Begin` resets the recording and touches no device state, `End`
+seals, and `Submit` takes the device's lock and replays. So N lists may record concurrently, a nested `Begin`
+cannot corrupt another recording (two recorders are two arrays), and the observable order is SUBMIT order rather
+than record order.
+
+**The immediate driver is the mirror of that, clause for clause.** `Begin` calls the real emitter's `Begin`, so
+the `ClearState` lands at RECORD time and there is none at the submit head. Submit replays nothing at all, so
+the same list submitted twice costs one recording's calls rather than two, a second concurrent `Begin` wipes the
+state and the redundancy caches the first list already emitted, and RECORD order is the observable order. Both drivers ship until M1 deletes the loser, so
+neither shape may be quoted as "the native backend's contract" without naming the driver it belongs to. The
+portable `IGpuCommandList` contract is unchanged at one open recording per device, which is what a consumer may
+rely on, and it is written on `IGpuCommandList.Begin` and in `docs/USING-KHAOZENGINE.md`.
 
 **`D3D11DeviceState` is what is bound on the context, and the device owns exactly one.** It carries the
 redundancy caches for the seven pipeline-level objects (vertex shader, pixel shader, blend, depth-stencil,

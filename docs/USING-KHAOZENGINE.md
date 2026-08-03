@@ -8431,11 +8431,17 @@ This is a real portability rule, not defensive style. Backends disagree about wh
 - Vulkan and Metal have their own list lifetimes.
 
 **A backend may be more permissive, and that changes nothing above.** The engine's own native Direct3D11 backend
-(`KhaozEngine.Gpu.D3D11`) records into an engine-owned command stream and touches no device state in `Begin`, so
-N lists may record concurrently there, the recordings cannot corrupt each other, and the observable order is
-**submit** order rather than record order. That is a property of that backend. It is not a promise of
-`IGpuCommandList`, code written against it does not port to the other three backends, and the engine's own
-invariant test still asserts no nested open list in the capture paths.
+(`KhaozEngine.Gpu.D3D11`) ships two recording drivers, and only the default one is more permissive. It records
+into an engine-owned command stream and touches no device state in `Begin`, so N lists may record concurrently
+there, the recordings cannot corrupt each other, and the observable order is **submit** order rather than record
+order.
+
+The fallback driver behind `KE_D3D11_RECORD=immediate` makes its native calls as the list is recorded, so
+`Begin` clears the device state at record time, the observable order is **record** order, and a second
+concurrent recording wipes the state the first one already emitted. Concurrent recording is not tolerated there
+either. So the permissive shape is a property of one driver rather than of that backend. Neither shape is a
+promise of `IGpuCommandList`, code written against either does not port to the other three backends, and the
+engine's own invariant test still asserts no nested open list in the capture paths.
 
 `End()` seals the list. Submitting one that was never ended is a half-recorded frame, and a backend is free to
 refuse it rather than replay it.

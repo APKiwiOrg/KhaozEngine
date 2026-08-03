@@ -24,10 +24,14 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// It also means every rule below is testable under a plain <c>dotnet test</c> on macOS.
     /// </para>
     /// <para>
-    /// NOT THREAD-SAFE, and it does not need to be. Decision W4 puts one submit lock on the device covering
-    /// replay, present and the resize apply, and every mutation here happens inside a replay. Recording is
-    /// lock-free precisely because it never touches this object: under the deferred driver a recorder appends to
-    /// its own array and meets an emitter only at submit.
+    /// NOT THREAD-SAFE, and it does not need to be on either driver, for two different reasons. Under the
+    /// deferred driver every mutation here happens inside a replay, which decision W4's one submit lock covers
+    /// along with present and the resize apply, and recording is lock-free precisely because it never touches
+    /// this object: a recorder appends to its own array and meets an emitter only at submit. Under
+    /// <c>KE_D3D11_RECORD=immediate</c> that is inverted, since every mutation happens during lock-free RECORD
+    /// and the submit lock guards nothing here at all. What makes both safe is decision W5 rather than the
+    /// lock: concurrent recording is structurally permitted and unsupported in v1, so one thread records at a
+    /// time and nothing else reaches this object.
     /// </para>
     /// </summary>
     internal sealed class D3D11DeviceState

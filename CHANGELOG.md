@@ -314,14 +314,16 @@ The rules the native backend applies while replaying a recording, and the contra
 may be open while it does. Still reached by nothing, since device creation throws. Sections 2.1, 2.3, 5.2, 5.3
 and 9.4 of the design doc, decisions R3, R4, R6, R8 and W6.
 
-**The native recording contract is executable now, not a sentence in a document.** A device-free `[Fact]` opens
-three recorders, interleaves commands across them, submits them in an order that is neither the record order nor
-its reverse, and asserts the replayed sequence is exactly per-list order concatenated in SUBMIT order with
-exactly one `ClearState` at the head of each replay. An empty recording still costs one `ClearState`, because
-the invariant is per submit rather than per command, and a list submitted twice costs two. Four lists recorded
-on four threads at once do not corrupt each other, which is what "N lists may record concurrently" means when
-nothing is shared. Concurrent recording stays structurally permitted and neither exercised nor supported as a
-shipped contract.
+**The deferred driver's recording contract is executable now, not a sentence in a document.** A device-free
+`[Fact]` opens three recorders, interleaves commands across them, submits them in an order that is neither the
+record order nor its reverse, and asserts the replayed sequence is exactly per-list order concatenated in SUBMIT
+order with exactly one `ClearState` at the head of each replay. An empty recording still costs one `ClearState`,
+because the invariant is per submit rather than per command, and a list submitted twice costs two. Four lists
+recorded on four threads at once do not corrupt each other, which is what "N lists may record concurrently"
+means when nothing is shared. Concurrent recording stays structurally permitted and neither exercised nor
+supported as a shipped contract. All of that is the DEFAULT driver's shape and none of it holds under
+`KE_D3D11_RECORD=immediate`, where `Begin` clears the device state at record time, there is no `ClearState` at
+the submit head, and the interleaving IS the emission order, which is why the contract test is deferred-only.
 
 **A command list is reusable, and a second recording REPLACES the first**, asserted on both drivers because they
 reach it differently. The frame loop opens, records, submits and reopens one list forever, so a recording that
@@ -369,9 +371,11 @@ recording" and "finish recording" and nothing else, so the portable rule existed
 knowledge. The portable contract is written on them now, ONE open recording per device, with the reason
 (Veldrid Direct3D11 rejects a second recorder, and with Direct3D11 in immediate-context mode a command list IS
 the device's immediate context, so a second `Begin` wipes the first list's state). The native backend's
-tolerance of nested recording is written alongside as a BACKEND PROPERTY that code does not port off, plus a
-`docs/USING-KHAOZENGINE.md` section stating both and which one a consumer may rely on. This is not a reason to
-close #424: those hazards are on the Veldrid leg, which stays selectable indefinitely.
+tolerance of nested recording is written alongside as a property of its DEFAULT DRIVER that code does not port
+off, together with the immediate driver's opposite shape (record-time `ClearState`, record order observable, a
+second concurrent recording wiping the first one's emitted state), plus a `docs/USING-KHAOZENGINE.md` section
+stating all of it and which one contract a consumer may rely on, which is the portable one. This is not a
+reason to close #424: those hazards are on the Veldrid leg, which stays selectable indefinitely.
 
 **How all of that is asserted with no Direct3D device on the machine.** The guards live in `D3D11DeviceState`,
 which the real emitter will use unchanged, and `D3D11NativeTraceEmitter` applies them and writes the

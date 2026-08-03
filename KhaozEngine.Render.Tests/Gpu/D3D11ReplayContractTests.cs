@@ -39,6 +39,11 @@ namespace KhaozEngine.Tests.Gpu
         /// Every submit goes through the real <see cref="D3D11CommandDrivers.Submit{TEmitter}"/> with the device's
         /// lock, so what is under test is the shipped path and not a replay helper.
         /// </para>
+        /// <para>
+        /// DEFERRED RECORDERS ONLY, and that is not an omission: under <c>KE_D3D11_RECORD=immediate</c> the
+        /// interleaving above IS the emission order, so the contract this pins does not exist on that driver to
+        /// be asserted.
+        /// </para>
         /// </summary>
         [Fact]
         public void ThreeInterleavedRecordings_ReplayWholeAndInSubmitOrder_EachOpeningWithOneClearState()

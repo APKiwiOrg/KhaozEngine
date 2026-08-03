@@ -411,8 +411,12 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(1, log.Count(D3D11NativeCall.IASetIndexBuffer));
         }
 
-        /// <summary>DECISION R8 REACHES THE INPUT ASSEMBLER TOO: a disposed buffer is unbound from the slots that
-        /// named it, in one call over the contiguous span, and from the index slot.</summary>
+        /// <summary>
+        /// DECISION R8 REACHES THE INPUT ASSEMBLER TOO: a disposed buffer is unbound from the slots that named it,
+        /// in one call over the contiguous span, and from the index slot. The span STRADDLES slot 1, which named
+        /// something else, so what the one call writes is the RECORD: null over the two scrubbed slots and the
+        /// live buffer over the one between them.
+        /// </summary>
         [Fact]
         public void DisposingABoundStream_UnbindsExactlyTheSlotsThatNamedIt()
         {
@@ -432,7 +436,55 @@ namespace KhaozEngine.Tests.Gpu
 
             emitter.ScrubDisposed(shared);
 
-            Assert.Equal(new[] { "IASetVertexBuffers(0,3,null)", "IASetIndexBuffer(null)" }, log.Trace);
+            Assert.Equal(
+                new[] { $"IASetVertexBuffers(0,3,null@0/4,{log.Id(other)}@0/8,null@0/12)", "IASetIndexBuffer(null)" },
+                log.Trace);
+        }
+
+        /// <summary>
+        /// THE STRADDLE, AS THE REGRESSION IT IS. Slots 0 and 2 named the disposed buffer and slot 1 names one
+        /// that is still alive, so the scrub's span covers all three. Writing nulls across it would unbind the
+        /// live stream at the device while the record still called slot 1 bound and CLEAN, and the next draw would
+        /// issue nothing at all: that stream reads no data, nothing throws and nothing logs. So the one call
+        /// carries the record, and slot 1 comes out of the scrub bound to what it always held.
+        /// </summary>
+        [Fact]
+        public void AScrubStraddlingALiveSlot_LeavesItBoundToWhatItHeld()
+        {
+            var log = new D3D11NativeCallLog();
+            var state = new D3D11DeviceState();
+            var emitter = new D3D11NativeTraceEmitter(state, log);
+            var disposed = new FakeBuffer(256);
+            var live = new FakeBuffer(64);
+
+            emitter.Begin();
+            emitter.SetPipeline(PipelineWithStrides(4u, 8u, 12u));
+            emitter.SetVertexBuffer(0, disposed, 0);
+            emitter.SetVertexBuffer(1, live, 24);
+            emitter.SetVertexBuffer(2, disposed, 16);
+            emitter.Draw(3, 1, 0, 0);
+            log.Reset();
+
+            emitter.ScrubDisposed(disposed);
+
+            // The record still names the live buffer at its own offset, and calls the slot clean.
+            Assert.Same(live, state.Vertices.BufferAt(1));
+            Assert.Equal(24u, state.Vertices.OffsetAt(1));
+            Assert.False(state.Vertices.IsDirty(1));
+            Assert.Null(state.Vertices.BufferAt(0));
+            Assert.Null(state.Vertices.BufferAt(2));
+
+            // And the one call the scrub issued wrote exactly that, so the record is the truth about the device.
+            Assert.Equal(
+                new[] { $"IASetVertexBuffers(0,3,null@0/4,{log.Id(live)}@24/8,null@0/12)" },
+                log.Trace);
+
+            // The draw after the scrub therefore issues no stream call and still draws slot 1 from the live
+            // buffer, which is the whole point: nothing is owed because nothing was lost.
+            emitter.Draw(3, 1, 0, 0);
+
+            Assert.Equal(1, log.Count(D3D11NativeCall.IASetVertexBuffers));
+            Assert.Equal(new[] { "DrawInstanced(3,1,0,0)" }, log.Trace.Skip(1));
         }
 
         /// <summary>And a buffer that was never bound scrubs to nothing, which is the common case.</summary>

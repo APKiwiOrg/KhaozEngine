@@ -86,12 +86,24 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             _log.Record(D3D11NativeCall.RSSetScissorRects, FullScissor(framebuffer));
         }
 
+        /// <summary>
+        /// A clear names an attachment of the BOUND framebuffer, so both refusals are asked of the shared seam
+        /// before anything is recorded: with none bound, or with no attachment at that index, the real emitter
+        /// throws and a trace that recorded the call anyway would model a frame the device refuses.
+        /// </summary>
         public void ClearColorTarget(uint index, Color rgba)
-            => _log.Record(D3D11NativeCall.ClearRenderTargetView,
+        {
+            D3D11BindResolve.RequireColourAttachment(_state.BoundFramebuffer, index);
+            _log.Record(D3D11NativeCall.ClearRenderTargetView,
                 $"{N(index)},{N(rgba.R)},{N(rgba.G)},{N(rgba.B)},{N(rgba.A)}");
+        }
 
+        /// <inheritdoc cref="ClearColorTarget"/>
         public void ClearDepthStencil(float depth)
-            => _log.Record(D3D11NativeCall.ClearDepthStencilView, N(depth));
+        {
+            D3D11BindResolve.RequireDepthAttachment(_state.BoundFramebuffer);
+            _log.Record(D3D11NativeCall.ClearDepthStencilView, N(depth));
+        }
 
         /// <summary>
         /// DECISION R6: one native call per pipeline-level object that ACTUALLY changed, and nothing at all for a
@@ -325,6 +337,14 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         {
             if (!_state.Vertices.TakeFlush(out uint startSlot, out int count)) return;
 
+            RecordVertexBuffers(startSlot, count);
+        }
+
+        // ONE IASetVertexBuffers OVER A SPAN, CARRYING WHAT THE RECORD HOLDS, which is the rule rather than the
+        // flush's private arrangement: the scrub writes its span through here too, so a live slot straddled by two
+        // scrubbed ones is rebound to what it already holds instead of being unbound behind the record's back.
+        void RecordVertexBuffers(uint startSlot, int count)
+        {
             var text = new System.Text.StringBuilder();
             text.Append(N(startSlot)).Append(',').Append(N(count));
             for (uint slot = startSlot; slot < startSlot + (uint)count; slot++)
@@ -428,8 +448,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 _log.Record(D3D11NativeCall.RSSetState, "null");
             if (Has(scrubbed, D3D11StateChange.InputLayout))
                 _log.Record(D3D11NativeCall.IASetInputLayout, "null");
-            if (Has(scrubbed, D3D11StateChange.VertexBuffers))
-                _log.Record(D3D11NativeCall.IASetVertexBuffers, $"{N(vertexStart)},{N(vertexCount)},null");
+            if (Has(scrubbed, D3D11StateChange.VertexBuffers)) RecordVertexBuffers(vertexStart, vertexCount);
             if (Has(scrubbed, D3D11StateChange.IndexBuffer))
                 _log.Record(D3D11NativeCall.IASetIndexBuffer, "null");
             if (Has(scrubbed, D3D11StateChange.Framebuffer))

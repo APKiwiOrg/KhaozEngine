@@ -161,16 +161,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         static int Subresource(D3D11Texture texture, uint mipLevel, uint arrayLayer)
             => (int)(mipLevel + (arrayLayer * texture.MipLevels));
 
-        // The native buffer behind an engine handle, refused by name for anything else. Shared by the input
-        // assembler, the copies and the bulk write path, so "a buffer from another backend" is one message.
-        static ID3D11Buffer NativeBuffer(IGpuBuffer buffer)
-            => buffer is D3D11Buffer native
-                ? native.Buffer
-                : throw new ArgumentException(
-                    $"A {(buffer is null ? "null" : buffer.GetType().Name)} was handed to the native Direct3D 11 "
-                    + "emitter as a buffer. A buffer this backend created carries the ID3D11Buffer every bind, "
-                    + "copy and write names, and a buffer from another backend carries another backend's.",
-                    nameof(buffer));
+        // The native buffer behind an engine handle: the shared resolve refuses anything else by name, and this is
+        // the cast it deliberately does not make. Shared by the input assembler, the copies and the bulk write
+        // path, so "a buffer from another backend" is one message and one device-free test.
+        static ID3D11Buffer NativeBuffer(IGpuBuffer buffer) => (ID3D11Buffer)D3D11BindResolve.NativeBuffer(buffer);
 
         static D3D11Texture NativeTexture(IGpuTexture texture)
             => texture as D3D11Texture

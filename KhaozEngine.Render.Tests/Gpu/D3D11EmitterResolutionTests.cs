@@ -92,6 +92,33 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Contains(nameof(ID3D11BindableViews), ex.Message, StringComparison.Ordinal);
         }
 
+        /// <summary>
+        /// A BUFFER FROM ANOTHER BACKEND IS REFUSED BY NAME, and refused AGAIN on the second bind of the same one,
+        /// which is the half that was silent. The refusal is the RESOLVE, and the emitter runs it before the
+        /// redundancy cache: guarding first would record the buffer, so the second identical
+        /// <c>SetIndexBuffer</c> would compare equal against a cache describing a buffer the call never bound,
+        /// pass silently, and leave the draw indexing whatever the input assembler still held.
+        /// </summary>
+        [Fact]
+        public void AForeignIndexBuffer_IsRefusedByName_OnTheSecondBindToo()
+        {
+            var foreign = new FakeBuffer(64);
+
+            ArgumentException first = Assert.Throws<ArgumentException>(
+                () => D3D11BindResolve.NativeBuffer(foreign));
+            ArgumentException second = Assert.Throws<ArgumentException>(
+                () => D3D11BindResolve.NativeBuffer(foreign));
+
+            Assert.Contains(nameof(FakeBuffer), first.Message, StringComparison.Ordinal);
+            Assert.Equal(first.Message, second.Message);
+
+            // The other half of the ordering rule, and the reason the resolve has to come first: the cache RECORDS
+            // at the first ask, so a bind that resolved after it would find the second ask redundant.
+            var streams = new D3D11VertexStreams();
+            Assert.True(streams.BindIndexBuffer(foreign, GpuIndexFormat.UInt16));
+            Assert.False(streams.BindIndexBuffer(foreign, GpuIndexFormat.UInt16));
+        }
+
         // ---- the two framebuffer types --------------------------------------------------------------------
 
         /// <summary>
@@ -318,10 +345,13 @@ namespace KhaozEngine.Tests.Gpu
             var buffer = new ViewfulBuffer(new object(), new object());
             D3D11BindResolve.ViewOf(buffer, D3D11RegisterFile.ShaderResource);
             D3D11BindResolve.ViewOf(new GpuBufferRange(buffer, 0, 16), D3D11RegisterFile.ConstantBuffer);
+            D3D11BindResolve.NativeBuffer(buffer);
             D3D11BindResolve.Constants(
                 new[] { new D3D11ConstantBufferBind(buffer, 0, 16) }, new int[4], new int[4]);
-            D3D11BindResolve.RenderTargets(new D3D11SwapchainFramebuffer(
-                GpuPixelFormat.B8G8R8A8UNorm, null, new D3D11SwapchainAttachments(8, 8, new object(), null)));
+            var swapchain = new D3D11SwapchainFramebuffer(
+                GpuPixelFormat.B8G8R8A8UNorm, null, new D3D11SwapchainAttachments(8, 8, new object(), null));
+            D3D11BindResolve.RenderTargets(swapchain);
+            D3D11BindResolve.RequireColourAttachment(swapchain, 0);
 
             var streams = new D3D11VertexStreams();
             streams.AdoptStrides(new[] { 16u });

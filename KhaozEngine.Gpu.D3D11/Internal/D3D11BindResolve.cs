@@ -17,6 +17,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// fit an <c>int</c>) are plain <c>[Fact]</c>s on macOS. The emitter is left with a cast and a call.
     /// </para>
     /// <para>
+    /// IT IS ALSO WHERE A REFUSAL BOTH EMITTERS OWE LIVES. A rule enforced in the real emitter alone accepts a
+    /// stream in the trace that the device would have thrown on, so the two disagree about what the seam permits
+    /// and neither refusal is reachable by a test on this machine. The scissor index, the buffer that came from
+    /// another backend and the framebuffer a clear names an attachment of are all refused here, once, and both
+    /// emitters ask.
+    /// </para>
+    /// <para>
     /// A NULL IS A HOLE AND IS PASSED THROUGH. A RESOURCE WITHOUT THE VIEW IS A REFUSAL. Those are different
     /// things and conflating them is the bug this type exists to make impossible. An array bind covers a
     /// contiguous register span that may contain a register the set does not fill, and Direct3D 11 wants a null
@@ -90,6 +97,76 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 + "this backend's framebuffer types answer ID3D11RenderTargetSurface, which is what carries the "
                 + "render target and depth-stencil views, and a framebuffer from another backend carries another "
                 + "backend's views.", nameof(framebuffer));
+        }
+
+        /// <summary>
+        /// THE NATIVE BUFFER BEHIND AN ENGINE HANDLE (an <c>ID3D11Buffer</c> as an <c>object</c>), refused by name
+        /// for anything else. Shared by the input assembler, the copies and the bulk write path, so "a buffer from
+        /// another backend" is one message, and it lives here rather than in the emitter so that message is a
+        /// plain <c>[Fact]</c> instead of a body only a Windows leg can reach.
+        /// <para>
+        /// It is <see cref="ID3D11BindableViews.BufferObject"/> that answers, which is the member's stated purpose:
+        /// the <c>b</c> file and the input assembler both bind the RESOURCE rather than a view of it.
+        /// </para>
+        /// </summary>
+        internal static object NativeBuffer(IGpuBuffer? buffer)
+            => (buffer as ID3D11BindableViews)?.BufferObject ?? throw new ArgumentException(
+                $"A {(buffer is null ? "null" : buffer.GetType().Name)} was handed to the native Direct3D 11 "
+                + "emitter as a buffer. A buffer this backend created carries the ID3D11Buffer every bind, copy "
+                + "and write names, and a buffer from another backend carries another backend's.",
+                nameof(buffer));
+
+        /// <summary>
+        /// THE FRAMEBUFFER A COMMAND NAMES AN ATTACHMENT OF, refused by name when nothing is bound, in the one
+        /// place both emitters ask. <paramref name="bound"/> is <see cref="D3D11DeviceState.BoundFramebuffer"/>,
+        /// which is where the knowledge lives.
+        /// <para>
+        /// The refusal is shared for the reason <see cref="RequireSingleScissorRect"/> is: a stream one emitter
+        /// accepts and the other refuses is a difference the device-free trace cannot model, and a clear against
+        /// no target would otherwise be a null dereference inside the runtime.
+        /// </para>
+        /// </summary>
+        internal static IGpuFramebuffer RequireBoundFramebuffer(IGpuFramebuffer? bound, string command)
+            => bound ?? throw new InvalidOperationException(
+                $"{command} was reached with no framebuffer bound on the native Direct3D 11 backend. A command "
+                + "that names an attachment of the bound framebuffer has nothing to name while none is bound. "
+                + "Bind a framebuffer first.");
+
+        /// <summary>
+        /// The bound framebuffer, refused when it has no colour attachment at <paramref name="index"/>.
+        /// <para>
+        /// The count comes from <see cref="IGpuFramebuffer.Outputs"/> rather than from
+        /// <see cref="ID3D11RenderTargetSurface.RenderTargetCount"/>, and that is the choice that makes the rule
+        /// shareable at all: how many colour attachments a framebuffer HAS is part of its description, which every
+        /// framebuffer answers, while the view surface is a thing only this backend's two framebuffer types carry.
+        /// Both of those build their outputs from the same attachments they build their views from, so the two
+        /// counts are one number by construction and the emitter indexes the surface with an index this has
+        /// already accepted.
+        /// </para>
+        /// </summary>
+        internal static IGpuFramebuffer RequireColourAttachment(IGpuFramebuffer? bound, uint index)
+        {
+            IGpuFramebuffer framebuffer = RequireBoundFramebuffer(bound, "ClearColorTarget");
+            int count = framebuffer.Outputs.Colour?.Length ?? 0;
+            if (index < (uint)count) return framebuffer;
+
+            throw new ArgumentOutOfRangeException(nameof(index), index,
+                $"The bound framebuffer has {count} colour attachments, so there is no attachment at that index "
+                + "to clear.");
+        }
+
+        /// <summary>The bound framebuffer, refused when it declares no depth attachment. A pass that clears depth
+        /// has to render into a framebuffer that has one, and clearing nothing quietly is how a depth test ends up
+        /// reading the last pass's values.</summary>
+        internal static IGpuFramebuffer RequireDepthAttachment(IGpuFramebuffer? bound)
+        {
+            IGpuFramebuffer framebuffer = RequireBoundFramebuffer(bound, "ClearDepthStencil");
+            if (framebuffer.Outputs.Depth is not null) return framebuffer;
+
+            throw new InvalidOperationException(
+                "ClearDepthStencil was reached with a framebuffer that declares no depth attachment on the native "
+                + "Direct3D 11 backend. A pass that clears depth has to render into a framebuffer that declares "
+                + "one.");
         }
 
         /// <summary>

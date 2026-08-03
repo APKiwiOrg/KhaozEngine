@@ -21,10 +21,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// issues at the bind, which is where the incumbent issues it too.
     /// </para>
     /// <para>
-    /// THE FLUSH COVERS A CONTIGUOUS SPAN AND MAY REBIND A CLEAN SLOT INSIDE IT. Slots 0 and 2 dirty with 1 clean
-    /// is ONE call over [0, 3) that rebinds slot 1 to exactly what it already holds, rather than two calls with a
-    /// gap between them. That is the same trade <see cref="D3D11SetActivation"/> makes for a hole in a register
-    /// span, and it is safe for the same reason: what is written into the hole is what is already there.
+    /// BOTH SPANS THIS TYPE ANSWERS WITH COVER SLOTS THE CALLER DID NOT TOUCH, AND THE CALLER WRITES THE RECORD
+    /// ACROSS THEM. Slots 0 and 2 dirty with 1 clean is ONE call over [0, 3) that rebinds slot 1 to exactly what
+    /// it already holds, rather than two calls with a gap between them, which is the same trade
+    /// <see cref="D3D11SetActivation"/> makes for a hole in a register span. It is safe because what is written
+    /// into the hole is WHAT THE RECORD HOLDS, and that is the rule rather than the flush's private arrangement:
+    /// <see cref="Scrub"/> answers with a span too, having already nulled the records of the slots it forgot, so
+    /// one write over that span unbinds exactly those and leaves any live slot between them holding what it held.
+    /// An unbind that nulled the whole span instead would drop a live stream at the device while this record still
+    /// called that slot bound and clean, and the next draw would issue nothing and the stream would read no data.
     /// </para>
     /// <para>
     /// NOTHING HERE ISSUES A NATIVE CALL and nothing here names a Direct3D type. It answers which slots to issue
@@ -191,10 +196,18 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         /// <summary>
         /// DECISION R8 FOR THE INPUT ASSEMBLER: forget <paramref name="resource"/> wherever it is bound and report
-        /// what was forgotten, so the caller unbinds exactly that.
+        /// the span the caller writes, so exactly the slots that named it are unbound.
         /// <para>
-        /// A scrubbed vertex slot is left holding null and NOT marked dirty, because the caller is about to unbind
+        /// A scrubbed vertex slot is left holding null and NOT marked dirty, because the caller is about to write
         /// it now rather than at the next draw. Marking it would issue the same unbind a second time.
+        /// </para>
+        /// <para>
+        /// THE SPAN IS THE OUTERMOST PAIR AND MAY STRADDLE A LIVE SLOT: slots 0 and 2 named the disposed buffer
+        /// and slot 1 names another that is still very much alive. The caller writes the RECORD over the whole
+        /// span (see the type remarks), so slot 1 is rebound to exactly what it already holds. Writing nulls
+        /// across the span instead would unbind it at the device while this record still called it bound and
+        /// clean, and the next draw would issue nothing, leaving that stream reading no data with nothing thrown
+        /// and nothing logged.
         /// </para>
         /// </summary>
         internal D3D11StateChange Scrub(object resource, out uint startSlot, out int count)

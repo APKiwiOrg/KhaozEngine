@@ -357,8 +357,18 @@ the stride ARRAY, so two pipelines sharing one invalidate nothing, and a pipelin
 may rebind a clean slot swept in between two of them, which is the trade `D3D11SetActivation` already makes for
 a hole in a register span. The index buffer keeps a redundancy cache over the pair (buffer, format), since the
 same buffer bound as 16-bit and as 32-bit indices is two binds, and issues at the bind because there is no
-array form to batch it with. R8's precise scrub reaches both, so a disposed vertex buffer is unbound from
-exactly the slots that named it in one call.
+array form to batch it with. It resolves the buffer BEFORE that cache, which is `SetFramebuffer`'s rule on the
+other resolve: guarding first records the buffer, so a buffer from another backend would throw once and the next
+identical bind would compare equal against a cache describing a buffer the call never bound and pass silently.
+
+**R8's precise scrub reaches both, and what it writes is the RECORD rather than nulls.** A disposed vertex
+buffer is unbound from exactly the slots that named it, in one call over the span between the outermost two of
+them. That span can straddle a slot holding a live buffer (slots 0 and 2 disposed, slot 1 not), and nulling the
+whole span would drop that stream at the device while the record still called the slot bound and CLEAN, so the
+next draw would issue nothing and the stream would read no data with nothing thrown and nothing logged. The
+scrub nulls the records of the slots it forgot and the one call writes the record across the span, so the
+straddled slot is rebound to exactly what it already holds. That is the same rule the flush follows for a clean
+slot swept in between two dirty ones, and it is now one method in each emitter rather than two that disagreed.
 
 **Both framebuffer types bind, and that was a real defect waiting.** There are two of them and that is
 permanent (W2): `D3D11Framebuffer` aggregates engine textures whose views never change, and
@@ -376,6 +386,15 @@ unwraps to its buffer, a resource whose declared usage never earned it the view 
 by name and by HLSL register letter, and a null is a HOLE that passes through rather than a refusal.
 `ID3D11ComputePipelineState` is the compute sibling of the pipeline seam, one member, so the compute bind has a
 shape to hang off before row 12 builds the pipeline behind it.
+
+**A refusal both emitters owe lives in one place, and that is a rule rather than tidiness.** `D3D11BindResolve`
+is where a stream is refused: the scissor index, a buffer from another backend, and now a clear with no
+framebuffer bound, a clear naming a colour attachment the bound framebuffer does not have, and a depth clear
+against a framebuffer that declares no depth. Those three were the real emitter's alone, so the same stream was
+accepted by the trace and thrown out by the device, and neither refusal was reachable by a test on a machine
+with no Direct3D. The attachment count comes from `IGpuFramebuffer.Outputs` rather than from the view surface,
+because how many attachments a framebuffer has is part of its description and every framebuffer answers that,
+while the surface is a thing only this backend's two framebuffer types carry.
 
 **Where the emitter's mutable state lives is load-bearing rather than tidy.** The seam requires a readonly
 struct, and issue #476 requires it to RECEIVE the device's one `D3D11DeviceState` rather than allocate one. The

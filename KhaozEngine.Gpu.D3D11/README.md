@@ -304,7 +304,14 @@ invalidate nothing, and a pipeline with no vertex inputs (the fullscreen passes)
 none. A flush covers the contiguous span of dirty slots, so a clean slot between two dirty ones is swept in and
 rebound to what it already holds, which is the same trade the fan-out makes for a hole in a register span. The
 index buffer is not deferred: there is no array form of `IASetIndexBuffer`, so it carries a redundancy cache
-over the pair (buffer, format) and issues at the bind.
+over the pair (buffer, format) and issues at the bind, resolving the buffer BEFORE that cache so a refused bind
+leaves nothing recorded and the next identical one is refused again rather than passing as redundant.
+
+**A disposal writes the record over its span, and that is the same rule.** R8's scrub answers with the span
+between the outermost slots that named the disposed buffer, which can straddle a slot holding something else.
+The emitter writes the RECORD across it, so the scrubbed slots go null and the straddled one is rebound to what
+it already holds. Nulling the whole span would unbind a live stream while the record still called that slot
+bound and clean, and the next draw would issue nothing at all.
 
 **The pipeline cache key is the state object AND the argument that rides it.** `OMSetBlendState` takes a blend
 factor and `OMSetDepthStencilState` takes a stencil reference, and the blend factor rides the pipeline rather
@@ -326,8 +333,11 @@ refused by name.
 that, and `D3D11BindResolve` is the device-free half of the bind: it unwraps a `GpuBufferRange` to its buffer,
 refuses a resource whose declared usage never earned it the view its layout asks for (naming the HLSL register
 letter), passes a null through as the HOLE an array bind legitimately has, and transposes a span of binds into
-the parallel arrays `*SetConstantBuffers1` takes. All of it runs under a plain `dotnet test` on macOS, which is
-the point: the emitter is left with a cast and a call.
+the parallel arrays `*SetConstantBuffers1` takes. It is also where a REFUSAL both emitters owe lives: the
+scissor index, a buffer from another backend, and the framebuffer a clear names an attachment of (none bound, no
+colour attachment at that index, no depth attachment at all). A refusal kept in the real emitter alone means the
+trace accepts a stream the device throws on, and neither side of that is reachable by a test here. All of it
+runs under a plain `dotnet test` on macOS, which is the point: the emitter is left with a cast and a call.
 
 **The emitter is a readonly struct over two class references it RECEIVES.** The state is the device's one cache
 (issue #476) and `D3D11EmitterContext` carries the device context plus the scratch arrays, grown geometrically

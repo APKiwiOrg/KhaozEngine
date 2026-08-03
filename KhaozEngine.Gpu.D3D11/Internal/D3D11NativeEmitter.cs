@@ -14,7 +14,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// caches of R6, the batching of the vertex streams, the schedule of R5, the precise scrub of R8, the
     /// framebuffer-guarded viewport of W6) is taken inside <see cref="D3D11DeviceState"/>,
     /// <see cref="D3D11BindFlush"/>, <see cref="D3D11VertexStreams"/> and <see cref="D3D11SetActivation"/>, which
-    /// this type uses unchanged. What is left here is the translation into a Vortice call.
+    /// this type uses unchanged, and every REFUSAL a stream can earn (the scissor index, a buffer or a framebuffer
+    /// from another backend, a clear against no target or against an attachment the bound framebuffer does not
+    /// have) is taken inside <see cref="D3D11BindResolve"/>, which the trace emitter asks in the same order. What
+    /// is left here is the translation into a Vortice call, plus two casts that cannot be pushed down: the
+    /// <c>object</c> a resolve answers with into its Direct3D type, and a backstop for a framebuffer that declares
+    /// a depth attachment while carrying no view for it, which is a defect in this backend's own construction
+    /// rather than anything a stream can express.
     /// <para>
     /// THAT SPLIT IS THE WHOLE TEST STRATEGY, and it is worth being blunt about what it does and does not buy.
     /// There is no Direct3D device on the machine this backend is developed on, so nothing below can be executed
@@ -109,16 +115,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             SetFullScissorRects();
         }
 
-        /// <summary>Clear one colour attachment of the bound framebuffer.</summary>
+        /// <summary>Clear one colour attachment of the bound framebuffer. Both refusals a stream can earn here (no
+        /// framebuffer bound, no attachment at that index) are taken in the shared seam, so the trace emitter
+        /// refuses the same stream.</summary>
         public void ClearColorTarget(uint index, KhaozEngine.Primitives.Color rgba)
         {
-            ID3D11RenderTargetSurface surface = BoundSurface(nameof(ClearColorTarget));
-            if (index >= (uint)surface.RenderTargetCount)
-            {
-                throw new ArgumentOutOfRangeException(nameof(index), index,
-                    $"The bound framebuffer has {surface.RenderTargetCount} colour attachments, so there is no "
-                    + "attachment at that index to clear.");
-            }
+            ID3D11RenderTargetSurface surface = D3D11BindResolve.RenderTargets(
+                D3D11BindResolve.RequireColourAttachment(_state.BoundFramebuffer, index));
 
             Native.ClearRenderTargetView(
                 (ID3D11RenderTargetView)surface.RenderTargetAt((int)index),
@@ -129,14 +132,20 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// Clear the depth attachment. The STENCIL goes with it at zero, matching the incumbent: Veldrid's clear
         /// passes both flags, the seam carries no stencil value to pass instead, and a depth-only view ignores
         /// the stencil flag.
+        /// <para>
+        /// The shared seam has already refused a framebuffer that DECLARES no depth attachment, so the throw below
+        /// is not that rule a second time: it catches a framebuffer of this backend's own that declared one and
+        /// carries no view for it, which no stream can produce and both framebuffer types build together.
+        /// </para>
         /// </summary>
         public void ClearDepthStencil(float depth)
         {
-            ID3D11RenderTargetSurface surface = BoundSurface(nameof(ClearDepthStencil));
+            ID3D11RenderTargetSurface surface = D3D11BindResolve.RenderTargets(
+                D3D11BindResolve.RequireDepthAttachment(_state.BoundFramebuffer));
             var view = (ID3D11DepthStencilView?)surface.DepthStencil ?? throw new InvalidOperationException(
-                "ClearDepthStencil was reached with a framebuffer that has no depth attachment bound on the "
-                + "native Direct3D 11 backend. A pass that clears depth has to render into a framebuffer that "
-                + "declares one.");
+                "The bound framebuffer declares a depth attachment and carries no depth-stencil view for it on "
+                + "the native Direct3D 11 backend. Both framebuffer types build the view with the format, so this "
+                + "is a defect in this backend's framebuffer construction rather than in the pass that cleared.");
 
             Native.ClearDepthStencilView(view, DepthStencilClearFlags.Depth | DepthStencilClearFlags.Stencil,
                 depth, 0);
@@ -188,13 +197,22 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         public void SetVertexBuffer(uint slot, IGpuBuffer buffer, uint offsetBytes)
             => _state.Vertices.RecordVertexBuffer(slot, buffer, offsetBytes);
 
-        /// <summary>Issued at the bind, guarded by the redundancy cache over the pair (buffer, format). There is
-        /// no array form of <c>IASetIndexBuffer</c>, so there is nothing to batch it with.</summary>
+        /// <summary>
+        /// Issued at the bind, guarded by the redundancy cache over the pair (buffer, format). There is no array
+        /// form of <c>IASetIndexBuffer</c>, so there is nothing to batch it with.
+        /// <para>
+        /// The buffer is resolved BEFORE the redundancy guard, which is <see cref="SetFramebuffer"/>'s rule on the
+        /// other resolve and for the same reason. Guarding first records the buffer, so a foreign one would throw
+        /// once and the next identical bind would compare equal against a cache describing a buffer the call never
+        /// bound, pass silently, and leave the draw indexing whatever the input assembler still held.
+        /// </para>
+        /// </summary>
         public void SetIndexBuffer(IGpuBuffer buffer, GpuIndexFormat format)
         {
+            ID3D11Buffer native = NativeBuffer(buffer);
             if (!_state.Vertices.BindIndexBuffer(buffer, format)) return;
 
-            Native.IASetIndexBuffer(NativeBuffer(buffer), D3D11Formats.ToDxgiFormat(format), 0);
+            Native.IASetIndexBuffer(native, D3D11Formats.ToDxgiFormat(format), 0);
         }
 
         /// <summary>An explicit scissor, in the <c>RECT</c> form Direct3D takes rather than the seam's
@@ -278,21 +296,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         {
             if (!_state.Vertices.TakeFlush(out uint startSlot, out int count)) return;
 
-            D3D11VertexStreams streams = _state.Vertices;
-            ID3D11Buffer?[] buffers = _context.VertexBuffers(count);
-            int[] strides = _context.VertexStrides;
-            int[] offsets = _context.VertexOffsets;
-
-            for (int i = 0; i < count; i++)
-            {
-                uint slot = startSlot + (uint)i;
-                IGpuBuffer? buffer = streams.BufferAt(slot);
-                buffers[i] = buffer is null ? null : NativeBuffer(buffer);
-                strides[i] = (int)streams.StrideAt(slot);
-                offsets[i] = (int)streams.OffsetAt(slot);
-            }
-
-            Native.IASetVertexBuffers((int)startSlot, count, buffers!, strides, offsets);
+            IssueVertexBuffers(startSlot, count);
         }
 
         /// <summary>
@@ -314,24 +318,32 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             if (Has(scrubbed, D3D11StateChange.DepthStencilState)) Native.OMSetDepthStencilState(null!, 0);
             if (Has(scrubbed, D3D11StateChange.RasterizerState)) Native.RSSetState(null!);
             if (Has(scrubbed, D3D11StateChange.InputLayout)) Native.IASetInputLayout(null!);
-            if (Has(scrubbed, D3D11StateChange.VertexBuffers)) UnsetVertexBuffers(vertexStart, vertexCount);
+            if (Has(scrubbed, D3D11StateChange.VertexBuffers)) IssueVertexBuffers(vertexStart, vertexCount);
             if (Has(scrubbed, D3D11StateChange.IndexBuffer))
                 Native.IASetIndexBuffer(null!, Vortice.DXGI.Format.Unknown, 0);
             if (Has(scrubbed, D3D11StateChange.Framebuffer)) UnsetRenderTargets();
         }
 
-        // The unbind half of the vertex flush: the same one array call with nulls in it, so a scrub costs one
-        // call however many adjacent slots named the disposed buffer.
-        void UnsetVertexBuffers(uint startSlot, int count)
+        // ONE IASetVertexBuffers OVER A SPAN, CARRYING WHAT THE RECORD HOLDS. Both callers write the record and
+        // neither invents an argument, which is what makes a span that sweeps in a slot the caller never touched
+        // safe: the flush rebinds a clean slot to what it already holds, and the scrub has already nulled the
+        // records of the slots it forgot, so the same write unbinds exactly those and leaves a live slot between
+        // them alone. Writing nulls across the scrub's span instead would drop a live stream while the record
+        // still called it bound and clean.
+        void IssueVertexBuffers(uint startSlot, int count)
         {
+            D3D11VertexStreams streams = _state.Vertices;
             ID3D11Buffer?[] buffers = _context.VertexBuffers(count);
             int[] strides = _context.VertexStrides;
             int[] offsets = _context.VertexOffsets;
+
             for (int i = 0; i < count; i++)
             {
-                buffers[i] = null;
-                strides[i] = 0;
-                offsets[i] = 0;
+                uint slot = startSlot + (uint)i;
+                IGpuBuffer? buffer = streams.BufferAt(slot);
+                buffers[i] = buffer is null ? null : NativeBuffer(buffer);
+                strides[i] = (int)streams.StrideAt(slot);
+                offsets[i] = (int)streams.OffsetAt(slot);
             }
 
             Native.IASetVertexBuffers((int)startSlot, count, buffers!, strides, offsets);
@@ -340,18 +352,6 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         // Unbind the output merger entirely. Reached only from a scrub, when the framebuffer's own texture was
         // disposed while it was still bound.
         void UnsetRenderTargets() => Native.OMSetRenderTargets(0, Array.Empty<ID3D11RenderTargetView>(), null!);
-
-        // The framebuffer a command needs bound, refused by name when there is none. A clear against no target
-        // would otherwise be a null dereference inside the runtime.
-        ID3D11RenderTargetSurface BoundSurface(string command)
-        {
-            IGpuFramebuffer framebuffer = _state.BoundFramebuffer ?? throw new InvalidOperationException(
-                $"{command} was reached with no framebuffer bound on the native Direct3D 11 backend. A clear "
-                + "names an attachment of the bound framebuffer, so there is nothing for it to clear. Bind a "
-                + "framebuffer first.");
-
-            return D3D11BindResolve.RenderTargets(framebuffer);
-        }
 
         static bool Has(D3D11StateChange changed, D3D11StateChange flag) => (changed & flag) != 0;
 

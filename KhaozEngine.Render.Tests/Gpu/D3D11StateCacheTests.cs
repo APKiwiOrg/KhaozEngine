@@ -172,6 +172,77 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Throws<InvalidOperationException>(emitter.SetFullScissorRects);
         }
 
+        // ---- The clears, refused in the one place both emitters ask ----
+
+        /// <summary>
+        /// A CLEAR NAMES AN ATTACHMENT OF THE BOUND FRAMEBUFFER, so with none bound there is nothing to name. The
+        /// refusal lives on the shared seam rather than in the real emitter, which is what makes it reachable
+        /// here at all: while it lived in the Vortice body, the trace emitter recorded the same stream happily and
+        /// the two disagreed about what the seam permits, unnoticed on this machine.
+        /// </summary>
+        [Fact]
+        public void AClearWithNoFramebufferBound_IsRefused()
+        {
+            var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), new D3D11NativeCallLog());
+            emitter.Begin();
+
+            Assert.Throws<InvalidOperationException>(() => emitter.ClearColorTarget(0, KhaozEngine.Primitives.Color.Black));
+            Assert.Throws<InvalidOperationException>(() => emitter.ClearDepthStencil(1f));
+        }
+
+        /// <summary>An index past the bound framebuffer's colour attachments is refused rather than clearing
+        /// attachment 0 or dereferencing past the views.</summary>
+        [Fact]
+        public void AColourAttachmentTheBoundFramebufferDoesNotHave_IsRefused()
+        {
+            var log = new D3D11NativeCallLog();
+            var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), log);
+
+            emitter.Begin();
+            emitter.SetFramebuffer(Framebuffer(640, 480));   // one colour attachment
+            log.Reset();
+
+            ArgumentOutOfRangeException ex = Assert.Throws<ArgumentOutOfRangeException>(
+                () => emitter.ClearColorTarget(1, KhaozEngine.Primitives.Color.Black));
+
+            Assert.Contains("1 colour attachments", ex.Message, StringComparison.Ordinal);
+            Assert.Empty(log.Trace);
+        }
+
+        /// <summary>And a depth clear against a framebuffer that declares no depth attachment, which would
+        /// otherwise clear nothing at all and leave the depth test reading the last pass's values.</summary>
+        [Fact]
+        public void ADepthClearAgainstAColourOnlyFramebuffer_IsRefused()
+        {
+            var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), new D3D11NativeCallLog());
+
+            emitter.Begin();
+            emitter.SetFramebuffer(new FakeFramebuffer(
+                new GpuOutputDescription(null, GpuPixelFormat.R8G8B8A8UNorm), 64, 64));
+
+            Assert.Throws<InvalidOperationException>(() => emitter.ClearDepthStencil(1f));
+        }
+
+        /// <summary>The other half, and the one that keeps the three above from passing vacuously: a clear that
+        /// names an attachment the bound framebuffer HAS is one call each.</summary>
+        [Fact]
+        public void AClearNamingAnAttachmentTheFramebufferHas_Issues()
+        {
+            var log = new D3D11NativeCallLog();
+            var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), log);
+
+            emitter.Begin();
+            emitter.SetFramebuffer(Framebuffer(640, 480));
+            log.Reset();
+
+            emitter.ClearColorTarget(0, new KhaozEngine.Primitives.Color(0.25f, 0.5f, 0.75f, 1f));
+            emitter.ClearDepthStencil(1f);
+
+            Assert.Equal(
+                new[] { "ClearRenderTargetView(0,0.25,0.5,0.75,1)", "ClearDepthStencilView(1)" },
+                log.Trace);
+        }
+
         // ---- Decision R6: the redundancy caches ----
 
         /// <summary>

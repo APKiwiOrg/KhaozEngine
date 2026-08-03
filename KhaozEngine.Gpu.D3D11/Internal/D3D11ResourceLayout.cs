@@ -31,6 +31,25 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             _elements = new GpuResourceLayoutElement[source.Length];
             Array.Copy(source, _elements, source.Length);
 
+            for (int i = 0; i < _elements.Length; i++)
+            {
+                if (!IsDynamicStructured(_elements[i])) continue;
+
+                throw new ArgumentException(
+                    $"'{_elements[i].Name}' is declared as {_elements[i].Kind} AND dynamic, which the native "
+                    + "Direct3D 11 backend cannot honour. A dynamic offset is a per-draw byte rebase and the only "
+                    + "bind that carries one is the constant-buffer bind, which takes a first constant and a "
+                    + "count. A structured buffer binds through a view created ONCE over the whole buffer "
+                    + "(decision C2's full-range RAW view), and neither *SetShaderResources nor "
+                    + "*SetUnorderedAccessViews has a per-bind window to put the offset in, so the offset would "
+                    + "be dropped in both directions: a full activation would write the pre-resolved view with "
+                    + "nothing added, and the offsets-only path would skip the element entirely for not being a "
+                    + "constant buffer. Every draw would read the window the view was created with while the "
+                    + "caller believed it had moved. Declare the element as a uniform buffer, or build one "
+                    + "resource set per window.",
+                    nameof(description));
+            }
+
             _slots = new D3D11RegisterSlot[_elements.Length];
             Counts = D3D11RegisterScheme.AssignWithinLayout(_elements, _slots);
         }
@@ -57,5 +76,21 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         internal bool IsDisposed { get; private set; }
 
         public void Dispose() => IsDisposed = true;
+
+        /// <summary>
+        /// THE SECOND BACKEND-DIVERGENT CREATION FAILURE, refused here for the reason decision U3's ring
+        /// combination is refused at buffer creation: the backend cannot honour the combination, and every way of
+        /// discovering that at run time is a wrong frame rather than an error.
+        /// <para>
+        /// Vacuous in the engine today (all six dynamic elements shipped are uniform buffers) and refused anyway,
+        /// because nothing further down the path would ever say so: the full activation writes the pre-resolved
+        /// view and the offsets-only path does not consider the element at all, so both halves of the flush
+        /// silently agree to ignore the offset.
+        /// </para>
+        /// </summary>
+        static bool IsDynamicStructured(in GpuResourceLayoutElement element)
+            => element.Dynamic
+                && element.Kind is GpuResourceKind.StructuredBufferReadOnly
+                    or GpuResourceKind.StructuredBufferReadWrite;
     }
 }

@@ -340,6 +340,36 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(0u, baseCounts.For(D3D11RegisterFile.UnorderedAccess));
         }
 
+        /// <summary>
+        /// A DYNAMIC STRUCTURED ELEMENT IS REFUSED AT LAYOUT CREATION, both kinds, which is the second
+        /// backend-divergent creation failure after decision U3's ring combination. Nothing further down the path
+        /// would ever say so: a dynamic offset can only be carried by the constant-buffer bind, so a full
+        /// activation writes the structured view with no offset added and the offsets-only path skips the element
+        /// entirely for not being a constant buffer. Both halves of the flush silently agree to ignore it, and
+        /// every draw reads the window the view was created with while the caller believes it moved.
+        /// </summary>
+        [Theory]
+        [InlineData(GpuResourceKind.StructuredBufferReadOnly)]
+        [InlineData(GpuResourceKind.StructuredBufferReadWrite)]
+        public void ADynamicStructuredElement_IsRefusedAtLayoutCreation(GpuResourceKind kind)
+        {
+            var element = new GpuResourceLayoutElement("Work", kind, GpuShaderStages.Compute, dynamic: true);
+
+            ArgumentException error = Assert.Throws<ArgumentException>(
+                () => new D3D11ResourceLayout(new GpuResourceLayoutDescription(U("Frame"), element)));
+
+            Assert.Contains("Work", error.Message, StringComparison.Ordinal);
+            Assert.Contains("dynamic", error.Message, StringComparison.Ordinal);
+        }
+
+        /// <summary>The same element without the dynamic flag is ordinary and numbers as the table above says, so
+        /// the refusal is about the COMBINATION and does not cost the shipped compute layouts anything.</summary>
+        [Fact]
+        public void ANonDynamicStructuredElement_IsStillAccepted()
+        {
+            Assert.Equal("b0 t0 u0", Registers(U("Frame"), StructRO("In"), StructRW("Out")));
+        }
+
         static string Registers(params GpuResourceLayoutElement[] elements)
         {
             using var layout = new D3D11ResourceLayout(new GpuResourceLayoutDescription(elements));

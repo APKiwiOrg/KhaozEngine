@@ -7,15 +7,17 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.30.0
 
-### The native Direct3D 11 backend: four prerequisites, then the recording model (#444, #445, #446, #447, #473, #448)
+### The native Direct3D 11 backend: four prerequisites, then the recording model and its replay contract (#444, #445, #446, #447, #473, #448, #449)
 
 The seam work an engine-owned Direct3D 11 backend needs before it can render a single pixel: `GpuDeviceContext`
 now ADOPTS an `IGpuDevice` instead of only building one, a backend that ships outside `KhaozEngine.Gpu` arrives
 through the explicit `GpuBackendProviders` registry, `GpuBackendKind` gains an appended `Direct3D11Native`, and
 the opt-in `KhaozEngine.Gpu.D3D11` package exists with its Windows guards, its machine probe and its architecture
 guards. On top of those four, the backend's recording model lands whole with both of its drivers behind the
-`KE_D3D11_RECORD` kill switch, and the adoption path stops answering a provider bug with the fallback reserved
-for a machine that cannot run the backend. Nothing renders differently and nothing switches over: the native
+`KE_D3D11_RECORD` kill switch, then the rules a replay applies to the device (one `ClearState` per submit, the
+redundancy caches, the precise scrub on disposal and the framebuffer-guarded viewport) land on top of it, and
+the adoption path stops answering a provider bug with the fallback reserved for a machine that cannot run the
+backend. Nothing renders differently and nothing switches over: the native
 backend's two device-creation entry points still throw, so no shipped path reaches the recorder, the Windows OS
 probe still answers `Direct3D11`, `SupportedBackends()` still never offers the new kind to a player, and no
 golden moved. Full reasoning, including the rollout gates that govern when the default flips, in
@@ -305,6 +307,80 @@ the countable native-call sink goes BELOW the real emitter or into a device-free
 the reason the encoder is written AS an emitter rather than under one. Nothing above the seam may assume a
 stream exists, because Vulkan and Metal have real deferred command buffers and their emitters would record
 straight into them, where a CPU op stream is pure overhead.
+
+#### What a replay does to the device: caches, the scrub, and the implicit viewport (#449)
+
+The rules the native backend applies while replaying a recording, and the contract that says how many recordings
+may be open while it does. Still reached by nothing, since device creation throws. Sections 2.1, 2.3, 5.2, 5.3
+and 9.4 of the design doc, decisions R3, R4, R6, R8 and W6.
+
+**The native recording contract is executable now, not a sentence in a document.** A device-free `[Fact]` opens
+three recorders, interleaves commands across them, submits them in an order that is neither the record order nor
+its reverse, and asserts the replayed sequence is exactly per-list order concatenated in SUBMIT order with
+exactly one `ClearState` at the head of each replay. An empty recording still costs one `ClearState`, because
+the invariant is per submit rather than per command, and a list submitted twice costs two. Four lists recorded
+on four threads at once do not corrupt each other, which is what "N lists may record concurrently" means when
+nothing is shared. Concurrent recording stays structurally permitted and neither exercised nor supported as a
+shipped contract.
+
+**A command list is reusable, and a second recording REPLACES the first**, asserted on both drivers because they
+reach it differently. The frame loop opens, records, submits and reopens one list forever, so a recording that
+accumulated would grow without bound and replay last frame's draws under this frame's state. There was no
+permanent test for that until now.
+
+**`D3D11DeviceState` holds what is bound on the context, and a device owns exactly one.** The redundancy caches
+of R6 cover the seven pipeline-level objects (vertex shader, pixel shader, blend, depth-stencil, rasterizer,
+input layout and topology), so rebinding the pipeline already bound costs ZERO native calls and switching
+between two pipelines that share a blend state, a depth-stencil state, a rasterizer state, an input layout and a
+topology costs the two shaders. The caches are per OBJECT rather than per pipeline for exactly that reason: a
+cache keyed on pipeline identity would issue seven calls for a change of two, which is the same fan-out defect
+one level up. They are reset by the one `ClearState`, and that reset includes the bound framebuffer, which is
+the subtle half: `ClearState` drops the render targets and the viewport, so a cache that still claimed the
+framebuffer was bound would send the next bind down the redundant path and the frame would rasterise into no
+target.
+
+**Disposal scrubs precisely and unbinds, and never reaches for a `ClearState` (R8).** Disposing a bound object
+clears exactly the cache slots that named it and issues one unbind per slot, so the next draw pays for the one
+object that went away rather than for a full rebind of the pipeline, the buffers and every shader resource. A
+resource that was never bound, or was replaced before it was disposed, scrubs to nothing and issues nothing,
+which is the common case. The single `ClearState` of R3 covers the start of a replay and says nothing about the
+middle of one, which is where a disposal lands.
+
+**One emitter state per device is enforced now rather than a discipline (#476).** The seam's readonly-struct
+rule keeps mutable state behind a class reference, but a struct that news up its own state in its constructor
+satisfies that rule and still gives every command list its own caches, which is the defect the rule exists to
+prevent. So an emitter carrying device state must RECEIVE it as a constructor parameter, checked by reflection
+over the backend assembly, with behavioural tests that two lists created from one emitter value share one set of
+caches and that a rebind through the second list is still redundant.
+
+**`SetFramebuffer` carries the viewport, on a CHANGE only (W6).** There is no `SetViewport` on the seam at all,
+and the engine gets one because Veldrid's base `SetFramebuffer` auto-applies a full viewport and a full scissor.
+A framebuffer change therefore replays as `OMSetRenderTargets` plus `RSSetViewports(1, full)` plus
+`RSSetScissorRects(1, full)`, and a redundant re-bind of the framebuffer already bound emits NOTHING. That is a
+correctness rule and not a saved call: on the shipped sequence `SetFramebuffer(fb)`, `SetScissorRect(...)`,
+draw, `SetFramebuffer(fb)`, draw an unconditional emit would silently restore the full scissor and the second
+draw would render outside the intended rectangle, which is golden-visible. A later explicit `SetScissorRect`
+overrides the scissor and nothing undoes it. Two of decision T2's four structural invariants are exactly these
+tallies, and both are device-free `[Fact]`s: one viewport call and one scissor call per framebuffer CHANGE, zero
+for a redundant re-bind.
+
+**`IGpuCommandList.Begin` and `End` finally say how many recordings may be open (R4).** They documented "begin
+recording" and "finish recording" and nothing else, so the portable rule existed only as a test and as tribal
+knowledge. The portable contract is written on them now, ONE open recording per device, with the reason
+(Veldrid Direct3D11 rejects a second recorder, and with Direct3D11 in immediate-context mode a command list IS
+the device's immediate context, so a second `Begin` wipes the first list's state). The native backend's
+tolerance of nested recording is written alongside as a BACKEND PROPERTY that code does not port off, plus a
+`docs/USING-KHAOZENGINE.md` section stating both and which one a consumer may rely on. This is not a reason to
+close #424: those hazards are on the Veldrid leg, which stays selectable indefinitely.
+
+**How all of that is asserted with no Direct3D device on the machine.** The guards live in `D3D11DeviceState`,
+which the real emitter will use unchanged, and `D3D11NativeTraceEmitter` applies them and writes the
+`ID3D11DeviceContext` calls it would have made into a `D3D11NativeCallLog` instead of making them. So the tests
+pin the shipped decision rather than a copy of it in a harness. The native-call vocabulary is deliberately a
+separate type from the seam-call one, because the whole argument of 5.3 is that those are different numbers and
+one enum over both would make them interchangeable at the call site. The bind flush is not modelled here, so a
+resource-set bind appears in the trace as `ResourceSetPending`, which holds its place in the order and is named
+for what it is.
 
 ## 17.29.0
 

@@ -4,8 +4,9 @@ The engine's own native Direct3D 11 backend for the [KhaozEngine.Gpu](../KhaozEn
 NO umbrella: a consumer adds this package explicitly, the same pattern as `Physics.Bepu` or
 `WorldStore.Sqlite`, and nothing that does not want the Direct3D interop ever carries it.
 
-> **Status: registration, the platform guards, the machine-capability probe, and the recording model are
-> live.** The recording model (see "Recording, and the two drivers" below) lands behind `KE_D3D11_RECORD`, but
+> **Status: registration, the platform guards, the machine-capability probe, the recording model and the replay
+> contract are live.** The recording model (see "Recording, and the two drivers" below) lands behind
+> `KE_D3D11_RECORD` and the replay's own rules (see "What a replay does to the device") land on top of it, but
 > device creation is still not built, so `CreateForWindow` and `CreateHeadless` throw a message saying so.
 > `GpuBackendKind.Direct3D11` remains the working Direct3D 11 backend and stays selectable indefinitely.
 
@@ -102,12 +103,61 @@ otherwise.
 fans out inside the real emitter: a resource-set bind is up to six native calls, a redundant pipeline bind is
 zero, and section 9.4's one viewport plus one scissor per framebuffer CHANGE (zero for a re-bind) turns on a
 guard that lives in the real emitter. So the counting emitter here gives an upper-bound input and an ordering
-check. Whether the countable sink goes BELOW the real emitter (tallying the shipped fan-out, no second
-implementation to drift) or into a device-free harness guarded by T3's WARP `[GpuFact]` is row 9's decision,
-written out on `D3D11CountingEmitter`. It is deliberately not built yet.
+check. Whether the countable sink for the whole budget goes BELOW the real emitter (tallying the shipped
+fan-out, no second implementation to drift) or into a device-free harness guarded by T3's WARP `[GpuFact]` is
+row 9's decision, written out on `D3D11CountingEmitter`. It is deliberately not taken yet.
+
+## What a replay does to the device
+
+**One `ClearState` per submit, at the head of the replay, and nowhere else.** `Begin` resets the recording and
+touches no device state, `End` seals, and `Submit` takes the device's lock and replays. So N lists may record
+concurrently, a nested `Begin` cannot corrupt another recording (two recorders are two arrays), and the
+observable order is SUBMIT order rather than record order. That is the NATIVE backend's contract. The portable
+`IGpuCommandList` contract is unchanged at one open recording per device, which is what a consumer may rely on,
+and it is written on `IGpuCommandList.Begin` and in `docs/USING-KHAOZENGINE.md`.
+
+**`D3D11DeviceState` is what is bound on the context, and the device owns exactly one.** It carries the
+redundancy caches for the seven pipeline-level objects (vertex shader, pixel shader, blend, depth-stencil,
+rasterizer, input layout, topology), so a rebind of what is already bound costs zero native calls and a switch
+between two pipelines that share state costs only what changed. The caches are per OBJECT rather than per
+pipeline, because two pipelines routinely share a blend state or an input layout. They are reset by the one
+`ClearState`, and on disposal they are scrubbed PRECISELY: the resource is unbound from exactly the slots that
+named it, never by reaching for a wholesale `ClearState` that would make the next draw rebind everything.
+
+**A pipeline handle says what it is made of through `ID3D11PipelineState`**, which is the second internal seam
+in this package and the contract the pipeline type implements alongside `IGpuPipeline`. Its seven members are
+typed `object` on purpose: a redundancy cache asks only whether the same instance is already bound, so reference
+identity answers it without a Direct3D type appearing in the signature of the one type the device-free tests
+drive hardest. It costs the real emitter nothing, because that emitter already casts to its own concrete
+pipeline type and reads TYPED fields to make the call. This interface answers what changed, the concrete type
+answers with what.
+
+**Every emitter value the device hands out points at that one state object, and an emitter RECEIVES it.** The
+readonly-struct rule keeps mutable state behind a class reference, but a struct that allocates its own state in
+its constructor satisfies that rule and still gives each command list its own caches, which is the defect the
+rule exists to prevent. So the stronger rule is enforced too: an emitter carrying device state takes it as a
+constructor parameter, checked by reflection, with behavioural tests that two lists from one emitter value share
+one set of caches.
+
+**There is no `SetViewport` on the seam, so `SetFramebuffer` carries the viewport (decision W6).** A framebuffer
+CHANGE replays as `OMSetRenderTargets` plus `RSSetViewports(1, full)` plus `RSSetScissorRects(1, full)`, exactly
+what Veldrid's base `SetFramebuffer` auto-applies. A redundant re-bind of the framebuffer already bound emits
+NOTHING, and that is a correctness rule rather than a saved call: the shipped sequence `SetFramebuffer(fb)`,
+`SetScissorRect(...)`, draw, `SetFramebuffer(fb)`, draw would otherwise have its live scissor silently replaced
+by the full one and the second draw would render outside the intended rectangle. A later explicit
+`SetScissorRect` overrides the scissor and nothing undoes it. Two of decision T2's four structural invariants
+are exactly these tallies, and they are device-free `[Fact]`s.
+
+`D3D11NativeTraceEmitter` is how all of that is asserted without a device: it applies the shipped guards through
+`D3D11DeviceState` and writes the `ID3D11DeviceContext` calls it would have made into a `D3D11NativeCallLog`
+instead of making them. The guards themselves live in the state object the real emitter will use unchanged, so
+what the tests pin is the shipped decision rather than a copy of it. The bind flush of decision R5 is not
+modelled: a resource-set bind lands in the trace as `ResourceSetPending`, which holds its place in the order and
+is named for what it is.
 
 ## Design
 
 `docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md` in the engine repo, section 3 (package and layering),
-section 4.1 (getting the assembly loaded), section 5.1 (the stream and the emitter), section 2.1 (the recording
-model), and decisions P1, P2, P4, I2, R1, R2 and T2.
+section 4.1 (getting the assembly loaded), section 5.1 (the stream and the emitter), section 5.3 (emission),
+section 2.1 (the recording model), section 2.3 (nested `Begin` during coexistence), section 9.4 (the implicit
+viewport), and decisions P1, P2, P4, I2, R1, R2, R3, R4, R6, R8, W6 and T2.

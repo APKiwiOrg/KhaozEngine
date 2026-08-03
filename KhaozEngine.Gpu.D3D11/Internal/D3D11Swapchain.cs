@@ -155,10 +155,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// </summary>
         internal int Present()
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-
             lock (_submitLock)
             {
+                // INSIDE the lock, because Dispose flips the flag inside it. Checked outside, a Dispose landing in
+                // the gap between the check and the lock would leave this call presenting a surface that has
+                // already been released, which on the shipped surface is a Present against a freed IDXGISwapChain.
+                // No device-free test can pin that interleaving, since both orderings of the racy version throw
+                // whenever the race does not actually happen.
+                ObjectDisposedException.ThrowIf(_disposed, this);
+
                 int result = _surface.Present(SyncInterval);
                 // The standard HRESULT reading: the sign bit is the failure bit, so a non-negative value is any
                 // form of success, S_OK and DXGI_STATUS_OCCLUDED included. An occluded present is a success that

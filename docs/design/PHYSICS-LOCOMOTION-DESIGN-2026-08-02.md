@@ -596,3 +596,68 @@ the friction scale is 0.12 to 0.26 and the arithmetic this round added is what t
 is the adversarial direction for round three rather than a gentler one, because the ratchet was a race between a
 command tick's rise and a slide tick's drop and this face shrinks the drop. Another 5760 rides: 0 climbers, 0
 grants, 0 jumps, worst peak 0.000 m, every ride ending 226 to 579 m below its start.
+
+## Directional speed under `FaceCamera` (2026-08-03 addendum, 17.30.0, #479)
+
+Phase 1 above gave the character an authoritative facing and stated, correctly for what it shipped, that facing
+"affects no position output, so existing games are bit-identical". This addendum is the consequence that statement
+did not anticipate: once `FaceCamera` pins the body to the camera, the character HAS a front that does not turn
+with its travel, and "which way is it moving relative to where it is looking" becomes a question the sim can answer.
+Every third-person game answers it by charging for the answer. The Ruinborne playtest of the 0.16.16 facing wiring
+raised it immediately: a player who strafes and backpedals at full run speed does not read as a character, it reads
+as a hovering camera rig.
+
+**It has to be sim-side.** A scale the client applies to its own input is two separate bugs. It is a speed hack,
+because a client can simply not apply it, and it is a misprediction, because the server would not apply it either.
+So it lives in the stepper, on the authoritative path both heads run.
+
+**The classification reads the COMMAND, not the world.** `MoveCommand.Move` is already camera-relative (X = right,
+Y = forward), which is exactly the frame the question is asked in, so the sector falls out of the raw axis with no
+reference to the camera yaw, the world direction, or the carried heading. With `a = |Move.X|`: `Move.Y >= a` is
+forward, `Move.Y <= -a` is reverse, everything else is strafe. One absolute value and two comparisons. No `atan2`,
+no normalize, no division, nothing whose last bit can differ between a server and a client, and scale-invariant, so
+a half-deflected stick classifies exactly as a fully deflected one does.
+
+**The boundary rays are a decision, not a rounding accident.** Forward and reverse are CLOSED wedges, so exactly 45
+degrees is forward and exactly 135 is reverse, with strafe owning the two open wedges between. The reason is that a
+keyboard lands precisely on those rays rather than near them: `CharacterFacing.MoveAxis` builds the axis from whole
++/-1 components, so W+D is the vector `(1, 1)` and S+D is `(1, -1)`. Giving 45 to strafe would run the most common
+forward diagonal in the game at the strafe scale. Giving 135 to strafe is worse than merely surprising: it would
+hand a player who wants to flee quickly a strictly better key combination (S+D at the strafe scale with sprint
+honoured) than the one that means flee (S at the reverse scale with sprint refused), which is an exploit the
+tuning cannot close. Each boundary belongs to the wedge nearer the axis it straddles, and the cheapest predicate
+form happens to be exactly that, which is a good sign rather than a coincidence.
+
+**Where it composes, and why that single site is the whole design.** The player entry points already resolve a
+command into `(unit direction, speed fraction)` before handing off to the shared core. The scale multiplies THE
+FRACTION, in one new resolver (`ResolveCameraCommand`) that wraps the existing one. That is the only edit to the
+movement path. Every consumer of a resolved command reads the fraction and therefore gets the scale exactly once,
+by multiplication, with nothing to keep in sync: the grounded and airborne `DesiredHorizontalCore`, the
+airborne-momentum steer target, the slide's in-plane input steer, and the swim step. It composes with
+`MoveState.SpeedScale`, the wade ramp, the medium's zone scale and `AirControl` in whatever combination the tick
+happens to be in.
+
+Two consequences fall out of that placement rather than needing their own mechanism. The anti-cheat is one:
+`MovementAnomaly.CorrectionDistance` builds the server's intended target from `MoveState.CommandedVelocity`, which
+is built from the same product, so the target shrinks with the scale and a backpedalling player reads as denied
+nothing. Had the scale been applied anywhere the export could not see, this feature would have flagged every
+retreating player as a speed hacker inside a third of a second, which is exactly the swimmer bug that made the
+check read the export in the first place. Momentum is the other: a committed `AirMomentum` arc flies the carried
+`HorizontalVelocity`, which is not a command, so the scale steers the arc (with whatever authority `AirControl`
+grants) and never shrinks it. No special case was written for either.
+
+**The run rule is a separate knob because a fraction cannot carry it.** Refusing a sprint changes the BASE speed
+the fraction multiplies, not the fraction, so `MoveTuning.BackpedalAllowsRun` rides back from the resolver
+alongside the fraction as an effective run bit. It is a knob rather than an implication of the scale because the
+two answer different questions: how fast a retreat is, and whether a retreat can be a sprint. A game can want a
+slow backpedal a player may still sprint into, or a full-speed one they may not.
+
+**All three defaults are neutral (1, 1, true), and that is load-bearing rather than polite.** The traction pair in
+round five deliberately shipped default-ON because the behaviour they replace is a measured bug. These are the
+opposite case: a character that moves as fast backwards as forwards is a FEEL choice, and it is the feel every game
+on the stack was tuned against. Multiplying by exactly 1 is the identity for every float, so the neutral path is
+bit-identical rather than nearly so, and a test pins that in every sector with and without the flag.
+
+`MoveSector` and `CharacterMovement.Sector` are public for the same reason `CameraRelativeDir` is: a consumer
+needs the same answer for presentation (which locomotion animation to play, whether to show a retreat stance), and
+a hand-copied predicate downstream is how the two drift apart.

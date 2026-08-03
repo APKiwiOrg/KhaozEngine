@@ -38,7 +38,10 @@ public readonly record struct MoveTuning(
     float AirBrakeAccel = 0f,
     float FacingTurnSpeed = float.PositiveInfinity,
     float TractionHysteresisRadians = MathF.PI * 3f / 180f,
-    float SlideFrictionRampRadians = MathF.PI * 8f / 180f)
+    float SlideFrictionRampRadians = MathF.PI * 8f / 180f,
+    float StrafeSpeedScale = 1f,
+    float BackpedalSpeedScale = 1f,
+    bool BackpedalAllowsRun = true)
 {
     /// <summary>Walkable-slice defaults: walk 6 m/s, run 12 m/s, capsule half-height 0.9 m, max slope 45 deg
     /// (steep enough for normal hills, low enough that a RimFeature mountain wall is too steep to stand on, so the
@@ -58,7 +61,12 @@ public readonly record struct MoveTuning(
     /// <see cref="SlideFrictionRampRadians"/>, so a face a degree past the gate slides gently and only a genuinely
     /// steep one slides at full gravity. Both are new in 17.30.0 and both CHANGE behaviour near the gate for any game
     /// on steep terrain, which is intended (see #475). Setting either to 0 restores the previous behaviour
-    /// exactly.</para></summary>
+    /// exactly.</para>
+    /// <para>The directional trio (<see cref="StrafeSpeedScale"/>, <see cref="BackpedalSpeedScale"/>,
+    /// <see cref="BackpedalAllowsRun"/>) is default-NEUTRAL, the opposite choice and for the opposite reason: a
+    /// character that moves as fast sideways and backwards as it does forwards is what every game on the stack was
+    /// tuned against, so the defaults 1, 1 and true leave every one of them bit-identical. A game that wants the
+    /// usual third-person feel opts in by setting them.</para></summary>
     public static MoveTuning Default => new(
         WalkSpeed: 6f,
         RunSpeed: 12f,
@@ -239,4 +247,41 @@ public readonly record struct MoveTuning(
     /// <para>0 (a <c>default(MoveTuning)</c>), negative, or NaN turns friction OFF and restores the full-strength
     /// slide of 17.28.0 and 17.29.0 bit for bit.</para></summary>
     public float SlideFrictionRampRadians { get; init; } = SlideFrictionRampRadians;
+
+    /// <summary>Speed multiplier while the command's axis lies in the STRAFE sector and
+    /// <see cref="MoveCommand.FaceCamera"/> is held. Default 1, which is no scaling at all and is why a game that
+    /// never sets it is bit-identical to every release before 17.30.0.
+    /// <para>The sector is read off the CAMERA-RELATIVE command axis (<see cref="MoveCommand.Move"/>), not off any
+    /// world vector, by <see cref="CharacterMovement.Sector"/>: strafe is the pair of OPEN 90 degree wedges either
+    /// side of the character, i.e. everything more than 45 and less than 135 degrees off the forward axis. Run is
+    /// honoured in it, so a sprinting sidestep is <c>RunSpeed * this</c>. Without
+    /// <see cref="MoveCommand.FaceCamera"/> there are no sectors at all (the character faces where it walks, so
+    /// every direction is forward) and this is never consulted.</para>
+    /// <para>Values above 1 are permitted and make strafing FASTER than running forward, which is a real design in
+    /// some games and a mistake in most. Negative and NaN read as 0, the same harmless degradation
+    /// <see cref="TractionHysteresisRadians"/> takes, since a negative multiplier would otherwise reverse
+    /// travel.</para></summary>
+    public float StrafeSpeedScale { get; init; } = StrafeSpeedScale;
+
+    /// <summary>Speed multiplier while the command's axis lies in the REVERSE sector and
+    /// <see cref="MoveCommand.FaceCamera"/> is held: the CLOSED 90 degree wedge behind the character, i.e. 135
+    /// degrees or more off the forward axis, so a straight back-pedal and both of its diagonals scale together.
+    /// Default 1 (no scaling, bit-identical to every release before 17.30.0). Composes with
+    /// <see cref="BackpedalAllowsRun"/>, which decides the base speed the multiplier lands on.
+    /// <para>Negative and NaN read as 0 exactly as <see cref="StrafeSpeedScale"/> does, and 0 itself is legitimate:
+    /// it means a character that literally cannot walk backwards. Such a tick commands zero speed, so it is treated
+    /// as an idle tick by everything downstream (the wall slide, the at-rest depenetration hold), which is what a
+    /// character going nowhere should be.</para></summary>
+    public float BackpedalSpeedScale { get; init; } = BackpedalSpeedScale;
+
+    /// <summary>Whether <see cref="MoveCommand.Run"/> is honoured while backing up (the reverse sector under
+    /// <see cref="MoveCommand.FaceCamera"/>). Default <c>true</c>, which honours it exactly as every release before
+    /// 17.30.0 did. Set <c>false</c> and a reverse tick resolves at <see cref="WalkSpeed"/> however the run bit is
+    /// set, so <see cref="BackpedalSpeedScale"/> scales the WALK speed rather than the run speed and there is no
+    /// sprint-backwards at all.
+    /// <para>It is a separate knob from the scale because the two answer different questions. The scale is how fast
+    /// a retreat is, and this is whether a retreat can be a sprint - a game can want a slow backpedal a player may
+    /// still sprint into, or a full-speed one they may not. It affects the FORWARD and STRAFE sectors not at
+    /// all.</para></summary>
+    public bool BackpedalAllowsRun { get; init; } = BackpedalAllowsRun;
 }

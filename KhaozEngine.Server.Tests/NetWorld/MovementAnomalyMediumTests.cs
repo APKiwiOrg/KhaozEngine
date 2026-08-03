@@ -187,4 +187,53 @@ public class MovementAnomalyMediumTests
             Assert.True(after.CommandedSpeed > 0f, $"{name}: expected a non-zero commanded speed");
         }
     }
+
+    [Fact]
+    public void A_backpedalling_player_is_not_flagged()
+    {
+        // The directional speed scale (#479) is the newest server-side speed term, and the one that would have been
+        // WORST for this check: a player who backs away from something is doing the most ordinary thing in the game,
+        // and the strafe/backpedal scales cut the stride to a fifth. Rebuilt from RunSpeed the way this check
+        // originally worked, every tick of that retreat would read as 0.32 m of denial and raise the signal inside a
+        // third of a second - the swimmer bug exactly, in a case players are in constantly rather than occasionally.
+        // Reading the sim's own export covers it for free, and this pins that it does.
+        var tuning = Tuning with { StrafeSpeedScale = 0.4f, BackpedalSpeedScale = 0.2f, BackpedalAllowsRun = false };
+        var sim = new PlayerMoveSimulator((x, z) => 0f, tuning);
+        var back = new MoveCommand(new Vector2(0f, -1f), run: true, cameraYaw: 0f, jump: false, faceCamera: true);
+        var sidestep = new MoveCommand(new Vector2(1f, 0f), run: true, cameraYaw: 0f, jump: false, faceCamera: true);
+
+        // Harness validity: the fixture has to be genuinely retreating at the REDUCED speed, or the clean result
+        // below is measured against a stride nothing scaled and the test passes for the wrong reason.
+        Assert.Equal(tuning.WalkSpeed * tuning.BackpedalSpeedScale, sim.Step(Standing(), back, Dt).Move.CommandedSpeed, 4);
+        Assert.Equal(tuning.RunSpeed * tuning.StrafeSpeedScale, sim.Step(Standing(), sidestep, Dt).Move.CommandedSpeed, 4);
+
+        (float worstBack, bool raisedBack) = Drive(sim, Standing(), back, 60);
+        Assert.False(raisedBack, $"a backpedalling player raised the anomaly signal (worst correction {worstBack} m)");
+        Assert.True(worstBack < 0.001f, $"a backpedal on open flat ground is denied nothing, but read {worstBack} m");
+
+        (float worstSide, bool raisedSide) = Drive(sim, Standing(), sidestep, 60);
+        Assert.False(raisedSide, $"a strafing player raised the anomaly signal (worst correction {worstSide} m)");
+        Assert.True(worstSide < 0.001f, $"a sidestep on open flat ground is denied nothing, but read {worstSide} m");
+    }
+
+    [Fact]
+    public void A_backpedalling_player_driving_into_a_bound_is_still_measured_as_fully_denied()
+    {
+        // And the scale must not become an exemption either: a retreat into the play-area edge is denied its whole
+        // (smaller) stride, and that is reported in full. Same semantics as the swimmer pinned against the bound
+        // above - the magnitude is the stride the sim actually commanded, not the one an unscaled run would have.
+        var tuning = Tuning with { BackpedalSpeedScale = 0.2f, BackpedalAllowsRun = false };
+        var sim = new PlayerMoveSimulator((x, z) => 0f, tuning, bounds: new CircleBounds(Vector2.Zero, 1f));
+        PlayerMoveState start = Standing();
+        start.Move.Position = new Vector3(0f, tuning.CapsuleHalfHeight, 1f);
+        // Facing -Z (camera yaw 0) and backing up, so the travel is straight at the +Z edge.
+        var into = new MoveCommand(new Vector2(0f, -1f), run: true, cameraYaw: 0f, jump: false, faceCamera: true);
+
+        PlayerMoveState after = sim.Step(start, into, Dt);
+        float correction = MovementAnomaly.CorrectionDistance(start, after, Dt);
+        float fullStride = after.Move.CommandedSpeed * Dt;
+
+        Assert.Equal(tuning.WalkSpeed * tuning.BackpedalSpeedScale, after.Move.CommandedSpeed, 4);
+        Assert.Equal(fullStride, correction, 5);
+    }
 }

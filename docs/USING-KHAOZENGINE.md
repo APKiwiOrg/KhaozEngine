@@ -4835,8 +4835,9 @@ var rim = new RimFeature(
 var field = new TerrainField(TerrainPresets.BoundedClearing());   // meadow ringed by a rim, one +Z pass, a lake
 ```
 
-**2. Steep terrain (so the wall can't be climbed).** Ground steeper than `MoveTuning.MaxSlopeRadians`
-(default 45 deg) grants no footing, and a face you cannot reach over is a wall you slide along - but only when a
+**2. Steep terrain (so the wall can't be climbed).** Ground steeper than the tick's traction gate
+(`MoveTuning.MaxSlopeRadians`, default 45 deg, widened by a hysteresis band while you already have footing - see
+below) grants no footing, and a face you cannot reach over is a wall you slide along - but only when a
 `groundNormal` delegate is supplied. Pass `TerrainCollision.GroundNormal` as that delegate everywhere movement
 runs, so the steep rim cannot be climbed and the gentle pass corridor stays walkable. Local controller:
 
@@ -4852,7 +4853,7 @@ ratcheted up a sheer face, tight enough to stop that and sideways movement into 
 invisible wall eating lateral air control. Refusal is not how terrain behaves, so there is no gate any more. Two
 rules replace it, both unconditional and neither a knob:
 
-- **Wall slide.** A horizontal move whose destination is BOTH steeper than `MaxSlopeRadians` AND above what that
+- **Wall slide.** A horizontal move whose destination is BOTH steeper than the tick's traction gate AND above what that
   tick can REACH is a wall contact: the into-face component of the move dies and the along-face component
   survives. So strafing along a cliff mid-jump keeps its lateral travel, and walking head-on into one makes no
   headway. It applies grounded and airborne, on the command path and the momentum path alike. The REACH is a
@@ -4861,13 +4862,42 @@ rules replace it, both unconditional and neither a knob:
   higher than its own velocity carried it**: altitude on steep ground comes from velocity, never from the ground
   clamp. With a flat `StepHeight` for every tick alike it did come from the clamp, and walking at a 74 degree
   cliff climbed it at 2.3 to 2.7 m/s while `VerticalVelocity` reported a 5 to 7 m/s fall.
-- **No traction.** A surface steeper than `MaxSlopeRadians` grants no support: `Grounded` stays false, so no
+- **No traction.** A surface steeper than the tick's TRACTION GATE grants no support: `Grounded` stays false, so no
   jump, no coyote refresh and no landing latch on the face. You are still seated on it (the ground clamp forbids
   penetration) but you slide - gravity decomposes against the surface normal and its tangential component
   accelerates you down the fall line until you reach walkable ground (that landing is where `LandingImpactSpeed`
   fires, from the fall the slide accumulated), open air, or water. Input steers along the CONTOUR (across the fall
   line) at the usual `MoveTuning.AirControl`-scaled speed and has no authority along the fall line at all, in
-  either direction.
+  either direction. This covers a step DOWN onto such a surface too, which it did not before 17.30.0
+  ([#470](https://github.com/APKiwiOrg/KhaozEngine/issues/470)): a drop within `MoveTuning.StepHeight` normally seats
+  you grounded in one tick, but not onto ground past the gate, where you go over the edge and slide instead. Walkable
+  stair treads are under the gate, so descending a staircase is unchanged.
+
+**The gate has a MEMORY and the slide has FRICTION (17.30.0, [#475](https://github.com/APKiwiOrg/KhaozEngine/issues/475)).**
+A bare threshold chatters on real terrain: ground whose columns straddle it flips grip and slide every tick. Measured
+on a Ruinborne bank running 40.0 to 41.8 degrees against a 40 degree gate, 43 footing flips in 330 ticks and a stall
+2.73 m up a 7.6 m climb - and widening the gate past that bank simply moved the same failure onto the next feature,
+because any threshold lands inside some terrain's slope distribution. Two knobs, both **default-on**:
+
+- **`MoveTuning.TractionHysteresisRadians`** (default 3 degrees). Footing is GRANTED at `MaxSlopeRadians` and KEPT
+  to `MaxSlopeRadians + TractionHysteresisRadians`. A walk across a bank that straddles the gate therefore holds one
+  continuous footing decision, while a body arriving WITHOUT footing (a landing, a slide, an apex graze) is judged
+  at the bare gate and slides off. The band can only ever HOLD footing, never hand it out, so **the steepest ground
+  a character can stand on is exactly gate plus band, whatever route it took**. The memory is `MoveState.Grounded`,
+  which already replicates, so nothing new rides the wire and a reconcile replay reaches the same answer. The
+  consequence that IS the mechanism: a uniform face at gate plus two is walkable, indefinitely, by a character that
+  walked onto it from adjacent walkable ground, and refuses one that fell onto it.
+- **`MoveTuning.SlideFrictionRampRadians`** (default 8 degrees). The fall-line acceleration is scaled by
+  `clamp((surface slope - MaxSlopeRadians) / SlideFrictionRampRadians, 0, 1)`, so a marginal face slides gently and a
+  sheer one slides hard. At the shipped 45 degree gate a 46 degree face accelerates at 2.25 m/s^2 along the fall
+  line against 17.99 unscaled (one second from rest drops 0.836 m rather than 6.684 m), a 49 degree one at 9.43, and
+  53 degrees and steeper is untouched. It scales the ACCELERATION, not the speed, so it is not a terminal: a long
+  enough marginal face still reaches `MaxFallSpeed`, over a much greater distance. And it never applies to a RISING
+  slide - gravity decelerates one at full strength, so the reach of a running jump onto a face is exactly what it
+  was before friction existed.
+
+Setting either knob to 0 restores the 17.29.0 behaviour bit for bit, and that is what a bare `default(MoveTuning)`
+reads. Ground well under the gate is untouched either way.
 
 **Your HEIGHT field is the geometry, and your NORMAL delegate only classifies (17.29.0).** You hand the step two
 descriptions of the same surface, and they do not have to agree - a smoothed or lower-resolution normal field over
@@ -4934,7 +4964,9 @@ terrain either - the wall projection plus the ground clamp carry that between th
 Two consequences worth knowing. **Prop support always wins**: only the analytic terrain is traction-less, so a
 plank over a ravine, a ledge bolted to a cliff, or a stair against a mountain all still carry a character exactly
 as before. And **a `MaxSlopeRadians` you tightened as a guardrail now reads as "this is slippery"** rather than
-"this is a fence" - the threshold's meaning is unchanged, but what it buys you is not.
+"this is a fence" - the threshold's meaning is unchanged, but what it buys you is not. Since 17.30.0 the ground a
+STANDING character keeps its feet on runs to `MaxSlopeRadians + TractionHysteresisRadians`, so a guardrail you sized
+against the bare gate is three degrees looser than you set it by default.
 
 **If your game leaned on any of this as a cliff guardrail, players now fall off, and off a steep face they slide
 down it.** That is the fix (#369 then #442), and it is a behaviour change rather than an opt-in. A rim you want

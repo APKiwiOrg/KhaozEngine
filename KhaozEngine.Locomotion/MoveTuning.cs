@@ -8,7 +8,8 @@ namespace KhaozEngine.Locomotion;
 /// CharacterController3D defaults (walk 6, run 12, half-height 0.9 for a 1.8 m capsule, 45 deg max slope,
 /// footprint radius 0.4 for static-world collision) plus the vertical-physics feel (gravity 25, jump 9.79796,
 /// terminal 50, 0.1 s coyote + buffer, full air control, 0.3 m grounded skin, airborne momentum OFF, facing
-/// turn rate infinite so the heading snaps).
+/// turn rate infinite so the heading snaps) plus the steep-terrain feel (3 deg traction hysteresis, 8 deg slide
+/// friction ramp).
 /// </summary>
 public readonly record struct MoveTuning(
     float WalkSpeed,
@@ -35,7 +36,9 @@ public readonly record struct MoveTuning(
     float MaxStepClimbSpeed = 3.5f,
     bool AirMomentum = false,
     float AirBrakeAccel = 0f,
-    float FacingTurnSpeed = float.PositiveInfinity)
+    float FacingTurnSpeed = float.PositiveInfinity,
+    float TractionHysteresisRadians = MathF.PI * 3f / 180f,
+    float SlideFrictionRampRadians = MathF.PI * 8f / 180f)
 {
     /// <summary>Walkable-slice defaults: walk 6 m/s, run 12 m/s, capsule half-height 0.9 m, max slope 45 deg
     /// (steep enough for normal hills, low enough that a RimFeature mountain wall is too steep to stand on, so the
@@ -48,7 +51,14 @@ public readonly record struct MoveTuning(
     /// before momentum existed, and an infinite <see cref="FacingTurnSpeed"/>, so the heading snaps to its target
     /// exactly as a pre-facing consumer's commanded-facing presentation did. This matches
     /// CharacterController3D's own field defaults exactly (same literal + comment in both places), so a caller
-    /// building either way gets identical feel.</summary>
+    /// building either way gets identical feel.
+    /// <para>The steep-terrain pair comes with it and is default-ON: a 3 degree
+    /// <see cref="TractionHysteresisRadians"/> band, so a walk across a bank that straddles the gate holds one
+    /// continuous footing decision instead of flipping every tick, and an 8 degree
+    /// <see cref="SlideFrictionRampRadians"/>, so a face a degree past the gate slides gently and only a genuinely
+    /// steep one slides at full gravity. Both are new in 17.30.0 and both CHANGE behaviour near the gate for any game
+    /// on steep terrain, which is intended (see #475). Setting either to 0 restores the previous behaviour
+    /// exactly.</para></summary>
     public static MoveTuning Default => new(
         WalkSpeed: 6f,
         RunSpeed: 12f,
@@ -187,4 +197,46 @@ public readonly record struct MoveTuning(
     /// <see cref="WalkSpeed"/>) FREEZES the heading. That is the harmless degradation for an accidental default:
     /// treating 0 as "no limit" would make the un-configured case the most aggressive setting there is.</summary>
     public float FacingTurnSpeed { get; init; } = FacingTurnSpeed;
+
+    /// <summary>TRACTION HYSTERESIS BAND (radians): how far past <see cref="MaxSlopeRadians"/> a character that ALREADY
+    /// has footing keeps it. Footing is GRANTED at <see cref="MaxSlopeRadians"/> and KEPT to
+    /// <c>MaxSlopeRadians + this</c>, so the walkability decision has a memory instead of being re-taken from scratch
+    /// every tick. Default 3 degrees.
+    /// <para>It exists because a bare threshold chatters on real terrain, which was measured rather than argued: a
+    /// Ruinborne bank whose columns run 40.0 to 41.8 degrees against a 40 degree gate flipped footing 43 times in
+    /// 330 ticks and stalled part-way up, and re-tuning the gate to clear that bank simply moved the same failure onto
+    /// banks peaking 0.4 and 2.8 degrees past the new one. 3 degrees covers every straddle in those measurements (the
+    /// worst excursion above a gate was 2.8 degrees) with margin to spare, and stays small enough that the ground a
+    /// standing character may keep its feet on is still ground a player reads as a steep hillside.</para>
+    /// <para>The band is a ceiling on what footing may KEEP and never a route to footing: a character with no footing
+    /// is judged at the bare <see cref="MaxSlopeRadians"/>, so landing on, sliding onto, or grazing ground past the
+    /// gate grants nothing. The steepest ground a character can end up standing on is therefore exactly
+    /// <c>MaxSlopeRadians + this</c>, by any route. One play consequence of that surprises and is correct: on ground
+    /// only the band is holding, a JUMP converts a stable stand into a slide, because the launch tick ends
+    /// un-grounded and the landing is judged at the bare <see cref="MaxSlopeRadians"/>.</para>
+    /// <para>0 (which is what a struct <c>default(MoveTuning)</c> reads, exactly as it reads 0 for
+    /// <see cref="WalkSpeed"/>) turns hysteresis OFF and restores the bare per-tick threshold of every release before
+    /// 17.30.0. A negative or NaN value reads the same way. That is the harmless degradation for an accidental
+    /// default, in the same direction <see cref="FacingTurnSpeed"/> takes.</para></summary>
+    public float TractionHysteresisRadians { get; init; } = TractionHysteresisRadians;
+
+    /// <summary>SLIDE FRICTION RAMP (radians): the band past <see cref="MaxSlopeRadians"/> over which a slide's
+    /// fall-line acceleration ramps in, from nothing at the gate to full gravity at <c>MaxSlopeRadians + this</c> and
+    /// beyond. The scale is <c>clamp((surface slope - MaxSlopeRadians) / this, 0, 1)</c> on the DOWNHILL half of
+    /// gravity only. Default 8 degrees.
+    /// <para>Without it every surface past the gate slides at the full fall-line projection of gravity, so ground one
+    /// degree too steep to stand on behaves exactly like an 80 degree cliff and marginal terrain reads as ice. With
+    /// it, at the shipped 45 degree gate, a 46 degree face accelerates at an eighth of gravity's pull along the fall
+    /// line (2.25 m/s^2 at the default gravity, against 17.99 unscaled) and is a slope you lose ground on slowly,
+    /// while anything at 53 degrees or steeper is unchanged. 8 degrees is chosen so the whole band sits inside terrain
+    /// a player already reads as unwalkable, rather than reaching up into the slopes hysteresis is holding footing
+    /// on.</para>
+    /// <para>It scales the ACCELERATION, not the speed, so it is not a terminal: a long enough marginal face still
+    /// reaches <see cref="MaxFallSpeed"/> eventually, over a much greater distance. And it never applies to a RISING
+    /// slide, where gravity keeps its full strength, so the height a launch can ride up a face is exactly what it was
+    /// before friction existed (see <c>CharacterMovement.Traction.cs</c>, which is where scaling both halves would
+    /// have been an altitude exploit).</para>
+    /// <para>0 (a <c>default(MoveTuning)</c>), negative, or NaN turns friction OFF and restores the full-strength
+    /// slide of 17.28.0 and 17.29.0 bit for bit.</para></summary>
+    public float SlideFrictionRampRadians { get; init; } = SlideFrictionRampRadians;
 }

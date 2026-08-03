@@ -65,13 +65,18 @@ public static partial class CharacterMovement
     // is not (#468 - the clamp may not lift a capsule that has no footing).
     // Returns the resolved speed alongside the position so StepCore can export it as MoveState.CommandedVelocity: it is reported
     // UNCONDITIONALLY, including on a wall contact, because the anomaly check needs the ask, not what survived. 0 when idle.
+    // `gate` is the tick's ONE traction gate (CharacterMovement.Traction.cs): MaxSlopeRadians widened by the
+    // hysteresis band while the character has footing, and the bare gate while it does not. The wall contact must read
+    // the same threshold the support decision does, or a grounded run up a bank the band is holding footing on would
+    // meet a fence built out of the ground under its own feet.
     private static (float x, float z, float speed) DesiredHorizontalCore(float x, float z, Vector2 moveDir,
         float speedFraction, bool run, float dt, in MoveTuning tuning, Func<float, float, Vector3>? groundNormal,
-        Func<float, float, float> groundHeight, float feetY, float speedScale, float reach)
+        Func<float, float, float> groundHeight, float feetY, float speedScale, float reach, float gate)
     {
         bool moving = speedFraction > 0f;
         float speed = moving ? (run ? tuning.RunSpeed : tuning.WalkSpeed) * speedScale * speedFraction : 0f;
-        (x, z) = AdvanceWallSlide(x, z, moveDir * speed, moving, dt, tuning, groundNormal, groundHeight, feetY, reach);
+        (x, z) = AdvanceWallSlide(x, z, moveDir * speed, moving, dt, tuning, groundNormal, groundHeight, feetY, reach,
+            gate);
         return (x, z, speed);
     }
 }

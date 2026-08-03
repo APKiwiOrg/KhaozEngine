@@ -473,7 +473,13 @@ public class SlideContactResolveTests
         // so an unclamped sim would quietly disagree with its own replication. The resolve clamps to the same
         // ceiling, so both heads and the wire agree by construction.
         float gate = gateDegrees * MathF.PI / 180f;
-        MoveTuning t = Tuning with { MaxSlopeRadians = gate };
+        // FRICTION OFF, deliberately, and it makes this a STRICTLY STRONGER test rather than a weaker one. The face
+        // here is 2% past the gate by construction (as shallow as steep gets, which is where the horizontal terminal
+        // is largest), so the friction ramp would scale its fall-line acceleration to about an eighth and the slide
+        // would still be accelerating when the window ended - the fixture would measure its own length instead of the
+        // ceiling. Friction can only ever REDUCE the speed a slide reaches, so a clamp that holds at full strength
+        // holds under any ramp. What the ramp itself does is measured in TractionHysteresisTests.
+        MoveTuning t = Tuning with { MaxSlopeRadians = gate, SlideFrictionRampRadians = 0f };
         float grade = MathF.Tan(gate * 1.02f);       // a face 2% past the gate: steep, and as shallow as steep gets
         Func<float, float, float> face = (x, z) => x < EdgeX ? 0f : (x - EdgeX) * grade;
         Vector3 n = Vector3.Normalize(new Vector3(-grade, 1f, 0f));

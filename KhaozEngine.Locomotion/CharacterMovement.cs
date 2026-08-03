@@ -51,9 +51,13 @@ public static partial class CharacterMovement
         // A StepHeight reach, unchanged: this overload has no vertical physics at all (it clamps Y to the ground
         // every tick, so the character is always standing), and therefore no resolved vertical motion for the
         // no-footing allowance to read. Byte-identical to every release before #468.
+        // The BARE gate, for the same reason inverted: hysteresis is a memory of a support decision, and this overload
+        // takes no support decision to remember - it never grounds and never un-grounds. Handing it the widened gate
+        // would not be hysteresis at all, it would be a permanently wider walkable slope, so this path is
+        // byte-identical to every release before #475 too.
         (float x, float z, _) = DesiredHorizontalCore(position.X, position.Z, moveDir, speedFraction, cmd.Run, dt,
             tuning, groundNormal, groundHeight, position.Y - tuning.CapsuleHalfHeight, speedScale: wade,
-            reach: tuning.StepHeight);
+            reach: tuning.StepHeight, gate: tuning.MaxSlopeRadians);
         var result = new Vector3(x, groundHeight(x, z) + tuning.CapsuleHalfHeight, z);
         // Defense-in-depth: never return a non-finite position from a finite input. A pathological command is
         // already neutralized by the move gate, but a misbehaving groundHeight/bound could still inject a NaN/Inf
@@ -207,12 +211,18 @@ public static partial class CharacterMovement
         if (swimming)
             return SwimStep(s, moveDir, speedFraction, jump, dt, t, medNow, groundHeight, clampXz, halfH, faceYaw);
 
+        // 0a. THE TRACTION GATE FOR THIS TICK, resolved ONCE from the footing the tick STARTED with and handed to every
+        //    consumer below: the slide contact, the wall contact on all three horizontal paths, the slide resolve, the
+        //    support decision, and the wedge. Widened by the hysteresis band while the character HAS footing, bare
+        //    while it does not (#475). See CharacterMovement.Traction.cs for the rule and the measurements.
+        float tractionGate = TractionGate(s.Grounded, t);
+
         // 0b. SLIDE CONTACT: is this tick standing against ground too steep to stand on? Read from the START of the
         //    tick (the carried position and the ground under its own column), so it is a pure function of carried
         //    state and a reconcile replay reaches the same answer. See CharacterMovement.Slide.cs for the model. The
         //    short version is that a too-steep surface grants no support, so gravity decomposes against it and the
         //    character rides the fall line instead of walking, jumping, or being refused at it.
-        bool sliding = SlideContact(s, t, halfH, groundHeight, groundNormal, out Vector3 slideNormal);
+        bool sliding = SlideContact(s, halfH, groundHeight, groundNormal, tractionGate, out Vector3 slideNormal);
 
         // 1. Horizontal desired (UNCHANGED when dry): resolved unit move direction + speed fraction + the terrain
         //    wall slide. The grounded/air scale composes with the wade scale (1 when no provider or out of water) and
@@ -232,15 +242,15 @@ public static partial class CharacterMovement
         Vector2 commandedVel, carrySeed;
         if (sliding)
         {
-            SlideStep slide = ResolveSlide(s, moveDir, speedFraction, run, dt, t, slideNormal, groundNormal, groundHeight, speedScale, halfH);
+            SlideStep slide = ResolveSlide(s, moveDir, speedFraction, run, dt, t, slideNormal, groundNormal, groundHeight, speedScale, halfH, tractionGate);
             (dx, dz, commandedVel, carrySeed, slideVVel) = (slide.X, slide.Z, slide.Commanded, slide.Carry, slide.VerticalVelocity);
         }
         else
         {
-            (dx, dz, float commandedSpeed) = DesiredHorizontalCore(s.Position.X, s.Position.Z, moveDir, speedFraction, run, dt, t, groundNormal, groundHeight, s.Position.Y - halfH, speedScale, NoFootingReach(s, t, dt));
+            (dx, dz, float commandedSpeed) = DesiredHorizontalCore(s.Position.X, s.Position.Z, moveDir, speedFraction, run, dt, t, groundNormal, groundHeight, s.Position.Y - halfH, speedScale, NoFootingReach(s, t, dt), tractionGate);
             commandedVel = moveDir * commandedSpeed;
             if (t.AirMomentum && !s.Grounded)
-                (dx, dz, commandedVel) = AirborneMomentumMove(s, moveDir, speedFraction, run, dt, t, groundNormal, groundHeight, wade);
+                (dx, dz, commandedVel) = AirborneMomentumMove(s, moveDir, speedFraction, run, dt, t, groundNormal, groundHeight, wade, tractionGate);
             carrySeed = commandedVel;
         }
         if (clampXz is not null) { Vector2 c = clampXz(dx, dz); dx = c.X; dz = c.Y; }
@@ -389,21 +399,16 @@ public static partial class CharacterMovement
         bool onGround = vVel <= 0f && (pos.Y <= groundY + (world is not null ? SkinWidth : 0f) || (s.Grounded && pos.Y <= groundY + t.GroundedEpsilon));
         if (onGround) pos.Y = groundY;          // snap onto the support surface (generalizes the old terrain clamp)
         if (pos.Y < groundY) pos.Y = groundY;   // and never rest below it, even on a tick that is not "onGround"
-        // NO TRACTION ON STEEP GROUND. A terrain surface steeper than MaxSlopeRadians SEATS the capsule (the clamp
-        // above still forbids penetration) but grants it nothing else: no Grounded, so no jump, no coyote refresh,
-        // and no landing latch on the face - the landing is at the bottom, and LandingImpactSpeed reports there from
-        // the fall the slide accumulated. This is the rule that retires the ascent gate rather than patching it:
-        // climbing self-defeats when there is no footing to climb from, and the #440 jump ratchet stays dead because
-        // landing on the face lands in a slide.
-        //   - PROP SUPPORT ALWAYS WINS. Only the ANALYTIC terrain can be traction-less here: `groundY <=
-        //     terrainGroundY` says no prop raised the floor, and propGrounded says no prop is pushing the capsule up.
-        //     A plank bridging a ravine, a ledge bolted to a cliff, or a stair against a mountain all still carry a
-        //     character, exactly as they did.
-        //   - The normal is sampled at the RESOLVED position rather than the start one, because it is THIS tick's
-        //     support being decided, and only on a tick that would otherwise ground on terrain - so an airborne tick
-        //     and a prop-supported tick pay nothing for the rule at all.
-        bool noTraction = onGround && !propGrounded && groundY <= terrainGroundY && groundNormal is not null &&
-                          IsSteepGround(groundNormal(pos.X, pos.Z), t);
+        // NO TRACTION ON STEEP GROUND. A terrain surface steeper than THIS TICK'S TRACTION GATE seats the capsule (the
+        // clamp above still forbids penetration) but grants it nothing else: no Grounded, so no jump, no coyote
+        // refresh, and no landing latch on the face - the landing is at the bottom, and LandingImpactSpeed reports
+        // there from the fall the slide accumulated. It is the rule that retired the ascent gate rather than patching
+        // it, and since #475 it is HYSTERETIC: the gate resolved above already carries the band a standing character
+        // keeps its footing over, while a body arriving WITHOUT footing is judged at the bare gate and slides. The test
+        // itself, and the prop support it exempts, is RefusesTraction (CharacterMovement.Traction.cs), because the
+        // step-down hold below asks the identical question and a second expression of it is how #470 happened.
+        bool noTraction = onGround &&
+                          RefusesTraction(pos, propGrounded, groundY, terrainGroundY, groundNormal, tractionGate);
         if ((onGround || propGrounded) && !noTraction)
         {
             grounded = true;
@@ -426,7 +431,7 @@ public static partial class CharacterMovement
         //    crease is its motivating case rather than its condition, so any concave curvature can arm it for a
         //    tick (documented there, and worth no altitude). Support is granted for THIS TICK: the landing latch
         //    below then fires from the swallowed fall, exactly as a landing anywhere else does, because this IS one.
-        if (!grounded && sliding && SlideWedged(s.Position.Y, pos.Y, vVel, dt, t, pos, groundNormal, groundHeight))
+        if (!grounded && sliding && SlideWedged(s.Position.Y, pos.Y, vVel, dt, t, pos, groundNormal, groundHeight, tractionGate))
         {
             grounded = true;
             tSinceGround = 0f;
@@ -485,9 +490,15 @@ public static partial class CharacterMovement
         //     Seat pos.Y onto that support this tick (a one-tick step-down snap, exactly what a within-GroundedEpsilon
         //     step-down already does); the render-height smoother glides the grounded drop instead of hard-cutting a
         //     ballistic one.
-        //     Skipped on a traction-less tick: stepping DOWN onto a too-steep face is a slide, not a step, so the
-        //     hold must not seat the character grounded on the very surface the support decision just refused.
-        if (!grounded && vVel <= 0f && s.Grounded && !noTraction)
+        //     AND IT RUNS THE TRACTION TEST ITSELF (#470). Stepping DOWN onto a face too steep to stand on is a slide,
+        //     not a step. The support decision's test is guarded by `onGround`, which only reaches drops within
+        //     GroundedEpsilon, so across THIS band - which opens exactly where that stick closes - it was vacuously
+        //     false and the hold seated the character on whatever the drop landed on, a cliff face included. Same test,
+        //     same tick-resolved gate: `s.Grounded` says footing was held at tick start, so the widened gate applies
+        //     here as everywhere else. Past it the seat is refused and the body goes over the edge, which is a
+        //     walk-off, and the slide takes it from there. Walkable stair treads are under the gate and are untouched.
+        if (!grounded && vVel <= 0f && s.Grounded &&
+            !RefusesTraction(pos, propGrounded, groundY, terrainGroundY, groundNormal, tractionGate))
         {
             float stepDrop = s.Position.Y - groundY;
             if (stepDrop > 0f && stepDrop <= t.StepHeight)

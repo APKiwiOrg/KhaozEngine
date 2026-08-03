@@ -221,19 +221,27 @@ public class SteepSlopeSlideTests
     [Theory]
     [InlineData(1f / 30f, false)]   // the shipped server tick
     [InlineData(1f / 30f, true)]    // and at RUN speed, which carries four times the energy onto the face
-    [InlineData(0.001f, false)]     // 1000 Hz: the per-tick rise of a 46 deg face falls under any fixed height tolerance
+    [InlineData(0.001f, false)]     // 1000 Hz: the per-tick rise of a marginal face falls under any fixed height tolerance
     [InlineData(0.001f, true)]
     public void A_face_just_past_the_gate_gives_no_net_ascent_at_any_tick_rate(float dt, bool run)
     {
-        // 46 deg is one degree past the default gate: the hardest case, and the one a fixed tolerance loses first.
+        // 49 deg is one degree past the traction budget - the 45 deg gate PLUS the 3 deg hysteresis band a standing
+        // character keeps its footing over - so it is the hardest case, and the one a fixed tolerance loses first.
         // The bound is a bound rather than a fence: a tick MAY step onto the toe of the face (anything higher is a
         // wall contact), and the speed that steps on is converted to altitude by the signed fall line until gravity
         // takes it back. That is FaceReachCeiling, read with this row's own launch speed and no jump term, so the
         // run rows are measured against the energy they actually arrive with (3.33 m) rather than the walk's (1.17).
         // There is no footing up there to re-launch from, so the conversion is one-shot and not a ratchet, and the
         // second half of the run may still not sit above the first.
+        //
+        // THIS FIXTURE RAN AT 46 DEG UNTIL #475, and the move is a recalibration rather than a weakening. 46 deg is
+        // now inside the band, so a character that walks onto it from the adjacent flat KEEPS its footing and walks up
+        // it, deliberately - the whole point of hysteresis is that ground a degree past the gate is ground a standing
+        // body holds. What this case is for is ground the model grants nothing on, and that boundary moved by the
+        // width of the band, so the fixture moves with it. The behaviour at 46 deg is under test in
+        // TractionHysteresisTests, on both sides of the asymmetry.
         var t = Tuning;
-        float grade = MathF.Tan(46f * MathF.PI / 180f);
+        float grade = MathF.Tan(49f * MathF.PI / 180f);
         Func<float, float, float> ground = (x, z) => x < EdgeX ? 0f : (x - EdgeX) * grade;
         Vector3 faceNormal = Vector3.Normalize(new Vector3(-grade, 1f, 0f));
         Func<float, float, Vector3> normal = (x, z) => x < EdgeX ? Vector3.UnitY : faceNormal;

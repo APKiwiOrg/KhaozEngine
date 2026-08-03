@@ -374,6 +374,88 @@ afterwards. The fix costs nothing measurable: keep the engine value in the field
 as a computed property. A new guard asserts it directly, so the next occurrence names the cause instead of the
 symptom.
 
+### Traction hysteresis and slide friction soften the gate boundary (#475)
+
+The walkability decision gains a MEMORY and the slide gains FRICTION, so terrain sitting on `MaxSlopeRadians` stops
+behaving like a cliff edge in the model where it is a hillside in the world. Two new `MoveTuning` knobs,
+`TractionHysteresisRadians` (default 3 degrees) and `SlideFrictionRampRadians` (default 8 degrees), both default-ON.
+**This changes behaviour near the gate for any game on steep terrain**, deliberately, in the same way the slide model
+itself shipped unconditional. Setting either to 0 restores the previous model bit for bit. Full reasoning in the
+round-five section of `docs/design/PHYSICS-LOCOMOTION-DESIGN-2026-08-02.md`.
+
+**What was measured.** `MaxSlopeRadians` was a bare per-tick binary with no reference to the previous tick's answer,
+so terrain whose columns straddle it alternated walk ticks and full-gravity slide ticks: on a Ruinborne bank running
+40.0 to 41.8 degrees against a 40 degree gate, 43 footing flips in 330 ticks and a stall 2.73 m up a 7.6 m climb.
+Re-tuning the gate past that bank moved the identical failure onto banks peaking 0.4 and 2.8 degrees past the new
+one, because any threshold lands inside some terrain's slope distribution. Separately, a surface one degree past the
+gate was thrown down the fall line at the same strength an eighty degree one was.
+
+**Traction hysteresis.** A character that HAS footing keeps it up to `MaxSlopeRadians + TractionHysteresisRadians`.
+One that has NONE regains it only at or under `MaxSlopeRadians`. The band is a ceiling on what footing may KEEP and
+never a route to footing, so a landing, a slide arrival or an apex graze on ground past the gate still grants
+nothing, and the steepest ground a body can stand on is exactly gate plus band by any route. The memory is
+`MoveState.Grounded`, which already rides the wire, so there is NO new carried state, no wire change, and a
+reconcile replay reaches the same decision (pinned by a new parity case at two lag settings). The consequence that
+IS the mechanism: a uniform face at gate plus two is now walkable by a character that walks onto it, indefinitely,
+and refuses a character that falls onto it.
+
+**Slide friction.** The fall-line acceleration is scaled by
+`clamp((surface slope - MaxSlopeRadians) / SlideFrictionRampRadians, 0, 1)`, read off the same height-derived plane
+the resolve is built from. At the shipped 45 degree gate: 46 degrees accelerates at 2.25 m/s^2 along the fall line
+against 17.99 unscaled, 49 degrees at 9.43 against 18.87, and 53 degrees and steeper is untouched. One second of
+sliding from rest on a 46 degree face drops 0.836 m with the ramp against 6.684 m without. It scales the
+ACCELERATION, not the speed, so it is not a terminal: a long enough marginal face still reaches `MaxFallSpeed`, over
+a much greater distance.
+
+**Friction never applies to a RISING slide, and that is the safety rule rather than a detail.** Scaling gravity's
+deceleration too would multiply the reach of a launch up a face by `1 / scale`, unbounded as the scale approaches
+zero at the gate, which is the #440 ratchet by a new route. Gravity decelerates a rising slide at full strength
+always, the crossing tick is split exactly so there is no tick-rate-dependent kink, and every "no higher than" bound
+from #440, #442 and #468 is therefore unchanged.
+
+**One traction truth per tick.** `StepCore` resolves the gate ONCE from the footing the tick started with and hands
+that number to the slide contact, the wall contact on all three horizontal paths, the slide resolve, the support
+decision, the wedge and the step-down hold. The wall contact reading the widened gate is load-bearing: without it a
+run up a bank the band is holding footing on would meet a fence made of the ground under its own feet.
+
+**The step-down hold runs the traction test, closing the last route to footing on steep ground (#470).** Step
+4a-down holds a character grounded through a drop of up to `StepHeight` (0.40) so a doorstep reads as a step rather
+than a fall, and that band opens exactly where the `GroundedEpsilon` (0.30) ground stick closes. The hold read the
+support decision's traction result, which is guarded by `onGround` and therefore only ever computed for drops within
+`GroundedEpsilon`, so across the whole of the hold's own band no traction test ran at all on the surface being
+seated. Measured: a 0.15 m lip onto a 63.4 degree face, walked east at 6 m/s and 60 Hz, made the crossing tick's drop
+0.35 m, and that tick reported `Grounded` and `SupportGranted` seated on the face, with a jump pressed there
+launching at the full `JumpSpeed`. The hold now runs the same test against the same tick-resolved gate (the widened
+one on this path, since the hold only arms when footing was held at tick start), so a step-down onto ground past the
+gate refuses the seat and the character goes over the edge exactly as a walk-off does. Legitimate descent is
+untouched: walkable treads are under the gate, the existing step-down and stair-glide suites are green unmodified,
+and a 0.35 m step-down onto level ground still seats grounded in one tick. The test is now one function,
+`RefusesTraction` in `KhaozEngine.Locomotion/CharacterMovement.Traction.cs`, rather than two expressions of the same
+question.
+
+The 360-heading acceptance sweep is BIT-IDENTICAL rather than merely green (its 68.6 to 77.1 degree face is past the
+whole ramp, and it never grants footing), and re-measured with both mechanisms active it reports 0 climbers, 0
+footing grants, 0 jumps and a worst peak of 0.000 m across 5760 rides at four tick rates. Three fixtures that pinned
+binary-threshold behaviour AT the boundary were recalibrated with their intent preserved: two near-gate faces moved
+from 46 and 47 degrees to 49 (one past gate plus band), and the wire-ceiling fixture turns friction off so its
+2%-past-the-gate face still saturates inside its window. New rule + friction code lives in
+`KhaozEngine.Locomotion/CharacterMovement.Traction.cs`, with `TractionHysteresisTests` carrying the chatter repro,
+its zero-knob control, the asymmetry, the band ceiling and the four ramp probe points.
+
+**Review folds.** The acceptance sweep gained a SECOND face, this one INSIDE the ramp: 46.0 to 47.1 degree planes
+under the same smoothing stencil, at a friction scale of 0.12 to 0.26, ridden by the same 360 headings at the same
+four tick rates from a no-footing start. It reports 0 climbers, 0 footing grants, 0 jumps and a worst peak of
+0.000 m across its own 5760 rides, every one of which ends 226 to 579 m below its start. The bar now covers the
+domain where the new arithmetic actually runs, not only the one where it saturates. `CharacterController3D`'s knob
+defaults are pinned against `MoveTuning.Default` by reflection over every mirrored field, so the
+literal-for-literal claim is enforced rather than hand-maintained. Two comments were corrected rather than
+softened: a friction scale of exactly zero at the gate FREEZES the fall line, so gravity's pull is not compulsory
+there, and the slide's 1 mm rise slack is then exposed at up to a millimetre a tick, which needs both a normal
+delegate that disagrees with its own height field and a rising contour, and creeps only onto ground the height
+field itself reads walkable. The band's surprising play consequence is now stated where the knob is documented: on
+band-held ground a jump converts a stable stand into a slide, because the launch tick ends un-grounded and the
+landing is judged at the bare gate.
+
 ## 17.29.0
 
 ### The ground clamp stops lifting capsules that have no footing (#468)

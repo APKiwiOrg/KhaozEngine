@@ -180,4 +180,81 @@ public class SlopeSlideReconcileParityTests
         Assert.True((nextDirect.Position - nextDecoded.Position).Length() < 1e-4f,
             $"one step from the decoded basis landed {(nextDirect.Position - nextDecoded.Position).Length() * 1000f:F4} mm away");
     }
+
+    // ---- The traction hysteresis rides the wire it already had (#475, 17.30.0) ----
+
+    [Theory]
+    [InlineData(4)]     // ~130 ms RTT at 30 Hz
+    [InlineData(9)]     // and a bad connection, so the replayed window spans a third of a second of climbing
+    public void A_grounded_walk_inside_the_hysteresis_band_survives_a_reconcile(int lag)
+    {
+        // WHY THIS EXISTS. #475 made the walkability decision STATE-DEPENDENT: a character that already has footing
+        // keeps it up to MaxSlopeRadians plus a band, and one that does not is judged at the bare gate. That gives the
+        // decision a MEMORY, and a memory is the thing a reconcile has to be able to reproduce. The memory chosen is
+        // MoveState.Grounded, precisely because it has ridden the wire since the movement state's FIRST generation
+        // (it predates every "added in generation N" annotation on MovementState) and PlayerMoveState.From already
+        // decodes it - so there is nothing new to replicate. This case is what turns
+        // that from an argument into a measurement.
+        //
+        // The fixture is 47 degrees, two past the shipped 45 degree gate and inside the 3 degree band. A character
+        // walking up it is grounded on ground that WOULD refuse it footing had it arrived any other way, which is the
+        // only configuration where a lost memory changes the answer: if the replayed basis came back with Grounded
+        // false, the replay would judge every pending tick at the bare gate, refuse support, and slide the predicted
+        // character off a face the server has it standing on. That is a metre of divergence a tick, not a quantum.
+        const int Ticks = 90;
+        float grade = MathF.Tan(47f * MathF.PI / 180f);
+        MoveTuning tuning = Tuning(airMomentum: false);
+        float Ground(float x, float z) => x < EdgeX ? 0f : (x - EdgeX) * grade;
+        Vector3 faceNormal = Vector3.Normalize(new Vector3(-grade, 1f, 0f));
+        Vector3 Normal(float x, float z) => x < EdgeX ? Vector3.UnitY : faceNormal;
+        var sim = new PlayerMoveSimulator(Ground, tuning, Normal);
+        // Walking EAST, straight up the fall line: under yaw 0 the command's right axis is +X.
+        var cmd = new MoveCommand(new Vector2(1f, 0f), run: false, cameraYaw: 0f, jump: false);
+
+        var seed = new PlayerMoveState
+        {
+            Move = new MoveState
+            {
+                Position = new Vector3(EdgeX - 0.2f, tuning.CapsuleHalfHeight, 0f),
+                Grounded = true,
+            },
+        };
+
+        var contStates = new List<PlayerMoveState> { seed };
+        for (int j = 0; j < Ticks; j++) contStates.Add(sim.Step(contStates[j], cmd, Dt));
+
+        var settings = PredictionSettings.Default with { TickSeconds = Dt };
+        var pred = new ClientPrediction<PlayerMoveState, MoveCommand>(sim, settings);
+        pred.Reset(seed);
+        float maxPos = 0f;
+        int groundedMismatch = 0, groundedOnTheFace = 0;
+        for (int t = 0; t < Ticks; t++)
+        {
+            pred.Predict(cmd);
+            if (t >= lag)
+            {
+                int ackSeq = t - lag;
+                PlayerMoveState authFull = contStates[ackSeq + 1];
+                MovementState wire = MovementState.From(authFull);      // the real quantizers, Grounded included
+                PlayerMoveState basis = PlayerMoveState.From(authFull.Position, wire);
+                Assert.Equal(authFull.Grounded, basis.Grounded);        // the memory itself, through the codec
+                pred.Reconcile(t, basis, ackSeq);
+            }
+            PlayerMoveState p = pred.PredictedState;
+            maxPos = MathF.Max(maxPos, (p.Position - contStates[t + 1].Position).Length());
+            if (p.Grounded != contStates[t + 1].Grounded) groundedMismatch++;
+            if (p.Grounded && p.Position.X > EdgeX) groundedOnTheFace++;
+        }
+
+        string metrics = $"lag {lag}: maxPos={maxPos * 1000f:F4} mm, groundedMismatch={groundedMismatch}, " +
+                         $"groundedOnTheFace={groundedOnTheFace}, endX={pred.PredictedState.Position.X:F3}";
+        // Harness validity: the window has to have been spent standing on ground inside the band, or a replay that
+        // lost the memory would look identical to one that kept it.
+        Assert.True(groundedOnTheFace > Ticks - 10, $"the fixture never climbed the band: {metrics}");
+        Assert.Equal(0, groundedMismatch);
+        // The replay is EXACT here rather than within a quantum: a grounded walk carries no fall-line velocity for
+        // the wire to round, so the only carried input to the decision is the Grounded bit, and a bit round-trips
+        // exactly. Measured 0.0000 mm at both lags.
+        Assert.True(maxPos < 1e-4f, metrics + " - the replayed climb diverged");
+    }
 }

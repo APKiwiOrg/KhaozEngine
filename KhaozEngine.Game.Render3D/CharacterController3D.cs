@@ -101,6 +101,16 @@ namespace KhaozEngine.Game
         /// pre-facing consumer already had. A finite value (2-10 rad/s is the usual range) leans the body into its
         /// turns. 0 freezes the heading.</summary>
         public float FacingTurnSpeed = float.PositiveInfinity;
+        /// <summary>How far past <see cref="MaxSlopeRadians"/> a character that ALREADY has footing keeps it (see
+        /// <see cref="MoveTuning.TractionHysteresisRadians"/>). Default 3 deg, so a walk across ground that straddles
+        /// the gate holds one continuous footing decision instead of flipping grip and slide every tick. 0 restores
+        /// the bare per-tick threshold of every release before 17.30.0.</summary>
+        public float TractionHysteresisRadians = MathF.PI * 3f / 180f;
+        /// <summary>The band past <see cref="MaxSlopeRadians"/> over which a slide's fall-line acceleration ramps in
+        /// from nothing to full gravity (see <see cref="MoveTuning.SlideFrictionRampRadians"/>). Default 8 deg, so a
+        /// face a degree too steep to stand on slides gently and only a genuinely steep one slides hard. 0 restores
+        /// the full-strength slide of 17.28.0 and 17.29.0.</summary>
+        public float SlideFrictionRampRadians = MathF.PI * 8f / 180f;
 
         /// <summary>
         /// Advance the character for one frame. <paramref name="cameraYaw"/> is the follow camera's yaw (radians);
@@ -136,6 +146,8 @@ namespace KhaozEngine.Game
                 MaxStepClimbSpeed = MaxStepClimbSpeed,
                 AirMomentum = AirMomentum, AirBrakeAccel = AirBrakeAccel,
                 FacingTurnSpeed = FacingTurnSpeed,
+                TractionHysteresisRadians = TractionHysteresisRadians,
+                SlideFrictionRampRadians = SlideFrictionRampRadians,
             };
             _state = CharacterMovement.Step(_state, cmd, dt, groundHeight, tuning, groundNormal, world: physics, medium: medium);
         }

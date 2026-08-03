@@ -24,16 +24,25 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// budget test would freeze a number the budget is not made of.
     /// </para>
     /// <para>
-    /// THE OPEN DECISION FOR ROW 9, recorded here because row 9 is where it lands and the answer changes what
-    /// gets built. Two shapes can make T2's tally device-free and neither is built yet. ONE: a countable sink
-    /// BELOW the real emitter, meaning the real emitter names its native calls through a seam of its own that a
-    /// no-op sink and a counting sink both satisfy, so the tally is taken over the SHIPPED fan-out and there is
-    /// no second implementation to drift. It costs a second generic parameter on the emitter and a discipline
-    /// that every native call goes through the sink. TWO: a device-free harness that reproduces the fan-out and
-    /// the redundancy guards, cheap to write and structurally able to drift from the real replay path, which is
-    /// exactly the drift decision T3's <c>[GpuFact]</c> on the WARP leg exists to catch. Shape one makes T3 a
-    /// belt-and-braces check, shape two makes T3 load-bearing, and row 17 is where T3 lands, so shape two also
-    /// means the budget test has no drift guard until then. Decide it in row 9 with that in view.
+    /// THE SINK DECISION, TAKEN IN ROW 9, and it is not either of the two shapes this comment used to weigh. The
+    /// old framing was a countable sink BELOW the real emitter (no drift, at the cost of a second generic
+    /// parameter on the emitter) against a device-free harness that reproduces the fan-out and the guards (cheap,
+    /// and structurally able to drift). What settled it is that the replay row had already moved every redundancy
+    /// and viewport guard into the device-owned <see cref="D3D11DeviceState"/>, so a third shape was available:
+    /// put the SCHEDULE and the FAN-OUT in device-owned, device-free types beside those guards
+    /// (<see cref="D3D11BindFlush"/> and <see cref="D3D11SetActivation"/>), have them decide which calls to make
+    /// and hand them to an <see cref="ID3D11BindSink"/>, and let the real emitter and
+    /// <see cref="D3D11NativeTraceEmitter"/> supply the two ends of that one seam.
+    /// </para>
+    /// <para>
+    /// WHAT THAT BUYS is that the budget is taken over the SHIPPED dirty tracking, the shipped slot order, the
+    /// shipped pipeline-switch drain, the shipped register arithmetic and the shipped batching, with no second
+    /// implementation of any of them, and it costs no generic parameter on the emitter. What can still drift is
+    /// the naming translation alone, which is <see cref="D3D11NativeCallName"/> deciding that the vertex stage
+    /// plus the <c>b</c> file is <c>VSSetConstantBuffers1</c>, and both emitters go through that same function.
+    /// So decision T3's WARP <c>[GpuFact]</c> is a belt-and-braces check on one mapping rather than the only
+    /// thing standing between the budget and reality, and the budget has a meaningful gate before row 17 lands
+    /// it.
     /// </para>
     /// <para>
     /// It also drives BOTH drivers unchanged, which is the sharpest test available here: record the same seam

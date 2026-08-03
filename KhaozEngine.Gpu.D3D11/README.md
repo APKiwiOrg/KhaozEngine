@@ -121,9 +121,8 @@ otherwise.
 fans out inside the real emitter: a resource-set bind is up to six native calls, a redundant pipeline bind is
 zero, and section 9.4's one viewport plus one scissor per framebuffer CHANGE (zero for a re-bind) turns on a
 guard that lives in the real emitter. So the counting emitter here gives an upper-bound input and an ordering
-check. Whether the countable sink for the whole budget goes BELOW the real emitter (tallying the shipped
-fan-out, no second implementation to drift) or into a device-free harness guarded by T3's WARP `[GpuFact]` is
-row 9's decision, written out on `D3D11CountingEmitter`. It is deliberately not taken yet.
+check. The budget itself is taken one level down, at `ID3D11BindSink`, which is where the countable sink went
+(see "The bind flush" below).
 
 ## What a replay does to the device
 
@@ -179,9 +178,74 @@ are exactly these tallies, and they are device-free `[Fact]`s.
 `D3D11NativeTraceEmitter` is how all of that is asserted without a device: it applies the shipped guards through
 `D3D11DeviceState` and writes the `ID3D11DeviceContext` calls it would have made into a `D3D11NativeCallLog`
 instead of making them. The guards themselves live in the state object the real emitter will use unchanged, so
-what the tests pin is the shipped decision rather than a copy of it. The bind flush of decision R5 is not
-modelled: a resource-set bind lands in the trace as `ResourceSetPending`, which holds its place in the order and
-is named for what it is.
+what the tests pin is the shipped decision rather than a copy of it. A resource-set BIND still lands in the trace
+as `ResourceSetPending`, which holds its place in the order and is excluded from the total, because a bind
+genuinely issues nothing.
+
+## The bind flush
+
+**A resource-set bind records only, and the draw pays for it (decision R5).** `SetGraphicsResourceSet` and
+`SetComputeResourceSet` issue no native call at all. They compare what they were handed against what the slot
+already holds and leave it marked `Clean`, `DynamicOffsetsOnly` or `Full`, and `Draw`, `DrawIndexed` and
+`Dispatch` flush every dirty slot through a pre-command hook before issuing. That is the 4.9.101 schedule ported
+intact, and it is what produced the 40x shadow-encode collapse: the incumbent activated a set at the bind, so a
+pass that rebinds one set thousands of times a frame paid a full activation each time.
+
+The rest of the schedule, since each clause carries its own weight:
+
+- The flush walks slots in SLOT order.
+- `SetPipeline` DRAINS the pending sets under the OUTGOING pipeline's layouts before adopting the incoming ones,
+  because the layout array is what numbers the registers. Flushing after the switch would bind the same set at
+  different registers, which compiles, draws and renders the wrong resources.
+- A slot whose recorded set has gone null is skipped rather than unbound.
+- Repeated marks on one slot between two draws collapse to one flush, and the flush owes the greater of them: an
+  offsets-only rebind arriving over a pending full one is still a full activation.
+- The bound record is KEYED by slot, one struct in an array indexed by slot, replaced in place. The hot path is
+  thousands of offsets-only rebinds of ONE set, so a record that appended per rebind would make the frame
+  quadratic in the rebind count.
+
+**One native call per register file per stage (decision R6).** A full activation of the model set is FOUR native
+calls from seven elements (the UBO to each of the two stages that read it, one shader-resource array covering all
+four textures, one sampler array covering both samplers). The worst case in the engine is the WATER set at SIX,
+also seven elements, because `WaterRenderer` declares its bathymetry texture, its ocean map, their samplers and
+its dynamic UBO at `Vertex | Fragment`, so the vertex stage needs arrays of its own. Six is the bound to quote.
+An offsets-only rebind pushes ONLY the dynamic constant buffers and skips textures and samplers entirely, so it
+is exactly one `*SetConstantBuffers1` per visible stage. A span covers a contiguous register range with a null in
+any hole, which is what keeps "one call per file per stage" true rather than nearly true.
+
+**Every constant-buffer bind goes through `*SetConstantBuffers1` with an explicit first constant and count
+(decision R7), including a full-range one.** Sending a full range through the plain `*SetConstantBuffers` is
+wrong the moment the buffer is ring-backed, because the ring's per-frame base is an addend on every bind, so a
+full-range bind of a ring-backed buffer still starts at a non-zero constant. The `!DriverCommandLists` workaround
+stays: when the driver reports that the runtime is EMULATING command lists, the same span is unbound immediately
+before the bind, because on that path a re-bind of the same buffer at a different first constant is dropped and
+every draw after the first reads the first draw's constants. It doubles the constant-buffer call count there, and
+both arms are asserted.
+
+**The ring is unmapped at the flush point on the immediate driver.** `KE_D3D11_RECORD=immediate` issues draws as
+the seam is called, so a ring mapped by a record-time uniform write is still mapped when the next draw binds it.
+The flush unmaps every mapped ring before every draw, dispatch and pipeline switch, UNCONDITIONALLY rather than
+only when a bind is pending: a draw with no dirty slot still draws against the constant buffers an earlier flush
+bound. That is the per-FLUSH mapping the spec names as that driver's degradation, and it is why both drivers now
+keep the mapping across the record phase. The deferred driver wires no allocator into the flush at all, since its
+`Submit` already unmaps inside the lock it replays under.
+
+**Where the native-call budget is taken, and what it gates.** The countable sink is `ID3D11BindSink`: the
+schedule and the fan-out live in device-owned, device-free types (`D3D11BindFlush`, `D3D11SetActivation`) that
+decide which calls to make, and the real emitter and `D3D11NativeTraceEmitter` supply the two ends of that one
+seam. So a device-free budget measures the shipped dirty tracking, slot order, drain, register arithmetic and
+batching, and can drift only in the naming translation (`D3D11NativeCallName`, which both emitters share).
+Decision T3's WARP `[GpuFact]` is a belt-and-braces check on that mapping rather than the only guard.
+
+The budget itself (decision T2) is a plain `[Fact]` suite that runs on every `dotnet test` including the cheap
+Linux leg, and it is deliberately NOT named "Golden", because `cross-platform-gpu.yml` selects with
+`--filter FullyQualifiedName~Golden`. What it GATES is the four structural invariants (zero `Create*`, which is a
+compile error anyway, zero `Map` or `Unmap` during a replay, exactly one `ClearState` per submit, one viewport
+plus one scissor per framebuffer change), the MARGINAL deltas (five distinct meshes against one, eighteen draws
+against six, and an offsets-only rebind at one call per visible stage), the binding trace being identical for
+eight instances of one mesh and for one, and upper bounds on the fan-out. The absolute totals are DOCUMENTATION
+and may be updated freely: a test routinely edited to match reality stops being a gate, and the per-draw delta
+jumping from two to eight is the fan-out defect returning.
 
 ## Completion fences, and a `WaitForIdle` that drains
 
@@ -297,13 +361,17 @@ segment stride is rounded up to 256 bytes because `*SetConstantBuffers1` wants i
 write of a record phase maps `MAP_WRITE_NO_OVERWRITE`, every later write reuses it, and the start of the next
 `Submit` unmaps before anything is replayed, inside the same acquisition of the submit lock that covers the replay
 (an unmap that released the lock would let an off-timeline write re-map the ring before the replay bound it). That
-is legal only because recording is deferred: Direct3D 11 has no persistent mapping and forbids a mapped resource
-being bound to the pipeline, so under `KE_D3D11_RECORD=immediate`, where draws happen during record, the mapping
-degrades to write-scoped, one map and one unmap per write, with the map, the copy and the unmap serialized under
-the submit lock as one critical section. The
-spec's phrasing for that degradation is per-FLUSH, which is coarser and strictly better and needs a flush point to
-hang the unmap on. The flush point is the bind flush, which is not built yet, and
-`D3D11RingAllocator.UnmapMappedRings` is the one call it needs to batch the immediate driver up to per-flush.
+is legal only because Direct3D 11 has no persistent mapping and does not permit a draw against a mapped resource,
+so a mapping may live only across a span in which no draw happens. Under `KE_D3D11_RECORD=immediate` draws happen
+during record, so that span is the run of writes between two commands, and the BIND FLUSH is what closes it: it
+calls `D3D11RingAllocator.UnmapMappedRings` before every draw, dispatch and pipeline switch. That is the
+per-FLUSH degradation the spec names for that driver, so both drivers now keep the mapping across the record phase
+and `MapScopeFor` answers the same for both. Per-WRITE mapping (`D3D11RingMapScope.PerWrite`) was the interim
+shape before a flush point existed, and it stays constructible and tested because it is the only scope that holds
+the map, the copy and the unmap atomically. Getting the immediate driver off it matters for the measurement rather
+than for the call count: milestone M1 A/Bs the two drivers on a real frame and deletes the loser, and a ring that
+maps twice per uniform write on one arm and once per submit on the other measures a handicap rather than the
+recording model.
 
 **A segment is recycled against a COMPLETION fence, never a submit receipt.** Frame N writes segment
 `N % FramesInFlight`, and before handing that segment out the allocator reads the completion value the submission

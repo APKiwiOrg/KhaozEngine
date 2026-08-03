@@ -28,12 +28,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// CREATION IS FREE-THREADED, BEHIND <see cref="D3D11CreationGate"/> WHEN THE DRIVER IS NOT (decision W4).
     /// Every member below that makes a native creation call takes the gate for the duration of that call and
     /// nothing longer, which is a no-op on a driver reporting <c>DriverConcurrentCreates</c> and one uncontended
-    /// monitor otherwise. The four that create NO native object are deliberately ungated:
+    /// monitor otherwise. SIX MEMBERS ARE UNGATED, IN TWO GROUPS. Four are live and create NO native object:
     /// <see cref="CreateFramebuffer"/> aggregates views that already exist,
     /// <see cref="CreateResourceLayout"/> and <see cref="CreateResourceSet"/> are pure engine data, and
     /// <see cref="CreateCommandList"/> hands back a recorder that touches no device state at all (which is the
     /// same clause of W4 the recording model rests on). Gating those would serialize engine work behind a driver
-    /// limitation that has nothing to do with it.
+    /// limitation that has nothing to do with it. The other two, <see cref="CreateComputePipeline"/> and
+    /// <see cref="CreateFence"/>, are the members of the paragraph above that are not built yet: they throw
+    /// before reaching any driver, so there is nothing to gate until the rows that build them land, and each
+    /// takes the gate on the day it makes a native creation call.
     /// </para>
     /// <para>
     /// THE GATE NEVER TAKES THE SUBMIT LOCK, and no creation path here reaches it either: the ring is only asked

@@ -321,9 +321,10 @@ written down in one authoritative place, made true where it was not, and tested 
 **The contract has one home, and it is the package README's "Threading: the shipped contract" section.** Every
 XML doc in the package that mentions a lock now points there instead of restating a piece of it, because the way
 a threading contract rots is five partial copies that were each correct when written. It states what is
-guaranteed (lock-free recording touching no device state, one `_submitLock` covering exactly the replay, the
-present and the resize apply, `Submit` order as the observable order, device-level `UpdateBuffer` from any
-thread behind that short lock, free-threaded creation), what is serialized, and where the boundary is.
+guaranteed (recording that appends with no lock and no native call, save the once-per-ring-per-record-phase map
+acquisition a record-time uniform write pays under the submit lock, one `_submitLock` covering exactly the
+replay, the present and the resize apply, `Submit` order as the observable order, device-level `UpdateBuffer`
+from any thread behind that short lock, free-threaded creation), what is serialized, and where the boundary is.
 
 **Resource creation is now actually serialized when the driver reports `DriverConcurrentCreates` false, which it
 was not.** That clause of W4 existed only in the design doc: `D3D11ResourceFactory` created on any thread with no
@@ -333,7 +334,9 @@ UNKNOWN answer serializes, deliberately: the threading probe is a diagnostic tha
 failure path, and reading its silence as a yes bets driver stability on whether a log line came back. Only the
 factory members that make a native creation call are gated. A framebuffer aggregates views that already exist, a
 resource layout and a resource set are pure engine data, and a command list touches no device state at all, so
-gating those four would serialize engine work behind a driver limitation that has nothing to do with it.
+gating those four would serialize engine work behind a driver limitation that has nothing to do with it. Six
+members are ungated in all: those four, plus `CreateComputePipeline` and `CreateFence`, which are not built yet
+and throw before reaching any driver.
 
 **The two locks nest in one direction, and it is written down before there is a second one to get wrong.** The
 submit lock is OUTER and the creation gate is INNER, and the gate is a STRICT LEAF: nothing is acquired while it

@@ -229,11 +229,14 @@ namespace KhaozEngine.Tests.Gpu
         /// per-frame budget M2 measures against, so a drain that escalated would settle decision C6 on a
         /// measurement of the scheduler.
         /// <para>
-        /// The bound below is loose on purpose. Typical is a fraction of a millisecond here, since the fake
-        /// completes on a poll count and nothing in the loop waits for anything real, but this runs on shared CI
-        /// hardware where a scheduling hiccup is normal, and a tight bound would be a flaky test rather than a
-        /// stronger one. What it discriminates is the failure that matters: with a millisecond sleep per
-        /// iteration this is hundreds of milliseconds and cannot be squeezed under the bound by a fast machine.
+        /// The bound below is loose on purpose, and it is chosen by arithmetic rather than by feel. A loop that
+        /// sleeps a millisecond per iteration cannot finish all 400 polls in under 400 ms, because
+        /// <c>Thread.Sleep(1)</c> never returns in under a millisecond on any platform, so a 350 ms bound still
+        /// discriminates that failure shape with room to spare. Typical is a fraction of a millisecond here on an
+        /// idle machine, since the fake completes on a poll count and nothing in the loop waits for anything
+        /// real, but this also has to clear shared, contended CI hardware: a loaded 2-core GitHub ubuntu runner
+        /// measured 171.2 ms for this same 400-poll yielding spin (CI run 30783329046) against the previous 100 ms
+        /// bound, which is a real scheduling cost, not a sleep, and a 350 ms bound passes it with real margin.
         /// </para>
         /// <para>The fallback shape is the one under test (no blocking wait), because that is the path that
         /// spins. The monotonic path blocks on the fence and never reaches the spin at all.</para>
@@ -255,10 +258,12 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(1, fences.LastFrameDrain.Count);
             Assert.Equal(400, timeline.PollCount);
             Assert.True(fences.LastFrameDrain.TotalMs >= 0d);
-            Assert.True(fences.LastFrameDrain.TotalMs < 100d,
+            Assert.True(fences.LastFrameDrain.TotalMs < 350d,
                 $"A 400-poll fake drain took {fences.LastFrameDrain.TotalMs:F1} ms, which is the shape of a loop "
-                + "that sleeps a millisecond per iteration rather than one that spins. SpinOnce must be called "
-                + "with sleep1Threshold: -1, and a mechanism with a blocking wait must use it instead.");
+                + "that sleeps a millisecond per iteration rather than one that spins: Thread.Sleep(1) never "
+                + "returns in under a millisecond, so 400 sleeping polls cannot finish under 400 ms, and this "
+                + "350 ms bound still catches that shape with margin. SpinOnce must be called with "
+                + "sleep1Threshold: -1, and a mechanism with a blocking wait must use it instead.");
         }
 
         /// <summary>

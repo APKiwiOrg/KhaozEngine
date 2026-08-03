@@ -314,22 +314,22 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal((byte)0xFF, harness.Memory.Bytes[255]);
         }
 
-        // ---- the immediate driver's degradation (R2, section 2.1) -----------------------------------------
+        // ---- the write-scoped fallback (D3D11RingMapScope.PerWrite) ---------------------------------------
 
         /// <summary>
-        /// UNDER <c>KE_D3D11_RECORD=immediate</c> THE MAPPING IS WRITE-SCOPED, and it has to be: that driver
-        /// issues draws as the seam is called, and Direct3D 11 forbids a mapped resource being bound to the
-        /// pipeline. So the ring can hold a mapping only for as long as no draw can happen, which under immediate
-        /// emit is the duration of one write.
+        /// THE WRITE-SCOPED SCOPE MAPS AND UNMAPS AROUND EVERY WRITE. It was the immediate driver's degradation
+        /// until work-breakdown row 9 built a flush point: that driver issues draws as the seam is called and
+        /// Direct3D 11 does not permit a draw against a mapped resource, so with nowhere to hang an unmap the only
+        /// window a mapping could survive was one write.
         /// <para>
-        /// The spec's phrasing for the degradation is per-FLUSH map and unmap, which is coarser and strictly
-        /// better, and which needs a flush point to hang the unmap on. The flush point is the bind flush of
-        /// work-breakdown row 9. Write-scoped is what is correct with no cooperation from any other row, and
-        /// <c>UnmapMappedRings</c> is the one call row 9 needs to batch it up.
+        /// NO DRIVER SELECTS IT NOW. <c>MapScopeFor</c> answers <c>AcrossRecording</c> for both, and
+        /// <c>D3D11BindFlush</c> unmaps before every draw, dispatch and pipeline switch on the immediate one,
+        /// which is the per-FLUSH shape the spec names. This scope stays constructible and tested because it is
+        /// the only one that holds the map, the copy and the unmap atomically.
         /// </para>
         /// </summary>
         [Fact]
-        public void UnderTheImmediateDriver_EveryWriteMapsAndUnmaps()
+        public void UnderTheWriteScopedFallback_EveryWriteMapsAndUnmaps()
         {
             using var harness = new D3D11RingHarness(sizeInBytes: 256, framesInFlight: 3,
                 mapScope: D3D11RingMapScope.PerWrite);
@@ -352,8 +352,8 @@ namespace KhaozEngine.Tests.Gpu
         /// AND THAT WRITE IS ONE CRITICAL SECTION: the map, the copy and the unmap happen under the submit lock
         /// together. A mapping held while no lock is held is a mapping another thread can withdraw mid-copy, and
         /// this scope unmaps at the end of every write, so the copy would be running through a pointer the
-        /// runtime has already taken back. Serializing costs something and costs it only under
-        /// <c>KE_D3D11_RECORD=immediate</c>, where every write already pays a map and an unmap.
+        /// runtime has already taken back. That atomicity is the property this scope has and
+        /// <c>AcrossRecording</c> does not, which is why it is kept rather than deleted with its last caller.
         /// <para>
         /// Asserted from the outside, which is the only place a lock scope is visible: a thread that holds the
         /// submit lock can never catch the ring mapped, because being mapped means the writer is inside the
@@ -361,7 +361,7 @@ namespace KhaozEngine.Tests.Gpu
         /// </para>
         /// </summary>
         [Fact]
-        public void UnderTheImmediateDriver_TheMapTheCopyAndTheUnmap_AreOneCriticalSection()
+        public void UnderTheWriteScopedFallback_TheMapTheCopyAndTheUnmap_AreOneCriticalSection()
         {
             using var harness = new D3D11RingHarness(sizeInBytes: 256, framesInFlight: 3,
                 mapScope: D3D11RingMapScope.PerWrite);
@@ -392,15 +392,38 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal((byte)0x11, harness.Memory.Bytes[0]);
         }
 
-        /// <summary>Which scope a driver runs is read off the recording mode in one place, so the two cannot
-        /// drift apart at a call site.</summary>
+        /// <summary>
+        /// BOTH DRIVERS KEEP THE MAPPING ACROSS THE RECORD PHASE, which is what changed when work-breakdown row 9
+        /// built the flush point. The immediate driver cannot hold a mapping across a DRAW, and it does not have
+        /// to hold one per WRITE to avoid that: <see cref="D3D11BindFlush"/> unmaps before every draw, dispatch
+        /// and pipeline switch, which is the per-FLUSH degradation the spec names.
+        /// <para>
+        /// Asserted for both modes rather than for the one that changed, because the pairing is what matters: the
+        /// immediate driver going back to <see cref="D3D11RingMapScope.PerWrite"/> while the flush still unmaps
+        /// for it would map and unmap twice per write and measure a handicap into milestone M1.
+        /// </para>
+        /// </summary>
         [Fact]
-        public void TheMapScope_FollowsTheRecordingDriver()
+        public void TheMapScope_IsAcrossTheRecordPhaseOnBothDrivers()
         {
             Assert.Equal(D3D11RingMapScope.AcrossRecording,
                 D3D11RingAllocator.MapScopeFor(D3D11RecordMode.Deferred));
-            Assert.Equal(D3D11RingMapScope.PerWrite,
+            Assert.Equal(D3D11RingMapScope.AcrossRecording,
                 D3D11RingAllocator.MapScopeFor(D3D11RecordMode.Immediate));
+        }
+
+        /// <summary>And the other half of that pairing: the ring allocator reaches the bind flush on the immediate
+        /// driver and NOT on the deferred one, whose <c>Submit</c> already unmaps inside the lock it replays
+        /// under. Wiring it on both would cost an uncontended lock per draw for a call that can never do anything
+        /// there, and would contradict decision T2's "zero Map or Unmap during replay" by trying.</summary>
+        [Fact]
+        public void OnlyTheImmediateDriver_UnmapsTheRingsAtTheFlushPoint()
+        {
+            using var harness = new D3D11RingHarness(sizeInBytes: 256, framesInFlight: 3);
+
+            Assert.Same(harness.Allocator,
+                D3D11BindFlush.RingsFor(D3D11RecordMode.Immediate, harness.Allocator));
+            Assert.Null(D3D11BindFlush.RingsFor(D3D11RecordMode.Deferred, harness.Allocator));
         }
 
         // ---- the routing (U4) ------------------------------------------------------------------------------

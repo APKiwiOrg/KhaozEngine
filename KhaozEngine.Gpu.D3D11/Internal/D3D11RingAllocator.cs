@@ -15,17 +15,26 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         AcrossRecording = 0,
 
         /// <summary>
-        /// The immediate driver's scope (decision R2, and the degradation section 2.1 names): the ring is mapped
-        /// for the duration of ONE write and unmapped before that write returns, with the map, the copy and the
-        /// unmap serialized under the submit lock as one critical section.
+        /// The write-scoped fallback: the ring is mapped for the duration of ONE write and unmapped before that
+        /// write returns, with the map, the copy and the unmap serialized under the submit lock as one critical
+        /// section.
         /// <para>
-        /// It has to degrade, because under <c>KE_D3D11_RECORD=immediate</c> draws are issued as the seam is
-        /// called, and Direct3D 11 forbids a mapped resource being bound to the pipeline. The spec's phrasing for
-        /// the degradation is per-FLUSH map and unmap, which is coarser than this and strictly better: it needs a
-        /// flush point to hang the unmap on, and the flush point is the bind flush of work-breakdown row 9, which
-        /// does not exist yet. Write-scoped is the shape that is correct with no cooperation from any other row,
-        /// and <see cref="D3D11RingAllocator.UnmapMappedRings"/> is the one call row 9 needs to batch it up to
-        /// per-flush once it owns a draw path.
+        /// NO DRIVER SELECTS THIS ANY MORE, and the reason it existed is worth keeping. Under
+        /// <c>KE_D3D11_RECORD=immediate</c> draws are issued as the seam is called, and Direct3D 11 does not
+        /// permit a draw against a mapped resource, so the immediate driver needs the mapping released before
+        /// every command. The spec's phrasing for that degradation is per-FLUSH map and unmap, which needs a flush
+        /// point to hang the unmap on, and when this enum shipped the flush point (work-breakdown row 9) did not
+        /// exist. Write-scoped was the shape that was correct with no cooperation from any other row. Row 9 built
+        /// the flush point, so <see cref="D3D11RingAllocator.MapScopeFor"/> now answers
+        /// <see cref="AcrossRecording"/> for both drivers and <see cref="D3D11BindFlush"/> unmaps at every draw,
+        /// dispatch and pipeline switch.
+        /// </para>
+        /// <para>
+        /// KEPT RATHER THAN DELETED because it is the only shape that holds the map, the copy and the unmap
+        /// ATOMICALLY, which is a property no other scope has: everywhere else a mapping is held with no lock, and
+        /// the reason that is safe is decision W5's one-thread rule rather than anything structural. A path that
+        /// one day needs a ring write to be safe against a concurrent unmap wants this, and it is constructible,
+        /// tested and one constructor argument away.
         /// </para>
         /// </summary>
         PerWrite = 1,
@@ -163,10 +172,39 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// the gate's input.</summary>
         internal ulong SegmentOwner(int segment) => _segmentOwner[segment];
 
-        /// <summary>Which mapping scope a recording driver needs. The deferred driver keeps the mapping for the
-        /// record phase, and the immediate one cannot, because it issues draws while the phase is open.</summary>
-        internal static D3D11RingMapScope MapScopeFor(D3D11RecordMode mode)
-            => mode == D3D11RecordMode.Immediate ? D3D11RingMapScope.PerWrite : D3D11RingMapScope.AcrossRecording;
+        /// <summary>
+        /// WHICH MAPPING SCOPE A RECORDING DRIVER NEEDS, and the answer is now the same for both.
+        /// <para>
+        /// The deferred driver keeps the mapping for the whole record phase and the next <c>Submit</c> releases
+        /// it, which is two native calls per ring per submit and the floor. The immediate driver issues draws
+        /// while the phase is open, so it needs the mapping released before every command, which the spec calls a
+        /// per-FLUSH map and unmap. Row 9's <see cref="D3D11BindFlush"/> is that flush point, and it calls
+        /// <see cref="UnmapMappedRings"/> before every draw, dispatch and pipeline switch, so the immediate driver
+        /// gets one map per run of writes between two commands instead of one per write.
+        /// </para>
+        /// <para>
+        /// THE MEASUREMENT IS WHY IT MATTERS RATHER THAN THE CALL COUNT. Milestone M1 A/Bs the two drivers on a
+        /// real frame and DELETES the loser, so a ring that maps and unmaps per uniform write on one arm and once
+        /// per submit on the other is not measuring the recording model, it is measuring a handicap. Per-flush is
+        /// the degradation the spec names for exactly that reason.
+        /// </para>
+        /// <para>
+        /// WHAT IT COSTS is the atomicity <see cref="D3D11RingMapScope.PerWrite"/> had: under
+        /// <see cref="D3D11RingMapScope.AcrossRecording"/> the copy runs with no lock, so a device-level
+        /// <see cref="UpdateBuffer"/> arriving from another thread mid-copy is outside the contract instead of
+        /// serialized. That is the exposure the deferred driver has always had, and decision W5 is what covers
+        /// both: concurrent recording is structurally permitted, neither exercised nor supported in v1, and one
+        /// thread records at a time.
+        /// </para>
+        /// <para>
+        /// <paramref name="mode"/> no longer changes the answer and the method still takes it, on purpose. The
+        /// call site reads as the question it is asking, the day a third driver needs a different scope there is
+        /// one place to put it, and a test that asserts BOTH modes answer the same thing is what would notice if
+        /// the immediate arm quietly went back to per-write while <see cref="D3D11BindFlush"/> was still unmapping
+        /// for it.
+        /// </para>
+        /// </summary>
+        internal static D3D11RingMapScope MapScopeFor(D3D11RecordMode mode) => D3D11RingMapScope.AcrossRecording;
 
         /// <summary>
         /// CLOSE THE FRAME JUST BUILT AND OPEN THE NEXT ONE: roll the backpressure counters, advance to the next
@@ -215,10 +253,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// (decision U2), because a mapped resource cannot be bound to the pipeline and the replay is about to
         /// bind them all.
         /// <para>
-        /// It is also the call the bind flush of work-breakdown row 9 needs if it wants the immediate driver's
-        /// per-FLUSH mapping rather than the per-write mapping <see cref="D3D11RingMapScope.PerWrite"/> ships
-        /// with: unmap here at each flush point, and leave the scope at
-        /// <see cref="D3D11RingMapScope.AcrossRecording"/>.
+        /// IT IS ALSO THE IMMEDIATE DRIVER'S PER-FLUSH UNMAP, which is what row 9 built and what
+        /// <see cref="MapScopeFor"/> now assumes. <see cref="D3D11BindFlush"/> calls it before every draw, every
+        /// dispatch and every pipeline switch on that driver, UNCONDITIONALLY rather than only when a bind is
+        /// pending: a draw with no dirty slot still draws against the constant buffers an earlier flush bound, and
+        /// a record-time uniform write since then has re-mapped the ring underneath them.
         /// </para>
         /// <para>
         /// Idempotent, and an empty registry costs one uncontended lock. The registry is read INSIDE the lock

@@ -12,8 +12,8 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>
     /// THE NATIVE RECORDING CONTRACT, made executable. Decision R3 says <c>Begin</c> resets and touches no device
     /// state, N lists may record concurrently, each submit's replay opens with exactly one <c>ClearState</c>, and
-    /// SUBMIT order is the observable order. Decision R4 keeps that as the NATIVE backend's contract while the
-    /// portable seam contract stays at one open recording per device.
+    /// SUBMIT order is the observable order. Decision R4 keeps that as the NATIVE backend's contract under the
+    /// deferred driver, the default, while the portable seam contract stays at one open recording per device.
     /// <para>
     /// Without these, "nested Begin is legal and submit order is observable" is a sentence in a design document
     /// with no executable meaning, which is the reason section 12 homes this test on this row. It is device-free

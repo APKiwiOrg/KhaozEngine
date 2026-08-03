@@ -4259,7 +4259,10 @@ body into its turns. **The controller does not surface the resulting heading yet
 accessor and no way to set `MoveCommand.FaceCamera` from `Update`), so on a purely local character the knob has
 nothing to drive today and facing still comes from `CharacterFacing` / the character bridge. Tracked as
 [#436](https://github.com/APKiwiOrg/KhaozEngine/issues/436). The networked path is complete: see "Authoritative
-facing" in the netcode chapter below.
+facing" in the netcode chapter below. 17.30.0's `StrafeSpeedScale`, `BackpedalSpeedScale` and `BackpedalAllowsRun`
+are mirrored here at the same literals and are inert for the same reason: they are consulted only under
+`FaceCamera`, which `Update` cannot set. They are mirrored anyway because every `MoveTuning` feel knob is, and a
+guard pins the defaults literal for literal.
 
 Also since 17.26.0, walking off a steep drop is a real fall on the analytic-terrain path, not a wall, and since
 17.28.0 a face too steep to stand on is a surface you SLIDE down rather than one you are refused at. See "Bounded
@@ -9770,7 +9773,9 @@ go from 396 to 0 and the frame cost from 1.909 to 0.376 ms.
 **On a backend with no GPU-completion fence the old behaviour is kept exactly.** Gate:
 `GpuCapabilities.SupportsCompletionFences`, true on Metal and Vulkan, false on Direct3D11 and OpenGL
 (Veldrid signals their `Fence` from the CPU as the submit call returns, so it is a submit receipt and
-not a completion signal). There, a batch waits out three frame boundaries and is destroyed behind a
+not a completion signal). The opt-in `KhaozEngine.Gpu.D3D11` native backend reports TRUE, on a real
+device-wide completion counter, but its device is not creatable yet so nothing reaches that answer
+today. Where the flag is false, a batch waits out three frame boundaries and is destroyed behind a
 single drain, which is what every backend did before. `Scene3D.RetiredResourceCount` is the observable
 either way: a healthy streaming world shows a small number that returns to 0 shortly after a burst.
 Expect it to sit HIGHER on the fence path than it used to, because the CPU is no longer being stalled
@@ -11228,8 +11233,36 @@ value of 0, which is what a bare `default(MoveTuning)` reads, FREEZES the headin
 Remotes still receive the heading discrete-sampled (one value per snapshot), so presentation may ease toward the
 sampled value, but it should never invent a heading of its own.
 
+**Holding the flag gives the character a front, so movement can cost differently in each direction (17.30.0).**
+A character that turns to face wherever it walks has no reverse. One pinned to the camera does, and the usual
+third-person feel charges for it: full speed forward, less sideways, much less backwards, and no sprinting
+backwards at all. Three `MoveTuning` knobs, consulted ONLY while `FaceCamera` is held:
+
+```csharp
+var tuning = MoveTuning.Default with
+{
+    StrafeSpeedScale = 0.4f,      // sidestep at 40% of the speed, run still honoured
+    BackpedalSpeedScale = 0.2f,   // retreat at 20%
+    BackpedalAllowsRun = false,   // and the run bit buys nothing while retreating (walk speed is the base)
+};
+```
+
+The direction is classified off the command's own camera-relative axis, into three sectors: `Forward` within 45
+degrees of the facing direction, `Reverse` at 135 degrees or more, `Strafe` in between. Both boundary rays belong
+to the wedge nearer their axis, so W+D (exactly 45 degrees) is a full-speed forward diagonal and S+D (exactly 135)
+is a retreat, which is what a keyboard player expects from each. `CharacterMovement.Sector(cmd)` returns the same
+`MoveSector` the movement used, for picking a locomotion animation without re-deriving the rule.
+
+All three default to neutral (1, 1, `true`), so a game that never sets them is bit-identical. This is sim-side,
+which is the point: a scale the client applied to its own input would be both a speed hack and a misprediction.
+It composes with `MoveState.SpeedScale`, the wade ramp and `AirControl` by multiplication, applies to airborne
+command speed the same way it applies on the ground (a committed momentum arc is NOT scaled, only the steering
+is), and the server's anti-cheat correction target shrinks with it, so a backpedalling player reads as denied
+nothing. A negative or NaN scale reads as 0 rather than reversing travel.
+
 **NPCs get it for free.** `CharacterMovement.StepTowards` faces its steering direction, so a server-authoritative
-creature turns correctly with no camera and no new plumbing.
+creature turns correctly with no camera and no new plumbing. It has no `FaceCamera` and therefore no sectors: an
+agent steered backwards relative to nothing keeps its full speed.
 
 **This is a wire break: generation 9 to 10.** One bump covers both halves. `MoveCommand.FaceCamera` rides bit 1 of
 the move frame's flags byte (bit 0 is run), which was a bare run bool through generation 9 - packed rather than

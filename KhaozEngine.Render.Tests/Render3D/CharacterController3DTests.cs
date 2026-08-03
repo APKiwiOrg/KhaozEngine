@@ -174,8 +174,8 @@ namespace KhaozEngine.Tests.Render3D
             // directions - because Update builds a MoveTuning out of these fields and a consumer that constructs
             // the tuning directly has to get identical feel. Keeping that true across two files by hand is the kind
             // of claim that rots one release after somebody adds a knob, and the case above pins exactly ONE of
-            // them (FacingTurnSpeed). 17.30.0 added two more, and nothing would have caught a typo in either
-            // literal.
+            // them (FacingTurnSpeed). 17.30.0 added five more (the traction pair and the directional trio), and
+            // nothing would have caught a typo in any of those literals.
             //
             // So the pairing is DERIVED rather than listed: every public instance field here must name a
             // MoveTuning property, and the two defaults must be equal. A knob added on either side is covered the
@@ -206,7 +206,7 @@ namespace KhaozEngine.Tests.Render3D
 
             // The loop has to have found the knobs. Without this a rename that emptied it (fields turned into
             // properties, say) would pass vacuously, which is the one failure a mismatch list cannot show.
-            Assert.True(mirrored >= 19, $"only {mirrored} mirrored knobs found, expected at least 19");
+            Assert.True(mirrored >= 22, $"only {mirrored} mirrored knobs found, expected at least 22");
         }
     }
 }

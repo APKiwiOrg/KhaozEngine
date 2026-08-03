@@ -201,7 +201,9 @@ What it owns today:
     report true. Direct3D11 and OpenGL report FALSE even though Veldrid hands out a `Fence` on them, because on
     those backends it is a `ManualResetEvent` set on the CPU as the submit call returns, which is a submit receipt
     and says nothing about the GPU. `CreateFence()` throws there rather than return a fence that lies. A caller
-    that cannot get one keeps whatever it did before.
+    that cannot get one keeps whatever it did before. The opt-in `KhaozEngine.Gpu.D3D11` native backend is the
+    exception among the Direct3D 11 paths and reports TRUE, on a real device-wide completion counter, but its
+    device is not creatable yet so nothing reaches that answer today.
 - **Compute** (since 15.2.0) - `IGpuResourceFactory.CreateComputeShaderFromSpirv(computeGlsl)` compiles a GLSL 450
   compute source into an `IGpuComputeShader`, and `CreateComputePipeline(in GpuComputePipelineDescription)` builds an
   `IGpuComputePipeline` over it plus its resource layouts. Both handle types are separate from the graphics

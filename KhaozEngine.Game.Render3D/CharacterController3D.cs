@@ -111,6 +111,18 @@ namespace KhaozEngine.Game
         /// face a degree too steep to stand on slides gently and only a genuinely steep one slides hard. 0 restores
         /// the full-strength slide of 17.28.0 and 17.29.0.</summary>
         public float SlideFrictionRampRadians = MathF.PI * 8f / 180f;
+        /// <summary>Speed multiplier while strafing with the character pinned to the camera (see
+        /// <see cref="MoveTuning.StrafeSpeedScale"/>). Default 1 (no scaling). Inert on this controller as it stands,
+        /// which drives movement without <see cref="MoveCommand.FaceCamera"/>: it is mirrored because every
+        /// <see cref="MoveTuning"/> feel knob is, and because a consumer reads these defaults as the engine's
+        /// answer to "what is neutral".</summary>
+        public float StrafeSpeedScale = 1f;
+        /// <summary>Speed multiplier while backing up with the character pinned to the camera (see
+        /// <see cref="MoveTuning.BackpedalSpeedScale"/>). Default 1 (no scaling).</summary>
+        public float BackpedalSpeedScale = 1f;
+        /// <summary>Whether the run bit is honoured while backing up (see
+        /// <see cref="MoveTuning.BackpedalAllowsRun"/>). Default true, which honours it.</summary>
+        public bool BackpedalAllowsRun = true;
 
         /// <summary>
         /// Advance the character for one frame. <paramref name="cameraYaw"/> is the follow camera's yaw (radians);
@@ -148,6 +160,9 @@ namespace KhaozEngine.Game
                 FacingTurnSpeed = FacingTurnSpeed,
                 TractionHysteresisRadians = TractionHysteresisRadians,
                 SlideFrictionRampRadians = SlideFrictionRampRadians,
+                StrafeSpeedScale = StrafeSpeedScale,
+                BackpedalSpeedScale = BackpedalSpeedScale,
+                BackpedalAllowsRun = BackpedalAllowsRun,
             };
             _state = CharacterMovement.Step(_state, cmd, dt, groundHeight, tuning, groundNormal, world: physics, medium: medium);
         }

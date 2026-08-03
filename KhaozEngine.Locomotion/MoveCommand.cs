@@ -36,10 +36,16 @@ public readonly struct MoveCommand
     public bool Jump { get; }
 
     /// <summary>True while the player is asking the character to FACE the camera (the held right mouse button in the
-    /// usual binding) rather than to face where it is walking. It changes <see cref="MoveState.FacingYaw"/> only and
-    /// never the position: with it set the facing target is <see cref="CameraYaw"/> whatever the
-    /// <see cref="Move"/> axis is doing, so a strafing character keeps its body pointed at the camera and - the case
-    /// that is impossible without it - a character with NO movement input can turn on the spot.
+    /// usual binding) rather than to face where it is walking. With it set the facing target is
+    /// <see cref="CameraYaw"/> whatever the <see cref="Move"/> axis is doing, so a strafing character keeps its body
+    /// pointed at the camera and - the case that is impossible without it - a character with NO movement input can
+    /// turn on the spot.
+    /// <para>It also gives the character a FRONT that does not turn with its travel, which is what lets the sim
+    /// charge for the direction of movement relative to it: while this is set, and only while it is set, the
+    /// <see cref="MoveTuning.StrafeSpeedScale"/> / <see cref="MoveTuning.BackpedalSpeedScale"/> /
+    /// <see cref="MoveTuning.BackpedalAllowsRun"/> trio applies by
+    /// <see cref="CharacterMovement.Sector(in MoveCommand)"/>. All three are neutral by default, so the flag
+    /// changes <see cref="MoveState.FacingYaw"/> and nothing else until a game opts in.</para>
     /// <para><c>false</c> (the default, and what every pre-facing construction site produces) is the pre-facing
     /// behaviour exactly: the character faces the direction it is commanded to travel, and holds its heading when
     /// idle. It rides bit 1 of the move frame's flags byte, which was the bare run bool through wire generation 9.</para></summary>

@@ -4,12 +4,13 @@ The engine's own native Direct3D 11 backend for the [KhaozEngine.Gpu](../KhaozEn
 NO umbrella: a consumer adds this package explicitly, the same pattern as `Physics.Bepu` or
 `WorldStore.Sqlite`, and nothing that does not want the Direct3D interop ever carries it.
 
-> **Status: registration, the platform guards, the machine-capability probe, the recording model and the
-> resource model are live.** The recording model (see "Recording, and the two drivers" below) lands behind
-> `KE_D3D11_RECORD`, and the resource model (see "Resources, views and state objects") lands on top of it, but
-> device creation is still not built, so `CreateForWindow` and `CreateHeadless` throw a message saying so, and
-> nothing shipped constructs either. `GpuBackendKind.Direct3D11` remains the working Direct3D 11 backend and
-> stays selectable indefinitely.
+> **Status: registration, the platform guards, the machine-capability probe, the recording model, the resource
+> model and the fence subsystem are live.** The recording model (see "Recording, and the two drivers" below)
+> lands behind `KE_D3D11_RECORD`, the resource model (see "Resources, views and state objects") lands on top of
+> it, and the fence subsystem (see "Completion fences, and a `WaitForIdle` that drains") lands behind
+> `KE_D3D11_REAL_DRAIN`, but device creation is still not built, so `CreateForWindow` and `CreateHeadless` throw
+> a message saying so, and nothing shipped constructs any of them. `GpuBackendKind.Direct3D11` remains the
+> working Direct3D 11 backend and stays selectable indefinitely.
 
 ## Opting in
 
@@ -119,6 +120,47 @@ check. Whether the countable sink goes BELOW the real emitter (tallying the ship
 implementation to drift) or into a device-free harness guarded by T3's WARP `[GpuFact]` is row 9's decision,
 written out on `D3D11CountingEmitter`. It is deliberately not built yet.
 
+## Completion fences, and a `WaitForIdle` that drains
+
+**This backend reports `SupportsCompletionFences = true`, and it is the one capability where it differs from
+`GpuBackendKind.Direct3D11`.** Veldrid's Direct3D 11 fence is a `ManualResetEvent` set the instant
+`ExecuteCommandList` returns, which is a submit receipt rather than a completion signal, so the incumbent
+reports false, `GpuRetireBarrier.TryCreate` hands back null there and the retire pool keeps a frame-count
+fallback. Here the fence is a value on a device-wide monotonic counter that the GPU advances, so the flag is
+honest and the fenced paths downstream become live.
+
+One counter per device, on either of two mechanisms, chosen once at device creation:
+
+- **`ID3D11Fence`** via `ID3D11Device5.CreateFence`, advanced with `ID3D11DeviceContext4.Signal` and read with
+  `GetCompletedValue`. Windows 10 1703 and newer.
+- **`ID3D11Query(Event)`**, one per signal, polled with `DO_NOT_FLUSH` and retired in submission order, for
+  anything older. Queries are recycled, so the pool stays at the number of submissions in flight.
+
+Both are real completion signals, so nothing above the timeline branches on which one it got, and which one is
+live is reported for the session log and for nothing else. Where the two genuinely differ, they report the
+capability rather than the name: the monotonic fence offers a blocking wait (which is what the drain uses) and a
+lock-free poll, and the event-query fallback offers neither, so a fence poll there is serialised against
+submission and can wait as long as a replay. On the primary path, which is every machine from Windows 10 1703
+on, a fence poll waits for nothing.
+
+An `IGpuFence` is a remembered value on that counter and holds no device object of its own. A fresh one is
+unarmed and reads unsignalled, `Submit` arms it with the value that submission raised, and `Reset` unarms it so
+the next submission arms it with a strictly higher one. Submitting a fence that is still armed throws rather
+than overwriting its target.
+
+**`WaitForIdle` is a real fence drain**, replacing the empty method body the Veldrid Direct3D 11 path has. It
+signals a fresh point, flushes the context ONCE so the driver actually has that signal, and then waits for the
+GPU to reach it. The submit lock is held for the signal and the flush and released before the wait, so a drain
+never blocks the submission that would let it finish. The wait itself is `ID3D11Fence.SetEventOnCompletion` on
+the primary mechanism and a yielding spin on the fallback, and neither ever sleeps a millisecond: one such sleep
+is more than the whole per-frame drain budget the drain is measured against. `KE_D3D11_REAL_DRAIN=0` restores
+the no-op for the measurement window, and the drain count plus the total drain duration of each frame are
+recorded so the cost is a number rather than an argument. After device death the drain returns immediately and
+every fence reads signalled, since a destroyed device has no outstanding work to finish.
+
+The fence poll does NOT flush, deliberately. Only the drain has decided to wait, so only the drain pays to have
+the work handed over, and `IGpuFence.Signaled` stays as cheap as the seam's contract expects.
+
 ## Resources, views and state objects
 
 **Every view is created at resource creation, and there are at most four per texture.** From the declared usage
@@ -159,5 +201,6 @@ twice.
 
 `docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md` in the engine repo, section 3 (package and layering),
 section 4.1 (getting the assembly loaded), section 5.1 (the stream and the emitter), section 2.1 (the recording
-model), section 7 (resources, views and state objects), section 8.1 (register numbering), and decisions P1, P2,
-P4, I2, R1, R2, T2, X1, X2, X3, S2 and C2.
+model), section 7 (resources, views and state objects), section 8.1 (register numbering), sections 10.3 and
+10.4 (fences and the empty `WaitForIdle`), and decisions P1, P2, P4, I2, R1, R2, T2, X1, X2, X3, S2, C2, C5
+and C6.

@@ -180,8 +180,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// it, which is two native calls per ring per submit and the floor. The immediate driver issues draws
         /// while the phase is open, so it needs the mapping released before every command, which the spec calls a
         /// per-FLUSH map and unmap. Row 9's <see cref="D3D11BindFlush"/> is that flush point, and it calls
-        /// <see cref="UnmapMappedRings"/> before every draw, dispatch and pipeline switch, so the immediate driver
-        /// gets one map per run of writes between two commands instead of one per write.
+        /// <see cref="UnmapMappedRings"/> before every draw and every dispatch. Not at a pipeline switch: the
+        /// hazard is a draw against a mapped resource, the switch's drain only binds constant buffers, and the
+        /// next draw unmaps before it issues. That gives the immediate driver one map per run of writes between
+        /// two commands instead of one per write.
         /// </para>
         /// <para>
         /// THE MEASUREMENT IS WHY IT MATTERS RATHER THAN THE CALL COUNT. Milestone M1 A/Bs the two drivers on a

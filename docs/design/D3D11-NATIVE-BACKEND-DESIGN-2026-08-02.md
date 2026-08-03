@@ -351,8 +351,13 @@ Not negotiable. This is the shape that produced the 40x shadow-encode collapse a
    textures and samplers entirely.
 4. Flush is in SLOT order. The one observable difference from bind order is a resource bound two incompatible
    ways at once, which D3D11 cannot honour either way.
-5. `SetPipeline` drains pending sets under the OUTGOING layout before switching, because the layout decides
-   register numbering.
+5. `SetPipeline` drains pending sets under the OUTGOING layout and then FORGETS the records, before switching,
+   because the layout decides register numbering. The wipe was missing from this clause as first written, which
+   was an incomplete transcription of the fork (it does `ClearSets` plus `ClearArray` right after its drain) and
+   shipped as a defect: with the records kept, a rebind of the same set at the same slot under a pipeline whose
+   layout array renumbers that slot compares equal, marks clean and issues nothing, so the set stays at the
+   outgoing registers while the incoming pipeline reads the new ones. A re-bind of the pipeline already current
+   does neither, which is the fork's pipeline-identity guard.
 6. A slot whose recorded set has since gone null is skipped.
 7. Repeated dirty marks on one slot between two draws collapse to one flush.
 8. Bound-record dedup is keyed and does not grow per rebind. The hot path is thousands of offsets-only

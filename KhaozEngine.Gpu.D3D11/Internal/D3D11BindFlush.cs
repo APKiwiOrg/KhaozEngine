@@ -15,8 +15,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// buffers and skips textures and samplers entirely.</description></item>
     /// <item><description>The flush walks slots in SLOT ORDER. The one observable difference from bind order is a
     /// resource bound two incompatible ways at once, which Direct3D 11 cannot honour either way.</description></item>
-    /// <item><description>A pipeline switch DRAINS the pending sets under the OUTGOING layouts before adopting
-    /// the incoming ones, because the layout array decides register numbering.</description></item>
+    /// <item><description>A pipeline switch DRAINS the pending sets under the OUTGOING layouts and then FORGETS
+    /// the records, before adopting the incoming ones, because the layout array decides register numbering. A
+    /// re-bind of the pipeline already current does neither.</description></item>
     /// <item><description>A slot whose recorded set has gone null is skipped.</description></item>
     /// <item><description>Repeated dirty marks on one slot between two draws collapse to one flush.</description></item>
     /// <item><description>The bound record is KEYED by slot and does not grow per rebind.</description></item>
@@ -156,9 +157,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             => Record(ref _compute, slot, set, dynamicOffset, hasDynamicOffset);
 
         /// <summary>
-        /// RULE 5, THE PIPELINE-SWITCH DRAIN: flush whatever is pending under the OUTGOING layouts, then adopt the
-        /// incoming ones. Called by the emitter's <c>SetPipeline</c> BEFORE the redundancy caches see the new
-        /// pipeline, so the drained binds appear in the trace ahead of the state calls they belong behind.
+        /// RULE 5, THE PIPELINE-SWITCH DRAIN: flush whatever is pending under the OUTGOING layouts, FORGET the
+        /// records, then adopt the incoming ones. Called by the emitter's <c>SetPipeline</c> BEFORE the redundancy
+        /// caches see the new pipeline, so the drained binds appear in the trace ahead of the state calls they
+        /// belong behind.
         /// <para>
         /// WHY IT CANNOT WAIT FOR THE DRAW. A set's absolute register is its layout-relative register plus the sum
         /// of the counts of every layout before it in the PIPELINE'S array, so the same set bound at the same slot
@@ -167,9 +169,31 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// binds and renders the wrong resources.
         /// </para>
         /// <para>
-        /// WITH NO PIPELINE BOUND THERE IS NOTHING TO DRAIN AGAINST, so the marks stay pending and are flushed at
-        /// the next draw under the incoming pipeline. That is the only answer available: a set recorded before any
-        /// pipeline has no numbering yet, and inventing one would be worse than deferring it.
+        /// AND WHY THE RECORDS DIE WITH THE OUTGOING LAYOUTS, which is the half that is silent when it is left
+        /// out. <see cref="Record"/> compares against what the slot already holds, so a record that survived the
+        /// switch would mark a rebind of the SAME set at the SAME slot <see cref="D3D11SlotDirty.Clean"/> and the
+        /// next draw would issue nothing for it. Under a pipeline whose layout array renumbers that slot the set
+        /// is then still physically at the OUTGOING registers while the incoming pipeline reads the new ones:
+        /// wrong constants, nothing thrown, nothing logged, which is the exact class rule 5 exists to prevent. So
+        /// the drain is followed by a wipe of the records and the marks together (the fork's <c>ClearSets</c> plus
+        /// <c>ClearArray</c>). The price is that a switch leaves every slot owing a full activation, and it is the
+        /// only safe one: whether the incoming array renumbers a given slot is not knowable slot by slot.
+        /// </para>
+        /// <para>
+        /// A REDUNDANT RE-BIND OF THE PIPELINE ALREADY CURRENT DRAINS NOTHING AND WIPES NOTHING, and the guard
+        /// belongs HERE rather than at the caller: <see cref="D3D11NativeTraceEmitter.SetPipeline"/> reaches this
+        /// BEFORE the redundancy caches see the pipeline, so a caller-side guard would need a second cache of its
+        /// own. Identity is taken on the layout ARRAY by reference, which is exactly the question being asked
+        /// (two pipelines sharing one array number their sets identically, so neither the drain nor the wipe
+        /// could change anything) and a pipeline answers the same array instance every time. Without the guard a
+        /// renderer that rebinds its pipeline defensively between two draws would wipe the records it just made
+        /// and pay a full activation per bind, which is the #418 cost arriving through another door.
+        /// </para>
+        /// <para>
+        /// WITH NO PIPELINE BOUND THERE IS NOTHING TO DRAIN AGAINST, so the marks stay pending, the records stay
+        /// with them, and both are paid at the next draw under the incoming pipeline. That is the only answer
+        /// available: a set recorded before any pipeline has no numbering yet, and inventing one would be worse
+        /// than deferring it.
         /// </para>
         /// </summary>
         internal void SetGraphicsPipeline<TSink>(ref TSink sink, IGpuPipeline pipeline)
@@ -177,8 +201,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         {
             if (pipeline is null) throw new ArgumentNullException(nameof(pipeline));
 
-            if (_graphicsLayouts is not null) Drain(ref sink, _graphics, _graphicsLayouts);
-            _graphicsLayouts = LayoutsOf(pipeline);
+            _graphicsLayouts = Switch(ref sink, _graphics, _graphicsLayouts, LayoutsOf(pipeline));
         }
 
         /// <inheritdoc cref="SetGraphicsPipeline{TSink}"/>
@@ -187,8 +210,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         {
             if (pipeline is null) throw new ArgumentNullException(nameof(pipeline));
 
-            if (_computeLayouts is not null) Drain(ref sink, _compute, _computeLayouts);
-            _computeLayouts = LayoutsOf(pipeline);
+            _computeLayouts = Switch(ref sink, _compute, _computeLayouts, LayoutsOf(pipeline));
         }
 
         /// <summary>
@@ -258,6 +280,25 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             if (mark > record.Dirty) record.Dirty = mark;
         }
 
+        // One pipeline switch on one arm: drain under the outgoing layouts, wipe the records, and answer the array
+        // to adopt. The two arms differ in nothing but which record and which layout array they hand in, so the
+        // rule lives once and neither arm can drift into being the careful one.
+        D3D11ResourceLayout[] Switch<TSink>(ref TSink sink, SlotRecord[] records, D3D11ResourceLayout[]? outgoing,
+            D3D11ResourceLayout[] incoming)
+            where TSink : struct, ID3D11BindSink
+        {
+            // The same numbering, so there is nothing to drain under and nothing the records could be wrong about.
+            if (ReferenceEquals(outgoing, incoming)) return incoming;
+
+            // No pipeline yet: no numbering to drain against, so the marks AND the records both stay, and the
+            // first draw under the incoming pipeline pays them.
+            if (outgoing is null) return incoming;
+
+            Drain(ref sink, records, outgoing);
+            Array.Clear(records);
+            return incoming;
+        }
+
         // The flush walk, shared by the draw hook and the pipeline drain. Slot order (rule 4), one activation per
         // dirty slot, and the slot is clean afterwards whether or not it issued anything.
         void Drain<TSink>(ref TSink sink, SlotRecord[] records, D3D11ResourceLayout[] layouts)
@@ -269,13 +310,16 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 if (record.Dirty == D3D11SlotDirty.Clean) continue;
 
                 D3D11SlotDirty dirty = record.Dirty;
-                record.Dirty = D3D11SlotDirty.Clean;
 
                 // Rule 6. A slot whose recorded set has gone null has nothing to activate, and it is SKIPPED
                 // rather than unbound: the registers it used belong to this slot alone, so leaving them is
                 // invisible to every shader the next draw runs, and unbinding them would be a native call spent
-                // on a slot nobody is reading.
-                if (record.Set is null) continue;
+                // on a slot nobody is reading. It still goes clean, so the skip happens once.
+                if (record.Set is null)
+                {
+                    record.Dirty = D3D11SlotDirty.Clean;
+                    continue;
+                }
 
                 if (record.Set is not D3D11ResourceSet set)
                 {
@@ -288,6 +332,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 D3D11RegisterCounts baseCounts = D3D11RegisterScheme.BaseFor(layouts, slot);
                 _activation.Activate(ref sink, set, baseCounts, dirty == D3D11SlotDirty.DynamicOffsetsOnly,
                     record.DynamicOffset, _unsetConstantBuffersBeforeSet);
+
+                // CLEAN ONLY AFTER THE ACTIVATION LANDED. Both throws above are caller mistakes that a next draw
+                // would hit again, and clearing the mark first is what would stop it: the exception escapes the
+                // draw, the slot reads clean, and the SECOND draw issues nothing for it and renders against
+                // whatever the registers still hold. Losing the mark turns a loud, repeatable refusal into one
+                // throw followed by silence.
+                record.Dirty = D3D11SlotDirty.Clean;
             }
         }
 

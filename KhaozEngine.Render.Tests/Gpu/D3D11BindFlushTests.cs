@@ -237,6 +237,138 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(1, harness.Log.Count(D3D11NativeCall.VSSetConstantBuffers1));
         }
 
+        /// <summary>
+        /// AND THE SWITCH FORGETS THE RECORDS, which is the half a drain alone does not give you and the half
+        /// that is silent when it is missing. The same set is rebound at the same slot after the switch, and the
+        /// incoming pipeline's preceding layout renumbers that slot, so a record that survived would compare
+        /// equal, mark the slot clean and issue NOTHING: the set would stay physically at the outgoing
+        /// pipeline's registers while the incoming pipeline read the new ones. Wrong constants, no throw, no log.
+        /// </summary>
+        [Fact]
+        public void APipelineSwitchThatRenumbersASlot_ReactivatesTheSameSetAtTheNewBase()
+        {
+            var harness = new D3D11BindFixtures.Harness();
+            using D3D11ResourceLayout oneUbo = D3D11BindFixtures.ShadowLayout();
+            using D3D11ResourceLayout twoUbos = D3D11BindFixtures.Layout(
+                D3D11BindFixtures.U("A", GpuShaderStages.Vertex),
+                D3D11BindFixtures.U("B", GpuShaderStages.Vertex));
+            using D3D11ResourceLayout shadow = D3D11BindFixtures.ShadowLayout();
+            using D3D11ResourceSet set = D3D11BindFixtures.ShadowSet(shadow);
+            D3D11NativeTraceEmitter emitter = harness.Emitter;
+
+            // Under the first pipeline slot one numbers at b1, because one constant buffer precedes it.
+            emitter.SetPipeline(D3D11BindFixtures.Pipeline(oneUbo, shadow));
+            emitter.SetGraphicsResourceSet(1, set, 0);
+            harness.Log.Reset();
+            emitter.Draw(3, 1, 0, 0);
+            Assert.Equal(
+                new[] { $"VSSetConstantBuffers1(1,1,{harness.Log.Id(Ubo(set))}@0+16)" },
+                harness.BindTrace());
+
+            // Under the second it numbers at b2, and the SAME set at the SAME slot and offset is bound again.
+            emitter.SetPipeline(D3D11BindFixtures.Pipeline(twoUbos, shadow));
+            harness.Log.Reset();
+            emitter.SetGraphicsResourceSet(1, set, 0);
+
+            Assert.Equal(D3D11SlotDirty.Full, harness.Binds.GraphicsDirty(1));
+            emitter.Draw(3, 1, 0, 0);
+
+            Assert.Equal(
+                new[] { $"VSSetConstantBuffers1(2,1,{harness.Log.Id(Ubo(set))}@0+16)" },
+                harness.BindTrace());
+        }
+
+        /// <inheritdoc cref="APipelineSwitchThatRenumbersASlot_ReactivatesTheSameSetAtTheNewBase"/>
+        [Fact]
+        public void AComputePipelineSwitchThatRenumbersASlot_ReactivatesTheSameSetAtTheNewBase()
+        {
+            var harness = new D3D11BindFixtures.Harness();
+            using D3D11ResourceLayout oneUbo = D3D11BindFixtures.Layout(
+                D3D11BindFixtures.U("A", GpuShaderStages.Compute));
+            using D3D11ResourceLayout twoUbos = D3D11BindFixtures.Layout(
+                D3D11BindFixtures.U("A", GpuShaderStages.Compute),
+                D3D11BindFixtures.U("B", GpuShaderStages.Compute));
+            using D3D11ResourceLayout work = D3D11BindFixtures.Layout(
+                D3D11BindFixtures.U("Params", GpuShaderStages.Compute, dynamic: true));
+            using D3D11ResourceSet set = D3D11BindFixtures.Set(work, new GpuBufferRange(new FakeBuffer(4096), 0, 64));
+            D3D11NativeTraceEmitter emitter = harness.Emitter;
+
+            emitter.SetComputePipeline(new FakeComputePipeline(oneUbo, work));
+            emitter.SetComputeResourceSet(1, set, 0);
+            harness.Log.Reset();
+            emitter.Dispatch(1, 1, 1);
+            Assert.Equal(
+                new[] { $"CSSetConstantBuffers1(1,1,{harness.Log.Id(Ubo(set))}@0+16)" },
+                harness.BindTrace());
+
+            emitter.SetComputePipeline(new FakeComputePipeline(twoUbos, work));
+            harness.Log.Reset();
+            emitter.SetComputeResourceSet(1, set, 0);
+
+            Assert.Equal(D3D11SlotDirty.Full, harness.Binds.ComputeDirty(1));
+            emitter.Dispatch(1, 1, 1);
+
+            Assert.Equal(
+                new[] { $"CSSetConstantBuffers1(2,1,{harness.Log.Id(Ubo(set))}@0+16)" },
+                harness.BindTrace());
+        }
+
+        /// <summary>
+        /// A RE-BIND OF THE PIPELINE ALREADY CURRENT DRAINS NOTHING AND FORGETS NOTHING. The numbering has not
+        /// moved, so there is nothing for the drain to be wrong about and nothing for the wipe to protect, and a
+        /// renderer that rebinds its pipeline defensively between two draws would otherwise wipe the records it
+        /// just made and pay a full activation per bind, which is the #418 cost by another door.
+        /// </summary>
+        [Fact]
+        public void ARedundantPipelineRebind_DrainsNothingAndForgetsNothing()
+        {
+            var harness = new D3D11BindFixtures.Harness();
+            using D3D11ResourceLayout layout = D3D11BindFixtures.ShadowLayout();
+            using D3D11ResourceSet set = D3D11BindFixtures.ShadowSet(layout);
+            D3D11StateCacheTests.FakeD3D11Pipeline pipeline = D3D11BindFixtures.Pipeline(layout);
+            D3D11NativeTraceEmitter emitter = harness.Emitter;
+
+            emitter.SetPipeline(pipeline);
+            emitter.SetGraphicsResourceSet(0, set, 0);
+            harness.Log.Reset();
+
+            emitter.SetPipeline(pipeline);
+
+            // Nothing at all: the seven state objects are already bound and the pending mark is still pending.
+            Assert.Empty(harness.Log.Trace);
+            Assert.Equal(D3D11SlotDirty.Full, harness.Binds.GraphicsDirty(0));
+            Assert.Same(set, harness.Binds.RecordedGraphicsSet(0));
+
+            emitter.Draw(3, 1, 0, 0);
+
+            Assert.Equal(
+                new[] { $"VSSetConstantBuffers1(0,1,{harness.Log.Id(Ubo(set))}@0+16)" },
+                harness.BindTrace());
+        }
+
+        /// <inheritdoc cref="ARedundantPipelineRebind_DrainsNothingAndForgetsNothing"/>
+        [Fact]
+        public void ARedundantComputePipelineRebind_DrainsNothingAndForgetsNothing()
+        {
+            var harness = new D3D11BindFixtures.Harness();
+            using D3D11ResourceLayout work = D3D11BindFixtures.Layout(
+                D3D11BindFixtures.U("Params", GpuShaderStages.Compute, dynamic: true));
+            using D3D11ResourceSet set = D3D11BindFixtures.Set(work, new GpuBufferRange(new FakeBuffer(4096), 0, 64));
+            var pipeline = new FakeComputePipeline(work);
+            D3D11NativeTraceEmitter emitter = harness.Emitter;
+
+            emitter.SetComputePipeline(pipeline);
+            emitter.SetComputeResourceSet(0, set, 0);
+            harness.Log.Reset();
+
+            emitter.SetComputePipeline(pipeline);
+
+            // The compute shader bind itself is deliberately unguarded (its redundancy cache belongs with the
+            // rest of the compute schedule), so the shader call is expected and the DRAIN is what must be absent.
+            Assert.Equal(new[] { $"CSSetShader({harness.Log.Id(pipeline)})" }, harness.Log.Trace);
+            Assert.Equal(D3D11SlotDirty.Full, harness.Binds.ComputeDirty(0));
+        }
+
         /// <summary>A set at a slot the current pipeline does not declare is a pipeline-and-set mismatch, and it
         /// is refused with the register scheme's own message rather than binding at a base summed over every
         /// layout, which is the one wrong answer here that renders instead of throwing.</summary>

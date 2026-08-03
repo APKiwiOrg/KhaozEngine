@@ -7,15 +7,17 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.32.0
 
-### The native Direct3D 11 backend: the swapchain, the shader path, the bind flush and the diagnostics (#453, #455, #457, #459)
+### The native Direct3D 11 backend: the swapchain, the shader path, the bind flush, the threading contract and the diagnostics (#453, #455, #457, #458, #459)
 
 The blit-model swapchain lands with the incumbent's present path reproduced field for field, a framebuffer
 whose identity never changes across resize, and a resize queued to the present boundary. The shader path lands
 beside it: GLSL to HLSL through the pinned cross-compile options, the backend's own FXC call, the hashed
 emitted HLSL and the disk DXBC cache. The bind flush lands under both: the R5 schedule ported intact,
-the array-batched activation, and the device-free native-call budget that gates the fan-out. Nothing
-renders differently and nothing switches over: the native backend's two device-creation entry points still
-throw, so no shipped path reaches any of it, and no golden moved.
+the array-batched activation, and the device-free native-call budget that gates the fan-out. The threading
+contract closes over all three: lock-free recording, one short submit lock, a conditional creation lock, and the
+two races that were previously nobody's test. Nothing renders differently and nothing switches over: the native
+backend's two device-creation entry points still throw, so no shipped path reaches any of it, and no golden
+moved.
 
 #### The swapchain: the incumbent's present path, a stable framebuffer identity and a queued resize (#457)
 
@@ -308,6 +310,88 @@ full activation would write that view with nothing added and the offsets-only pa
 being a constant buffer. Both halves of the flush would silently agree to ignore the offset and every draw would
 read the window the view was created with. Vacuous today, since all six dynamic elements shipped are uniform
 buffers, and refused anyway because nothing further down the path would ever say so.
+
+#### The threading contract: lock-free recording, one short submit lock, and a creation lock only where a driver needs it (#458)
+
+The native backend now STATES what it guarantees about threads, enforces the two clauses that were only
+convention, and races the two interleavings the design is shaped around. Section 9.3, decisions W4 and W5. Most
+of the mechanism was already in place from the rows this one closes over, so the change is mostly contract:
+written down in one authoritative place, made true where it was not, and tested where it was untested.
+
+**The contract has one home, and it is the package README's "Threading: the shipped contract" section.** Every
+XML doc in the package that mentions a lock now points there instead of restating a piece of it, because the way
+a threading contract rots is five partial copies that were each correct when written. It states what is
+guaranteed (recording that appends with no lock and no native call, save the once-per-ring-per-record-phase map
+acquisition a record-time uniform write pays under the submit lock, one `_submitLock` covering exactly the
+replay, the present and the resize apply, `Submit` order as the observable order, device-level `UpdateBuffer`
+from any thread behind that short lock, free-threaded creation), what is serialized, and where the boundary is.
+
+**Resource creation is now actually serialized when the driver reports `DriverConcurrentCreates` false, which it
+was not.** That clause of W4 existed only in the design doc: `D3D11ResourceFactory` created on any thread with no
+lock at all, whatever the threading probe said. `D3D11CreationGate` is the fix, and it is the second and last
+lock in the package. A driver that creates concurrently gets NO lock, so the common case pays nothing. An
+UNKNOWN answer serializes, deliberately: the threading probe is a diagnostic that degrades to "unknown" on every
+failure path, and reading its silence as a yes bets driver stability on whether a log line came back. Only the
+factory members that make a native creation call are gated. A framebuffer aggregates views that already exist, a
+resource layout and a resource set are pure engine data, and a command list touches no device state at all, so
+gating those four would serialize engine work behind a driver limitation that has nothing to do with it. Six
+members are ungated in all: those four, plus `CreateComputePipeline` and `CreateFence`, which are not built yet
+and throw before reaching any driver.
+
+**The two locks nest in one direction, and it is written down before there is a second one to get wrong.** The
+submit lock is OUTER and the creation gate is INNER, and the gate is a STRICT LEAF: nothing is acquired while it
+is held and nothing in it waits. Entering the gate while holding the submit lock is the one legal nesting and no
+shipped path does it. The day a creation path needs the immediate context, it takes the submit lock BEFORE
+entering the gate rather than inside it. A leaf lock is the one shape that cannot be part of a cycle, which is
+worth more than any convention about who takes what first.
+
+**The two members that can block now REFUSE a caller holding the submit lock, by name.** `WaitForIdle` signals
+and flushes under the lock and then releases it to wait, so the submission it is waiting for can still be made,
+and a caller that already held the lock re-enters rather than acquires: the release inside frees nothing and the
+drain waits for work no other thread can submit. The ring allocator's `BeginFrame` waits for the GPU to finish
+with the segment it opens, which is up to a frame, against a lock decision W4 caps at microseconds, and on the
+event-query fence mechanism every completion poll re-enters that same lock so the wait would also shut out the
+submission that would end it. Both were latent: nothing calls them wrongly today and nothing stopped the device
+row from doing so. Both are now an exception naming the rule rather than a frame-long stall that is invisible
+from outside. `WaitForIdle`'s refusal covers the LIVE drain and only that: the dead-device return (X3) and the
+`KE_D3D11_REAL_DRAIN` return are checked ahead of the guard, so a teardown-shaped caller holding the lock on a
+dead device still gets the quiet no-op X3 promises, and the kill switch still restores the empty method body
+rather than swapping it for a throw. Neither return touches anything, so running them under the lock is safe by
+construction.
+
+**The two named races are device-free and they fail when the lock they pin is removed**, which is the only kind
+of race test worth having. `D3D11ThreadingContractTests` runs a foreign-thread device-level `UpdateBuffer`
+racing a submit (two writers filling one range with two different repeated bytes, plus the assertion that the
+write lands in the CURRENT segment and leaves the other two untouched), and a concurrent resize racing a present
+(every `ResizeBuffers` in the trace pinned as the four-call sequence present, release, resize, create, all under
+the lock). Both were verified to FAIL against a deliberately unlocked build before being kept, and each names
+WHICH assertion does the failing rather than leaving the reader to assume. The update race's deterministic
+detector is the writers dying on the map pointer the unmap withdraws mid-copy (5 unlocked runs out of 5): the
+under-lock content sampler catches a tear in roughly 40% of unlocked runs and is kept as the secondary guard for
+a future path where the ring stays mapped and there is no null pointer to crash on. A writer-progress assertion
+sits beside it, so a starved runner fails the test rather than passing it vacuously. The resize race's detector
+is every surface call after the constructor's arriving under the lock (3 of 3), while its whole-size and
+coalescing assertions are forward-guards against a future two-field or accumulating queue rather than live
+detectors, since one packed long cannot tear.
+`GpuDeviceLifecycleTests` stays the real-device concurrency smoke over the process-wide create and dispose gate
+and now points at its device-free sibling.
+
+**W5 is stated as a boundary rather than softened.** Concurrent RECORDING is structurally permitted, because
+`Begin` touches no device state and each recorder owns its own arrays, and it is NOT supported in v1 and NOT part
+of the shipped contract: nothing in the engine asks for it, no test exercises it, and the redundancy caches and
+the constant-buffer ring have not been reviewed for concurrent record. Concretely, under the deferred driver's
+mapping scope a record-time uniform write copies with no lock held, so a record-time write racing a submit's
+unmap, or racing a device-level write, or two record-time writes to one ring, are outside the contract rather
+than serialized. "It will probably work" is exactly the shape that produces a bug report nobody can triage.
+Shipping it properly is https://github.com/APKiwiOrg/KhaozEngine/issues/463. The related narrowing is that the
+lock-free-recording clause is the DEFERRED driver's: under `KE_D3D11_RECORD=immediate` a seam call issues its
+native call as it is made, so recording touches device state by construction and one thread records.
+
+**Two clauses have no code to land on yet, and are recorded rather than guessed at.** Staging `Map` and `Unmap`
+take the submit lock for the duration of the map call and nothing longer, which is where the rule lands the day
+the staging path exists (https://github.com/APKiwiOrg/KhaozEngine/issues/456, and there is no staging path in the
+package today). Device-level `UpdateTexture` takes the same short lock as `UpdateBuffer` when the device row
+wires it.
 
 #### Capabilities, the sampler hardcodes, adapter selection, the debug layer and device-loss reporting (#459)
 

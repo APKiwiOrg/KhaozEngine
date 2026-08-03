@@ -4,8 +4,9 @@ The engine's own native Direct3D 11 backend for the [KhaozEngine.Gpu](../KhaozEn
 NO umbrella: a consumer adds this package explicitly, the same pattern as `Physics.Bepu` or
 `WorldStore.Sqlite`, and nothing that does not want the Direct3D interop ever carries it.
 
-> **Status: the package skeleton.** Registration, the platform guards and the machine-capability probe are
-> live. Device creation is not built yet, so `CreateForWindow` and `CreateHeadless` throw a message saying so.
+> **Status: registration, the platform guards, the machine-capability probe, and the recording model are
+> live.** The recording model (see "Recording, and the two drivers" below) lands behind `KE_D3D11_RECORD`, but
+> device creation is still not built, so `CreateForWindow` and `CreateHeadless` throw a message saying so.
 > `GpuBackendKind.Direct3D11` remains the working Direct3D 11 backend and stays selectable indefinitely.
 
 ## Opting in
@@ -78,7 +79,35 @@ existence, so the helper is at home there, and it becomes the single seat for th
 replacement. Blessing a Veldrid package inside a backend whose premise is being Veldrid-free would be a bad
 signal that no guard would ever catch.
 
+## Recording, and the two drivers
+
+Command recording sits behind one internal seam, `ID3D11Emitter`: one method per `IGpuCommandList` command,
+written in engine-owned handle types and never in raw COM pointers, always consumed through a
+`where TEmitter : struct, ID3D11Emitter` constraint so the JIT monomorphizes it. Both recording drivers are the
+same recorder with a different type argument. The deferred driver (the default) encodes each command into a
+32-byte op in an engine-owned CPU stream and replays the whole stream into the real emitter inside `Submit`.
+`KE_D3D11_RECORD=immediate` selects the immediate driver, which hands the recorder the device's real emitter so
+the calls happen as the seam is called. Both exist until milestone M1 A/Bs them on a renderable frame, and M1
+is what removes the variable and deletes the loser.
+
+**Writing an emitter: it is a readonly struct, and its mutable state lives behind a class reference.** The
+recorder stores its emitter by value, one copy per list, so under the immediate driver N lists hold N copies
+over one `ID3D11DeviceContext`. Inline mutable state would be per-list on one driver and per-device on the
+other. The redundancy caches of R6 describe what is bound on the CONTEXT, so two of them over one context means
+one list skips a rebind that another list already invalidated, and R8's precise unbind-and-scrub on disposal
+would reach only one copy. A test enforces the shape, because the failure is silent and driver-specific
+otherwise.
+
+**A tally taken at this seam is not the native-call budget.** Decision T2 gates NATIVE calls, and one seam call
+fans out inside the real emitter: a resource-set bind is up to six native calls, a redundant pipeline bind is
+zero, and section 9.4's one viewport plus one scissor per framebuffer CHANGE (zero for a re-bind) turns on a
+guard that lives in the real emitter. So the counting emitter here gives an upper-bound input and an ordering
+check. Whether the countable sink goes BELOW the real emitter (tallying the shipped fan-out, no second
+implementation to drift) or into a device-free harness guarded by T3's WARP `[GpuFact]` is row 9's decision,
+written out on `D3D11CountingEmitter`. It is deliberately not built yet.
+
 ## Design
 
 `docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md` in the engine repo, section 3 (package and layering),
-section 4.1 (getting the assembly loaded), and decisions P1, P2, P4 and I2.
+section 4.1 (getting the assembly loaded), section 5.1 (the stream and the emitter), section 2.1 (the recording
+model), and decisions P1, P2, P4, I2, R1, R2 and T2.

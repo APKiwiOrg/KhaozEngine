@@ -46,7 +46,11 @@ What it owns today:
   silent and machine-dependent. **A missing registration THROWS `GpuBackendProviderMissingException` and never
   falls back**, because a run that quietly used a different backend would file its measurements under the wrong
   name. An incapable MACHINE is the other case entirely: the provider's own `IsSupported()` functional probe
-  answers `IsBackendSupported`, and it reports through the ordinary `FallbackAfterFailure` path.
+  answers `IsBackendSupported`, and it reports through the ordinary `FallbackAfterFailure` path. A provider that
+  CREATES successfully and then hands back nothing, or hands back a device whose own `Backend` disagrees with the
+  selection, **throws too and never falls back**: that is a bug in the provider, and the fallback shape says
+  "this machine cannot run the backend", which would be the wrong answer told about the wrong thing. The rejected
+  device is disposed on the way out, since no context exists to own it.
   `RequiresProvider(kind)` says which kinds go through the registry, stated as everything this package does not
   build itself, so an appended kind is provider-backed by default.
 - **`AfterFallback(selection, fallbackBackend)`** (17.23.0) - the pure helper building the post-fallback report

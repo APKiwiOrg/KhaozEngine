@@ -851,7 +851,7 @@ its boundary W5.
   `DriverConcurrentCreates` false.** That is `D3D11CreationGate`, the second and last lock in the package, taken
   around one native creation call and nothing longer. A driver that creates concurrently gets no lock at all, and
   an UNKNOWN answer (the threading probe did not run, or could not answer) serializes, because the probe degrades
-  to unknown on every failure and its silence is not a licence. Six factory members are ungated by design, in two
+  to unknown on every failure and its silence is not a licence. Five factory members are ungated by design, in two
   groups: the four live ones that create no native object (framebuffer, resource layout, resource set, command
   list), and the one that is not built yet and throws (`CreateFence`), which has no native call to gate until it
   exists. `CreateComputePipeline` creates no native object either and IS gated anyway, to keep the two pipeline

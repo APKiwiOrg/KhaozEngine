@@ -497,9 +497,8 @@ precisely how both incidents got past it. They are Windows-only (FXC is `d3dcomp
 
 **`KE_D3D11_DEBUG` compiles shaders with debug information and no optimization**, so a RenderDoc or PIX capture's
 disassembly maps back to the emitted HLSL. The flags are part of the cache key, so a debug session and an
-ordinary one never see each other's compiled bytes. The same variable will also switch on the Direct3D debug
-layer and its info-queue pump when the backend's diagnostics land (decision G4). Today it affects shader
-compilation and nothing else.
+ordinary one never see each other's compiled bytes. The same variable ALSO switches on the Direct3D debug layer
+and its info-queue pump (decision G4, below). One variable, two effects, deliberately.
 ## The swapchain: present, resize and framebuffer identity
 
 **v1 keeps the LEGACY BLIT swapchain, reproduced from the incumbent field for field (W1).** Unversioned
@@ -550,7 +549,7 @@ away the frame that had just been rendered.
 check at the fault site: the incumbent discards it, and a discarded device removal surfaces frames later as an
 unrelated crash. A failed present also skips the queued resize, so the caller receives that `HRESULT` instead of a
 throw out of `ResizeBuffers` against a device that has just gone. Naming the removal, calling
-`GetDeviceRemovedReason` and surfacing it in the session header are not built yet.
+`GetDeviceRemovedReason` and surfacing it in the session header are the latch's, below.
 
 The four native calls sit behind `ID3D11SwapchainSurface`, the same shape the ring memory and the fence timeline
 have, so the queue, the coalescing, the boundary, the apply order, the sync interval and the framebuffer identity
@@ -566,6 +565,97 @@ one `ClearState` at the head of a replay instead, so the last frame's targets ar
 applies at the present boundary. That half is not device-free testable, because a fake surface has no context to
 inspect, and its evidence is a real window resize on the WARP leg.
 
+## Capabilities, adapter selection, the debug layer and device loss
+
+Decisions G1 to G4. Everything in this section is engine logic over four interop calls, so nearly all of it is
+device-free `[Fact]`s that run on macOS and Linux.
+
+**Capability parity with the incumbent, except one member (G1).** `GpuCapabilities` reads the same here as on
+`GpuBackendKind.Direct3D11` field for field, with `SupportsCompletionFences` true rather than false (decision
+C5). Five of the nine members are CONSTANTS of the feature levels this backend requires rather than device
+answers: `ClipSpaceYInverted` false, `DepthRangeZeroToOne` true, `SamplerAnisotropy` true, `SamplerLodBias` true
+and `SupportsCompute` true. The four a device answers are `DeviceName` (the DXGI adapter description, cut at the
+first NUL because it arrives out of a fixed 128-wide-char buffer), `MaxMsaaSampleCount` (the MIN over
+`R8G8B8A8_UNORM`, `R32_FLOAT` and `D32_FLOAT_S8X24_UINT` via `CheckMultisampleQualityLevels`, walked DOWNWARD
+from 32 because the supported counts are not required to be contiguous, and any query failure yields 1),
+`SupportsShadowMaps` (`CheckFormatSupport(R32_FLOAT)` for `Texture2D | RenderTarget | ShaderSample`), and
+`SupportsCompletionFences` (from the fence subsystem, so the capability and the fence path cannot disagree).
+
+`MaxMsaaSampleCount` is the member the parity assertion exists for. A different answer changes what
+`AntiAliasing.ResolveFor` picks, which changes the field look and the golden output, and it would neither throw
+nor log.
+
+**An out-of-range MSAA request THROWS at texture creation (C4)** rather than rounding down. The engine already
+has the one place a request is meant to be clamped, so a count arriving at `CreateTexture` above
+`MaxMsaaSampleCount` came from a caller that skipped it, and honouring it by rounding down would hide that behind
+a framebuffer that is quietly not multisampled.
+
+**The sampler's four hardcodes are reproduced and its two degradations are dropped (G1).** No comparison
+function, minimum LOD 0, maximum LOD `uint.MaxValue`, transparent-black border colour: those four are hardcoded
+because the incumbent hardcodes them and the committed goldens were baked through them, and the seam exposes none
+of them so a caller cannot ask for anything else. The incumbent's anisotropic-to-trilinear fallback and its
+forcing of `MipLodBias` to 0 are NOT reproduced, because both read capabilities that are constants here, so both
+branches are unreachable and carrying them would mean shipping a fallback nothing can enter.
+
+**`KE_D3D11_ADAPTER=warp|hardware|<index>|<name substring>` pins the adapter (G2).** Unset leaves DXGI to pick.
+A request that cannot be honoured WARNs and falls back to the default enumeration, never fails, and the warning
+lists the adapters that WERE enumerated, because a name substring is machine-specific and "nothing matched"
+without the list sends the reader to check their spelling when the machine is usually what changed. There is no
+unrecognized VALUE: anything that is not `warp` or `hardware` and does not parse as an integer is a name
+substring. `warp` is resolved through `DriverType.Warp` rather than through the enumeration, so the one value CI
+pins cannot fail to resolve on a machine whose factory enumerates no software adapter. The selection policy
+decides over a list of descriptions and flags, so it is device-free tested, and only the enumeration itself is
+Windows-only.
+
+The reason it exists is CI integrity. The Windows golden leg runs on WARP only because `windows-latest` carries
+no hardware adapter and DXGI falls back, so a runner image that grew a paravirtual adapter would silently change
+the rasterizer the 36 committed goldens are compared on, and the failure would arrive as a diff on unrelated
+goldens with nothing naming the cause. `DXGI_ADAPTER_FLAG_SOFTWARE` is recorded in the telemetry session header
+as `softwareAdapter`, read off the CREATED device rather than off the choice, so it is right on the default path
+where nothing in the engine picked the adapter at all.
+
+**`KE_D3D11_DEBUG=1` adds `D3D11_CREATE_DEVICE_DEBUG` and pumps `ID3D11InfoQueue` into the engine log (G4).**
+Corruption and error severities are raised to WARN, which is a deliberate ceiling rather than an oversight: ERROR
+is for something the engine could not do, and a debug-layer message is a diagnostic about something that already
+happened, so logging it at ERROR would make a debug session look like a broken engine and would put a row in a
+consumer's error-rate telemetry for every diagnostic run. The pump is rate limited by three caps, per frame, per
+repeated message and per session, and a cap that suppresses says so exactly once, because a limiter that silently
+drops is worse than none at all in a crash investigation. The per-repeat cap is the one that does the real work,
+since the layer's characteristic failure is one mistake reported once per draw call. A machine without the
+Windows Graphics Tools feature answers `DXGI_ERROR_SDK_COMPONENT_MISSING`, which is retried without the flag plus
+a WARN naming what to install, rather than refusing to start on someone who is by definition mid-diagnosis.
+
+`KE_D3D11_PREVENT_THREADING_OPTIMIZATIONS` keeps its exact semantics, including its value parsing and its
+unrecognised-value warning. It lives in `KhaozEngine.Gpu`'s `GpuD3D11DeviceFlags` and is untouched. There is no
+frame-capture integration: RenderDoc and PIX attach externally and need nothing from the engine.
+
+**A device loss reports why, at the site that noticed (G3).** `DXGI_ERROR_DEVICE_REMOVED` is sticky, so the
+reason is only meaningful at the FIRST site that sees it. The latch is handed the `HRESULT` after `Present`,
+after every staging `Map` and after replay, and on `DXGI_ERROR_DEVICE_REMOVED` or `DXGI_ERROR_DEVICE_RESET` it
+calls `GetDeviceRemovedReason` immediately, records it with the site, flips the liveness token so every later
+release is a no-op, logs an ERROR line saying what the reason means, and hands the session header a stable token
+plus the site as `deviceLossReason`. It latches exactly once: later sites answer "the device is gone" and change
+nothing, because the first site is the only one near the cause.
+
+An ordinary failure is deliberately NOT a device loss. A latch that fired on every failing `HRESULT` would kill
+the device on a plain `DXGI_ERROR_INVALID_CALL`, after which every release is a no-op and nothing anywhere says
+why.
+
+There is a FOURTH site, which arrives as a throw rather than as an `HRESULT`: the swapchain's resize apply calls
+`ResizeBuffers`, `GetBuffer` and `CreateRenderTargetView`, all of which end in `CheckError`
+(https://github.com/APKiwiOrg/KhaozEngine/issues/489). `CheckAfterFault` covers it by asking the device for its
+removal reason directly, and a false answer means the throw was something else and the caller must go on treating
+it as its own fault. The residual fact that issue records is structural and unchanged: a throw between the view
+release and the recreate leaves the framebuffer pointing at released views, and there is no rollback available,
+because holding the old views across the resize is precisely what `ResizeBuffers` forbids. The latch IS the
+repair, since once the device is known dead nothing binds again.
+
+**What is not built here.** Device creation does not exist, so nothing calls any of it yet: the adapter
+enumeration, the capability read, the debug-layer flag, the pump and the latch all wait on the device row for
+their call sites, and so does the Windows `ID3D11InfoQueue` reader behind `ID3D11InfoQueueSource`
+(`ID3D11InfoQueue::GetMessageW` is a two-pass call into a caller-allocated buffer, which is interop a Windows
+machine has to exercise before anyone should believe it).
+
 ## Design
 
 `docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md` in the engine repo, section 3 (package and layering),
@@ -574,7 +664,8 @@ section 2.1 (the recording model), section 2.3 (nested `Begin` during coexistenc
 viewport), section 7 (resources, views and state objects), section 8 (the shader path) with 8.1 (register
 numbering), 8.2 (pinning the cross-compile options) and 8.3 (the holed-signature hazards), sections 10.3 and
 10.4 (fences and the empty `WaitForIdle`), section 6 (per-frame memory), sections 9.1 and 9.2 (the swapchain,
-the present path and the resize), and decisions P1, P2, P4, I2, R1, R2, R3, R4, R6, R8, W1, W2, W3, W6, T2,
-U1, U2, U3, U4, U5, X1, X2, X3, S1, S2, S3, S4, S5, C2, C5 and C6. The recorded non-measurement M5 in section
+the present path and the resize), section 11 (capabilities, diagnostics, WARP and device loss), and decisions
+P1, P2, P4, I2, R1, R2, R3, R4, R6, R8, W1, W2, W3, W6, T2,
+U1, U2, U3, U4, U5, X1, X2, X3, S1, S2, S3, S4, S5, C2, C4, C5, C6, G1, G2, G3, G4 and T4. The recorded non-measurement M5 in section
 13 is the swapchain's, and its wording is reproduced above rather than referenced, because a reader of a soak
 capture will not have the design doc open.

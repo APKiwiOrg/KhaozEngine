@@ -7,7 +7,7 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.32.0
 
-### The native Direct3D 11 backend: the swapchain, the shader path and the bind flush (#453, #455, #457)
+### The native Direct3D 11 backend: the swapchain, the shader path, the bind flush and the diagnostics (#453, #455, #457, #459)
 
 The blit-model swapchain lands with the incumbent's present path reproduced field for field, a framebuffer
 whose identity never changes across resize, and a resize queued to the present boundary. The shader path lands
@@ -308,6 +308,114 @@ full activation would write that view with nothing added and the offsets-only pa
 being a constant buffer. Both halves of the flush would silently agree to ignore the offset and every draw would
 read the window the view was created with. Vacuous today, since all six dynamic elements shipped are uniform
 buffers, and refused anyway because nothing further down the path would ever say so.
+
+#### Capabilities, the sampler hardcodes, adapter selection, the debug layer and device-loss reporting (#459)
+
+The native backend can now say what the device can do, which adapter to run on, what the Direct3D debug layer is
+complaining about, and why the device died. Section 11 of the design doc, decisions G1 to G4, C4 and T4. Two
+public API additions land with it, and both are additive: `GpuDeviceDiagnostics` on `IGpuDevice.Diagnostics` and
+`GpuDeviceContext.Diagnostics`, and two new telemetry session-header fields, `softwareAdapter` and
+`deviceLossReason`. Nothing switches over and no golden moved: device creation still throws, so no shipped path
+reaches any of it.
+
+**Capability parity with the incumbent, one member excepted, and the assertion is the deliverable (G1, T4).**
+Five of the nine `GpuCapabilities` members are CONSTANTS of the feature levels this backend requires rather than
+device answers (`ClipSpaceYInverted` false, `DepthRangeZeroToOne` true, `SamplerAnisotropy` true,
+`SamplerLodBias` true, `SupportsCompute` true). Four come off a device: `DeviceName` from
+`IDXGIAdapter::GetDesc().Description` cut at the first NUL, because it arrives out of a fixed 128-wide-char
+buffer and the padding would otherwise reach the session header and every bug report that quotes it,
+`MaxMsaaSampleCount` as the MIN over `R8G8B8A8_UNORM`, `R32_FLOAT` and `D32_FLOAT_S8X24_UINT` via
+`CheckMultisampleQualityLevels`, `SupportsShadowMaps` from `CheckFormatSupport(R32_FLOAT)` for
+`Texture2D | RenderTarget | ShaderSample`, and `SupportsCompletionFences` from the fence subsystem rather than as
+a literal, so the capability and the fence path cannot disagree. That last one is the ONE permitted difference
+from the incumbent, true here and false there.
+
+The per-format walk is DOWNWARD from 32 rather than upward, which is a correctness point rather than a style one:
+the supported sample counts are not required to be contiguous, so a driver supporting 4x and 16x but not 8x would
+stop an upward walk at 4 and under-report the card. Any query failure yields 1 for the whole fold, matching the
+incumbent's defensive read, because a capability read is never allowed to be the thing that fails device
+creation. `MaxMsaaSampleCount` is the member the parity assertion exists for: a different answer silently changes
+what `AntiAliasing.ResolveFor` picks, which changes the field look and the golden output, and it would neither
+throw nor log.
+
+**An out-of-range MSAA request THROWS at texture creation (C4)**, from `D3D11ResourceFactory.CreateTexture`,
+rather than rounding down. The engine already has the one place a request is meant to be clamped, so a count
+arriving above `MaxMsaaSampleCount` came from a caller that skipped it, and honouring it would hide that behind a
+framebuffer that is quietly not multisampled. The check is at the factory rather than in `D3D11Texture` because
+that is where the device's capabilities are known, and because the swapchain builds its own depth attachment
+through that constructor directly at a single sample, which is engine-controlled and has nothing to validate.
+
+**The sampler's four hardcodes were already reproduced and its two degradations already dropped**, by the
+resource row that built `D3D11Sampler`: no comparison function, minimum LOD 0, maximum LOD `uint.MaxValue`,
+transparent-black border. What this row adds is the thing that makes "unreachable" checkable rather than
+asserted in a comment. The two capabilities the dropped branches read are now named constants
+(`D3D11CapabilityRead.SamplerAnisotropy` and `SamplerLodBias`, both true), and the parity test asserts them equal
+to the incumbent's, so a device that somehow reported either as false would fail a test instead of quietly
+sampling differently.
+
+**`KE_D3D11_ADAPTER=warp|hardware|<index>|<name substring>` pins the adapter, and the reason is CI integrity
+(G2).** Nothing in the engine selects WARP today. The Windows golden leg gets it only because `windows-latest`
+carries no hardware adapter and DXGI falls back, so the rasterizer the 36 committed Direct3D 11 goldens are
+compared on is an accident of the runner image, and a runner that grew a paravirtual adapter would change it
+silently, with the failure arriving as a diff on unrelated goldens and nothing anywhere naming the cause. A
+request that cannot be honoured WARNs and falls back to letting DXGI pick, never fails, and the warning lists the
+adapters that WERE enumerated, because a name substring is machine-specific by nature and "nothing matched"
+without the list sends the reader to check their spelling when the machine is usually what changed. There is
+deliberately no unrecognized VALUE: anything that is not `warp` or `hardware` and does not parse as an integer is
+a name substring, which is the only reading under which someone typing their GPU's name gets what they meant.
+`warp` resolves through `DriverType.Warp` rather than through the enumeration, so the one value CI pins cannot
+fail to resolve on a machine whose factory enumerates no software adapter. `DXGI_ADAPTER_FLAG_SOFTWARE` is
+recorded in the session header as `softwareAdapter`, read off the CREATED device rather than off the choice, so
+it is right on the default path where nothing in the engine picked the adapter at all.
+
+**`KE_D3D11_DEBUG=1` gains its second job: the debug layer and a rate-limited `ID3D11InfoQueue` pump (G4).** One
+variable, two effects, deliberately, because a session debugging a Direct3D problem wants both and remembering
+two names to get one answer is how a capture ends up taken with half the instrumentation on. A test pins the two
+readers against the same value table, so a change to one that is not made to the other is a red test rather than
+a half-instrumented capture. Corruption and error severities are raised to WARN and not to ERROR, which is a
+deliberate ceiling: ERROR is for something the engine could not do, and a debug-layer message is a diagnostic
+about something that already happened, so ERROR would make a debug session look like a broken engine and would
+put a row in a consumer's error-rate telemetry for every diagnostic run. The rate limit has three caps, per
+frame, per repeated message and per session, and a cap that suppresses says so exactly once, because a limiter
+that silently drops is worse than none at all in a crash investigation: a reader cannot tell a quiet run from a
+truncated one. The per-repeat cap is the one that does the real work, since the layer's characteristic failure is
+one mistake reported once per draw call. A machine without the Windows Graphics Tools feature answers
+`DXGI_ERROR_SDK_COMPONENT_MISSING`, which retries without the flag plus a WARN naming what to install, rather
+than refusing to start on someone who is by definition mid-diagnosis.
+`KE_D3D11_PREVENT_THREADING_OPTIMIZATIONS` keeps its exact semantics, untouched in `GpuD3D11DeviceFlags`, and
+there is no frame-capture integration, because RenderDoc and PIX attach externally.
+
+**A device loss now names itself, at the site that noticed (G3).** `DXGI_ERROR_DEVICE_REMOVED` is sticky, which
+is why all 25 stacks on #423 pointed at a texture view constructor that was merely the next call made rather than
+at anything that went wrong. `D3D11DeviceLossLatch` takes the HRESULT at each site, and on
+`DXGI_ERROR_DEVICE_REMOVED` or `DXGI_ERROR_DEVICE_RESET` calls `GetDeviceRemovedReason` IMMEDIATELY, records it
+with the site, flips the same liveness token teardown uses so every later release is a no-op, logs an ERROR line
+saying what the reason means in words, and hands the session header a stable token plus the site. It latches
+exactly once, because the first site is the only one near the cause and two would be a race over which the header
+carries. An ordinary failure is deliberately NOT a device loss: a latch that fired on every failing HRESULT would
+kill the device on a plain `DXGI_ERROR_INVALID_CALL`, after which every release is a no-op and nothing says why.
+`CheckAfterFault` covers the fourth site, which arrives as a throw rather than an HRESULT (the swapchain's resize
+apply, https://github.com/APKiwiOrg/KhaozEngine/issues/489), by asking the device for its removal reason
+directly, and answering false there means the throw was something else and the caller must go on treating it as
+its own fault.
+
+**What is deliberately NOT here, and both are stated rather than left to be found.** Device creation does not
+exist, so nothing calls any of this yet: the adapter enumeration, the capability read, the debug flag, the pump
+and the latch all wait on the device row for their call sites, and the Windows `ID3D11InfoQueue` reader behind
+`ID3D11InfoQueueSource` lands there too, because `GetMessageW` is a two-pass call into a caller-allocated buffer
+that a Windows machine has to exercise before anyone should believe it. And #427 stays OPEN: its reporting is
+built here, and it closes when the native leg can actually observe a device loss.
+
+**Where the tests are.** Everything engine-owned runs device-free on macOS and Linux: the capability assembly
+from probed inputs, the descending sample-count walk, the min-over-three-formats fold, the name trimming, the
+sample-count guard, the adapter parse and selection policy against a faked adapter list, both halves of the debug
+lever, the pump and all three rate-limit caps against a fake queue, and the latch with its once-only rule,
+liveness flip, header string and fault path. `NativeVsVeldridCapabilityParityTests` carries T4 itself as a
+`[GpuFact]` that constructs both devices in one process, and it lands DORMANT, keyed to the exact
+`NotSupportedException` the unbuilt provider raises, so it starts running on its own the day creation lands. Its
+device-free companion is a reflection check that the field-by-field comparer covers every member of
+`GpuCapabilities`, which is the guard that matters: a member appended to that struct without a line in the
+comparer would make every parity assertion silently weaker while staying green.
 
 ## 17.31.0
 

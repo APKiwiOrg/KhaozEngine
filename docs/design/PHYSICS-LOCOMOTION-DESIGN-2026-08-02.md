@@ -597,6 +597,52 @@ is the adversarial direction for round three rather than a gentler one, because 
 command tick's rise and a slide tick's drop and this face shrinks the drop. Another 5760 rides: 0 climbers, 0
 grants, 0 jumps, worst peak 0.000 m, every ride ending 226 to 579 m below its start.
 
+### Correction, round six (2026-08-03, 17.31.0, #486): a footed tick may not seat itself on ground it cannot stand on
+
+Round five widened the gate for a character that already has footing and softened what a marginal slide costs. It did
+not touch the OTHER decision a footed tick makes about steep ground, and a Ruinborne playtest of the shipped band
+found it immediately: walking into the bottom of a steep face flickers the character into the falling pose instead of
+simply refusing to walk up. The band was never going to help. It fixes flip-flopping on marginal ground, and a cliff
+toe is a step function from walkable beach to a face far past gate plus band.
+
+**Two decisions about the same column reached opposite verdicts, one tick apart.** The wall contact admitted any
+destination within `StepHeight` of the feet whatever its steepness, on the model's own argument that "ground the
+character can be seated on is admitted, and the no-traction rule is what makes doing so worthless". The support
+decision at the end of the same tick then read that destination's normal, called it too steep, and refused footing.
+So the tick admitted a seat the tick's own support rule would not honour: `Grounded` false, the falling pose, a slide
+back onto the flat, footing regained, and the walk into the face again. Measured on a 60 degree face at the shipped
+tuning, holding one direction: 112 footing flips and 539 airborne ticks out of 600 at 30 Hz, and at 120 Hz and above
+no flicker at all but something worse, a permanent slide parked against the toe (461 airborne ticks out of 480).
+
+**The rule is that the wall contact reads the same ceiling the support decision reads, and stops arguing with it.** A
+tick that STARTS with footing takes the wall against any destination past its own traction ceiling (this tick's
+resolved gate, which is gate plus band while the character has footing), regardless of how little the destination
+rises. In the code this is not a new branch: the reach simply loses its grounded `StepHeight` case, because the reach
+is only ever consulted about ground the steepness test has ALREADY called past the ceiling. Walkable ground and band
+ground return before it. So the number every path reads is now the same one round three wrote for a tick with no
+footing, `max(0, vVel * dt)`, and the model has one reach rather than two.
+
+**The three consequences that had to survive, each measured rather than argued.** A DESCENDING destination rises by a
+negative amount and is admitted at any reach, so cresting onto a steep face from above still enters a slide. A tick
+that starts WITHOUT footing never reads the widened gate and is untouched by construction, so falling onto steep
+ground still slides. And band ground is at or under the ceiling by definition, so it never reaches the height test
+and the whole of round five is unmodified. The referee suites agree: the 360-heading sweeps at four tick rates on
+both fixtures, the per-tick rise invariant, gully escape, contour momentum, reconcile parity and the walkable
+byte-identity cases are all green, and the sweeps are bit-identical, because a sweep on a face that never grants
+footing never reads the reach on a footed tick either.
+
+**What it cost, and it is a real cost rather than a fixture detail.** A NARROW steep feature the character used to
+scramble over is now a fence, because the scramble WAS the mechanism this removes: the old model seated the character
+on the feature for a tick, lost its footing, and the next tick's destination landed past it on walkable ground. On
+the saw-tooth crest fixture (a 0.4 m riser at 78.7 degrees every 2.08 m) a run that used to cross 48 periods now
+crosses 8 and stops dead, permanently, because a head-on wall zeroes the move and the next destination is the same
+column. That is the rule working as specified, since 0.34 m of 78.7 degree ground is still ground nothing can stand
+on, and it is filed as #488 for a playtest to rule on rather than left for a fixture to decide silently. The two
+other fixtures the round moved were recalibrated the same way round five recalibrated three: the gate-boundary bank
+control now measures a refusal rather than a chatter (the bare gate still fails, with a better symptom), and the
+friction-versus-no-friction comparison had to stop using a control that also drops the band, because the band now
+changes the APPROACH to a marginal face and 0.03 m of the measured difference was its, not friction's.
+
 ## Directional speed under `FaceCamera` (2026-08-03 addendum, 17.30.0, #479)
 
 Phase 1 above gave the character an authoritative facing and stated, correctly for what it shipped, that facing

@@ -4859,12 +4859,25 @@ rules replace it, both unconditional and neither a knob:
 - **Wall slide.** A horizontal move whose destination is BOTH steeper than the tick's traction gate AND above what that
   tick can REACH is a wall contact: the into-face component of the move dies and the along-face component
   survives. So strafing along a cliff mid-jump keeps its lateral travel, and walking head-on into one makes no
-  headway. It applies grounded and airborne, on the command path and the momentum path alike. The REACH is a
-  `MoveTuning.StepHeight` while you are GROUNDED, and your own resolved upward motion for that tick when you are
-  not - zero while you fall (17.29.0). A step is what footing buys, so **a tick with no footing may never end
-  higher than its own velocity carried it**: altitude on steep ground comes from velocity, never from the ground
-  clamp. With a flat `StepHeight` for every tick alike it did come from the clamp, and walking at a 74 degree
-  cliff climbed it at 2.3 to 2.7 m/s while `VerticalVelocity` reported a 5 to 7 m/s fall.
+  headway. It applies grounded and airborne, on the command path and the momentum path alike. The REACH is your own
+  resolved upward motion for that tick and nothing else - zero while you fall, and zero while you walk on the flat
+  (17.29.0, 17.31.0). A step is what footing buys, and nobody has bought a step onto ground past the traction
+  ceiling, so **no tick may end higher than its own velocity carried it**: altitude on steep ground comes from
+  velocity, never from the ground clamp. With a flat `MoveTuning.StepHeight` here it did come from the clamp, and
+  walking at a 74 degree cliff climbed it at 2.3 to 2.7 m/s while `VerticalVelocity` reported a 5 to 7 m/s fall.
+- **Walking into a cliff base is a WALL, not a seat (17.31.0, [#486](https://github.com/APKiwiOrg/KhaozEngine/issues/486)).**
+  The reach above used to be a `StepHeight` on any tick that STARTED with footing, so a walking character was
+  admitted onto the toe of a steep face (the rise is small), refused traction there by the same tick's support
+  decision, and slid back onto the flat to walk in again - a grounded-airborne oscillation that flickers a game's
+  falling pose at every steep-face base (112 footing flips and 539 airborne ticks in 600 at 30 Hz on a 60 degree
+  face, and at 120 Hz and up a permanent slide parked against the toe). Now a footed tick takes the wall against any
+  destination past its own traction ceiling, however little that destination rises. Nothing about walkable ground
+  changes, including the band ground the hysteresis below holds you on: those destinations never reach the height
+  test at all. Nor does anything about DESCENT, since a destination below your feet is admitted at any reach - so
+  cresting onto a steep face from above still drops you into a slide, and so does falling onto one. The one real
+  cost is that a NARROW steep riser inside `StepHeight` is now a fence rather than a scramble on the analytic path,
+  which is tracked as [#488](https://github.com/APKiwiOrg/KhaozEngine/issues/488). Stairs, curbs and building steps
+  are unaffected: they come through the `IPhysicsWorld` step-up, which is untouched.
 - **No traction.** A surface steeper than the tick's TRACTION GATE grants no support: `Grounded` stays false, so no
   jump, no coyote refresh and no landing latch on the face. You are still seated on it (the ground clamp forbids
   penetration) but you slide - gravity decomposes against the surface normal and its tangential component

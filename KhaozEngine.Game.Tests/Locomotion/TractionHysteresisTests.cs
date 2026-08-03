@@ -101,18 +101,29 @@ public class TractionHysteresisTests
     }
 
     [Fact]
-    public void A_bank_straddling_the_gate_chatters_without_hysteresis()
+    public void A_bank_straddling_the_gate_is_refused_without_hysteresis()
     {
-        // THE RED, kept in the suite. This is the reported bug reproduced on a synthetic bank: with the band at zero
-        // the walkability decision is re-taken from scratch every tick, so the character alternates walk ticks and
-        // full-gravity slide ticks and gains and loses the same ground for as long as you hold the key.
+        // THE RED, kept in the suite, and RECALIBRATED by #486 (17.31.0) rather than relaxed. The failure this
+        // fixture is about has not changed: a bare per-tick binary gate cannot deal with terrain whose columns
+        // straddle it, and this bank's very first column is 46.9 degrees against a 45 degree gate. What changed is
+        // the SYMPTOM it produces. Until #486 the character was admitted onto that column (the rise is well inside
+        // StepHeight), refused traction there, and slid back off, so the measurement was a chatter: 43 flips in 330
+        // ticks on the reported Ruinborne bank, 112 on this one over 600. #486 stopped a footed tick from seating
+        // itself onto ground past its own traction ceiling at all, so the same character is now simply STOPPED at
+        // the toe of the bank - no flicker, no slide, and no climb either.
+        //
+        // That is a better failure and still a failure, which is the whole point of keeping the control: without the
+        // band, a bank a player reads as a steep-but-walkable hillside is a wall, and re-tuning the gate past it only
+        // moves the wall onto the next feature. The green below is the same walk with the shipped band.
         var t = NoHysteresisNoFriction;
         (int flips, float topFeet, float endX, string footing) = ClimbTheBank(t, 600);
 
         string measured = $"flips {flips}, top {topFeet:F3} m, end x {endX:F3}";
-        Assert.True(flips > 20, $"the control did not reproduce the reported chatter: {measured}\n{footing}");
-        // And it never gets up the bank: 600 ticks is 120 m of commanded travel against an 8 m climb.
-        Assert.True(topFeet < BankLength - 1f, $"the control climbed the bank after all: {measured}");
+        // 600 ticks is 120 m of commanded travel against an 8 m climb, and it does not leave the flat.
+        Assert.True(topFeet < 1e-2f, $"the control climbed the bank after all: {measured}");
+        Assert.True(endX <= EdgeX, $"the control walked onto the bank: {measured}");
+        // And the stop is clean: the character keeps its footing on the flat throughout, which is #486's half of it.
+        Assert.True(flips == 0, $"the control still flickers at the toe: {measured}\n{footing}");
     }
 
     [Fact]
@@ -334,7 +345,16 @@ public class TractionHysteresisTests
         // times as high - unbounded as the scale approaches zero at the gate. So the up half keeps full-strength
         // gravity, and the reach of a running jump onto a marginal face is exactly what it was before friction
         // existed. Measured on the 46 degree face the #442 fixtures use as their best converter.
+        //
+        // THE CONTROL TURNS OFF FRICTION AND NOTHING ELSE (recalibrated by #486, 17.31.0). It used to be the shared
+        // NoHysteresisNoFriction tuning, which also drops the traction band, and that was harmless only while the
+        // band could not change the APPROACH. It can now: the run-up's launch tick starts with footing, so it reads
+        // the widened gate, and this face at 46 degrees is inside gate plus band but outside the bare gate. With the
+        // band the launch tick walks into the face, without it the launch tick meets a wall - two different rides,
+        // and the 0.03 m between them is the band's, not friction's. Isolating the one knob under test is what makes
+        // the comparison mean what the name says.
         var t = Tuning;
+        var frictionless = Tuning with { SlideFrictionRampRadians = 0f };
         (Func<float, float, float> ground, Func<float, float, Vector3> normals) = Face(46f);
 
         float PeakOf(in MoveTuning tune)
@@ -355,7 +375,7 @@ public class TractionHysteresisTests
         }
 
         float withFriction = PeakOf(t);
-        float without = PeakOf(NoHysteresisNoFriction);
+        float without = PeakOf(frictionless);
         string measured = $"with friction {withFriction:F4} m, without {without:F4} m";
         // The energy bound is the same number in both cases, and the measured peaks agree to well inside a
         // millimetre, because the rising half of the ride is byte-for-byte the same arithmetic.

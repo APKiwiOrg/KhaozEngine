@@ -100,24 +100,33 @@ tick can REACH is a wall contact:
 
     the into-face component of the move dies, the along-face component survives
 
-The REACH is a `MoveTuning.StepHeight` while the character is GROUNDED, and the tick's OWN RESOLVED UPWARD MOTION
-when it is not - `max(0, vVel * dt)`, so zero while it falls (17.29.0, [#468](https://github.com/APKiwiOrg/KhaozEngine/issues/468)).
-A step is what footing buys, so a tick with no footing has bought nothing: it may be seated at or below the height
-it began at, and a rising one exactly as far up as its own velocity carries it. **Altitude on steep ground comes
-only from real velocity, never from the ground clamp.** Read as a single `StepHeight` for every tick alike, this
-admission was a climb: the clamp seats the capsule on whatever column the admission reaches, so walking at a 74
-degree cliff gained 2.3 to 2.7 m/s while `VerticalVelocity` reported falling at 5 to 7 (and paid MORE at a higher
-tick rate, the ceiling being a `StepHeight` per tick against gravity's `g*dt` takeback). A SLIDING tick takes the
-same allowance read off the slide's own resolved vertical, plus a 1 mm float slack it alone needs, because its
-advance lies in the surface plane and its rise therefore EQUALS its resolved vertical to the last float.
+The REACH is the tick's OWN RESOLVED UPWARD MOTION and nothing else - `max(0, vVel * dt)`, so zero while it falls
+and zero while it walks on the flat (17.29.0, [#468](https://github.com/APKiwiOrg/KhaozEngine/issues/468), then
+17.31.0, [#486](https://github.com/APKiwiOrg/KhaozEngine/issues/486)). A step is what footing buys, and no tick has bought a
+step onto ground past its own traction ceiling: a tick may be seated at or below the height it began at, and a
+rising one exactly as far up as its own velocity carries it. **Altitude on steep ground comes only from real
+velocity, never from the ground clamp.** Read as a `StepHeight` this admission was a climb and a bounce, both times
+because the clamp seats the capsule on whatever column the admission reaches. It let walking at a 74 degree cliff
+gain 2.3 to 2.7 m/s while `VerticalVelocity` reported falling at 5 to 7 (and pay MORE at a higher tick rate, the
+ceiling being a `StepHeight` per tick against gravity's `g*dt` takeback), and while it was still granted to GROUNDED
+ticks it seated a walking character onto a cliff toe that the same tick's support decision then refused, flickering
+the falling pose at every steep-face base (112 footing flips in 600 ticks at 30 Hz on a 60 degree face). A SLIDING
+tick takes the same allowance read off the slide's own resolved vertical, plus a 1 mm float slack it alone needs,
+because its advance lies in the surface plane and its rise therefore EQUALS its resolved vertical to the last float.
+
+**Walkable ground and band ground never read the reach at all**, because the steepness test returns first, so every
+real step-up, step-down and stair glide is exactly what it was. The reach decides one thing only: what a tick may do
+about a destination it has already been told it cannot stand on. A DESCENDING destination is admitted at any reach
+(it rises by a negative amount), which is how cresting onto a steep face from above still enters a slide.
 
 The face's horizontal direction is the XZ projection of the HEIGHT-DERIVED plane at the destination (see "Which
 delegate answers what" below), with the movement direction standing in when that projection is degenerate, which
 meets the face head-on and kills the whole move - the conservative direction. Both conditions are load-bearing.
 The steepness test is what leaves walkable ground untouched, since a fast run up a legal ramp can rise more than a
-`StepHeight` in one tick. The height test is what makes this a CONTACT rather than the old gate: ground within a
-step of the feet is something the character can be seated on, so it is admitted, and rule 2 is what makes doing so
-worthless. The projected move is re-tested and refused outright only if it still lands in a wall, which happens in
+`StepHeight` in one tick. The height test is what keeps this a CONTACT rather than the old gate for the ticks that
+have no footing: ground at or below the feet is admitted, so a fall, a graze and a slide all still meet the surface
+and ride it, and rule 2 is what makes doing so worthless. The projected move is re-tested and refused outright only
+if it still lands in a wall, which happens in
 a concave corner and is what keeps an XZ from ever being committed under terrain. There is no outward-move
 exemption: a move that the heights say rises past the reach is a wall contact whichever way it points.
 

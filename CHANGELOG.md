@@ -264,9 +264,11 @@ touched.
 **Every shipped program's emitted HLSL is hashed against a checked-in table.** 34 distinct graphics programs
 (from 36 non-test call sites, the `Line` pair being created three times) plus 8 compute kernels across the four
 cascade resolutions shipped code can reach, for 76 hashed stages. Device-free, so it runs on every leg including
-the ones with no GPU. That converts "the same SPIRV-Cross yields the same bytes, so the 36 committed Direct3D 11
-goldens carry over without a rebake" from the assumption the whole backend rests on into a checked fact, per
-program, before a single golden runs. One program's hashes moving is a shader edit. Thirty moving at once is an
+the ones with no GPU. The table is baked from this path, so it pins drift rather than agreement with the
+incumbent. Agreement was measured once at review time, all 34 graphics programs byte-identical under this path
+and under a faithful replication of the incumbent's `CreateFromSpirv` call, which is what lets the 36 committed
+Direct3D 11 goldens carry over without a rebake. The table is what keeps that true from there on. One program's
+hashes moving is a shader edit. Thirty moving at once is an
 option drift, and the failure says so and dumps the emitted HLSL so the two are one diff apart rather than
 indistinguishable. `KE_UPDATE_HLSL_HASHES=1` re-bakes.
 
@@ -306,7 +308,10 @@ path is what stops a validator drifting into validating a shader nobody ships. T
 needs no device, and deliberately not named "Golden", because that filter is for device-backed pixel comparisons.
 `cross-platform-gpu.yml` selects it by name in its own Windows-only step ahead of the suite, so a rejected shader
 fails in seconds instead of after a full golden pass, and `KhaozEngine.Gpu.D3D11/**` joins the workflow's push
-path filter so a shader-path change actually triggers it.
+path filter so a shader-path change actually triggers it. The step fails on a ZERO match
+(`RunConfiguration.TreatNoTestsAsError`, scoped to the owning test project), since selection by name is the only
+thing holding it: those cases early-return passed off Windows, so a class rename would otherwise disarm the one
+leg that compiles the engine's HLSL and leave every leg green.
 
 **`KE_D3D11_DEBUG` gains its shader half.** It compiles with `D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION`
 rather than optimization level 3, so a capture's disassembly maps back to the emitted HLSL. That is one flag more

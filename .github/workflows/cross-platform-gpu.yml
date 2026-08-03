@@ -235,9 +235,20 @@ jobs:
       #
       # No KE_GPU_TESTS and no backend selection: nothing here creates a device. Cheap enough (seconds) that it
       # runs before the suite, so a rejected shader fails fast instead of after a full golden pass.
+      #
+      # ZERO MATCHES MUST FAIL. A filter that matches nothing still exits 0, and those four cases early-return
+      # PASSED on every non-Windows leg, so this step is the only place they have teeth: a class rename would
+      # disarm the FXC coverage permanently and every leg would stay green.
+      # `RunConfiguration.TreatNoTestsAsError` is what turns a zero match into a failure, and BOTH details of how
+      # it is passed here were measured rather than assumed (SDK 10.0.302, Microsoft.NET.Test.Sdk 17.11.1).
+      # It is a runsettings argument, not the documented `-p:VSTestTreatNoTestsAsError=true` MSBuild property,
+      # because that property is a no-op on this stack: a run with zero matches still exits 0 with it set, over
+      # one project or over the solution, so it reads as a fix while changing nothing.
+      # And it is scoped to the ONE test project that owns these tests, because run over the whole solution the
+      # setting fails on each of the other 17 test projects, where matching zero is the correct outcome.
       - name: Shader FXC validation (no device)
         if: matrix.os == 'windows-latest'
-        run: dotnet test -c Release --no-build --filter "FullyQualifiedName~D3D11FxcValidationTests"
+        run: dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~D3D11FxcValidationTests" -- RunConfiguration.TreatNoTestsAsError=true
         shell: bash
 
       # Suite selection per leg + trigger (the cost + stability split in the header):

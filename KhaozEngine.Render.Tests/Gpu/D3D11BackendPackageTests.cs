@@ -1,5 +1,4 @@
 using System;
-using System.Linq;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.D3D11;
 using KhaozEngine.Gpu.D3D11.Internal;
@@ -133,7 +132,8 @@ namespace KhaozEngine.Tests.Gpu
         /// <para>
         /// A failure here is not a style point. The JIT resolves a method's types when it compiles that method,
         /// so an inlined or unguarded body means a macOS or Linux run loads a Windows-only native binding, and
-        /// what the user sees is a startup crash naming an assembly they never asked for.
+        /// what the user sees is a startup crash naming an assembly they never asked for. The assertion itself
+        /// lives on <see cref="D3D11InteropLoad"/>, shared with the fence subsystem's load-path test.
         /// </para>
         /// </summary>
         [Fact]
@@ -144,20 +144,7 @@ namespace KhaozEngine.Tests.Gpu
             KhaozEngineD3D11.Register();
             Assert.False(GpuBackendProviders.Require(GpuBackendKind.Direct3D11Native).IsSupported());
 
-            string[] loaded = AppDomain.CurrentDomain.GetAssemblies()
-                .Select(a => a.GetName().Name ?? "")
-                .Where(n => n.StartsWith("Vortice", StringComparison.Ordinal)
-                    || n.StartsWith("SharpGen", StringComparison.Ordinal))
-                .Distinct(StringComparer.Ordinal)
-                .OrderBy(n => n, StringComparer.Ordinal)
-                .ToArray();
-
-            bool clean = loaded.Length == 0;
-            Assert.True(clean,
-                "The Direct3D interop was loaded on a platform that has none: [" + string.Join(", ", loaded) +
-                "]. Some body that names a Vortice type is no longer NoInlining behind " +
-                "KhaozEngineD3D11.IsPlatformSupported, so the JIT resolved those types while compiling a method " +
-                "that runs everywhere.");
+            D3D11InteropLoad.AssertNotLoaded();
         }
     }
 }

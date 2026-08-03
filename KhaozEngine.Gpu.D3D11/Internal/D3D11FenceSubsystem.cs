@@ -244,9 +244,28 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// bounds how long one wait goes before the liveness check runs again, so a device that dies mid-drain
         /// (Direct3D's own reset after a hang) releases the caller.
         /// </para>
+        /// <para>
+        /// A CALLER HOLDING THE SUBMIT LOCK IS REFUSED, BY NAME (decision W4, and the enforcement half of the
+        /// paragraph above). The drain releases the lock around its wait precisely so the submission it is waiting
+        /// for can be made, and a caller that already held the lock re-enters it here rather than acquiring it, so
+        /// the release inside this method releases NOTHING: the outer level survives, no other thread can submit,
+        /// and the drain waits for work that can never arrive. That is a hang with no name on it, at teardown,
+        /// which is where a hang is hardest to attribute. The check costs one <see cref="Monitor.IsEntered"/> per
+        /// drain and turns the whole family into a message naming the rule.
+        /// </para>
         /// </summary>
         internal void WaitForIdle()
         {
+            if (Monitor.IsEntered(_submitLock))
+            {
+                throw new InvalidOperationException(
+                    "WaitForIdle was called on the native Direct3D 11 device while the caller already held the "
+                    + "submit lock. The drain signals and flushes under the lock and then RELEASES it to wait, so "
+                    + "that the work it is waiting for can still be submitted. Re-entering the lock here releases "
+                    + "nothing, so the drain would wait for a submission no other thread can make. Call it "
+                    + "outside the frame's critical section.");
+            }
+
             if (_liveness.IsDead) return;
             if (!_realDrain) return;
 

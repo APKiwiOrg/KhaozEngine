@@ -64,7 +64,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// latch has flipped, so a segment wait during teardown finds its target already reached and returns.
     /// </para>
     /// <para>
-    /// LOCKING. The device's single submit lock (decision W4) covers the map and the unmap, because both are
+    /// LOCKING. The package README's "Threading: the shipped contract" section is the authoritative statement of
+    /// decision W4 and the W5 boundary, and what follows is this type's share of it rather than a second copy.
+    /// The device's single submit lock covers the map and the unmap, because both are
     /// immediate-context calls, and it is held for the CALL rather than for a frame. Under
     /// <see cref="D3D11RingMapScope.AcrossRecording"/> the copy is not covered at all, which is what keeps
     /// recording lock-free: acquiring the mapping is once per ring per record phase and writing into it is
@@ -218,9 +220,27 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// cost rather than the previous one's. That is the reading a soak wants: the number answers "what did
         /// this frame pay", and a frame pays for the segment it starts on.
         /// </para>
+        /// <para>
+        /// CALL IT WITHOUT THE SUBMIT LOCK, AND A CALLER HOLDING IT IS REFUSED BY NAME (decision W4). This is the
+        /// one member here that can BLOCK: <see cref="AcquireSegment"/> spins until the GPU has finished with the
+        /// segment being opened, which is up to a frame. Under the lock that would be a frame-long hold of the
+        /// exact lock decision W4 caps at microseconds, and on the event-query fence mechanism it is worse than
+        /// slow: every poll of the completion value re-enters the same lock, so the wait would also shut out the
+        /// submission that would end it. The present boundary calls this AFTER the present has released the lock,
+        /// and the check makes wiring it the other way a message rather than a stall nobody can see.
+        /// </para>
         /// </summary>
         internal void BeginFrame()
         {
+            if (Monitor.IsEntered(_submitLock))
+            {
+                throw new InvalidOperationException(
+                    "BeginFrame was called on the native Direct3D 11 ring allocator while the caller held the "
+                    + "submit lock. Opening a frame waits for the GPU to finish with the segment it opens, which "
+                    + "is up to a frame, and decision W4 holds the submit lock for microseconds. Call it after "
+                    + "the present has released the lock, not inside it.");
+            }
+
             _lastFrame = new D3D11BackpressureStats(_stallCount, _stallTicks * 1000d / Stopwatch.Frequency);
             _stallCount = 0;
             _stallTicks = 0L;

@@ -5,15 +5,17 @@ NO umbrella: a consumer adds this package explicitly, the same pattern as `Physi
 `WorldStore.Sqlite`, and nothing that does not want the Direct3D interop ever carries it.
 
 > **Status: registration, the platform guards, the machine-capability probe, the recording model, the replay
-> contract, the resource model and the fence subsystem are live.** The recording model (see "Recording, and the
-> two drivers" below) lands behind `KE_D3D11_RECORD`, the replay's own rules (see "What a replay does to the
-> device") land on top of it, the resource model (see "Resources, views and state objects") lands beside them,
-> and the fence subsystem (see "Completion fences, and a `WaitForIdle` that drains") lands behind
-> `KE_D3D11_REAL_DRAIN`. Those rows were built in parallel and are joined: the submit path raises the
-> end-of-replay signal, the fence subsystem reads the device's own liveness latch, and the pipeline handle
-> answers the redundancy caches. Device creation is still not built, so `CreateForWindow` and `CreateHeadless`
-> throw a message saying so, and nothing shipped constructs any of them. `GpuBackendKind.Direct3D11` remains the
-> working Direct3D 11 backend and stays selectable indefinitely.
+> contract, the resource model, the fence subsystem and the constant-buffer ring are live.** The recording model
+> (see "Recording, and the two drivers" below) lands behind `KE_D3D11_RECORD`, the replay's own rules (see "What
+> a replay does to the device") land on top of it, the resource model (see "Resources, views and state objects")
+> lands beside them, the fence subsystem (see "Completion fences, and a `WaitForIdle` that drains") lands behind
+> `KE_D3D11_REAL_DRAIN`, and the per-frame uniform ring (see "Per-frame memory: the constant-buffer ring") lands
+> on top of the fences it recycles against. Those rows were built in parallel and are joined: the submit path
+> raises the end-of-replay signal and brackets the ring around the replay, the fence subsystem reads the device's
+> own liveness latch and answers the ring's segment gate, and the pipeline handle answers the redundancy caches.
+> Device creation is still not built, so `CreateForWindow` and `CreateHeadless` throw a message saying so, and
+> nothing shipped constructs any of them. `GpuBackendKind.Direct3D11` remains the working Direct3D 11 backend and
+> stays selectable indefinitely.
 
 ## Opting in
 
@@ -269,11 +271,80 @@ twice. It is also the one implementation of `ID3D11DeviceLiveness`, which is the
 was built against: a fence asks whether the device is dead so it can answer signalled, and it has no business
 flipping the token, so `MarkDead` stays off that interface and the device's teardown remains its only caller.
 
+## Per-frame memory: the constant-buffer ring
+
+**Every `GpuBufferUsage.UniformBuffer` buffer is ring-backed, and its `IGpuBuffer` identity never changes.** The
+native buffer is created `DYNAMIC` plus `CPU_ACCESS_WRITE` at its 256-aligned size times the frames in flight, so
+it holds one segment per frame, and `SizeInBytes` stays the logical size the seam asked for. A record-time
+`UpdateBuffer` is then a memcpy at `mapped + frameBase + offset`: no staging buffer, no copy command, no stall
+and no whole-buffer requirement.
+
+The problem it removes is measured rather than theoretical. Veldrid puts a partial write to a default-usage
+constant buffer on a pooled staging path whose map blocks until the GPU is done with the buffer being recycled,
+and only a whole-buffer write from offset 0 escapes it, because Direct3D 11 forbids a partial box on a constant
+buffer. Zero renderer sites pass `GpuBufferUsage.Dynamic`, so every per-frame uniform buffer in the engine takes
+that path by construction. A reporting client paid 22 of those blocking maps a frame at 12 to 17 ms a pass.
+
+**The frame's base is applied AT BIND, never baked into a resource set.** That is what keeps
+`CreateResourceSet`'s pinned `GpuBufferRange` valid across the 68 call sites that build one at load time: a set
+still names the same handle and the same logical offset, and the bind computes
+`firstConstant = (frameBase + rangeOffset + dynamicOffset) / 16` with `numConstants = roundUp(size) / 16`. A
+segment stride is rounded up to 256 bytes because `*SetConstantBuffers1` wants its first constant on a
+16-constant boundary, so every frame base is bindable by construction rather than by the callers happening to use
+256-aligned sizes.
+
+**The mapping belongs to the record phase, and two native calls per ring per submit is the floor.** The first
+write of a record phase maps `MAP_WRITE_NO_OVERWRITE`, every later write reuses it, and the start of the next
+`Submit` unmaps before anything is replayed. That is legal only because recording is deferred: Direct3D 11 has no
+persistent mapping and forbids a mapped resource being bound to the pipeline, so under `KE_D3D11_RECORD=immediate`,
+where draws happen during record, the mapping degrades to write-scoped (one map and one unmap per write). The
+spec's phrasing for that degradation is per-FLUSH, which is coarser and strictly better and needs a flush point to
+hang the unmap on. The flush point is the bind flush, which is not built yet, and
+`D3D11RingAllocator.UnmapMappedRings` is the one call it needs to batch the immediate driver up to per-flush.
+
+**A segment is recycled against a COMPLETION fence, never a submit receipt.** Frame N writes segment
+`N % FramesInFlight`, and before handing that segment out the allocator reads the completion value the submission
+that last used it was signalled under and blocks while the GPU has not reached it. `FramesInFlight` is 3, and
+`KE_D3D11_FRAMES_IN_FLIGHT=<n>` moves it (1 to 16, an unparseable or out-of-range value warns and keeps 3). The
+bet is that three segments mean this never blocks at all, so the per-frame backpressure stall count and the total
+stall time are recorded: a non-zero count means the number is wrong for that machine, not that the design is. A
+ring gated on a submit receipt instead would hand back a segment the moment the CPU finished asking for the work
+rather than when the GPU finished doing it, and would overwrite uniforms a draw in flight is still reading, with
+nothing thrown and nothing logged.
+
+**BACKEND-DIVERGENT CREATION FAILURE: a uniform buffer combined with any other bindable usage throws here.**
+`UniformBuffer | StructuredBufferReadOnly` (or either read-write structured bit, or the vertex, index or indirect
+bits) is legal on the seam and is ACCEPTED by `GpuBackendKind.Direct3D11`. It is refused at creation on this
+backend, because no bind other than the constant-buffer bind carries the ring's per-frame base: a structured
+buffer's full-range RAW view, a vertex bind, an index bind and an indirect argument read all address byte zero, so
+they would read the first segment while the uniform bind read the current one. Nothing about that is an error at
+run time, it is one frame's data being read as another's. The combination is vacuous in the engine today, and the
+divergence is written down here rather than left for a consumer to meet as a surprise. Create two buffers.
+
+**Device-level `UpdateBuffer` writes the CURRENT segment**, meaning the one the next `Submit` will bind and the
+one any open recording is already writing, deliberately not the one executing on the GPU. It is callable from any
+thread behind a short lock scoped to the write itself and never to a frame (the submit lock, so an off-timeline
+write cannot land in the middle of a replay), and it maps idempotently when it finds the ring unmapped between two
+frames, leaving the mapping for the next record phase to reuse.
+
+**What is still forbidden, restated because the ring makes it quieter rather than because it changed.** Writing
+off-timeline to a range a recording has ALREADY recorded a bind for, and then expecting that recorded bind to see
+the old value. It never worked, and the seam already documents that the CPU runs several frames ahead of the GPU.
+For the same reason, a record-time uniform write lands the moment it is made, so two writes to the same range
+inside one frame leave the second value for every draw of that frame, including draws recorded between them.
+Per-draw uniforms are addressed by dynamic offset rather than by rewriting one range, which is what the renderers
+already do and what makes the ring possible at all.
+
+**Everything else is unchanged (U4).** Vertex, index and other bulk record-time payloads take the per-list
+reusable CPU arena and replay as `UpdateSubresource`, since Direct3D 11 permits a partial box on a non-constant
+buffer. Static and load-time `DEFAULT` buffers keep `UpdateSubresource`, and structured buffers keep `DEFAULT`
+plus a full-range RAW view.
+
 ## Design
 
 `docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md` in the engine repo, section 3 (package and layering),
 section 4.1 (getting the assembly loaded), section 5.1 (the stream and the emitter), section 5.3 (emission),
 section 2.1 (the recording model), section 2.3 (nested `Begin` during coexistence), section 9.4 (the implicit
 viewport), section 7 (resources, views and state objects), section 8.1 (register numbering), sections 10.3 and
-10.4 (fences and the empty `WaitForIdle`), and decisions P1, P2, P4, I2, R1, R2, R3, R4, R6, R8, W6, T2, X1,
-X2, X3, S2, C2, C5 and C6.
+10.4 (fences and the empty `WaitForIdle`), section 6 (per-frame memory), and decisions P1, P2, P4, I2, R1, R2,
+R3, R4, R6, R8, W6, T2, U1, U2, U3, U4, U5, X1, X2, X3, S2, C2, C5 and C6.

@@ -8497,6 +8497,32 @@ engine's own invariant test still asserts no nested open list in the capture pat
 `End()` seals the list. Submitting one that was never ended is a half-recorded frame, and a backend is free to
 refuse it rather than replay it.
 
+### Uniform buffers on the native Direct3D 11 backend (17.31.0)
+
+Two things are worth knowing before that backend becomes selectable, and only the first can reach your code.
+
+**A uniform buffer may not also be something else there.** Creating a buffer as
+`GpuBufferUsage.UniformBuffer | GpuBufferUsage.StructuredBufferReadOnly` (or with either read-write structured
+bit, or with the vertex, index or indirect bits) is legal on the seam and is accepted by
+`GpuBackendKind.Direct3D11`. `GpuBackendKind.Direct3D11Native` REFUSES it at creation, with a message saying so.
+The reason is that a uniform buffer there is ring-backed: it holds one copy of itself per frame in flight and the
+frame's base offset is added at the constant-buffer bind. No other bind carries that base, so the vertex, index,
+indirect or structured read would address the first copy while the uniform read addressed the current one, and one
+frame's data would be read as another's with nothing thrown. Create two buffers instead. Nothing in the engine or
+in any game does this today, which is why the refusal is safe to have.
+
+**A uniform write lands when you make it, not when the list is submitted.** On that backend a record-time
+`IGpuCommandList.UpdateBuffer` to a uniform buffer is a memcpy straight into GPU-visible memory, which is what
+removes the per-write stall the other Direct3D 11 backend pays. So two writes to the SAME range inside one frame
+leave the second value for every draw of that frame, including draws you recorded between them. Address per-draw
+uniforms by dynamic offset (`GpuBufferRange` plus the offset overload of `SetGraphicsResourceSet`), which is what
+the engine's own renderers do. Writing off-timeline through `IGpuDevice.UpdateBuffer` and expecting an
+already-recorded bind to see the old value was never supported on any backend and is quieter here.
+
+There is one field lever, `KE_D3D11_FRAMES_IN_FLIGHT=<n>` (default 3, range 1 to 16), which sets how many frames
+of uniform data are kept. It exists so a soak can settle whether three is enough, and the session telemetry
+carries the count of times a frame had to wait for a segment to come free.
+
 ---
 
 ## Is the D3D11 driver emulating command lists (`GpuThreadingCaps`, 17.22.0)

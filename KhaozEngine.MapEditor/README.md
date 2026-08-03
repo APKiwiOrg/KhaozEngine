@@ -482,6 +482,9 @@ scatter override sits between exclusion and region because it is rarer and usual
 exclusion (so the more specific exclusion wins where they overlap) yet more specific than a broad gameplay
 region (so the override wins over the region it sits inside). This is what makes exclusions, scatter
 overrides, regions, and feature markers selectable with the mouse instead of only through the outline tree.
+The region leg runs on `MapRuntime.BuildRegions(doc).RegionAt(x, z, filter)` (`KhaozEngine.MapDoc`), the
+same resolver a game uses at run time, so editor picking and gameplay cannot disagree about which region a
+point is in.
 
 **Feature placement.** `EditorToolMode.EditFeature` click-places a default-parameterized feature of
 `EditorToolController.PlaceFeatureType` (list-selected from the bottom-left panel, see Kit palette above) at

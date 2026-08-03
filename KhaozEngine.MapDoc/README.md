@@ -43,6 +43,7 @@ A map document (`MapDocument`) has:
   which start a game uses at runtime is game code's concern. Games read `doc.PlayerSpawns` directly, the
   same way they read `spawns` (no `MapRuntime` builder).
 - **`regions`** - named, tagged shapes for quest areas, safe zones, triggers, interpreted by the game.
+  `MapRuntime.BuildRegions` resolves them into a point-testable `MapRegionSet` (see "Load and build").
 - **`terrainOverrides`** (`MapTerrainOverrides`, format v2) - the terrain sculpt/delta layer: a sparse map
   of 32x32 delta tiles (`MapSculptTile`) at a document-chosen sculpt cell size (the block header, default
   0.5 m), only touched tiles stored. Deltas are float meters added to the analytic height, bilinearly
@@ -143,12 +144,28 @@ var placements = MapRuntime.BuildPlacements(doc, field);
 ```
 
 `MapRuntime` also has `BuildTerrainConfig` (the raw `TerrainConfig`, if you want to build the field
-yourself), `BuildScatterConfigs` (every scatter layer, keyed by name), and `BuildCompanionConfig`.
+yourself), `BuildScatterConfigs` (every scatter layer, keyed by name), `BuildCompanionConfig`, and
+`BuildRegions` (the authored regions, below).
 Placement Y is ground-snapped against the built field whenever the document leaves it null, so every head
 that loads the same document agrees on where an unpositioned placement sits. An exclusion or override
 applies to a scatter layer when its `layers` list is null (every layer) or names that layer, and
 `ScatterConfig.ClearingRadius` is always zeroed for document-built layers, since documents author
 clearings as exclusion shapes instead of the legacy single disc.
+
+**Authored regions at runtime.** `MapRuntime.BuildRegions(doc)` resolves the `regions` section into a
+`MapRegionSet`, so a game can ask which named area a position is in without writing its own shape tests:
+
+```csharp
+MapRegionSet regions = MapRuntime.BuildRegions(doc);
+string? area = regions.RegionAt(player.X, player.Z)?.Name;   // null outside every authored region
+```
+
+Shapes are converted to their `IArea2D` once at build time, `Regions` keeps document order, and an entry
+with no shape is skipped the same way the scatter builder skips one. Where regions overlap, `RegionAt`
+returns the containing region whose shape center is nearest the point, and a shape with no derivable center
+(`MapShapeGeometry.TryCenter` returning false) scores distance zero. The optional
+`RegionAt(x, z, filter)` predicate skips regions it rejects. The editor's overlay picking runs on this same
+resolver, so an authored region resolves identically at edit time and at run time.
 
 ## Custom terrain features
 

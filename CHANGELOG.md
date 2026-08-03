@@ -456,6 +456,15 @@ field itself reads walkable. The band's surprising play consequence is now state
 band-held ground a jump converts a stable stand into a slide, because the launch tick ends un-grounded and the
 landing is judged at the bare gate.
 
+### Map regions get a runtime: BuildRegions + RegionAt (#481)
+
+`MapRuntime.BuildRegions(doc)` (`KhaozEngine.MapDoc`) resolves the document's authored regions
+into a `MapRegionSet`: shapes converted to `IArea2D` once, document order preserved, null-shape
+entries skipped like the scatter builder. `RegionAt(x, z, filter)` returns the containing region
+nearest by shape center, the same tiebreak the editor's overlay picking has always used, and the
+editor now runs on this resolver, so editor picking and game runtime can never disagree.
+`MapShapeGeometry.TryCenter` moves down from the editor so the center rule ships to games.
+
 ## 17.29.0
 
 ### The ground clamp stops lifting capsules that have no footing (#468)

@@ -6042,6 +6042,22 @@ layer's `ScatterConfig`. The document format has no clearing-radius concept - `M
 `ScatterConfig.ClearingRadius` for document-built layers, so a document expresses a clearing as an
 exclusion shape instead.
 
+**Authored regions at runtime.** `MapRuntime.BuildRegions(doc)` resolves the document's `regions` section
+into a `MapRegionSet`, so a game asks which named area a position is in rather than writing its own shape
+tests:
+
+```csharp
+MapRegionSet regions = MapRuntime.BuildRegions(doc);
+string? area = regions.RegionAt(x, z)?.Name;                 // null outside every authored region
+MapRegion? safe = regions.RegionAt(x, z, r => r.Tags.Contains("safe"));
+```
+
+Shapes convert to their `IArea2D` once at build time, `Regions` keeps document order, and a shapeless entry
+is skipped the same way the scatter builder skips one. Where regions overlap, `RegionAt` returns the
+containing region whose shape center is nearest the point, and a shape with no derivable center
+(`MapShapeGeometry.TryCenter` returning false) scores distance zero. The editor's overlay picking runs on
+this same resolver, so an authored region resolves identically at edit time and at run time.
+
 **Ground-snap.** A `placements` entry with no `y` ground-snaps deterministically: `MapRuntime.BuildPlacements`
 samples `field.SampleHeight(x, z)` for it, off the same field every other consumer of the document builds,
 so client and server (and re-loading the same document later) land on the same Y without either side

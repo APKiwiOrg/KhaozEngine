@@ -313,8 +313,9 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// THE DEVICE-LEVEL <c>UpdateBuffer</c> WRITES THE CURRENT SEGMENT, meaning the one the next submit will
-        /// bind, deliberately not the one executing on the GPU. That is what preserves the documented semantic:
-        /// the write lands when it is called, and a later-submitted list reads what the CPU wrote most recently.
+        /// bind, deliberately not the one executing on the GPU. Within that same frame slot, the write lands when
+        /// it is called, and the next submitted list reads it. The cross-frame case diverges from this and is
+        /// tracked as #484.
         /// </summary>
         [Fact]
         public void AnOffTimelineWrite_LandsInTheSegmentTheNextSubmitWillBind()

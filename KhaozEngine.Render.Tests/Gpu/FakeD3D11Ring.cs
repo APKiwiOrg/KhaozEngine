@@ -118,6 +118,11 @@ namespace KhaozEngine.Tests.Gpu
         // checked to hold it, and because in the nested case nobody else can take it in between: this thread
         // still owns the outer level. In the outermost case another thread genuinely can, and the re-entry then
         // waits for it, which is the ordinary behaviour of the lock rather than a hazard the fake introduces.
+        //
+        // WARNING: this probe briefly exits and re-enters the monitor, punching a momentary hole in the
+        // caller's critical section. Never combine it with D3D11RingMapScope.PerWrite in a test that sets
+        // Memory.SubmitLock, because that hole would break exactly the atomicity WriteUnderPerWriteScope
+        // exists to hold. No current test combines them.
         static bool HoldsItMoreThanOnce(object submitLock)
         {
             Monitor.Exit(submitLock);

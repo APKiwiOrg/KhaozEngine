@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Reflection;
 using KhaozEngine.Game;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Windowing;
@@ -163,6 +164,49 @@ namespace KhaozEngine.Tests.Render3D
                 lean.Update(Keys(Key.W, Key.D), dt: 1f / 60f, cameraYaw: 0f, FlatGround);
             }
             Assert.Equal(snap.Position, lean.Position);
+        }
+
+        [Fact]
+        public void Every_mirrored_knob_default_matches_the_tuning_default()
+        {
+            // THE MIRROR IS A CLAIM, SO IT GETS CHECKED. Every knob on this controller is a public field whose
+            // literal is meant to be the SAME literal MoveTuning.Default carries - both xmldocs say so, in both
+            // directions - because Update builds a MoveTuning out of these fields and a consumer that constructs
+            // the tuning directly has to get identical feel. Keeping that true across two files by hand is the kind
+            // of claim that rots one release after somebody adds a knob, and the case above pins exactly ONE of
+            // them (FacingTurnSpeed). 17.30.0 added two more, and nothing would have caught a typo in either
+            // literal.
+            //
+            // So the pairing is DERIVED rather than listed: every public instance field here must name a
+            // MoveTuning property, and the two defaults must be equal. A knob added on either side is covered the
+            // day it lands, with no list to update. What this does NOT cover is the other half of the mirror, that
+            // Update actually copies each field into the tuning it builds - a field added here and never wired
+            // into that object initializer still passes.
+            var c = new CharacterController3D();
+            MoveTuning d = MoveTuning.Default;
+            var mismatched = new List<string>();
+            int mirrored = 0;
+
+            foreach (FieldInfo f in typeof(CharacterController3D).GetFields(BindingFlags.Public | BindingFlags.Instance))
+            {
+                PropertyInfo? p = typeof(MoveTuning).GetProperty(f.Name, BindingFlags.Public | BindingFlags.Instance);
+                if (p is null)
+                {
+                    // No counterpart means it is not a mirror at all, and there are none of those today. Adding one
+                    // is a deliberate act, so it fails here rather than quietly leaving the claim half true.
+                    mismatched.Add($"{f.Name}: no MoveTuning property of that name");
+                    continue;
+                }
+                mirrored++;
+                object? mine = f.GetValue(c), tuned = p.GetValue(d);
+                if (!Equals(mine, tuned)) mismatched.Add($"{f.Name}: controller {mine}, MoveTuning.Default {tuned}");
+            }
+
+            Assert.True(mismatched.Count == 0, string.Join(", ", mismatched));
+
+            // The loop has to have found the knobs. Without this a rename that emptied it (fields turned into
+            // properties, say) would pass vacuously, which is the one failure a mismatch list cannot show.
+            Assert.True(mirrored >= 19, $"only {mirrored} mirrored knobs found, expected at least 19");
         }
     }
 }

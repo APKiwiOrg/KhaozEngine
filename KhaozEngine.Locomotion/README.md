@@ -76,15 +76,18 @@ optional steep-terrain wall slide via a ground-normal delegate):
 
 ### Steep terrain: wall slide and no traction (17.28.0)
 
-Supply a `groundNormal` delegate and ground steeper than `MoveTuning.MaxSlopeRadians` stops being walkable. Until
+Supply a `groundNormal` delegate and ground steeper than the tick's TRACTION GATE stops being walkable. That gate
+is `MoveTuning.MaxSlopeRadians`, widened by a hysteresis band while the character already has footing (17.30.0,
+see the next section). Until
 17.26.1 that was a GATE which REFUSED a move outright, and refusal produced a bug at each setting of its own
 tightness: loose enough and a repeated jump ratcheted up a sheer face
 ([#440](https://github.com/APKiwiOrg/KhaozEngine/issues/440)), tight enough to stop that and sideways movement
 into a face while jumping read as an invisible wall eating lateral air control. Terrain does not refuse, so
 [#442](https://github.com/APKiwiOrg/KhaozEngine/issues/442) replaced the gate with two rules. Both are
-unconditional, neither is a knob, and `MaxSlopeRadians` keeps its exact meaning as the traction threshold.
+unconditional, and `MaxSlopeRadians` keeps its exact meaning as the traction threshold (17.30.0 gave that
+threshold a memory and the slide a friction ramp, both with their own knob, without changing what it means).
 
-**1. Wall slide.** A horizontal move whose destination is BOTH steeper than `MaxSlopeRadians` AND above what this
+**1. Wall slide.** A horizontal move whose destination is BOTH steeper than the tick's traction gate AND above what this
 tick can REACH is a wall contact:
 
     the into-face component of the move dies, the along-face component survives
@@ -110,7 +113,7 @@ worthless. The projected move is re-tested and refused outright only if it still
 a concave corner and is what keeps an XZ from ever being committed under terrain. There is no outward-move
 exemption: a move that the heights say rises past the reach is a wall contact whichever way it points.
 
-**2. No traction.** A surface steeper than `MaxSlopeRadians` grants no support. `Grounded` stays false, so there
+**2. No traction.** A surface steeper than the tick's TRACTION GATE grants no support. `Grounded` stays false, so there
 is no jump, no coyote refresh and no landing latch on the face. The character is still SEATED on it (the ground
 clamp forbids penetration) but it slides: gravity is decomposed against the surface normal and the tangential
 component integrates into the carried `MoveState.VerticalVelocity` and `MoveState.HorizontalVelocity`,
@@ -218,6 +221,59 @@ through `ClientPrediction.Reconcile`.
 Everything applies identically to the grounded path, the airborne-momentum path, `StepTowards` (the NPC path) and
 the horizontal-only overload. **A game that used the gate as a cliff guardrail now gets real falls, and a steep
 face now slides** - that is the fix, and it is a behaviour change rather than an opt-in.
+
+### Traction hysteresis and slide friction (17.30.0)
+
+`MaxSlopeRadians` was a bare per-tick binary and the slide had no friction, so ground sitting ON the threshold
+behaved like a cliff edge in the model where it is a hillside in the world. Measured on a Ruinborne bank running
+40.0 to 41.8 degrees against a 40 degree gate: 43 footing flips in 330 ticks, stalled 2.73 m up a 7.6 m climb. Two
+composable mechanisms fix it ([#475](https://github.com/APKiwiOrg/KhaozEngine/issues/475)), both **default-on**.
+
+**Traction hysteresis (`MoveTuning.TractionHysteresisRadians`, default 3 degrees).** The decision is
+state-dependent:
+
+    footing is GRANTED at MaxSlopeRadians, and KEPT to MaxSlopeRadians + TractionHysteresisRadians
+
+So a walk across a bank that straddles the gate holds ONE continuous footing decision instead of flipping every
+tick, while a body arriving WITHOUT footing (a landing, a slide, an apex graze) is judged at the bare gate and
+slides. The band is a ceiling on what footing may keep and never a route to footing, so **the steepest ground a
+character can stand on is exactly gate plus band, by any route**. The memory is `MoveState.Grounded`, which the sim
+already carries and the wire already replicates, so there is no new state and a reconcile replay reaches the same
+answer. The consequence that IS the mechanism: a uniform face at gate plus two is walkable, indefinitely, by a
+character that walked onto it, and refuses one that fell onto it.
+
+**Slide friction (`MoveTuning.SlideFrictionRampRadians`, default 8 degrees).** The fall-line acceleration ramps in
+over a band past the gate instead of arriving at full strength:
+
+    accel scale = clamp((surface slope - MaxSlopeRadians) / SlideFrictionRampRadians, 0, 1)
+
+At the shipped 45 degree gate, a 46 degree face accelerates at 2.25 m/s^2 along the fall line against 17.99
+unscaled, a 49 degree one at 9.43 against 18.87, and 53 degrees and steeper is untouched. One second of sliding from
+rest on a 46 degree face drops 0.836 m rather than 6.684 m. The slope is read off the same HEIGHT-derived plane the
+resolve is built from, not the classification normal. It scales the ACCELERATION and not the speed, so it is not a
+terminal: a long enough marginal face still reaches `MaxFallSpeed`, over a much greater distance.
+
+**Friction NEVER applies to a rising slide.** Scaling gravity's deceleration would multiply the reach of a launch up
+a face by `1 / scale` (unbounded as the scale approaches zero at the gate), which is the #440 ratchet by another
+route. A rising slide decelerates at full gravity, always, so the reach of a running jump onto a marginal face is
+exactly what it was before friction existed and every "no higher than" bound above is untouched.
+
+**One traction truth per tick.** The gate is resolved ONCE from the footing the tick started with and handed to the
+slide contact, the wall contact on all three horizontal paths, the slide resolve, the support decision, the wedge
+and the step-down hold. The wall contact reading the same widened gate is load-bearing: otherwise a run up a bank
+the band is holding footing on would meet a fence built from the ground under its own feet.
+
+**The step-down hold runs the traction test too, from 17.30.0.** A drop within `StepHeight` normally seats a
+character grounded in one tick so a doorstep reads as a step rather than a fall. That hold used to skip the traction
+test across its whole band, because the test it read is only computed for the smaller drops the `GroundedEpsilon`
+ground stick reaches, so a step-down onto a face far past the gate seated grounded and handed out a jump. It now
+asks the same question against the same tick-resolved gate: past the gate the seat is refused and the character goes
+over the edge as any walk-off does. Walkable treads are under the gate, so stair descent is untouched.
+
+**Compatibility.** Both knobs at 0 (which is what a bare `default(MoveTuning)` reads, and what a negative or NaN
+value reads too) restore the 17.29.0 model bit for bit. Ground well under the gate is untouched either way. The
+horizontal-only `Step(Vector3, ...)` overload always uses the bare gate, because it takes no support decision and so
+has no footing to remember.
 
 ### Movement medium (wading)
 

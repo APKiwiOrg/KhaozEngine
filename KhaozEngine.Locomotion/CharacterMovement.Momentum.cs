@@ -35,10 +35,13 @@ public static partial class CharacterMovement
     /// <para>The target speed here deliberately omits the <see cref="MoveTuning.AirControl"/> term the non-momentum
     /// airborne path multiplies in. Under momentum, air control is the STEERING authority (how much of the commanded
     /// velocity is blended into the carried one), not a speed scale, so applying it twice would silently cap a
-    /// half-control character's reachable airborne speed at half of what it can run at on the ground.</para></summary>
+    /// half-control character's reachable airborne speed at half of what it can run at on the ground.</para>
+    /// <para><c>gate</c> is the tick's traction gate. This path is airborne by definition, so it is always the bare
+    /// <see cref="MoveTuning.MaxSlopeRadians"/>: the hysteresis band belongs to a character that has footing, and a
+    /// momentum flight has none.</para></summary>
     private static (float x, float z, Vector2 velocity) AirborneMomentumMove(in MoveState s, Vector2 moveDir,
         float speedFraction, bool run, float dt, in MoveTuning t, Func<float, float, Vector3>? groundNormal,
-        Func<float, float, float> groundHeight, float wade)
+        Func<float, float, float> groundHeight, float wade, float gate)
     {
         float targetSpeed = (run ? t.RunSpeed : t.WalkSpeed) * wade * s.SpeedScale * speedFraction;
         Vector2 v = ResolveAirborneVelocity(s.HorizontalVelocity, moveDir, targetSpeed, dt, t);
@@ -50,7 +53,7 @@ public static partial class CharacterMovement
         // is always the tick's own resolved upward motion (NoFootingReach): an arc may be seated as high as its own
         // velocity carries it and no higher.
         (float x, float z) = AdvanceWallSlide(s.Position.X, s.Position.Z, v, v != Vector2.Zero, dt, t, groundNormal,
-            groundHeight, s.Position.Y - t.CapsuleHalfHeight, NoFootingReach(s, t, dt));
+            groundHeight, s.Position.Y - t.CapsuleHalfHeight, NoFootingReach(s, t, dt), gate);
         return (x, z, v);
     }
 

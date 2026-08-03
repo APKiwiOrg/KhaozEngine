@@ -7,7 +7,7 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.30.0
 
-### The native Direct3D 11 backend: four prerequisites, then the recording model and its replay contract (#444, #445, #446, #447, #473, #448, #449)
+### The native Direct3D 11 backend: four prerequisites, the recording model with its replay contract, then the resources and real fences (#444, #445, #446, #447, #473, #448, #449, #450, #451)
 
 The seam work an engine-owned Direct3D 11 backend needs before it can render a single pixel: `GpuDeviceContext`
 now ADOPTS an `IGpuDevice` instead of only building one, a backend that ships outside `KhaozEngine.Gpu` arrives
@@ -15,9 +15,10 @@ through the explicit `GpuBackendProviders` registry, `GpuBackendKind` gains an a
 the opt-in `KhaozEngine.Gpu.D3D11` package exists with its Windows guards, its machine probe and its architecture
 guards. On top of those four, the backend's recording model lands whole with both of its drivers behind the
 `KE_D3D11_RECORD` kill switch, then the rules a replay applies to the device (one `ClearState` per submit, the
-redundancy caches, the precise scrub on disposal and the framebuffer-guarded viewport) land on top of it, and
-the adoption path stops answering a provider bug with the fallback reserved for a machine that cannot run the
-backend. Nothing renders differently and nothing switches over: the native
+redundancy caches, the precise scrub on disposal and the framebuffer-guarded viewport) land on top of it, the
+resource model lands beside them, the fence primitive lands ahead of the constant-buffer ring that depends on
+it, and the adoption path stops answering a provider bug with the fallback reserved for a machine that cannot
+run the backend. Nothing renders differently and nothing switches over: the native
 backend's two device-creation entry points still throw, so no shipped path reaches the recorder, the Windows OS
 probe still answers `Direct3D11`, `SupportedBackends()` still never offers the new kind to a player, and no
 golden moved. Full reasoning, including the rollout gates that govern when the default flips, in
@@ -385,6 +386,233 @@ separate type from the seam-call one, because the whole argument of 5.3 is that 
 one enum over both would make them interchangeable at the call site. The bind flush is not modelled here, so a
 resource-set bind appears in the trace as `ResourceSetPending`, which holds its place in the order and is named
 for what it is.
+
+#### Real completion fences, and a `WaitForIdle` that drains (#451)
+
+Decisions C5 and C6. The backend gains one device-wide monotonic completion timeline, the `IGpuFence` that sits
+on it, the signal seam a replay raises at its tail, and a real fence drain behind a kill switch. Nothing renders
+differently, because the native device still does not exist: this is the fence primitive the constant-buffer
+ring depends on, landed ahead of it deliberately, because a ring built against submit-receipt fences recycles a
+segment the GPU is still reading and corrupts a frame silently.
+
+**`SupportsCompletionFences` is true here, and it is the ONE permitted capability difference from the incumbent
+Direct3D 11 backend.** Veldrid's Direct3D 11 fence is a `ManualResetEvent` set the instant `ExecuteCommandList`
+returns, so it is a submit RECEIPT rather than a completion signal, which is why the incumbent hardcodes the
+capability false, `GpuRetireBarrier.TryCreate` returns null there, `RetiredResourcePool` keeps a frame-count
+fallback and two GPU tests skip. A counter the GPU advances is a completion signal, so none of that applies to
+the native path, and all four flip on the day its device lands.
+
+**One timeline, two mechanisms, both real.** The primary is an `ID3D11Fence` created through `ID3D11Device5` and
+advanced with `ID3D11DeviceContext4.Signal`, which is a direct fit rather than an emulation: the Direct3D 11.4
+fence IS a monotonic counter the GPU raises and `GetCompletedValue` IS the non-blocking read the seam asks for.
+The fallback, for a runtime older than Windows 10 1703, is a pool of `ID3D11Query` event queries polled with
+`DO_NOT_FLUSH`. Its ordering, its counter and its query recycling live in a device-free type and are tested on
+every operating system, because that path runs on no CI leg and no development machine, and the first machine to
+take it is a player's. The choice is taken once at device creation and nothing above the timeline may re-take
+it: a caller that branched on which mechanism it got would be building a second, quieter fallback on top of the
+one that already works. Where the two do differ, they report the CAPABILITY and never the name. The monotonic
+fence has a blocking wait and a free-threaded poll, the event-query fallback has neither, and the drain asks
+what this timeline can do rather than which of the two it is.
+
+**A fence poll takes no lock on the primary mechanism, and that difference is documented rather than levelled.**
+`GetCompletedValue` is a read on the fence object, so `IGpuFence.Signaled` there waits for nothing, which is
+what the seam says a poll does. The event-query fallback polls the immediate context, which is not
+free-threaded, so its poll takes the device submit lock, and under decision W4 that lock covers a whole replay:
+a poll from a thread that is not the submitting one can therefore wait for one. Making the primary path take the
+lock too, purely so the two read alike, would be paying a real cost on every machine to hide a difference on
+almost none.
+
+**A fence is a remembered value on that counter, not a device object.** Unarmed reads unsignalled, which is what
+the seam requires of a fence being submitted. `Submit` arms it with the value that submission signalled, and
+`Reset` unarms it so the next submission arms it with a strictly higher one. `Reset` cannot unsignal a
+device-wide monotonic counter and does not need to, since the fresh target the seam asks for is exactly what the
+next signal produces. Submitting a fence that is still armed THROWS rather than overwriting its target, because
+overwriting makes the earlier submission's completion unobservable and a consumer polling for it frees resources
+the GPU is still reading. A rejected submit still spends its timeline value, because the submission consumed it
+before the fence could refuse, and monotonicity is what matters there rather than the gap. The fence itself is
+left exactly as it was. The one check that runs before the device-liveness no-op is the foreign-fence type
+check, so another backend's fence is rejected even during teardown, which is where staying quiet about it would
+hide it best.
+
+**`WaitForIdle` replaces an empty method body.** Veldrid's `WaitForIdleCore` on Direct3D 11 does nothing, so
+every drain in the engine currently does nothing there, including one half of the only ordering guarantee the
+seam offers. That has never caused a known bug and there is a reason: Direct3D 11 tracks resource hazards
+itself, defers destruction by reference counting and blocks in `Map` by definition, so the empty body is
+arguably correct-by-API. It is implemented for real anyway, because a primitive that does nothing on one backend
+makes the seam's guarantees backend-dependent in an undocumented way, because `OceanFftProducer.LastStallMs`
+currently times an empty call, and because a real drain can only ever be MORE conservative than an empty one, so
+the risk is performance and therefore measurable rather than latent. `KE_D3D11_REAL_DRAIN=0` restores the no-op
+for the soak window, and drain count plus total drain duration per frame are recorded in the shape
+`WaterFrameStats` already uses. That pair is the M2 measurement, whose exit criterion removes the switch.
+
+**The drain flushes once, and never sleeps.** Two things the first cut of it got wrong, both of which would have
+shown up as a bad M2 number rather than as a failure. It signals a fresh point and then FLUSHES the immediate
+context exactly once, before its first poll, because the context buffers commands and a signal the driver has
+never been handed is a point the GPU may never reach (the fallback's poll is `DO_NOT_FLUSH`, which Direct3D
+documents as able to loop forever for precisely this reason). And no iteration of the loop sleeps a millisecond:
+the monotonic mechanism blocks on `ID3D11Fence.SetEventOnCompletion`, which wakes on the GPU's own signal with
+no granularity cost, and the fallback spins with `sleep1Threshold: -1` so it yields without ever sleeping. A
+plain `SpinWait.SpinOnce()` escalates to a one-millisecond sleep after 20 spins, and one of those is more than
+the entire 0.2 ms per-frame budget M2 gates on, so a drain that escalated would have settled decision C6 on a
+measurement of the scheduler. The flush and the wait are both engine-owned timeline members, so the loop stays
+device-free testable. The fence poll on the seam side still does not flush and still does not wait.
+
+**Two ends are left open on purpose, and both are one small commit at merge.** The signal at the end of replay
+is DEFINED here and not wired, because the replay loop is a sibling row being built in parallel and editing the
+shared submit path from two branches is how a merge silently drops one of them. The device liveness latch is the
+resources row's, so decision X3 (after device death a fence reads signalled and the drain is a no-op) is
+implemented against a hook this package owns, defaulting to alive. Alive is the safe default: defaulting to dead
+would make every fence read signalled before anything had died, which frees live resources and reads as
+corruption somewhere else entirely.
+
+#### Resources, eager views, the register scheme and the state objects (#450)
+
+Buffers, textures, samplers, framebuffers, resource layouts, resource sets and graphics pipelines for the
+native backend, plus the format mapping under them. Still reached by nothing, since device creation belongs to a
+later row. Section 7 and section 8.1 of the design doc, decisions X1, X2, X3, S2 and C2.
+
+**The register-assignment scheme (S2) is a function with a table test over EVERY layout the renderers declare.**
+Within one layout each element takes the next index from a counter chosen by its kind, in declaration order:
+`UniformBuffer` to `bN`, `Sampler` to `sN`, `TextureReadOnly` and `StructuredBufferReadOnly` SHARING the `tN`
+counter, `TextureReadWrite` and `StructuredBufferReadWrite` SHARING the `uN` counter. Across layouts the sets
+flatten in PIPELINE-ARRAY order, per file, and the GLSL `set=` number decides nothing: `SpriteBatch` puts its
+texture and sampler at set 0 and its UBO at set 1, so a rule phrased as "set 0 comes first" is already false in
+shipped code. Getting any of it wrong compiles cleanly, draws successfully and renders every pixel wrong, which
+is a failure nothing else in the suite can see, so the test transcribes all 33 `CreateResourceLayout` sites
+outside the seam package rather than a sample. The "six" figure that gets quoted is the count of DYNAMIC layout
+ELEMENTS, a different and much smaller set, and asserting only those would leave the whole texture-and-sampler
+space unchecked. Worth recording from writing the test: the cross-layout BASE is exercised by no shipped
+pipeline at all, because every multi-layout pipeline the engine declares uses disjoint kinds across its sets, so
+every base is zero and a backend that dropped the accumulation entirely would still pass every golden. That case
+is synthetic in the test for exactly that reason.
+
+**Every view is created at resource creation (X1), and at most four per texture.** From the declared usage
+bits: a full-chain shader resource view if `Sampled` or `GenerateMipmaps`, a render target view at mip 0 layer
+0 if `RenderTarget`, a depth-stencil view if `DepthStencil`, an unordered access view at mip 0 if `Storage`. The
+bound of four is a fact about the seam rather than optimism, since there is no texture-view type,
+`CreateFramebuffer` has no mip or layer parameter, `ResolveTexture` names two whole textures, and per-face
+cubemap rendering is not expressible. All 25 `DEVICE_REMOVED` stacks the incumbent produced in the field
+surfaced inside a texture-view constructor reached from resource-set activation, so lazy creation put an
+allocation on the draw path and put it on the exact path a corrupted context makes fail. The POLICY (which views
+follow from which usage bits, and the bind flags with them) is engine logic tested without a device on every
+platform, while creating the objects sits behind the Windows guard. A framebuffer consequently creates and owns
+NOTHING: its views already exist on its attachments.
+
+**A `GpuBufferRange` inside a `CreateResourceSet` description resolves at SET creation.** It becomes a buffer
+plus an offset plus a size there, a bare buffer resolves to the whole buffer so both travel one path, and each
+binding carries the register its layout assigned. The per-draw dynamic offset stays out, because baking it in
+would mean one set per draw.
+
+**Structured buffers keep the RAW byte-address view (C2).** Both kinds get a `DEFAULT`-usage buffer with a
+full-range raw view and `StructureByteStride` stays advisory, because SPIRV-Cross emits a GLSL storage block as
+a `ByteAddressBuffer` and a stride-shaped structured view is not what the compiled shader reads. Keeping it
+identical to the incumbent is why the ocean compute kernels keep working.
+
+**Pipelines build their blend, depth-stencil, rasterizer and input-layout objects at creation.** The input
+layout needs the compiled vertex shader signature, which is in hand at exactly that moment, reached through a
+small internal shader-set seam the shader path will implement. Every vertex element is a `TEXCOORD` whose index
+counts across all buffer slots in order, matching what SPIRV-Cross emits for a GLSL location, so the CPU side is
+contiguous from zero by construction and a hole in the signature can only come from the shader. **The
+incumbent's 328-line `D3D11ResourceCache` is dropped (X2)**, because the Direct3D 11 runtime already returns an
+existing object for an identical state description. That is a claimed runtime behaviour rather than a measured
+one, and the worst case if it is wrong is a load-time allocation count.
+
+**`DeviceLiveness` is reproduced as a small standalone type (X3).** A volatile token flipped once by the context
+inside its lifecycle lock before the real device is destroyed, with a read surface of `IsAlive` and `IsDead`.
+Every wrapper's `Dispose` gates on it, so disposal after device death is a no-op rather than a second release of
+something the device already freed. It is its own type rather than a flag on the device because the fence work
+reads the same token, and reaching it through the device would make every wrapper hold the device.
+
+**A constraint the package now carries, found the hard way: no type in it may hold a Vortice VALUE-TYPE field.**
+Loading a type computes its layout, which resolves value-type fields and loads the assembly declaring them, and
+the suite already forces that by calling `Assembly.GetTypes` on this package. A reference field is free, so an
+`ID3D11Device` field costs nothing while a single `Format` field pulls the whole interop into a macOS process
+and turns every off-Windows load-path assertion in the run red, pointing at whichever test happened to look
+afterwards. The fix costs nothing measurable: keep the engine value in the field and expose the Direct3D reading
+as a computed property. A new guard asserts it directly, so the next occurrence names the cause instead of the
+symptom.
+
+### Traction hysteresis and slide friction soften the gate boundary (#475)
+
+The walkability decision gains a MEMORY and the slide gains FRICTION, so terrain sitting on `MaxSlopeRadians` stops
+behaving like a cliff edge in the model where it is a hillside in the world. Two new `MoveTuning` knobs,
+`TractionHysteresisRadians` (default 3 degrees) and `SlideFrictionRampRadians` (default 8 degrees), both default-ON.
+**This changes behaviour near the gate for any game on steep terrain**, deliberately, in the same way the slide model
+itself shipped unconditional. Setting either to 0 restores the previous model bit for bit. Full reasoning in the
+round-five section of `docs/design/PHYSICS-LOCOMOTION-DESIGN-2026-08-02.md`.
+
+**What was measured.** `MaxSlopeRadians` was a bare per-tick binary with no reference to the previous tick's answer,
+so terrain whose columns straddle it alternated walk ticks and full-gravity slide ticks: on a Ruinborne bank running
+40.0 to 41.8 degrees against a 40 degree gate, 43 footing flips in 330 ticks and a stall 2.73 m up a 7.6 m climb.
+Re-tuning the gate past that bank moved the identical failure onto banks peaking 0.4 and 2.8 degrees past the new
+one, because any threshold lands inside some terrain's slope distribution. Separately, a surface one degree past the
+gate was thrown down the fall line at the same strength an eighty degree one was.
+
+**Traction hysteresis.** A character that HAS footing keeps it up to `MaxSlopeRadians + TractionHysteresisRadians`.
+One that has NONE regains it only at or under `MaxSlopeRadians`. The band is a ceiling on what footing may KEEP and
+never a route to footing, so a landing, a slide arrival or an apex graze on ground past the gate still grants
+nothing, and the steepest ground a body can stand on is exactly gate plus band by any route. The memory is
+`MoveState.Grounded`, which already rides the wire, so there is NO new carried state, no wire change, and a
+reconcile replay reaches the same decision (pinned by a new parity case at two lag settings). The consequence that
+IS the mechanism: a uniform face at gate plus two is now walkable by a character that walks onto it, indefinitely,
+and refuses a character that falls onto it.
+
+**Slide friction.** The fall-line acceleration is scaled by
+`clamp((surface slope - MaxSlopeRadians) / SlideFrictionRampRadians, 0, 1)`, read off the same height-derived plane
+the resolve is built from. At the shipped 45 degree gate: 46 degrees accelerates at 2.25 m/s^2 along the fall line
+against 17.99 unscaled, 49 degrees at 9.43 against 18.87, and 53 degrees and steeper is untouched. One second of
+sliding from rest on a 46 degree face drops 0.836 m with the ramp against 6.684 m without. It scales the
+ACCELERATION, not the speed, so it is not a terminal: a long enough marginal face still reaches `MaxFallSpeed`, over
+a much greater distance.
+
+**Friction never applies to a RISING slide, and that is the safety rule rather than a detail.** Scaling gravity's
+deceleration too would multiply the reach of a launch up a face by `1 / scale`, unbounded as the scale approaches
+zero at the gate, which is the #440 ratchet by a new route. Gravity decelerates a rising slide at full strength
+always, the crossing tick is split exactly so there is no tick-rate-dependent kink, and every "no higher than" bound
+from #440, #442 and #468 is therefore unchanged.
+
+**One traction truth per tick.** `StepCore` resolves the gate ONCE from the footing the tick started with and hands
+that number to the slide contact, the wall contact on all three horizontal paths, the slide resolve, the support
+decision, the wedge and the step-down hold. The wall contact reading the widened gate is load-bearing: without it a
+run up a bank the band is holding footing on would meet a fence made of the ground under its own feet.
+
+**The step-down hold runs the traction test, closing the last route to footing on steep ground (#470).** Step
+4a-down holds a character grounded through a drop of up to `StepHeight` (0.40) so a doorstep reads as a step rather
+than a fall, and that band opens exactly where the `GroundedEpsilon` (0.30) ground stick closes. The hold read the
+support decision's traction result, which is guarded by `onGround` and therefore only ever computed for drops within
+`GroundedEpsilon`, so across the whole of the hold's own band no traction test ran at all on the surface being
+seated. Measured: a 0.15 m lip onto a 63.4 degree face, walked east at 6 m/s and 60 Hz, made the crossing tick's drop
+0.35 m, and that tick reported `Grounded` and `SupportGranted` seated on the face, with a jump pressed there
+launching at the full `JumpSpeed`. The hold now runs the same test against the same tick-resolved gate (the widened
+one on this path, since the hold only arms when footing was held at tick start), so a step-down onto ground past the
+gate refuses the seat and the character goes over the edge exactly as a walk-off does. Legitimate descent is
+untouched: walkable treads are under the gate, the existing step-down and stair-glide suites are green unmodified,
+and a 0.35 m step-down onto level ground still seats grounded in one tick. The test is now one function,
+`RefusesTraction` in `KhaozEngine.Locomotion/CharacterMovement.Traction.cs`, rather than two expressions of the same
+question.
+
+The 360-heading acceptance sweep is BIT-IDENTICAL rather than merely green (its 68.6 to 77.1 degree face is past the
+whole ramp, and it never grants footing), and re-measured with both mechanisms active it reports 0 climbers, 0
+footing grants, 0 jumps and a worst peak of 0.000 m across 5760 rides at four tick rates. Three fixtures that pinned
+binary-threshold behaviour AT the boundary were recalibrated with their intent preserved: two near-gate faces moved
+from 46 and 47 degrees to 49 (one past gate plus band), and the wire-ceiling fixture turns friction off so its
+2%-past-the-gate face still saturates inside its window. New rule + friction code lives in
+`KhaozEngine.Locomotion/CharacterMovement.Traction.cs`, with `TractionHysteresisTests` carrying the chatter repro,
+its zero-knob control, the asymmetry, the band ceiling and the four ramp probe points.
+
+**Review folds.** The acceptance sweep gained a SECOND face, this one INSIDE the ramp: 46.0 to 47.1 degree planes
+under the same smoothing stencil, at a friction scale of 0.12 to 0.26, ridden by the same 360 headings at the same
+four tick rates from a no-footing start. It reports 0 climbers, 0 footing grants, 0 jumps and a worst peak of
+0.000 m across its own 5760 rides, every one of which ends 226 to 579 m below its start. The bar now covers the
+domain where the new arithmetic actually runs, not only the one where it saturates. `CharacterController3D`'s knob
+defaults are pinned against `MoveTuning.Default` by reflection over every mirrored field, so the
+literal-for-literal claim is enforced rather than hand-maintained. Two comments were corrected rather than
+softened: a friction scale of exactly zero at the gate FREEZES the fall line, so gravity's pull is not compulsory
+there, and the slide's 1 mm rise slack is then exposed at up to a millimetre a tick, which needs both a normal
+delegate that disagrees with its own height field and a rising contour, and creeps only onto ground the height
+field itself reads walkable. The band's surprising play consequence is now stated where the knob is documented: on
+band-held ground a jump converts a stable stand into a slide, because the launch tick ends un-grounded and the
+landing is judged at the bare gate.
 
 ## 17.29.0
 

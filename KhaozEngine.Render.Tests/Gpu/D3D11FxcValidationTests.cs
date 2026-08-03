@@ -209,6 +209,39 @@ void main() { Data[gl_GlobalInvocationID.x] = 1.0; }";
         }
 
         /// <summary>
+        /// THE CATALOG-WIDE SWEEP. The three named cases above pin history: shadow, terrain and overlay mesh are
+        /// the specific programs that already holed a signature, each with its own fix and its own regression
+        /// test. This sweep is for the next one: it walks every program in <c>D3D11ShaderProgramCatalog</c>
+        /// rather than only the three with a named incident, so a future program's holed signature is caught here
+        /// instead of needing the path-gated Windows FXC leg to find it, the way the overlay mesh's own hole was
+        /// first caught only on that leg's first run.
+        /// </summary>
+        [Fact]
+        public void EveryCatalogProgram_EmitsAGapFreeVertexInputSignature()
+        {
+            var failures = new List<string>();
+            foreach (ShippedGraphicsProgram program in D3D11ShaderProgramCatalog.GraphicsPrograms())
+            {
+                CrossCompiledPair pair = SpirvCrossCompile.GlslPairToHlsl(
+                    program.VertexGlsl, program.FragmentGlsl, program.Name);
+
+                uint[] inputs = Semantics(pair.VertexHlsl, "SPIRV_Cross_Input");
+                var want = Enumerable.Range(0, inputs.Length).Select(i => (uint)i).ToArray();
+                if (!inputs.SequenceEqual(want))
+                {
+                    failures.Add($"  {program.Name}: found ["
+                        + string.Join(", ", inputs.Select(i => "TEXCOORD" + i.ToString(CultureInfo.InvariantCulture)))
+                        + "], expected contiguous from 0");
+                }
+            }
+
+            Assert.True(failures.Count == 0,
+                "A program's vertex input signature is holed, the same class of bug that corrupted WARP for the "
+                + "shadow and overlay mesh passes and blew the terrain to flat white before each got its own sink "
+                + "or ordering fix.\n" + string.Join("\n", failures));
+        }
+
+        /// <summary>
         /// The parse the contiguity cases above rest on actually finds something, proved against a shader whose
         /// signature is known by construction. A regex that silently matched nothing would make every contiguity
         /// assertion above vacuous, and <c>Assert.NotEmpty</c> at each site would not say why.

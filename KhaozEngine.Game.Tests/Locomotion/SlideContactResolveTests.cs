@@ -515,44 +515,61 @@ public class SlideContactResolveTests
     // ---- The reviewer's untested lead: a jagged crest at column resolution ----
 
     [Fact]
-    public void A_jagged_crest_alternating_steep_and_walkable_pins_its_landing_latch_stream()
+    public void A_jagged_crest_alternating_steep_and_walkable_fences_a_grounded_run()
     {
         // A saw-toothed ridge: each 2.08 m period is a 0.4 m riser at 5:1 (78.7 deg, past the gate, so no
-        // traction) followed by a 2 m run back down at 11.3 deg (walkable). Running east across it, the
-        // character alternates between a steep column (support refused, so it goes airborne for a tick or two
-        // and slides) and a walkable one (support granted, so it lands).
+        // traction) followed by a 2 m run back down at 11.3 deg (walkable). Running east across it at 0.4 m a
+        // tick, most destinations land on the walkable run and step up over the riser, because the riser is
+        // 0.08 m wide and a tick's travel steps clean over it.
         //
-        // CONSUMER CONSEQUENCE, and the reason this is pinned rather than designed around: LandingImpactSpeed
-        // is a per-tick EVENT, and it is the source a game reads for fall damage and for the landing SOUND. A
-        // strip like this therefore emits a STREAM of small latches - a rattle of landing sounds while running
-        // over rough ground - rather than one. A consumer that dislikes it gates on the impact SPEED, which is
-        // small here by construction (a tick or two of gravity), not on the event's presence. The numbers below
-        // are the measured behaviour of the shipped model, recorded so a change to it is visible.
+        // RECALIBRATED BY #486 (17.31.0), AND THIS IS THE COST OF THAT FIX RATHER THAN A DETAIL OF IT. Until #486
+        // this fixture pinned a LANDING LATCH STREAM: the run occasionally landed a destination ON a riser column,
+        // was admitted there because the rise was inside StepHeight, lost its footing to the traction test, slid,
+        // and re-landed - 9 latches and 60 airborne ticks over 300 ticks and 100 m of crest, a rattle of landing
+        // sounds while running over rough ground. #486 stops a footed tick from seating itself onto ground past its
+        // own traction ceiling at all, so those ticks are WALL CONTACTS now. The rattle is gone, and so is the
+        // crossing: the run advances cleanly over 8 periods and then meets a tick whose destination lands on a
+        // riser, where it stops dead and stays stopped, because a stopped character's next destination is the same
+        // riser column. Measured: 18.40 m in 46 ticks, then 254 consecutive ticks with no movement, grounded
+        // throughout, zero latches and zero airborne ticks.
+        //
+        // So a narrow steep riser inside StepHeight is a FENCE on the analytic path now, not a scramble. That is
+        // the rule working as specified (a body may not walk onto ground it cannot stand on, and 0.34 m of 78.7
+        // degree ground is still ground it cannot stand on), and it is a real behaviour change for any consumer
+        // whose normal delegate reports column-resolution detail. The remedies are the consumer's: classify a
+        // feature it wants crossable as walkable, or build it in the physics world, where step-up is untouched.
+        // Filed as its own item so a playtest can rule on it rather than this fixture deciding it silently.
+        //
+        // The landing-latch stream itself is not lost from the suite: a body arriving WITHOUT footing still slides
+        // and still latches, which the concave-crease pulse fixture at the top of this file pins directly.
         var t = Tuning;
         var s = new MoveState { Position = new Vector3(0f, Comb(0f, 0f) + t.CapsuleHalfHeight, 0f), Grounded = true };
         var east = new MoveCommand(new Vector2(1f, 0f), run: true, cameraYaw: 0f, jump: false);
 
         int latches = 0, airborneTicks = 0;
-        float loudestLatch = 0f;
+        float advanced = 0f, lastX = s.Position.X;
         for (int i = 0; i < 300; i++)
         {
             s = CharacterMovement.Step(s, east, Dt, Comb, t, CombNormals);
-            if (s.LandingImpactSpeed != 0f) { latches++; loudestLatch = MathF.Max(loudestLatch, s.LandingImpactSpeed); }
+            if (s.LandingImpactSpeed != 0f) latches++;
             if (!s.Grounded) airborneTicks++;
+            advanced += MathF.Abs(s.Position.X - lastX);
+            lastX = s.Position.X;
             Assert.True(s.Position.Y - t.CapsuleHalfHeight >= Comb(s.Position.X, s.Position.Z) - 1e-3f,
                 $"tick {i} left the capsule under the crest, feetY={s.Position.Y - t.CapsuleHalfHeight:F5}");
         }
 
-        string measured = $"latches={latches}, airborneTicks={airborneTicks}, loudest={loudestLatch:F3} m/s, " +
-                          $"x={s.Position.X:F2}";
-        Assert.True(s.Position.X > 20f, $"the run never crossed the crest: {measured}");
-        // Measured at the shipped tuning over 300 ticks and 100 m of crest: 9 latches, 60 airborne ticks, and the
-        // loudest latch 4.29 m/s. So it IS a stream (not one landing), it is far sparser than one latch per
-        // period (48 periods crossed), and every latch is a few ticks of gravity rather than a fall.
-        Assert.InRange(latches, 2, 40);
-        Assert.InRange(airborneTicks, 10, 150);
-        Assert.True(loudestLatch < 0.2f * t.MaxFallSpeed,
-            $"a crest latch reported a real fall rather than a few ticks of gravity: {measured}");
+        string measured = $"latches={latches}, airborneTicks={airborneTicks}, x={s.Position.X:F2}, " +
+                          $"travelled={advanced:F2} m";
+        // It crosses several periods before it meets the riser column that stops it, so the step-up over a narrow
+        // riser is intact and it is a specific destination that fences the run, not the crest as a whole.
+        Assert.True(s.Position.X > 3f * CombPeriod, $"the run was fenced at the first riser: {measured}");
+        // It never mounts a steep tooth, so it never loses its footing and never rattles the landing latch.
+        Assert.Equal(0, latches);
+        Assert.Equal(0, airborneTicks);
+        // And every metre it travelled was forward: no ground is gained and handed back, which is the half of the
+        // old behaviour that was a bug rather than a feature.
+        Assert.Equal(s.Position.X, advanced, 3);
     }
 
     const float CombPeriod = 2.08f;

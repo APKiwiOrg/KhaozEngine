@@ -319,6 +319,87 @@ nearest by shape center, the same tiebreak the editor's overlay picking has alwa
 editor now runs on this resolver, so editor picking and game runtime can never disagree.
 `MapShapeGeometry.TryCenter` moves down from the editor so the center rule ships to games.
 
+### Reverse locomotion playback, behind an opt-in animator flag (#485)
+
+A character backpedaling under a held facing plays its walk clip BACKWARDS now, at the speed-matched rate, instead
+of moonwalking (the body sliding back while the feet stride forward). Additive and off by default: every existing
+game plays byte-identically until it opts in, and a game that opts in but never classifies a sector still does.
+
+**Where the direction was getting lost.** The bottom of the stack already worked. `AnimationPlayer.Update(dt,
+speedMultiplier)` scales the playhead by whatever it is handed, and `AnimationSampler.Wrap` has an explicit
+negative branch, so a looping clip wraps cleanly through zero onto its tail. What blocked it was the middle:
+`LocomotionSpeedSync.RateFor` clamped a magnitude with a positive floor and could not return a negative,
+`AnimatedCharacter.Update` took a speed that ALSO feeds `LocomotionStateMachine.Evaluate` (so a negative would have
+read as Idle), and `CharacterSample` carried no direction at all, with the bridge clamping `PlanarSpeed`
+non-negative on ingest. There was no way in for a sign, which is why the consumer could not solve this on its own.
+
+**The seam, four additive edits.** `CharacterSample` gains `Sector` (`KhaozEngine.Locomotion.MoveSector`) plus
+`WithSector(...)`, following the `WithFacingYaw` / `WithDowned` shape and composing with any sample shape.
+`CharacterAnimatorTuning` gains `ReverseLocomotionOnReverseSector` (default false), threaded into the
+`LocomotionSpeedSync` it builds as the new `ReverseOnReverseSector` field, also settable directly, or via the new
+trailing `reverseOnReverseSector` argument of `LocomotionSpeedSync.Enable`, on a brain built by a
+`Func<AnimatedCharacter>` factory. `RateFor` gains a `(state, horizontalSpeed, sector)` overload (the old two-arg
+one delegates to it at `MoveSector.Forward`). `AnimatedCharacter.Update` gains a matching sector overload, and
+`ReplicatedCharacterAnimators` passes `sample.Sector` straight through.
+
+**The sign reaches the playhead and nothing else.** `Evaluate` still sees the magnitude, so a reverse walk is the
+walk state and a reverse run is the run state, which is what keeps the whole thing additive: state selection,
+thresholds, and the debounce are all untouched. The clamp bounds the MAGNITUDE and the sign is applied last, so
+`MinMultiplier` still floors a crawling backpedal at -0.25x rather than freezing it and `MaxMultiplier` still
+ceilings a fast one at -3x. Idle, the tread, and the air states have no direction to reverse and stay at +1x. The
+forward swim stroke does reverse, since it is a syncing move state. The direction travels as its own field rather
+than as a signed speed precisely because the speed is what the state machine reads, so the ingest's non-negative
+`PlanarSpeed` clamp is deliberately left alone.
+
+**Why the sector and not a bool.** `MoveSector` is the type the sim already classifies with (`CharacterMovement.
+Sector`, the predicate that charges `MoveTuning.BackpedalSpeedScale`), and `Game.Render3D` already depends on
+`KhaozEngine.Locomotion`, so this drags in nothing new and adds no second encoding of the same three-way answer to
+drift from the first. `MoveSector.Forward` is the zero value, so every existing construction path defaults to it.
+Deriving the sector stays with the game, which is the only party that knows what the character is facing: the local
+player reads it off its own move command, and a remote (whose command axis never crosses the wire) classifies its
+render-position delta against the replicated `EntityRenderState.FacingYaw` over the same 135 degree wedge.
+
+**Layout.** `CharacterSample` and `CharacterAnimatorTuning` moved out of `ReplicatedCharacterAnimators.cs` into
+their own files, unchanged apart from the new members. That file was frozen at its 994-line baseline, and one type
+per file is the split the ratchet asks for rather than a cut at an arbitrary line. It now sits at 576, so its
+baseline entry is dropped (under the cap).
+
+Closes #485. Consumer side: https://github.com/APKiwiOrg/Ruinborne/issues/420.
+
+### A footed tick takes the wall against past-ceiling ground, so a cliff toe stops being a seat (#486)
+
+Walking into the bottom of a steep face no longer bounces the character through the falling pose: a tick that starts
+with footing now meets a WALL at any destination past its own traction ceiling, however little that destination
+rises, instead of seating itself on ground the same tick's support decision is about to refuse.
+
+The mechanism was two decisions about one column reaching opposite verdicts one tick apart. `AdvanceWallSlide` let a
+grounded tick reach a `MoveTuning.StepHeight` above its feet whatever the destination's steepness, so a walking
+character was admitted onto a cliff toe, denied traction there by the support decision, slid back onto the flat, and
+walked in again. Measured on a 60 degree face at the shipped tuning, holding one direction: 112 footing flips and 539
+airborne ticks out of 600 at 30 Hz, and at 120 Hz and above no flicker but a permanent slide parked against the toe
+(461 airborne ticks out of 480). The repro is now a permanent fixture (`CliffToeWallTests`) and reports zero flips and
+zero airborne ticks at 30, 60, 120 and 240 Hz, with the feet stalling exactly at the toe and the lateral component of
+a 45 degree strafe into the face preserved to within a float.
+
+The change is one line of behaviour rather than a new branch: `NoFootingReach` loses its grounded `StepHeight` case,
+because the reach is only ever consulted about ground the steepness test has already called past this tick's ceiling.
+Everything at or under the ceiling - walkable ground, and the band ground `TractionHysteresisRadians` holds a standing
+character on - returns before it, so every step-up, step-down, stair glide and riser mount is byte-identical, and a
+fast run up a legal ramp still is not fenced by the height it gains in one tick. Descent is untouched too, since a
+destination below the feet rises by a negative amount and is admitted at any reach, so cresting onto a steep face from
+above still enters a slide, as does falling onto one. The whole of 17.30.0's traction band and slide friction is
+unmodified, and the 360-heading anti-ratchet sweeps at four tick rates are bit-identical on both fixtures.
+
+**One behaviour cost, and it is deliberate.** A NARROW steep riser inside `StepHeight` is now a fence rather than a
+scramble on the ANALYTIC terrain path, because the scramble was exactly the seat this removes. On the saw-tooth crest
+fixture (a 0.4 m riser at 78.7 degrees every 2.08 m) a run that crossed 48 periods now crosses 8 and stops. Stairs,
+curbs, props and building steps are unaffected: they mount through the `IPhysicsWorld` step-up, which is untouched,
+and every riser fixture in the suite is green unmodified. Tracked as #488 for a playtest ruling. Two fixtures whose
+premise the rule moved were recalibrated rather than relaxed, the same way 17.30.0 recalibrated three: the
+gate-boundary bank control measures a refusal instead of a chatter (the bare gate still fails, with a better symptom),
+and the friction comparison now turns off friction alone, because a control that also drops the band was measuring the
+band's effect on the approach.
+
 ## 17.30.0
 
 ### The native Direct3D 11 backend: four prerequisites, the recording model, then the resources and real fences (#444, #445, #446, #447, #473, #448, #450, #451)

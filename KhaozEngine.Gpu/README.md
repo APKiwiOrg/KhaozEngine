@@ -106,6 +106,24 @@ What it owns today:
     in verbatim, since the untouched string is what makes a typo or stray quoting obvious.
   - The value overload is pure, so the whole mapping is testable with no device on any OS. Null and empty
     `injectedModules` stay apart, and `threadingCaps` null stays null.
+  - **17.32.0 adds a five-value overload** taking a `GpuDeviceDiagnostics` as its last argument, which fills the
+    header's `softwareAdapter` and `deviceLossReason` fields. `info.WithGpu(device)` uses it for you. The
+    four-value overload is unchanged, so an already-compiled consumer keeps binding to what it was compiled
+    against, and it leaves both new fields null.
+- **`GpuDeviceDiagnostics`** (17.32.0) - the two facts a device can only report about ITSELF and only LIVE:
+  `SoftwareAdapter` (on Direct3D11, `DXGI_ADAPTER_FLAG_SOFTWARE`) and `DeviceLossReason`
+  (`GetDeviceRemovedReason`'s answer plus the call site that noticed). On `IGpuDevice.Diagnostics`,
+  `GpuDeviceContext.Diagnostics` and `AppWindow.Diagnostics`, and read THROUGH to the device on every access
+  rather than captured at
+  creation, because a device loss happens at an arbitrary moment long afterwards and a captured value would
+  always say the device was fine.
+  - Both members are nullable and **null means "nobody answered" rather than "no"**. A backend that does not
+    report the software-adapter flag is a different fact from one that reports false, and a capture that cannot
+    tell those apart cannot say whether its performance numbers are comparable with another capture's.
+  - The `IGpuDevice` member is DEFAULT-IMPLEMENTED, so it was appended without breaking any implementer, and the
+    default is the honest one: no answers. Everything on the Veldrid path takes it, which is correct rather than
+    a gap, since Veldrid exposes neither the DXGI adapter flag nor a device-removal reason. The native
+    Direct3D 11 backend is what fills it.
 - **`GpuD3D11DeviceFlags`** (17.24.0) - the opt-in Direct3D11 device-creation flags and the env gate for them.
   `KE_D3D11_PREVENT_THREADING_OPTIMIZATIONS=1` (or `true`/`yes`/`on`) ORs
   `D3D11_CREATE_DEVICE_PREVENT_INTERNAL_THREADING_OPTIMIZATIONS` into both the windowed and the headless D3D11

@@ -20,7 +20,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// to trilinear when the device lacks anisotropy, and drops a non-zero LOD bias when the device lacks bias
     /// support, both because Metal has neither. Every Direct3D 11 device has both, so on this backend those
     /// branches are unreachable and carrying them would mean shipping a fallback nothing can enter. Decision G1
-    /// says so, and its field-by-field capability parity assertion lands with the capability work.
+    /// says so, and the two capabilities the dropped branches read are now CONSTANTS rather than device answers:
+    /// <see cref="D3D11CapabilityRead.SamplerAnisotropy"/> and
+    /// <see cref="D3D11CapabilityRead.SamplerLodBias"/>, both true, both asserted equal to the incumbent's by
+    /// <c>NativeVsVeldridCapabilityParityTests</c>. That is what turns "unreachable" from a claim here into
+    /// something a test fails on.
     /// </para>
     /// </summary>
     [SupportedOSPlatform("windows")]

@@ -43,6 +43,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// Section 5.1's submit, verbatim: take the submit lock, replay, release. The lock is a PARAMETER because
         /// it belongs to the device, where decision W4 puts it, covering replay, present and the resize apply
         /// together. Recording never touches it, which is what lets N lists record while one is submitting.
+        /// The whole contract, including what W5 leaves outside it, is the package README's "Threading: the
+        /// shipped contract" section.
         /// <para>
         /// THE END-OF-REPLAY SIGNAL RIDES HERE (decision C5), which is what makes one submit exactly one point
         /// the timeline can name. It is raised after <see cref="Replay{TEmitter}"/> and inside the lock, so it

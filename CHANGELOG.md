@@ -7,7 +7,7 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.32.0
 
-### The native Direct3D 11 backend: the swapchain, the shader path, the bind flush and the draw path (#453, #454, #455, #457)
+### The native Direct3D 11 backend: the swapchain, the shader path, the bind flush, the draw path, the threading contract and the diagnostics (#453, #454, #455, #457, #458, #459)
 
 The blit-model swapchain lands with the incumbent's present path reproduced field for field, a framebuffer
 whose identity never changes across resize, and a resize queued to the present boundary. The shader path lands
@@ -15,9 +15,11 @@ beside it: GLSL to HLSL through the pinned cross-compile options, the backend's 
 emitted HLSL and the disk DXBC cache. The bind flush lands under both: the R5 schedule ported intact,
 the array-batched activation, and the device-free native-call budget that gates the fan-out. The draw path
 lands on top of all three, and with it the REAL emitter: the type a frame renders through, every
-`ID3D11DeviceContext` call in the backend, and the two cache-key hazards the redundancy caches carried. Nothing
-renders differently and nothing switches over: the native backend's two device-creation entry points still
-throw, so no shipped path reaches any of it, and no golden moved.
+`ID3D11DeviceContext` call in the backend, and the two cache-key hazards the redundancy caches carried. The
+threading contract closes over all of it: lock-free recording, one short submit lock, a conditional creation
+lock, and the two races that were previously nobody's test. Nothing renders differently and nothing switches
+over: the native backend's two device-creation entry points still throw, so no shipped path reaches any of it,
+and no golden moved.
 
 #### The swapchain: the incumbent's present path, a stable framebuffer identity and a queued resize (#457)
 
@@ -421,6 +423,208 @@ that array, so this is a behaviour difference between the two Direct3D 11 backen
 sites pass zero and no shipped shader writes `SV_ViewportArrayIndex`, so it is refused loudly rather than
 scissoring the wrong output silently, and filed as
 https://github.com/APKiwiOrg/KhaozEngine/issues/495.
+
+#### The threading contract: lock-free recording, one short submit lock, and a creation lock only where a driver needs it (#458)
+
+The native backend now STATES what it guarantees about threads, enforces the two clauses that were only
+convention, and races the two interleavings the design is shaped around. Section 9.3, decisions W4 and W5. Most
+of the mechanism was already in place from the rows this one closes over, so the change is mostly contract:
+written down in one authoritative place, made true where it was not, and tested where it was untested.
+
+**The contract has one home, and it is the package README's "Threading: the shipped contract" section.** Every
+XML doc in the package that mentions a lock now points there instead of restating a piece of it, because the way
+a threading contract rots is five partial copies that were each correct when written. It states what is
+guaranteed (recording that appends with no lock and no native call, save the once-per-ring-per-record-phase map
+acquisition a record-time uniform write pays under the submit lock, one `_submitLock` covering exactly the
+replay, the present and the resize apply, `Submit` order as the observable order, device-level `UpdateBuffer`
+from any thread behind that short lock, free-threaded creation), what is serialized, and where the boundary is.
+
+**Resource creation is now actually serialized when the driver reports `DriverConcurrentCreates` false, which it
+was not.** That clause of W4 existed only in the design doc: `D3D11ResourceFactory` created on any thread with no
+lock at all, whatever the threading probe said. `D3D11CreationGate` is the fix, and it is the second and last
+lock in the package. A driver that creates concurrently gets NO lock, so the common case pays nothing. An
+UNKNOWN answer serializes, deliberately: the threading probe is a diagnostic that degrades to "unknown" on every
+failure path, and reading its silence as a yes bets driver stability on whether a log line came back. Only the
+factory members that make a native creation call are gated. A framebuffer aggregates views that already exist, a
+resource layout and a resource set are pure engine data, and a command list touches no device state at all, so
+gating those four would serialize engine work behind a driver limitation that has nothing to do with it. Six
+members are ungated in all: those four, plus `CreateComputePipeline` and `CreateFence`, which are not built yet
+and throw before reaching any driver.
+
+**The two locks nest in one direction, and it is written down before there is a second one to get wrong.** The
+submit lock is OUTER and the creation gate is INNER, and the gate is a STRICT LEAF: nothing is acquired while it
+is held and nothing in it waits. Entering the gate while holding the submit lock is the one legal nesting and no
+shipped path does it. The day a creation path needs the immediate context, it takes the submit lock BEFORE
+entering the gate rather than inside it. A leaf lock is the one shape that cannot be part of a cycle, which is
+worth more than any convention about who takes what first.
+
+**The two members that can block now REFUSE a caller holding the submit lock, by name.** `WaitForIdle` signals
+and flushes under the lock and then releases it to wait, so the submission it is waiting for can still be made,
+and a caller that already held the lock re-enters rather than acquires: the release inside frees nothing and the
+drain waits for work no other thread can submit. The ring allocator's `BeginFrame` waits for the GPU to finish
+with the segment it opens, which is up to a frame, against a lock decision W4 caps at microseconds, and on the
+event-query fence mechanism every completion poll re-enters that same lock so the wait would also shut out the
+submission that would end it. Both were latent: nothing calls them wrongly today and nothing stopped the device
+row from doing so. Both are now an exception naming the rule rather than a frame-long stall that is invisible
+from outside. `WaitForIdle`'s refusal covers the LIVE drain and only that: the dead-device return (X3) and the
+`KE_D3D11_REAL_DRAIN` return are checked ahead of the guard, so a teardown-shaped caller holding the lock on a
+dead device still gets the quiet no-op X3 promises, and the kill switch still restores the empty method body
+rather than swapping it for a throw. Neither return touches anything, so running them under the lock is safe by
+construction.
+
+**The two named races are device-free and they fail when the lock they pin is removed**, which is the only kind
+of race test worth having. `D3D11ThreadingContractTests` runs a foreign-thread device-level `UpdateBuffer`
+racing a submit (two writers filling one range with two different repeated bytes, plus the assertion that the
+write lands in the CURRENT segment and leaves the other two untouched), and a concurrent resize racing a present
+(every `ResizeBuffers` in the trace pinned as the four-call sequence present, release, resize, create, all under
+the lock). Both were verified to FAIL against a deliberately unlocked build before being kept, and each names
+WHICH assertion does the failing rather than leaving the reader to assume. The update race's deterministic
+detector is the writers dying on the map pointer the unmap withdraws mid-copy (5 unlocked runs out of 5): the
+under-lock content sampler catches a tear in roughly 40% of unlocked runs and is kept as the secondary guard for
+a future path where the ring stays mapped and there is no null pointer to crash on. A writer-progress assertion
+sits beside it, so a starved runner fails the test rather than passing it vacuously. The resize race's detector
+is every surface call after the constructor's arriving under the lock (3 of 3), while its whole-size and
+coalescing assertions are forward-guards against a future two-field or accumulating queue rather than live
+detectors, since one packed long cannot tear.
+`GpuDeviceLifecycleTests` stays the real-device concurrency smoke over the process-wide create and dispose gate
+and now points at its device-free sibling.
+
+**W5 is stated as a boundary rather than softened.** Concurrent RECORDING is structurally permitted, because
+`Begin` touches no device state and each recorder owns its own arrays, and it is NOT supported in v1 and NOT part
+of the shipped contract: nothing in the engine asks for it, no test exercises it, and the redundancy caches and
+the constant-buffer ring have not been reviewed for concurrent record. Concretely, under the deferred driver's
+mapping scope a record-time uniform write copies with no lock held, so a record-time write racing a submit's
+unmap, or racing a device-level write, or two record-time writes to one ring, are outside the contract rather
+than serialized. "It will probably work" is exactly the shape that produces a bug report nobody can triage.
+Shipping it properly is https://github.com/APKiwiOrg/KhaozEngine/issues/463. The related narrowing is that the
+lock-free-recording clause is the DEFERRED driver's: under `KE_D3D11_RECORD=immediate` a seam call issues its
+native call as it is made, so recording touches device state by construction and one thread records.
+
+**Two clauses have no code to land on yet, and are recorded rather than guessed at.** Staging `Map` and `Unmap`
+take the submit lock for the duration of the map call and nothing longer, which is where the rule lands the day
+the staging path exists (https://github.com/APKiwiOrg/KhaozEngine/issues/456, and there is no staging path in the
+package today). Device-level `UpdateTexture` takes the same short lock as `UpdateBuffer` when the device row
+wires it.
+
+#### Capabilities, the sampler hardcodes, adapter selection, the debug layer and device-loss reporting (#459)
+
+The native backend can now say what the device can do, which adapter to run on, what the Direct3D debug layer is
+complaining about, and why the device died. Section 11 of the design doc, decisions G1 to G4, C4 and T4. Two
+public API additions land with it, and both are additive: `GpuDeviceDiagnostics` on `IGpuDevice.Diagnostics`,
+`GpuDeviceContext.Diagnostics` and `AppWindow.Diagnostics`, and two new telemetry session-header fields,
+`softwareAdapter` and `deviceLossReason`. The `AppWindow` pass-through sits on the `AppWindow.Diagnostics.cs`
+partial beside `ThreadingCaps` / `AdapterDescription` / `InjectedModules`, because a windowed game holds a window
+and not a context, and without it neither fact was reachable from where a game builds its overlay or its session
+header. Nothing switches over and no golden moved: device creation still throws, so no shipped path reaches any
+of it.
+
+**Capability parity with the incumbent, one member excepted, and the assertion is the deliverable (G1, T4).**
+Five of the nine `GpuCapabilities` members are CONSTANTS of the feature levels this backend requires rather than
+device answers (`ClipSpaceYInverted` false, `DepthRangeZeroToOne` true, `SamplerAnisotropy` true,
+`SamplerLodBias` true, `SupportsCompute` true). Four come off a device: `DeviceName` from
+`IDXGIAdapter::GetDesc().Description` cut at the first NUL and otherwise raw, exactly as the incumbent reports it
+(the cut is defensive, since the marshaller already stops at the terminator, and there is deliberately no
+whitespace trim: some vendors pad the description with a space, but the incumbent keeps that padding and
+`DeviceName` is compared string for string, so trimming on one path alone would fail parity rather than tidy
+anything), `MaxMsaaSampleCount` as the MIN over `R8G8B8A8_UNORM`, `R32_FLOAT` and `R32G8X24_TYPELESS` via
+`CheckMultisampleQualityLevels` (the typeless sibling because that is what `D3D11Formats.ToDxgiFormat` turns the
+incumbent's depth-flagged `D32_Float_S8_UInt` into before it queries, so both backends ask the driver the same
+question), `SupportsShadowMaps` from `CheckFormatSupport(R32_FLOAT)` for `RenderTarget | ShaderSample` (two bits,
+which is what the incumbent's `GetPixelFormatSupportCore` reduces its `Texture2D` plus
+`RenderTarget | Sampled` call to, the texture type selecting no bit), and `SupportsCompletionFences` from the
+fence subsystem rather than as a literal, so the capability and the fence path cannot disagree. That last one is
+the ONE permitted difference from the incumbent, true here and false there.
+
+The per-format walk is DOWNWARD from 32 rather than upward, which is a correctness point rather than a style one:
+the supported sample counts are not required to be contiguous, so a driver supporting 4x and 16x but not 8x would
+stop an upward walk at 4 and under-report the card. Any query failure yields 1 for the whole fold, matching the
+incumbent's defensive read, because a capability read is never allowed to be the thing that fails device
+creation. `MaxMsaaSampleCount` is the member the parity assertion exists for: a different answer silently changes
+what `AntiAliasing.ResolveFor` picks, which changes the field look and the golden output, and it would neither
+throw nor log.
+
+**An out-of-range MSAA request THROWS at texture creation (C4)**, from `D3D11ResourceFactory.CreateTexture`,
+rather than rounding down. The engine already has the one place a request is meant to be clamped, so a count
+arriving above `MaxMsaaSampleCount` came from a caller that skipped it, and honouring it would hide that behind a
+framebuffer that is quietly not multisampled. The check is at the factory rather than in `D3D11Texture` because
+that is where the device's capabilities are known, and because the swapchain builds its own depth attachment
+through that constructor directly at a single sample, which is engine-controlled and has nothing to validate.
+
+**The sampler's four hardcodes were already reproduced and its two degradations already dropped**, by the
+resource row that built `D3D11Sampler`: no comparison function, minimum LOD 0, maximum LOD `uint.MaxValue`,
+transparent-black border. What this row adds is the thing that makes "unreachable" checkable rather than
+asserted in a comment. The two capabilities the dropped branches read are now named constants
+(`D3D11CapabilityRead.SamplerAnisotropy` and `SamplerLodBias`, both true), and the parity test asserts them equal
+to the incumbent's, so a device that somehow reported either as false would fail a test instead of quietly
+sampling differently.
+
+**`KE_D3D11_ADAPTER=warp|hardware|<index>|<name substring>` pins the adapter, and the reason is CI integrity
+(G2).** Nothing in the engine selects WARP today. The Windows golden leg gets it only because `windows-latest`
+carries no hardware adapter and DXGI falls back, so the rasterizer the 36 committed Direct3D 11 goldens are
+compared on is an accident of the runner image, and a runner that grew a paravirtual adapter would change it
+silently, with the failure arriving as a diff on unrelated goldens and nothing anywhere naming the cause. A
+request that cannot be honoured WARNs and falls back to letting DXGI pick, never fails, and the warning lists the
+adapters that WERE enumerated, because a name substring is machine-specific by nature and "nothing matched"
+without the list sends the reader to check their spelling when the machine is usually what changed. There is
+deliberately no unrecognized VALUE: anything that is not `warp` or `hardware` and does not parse as an integer is
+a name substring, which is the only reading under which someone typing their GPU's name gets what they meant.
+`warp` resolves through `DriverType.Warp` rather than through the enumeration, so the one value CI pins cannot
+fail to resolve on a machine whose factory enumerates no software adapter. `DXGI_ADAPTER_FLAG_SOFTWARE` is
+recorded in the session header as `softwareAdapter`, read off the CREATED device rather than off the choice, so
+it is right on the default path where nothing in the engine picked the adapter at all.
+
+**`KE_D3D11_DEBUG=1` gains its second job: the debug layer and a rate-limited `ID3D11InfoQueue` pump (G4).** One
+variable, two effects, deliberately, because a session debugging a Direct3D problem wants both and remembering
+two names to get one answer is how a capture ends up taken with half the instrumentation on. A test pins the two
+readers against the same value table, so a change to one that is not made to the other is a red test rather than
+a half-instrumented capture. Corruption and error severities are raised to WARN and not to ERROR, which is a
+deliberate ceiling: ERROR is for something the engine could not do, and a debug-layer message is a diagnostic
+about something that already happened, so ERROR would make a debug session look like a broken engine and would
+put a row in a consumer's error-rate telemetry for every diagnostic run. The rate limit has three caps, per
+frame, per repeated message and per session, and a cap that suppresses says so exactly once, because a limiter
+that silently drops is worse than none at all in a crash investigation: a reader cannot tell a quiet run from a
+truncated one. The per-repeat cap is the one that does the real work, since the layer's characteristic failure is
+one mistake reported once per draw call. A machine without the Windows Graphics Tools feature answers
+`DXGI_ERROR_SDK_COMPONENT_MISSING`, which retries without the flag plus a WARN naming what to install, rather
+than refusing to start on someone who is by definition mid-diagnosis.
+`KE_D3D11_PREVENT_THREADING_OPTIMIZATIONS` keeps its exact semantics, untouched in `GpuD3D11DeviceFlags`, and
+there is no frame-capture integration, because RenderDoc and PIX attach externally.
+
+**A device loss now names itself, at the site that noticed (G3).** `DXGI_ERROR_DEVICE_REMOVED` is sticky, which
+is why all 25 stacks on #423 pointed at a texture view constructor that was merely the next call made rather than
+at anything that went wrong. `D3D11DeviceLossLatch` takes the HRESULT at each site, and on
+`DXGI_ERROR_DEVICE_REMOVED` or `DXGI_ERROR_DEVICE_RESET` calls `GetDeviceRemovedReason` IMMEDIATELY, records it
+with the site, flips the same liveness token teardown uses so every later release is a no-op, logs an ERROR line
+saying what the reason means in words, and hands the session header a stable token plus the site. It latches
+exactly once, because the first site is the only one near the cause and two would be a race over which the header
+carries. The claim and the RECORD are separate instants, so the reason and the site are published behind their
+own flag and the header field reports null until that flag is set: the interlocked claim lands before
+`GetDeviceRemovedReason` is even called, and a header written from another thread inside that window would
+otherwise have recorded a loss with no reason and no site in it, permanently. An ordinary failure is deliberately
+NOT a device loss: a latch that fired on every failing HRESULT would
+kill the device on a plain `DXGI_ERROR_INVALID_CALL`, after which every release is a no-op and nothing says why.
+`CheckAfterFault` covers the fourth site, which arrives as a throw rather than an HRESULT (the swapchain's resize
+apply, https://github.com/APKiwiOrg/KhaozEngine/issues/489), by asking the device for its removal reason
+directly, and answering false there means the throw was something else and the caller must go on treating it as
+its own fault.
+
+**What is deliberately NOT here, and both are stated rather than left to be found.** Device creation does not
+exist, so nothing calls any of this yet: the adapter enumeration, the capability read, the debug flag, the pump
+and the latch all wait on the device row for their call sites, and the Windows `ID3D11InfoQueue` reader behind
+`ID3D11InfoQueueSource` lands there too, because `GetMessageW` is a two-pass call into a caller-allocated buffer
+that a Windows machine has to exercise before anyone should believe it. And #427 stays OPEN: its reporting is
+built here, and it closes when the native leg can actually observe a device loss.
+
+**Where the tests are.** Everything engine-owned runs device-free on macOS and Linux: the capability assembly
+from probed inputs, the descending sample-count walk, the min-over-three-formats fold, the name trimming, the
+sample-count guard, the adapter parse and selection policy against a faked adapter list, both halves of the debug
+lever, the pump and all three rate-limit caps against a fake queue, and the latch with its once-only rule,
+liveness flip, header string and fault path. `NativeVsVeldridCapabilityParityTests` carries T4 itself as a
+`[GpuFact]` that constructs both devices in one process, and it lands DORMANT, keyed to the exact
+`NotSupportedException` the unbuilt provider raises, so it starts running on its own the day creation lands. Its
+device-free companion is a reflection check that the field-by-field comparer covers every member of
+`GpuCapabilities`, which is the guard that matters: a member appended to that struct without a line in the
+comparer would make every parity assertion silently weaker while staying green.
 
 ## 17.31.0
 

@@ -2,8 +2,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 {
     /// <summary>
     /// The shared "is the device still there" token, decision X3, reproduced from the incumbent's
-    /// <c>DeviceLiveness</c>. One instance per device, handed to every wrapper the device creates, flipped ONCE by
-    /// the context inside its lifecycle lock BEFORE the real device is destroyed, and read lock-free afterwards.
+    /// <c>DeviceLiveness</c>. One instance per device, handed to every wrapper the device creates, flipped ONCE
+    /// BEFORE the real device is destroyed, and read lock-free afterwards.
+    /// <para>
+    /// TWO THINGS FLIP IT, for the same underlying reason. The context's own teardown flips it inside its
+    /// lifecycle lock, which is the ordinary case. <see cref="D3D11DeviceLossLatch"/> flips it on a DEVICE LOSS
+    /// (decision G3), which is the other way a device stops existing: the objects are already gone, nothing asked
+    /// for it, and every release from that point on would be a release against freed memory. Both are the same
+    /// statement, that the real device is no longer there, and the one-way contract below holds for both.
+    /// </para>
     /// <para>
     /// WHAT IT BUYS. Destroying a Direct3D device already frees every child object it made, so a wrapper disposed
     /// after its device would be releasing something that no longer exists. On the Veldrid path the equivalent
@@ -31,7 +38,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// IT IS THE ONE IMPLEMENTATION OF <see cref="ID3D11DeviceLiveness"/>, which is the read surface the fence
     /// work was built against while this latch did not exist yet. That interface is deliberately the read half
     /// only: the fence subsystem asks whether the device is dead and has no business flipping it, so
-    /// <see cref="MarkDead"/> stays off it and the device's teardown remains the only caller.
+    /// <see cref="MarkDead"/> stays off it and only teardown and the device-loss latch call it.
     /// </para>
     /// </summary>
     internal sealed class D3D11DeviceLiveness : ID3D11DeviceLiveness
@@ -49,7 +56,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <summary>
         /// Flip the token, permanently. Called by the device's own teardown, inside its lifecycle lock and BEFORE
         /// the real device is released, so no wrapper can observe "alive" after the object it would release has
-        /// gone. Idempotent, and safe to call from any thread.
+        /// gone, and by <see cref="D3D11DeviceLossLatch"/> the moment a device loss is latched, which is the same
+        /// statement arriving from the driver instead of from the application. Idempotent, and safe to call from
+        /// any thread.
         /// </summary>
         internal void MarkDead() => _dead = true;
     }

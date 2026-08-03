@@ -336,6 +336,21 @@ namespace KhaozEngine.Gpu
         /// <summary>A shared linear (bilinear) sampler owned by the device.</summary>
         IGpuSampler LinearSampler { get; }
 
+        /// <summary>
+        /// The two facts a device can only report about ITSELF and only LIVE: whether it is on a software
+        /// rasterizer, and why it was lost if it has been. Read every time a telemetry session header is written,
+        /// never cached, because a device loss happens long after creation and a captured value would always say
+        /// the device was fine.
+        /// <para>
+        /// DEFAULT-IMPLEMENTED, so this was appended without breaking any implementer, and the default is the
+        /// honest one: no answers. A backend that cannot report either fact leaves both null, and null means
+        /// "nobody answered" rather than "no" (see <see cref="GpuDeviceDiagnostics"/>). The Veldrid path takes the
+        /// default today, which is correct rather than a gap: Veldrid exposes neither the DXGI adapter flag nor a
+        /// device-removal reason, so a value from it would have to be invented.
+        /// </para>
+        /// </summary>
+        GpuDeviceDiagnostics Diagnostics => default;
+
         /// <summary>Submit a finished command list for execution.</summary>
         void Submit(IGpuCommandList cl);
 

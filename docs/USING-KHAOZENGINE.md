@@ -8211,6 +8211,34 @@ the header. Use `info.WithGpu(device)` when you hold a `GpuDeviceContext`, or th
 you hold an `AppWindow`. `injectedModules` keeps null (never scanned) apart from `[]` (scanned, clean), exactly
 like `GpuInjectedModules.Describe`, and `threading` is null on every backend but Direct3D11.
 
+**Two more GPU fields arrive in 17.32.0: `softwareAdapter` and `deviceLossReason`.** Both are appended inside
+the envelope, so `session.v` does not move and an existing reader keeps working.
+
+- `softwareAdapter` is three-valued. `true` means the session ran on a software rasterizer (on Direct3D11,
+  `DXGI_ADAPTER_FLAG_SOFTWARE`, which covers WARP and the Microsoft Basic Render Driver), `false` means it did
+  not, and `null` means nobody answered. Keep those apart when you read them: performance numbers off a software
+  rasterizer are not comparable with numbers off a GPU at all, and a capture that cannot say which it was is a
+  capture that gets averaged in with the others. It is a separate field from `adapter` rather than something you
+  infer from the name, because inferring it means keeping a list of the names software rasterizers use, and that
+  list is wrong the first time a new one appears.
+- `deviceLossReason` is null on every ordinary session and carries `GetDeviceRemovedReason`'s answer plus the
+  call site when the graphics device was LOST, for example `"DXGI_ERROR_DEVICE_HUNG at present"`. The reason is
+  read at the first call site that notices the removal, because `DXGI_ERROR_DEVICE_REMOVED` is sticky: every
+  later call returns it too, so by the time a crash handler asks, the reason has been overwritten by whatever ran
+  next. `DXGI_ERROR_DEVICE_HUNG` is the one that means the fault is in what the engine submitted, and
+  `DXGI_ERROR_DEVICE_RESET` means another process hung the GPU.
+
+Both come off the live device through `IGpuDevice.Diagnostics` (a `GpuDeviceDiagnostics`, also on
+`GpuDeviceContext.Diagnostics` and, for a windowed game that holds no context, on `AppWindow.Diagnostics`
+alongside `AdapterDescription` / `InjectedModules` / `ThreadingCaps`), read at the moment the header is written
+rather than captured at creation,
+because a device loss happens at an arbitrary moment long after the device was made. `info.WithGpu(device)` fills
+them for you. The `AppWindow`-shaped overload gained a five-value sibling that takes the diagnostics as its last
+argument, and the original four-value overload is unchanged and leaves both fields `null`. **The native
+Direct3D 11 backend is the only thing that reports either fact today.** Veldrid exposes neither the DXGI adapter
+flag nor a removal reason, so every backend on the Veldrid path leaves both `null`, which is the honest answer
+rather than a gap.
+
 **A fallback says what failed, not only that it fell back.** `requestedBackend` is the backend that was asked
 for and did not work, set only on a `FallbackAfterFailure` source and null otherwise. It matters most on a
 `UserPreference` fallback, where the request came from the player's own in-game graphics setting and is
@@ -8623,9 +8651,10 @@ backend, so a shader that gets past you fails by name rather than by rendering w
 
 **`KE_D3D11_DEBUG=1` changes how shaders are compiled.** It compiles every shader with debug information and no
 optimization, so a RenderDoc or PIX capture's disassembly maps back to the emitted HLSL instead of to optimized
-instructions. Expect slower shaders. It is a capture lever, not a setting. The same variable will also switch on
-the Direct3D debug layer when the backend's diagnostics land. Today shader compilation is the only thing it
-affects.
+instructions. Expect slower shaders. It is a capture lever, not a setting. **The same variable also switches on
+the Direct3D debug layer** (see the diagnostics section below), so one variable gets you both halves of a
+diagnostic session rather than two names to remember. Shader compilation is still the only half with an
+observable effect today, because nothing creates a native device yet.
 
 **`KE_D3D11_SHADER_CACHE` controls the compiled-shader cache.** Compiled modules are cached on disk under
 `<local-app-data>/KhaozEngine/d3d11-dxbc/<engine version>/`, keyed on the shader sources, the compile target, the
@@ -8635,6 +8664,72 @@ writable), or set it to any of `off`, `0`, `false`, `no` or `none` to compile fr
 do when you are chasing a shader miscompile and want to be sure of what ran. Any other value is a directory path,
 which is why the disable words are a set rather than `off` alone. A cache that cannot be read or written is a slower start and nothing
 else: every failure is a miss and nothing propagates.
+
+### Diagnostics on the native Direct3D 11 backend (17.32.0)
+
+Capabilities, adapter selection, the debug layer and device-loss reporting. Nothing here is reachable from a
+shipped path yet, because that backend's device creation is still being built, and every lever below is live the
+day it lands.
+
+**Capabilities are at parity with the incumbent, with exactly one deliberate difference.** Field for field,
+`GpuCapabilities` reads the same on `GpuBackendKind.Direct3D11Native` as on `GpuBackendKind.Direct3D11`, except
+`SupportsCompletionFences`, which is `true` there and `false` on the incumbent. Nothing you write against
+capabilities needs a backend check, and in particular `MaxMsaaSampleCount` is asserted identical, because a
+different answer would silently change what `AntiAliasing.ResolveFor` picks and therefore what the frame looks
+like. `DeviceName` is the DXGI adapter description exactly as the incumbent reports it, character for character,
+including any whitespace the vendor padded it with.
+
+**One capability behaves differently on purpose: an out-of-range MSAA request THROWS.** Creating a texture whose
+`GpuTextureDescription.SampleCount` is above `GpuCapabilities.MaxMsaaSampleCount` raises an `ArgumentException`
+on that backend instead of quietly producing a texture that is not multisampled. Clamp through
+`AntiAliasing.ResolveFor`, which is where the engine decides this and what every engine renderer already does.
+A count that reaches texture creation above the maximum came from a caller that skipped that clamp.
+
+**`KE_D3D11_ADAPTER` pins which adapter the device is created on.** Four forms, all case-insensitive and
+whitespace-trimmed:
+
+```
+KE_D3D11_ADAPTER=warp        # the software rasterizer, whatever hardware is present
+KE_D3D11_ADAPTER=hardware    # the first adapter DXGI does not flag as software
+KE_D3D11_ADAPTER=1           # a zero-based index into the DXGI enumeration order
+KE_D3D11_ADAPTER=GeForce     # a case-insensitive substring of an adapter description
+```
+
+Unset leaves DXGI to pick, which is what the engine has always done. **A request that cannot be honoured WARNs
+and falls back to letting DXGI pick, and never fails the run.** The warning names what was typed AND lists the
+adapters that were actually enumerated, which is the half that matters: a name substring is machine-specific by
+nature, so a value that is right on one machine is wrong on the next, and "nothing matched" without the list
+sends you to check your spelling when the real answer is usually that the machine changed. There is no
+unrecognized VALUE, because anything that is not `warp`, `hardware` or an integer is read as a name substring.
+
+The reason this exists is CI integrity rather than convenience. The engine's Windows golden leg runs on WARP only
+because `windows-latest` carries no hardware adapter and DXGI falls back, so a runner image that grew a
+paravirtual adapter would silently change the rasterizer the committed goldens are compared on. If you gate
+anything on golden images, pin the adapter rather than inheriting whatever the machine has.
+
+**`KE_D3D11_DEBUG=1` also switches on the Direct3D debug layer**, alongside the shader-compile half described
+above. One variable, two effects, deliberately: a session debugging a Direct3D problem wants both, and
+remembering two names to get one answer is how a capture ends up taken with half the instrumentation on. The
+layer's messages are pumped into the engine log at a rate limit, with corruption and error severities raised to
+WARN so they sit above the informational chatter. The rate limit has three caps, and a cap that suppresses says
+so exactly once rather than going quiet: per frame (bounds one bad frame), per repeated message (the one that
+does the real work, since the layer's characteristic failure is one mistake reported once per draw call), and per
+session (the soak backstop). On a machine without the Windows Graphics Tools feature installed the device is
+created WITHOUT the layer and a WARN names what to install, rather than the app refusing to start on someone who
+is by definition mid-diagnosis. Expect a large performance cost with the layer on. RenderDoc and PIX attach
+externally and need nothing from the engine.
+
+**`KE_D3D11_PREVENT_THREADING_OPTIMIZATIONS` is unchanged**, including its value parsing and its
+unrecognised-value warning. It is documented in its own section below.
+
+**A device loss reports why, at the site that noticed.** `DXGI_ERROR_DEVICE_REMOVED` is sticky: once the device
+dies, every later call returns it, so the reason is only meaningful at the FIRST site that sees it. That backend
+checks the result after `Present`, after every staging `Map` and after replay, and on a removal it calls
+`GetDeviceRemovedReason` immediately, records it, and flips the device's liveness token so every later resource
+release is a no-op instead of a call against freed memory. The reason then reaches you two ways: an ERROR line in
+the session log naming the site and what the reason means, and the `deviceLossReason` field of the telemetry
+session header. Nothing you write has to catch anything, and there is no recovery path: a lost device stays lost,
+which is what the liveness token makes safe.
 
 ---
 

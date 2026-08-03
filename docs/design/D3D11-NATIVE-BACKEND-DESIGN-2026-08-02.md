@@ -68,7 +68,7 @@ rejected from both.
 | C1 | Compute | Same schedule with a separate compute dirty array. SRV-versus-UAV auto-unbind in BOTH directions, implemented where the bind arrays are assembled | Both, converged |
 | C2 | Compute | Structured buffers keep the RAW byte-address view forcing, because SPIRV-Cross emits `ByteAddressBuffer` for a GLSL storage block | Both, converged |
 | C3 | Barriers | No new seam member. Rule 2 (`End` plus `Submit` plus `WaitForIdle`) is honoured as written. The automatic-hazard capability is filed as a follow-up, not built here | Both, converged |
-| C4 | MSAA | `ResolveSubresource` at subresource 0. `MaxMsaaSampleCount` is the MIN over `R8G8B8A8_UNORM`, `R32_FLOAT` and `D32_FLOAT_S8X24_UINT` via `CheckMultisampleQualityLevels`, asserted equal to the incumbent's. An out-of-range requested count THROWS rather than silently degrading | B's throw, A's parity assertion |
+| C4 | MSAA | `ResolveSubresource` at subresource 0. `MaxMsaaSampleCount` is the MIN over `R8G8B8A8_UNORM`, `R32_FLOAT` and `D32_FLOAT_S8X24_UINT` (CORRECTED as implemented: the depth attachment is queried as `R32G8X24_TYPELESS`, which is what `D3D11Formats.ToDxgiFormat` turns the incumbent's depth-flagged `D32_Float_S8_UInt` into before it queries, so "equal to the incumbent's" is the same question rather than a near one) via `CheckMultisampleQualityLevels`, asserted equal to the incumbent's. An out-of-range requested count THROWS rather than silently degrading | B's throw, A's parity assertion |
 | C5 | Fences | Real completion fences: `ID3D11Fence` via `ID3D11Device5` and `ID3D11DeviceContext4::Signal`, with `ID3D11Query(Event)` as the fallback. `SupportsCompletionFences = true` on both paths | Both, converged |
 | C6 | Fences | `WaitForIdle` becomes a real fence drain, replacing an empty method body, behind the `KE_D3D11_REAL_DRAIN` kill switch with drain count and duration in telemetry | Both, gated by M2 |
 | G1 | Capabilities | Capability parity with the incumbent except `SupportsCompletionFences`, asserted field by field. The sampler HARDCODES are reproduced. The two unreachable sampler DEGRADATIONS are dropped | A's hardcodes, B's dropped fallbacks |
@@ -653,8 +653,10 @@ shipped loop and the contract hardens against a consumer that does otherwise.
 
 The shipped contract:
 
-- Recording is lock-free and touches no device state. Any number of `IGpuCommandList` instances may record
-  concurrently on any threads.
+- Recording is lock-free and touches no device state (the first record-time uniform write per ring acquires the
+  mapping under the submit lock for the Map call alone, per 6.2's lazy map, and the `KhaozEngine.Gpu.D3D11`
+  README's threading section is the authoritative statement of the threading contract). Any number of
+  `IGpuCommandList` instances may record concurrently on any threads.
 - One `_submitLock` covers replay, present and the resize apply. It is held for microseconds, not a frame.
   This deletes #415's entire hazard list rather than guarding it: there is no frame-long monitor to exit from
   a foreign thread, no `Map` serialising behind a frame, and no lock-recursion leak to fix.
@@ -734,6 +736,15 @@ with `CheckMultisampleQualityLevels`, because every MRT attachment must support 
 failure yielding 1. It is asserted equal to the incumbent's on the same machine by T4, because a different
 answer silently changes what `AntiAliasing.ResolveFor` picks, which changes the field look and the golden
 output.
+
+CORRECTED as implemented: the depth attachment is asked about as `R32G8X24_TYPELESS`, not as the fully typed
+`D32_FLOAT_S8X24_UINT` this clause names. The incumbent's `GetSampleCountLimit(D32_Float_S8_UInt,
+depthFormat: true)` runs the pair through `D3D11Formats.ToDxgiFormat` first, and that mapping answers
+`R32G8X24_Typeless` (`src/Veldrid/D3D11/D3D11Formats.cs` lines 131 to 133), so the typeless sibling is the format
+it actually hands the driver. Written as first drafted, the two backends would have asked the driver two
+different questions and T4's "asserted equal to the incumbent's" would have rested on them happening to answer
+the same, which is a parity claim that holds until a driver disagrees. The typeless format makes it satisfiable
+by construction.
 
 One departure: an out-of-range requested sample count THROWS at texture creation rather than silently falling
 to 1. The engine already clamps upstream, so nothing legitimate reaches the throw, and a silent MSAA downgrade

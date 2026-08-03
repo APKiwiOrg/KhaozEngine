@@ -141,6 +141,18 @@ public static class TelemetrySessionHeader
         sb.Append(",\"adapter\":");
         TelemetryJson.AppendString(sb, NullIfBlank(session?.AdapterDescription));
 
+        // Whether that adapter was a software rasterizer. Three-valued on purpose: null is "nobody asked", which
+        // is a different fact from false, and a performance capture that cannot tell those apart cannot say
+        // whether its numbers are comparable with the next one's.
+        sb.Append(",\"softwareAdapter\":");
+        TelemetryJson.AppendBool(sb, session?.SoftwareAdapter);
+
+        // Why the device was lost, when it was. Null on every ordinary session, which is nearly all of them, and
+        // that asymmetry is the point: the field costs one null per capture and is the whole diagnostic on the
+        // rare capture that carries it.
+        sb.Append(",\"deviceLossReason\":");
+        TelemetryJson.AppendString(sb, NullIfBlank(session?.DeviceLossReason));
+
         // null (never scanned) and [] (scanned, clean) are opposite facts, so the header keeps them apart.
         sb.Append(",\"injectedModules\":");
         IReadOnlyList<string>? modules = session?.InjectedModules;

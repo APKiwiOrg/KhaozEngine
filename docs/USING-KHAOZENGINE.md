@@ -8532,6 +8532,53 @@ of uniform data are kept. It exists so a soak can settle whether three is enough
 had to wait for a segment to come free is recorded for the session telemetry to carry once a device exists to
 report it.
 
+### Shaders on the native Direct3D 11 backend (17.31.0)
+
+GLSL 450 stays the single source. That backend cross-compiles it to HLSL with the same SPIRV-Cross every other
+backend uses, then calls FXC itself to `vs_5_0` / `ps_5_0` / `cs_5_0`. Nothing about how you write or hand over
+a shader changes. Three things reach you.
+
+**Validate your own shaders through FXC too, not only through `ShaderValidation`.**
+`ShaderValidation.ValidatePair` cross-compiles to HLSL, MSL, GLSL and ESSL and stops there: it has never
+COMPILED the HLSL it produced. That gap is real rather than theoretical, and this engine fell through it twice on
+Direct3D 11 and WARP specifically, once badly enough that a whole scene rendered with no colour in it. If you
+reference `KhaozEngine.Gpu.D3D11`, add the second half in your own test suite:
+
+```csharp
+[Fact]
+public void WaterCompilesEverywhere()
+{
+    ShaderValidation.ValidatePair(MyShaders.WaterVert, MyShaders.WaterFrag, "Water");
+    if (KhaozEngineD3D11.IsPlatformSupported)
+        KhaozEngineD3D11.ValidateShaderPair(MyShaders.WaterVert, MyShaders.WaterFrag, "Water");
+}
+```
+
+`KhaozEngineD3D11.ValidateComputeShader(computeGlsl, label?)` is the compute sibling. Both need no device and no
+GPU, both throw `ShaderValidationException` naming the label and what specifically was wrong, and both throw
+`PlatformNotSupportedException` off Windows, because FXC is `d3dcompiler` and exists nowhere else. Hence the
+`IsPlatformSupported` gate.
+
+What they add over the seam's validator is the FXC compile itself plus one assertion FXC makes possible: the
+compiled vertex input signature must have contiguous `TEXCOORD` indices from 0. SPIRV-Cross DROPS a vertex input
+your vertex stage never reads, so declaring locations 0 to 11 and reading only 0 and 5 to 8 emits a holed
+signature, and FXC plus WARP miscompile a holed signature without saying so. The fixes are in the GLSL and there
+are two shapes: read every declared input with a negligible live weight so none is dropped, or order your
+interpolants so the fragment-used ones form a gap-free prefix. The same check runs at pipeline creation on that
+backend, so a shader that gets past you fails by name rather than by rendering wrongly.
+
+**`KE_D3D11_DEBUG=1` also changes how shaders are compiled.** Beside the Direct3D debug layer, it compiles every
+shader with debug information and no optimization, so a RenderDoc or PIX capture's disassembly maps back to the
+emitted HLSL instead of to optimized instructions. Expect slower shaders. It is a capture lever, not a setting.
+
+**`KE_D3D11_SHADER_CACHE` controls the compiled-shader cache.** Compiled modules are cached on disk under
+`<local-app-data>/KhaozEngine/d3d11-dxbc/<engine version>/`, keyed on the shader sources, the compile target, the
+compile flags and the engine version, so only the first start on a given engine version pays for the compile.
+Point the variable at a directory to relocate it (a CI workspace, or a machine whose local app data is not
+writable), or set it to `off` to compile fresh every time, which is what to do when you are chasing a shader
+miscompile and want to be sure of what ran. A cache that cannot be read or written is a slower start and nothing
+else: every failure is a miss and nothing propagates.
+
 ---
 
 ## Is the D3D11 driver emulating command lists (`GpuThreadingCaps`, 17.22.0)
@@ -9660,6 +9707,13 @@ shader fails CI instead of surfacing only when a player on that backend loads th
 
 `ShaderValidation.ValidateCompute(computeGlsl, label?)` is the single-stage sibling for a compute shader
 (see the next section).
+
+**It stops at the cross-compile, and that is a real gap on Direct3D 11.** It produces HLSL and never compiles
+it, so HLSL that SPIRV-Cross emits happily and FXC rejects sails straight through, as does a vertex input
+signature with a hole in it. Both have cost this engine a production incident. If you reference
+`KhaozEngine.Gpu.D3D11`, pair each call here with `KhaozEngineD3D11.ValidateShaderPair` behind
+`KhaozEngineD3D11.IsPlatformSupported` (see "Shaders on the native Direct3D 11 backend" above), which runs FXC
+over the emitted HLSL and asserts the signature.
 
 ---
 

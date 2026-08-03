@@ -61,6 +61,10 @@ on:
       - 'KhaozEngine.Render3D/**'
       - 'KhaozEngine.Render2D/**'
       - 'KhaozEngine.Gpu/**'
+      # The native Direct3D 11 backend. Its shader path owns the FXC call, so a change here can reject HLSL
+      # that SPIRV-Cross emits, or hole a vertex input signature, and the Windows leg's FXC step below is the
+      # only thing that runs a compiler over the shipped programs (decision S5).
+      - 'KhaozEngine.Gpu.D3D11/**'
       - 'KhaozEngine.Gui/**'
       - 'KhaozEngine.Primitives/**'
       # Render/runtime stack layer between Gpu and Render2D/Render3D (AppWindow, GLFW). Was never watched (#198).
@@ -229,6 +233,23 @@ jobs:
       #     the same tier, and its full-suite runs serialize xUnit test collections (KE_TEST_EXTRA_ARGS
       #     below) because lavapipe under full parallel load still shows residual driver-side
       #     instability after the four engine-defect fixes (see the header).
+      # DECISION S5's CI leg, Windows only and on EVERY trigger. These are plain [Fact]s with no device: they
+      # cross-compile every shipped shader program to HLSL and run FXC over the result, then assert the reflected
+      # vertex input signature has contiguous TEXCOORD indices from 0. FXC is d3dcompiler, so this is the only
+      # leg that can run it, and it is the only thing in CI that compiles the HLSL the engine actually emits.
+      #
+      # It is a SEPARATE step rather than part of the run below because the Windows leg's push-path filter is
+      # "FullyQualifiedName~Golden", which is for device-backed pixel comparisons. Naming these tests "Golden" to
+      # get them selected would put a CPU compile inside the golden family; selecting them by name here keeps the
+      # naming contract intact and runs them on push, not only on the weekly schedule.
+      #
+      # No KE_GPU_TESTS and no backend selection: nothing here creates a device. Cheap enough (seconds) that it
+      # runs before the suite, so a rejected shader fails fast instead of after a full golden pass.
+      - name: Shader FXC validation (no device)
+        if: matrix.os == 'windows-latest'
+        run: dotnet test -c Release --no-build --filter "FullyQualifiedName~D3D11FxcValidationTests"
+        shell: bash
+
       - name: Run test suite
         env:
           KE_GPU_TESTS: '1'
@@ -265,6 +286,18 @@ jobs:
         with:
           name: golden-evidence-${{ matrix.backend }}
           path: KhaozEngine.Render.Tests/Gpu/goldens-evidence/
+          if-no-files-found: ignore
+
+      # On an HLSL byte-equality FAILURE: upload the emitted HLSL the pinned hashes no longer match (decision
+      # S3). Without the text there are two indistinguishable explanations, a deliberate shader edit that was
+      # not re-baked and a cross-compile option drift, and with it they are one diff apart. Kilobytes,
+      # failure-only. ignore = no spurious failure on a leg that failed for another reason.
+      - name: Upload emitted-HLSL evidence
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: hlsl-evidence-${{ matrix.backend }}
+          path: KhaozEngine.Render.Tests/Gpu/hlsl-evidence/
           if-no-files-found: ignore
 
       # When baking: upload the freshly written per-backend goldens so they can be downloaded and committed,

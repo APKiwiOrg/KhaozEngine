@@ -40,6 +40,9 @@ artifacts/
 # ----- KhaozEngine-specific (add repo-specific rules below) -----
 # Failure-evidence PNGs written by the GPU golden compare (got/want/diff/bake); local-only, uploaded as CI artifacts
 KhaozEngine.Render.Tests/Gpu/goldens-evidence/
+# Emitted HLSL written by D3D11HlslByteEqualityTests when a pinned hash no longer matches; local-only,
+# uploaded as a CI artifact so an option drift can be read rather than guessed at
+KhaozEngine.Render.Tests/Gpu/hlsl-evidence/
 # CPU-vs-GPU skinning parity PNG dumps (Render3DGpuSkinningGpuTests); local-only diagnostic evidence
 gpu-skinning-evidence/
 

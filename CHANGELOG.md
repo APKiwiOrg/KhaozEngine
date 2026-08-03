@@ -8,7 +8,7 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.31.0
 
-### The native Direct3D 11 backend: the replay contract, the constant-buffer ring, and the three cross-row wirings (#449, #451, #452)
+### The native Direct3D 11 backend: the replay contract, the constant-buffer ring, the shader path, and the three cross-row wirings (#449, #451, #452, #455)
 
 The replay rules the 17.30.0 recording model shipped without land here (one `ClearState` per submit, the
 redundancy caches, the precise scrub on disposal and the framebuffer-guarded viewport), the per-frame uniform
@@ -235,6 +235,84 @@ bytes a write actually produced rather than trusting an offset calculation. `Con
 256-byte minimum first and rounds the result up to a whole constant, which is a no-op for every window the engine
 binds and stops a partial constant being truncated away rather than covered. The package gained
 `<AllowUnsafeBlocks>true</AllowUnsafeBlocks>` for exactly one body, the copy into the mapped segment.
+
+#### The shader path: GLSL to HLSL to our own FXC call, with pinned options and a DXBC cache (#455)
+
+`CreateShadersFromSpirv` and `CreateComputeShaderFromSpirv` are real on the native backend. GLSL 450 stays the
+single source, the internal Veldrid-free cross-compile helper does GLSL to SPIR-V to HLSL, and the backend calls
+`Vortice.D3DCompiler` itself to `vs_5_0` / `ps_5_0` / `cs_5_0`. Still reached by nothing shipped, since device
+creation throws, and no golden moved. Section 8 of the design doc with 8.1, 8.2 and 8.3, decisions S1 to S5.
+
+**DXC is eliminated on a fact rather than a preference, and the code says so where someone would go looking.**
+DXC emits DXIL, Direct3D 11 consumes DXBC, and there is no supported DXC path to DXBC, so Shader Model 6.x is
+unreachable from a Direct3D 11 backend regardless of anyone's view of it. `vs_5_0` and its siblings are therefore
+not a conservative choice, they are the only one. `SpirvLocalSize` keeps hand-parsing the workgroup size out of
+the module: Direct3D takes it from the module, but the seam's `IGpuComputeShader.ThreadGroupSize*` still has to
+report it and `Veldrid.SPIRV` never hands it back.
+
+**The cross-compile options are pinned, and section 8.2's premise turned out to be wrong.** The design expected
+`ResourceFactoryExtensions.CreateFromSpirv` to derive something from `ResourceBindingModel.Improved` that a
+direct `SpirvCompilation.CompileVertexFragment` call does not get for free. Read against the pinned
+`Veldrid.SPIRV` 1.0.15, it does not: it forwards the options verbatim, and `ResourceBindingModel` is not a member
+of `CrossCompileOptions` at all. It lives on the device and pipeline descriptions, and in the vendored fork the
+only backend that reads it is Metal, so it cannot have moved a byte of emitted HLSL. The incumbent's whole shipped
+shader set was therefore cross-compiled under the library defaults. `HlslCrossCompilePin` now states those values
+with the citation behind them, which is still the point of S3: they are a choice with a name rather than a default
+nobody made, and the next reader who wants to flip one has to move a hash table and see every program the flip
+touched.
+
+**Every shipped program's emitted HLSL is hashed against a checked-in table.** 34 distinct graphics programs
+(from 36 non-test call sites, the `Line` pair being created three times) plus 8 compute kernels across the four
+cascade resolutions shipped code can reach, for 76 hashed stages. Device-free, so it runs on every leg including
+the ones with no GPU. That converts "the same SPIRV-Cross yields the same bytes, so the 36 committed Direct3D 11
+goldens carry over without a rebake" from the assumption the whole backend rests on into a checked fact, per
+program, before a single golden runs. One program's hashes moving is a shader edit. Thirty moving at once is an
+option drift, and the failure says so and dumps the emitted HLSL so the two are one diff apart rather than
+indistinguishable. `KE_UPDATE_HLSL_HASHES=1` re-bakes.
+
+**Compiled modules are cached on disk (S4), keyed on the WHOLE program.** The key is a SHA-256 over every GLSL
+source of the program, the FXC profile, the FXC flags, the pinned cross-compile options and the engine version,
+and the entries live under `<local-app-data>/KhaozEngine/d3d11-dxbc/<engine version>/`. Whole-program rather than
+per-stage matters: a pair is cross-compiled together, so the emitted VERTEX HLSL is a function of the fragment
+source too, and a key that ignored the sibling would serve stale bytes the moment a fragment change renumbered a
+register, which renders wrongly and fails nothing. A program whose stages are both cached skips SPIRV-Cross
+entirely, not just the FXC call. Every failure is a miss: a truncated entry, an unwritable directory or a full
+disk all fall back to compiling and none propagate. `KE_D3D11_SHADER_CACHE=<dir>` relocates it and `=off`
+disables it. The cache type names no Direct3D type at all, so its whole contract is exercised headlessly on macOS
+and Linux.
+
+**The two holed-signature incidents are enforced now, from three directions (S5).** SPIRV-Cross drops a vertex
+input the vertex stage does not read and names each survivor `TEXCOORD<location>`, so dropping the middle of a
+declared range holes the emitted signature, and FXC plus WARP miscompile a holed signature silently. It cost this
+engine two production incidents: the shadow depth pass corrupted WARP so the main model and splat passes rendered
+no colour at all, and the terrain blew to flat white. The workarounds in the GLSL STAY, because the native backend
+uses the same SPIRV-Cross and the same FXC and the Veldrid leg ships alongside indefinitely. What changes is that
+they stop being remembered. The shader path checks every module it compiles, pipeline creation re-checks the
+vertex bytecode an input layout is about to be validated against (which is what covers a module served from the
+disk cache, since that one never passed through a compiler in this process), and a device-free
+`[Theory]` reads the emitted HLSL's own input semantics for all four shadow programs and the terrain pair, so the
+sink and the interpolant ordering are asserted on every leg rather than only on Windows.
+
+**`KhaozEngineD3D11.ValidateShaderPair` and `ValidateComputeShader` are new public API**, and they are the half
+`ShaderValidation` cannot cover. That validator cross-compiles to HLSL, MSL, GLSL and ESSL and stops, so it has
+never COMPILED the HLSL it produced, which is exactly how both incidents got past it. These two run the real FXC
+call plus the signature assertion with no device and no cache. They live in the backend package rather than in
+`KhaozEngine.Gpu` for two reasons: FXC is `d3dcompiler`, so a seam package every 2D and 3D game references would
+be carrying a Windows-only compiler for a Windows-only leg, and sharing ONE FXC call site with the shipped shader
+path is what stops a validator drifting into validating a shader nobody ships. They throw
+`PlatformNotSupportedException` off Windows naming the guard to read and the seam validator to use instead.
+
+**The CI leg is a plain `[Fact]` on the Windows GPU workflow, on every push.** Not a `[GpuFact]`, because it
+needs no device, and deliberately not named "Golden", because that filter is for device-backed pixel comparisons.
+`cross-platform-gpu.yml` selects it by name in its own Windows-only step ahead of the suite, so a rejected shader
+fails in seconds instead of after a full golden pass, and `KhaozEngine.Gpu.D3D11/**` joins the workflow's push
+path filter so a shader-path change actually triggers it.
+
+**`KE_D3D11_DEBUG` gains its shader half.** It compiles with `D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION`
+rather than optimization level 3, so a capture's disassembly maps back to the emitted HLSL. That is one flag more
+than the design wrote, and the extra one does the work: `DEBUG` alone attaches debug information while leaving the
+optimizer running, which is the state in which stepping lands on the wrong lines. The flags are part of the cache
+key, so a debug session and an ordinary one never see each other's compiled bytes.
 
 ### Map regions get a runtime: BuildRegions + RegionAt (#481)
 

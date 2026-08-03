@@ -352,11 +352,58 @@ reusable CPU arena and replay as `UpdateSubresource`, since Direct3D 11 permits 
 buffer. Static and load-time `DEFAULT` buffers keep `UpdateSubresource`, and structured buffers keep `DEFAULT`
 plus a full-range RAW view.
 
+## The shader path: GLSL to HLSL to our own FXC call
+
+**GLSL 450 stays the single source and the backend calls FXC itself.** `CreateShadersFromSpirv` and
+`CreateComputeShaderFromSpirv` cross-compile through the internal, Veldrid-free SPIRV-Cross helper in
+`KhaozEngine.Gpu`, then compile the emitted HLSL to `vs_5_0` / `ps_5_0` / `cs_5_0` with
+`Vortice.D3DCompiler` at optimization level 3. DXC is not an alternative and not a preference: DXC emits DXIL,
+Direct3D 11 consumes DXBC, and there is no supported DXC path to DXBC, so Shader Model 6.x is unreachable from
+this backend at all. `SpirvLocalSize` still hand-parses the workgroup size out of the module, because D3D11
+takes it from the module while the seam's `IGpuComputeShader.ThreadGroupSize*` has to report it.
+
+Owning the FXC call is what buys the three things below.
+
+**The cross-compile options are pinned, and the emitted HLSL is hashed.** `HlslCrossCompilePin` states the exact
+option set every HLSL emission in the engine runs under, with the citation from the Veldrid fork behind it, and a
+device-free test hashes the emitted HLSL of all 34 shipped graphics programs and 8 compute kernels against a
+checked-in table. That converts "the same SPIRV-Cross must produce the same bytes, so the committed Direct3D 11
+goldens carry over" from an assumption into a checked fact, per program, before any golden runs. One program's
+hashes moving is a shader edit. Thirty moving at once is an option drift, which is exactly what the table exists
+to catch.
+
+**Compiled modules are cached on disk.** Keyed on the whole program's GLSL sources, the FXC profile, the FXC
+flags, the pinned cross-compile options and the engine version, under
+`<local-app-data>/KhaozEngine/d3d11-dxbc/<engine version>/`. The key covers the WHOLE program rather than one
+stage, because a pair is cross-compiled together and the emitted vertex HLSL is a function of the fragment source
+too. Every failure is a miss: a cache that cannot be read or written is a slower start and nothing else. Set
+`KE_D3D11_SHADER_CACHE` to a directory to relocate it, or to `off` to compile fresh every time.
+
+**A holed vertex input signature fails loudly instead of corrupting a frame.** SPIRV-Cross drops a vertex input
+the vertex stage does not read, and names each survivor `TEXCOORD<location>`, so dropping the middle of a
+declared range holes the emitted signature, and FXC plus WARP miscompile a holed signature silently. It has cost
+this engine two production incidents: the shadow depth pass corrupted WARP so the main model and splat passes
+rendered no colour, and the terrain blew to flat white. The workarounds in the GLSL stay, and are now asserted
+from three directions. The shader path checks every module it compiles, pipeline creation re-checks the vertex
+bytecode an input layout is about to be validated against (so a module served from the disk cache is checked
+too), and `KhaozEngineD3D11.ValidateShaderPair` / `ValidateComputeShader` run the same path with no device at
+all, which is what the Windows CI leg calls over every shipped program on every push.
+
+Those two validation entry points are the half `KhaozEngine.Gpu`'s own `ShaderValidation` cannot cover: it
+cross-compiles to all four shading languages and stops, so it has never compiled the HLSL it produced, which is
+precisely how both incidents got past it. They are Windows-only (FXC is `d3dcompiler`), so gate the call on
+`KhaozEngineD3D11.IsPlatformSupported` and run both.
+
+**`KE_D3D11_DEBUG` compiles shaders with debug information and no optimization**, so a RenderDoc or PIX capture's
+disassembly maps back to the emitted HLSL. The flags are part of the cache key, so a debug session and an
+ordinary one never see each other's compiled bytes. The same variable also drives the Direct3D debug layer.
+
 ## Design
 
 `docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md` in the engine repo, section 3 (package and layering),
 section 4.1 (getting the assembly loaded), section 5.1 (the stream and the emitter), section 5.3 (emission),
 section 2.1 (the recording model), section 2.3 (nested `Begin` during coexistence), section 9.4 (the implicit
-viewport), section 7 (resources, views and state objects), section 8.1 (register numbering), sections 10.3 and
+viewport), section 7 (resources, views and state objects), section 8 (the shader path) with 8.1 (register
+numbering), 8.2 (pinning the cross-compile options) and 8.3 (the holed-signature hazards), sections 10.3 and
 10.4 (fences and the empty `WaitForIdle`), section 6 (per-frame memory), and decisions P1, P2, P4, I2, R1, R2,
-R3, R4, R6, R8, W6, T2, U1, U2, U3, U4, U5, X1, X2, X3, S2, C2, C5 and C6.
+R3, R4, R6, R8, W6, T2, U1, U2, U3, U4, U5, X1, X2, X3, S1, S2, S3, S4, S5, C2, C5 and C6.

@@ -4,18 +4,19 @@ The engine's own native Direct3D 11 backend for the [KhaozEngine.Gpu](../KhaozEn
 NO umbrella: a consumer adds this package explicitly, the same pattern as `Physics.Bepu` or
 `WorldStore.Sqlite`, and nothing that does not want the Direct3D interop ever carries it.
 
-> **Status: registration, the platform guards, the machine-capability probe, the recording model, the replay
-> contract, the resource model, the fence subsystem and the constant-buffer ring are live.** The recording model
-> (see "Recording, and the two drivers" below) lands behind `KE_D3D11_RECORD`, the replay's own rules (see "What
-> a replay does to the device") land on top of it, the resource model (see "Resources, views and state objects")
-> lands beside them, the fence subsystem (see "Completion fences, and a `WaitForIdle` that drains") lands behind
-> `KE_D3D11_REAL_DRAIN`, and the per-frame uniform ring (see "Per-frame memory: the constant-buffer ring") lands
-> on top of the fences it recycles against. Those rows were built in parallel and are joined: the submit path
-> raises the end-of-replay signal and brackets the ring around the replay, the fence subsystem reads the device's
-> own liveness latch and answers the ring's segment gate, and the pipeline handle answers the redundancy caches.
-> Device creation is still not built, so `CreateForWindow` and `CreateHeadless` throw a message saying so, and
-> nothing shipped constructs any of them. `GpuBackendKind.Direct3D11` remains the working Direct3D 11 backend and
-> stays selectable indefinitely.
+> **Status: DEVICE CREATION IS REAL.** `CreateForWindow` and `CreateHeadless` build a device on Windows: the
+> adapter choice, the `ID3D11Device` and its versioned context, one device state and one emitter context, the
+> fence subsystem, the constant-buffer ring, the resource factory, the swapchain on the windowed path, the
+> capability read, the device-loss latch and the debug-layer pump. Everything the sixteen rows before it built is
+> joined up and reachable.
+>
+> **Nothing selects it by default, and there is no Windows evidence for it yet.** It is reached by naming it:
+> `KE_GRAPHICS_BACKEND=direct3d11-native`, or an explicit `GpuBackendKind.Direct3D11Native`. The
+> `direct3d11-native` CI leg, the 36 goldens on it, the WARP parity `[GpuFact]` and the five rollout gates are
+> https://github.com/APKiwiOrg/KhaozEngine/issues/460, which is where the default flip is decided. Until that
+> leg runs, what has been checked is that this compiles under CA1416, that the construction and teardown ORDER
+> are what they claim, and that every subsystem below is green against its own device-free tests.
+> `GpuBackendKind.Direct3D11` remains the working Direct3D 11 backend and stays selectable indefinitely.
 
 ## Opting in
 
@@ -62,6 +63,40 @@ committed Direct3D 11 goldens are baked on and the one CI pins.
 An incapable machine and a missing registration are kept strictly apart: the first falls back and reports
 `FallbackAfterFailure`, the second throws. Collapsing them would let a soak session silently measure the
 incumbent backend and file the numbers under this one.
+
+## What creating a device does
+
+`D3D11GpuDevice` is the whole backend joined up, and it builds in dependency order. Read it as the order below
+rather than as the order the sections of this file happen to come in.
+
+1. **The adapter.** `KE_D3D11_ADAPTER` is parsed, the DXGI enumeration is described, and the choice is logged as
+   an INFO line naming which adapter ran and why. `warp` resolves through `DriverType.Warp` rather than through
+   the enumeration, so the one value CI pins is the one value that cannot fail to resolve. A request that cannot
+   be honoured WARNs and falls back to letting DXGI pick.
+2. **The device.** `D3D11CreateDevice` at feature level 11_0, with `GpuD3D11DeviceFlags` OR'd against the
+   `KE_D3D11_DEBUG` layer flag. A machine with no Graphics Tools answers `DXGI_ERROR_SDK_COMPONENT_MISSING`, and
+   that one HRESULT retries WITHOUT the debug flag and WARNs naming the feature to install. Then
+   `ID3D11DeviceContext1` is queried, because decision R7 needs the versioned context, and a runtime that cannot
+   answer is refused here with a message rather than by a cast failing on the first draw.
+3. **One device state and one emitter context**, handed to every emitter value the device ever makes
+   (https://github.com/APKiwiOrg/KhaozEngine/issues/476).
+4. **The fence subsystem**, over whichever timeline the runtime offers, with `KE_D3D11_REAL_DRAIN` resolved. The
+   mechanism is logged, and a drain that is switched OFF is WARNed, because a no-op drain that nobody noticed is
+   how a measurement of nothing gets published.
+5. **The constant-buffer ring**, sized by `KE_D3D11_FRAMES_IN_FLIGHT` and gated on that fence subsystem.
+6. **The resource factory**, with the creation gate the driver-threading probe earned. Whether creation is
+   serialized is logged either way.
+7. **The swapchain**, on the windowed path only, and **the staging map path**, both carrying the device's
+   liveness token and its device-loss latch.
+8. **The debug-layer pump**, and only when the layer is genuinely active on the created device.
+
+**Teardown is the reverse and the order is load-bearing.** The drain runs first, with no lock held, because it
+refuses a caller holding the submit lock by name. Then the pump, the swapchain, the shared samplers and the fence
+subsystem are released, all while the liveness token still says the device is alive, because every one of those
+releases reads that token and no-ops when it says dead. The token is flipped LAST, and the `ID3D11Device` and its
+context are released after that. Flipping it first (which is what the Veldrid wrapper does, correctly, since
+destroying a Veldrid device frees its children) would silently skip every release and leave the device alive
+holding a swapchain nobody can reach.
 
 ## Platform boundary
 
@@ -278,8 +313,9 @@ so a drain taken under the incoming layouts throws instead of binding at the wro
 
 **`D3D11NativeEmitter` is the type a frame renders through, and every `ID3D11DeviceContext` call in this package
 is made from it.** It implements `ID3D11Emitter` and `ID3D11BindSink` over a live `ID3D11DeviceContext1`
-(versioned, because decision R7 routes every constant-buffer bind through `*SetConstantBuffers1`). Nothing
-constructs one yet: device creation still throws.
+(versioned, because decision R7 routes every constant-buffer bind through `*SetConstantBuffers1`). The device
+constructs exactly ONE of them, over its one state and its one emitter context, and every command list copies
+that value.
 
 **It is deliberately the thinner of the two emitters.** Every decision it makes was already taken in a
 device-free type it uses unchanged (`D3D11DeviceState`, `D3D11BindFlush`, `D3D11VertexStreams`,
@@ -288,8 +324,9 @@ made. What the real emitter carries alone is the translation into a Vortice call
 that is shared: every switch is over what `D3D11NativeCallName` resolved, the same function the trace emitter
 uses, so the residue is "does the arm for `PSSetSamplers` call `PSSetSamplers`" rather than "which stage's
 method". Decision T3's WARP `[GpuFact]` and the 36 goldens on the `direct3d11-native` leg close that, and both
-arrive with the device row. **There is no Windows evidence for any of this yet**, and that is worth stating
-plainly rather than leaving to be inferred: nothing below has run against a device.
+arrive with https://github.com/APKiwiOrg/KhaozEngine/issues/460. **There is still no Windows evidence for any of
+this**, and that is worth stating plainly rather than leaving to be inferred: a device can be created now, and
+nothing below has yet been run against one in CI.
 
 **A draw flushes the resource sets first, then the vertex streams, then issues.** That order is decision R5's
 rule 2 plus the batching below, and it is the same in both emitters.
@@ -452,15 +489,17 @@ below is driven through the real path with a fake result rather than only agains
 map names, and whether its declared usage allows one at all, are answered by the resource itself through
 `ID3D11MappableResource`, so both refusals stay device-free too: a cast straight to `D3D11Buffer` would be a cast
 to a Windows-only type, and nothing off Windows could reach past it. The Windows residue is the four `Map` and
-`Unmap` calls and nothing else. The device row (https://github.com/APKiwiOrg/KhaozEngine/issues/497) constructs
+`Unmap` calls and nothing else. The device constructs
 `new D3D11StagingAccess(new D3D11ContextStagingMemory(context), submitLock, latch)`.
 
 **A failed map throws rather than handing back the null pointer it left behind**, and that is decision G3's
 second check site. Vortice's `Map` returns its result rather than throwing, so a caller that ignored it would
 read through null and report an empty readback with nothing logged. `D3D11StagingMaps.RequireMapped` is the one
 place that result is interpreted: the device-loss latch is asked FIRST, before anything else at all, because
-`DXGI_ERROR_DEVICE_REMOVED` is sticky and the reason is only meaningful at the first site that notices. The latch
-is optional until the device row wires one, and a null one still throws.
+`DXGI_ERROR_DEVICE_REMOVED` is sticky and the reason is only meaningful at the first site that notices. The same
+method reads the constant-buffer ring's own `MAP_WRITE_NO_OVERWRITE` result, under its own site name
+(https://github.com/APKiwiOrg/KhaozEngine/issues/500), so both maps on this backend are checked. A device always
+wires the latch, and a null one (every device-free test) still throws.
 
 ## Completion fences, and a `WaitForIdle` that drains
 
@@ -493,7 +532,8 @@ than overwriting its target.
 **The signal is raised by the submit path, once per submit, after the last command and under the submit lock.**
 `ID3D11SubmitSignal` is the one-member seam between the two: the driver submit takes it, and the submission's
 fence, as an optional trailing pair, so a submit that names neither replays exactly as it always did. That is
-every call site while nothing constructs a device. Placing the signal after the replay is what makes it name a
+every device-free driver test, and a real device always passes both. Placing the signal after the replay is what
+makes it name a
 point the GPU reaches only when the submission is finished, on both drivers, and a fenceless submit signals too,
 because a later fence's value covers earlier work only if the earlier work took a value of its own. A submit the
 drivers reject signals nothing, and a fence handed to a submit with no sink is refused rather than left unarmed
@@ -895,11 +935,13 @@ release and the recreate leaves the framebuffer pointing at released views, and 
 because holding the old views across the resize is precisely what `ResizeBuffers` forbids. The latch IS the
 repair, since once the device is known dead nothing binds again.
 
-**What is not built here.** Device creation does not exist, so nothing calls any of it yet: the adapter
-enumeration, the capability read, the debug-layer flag, the pump and the latch all wait on the device row for
-their call sites, and so does the Windows `ID3D11InfoQueue` reader behind `ID3D11InfoQueueSource`
-(`ID3D11InfoQueue::GetMessageW` is a two-pass call into a caller-allocated buffer, which is interop a Windows
-machine has to exercise before anyone should believe it).
+**Who calls all of this.** The device: the adapter enumeration and the choice run before `D3D11CreateDevice`,
+the capability read takes the created device and the adapter it landed on, the debug-layer flag is OR'd into the
+creation flags (with the retry arm for a machine that has no Graphics Tools installed), the latch sits at its
+four check sites, and the pump is built only when the layer is actually active and drained at the submit
+boundary. The Windows `ID3D11InfoQueue` reader is `D3D11InfoQueueMessages`, which reads through Vortice's own
+`Message GetMessage(ulong)`, the managed form of the two-pass `GetMessageW` call, so the marshalling is the
+binding's rather than this package's.
 
 ## Threading: the shipped contract
 
@@ -933,9 +975,10 @@ its boundary W5.
   around one native creation call and nothing longer. A driver that creates concurrently gets no lock at all, and
   an UNKNOWN answer (the threading probe did not run, or could not answer) serializes, because the probe degrades
   to unknown on every failure and its silence is not a licence. Five factory members are ungated by design, in two
-  groups: the four live ones that create no native object (framebuffer, resource layout, resource set, command
-  list), and the one that is not built yet and throws (`CreateFence`), which has no native call to gate until it
-  exists. `CreateComputePipeline` creates no native object either and IS gated anyway, to keep the two pipeline
+  groups: the four that create no native object (framebuffer, resource layout, resource set, command list), and
+  `CreateFence`, which creates none either, because the device's one timeline object was created with the device
+  and a fence here is an engine-side target against it. `CreateComputePipeline` creates no native object either
+  and IS gated anyway, to keep the two pipeline
   members symmetric and because a pipeline is the member most likely to grow a native call later.
 - **The two locks nest in one direction only.** The submit lock is OUTER, the creation gate is INNER, and the
   gate is a strict leaf: nothing is acquired while it is held. A creation path that one day needs the immediate
@@ -976,9 +1019,9 @@ nobody can triage. Shipping it properly is https://github.com/APKiwiOrg/KhaozEng
 recording touches device state by construction and one thread records. That arm narrows the contract rather than
 extending it.
 
-**One open end, owned by another row and not guessed at here.** Device-level `UpdateTexture` takes the same short
-lock as `UpdateBuffer` when the device row wires it. The staging clause that used to sit beside it is no longer an
-open end: `D3D11StagingAccess` carries it, and the rule is stated in the contract above rather than promised.
+**No open ends left in this contract.** Device-level `UpdateTexture` takes the same short lock as
+`UpdateBuffer`, scoped to the write and never to a frame, and the staging clause is `D3D11StagingAccess`'s. Both
+are stated in the contract above rather than promised.
 
 ## Design
 

@@ -7,7 +7,7 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.32.0
 
-### The native Direct3D 11 backend: the swapchain, the shader path, the bind flush, the draw path, the compute path, the threading contract and the diagnostics (#453, #454, #455, #456, #457, #458, #459)
+### The native Direct3D 11 backend: the swapchain, the shader path, the bind flush, the draw path, the compute path, the threading contract, the diagnostics, and the DEVICE that wires all of it (#453, #454, #455, #456, #457, #458, #459, #476, #494, #497, #500)
 
 The blit-model swapchain lands with the incumbent's present path reproduced field for field, a framebuffer
 whose identity never changes across resize, and a resize queued to the present boundary. The shader path lands
@@ -19,9 +19,11 @@ lands on top of all three, and with it the REAL emitter: the type a frame render
 compute path lands beside the draw path and shares its schedule: compute pipelines, the SRV-versus-UAV
 auto-unbind in both directions, and the staging map and readback the ordering contract's readback half needs. The
 threading contract closes over all of it: lock-free recording, one short submit lock, a conditional creation
-lock, and the two races that were previously nobody's test. Nothing renders differently and nothing switches
-over: the native backend's two device-creation entry points still throw, so no shipped path reaches any of it,
-and no golden moved.
+lock, and the two races that were previously nobody's test. **And then the device wires every one of them
+together: `CreateForWindow` and `CreateHeadless` build a real Direct3D 11 device on Windows.** Nothing renders
+differently and nothing switches over, because nothing SELECTS the native backend: it is reached by naming it
+through `KE_GRAPHICS_BACKEND=direct3d11-native` or an explicit `GpuBackendKind.Direct3D11Native`, the CI leg
+that would exercise it is #460, and no golden moved.
 
 #### The swapchain: the incumbent's present path, a stable framebuffer identity and a queued resize (#457)
 
@@ -893,6 +895,79 @@ covering every segment in one map and unmap pair and replaying a patch in anothe
 mutation-checked: with the patch replay at `BeginFrame` removed, 9 tests fail including the steady-state probe and
 the pipeline-full regression, and with the replay's registry insert removed, the registry test fails alone.
 Restored, they pass.
+
+#### The device: `CreateForWindow` and `CreateHeadless` build a real one (#497, #494, #476, #500)
+
+`D3D11BackendProvider`'s two creation entry points stop throwing. `D3D11GpuDevice` implements `IGpuDevice` over
+the sixteen subsystems the rows above built, so every one of them is reachable for the first time. Nothing in
+the engine selects the backend by default and none of this has run on Windows CI yet: the `direct3d11-native`
+leg, the 36 goldens on it, the WARP parity `[GpuFact]` and the five rollout gates are #460, which is also where
+the default flip is decided. `GpuBackendKind.Direct3D11` stays the working Direct3D 11 backend indefinitely.
+
+**Creation follows the dependency order, and two steps of it are levers a session can set.** The adapter comes
+from `KE_D3D11_ADAPTER` (with `warp` resolved through `DriverType.Warp` rather than the enumeration, so the value
+CI pins cannot fail to resolve), the creation flags are `KE_D3D11_PREVENT_THREADING_OPTIMIZATIONS` OR the
+`KE_D3D11_DEBUG` layer flag, and a machine with no Graphics Tools installed retries WITHOUT the debug layer and
+WARNs naming the feature to install rather than failing to start. `ID3D11DeviceContext1` is queried once, because
+decision R7 routes every constant-buffer bind through `*SetConstantBuffers1`, so a runtime too old to answer is a
+refusal with a message instead of a cast that fails on the first draw. Then, in order: one device state and one
+emitter context, the fence subsystem (with `KE_D3D11_REAL_DRAIN`), the constant-buffer ring (with
+`KE_D3D11_FRAMES_IN_FLIGHT`), the resource factory behind the creation gate the driver-threading probe earned,
+the shared samplers, the staging path, the swapchain on the windowed path, and the debug-layer pump when the
+layer is genuinely active. Four INFO lines and two WARNs make a session log say which adapter ran, which fence
+mechanism it got, whether the drain is real, whether creation is serialized, and whether the debug layer is on,
+because a capture that cannot prove which levers were set is a capture nobody can compare.
+
+**One device state per device is now enforced rather than intended (#476).** The replay row proved every emitter
+implementation RECEIVES a `D3D11DeviceState`, and what was missing was that nothing else MAKES one: a readonly
+struct emitter that allocated its own state in its constructor would satisfy the first check and reintroduce the
+exact defect (list B binds pipeline P, list A's copy still believes A's pipeline is current, A skips the rebind
+and draws with B's state, nothing thrown and nothing logged). A device-free test now reads the compiled backend
+assembly's metadata and asserts the device's constructor is the ONLY construction site of the state, the emitter
+context and the emitter, plus that the device declares exactly one field of each. The same scan pins the
+construction order and the teardown order, both of which are otherwise only observable on Windows.
+
+**The three threading wirings the contract could not do for itself are wired (#494).** The resource factory takes
+a creation gate built from the threading probe, so a driver reporting `DriverConcurrentCreates` gets no lock at
+all. The ring's `BeginFrame` and the fence subsystem's `WaitForIdle` are called OUTSIDE the submit lock, at the
+present boundary and after the present has released it, which is what the two guards those members grew refuse a
+caller for. And device-level `UpdateTexture` now exists and takes the same short submit lock as `UpdateBuffer`,
+scoped to the write and never to a frame, so an off-timeline texture upload cannot land inside a replay.
+
+**The constant-buffer ring's `Map` checks its HRESULT (#500).** Vortice's `Map` returns a result rather than
+throwing, and the ring discarded it, so a failed map handed back a null pointer that every later record-time
+uniform write memcpy'd through. It now goes through the same `RequireMapped` the staging map uses, under its own
+site name, so both maps on this backend ask the device-loss latch first (decision G3's immediacy clause) and
+throw either way. A `MAP_WRITE_NO_OVERWRITE` on a `DYNAMIC` buffer is close to unfailable short of device loss,
+so this closes a diagnostic gap rather than a live corruption.
+
+**Teardown releases while the device is still marked alive, and flips the liveness token LAST.** That is the one
+place this device cannot copy the Veldrid wrapper: there, destroying the `GraphicsDevice` frees every child, so
+latching first and destroying second is the whole of it. Here the children are COM objects held by reference
+count and every release reads the liveness token, so flipping it first would silently skip all of them and leave
+the `ID3D11Device` alive holding a swapchain nobody can reach. The drain runs first (with no lock held, because
+it refuses a caller holding the submit lock by name), then the pump, the swapchain, the samplers and the fence
+subsystem, then the token, then the context and the device.
+
+**The Windows debug-layer reader landed, and it is the binding's marshalling rather than ours.** The
+`ID3D11InfoQueueSource` seam was written expecting a hand-marshalled two-pass `GetMessageW` into a
+caller-allocated `D3D11_MESSAGE`, on the grounds that shipping unverified interop behind a crash-investigation
+lever is the wrong trade. Checked against the pinned Vortice 2.3.0: it also exposes `Message GetMessage(ulong)`,
+whose body IS that two-pass call with the description marshalled, so `D3D11InfoQueueMessages` uses it and this
+row adds no hand-written marshalling at all.
+
+**What has and has not been checked.** Compile-level correctness is enforced now: CA1416 with warnings as errors
+covers the Windows boundary, the load-path assertions still pass (nothing here puts the Vortice interop on the
+macOS load path, and the new metadata tests read the assembly FILE rather than loading types), and the
+construction and teardown orders are pinned device-free. What is deferred, and stated rather than implied: every
+behaviour of a live device. The `direct3d11-native` CI leg does not exist yet, so the WARP leg that this merge
+triggers still runs the INCUMBENT Direct3D 11 backend. The T4 capability-parity `[GpuFact]` that landed dormant
+is live from this row and will run the first time a Windows leg executes it.
+
+**Also reachable for the first time, and deliberately not reported yet (#499).** The device exposes the M2 drain
+telemetry, the M3 per-frame backpressure and the ring's four pending-patch counters. Nothing reads them: folding
+backend-specific per-frame counters into the telemetry session header is gate 4 of #460, where the numbers are
+judged, and what this row owed them is reachability plus a note naming the pair that must be reported together.
 
 ## 17.31.0
 

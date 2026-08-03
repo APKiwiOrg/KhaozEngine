@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
+using System.Threading;
 
 namespace KhaozEngine.Gpu.D3D11.Internal
 {
@@ -20,13 +21,29 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// which is a separate reference on the same underlying object rather than a second context, so releasing it
     /// here does not touch the device's own.
     /// </para>
-    /// <para>Not thread-safe. Every member is called under the device's submit lock (decision W4), which is what
-    /// makes the unsynchronised counter increment below correct.</para>
+    /// <para>
+    /// THIS IS THE MECHANISM THAT MAKES THE DRAIN CHEAP. A Direct3D 11.4 fence carries a real blocking wait
+    /// (<c>SetEventOnCompletion</c> plus a wait handle), so a drain on this path sleeps in the kernel until the
+    /// GPU raises the counter and wakes with no granularity cost at all. The fallback has nothing of the sort and
+    /// spins. Both are correct, and this one is what the M2 per-frame budget was written against.
+    /// </para>
+    /// <para>The counter increment below is unsynchronised, which is correct because <see cref="Signal"/> is
+    /// called under the device's submit lock (decision W4). The two members that are NOT called under it,
+    /// <see cref="CompletedValue"/> and <see cref="TryWaitForValue"/>, touch only the fence object, whose own
+    /// members are free-threaded in the same way the device's are. The context is the thing that is not, and
+    /// neither of those two touches it.</para>
     /// </summary>
     internal sealed class D3D11MonotonicFenceTimeline : ID3D11FenceTimeline
     {
         readonly Vortice.Direct3D11.ID3D11Fence _fence;
         readonly Vortice.Direct3D11.ID3D11DeviceContext4 _context;
+
+        // ONE event for the life of the timeline, not one per wait. A registration made by SetEventOnCompletion
+        // outlives a wait that timed out, so closing the handle per wait would leave the runtime holding a handle
+        // it may still set, and Windows recycles handle values. The cost of sharing it is at most a spurious
+        // wakeup when two threads drain at once, which the drain loop absorbs because it re-polls after every
+        // wakeup and never trusts the wait's own answer.
+        readonly ManualResetEvent _reached = new(false);
 
         // The last value handed out. The GPU-side counter starts at 0 and the first signal is 1, so a fence
         // holding a target of 0 could never be satisfied by accident, which is what makes 0 usable as "no target".
@@ -47,6 +64,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         public D3D11FenceMechanism Mechanism => D3D11FenceMechanism.MonotonicFence;
 
         /// <inheritdoc/>
+        /// <remarks>True. <c>GetCompletedValue</c> is a read on the fence object and never touches the immediate
+        /// context, so a poll on this mechanism does not have to be serialised with submission.</remarks>
+        public bool PollIsFreeThreaded => true;
+
+        /// <inheritdoc/>
         public ulong Signal()
         {
             if (!KhaozEngineD3D11.IsPlatformSupported) throw D3D11PlatformGuard.NotOnThisPlatform("fence timeline");
@@ -63,6 +85,14 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         }
 
         /// <inheritdoc/>
+        public void Flush()
+        {
+            if (!KhaozEngineD3D11.IsPlatformSupported) throw D3D11PlatformGuard.NotOnThisPlatform("fence timeline");
+
+            FlushWindows();
+        }
+
+        /// <inheritdoc/>
         public ulong CompletedValue
         {
             get
@@ -72,6 +102,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
                 return CompletedWindows();
             }
+        }
+
+        /// <inheritdoc/>
+        public bool TryWaitForValue(ulong value, int timeoutMilliseconds)
+        {
+            if (!KhaozEngineD3D11.IsPlatformSupported) throw D3D11PlatformGuard.NotOnThisPlatform("fence timeline");
+
+            WaitWindows(value, timeoutMilliseconds);
+            return true;
         }
 
         /// <inheritdoc/>
@@ -90,10 +129,30 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         [SupportedOSPlatform("windows")]
+        void FlushWindows() => _context.Flush();
+
+        // The blocking wait Direct3D 11.4 provides, and the reason the drain has no sleep in it: the runtime sets
+        // the event the moment the fence reaches the value, so the wakeup costs a kernel transition rather than a
+        // scheduler quantum. Arming AFTER the caller has already polled is not a lost wakeup, because a fence
+        // that is already at the value sets the event immediately.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        [SupportedOSPlatform("windows")]
+        void WaitWindows(ulong value, int timeoutMilliseconds)
+        {
+            _reached.Reset();
+            _fence.SetEventOnCompletion(value, _reached.SafeWaitHandle.DangerousGetHandle());
+            _reached.WaitOne(timeoutMilliseconds);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        [SupportedOSPlatform("windows")]
         void DisposeWindows()
         {
             _context.Dispose();
+            // The fence is released BEFORE the event, deliberately. Releasing it drops any wait registration
+            // still outstanding on it, so nothing can set the handle after it has been closed.
             _fence.Dispose();
+            _reached.Dispose();
         }
     }
 }

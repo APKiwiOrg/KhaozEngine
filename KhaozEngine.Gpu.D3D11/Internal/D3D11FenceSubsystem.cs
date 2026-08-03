@@ -14,23 +14,38 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// loop, the kill switch, the liveness behaviour and the counters are all driven through a fake timeline.
     /// </para>
     ///
-    /// <para><b>The submit lock, and why every timeline touch goes through it.</b> The lock is the device's
-    /// (decision W4) and is passed in rather than created here. The monotonic-fence path would not strictly need
-    /// it for a poll, since <c>GetCompletedValue</c> is a read on the fence object, but the event-query fallback
-    /// polls the IMMEDIATE CONTEXT, which is not free-threaded. Taking the lock on both paths is what keeps the
-    /// two mechanisms interchangeable, which is the property everything above the timeline is built on. It is
-    /// held for one native call at a time and never across a wait, so a drain does not block submission.</para>
+    /// <para><b>The submit lock, and the one poll that does not take it.</b> The lock is the device's (decision
+    /// W4) and is passed in rather than created here. A SIGNAL always takes it, on both mechanisms, because
+    /// signalling is a context call, and so does the drain's one flush. A POLL takes it only where the mechanism
+    /// needs it: the monotonic fence's <c>GetCompletedValue</c> is a read on a free-threaded fence object and is
+    /// done lock-free, while the event-query fallback polls the IMMEDIATE CONTEXT and cannot be.</para>
     ///
-    /// <para><b>The drain does not hold the lock while it spins</b>, which is the one piece of the loop below
-    /// worth reading twice. It signals under the lock, then polls under the lock, releasing between polls, so the
-    /// work it is waiting for can actually be submitted by another thread. A drain that held the lock throughout
-    /// would deadlock against exactly the submission that would let it finish.</para>
+    /// <para><b>That difference is deliberately visible rather than smoothed over, and it is the fallback's one
+    /// honest deviation.</b> The seam documents that a fence poll never waits. On the primary mechanism, which is
+    /// every machine from Windows 10 1703 on, that holds exactly: <c>IGpuFence.Signaled</c> takes no lock and
+    /// waits for nothing. On the event-query fallback a poll from a thread that is not the submitting one can
+    /// wait on the submit lock, and under W4 that lock covers a whole replay, so the wait can be a replay long.
+    /// Making the primary path pay that too, purely so the two read alike, would be paying a real cost on every
+    /// machine to hide a difference on almost none.</para>
+    ///
+    /// <para><b>The drain holds the lock for its signal and its flush, and for nothing else</b>, which is the one
+    /// piece of the loop below worth reading twice. It signals and flushes under the lock, then waits or polls
+    /// with the lock released, so the work it is waiting for can actually be submitted by another thread. A drain
+    /// that held the lock throughout would deadlock against exactly the submission that would let it finish.
+    /// </para>
     ///
     /// <para><b>Not thread-safe for its own counters.</b> The telemetry accumulators are driven from the frame
     /// thread, the same contract <c>RetiredResourcePool</c> and the water renderer's counters already have.</para>
     /// </summary>
     internal sealed class D3D11FenceSubsystem : IDisposable
     {
+        // How long ONE blocking wait slice lasts on a mechanism that has a blocking wait. It is not a drain
+        // timeout, and the drain deliberately has none: a wait that is satisfied returns the instant the GPU
+        // raises the counter, and the slice only bounds how long an unsatisfied one goes before the loop
+        // re-checks device liveness. Short enough that a device dying mid-drain releases the caller promptly,
+        // long enough that a genuinely hung GPU does not spend the CPU re-arming the wait.
+        const int DrainWaitSliceMs = 4;
+
         readonly ID3D11FenceTimeline _timeline;
         readonly object _submitLock;
         readonly ID3D11DeviceLiveness _liveness;
@@ -102,9 +117,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         internal D3D11DrainStats LastFrameDrain => _lastFrame;
 
         /// <summary>
-        /// The timeline's completed value, polled under the submit lock. After device death this answers with the
-        /// last value issued instead of touching the timeline, so everything ever signalled reads complete and no
-        /// call reaches a destroyed device's objects.
+        /// The timeline's completed value, lock-free where the mechanism allows it and under the submit lock
+        /// where it does not (see the class note). After device death this answers with the last value issued
+        /// instead of touching the timeline, so everything ever signalled reads complete and no call reaches a
+        /// destroyed device's objects.
         /// </summary>
         internal ulong CompletedValue
         {
@@ -112,7 +128,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             {
                 if (_liveness.IsDead) return _issued;
 
-                lock (_submitLock) return _timeline.CompletedValue;
+                return ReadCompleted();
             }
         }
 
@@ -140,6 +156,21 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// </para>
         /// <para>After device death this is a no-op that returns the last value issued, matching every other
         /// member (decision X3).</para>
+        /// <para>
+        /// THE ERROR PATHS ADVANCE THE TIMELINE, and that is the behaviour rather than an oversight. By the time
+        /// <c>Arm</c> can throw, the submission has already consumed a timeline value, so that value is spent and
+        /// the next signal takes the one after it. Monotonicity is the property that matters and it is preserved:
+        /// no value is handed out twice, and a spent one leaves a gap that nothing reads. The rejected
+        /// submission's fence is left exactly as it was, unarmed if it was unarmed and holding its earlier target
+        /// if it was already armed, so a throw never quietly retargets a fence.
+        /// </para>
+        /// <para>
+        /// THE FOREIGN-FENCE CHECK RUNS BEFORE THE LIVENESS CHECK, so a fence from another backend is rejected
+        /// even after the device has died, where every other path here is a quiet no-op (X3). Handing this device
+        /// another backend's fence is a programming error at any point in a device's life, and teardown is
+        /// exactly where going quiet about it would hide it: that is when the retire pool is still running, and a
+        /// fence it believes was armed is one it waits on forever.
+        /// </para>
         /// </summary>
         /// <param name="fence">The fence handed to <c>Submit(IGpuCommandList, IGpuFence)</c>, or null for the
         /// fenceless <c>Submit(IGpuCommandList)</c>.</param>
@@ -176,11 +207,28 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// price what the drain costs.
         /// </para>
         /// <para>
-        /// THE SPIN HAS NO TIMEOUT, on purpose. A GPU that never reaches the signalled point has hung, and the
+        /// THE SIGNAL IS FLUSHED, EXACTLY ONCE. The immediate context buffers commands, so a signal placed at the
+        /// tail of a buffer the driver has not been handed is a point the GPU may never reach, and a drain
+        /// waiting on it would wait for something nobody asked for. One flush per drain, after the signal and
+        /// before the first poll, is what makes the wait terminate. The fence poll on the seam side stays
+        /// non-flushing, because that one must stay cheap enough to do constantly.
+        /// </para>
+        /// <para>
+        /// NO ITERATION EVER SLEEPS A MILLISECOND. That is a hard requirement rather than a preference: one
+        /// <c>Thread.Sleep(1)</c> is more than the whole 0.2 ms per-frame drain budget this is measured against
+        /// (M2), and more again at Windows' default timer resolution, so a drain that escalated to one would make
+        /// the soak a measurement of the scheduler and settle decision C6 on a number about nothing. A plain
+        /// <c>SpinWait.SpinOnce()</c> escalates to exactly that after 20 iterations, which is why it is not used
+        /// here. The monotonic mechanism blocks on the fence itself, which wakes on the GPU's own signal with no
+        /// granularity cost, and the event-query fallback yields without ever sleeping.
+        /// </para>
+        /// <para>
+        /// THE WAIT HAS NO TIMEOUT, on purpose. A GPU that never reaches the signalled point has hung, and the
         /// honest behaviour there is the same block <c>vkQueueWaitIdle</c> and the Metal equivalent give. A
         /// timeout would turn a hang into silent forward progress over work that has not happened, which is worse
-        /// in exactly the way this backend exists to avoid. The one escape is the liveness check inside the loop,
-        /// so a device that dies mid-drain (Direct3D's own reset after a hang) releases the caller.
+        /// in exactly the way this backend exists to avoid. The per-slice timeout below is not that: it only
+        /// bounds how long one wait goes before the liveness check runs again, so a device that dies mid-drain
+        /// (Direct3D's own reset after a hang) releases the caller.
         /// </para>
         /// </summary>
         internal void WaitForIdle()
@@ -189,17 +237,22 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             if (!_realDrain) return;
 
             ulong target;
-            lock (_submitLock) { _issued = _timeline.Signal(); target = _issued; }
+            lock (_submitLock)
+            {
+                _issued = _timeline.Signal();
+                target = _issued;
+                _timeline.Flush();
+            }
 
             long start = Stopwatch.GetTimestamp();
             var spin = new SpinWait();
             while (!_liveness.IsDead)
             {
-                ulong completed;
-                lock (_submitLock) completed = _timeline.CompletedValue;
-                if (completed >= target) break;
+                if (ReadCompleted() >= target) break;
 
-                spin.SpinOnce();
+                // The wait, or the spin for a mechanism that has none. sleep1Threshold: -1 is the whole point of
+                // spelling this out: the parameterless overload starts sleeping a millisecond after 20 spins.
+                if (!_timeline.TryWaitForValue(target, DrainWaitSliceMs)) spin.SpinOnce(sleep1Threshold: -1);
             }
 
             _drainCount++;
@@ -221,5 +274,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <summary>Release the timeline. Outstanding <see cref="D3D11GpuFence"/> instances hold no device object
         /// of their own, so they simply stop being able to observe anything new.</summary>
         public void Dispose() => _timeline.Dispose();
+
+        // The timeline's completed value under whatever synchronisation its mechanism actually needs, and the one
+        // place that decision is taken. Lock-free on a free-threaded poll, which is what keeps IGpuFence.Signaled
+        // off the submit lock on the primary mechanism. See the class note for the deviation on the fallback.
+        ulong ReadCompleted()
+        {
+            if (_timeline.PollIsFreeThreaded) return _timeline.CompletedValue;
+
+            lock (_submitLock) return _timeline.CompletedValue;
+        }
     }
 }

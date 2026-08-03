@@ -26,6 +26,14 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// reached with less.
     /// </para>
     /// <para>
+    /// A POLL DOES NOT WAIT, on the mechanism nearly every machine gets. <see cref="Signaled"/> reads the
+    /// device-wide counter, and on the monotonic fence that read takes no lock at all, because
+    /// <c>GetCompletedValue</c> is free-threaded. On the event-query fallback the same read DOES take the
+    /// device's submit lock, since that mechanism polls the immediate context, so there a poll from a thread that
+    /// is not the submitting one can wait as long as a whole replay. The reasoning behind keeping that difference
+    /// rather than levelling it is on <see cref="D3D11FenceSubsystem"/>.
+    /// </para>
+    /// <para>
     /// DISPOSAL RELEASES NOTHING, because there is nothing here to release. It latches, so a fence used after it
     /// is disposed fails on the path where that is a defect (arming, reached from <c>Submit</c>) and stays quiet
     /// on the paths where it is a teardown-order accident (polling and resetting). Nothing in the seam's contract

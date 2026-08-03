@@ -16,6 +16,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// works.
     /// </para>
     /// <para>
+    /// WHERE THEY DIFFER, THEY SAY SO THEMSELVES. The drain is faster on the primary path, because a Direct3D
+    /// 11.4 fence has a real blocking wait and an event query does not, and a fence poll takes no lock there,
+    /// because <c>GetCompletedValue</c> is free-threaded and an immediate-context poll is not. Both differences
+    /// are read from <see cref="ID3D11FenceTimeline.PollIsFreeThreaded"/> and
+    /// <see cref="ID3D11FenceTimeline.TryWaitForValue"/>, which is the distinction that matters: a caller asks
+    /// what this timeline CAN do, never which of the two it is. Nothing branches on
+    /// <see cref="ID3D11FenceTimeline.Mechanism"/>, which stays a name for the session log.
+    /// </para>
+    /// <para>
     /// A FAILED QUERY IS NOT AN ERROR HERE. Asking a Direct3D 11.0 runtime for <c>ID3D11Device5</c> is a question
     /// with a legitimate no, so the fallback is taken silently and the mechanism reaches the session log through
     /// <see cref="ID3D11FenceTimeline.Mechanism"/> rather than through a warning about a machine that is behaving

@@ -20,6 +20,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// <c>DO_NOT_FLUSH</c> IS THE WHOLE POINT of the poll. Without it, asking a query for data flushes the
     /// context, which turns a poll into a submission and makes the non-blocking read the seam demands into
     /// something with a cost that grows with how often you look. With it the call reads the state and returns.
+    /// The other half of that bargain is <see cref="Flush"/>: a <c>DO_NOT_FLUSH</c> poll on a marker the driver
+    /// has never been handed can loop forever, so the drain flushes ONCE, explicitly, and then polls this way as
+    /// often as it likes.
     /// </para>
     /// <para>
     /// <see cref="Signal"/> POLLS BEFORE IT ISSUES, which is what bounds the query pool. Retiring on the way in
@@ -34,7 +37,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// is a separate reference obtained by a query rather than the device's own.
     /// </para>
     /// <para>Not thread-safe, and the poll below is on the IMMEDIATE context, so this one could not be made so by
-    /// adding a lock inside it. Every member is called under the device's submit lock (decision W4).</para>
+    /// adding a lock inside it. Every member that touches Direct3D is called under the device's submit lock
+    /// (decision W4), including the poll, which is where this mechanism costs something the primary one does not
+    /// (see <see cref="PollIsFreeThreaded"/>). The one member called outside the lock,
+    /// <see cref="TryWaitForValue"/>, touches nothing at all here.</para>
     /// </summary>
     internal sealed class D3D11EventQueryTimeline : ID3D11FenceTimeline
     {
@@ -56,6 +62,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <inheritdoc/>
         public D3D11FenceMechanism Mechanism => D3D11FenceMechanism.EventQuery;
 
+        /// <inheritdoc/>
+        /// <remarks>False, and this is the mechanism's one visible cost. The poll runs on the immediate context,
+        /// which is not free-threaded, so it has to be serialised with submission. What that means in practice is
+        /// written out on <c>D3D11FenceSubsystem</c>: on this path a cross-thread fence poll can wait on the
+        /// submit lock, and under W4 that lock covers a whole replay.</remarks>
+        public bool PollIsFreeThreaded => false;
+
         /// <summary>How many query objects are in flight. Test and diagnostic surface for the pool bound the
         /// class note describes.</summary>
         internal int PendingCount => _queue.PendingCount;
@@ -72,6 +85,14 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         }
 
         /// <inheritdoc/>
+        public void Flush()
+        {
+            if (!KhaozEngineD3D11.IsPlatformSupported) throw D3D11PlatformGuard.NotOnThisPlatform("fence timeline");
+
+            FlushWindows();
+        }
+
+        /// <inheritdoc/>
         public ulong CompletedValue
         {
             get
@@ -83,6 +104,16 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 return _queue.Completed;
             }
         }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Always false, and it makes no native call, which is why it carries no platform guard: there is nothing
+        /// here to reach off Windows. Direct3D offers no blocking wait on an event query, and the only thing that
+        /// could be built in its place is a poll loop on the immediate context, which would need the submit lock
+        /// held across the wait and would deadlock against the submission it is waiting for. So the drain spins
+        /// on this mechanism, without ever sleeping a millisecond.
+        /// </remarks>
+        public bool TryWaitForValue(ulong value, int timeoutMilliseconds) => false;
 
         /// <inheritdoc/>
         public void Dispose()
@@ -98,6 +129,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         {
             while (_queue.TryPeekOldest(out object marker) && IsCompleteWindows(marker)) _queue.RetireOldest();
         }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        [SupportedOSPlatform("windows")]
+        void FlushWindows() => _context.Flush();
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         [SupportedOSPlatform("windows")]

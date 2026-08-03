@@ -42,6 +42,46 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(2UL, timeline.Completed);
         }
 
+        /// <summary>
+        /// THE DRAIN FLUSHES, EXACTLY ONCE, AND BEFORE IT POLLS. The immediate context buffers commands, so a
+        /// signal the driver has never been handed is a point the GPU may never reach and a drain waiting on it
+        /// would never return. Both halves are asserted: once, because a flush per poll would turn a drain into a
+        /// submission storm, and before the first poll, because a flush that arrived after the loop had started
+        /// leaves the first polls asking about a signal nobody has issued yet.
+        /// </summary>
+        [Fact]
+        public void TheDrain_FlushesTheContextOnceBeforeItPolls()
+        {
+            var timeline = new FakeD3D11FenceTimeline { AutoCompleteAfterPolls = 5 };
+            using D3D11FenceSubsystem fences = Subsystem(timeline);
+
+            fences.WaitForIdle();
+
+            Assert.Equal(1, timeline.FlushCount);
+            Assert.Equal(0, timeline.PollCountAtFirstFlush);
+        }
+
+        /// <summary>
+        /// A SUBMIT DOES NOT FLUSH, and neither does a fence poll. Only the drain has decided to wait, so only
+        /// the drain pays to have the work handed over. A flush on the seam's <c>Signaled</c> would give the
+        /// cheapest member of the fence contract a cost that grows with how often a consumer looks at it, which
+        /// is the same trap <c>DO_NOT_FLUSH</c> exists to avoid on the fallback mechanism.
+        /// </summary>
+        [Fact]
+        public void TheReplayTailSignalAndTheFencePoll_DoNotFlush()
+        {
+            var timeline = new FakeD3D11FenceTimeline();
+            using D3D11FenceSubsystem fences = Subsystem(timeline);
+            IGpuFence fence = fences.CreateFence();
+
+            fences.SignalEndOfReplay(fence);
+            fences.SignalEndOfReplay(null);
+            _ = fence.Signaled;
+            _ = fences.CompletedValue;
+
+            Assert.Equal(0, timeline.FlushCount);
+        }
+
         /// <summary>A drain that finds the GPU already caught up still polls once and returns, and it still
         /// counts: it is a real drain that happened to be cheap, which is exactly what the M2 measurement wants
         /// to see a lot of.</summary>
@@ -78,6 +118,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.False(fences.RealDrainEnabled);
             Assert.Equal(0, timeline.SignalCount);
             Assert.Equal(0, timeline.PollCount);
+            Assert.Equal(0, timeline.FlushCount);
             Assert.Equal(0, fences.LastFrameDrain.Count);
             Assert.Equal(0d, fences.LastFrameDrain.TotalMs);
         }
@@ -113,6 +154,7 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal(0, timeline.SignalCount);
             Assert.Equal(0, timeline.PollCount);
+            Assert.Equal(0, timeline.FlushCount);
             Assert.Equal(0, fences.LastFrameDrain.Count);
         }
 
@@ -179,20 +221,79 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(0d, fences.LastFrameDrain.TotalMs);
         }
 
-        /// <summary>The duration is real wall-clock time and is never negative, which is the only claim a test on
-        /// a shared machine can honestly make about it. The GATE on the number is M2's soak measurement, not a
-        /// unit test.</summary>
+        /// <summary>
+        /// The duration is real wall-clock time and never negative, AND A LOOP OF HUNDREDS OF POLLS IS NOT
+        /// MILLISECONDS OF SLEEP. This ran against a plain <c>SpinWait.SpinOnce()</c> before, whose default
+        /// <c>sleep1Threshold</c> is 20, so a 200-poll fake drain spent about 207 ms sleeping and the test passed
+        /// anyway, because "at least zero" is true of any number. One such sleep is more than the entire 0.2 ms
+        /// per-frame budget M2 measures against, so a drain that escalated would settle decision C6 on a
+        /// measurement of the scheduler.
+        /// <para>
+        /// The bound below is loose on purpose. Typical is a fraction of a millisecond here, since the fake
+        /// completes on a poll count and nothing in the loop waits for anything real, but this runs on shared CI
+        /// hardware where a scheduling hiccup is normal, and a tight bound would be a flaky test rather than a
+        /// stronger one. What it discriminates is the failure that matters: with a millisecond sleep per
+        /// iteration this is hundreds of milliseconds and cannot be squeezed under the bound by a fast machine.
+        /// </para>
+        /// <para>The fallback shape is the one under test (no blocking wait), because that is the path that
+        /// spins. The monotonic path blocks on the fence and never reaches the spin at all.</para>
+        /// </summary>
         [Fact]
-        public void TheDrainDuration_IsRealElapsedTime()
+        public void TheDrainDuration_IsRealElapsedTimeAndTheSpinNeverSleeps()
         {
-            var timeline = new FakeD3D11FenceTimeline { AutoCompleteAfterPolls = 200 };
+            var timeline = new FakeD3D11FenceTimeline
+            {
+                AutoCompleteAfterPolls = 400,
+                BlockingWaitAvailable = false,
+                PollIsFreeThreaded = false,
+            };
             using D3D11FenceSubsystem fences = Subsystem(timeline);
 
             fences.WaitForIdle();
             fences.BeginFrame();
 
             Assert.Equal(1, fences.LastFrameDrain.Count);
+            Assert.Equal(400, timeline.PollCount);
             Assert.True(fences.LastFrameDrain.TotalMs >= 0d);
+            Assert.True(fences.LastFrameDrain.TotalMs < 100d,
+                $"A 400-poll fake drain took {fences.LastFrameDrain.TotalMs:F1} ms, which is the shape of a loop "
+                + "that sleeps a millisecond per iteration rather than one that spins. SpinOnce must be called "
+                + "with sleep1Threshold: -1, and a mechanism with a blocking wait must use it instead.");
+        }
+
+        /// <summary>
+        /// ON A MECHANISM WITH A BLOCKING WAIT, THE DRAIN BLOCKS RATHER THAN SPINNING. That is the primary path,
+        /// the Direct3D 11.4 fence, where <c>SetEventOnCompletion</c> wakes the drain on the GPU's own signal
+        /// with no granularity cost. The spin is what is left for the fallback, which has no such primitive.
+        /// <para>
+        /// The count is one wait per iteration that did not find the value reached, which is the poll count minus
+        /// the poll that ended the loop. Asserting the exact number, rather than "more than zero", is what pins
+        /// that the drain does not ALSO spin between waits.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void OnAMechanismWithABlockingWait_TheDrainWaitsOncePerUnsatisfiedPoll()
+        {
+            var timeline = new FakeD3D11FenceTimeline { AutoCompleteAfterPolls = 4 };
+            using D3D11FenceSubsystem fences = Subsystem(timeline);
+
+            fences.WaitForIdle();
+
+            Assert.Equal(4, timeline.PollCount);
+            Assert.Equal(3, timeline.WaitCallCount);
+        }
+
+        /// <summary>A drain that finds the value already reached never waits at all, which is the common case on
+        /// an idle device and the reason the loop polls before it waits.</summary>
+        [Fact]
+        public void ADrainOnAnIdleGpu_NeverReachesTheWait()
+        {
+            var timeline = new FakeD3D11FenceTimeline { AutoCompleteAfterPolls = 1 };
+            using D3D11FenceSubsystem fences = Subsystem(timeline);
+
+            fences.WaitForIdle();
+
+            Assert.Equal(0, timeline.WaitCallCount);
         }
 
         // ---- The kill switch's environment parse ----
@@ -268,7 +369,15 @@ namespace KhaozEngine.Tests.Gpu
 
             public D3D11FenceMechanism Mechanism => D3D11FenceMechanism.MonotonicFence;
 
+            public bool PollIsFreeThreaded => true;
+
             public ulong Signal() => ++_issued;
+
+            public void Flush() { }
+
+            // No wait, so the drain spins and reaches the liveness check every iteration. A fake wait that
+            // returned true would be a wait of zero length, which is the same loop with an extra call in it.
+            public bool TryWaitForValue(ulong value, int timeoutMilliseconds) => false;
 
             public ulong CompletedValue
             {

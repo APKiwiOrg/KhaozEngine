@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using KhaozEngine.Gpu.D3D11.Internal;
 
 namespace KhaozEngine.Tests.Gpu
@@ -18,6 +19,11 @@ namespace KhaozEngine.Tests.Gpu
     /// against neither would spin forever, so the fake counts its polls and throws instead, turning a hung suite
     /// into a named failure.
     /// </para>
+    /// <para>
+    /// THE DEFAULTS MODEL THE PRIMARY MECHANISM, the monotonic <c>ID3D11Fence</c>: a free-threaded poll and a
+    /// real blocking wait. A test after the event-query fallback's shape turns both off, which is the only way
+    /// the two mechanisms differ at all now that they both flush.
+    /// </para>
     /// </summary>
     internal sealed class FakeD3D11FenceTimeline : ID3D11FenceTimeline
     {
@@ -26,6 +32,39 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <inheritdoc/>
         public D3D11FenceMechanism Mechanism { get; set; } = D3D11FenceMechanism.MonotonicFence;
+
+        /// <inheritdoc/>
+        public bool PollIsFreeThreaded { get; set; } = true;
+
+        /// <summary>The submit lock the subsystem under test was built with, so the fake can record whether a
+        /// poll arrived holding it. Left null by a test that does not care.</summary>
+        internal object? SubmitLock { get; set; }
+
+        /// <summary>Whether the LAST poll ran with <see cref="SubmitLock"/> held. Null until something polls, and
+        /// always null while <see cref="SubmitLock"/> is unset, so a test cannot read a false negative out of a
+        /// fake it forgot to wire up.</summary>
+        internal bool? LastPollHeldTheSubmitLock { get; private set; }
+
+        /// <summary>The same for the last <see cref="Signal"/>, which every mechanism owes the lock because
+        /// signalling is a context call on both.</summary>
+        internal bool? LastSignalHeldTheSubmitLock { get; private set; }
+
+        /// <summary>Whether this fake offers a blocking wait, which is what tells the drain to block instead of
+        /// spinning. True models the monotonic fence, false the event-query fallback.</summary>
+        internal bool BlockingWaitAvailable { get; set; } = true;
+
+        /// <summary>How many times the drain asked for a blocking wait, whether or not one was available.
+        /// </summary>
+        internal int WaitCallCount { get; private set; }
+
+        /// <summary>How many times <see cref="Flush"/> has been called. The drain owes exactly one per drain.
+        /// </summary>
+        internal int FlushCount { get; private set; }
+
+        /// <summary>What <see cref="PollCount"/> stood at when the first flush arrived, or null if nothing has
+        /// flushed. Zero is the assertion that matters: the flush belongs BEFORE the first poll, since a poll for
+        /// a signal the driver has not been handed is the thing the flush exists to prevent.</summary>
+        internal int? PollCountAtFirstFlush { get; private set; }
 
         /// <summary>The last value handed out by <see cref="Signal"/>.</summary>
         internal ulong Issued { get; private set; }
@@ -55,7 +94,22 @@ namespace KhaozEngine.Tests.Gpu
         {
             SignalCount++;
             Issued++;
+            if (SubmitLock is object submitLock) LastSignalHeldTheSubmitLock = Monitor.IsEntered(submitLock);
             return Issued;
+        }
+
+        /// <inheritdoc/>
+        public void Flush()
+        {
+            FlushCount++;
+            PollCountAtFirstFlush ??= PollCount;
+        }
+
+        /// <inheritdoc/>
+        public bool TryWaitForValue(ulong value, int timeoutMilliseconds)
+        {
+            WaitCallCount++;
+            return BlockingWaitAvailable;
         }
 
         /// <inheritdoc/>
@@ -64,6 +118,7 @@ namespace KhaozEngine.Tests.Gpu
             get
             {
                 PollCount++;
+                if (SubmitLock is object submitLock) LastPollHeldTheSubmitLock = Monitor.IsEntered(submitLock);
                 if (AutoCompleteAfterPolls is int after && PollCount >= after) Completed = Issued;
 
                 if (AutoCompleteAfterPolls is null && PollCount > RunawayPollLimit)

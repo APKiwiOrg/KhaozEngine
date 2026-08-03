@@ -7,10 +7,9 @@ namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
     /// A device-free <see cref="ID3D11InfoQueueSource"/>: a list of messages, a clear counter, and an optional
-    /// throw. Nothing here is Direct3D, which is the point. The real Windows reader lands with the device row,
-    /// because <c>ID3D11InfoQueue::GetMessageW</c> is a two-pass call into a caller-allocated buffer and Vortice
-    /// 2.3.0 exposes only that raw form, so it is interop a Windows machine has to exercise before anyone should
-    /// believe it.
+    /// throw. Nothing here is Direct3D, which is the point. The real Windows reader is
+    /// <c>D3D11InfoQueueMessages</c>, which landed with the device row and reads through Vortice's own
+    /// <c>Message GetMessage(ulong)</c>, the managed form of the two-pass <c>GetMessageW</c> call.
     /// </summary>
     internal sealed class FakeD3D11InfoQueue : ID3D11InfoQueueSource
     {

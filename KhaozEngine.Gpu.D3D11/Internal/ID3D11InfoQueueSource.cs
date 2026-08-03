@@ -58,13 +58,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// engine logic that runs under <c>dotnet test</c> on macOS, and the Windows side is a thin reader with
     /// nothing to decide.
     /// <para>
-    /// NOTHING IMPLEMENTS THIS ON WINDOWS YET, and that is stated rather than left to be discovered.
-    /// <c>ID3D11InfoQueue::GetMessageW</c> is a two-pass call into a caller-allocated <c>D3D11_MESSAGE</c> buffer,
-    /// and Vortice 2.3.0 exposes only that raw form, so the reader is real interop that a machine with the
-    /// Windows Graphics Tools installed has to exercise before anyone should believe it. Writing it here, on a
-    /// Mac, would mean shipping unverified marshalling behind a lever whose entire purpose is being trusted
-    /// during a crash investigation. It lands with the device row, which runs on Windows and creates the device
-    /// this queue comes off.
+    /// THE WINDOWS IMPLEMENTATION IS <see cref="D3D11InfoQueueMessages"/>, built by the device when
+    /// <c>KE_D3D11_DEBUG</c> is on. It arrived with the device row, and it corrected the assumption this note
+    /// used to carry: <c>ID3D11InfoQueue::GetMessageW</c> is indeed a two-pass call into a caller-allocated
+    /// <c>D3D11_MESSAGE</c> buffer, but Vortice 2.3.0 does NOT expose only that raw form. It also has
+    /// <c>Message GetMessage(ulong)</c>, whose body is exactly that two-pass sequence with the description
+    /// marshalled for you, so the reader names no buffer and hand-marshals nothing. That matters because the
+    /// caution was right for the reason given: this is a lever whose whole purpose is being trusted during a
+    /// crash investigation, so the marshalling behind it should be code the binding ships rather than code
+    /// invented on a machine that cannot run it.
     /// </para>
     /// </summary>
     internal interface ID3D11InfoQueueSource : IDisposable

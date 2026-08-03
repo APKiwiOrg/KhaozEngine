@@ -110,6 +110,32 @@ exactly what this seam wants. Nothing wires the two automatically, and their bas
 bridge reads yaw 0 as +Z, the sim reads 0 as -Z), so pass it through `WithFacingYaw` and add that half turn once
 on `FacingYawOffset`, alongside whatever your asset's rest pose needs. See `docs/USING-KHAOZENGINE.md`.
 
+### Reverse locomotion (a backpedal that does not moonwalk)
+
+A character holding a facing while it travels backwards is genuinely moving in reverse relative to that facing, so
+playing its walk clip FORWARDS reads as a moonwalk: the body slides back while the feet stride forward. Opt in and it
+plays the clip BACKWARDS instead, at the same speed-matched rate.
+
+Three pieces, all defaulting off. A sample carries `Sector` (`KhaozEngine.Locomotion.MoveSector`), set orthogonally on
+any sample shape via `WithSector(...)` (mirrors `WithFacingYaw` / `WithDowned`) and defaulting to `Forward` on every
+constructor. `CharacterAnimatorTuning.ReverseLocomotionOnReverseSector` (or, on a hand-built brain,
+`LocomotionSpeedSync.ReverseOnReverseSector` / the `reverseOnReverseSector` argument of `Enable`) turns it on. It rides
+the speed sync, so `SyncLocomotionToSpeed` is required too. Then `RateFor` NEGATES its rate for a `Reverse` sample.
+
+The sign reaches the PLAYHEAD only. `LocomotionStateMachine.Evaluate` still sees the speed magnitude, so a reverse walk
+is the walk state and a reverse run is the run state, never Idle. The clamp bounds the MAGNITUDE and the sign is
+applied after, so `MinLocomotionRate` still floors a crawling backpedal at -0.25x rather than freezing it. Idle, the
+tread, and the air states have no direction to reverse and stay at +1x. A looping clip wraps cleanly through zero onto
+its tail (`AnimationSampler.Wrap`'s negative branch), so nothing special is needed of the clip.
+
+Deriving the sector is the game's job, because only the game knows what the character is facing. A game on the engine's
+own movement already has it: `CharacterMovement.Sector` answers it from the camera-relative move command, the same
+predicate the sim charges `MoveTuning.BackpedalSpeedScale` with (which is why this is the engine's sector type and not
+a second bool that would drift from it). A REPLICATED remote's command axis never crosses the wire, so classify its
+render-position delta against `EntityRenderState.FacingYaw` instead - the same 135 degree wedge, measured against the
+replicated facing. A character that turns to face wherever it walks is `Forward` by construction and never needs any
+of this.
+
 The bridge also SMOOTHS the drawn feet height on stairs. The paced stair-climb sim deliberately produces a per-riser
 vertical sawtooth (a ~120-140 mm render-Y bob at 4-9 Hz on a 0.30/0.40 staircase; the sim is unchanged), which reads as
 a bumpy jolt on the model and any follow camera. The glide is SIGNAL-DRIVEN: rather than ESTIMATE climb state from

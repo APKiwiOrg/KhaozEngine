@@ -38,7 +38,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// </para>
     /// </summary>
     [SupportedOSPlatform("windows")]
-    internal sealed class D3D11Buffer : IGpuBuffer, ID3D11RingBacked
+    internal sealed class D3D11Buffer : IGpuBuffer, ID3D11RingBacked, ID3D11BindableViews
     {
         readonly D3D11DeviceLiveness _liveness;
         readonly D3D11RingAllocator _rings;
@@ -98,6 +98,25 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         /// <summary>True once disposed, whether or not anything native was released.</summary>
         internal bool IsDisposed { get; private set; }
+
+        // ---- ID3D11BindableViews: the 'b' file takes the BUFFER, the other two take a view if it has one ----
+        //
+        // The constant-buffer member hands back the buffer itself rather than a view, because Direct3D 11 binds a
+        // constant buffer as a resource with a window rather than through a view object. A ring-backed buffer
+        // hands back the same one native buffer for every frame segment (decision U1): the segment is the
+        // first-constant addend the bind computes, never a different resource.
+
+        /// <inheritdoc/>
+        object? ID3D11BindableViews.BufferObject => Buffer;
+
+        /// <inheritdoc/>
+        object? ID3D11BindableViews.ShaderResourceViewObject => ShaderResourceView;
+
+        /// <inheritdoc/>
+        object? ID3D11BindableViews.UnorderedAccessViewObject => UnorderedAccessView;
+
+        /// <inheritdoc/>
+        object? ID3D11BindableViews.SamplerStateObject => null;
 
         public void Dispose()
         {

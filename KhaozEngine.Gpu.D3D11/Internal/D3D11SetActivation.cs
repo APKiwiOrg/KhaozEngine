@@ -202,7 +202,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         void FillConstants(ReadOnlySpan<D3D11BoundResource> bindings, GpuShaderStages stage, uint lo, int count,
             uint dynamicOffsetBytes)
         {
-            if (_constants.Length < count) _constants = new D3D11ConstantBufferBind[RoundedCapacity(count)];
+            if (_constants.Length < count)
+                _constants = new D3D11ConstantBufferBind[D3D11BindResolve.RoundedCapacity(count)];
             Array.Clear(_constants, 0, count);
 
             for (int i = 0; i < bindings.Length; i++)
@@ -218,7 +219,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         void FillResources(ReadOnlySpan<D3D11BoundResource> bindings, D3D11RegisterFile file, GpuShaderStages stage,
             uint lo, int count)
         {
-            if (_resources.Length < count) _resources = new IGpuBindableResource?[RoundedCapacity(count)];
+            if (_resources.Length < count)
+                _resources = new IGpuBindableResource?[D3D11BindResolve.RoundedCapacity(count)];
             Array.Clear(_resources, 0, count);
 
             for (int i = 0; i < bindings.Length; i++)
@@ -259,14 +261,5 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         static bool IsDynamicConstantBuffer(in D3D11BoundResource binding)
             => binding.Dynamic && binding.Slot.File == D3D11RegisterFile.ConstantBuffer;
-
-        // Grow to the next power of two at or above the request, so a scratch array is reallocated a handful of
-        // times over a process rather than once per widening set.
-        static int RoundedCapacity(int count)
-        {
-            int capacity = 8;
-            while (capacity < count) capacity <<= 1;
-            return capacity;
-        }
     }
 }

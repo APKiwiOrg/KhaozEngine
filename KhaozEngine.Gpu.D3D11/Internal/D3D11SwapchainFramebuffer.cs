@@ -49,7 +49,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// no-dispose wrapper over the device-owned swapchain framebuffer.
     /// </para>
     /// </summary>
-    internal sealed class D3D11SwapchainFramebuffer : IGpuFramebuffer
+    internal sealed class D3D11SwapchainFramebuffer : IGpuFramebuffer, ID3D11RenderTargetSurface
     {
         object _renderTargetView;
         object? _depthStencilView;
@@ -118,6 +118,23 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// remarks for why disposing the swapchain's framebuffer from outside is a no-op rather than an
         /// error.</summary>
         internal bool IsDisposed { get; private set; }
+
+        // ---- ID3D11RenderTargetSurface: the seam an emitter binds through, so one path covers this type and
+        // D3D11Framebuffer. A blit swapchain has exactly one colour buffer, and the depth view is null on every
+        // shipped path today. Both members read the CURRENT generation, which is the whole point of stable
+        // identity: a resize swaps what these answer without changing who answers ----
+
+        /// <inheritdoc/>
+        int ID3D11RenderTargetSurface.RenderTargetCount => 1;
+
+        /// <inheritdoc/>
+        object ID3D11RenderTargetSurface.RenderTargetAt(int index) => index == 0
+            ? _renderTargetView
+            : throw new ArgumentOutOfRangeException(nameof(index), index,
+                "A swapchain framebuffer has exactly one colour attachment.");
+
+        /// <inheritdoc/>
+        object? ID3D11RenderTargetSurface.DepthStencil => _depthStencilView;
 
         /// <inheritdoc/>
         public void Dispose() => IsDisposed = true;

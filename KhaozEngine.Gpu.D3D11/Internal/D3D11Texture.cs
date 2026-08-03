@@ -29,7 +29,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// </para>
     /// </summary>
     [SupportedOSPlatform("windows")]
-    internal sealed class D3D11Texture : IGpuTexture
+    internal sealed class D3D11Texture : IGpuTexture, ID3D11BindableViews
     {
         readonly D3D11DeviceLiveness _liveness;
 
@@ -117,6 +117,24 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         /// <summary>True once disposed, whether or not anything native was released.</summary>
         internal bool IsDisposed { get; private set; }
+
+        // ---- ID3D11BindableViews: a texture fills 't' when it is sampled and 'u' when it is storage ----
+        //
+        // Both are null unless the DECLARED usage earned the view at creation (decision X1), which is what turns
+        // "bound at a register its usage never gave it a view for" into a named refusal at the bind rather than a
+        // register silently holding nothing.
+
+        /// <inheritdoc/>
+        object? ID3D11BindableViews.ShaderResourceViewObject => ShaderResourceView;
+
+        /// <inheritdoc/>
+        object? ID3D11BindableViews.UnorderedAccessViewObject => UnorderedAccessView;
+
+        /// <inheritdoc/>
+        object? ID3D11BindableViews.SamplerStateObject => null;
+
+        /// <inheritdoc/>
+        object? ID3D11BindableViews.BufferObject => null;
 
         public void Dispose()
         {

@@ -28,7 +28,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// </para>
     /// </summary>
     [SupportedOSPlatform("windows")]
-    internal sealed class D3D11Framebuffer : IGpuFramebuffer
+    internal sealed class D3D11Framebuffer : IGpuFramebuffer, ID3D11RenderTargetSurface
     {
         readonly ID3D11RenderTargetView[] _renderTargetViews;
 
@@ -89,6 +89,18 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         /// <summary>True once disposed. Nothing native is released. See the type remarks.</summary>
         internal bool IsDisposed { get; private set; }
+
+        // ---- ID3D11RenderTargetSurface: what the output merger binds, object-typed so one emitter path covers
+        // this type AND the swapchain's, whose views are swapped underneath it on every resize ----
+
+        /// <inheritdoc/>
+        int ID3D11RenderTargetSurface.RenderTargetCount => _renderTargetViews.Length;
+
+        /// <inheritdoc/>
+        object ID3D11RenderTargetSurface.RenderTargetAt(int index) => _renderTargetViews[index];
+
+        /// <inheritdoc/>
+        object? ID3D11RenderTargetSurface.DepthStencil => DepthStencilView;
 
         public void Dispose() => IsDisposed = true;
 

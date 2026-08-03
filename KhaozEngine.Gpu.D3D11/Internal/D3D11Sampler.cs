@@ -24,7 +24,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// </para>
     /// </summary>
     [SupportedOSPlatform("windows")]
-    internal sealed class D3D11Sampler : IGpuSampler
+    internal sealed class D3D11Sampler : IGpuSampler, ID3D11BindableViews
     {
         readonly D3D11DeviceLiveness _liveness;
         readonly bool _owns;
@@ -50,6 +50,20 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         /// <summary>True once disposed, whether or not anything native was released.</summary>
         internal bool IsDisposed { get; private set; }
+
+        // ---- ID3D11BindableViews: a sampler fills the 's' file and no other ----
+
+        /// <inheritdoc/>
+        object? ID3D11BindableViews.SamplerStateObject => SamplerState;
+
+        /// <inheritdoc/>
+        object? ID3D11BindableViews.ShaderResourceViewObject => null;
+
+        /// <inheritdoc/>
+        object? ID3D11BindableViews.UnorderedAccessViewObject => null;
+
+        /// <inheritdoc/>
+        object? ID3D11BindableViews.BufferObject => null;
 
         public void Dispose()
         {

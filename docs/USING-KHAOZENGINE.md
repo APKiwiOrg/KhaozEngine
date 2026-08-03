@@ -8567,16 +8567,19 @@ are two shapes: read every declared input with a negligible live weight so none 
 interpolants so the fragment-used ones form a gap-free prefix. The same check runs at pipeline creation on that
 backend, so a shader that gets past you fails by name rather than by rendering wrongly.
 
-**`KE_D3D11_DEBUG=1` also changes how shaders are compiled.** Beside the Direct3D debug layer, it compiles every
-shader with debug information and no optimization, so a RenderDoc or PIX capture's disassembly maps back to the
-emitted HLSL instead of to optimized instructions. Expect slower shaders. It is a capture lever, not a setting.
+**`KE_D3D11_DEBUG=1` changes how shaders are compiled.** It compiles every shader with debug information and no
+optimization, so a RenderDoc or PIX capture's disassembly maps back to the emitted HLSL instead of to optimized
+instructions. Expect slower shaders. It is a capture lever, not a setting. The same variable will also switch on
+the Direct3D debug layer when the backend's diagnostics land. Today shader compilation is the only thing it
+affects.
 
 **`KE_D3D11_SHADER_CACHE` controls the compiled-shader cache.** Compiled modules are cached on disk under
 `<local-app-data>/KhaozEngine/d3d11-dxbc/<engine version>/`, keyed on the shader sources, the compile target, the
 compile flags and the engine version, so only the first start on a given engine version pays for the compile.
 Point the variable at a directory to relocate it (a CI workspace, or a machine whose local app data is not
-writable), or set it to `off` to compile fresh every time, which is what to do when you are chasing a shader
-miscompile and want to be sure of what ran. A cache that cannot be read or written is a slower start and nothing
+writable), or set it to any of `off`, `0`, `false`, `no` or `none` to compile fresh every time, which is what to
+do when you are chasing a shader miscompile and want to be sure of what ran. Any other value is a directory path,
+which is why the disable words are a set rather than `off` alone. A cache that cannot be read or written is a slower start and nothing
 else: every failure is a miss and nothing propagates.
 
 ---

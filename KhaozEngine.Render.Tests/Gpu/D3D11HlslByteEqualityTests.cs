@@ -16,11 +16,19 @@ namespace KhaozEngine.Tests.Gpu
     /// <c>docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md</c>.
     ///
     /// <para>
-    /// WHAT THIS CONVERTS. The claim underneath the whole native Direct3D 11 backend is that using the same
-    /// SPIRV-Cross yields the same HLSL and therefore the same DXBC, so the 36 committed goldens can be reused
-    /// without a rebake. That claim is true only while the cross-compile OPTIONS match, and until now nothing
-    /// checked them: they were a default nobody had chosen. <see cref="HlslCrossCompilePin"/> chooses them, and
-    /// this turns "should be identical" into a checked fact, per program, before a single golden is run.
+    /// WHAT THIS PINS, EXACTLY. The table is baked from THIS path's own emission and every run compares this
+    /// path against that bake, so what the test detects is DRIFT: a shader source or a cross-compile option
+    /// moving after the table was written. It compares nothing against the incumbent Veldrid path and cannot, so
+    /// reading a green run as parity evidence reads it backwards. A wrong emission, baked once, passes forever.
+    /// What it does buy is that the options stop being a default nobody chose: <see cref="HlslCrossCompilePin"/>
+    /// chooses them, and a flip of one shows up here as every program moving at once.
+    /// </para>
+    /// <para>
+    /// PARITY WITH THE INCUMBENT IS A SEPARATE, HISTORICAL FACT, measured once at review time on 2026-08-03: all
+    /// 34 shipped graphics programs emitted byte-identical HLSL under this path and under a faithful replication
+    /// of the incumbent's <c>CreateFromSpirv</c> call. That measurement is what lets the 36 committed Direct3D 11
+    /// goldens carry over without a rebake. It is not what this test asserts, and it is not re-run on any leg.
+    /// This test's job starts where that measurement ended: nothing has moved since.
     /// </para>
     /// <para>
     /// DEVICE-FREE AND ON EVERY LEG. The SPIRV-Cross native ships per RID and runs on macOS and Linux (which

@@ -367,17 +367,22 @@ Owning the FXC call is what buys the three things below.
 **The cross-compile options are pinned, and the emitted HLSL is hashed.** `HlslCrossCompilePin` states the exact
 option set every HLSL emission in the engine runs under, with the citation from the Veldrid fork behind it, and a
 device-free test hashes the emitted HLSL of all 34 shipped graphics programs and 8 compute kernels against a
-checked-in table. That converts "the same SPIRV-Cross must produce the same bytes, so the committed Direct3D 11
-goldens carry over" from an assumption into a checked fact, per program, before any golden runs. One program's
-hashes moving is a shader edit. Thirty moving at once is an option drift, which is exactly what the table exists
-to catch.
+checked-in table. The table is baked from THIS path, so what it pins is drift away from that bake rather than
+agreement with the incumbent Veldrid path. Agreement was measured once, at review time on 2026-08-03: all 34
+graphics programs emitted byte-identical HLSL under both, which is what lets the committed Direct3D 11 goldens
+carry over without a rebake. The table is what keeps that true afterwards. One program's hashes moving is a
+shader edit. Thirty moving at once is an option drift, which is exactly what the table exists to catch. `KE_UPDATE_HLSL_HASHES=1` re-bakes the table, which is a test-maintenance knob for a deliberate shader
+or option change and is never set on CI, where the whole point is that the table does not move on its own.
 
 **Compiled modules are cached on disk.** Keyed on the whole program's GLSL sources, the FXC profile, the FXC
 flags, the pinned cross-compile options and the engine version, under
 `<local-app-data>/KhaozEngine/d3d11-dxbc/<engine version>/`. The key covers the WHOLE program rather than one
 stage, because a pair is cross-compiled together and the emitted vertex HLSL is a function of the fragment source
 too. Every failure is a miss: a cache that cannot be read or written is a slower start and nothing else. Set
-`KE_D3D11_SHADER_CACHE` to a directory to relocate it, or to `off` to compile fresh every time.
+`KE_D3D11_SHADER_CACHE` to a directory to relocate it, or to any of `off`, `0`, `false`, `no` or `none`
+(case-insensitive, whitespace trimmed) to compile fresh every time. The disable words are a set rather than `off`
+alone because any OTHER value is taken as a directory path verbatim, so a narrower vocabulary would quietly turn
+`KE_D3D11_SHADER_CACHE=0` into a cache directory named `0` beside whatever the process's working directory is.
 
 **A holed vertex input signature fails loudly instead of corrupting a frame.** SPIRV-Cross drops a vertex input
 the vertex stage does not read, and names each survivor `TEXCOORD<location>`, so dropping the middle of a
@@ -396,7 +401,9 @@ precisely how both incidents got past it. They are Windows-only (FXC is `d3dcomp
 
 **`KE_D3D11_DEBUG` compiles shaders with debug information and no optimization**, so a RenderDoc or PIX capture's
 disassembly maps back to the emitted HLSL. The flags are part of the cache key, so a debug session and an
-ordinary one never see each other's compiled bytes. The same variable also drives the Direct3D debug layer.
+ordinary one never see each other's compiled bytes. The same variable will also switch on the Direct3D debug
+layer and its info-queue pump when the backend's diagnostics land (decision G4). Today it affects shader
+compilation and nothing else.
 
 ## Design
 

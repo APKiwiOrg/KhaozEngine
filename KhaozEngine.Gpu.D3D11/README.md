@@ -566,6 +566,65 @@ one `ClearState` at the head of a replay instead, so the last frame's targets ar
 applies at the present boundary. That half is not device-free testable, because a fake surface has no context to
 inspect, and its evidence is a real window resize on the WARP leg.
 
+## Threading: the shipped contract
+
+**This section is the contract. It is the authoritative statement of what this backend guarantees about threads,
+and every XML doc in the package that mentions a lock points here rather than restating it.** Decision W4, and
+its boundary W5.
+
+**What is guaranteed.**
+
+- **Recording is lock-free and touches no device state.** `Begin` truncates a per-list array, every seam call
+  appends to that same array, and no native call and no lock happens anywhere on the path. Two recorders are two
+  arrays, so a nested `Begin` cannot corrupt another recording.
+- **One `_submitLock`, held for microseconds, covers exactly three things: the replay, the present, and the
+  resize apply.** That is the whole of it. There is no frame-long monitor, so there is nothing to exit from a
+  foreign thread, no `Map` queued behind a whole frame, and no lock-recursion leak to fix. The lock belongs to
+  the device and is passed to the pieces that need it, so there is one of it rather than one per subsystem.
+- **`Submit` order is the observable order.** The lock is taken ONCE for the unmap, the replay, the end-of-replay
+  signal and the segment bookkeeping, so two submits cannot interleave, and the timeline value a submission
+  signals orders the same way its commands reached the device.
+- **Device-level `UpdateBuffer` is callable from any thread**, behind that same lock scoped to the write itself
+  and never to a frame, so an off-timeline write cannot land in the middle of a replay. See the ring section
+  above for which segment it lands in.
+- **Resource creation is free-threaded, serialized behind a short creation lock when the driver reports
+  `DriverConcurrentCreates` false.** That is `D3D11CreationGate`, the second and last lock in the package, taken
+  around one native creation call and nothing longer. A driver that creates concurrently gets no lock at all, and
+  an UNKNOWN answer (the threading probe did not run, or could not answer) serializes, because the probe degrades
+  to unknown on every failure and its silence is not a licence. The four factory members that create no native
+  object (framebuffer, resource layout, resource set, command list) are ungated by design.
+- **The two locks nest in one direction only.** The submit lock is OUTER, the creation gate is INNER, and the
+  gate is a strict leaf: nothing is acquired while it is held. A creation path that one day needs the immediate
+  context takes the submit lock BEFORE entering the gate, never inside it.
+- **Nothing waits under the submit lock**, and the two members that CAN block refuse a caller who holds it,
+  by name: `WaitForIdle` (which signals and flushes under the lock and then releases it to wait, so the
+  submission it is waiting for can still be made) and the ring allocator's `BeginFrame` (which waits for the GPU
+  to finish with the segment it opens, up to a frame). Both throw rather than stall, because a frame-long hold of
+  this lock is invisible from the outside and is the exact defect the design deletes.
+- The process-wide `GpuDeviceContext._lifecycleGate` is unchanged, and still serializes device creation and
+  disposal across every backend.
+
+**What is NOT in the contract (W5): concurrent RECORDING.** The design structurally permits it, because `Begin`
+touches no device state and each recorder owns its own arrays, so two threads recording two lists will probably
+work. It is not supported in v1 and it is outside this contract: nothing in the engine asks for it, no test
+exercises it, and the redundancy caches and the constant-buffer ring have not been reviewed for concurrent
+record. Concretely, under the deferred driver's mapping scope a record-time uniform write copies with no lock
+held, so a record-time write racing a submit's unmap, or racing a device-level write, or two record-time writes
+to one ring, are all outside the contract rather than serialized. Do not read "it will probably work" as a
+guarantee: that is the shape that produces a bug report nobody can triage. Shipping it properly is
+https://github.com/APKiwiOrg/KhaozEngine/issues/463.
+
+**The immediate driver records ON the device, so the lock-free clause is the deferred driver's.** Under
+`KE_D3D11_RECORD=immediate` (the M1 fallback lever) a seam call issues its native call as it is made, so
+recording touches device state by construction and one thread records. That arm narrows the contract rather than
+extending it.
+
+**Two open ends, both owned by other rows and neither guessed at here.** Staging `Map` and `Unmap` take the
+submit lock for the duration of the map call and nothing longer, which is where the rule lands the day the
+staging path exists: it is https://github.com/APKiwiOrg/KhaozEngine/issues/456, and there is no staging path in
+the package today to carry it. Device-level `UpdateTexture` is the same story, and takes the same short lock as
+`UpdateBuffer` when the device row wires it.
+
 ## Design
 
 `docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md` in the engine repo, section 3 (package and layering),
@@ -574,7 +633,8 @@ section 2.1 (the recording model), section 2.3 (nested `Begin` during coexistenc
 viewport), section 7 (resources, views and state objects), section 8 (the shader path) with 8.1 (register
 numbering), 8.2 (pinning the cross-compile options) and 8.3 (the holed-signature hazards), sections 10.3 and
 10.4 (fences and the empty `WaitForIdle`), section 6 (per-frame memory), sections 9.1 and 9.2 (the swapchain,
-the present path and the resize), and decisions P1, P2, P4, I2, R1, R2, R3, R4, R6, R8, W1, W2, W3, W6, T2,
-U1, U2, U3, U4, U5, X1, X2, X3, S1, S2, S3, S4, S5, C2, C5 and C6. The recorded non-measurement M5 in section
+the present path and the resize), section 9.3 (threading), and decisions P1, P2, P4, I2, R1, R2, R3, R4, R6, R8,
+W1, W2, W3, W4, W5, W6, T2, U1, U2, U3, U4, U5, X1, X2, X3, S1, S2, S3, S4, S5, C2, C5 and C6. The recorded
+non-measurement M5 in section
 13 is the swapchain's, and its wording is reproduced above rather than referenced, because a reader of a soak
 capture will not have the design doc open.

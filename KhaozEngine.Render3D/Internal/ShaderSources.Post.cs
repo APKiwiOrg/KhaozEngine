@@ -17,9 +17,20 @@ namespace KhaozEngine.Render3D.Internal
         //      SPIRV-Cross on Metal mis-binds a SECOND uniform buffer in a set (it reads the first buffer's bytes -
         //      the same trap the splat/model passes fold around by using one UBO), so both matrices ride in one
         //      buffer. The vertex layout declares the full ModelVertex (locations 0..4) so the same GPU vertex buffer
-        //      the model pass uses binds unchanged; only Position (0) and Color (2) are read here. Writes all 3 MRT
-        //      targets so the SPIR-V output count matches the framebuffer; only colour matters (attachments 1 and 2
-        //      use a PreserveDestination blend, so the meshes' normal/depth reach the edge pass untouched). ----
+        //      the model pass uses binds unchanged, and only Position (0) and Color (2) carry any meaning here (the
+        //      rest are held live by the sink below). Writes all 3 MRT targets so the SPIR-V output count matches
+        //      the framebuffer. Only colour matters (attachments 1 and 2 use a PreserveDestination blend, so the
+        //      meshes' normal/depth reach the edge pass untouched).
+        //
+        //      D3D11/FXC/WARP HAZARD (load-bearing sink below): with only Position and Color read for real,
+        //      SPIRV-Cross dropped Normal (1), TexCoord (3) and Tangent (4) and emitted a HOLED vertex input
+        //      signature, TEXCOORD0 then TEXCOORD2. FXC and WARP miscompile a holed TEXCOORD sequence SILENTLY,
+        //      which is the class of defect that blanked the model and splat passes' colour (see the note above
+        //      ShadowDepthVert) and blew the terrain to flat white (see ShaderSources.Terrain.cs). The FXC
+        //      validation gate's first Windows run (cross-platform-gpu run 30798302196) caught this one before it
+        //      could corrupt a frame. The `sink` reads every declared input with a negligible live weight, so
+        //      SPIRV-Cross keeps a CONTIGUOUS TEXCOORD0..4 signature matching the declared vertex layout. Do NOT
+        //      remove the sink or any of its reads. ----
         public const string OverlayUnlitVert = @"#version 450
 layout(set=0, binding=0) uniform Draw { mat4 ViewProj; mat4 World; };
 layout(location=0) in vec3 Position;
@@ -29,7 +40,15 @@ layout(location=3) in vec2 TexCoord;
 layout(location=4) in vec4 Tangent;
 layout(location=0) out vec4 vColor;
 void main() {
-    gl_Position = ViewProj * (World * vec4(Position, 1.0));
+    vec4 world = World * vec4(Position, 1.0);
+    // Negligible-but-live sink over the otherwise-unread per-vertex inputs, the same one ShadowDepthVert carries,
+    // so SPIRV-Cross keeps the HLSL vertex-input signature gap-free (TEXCOORD0..4, no hole) and FXC/WARP cannot
+    // miscompile it. The sink is the input SUM (NOT statically zero, so the optimizer cannot fold it away and drop
+    // the inputs) scaled by 1e-30, numerically negligible in world space, and the projected position is unchanged
+    // to the bit. See the hazard note above.
+    float sink = Normal.x + TexCoord.x + Tangent.x;
+    world.x += sink * 1e-30;
+    gl_Position = ViewProj * world;
     vColor = Color;
 }";
 

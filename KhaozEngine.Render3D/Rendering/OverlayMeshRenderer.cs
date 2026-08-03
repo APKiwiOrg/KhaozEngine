@@ -69,8 +69,9 @@ namespace KhaozEngine.Render3D.Rendering
 
         IGpuPipeline BuildPipeline(IGpuResourceFactory f, GpuOutputDescription modelOutputs)
         {
-            // Full ModelVertex layout so the model pass's GPU vertex buffer binds unchanged; the shader reads only
-            // Position (0) and Color (2).
+            // Full ModelVertex layout so the model pass's GPU vertex buffer binds unchanged. Only Position (0) and
+            // Color (2) carry meaning in the shader, and the rest are held live by its 1e-30 sink so the emitted
+            // D3D11 vertex input signature stays gap-free (see the hazard note above OverlayUnlitVert).
             var vertexLayout = new GpuVertexLayoutDescription(
                 new GpuVertexElement("Position", GpuVertexElementFormat.Float3),
                 new GpuVertexElement("Normal", GpuVertexElementFormat.Float3),

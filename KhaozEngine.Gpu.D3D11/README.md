@@ -608,20 +608,73 @@ they would read the first segment while the uniform bind read the current one. N
 run time, it is one frame's data being read as another's. The combination is vacuous in the engine today, and the
 divergence is written down here rather than left for a consumer to meet as a surprise. Create two buffers.
 
-**Device-level `UpdateBuffer` writes the CURRENT segment**, meaning the one the next `Submit` will bind and the
-one any open recording is already writing, deliberately not the one executing on the GPU. It is callable from any
-thread behind a short lock scoped to the write itself and never to a frame (the submit lock, so an off-timeline
-write cannot land in the middle of a replay), and it maps idempotently when it finds the ring unmapped between two
-frames, leaving the mapping for the next record phase to reuse.
+**A DEVICE-LEVEL `UpdateBuffer` WRITES EVERY SEGMENT, A RECORD-TIME ONE WRITES THE CURRENT SEGMENT.** That split
+is the resolution of https://github.com/APKiwiOrg/KhaozEngine/issues/484 and it is the one thing to know about
+uniform writes here.
 
-**A RING-BACKED UNIFORM BUFFER'S FULL CONTENTS MUST BE RE-ESTABLISHED EVERY FRAME, and this is the one behaviour
-that does not survive the ring.** A write reaches one segment out of `FramesInFlight`, so it holds until the frame
-index wraps back round to that segment and no longer. A ONE-SHOT write, at load time or on a change, is therefore
-NOT preserved: the same call on the Veldrid backend writes the buffer's only copy and it persists for the buffer's
-life. Anything written once and expected to stay written has to be rewritten each frame, sized for a whole-buffer
-upload, or moved off a uniform buffer. One shipped consumer does exactly this (the splat-params tail of
-`ModelRenderer`'s uniform buffer), which is tracked as
-https://github.com/APKiwiOrg/KhaozEngine/issues/484 and blocks the device row.
+The off-timeline (device-level) write reaches all `FramesInFlight` segments, so a value written ONCE persists for
+the buffer's life exactly as the same call persists it on the Veldrid leg, where the buffer has one copy. Reaching
+the current segment alone was the shipped shape for one release, and it was a defect rather than a documentation
+problem: a load-time write held only until the frame index wrapped back round, so two frames out of every three
+bound memory nothing had ever written, intermittently, with nothing thrown and nothing logged. The splat-params
+tail of `ModelRenderer`'s uniform buffer is the shipped consumer that writes that way, and it works here now with
+no renderer change.
+
+The record-time write is unchanged and still lands in the current segment alone, meaning the one the next `Submit`
+will bind and the one any open recording is already writing, deliberately not the one executing on the GPU. The
+split is the CALL rather than a usage hint on the buffer, because the call is what knows whether it happens once:
+every shipped record-time uniform write is unconditional per frame, so replicating those would be `FramesInFlight`
+memcpys for a value the next frame overwrites, on the one path the ring exists to make cheap.
+
+**THE WRITE NEVER BLOCKS, AND A SEGMENT THE GPU IS STILL READING IS PATCHED INSTEAD.** Writing every segment
+means writing segments an earlier frame may still be executing, which is the silent corruption the ring's fence
+gate exists to prevent, so a segment whose owner fence has not completed does not receive the copy. The byte range
+and a private copy of the data are queued on the ring, and the `BeginFrame` that next opens that segment applies
+them, right after the gate has proved the GPU is done with it. One bounded hold of the submit lock, at most one
+completion poll per call, no spin and no retry, on any thread and at any pipeline depth. At load time nothing has
+been submitted, so every segment takes the copy and no completion read happens at all.
+
+Waiting for those segments was the first shape and it STARVES, which is worth knowing before anyone proposes it
+again. In the GPU-bound steady state the frame thread submits again for every frame the GPU retires, so at least
+one non-current segment is always in flight and "wait until they are all free" is never satisfiable: the writer
+chases the pipeline forever, burning a core. A deferral waits on a frame boundary that is going to happen anyway.
+
+**What you get is EVENTUAL CONSISTENCY, which is exactly the persistence the Veldrid leg gives.** When the call
+returns, every segment either already holds the write or holds a pending patch its next acquire applies, so any
+segment BOUND after the call carries the value. The window in which an in-flight segment still holds the old bytes
+is unobservable through the seam, because that segment is not bound again until it has been acquired, and
+acquiring it applies the patch first. Patches for one ring are replayed in arrival order, so overlapping ranges
+resolve last-write-wins exactly as direct copies do, and a segment already carrying a patch takes every later
+write as a patch too rather than letting an older queued write land on top of a newer copy. Storage is bounded by
+coalescing (a new patch drops every earlier one whose range it fully covers) on top of the shape of the caller:
+off-timeline uniform writes are load-time or settings-change writes by construction, since the per-frame ones go
+through the record-time path.
+
+**Two off-timeline writers to one buffer are unordered per segment**, and that is outside the v1 contract in the
+same decision W5 family as the record-time overlap below. Each call is atomic in the sense that all of its copies
+and deferrals happen in one hold of the lock, but two overlapping calls may land in different orders in different
+segments, because one segment can take a copy while another takes a patch replayed later. A single off-timeline
+writer, which is what every shipped caller is, sees strict last-write-wins everywhere. A caller that already holds
+the submit lock is legal, since with no wait inside there is nothing to deadlock on.
+
+**The CURRENT segment is always copied**, deliberately and unchanged by the fix. Gating it would change the
+documented semantic that the write lands when it is called and the next submitted list reads it, and deferring it
+would be worse still, because it is bound by the very next submit while its own next acquire is a whole wrap away.
+It never carries a pending patch of its own: patches are recorded for non-current segments only, and the frame
+boundary that makes a segment current drains it in the same lock hold that publishes it. The exposure that leaves
+is the exposure this call already had and is the forbidden case restated below. Against a concurrent RECORD-TIME
+write to the same range the current segment is last-write-wins and unordered, which W5 already places outside the
+v1 contract. The other segments are not contended at all, because a record-time write never touches them.
+
+The write still maps idempotently when it finds the ring unmapped between two frames, leaving the mapping for the
+next record phase to reuse. Under `D3D11RingMapScope.PerWrite` the map, every segment's copy and the unmap are
+one critical section, which is the same atomicity that scope holds for a record-time write, and a patch replay
+repeats it in its own hold. The deferrals are reported on their own cumulative `OffTimelinePatches` stat
+(`Deferred`, `Applied`, `Coalesced`, the `Dropped` a disposed ring takes with it, and the `Outstanding`
+difference) rather than on the per-frame backpressure, because they are not frame-boundary stalls and folding
+them in would make M3's "zero stalls across the window" criterion unreachable for a reason unrelated to pipeline
+depth. Every deferral leaves the queue exactly once, so `Outstanding` settles rather than climbing, and a number
+that does keep climbing means patches are piling up for a segment nothing acquires.
 
 **What is still forbidden, restated because the ring makes it quieter rather than because it changed.** Writing
 off-timeline to a range a recording has ALREADY recorded a bind for, and then expecting that recorded bind to see
@@ -870,9 +923,11 @@ its boundary W5.
 - **`Submit` order is the observable order.** The lock is taken ONCE for the unmap, the replay, the end-of-replay
   signal and the segment bookkeeping, so two submits cannot interleave, and the timeline value a submission
   signals orders the same way its commands reached the device.
-- **Device-level `UpdateBuffer` is callable from any thread**, behind that same lock scoped to the write itself
-  and never to a frame, so an off-timeline write cannot land in the middle of a replay. See the ring section
-  above for which segment it lands in.
+- **Device-level `UpdateBuffer` is callable from any thread**, behind that same lock scoped to one pass over the
+  ring's segments and never to a frame, so an off-timeline write cannot land in the middle of a replay. It reaches
+  every segment and it never waits for any of them: a segment an earlier frame is still reading gets a pending
+  patch that the segment's next acquire applies. A caller who already holds the lock re-enters for free. See the
+  ring section above.
 - **Resource creation is free-threaded, serialized behind a short creation lock when the driver reports
   `DriverConcurrentCreates` false.** That is `D3D11CreationGate`, the second and last lock in the package, taken
   around one native creation call and nothing longer. A driver that creates concurrently gets no lock at all, and
@@ -890,16 +945,19 @@ its boundary W5.
   a consumer's walk over the pixels. This clause is TESTED rather than asserted in prose: the four native calls
   sit behind `ID3D11StagingMemory`, and a fake recording `Monitor.IsEntered` per call pins both halves of it off
   Windows. See the compute section for the seam.
-- **Nothing waits under the submit lock, with ONE knowingly paid exception**, and the two members that CAN block
-  unboundedly refuse a caller who holds it, by name: `WaitForIdle` (which signals and flushes under the lock and
-  then releases it to wait, so the submission it is waiting for can still be made) and the ring allocator's
-  `BeginFrame` (which waits for the GPU to finish with the segment it opens, up to a frame). Both throw rather
-  than stall, because a frame-long hold of this lock is invisible from the outside and is the exact defect the
-  design deletes. The exception is the staging map above: `Map(READ)` on the immediate context is DEFINED to wait
-  until the GPU is done with that resource, which is exactly what makes a readback correct without an explicit
-  drain, and the wait is bounded by the work already submitted against that one resource rather than by a frame.
-  The alternative, mapping with `DO_NOT_WAIT` and spinning outside the lock, trades a bounded wait for a spin
-  that can starve.
+- **Nothing waits under the submit lock, with ONE knowingly paid exception**, and exactly two members CAN block
+  unboundedly, both of which refuse a caller who holds it, by name: `WaitForIdle` (which signals and flushes
+  under the lock and then releases it to wait, so the submission it is waiting for can still be made) and the
+  ring allocator's `BeginFrame` (which waits for the GPU to finish with the segment it opens, up to a frame).
+  Both throw rather than stall, because a frame-long hold of this lock is invisible from the outside and is the
+  exact defect the design deletes. The ring allocator's `UpdateBuffer` is deliberately NOT a third one: it has
+  no boundary of its own to be moved outside the lock, so rather than waiting for a busy segment it defers the
+  write to a patch the next frame boundary applies, which is what makes a caller holding the lock legal there
+  instead of refused. The exception is the staging map above: `Map(READ)` on the immediate context is DEFINED
+  to wait until the GPU is done with that resource, which is exactly what makes a readback correct without an
+  explicit drain, and the wait is bounded by the work already submitted against that one resource rather than
+  by a frame. The alternative, mapping with `DO_NOT_WAIT` and spinning outside the lock, trades a bounded wait
+  for a spin that can starve.
 - The process-wide `GpuDeviceContext._lifecycleGate` is unchanged, and still serializes device creation and
   disposal across every backend.
 

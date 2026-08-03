@@ -566,8 +566,17 @@ namespace KhaozEngine.Tests.Gpu
                 harness.Allocator.UnmapMappedRings();
                 harness.Allocator.OnSubmitted(1);
                 harness.Allocator.BeginFrame();
+
+                // Drives the off-timeline write's fence gate into a DEFERRAL rather than past it, and then drives
+                // the replay, so the patch storage, the apply at the frame boundary and the counters are inside
+                // the no-interop claim too. Segment 0 is owned by 1 and the GPU has not reached it, so the write
+                // below queues a patch for it, and the boundary after the completion drains it.
                 harness.Allocator.UpdateBuffer(harness.Ring, 16, new byte[] { 5 });
+                harness.Completion.Completed = 1;
+                harness.Allocator.BeginFrame();
+                harness.Allocator.BeginFrame();
                 _ = harness.Allocator.LastFrameBackpressure;
+                _ = harness.Allocator.OffTimelinePatches;
                 harness.Allocator.Forget(harness.Ring);
             }
 

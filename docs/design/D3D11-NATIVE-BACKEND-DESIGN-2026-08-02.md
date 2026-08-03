@@ -50,7 +50,7 @@ rejected from both.
 | U2 | Uploads | The ring is mapped `MAP_WRITE_NO_OVERWRITE` for the record phase and unmapped at the start of `Submit`. Requires `MapNoOverwriteOnDynamicConstantBuffer`, checked by the probe. D3D11 has no persistent mapping, so this is the achievable form | B |
 | U3 | Uploads | `CreateResourceSet`'s pinned `GpuBufferRange` survives because the frame base is a bind-time addend and is never baked into a set. ONLY `UniformBuffer` buffers are ring-backed, and a ring-backed buffer never receives a non-constant-buffer view (asserted) | Judge, reconciliation |
 | U4 | Uploads | Vertex, index and texture record-time payloads go to a per-list reusable CPU arena and replay as `UpdateSubresource`. Static and load-time `DEFAULT` buffers keep `UpdateSubresource`. Structured buffers keep `DEFAULT` plus a full-range RAW view | Both, converged |
-| U5 | Uploads | Device-level `UpdateBuffer` writes the CURRENT frame segment, preserving the documented off-timeline semantic. Segment recycling blocks on the previous owner's fence, with a stall counter in telemetry | B, gated by M3 |
+| U5 | Uploads | Device-level `UpdateBuffer` writes the CURRENT frame segment, preserving the documented off-timeline semantic. Segment recycling blocks on the previous owner's fence, with a stall counter in telemetry. CORRECTED IN FLIGHT by #484: it reaches EVERY segment, deferring an in-flight one to a pending patch rather than waiting. See section 6.4 | B, gated by M3 |
 | X1 | Resources | All SRV, RTV, DSV and UAV objects and all blend, depth-stencil, rasterizer and input-layout objects are created at resource, set or pipeline creation. The emitter interface has NO `Create*` member, so draw-time creation is a compile error | B |
 | X2 | Resources | Drop the incumbent's `D3D11ResourceCache`. The D3D11 runtime already returns an existing object for an identical state description | B |
 | X3 | Resources | Reproduce the `DeviceLiveness` latch exactly: disposal after device death is a no-op, `IGpuFence.Signaled` reads true, `WaitForIdle` is a no-op | Both, converged |
@@ -492,6 +492,24 @@ ring makes each of those a real question that draft B left unanswered.
   in progress is already writing. That is what preserves the documented semantic (the write lands when
   called, and a later-submitted list reads what the CPU wrote most recently). It is deliberately NOT the
   segment of the frame currently executing on the GPU.
+
+  **Corrected in flight by #484: it writes EVERY segment, not only the current one.** This bullet as written
+  above is what shipped first and it was wrong, in a way that only a consumer could show. It considered a
+  uniform buffer that is rewritten every frame and nothing else, so a value written ONCE reached one segment
+  out of three and two frames in every three bound memory nothing had ever written, silently.
+  `ModelRenderer`'s splat-params tail does exactly that. The resolution is option (a) of #484, ring-side: an
+  off-timeline write reaches all `FramesInFlight` segments, so it persists for the buffer's life the
+  way the incumbent's does, while a RECORD-TIME write stays current-segment only (every shipped one of those
+  is unconditional per frame, so replicating them would be N memcpys for a value the next frame overwrites,
+  on the hot path). The added segments are gated on the same completion read as `AcquireSegment`, and a
+  segment that fails the gate is not waited for: the write is queued as a PENDING PATCH that the segment's
+  next acquire applies, so this call still never blocks and a caller holding the submit lock is legal.
+  WAITING WAS DRAFTED FIRST AND WAS WRONG, which is the part worth keeping here rather than in the shipped
+  docs: a retry loop that waited for every non-current segment to be free at once never terminates in the
+  GPU-bound steady state, because the frame thread submits again for every frame the GPU retires, so one
+  non-current segment is always in flight. The current segment stays ungated and is always copied, because
+  gating it would change the semantic this bullet describes and deferring it would put its value a whole wrap
+  away. Shipped behaviour is the package README's ring section and `docs/USING-KHAOZENGINE.md`.
 - **Who maps.** The ring is unmapped at the start of `Submit`, so an off-timeline write arriving between two
   frames finds it unmapped. That write maps `NO_OVERWRITE`, writes, and leaves it mapped for the next record
   phase to reuse. Mapping is idempotent and refcount-free: one flag on the ring, checked under the same lock
@@ -500,7 +518,8 @@ ring makes each of those a real question that draft B left unanswered.
   SHORT lock scoped to the write itself and never to a frame. This is draft A's D19 rule and it is adopted
   rather than dropped: B's W4 named the short lock for staging `Map` and `Unmap` and said nothing about the
   device-level update path, which is the busier of the two. The lock is `_submitLock`, so an off-timeline
-  write cannot land in the middle of a replay.
+  write cannot land in the middle of a replay. Since the corrected U5 above never waits, a caller ALREADY
+  holding that lock is legal too, which is a case the waiting draft would have deadlocked on.
 - **What is still forbidden.** Writing off-timeline to a range a recording has already recorded a bind for,
   and then expecting the recorded bind to see the old value. That was already true before the ring and the
   seam already documents the CPU being several frames ahead, so nothing changes for a caller. It is restated

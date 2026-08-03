@@ -218,13 +218,33 @@ namespace KhaozEngine.Tests.Gpu
         // Generous enough that no legitimate test reaches it, small enough that hitting it is instant.
         internal const int RunawayPollLimit = 10_000;
 
+        ulong _completed;
+
         /// <summary>What the GPU has reached. Settable, because driving it by hand is how a test pins exactly
-        /// which segment is free at which moment.</summary>
-        internal ulong Completed { get; set; }
+        /// which segment is free at which moment. Read and written through <see cref="Volatile"/>, so a test
+        /// thread can advance it while another thread is spinning on it and be sure the spin sees it.</summary>
+        internal ulong Completed
+        {
+            get => Volatile.Read(ref _completed);
+            set => Volatile.Write(ref _completed, value);
+        }
 
         /// <summary>How many times <see cref="CompletedValue"/> has been read. A segment acquisition that does
         /// not stall costs exactly one.</summary>
         internal int PollCount { get; private set; }
+
+        /// <summary>The submit lock the allocator under test was built with, so the fake can record WHERE each
+        /// poll happened. Left null by a test that does not care, which leaves both counters below at zero.
+        /// </summary>
+        internal object? SubmitLock { get; set; }
+
+        /// <summary>Polls made while <see cref="SubmitLock"/> was held. The off-timeline write's gate is allowed
+        /// exactly one of these per lock hold, and its SPIN owes none at all: a loop of completion reads under the
+        /// submit lock is what <c>D3D11RingAllocator.BeginFrame</c> refuses a caller by name for.</summary>
+        internal int PollsHoldingTheSubmitLock { get; private set; }
+
+        /// <summary>Polls made with <see cref="SubmitLock"/> free, which is where a wait belongs.</summary>
+        internal int PollsWithTheSubmitLockFree { get; private set; }
 
         /// <summary>When set, the timeline jumps to <see cref="CompleteTo"/> once it has been polled this many
         /// times, which is how a test makes a stall end.</summary>
@@ -233,15 +253,31 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>What <see cref="CompleteAfterPolls"/> completes to.</summary>
         internal ulong CompleteTo { get; set; }
 
+        /// <summary>
+        /// Turn the runaway guard OFF, for the one test shape it cannot serve: a wait whose completion is driven
+        /// from ANOTHER thread, in steps, to pin which value the waiter is actually waiting for. A poll-count
+        /// trigger cannot express "reach 5, stay there, then reach 9", and the guard would fire during the
+        /// deliberate pause at 5. A test that sets this owes its own bound: a wall clock on the assertions and a
+        /// <c>finally</c> that raises <see cref="Completed"/> high enough to release the waiter whatever happened,
+        /// so a broken implementation fails the test rather than leaving a thread spinning behind it.
+        /// </summary>
+        internal bool DrivenByHand { get; set; }
+
         /// <inheritdoc/>
         public ulong CompletedValue
         {
             get
             {
                 PollCount++;
+                if (SubmitLock is object submitLock)
+                {
+                    if (Monitor.IsEntered(submitLock)) PollsHoldingTheSubmitLock++;
+                    else PollsWithTheSubmitLockFree++;
+                }
+
                 if (CompleteAfterPolls is int after && PollCount >= after) Completed = CompleteTo;
 
-                if (CompleteAfterPolls is null && PollCount > RunawayPollLimit)
+                if (CompleteAfterPolls is null && !DrivenByHand && PollCount > RunawayPollLimit)
                 {
                     throw new InvalidOperationException(
                         $"A fake completion timeline was polled {PollCount} times without ever reaching the value "

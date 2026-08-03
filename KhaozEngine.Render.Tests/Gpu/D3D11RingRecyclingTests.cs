@@ -312,13 +312,14 @@ namespace KhaozEngine.Tests.Gpu
         // ---- the off-timeline write (6.4) -----------------------------------------------------------------
 
         /// <summary>
-        /// THE DEVICE-LEVEL <c>UpdateBuffer</c> WRITES THE CURRENT SEGMENT, meaning the one the next submit will
-        /// bind, deliberately not the one executing on the GPU. Within that same frame slot, the write lands when
-        /// it is called, and the next submitted list reads it. The cross-frame case diverges from this and is
-        /// tracked as #484.
+        /// THE DEVICE-LEVEL <c>UpdateBuffer</c> REACHES EVERY SEGMENT, including the one the next submit will
+        /// bind, so the write lands when it is called AND persists for the buffer's life the way the same call
+        /// persists on the Veldrid leg. Reaching the current segment alone was #484, and the whole off-timeline
+        /// surface, including the fence gate this added to the other segments, is
+        /// <see cref="D3D11RingOffTimelineTests"/>.
         /// </summary>
         [Fact]
-        public void AnOffTimelineWrite_LandsInTheSegmentTheNextSubmitWillBind()
+        public void AnOffTimelineWrite_ReachesEverySegmentIncludingTheOneTheNextSubmitWillBind()
         {
             using var harness = new D3D11RingHarness(sizeInBytes: 256, framesInFlight: 3);
 
@@ -327,9 +328,12 @@ namespace KhaozEngine.Tests.Gpu
 
             harness.Allocator.UpdateBuffer(harness.Ring, 8, new byte[] { 0xE1, 0xE2 });
 
-            Assert.Equal((byte)0xE1, harness.Memory.Bytes[256 + 8]);
-            Assert.Equal((byte)0xE2, harness.Memory.Bytes[256 + 9]);
-            Assert.Equal((byte)0, harness.Memory.Bytes[8]);
+            for (int segment = 0; segment < 3; segment++)
+            {
+                uint at = harness.Ring.FrameBaseBytes(segment) + 8;
+                Assert.Equal((byte)0xE1, harness.Memory.Bytes[at]);
+                Assert.Equal((byte)0xE2, harness.Memory.Bytes[at + 1]);
+            }
         }
 
         /// <summary>

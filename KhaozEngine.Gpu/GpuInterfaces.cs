@@ -170,9 +170,29 @@ namespace KhaozEngine.Gpu
     /// <summary>Records GPU commands for one submission. Engine mirror of Veldrid <c>CommandList</c>.</summary>
     public interface IGpuCommandList : IDisposable
     {
-        /// <summary>Begin recording.</summary>
+        /// <summary>
+        /// Begin recording. Resets the list, so everything recorded into it before is discarded and a list is
+        /// reusable frame after frame.
+        /// <para>
+        /// THE PORTABLE CONTRACT IS ONE OPEN RECORDING PER DEVICE. Between a <see cref="Begin"/> and its
+        /// <see cref="End"/>, do not open a second list on the same device, and do not call any engine API that
+        /// opens one of its own. Backends do not agree on what a second recording means: the Veldrid Direct3D11
+        /// leg rejects it outright, and with Direct3D11 in immediate-context mode a command list IS the device's
+        /// immediate context, so opening one resets the state the first list already recorded. Work that needs a
+        /// list of its own belongs in the frame's pre-record phase, before the frame's list is opened.
+        /// </para>
+        /// <para>
+        /// A BACKEND MAY BE MORE PERMISSIVE, AND THAT IS NOT PART OF THIS CONTRACT. The engine's own native
+        /// Direct3D11 backend records into an engine-owned command stream and touches no device state here, so N
+        /// lists may record concurrently there and submit order is the observable order. That is a property of
+        /// that backend, not a promise of this interface, and code written against it does not port. Rely only on
+        /// the one-open-recording rule above.
+        /// </para>
+        /// </summary>
         void Begin();
-        /// <summary>Finish recording.</summary>
+        /// <summary>Finish recording, sealing the list for submission. A list submitted without this is a
+        /// half-recorded frame, and a backend is free to refuse it. See <see cref="Begin"/> for how many
+        /// recordings may be open at once.</summary>
         void End();
         /// <summary>Bind a framebuffer as the render target.</summary>
         void SetFramebuffer(IGpuFramebuffer fb);

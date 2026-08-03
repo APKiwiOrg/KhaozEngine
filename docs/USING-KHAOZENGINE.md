@@ -8415,6 +8415,31 @@ hardware adapter, then WARP) and two hard requirements read off it, `ConstantBuf
 `MapNoOverwriteOnDynamicConstantBuffer`. A machine missing either cannot run the backend at all, and answering
 that up front is what routes it through the reported fallback instead of a crash on the first frame.
 
+### How many command lists may be open at once (`IGpuCommandList.Begin` / `End`, 17.30.0)
+
+**The rule to write code against: one open recording per device.** Between a `Begin()` and its `End()`, do not
+open a second command list on that device, and do not call an engine API that opens one of its own. Work that
+needs its own list goes in the frame's pre-record phase (`AppWindow.Run(onFrame, onPrepare)` /
+`GameApp.OnPrepareWorld`), which runs before the frame's list is opened.
+
+This is a real portability rule, not defensive style. Backends disagree about what a second recording means:
+
+- The Veldrid Direct3D11 leg **rejects** it. The vendored fork's guardrail throws on a second recorder.
+- With Direct3D11 in immediate-context mode a command list **is** the device's immediate context, and `Begin`
+  calls `ClearState` on it, so opening a second list wipes the state the first one already recorded. That is the
+  ocean-pass corruption of 17.26.0, and it looked like a rendering bug somewhere else entirely.
+- Vulkan and Metal have their own list lifetimes.
+
+**A backend may be more permissive, and that changes nothing above.** The engine's own native Direct3D11 backend
+(`KhaozEngine.Gpu.D3D11`) records into an engine-owned command stream and touches no device state in `Begin`, so
+N lists may record concurrently there, the recordings cannot corrupt each other, and the observable order is
+**submit** order rather than record order. That is a property of that backend. It is not a promise of
+`IGpuCommandList`, code written against it does not port to the other three backends, and the engine's own
+invariant test still asserts no nested open list in the capture paths.
+
+`End()` seals the list. Submitting one that was never ended is a half-recorded frame, and a backend is free to
+refuse it rather than replay it.
+
 ---
 
 ## Is the D3D11 driver emulating command lists (`GpuThreadingCaps`, 17.22.0)

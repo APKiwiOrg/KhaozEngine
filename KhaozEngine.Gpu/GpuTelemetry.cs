@@ -26,7 +26,8 @@ namespace KhaozEngine.Gpu
         public static TelemetrySessionInfo WithGpu(this TelemetrySessionInfo info, GpuDeviceContext device)
         {
             ArgumentNullException.ThrowIfNull(device);
-            return info.WithGpu(device.Selection, device.AdapterDescription, device.InjectedModules, device.ThreadingCaps);
+            return info.WithGpu(device.Selection, device.AdapterDescription, device.InjectedModules,
+                device.ThreadingCaps, device.Diagnostics);
         }
 
         /// <summary>
@@ -74,6 +75,44 @@ namespace KhaozEngine.Gpu
             info.InjectedModules = injectedModules;
             info.DriverCommandLists = threadingCaps?.DriverCommandLists;
             info.DriverConcurrentCreates = threadingCaps?.DriverConcurrentCreates;
+            return info;
+        }
+
+        /// <summary>
+        /// The same mapping PLUS the two live device facts of <see cref="GpuDeviceDiagnostics"/>: whether the
+        /// session ran on a software rasterizer, and why the device was lost if it was. This is what the
+        /// <see cref="GpuDeviceContext"/> overload calls.
+        /// <para>
+        /// A SEPARATE OVERLOAD rather than an optional parameter on the one above, so an already-compiled consumer
+        /// keeps binding to the method it was compiled against. The two are otherwise identical, and a caller with
+        /// no diagnostics to supply should keep using the shorter one rather than passing <c>default</c>: the
+        /// shorter one leaves both header fields null, which is the honest "nobody answered", and passing a
+        /// default-constructed value says exactly the same thing by a longer route.
+        /// </para>
+        /// </summary>
+        /// <param name="info">The header options to fill.</param>
+        /// <param name="selection">The backend that ran, where that choice came from, and what was asked for.</param>
+        /// <param name="adapterDescription">The adapter name, or blank when the backend reports none.</param>
+        /// <param name="injectedModules">The injected-overlay scan result. Null and empty are opposite facts.</param>
+        /// <param name="threadingCaps">The Direct3D11 driver threading caps, or null on every other backend.</param>
+        /// <param name="diagnostics">
+        /// Read LIVE off the device at the moment the header is written. A value captured earlier in the session
+        /// would always report a device that had not been lost yet, which is precisely the case the field exists
+        /// for.
+        /// </param>
+        /// <returns><paramref name="info"/>, so calls chain.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="info"/> is null.</exception>
+        public static TelemetrySessionInfo WithGpu(
+            this TelemetrySessionInfo info,
+            GpuBackendSelection selection,
+            string? adapterDescription,
+            IReadOnlyList<string>? injectedModules,
+            GpuThreadingCaps? threadingCaps,
+            GpuDeviceDiagnostics diagnostics)
+        {
+            info.WithGpu(selection, adapterDescription, injectedModules, threadingCaps);
+            info.SoftwareAdapter = diagnostics.SoftwareAdapter;
+            info.DeviceLossReason = diagnostics.DeviceLossReason;
             return info;
         }
     }

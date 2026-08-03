@@ -73,6 +73,33 @@ public sealed class TelemetrySessionInfo
     public string? AdapterDescription { get; set; }
 
     /// <summary>
+    /// Whether that adapter is a SOFTWARE rasterizer (on Direct3D11, <c>DXGI_ADAPTER_FLAG_SOFTWARE</c>). Null when
+    /// nothing answered the question, which is every backend that does not report it and every session where the
+    /// query failed.
+    /// <para>
+    /// It is a separate field from <see cref="AdapterDescription"/> rather than something a reader infers from the
+    /// name, because inferring it means keeping a list of the names software rasterizers use, and that list is
+    /// wrong the first time a new one appears. It matters most for a PERFORMANCE capture: numbers off WARP or the
+    /// Microsoft Basic Render Driver are not comparable with numbers off a GPU at all, and a capture that does not
+    /// say which it was is a capture that gets averaged in with the others.
+    /// </para>
+    /// </summary>
+    public bool? SoftwareAdapter { get; set; }
+
+    /// <summary>
+    /// Why the graphics device was LOST, when it was, or null for the ordinary session where it was not. On
+    /// Direct3D11 this is <c>GetDeviceRemovedReason</c>'s answer, read at the first call site that noticed the
+    /// removal and carried here as a stable token plus the site.
+    /// <para>
+    /// Read at the fault site because <c>DXGI_ERROR_DEVICE_REMOVED</c> is STICKY: every later call returns it too,
+    /// so by the time a crash handler asks, the reason has been overwritten by whatever ran next. That is not
+    /// hypothetical. All 25 stacks on the incident this field exists for pointed at a texture view constructor
+    /// that was merely the next call made, and reconstructing what actually happened cost a full investigation.
+    /// </para>
+    /// </summary>
+    public string? DeviceLossReason { get; set; }
+
+    /// <summary>
     /// Known third-party overlay / capture software found hooked into the process, or null when nothing was
     /// scanned. Null and empty are OPPOSITE facts and the header keeps them apart: null means the scan never
     /// ran (not Windows, or it failed), an empty list means it ran and the process was clean.

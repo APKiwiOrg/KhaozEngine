@@ -111,6 +111,15 @@ namespace KhaozEngine.Gpu
         public IReadOnlyList<string>? InjectedModules { get; }
 
         /// <summary>
+        /// The live device diagnostics: whether this session is on a software rasterizer, and why the device was
+        /// lost if it has been. Read THROUGH to the device on every access rather than captured, because a device
+        /// loss happens at an arbitrary moment after creation and a cached value would always say the device was
+        /// fine. Null members mean the backend does not report that fact, which is what the Veldrid path answers
+        /// for both.
+        /// </summary>
+        public GpuDeviceDiagnostics Diagnostics => GpuDevice.Diagnostics;
+
+        /// <summary>
         /// The engine-owned GPU device: on the Veldrid path, the wrapper around the underlying Veldrid device.
         /// Renderers (Render2D / Render3D) consume this instead of the raw device, so Veldrid stays hidden. That
         /// wrapper is non-owning, and disposal flows through this context's <see cref="Dispose"/> either way.

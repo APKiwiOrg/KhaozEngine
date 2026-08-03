@@ -20,8 +20,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// one per targetable slice, and it is the seam fact the four-view bound rests on.
     /// </para>
     /// <para>
-    /// The swapchain's framebuffer is NOT this type. Its views are recreated on every resize while its wrapper
-    /// identity has to stay stable (decision W2), which is the swapchain's own problem and lands with it.
+    /// The swapchain's framebuffer is NOT this type, it is <see cref="D3D11SwapchainFramebuffer"/>. Its views are
+    /// recreated on every resize while its wrapper identity has to stay stable (decision W2), so its attachments
+    /// are mutable by nature and it is handed them by the swapchain rather than reading them off engine textures.
+    /// The two have opposite lifetimes and only <see cref="IGpuFramebuffer"/> in common, which is why they are
+    /// siblings rather than one type with a mode.
     /// </para>
     /// </summary>
     [SupportedOSPlatform("windows")]

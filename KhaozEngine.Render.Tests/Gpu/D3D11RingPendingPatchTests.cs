@@ -54,6 +54,48 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
+        /// THE MAPPING THE BOUNDARY TAKES TO REPLAY A PATCH JOINS THE MAPPED REGISTRY, so the next submit releases
+        /// it. Under <see cref="D3D11RingMapScope.AcrossRecording"/> the replay deliberately LEAVES the ring
+        /// mapped for the record phase that follows, and the submit's unmap walks the registry alone: a mapping
+        /// the registry never heard of is never released, and the replay then binds a mapped resource, which is
+        /// the one thing Direct3D 11 refuses outright.
+        /// <para>
+        /// THE RING IS UNMAPPED BEFORE THE DRAINING BOUNDARY ON PURPOSE, exactly as a submit leaves it. The
+        /// off-timeline write that recorded the patch mapped the ring itself and registered it there, so without
+        /// that unmap the registry entry under test is already present for another reason and the assertion passes
+        /// whatever the boundary does.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void TheMappingTheBoundaryTakesToReplay_JoinsTheMappedRegistry()
+        {
+            using var harness = new D3D11RingHarness(sizeInBytes: 256, framesInFlight: Segments);
+            byte[] payload = D3D11RingOffTimelineTests.Pattern(16, seed: 0x60);
+
+            harness.Allocator.OnSubmitted(9);   // segment 0
+            harness.Allocator.BeginFrame();     // current is 1, so segment 0 is gated
+            harness.Allocator.UpdateBuffer(harness.Ring, 0, payload);
+
+            harness.Allocator.UnmapMappedRings();   // the submit's unmap, which is what leaves it unmapped
+            Assert.False(harness.Memory.IsMapped);
+            Assert.Equal(0, harness.Allocator.MappedRingCount);
+
+            harness.Completion.Completed = 9;
+            harness.Allocator.BeginFrame();     // opens 2, which owes nothing and maps nothing
+            Assert.Equal(0, harness.Allocator.MappedRingCount);
+
+            harness.Allocator.BeginFrame();     // opens 0, which drains it and has to map to do so
+            Assert.True(harness.Memory.IsMapped, "The replay copied without mapping the ring at all.");
+            Assert.Equal(1, harness.Allocator.MappedRingCount);
+
+            harness.Allocator.UnmapMappedRings();
+            Assert.False(harness.Memory.IsMapped,
+                "The mapping the frame boundary took to replay a patch outlived the submit that should have "
+                + "released it, so the replay is about to bind a resource that is still mapped.");
+            Assert.Equal(harness.Memory.MapCount, harness.Memory.UnmapCount);
+        }
+
+        /// <summary>
         /// TWO PATCHES TO ONE SEGMENT REPLAY IN ARRIVAL ORDER, so overlapping ranges resolve last-write-wins
         /// exactly as two direct copies into mapped memory would. Written with a PARTIAL overlap, because that is
         /// the case where order is observable: the first write's bytes survive outside the second's range and are
@@ -200,6 +242,13 @@ namespace KhaozEngine.Tests.Gpu
         /// FORGETTING A RING DROPS ITS PENDING PATCHES, because they name memory that is about to stop existing.
         /// A patch left behind would be replayed at the next frame boundary into a mapping the runtime has taken
         /// back, which is a write through a dangling pointer on the one path nobody is looking at.
+        /// <para>
+        /// AND IT RECONCILES THE COUNTERS, which is the half a drop is most likely to skip. A dropped patch was
+        /// deferred and is never applied and never coalesced, so counting it nowhere would hold the outstanding
+        /// number permanently above zero in any program that streams uniform buffers in and out, and the reading
+        /// that number exists for (climbing rather than settling means frames stopped) would be wrong for exactly
+        /// those programs.
+        /// </para>
         /// </summary>
         [Fact]
         public void ForgettingARing_DropsItsPendingPatches()
@@ -221,6 +270,11 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal(mapsBefore, harness.Memory.MapCount);
             Assert.Equal(0, harness.Allocator.OffTimelinePatches.Applied);
+
+            // And the counters reconcile. A patch that went away with its ring is neither applied nor coalesced,
+            // so without its own count it would stay outstanding for the life of the device.
+            Assert.Equal(1, harness.Allocator.OffTimelinePatches.Dropped);
+            Assert.Equal(0, harness.Allocator.OffTimelinePatches.Outstanding);
         }
 
         /// <summary>

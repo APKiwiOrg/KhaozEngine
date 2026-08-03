@@ -247,8 +247,9 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// THE GPU-BOUND STEADY STATE, which is the shape a reviewer's probe used to prove the first cut starved.
-        /// A frame loop runs at pipeline depth with the completion timeline exactly <c>FramesInFlight</c>
-        /// submissions behind, so every segment other than the current one is in flight at EVERY instant and the
+        /// A frame loop runs at pipeline depth with the completion timeline exactly <c>FramesInFlight</c> minus one
+        /// submissions behind, which is the deepest it goes without the frame boundary itself stalling, so every
+        /// segment other than the current one is in flight at EVERY instant and the
         /// "all of them are free at once" condition the retry loop waited for is never satisfiable. The writer
         /// still returns, in one poll, and the value is then visible in every segment the frame loop goes on to
         /// acquire.

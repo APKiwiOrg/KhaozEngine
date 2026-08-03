@@ -565,9 +565,11 @@ The write still maps idempotently when it finds the ring unmapped between two fr
 next record phase to reuse. Under `D3D11RingMapScope.PerWrite` the map, every segment's copy and the unmap are
 one critical section, which is the same atomicity that scope holds for a record-time write, and a patch replay
 repeats it in its own hold. The deferrals are reported on their own cumulative `OffTimelinePatches` stat
-(`Deferred`, `Applied`, `Coalesced` and the `Outstanding` difference) rather than on the per-frame backpressure,
-because they are not frame-boundary stalls and folding them in would make M3's "zero stalls across the window"
-criterion unreachable for a reason unrelated to pipeline depth.
+(`Deferred`, `Applied`, `Coalesced`, the `Dropped` a disposed ring takes with it, and the `Outstanding`
+difference) rather than on the per-frame backpressure, because they are not frame-boundary stalls and folding
+them in would make M3's "zero stalls across the window" criterion unreachable for a reason unrelated to pipeline
+depth. Every deferral leaves the queue exactly once, so `Outstanding` settles rather than climbing, and a number
+that does keep climbing means patches are piling up for a segment nothing acquires.
 
 **What is still forbidden, restated because the ring makes it quieter rather than because it changed.** Writing
 off-timeline to a range a recording has ALREADY recorded a bind for, and then expecting that recorded bind to see

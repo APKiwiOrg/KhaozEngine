@@ -8579,7 +8579,7 @@ engine's own invariant test still asserts no nested open list in the capture pat
 `End()` seals the list. Submitting one that was never ended is a half-recorded frame, and a backend is free to
 refuse it rather than replay it.
 
-### Uniform buffers on the native Direct3D 11 backend (17.31.0)
+### Uniform buffers on the native Direct3D 11 backend (17.32.0)
 
 Three things are worth knowing before that backend becomes selectable, and only the first can make it refuse
 something the other backends accept.

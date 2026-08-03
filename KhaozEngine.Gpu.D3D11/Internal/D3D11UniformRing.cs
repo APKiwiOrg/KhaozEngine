@@ -254,10 +254,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             return applied;
         }
 
-        /// <summary>Forget every queued write, for a ring whose buffer is going away. CALLED ONLY BY
+        /// <summary>Forget every queued write, for a ring whose buffer is going away, and return how many were
+        /// dropped so the allocator's counters can reconcile them. CALLED ONLY BY
         /// <see cref="D3D11RingAllocator.Forget"/>, under the submit lock: a patch left behind would be replayed
         /// into a mapping that no longer exists.</summary>
-        internal void DropPendingPatchesUnderLock() => _patches?.ClearAll();
+        internal int DropPendingPatchesUnderLock() => _patches?.ClearAll() ?? 0;
 
         /// <summary>The 256-aligned stride one segment of a <paramref name="sizeInBytes"/> buffer occupies.
         /// Static because <see cref="D3D11Buffer"/> has to size the native buffer before a ring exists to ask.

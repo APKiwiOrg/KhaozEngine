@@ -695,28 +695,34 @@ case, holding the lock against the submission that would have ended the wait.
 
 **The counter counts patches, because there are no waits left to count.** `OffTimelinePatches` replaces the
 earlier `OffTimelineWaits`: a separate cumulative reading beside `LastFrameBackpressure`, in the same shape and
-for the same M3 reason, carrying `Deferred`, `Applied`, `Coalesced` and the `Outstanding` difference. It has no
-milliseconds field on purpose, since a duration here would report zero forever and read as "the waits are cheap"
-rather than as "there are none". It stays out of `LastFrameBackpressure` for the reason the wait counter did: M3's
-exit criterion is a per-frame stall count of zero across a soak window, which reads as "three segments are enough
-on this machine", and a deferred patch says nothing about that. Cumulative rather than rolled per frame because
-these writes are typically load-time and happen before any frame has begun. Under `D3D11RingMapScope.PerWrite` the
-map, every segment's copy and the unmap stay one critical section, and a patch replay repeats that discipline in
-its own hold.
+for the same M3 reason, carrying `Deferred`, `Applied`, `Coalesced`, `Dropped` and the `Outstanding` difference.
+`Dropped` is the patches a disposed ring took with it, counted rather than discarded: every deferral leaves the
+queue exactly once, so `Outstanding` settles instead of sitting permanently high in a program that streams uniform
+buffers in and out, and the reading it exists for (climbing rather than settling means frames stopped) holds for
+those programs too. It has no milliseconds field on purpose, since a duration here would report zero forever and
+read as "the waits are cheap" rather than as "there are none". It stays out of `LastFrameBackpressure` for the
+reason the wait counter did: M3's exit criterion is a per-frame stall count of zero across a soak window, which
+reads as "three segments are enough on this machine", and a deferred patch says nothing about that. Cumulative
+rather than rolled per frame because these writes are typically load-time and happen before any frame has begun.
+Under `D3D11RingMapScope.PerWrite` the map, every segment's copy and the unmap stay one critical section, and a
+patch replay repeats that discipline in its own hold.
 
 **Where the tests are.** All device-free, against the pinned-array ring memory and the fake completion timeline:
 the load-time write landing in every segment byte for byte, the `ModelRenderer` shape written once and read back
 across seven frames (more than two full wraps, the regression named for the issue) and again with the pipeline
 already full so two of its three segments arrive as patches, the write returning with one poll and a wall-clock
 bound against a segment nothing ever frees, the GPU-bound steady state driven synchronously at depth with the
-timeline lagging by a full ring, the patch applied at that segment's next boundary byte for byte and not at the
-one before it, arrival order over a partial overlap, coalescing over a covering one, a later write joining a
-queued segment even after its fence completes, the current segment never carrying a patch, a reentrant caller
-under a watchdog, disposal dropping a ring's patches, the current segment copied without gating on a value the GPU
-never reaches, the record-time write still landing in one segment, the counter split, and the `PerWrite` scope
-covering every segment in one map and unmap pair and replaying a patch in another. The central property was
+timeline lagging by `FramesInFlight` minus one (the deepest the pipeline goes without the frame boundary itself
+stalling), the patch applied at that segment's next boundary byte for byte and not at the one before it, the
+mapping the boundary takes to replay a patch joining the mapped registry so the next submit releases it, arrival
+order over a partial overlap, coalescing over a covering one, a later write joining a queued segment even after
+its fence completes, the current segment never carrying a patch, a reentrant caller under a watchdog, disposal
+dropping a ring's patches and reconciling the counters, the current segment copied without gating on a value the
+GPU never reaches, the record-time write still landing in one segment, the counter split, and the `PerWrite` scope
+covering every segment in one map and unmap pair and replaying a patch in another. Two properties were
 mutation-checked: with the patch replay at `BeginFrame` removed, 9 tests fail including the steady-state probe and
-the pipeline-full regression, restored, they pass.
+the pipeline-full regression, and with the replay's registry insert removed, the registry test fails alone.
+Restored, they pass.
 
 ## 17.31.0
 

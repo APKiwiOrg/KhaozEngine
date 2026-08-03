@@ -129,13 +129,22 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             _bySegment[segment].Clear();
         }
 
-        /// <summary>Forget everything, for a ring whose buffer is being disposed. The patches name memory that is
-        /// about to stop existing, so carrying them would be a write through a freed mapping at the next frame
-        /// boundary.</summary>
-        internal void ClearAll()
+        /// <summary>
+        /// Forget everything, for a ring whose buffer is being disposed, and return how many went with it. The
+        /// patches name memory that is about to stop existing, so carrying them would be a write through a freed
+        /// mapping at the next frame boundary.
+        /// <para>
+        /// THE COUNT IS RETURNED RATHER THAN DISCARDED because these patches were deferred and will never be
+        /// replayed, so an allocator that dropped them silently would leave them counted as outstanding for the
+        /// life of the device. See <see cref="D3D11PendingPatchStats.Dropped"/>.
+        /// </para>
+        /// </summary>
+        internal int ClearAll()
         {
+            int dropped = _pending;
             for (int i = 0; i < _bySegment.Length; i++) _bySegment[i].Clear();
             _pending = 0;
+            return dropped;
         }
     }
 }

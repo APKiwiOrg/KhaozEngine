@@ -141,13 +141,14 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         long _stallTicks;
         D3D11BackpressureStats _lastFrame;
 
-        // The off-timeline write's deferrals, their replays and the ones a later write superseded, cumulative
-        // since the device was created and deliberately NOT rolled per frame. All three are mutated under the
-        // submit lock alone, so the lock orders them, and the property reads them volatile because a diagnostic
-        // may be on any thread. See OffTimelinePatches.
+        // The off-timeline write's deferrals, their replays, the ones a later write superseded and the ones that
+        // went away with a disposed ring, cumulative since the device was created and deliberately NOT rolled per
+        // frame. All four are mutated under the submit lock alone, so the lock orders them, and the property reads
+        // them volatile because a diagnostic may be on any thread. See OffTimelinePatches.
         int _patchesDeferred;
         int _patchesApplied;
         int _patchesCoalesced;
+        int _patchesDropped;
 
         /// <summary>
         /// Build the allocator for one device.
@@ -230,7 +231,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         internal D3D11PendingPatchStats OffTimelinePatches => new D3D11PendingPatchStats(
             Volatile.Read(ref _patchesDeferred),
             Volatile.Read(ref _patchesApplied),
-            Volatile.Read(ref _patchesCoalesced));
+            Volatile.Read(ref _patchesCoalesced),
+            Volatile.Read(ref _patchesDropped));
 
         /// <summary>The completion value the last submission that used <paramref name="segment"/> was signalled
         /// under, or 0 for a segment nothing has been submitted with. Present so a test and a diagnostic can see
@@ -600,6 +602,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// names memory that is about to stop existing, so a frame boundary replaying it after the buffer was
         /// released would write through a freed mapping.
         /// </para>
+        /// <para>
+        /// AND THEY ARE COUNTED ON THE WAY OUT, into <see cref="D3D11PendingPatchStats.Dropped"/>. Dropping them
+        /// silently would leave them counted as deferred and never as resolved, so
+        /// <see cref="D3D11PendingPatchStats.Outstanding"/> would sit permanently high in any program that streams
+        /// uniform buffers in and out, and the reading that number is FOR ("it climbs rather than settles, so
+        /// frames stopped") would be wrong for exactly the programs most likely to consult it.
+        /// </para>
         /// </summary>
         internal void Forget(D3D11UniformRing ring)
         {
@@ -610,7 +619,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 ring.UnmapUnderLock();
                 _mappedRings.Remove(ring);
 
-                ring.DropPendingPatchesUnderLock();
+                _patchesDropped += ring.DropPendingPatchesUnderLock();
                 _patchedRings.Remove(ring);
             }
         }

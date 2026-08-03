@@ -2,8 +2,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 {
     /// <summary>
     /// THE OFF-TIMELINE WRITE'S DEFERRAL COUNTERS, cumulative since the device was created: how many segment
-    /// writes were queued as a pending patch instead of copied on the spot, and how many of those have since been
-    /// applied at a frame boundary.
+    /// writes were queued as a pending patch instead of copied on the spot, and what became of each one. Every
+    /// deferral leaves the queue exactly once, applied, coalesced or dropped with its ring, which is what makes
+    /// <see cref="Outstanding"/> a reading rather than a running total.
     /// <para>
     /// SAME REPORTING SHAPE AS <see cref="D3D11BackpressureStats"/>, AND NOT THE SAME MEASUREMENT. That struct is
     /// M3's, per frame, counting times a frame BLOCKED on the GPU. This one counts no time at all, because the
@@ -28,11 +29,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// </summary>
     internal readonly struct D3D11PendingPatchStats
     {
-        internal D3D11PendingPatchStats(int deferred, int applied, int coalesced)
+        internal D3D11PendingPatchStats(int deferred, int applied, int coalesced, int dropped)
         {
             Deferred = deferred;
             Applied = applied;
             Coalesced = coalesced;
+            Dropped = dropped;
         }
 
         /// <summary>Segment writes queued as a patch rather than copied on the spot. One off-timeline call can
@@ -48,9 +50,17 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// replayed and calling it applied would make the pair stop adding up.</summary>
         internal int Coalesced { get; }
 
-        /// <summary>What is still queued: everything deferred that has neither been replayed nor superseded. A
-        /// number that keeps climbing rather than settling means patches are being recorded for a segment nothing
-        /// ever acquires, which on a running device means frames stopped.</summary>
-        internal int Outstanding => Deferred - Applied - Coalesced;
+        /// <summary>Queued patches THROWN AWAY WITH THEIR RING, when the buffer behind it was disposed before the
+        /// frame boundary that would have replayed them. Its own count for the reason <see cref="Coalesced"/> has
+        /// one: the patch was never replayed, so calling it applied would be a lie, and leaving it out of the
+        /// reckoning entirely is what used to make <see cref="Outstanding"/> climb for good in a program that
+        /// streams uniform buffers in and out.</summary>
+        internal int Dropped { get; }
+
+        /// <summary>What is still queued: everything deferred that has neither been replayed, nor superseded, nor
+        /// thrown away with a disposed ring. A number that keeps climbing rather than settling means patches are
+        /// being recorded for a segment nothing ever acquires, which on a running device means frames
+        /// stopped.</summary>
+        internal int Outstanding => Deferred - Applied - Coalesced - Dropped;
     }
 }

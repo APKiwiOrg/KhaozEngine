@@ -157,6 +157,16 @@ public static class MapRuntime
         };
     }
 
+    /// <summary>The document's regions as a resolved, point-testable <see cref="MapRegionSet"/>: shapes
+    /// converted to their runtime areas once, document order preserved, and shapeless entries skipped the same
+    /// way the scatter builder skips them. The editor's overlay picking runs on this too, so authored regions
+    /// resolve identically at edit time and at run time.</summary>
+    public static MapRegionSet BuildRegions(MapDocument doc)
+    {
+        ArgumentNullException.ThrowIfNull(doc);
+        return MapRegionSet.Build(doc);
+    }
+
     /// <summary>Authored placements as engine <see cref="PropPlacement"/>s. Null Y ground-snaps to the field
     /// (deterministic, so every head agrees). Variant is always 0 for authored placements.</summary>
     public static IReadOnlyList<PropPlacement> BuildPlacements(MapDocument doc, TerrainField field)

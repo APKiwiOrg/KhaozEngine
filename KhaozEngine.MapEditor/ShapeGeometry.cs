@@ -12,29 +12,10 @@ internal static class ShapeGeometry
 {
     /// <summary>A representative XZ center for a shape: the disc center, the rect midpoint, or the polygon point
     /// centroid. Returns false (and a zero center) for a null-pointless shape (a polygon with no points) or an
-    /// unknown type.</summary>
+    /// unknown type. The rule itself lives in <see cref="MapShapeGeometry.TryCenter"/> now, because the region
+    /// runtime ships it to games, and this stays as the editor-local name its gizmo call sites already use.</summary>
     internal static bool TryCenter(MapShapeDoc shape, out float x, out float z)
-    {
-        switch (shape)
-        {
-            case DiscShapeDoc d:
-                x = d.CenterX; z = d.CenterZ; return true;
-            case RectShapeDoc r:
-                x = (r.MinX + r.MaxX) * 0.5f; z = (r.MinZ + r.MaxZ) * 0.5f; return true;
-            case PolygonShapeDoc p when p.Points.Count > 0:
-            {
-                float sx = 0f, sz = 0f;
-                foreach (float[] pt in p.Points)
-                {
-                    sx += pt.Length > 0 ? pt[0] : 0f;
-                    sz += pt.Length > 1 ? pt[1] : 0f;
-                }
-                x = sx / p.Points.Count; z = sz / p.Points.Count; return true;
-            }
-            default:
-                x = 0f; z = 0f; return false;
-        }
-    }
+        => MapShapeGeometry.TryCenter(shape, out x, out z);
 
     /// <summary>True when the transform gizmo can move / resize the shape: the disc and rect kinds only (polygon is
     /// read-only v1).</summary>

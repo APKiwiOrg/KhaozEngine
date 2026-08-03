@@ -46,7 +46,7 @@ public static partial class CharacterMovement
     {
         if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
 
-        (Vector2 moveDir, float speedFraction) = ResolveCameraRelative(cmd);
+        (Vector2 moveDir, float speedFraction, bool run) = ResolveCameraCommand(cmd, tuning);
         float wade = WadeSpeedScale(position.X, position.Z, position.Y - tuning.CapsuleHalfHeight, tuning, medium);
         // A StepHeight reach, unchanged: this overload has no vertical physics at all (it clamps Y to the ground
         // every tick, so the character is always standing), and therefore no resolved vertical motion for the
@@ -55,7 +55,7 @@ public static partial class CharacterMovement
         // takes no support decision to remember - it never grounds and never un-grounds. Handing it the widened gate
         // would not be hysteresis at all, it would be a permanently wider walkable slope, so this path is
         // byte-identical to every release before #475 too.
-        (float x, float z, _) = DesiredHorizontalCore(position.X, position.Z, moveDir, speedFraction, cmd.Run, dt,
+        (float x, float z, _) = DesiredHorizontalCore(position.X, position.Z, moveDir, speedFraction, run, dt,
             tuning, groundNormal, groundHeight, position.Y - tuning.CapsuleHalfHeight, speedScale: wade,
             reach: tuning.StepHeight, gate: tuning.MaxSlopeRadians);
         var result = new Vector3(x, groundHeight(x, z) + tuning.CapsuleHalfHeight, z);
@@ -101,8 +101,8 @@ public static partial class CharacterMovement
         Func<float, float, float, MovementMedium>? medium = null)
     {
         if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
-        (Vector2 moveDir, float speedFraction) = ResolveCameraRelative(cmd);
-        return StepCore(state, moveDir, speedFraction, cmd.Run, cmd.Jump, dt, groundHeight, tuning,
+        (Vector2 moveDir, float speedFraction, bool run) = ResolveCameraCommand(cmd, tuning);
+        return StepCore(state, moveDir, speedFraction, run, cmd.Jump, dt, groundHeight, tuning,
             groundNormal, world, clampXz, medium, cmd.FaceCamera ? cmd.CameraYaw : null);
     }
 

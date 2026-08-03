@@ -99,18 +99,13 @@ internal static class OverlayPicking
         return true;
     }
 
-    // Nearest region whose shape area contains the point, by shape-center distance.
+    // Nearest region whose shape area contains the point, by shape-center distance. The resolution itself is the
+    // shared region runtime, so editor picking and a game's own point-to-region lookup cannot disagree.
     static bool TryRegion(MapDocument doc, float x, float z, Func<SelectionKind, string, bool>? visible,
         out OverlayPickResult result)
     {
-        MapRegion? best = null;
-        float bestDist = 0f;
-        foreach (MapRegion region in doc.Regions)
-        {
-            if (visible is not null && !visible(SelectionKind.Region, region.Name)) continue;
-            if (!Contains(region.Shape, x, z, out float d)) continue;
-            if (best is null || d < bestDist) { best = region; bestDist = d; }
-        }
+        MapRegion? best = MapRuntime.BuildRegions(doc)
+            .RegionAt(x, z, visible is null ? null : r => visible(SelectionKind.Region, r.Name));
         if (best is null) { result = default; return false; }
         result = new OverlayPickResult(SelectionKind.Region, best.Name);
         return true;

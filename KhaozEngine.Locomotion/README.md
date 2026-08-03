@@ -74,6 +74,14 @@ optional steep-terrain wall slide via a ground-normal delegate):
   and it is the exact inverse of the camera basis the step resolves a command in. A non-finite angle and a zero
   vector both yield 0, which is a legal heading (facing -Z) rather than a sentinel.
 
+- **`Sector(in MoveCommand) -> MoveSector`** (17.30.0)
+  Which directional sector the command's camera-relative axis falls in relative to the character's facing:
+  `Forward` (within 45 degrees, inclusive), `Strafe`, or `Reverse` (135 degrees or more). The rule the directional
+  speed scales are charged by while `MoveCommand.FaceCamera` is held, exposed so a consumer choosing a locomotion
+  animation reads the same answer the movement did. It reports the SECTOR alone and does not look at `FaceCamera`,
+  since presentation wants it whether or not the sim is charging for it. See "Directional speed under `FaceCamera`"
+  below for the predicates and the boundary rule.
+
 ### Steep terrain: wall slide and no traction (17.28.0)
 
 Supply a `groundNormal` delegate and ground steeper than the tick's TRACTION GATE stops being walkable. That gate
@@ -308,9 +316,12 @@ decision. **A null provider never engages swim.** The swim flag replicates via N
 
 - **`MoveCommand`** - movement intent: camera-relative XZ axis, run flag, camera yaw, jump bit, and (17.26.0) the
   `FaceCamera` flag, which asks the character to face `CameraYaw` instead of its travel direction. `FaceCamera`
-  changes `MoveState.FacingYaw` only and never the position, so a strafing character keeps its body pointed at the
+  changes `MoveState.FacingYaw`, so a strafing character keeps its body pointed at the
   camera and - the case that is impossible without it - a character with NO movement input can turn on the spot.
   `false` (the default, and what every pre-facing construction site produces) is the pre-facing behaviour exactly.
+  Since 17.30.0 the flag can also change the SPEED, since a character with a fixed front can be charged for moving
+  sideways or backwards relative to it (see "Directional speed under `FaceCamera`"), which is opt-in and neutral by
+  default.
 - **`MoveState`** - carried kinematic state: position, `VerticalVelocity`, `Grounded`, coyote/buffer timers,
   `Swimming` (surface-swim flag, carried tick-to-tick for the enter/exit hysteresis), and `SpeedScale` (see below).
   Also the stair-glide
@@ -398,7 +409,13 @@ decision. **A null provider never engages swim.** The swim flag replicates via N
   `SwimEnterDepthFraction` (default 0.65) / `SwimExitDepthFraction` (default 0.55) / `SwimSpeed` (default 2.5) /
   `SwimSurfaceSubmersionFraction` (default 0.6) / `SwimBuoyancyStiffness` (default 8) /
   `MaxStepClimbSpeed` (default 3.5) / `AirMomentum` (default false) / `AirBrakeAccel` (default 0) /
-  `FacingTurnSpeed` (default `float.PositiveInfinity`, which snaps).
+  `FacingTurnSpeed` (default `float.PositiveInfinity`, which snaps) /
+  `TractionHysteresisRadians` (default 3 degrees) / `SlideFrictionRampRadians` (default 8 degrees) /
+  `StrafeSpeedScale` (default 1) / `BackpedalSpeedScale` (default 1) / `BackpedalAllowsRun` (default true).
+- **`MoveSector`** (17.30.0) - which directional sector a command's axis falls in relative to the character's
+  facing: `Forward` / `Strafe` / `Reverse`. Returned by `CharacterMovement.Sector(cmd)`, and what the directional
+  speed scales are charged by while `MoveCommand.FaceCamera` is held. Public so presentation (which locomotion
+  animation to play) reads the same answer the movement did rather than a hand-copied predicate.
 
 ## Airborne momentum (16.0.0, opt-in)
 
@@ -448,10 +465,45 @@ remote, because the turn is part of the authoritative step rather than a smoothe
 of. A value of 0, which is what a bare `default(MoveTuning)` reads, FREEZES the heading rather than meaning "no
 limit": treating 0 as unlimited would make the un-configured case the most aggressive setting there is.
 
-Facing is an OUTPUT and nothing else. No position, velocity or grounded value is derived from it anywhere, so
+The HEADING is an OUTPUT and nothing else (the `FaceCamera` FLAG is a different matter since 17.30.0: see
+"Directional speed under `FaceCamera`" below). No position, velocity or grounded value is derived from it, so
 every existing game is bit-identical on position across the feature. Networked play needs the heading on the wire
 (it is carried state that the next tick turns FROM), which is a wire break: see `KhaozEngine.NetWorld/README.md`.
 Rationale and the phase plan are in `docs/design/PHYSICS-LOCOMOTION-DESIGN-2026-08-02.md`.
+
+## Directional speed under `FaceCamera` (17.30.0)
+
+A character that turns to face wherever it walks has no reverse. One pinned to the camera does, and the usual
+third-person feel charges for it. Three knobs, consulted ONLY while `MoveCommand.FaceCamera` is held:
+
+| Knob | Default | What it does |
+| --- | --- | --- |
+| `MoveTuning.StrafeSpeedScale` | `1` | Speed multiplier in the strafe sector. Run honoured. |
+| `MoveTuning.BackpedalSpeedScale` | `1` | Speed multiplier in the reverse sector. |
+| `MoveTuning.BackpedalAllowsRun` | `true` | Whether the run bit is honoured while backing up. `false` puts the reverse scale on `WalkSpeed`. |
+
+All three are neutral by default, so a game that never sets them is bit-identical to every release before 17.30.0.
+Without `FaceCamera` nothing is consulted at all.
+
+**The sector rule.** `CharacterMovement.Sector(cmd)` classifies the command's own camera-relative axis (never a
+world vector) into `MoveSector.Forward` / `Strafe` / `Reverse`. With `a = |Move.X|`: `Move.Y >= a` is forward,
+`Move.Y <= -a` is reverse, everything else is strafe. An absolute value and two comparisons, so it is exact on
+every head, needs no `atan2`, and does not care about the axis's LENGTH (half a stick deflection classifies as a
+full one does). Forward and reverse are CLOSED wedges, which is what decides the boundary rays: exactly 45 degrees
+is forward and exactly 135 is reverse. That matters because a keyboard lands on them - the WASD axis is built from
+whole +/-1 components, so W+D IS the vector `(1, 1)`, and reading the most common forward diagonal in the game as
+a strafe would be wrong. Mirrored, S+D is a retreat with a lean rather than a sidestep. An idle command reads as
+`Forward`, the sector that scales nothing. `Sector` is public so a consumer picking a locomotion animation reads
+the same answer the movement did.
+
+**Where it applies.** The scale multiplies the resolved speed FRACTION at the player entry point, so it composes
+once with `MoveState.SpeedScale`, the wade ramp, the medium's zone scale and `AirControl` in whatever combination
+the tick is in, and it is inside `MoveState.CommandedVelocity` - which is what NetWorld's anti-cheat measures its
+correction against, so a backpedalling player is denied nothing rather than reading as a full-speed correction on
+every tick. Airborne command speed scales exactly as grounded does. A committed `AirMomentum` arc does NOT (the
+carried velocity is not a command, so the scale steers it and never shrinks it). The world-space
+`StepTowards` agent path has no camera and no sectors, so an NPC is untouched. A negative or NaN scale reads as 0
+rather than reversing travel, and 0 itself is legitimate, with its ticks treated as idle downstream.
 
 ## Usage
 

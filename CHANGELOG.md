@@ -658,6 +658,59 @@ field itself reads walkable. The band's surprising play consequence is now state
 band-held ground a jump converts a stable stand into a slide, because the launch tick ends un-grounded and the
 landing is judged at the bare gate.
 
+### Map regions get a runtime: BuildRegions + RegionAt (#481)
+
+`MapRuntime.BuildRegions(doc)` (`KhaozEngine.MapDoc`) resolves the document's authored regions
+into a `MapRegionSet`: shapes converted to `IArea2D` once, document order preserved, null-shape
+entries skipped like the scatter builder. `RegionAt(x, z, filter)` returns the containing region
+nearest by shape center, the same tiebreak the editor's overlay picking has always used, and the
+editor now runs on this resolver, so editor picking and game runtime can never disagree.
+`MapShapeGeometry.TryCenter` moves down from the editor so the center rule ships to games.
+
+### Strafing and backing up can cost speed while the character faces the camera (#479)
+
+A character pinned to the camera by `MoveCommand.FaceCamera` now has a front the sim can charge movement against:
+three new `MoveTuning` knobs scale the speed by which way the command points relative to that front.
+`StrafeSpeedScale` (default 1) scales a sidestep, `BackpedalSpeedScale` (default 1) scales a retreat, and
+`BackpedalAllowsRun` (default true) decides whether the run bit survives a retreat at all. All three are neutral
+by default, so a game that never sets them is BIT-IDENTICAL, in every direction, holding the flag or not. Without
+`FaceCamera` the character faces wherever it walks, there is no reverse to be slower than, and none of it is
+consulted. It is sim-side rather than a client input scale for the obvious reason: a client scale is both a speed
+hack and a misprediction.
+
+**The sector rule, and why its boundaries are a decision.** `CharacterMovement.Sector(cmd)` (new, public,
+returning the new `MoveSector`) classifies the command's own camera-relative axis. With `a = |Move.X|`:
+`Move.Y >= a` is `Forward`, `Move.Y <= -a` is `Reverse`, everything else is `Strafe`. An absolute value and two
+comparisons, so it is exact on both heads with no `atan2`, no normalize and no division, and it ignores the axis's
+length, so a half-deflected stick classifies as a full one does. Forward and reverse are CLOSED wedges, which
+means exactly 45 degrees is forward and exactly 135 is reverse. A keyboard lands precisely on those rays rather
+than near them (the WASD axis is built from whole +/-1 components, so W+D IS `(1, 1)`), and the alternative is
+worse than surprising: giving 135 to strafe would hand a player who wants to flee a strictly better key
+combination, S+D at the strafe scale with sprint honoured, than the one that means flee. `Sector` is public so a
+consumer picking a locomotion animation reads the same answer the movement did, the same reason
+`CameraRelativeDir` is.
+
+**One composition site, and two consequences that fell out of it.** The scale multiplies the resolved speed
+FRACTION at the player entry point, in a new `ResolveCameraCommand` wrapping the existing resolver, so every
+consumer of a resolved command picks it up exactly once with no per-path edit: the grounded and airborne
+horizontal, the airborne-momentum steer target, the slide's in-plane steer, and the swim step. It therefore
+composes with `MoveState.SpeedScale`, the wade ramp, the zone scale and `AirControl` by multiplication in whatever
+combination the tick is in. The server's anti-cheat needed no change at all: `MovementAnomaly` builds its intended
+target from `MoveState.CommandedVelocity`, which is built from the same product, so a backpedalling player is
+measured as denied nothing instead of reading as a full-speed correction every tick (the swimmer bug, one speed
+term later, and the reason that check reads the sim's own export). Momentum needed none either: a committed
+`AirMomentum` arc flies the carried `HorizontalVelocity`, which is not a command, so the scale steers the arc and
+never shrinks it. The run refusal is the one thing a fraction cannot carry, since it changes the BASE speed rather
+than the fraction, so an effective run bit rides back from the resolver beside it. Nothing in
+`CharacterMovement.cs` grew by a line, which matters while that file sits one line under the size cap (#480).
+
+`CharacterController3D` mirrors all three knobs at the same literals, and the reflection guard that pins the
+mirror was tightened to match. A reconcile-parity test drives a sector-crossing command stream through
+`ClientPrediction` at a realistic ack lag and asserts EXACT position equality against the continuous authoritative
+chain: the scale is a pure function of this tick's command plus the tuning, carrying nothing between ticks, so
+there is no tolerance to allow. Design reasoning in the 2026-08-03 addendum to
+`docs/design/PHYSICS-LOCOMOTION-DESIGN-2026-08-02.md`.
+
 ## 17.29.0
 
 ### The ground clamp stops lifting capsules that have no footing (#468)

@@ -274,6 +274,79 @@ mid-frame pipeline switch carrying a pending set across it, which is the only th
 measured scenario at all: its registers are pinned by an invariant, and the incoming pipeline declares one layout,
 so a drain taken under the incoming layouts throws instead of binding at the wrong register.
 
+## The draw path, and the real emitter
+
+**`D3D11NativeEmitter` is the type a frame renders through, and every `ID3D11DeviceContext` call in this package
+is made from it.** It implements `ID3D11Emitter` and `ID3D11BindSink` over a live `ID3D11DeviceContext1`
+(versioned, because decision R7 routes every constant-buffer bind through `*SetConstantBuffers1`). Nothing
+constructs one yet: device creation still throws.
+
+**It is deliberately the thinner of the two emitters.** Every decision it makes was already taken in a
+device-free type it uses unchanged (`D3D11DeviceState`, `D3D11BindFlush`, `D3D11VertexStreams`,
+`D3D11SetActivation`), which is what `D3D11NativeTraceEmitter` proves by writing down the calls it would have
+made. What the real emitter carries alone is the translation into a Vortice call, and even the stage half of
+that is shared: every switch is over what `D3D11NativeCallName` resolved, the same function the trace emitter
+uses, so the residue is "does the arm for `PSSetSamplers` call `PSSetSamplers`" rather than "which stage's
+method". Decision T3's WARP `[GpuFact]` and the 36 goldens on the `direct3d11-native` leg close that, and both
+arrive with the device row. **There is no Windows evidence for any of this yet**, and that is worth stating
+plainly rather than leaving to be inferred: nothing below has run against a device.
+
+**A draw flushes the resource sets first, then the vertex streams, then issues.** That order is decision R5's
+rule 2 plus the batching below, and it is the same in both emitters.
+
+**A vertex bind RECORDS and the draw issues the batch.** Two streams bound before one draw are one
+`IASetVertexBuffers(0, 2, ...)`, which cannot be done once two per-stream calls have been made. The deferral is
+also what makes the call possible at all, because `IASetVertexBuffers` takes the per-slot STRIDE and the stride
+comes from the pipeline rather than from the bind. So a pipeline switch is part of the rule: a switch to a
+different stride ARRAY marks every bound stream dirty, or the second pass draws the same buffer at the first
+pass's stride and the frame is geometry noise with nothing thrown. Two pipelines sharing one stride array
+invalidate nothing, and a pipeline with no vertex inputs (the fullscreen passes) declares none and re-issues
+none. A flush covers the contiguous span of dirty slots, so a clean slot between two dirty ones is swept in and
+rebound to what it already holds, which is the same trade the fan-out makes for a hole in a register span. The
+index buffer is not deferred: there is no array form of `IASetIndexBuffer`, so it carries a redundancy cache
+over the pair (buffer, format) and issues at the bind.
+
+**The pipeline cache key is the state object AND the argument that rides it.** `OMSetBlendState` takes a blend
+factor and `OMSetDepthStencilState` takes a stencil reference, and the blend factor rides the pipeline rather
+than being separately tracked state. Keyed on the object alone, two pipelines sharing one blend state and
+differing only in factor would take the redundant path and the second would draw with the first one's factor,
+golden-visible and silent. The key is the pair on both. Re-emitting the two calls on every pipeline bind was
+the alternative and is rejected, because it makes a redundant pipeline bind cost two native calls. The sample
+mask is NOT in the key: the GPU seam has no knob for one, so it cannot differ. The stencil reference is 0 on
+every pipeline today for the same reason and is keyed anyway, so the day the seam grows a stencil pass the
+cache is already right.
+
+**Both framebuffer types bind through one seam.** `D3D11Framebuffer` and `D3D11SwapchainFramebuffer` have
+opposite lifetimes and only `IGpuFramebuffer` in common, so an emitter casting to one of them would work for
+every offscreen pass and throw on the first frame that presents. Both answer `ID3D11RenderTargetSurface`
+instead, object-typed like the rest of this package's internal seams, and a framebuffer from another backend is
+refused by name.
+
+**What a resource offers a register file is the resource's own answer.** `ID3D11BindableViews` is the seam for
+that, and `D3D11BindResolve` is the device-free half of the bind: it unwraps a `GpuBufferRange` to its buffer,
+refuses a resource whose declared usage never earned it the view its layout asks for (naming the HLSL register
+letter), passes a null through as the HOLE an array bind legitimately has, and transposes a span of binds into
+the parallel arrays `*SetConstantBuffers1` takes. All of it runs under a plain `dotnet test` on macOS, which is
+the point: the emitter is left with a cast and a call.
+
+**The emitter is a readonly struct over two class references it RECEIVES.** The state is the device's one cache
+(issue #476) and `D3D11EmitterContext` carries the device context plus the scratch arrays, grown geometrically
+and reused so the path from a resource set to a native call allocates nothing once warm. The scratch lives
+there rather than on the struct for a reason worth knowing before moving it back: the seam's shape scans read
+the emitter's field and constructor types through reflection, and reading either resolves the type, so a
+Vortice type on that surface would load the Direct3D interop into a macOS test run and take every load-path
+assertion with it. Every value-typed call argument is a local or a `stackalloc`.
+
+**A pixel-shader unordered-access bind stays refused by name.** Direct3D 11 has no per-stage setter for it
+outside compute, and `OMSetRenderTargetsAndUnorderedAccessViews` is deliberately not implemented here. The
+emitter inherits that refusal from `D3D11NativeCallName` rather than re-deciding it.
+
+**So is a non-zero scissor rectangle index, and that one IS a difference from the incumbent.**
+`RSSetScissorRects` takes a count and always starts at rectangle 0, so honouring an index means tracking the
+whole array and re-issuing every rectangle below it. Veldrid keeps that array and this backend does not. Every
+shipped call site passes zero and no shipped shader writes `SV_ViewportArrayIndex`, so the path is refused
+loudly rather than scissoring the wrong output silently.
+
 ## Completion fences, and a `WaitForIdle` that drains
 
 **This backend reports `SupportsCompletionFences = true`, and it is the one capability where it differs from

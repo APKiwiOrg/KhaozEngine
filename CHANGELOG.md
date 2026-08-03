@@ -7,13 +7,15 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.32.0
 
-### The native Direct3D 11 backend: the swapchain, the shader path and the bind flush (#453, #455, #457)
+### The native Direct3D 11 backend: the swapchain, the shader path, the bind flush and the draw path (#453, #454, #455, #457)
 
 The blit-model swapchain lands with the incumbent's present path reproduced field for field, a framebuffer
 whose identity never changes across resize, and a resize queued to the present boundary. The shader path lands
 beside it: GLSL to HLSL through the pinned cross-compile options, the backend's own FXC call, the hashed
 emitted HLSL and the disk DXBC cache. The bind flush lands under both: the R5 schedule ported intact,
-the array-batched activation, and the device-free native-call budget that gates the fan-out. Nothing
+the array-batched activation, and the device-free native-call budget that gates the fan-out. The draw path
+lands on top of all three, and with it the REAL emitter: the type a frame renders through, every
+`ID3D11DeviceContext` call in the backend, and the two cache-key hazards the redundancy caches carried. Nothing
 renders differently and nothing switches over: the native backend's two device-creation entry points still
 throw, so no shipped path reaches any of it, and no golden moved.
 
@@ -308,6 +310,98 @@ full activation would write that view with nothing added and the offsets-only pa
 being a constant buffer. Both halves of the flush would silently agree to ignore the offset and every draw would
 read the window the view was created with. Vacuous today, since all six dynamic elements shipped are uniform
 buffers, and refused anyway because nothing further down the path would ever say so.
+
+#### The draw path, and the real emitter every `ID3D11DeviceContext` call now lives in (#454)
+
+The backend has a REAL emitter. `D3D11NativeEmitter` implements the whole `ID3D11Emitter` seam and the whole
+`ID3D11BindSink` seam against a live `ID3D11DeviceContext1`, so draw, indexed draw and dispatch issue, the
+pipeline binds its seven state objects, the vertex and index streams bind, and the resource-set flush fans out
+into the array calls decision R6 asks for. It is reached by nothing: device creation still throws, so no
+shipped path constructs one and no golden moved.
+
+**It is deliberately the THINNER of the two emitters, and that split is the whole test strategy.** Every
+decision it makes was already taken somewhere device-free: the one `ClearState` per replay (R3), the redundancy
+caches (R6), the schedule (R5), the precise scrub (R8), the framebuffer-guarded viewport (W6) and the stream
+batching all live in `D3D11DeviceState`, `D3D11BindFlush`, `D3D11VertexStreams` and `D3D11SetActivation`, which
+this type uses unchanged and which `D3D11NativeTraceEmitter` proves by writing down the calls it would have
+made. So what the real emitter carries alone is the translation into a Vortice call, and even that is narrower
+than it was: every stage switch here is over what `D3D11NativeCallName` resolved, which is the same function
+the trace emitter writes into its trace. The residue is no longer "which stage's method a bind picks" but "does
+the arm for `PSSetSamplers` call `PSSetSamplers`". Decision T3's WARP `[GpuFact]` and the 36 goldens on the
+`direct3d11-native` leg are what close it, and both arrive with the device row.
+
+**The R6 cache key was incomplete and would have been golden-visible and silent.** `OMSetBlendState` takes a
+blend FACTOR beside the state object and `OMSetDepthStencilState` takes a stencil REFERENCE, and the factor
+rides the pipeline (5.3) rather than being separately tracked state. Keyed on the object alone, two pipelines
+sharing one blend state and differing only in factor took the redundant path and the second drew with the first
+one's factor. Nothing thrown, nothing logged. The key is now the PAIR on both, `(object, factor)` and
+`(object, reference)`, compared in `D3D11DeviceState`. Re-emitting the two calls unconditionally on every
+pipeline bind was the alternative and is rejected: it makes a REDUNDANT pipeline bind cost two native calls,
+which contradicts 5.3's "a rebind to the same state costs nothing" and turns a defensive rebind between two
+draws back into the #418 shape the cache exists to kill. The sample mask is deliberately NOT in the key,
+because the GPU seam has no knob for one and a key member that cannot differ is a compare that can never decide
+anything. The stencil reference is 0 on every pipeline today for the same reason (`GpuDepthStencilState` is
+depth only) and is keyed anyway, in the same decision, because the hazard has exactly the same shape and is
+invisible until a stencil pass exists. A `Reset` restores both to what `ClearState` actually leaves, which is
+white and zero rather than default, and a scrub of either state object drops its argument with it.
+
+**Vertex streams now RECORD and the draw issues them, batched.** Two streams bound before one draw are one
+`IASetVertexBuffers(0, 2, ...)` rather than two calls, which is 5.3's rule and cannot be done after the calls
+have been made. The deferral is not only an optimisation: `IASetVertexBuffers` takes the per-slot STRIDE and
+the stride comes from the pipeline, so at the moment a stream is bound the value the call needs may not exist
+yet. That also makes a pipeline switch part of the rule, and this is the half that is silent when it is left
+out: a switch to a pipeline with a different stride array marks every bound stream dirty, because otherwise the
+second pass draws the same buffer at the first pass's stride and the frame is geometry noise. Identity is on
+the stride ARRAY, so two pipelines sharing one invalidate nothing, and a pipeline with no vertex inputs at all
+(the fullscreen passes) declares none and re-issues none. A flush covers the contiguous span of dirty slots and
+may rebind a clean slot swept in between two of them, which is the trade `D3D11SetActivation` already makes for
+a hole in a register span. The index buffer keeps a redundancy cache over the pair (buffer, format), since the
+same buffer bound as 16-bit and as 32-bit indices is two binds, and issues at the bind because there is no
+array form to batch it with. R8's precise scrub reaches both, so a disposed vertex buffer is unbound from
+exactly the slots that named it in one call.
+
+**Both framebuffer types bind, and that was a real defect waiting.** There are two of them and that is
+permanent (W2): `D3D11Framebuffer` aggregates engine textures whose views never change, and
+`D3D11SwapchainFramebuffer` wraps a backbuffer whose views are swapped underneath a stable identity on every
+resize. An emitter that cast to one concrete type would have worked for every offscreen pass and thrown on the
+first frame that rendered to the window. Both now answer a new object-typed seam, `ID3D11RenderTargetSurface`,
+and a framebuffer from another backend is refused by name rather than by an `InvalidCastException`.
+
+**Two more internal seams, and both exist to move logic out of a body that cannot run on macOS.**
+`ID3D11BindableViews` is what a bound resource answers when a register file asks for its view, object-typed for
+the reason `ID3D11PipelineState` is, implemented by `D3D11Buffer`, `D3D11Texture` and `D3D11Sampler`. It is
+what lets `D3D11BindResolve` decide WHICH view a bind wants without naming a Direct3D type, so the rules that
+are actually easy to get wrong are plain `[Fact]`s: a `GpuBufferRange` arrives where a buffer was expected and
+unwraps to its buffer, a resource whose declared usage never earned it the view its layout asks for is refused
+by name and by HLSL register letter, and a null is a HOLE that passes through rather than a refusal.
+`ID3D11ComputePipelineState` is the compute sibling of the pipeline seam, one member, so the compute bind has a
+shape to hang off before row 12 builds the pipeline behind it.
+
+**Where the emitter's mutable state lives is load-bearing rather than tidy.** The seam requires a readonly
+struct, and issue #476 requires it to RECEIVE the device's one `D3D11DeviceState` rather than allocate one. The
+scratch arrays and the `ID3D11DeviceContext1` sit behind a second class reference, `D3D11EmitterContext`, for a
+reason that is easy to miss: the seam's shape scans read the emitter's `FieldType` and `ParameterType` through
+reflection, and reading either RESOLVES the type, so a Vortice type anywhere on that surface would load the
+Direct3D interop into the process from a test, on macOS, and take every load-path assertion in the run down
+with it. Every value-typed call argument (a viewport, a scissor rect, a blend factor) is a local or a
+`stackalloc` for the same reason, and a test asserts the whole field and constructor surface is interop-free.
+The scratch grows geometrically and is reused, so the path from a resource set to a native call allocates
+nothing once the process is warm.
+
+**Two smaller things.** `D3D11NativeCall` gained `VertexBufferPending`, the second marker that is not a native
+call, holding a recorded stream bind's place in the trace the way `ResourceSetPending` holds a set's, and
+`TotalCalls` excludes both. And a pixel-shader UAV stays refused by name (#490): the emitter inherits that
+refusal from `D3D11NativeCallName` rather than re-deciding it, and deliberately does not implement
+`OMSetRenderTargetsAndUnorderedAccessViews`.
+
+**One new refusal, and it is a real difference from the incumbent rather than a seam limitation.**
+`SetScissorRect` with a non-zero INDEX is refused, in one place both emitters ask, because
+`RSSetScissorRects` takes a count and always starts at rectangle 0: honouring an index means tracking the whole
+array and re-issuing every rectangle below it, which neither the state nor the trace models. Veldrid does keep
+that array, so this is a behaviour difference between the two Direct3D 11 backends. All three shipped call
+sites pass zero and no shipped shader writes `SV_ViewportArrayIndex`, so it is refused loudly rather than
+scissoring the wrong output silently, and filed as
+https://github.com/APKiwiOrg/KhaozEngine/issues/495.
 
 ## 17.31.0
 

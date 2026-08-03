@@ -27,16 +27,19 @@ namespace KhaozEngine.Tests.Gpu
     /// <para>
     /// OFF WINDOWS EVERY FXC CASE RETURNS EARLY, because <c>d3dcompiler</c> exists nowhere else. The
     /// device-free incident coverage below it does NOT return early: those cases read the emitted HLSL rather
-    /// than compiling it, so they run on every leg and are what keeps the two workarounds asserted in the fast
+    /// than compiling it, so they run on every leg and are what keeps the three workarounds asserted in the fast
     /// loop as well as on Windows.
     /// </para>
     /// <para>
-    /// WHAT THE TWO INCIDENTS WERE. SPIRV-Cross drops a vertex input the vertex stage does not read, and names
+    /// WHAT THE INCIDENTS WERE. SPIRV-Cross drops a vertex input the vertex stage does not read, and names
     /// each survivor <c>TEXCOORD&lt;location&gt;</c>, so dropping the middle of a declared range holes the
     /// emitted signature and FXC plus WARP miscompile it silently. The shadow depth vertex reads only Position
     /// and IModel0 to 3, and building that pipeline corrupted WARP so the MAIN model and splat passes rendered no
     /// colour. The terrain vertex had a fragment-unused interpolant below the live block, and the highest live
-    /// interpolant then read garbage, blowing the terrain to flat white. Both workarounds STAY: the native
+    /// interpolant then read garbage, blowing the terrain to flat white. The overlay mesh vertex declared the
+    /// full ModelVertex stream and meant only Position and Color, holing its signature at TEXCOORD0 then
+    /// TEXCOORD2, and that one was caught by this gate's first Windows run before it could corrupt anything.
+    /// All three workarounds STAY: the native
     /// backend uses the same SPIRV-Cross and the same FXC, so it inherits the same intolerance, and the Veldrid
     /// leg ships alongside indefinitely.
     /// </para>
@@ -122,7 +125,7 @@ void main() { Data[gl_GlobalInvocationID.x] = 1.0; }";
                 () => KhaozEngineD3D11.ValidateComputeShader(tooManyThreads, "oversized workgroup"));
         }
 
-        // ---- the two incidents, device-free on every leg -------------------------------------------------
+        // ---- the incidents, device-free on every leg -----------------------------------------------------
 
         /// <summary>
         /// THE SHADOW INCIDENT, ASSERTED. Every shadow depth vertex declares the model pass's full instance
@@ -183,7 +186,30 @@ void main() { Data[gl_GlobalInvocationID.x] = 1.0; }";
         }
 
         /// <summary>
-        /// The parse the two cases above rest on actually finds something, proved against a shader whose
+        /// THE OVERLAY INCIDENT, ASSERTED. The overlay mesh vertex declares the full ModelVertex stream so the
+        /// model pass's own vertex buffer binds unchanged, and means only Position and Color. Normal sits at
+        /// location 1 between them, so dropping it holed the emitted signature at TEXCOORD0 then TEXCOORD2. This
+        /// one never reached a frame: the FXC gate's first Windows run caught it, and this case is what keeps it
+        /// caught on every leg rather than only on the path-gated Windows one.
+        /// </summary>
+        [Fact]
+        public void TheOverlayMeshVertexSink_KeepsTheEmittedInputSignatureGapFree()
+        {
+            ShippedGraphicsProgram program = Program("OverlayMesh");
+            CrossCompiledPair pair = SpirvCrossCompile.GlslPairToHlsl(
+                program.VertexGlsl, program.FragmentGlsl, program.Name);
+
+            uint[] inputs = Semantics(pair.VertexHlsl, "SPIRV_Cross_Input");
+
+            Assert.NotEmpty(inputs);
+            AssertContiguousFromZero(inputs, "OverlayMesh vertex inputs",
+                "The negligible-but-live sink in ShaderSources.Post.cs is what keeps this contiguous: it reads "
+                + "Normal, TexCoord and Tangent with a 1e-30 weight so SPIRV-Cross cannot drop them. Without it "
+                + "the signature is TEXCOORD0 then TEXCOORD2, which FXC and WARP miscompile silently.");
+        }
+
+        /// <summary>
+        /// The parse the contiguity cases above rest on actually finds something, proved against a shader whose
         /// signature is known by construction. A regex that silently matched nothing would make every contiguity
         /// assertion above vacuous, and <c>Assert.NotEmpty</c> at each site would not say why.
         /// </summary>
@@ -216,7 +242,7 @@ void main() { oColor = vec4(vUv, 0, 1); }";
         // The TEXCOORD indices declared inside one of SPIRV-Cross's generated stage-interface structs, sorted.
         // A text read of the EMITTED HLSL rather than a reflection of the compiled DXBC, deliberately: the
         // reflection is Windows-only and the shipped checks use it, while this runs everywhere and is what keeps
-        // the two workarounds asserted in the fast loop. The struct body is taken up to its closing brace so a
+        // the three workarounds asserted in the fast loop. The struct body is taken up to its closing brace so a
         // later struct's members cannot leak in.
         static uint[] Semantics(string hlsl, string structName)
         {

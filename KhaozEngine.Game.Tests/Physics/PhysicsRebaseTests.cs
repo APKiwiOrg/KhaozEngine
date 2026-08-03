@@ -16,8 +16,8 @@ namespace KhaozEngine.Tests.Physics;
 /// against a new origin as a bulk of direct pose writes plus broadphase refits, so it is a change of coordinate
 /// space that nothing inside the simulation can observe: sleep state, contacts, velocities and constraints all
 /// survive it.
-/// <para>Everything here is headless and fixed-dt. The one timing case (the cost budget) states its own noise
-/// discipline.</para>
+/// <para>Everything here is headless and fixed-dt. The one timing case is the cost budget, and it lives in
+/// <see cref="PhysicsRebaseCostTests"/> at the bottom of this file with its own noise discipline.</para>
 /// </summary>
 public class PhysicsRebaseTests
 {
@@ -198,57 +198,8 @@ public class PhysicsRebaseTests
         }
     }
 
-    // ---------------------------------------------------------------------
-    // Test 8b: the cost budget, as an acceptance condition rather than an estimate. One rebase must cost less than
-    // one physics step on the same world. Timing is noisy, so both sides are the BEST of several runs (the best
-    // sample is the one least polluted by scheduling), and the world is warmed first.
-    // ---------------------------------------------------------------------
-
-    [Fact]
-    public void Rebase_CostsLessThanOneStep_AtAResidentStreamingScale()
-    {
-        // Ruinborne's resident shape: a gameplay ring of terrain statics, a few thousand props, a few hundred
-        // dynamics. Terrain statics are triangle meshes, which is the expensive collidable to refit.
-        using var world = new BepuPhysicsWorld();
-        for (int i = 0; i < 25; i++)
-        {
-            float x = (i % 5) * 60f, z = (i / 5) * 60f;
-            world.AddStatic(FlatTriangleMesh(60f, 8), Pose.At(new Vector3(x, 0f, z)));
-        }
-        var rng = new XorRng(12345);
-        for (int i = 0; i < 2000; i++)
-            world.AddStatic(UnitBox, Pose.At(new Vector3(rng.NextFloat() * 300f, 0.5f, rng.NextFloat() * 300f)));
-        for (int i = 0; i < 200; i++)
-            world.AddDynamic(UnitBox, Pose.At(new Vector3(rng.NextFloat() * 300f, 4f + i * 0.01f, rng.NextFloat() * 300f)),
-                DynamicBodyDescription.WithMass(1f));
-
-        StepMany(world, 120);              // settle, and warm every code path the measurement touches
-        world.Rebase(new Vector3(128f, 0f, 0f));
-        world.Rebase(Vector3.Zero);
-
-        double step = BestOf(5, () => world.Step(Dt));
-        double rebase = BestOf(5, () =>
-        {
-            world.Rebase(new Vector3(128f, 0f, 128f));
-            world.Rebase(Vector3.Zero);
-        }) / 2d;                            // two rebases per sample so the world ends where it started
-
-        Assert.True(rebase < step,
-            $"one rebase cost {rebase * 1000d:F3} ms against a step's {step * 1000d:F3} ms. The budget is one " +
-            "rebase per physics step: bound the streaming ring, or the refit needs amortizing across ticks.");
-
-        static double BestOf(int samples, Action action)
-        {
-            double best = double.MaxValue;
-            for (int i = 0; i < samples; i++)
-            {
-                long start = Stopwatch.GetTimestamp();
-                action();
-                best = Math.Min(best, Stopwatch.GetElapsedTime(start).TotalSeconds);
-            }
-            return best;
-        }
-    }
+    // Test 8b, the cost budget, is not in this class. It lives in PhysicsRebaseCostTests at the bottom of this
+    // file, which sits in the non-parallel AllocSensitive collection. That class says why.
 
     // ---------------------------------------------------------------------
     // Test 9: constraints survive, including a world-space anchor end (a shapeless kinematic body, which the body
@@ -388,6 +339,161 @@ public class PhysicsRebaseTests
         public bool SweepCapsule(CapsuleShape capsule, Pose pose, Vector3 direction, float maxDistance, out SweepHit hit, QueryFilter filter = default) { hit = default; return false; }
         public bool ComputePenetration(CapsuleShape capsule, Pose pose, out Vector3 mtv) { mtv = default; return false; }
         public void Dispose() { }
+    }
+}
+
+
+/// <summary>
+/// The rebase COST budget, in a class of its own because it belongs in the non-parallel <c>AllocSensitive</c>
+/// collection, exactly like <c>ConstraintMotorAllocTests</c> next door. Two reasons, and both are the reason this
+/// test was reworked at all. Its zero-allocation assertion reads <c>GC.GetAllocatedBytesForCurrentThread()</c>,
+/// which other tests churning the GC on parallel threads perturb through gen-0 reconciliation. And its timing
+/// half wants a machine the rest of this assembly is not competing for, which is precisely the condition issue
+/// 466 recorded: the old bound failed only inside the runner's own full-suite execution, and passed when these
+/// same tests were run alone on that same machine.
+/// </summary>
+[Collection("AllocSensitive")]
+public class PhysicsRebaseCostTests
+{
+    const float Dt = 1f / 60f;
+
+    static readonly BoxShape UnitBox = new(new Vector3(0.5f, 0.5f, 0.5f));
+
+    static void StepMany(IPhysicsWorld world, int steps)
+    {
+        for (int i = 0; i < steps; i++) world.Step(Dt);
+    }
+
+    // ---------------------------------------------------------------------
+    // Test 8b: the cost budget, as an acceptance condition rather than an estimate. Its noise discipline and the
+    // arithmetic behind its bound are on the method.
+    // ---------------------------------------------------------------------
+
+    /// <summary>
+    /// THE COST BUDGET, as an acceptance condition rather than an estimate. One rebase at a resident streaming
+    /// scale must stay within a small multiple of one physics step on the same world, because the regression this
+    /// guards is an unbounded refit, and that costs a rebase MULTIPLES of a step rather than a few percent.
+    /// <para>
+    /// WHY IT IS NOT <c>rebase &lt; step</c> ANY MORE (issue 466). That form asserted at the true value of the
+    /// quantity it measured: a rebase at this scale costs about what a step costs, so the verdict sat on the
+    /// boundary and any noise at all decided it. It reddened the self-hosted macOS leg three times, and that leg
+    /// is the primary dev Mac, shared with interactive work. Run 30737392817 failed and then failed AGAIN on an
+    /// idle rerun. Run 30795099275 measured a 54.211 ms rebase against a 13.456 ms step, a 4.03x flip, on a
+    /// machine concurrently running three test suites and a build. Run 30800593925 measured 3.758 ms against
+    /// 2.848 ms, a 1.32x flip in which BOTH numbers are healthy and only the ORDER was wrong.
+    /// </para>
+    /// <para>
+    /// THE MEASUREMENT. The samples are INTERLEAVED, one step and one rebase pair per iteration, so a scheduler
+    /// burst lands inside the same iteration as the step it is compared against rather than wholly inside one of
+    /// two sequential measurement blocks. Block separation is what produced both flips above: on 30795099275 the
+    /// rebase block came out 54x its idle cost while the step block was barely 4x, and on 30800593925 the rebase
+    /// block was inflated where the step block was not. And the verdict is the MEDIAN of the five per-iteration
+    /// ratios rather than one number divided by another, so a preempted sample cannot decide it. Three of the
+    /// five have to go the same way first, and every ratio carries its own correction for machine load, because
+    /// both of its halves met that machine within a few milliseconds of each other.
+    /// </para>
+    /// <para>
+    /// WHERE 3x COMES FROM, measured on the same Mac that hosts the self-hosted leg. Unloaded, the ratio is
+    /// about 0.32x, a rebase being CHEAPER than a step at this scale (roughly 1.0 ms against 3.1 ms). Under a
+    /// continuous solution rebuild holding load average between 42 and 52 on 12 cores, which is heavier than any
+    /// of the three incidents, five consecutive runs put the median ratio at 0.34, 0.45, 0.35, 0.57 and 0.33,
+    /// and the worst SINGLE iteration out of those 25 reached 0.92x. So the bound sits 5.3x above the worst
+    /// median a saturated machine produced and 3.3x above its worst individual sample, and it clears the worst
+    /// residual noise the OLD formulation recorded on healthy numbers, 30800593925's 1.32x, by 2.3x. It
+    /// deliberately does not try to absorb 30795099275's 4.03x, because interleaving removes that shape instead
+    /// of tolerating it, and a bound wide enough to swallow it would assert nothing at all. What 3x still fails
+    /// is the regression this test exists for: an unbounded refit, or the <c>Statics.ApplyDescription</c> form
+    /// that wakes the whole sleeping population, costs a rebase an ORDER of magnitude and not a third.
+    /// </para>
+    /// <para>
+    /// AND A STRUCTURAL PIN NO CLOCK CAN FLAKE, in the shape the drain test took for the same reason (commit
+    /// 4a075e9d). A rebase is a straight-line pass over Bepu's unmanaged buffers, so it allocates NOTHING
+    /// managed, identically on every machine at every load. That catches the per-object managed work an
+    /// unbounded refit would introduce. It does not catch a regression that stays inside Bepu's own unmanaged
+    /// tree, which is what the timing bound above is still here for. Both assertions share this one fixture
+    /// instead of splitting into two facts, because building it is most of the test's runtime and a split pays
+    /// that twice.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void Rebase_StaysWithinASmallMultipleOfOneStep_AtAResidentStreamingScale()
+    {
+        // Ruinborne's resident shape: a gameplay ring of terrain statics, a few thousand props, a few hundred
+        // dynamics. Terrain statics are triangle meshes, which is the expensive collidable to refit.
+        using var world = new BepuPhysicsWorld();
+        for (int i = 0; i < 25; i++)
+        {
+            float x = (i % 5) * 60f, z = (i / 5) * 60f;
+            world.AddStatic(FlatTriangleMesh(60f, 8), Pose.At(new Vector3(x, 0f, z)));
+        }
+        var rng = new XorRng(12345);
+        for (int i = 0; i < 2000; i++)
+            world.AddStatic(UnitBox, Pose.At(new Vector3(rng.NextFloat() * 300f, 0.5f, rng.NextFloat() * 300f)));
+        for (int i = 0; i < 200; i++)
+            world.AddDynamic(UnitBox, Pose.At(new Vector3(rng.NextFloat() * 300f, 4f + i * 0.01f, rng.NextFloat() * 300f)),
+                DynamicBodyDescription.WithMass(1f));
+
+        StepMany(world, 120);              // settle, and warm every code path the measurement touches
+        var shift = new Vector3(128f, 0f, 128f);
+        world.Rebase(shift);
+        world.Rebase(Vector3.Zero);
+
+        // The structural half, taken on the warmed world before any clock is involved.
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        world.Rebase(shift);
+        world.Rebase(Vector3.Zero);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        Assert.True(allocated == 0L,
+            $"two rebases of this world allocated {allocated} managed bytes. A rebase is a pose write plus an " +
+            "UpdateBounds per static and per body, straight over Bepu's unmanaged buffers, so it allocates " +
+            "nothing: a non-zero count means the pass now does per-object managed work, which is the shape an " +
+            "unbounded refit takes. This assertion is machine-independent, so read it as a real regression and " +
+            "never as noise.");
+
+        // The timed half. One step and one rebase pair per iteration, so both halves of every ratio meet the same
+        // machine. See the method's note for why the verdict is the median ratio and why the bound is 3x.
+        const int Samples = 5;             // odd, so the median is a measured sample rather than an average
+        const double Headroom = 3d;
+        var steps = new double[Samples];
+        var rebases = new double[Samples];
+        var ratios = new double[Samples];
+        for (int i = 0; i < Samples; i++)
+        {
+            long beforeStep = Stopwatch.GetTimestamp();
+            world.Step(Dt);
+            long afterStep = Stopwatch.GetTimestamp();
+            world.Rebase(shift);
+            world.Rebase(Vector3.Zero);    // two rebases per sample so the world ends where it started
+            long afterRebase = Stopwatch.GetTimestamp();
+
+            steps[i] = Stopwatch.GetElapsedTime(beforeStep, afterStep).TotalSeconds;
+            rebases[i] = Stopwatch.GetElapsedTime(afterStep, afterRebase).TotalSeconds / 2d;
+            ratios[i] = rebases[i] / steps[i];
+        }
+
+        double ratio = Median(ratios);
+
+        Assert.True(ratio < Headroom,
+            $"one rebase cost {Median(rebases) * 1000d:F3} ms against a step's {Median(steps) * 1000d:F3} ms, a " +
+            $"median ratio of {ratio:F2}x over {Samples} interleaved samples against a bound of {Headroom:F0}x. " +
+            "The budget is a small multiple of one physics step: bound the streaming ring, or the refit needs " +
+            $"amortizing across ticks. Per-iteration step/rebase in ms: {Pairs(steps, rebases)}.");
+
+        static double Median(double[] samples)
+        {
+            var sorted = (double[])samples.Clone();
+            Array.Sort(sorted);
+            return sorted[sorted.Length / 2];
+        }
+
+        // Unsorted and paired, because which step a rebase was measured against is the whole diagnosis.
+        static string Pairs(double[] steps, double[] rebases)
+        {
+            var parts = new string[steps.Length];
+            for (int i = 0; i < steps.Length; i++)
+                parts[i] = $"{steps[i] * 1000d:F3}/{rebases[i] * 1000d:F3}";
+            return string.Join(", ", parts);
+        }
     }
 
     // A flat res x res triangle grid over [0, size]^2 at y = 0, wound so Bepu's front face points up (the same

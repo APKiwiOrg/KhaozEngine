@@ -43,7 +43,6 @@
 1296 KhaozEngine.Showcase/Room2DGui.cs
 1077 KhaozEngine.MapEditor/EditorTool.cs
 1033 KhaozEngine.Updates/UpdateApplier.cs
-994 KhaozEngine.Game.Render3D/ReplicatedCharacterAnimators.cs
 905 KhaozEngine.Game.Tests/Game/ReplicatedCharacterAnimatorsTests.cs
 905 KhaozEngine.Dungeon/Internal/RoomGrower.cs
 865 KhaozEngine.Render2D/SpriteBatch.cs

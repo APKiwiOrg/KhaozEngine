@@ -3372,6 +3372,47 @@ samples.Add(new CharacterSample(e.Id.Value, feet, e.IsLocal, e.Grounded, e.Verti
 `CharacterSample.FacingYaw` is a nullable `float?` (world radians about +Y, 0 faces +Z); every existing constructor
 leaves it null, so a consumer that never supplies it derives facing exactly as before.
 
+**Reverse locomotion: a backpedal that does not moonwalk.** Once a character holds a facing while it travels (the
+paragraph above, or `FaceCamera`), backward travel is genuinely reverse motion relative to that facing, and playing
+the walk clip forwards reads as a moonwalk - the body slides back while the feet stride forward. Put the movement's
+directional sector on the sample and opt the tuning in, and the clip plays BACKWARDS at the same speed-matched rate:
+
+```csharp
+// The sector is orthogonal to everything else on the sample, so WithSector composes with any shape.
+samples.Add(new CharacterSample(e.Id.Value, feet, e.IsLocal, e.Grounded, e.VerticalVelocity, e.Swimming)
+    .WithFacingYaw(e.FacingYaw)
+    .WithSector(sector));   // KhaozEngine.Locomotion.MoveSector
+
+var tuning = CharacterAnimatorTuning.Default;
+tuning.SyncLocomotionToSpeed = true;              // reverse rides the speed sync
+tuning.WalkClipSpeed = 2.4f;                      // your clips' authored move speeds
+tuning.RunClipSpeed = 5.5f;
+tuning.ReverseLocomotionOnReverseSector = true;   // opt in, default false
+```
+
+Deriving the sector is yours, because only your game knows what the character is facing. On the engine's own
+movement the LOCAL player already has it: `CharacterMovement.Sector(cmd)` answers it from the camera-relative move
+command, the same predicate the sim charges `MoveTuning.BackpedalSpeedScale` with, so presentation and simulation
+cannot disagree. A REMOTE's command axis never crosses the wire, so classify its render-position delta against the
+replicated facing instead - the same 135 degree wedge:
+
+```csharp
+// dot(velocityXZ, forward(FacingYaw)) < -|velocityXZ| * cos(45deg)  ->  MoveSector.Reverse
+```
+
+The sign reaches the PLAYHEAD only. The locomotion state is still picked from the speed magnitude, so a reverse walk
+is the walk state and a reverse run is the run state, never Idle. The rate clamp bounds the MAGNITUDE and the sign is
+applied after, so `MinLocomotionRate` still floors a crawling backpedal at -0.25x rather than freezing it. Idle, the
+tread, and the air states stay at +1x - they have no direction to reverse. A looping clip wraps cleanly through zero
+onto its tail, so no clip authoring changes. `Sector` defaults to `MoveSector.Forward` on every constructor and the
+tuning flag defaults false, so a consumer that never classifies a sector, or never opts in, plays byte-identically to
+before. A character that turns to face wherever it walks is `Forward` by construction and wants none of this.
+
+On a hand-built brain (a `Func<AnimatedCharacter>` factory, which owns its own sync config rather than the tuning's),
+the same switch is `LocomotionSpeedSync.ReverseOnReverseSector`, or the trailing `reverseOnReverseSector` argument of
+`LocomotionSpeedSync.Enable`, and the sector reaches it through
+`AnimatedCharacter.Update(speed, grounded, verticalVelocity, swimming, sector, dt)`.
+
 **Downed / death pose.** When a game marks an entity dead or knocked out, every OTHER client would otherwise keep
 drawing that avatar standing in idle. The bridge shows a downed pose instead, and the engine knows NOTHING about HP
 or death rules: a networked game DERIVES "downed" client-side from state it already replicates (e.g. an Hp
@@ -4859,12 +4900,25 @@ rules replace it, both unconditional and neither a knob:
 - **Wall slide.** A horizontal move whose destination is BOTH steeper than the tick's traction gate AND above what that
   tick can REACH is a wall contact: the into-face component of the move dies and the along-face component
   survives. So strafing along a cliff mid-jump keeps its lateral travel, and walking head-on into one makes no
-  headway. It applies grounded and airborne, on the command path and the momentum path alike. The REACH is a
-  `MoveTuning.StepHeight` while you are GROUNDED, and your own resolved upward motion for that tick when you are
-  not - zero while you fall (17.29.0). A step is what footing buys, so **a tick with no footing may never end
-  higher than its own velocity carried it**: altitude on steep ground comes from velocity, never from the ground
-  clamp. With a flat `StepHeight` for every tick alike it did come from the clamp, and walking at a 74 degree
-  cliff climbed it at 2.3 to 2.7 m/s while `VerticalVelocity` reported a 5 to 7 m/s fall.
+  headway. It applies grounded and airborne, on the command path and the momentum path alike. The REACH is your own
+  resolved upward motion for that tick and nothing else - zero while you fall, and zero while you walk on the flat
+  (17.29.0, 17.31.0). A step is what footing buys, and nobody has bought a step onto ground past the traction
+  ceiling, so **no tick may end higher than its own velocity carried it**: altitude on steep ground comes from
+  velocity, never from the ground clamp. With a flat `MoveTuning.StepHeight` here it did come from the clamp, and
+  walking at a 74 degree cliff climbed it at 2.3 to 2.7 m/s while `VerticalVelocity` reported a 5 to 7 m/s fall.
+- **Walking into a cliff base is a WALL, not a seat (17.31.0, [#486](https://github.com/APKiwiOrg/KhaozEngine/issues/486)).**
+  The reach above used to be a `StepHeight` on any tick that STARTED with footing, so a walking character was
+  admitted onto the toe of a steep face (the rise is small), refused traction there by the same tick's support
+  decision, and slid back onto the flat to walk in again - a grounded-airborne oscillation that flickers a game's
+  falling pose at every steep-face base (112 footing flips and 539 airborne ticks in 600 at 30 Hz on a 60 degree
+  face, and at 120 Hz and up a permanent slide parked against the toe). Now a footed tick takes the wall against any
+  destination past its own traction ceiling, however little that destination rises. Nothing about walkable ground
+  changes, including the band ground the hysteresis below holds you on: those destinations never reach the height
+  test at all. Nor does anything about DESCENT, since a destination below your feet is admitted at any reach - so
+  cresting onto a steep face from above still drops you into a slide, and so does falling onto one. The one real
+  cost is that a NARROW steep riser inside `StepHeight` is now a fence rather than a scramble on the analytic path,
+  which is tracked as [#488](https://github.com/APKiwiOrg/KhaozEngine/issues/488). Stairs, curbs and building steps
+  are unaffected: they come through the `IPhysicsWorld` step-up, which is untouched.
 - **No traction.** A surface steeper than the tick's TRACTION GATE grants no support: `Grounded` stays false, so no
   jump, no coyote refresh and no landing latch on the face. You are still seated on it (the ground clamp forbids
   penetration) but you slide - gravity decomposes against the surface normal and its tangential component
@@ -5178,7 +5232,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.31.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.32.0" />
 ```
 
 ```csharp
@@ -8441,7 +8495,7 @@ run inside the engine's process-wide device-creation gate, so a provider needs n
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.31.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.32.0" />
 ```
 
 ```csharp
@@ -8532,7 +8586,7 @@ of uniform data are kept. It exists so a soak can settle whether three is enough
 had to wait for a segment to come free is recorded for the session telemetry to carry once a device exists to
 report it.
 
-### Shaders on the native Direct3D 11 backend (17.31.0)
+### Shaders on the native Direct3D 11 backend (17.32.0)
 
 GLSL 450 stays the single source. That backend cross-compiles it to HLSL with the same SPIRV-Cross every other
 backend uses, then calls FXC itself to `vs_5_0` / `ps_5_0` / `cs_5_0`. Nothing about how you write or hand over
@@ -11344,6 +11398,12 @@ derived and the explicit facing and is where your asset's own rest-pose correcti
 ```csharp
 tuning.FacingYawOffset += MathF.PI;   // sim yaw 0 = -Z, bridge yaw 0 = +Z
 ```
+
+Once facing is authoritative, backward travel becomes a real direction rather than an artefact, and the walk clip
+played forwards over it reads as a moonwalk. That is the other half of this wiring: put the movement's
+`MoveSector` on the sample with `WithSector` and set `CharacterAnimatorTuning.ReverseLocomotionOnReverseSector` to
+play the clip backwards instead. `EntityRenderState.FacingYaw` is also what classifies a REMOTE's sector, since a
+remote's command axis never crosses the wire. See "Reverse locomotion" in the character-bridge section above.
 
 **The turn rate is a sim knob, not a presentation smoother.** `MoveTuning.FacingTurnSpeed` (rad/s, default
 `float.PositiveInfinity`) rate-limits the turn, always along the shortest arc, landing exactly on the target on

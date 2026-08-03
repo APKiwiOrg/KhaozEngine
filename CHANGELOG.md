@@ -5,10 +5,177 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.32.0
+
+### The native Direct3D 11 backend: the swapchain and the shader path (#455, #457)
+
+The blit-model swapchain lands with the incumbent's present path reproduced field for field, a framebuffer
+whose identity never changes across resize, and a resize queued to the present boundary. The shader path lands
+beside it: GLSL to HLSL through the pinned cross-compile options, the backend's own FXC call, the hashed
+emitted HLSL and the disk DXBC cache. Nothing renders differently and nothing switches over: the native
+backend's two device-creation entry points still throw, so no shipped path reaches any of it, and no golden
+moved.
+
+#### The swapchain: the incumbent's present path, a stable framebuffer identity and a queued resize (#457)
+
+The native backend can present a frame and follow a window resize. Section 9 of the design doc, decisions W1, W2
+and W3. Reached by nothing, since device creation still throws.
+
+**v1 keeps the LEGACY BLIT swapchain, reproduced field for field rather than modernised (W1).** Unversioned
+`IDXGIFactory` off the adapter, `BufferCount = 2`, `Windowed = true`, `SwapEffect.Discard`,
+`SampleDescription(1, 0)`, `B8G8R8A8_UNorm` non-sRGB, `Usage.RenderTargetOutput`, the
+`MakeWindowAssociation(IgnoreAltEnter)` that stops DXGI toggling fullscreen behind the windowing layer, and a
+present at sync interval 1 or 0 with no other throttling. Flipping vsync live reconfigures nothing at all, because
+on Direct3D 11 the interval is an argument of `Present`. There is no flip model, no `ALLOW_TEARING`, no waitable
+frame-latency object and no pacing, and their absence is a decision: the swapchain is the ONE area of this backend
+that no automated test anywhere can see (the goldens are headless, the shape tests are device-free, the WARP leg
+never presents), so a flip model is validated only by a human looking at a window. Keeping the blit model is what
+makes the soak measure the recording model and the memory model and nothing else, which is what makes a regression
+attributable. All of it is one sequenced follow-up with its own manual validation.
+
+**That costs one measurement, and this is the place a reader will look for the caveat (M5, an OBSERVATION rather
+than a bet).** Because v1 carries the incumbent's blit present path unchanged, it CANNOT discriminate whether the
+blit model is the mechanism behind the frame-pacing defect on #380. A native soak that reproduces #380 unchanged
+is consistent with "blit causes it" and with "blit does not", so it proves nothing either way. The discriminating
+measurement is the same scene on the flip-model prototype, A and B against this path on the same machine and the
+same build. #380 stays its own issue with its own unverified mechanism list.
+
+**The swapchain framebuffer's identity NEVER changes, and a resize swaps the views underneath it (W2).** The
+incumbent disposes the depth texture and the whole framebuffer and builds a new object on every resize, which is
+why `VeldridGpuDevice.ResizeSwapchain` re-wraps only on a reference change, a workaround whose comment names the
+Windows black screen after going fullscreen, maximising or drag-resizing. Owning the wrapper deletes that
+workaround's reason to exist rather than guarding it, and it makes Direct3D 11 behave the way Metal already does,
+which is the behaviour the rest of the engine was written against. The output description is fixed at construction
+and a resize never touches it, so every pipeline built against the swapchain survives every resize.
+
+**`ResizeSwapchain` queues and returns, and the submit thread applies it at the next present boundary (W3).** The
+call takes no lock and touches nothing native, so a window callback on any thread returns immediately even while
+the submit thread is mid-replay, and the foreign-thread resize during recording that #415 records as a
+cross-thread `Monitor.Exit` becomes structurally impossible instead of contractually forbidden. Sizes are
+coalesced to the LAST requested, so a drag-resize burst costs one `ResizeBuffers` per frame rather than one per
+event. The cost is one frame of resize latency, which is invisible. The apply lands AFTER the present rather than
+before it, because `ResizeBuffers` discards the backbuffer contents and resizing first would throw away the frame
+that had just been rendered and present freshly allocated, undefined buffers instead.
+
+**Three departures from the incumbent, all narrow and all stated at their site.** The present's raw `HRESULT` is
+RETURNED rather than discarded, which is the seam the device-loss latch of decision G3 needs to check at the fault
+site, and a failed present skips the queued resize so the caller receives that `HRESULT` instead of a throw out of
+`ResizeBuffers` against a device that has just gone. The latch itself, `GetDeviceRemovedReason` and the session
+header are not built here. And when a depth attachment is configured it is built at the backbuffer's REAL size
+rather than at the requested one, because Direct3D 11 requires a depth-stencil view and a render target view bound
+together to have matching dimensions. The engine's own windowed path passes no depth format, matching the
+incumbent, so that second one is unreachable on every shipped path today. And the release step unbinds the
+output-merger before it disposes the views, which the incumbent never has to do: `ResizeBuffers` fails on INDIRECT
+references as well, and the immediate context holds one, because `OMSetRenderTargets` takes its own reference on
+the render target view and does not drop it when the application disposes its wrapper. The incumbent gets away
+with it by resetting the context state at the end of every submit (`ExecuteCommandList` with
+`restoreContextState` false), while decision R3 puts this backend's one `ClearState` at the HEAD of a replay and
+its end-of-submit emits nothing, so the last frame's targets are still bound when the resize applies at the
+present boundary. Without the unbind the first real window resize would throw `DXGI_ERROR_INVALID_CALL` out of
+`Present`, under the submit lock, with the views already released. The managed state cache does not see the
+unbind, and does not need to: a resize lands only at a present boundary, and R3's `ClearState` resets the context
+and the cache together before anything binds again.
+
+**Where the tests are, and what is left behind an interface.** The four native calls of a swapchain sit behind
+`ID3D11SwapchainSurface`, the same shape the ring memory and the fence timeline already have, so the queue, the
+coalescing, the present boundary, the apply order, the sync interval, the framebuffer identity and the teardown
+are all plain `[Fact]`s that run on macOS and Linux. The resize is three members rather than one on purpose:
+`IDXGISwapChain::ResizeBuffers` fails while any outstanding reference to a backbuffer survives, so releasing the
+views first is a correctness rule that the incumbent depends on silently, and splitting it puts that order on the
+engine side where a device-free test asserts it. The fake refuses the wrong order by name. The context unbind is
+the one clause of that release with no test above it anywhere, stated as such on the interface: a fake has no
+context and therefore no bindings to inspect, so its executable evidence is a real window resize on the WARP leg
+once the wiring row gives the swapchain a caller. Two further tests pin
+where W2 meets W6 and R3: stable identity means a re-bind of the same framebuffer object reports no change, so
+what makes a resize visible to the context is the one `ClearState` at the head of the next submit, and both the
+working case and the hazard are asserted so a future change that moves either one fails with the reason attached.
+
+#### The shader path: GLSL to HLSL to our own FXC call, with pinned options and a DXBC cache (#455)
+
+`CreateShadersFromSpirv` and `CreateComputeShaderFromSpirv` are real on the native backend. GLSL 450 stays the
+single source, the internal Veldrid-free cross-compile helper does GLSL to SPIR-V to HLSL, and the backend calls
+`Vortice.D3DCompiler` itself to `vs_5_0` / `ps_5_0` / `cs_5_0`. Still reached by nothing shipped, since device
+creation throws, and no golden moved. Section 8 of the design doc with 8.1, 8.2 and 8.3, decisions S1 to S5.
+
+**DXC is eliminated on a fact rather than a preference, and the code says so where someone would go looking.**
+DXC emits DXIL, Direct3D 11 consumes DXBC, and there is no supported DXC path to DXBC, so Shader Model 6.x is
+unreachable from a Direct3D 11 backend regardless of anyone's view of it. `vs_5_0` and its siblings are therefore
+not a conservative choice, they are the only one. `SpirvLocalSize` keeps hand-parsing the workgroup size out of
+the module: Direct3D takes it from the module, but the seam's `IGpuComputeShader.ThreadGroupSize*` still has to
+report it and `Veldrid.SPIRV` never hands it back.
+
+**The cross-compile options are pinned, and section 8.2's premise turned out to be wrong.** The design expected
+`ResourceFactoryExtensions.CreateFromSpirv` to derive something from `ResourceBindingModel.Improved` that a
+direct `SpirvCompilation.CompileVertexFragment` call does not get for free. Read against the pinned
+`Veldrid.SPIRV` 1.0.15, it does not: it forwards the options verbatim, and `ResourceBindingModel` is not a member
+of `CrossCompileOptions` at all. It lives on the device and pipeline descriptions, and in the vendored fork the
+only backend that reads it is Metal, so it cannot have moved a byte of emitted HLSL. The incumbent's whole shipped
+shader set was therefore cross-compiled under the library defaults. `HlslCrossCompilePin` now states those values
+with the citation behind them, which is still the point of S3: they are a choice with a name rather than a default
+nobody made, and the next reader who wants to flip one has to move a hash table and see every program the flip
+touched.
+
+**Every shipped program's emitted HLSL is hashed against a checked-in table.** 34 distinct graphics programs
+(from 36 non-test call sites, the `Line` pair being created three times) plus 8 compute kernels across the four
+cascade resolutions shipped code can reach, for 76 hashed stages. Device-free, so it runs on every leg including
+the ones with no GPU. The table is baked from this path, so it pins drift rather than agreement with the
+incumbent. Agreement was measured once at review time, all 34 graphics programs byte-identical under this path
+and under a faithful replication of the incumbent's `CreateFromSpirv` call, which is what lets the 36 committed
+Direct3D 11 goldens carry over without a rebake. The table is what keeps that true from there on. One program's
+hashes moving is a shader edit. Thirty moving at once is an
+option drift, and the failure says so and dumps the emitted HLSL so the two are one diff apart rather than
+indistinguishable. `KE_UPDATE_HLSL_HASHES=1` re-bakes.
+
+**Compiled modules are cached on disk (S4), keyed on the WHOLE program.** The key is a SHA-256 over every GLSL
+source of the program, the FXC profile, the FXC flags, the pinned cross-compile options and the engine version,
+and the entries live under `<local-app-data>/KhaozEngine/d3d11-dxbc/<engine version>/`. Whole-program rather than
+per-stage matters: a pair is cross-compiled together, so the emitted VERTEX HLSL is a function of the fragment
+source too, and a key that ignored the sibling would serve stale bytes the moment a fragment change renumbered a
+register, which renders wrongly and fails nothing. A program whose stages are both cached skips SPIRV-Cross
+entirely, not just the FXC call. Every failure is a miss: a truncated entry, an unwritable directory or a full
+disk all fall back to compiling and none propagate. `KE_D3D11_SHADER_CACHE=<dir>` relocates it and `=off`
+disables it. The cache type names no Direct3D type at all, so its whole contract is exercised headlessly on macOS
+and Linux.
+
+**The two holed-signature incidents are enforced now, from three directions (S5).** SPIRV-Cross drops a vertex
+input the vertex stage does not read and names each survivor `TEXCOORD<location>`, so dropping the middle of a
+declared range holes the emitted signature, and FXC plus WARP miscompile a holed signature silently. It cost this
+engine two production incidents: the shadow depth pass corrupted WARP so the main model and splat passes rendered
+no colour at all, and the terrain blew to flat white. The workarounds in the GLSL STAY, because the native backend
+uses the same SPIRV-Cross and the same FXC and the Veldrid leg ships alongside indefinitely. What changes is that
+they stop being remembered. The shader path checks every module it compiles, pipeline creation re-checks the
+vertex bytecode an input layout is about to be validated against (which is what covers a module served from the
+disk cache, since that one never passed through a compiler in this process), and a device-free
+`[Theory]` reads the emitted HLSL's own input semantics for all four shadow programs and the terrain pair, so the
+sink and the interpolant ordering are asserted on every leg rather than only on Windows.
+
+**`KhaozEngineD3D11.ValidateShaderPair` and `ValidateComputeShader` are new public API**, and they are the half
+`ShaderValidation` cannot cover. That validator cross-compiles to HLSL, MSL, GLSL and ESSL and stops, so it has
+never COMPILED the HLSL it produced, which is exactly how both incidents got past it. These two run the real FXC
+call plus the signature assertion with no device and no cache. They live in the backend package rather than in
+`KhaozEngine.Gpu` for two reasons: FXC is `d3dcompiler`, so a seam package every 2D and 3D game references would
+be carrying a Windows-only compiler for a Windows-only leg, and sharing ONE FXC call site with the shipped shader
+path is what stops a validator drifting into validating a shader nobody ships. They throw
+`PlatformNotSupportedException` off Windows naming the guard to read and the seam validator to use instead.
+
+**The CI leg is a plain `[Fact]` on the Windows GPU workflow, on every push.** Not a `[GpuFact]`, because it
+needs no device, and deliberately not named "Golden", because that filter is for device-backed pixel comparisons.
+`cross-platform-gpu.yml` selects it by name in its own Windows-only step ahead of the suite, so a rejected shader
+fails in seconds instead of after a full golden pass, and `KhaozEngine.Gpu.D3D11/**` joins the workflow's push
+path filter so a shader-path change actually triggers it. The step fails on a ZERO match
+(`RunConfiguration.TreatNoTestsAsError`, scoped to the owning test project), since selection by name is the only
+thing holding it: those cases early-return passed off Windows, so a class rename would otherwise disarm the one
+leg that compiles the engine's HLSL and leave every leg green.
+
+**`KE_D3D11_DEBUG` gains its shader half.** It compiles with `D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION`
+rather than optimization level 3, so a capture's disassembly maps back to the emitted HLSL. That is one flag more
+than the design wrote, and the extra one does the work: `DEBUG` alone attaches debug information while leaving the
+optimizer running, which is the state in which stepping lands on the wrong lines. The flags are part of the cache
+key, so a debug session and an ordinary one never see each other's compiled bytes.
 
 ## 17.31.0
 
-### The native Direct3D 11 backend: the replay contract, the constant-buffer ring, the shader path, and the three cross-row wirings (#449, #451, #452, #455)
+### The native Direct3D 11 backend: the replay contract, the constant-buffer ring, and the three cross-row wirings (#449, #451, #452)
 
 The replay rules the 17.30.0 recording model shipped without land here (one `ClearState` per submit, the
 redundancy caches, the precise scrub on disposal and the framebuffer-guarded viewport), the per-frame uniform
@@ -236,89 +403,6 @@ bytes a write actually produced rather than trusting an offset calculation. `Con
 binds and stops a partial constant being truncated away rather than covered. The package gained
 `<AllowUnsafeBlocks>true</AllowUnsafeBlocks>` for exactly one body, the copy into the mapped segment.
 
-#### The shader path: GLSL to HLSL to our own FXC call, with pinned options and a DXBC cache (#455)
-
-`CreateShadersFromSpirv` and `CreateComputeShaderFromSpirv` are real on the native backend. GLSL 450 stays the
-single source, the internal Veldrid-free cross-compile helper does GLSL to SPIR-V to HLSL, and the backend calls
-`Vortice.D3DCompiler` itself to `vs_5_0` / `ps_5_0` / `cs_5_0`. Still reached by nothing shipped, since device
-creation throws, and no golden moved. Section 8 of the design doc with 8.1, 8.2 and 8.3, decisions S1 to S5.
-
-**DXC is eliminated on a fact rather than a preference, and the code says so where someone would go looking.**
-DXC emits DXIL, Direct3D 11 consumes DXBC, and there is no supported DXC path to DXBC, so Shader Model 6.x is
-unreachable from a Direct3D 11 backend regardless of anyone's view of it. `vs_5_0` and its siblings are therefore
-not a conservative choice, they are the only one. `SpirvLocalSize` keeps hand-parsing the workgroup size out of
-the module: Direct3D takes it from the module, but the seam's `IGpuComputeShader.ThreadGroupSize*` still has to
-report it and `Veldrid.SPIRV` never hands it back.
-
-**The cross-compile options are pinned, and section 8.2's premise turned out to be wrong.** The design expected
-`ResourceFactoryExtensions.CreateFromSpirv` to derive something from `ResourceBindingModel.Improved` that a
-direct `SpirvCompilation.CompileVertexFragment` call does not get for free. Read against the pinned
-`Veldrid.SPIRV` 1.0.15, it does not: it forwards the options verbatim, and `ResourceBindingModel` is not a member
-of `CrossCompileOptions` at all. It lives on the device and pipeline descriptions, and in the vendored fork the
-only backend that reads it is Metal, so it cannot have moved a byte of emitted HLSL. The incumbent's whole shipped
-shader set was therefore cross-compiled under the library defaults. `HlslCrossCompilePin` now states those values
-with the citation behind them, which is still the point of S3: they are a choice with a name rather than a default
-nobody made, and the next reader who wants to flip one has to move a hash table and see every program the flip
-touched.
-
-**Every shipped program's emitted HLSL is hashed against a checked-in table.** 34 distinct graphics programs
-(from 36 non-test call sites, the `Line` pair being created three times) plus 8 compute kernels across the four
-cascade resolutions shipped code can reach, for 76 hashed stages. Device-free, so it runs on every leg including
-the ones with no GPU. The table is baked from this path, so it pins drift rather than agreement with the
-incumbent. Agreement was measured once at review time, all 34 graphics programs byte-identical under this path
-and under a faithful replication of the incumbent's `CreateFromSpirv` call, which is what lets the 36 committed
-Direct3D 11 goldens carry over without a rebake. The table is what keeps that true from there on. One program's
-hashes moving is a shader edit. Thirty moving at once is an
-option drift, and the failure says so and dumps the emitted HLSL so the two are one diff apart rather than
-indistinguishable. `KE_UPDATE_HLSL_HASHES=1` re-bakes.
-
-**Compiled modules are cached on disk (S4), keyed on the WHOLE program.** The key is a SHA-256 over every GLSL
-source of the program, the FXC profile, the FXC flags, the pinned cross-compile options and the engine version,
-and the entries live under `<local-app-data>/KhaozEngine/d3d11-dxbc/<engine version>/`. Whole-program rather than
-per-stage matters: a pair is cross-compiled together, so the emitted VERTEX HLSL is a function of the fragment
-source too, and a key that ignored the sibling would serve stale bytes the moment a fragment change renumbered a
-register, which renders wrongly and fails nothing. A program whose stages are both cached skips SPIRV-Cross
-entirely, not just the FXC call. Every failure is a miss: a truncated entry, an unwritable directory or a full
-disk all fall back to compiling and none propagate. `KE_D3D11_SHADER_CACHE=<dir>` relocates it and `=off`
-disables it. The cache type names no Direct3D type at all, so its whole contract is exercised headlessly on macOS
-and Linux.
-
-**The two holed-signature incidents are enforced now, from three directions (S5).** SPIRV-Cross drops a vertex
-input the vertex stage does not read and names each survivor `TEXCOORD<location>`, so dropping the middle of a
-declared range holes the emitted signature, and FXC plus WARP miscompile a holed signature silently. It cost this
-engine two production incidents: the shadow depth pass corrupted WARP so the main model and splat passes rendered
-no colour at all, and the terrain blew to flat white. The workarounds in the GLSL STAY, because the native backend
-uses the same SPIRV-Cross and the same FXC and the Veldrid leg ships alongside indefinitely. What changes is that
-they stop being remembered. The shader path checks every module it compiles, pipeline creation re-checks the
-vertex bytecode an input layout is about to be validated against (which is what covers a module served from the
-disk cache, since that one never passed through a compiler in this process), and a device-free
-`[Theory]` reads the emitted HLSL's own input semantics for all four shadow programs and the terrain pair, so the
-sink and the interpolant ordering are asserted on every leg rather than only on Windows.
-
-**`KhaozEngineD3D11.ValidateShaderPair` and `ValidateComputeShader` are new public API**, and they are the half
-`ShaderValidation` cannot cover. That validator cross-compiles to HLSL, MSL, GLSL and ESSL and stops, so it has
-never COMPILED the HLSL it produced, which is exactly how both incidents got past it. These two run the real FXC
-call plus the signature assertion with no device and no cache. They live in the backend package rather than in
-`KhaozEngine.Gpu` for two reasons: FXC is `d3dcompiler`, so a seam package every 2D and 3D game references would
-be carrying a Windows-only compiler for a Windows-only leg, and sharing ONE FXC call site with the shipped shader
-path is what stops a validator drifting into validating a shader nobody ships. They throw
-`PlatformNotSupportedException` off Windows naming the guard to read and the seam validator to use instead.
-
-**The CI leg is a plain `[Fact]` on the Windows GPU workflow, on every push.** Not a `[GpuFact]`, because it
-needs no device, and deliberately not named "Golden", because that filter is for device-backed pixel comparisons.
-`cross-platform-gpu.yml` selects it by name in its own Windows-only step ahead of the suite, so a rejected shader
-fails in seconds instead of after a full golden pass, and `KhaozEngine.Gpu.D3D11/**` joins the workflow's push
-path filter so a shader-path change actually triggers it. The step fails on a ZERO match
-(`RunConfiguration.TreatNoTestsAsError`, scoped to the owning test project), since selection by name is the only
-thing holding it: those cases early-return passed off Windows, so a class rename would otherwise disarm the one
-leg that compiles the engine's HLSL and leave every leg green.
-
-**`KE_D3D11_DEBUG` gains its shader half.** It compiles with `D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION`
-rather than optimization level 3, so a capture's disassembly maps back to the emitted HLSL. That is one flag more
-than the design wrote, and the extra one does the work: `DEBUG` alone attaches debug information while leaving the
-optimizer running, which is the state in which stepping lands on the wrong lines. The flags are part of the cache
-key, so a debug session and an ordinary one never see each other's compiled bytes.
-
 ### Map regions get a runtime: BuildRegions + RegionAt (#481)
 
 `MapRuntime.BuildRegions(doc)` (`KhaozEngine.MapDoc`) resolves the document's authored regions
@@ -327,6 +411,87 @@ entries skipped like the scatter builder. `RegionAt(x, z, filter)` returns the c
 nearest by shape center, the same tiebreak the editor's overlay picking has always used, and the
 editor now runs on this resolver, so editor picking and game runtime can never disagree.
 `MapShapeGeometry.TryCenter` moves down from the editor so the center rule ships to games.
+
+### Reverse locomotion playback, behind an opt-in animator flag (#485)
+
+A character backpedaling under a held facing plays its walk clip BACKWARDS now, at the speed-matched rate, instead
+of moonwalking (the body sliding back while the feet stride forward). Additive and off by default: every existing
+game plays byte-identically until it opts in, and a game that opts in but never classifies a sector still does.
+
+**Where the direction was getting lost.** The bottom of the stack already worked. `AnimationPlayer.Update(dt,
+speedMultiplier)` scales the playhead by whatever it is handed, and `AnimationSampler.Wrap` has an explicit
+negative branch, so a looping clip wraps cleanly through zero onto its tail. What blocked it was the middle:
+`LocomotionSpeedSync.RateFor` clamped a magnitude with a positive floor and could not return a negative,
+`AnimatedCharacter.Update` took a speed that ALSO feeds `LocomotionStateMachine.Evaluate` (so a negative would have
+read as Idle), and `CharacterSample` carried no direction at all, with the bridge clamping `PlanarSpeed`
+non-negative on ingest. There was no way in for a sign, which is why the consumer could not solve this on its own.
+
+**The seam, four additive edits.** `CharacterSample` gains `Sector` (`KhaozEngine.Locomotion.MoveSector`) plus
+`WithSector(...)`, following the `WithFacingYaw` / `WithDowned` shape and composing with any sample shape.
+`CharacterAnimatorTuning` gains `ReverseLocomotionOnReverseSector` (default false), threaded into the
+`LocomotionSpeedSync` it builds as the new `ReverseOnReverseSector` field, also settable directly, or via the new
+trailing `reverseOnReverseSector` argument of `LocomotionSpeedSync.Enable`, on a brain built by a
+`Func<AnimatedCharacter>` factory. `RateFor` gains a `(state, horizontalSpeed, sector)` overload (the old two-arg
+one delegates to it at `MoveSector.Forward`). `AnimatedCharacter.Update` gains a matching sector overload, and
+`ReplicatedCharacterAnimators` passes `sample.Sector` straight through.
+
+**The sign reaches the playhead and nothing else.** `Evaluate` still sees the magnitude, so a reverse walk is the
+walk state and a reverse run is the run state, which is what keeps the whole thing additive: state selection,
+thresholds, and the debounce are all untouched. The clamp bounds the MAGNITUDE and the sign is applied last, so
+`MinMultiplier` still floors a crawling backpedal at -0.25x rather than freezing it and `MaxMultiplier` still
+ceilings a fast one at -3x. Idle, the tread, and the air states have no direction to reverse and stay at +1x. The
+forward swim stroke does reverse, since it is a syncing move state. The direction travels as its own field rather
+than as a signed speed precisely because the speed is what the state machine reads, so the ingest's non-negative
+`PlanarSpeed` clamp is deliberately left alone.
+
+**Why the sector and not a bool.** `MoveSector` is the type the sim already classifies with (`CharacterMovement.
+Sector`, the predicate that charges `MoveTuning.BackpedalSpeedScale`), and `Game.Render3D` already depends on
+`KhaozEngine.Locomotion`, so this drags in nothing new and adds no second encoding of the same three-way answer to
+drift from the first. `MoveSector.Forward` is the zero value, so every existing construction path defaults to it.
+Deriving the sector stays with the game, which is the only party that knows what the character is facing: the local
+player reads it off its own move command, and a remote (whose command axis never crosses the wire) classifies its
+render-position delta against the replicated `EntityRenderState.FacingYaw` over the same 135 degree wedge.
+
+**Layout.** `CharacterSample` and `CharacterAnimatorTuning` moved out of `ReplicatedCharacterAnimators.cs` into
+their own files, unchanged apart from the new members. That file was frozen at its 994-line baseline, and one type
+per file is the split the ratchet asks for rather than a cut at an arbitrary line. It now sits at 576, so its
+baseline entry is dropped (under the cap).
+
+Closes #485. Consumer side: https://github.com/APKiwiOrg/Ruinborne/issues/420.
+
+### A footed tick takes the wall against past-ceiling ground, so a cliff toe stops being a seat (#486)
+
+Walking into the bottom of a steep face no longer bounces the character through the falling pose: a tick that starts
+with footing now meets a WALL at any destination past its own traction ceiling, however little that destination
+rises, instead of seating itself on ground the same tick's support decision is about to refuse.
+
+The mechanism was two decisions about one column reaching opposite verdicts one tick apart. `AdvanceWallSlide` let a
+grounded tick reach a `MoveTuning.StepHeight` above its feet whatever the destination's steepness, so a walking
+character was admitted onto a cliff toe, denied traction there by the support decision, slid back onto the flat, and
+walked in again. Measured on a 60 degree face at the shipped tuning, holding one direction: 112 footing flips and 539
+airborne ticks out of 600 at 30 Hz, and at 120 Hz and above no flicker but a permanent slide parked against the toe
+(461 airborne ticks out of 480). The repro is now a permanent fixture (`CliffToeWallTests`) and reports zero flips and
+zero airborne ticks at 30, 60, 120 and 240 Hz, with the feet stalling exactly at the toe and the lateral component of
+a 45 degree strafe into the face preserved to within a float.
+
+The change is one line of behaviour rather than a new branch: `NoFootingReach` loses its grounded `StepHeight` case,
+because the reach is only ever consulted about ground the steepness test has already called past this tick's ceiling.
+Everything at or under the ceiling - walkable ground, and the band ground `TractionHysteresisRadians` holds a standing
+character on - returns before it, so every step-up, step-down, stair glide and riser mount is byte-identical, and a
+fast run up a legal ramp still is not fenced by the height it gains in one tick. Descent is untouched too, since a
+destination below the feet rises by a negative amount and is admitted at any reach, so cresting onto a steep face from
+above still enters a slide, as does falling onto one. The whole of 17.30.0's traction band and slide friction is
+unmodified, and the 360-heading anti-ratchet sweeps at four tick rates are bit-identical on both fixtures.
+
+**One behaviour cost, and it is deliberate.** A NARROW steep riser inside `StepHeight` is now a fence rather than a
+scramble on the ANALYTIC terrain path, because the scramble was exactly the seat this removes. On the saw-tooth crest
+fixture (a 0.4 m riser at 78.7 degrees every 2.08 m) a run that crossed 48 periods now crosses 8 and stops. Stairs,
+curbs, props and building steps are unaffected: they mount through the `IPhysicsWorld` step-up, which is untouched,
+and every riser fixture in the suite is green unmodified. Tracked as #488 for a playtest ruling. Two fixtures whose
+premise the rule moved were recalibrated rather than relaxed, the same way 17.30.0 recalibrated three: the
+gate-boundary bank control measures a refusal instead of a chatter (the bare gate still fails, with a better symptom),
+and the friction comparison now turns off friction alone, because a control that also drops the band was measuring the
+band's effect on the approach.
 
 ## 17.30.0
 

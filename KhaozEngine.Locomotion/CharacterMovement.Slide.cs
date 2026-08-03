@@ -19,10 +19,13 @@ namespace KhaozEngine.Locomotion;
 //   1. WALL SLIDE. A horizontal move whose destination ground stands above what the tick can REACH is a wall
 //      contact. The into-face component of the move dies and the along-face component survives, so strafing along
 //      a cliff mid-jump keeps its lateral travel. Grounded and airborne, command path and momentum path, one
-//      function. The reach is a MoveTuning.StepHeight while the character is GROUNDED, because a step is what
-//      footing buys, and the tick's OWN RESOLVED UPWARD MOTION when it is not (#468, 17.29.0): a tick with no
-//      footing may never end higher than its own velocity carried it, so altitude on steep ground never comes
-//      from the ground clamp. See NoFootingReach and SlideReach.
+//      function. The reach is the tick's OWN RESOLVED UPWARD MOTION, on every tick alike: a tick may never end
+//      higher than its own velocity carried it, so altitude on steep ground never comes from the ground clamp
+//      (#468, 17.29.0). A GROUNDED tick used to get a MoveTuning.StepHeight here, on the argument that a step is
+//      what footing buys, and that let a walking character seat itself onto the toe of a cliff that the support
+//      decision then refused it - the bounce through the falling pose at every steep-face base (#486, 17.31.0).
+//      Walkable ground and band ground never read the reach at all, so every real step is untouched. See
+//      NoFootingReach and SlideReach.
 //   2. NO TRACTION. Ground steeper than the tick's TRACTION GATE grants no support, so gravity decomposes
 //      against the surface and the character accelerates down the fall line until it reaches walkable ground, open
 //      air, or water. Climbing self-defeats because there is no footing to climb from, which is what retires the
@@ -211,18 +214,19 @@ public static partial class CharacterMovement
     /// feet, the move keeps only its along-face component. Shared by the ordinary command path
     /// (<c>DesiredHorizontalCore</c>), the airborne momentum path, and the slide, so the rule cannot come to mean
     /// three different things depending on which one drove the tick.
-    /// <para>BOTH CONDITIONS ARE LOAD-BEARING. The steepness test is what leaves walkable ground untouched: a fast
-    /// run up a legal ramp can rise more than a StepHeight in one tick, and treating that as a wall would turn every
-    /// steep-but-walkable hill into a fence at high speed. The height test is what makes this a CONTACT rather than
-    /// the retired gate: ground the character can be seated on is admitted, and the no-traction rule (see
-    /// <c>ResolveSlide</c>) is what makes doing so worthless rather than a climb.</para>
-    /// <para>WHAT THE REACH IS, and why it is not always <see cref="MoveTuning.StepHeight"/> (#468). A step is
-    /// something FOOTING buys: it is the height a character standing on the ground can lift a foot onto. A tick with
-    /// no footing has bought nothing, so its reach is its OWN RESOLVED UPWARD MOTION and nothing else - zero while it
-    /// falls. See <see cref="NoFootingReach"/> for the rule and for what a StepHeight reach cost when it was handed to
-    /// every tick alike: a two-tick limit cycle walked up a 74 degree sea cliff at 2.5 m/s, because the clamp seated
-    /// the capsule onto every column the admission let it reach and the admission asked only whether that column was
-    /// within a step.</para>
+    /// <para>THE STEEPNESS TEST IS WHAT LEAVES WALKABLE GROUND UNTOUCHED, and it is the whole of the ordinary path's
+    /// cost: a fast run up a legal ramp can rise more than a StepHeight in one tick, and treating that as a wall would
+    /// turn every steep-but-walkable hill into a fence at high speed. So the reach below is consulted about ONE kind
+    /// of ground only - a destination this tick has already been told it cannot stand on.</para>
+    /// <para>WHAT THE REACH IS, and why it is never <see cref="MoveTuning.StepHeight"/> (#468, #486). A step is
+    /// something FOOTING buys: it is the height a character standing on the ground can lift a foot onto. No tick has
+    /// bought a step onto ground past its own traction ceiling, whether or not it started with footing elsewhere, so
+    /// the reach is the tick's OWN RESOLVED UPWARD MOTION and nothing else - zero while it falls, and zero while it
+    /// walks on the flat. See <see cref="NoFootingReach"/> for the rule and for the two things a StepHeight reach
+    /// cost: a two-tick limit cycle that walked up a 74 degree sea cliff at 2.5 m/s (#468), and the cliff-toe bounce
+    /// that flickered a walking character through the falling pose at every steep-face base (#486). Both are the same
+    /// shape - the clamp seated the capsule onto every column the admission let it reach, and the admission asked only
+    /// whether that column was within a step.</para>
     /// <para>THE PROJECTION IS THE WHOLE FIX FOR THE REPORTED FEEL BUG. The retired gate refused the entire move the
     /// moment any of it pointed at a face, so holding a direction 45 degrees into a cliff while jumping lost the
     /// lateral half too - an invisible wall eating air control. Removing only the into-face component leaves the
@@ -279,19 +283,31 @@ public static partial class CharacterMovement
 
     /// <summary>The height a tick may find its destination ground standing above its feet and still be SEATED on it
     /// rather than stopped by it (<see cref="AdvanceWallSlide"/>'s <c>reach</c>), for the paths whose horizontal is
-    /// arbitrary with respect to the surface: the command path and the airborne momentum path.
+    /// arbitrary with respect to the surface: the command path and the airborne momentum path. The name is about the
+    /// DESTINATION rather than the tick: since #486 a tick that starts with footing and one that does not get the same
+    /// number here, because the only ground this is ever read about is ground no tick has footing on.
     ///
-    /// <para>A GROUNDED tick keeps <see cref="MoveTuning.StepHeight"/> exactly as before, so every walkable path -
-    /// a step-up, a step-down, a stair glide, a walk into the toe of a cliff - is byte-identical to every release
-    /// since the wall slide shipped. Footing is what a step is bought with, and a grounded character has it: either
-    /// the support decision at the end of the previous tick granted it (which on steep terrain it refuses, so that
-    /// character is standing on walkable ground or on a prop), or <see cref="SlideWedged"/> did. The wedge is the
-    /// third way to be grounded and it does hand a StepHeight reach to the tick after it fires - probed as a ratchet
-    /// and it does not pay, because a wedge grant needs an accumulated fall SWALLOWED by ground that folds back on
-    /// itself, and a tick that spent its fall being swallowed has no upward velocity left to convert, so the step it
-    /// buys is handed straight back by the fall the next tick accumulates.</para>
+    /// <para>A FOOTED TICK USED TO GET <see cref="MoveTuning.StepHeight"/> HERE, AND THAT WAS THE CLIFF-TOE BOUNCE
+    /// (#486). The argument for it was that a step is what footing buys, which is a good argument about walkable
+    /// ground and a wrong one here, because this number is only ever read about ground the tick has ALREADY been told
+    /// it cannot stand on: <see cref="AdvanceWallSlide"/> consults the reach only after its steepness test says the
+    /// destination is past this tick's traction ceiling. So a StepHeight admission let a walking character seat itself
+    /// onto the toe of a cliff, which the support decision at the end of the very same tick then refused - costing it
+    /// its footing, flickering the falling pose, and sliding it back onto the flat, from where it walked in again.
+    /// Measured on a 60 degree face at the shipped tuning: 112 footing flips and 539 airborne ticks out of 600 at
+    /// 30 Hz, and at 120 Hz and above no flicker at all but a permanent slide parked against the toe (461 airborne
+    /// ticks out of 480). The admission and the support decision were reading the same ground and reaching opposite
+    /// verdicts, and this is where they are made to agree.</para>
     ///
-    /// <para>A TICK WITH NO FOOTING GETS ITS OWN RESOLVED UPWARD MOTION, and nothing else: <c>max(0, vVel * dt)</c>
+    /// <para>SO THE STEP SURVIVES EXACTLY WHERE IT IS A STEP. Ground at or under the tick's ceiling - walkable ground,
+    /// and the band ground <see cref="TractionGate"/> holds a standing character on - never reaches this number at
+    /// all, because <see cref="AdvanceWallSlide"/> has already returned on the steepness test. A step-up, a step-down,
+    /// a stair glide and a walk onto a riser are byte-identical to every release since the wall slide shipped, and a
+    /// fast run up a legal ramp is still not fenced by the height it gains in one tick. DESCENT onto steep ground is
+    /// untouched too: a destination below the feet rises by a negative amount, which is admitted at any reach, so
+    /// cresting onto a steep face from above still enters a slide, as does falling onto one.</para>
+    ///
+    /// <para>EVERY TICK NOW GETS ITS OWN RESOLVED UPWARD MOTION, and nothing else: <c>max(0, vVel * dt)</c>
     /// against the gravity integrate step 2 is about to commit. So a falling tick may be seated only at or below the
     /// height it started at (it can still meet a face and slide down it, and it can still land on ground it fell
     /// onto - what it cannot do is END HIGHER than it began), and a rising one may reach exactly as far up as its own
@@ -308,9 +324,7 @@ public static partial class CharacterMovement
     /// <para>THE SLIDING TICK TAKES THE SAME RULE through <see cref="SlideReach"/>, which is this one plus a float
     /// slack it needs and this one does not - see there.</para></summary>
     private static float NoFootingReach(in MoveState state, in MoveTuning tuning, float dt)
-        => state.Grounded
-            ? tuning.StepHeight
-            : MathF.Max(0f, FallIntegrate(state.VerticalVelocity, tuning, dt) * dt);
+        => MathF.Max(0f, FallIntegrate(state.VerticalVelocity, tuning, dt) * dt);
 
     // The float slack on a SLIDING tick's rise allowance, in metres, and the one number in this rule that is a
     // tolerance rather than a physical quantity.
@@ -385,9 +399,10 @@ public static partial class CharacterMovement
     /// self-consistent too, because the support decision at the end of the previous tick already refused to ground the
     /// character on steep terrain. The exception is <see cref="SlideWedged"/>, which is a THIRD way to end a tick
     /// grounded and the only one that can do it on steep ground: the tick after a wedge grant therefore skips the
-    /// slide entirely and takes the ordinary command path with a grounded character's reach. That is deliberate -
-    /// the wedge's whole purpose is to let a body the world is holding up act like it is being held up - and it
-    /// cannot ratchet, for the reason set out in <see cref="NoFootingReach"/>. Then the contact test
+    /// slide entirely and takes the ordinary command path. That is deliberate - the wedge's whole purpose is to let a
+    /// body the world is holding up act like it is being held up - and it cannot ratchet, because that tick's wall
+    /// contact reads the same reach every other tick does (<see cref="NoFootingReach"/>) and a wedge grant needs an
+    /// accumulated fall, so there is no upward velocity left to convert into one. Then the contact test
     /// (one <c>groundHeight</c> call, which a character falling through open air fails immediately), and only then
     /// the normal.</para>
     /// <para><c>gate</c> is the tick's traction gate. A sliding tick has no footing by the first conjunct, so the gate

@@ -59,10 +59,10 @@ public static partial class CharacterMovement
     // speedFraction > 0. The advance itself is AdvanceWallSlide (CharacterMovement.Slide.cs), shared with the airborne momentum path
     // and the slide: a destination that is both too steep to walk and above what this tick can REACH is a WALL, and the move keeps
     // only its along-face component instead of being refused. So walking off a cliff falls through to gravity, strafing along one
-    // keeps its lateral travel, and walking into one makes no headway - and where a too-steep destination IS within reach, the
-    // move is admitted and the no-traction rule slides the character straight back off it. The reach is NoFootingReach: a
-    // StepHeight while the character is grounded (a step is what footing buys), and the tick's own resolved upward motion when it
-    // is not (#468 - the clamp may not lift a capsule that has no footing).
+    // keeps its lateral travel, and walking into one makes no headway - and where a too-steep destination is at or BELOW the feet,
+    // the move is admitted and the no-traction rule slides the character down it. The reach is NoFootingReach: the tick's own
+    // resolved upward motion and nothing else, on every tick alike. #468: the clamp may not lift a capsule that has no footing.
+    // #486: and a tick that starts with footing has bought no step onto ground past its own traction ceiling either.
     // Returns the resolved speed alongside the position so StepCore can export it as MoveState.CommandedVelocity: it is reported
     // UNCONDITIONALLY, including on a wall contact, because the anomaly check needs the ask, not what survived. 0 when idle.
     // `gate` is the tick's ONE traction gate (CharacterMovement.Traction.cs): MaxSlopeRadians widened by the

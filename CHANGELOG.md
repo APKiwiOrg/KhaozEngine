@@ -247,10 +247,17 @@ shadow-encode collapse: the incumbent activated a set AT the bind, so a pass tha
 times a frame paid a full activation each time. Still reached by nothing, since device creation throws.
 
 **The rest of the schedule, clause by clause, because each carries its own weight.** The flush walks slots in SLOT
-order. `SetPipeline` DRAINS the pending sets under the OUTGOING pipeline's layouts before adopting the incoming
-ones, since the layout array is what numbers the registers and flushing after the switch would bind the same set
-at different registers, which compiles, draws and renders the wrong resources. A slot whose recorded set has gone
-null is skipped rather than unbound, because the registers it used belong to that slot alone. Repeated marks on
+order. `SetPipeline` DRAINS the pending sets under the OUTGOING pipeline's layouts and then FORGETS the records,
+before adopting the incoming ones, since the layout array is what numbers the registers and flushing after the
+switch would bind the same set at different registers, which compiles, draws and renders the wrong resources. The
+wipe is the half that is silent when it is left out: the comparison is against what the slot already holds, so a
+record surviving the switch marks a rebind of the SAME set at the SAME slot clean and the next draw issues
+nothing, leaving the set physically at the outgoing pipeline's registers while the incoming one reads the new
+ones. A re-bind of the pipeline already current does neither, guarded on the layout ARRAY by reference, so a
+renderer that rebinds its pipeline defensively between two draws does not wipe the records it just made and pay a
+full activation per bind. A slot whose recorded set has gone null is skipped rather than unbound, because the
+registers it used belong to that slot alone, and a slot goes clean only once its activation has LANDED, so a
+refused bind throws again on the next draw instead of throwing once and then silently rendering. Repeated marks on
 one slot between two draws collapse to one flush, and the flush owes the GREATER of them, so an offsets-only
 rebind arriving over a pending full one is still a full activation. The bound record is KEYED by slot, one struct
 in an array indexed by slot and replaced in place: the hot path is thousands of offsets-only rebinds of ONE set
@@ -278,9 +285,11 @@ only on the fast arm cannot read the slow one as a regression.
 **The immediate driver's ring mapping is now per-FLUSH rather than per-write, which is the open end the ring row
 left this one.** `KE_D3D11_RECORD=immediate` issues draws as the seam is called, so a ring mapped by a
 record-time uniform write is still mapped when the next draw binds it. The flush unmaps every mapped ring before
-every draw, dispatch and pipeline switch, UNCONDITIONALLY rather than only when a bind is pending: a draw with no
-dirty slot still draws against the constant buffers an earlier flush bound, and a write since then has re-mapped
-the ring underneath them. `D3D11RingAllocator.MapScopeFor` therefore answers `AcrossRecording` for both drivers
+every DRAW and every DISPATCH, UNCONDITIONALLY rather than only when a bind is pending: a draw with no dirty slot
+still draws against the constant buffers an earlier flush bound, and a write since then has re-mapped the ring
+underneath them. A pipeline switch does not unmap, because the hazard is a draw against a mapped resource and the
+switch's drain issues bind calls alone, which are legal while the ring is mapped, so the next draw is where the
+mapping has to go and does. `D3D11RingAllocator.MapScopeFor` therefore answers `AcrossRecording` for both drivers
 now. The reason to bother is the MEASUREMENT rather than the call count: milestone M1 A/Bs the two drivers on a
 real frame and deletes the loser, and a ring that maps and unmaps per uniform write on one arm and once per submit
 on the other measures a handicap instead of the recording model. What it gives up is `PerWrite`'s atomic
@@ -309,12 +318,25 @@ neither emission seam names one, zero `Map` or `Unmap` during a replay, exactly 
 MARGINAL deltas (five distinct meshes against one moves the total by exactly four full activations, eighteen draws
 against six by exactly twelve draws' worth, and an offsets-only rebind is exactly one call per visible stage), the
 binding trace being identical for eight instances of one mesh and for one, and upper bounds on the fan-out. The
-absolute totals (29, 53 and 69 native calls for the three frames it builds) are DOCUMENTATION and may be updated
+absolute totals (42, 66 and 82 native calls for the three frames it builds) are DOCUMENTATION and may be updated
 freely: a test routinely edited to match reality stops being a gate, and the per-draw delta jumping from two to
 eight is the #418 defect returning, which no legitimate renderer change causes. The "zero `Map` or `Unmap` during
 a replay" invariant needed the call vocabulary to be able to NAME a map, which it could not, so
 `D3D11NativeCall` gained `Map` and `Unmap` and the budget's ring writes its two context calls into the same trace
 as the emitter's, which turns an invariant that would have passed vacuously into one that can fail.
+
+**The frame the budget is taken over was blind to three breaks its sibling suites catch, so it grew three
+things.** A gate that cannot see a mutation is not gating it, and the plain frame could not. It never rebound one
+slot between two draws, so moving the flush from the draw to the bind changed no number. It called `SetPipeline`
+once, before any bind, so rule 5's drain never ran in any measured scenario. And its per-draw set was a lone
+dynamic UBO, whose full activation and offsets-only push both cost one call, so collapsing the three-state
+tracking to always-Full was invisible. The frame now carries a texture and a sampler on the per-draw set, rebinds
+the per-draw window twice between two draws, and ends with a mid-frame pipeline switch that leaves a set pending
+across it. Two of those three land on the PER-DRAW MARGINAL, which is the gate rather than the documentation: the
+flush-at-bind mutation moves it from two to three and the always-Full mutation moves it to four. The third is a
+new invariant, since a drain taken under the incoming layouts issues the same NUMBER of calls at different
+registers, so it is pinned as the drained lines and their position (`b1 t4 s2`, ahead of the incoming pipeline's
+state calls) and the tail pipeline declares one layout, which makes the wrong-order drain throw outright.
 
 **Smaller things that came with it.** `D3D11NativeCall` gained the eighteen per-stage bind members plus
 `CSSetUnorderedAccessViews`, written out per stage rather than reduced to one per file, because the assertions are
@@ -326,7 +348,14 @@ resource layouts to the flush: separate from `ID3D11PipelineState` because a com
 while having none of that interface's seven state objects. An unordered-access binding visible to a stage other
 than compute is refused by name rather than bound nowhere, since Direct3D 11 binds a pixel-shader UAV through
 `OMSetRenderTargetsAndUnorderedAccessViews` alongside the render targets and no shipped layout declares one
-(filed as https://github.com/APKiwiOrg/KhaozEngine/issues/490).
+(filed as https://github.com/APKiwiOrg/KhaozEngine/issues/490). A layout element declared DYNAMIC on either
+structured-buffer kind is refused at layout creation, the second backend-divergent creation failure after decision
+U3's ring combination: a dynamic offset is a per-draw byte rebase and the only bind that can carry one is the
+constant-buffer bind, while a structured buffer binds through a view created once over the whole buffer, so the
+full activation would write that view with nothing added and the offsets-only path would skip the element for not
+being a constant buffer. Both halves of the flush would silently agree to ignore the offset and every draw would
+read the window the view was created with. Vacuous today, since all six dynamic elements shipped are uniform
+buffers, and refused anyway because nothing further down the path would ever say so.
 
 ### Map regions get a runtime: BuildRegions + RegionAt (#481)
 

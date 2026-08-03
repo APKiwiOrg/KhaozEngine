@@ -194,10 +194,17 @@ pass that rebinds one set thousands of times a frame paid a full activation each
 The rest of the schedule, since each clause carries its own weight:
 
 - The flush walks slots in SLOT order.
-- `SetPipeline` DRAINS the pending sets under the OUTGOING pipeline's layouts before adopting the incoming ones,
-  because the layout array is what numbers the registers. Flushing after the switch would bind the same set at
-  different registers, which compiles, draws and renders the wrong resources.
-- A slot whose recorded set has gone null is skipped rather than unbound.
+- `SetPipeline` DRAINS the pending sets under the OUTGOING pipeline's layouts and then FORGETS the records, before
+  adopting the incoming ones, because the layout array is what numbers the registers. Flushing after the switch
+  would bind the same set at different registers, which compiles, draws and renders the wrong resources. The wipe
+  is the other half of the same rule: the comparison is against what the slot already holds, so a record that
+  survived would mark a rebind of the SAME set at the SAME slot clean and issue nothing, leaving it at the
+  outgoing pipeline's registers while the incoming one reads the new ones. **A pipeline switch therefore leaves
+  every slot owing a full activation, so rebind your resource sets after one.**
+- A re-bind of the pipeline already current drains nothing and forgets nothing, guarded on the layout array by
+  reference, so binding a pipeline defensively between two draws costs nothing.
+- A slot whose recorded set has gone null is skipped rather than unbound, and a slot goes clean only once its
+  activation has landed, so a refused bind throws again on the next draw rather than once and then silently.
 - Repeated marks on one slot between two draws collapse to one flush, and the flush owes the greater of them: an
   offsets-only rebind arriving over a pending full one is still a full activation.
 - The bound record is KEYED by slot, one struct in an array indexed by slot, replaced in place. The hot path is
@@ -222,13 +229,25 @@ before the bind, because on that path a re-bind of the same buffer at a differen
 every draw after the first reads the first draw's constants. It doubles the constant-buffer call count there, and
 both arms are asserted.
 
+**BACKEND-DIVERGENT CREATION FAILURE: a layout element declared DYNAMIC on either structured-buffer kind throws
+here.** A dynamic offset is a per-draw byte rebase, and the only bind that can carry one is the constant-buffer
+bind, which takes a first constant and a count. A structured buffer binds through a view created once over the
+whole buffer, and neither `*SetShaderResources` nor `*SetUnorderedAccessViews` has a per-bind window to put an
+offset in, so the offset would be dropped in both directions: a full activation writes the pre-resolved view with
+nothing added, and the offsets-only path skips the element entirely for not being a constant buffer. Every draw
+would read the window the view was created with while the caller believed it had moved. The combination is vacuous
+in the engine today (all six dynamic elements shipped are uniform buffers) and is refused anyway, because nothing
+further down the path would ever say so. Declare the element as a uniform buffer, or build one set per window.
+
 **The ring is unmapped at the flush point on the immediate driver.** `KE_D3D11_RECORD=immediate` issues draws as
 the seam is called, so a ring mapped by a record-time uniform write is still mapped when the next draw binds it.
-The flush unmaps every mapped ring before every draw, dispatch and pipeline switch, UNCONDITIONALLY rather than
-only when a bind is pending: a draw with no dirty slot still draws against the constant buffers an earlier flush
-bound. That is the per-FLUSH mapping the spec names as that driver's degradation, and it is why both drivers now
-keep the mapping across the record phase. The deferred driver wires no allocator into the flush at all, since its
-`Submit` already unmaps inside the lock it replays under.
+The flush unmaps every mapped ring before every DRAW and every DISPATCH, UNCONDITIONALLY rather than only when a
+bind is pending: a draw with no dirty slot still draws against the constant buffers an earlier flush bound. It
+does NOT unmap at a pipeline switch, because what Direct3D 11 refuses is a draw against a mapped resource and the
+switch's drain issues bind calls alone, which are legal while the ring is mapped: the next draw releases it ahead
+of the one command that cannot tolerate it. That is the per-FLUSH mapping the spec names as that driver's
+degradation, and it is why both drivers now keep the mapping across the record phase. The deferred driver wires no
+allocator into the flush at all, since its `Submit` already unmaps inside the lock it replays under.
 
 **Where the native-call budget is taken, and what it gates.** The countable sink is `ID3D11BindSink`: the
 schedule and the fan-out live in device-owned, device-free types (`D3D11BindFlush`, `D3D11SetActivation`) that
@@ -246,6 +265,14 @@ against six, and an offsets-only rebind at one call per visible stage), the bind
 eight instances of one mesh and for one, and upper bounds on the fan-out. The absolute totals are DOCUMENTATION
 and may be updated freely: a test routinely edited to match reality stops being a gate, and the per-draw delta
 jumping from two to eight is the fan-out defect returning.
+
+The frame it is taken over is built to make three specific breaks visible, since a gate that cannot see a mutation
+is not gating it. The per-draw set carries a texture and a sampler, so tracking that collapses to always-Full
+re-pushes them per draw and moves the per-draw marginal. The per-draw window is rebound twice between two draws,
+so a flush moved from the draw to the bind double-counts and moves the same marginal. And the frame ends with a
+mid-frame pipeline switch carrying a pending set across it, which is the only thing that puts the drain in a
+measured scenario at all: its registers are pinned by an invariant, and the incoming pipeline declares one layout,
+so a drain taken under the incoming layouts throws instead of binding at the wrong register.
 
 ## Completion fences, and a `WaitForIdle` that drains
 
@@ -364,7 +391,8 @@ write of a record phase maps `MAP_WRITE_NO_OVERWRITE`, every later write reuses 
 is legal only because Direct3D 11 has no persistent mapping and does not permit a draw against a mapped resource,
 so a mapping may live only across a span in which no draw happens. Under `KE_D3D11_RECORD=immediate` draws happen
 during record, so that span is the run of writes between two commands, and the BIND FLUSH is what closes it: it
-calls `D3D11RingAllocator.UnmapMappedRings` before every draw, dispatch and pipeline switch. That is the
+calls `D3D11RingAllocator.UnmapMappedRings` before every draw and every dispatch, and not at a pipeline switch,
+whose drain only binds constant buffers and is legal against a mapped ring. That is the
 per-FLUSH degradation the spec names for that driver, so both drivers now keep the mapping across the record phase
 and `MapScopeFor` answers the same for both. Per-WRITE mapping (`D3D11RingMapScope.PerWrite`) was the interim
 shape before a flush point existed, and it stays constructible and tested because it is the only scope that holds

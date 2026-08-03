@@ -17,6 +17,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// per bind. An interface of typed Direct3D handles would have put a Vortice type in the signature of the one
     /// type the device-free tests drive hardest.
     /// </para>
+    /// <para>
+    /// EVERY PROPERTY MUST RETURN THE SAME INSTANCE ON EVERY READ, never a boxed value and never a wrapper built
+    /// per access, because the cache compares by reference identity: a fresh object each read is never equal to
+    /// the last one, so every bind reports a change, the whole R6 cache is defeated, and nothing throws or logs.
+    /// </para>
     /// </summary>
     internal interface ID3D11PipelineState
     {
@@ -34,14 +39,17 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// blend factor rides the pipeline rather than being separately tracked state, so two pipelines that
         /// share one blend state object and differ in blend factor would take the redundant path here and the
         /// second one would draw with the first one's factor. Adding the factor to this interface and to the
-        /// cache belongs with the draw path that owns the per-pipeline blend factor, and must land with it.
+        /// cache belongs with the draw path that owns the per-pipeline blend factor, which is issue #454, and
+        /// must land with it.
         /// </para>
         /// </summary>
         object? BlendState { get; }
 
         /// <summary>The depth-stencil state object, bound with <c>OMSetDepthStencilState</c>. The stencil
         /// reference is the same open case as the blend factor above: it is an argument of the call rather than
-        /// part of the state object, so it has to join the cache when the pipeline starts carrying it.</summary>
+        /// part of the state object, so it has to join the cache when the pipeline starts carrying it. Issue
+        /// #454 is where the blend-factor half of that lands, on the draw path, and the stencil reference has
+        /// the same shape.</summary>
         object? DepthStencilState { get; }
 
         /// <summary>The rasterizer state object, bound with <c>RSSetState</c>.</summary>

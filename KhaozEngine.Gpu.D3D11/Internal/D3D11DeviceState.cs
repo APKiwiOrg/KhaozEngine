@@ -36,7 +36,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// </summary>
     internal sealed class D3D11DeviceState
     {
-        const int SlotCount = 6;
+        // The cache array is exactly as long as D3D11StateSlot, read off the enum rather than written out as a
+        // literal beside it. A hand-kept 6 stays green through every test here the day a seventh slot is added,
+        // because nothing in this file mentions the enum's length, and the first Bind of that slot throws
+        // IndexOutOfRangeException from inside a replay. The enum is contiguous from zero, which FlagOf's shift
+        // already depends on, so its member count IS the array length.
+        static readonly int SlotCount = Enum.GetValues<D3D11StateSlot>().Length;
 
         readonly object?[] _bound = new object?[SlotCount];
         uint _topology;

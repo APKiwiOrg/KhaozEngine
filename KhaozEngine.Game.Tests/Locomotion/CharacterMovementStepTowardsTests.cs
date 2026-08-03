@@ -98,29 +98,42 @@ public class CharacterMovementStepTowardsTests
     [Fact]
     public void SteeringUpASlopePastMaxSlope_GetsNoFootingAndSlidesBack()
     {
-        // No physics world: the pure analytic surface. A 47 deg slope exceeds the 45 deg default budget, so it
-        // grants no TRACTION - the agent never gets footing on it, cannot steer up the fall line at all, and slides
-        // back down instead. (Through 17.26.1 this fixture asserted the move was REFUSED and the agent stayed put.
-        // #442 replaced refusal with sliding, so the honest assertion is that it goes DOWN.)
+        // No physics world: the pure analytic surface. A 49 deg slope exceeds the traction budget - the 45 deg gate
+        // PLUS the 3 deg hysteresis band a standing character keeps its footing over - so it grants no TRACTION: the
+        // agent never gets footing on it, cannot steer up the fall line at all, and slides back down instead.
+        // (Through 17.26.1 this fixture asserted the move was REFUSED and the agent stayed put. #442 replaced refusal
+        // with sliding, so the honest assertion became that it goes DOWN. It ran at 47 deg until #475 gave the
+        // decision a memory, which makes 47 deg ground a standing agent legitimately KEEPS - see
+        // TractionHysteresisTests, where that is the behaviour under test rather than a regression. The intent here is
+        // unchanged and is about ground past the budget, so the fixture moves past the budget.)
         var s = new MoveState { Position = new Vector3(0f, Tuning.CapsuleHalfHeight, 0f), Grounded = true };
         Vector3 startPos = s.Position;
         // The altitude available has exactly two sources, and neither is a climb. One is the single StepHeight the
         // ground clamp may seat the first tick's move onto, which is what turns the agent into a slider. The other
         // is the run speed it arrives with: a contact deletes only the into-surface component, so the rest becomes
-        // signed up-slope motion on a frictionless face, worth at most RunSpeed^2 / 2g before gravity takes it all
-        // back. Measured peak here is 0.48 m of the 3.28 m that bounds it. Nothing REPEATS either of them, because
-        // there is no footing up there to arrive a second time from.
+        // signed up-slope motion, worth at most RunSpeed^2 / 2g before gravity takes it all back. Measured peak here
+        // is 1.325 m of the 3.28 m that bounds it. Nothing REPEATS either of them, because there is no footing up
+        // there to arrive a second time from.
+        //
+        // THE WINDOW IS 3 SECONDS since #475, where one used to do. Gravity still decelerates the up-slope ride at
+        // FULL strength (friction never lengthens a rise), so the peak is what it always was, but the way back down a
+        // face 4 degrees past the gate now runs at half strength, and one second of window ended with the agent still
+        // above its start. That is the friction ramp behaving exactly as designed rather than a stall, and the fix is
+        // to let the ride finish.
         float ceiling = startPos.Y + Tuning.StepHeight + Tuning.RunSpeed * Tuning.RunSpeed / (2f * Tuning.Gravity);
-        for (int i = 0; i < 60; i++)
+        float peak = startPos.Y;
+        for (int i = 0; i < 180; i++)
         {
-            s = CharacterMovement.StepTowards(s, new Vector2(1f, 0f), run: true, Dt, SlopeGround(47f), Tuning, SlopeNormal(47f));
-            Assert.False(s.Grounded, $"tick {i} found footing on a 47 deg slope");
+            s = CharacterMovement.StepTowards(s, new Vector2(1f, 0f), run: true, Dt, SlopeGround(49f), Tuning, SlopeNormal(49f));
+            peak = MathF.Max(peak, s.Position.Y);
+            Assert.False(s.Grounded, $"tick {i} found footing on a 49 deg slope");
             Assert.True(s.Position.Y <= ceiling,
                 $"tick {i} climbed the slope, y={s.Position.Y:F5} against a ceiling {ceiling:F5}");
             Assert.Equal(startPos.Z, s.Position.Z, 5);   // nothing steers the agent off the fall line
         }
-        Assert.True(s.Position.X < startPos.X - 0.5f, $"the agent never slid back down, x={s.Position.X:F5}");
-        Assert.True(s.Position.Y < startPos.Y, $"the agent ended no lower than it started, y={s.Position.Y:F5}");
+        string measured = $"x={s.Position.X:F5}, y={s.Position.Y:F5}, peak {peak - startPos.Y:F3} m above the start";
+        Assert.True(s.Position.X < startPos.X - 0.5f, $"the agent never slid back down: {measured}");
+        Assert.True(s.Position.Y < startPos.Y, $"the agent ended no lower than it started: {measured}");
     }
 
     [Fact]

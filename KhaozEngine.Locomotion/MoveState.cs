@@ -208,9 +208,15 @@ public struct MoveState
     /// or telemetry recorder needs to see "this character keeps finding footing where the terrain grants none".
     /// <para>Set on EVERY supported tick, not only on transitions: ordinary grounded walking reports <c>true</c>, and so
     /// does every path that can grant support (the terrain/prop seat, the swallowed-descent wedge, the stair-climb
-    /// grounded holds, the paced climb). It is the union, deliberately - a consumer asking "did the sim decide this tick
-    /// had footing" wants one answer, not one per mechanism - and a transition is still derivable by comparing it with
-    /// the PREVIOUS tick's, exactly as <see cref="Grounded"/> was used for before this existed.</para>
+    /// grounded holds, the step-down hold, the paced climb). It is the union, deliberately - a consumer asking "did the
+    /// sim decide this tick had footing" wants one answer, not one per mechanism - and a transition is still derivable
+    /// by comparing it with the PREVIOUS tick's, exactly as <see cref="Grounded"/> was used for before this
+    /// existed.</para>
+    /// <para>The three routes that read the ANALYTIC terrain - the seat, the wedge and the step-down hold - all run
+    /// the one traction test against the tick's resolved gate, so a <c>true</c> here on terrain steeper than
+    /// <c>MaxSlopeRadians</c> plus the hysteresis band is an anomaly on every path alike. The step-down hold was the
+    /// exception until #470: it inherited the seat's test, which is only computed for drops the ground stick reaches,
+    /// and so ran no test at all across its own band. Prop support is exempt on every route, as it always was.</para>
     /// <para>A SWIM TICK REPORTS <c>false</c>, matching its <see cref="Grounded"/>: gravity and the ground snap are
     /// suspended, so no support is resolved at all.</para>
     /// It is a per-tick EVENT, not carried state (<c>default</c> <c>false</c>, byte-identical to a pre-feature state),

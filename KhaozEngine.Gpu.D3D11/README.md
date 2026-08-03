@@ -4,12 +4,13 @@ The engine's own native Direct3D 11 backend for the [KhaozEngine.Gpu](../KhaozEn
 NO umbrella: a consumer adds this package explicitly, the same pattern as `Physics.Bepu` or
 `WorldStore.Sqlite`, and nothing that does not want the Direct3D interop ever carries it.
 
-> **Status: registration, the platform guards, the machine-capability probe, the recording model and the fence
-> subsystem are live.** The recording model (see "Recording, and the two drivers" below) lands behind
-> `KE_D3D11_RECORD` and the fence subsystem (see "Completion fences, and a `WaitForIdle` that drains") behind
+> **Status: registration, the platform guards, the machine-capability probe, the recording model, the resource
+> model and the fence subsystem are live.** The recording model (see "Recording, and the two drivers" below)
+> lands behind `KE_D3D11_RECORD`, the resource model (see "Resources, views and state objects") lands on top of
+> it, and the fence subsystem (see "Completion fences, and a `WaitForIdle` that drains") lands behind
 > `KE_D3D11_REAL_DRAIN`, but device creation is still not built, so `CreateForWindow` and `CreateHeadless` throw
-> a message saying so. `GpuBackendKind.Direct3D11` remains the working Direct3D 11 backend and stays selectable
-> indefinitely.
+> a message saying so, and nothing shipped constructs any of them. `GpuBackendKind.Direct3D11` remains the
+> working Direct3D 11 backend and stays selectable indefinitely.
 
 ## Opting in
 
@@ -66,6 +67,17 @@ is carried in code instead: `KhaozEngineD3D11.IsPlatformSupported` is a
 `[MethodImpl(MethodImplOptions.NoInlining)]` plus `[SupportedOSPlatform("windows")]` behind it. That is the
 pattern `KhaozEngine.Gpu`'s driver-threading probe already proves keeps the Vortice assembly off the load path
 on macOS and Linux, and with warnings as errors CA1416 makes the compiler enforce it rather than a convention.
+
+**And one rule the guards do not state: no type here may hold a Vortice VALUE-TYPE field.** Loading a type makes
+the CLR compute its layout, which resolves every value-type field and loads the assembly declaring it. A
+reference field costs nothing, because a pointer needs no layout, so an `ID3D11Device` field is free while one
+`Format` or `PrimitiveTopology` field is not. The test suite reflects over this assembly's types (the
+emitter-shape check calls `Assembly.GetTypes`), so a single such field pulls the interop into a macOS or Linux
+process and turns every off-Windows load-path assertion in the run red, reported by whichever test looked
+afterwards rather than by the type that caused it. The fix is always the same and costs nothing measurable:
+keep the engine value in the field and expose the Direct3D reading as a COMPUTED property.
+`D3D11Texture.DxgiFormat` and `D3D11GraphicsPipeline.Topology` are both written that way, and a test asserts the
+rule directly so the next occurrence names its own cause.
 
 ## No Veldrid edge
 
@@ -149,9 +161,46 @@ every fence reads signalled, since a destroyed device has no outstanding work to
 The fence poll does NOT flush, deliberately. Only the drain has decided to wait, so only the drain pays to have
 the work handed over, and `IGpuFence.Signaled` stays as cheap as the seam's contract expects.
 
+## Resources, views and state objects
+
+**Every view is created at resource creation, and there are at most four per texture.** From the declared usage
+bits: a full-chain shader resource view if `Sampled` or `GenerateMipmaps`, a render target view at mip 0 layer 0
+if `RenderTarget`, a depth-stencil view if `DepthStencil`, an unordered access view at mip 0 if `Storage`. That
+bound is a fact about the seam rather than a hope, because nothing can ask for a fifth: there is no texture-view
+type, `CreateFramebuffer` takes bare textures with no mip or layer parameter, `ResolveTexture` names two whole
+textures, and per-face cubemap rendering is not expressible. `ID3D11Emitter` has no `Create*` member, so
+creating a view during replay is a compile error. The reason is field evidence: all 25 `DEVICE_REMOVED` stacks
+the incumbent produced surfaced inside a texture-view constructor reached from resource-set activation, which is
+lazy creation putting an allocation on the draw path and on the exact path a corrupted context makes fail.
+
+The POLICY (`D3D11ViewPolicy`) decides which views and bind flags follow from which usage bits in engine types
+alone, so it is tested without a device on every platform. Creating the objects is the Windows half. A
+framebuffer creates and owns NOTHING, since its views already live on its attachments. A `GpuBufferRange` in a
+`CreateResourceSet` description resolves to a buffer plus an offset plus a size at SET creation, never at draw
+time, and both structured buffer kinds keep a full-range RAW byte-address view over a `DEFAULT`-usage buffer
+with `StructureByteStride` advisory, because SPIRV-Cross emits a GLSL storage block as a `ByteAddressBuffer`.
+
+**Registers are assigned per kind, in declaration order, and flattened in pipeline-array order.**
+`UniformBuffer` takes `bN`, `Sampler` takes `sN`, `TextureReadOnly` and `StructuredBufferReadOnly` SHARE `tN`,
+and `TextureReadWrite` and `StructuredBufferReadWrite` SHARE `uN`. Across a pipeline's `ResourceLayouts` array,
+each set's base for a file is the sum of the earlier sets' counts for that file. The GLSL `set=` number decides
+nothing. A device-free table test covers every layout the renderers declare, because a numbering error compiles,
+draws and renders every pixel wrong.
+
+**Pipelines build their blend, depth-stencil, rasterizer and input-layout objects at creation** and store them.
+The input layout needs the compiled vertex shader signature, which is in hand at exactly that moment. There is
+no state cache: the Direct3D 11 runtime already returns an existing object for an identical state description,
+so the incumbent's was dropped.
+
+**Disposal after device death is a no-op.** `D3D11DeviceLiveness` is a volatile token the device flips inside
+its lifecycle lock before the real device is released, and every wrapper's `Dispose` reads it. Destroying the
+device already freed every child object, so a wrapper disposed afterwards must do nothing rather than release
+twice.
+
 ## Design
 
 `docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md` in the engine repo, section 3 (package and layering),
 section 4.1 (getting the assembly loaded), section 5.1 (the stream and the emitter), section 2.1 (the recording
-model), sections 10.3 and 10.4 (fences and the empty `WaitForIdle`), and decisions P1, P2, P4, I2, R1, R2, T2,
-C5, C6 and X3.
+model), section 7 (resources, views and state objects), section 8.1 (register numbering), sections 10.3 and
+10.4 (fences and the empty `WaitForIdle`), and decisions P1, P2, P4, I2, R1, R2, T2, X1, X2, X3, S2, C2, C5
+and C6.

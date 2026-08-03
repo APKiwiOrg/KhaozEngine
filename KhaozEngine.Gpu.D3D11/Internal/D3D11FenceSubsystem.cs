@@ -37,7 +37,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// <para><b>Not thread-safe for its own counters.</b> The telemetry accumulators are driven from the frame
     /// thread, the same contract <c>RetiredResourcePool</c> and the water renderer's counters already have.</para>
     /// </summary>
-    internal sealed class D3D11FenceSubsystem : IDisposable
+    internal sealed class D3D11FenceSubsystem : IDisposable, ID3D11SubmitSignal
     {
         // How long ONE blocking wait slice lasts on a mechanism that has a blocking wait. It is not a drain
         // timeout, and the drain deliberately has none: a wait that is satisfied returns the instant the GPU
@@ -142,6 +142,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// timeline by one, arms <paramref name="fence"/> with the value if one was handed to the submission, and
         /// returns that value.
         /// <para>
+        /// The replay tail reaches it through <see cref="ID3D11SubmitSignal"/>, which
+        /// <see cref="D3D11CommandDrivers.Submit{TEmitter}"/> raises after the last command of the submission and
+        /// inside the submit lock. The interface exists so the submit path can be driven with no timeline behind
+        /// it at all, and this subsystem is its one shipped implementation.
+        /// </para>
+        /// <para>
         /// CALL IT ONCE PER SUBMIT, AFTER the last command of the replay has been emitted and while the submit
         /// lock is held. The lock is re-entrant, so taking it again here costs nothing when the caller already
         /// holds it, which is the normal case. Placing the call before the last command instead would signal a
@@ -175,7 +181,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <param name="fence">The fence handed to <c>Submit(IGpuCommandList, IGpuFence)</c>, or null for the
         /// fenceless <c>Submit(IGpuCommandList)</c>.</param>
         /// <returns>The timeline value this submission signalled.</returns>
-        internal ulong SignalEndOfReplay(IGpuFence? fence)
+        public ulong SignalEndOfReplay(IGpuFence? fence)
         {
             D3D11GpuFence? own = null;
             if (fence is not null)

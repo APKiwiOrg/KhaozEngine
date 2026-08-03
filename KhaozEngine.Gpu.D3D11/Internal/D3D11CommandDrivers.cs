@@ -43,19 +43,65 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// Section 5.1's submit, verbatim: take the submit lock, replay, release. The lock is a PARAMETER because
         /// it belongs to the device, where decision W4 puts it, covering replay, present and the resize apply
         /// together. Recording never touches it, which is what lets N lists record while one is submitting.
+        /// <para>
+        /// THE END-OF-REPLAY SIGNAL RIDES HERE (decision C5), which is what makes one submit exactly one point
+        /// the timeline can name. It is raised after <see cref="Replay{TEmitter}"/> and inside the lock, so it
+        /// lands after the last command of this submission on BOTH drivers: the deferred one has just emitted the
+        /// whole stream, and the immediate one emitted during record and has nothing left to emit. Placing it
+        /// before the replay instead would name a point the GPU reaches before the submission is finished, and a
+        /// fence polled there reports work complete that has not been issued.
+        /// </para>
+        /// <para>
+        /// BOTH TRAILING ARGUMENTS ARE OPTIONAL, and a submit that names neither replays exactly as it always
+        /// has and signals nothing. That is every device-free driver test and the whole package as it stands,
+        /// since no shipped path constructs a device yet. The device row passes its
+        /// <see cref="D3D11FenceSubsystem"/> as <paramref name="signal"/> and whatever fence the seam's
+        /// <c>Submit(IGpuCommandList, IGpuFence)</c> was handed as <paramref name="fence"/>, and a fenceless
+        /// submit still signals because the timeline has to advance with the submission stream for a later
+        /// fence's value to cover the earlier work at all.
+        /// </para>
+        /// <para>
+        /// A REJECTED SUBMIT SIGNALS NOTHING, because <see cref="Replay{TEmitter}"/> throws before the signal is
+        /// reached. That is the right direction rather than an accident of ordering: an unsealed or foreign list
+        /// emitted no commands, so there is no point on the timeline for it to name.
+        /// </para>
         /// </summary>
-        internal static void Submit<TEmitter>(object submitLock, IGpuCommandList list, ref TEmitter emitter)
+        internal static void Submit<TEmitter>(object submitLock, IGpuCommandList list, ref TEmitter emitter,
+            ID3D11SubmitSignal? signal = null, IGpuFence? fence = null)
             where TEmitter : struct, ID3D11Emitter
         {
             if (submitLock is null) throw new ArgumentNullException(nameof(submitLock));
 
-            lock (submitLock) Replay(list, ref emitter);
+            // A fence with nothing to arm it is the one combination of the two that is always a defect, and it is
+            // a defect that goes quiet: the fence stays unarmed, so it reads unsignalled forever and whatever is
+            // waiting on it waits forever. That is a hang rather than a wrong pixel, and it surfaces in the
+            // retire pool rather than here, so it is refused at the call that made it.
+            if (signal is null && fence is not null)
+            {
+                throw new ArgumentException(
+                    "A fence was handed to a Direct3D 11 submit that has no signal sink, so nothing would ever "
+                    + "arm it. An unarmed fence never reads signalled, and a consumer polling for that "
+                    + "submission's completion waits forever. Pass the device's fence subsystem alongside the "
+                    + "fence.", nameof(fence));
+            }
+
+            lock (submitLock)
+            {
+                Replay(list, ref emitter);
+                signal?.SignalEndOfReplay(fence);
+            }
         }
 
         /// <summary>
         /// Replay <paramref name="list"/> into <paramref name="emitter"/>, assuming the caller already holds the
         /// submit lock. Separate from <see cref="Submit{TEmitter}"/> so a device that already took the lock for a
         /// present or a resize apply does not take it twice.
+        /// <para>
+        /// THAT CALLER OWES THE END-OF-REPLAY SIGNAL ITSELF, right after this returns and before it releases the
+        /// lock, because the signal belongs to the submission rather than to the replay: this method is also the
+        /// inside of <see cref="Submit{TEmitter}"/>, so signalling here would signal twice for every ordinary
+        /// submit.
+        /// </para>
         /// <para>
         /// On the immediate driver this is a no-op with one check, because the native calls were made during
         /// record. That asymmetry is the whole difference between the drivers and it is confined to this method.

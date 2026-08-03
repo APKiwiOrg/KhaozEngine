@@ -23,7 +23,7 @@ namespace KhaozEngine.Locomotion;
 //      footing buys, and the tick's OWN RESOLVED UPWARD MOTION when it is not (#468, 17.29.0): a tick with no
 //      footing may never end higher than its own velocity carried it, so altitude on steep ground never comes
 //      from the ground clamp. See NoFootingReach and SlideReach.
-//   2. NO TRACTION. Ground steeper than MoveTuning.MaxSlopeRadians grants no support, so gravity decomposes
+//   2. NO TRACTION. Ground steeper than the tick's TRACTION GATE grants no support, so gravity decomposes
 //      against the surface and the character accelerates down the fall line until it reaches walkable ground, open
 //      air, or water. Climbing self-defeats because there is no footing to climb from, which is what retires the
 //      ascent gate rather than patching it a third time. The ONE exception is A BODY THE WORLD IS HOLDING UP
@@ -57,6 +57,13 @@ namespace KhaozEngine.Locomotion;
 //     and does the ground under the footprint fold back on itself (OpposingFallLines). Smoothing is a stability
 //     FEATURE there - a per-sample classification would flicker the support decision with it - and it is free,
 //     because a classification decides what a tick IS, never where the capsule ends up.
+//
+// WHERE THE GATE COMES FROM (#475, 17.30.0). Every steepness test in this file takes the threshold as a VALUE rather
+// than reading MoveTuning.MaxSlopeRadians for itself, because the gate is state-dependent now: a character that
+// already has footing is judged against MaxSlopeRadians plus a hysteresis band, and one that has none against the
+// bare gate. StepCore resolves it once per tick and hands the same number to the wall contact, the slide contact, the
+// resolve and the wedge. The rule, the band, and the slide friction that rides beside it all live in
+// CharacterMovement.Traction.cs. Nothing in this file re-derives any of it.
 //
 // Everything here is pure scalar arithmetic in a fixed order over the same pure delegates both heads hold, so a
 // slide replays bit-identically through ClientPrediction.Reconcile. It adds NO carried state: the fall-line and
@@ -113,14 +120,6 @@ public static partial class CharacterMovement
     // the defaults, and the down phase saturates at MaxFallSpeed / tan(gate) = 50 m/s at the 45 degree gate. Both
     // are far under 127 on either axis, so the clamp never binds and the shape it binds with cannot matter.
     private const float SlideCarrySpeedCeiling = 127f;
-
-    /// <summary>True when a ground normal is steeper than the tuning's walkable gate. The single reading of
-    /// "too steep" for the whole step: the support decision, the wall contact, and the slide contact all ask this one
-    /// question of the same value, in the same way the retired gate asked it - <see cref="MathF.Acos"/> of the
-    /// clamped Y against <see cref="MoveTuning.MaxSlopeRadians"/> - so nothing shifted at the threshold itself and a
-    /// walkable slope is bit-identical to every release before this one.</summary>
-    private static bool IsSteepGround(in Vector3 normal, in MoveTuning tuning)
-        => MathF.Acos(Math.Clamp(normal.Y, 0f, 1f)) > tuning.MaxSlopeRadians;
 
     /// <summary>The face's OUTWARD horizontal direction: a surface plane normal's XZ projection, normalized. It points
     /// away from the face and down its fall line, so a positive dot with a velocity means travelling AWAY from the
@@ -235,10 +234,13 @@ public static partial class CharacterMovement
     /// <para><c>active</c> false is a tick with nothing to advance, and it skips the sampling entirely rather than
     /// evaluating the delegates at the unchanged position. <c>feetY</c> is the world Y of the character's FEET this
     /// tick: the capsule centre minus <see cref="MoveTuning.CapsuleHalfHeight"/>, since <see cref="MoveState.Position"/>
-    /// is the capsule CENTRE.</para></summary>
+    /// is the capsule CENTRE. <c>gate</c> is the tick's ONE traction gate (<see cref="TractionGate"/>), so a grounded
+    /// character's wall contact reads the same widened threshold its support decision does - without that, a run up a
+    /// bank the hysteresis band is holding footing on would meet a fence made of the very ground it is standing
+    /// on.</para></summary>
     private static (float x, float z) AdvanceWallSlide(float x, float z, Vector2 velocity, bool active, float dt,
         in MoveTuning tuning, Func<float, float, Vector3>? groundNormal, Func<float, float, float> groundHeight,
-        float feetY, float reach)
+        float feetY, float reach, float gate)
     {
         if (!active) return (x, z);
         float nx = x + velocity.X * dt;
@@ -247,7 +249,7 @@ public static partial class CharacterMovement
         // Fixed order on both heads: the destination normal first, and its height only inside the steep branch, so a
         // walkable tick costs exactly the one delegate call the retired gate cost it.
         Vector3 destNormal = groundNormal(nx, nz);
-        if (!IsSteepGround(destNormal, tuning)) return (nx, nz);
+        if (!IsSteepGround(destNormal, gate)) return (nx, nz);
         if (groundHeight(nx, nz) - feetY <= reach) return (nx, nz);
 
         // THE FACE DIRECTION COMES FROM THE HEIGHTS (#468), not from destNormal. destNormal has already done its one
@@ -270,7 +272,7 @@ public static partial class CharacterMovement
         float tx = x + sx * dt;
         float tz = z + sz * dt;
         Vector3 tangentNormal = groundNormal(tx, tz);
-        if (IsSteepGround(tangentNormal, tuning) && groundHeight(tx, tz) - feetY > reach) return (x, z);
+        if (IsSteepGround(tangentNormal, gate) && groundHeight(tx, tz) - feetY > reach) return (x, z);
         return (tx, tz);
     }
 
@@ -376,16 +378,21 @@ public static partial class CharacterMovement
     /// the wedge's whole purpose is to let a body the world is holding up act like it is being held up - and it
     /// cannot ratchet, for the reason set out in <see cref="NoFootingReach"/>. Then the contact test
     /// (one <c>groundHeight</c> call, which a character falling through open air fails immediately), and only then
-    /// the normal.</para></summary>
-    private static bool SlideContact(in MoveState state, in MoveTuning tuning, float halfHeight,
-        Func<float, float, float> groundHeight, Func<float, float, Vector3>? groundNormal, out Vector3 normal)
+    /// the normal.</para>
+    /// <para><c>gate</c> is the tick's traction gate. A sliding tick has no footing by the first conjunct, so the gate
+    /// it is handed is always the bare <see cref="MoveTuning.MaxSlopeRadians"/> and the hysteresis band cannot widen
+    /// what counts as a slide. It is passed rather than re-read so there is one gate per tick and no call site that
+    /// can drift from it (see <see cref="TractionGate"/>).</para></summary>
+    private static bool SlideContact(in MoveState state, float halfHeight,
+        Func<float, float, float> groundHeight, Func<float, float, Vector3>? groundNormal, float gate,
+        out Vector3 normal)
     {
         normal = default;
         if (state.Grounded || groundNormal is null) return false;
         if (state.Position.Y - halfHeight > groundHeight(state.Position.X, state.Position.Z) + SlideContactSkin)
             return false;
         normal = groundNormal(state.Position.X, state.Position.Z);
-        return IsSteepGround(normal, tuning);
+        return IsSteepGround(normal, gate);
     }
 
     /// <summary>What one SLIDING tick resolves to: the advanced XZ, the velocity the step is asking for (which
@@ -487,7 +494,7 @@ public static partial class CharacterMovement
     /// carry.</para></summary>
     private static SlideStep ResolveSlide(in MoveState state, Vector2 moveDir, float speedFraction, bool run,
         float dt, in MoveTuning tuning, in Vector3 normal, Func<float, float, Vector3>? groundNormal,
-        Func<float, float, float> groundHeight, float speedScale, float halfHeight)
+        Func<float, float, float> groundHeight, float speedScale, float halfHeight, float gate)
     {
         // The surface frame, READ OFF THE HEIGHT FIELD (#468). `normal` classified this tick as a slide and is done.
         // the plane the fall line and the contour are built from is the central-difference one under the capsule, so
@@ -515,9 +522,14 @@ public static partial class CharacterMovement
         float fall = state.HorizontalVelocity.X * tx + state.VerticalVelocity * ty + state.HorizontalVelocity.Y * tz;
         float contour = state.HorizontalVelocity.X * cx + state.HorizontalVelocity.Y * cz;
 
-        // Gravity accumulates along the fall line alone, then the terminal the vertical axis obeys, read through
+        // Gravity accumulates along the fall line alone, RAMPED IN BY THE SLIDE FRICTION over the band past the gate
+        // (#475): a surface a degree too steep to stand on pulls at a fraction of gravity, a sheer one at all of it,
+        // so the classifier's boundary stops being a cliff edge in the feel. The ramp reads the SAME height plane the
+        // frame above was built from, and it scales the DOWNHILL half alone - a rising slide keeps full-strength
+        // deceleration, which is what stops friction from becoming free altitude. See SlideFrictionScale and
+        // SlideFallLineStep in CharacterMovement.Traction.cs. Then the terminal the vertical axis obeys, read through
         // the surface and floored against a degenerate gate.
-        fall += tuning.Gravity * h * dt;
+        fall = SlideFallLineStep(fall, tuning.Gravity * h, SlideFrictionScale(ny, gate, tuning), dt);
         float terminal = tuning.MaxFallSpeed / MathF.Max(h, SlideFallLineFloor(tuning));
         if (fall > terminal) fall = terminal;
         else if (fall < -terminal) fall = -terminal;
@@ -539,7 +551,7 @@ public static partial class CharacterMovement
 
         (float x, float z) = AdvanceWallSlide(state.Position.X, state.Position.Z, commanded,
             commanded != Vector2.Zero, dt, tuning, groundNormal, groundHeight, state.Position.Y - halfHeight,
-            SlideReach(vVel, dt));
+            SlideReach(vVel, dt), gate);
 
         // RE-SEAT DOWN ONTO THE SURFACE, and only ever down. The ground clamp covers one direction of the
         // resolve/surface disagreement - a capsule that ends BELOW the terrain is lifted onto it - and nothing
@@ -632,8 +644,12 @@ public static partial class CharacterMovement
     /// <param name="groundNormal">The ground-normal delegate the ring is sampled through. Null cannot reach here (a
     /// slide requires it), and reads as "no shape to see", so no wedge.</param>
     /// <param name="groundHeight">The height field the body-scale plane is read from.</param>
+    /// <param name="gate">This tick's traction gate. A wedge arms only on a sliding tick, which has no footing, so it
+    /// is the bare <see cref="MoveTuning.MaxSlopeRadians"/>: REGAINING footing is judged at the gate, never at the
+    /// hysteresis band, so a wedge cannot be a back door onto ground a standing character would have kept.</param>
     private static bool SlideWedged(float startY, float resolvedY, float slideVVel, float dt, in MoveTuning tuning,
-        in Vector3 resolved, Func<float, float, Vector3>? groundNormal, Func<float, float, float> groundHeight)
+        in Vector3 resolved, Func<float, float, Vector3>? groundNormal, Func<float, float, float> groundHeight,
+        float gate)
     {
         // BEING HELD UP CAN BE READ TWO WAYS, and either one arms the rule. The SHAPE test below is required by both,
         // so what differs is only the evidence that this particular body is resting rather than falling.
@@ -653,7 +669,7 @@ public static partial class CharacterMovement
         // the V-gully fixture as 0 grounded ticks in 400, the capsule at rest on the crease floor and a held jump that
         // never fires. The symptom vanished because the model got better at seeing the shape that caused it.
         bool standableUnderfoot =
-            !IsSteepGround(HeightPlaneNormal(resolved.X, resolved.Z, tuning, groundHeight, Vector3.UnitY), tuning);
+            !IsSteepGround(HeightPlaneNormal(resolved.X, resolved.Z, tuning, groundHeight, Vector3.UnitY), gate);
         if (!standableUnderfoot)
         {
             float arming = tuning.Gravity * MathF.Max(tuning.CoyoteTime, dt);

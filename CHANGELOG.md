@@ -149,6 +149,20 @@ disk cache, since that one never passed through a compiler in this process), and
 `[Theory]` reads the emitted HLSL's own input semantics for all four shadow programs and the terrain pair, so the
 sink and the interpolant ordering are asserted on every leg rather than only on Windows.
 
+**And that gate found a third holed signature on its first Windows run, before it could corrupt anything
+(cross-platform-gpu run 30798302196).** `OverlayUnlitVert`, the translucent overlay mesh pass, declares the full
+`ModelVertex` stream so the model pass's own vertex buffer binds unchanged, and it means only Position at
+location 0 and Color at location 2. Normal sits between them and was dropped, so the emitted signature was
+`TEXCOORD0` then `TEXCOORD2`, the exact shape that blanked the model pass and blew the terrain to flat white.
+Whether it had already miscompiled on a real Direct3D 11 device is unmeasured, and the two prior incidents are
+the reason not to find out. The GLSL ships inside the packages, so the fix is in the GLSL and takes the shadow
+pass's form: the vertex now reads Normal, TexCoord and Tangent into a 1e-30 sink, and SPIRV-Cross keeps a
+contiguous `TEXCOORD0..4` signature matching the declared vertex layout. The sink is numerically negligible and
+output-neutral on all three backends, and every Metal golden is byte-stable across it, as both earlier sinks
+were. A device-free case pins it alongside the shadow and terrain ones, so it cannot be removed on any leg
+without a red test, and the whole catalog was swept for siblings at the same time: no other shipped program
+emits a holed vertex input or fragment input signature.
+
 **`KhaozEngineD3D11.ValidateShaderPair` and `ValidateComputeShader` are new public API**, and they are the half
 `ShaderValidation` cannot cover. That validator cross-compiles to HLSL, MSL, GLSL and ESSL and stops, so it has
 never COMPILED the HLSL it produced, which is exactly how both incidents got past it. These two run the real FXC

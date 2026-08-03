@@ -1,4 +1,6 @@
 using System;
+using System.Runtime.InteropServices;
+using System.Threading;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.D3D11;
 using KhaozEngine.Gpu.D3D11.Internal;
@@ -8,14 +10,20 @@ namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
     /// THE STAGING MAP PATH'S DEVICE-FREE HALF: the two refusals a caller can earn, the row-pitch arithmetic a
-    /// readback walks, and decision G3's second check site, all driven on macOS and Linux.
+    /// readback walks, decision G3's second check site, and decision W4's staging lock clause, all driven on
+    /// macOS and Linux.
     /// <para>
-    /// WHAT IS DELIBERATELY NOT HERE. <see cref="D3D11StagingAccess"/> is the other half, and every member of it
-    /// takes an <c>ID3D11DeviceContext</c>, so it cannot be constructed off Windows and its two native calls are
-    /// the residue the WARP leg covers. Everything that could be wrong WITHOUT a GPU was pushed into
-    /// <see cref="D3D11StagingMaps"/> precisely so it could be pinned here: which subresource a map names, what
-    /// <see cref="MappedData.RowPitch"/> means for a texture versus a buffer, whether an unbalanced pair is
-    /// refused, and what a failed HRESULT does to the device-loss latch.
+    /// THE LOCK CLAUSE IS HERE NOW, WHICH IT WAS NOT. <see cref="D3D11StagingAccess"/> used to take a concrete
+    /// <c>ID3D11DeviceContext</c>, so it could not be constructed off Windows and "the lock is taken for the map
+    /// call and nothing longer" shipped as prose with no test behind it. Its four native calls now sit behind
+    /// <see cref="ID3D11StagingMemory"/>, the way the ring's two sit behind <c>ID3D11RingMemory</c>, so the whole
+    /// ordering is driven here through <see cref="FakeD3D11StagingMemory"/>, which records
+    /// <c>Monitor.IsEntered</c> per call.
+    /// </para>
+    /// <para>
+    /// WHAT IS STILL DELIBERATELY NOT HERE is the residue behind that seam:
+    /// <see cref="D3D11ContextStagingMemory"/>'s four <c>Map</c> and <c>Unmap</c> calls against a live context,
+    /// and which Vortice method each one picks. That needs a device and it is what the WARP leg covers.
     /// </para>
     /// </summary>
     public sealed class D3D11StagingMapTests
@@ -247,14 +255,192 @@ namespace KhaozEngine.Tests.Gpu
             => Assert.Throws<InvalidOperationException>(
                 () => D3D11StagingMaps.RequireMapped(D3D11DeviceLossCodes.DeviceRemoved, loss: null));
 
+        // ---- Decision W4's staging lock clause, through the seam ------------------------------------------------
+
+        /// <summary>
+        /// EVERY NATIVE CALL RUNS UNDER THE SUBMIT LOCK, which is the positive half of the staging clause. A map
+        /// and an unmap are both context calls, so both owe it, and a buffer and a texture take four different
+        /// members that each have to remember. The fake answers null rather than false when nothing recorded, so
+        /// a wiring mistake in the test cannot read as a pass.
+        /// </summary>
+        [Fact]
+        public void EveryNativeStagingCall_RunsUnderTheSubmitLock()
+        {
+            var submitLock = new object();
+            using var memory = new FakeD3D11StagingMemory { SubmitLock = submitLock };
+            var access = new D3D11StagingAccess(memory, submitLock);
+            using var buffer = new FakeStagingBuffer();
+            using var texture = new FakeStagingTexture();
+
+            access.Map(buffer, GpuMapMode.Read);
+            access.Unmap(buffer);
+            access.Map(texture, GpuMapMode.Read);
+            access.Unmap(texture);
+
+            Assert.Equal(
+                new[] { "MapBuffer", "UnmapBuffer", "MapTexture", "UnmapTexture" },
+                memory.Calls);
+            Assert.True(memory.EveryCallHeldTheSubmitLock);
+        }
+
+        /// <summary>
+        /// AND THE LOCK IS NOT HELD ACROSS THE CALLER'S READ, which is the half that matters and the half a
+        /// contract stated only in prose loses first. A readback is Map, walk the pixels, Unmap, and holding the
+        /// lock through the walk would block every submit for as long as the consumer took: that is precisely the
+        /// frame-long hold this design deletes. Two calls take the lock twice, and between them the mapped pointer
+        /// is the caller's alone.
+        /// </summary>
+        [Fact]
+        public void BetweenMapAndUnmap_TheCallerReadsWithTheSubmitLockFree()
+        {
+            var submitLock = new object();
+            using var memory = new FakeD3D11StagingMemory { SubmitLock = submitLock };
+            var access = new D3D11StagingAccess(memory, submitLock);
+            using var buffer = new FakeStagingBuffer(sizeInBytes: 256);
+
+            MappedData mapped = access.Map(buffer, GpuMapMode.Read);
+            Assert.True(memory.LastCallHeldTheSubmitLock);
+
+            // The consumer's walk. This is the window a frame-long hold would have covered.
+            bool lockHeldDuringTheRead = Monitor.IsEntered(submitLock);
+            memory.Bytes[0] = 0xAB;
+            byte firstByte = Marshal.ReadByte(mapped.Data);
+
+            access.Unmap(buffer);
+
+            Assert.False(lockHeldDuringTheRead);
+            Assert.Equal(0xAB, firstByte);
+            Assert.True(memory.LastCallHeldTheSubmitLock);
+            Assert.Equal(256u, mapped.RowPitch);
+        }
+
+        /// <summary>
+        /// BOTH REFUSALS STILL FIRE THROUGH THE REAL PATH, not only against the registry in isolation. The
+        /// refusal is taken INSIDE the lock and BEFORE the native call, so a refused pair costs no driver call at
+        /// all, and that ordering is what these assert: the fake was never asked for a second map, and never asked
+        /// to unmap something it holds nothing for.
+        /// </summary>
+        [Fact]
+        public void ThroughTheSeam_ADoubleMapAndAnUnmapWithNoMap_AreRefusedBeforeAnyNativeCall()
+        {
+            var submitLock = new object();
+            using var memory = new FakeD3D11StagingMemory { SubmitLock = submitLock };
+            var access = new D3D11StagingAccess(memory, submitLock);
+            using var buffer = new FakeStagingBuffer();
+            using var never = new FakeStagingBuffer();
+
+            access.Map(buffer, GpuMapMode.Read);
+
+            InvalidOperationException second = Assert.Throws<InvalidOperationException>(
+                () => access.Map(buffer, GpuMapMode.Write));
+            Assert.Contains("already mapped", second.Message, StringComparison.Ordinal);
+
+            InvalidOperationException unbalanced = Assert.Throws<InvalidOperationException>(
+                () => access.Unmap(never));
+            Assert.Contains("not mapped", unbalanced.Message, StringComparison.Ordinal);
+
+            // One map, and nothing else reached the driver. The first mapping is still open and still balanced.
+            Assert.Equal(new[] { "MapBuffer" }, memory.Calls);
+            Assert.Equal(1, access.Maps.OpenCount);
+            access.Unmap(buffer);
+            Assert.Equal(0, access.Maps.OpenCount);
+        }
+
+        /// <summary>
+        /// DECISION G3'S SITE DRIVEN THROUGH THE PATH A DEVICE TAKES, with the fake answering a removal HRESULT.
+        /// The static's own arms are asserted above. What this adds is that the result actually travels from the
+        /// native call to <c>RequireMapped</c> with the latch attached, and that a failed map ROLLS THE REGISTRY
+        /// BACK. Leaving the record would make the caller's next attempt look like a double map and refuse it for
+        /// the wrong reason, which is a failure that outlives the one that caused it.
+        /// </summary>
+        [Fact]
+        public void AMapWhoseHresultIsARemoval_LatchesAndLeavesNothingOpen()
+        {
+            var submitLock = new object();
+            var reason = new FakeRemovedReason { Reason = D3D11DeviceLossCodes.DeviceHung };
+            var liveness = new D3D11DeviceLiveness();
+            var latch = new D3D11DeviceLossLatch(liveness, reason);
+            using var memory = new FakeD3D11StagingMemory
+            {
+                SubmitLock = submitLock,
+                MapResult = D3D11DeviceLossCodes.DeviceRemoved,
+            };
+            var access = new D3D11StagingAccess(memory, submitLock, latch);
+            using var texture = new FakeStagingTexture();
+
+            InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
+                () => access.Map(texture, GpuMapMode.Read));
+
+            Assert.Contains("LOST", ex.Message, StringComparison.Ordinal);
+            Assert.True(latch.IsLost);
+            Assert.True(liveness.IsDead);
+            Assert.Equal(D3D11StagingMaps.MapSite, latch.Site);
+            Assert.Equal(D3D11DeviceLossCodes.DeviceHung, latch.RemovedReason);
+
+            // The rollback: nothing is recorded as open, so the next attempt is a first map rather than a second.
+            Assert.Equal(0, access.Maps.OpenCount);
+            Assert.True(memory.EveryCallHeldTheSubmitLock);
+        }
+
+        /// <summary>
+        /// A TEXTURE'S MAPPED WINDOW COMES FROM THE RUNTIME'S PITCH AND THE TEXTURE'S HEIGHT, joined here rather
+        /// than in the arithmetic helper alone. The fake reports a pitch unlike any packed width, so a size
+        /// computed from the texture's own byte count would fail this rather than coincide with it.
+        /// </summary>
+        [Fact]
+        public void ATextureMapThroughTheSeam_ReportsTheRuntimePitchAndTheHeightItCovers()
+        {
+            var submitLock = new object();
+            using var memory = new FakeD3D11StagingMemory { SubmitLock = submitLock, RowPitch = 96 };
+            var access = new D3D11StagingAccess(memory, submitLock);
+            using var texture = new FakeStagingTexture(width: 4, height: 3);
+
+            MappedData mapped = access.Map(texture, GpuMapMode.Read);
+
+            Assert.Equal(96u, mapped.RowPitch);
+            Assert.Equal(96u * 3u, mapped.SizeInBytes);
+            access.Unmap(texture);
+        }
+
+        /// <summary>
+        /// A RESOURCE WITH NO CPU ACCESS IS REFUSED BEFORE THE LOCK IS EVEN TAKEN, and a resource from another
+        /// backend is refused by name. Both used to be a cast to a Windows-only concrete type and therefore
+        /// unreachable from here, and both are answered by the capability seam now, so both are pinned. Neither
+        /// reaches the driver.
+        /// </summary>
+        [Fact]
+        public void AnUnmappableResourceAndAForeignOne_AreRefusedWithoutANativeCall()
+        {
+            var submitLock = new object();
+            using var memory = new FakeD3D11StagingMemory { SubmitLock = submitLock };
+            var access = new D3D11StagingAccess(memory, submitLock);
+            using var defaultUsage = new FakeStagingBuffer(mappable: false);
+            using var foreign = new FakeBuffer(256);
+
+            ArgumentException notStaging = Assert.Throws<ArgumentException>(
+                () => access.Map(defaultUsage, GpuMapMode.Read));
+            Assert.Contains("GpuBufferUsage.Staging", notStaging.Message, StringComparison.Ordinal);
+
+            ArgumentException otherBackend = Assert.Throws<ArgumentException>(
+                () => access.Map(foreign, GpuMapMode.Read));
+            Assert.Contains("another backend", otherBackend.Message, StringComparison.Ordinal);
+
+            Assert.Empty(memory.Calls);
+            Assert.Equal(0, access.Maps.OpenCount);
+        }
+
         // ---- The load-path claim ------------------------------------------------------------------------------
 
         /// <summary>
         /// THE WHOLE STAGING SURFACE THAT IS NOT A NATIVE CALL RUNS OFF WINDOWS WITHOUT LOADING THE INTEROP, which
-        /// is decision P1's claim applied to this row. The two members that DO name a Direct3D type
-        /// (<c>D3D11StagingAccess.Map</c> and <c>Unmap</c>) are unreachable from here by construction, because
-        /// constructing one needs an <c>ID3D11DeviceContext</c>, and <c>ToMapMode</c> is marked Windows-only so
-        /// calling it from a test project that is not would be a build error rather than a load.
+        /// is decision P1's claim applied to this row. It covers MORE than it used to: the seam extraction moved
+        /// the Vortice reference out of <see cref="D3D11StagingAccess"/> and into
+        /// <see cref="D3D11ContextStagingMemory"/>, so the whole map path (the lock, the registry, the
+        /// arithmetic and the G3 site) is exercised here through a fake seam and the interop still must not
+        /// appear. The members that DO name a Direct3D type live one class further down and are unreachable from
+        /// here by construction, since building one needs an <c>ID3D11DeviceContext</c>, and its
+        /// <c>ToMapMode</c> is marked Windows-only so calling it from a test project that is not would be a build
+        /// error rather than a load.
         /// </summary>
         [Fact]
         public void OffWindows_TheStagingBookkeepingRunsWithoutLoadingTheDirect3DInterop()
@@ -272,6 +458,16 @@ namespace KhaozEngine.Tests.Gpu
             _ = D3D11StagingMaps.ForTexture(IntPtr.Zero, 256, 4);
             _ = D3D11StagingMaps.ForBuffer(IntPtr.Zero, 256);
             D3D11StagingMaps.RequireMapped(D3D11DeviceLossCodes.Ok, loss: null);
+
+            var submitLock = new object();
+            using var memory = new FakeD3D11StagingMemory { SubmitLock = submitLock };
+            var access = new D3D11StagingAccess(memory, submitLock);
+            using var buffer = new FakeStagingBuffer();
+            using var texture = new FakeStagingTexture();
+            _ = access.Map(buffer, GpuMapMode.Read);
+            access.Unmap(buffer);
+            _ = access.Map(texture, GpuMapMode.ReadWrite);
+            access.Unmap(texture);
 
             D3D11InteropLoad.AssertNotLoaded();
         }

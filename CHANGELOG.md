@@ -737,6 +737,24 @@ two members that refuse a caller holding the lock, and the alternative (mapping 
 outside the lock) trades a bounded wait for a spin that can starve. The package README's threading contract says
 so rather than leaving it in a source comment.
 
+**The four native calls sit behind `ID3D11StagingMemory`, which is what turns that lock clause into an
+assertion.** It is the same shape the ring's two calls take behind `ID3D11RingMemory` and the fence's behind
+`ID3D11FenceTimeline`, and it exists for the same reason: everything that can be wrong about a staging map
+without a GPU is engine logic, and the ORDERING (which is to say, when the submit lock is held) is the part of it
+a concrete `ID3D11DeviceContext` on the far side made untestable. `D3D11ContextStagingMemory` is the Windows
+implementation over the immediate context, `D3D11StagingAccess` consumes the seam and is now constructible off
+Windows, and a fake recording `Monitor.IsEntered` per call pins BOTH halves of decision W4's staging clause:
+every native call under the lock, and the caller's read between `Map` and `Unmap` NOT under it. A map answers its
+`HRESULT` across the seam untouched, so the G3 site below is driven through the path a device takes with a fake
+result rather than only against the static, and a failed map is shown to roll the registry back. Which native
+resource a map names, and whether the declared usage allows a map at all, are answered by the resource through
+`ID3D11MappableResource`, a fourth capability seam beside `ID3D11PipelineState`, `ID3D11RingBacked` and
+`ID3D11BindableViews`: a cast straight to `D3D11Buffer` would be a cast to a Windows-only type, so both of the
+map path's refusals would have gone back to being Windows residue. **The device row
+(https://github.com/APKiwiOrg/KhaozEngine/issues/497) constructs
+`new D3D11StagingAccess(new D3D11ContextStagingMemory(context), submitLock, latch)`**, one class deeper than
+before and otherwise unchanged.
+
 **Both unbalanced-pair mistakes are refused by name.** A second map of an already-mapped resource earns a failed
 HRESULT and a debug-layer message from Direct3D 11, both silent in a release build, and its field shape is a
 readback that quietly returns the previous contents. An unmap of something never mapped is ignored entirely, with
@@ -768,8 +786,13 @@ offsets-only path that cannot trip it, the self-conflicting set whose second and
 same four calls, and the pipeline switch whose drained activation the wipe discards while the graphics raise
 survives. The staging half is device-free in `D3D11StagingMaps`: both refusals, the
 pitch arithmetic, the subresource constant, and all four arms of the G3 site (success, ordinary failure, a
-removal that latches under this row's site name, and a null latch). The Windows residue is two native calls, and
-an off-Windows test asserts the whole bookkeeping surface runs without loading the Direct3D interop. The compute
+removal that latches under this row's site name, and a null latch). Through the seam it also covers the map path
+itself: every native call under the submit lock, the caller's read between `Map` and `Unmap` with the lock free,
+both refusals taken before any driver call is made, a removal HRESULT that latches and leaves nothing open, the
+runtime pitch carried into the mapped size, and a resource with no CPU access or from another backend refused
+without a native call. The Windows residue is the four `Map` and `Unmap` calls, and
+an off-Windows test asserts the whole surface above them, `D3D11StagingAccess` included, runs without loading the
+Direct3D interop. The compute
 `[GpuFact]` suite on all three backends, `ComputeTextureHandoffGpuTests` above all, is the regression evidence
 the WARP leg will carry.
 

@@ -38,7 +38,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// </para>
     /// </summary>
     [SupportedOSPlatform("windows")]
-    internal sealed class D3D11Buffer : IGpuBuffer, ID3D11RingBacked, ID3D11BindableViews
+    internal sealed class D3D11Buffer : IGpuBuffer, ID3D11RingBacked, ID3D11BindableViews, ID3D11MappableResource
     {
         readonly D3D11DeviceLiveness _liveness;
         readonly D3D11RingAllocator _rings;
@@ -117,6 +117,17 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         /// <inheritdoc/>
         object? ID3D11BindableViews.SamplerStateObject => null;
+
+        // ---- ID3D11MappableResource: what a staging Map needs, answered by the resource ----
+
+        /// <inheritdoc/>
+        object ID3D11MappableResource.MapTarget => Buffer;
+
+        /// <inheritdoc/>
+        /// <remarks>Staging is the readback case. DYNAMIC and the ring's dynamic buffers are accepted too because
+        /// they genuinely carry CPU write access, which keeps the map path's refusal a refusal of the impossible
+        /// rather than a divergence from the incumbent.</remarks>
+        bool ID3D11MappableResource.IsMappable => Views.Staging || Views.Dynamic || Views.Ring;
 
         public void Dispose()
         {

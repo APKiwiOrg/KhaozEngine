@@ -337,7 +337,10 @@ the parallel arrays `*SetConstantBuffers1` takes. It is also where a REFUSAL bot
 scissor index, a buffer from another backend, and the framebuffer a clear names an attachment of (none bound, no
 colour attachment at that index, no depth attachment at all). A refusal kept in the real emitter alone means the
 trace accepts a stream the device throws on, and neither side of that is reachable by a test here. All of it
-runs under a plain `dotnet test` on macOS, which is the point: the emitter is left with a cast and a call.
+runs under a plain `dotnet test` on macOS, which is the point: the emitter is left with a cast and a call. The
+staging map asks the resource the same way, through `ID3D11MappableResource` (the native handle a `Map` names,
+and whether the declared usage gave it CPU access at all), so its two refusals are device-free for the same
+reason this one's are.
 
 **The emitter is a readonly struct over two class references it RECEIVES.** The state is the device's one cache
 (issue #476) and `D3D11EmitterContext` carries the device context plus the scratch arrays, grown geometrically
@@ -438,6 +441,19 @@ release build), an unmap of something never mapped is refused too (Direct3D 11 i
 pitch is the runtime's padded stride rather than the packed row width, with the mapped size following the pitch.
 Teardown and a device loss FORGET the open mappings rather than unmapping them, because after the device is gone
 the mappings do not exist.
+
+**The four native calls sit behind `ID3D11StagingMemory`, which is what makes that lock clause an assertion
+rather than a promise.** It is the same shape the ring's two calls take behind `ID3D11RingMemory` and the fence's
+behind `ID3D11FenceTimeline`: `D3D11ContextStagingMemory` is the Windows implementation over the immediate
+context, `D3D11StagingAccess` consumes the seam, and a fake recording `Monitor.IsEntered` per call pins BOTH
+halves of decision W4's staging clause off Windows (every native call under the lock, and the caller's read
+between `Map` and `Unmap` not under it). A map answers its `HRESULT` across the seam untouched, so the G3 site
+below is driven through the real path with a fake result rather than only against the static. Which resource a
+map names, and whether its declared usage allows one at all, are answered by the resource itself through
+`ID3D11MappableResource`, so both refusals stay device-free too: a cast straight to `D3D11Buffer` would be a cast
+to a Windows-only type, and nothing off Windows could reach past it. The Windows residue is the four `Map` and
+`Unmap` calls and nothing else. The device row (https://github.com/APKiwiOrg/KhaozEngine/issues/497) constructs
+`new D3D11StagingAccess(new D3D11ContextStagingMemory(context), submitLock, latch)`.
 
 **A failed map throws rather than handing back the null pointer it left behind**, and that is decision G3's
 second check site. Vortice's `Map` returns its result rather than throwing, so a caller that ignored it would
@@ -871,7 +887,9 @@ its boundary W5.
   context takes the submit lock BEFORE entering the gate, never inside it.
 - **Staging `Map` and `Unmap` take the lock for the duration of that one call and nothing longer.** Two calls
   take it twice, and between them the mapped pointer is the caller's alone, so a readback never holds it across
-  a consumer's walk over the pixels.
+  a consumer's walk over the pixels. This clause is TESTED rather than asserted in prose: the four native calls
+  sit behind `ID3D11StagingMemory`, and a fake recording `Monitor.IsEntered` per call pins both halves of it off
+  Windows. See the compute section for the seam.
 - **Nothing waits under the submit lock, with ONE knowingly paid exception**, and the two members that CAN block
   unboundedly refuse a caller who holds it, by name: `WaitForIdle` (which signals and flushes under the lock and
   then releases it to wait, so the submission it is waiting for can still be made) and the ring allocator's

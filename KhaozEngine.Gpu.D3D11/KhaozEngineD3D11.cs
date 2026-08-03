@@ -5,8 +5,10 @@ using KhaozEngine.Gpu.D3D11.Internal;
 namespace KhaozEngine.Gpu.D3D11
 {
     /// <summary>
-    /// The entire public surface of the native Direct3D 11 backend: one call that registers it with
-    /// <see cref="GpuBackendProviders"/>, plus the platform guard a caller can read before naming the backend.
+    /// The public surface of the native Direct3D 11 backend: one call that registers it with
+    /// <see cref="GpuBackendProviders"/>, the platform guard a caller can read before naming the backend, and
+    /// the <see cref="ValidateShaderPair"/> and <see cref="ValidateComputeShader"/> entry points for validating
+    /// shader source ahead of device creation.
     /// A consumer opts in with a package reference and <c>KhaozEngineD3D11.Register()</c> at startup, and
     /// <see cref="GpuBackendKind.Direct3D11Native"/> then becomes creatable through the ordinary
     /// <see cref="GpuDeviceContext"/> entry points.

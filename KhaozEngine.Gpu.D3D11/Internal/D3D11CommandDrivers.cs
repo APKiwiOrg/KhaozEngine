@@ -75,9 +75,24 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// treat the submission as issued regardless of the exception. What each of those three paths leaves
         /// behind on the timeline and on the fence is documented on the subsystem, not repeated here.
         /// </para>
+        /// <para>
+        /// THE RING BRACKETS THE REPLAY (decisions U2 and U5), which is why <paramref name="rings"/> is here and
+        /// not on the device row alone. Every mapped constant-buffer ring is unmapped BEFORE the replay, because
+        /// Direct3D 11 forbids a mapped resource being bound to the pipeline and the replay is about to bind them,
+        /// and the value the submission signalled is recorded against the current segment AFTER it, because that
+        /// is the value the next owner of that segment has to wait for. The unmap is the reason "zero Map or
+        /// Unmap during replay" is a structural invariant rather than a hope.
+        /// </para>
+        /// <para>
+        /// A RING ALLOCATOR WITHOUT A SIGNAL IS REFUSED, for the same shape of reason as a fence without one and
+        /// with a worse failure behind it. The segment would carry no completion value, so it would be handed back
+        /// out with no wait, and the CPU would write uniforms into memory the GPU is still reading. That is a
+        /// corrupted frame rather than a hang, it is intermittent, and it looks like a rendering bug several
+        /// frames from its cause.
+        /// </para>
         /// </summary>
         internal static void Submit<TEmitter>(object submitLock, IGpuCommandList list, ref TEmitter emitter,
-            ID3D11SubmitSignal? signal = null, IGpuFence? fence = null)
+            ID3D11SubmitSignal? signal = null, IGpuFence? fence = null, D3D11RingAllocator? rings = null)
             where TEmitter : struct, ID3D11Emitter
         {
             if (submitLock is null) throw new ArgumentNullException(nameof(submitLock));
@@ -95,10 +110,25 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                     + "fence.", nameof(fence));
             }
 
+            if (signal is null && rings is not null)
+            {
+                throw new ArgumentException(
+                    "A constant-buffer ring allocator was handed to a Direct3D 11 submit that has no signal sink, "
+                    + "so the segment this submission used would carry no completion value. The next frame to "
+                    + "reach that segment would take it with no wait and overwrite uniforms the GPU is still "
+                    + "reading. Pass the device's fence subsystem alongside the rings.", nameof(rings));
+            }
+
+            // Outside the lock deliberately: it takes the lock itself, for the unmap call alone, and taking it
+            // here first would hold it across the whole submit for no reason. It is a no-op when the submission
+            // wrote no uniforms.
+            rings?.UnmapMappedRings();
+
             lock (submitLock)
             {
                 Replay(list, ref emitter);
-                signal?.SignalEndOfReplay(fence);
+                ulong completionValue = signal?.SignalEndOfReplay(fence) ?? 0UL;
+                rings?.OnSubmitted(completionValue);
             }
         }
 
@@ -111,6 +141,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// lock, because the signal belongs to the submission rather than to the replay: this method is also the
         /// inside of <see cref="Submit{TEmitter}"/>, so signalling here would signal twice for every ordinary
         /// submit.
+        /// </para>
+        /// <para>
+        /// IT OWES THE RING BRACKET TOO, for the same reason and in the same order:
+        /// <c>UnmapMappedRings</c> before this call and <c>OnSubmitted</c> with the signalled value after it.
+        /// Skipping the first binds a mapped resource, and skipping the second leaves the segment ungated.
         /// </para>
         /// <para>
         /// On the immediate driver this is a no-op with one check, because the native calls were made during

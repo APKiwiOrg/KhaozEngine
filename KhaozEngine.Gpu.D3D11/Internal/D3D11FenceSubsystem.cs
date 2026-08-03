@@ -37,7 +37,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// <para><b>Not thread-safe for its own counters.</b> The telemetry accumulators are driven from the frame
     /// thread, the same contract <c>RetiredResourcePool</c> and the water renderer's counters already have.</para>
     /// </summary>
-    internal sealed class D3D11FenceSubsystem : IDisposable, ID3D11SubmitSignal
+    internal sealed class D3D11FenceSubsystem : IDisposable, ID3D11SubmitSignal, ID3D11CompletionRead
     {
         // How long ONE blocking wait slice lasts on a mechanism that has a blocking wait. It is not a drain
         // timeout, and the drain deliberately has none: a wait that is satisfied returns the instant the GPU
@@ -121,8 +121,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// where it does not (see the class note). After device death this answers with the last value issued
         /// instead of touching the timeline, so everything ever signalled reads complete and no call reaches a
         /// destroyed device's objects.
+        /// <para>
+        /// PUBLIC BECAUSE IT IS <see cref="ID3D11CompletionRead"/>, which is the read half of the timeline that
+        /// the constant-buffer ring recycles a segment against (decision U5). That interface is the whole reason
+        /// row 8 depends on this row: a ring gated on a submit RECEIPT hands out a segment the GPU is still
+        /// reading. The dead-device answer above is load-bearing for it too, since it is what releases a segment
+        /// wait during teardown.
+        /// </para>
         /// </summary>
-        internal ulong CompletedValue
+        public ulong CompletedValue
         {
             get
             {

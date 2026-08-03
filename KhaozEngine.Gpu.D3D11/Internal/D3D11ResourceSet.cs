@@ -53,6 +53,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// exactly. Direct3D 11 counts constant-buffer windows in CONSTANTS of 16 bytes, not in bytes, and
     /// <c>*SetConstantBuffers1</c> takes both numbers, so the conversion has to sit somewhere both the set and the
     /// bind flush can reach. It is arithmetic with no device in it, so it is here and it is tested.
+    /// <para>
+    /// THE RING'S PER-FRAME BASE IS PART OF IT (decision U1). A uniform buffer is one native buffer holding
+    /// <c>FramesInFlight</c> segments, and the segment is applied HERE, at bind time, by
+    /// <see cref="FirstConstant(uint, uint, uint)"/>. It is never baked into a resource set, which is what keeps
+    /// the pinned <see cref="GpuBufferRange"/> of decision U3 valid, and it is never applied twice, because there
+    /// is exactly one function that adds it.
+    /// </para>
     /// </summary>
     internal static class D3D11ConstantRange
     {
@@ -67,12 +74,57 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// </summary>
         internal const uint MinimumRangeBytes = 256;
 
-        /// <summary>The window start expressed in constants.</summary>
+        /// <summary>
+        /// The boundary a constant-buffer window may START on, in bytes. It is the same 256 as
+        /// <see cref="MinimumRangeBytes"/> and it is a different fact: <c>*SetConstantBuffers1</c> wants the first
+        /// constant on a 16-CONSTANT boundary, which is 256 bytes. This is what a ring segment's stride is rounded
+        /// up to (<see cref="D3D11UniformRing.SegmentStrideFor"/>), so a frame base is always bindable, and it is
+        /// why the alignment requirement is met by construction rather than by the callers happening to use
+        /// 256-aligned strides.
+        /// </summary>
+        internal const uint OffsetAlignmentBytes = 256;
+
+        /// <summary>The window start expressed in constants, with no ring segment in it. The degenerate case of
+        /// the overload below, kept because a non-ring buffer has no frame base to add.</summary>
         internal static uint FirstConstant(uint offsetBytes) => offsetBytes / ConstantSizeBytes;
 
-        /// <summary>The window size expressed in constants, after the minimum is applied.</summary>
+        /// <summary>
+        /// THE BIND-TIME ARITHMETIC IN FULL: the window start in constants, from the ring's per-frame base, the
+        /// range offset a resource set resolved at creation, and the per-draw dynamic offset. All three are byte
+        /// values against the same buffer and they simply add.
+        /// <para>
+        /// <paramref name="frameBaseBytes"/> is <see cref="D3D11UniformRing.CurrentFrameBaseBytes"/> for a
+        /// ring-backed buffer and zero for anything else. It is 256-aligned by construction and the other two are
+        /// 256-aligned by every caller in the engine, so the sum lands on the 16-constant boundary Direct3D 11
+        /// requires.
+        /// </para>
+        /// </summary>
+        internal static uint FirstConstant(uint frameBaseBytes, uint offsetBytes, uint dynamicOffsetBytes)
+            => (frameBaseBytes + offsetBytes + dynamicOffsetBytes) / ConstantSizeBytes;
+
+        /// <summary>
+        /// The window size expressed in constants, after the minimum is applied. A window that is not a whole
+        /// number of constants is rounded UP, so the count covers the caller's bytes rather than truncating the
+        /// last partial constant away. That round-up is a no-op for every window the engine binds, since a uniform
+        /// buffer's size is validated as a multiple of 16 at creation and every range in the renderers is
+        /// 256-aligned.
+        /// </summary>
         internal static uint ConstantCount(uint sizeBytes)
-            => (sizeBytes < MinimumRangeBytes ? MinimumRangeBytes : sizeBytes) / ConstantSizeBytes;
+            => AlignUp(sizeBytes < MinimumRangeBytes ? MinimumRangeBytes : sizeBytes, ConstantSizeBytes)
+                / ConstantSizeBytes;
+
+        /// <summary>Round <paramref name="bytes"/> up to the 256-byte boundary a constant-buffer window may start
+        /// on. The ring's segment stride is this, which is what makes every frame base bindable.</summary>
+        internal static uint AlignUpToOffsetBoundary(uint bytes) => AlignUp(bytes, OffsetAlignmentBytes);
+
+        // Checked, so a size within one alignment step of uint.MaxValue throws instead of wrapping round to a
+        // small number. Unreachable with any real buffer (Direct3D 11 caps a resource far below this), and a
+        // silent wrap here would produce a stride SMALLER than the buffer it is meant to hold.
+        static uint AlignUp(uint bytes, uint alignment)
+        {
+            uint remainder = bytes % alignment;
+            return remainder == 0 ? bytes : checked(bytes + (alignment - remainder));
+        }
     }
 
     /// <summary>

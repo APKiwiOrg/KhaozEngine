@@ -202,13 +202,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <c>ClearState</c> that opens the next replay.</summary>
         public void SetScissorRect(uint index, uint x, uint y, uint width, uint height)
         {
-            if (index != 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(index), index,
-                    "The native Direct3D 11 backend sets scissor rectangle 0 only. Direct3D 11 selects a scissor "
-                    + "per output through SV_ViewportArrayIndex, which no shipped shader writes, so every output "
-                    + "reads rectangle 0 and setting another would change nothing.");
-            }
+            D3D11BindResolve.RequireSingleScissorRect(index);
 
             Span<RawRect> rect = stackalloc RawRect[1];
             rect[0] = new RawRect((int)x, (int)y, (int)(x + width), (int)(y + height));

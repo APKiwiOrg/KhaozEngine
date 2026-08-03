@@ -193,8 +193,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// </para>
         /// </summary>
         public void SetScissorRect(uint index, uint x, uint y, uint width, uint height)
-            => _log.Record(D3D11NativeCall.RSSetScissorRects,
+        {
+            // Rectangle 0 or a refusal, decided in the one place both emitters ask, so a device-free trace cannot
+            // model an index the real call has no way to honour.
+            D3D11BindResolve.RequireSingleScissorRect(index);
+            _log.Record(D3D11NativeCall.RSSetScissorRects,
                 $"out{N(index)}:1,{N(x)},{N(y)},{N(x + width)},{N(y + height)}");
+        }
 
         public void SetFullScissorRects()
         {

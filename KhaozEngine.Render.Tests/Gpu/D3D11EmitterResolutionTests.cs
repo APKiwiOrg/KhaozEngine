@@ -219,6 +219,22 @@ namespace KhaozEngine.Tests.Gpu
         public void TheScratchCapacity_DoublesFromEight(int count, int expected)
             => Assert.Equal(expected, D3D11BindResolve.RoundedCapacity(count));
 
+        /// <summary>
+        /// A NON-ZERO SCISSOR INDEX IS REFUSED, in the one place both emitters ask, so the device-free trace
+        /// cannot model an index the real call has no way to honour: <c>RSSetScissorRects</c> takes a count and
+        /// always starts at rectangle 0. Every shipped call site passes zero.
+        /// </summary>
+        [Fact]
+        public void ANonZeroScissorIndex_IsRefusedForBothEmitters()
+        {
+            var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), new D3D11NativeCallLog());
+            emitter.Begin();
+
+            D3D11BindResolve.RequireSingleScissorRect(0);
+            Assert.Throws<ArgumentOutOfRangeException>(() => D3D11BindResolve.RequireSingleScissorRect(1));
+            Assert.Throws<ArgumentOutOfRangeException>(() => emitter.SetScissorRect(1, 0, 0, 8, 8));
+        }
+
         // ---- the real emitter's shape -----------------------------------------------------------------------
 
         /// <summary>

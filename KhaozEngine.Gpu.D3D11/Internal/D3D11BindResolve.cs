@@ -17,7 +17,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// fit an <c>int</c>) are plain <c>[Fact]</c>s on macOS. The emitter is left with a cast and a call.
     /// </para>
     /// <para>
-    /// A NULL IS A HOLE AND IS PASSED THROUGH; A RESOURCE WITHOUT THE VIEW IS A REFUSAL. Those are different
+    /// A NULL IS A HOLE AND IS PASSED THROUGH. A RESOURCE WITHOUT THE VIEW IS A REFUSAL. Those are different
     /// things and conflating them is the bug this type exists to make impossible. An array bind covers a
     /// contiguous register span that may contain a register the set does not fill, and Direct3D 11 wants a null
     /// there. A resource that IS bound and has no view for the file it landed in is a layout or usage mismatch
@@ -135,6 +135,31 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                         + "loses every other register in the same span.", nameof(binds));
                 }
             }
+        }
+
+        /// <summary>
+        /// THE SCISSOR INDEX BOTH EMITTERS ACCEPT, which is zero and only zero, refused here so the device-free
+        /// trace and the real call cannot disagree about it.
+        /// <para>
+        /// The seam carries an index and Direct3D 11 has no way to honour one on its own.
+        /// <c>RSSetScissorRects</c> takes a COUNT and always starts at rectangle 0, so setting rectangle N means
+        /// re-issuing every rectangle below it, which means tracking the whole array. Nothing needs that: a
+        /// non-zero rectangle is selected per output by <c>SV_ViewportArrayIndex</c>, no shipped shader writes
+        /// one, and all three shipped call sites (<c>SpriteBatch</c> twice, <c>ShadowMapRenderer</c> once) pass
+        /// zero. So the path is refused by name rather than silently setting rectangle 0 for an index that asked
+        /// for another, and it is filed rather than built here (issue #495).
+        /// </para>
+        /// </summary>
+        internal static void RequireSingleScissorRect(uint index)
+        {
+            if (index == 0) return;
+
+            throw new ArgumentOutOfRangeException(nameof(index), index,
+                "The native Direct3D 11 backend sets scissor rectangle 0 only. RSSetScissorRects takes a count "
+                + "and always starts at rectangle 0, so setting a higher one means tracking and re-issuing every "
+                + "rectangle below it, and a non-zero rectangle is selected per output by SV_ViewportArrayIndex, "
+                + "which no shipped shader writes. Setting rectangle 0 instead would scissor the wrong output "
+                + "silently, so this is refused until something needs it.");
         }
 
         /// <summary>

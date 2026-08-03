@@ -449,9 +449,11 @@ UNKNOWN answer serializes, deliberately: the threading probe is a diagnostic tha
 failure path, and reading its silence as a yes bets driver stability on whether a log line came back. Only the
 factory members that make a native creation call are gated. A framebuffer aggregates views that already exist, a
 resource layout and a resource set are pure engine data, and a command list touches no device state at all, so
-gating those four would serialize engine work behind a driver limitation that has nothing to do with it. Six
-members are ungated in all: those four, plus `CreateComputePipeline` and `CreateFence`, which are not built yet
-and throw before reaching any driver.
+gating those four would serialize engine work behind a driver limitation that has nothing to do with it. Five
+members are ungated in all: those four, plus `CreateFence`, which is not built yet and throws before reaching any
+driver. (`CreateComputePipeline` was the sixth when this row landed, for the same reason. The compute-path row
+below made it real, and it takes the gate even though it creates no native object, to keep the two pipeline
+members symmetric.)
 
 **The two locks nest in one direction, and it is written down before there is a second one to get wrong.** The
 submit lock is OUTER and the creation gate is INNER, and the gate is a STRICT LEAF: nothing is acquired while it
@@ -502,11 +504,12 @@ Shipping it properly is https://github.com/APKiwiOrg/KhaozEngine/issues/463. The
 lock-free-recording clause is the DEFERRED driver's: under `KE_D3D11_RECORD=immediate` a seam call issues its
 native call as it is made, so recording touches device state by construction and one thread records.
 
-**Two clauses have no code to land on yet, and are recorded rather than guessed at.** Staging `Map` and `Unmap`
-take the submit lock for the duration of the map call and nothing longer, which is where the rule lands the day
-the staging path exists (https://github.com/APKiwiOrg/KhaozEngine/issues/456, and there is no staging path in the
-package today). Device-level `UpdateTexture` takes the same short lock as `UpdateBuffer` when the device row
-wires it.
+**Two clauses had no code to land on when this row landed, and were recorded rather than guessed at.** Staging
+`Map` and `Unmap` take the submit lock for the duration of the map call and nothing longer, which is where the
+rule lands the day the staging path exists. It landed later in this same version, in the compute-path row below,
+so the clause is now stated in the contract rather than promised, together with the one place the
+"nothing waits under the submit lock" rule is knowingly paid. Device-level `UpdateTexture` takes the same short
+lock as `UpdateBuffer` when the device row wires it, and that one is still an open end.
 
 #### Capabilities, the sampler hardcodes, adapter selection, the debug layer and device-loss reporting (#459)
 

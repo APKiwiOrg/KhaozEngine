@@ -77,6 +77,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             InputElements = D3D11InputLayoutPlan.Build(description.VertexLayouts, out uint[] strides);
             VertexStrides = strides;
 
+            // DECISION S5, THE SECOND SITE. The shader path checks every module it compiles, and this checks the
+            // bytes an input layout is about to be validated against, whatever produced them: a set from the disk
+            // cache never passed through a compiler in this process, and a set built by hand never passed through
+            // the shader path at all. It costs one reflection per pipeline on the creation path, and it buys a
+            // failure that names the shader instead of a frame that renders with no colour in it.
+            RequireContiguousSignatureWindows(shaders.VertexShaderBytecode.Span);
+
             bool multisampled = description.Outputs.SampleCount > 1;
             BlendState = CreateBlendStateWindows(device, description);
             DepthStencilState = CreateDepthStencilStateWindows(device, description.DepthStencil);
@@ -195,6 +202,17 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         // is inside a constructor that already needs a live device.
         [MethodImpl(MethodImplOptions.NoInlining)]
         static uint TopologyValueWindows(GpuPrimitiveTopology topology) => (uint)D3D11Formats.ToTopology(topology);
+
+        // A vertex-input-free pipeline (the fullscreen passes) has nothing to reflect and nothing to hole, so the
+        // empty case passes rather than throwing: the seam builds those pipelines with no vertex layouts at all.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void RequireContiguousSignatureWindows(ReadOnlySpan<byte> vertexBytecode)
+        {
+            if (vertexBytecode.IsEmpty) return;
+            const string label = "graphics pipeline vertex shader";
+            D3D11ShaderSignature.RequireContiguousUserSemantics(
+                D3D11Fxc.ReflectVertexInputs(vertexBytecode, label), label);
+        }
 
         // IndependentBlendEnable is on, so each attachment keeps its own state. The engine's multiple-render-target
         // model pass relies on it: one attachment blends while another is set to preserve its destination.

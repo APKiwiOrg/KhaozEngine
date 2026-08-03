@@ -51,8 +51,9 @@ public class GpuPublicApiTests
         bool clean = leaks.Count == 0;
         Assert.True(clean,
             $"KhaozEngine.Gpu.D3D11 exposes {forbidden} types on its externally visible surface. Its public " +
-            "surface is one class with one method and one guard property, on purpose, and every type from the " +
-            "Direct3D interop belongs inside a NoInlining body behind KhaozEngineD3D11.IsPlatformSupported:\n" +
+            "surface is one class carrying three methods (Register, ValidateShaderPair, ValidateComputeShader) " +
+            "and one guard property (IsPlatformSupported), on purpose, and every type from the Direct3D interop " +
+            "belongs inside a NoInlining body behind KhaozEngineD3D11.IsPlatformSupported:\n" +
             string.Join("\n", leaks));
     }
 
@@ -83,6 +84,48 @@ public class GpuPublicApiTests
             "The SPIRV-Cross edge stays behind KhaozEngine.Gpu's internal SpirvCrossCompile helper, whose " +
             "signatures are engine types (CrossCompiledPair / ShaderReflection over GpuVertexElement and " +
             "GpuResourceLayoutDescription) exactly so calling it adds no Veldrid reference here.");
+    }
+
+    /// <summary>
+    /// The SIZE of the backend's public surface, pinned member by member. The scans above ask what the surface
+    /// exposes and say nothing about how much of it there is, so a new public method that happens to leak no
+    /// forbidden type is invisible to every one of them, and the message they print (one class, three methods,
+    /// one guard property) quietly stops being true. Decision P1 rests on that surface staying small: every
+    /// Direct3D type lives inside a <c>NoInlining</c> body behind <see cref="KhaozEngine.Gpu.D3D11.KhaozEngineD3D11.IsPlatformSupported"/>,
+    /// and each added member is another place that containment can be got wrong on macOS and Linux.
+    /// <para>
+    /// So widening the surface is a deliberate edit to the list below, made by someone who had to read this.
+    /// Adding a member and updating the array is the whole cost. Not noticing is what this removes.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void GpuD3D11PublicSurface_IsExactlyTheApprovedMembers()
+    {
+        string[] approvedMembers =
+        {
+            "IsPlatformSupported", "Register", "ValidateComputeShader", "ValidateShaderPair",
+        };
+
+        Type entryPoint = typeof(KhaozEngine.Gpu.D3D11.KhaozEngineD3D11);
+
+        // Property accessors are skipped: get_IsPlatformSupported is the property, already named once.
+        string[] members = entryPoint
+            .GetMembers(BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            .Where(m => m is not MethodBase { IsSpecialName: true })
+            .Select(m => m.Name)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(n => n, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(approvedMembers, members);
+
+        // And one exported type, which is the other half of the same claim.
+        string[] exported = entryPoint.Assembly.GetExportedTypes()
+            .Select(t => t.FullName ?? t.Name)
+            .OrderBy(n => n, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(new[] { "KhaozEngine.Gpu.D3D11.KhaozEngineD3D11" }, exported);
     }
 
     // Walks the externally visible (public + protected) surface of every exported type in <paramref name="assembly"/>

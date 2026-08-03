@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.Locomotion;
 
 namespace KhaozEngine.Game
 {
@@ -27,8 +28,8 @@ namespace KhaozEngine.Game
         /// clip. Used when <see cref="MaxMultiplier"/> is left at 0.</summary>
         public const float DefaultMaxMultiplier = 3.0f;
 
-        /// <summary>Master opt-in. When false (the default) <see cref="RateFor"/> always returns 1 and playback is
-        /// byte-identical to the pre-speed-sync behaviour.</summary>
+        /// <summary>Master opt-in. When false (the default) <see cref="RateFor(LocomotionState, float)"/> always
+        /// returns 1 and playback is byte-identical to the pre-speed-sync behaviour.</summary>
         public bool Enabled;
 
         /// <summary>World speed (m/s) the Walk clip was authored to move the character at. The Walk clip advances at
@@ -44,6 +45,13 @@ namespace KhaozEngine.Game
         /// Swim at 1x even when enabled. The tread <see cref="LocomotionState.SwimIdle"/> always plays at 1x.</summary>
         public float SwimClipSpeed;
 
+        /// <summary>Opt-in: play the move clip BACKWARDS when the sample's movement falls in
+        /// <see cref="MoveSector.Reverse"/>. Off by default, so every existing consumer is byte-identical until it opts
+        /// in (and a consumer that never classifies a sector sees <see cref="MoveSector.Forward"/> on every sample, so
+        /// this changes nothing for it even when set). See the sign rule on <see cref="RateFor(LocomotionState, float,
+        /// MoveSector)"/>.</summary>
+        public bool ReverseOnReverseSector;
+
         /// <summary>Lower clamp on the multiplier. 0 (unset) uses <see cref="DefaultMinMultiplier"/>.</summary>
         public float MinMultiplier;
 
@@ -55,10 +63,12 @@ namespace KhaozEngine.Game
 
         /// <summary>Build an enabled config from the Walk/Run (and optional forward-Swim) clips' authored move speeds
         /// (m/s). <paramref name="swimClipSpeed"/> defaults to 0 (Swim plays at 1x) so a pre-swim caller is unchanged.
-        /// The clamp bounds default to <see cref="DefaultMinMultiplier"/>..<see cref="DefaultMaxMultiplier"/>.</summary>
+        /// The clamp bounds default to <see cref="DefaultMinMultiplier"/>..<see cref="DefaultMaxMultiplier"/>.
+        /// <paramref name="reverseOnReverseSector"/> defaults to false (no reverse playback) so a pre-reverse caller is
+        /// unchanged.</summary>
         public static LocomotionSpeedSync Enable(float walkClipSpeed, float runClipSpeed,
             float minMultiplier = DefaultMinMultiplier, float maxMultiplier = DefaultMaxMultiplier,
-            float swimClipSpeed = 0f) =>
+            float swimClipSpeed = 0f, bool reverseOnReverseSector = false) =>
             new LocomotionSpeedSync
             {
                 Enabled = true,
@@ -67,12 +77,30 @@ namespace KhaozEngine.Game
                 SwimClipSpeed = swimClipSpeed,
                 MinMultiplier = minMultiplier,
                 MaxMultiplier = maxMultiplier,
+                ReverseOnReverseSector = reverseOnReverseSector,
             };
 
         /// <summary>The playback rate multiplier for <paramref name="state"/> at <paramref name="horizontalSpeed"/>
-        /// m/s. Returns 1 when disabled, for Idle/SwimIdle/Jump/Fall, or when the state's reference speed is unset
-        /// (&lt;= 0); otherwise <c>clamp(horizontalSpeed / referenceSpeed, min, max)</c>.</summary>
-        public readonly float RateFor(LocomotionState state, float horizontalSpeed)
+        /// m/s, for a forward-sector move. Returns 1 when disabled, for Idle/SwimIdle/Jump/Fall, or when the state's
+        /// reference speed is unset (&lt;= 0), and otherwise <c>clamp(horizontalSpeed / referenceSpeed, min, max)</c>.
+        /// The pre-sector overload, kept so existing callers compile bit-identically.</summary>
+        public readonly float RateFor(LocomotionState state, float horizontalSpeed) =>
+            RateFor(state, horizontalSpeed, MoveSector.Forward);
+
+        /// <summary>The playback rate multiplier for <paramref name="state"/> at <paramref name="horizontalSpeed"/> m/s
+        /// (a MAGNITUDE) moving in <paramref name="sector"/>. The magnitude rule is unchanged: 1 when disabled, for
+        /// Idle/SwimIdle/Jump/Fall, or when the state's reference speed is unset (&lt;= 0), and otherwise
+        /// <c>clamp(horizontalSpeed / referenceSpeed, min, max)</c>.
+        ///
+        /// <para>The SIGN is applied last, and only to a move state that actually syncs: with
+        /// <see cref="ReverseOnReverseSector"/> set and <paramref name="sector"/> == <see cref="MoveSector.Reverse"/>
+        /// the clamped magnitude is NEGATED, which runs the clip backwards through
+        /// <c>AnimationPlayer.Update(dt, rate)</c> (a looping clip wraps cleanly through zero). Order matters: the
+        /// clamp bounds the MAGNITUDE, so <see cref="MinMultiplier"/> still floors a near-stationary backpedal at
+        /// -0.25x rather than freezing it, and <see cref="MaxMultiplier"/> still ceilings a fast one at -3x. Every
+        /// state that plays at 1x plays at +1x whatever the sector: idle, the tread, and the air states have no
+        /// direction to reverse.</para></summary>
+        public readonly float RateFor(LocomotionState state, float horizontalSpeed, MoveSector sector)
         {
             if (!Enabled) return 1f;
             float reference = state switch
@@ -86,7 +114,11 @@ namespace KhaozEngine.Game
             float min = MinMultiplier > 0f ? MinMultiplier : DefaultMinMultiplier;
             float max = MaxMultiplier > 0f ? MaxMultiplier : DefaultMaxMultiplier;
             if (max < min) max = min;
-            return Math.Clamp(horizontalSpeed / reference, min, max);
+            float rate = Math.Clamp(horizontalSpeed / reference, min, max);
+            // Sign LAST, on the already-clamped magnitude: the bounds are a rate-of-play contract, not a direction one,
+            // so a crawling backpedal still floors at -min instead of being clamped up to +min (a frozen clip), and a
+            // fast one still ceilings at -max. Only a syncing move state reaches here, so idle/tread/air keep +1.
+            return ReverseOnReverseSector && sector == MoveSector.Reverse ? -rate : rate;
         }
     }
 }

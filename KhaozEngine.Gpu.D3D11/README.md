@@ -448,11 +448,133 @@ reusable CPU arena and replay as `UpdateSubresource`, since Direct3D 11 permits 
 buffer. Static and load-time `DEFAULT` buffers keep `UpdateSubresource`, and structured buffers keep `DEFAULT`
 plus a full-range RAW view.
 
+## The shader path: GLSL to HLSL to our own FXC call
+
+**GLSL 450 stays the single source and the backend calls FXC itself.** `CreateShadersFromSpirv` and
+`CreateComputeShaderFromSpirv` cross-compile through the internal, Veldrid-free SPIRV-Cross helper in
+`KhaozEngine.Gpu`, then compile the emitted HLSL to `vs_5_0` / `ps_5_0` / `cs_5_0` with
+`Vortice.D3DCompiler` at optimization level 3. DXC is not an alternative and not a preference: DXC emits DXIL,
+Direct3D 11 consumes DXBC, and there is no supported DXC path to DXBC, so Shader Model 6.x is unreachable from
+this backend at all. `SpirvLocalSize` still hand-parses the workgroup size out of the module, because D3D11
+takes it from the module while the seam's `IGpuComputeShader.ThreadGroupSize*` has to report it.
+
+Owning the FXC call is what buys the three things below.
+
+**The cross-compile options are pinned, and the emitted HLSL is hashed.** `HlslCrossCompilePin` states the exact
+option set every HLSL emission in the engine runs under, with the citation from the Veldrid fork behind it, and a
+device-free test hashes the emitted HLSL of all 34 shipped graphics programs and 8 compute kernels against a
+checked-in table. The table is baked from THIS path, so what it pins is drift away from that bake rather than
+agreement with the incumbent Veldrid path. Agreement was measured once, at review time on 2026-08-03: all 34
+graphics programs emitted byte-identical HLSL under both, which is what lets the committed Direct3D 11 goldens
+carry over without a rebake. The table is what keeps that true afterwards. One program's hashes moving is a
+shader edit. Thirty moving at once is an option drift, which is exactly what the table exists to catch. `KE_UPDATE_HLSL_HASHES=1` re-bakes the table, which is a test-maintenance knob for a deliberate shader
+or option change and is never set on CI, where the whole point is that the table does not move on its own.
+
+**Compiled modules are cached on disk.** Keyed on the whole program's GLSL sources, the FXC profile, the FXC
+flags, the pinned cross-compile options and the engine version, under
+`<local-app-data>/KhaozEngine/d3d11-dxbc/<engine version>/`. The key covers the WHOLE program rather than one
+stage, because a pair is cross-compiled together and the emitted vertex HLSL is a function of the fragment source
+too. Every failure is a miss: a cache that cannot be read or written is a slower start and nothing else. Set
+`KE_D3D11_SHADER_CACHE` to a directory to relocate it, or to any of `off`, `0`, `false`, `no` or `none`
+(case-insensitive, whitespace trimmed) to compile fresh every time. The disable words are a set rather than `off`
+alone because any OTHER value is taken as a directory path verbatim, so a narrower vocabulary would quietly turn
+`KE_D3D11_SHADER_CACHE=0` into a cache directory named `0` beside whatever the process's working directory is.
+
+**A holed vertex input signature fails loudly instead of corrupting a frame.** SPIRV-Cross drops a vertex input
+the vertex stage does not read, and names each survivor `TEXCOORD<location>`, so dropping the middle of a
+declared range holes the emitted signature, and FXC plus WARP miscompile a holed signature silently. It has cost
+this engine two production incidents: the shadow depth pass corrupted WARP so the main model and splat passes
+rendered no colour, and the terrain blew to flat white. The workarounds in the GLSL stay, and are now asserted
+from three directions. The shader path checks every module it compiles, pipeline creation re-checks the vertex
+bytecode an input layout is about to be validated against (so a module served from the disk cache is checked
+too), and `KhaozEngineD3D11.ValidateShaderPair` / `ValidateComputeShader` run the same path with no device at
+all, which is what the Windows CI leg calls over every shipped program on every push.
+
+Those two validation entry points are the half `KhaozEngine.Gpu`'s own `ShaderValidation` cannot cover: it
+cross-compiles to all four shading languages and stops, so it has never compiled the HLSL it produced, which is
+precisely how both incidents got past it. They are Windows-only (FXC is `d3dcompiler`), so gate the call on
+`KhaozEngineD3D11.IsPlatformSupported` and run both.
+
+**`KE_D3D11_DEBUG` compiles shaders with debug information and no optimization**, so a RenderDoc or PIX capture's
+disassembly maps back to the emitted HLSL. The flags are part of the cache key, so a debug session and an
+ordinary one never see each other's compiled bytes. The same variable will also switch on the Direct3D debug
+layer and its info-queue pump when the backend's diagnostics land (decision G4). Today it affects shader
+compilation and nothing else.
+## The swapchain: present, resize and framebuffer identity
+
+**v1 keeps the LEGACY BLIT swapchain, reproduced from the incumbent field for field (W1).** Unversioned
+`IDXGIFactory` off the adapter, `BufferCount = 2`, `Windowed = true`, `SwapEffect.Discard`,
+`SampleDescription(1, 0)`, `B8G8R8A8_UNorm` non-sRGB, `Usage.RenderTargetOutput`, the
+`MakeWindowAssociation(IgnoreAltEnter)` that stops DXGI toggling fullscreen behind the windowing layer, and a
+present at sync interval 1 or 0 with no other throttling. Flipping vsync live reconfigures nothing, because on
+Direct3D 11 the interval is an argument of `Present`, so there is no swapchain to recreate and none to leak.
+
+There is deliberately no flip model, no `ALLOW_TEARING`, no waitable frame-latency object and no pacing. The
+swapchain is the ONE area of this backend that no automated test anywhere can see: the goldens are headless, the
+shape tests are device-free, and the WARP leg never presents. A flip model is therefore validated only by a human
+looking at a window, which is exactly the evidence class that produced the Windows black screen and the fork's
+resize hazard, so all of it is one sequenced follow-up with its own manual validation. Do not modernise the
+description in place.
+
+**That costs one measurement, and this is where the caveat is recorded so a soak capture is not misread.**
+Because v1 carries the incumbent's blit present path unchanged, it CANNOT discriminate whether the blit model is
+the mechanism behind the frame-pacing defect on issue #380. A native soak that reproduces #380 unchanged is
+consistent with "blit causes it" and with "blit does not", so it proves nothing either way. The discriminating
+measurement is the same scene on the flip-model prototype, A and B against this path on the same machine and the
+same build.
+
+**The swapchain framebuffer's identity NEVER changes, and a resize swaps its views underneath it (W2).** It is
+`D3D11SwapchainFramebuffer`, a different type from the offscreen `D3D11Framebuffer`: the offscreen one aggregates
+views that already live on engine textures and never changes, this one wraps a backbuffer the runtime hands back
+and takes away again. The incumbent disposes the depth texture and the whole framebuffer and builds a new object
+on every resize, which is why `VeldridGpuDevice.ResizeSwapchain` re-wraps only on a reference change, a workaround
+whose comment names the Windows black screen after going fullscreen, maximising or drag-resizing. Owning the
+wrapper deletes that workaround's reason to exist, and it makes Direct3D 11 behave the way Metal already does,
+which is the behaviour the rest of the engine was written against. `Outputs` is fixed at construction and a resize
+never touches it, so every pipeline built against the swapchain survives every resize.
+
+Stable identity has one consequence worth knowing: W6's guard compares framebuffer REFERENCES, so what makes a
+resize visible to the context is the single `ClearState` at the head of the next submit, whose reset clears the
+bound framebuffer and forces the next `SetFramebuffer` to re-issue the render targets and the full viewport at the
+new size. A resize only ever lands at a present boundary, so that always happens before anything binds again.
+
+**`ResizeSwapchain` queues the size and returns, and the submit thread applies it at the next present boundary
+(W3).** It takes no lock and touches nothing native, so a window callback on any thread returns immediately even
+while the submit thread is mid-replay, and a foreign-thread resize during recording becomes structurally
+impossible instead of contractually forbidden. Sizes are coalesced to the LAST requested, so a drag-resize burst
+costs one `ResizeBuffers` per frame rather than one per event. The cost is one frame of resize latency. The apply
+lands AFTER the present, because `ResizeBuffers` discards the backbuffer contents and resizing first would throw
+away the frame that had just been rendered.
+
+**The present's `HRESULT` is returned rather than discarded**, which is the seam the device-loss latch needs to
+check at the fault site: the incumbent discards it, and a discarded device removal surfaces frames later as an
+unrelated crash. A failed present also skips the queued resize, so the caller receives that `HRESULT` instead of a
+throw out of `ResizeBuffers` against a device that has just gone. Naming the removal, calling
+`GetDeviceRemovedReason` and surfacing it in the session header are not built yet.
+
+The four native calls sit behind `ID3D11SwapchainSurface`, the same shape the ring memory and the fence timeline
+have, so the queue, the coalescing, the boundary, the apply order, the sync interval and the framebuffer identity
+are all device-free `[Fact]`s. The resize is three members rather than one on purpose: `ResizeBuffers` fails while
+any outstanding reference to a backbuffer survives, so releasing the views first is a correctness rule the
+incumbent depends on silently, and splitting it puts that order where a test can assert it.
+
+The release does one thing the incumbent does not: it unbinds the output-merger before it disposes the views.
+`ResizeBuffers` fails on INDIRECT references too, and the immediate context holds one, since `OMSetRenderTargets`
+takes its own reference on the render target view and keeps it after the wrapper is disposed. The incumbent is
+immune by accident, because it resets the context state at the end of every submit, while R3 puts this backend's
+one `ClearState` at the head of a replay instead, so the last frame's targets are still bound when a resize
+applies at the present boundary. That half is not device-free testable, because a fake surface has no context to
+inspect, and its evidence is a real window resize on the WARP leg.
+
 ## Design
 
 `docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md` in the engine repo, section 3 (package and layering),
 section 4.1 (getting the assembly loaded), section 5.1 (the stream and the emitter), section 5.3 (emission),
 section 2.1 (the recording model), section 2.3 (nested `Begin` during coexistence), section 9.4 (the implicit
-viewport), section 7 (resources, views and state objects), section 8.1 (register numbering), sections 10.3 and
-10.4 (fences and the empty `WaitForIdle`), section 6 (per-frame memory), and decisions P1, P2, P4, I2, R1, R2,
-R3, R4, R6, R8, W6, T2, U1, U2, U3, U4, U5, X1, X2, X3, S2, C2, C5 and C6.
+viewport), section 7 (resources, views and state objects), section 8 (the shader path) with 8.1 (register
+numbering), 8.2 (pinning the cross-compile options) and 8.3 (the holed-signature hazards), sections 10.3 and
+10.4 (fences and the empty `WaitForIdle`), section 6 (per-frame memory), sections 9.1 and 9.2 (the swapchain,
+the present path and the resize), and decisions P1, P2, P4, I2, R1, R2, R3, R4, R6, R8, W1, W2, W3, W6, T2,
+U1, U2, U3, U4, U5, X1, X2, X3, S1, S2, S3, S4, S5, C2, C5 and C6. The recorded non-measurement M5 in section
+13 is the swapchain's, and its wording is reproduced above rather than referenced, because a reader of a soak
+capture will not have the design doc open.

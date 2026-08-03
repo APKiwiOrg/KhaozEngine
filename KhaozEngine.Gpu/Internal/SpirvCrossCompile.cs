@@ -36,19 +36,18 @@ namespace KhaozEngine.Gpu.Internal
         /// one member of this class whose type is a Veldrid type, and every non-private member here is part of
         /// the Veldrid-free contract the backend consumes across <c>InternalsVisibleTo</c>.
         /// <para>
-        /// NOT YET PINNED TO THE RUNTIME PATH, and the difference matters. Veldrid's
-        /// <c>ResourceFactoryExtensions.CreateFromSpirv</c> derives some of these from the target backend and
-        /// from <c>ResourceBindingModel.Improved</c>, which a direct <c>SpirvCompilation</c> call does not get
-        /// for free, so "same SPIRV-Cross, therefore byte-identical HLSL" is true only once the options match.
-        /// Reading the fork's <c>CreateFromSpirv</c>, pinning the exact set here with the citation, and asserting
-        /// emitted-HLSL byte equality per program against a checked-in hash is decision S3 (section 8.2), and it
-        /// lands with the shader path itself in
-        /// https://github.com/APKiwiOrg/KhaozEngine/issues/455. Until then this is the library default, which is
-        /// correct for validating that a module cross-compiles and is NOT yet the set a shipped pipeline is
-        /// compiled under.
+        /// PINNED, decision S3. The values are not written here: they are BUILT from
+        /// <see cref="HlslCrossCompilePin"/>, which holds them as Veldrid-free constants together with the
+        /// citation from the fork that says what <c>CreateFromSpirv</c> does with them (it forwards them
+        /// verbatim, and derives nothing from <c>ResourceBindingModel</c>, which the design had assumed).
+        /// <c>D3D11HlslByteEqualityTests</c> hashes what this set emits for every shipped program, so a changed
+        /// value fails as a hash table that no longer matches rather than as a golden nobody can explain.
         /// </para>
         /// </summary>
-        static readonly CrossCompileOptions _hlslOptions = new();
+        static readonly CrossCompileOptions _hlslOptions = new(
+            HlslCrossCompilePin.FixClipSpaceZ,
+            HlslCrossCompilePin.InvertVertexOutputY,
+            HlslCrossCompilePin.NormalizeResourceNames);
 
         /// <summary>
         /// Compile one GLSL 450 source to SPIR-V, entry point <c>main</c>, the same convention the runtime SPIR-V

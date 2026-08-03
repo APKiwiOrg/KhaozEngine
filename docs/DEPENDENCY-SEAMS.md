@@ -566,6 +566,18 @@ KhaozEngine.Gpu.D3D11 -> Vortice.Direct3D11, Vortice.D3DCompiler   (its subject 
 KhaozEngine.Gpu.D3D11 -> Veldrid*                                  (never, asserted two ways)
 ```
 
+`Vortice.D3DCompiler` is CALLED from exactly ONE type, `Internal/D3D11Fxc`, which compiles emitted HLSL to DXBC
+and reflects a vertex module's input signature. One further type names it without calling it:
+`Internal/D3D11ShaderDebug` takes its two FXC flag values from `Vortice.D3DCompiler.ShaderFlags` in `const uint`
+initializers, so the compiler folds them to literals and the built assembly carries the numbers rather than the
+type. Both shapes are covered by the same load-path guard, `D3D11InteropLoad.AssertNotLoaded`, which asserts the
+interop is absent from the process rather than reasoning about which reference survived compilation. Everything
+else in the shader path (the target profiles, the cache key, the disk cache and the holed-signature rule) names
+no Direct3D type at all, and all of it is tested headlessly on macOS and Linux. One FXC call site is also what lets
+`KhaozEngineD3D11.ValidateShaderPair` be a genuine check rather than a second implementation: it compiles under
+the same profile, the same flags and the same pinned cross-compile options as the shipped path, so it cannot
+drift into validating a shader nobody ships.
+
 Two ways, because one of them alone would not bind. `ArchitectureTests.GpuD3D11_DeclaresNoVeldridPackage` reads
 the project file, which catches the deliberate edit. It cannot catch the subtler failure: Veldrid is in the
 backend's transitive closure through `KhaozEngine.Gpu` whatever the project file says, so an INTERNAL helper

@@ -15,9 +15,14 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// of a <c>Create*</c> member enforceable rather than aspirational.
     /// </para>
     /// <para>
-    /// NOT EVERY MEMBER IS BUILT YET. Shader compilation, compute pipelines and fences are separate rows of the
-    /// same program, and each throws a message naming what is missing rather than returning something that would
-    /// fail later somewhere less informative. The members this row owns are live.
+    /// NOT EVERY MEMBER IS BUILT YET. Compute pipelines and fences are separate rows of the same program, and
+    /// each throws a message naming what is missing rather than returning something that would fail later
+    /// somewhere less informative. Everything else, including the shader path, is live.
+    /// </para>
+    /// <para>
+    /// SHADER COMPILATION IS EAGER TOO, and eager here means more than it does elsewhere: a shader set arrives
+    /// cross-compiled, FXC-compiled, checked for the holed-signature hazard of decision S5 and bound to the
+    /// device, with its vertex bytecode kept so a pipeline can validate an input layout against it later.
     /// </para>
     /// </summary>
     [SupportedOSPlatform("windows")]
@@ -28,6 +33,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         readonly D3D11DeviceLiveness _liveness;
         readonly D3D11RingAllocator _rings;
         readonly Func<IGpuCommandList> _createCommandList;
+        readonly D3D11ShaderCompiler _shaders;
 
         /// <summary>
         /// <paramref name="createCommandList"/> comes from the device rather than being built here, because which
@@ -55,6 +61,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             _liveness = liveness;
             _rings = rings;
             _createCommandList = createCommandList;
+            // Built here rather than passed in, because a shader compiler is a pure function of the device plus
+            // two environment levers it reads ONCE (the FXC flags and the disk cache location, decisions S1 and
+            // S4). Threading it through every construction path would put a session-level setting in a signature.
+            _shaders = new D3D11ShaderCompiler(device, liveness);
         }
 
         /// <inheritdoc/>
@@ -91,12 +101,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         public IGpuCommandList CreateCommandList() => _createCommandList();
 
         /// <inheritdoc/>
-        public IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl) => throw NotBuiltYet(
-            "Cross-compiling GLSL to HLSL and calling FXC");
+        public IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl)
+            => _shaders.CreateShaderSet(vertGlsl, fragGlsl);
 
         /// <inheritdoc/>
-        public IGpuComputeShader CreateComputeShaderFromSpirv(string computeGlsl) => throw NotBuiltYet(
-            "Cross-compiling a compute kernel and calling FXC");
+        public IGpuComputeShader CreateComputeShaderFromSpirv(string computeGlsl)
+            => _shaders.CreateComputeShader(computeGlsl);
 
         /// <inheritdoc/>
         public IGpuComputePipeline CreateComputePipeline(in GpuComputePipelineDescription d) => throw NotBuiltYet(

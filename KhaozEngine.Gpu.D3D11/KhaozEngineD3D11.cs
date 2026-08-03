@@ -5,8 +5,10 @@ using KhaozEngine.Gpu.D3D11.Internal;
 namespace KhaozEngine.Gpu.D3D11
 {
     /// <summary>
-    /// The entire public surface of the native Direct3D 11 backend: one call that registers it with
-    /// <see cref="GpuBackendProviders"/>, plus the platform guard a caller can read before naming the backend.
+    /// The public surface of the native Direct3D 11 backend: one call that registers it with
+    /// <see cref="GpuBackendProviders"/>, the platform guard a caller can read before naming the backend, and
+    /// the <see cref="ValidateShaderPair"/> and <see cref="ValidateComputeShader"/> entry points for validating
+    /// shader source ahead of device creation.
     /// A consumer opts in with a package reference and <c>KhaozEngineD3D11.Register()</c> at startup, and
     /// <see cref="GpuBackendKind.Direct3D11Native"/> then becomes creatable through the ordinary
     /// <see cref="GpuDeviceContext"/> entry points.
@@ -61,5 +63,48 @@ namespace KhaozEngine.Gpu.D3D11
         /// </para>
         /// </summary>
         public static void Register() => GpuBackendProviders.Register(GpuBackendKind.Direct3D11Native, _provider);
+
+        /// <summary>
+        /// Validate a GLSL 450 vertex and fragment pair the way this backend will actually compile it, WITHOUT a
+        /// device: cross-compile to HLSL under the engine's pinned options, run FXC on the result at
+        /// <c>vs_5_0</c> and <c>ps_5_0</c>, and assert the reflected vertex input signature has contiguous
+        /// <c>TEXCOORD</c> indices from 0.
+        /// <para>
+        /// THIS IS THE HALF <see cref="ShaderValidation.ValidatePair(string, string, string?)"/> CANNOT COVER.
+        /// That validator cross-compiles to all four shading languages and stops, so it has never compiled the
+        /// HLSL it produced. Both of this engine's documented Direct3D shader incidents got past it for exactly
+        /// that reason: SPIRV-Cross emitted the shader happily and only FXC and WARP had a problem with it, the
+        /// second time by rendering a scene with no colour in it. Run both, this one behind the platform gate.
+        /// </para>
+        /// <para>
+        /// No device is created and no cache is consulted, so this belongs in a fast test loop rather than at
+        /// startup. Compiles at optimization level 3 regardless of <c>KE_D3D11_DEBUG</c>, because what is being
+        /// validated is the shipped build.
+        /// </para>
+        /// </summary>
+        /// <param name="vertexGlsl">The vertex shader source, GLSL <c>#version 450</c>.</param>
+        /// <param name="fragmentGlsl">The fragment shader source, GLSL <c>#version 450</c>.</param>
+        /// <param name="label">Optional name for the pair, included in any error message.</param>
+        /// <exception cref="PlatformNotSupportedException">Called off Windows. FXC is <c>d3dcompiler</c>, which
+        /// exists nowhere else, so gate the call on <see cref="IsPlatformSupported"/>.</exception>
+        /// <exception cref="ShaderValidationException">A source failed to compile to SPIR-V, the pair failed to
+        /// cross-compile, FXC rejected the emitted HLSL, or the vertex input signature is holed. The message
+        /// names the label and what specifically was wrong.</exception>
+        public static void ValidateShaderPair(string vertexGlsl, string fragmentGlsl, string? label = null)
+            => D3D11ShaderValidation.ValidatePair(vertexGlsl, fragmentGlsl, label);
+
+        /// <summary>
+        /// The compute sibling of <see cref="ValidateShaderPair"/>: cross-compile a GLSL 450 compute source to
+        /// HLSL under the pinned options, read its workgroup size out of the SPIR-V, and run FXC on the result at
+        /// <c>cs_5_0</c>. No device, no cache.
+        /// </summary>
+        /// <param name="computeGlsl">The compute shader source, GLSL <c>#version 450</c>, with a
+        /// <c>layout(local_size_x = ...) in;</c> workgroup declaration.</param>
+        /// <param name="label">Optional name for the shader, included in any error message.</param>
+        /// <exception cref="PlatformNotSupportedException">Called off Windows.</exception>
+        /// <exception cref="ShaderValidationException">The source failed to compile to SPIR-V, failed to
+        /// cross-compile, declares no resolvable workgroup size, or FXC rejected the emitted HLSL.</exception>
+        public static void ValidateComputeShader(string computeGlsl, string? label = null)
+            => D3D11ShaderValidation.ValidateCompute(computeGlsl, label);
     }
 }

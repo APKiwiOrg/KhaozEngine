@@ -12,11 +12,25 @@ namespace KhaozEngine.Gpu
     /// machines without a graphics device.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// This is what the engine's own shader-source tests use to catch a syntax error or a backend miscompile at
     /// build time instead of at first run on a real device of that backend. Games can validate their own custom
     /// shaders the same way in their fast test suites: hand each vertex/fragment pair to
     /// <see cref="ValidatePair(string, string, string?)"/>, or each compute source to
     /// <see cref="ValidateCompute(string, string?)"/>, from a plain unit test.
+    /// </para>
+    /// <para>
+    /// IT STOPS AT THE CROSS-COMPILE, AND THAT IS A REAL GAP ON DIRECT3D 11. This validator produces HLSL and
+    /// has never COMPILED it, so HLSL that SPIRV-Cross emits happily and FXC rejects passes here, as does a
+    /// vertex input signature with a hole in it (SPIRV-Cross drops an input the vertex stage never reads, and
+    /// FXC plus WARP miscompile the result silently). Both have cost this engine a production incident. The
+    /// missing half is <c>KhaozEngineD3D11.ValidateShaderPair</c> and <c>ValidateComputeShader</c> in the opt-in
+    /// <c>KhaozEngine.Gpu.D3D11</c> package, which run the real FXC call plus the signature assertion with no
+    /// device. They live there rather than here because FXC is <c>d3dcompiler</c>, so the leg is Windows-only,
+    /// and because sharing one FXC call site with the shipped shader path is what stops a validator from
+    /// validating a shader nobody ships. Call both, the second behind
+    /// <c>KhaozEngineD3D11.IsPlatformSupported</c>.
+    /// </para>
     /// </remarks>
     public static class ShaderValidation
     {

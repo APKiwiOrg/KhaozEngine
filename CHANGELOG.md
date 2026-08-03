@@ -7,7 +7,7 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.32.0
 
-### The native Direct3D 11 backend: the swapchain, the shader path, the bind flush, the draw path, the threading contract and the diagnostics (#453, #454, #455, #457, #458, #459)
+### The native Direct3D 11 backend: the swapchain, the shader path, the bind flush, the draw path, the compute path, the threading contract and the diagnostics (#453, #454, #455, #456, #457, #458, #459)
 
 The blit-model swapchain lands with the incumbent's present path reproduced field for field, a framebuffer
 whose identity never changes across resize, and a resize queued to the present boundary. The shader path lands
@@ -16,6 +16,8 @@ emitted HLSL and the disk DXBC cache. The bind flush lands under both: the R5 sc
 the array-batched activation, and the device-free native-call budget that gates the fan-out. The draw path
 lands on top of all three, and with it the REAL emitter: the type a frame renders through, every
 `ID3D11DeviceContext` call in the backend, and the two cache-key hazards the redundancy caches carried. The
+compute path lands beside the draw path and shares its schedule: compute pipelines, the SRV-versus-UAV
+auto-unbind in both directions, and the staging map and readback the ordering contract's readback half needs. The
 threading contract closes over all of it: lock-free recording, one short submit lock, a conditional creation
 lock, and the two races that were previously nobody's test. Nothing renders differently and nothing switches
 over: the native backend's two device-creation entry points still throw, so no shipped path reaches any of it,
@@ -625,6 +627,126 @@ liveness flip, header string and fault path. `NativeVsVeldridCapabilityParityTes
 device-free companion is a reflection check that the field-by-field comparer covers every member of
 `GpuCapabilities`, which is the guard that matters: a member appended to that struct without a line in the
 comparer would make every parity assertion silently weaker while staying green.
+
+#### The compute path: pipelines, the auto-unbind in both directions, the resolve and the staging readback (#456)
+
+The native backend can dispatch, resolve, copy and read back. Sections 10.1 and 10.2 of the design doc,
+decisions C1, C2, C3 and C4. Reached by nothing, since device creation still throws.
+
+**A compute pipeline is one compiled module plus its layout array, so `CreateComputePipeline` stops throwing.**
+Direct3D 11 has no fixed-function stage behind a dispatch, so there is nothing native to create: no state
+objects, no input layout, and the register numbering is CPU-side arithmetic over the layouts. The module's
+lifetime belongs to the `IGpuComputeShader` the caller made, exactly as a graphics pipeline never disposes its
+shader set. It answers `ID3D11ComputePipelineState` for the module the emitter binds and `ID3D11PipelineLayouts`
+for the array the bind flush numbers against, and neither of the seven graphics members, which is why those are
+two interfaces. Both pipeline types now flatten their layout array through ONE device-free check instead of two
+copies of the same guard, which is also what makes the compute refusal testable off Windows: both constructors
+are Windows-only, so a guard inside either is verified by the WARP leg and by nothing else.
+
+**The compute shader is bound with no redundancy cache, and that is now a decision rather than a deferral.** A
+frame binds a graphics pipeline hundreds of times and a compute pipeline a handful, so a cache slot would pay a
+reference compare per dispatch to save a call no profile shows, and `D3D11StateSlot` would grow a member the
+graphics path then compares on every pipeline bind. The shape to add the day a consumer dispatches per object is
+one more slot and one more flag, and it is written down where the decision is.
+
+**The SRV-versus-UAV auto-unbind runs in BOTH directions, implemented where the bind arrays are assembled
+(C1).** `GpuInterfaces.cs` names this backend's mechanism for ordering rule 1 in as many words: a compute pass
+writes a storage texture and a graphics pass then samples it, and Direct3D 11 copes because the backend unbinds
+the UAV as the SRV is bound. `D3D11ViewConflicts` tracks every `t` and `u` register an activation issues and
+nulls the opposite file's conflicting registers FIRST, into an array call of the same shape, inside the same
+activation. Three properties, each of which is a way to get it wrong:
+
+- **One call per (file, stage), never one per register.** The unbind obeys the same O(kinds x stages) law as the
+  bind it protects, which is what "under array batching this costs nothing extra" means. A per-register unbind
+  would be the #418 fan-out defect arriving through the compute door.
+- **A live register swept in by the span is REBOUND to what it already holds, never nulled.** The span runs from
+  the lowest conflicting register to the highest, so another set's live view can sit between two conflicts, and
+  writing a null across it would unbind it while its owner's record still called that slot clean. Same rule as
+  the batched vertex flush, same reason.
+- **The owning slot is raised back to fully dirty on whichever arm it belongs to.** This is the half a same-batch
+  unbind cannot do for itself and the half the fork's precedent shows: Veldrid's `UnbindSRVTexture` ends by
+  writing `Full` straight into the owning arm's dirty array. Until now there was no way to say that here, because
+  recording is a COMPARE, so re-recording the same set at the same offset marks it clean. `D3D11BindFlush.Raise`
+  is that entry point, and the arm is a parameter because the record an unbind invalidates is usually the OTHER
+  one: a graphics SRV bind unbinds a compute UAV and the next DISPATCH is what pays for it.
+
+Identity is the resource UNDERNEATH a `GpuBufferRange` rather than the value the caller bound. That type is a
+readonly struct implementing `IGpuBindableResource`, so a set stores it boxed and two boxes of one window are two
+references, which would call a buffer bound bare on one side and as a range on the other unrelated and skip the
+unbind silently. That is exactly the ocean's ping-pong shape. A set that binds one resource both ways at once
+resolves deterministically rather than throwing, because the activation issues `t` before `u`: it is the
+bound-two-incompatible-ways case the flush's rule 4 already names, and a throw would fail a stream the other two
+backends accept. The tracker is reset by the one `ClearState` at the head of each replay, along with the records
+it raises, and an offsets-only rebind cannot trip any of it, because rule 3 skips both files that can conflict.
+
+**Rule 2 is honoured as written and adds no barrier member (C3).** A dispatch reading an earlier dispatch's
+writes is separated by `End` plus `Submit` plus `WaitForIdle`, which is a cross-backend contract stated on
+`IGpuCommandList` itself, and a D3D11-only ordering primitive would be a divergence Vulkan and Metal cannot
+honour. Worth naming so it is not rediscovered: Direct3D 11 tracks hazards itself and inserts that
+synchronisation between dependent dispatches on one context, so rule 2 is a Vulkan-shaped requirement being paid
+on a backend that does not need it. The resolution is a seam capability letting a consumer skip the drain where
+hazards ARE tracked, which needs a seam change plus a renderer change and is therefore outside this program's
+"zero renderer changes by construction" scope. A device-free test asserts neither seam grew a barrier member, so
+the decision cannot drift quietly.
+
+**Structured buffers keep the RAW byte-address treatment (C2), cited rather than rebuilt.** The full-range raw
+views are created by the resource path and the compute bind path rides them unchanged: `R32_Typeless` plus the
+raw flag counted in 4-byte elements over a `BufferAllowRawViews` resource, with `StructureByteStride` advisory.
+SPIRV-Cross emits a GLSL storage block as a `ByteAddressBuffer` or an `RWByteAddressBuffer` and never a
+`StructuredBuffer<T>`, so a stride-shaped view would not be what the compiled shader reads. Keeping it identical
+to the incumbent is why the ocean's existing kernels work.
+
+**A resolve is one `ResolveSubresource` at subresource 0 on both sides (C4)**, which is the whole of what the
+seam can express, since `ResolveTexture` takes two bare textures with no mip, no layer and no region. That is the
+same fact the eager view policy leans on when it caps a texture at four views. `GenerateMipmaps` goes through the
+full-chain shader resource view the declared usage earned at creation and refuses by name a texture that never
+got one. The copies are the region forms the seam asks for, with the shorter `CopyTextureSubresource` overload
+arriving at the emitter with a destination mip and layer of zero.
+
+**Staging `Map` and `Unmap` take the submit lock for the duration of that call and nothing longer**, which is
+where decision W4's staging clause finally lands. The lock is NOT held across the caller's read: a readback that
+held it from `Map` to `Unmap` would block every submit for as long as a consumer walked the pixels, which is the
+frame-long hold this design deletes. The one place the "nothing waits under the submit lock" rule is knowingly
+paid rather than enforced is the map call itself, because `Map(READ)` on the immediate context is DEFINED to wait
+until the GPU is done with that resource, which is exactly what makes a readback correct without an explicit
+drain. That wait is bounded by the work already submitted against one resource rather than by a frame, unlike the
+two members that refuse a caller holding the lock, and the alternative (mapping with `DO_NOT_WAIT` and spinning
+outside the lock) trades a bounded wait for a spin that can starve. The package README's threading contract says
+so rather than leaving it in a source comment.
+
+**Both unbalanced-pair mistakes are refused by name.** A second map of an already-mapped resource earns a failed
+HRESULT and a debug-layer message from Direct3D 11, both silent in a release build, and its field shape is a
+readback that quietly returns the previous contents. An unmap of something never mapped is ignored entirely, with
+no signal at all. Both are caller ordering mistakes, so both throw here with a message naming what happened.
+Teardown and a device loss FORGET the open mappings rather than unmapping them, because after the device is gone
+the mappings do not exist and re-issuing an `Unmap` is the release-against-freed-memory decision X3 exists to
+stop.
+
+**A failed map throws rather than handing back the null pointer it left behind, and that is decision G3's second
+check site.** Vortice's `Map` RETURNS its result rather than throwing, so a caller that ignored it would read
+through null and report an empty readback with nothing logged anywhere. `D3D11StagingMaps.RequireMapped` is the
+one place the result is interpreted, and it asks the device-loss latch FIRST, before building anything, because
+`DXGI_ERROR_DEVICE_REMOVED` is sticky and the reason is only meaningful at the first site that notices. The latch
+already named the staging map as its second site and said the call site belonged to this row, and this is that
+call site: it arrives optional, so the device row wires it with one constructor argument, and a null one still
+throws with the attribution missing rather than the failure.
+
+**The row pitch is the runtime's padded stride, and the mapped size follows it.** Direct3D 11 pads each row of a
+mapped staging texture up to its own alignment, so a 300-pixel-wide RGBA texture commonly comes back at a
+1280-byte pitch rather than 1200. `GpuReadback` already unpacks by pitch, and reporting a size computed from the
+texture's own byte count instead would make that loop read past the mapping on the last row. A buffer's row pitch
+is its size, per the seam, rather than zero, because both readback helpers divide by it.
+
+**Where the tests are.** All of C1 is device-free through the trace emitter, which applies the SHIPPED schedule
+rather than a copy of it: both directions of the unbind with their exact traces, the same-flush property, the one
+array call over a two-register span, the live register rebound inside the span, the raise-to-dirty proved by a
+following dispatch that rebinds, the range-versus-buffer identity, the `ClearState` boundary, and the
+offsets-only path that cannot trip it. The staging half is device-free in `D3D11StagingMaps`: both refusals, the
+pitch arithmetic, the subresource constant, and all four arms of the G3 site (success, ordinary failure, a
+removal that latches under this row's site name, and a null latch). The Windows residue is two native calls, and
+an off-Windows test asserts the whole bookkeeping surface runs without loading the Direct3D interop. The compute
+`[GpuFact]` suite on all three backends, `ComputeTextureHandoffGpuTests` above all, is the regression evidence
+the WARP leg will carry.
 
 ## 17.31.0
 

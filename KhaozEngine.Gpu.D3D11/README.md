@@ -357,6 +357,85 @@ whole array and re-issuing every rectangle below it. Veldrid keeps that array an
 shipped call site passes zero and no shipped shader writes `SV_ViewportArrayIndex`, so the path is refused
 loudly rather than scissoring the wrong output silently.
 
+## Compute, the two ordering rules, and staging readback
+
+**A compute pipeline is one compiled module plus its layout array, and it creates nothing native.** Direct3D 11
+has no fixed-function stage behind a dispatch, so there are no state objects and no input layout to build:
+`CSSetShader` takes the module the shader path already created and the register numbering is CPU-side arithmetic
+over the layouts. The module's lifetime belongs to the `IGpuComputeShader` the caller created, exactly as a
+graphics pipeline never disposes its shader set. The compute shader is bound UNGUARDED by any redundancy cache,
+deliberately: a frame binds a graphics pipeline hundreds of times and a compute pipeline a handful, so a cache
+slot for it would cost a reference compare per dispatch to save a call no profile shows.
+
+**Compute runs the same record-then-flush-at-dispatch schedule on a SEPARATE dirty array.** A
+`SetComputeResourceSet` records and issues nothing, a `Dispatch` flushes every dirty compute slot in slot order
+and then dispatches, and a compute pipeline switch drains the pending sets under the OUTGOING layouts for the
+same reason the graphics one does. Nothing about the schedule is special-cased for compute.
+
+**The SRV-versus-UAV auto-unbind runs in BOTH directions, where the bind arrays are assembled.** Direct3D 11
+will not let one resource be readable through a `t` register and writable through a `u` register at once, and
+the GPU seam's ordering contract names this backend's mechanism in as many words: rule 1's compute-writes-then-
+graphics-samples handoff works here because the backend unbinds the UAV as the SRV is bound. `D3D11ViewConflicts`
+tracks every `t` and `u` register an activation issues, and a bind that conflicts with a tracked register on the
+opposite file nulls it FIRST, in an array call of the same shape, inside the same activation. Three properties
+are worth stating because each is a way to get it wrong:
+
+- **One call per (file, stage), never one per register.** The unbind obeys the same O(kinds x stages) law as the
+  bind, so two conflicting registers are one array call over the span. A per-register unbind would be the #418
+  fan-out defect arriving on the compute side.
+- **A live register swept in by the span is REBOUND to what it already holds, never nulled.** The span runs from
+  the lowest conflicting register to the highest, so something else's resource can sit between two conflicts.
+  Writing a null across it would unbind a live view while its owner's record still called that slot clean.
+- **The owning slot is raised back to fully dirty, on whichever arm it belongs to.** That is the half a
+  same-batch unbind cannot do for itself: the draw that nulls a compute set's register is not the flush that can
+  put it back, so `D3D11BindFlush.Raise` marks the compute slot and the next dispatch pays it. It has to be the
+  FULL state, because the offsets-only path skips both files that can conflict entirely.
+
+Identity is the resource UNDERNEATH a `GpuBufferRange` rather than the value the caller bound, because that type
+is a readonly struct implementing `IGpuBindableResource`, so a set stores it boxed and two boxes of one window
+are two references. A set that binds one resource both ways at once resolves deterministically rather than being
+refused: the activation issues `t` before `u`, so the UAV wins. The tracker is reset by the one `ClearState` at
+the head of each replay, along with the records it raises.
+
+**Rule 2 is honoured as written and adds no barrier member.** A dispatch that reads an earlier dispatch's writes
+is separated by `End` plus `Submit` plus `WaitForIdle`, which is the cross-backend contract stated on
+`IGpuCommandList` itself, and the ocean's `PrimeRowPass` is the shipped consumer of it. Worth naming so it is not
+rediscovered: Direct3D 11 tracks hazards itself and inserts that synchronisation between dependent dispatches on
+one context, so rule 2 is a Vulkan-shaped requirement being paid on a backend that does not need it. The right
+resolution is a seam capability letting a consumer skip the drain where hazards are tracked, which is a seam
+change plus a renderer change and is therefore outside this backend's "zero renderer changes by construction"
+scope. A device-free test asserts that neither seam grew a barrier member, so the decision cannot drift quietly.
+
+**Structured buffers keep the RAW byte-address treatment**, created by the resource path and consumed unchanged
+here. SPIRV-Cross emits a GLSL storage block as a `ByteAddressBuffer` or an `RWByteAddressBuffer`, never a
+`StructuredBuffer<T>`, so `StructureByteStride` stays advisory and both views are raw. Keeping this identical to
+the incumbent is why the ocean's existing kernels work.
+
+**A resolve is one `ResolveSubresource` at subresource 0 on both sides**, which is the whole of what the seam can
+express: `ResolveTexture` takes two bare textures with no mip, no layer and no region. `GenerateMipmaps` goes
+through the full-chain shader resource view the declared usage earned the texture at creation, and refuses by
+name a texture created without `Sampled` or `GenerateMipmaps`, because `GenerateMips` is defined as reading and
+writing THROUGH such a view. The copies are the region forms the seam asks for: a whole-texture copy is
+`CopyResource`, a buffer copy is `CopySubresourceRegion` with a box built from both offsets, and the shorter
+`CopyTextureSubresource` overload arrives at the emitter with a destination mip and layer of zero.
+
+**Staging `Map` and `Unmap` take the submit lock for the duration of the map call and nothing longer.** The lock
+is NOT held across the caller's read: a readback that held it from `Map` to `Unmap` would block every submit for
+as long as a consumer walked the pixels, which is the frame-long hold this design exists to delete. Everything
+that can be wrong without a GPU is device-free in `D3D11StagingMaps`: a second map of an already-mapped resource
+is refused by name (Direct3D 11 answers it with a failed HRESULT and a debug-layer message, both silent in a
+release build), an unmap of something never mapped is refused too (Direct3D 11 ignores it entirely), and the row
+pitch is the runtime's padded stride rather than the packed row width, with the mapped size following the pitch.
+Teardown and a device loss FORGET the open mappings rather than unmapping them, because after the device is gone
+the mappings do not exist.
+
+**A failed map throws rather than handing back the null pointer it left behind**, and that is decision G3's
+second check site. Vortice's `Map` returns its result rather than throwing, so a caller that ignored it would
+read through null and report an empty readback with nothing logged. `D3D11StagingMaps.RequireMapped` is the one
+place that result is interpreted: the device-loss latch is asked FIRST, before anything else at all, because
+`DXGI_ERROR_DEVICE_REMOVED` is sticky and the reason is only meaningful at the first site that notices. The latch
+is optional until the device row wires one, and a null one still throws.
+
 ## Completion fences, and a `WaitForIdle` that drains
 
 **This backend reports `SupportsCompletionFences = true`, and it is the one capability where it differs from
@@ -774,16 +853,25 @@ its boundary W5.
   an UNKNOWN answer (the threading probe did not run, or could not answer) serializes, because the probe degrades
   to unknown on every failure and its silence is not a licence. Six factory members are ungated by design, in two
   groups: the four live ones that create no native object (framebuffer, resource layout, resource set, command
-  list), and the two that are not built yet and throw (`CreateComputePipeline`, `CreateFence`), which have no
-  native call to gate until they exist.
+  list), and the one that is not built yet and throws (`CreateFence`), which has no native call to gate until it
+  exists. `CreateComputePipeline` creates no native object either and IS gated anyway, to keep the two pipeline
+  members symmetric and because a pipeline is the member most likely to grow a native call later.
 - **The two locks nest in one direction only.** The submit lock is OUTER, the creation gate is INNER, and the
   gate is a strict leaf: nothing is acquired while it is held. A creation path that one day needs the immediate
   context takes the submit lock BEFORE entering the gate, never inside it.
-- **Nothing waits under the submit lock**, and the two members that CAN block refuse a caller who holds it,
-  by name: `WaitForIdle` (which signals and flushes under the lock and then releases it to wait, so the
-  submission it is waiting for can still be made) and the ring allocator's `BeginFrame` (which waits for the GPU
-  to finish with the segment it opens, up to a frame). Both throw rather than stall, because a frame-long hold of
-  this lock is invisible from the outside and is the exact defect the design deletes.
+- **Staging `Map` and `Unmap` take the lock for the duration of that one call and nothing longer.** Two calls
+  take it twice, and between them the mapped pointer is the caller's alone, so a readback never holds it across
+  a consumer's walk over the pixels.
+- **Nothing waits under the submit lock, with ONE knowingly paid exception**, and the two members that CAN block
+  unboundedly refuse a caller who holds it, by name: `WaitForIdle` (which signals and flushes under the lock and
+  then releases it to wait, so the submission it is waiting for can still be made) and the ring allocator's
+  `BeginFrame` (which waits for the GPU to finish with the segment it opens, up to a frame). Both throw rather
+  than stall, because a frame-long hold of this lock is invisible from the outside and is the exact defect the
+  design deletes. The exception is the staging map above: `Map(READ)` on the immediate context is DEFINED to wait
+  until the GPU is done with that resource, which is exactly what makes a readback correct without an explicit
+  drain, and the wait is bounded by the work already submitted against that one resource rather than by a frame.
+  The alternative, mapping with `DO_NOT_WAIT` and spinning outside the lock, trades a bounded wait for a spin
+  that can starve.
 - The process-wide `GpuDeviceContext._lifecycleGate` is unchanged, and still serializes device creation and
   disposal across every backend.
 
@@ -802,11 +890,9 @@ nobody can triage. Shipping it properly is https://github.com/APKiwiOrg/KhaozEng
 recording touches device state by construction and one thread records. That arm narrows the contract rather than
 extending it.
 
-**Two open ends, both owned by other rows and neither guessed at here.** Staging `Map` and `Unmap` take the
-submit lock for the duration of the map call and nothing longer, which is where the rule lands the day the
-staging path exists: it is https://github.com/APKiwiOrg/KhaozEngine/issues/456, and there is no staging path in
-the package today to carry it. Device-level `UpdateTexture` is the same story, and takes the same short lock as
-`UpdateBuffer` when the device row wires it.
+**One open end, owned by another row and not guessed at here.** Device-level `UpdateTexture` takes the same short
+lock as `UpdateBuffer` when the device row wires it. The staging clause that used to sit beside it is no longer an
+open end: `D3D11StagingAccess` carries it, and the rule is stated in the contract above rather than promised.
 
 ## Design
 
@@ -814,11 +900,12 @@ the package today to carry it. Device-level `UpdateTexture` is the same story, a
 section 4.1 (getting the assembly loaded), section 5.1 (the stream and the emitter), section 5.3 (emission),
 section 2.1 (the recording model), section 2.3 (nested `Begin` during coexistence), section 9.4 (the implicit
 viewport), section 7 (resources, views and state objects), section 8 (the shader path) with 8.1 (register
-numbering), 8.2 (pinning the cross-compile options) and 8.3 (the holed-signature hazards), sections 10.3 and
+numbering), 8.2 (pinning the cross-compile options) and 8.3 (the holed-signature hazards), sections 10.1 and
+10.2 (compute, the two ordering rules and MSAA), sections 10.3 and
 10.4 (fences and the empty `WaitForIdle`), section 6 (per-frame memory), sections 9.1 and 9.2 (the swapchain,
 the present path and the resize), section 9.3 (threading), section 11 (capabilities, diagnostics, WARP and
 device loss), and decisions P1, P2, P4, I2, R1, R2, R3, R4, R6, R8, W1, W2, W3, W4, W5, W6, T2, U1, U2, U3,
-U4, U5, X1, X2, X3, S1, S2, S3, S4, S5, C2, C4, C5, C6, G1, G2, G3, G4 and T4. The recorded non-measurement
+U4, U5, X1, X2, X3, S1, S2, S3, S4, S5, C1, C2, C3, C4, C5, C6, G1, G2, G3, G4 and T4. The recorded non-measurement
 M5 in section
 13 is the swapchain's, and its wording is reproduced above rather than referenced, because a reader of a soak
 capture will not have the design doc open.

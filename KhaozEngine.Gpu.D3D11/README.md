@@ -397,6 +397,16 @@ are two references. A set that binds one resource both ways at once resolves det
 refused: the activation issues `t` before `u`, so the UAV wins. The tracker is reset by the one `ClearState` at
 the head of each replay, along with the records it raises.
 
+**A self-conflicting set costs four array calls per flush, for ever, and that is deliberate.** The unbind raises
+the slot that OWNED the register it nulled, and when a set binds one resource both ways the owner is the slot
+being drained at that moment: the register is put back and re-nulled inside the same activation, so the slot
+reads fully dirty again the instant the flush leaves it, and the next flush repeats the sequence (null the `u`
+file, bind the `t` file, null the `t` file, bind the `u` file). It never settles. Settling it would mean silently
+dropping one of the two bindings the caller declared, and Direct3D 11 cannot honour both at once whatever the
+backend does, so a steady cost on a set no renderer writes is the better of the two failures. The ordinary
+cross-arm case is unaffected: the other arm's next flush puts the register back and the slot goes clean. A
+device-free test pins the repeating trace, so a change here has to be a decision rather than an accident.
+
 **Rule 2 is honoured as written and adds no barrier member.** A dispatch that reads an earlier dispatch's writes
 is separated by `End` plus `Submit` plus `WaitForIdle`, which is the cross-backend contract stated on
 `IGpuCommandList` itself, and the ocean's `PrimeRowPass` is the shipped consumer of it. Worth naming so it is not

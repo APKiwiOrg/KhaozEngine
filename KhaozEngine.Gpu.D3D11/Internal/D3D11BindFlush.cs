@@ -387,7 +387,17 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 // AND THE RAISES COME AFTER THE CLEAN, which is the ordering the whole of decision C1 rests on.
                 // The activation may have just nulled a register belonging to THIS slot (a set that binds one
                 // resource both ways at once), and applying the raise before the line above would have the clean
-                // immediately undo it. After it, the mark survives and the next flush puts the register back.
+                // immediately undo it. After it, the mark survives.
+                //
+                // FOR A CROSS-ARM RAISE THE OTHER ARM'S NEXT FLUSH PUTS THE REGISTER BACK, and that is the
+                // ordinary case. FOR A SELF-CONFLICT IT DOES NOT, and the difference is worth stating rather than
+                // reading as one sentence. A set binding one resource at both a 't' and a 'u' register puts the
+                // register back and re-nulls it INSIDE THIS SAME ACTIVATION (the 't' file is issued first, the
+                // 'u' file then nulls it again), so the raise this line applies is one the slot earns afresh
+                // every time it is drained. Such a slot never settles: it reads Full after every flush and pays
+                // four array calls at the next one, for as long as the caller keeps both bindings. That is
+                // deliberate rather than a leak. Settling it would mean silently dropping one of the two bindings
+                // the caller declared, and Direct3D 11 cannot honour the double bind either way (rule 4).
                 ApplyRaises();
             }
         }

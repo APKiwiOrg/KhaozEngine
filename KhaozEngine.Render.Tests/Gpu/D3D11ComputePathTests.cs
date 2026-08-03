@@ -321,6 +321,69 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(0, harness.Log.Count(D3D11NativeCall.CSSetUnorderedAccessViews));
         }
 
+        /// <summary>
+        /// A SELF-CONFLICTING SET NEVER SETTLES, AND THE STEADY-STATE TRACE IS PINNED HERE SO THAT STAYS A
+        /// DECISION. A set binding one texture at both a <c>u</c> register and a <c>t</c> register resolves
+        /// deterministically (the activation issues <c>t</c> before <c>u</c>, so the UAV wins), but the slot the
+        /// unbind raises is the one the flush is draining RIGHT NOW: the register is put back and re-nulled inside
+        /// that one activation, so the slot reads <see cref="D3D11SlotDirty.Full"/> again the instant the flush
+        /// leaves it.
+        /// <para>
+        /// THE SECOND DISPATCH AND THE THIRD ARE THE SAME FOUR CALLS, which is what "never settles" means
+        /// mechanically. The first differs only because the tracker starts empty and has no <c>u</c> register to
+        /// null yet. Four calls per flush for ever is the ACCEPTED cost: settling it would mean silently dropping
+        /// one of the two bindings the caller declared, and Direct3D 11 cannot honour both at once whatever this
+        /// backend does (the flush's rule 4). If a future change makes this slot go clean, one of the caller's two
+        /// bindings stopped being issued, and this test is what says so.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void ASetBindingOneResourceBothWays_StaysFullyDirtyAndPaysFourCallsEveryFlush()
+        {
+            var harness = new D3D11BindFixtures.Harness();
+            FakeTexture shared = D3D11BindFixtures.Texture();
+            using D3D11ResourceLayout layout = D3D11BindFixtures.Layout(
+                Storage("Dst"), D3D11BindFixtures.T("Src", GpuShaderStages.Compute));
+            using D3D11ResourceSet set = D3D11BindFixtures.Set(layout, shared, shared);
+            D3D11NativeTraceEmitter emitter = harness.Emitter;
+
+            emitter.SetComputePipeline(new D3D11BindFlushTests.FakeComputePipeline(layout));
+            emitter.SetComputeResourceSet(0, set);
+
+            // The first dispatch has no tracked 'u' register to null yet, so it is the same walk one call shorter.
+            harness.Log.Reset();
+            emitter.Dispatch(1, 1, 1);
+            Assert.Equal(
+                new[]
+                {
+                    $"CSSetShaderResources(0,1,{harness.Log.Id(shared)})",
+                    "CSSetShaderResources(0,1,-)",
+                    $"CSSetUnorderedAccessViews(0,1,{harness.Log.Id(shared)})",
+                },
+                harness.BindTrace());
+            Assert.Equal(D3D11SlotDirty.Full, harness.Binds.ComputeDirty(0));
+
+            // The steady state, twice over. Nothing rebound the set: the slot owes a full activation purely
+            // because its own last flush nulled its own register. The log is reset between the two, and a reset
+            // drops the resource ids, so each expectation reads the id from the trace it is compared against.
+            for (int dispatch = 0; dispatch < 2; dispatch++)
+            {
+                harness.Log.Reset();
+                emitter.Dispatch(1, 1, 1);
+
+                Assert.Equal(
+                    new[]
+                    {
+                        "CSSetUnorderedAccessViews(0,1,-)",
+                        $"CSSetShaderResources(0,1,{harness.Log.Id(shared)})",
+                        "CSSetShaderResources(0,1,-)",
+                        $"CSSetUnorderedAccessViews(0,1,{harness.Log.Id(shared)})",
+                    },
+                    harness.BindTrace());
+                Assert.Equal(D3D11SlotDirty.Full, harness.Binds.ComputeDirty(0));
+            }
+        }
+
         // ---- The raise entry point itself --------------------------------------------------------------------
 
         /// <summary>

@@ -79,6 +79,18 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// throw: the same stream would otherwise pass on the other two backends and fail on this one.
     /// </para>
     /// <para>
+    /// AND SUCH A SLOT NEVER SETTLES, WHICH IS THE PRICE OF THAT ANSWER AND IS PAID KNOWINGLY. The conflict is
+    /// with the slot's OWN earlier register, so the raise it produces lands on the slot the flush is draining at
+    /// that moment: the register is put back and re-nulled inside that one activation, and the slot reads
+    /// <see cref="D3D11SlotDirty.Full"/> again the instant the flush leaves it. Every later flush repeats the
+    /// whole sequence, four array calls for the one-texture case (null the <c>u</c> file, bind the <c>t</c> file,
+    /// null the <c>t</c> file, bind the <c>u</c> file), for as long as the set keeps both bindings. Settling it
+    /// would mean silently dropping one of the two bindings the caller declared, and Direct3D 11 honours neither
+    /// of them together in any case, so a steady cost on a set no renderer writes is the better of the two
+    /// failures. The CROSS-ARM raise, which is the case this type exists for, settles normally: the other arm's
+    /// next flush puts the register back and the slot goes clean.
+    /// </para>
+    /// <para>
     /// NOTHING HERE ISSUES A NATIVE CALL AND NOTHING HERE NAMES A DIRECT3D TYPE, exactly like the flush and the
     /// activation it belongs to. The calls go to an <see cref="ID3D11BindSink"/>, so the whole of C1 is a
     /// device-free <c>[Fact]</c> over the trace emitter and the shipped logic is what the test drives.

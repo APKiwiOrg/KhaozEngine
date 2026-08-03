@@ -492,6 +492,20 @@ ring makes each of those a real question that draft B left unanswered.
   in progress is already writing. That is what preserves the documented semantic (the write lands when
   called, and a later-submitted list reads what the CPU wrote most recently). It is deliberately NOT the
   segment of the frame currently executing on the GPU.
+
+  **Corrected in flight by #484: it writes EVERY segment, not only the current one.** This bullet as written
+  above is what shipped first and it was wrong, in a way that only a consumer could show. It considered a
+  uniform buffer that is rewritten every frame and nothing else, so a value written ONCE reached one segment
+  out of three and two frames in every three bound memory nothing had ever written, silently.
+  `ModelRenderer`'s splat-params tail does exactly that. The resolution is option (a) of #484, ring-side: an
+  off-timeline write replicates into all `FramesInFlight` segments, so it persists for the buffer's life the
+  way the incumbent's does, while a RECORD-TIME write stays current-segment only (every shipped one of those
+  is unconditional per frame, so replicating them would be N memcpys for a value the next frame overwrites,
+  on the hot path). The replicated write is gated on the same completion read as `AcquireSegment` for the
+  segments it added, so it can now BLOCK where this call previously could not, and it waits with the submit
+  lock RELEASED as a retry loop. The current segment stays ungated, because gating it would change the
+  semantic this bullet describes and would block on the GPU after every submit in the frame slot. Shipped
+  behaviour is the package README's ring section and `docs/USING-KHAOZENGINE.md`.
 - **Who maps.** The ring is unmapped at the start of `Submit`, so an off-timeline write arriving between two
   frames finds it unmapped. That write maps `NO_OVERWRITE`, writes, and leaves it mapped for the next record
   phase to reuse. Mapping is idempotent and refcount-free: one flag on the ring, checked under the same lock

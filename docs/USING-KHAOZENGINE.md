@@ -8581,7 +8581,8 @@ refuse it rather than replay it.
 
 ### Uniform buffers on the native Direct3D 11 backend (17.31.0)
 
-Two things are worth knowing before that backend becomes selectable, and only the first can reach your code.
+Three things are worth knowing before that backend becomes selectable, and only the first can make it refuse
+something the other backends accept.
 
 **A uniform buffer may not also be something else there.** Creating a buffer as
 `GpuBufferUsage.UniformBuffer | GpuBufferUsage.StructuredBufferReadOnly` (or with either read-write structured
@@ -8601,13 +8602,16 @@ uniforms by dynamic offset (`GpuBufferRange` plus the offset overload of `SetGra
 the engine's own renderers do. Writing off-timeline through `IGpuDevice.UpdateBuffer` and expecting an
 already-recorded bind to see the old value was never supported on any backend and is quieter here.
 
-**And you have to write the WHOLE buffer every frame.** A uniform buffer there holds one segment per frame in
-flight and a write lands in the current segment only, so it survives until the frame index wraps back to that
-segment and no further. A one-shot write, at load time or when a value changes, is NOT preserved the way it is on
-every other backend, where the buffer has one copy and a write to it persists for the buffer's life. If part of a
-uniform buffer is written once and the rest per frame, that part goes stale the moment the ring wraps. The engine
-has one renderer doing this today (the splat-params tail of `ModelRenderer`'s uniform buffer), tracked as
-https://github.com/APKiwiOrg/KhaozEngine/issues/484 and resolved before that backend becomes selectable.
+**A one-shot write through `IGpuDevice.UpdateBuffer` IS preserved, the same as on every other backend.** A uniform
+buffer there holds one segment per frame in flight, and a device-level write goes into all of them, so a value
+written once at load time or when a setting changes persists for the buffer's life. Writing part of a uniform
+buffer once and the rest per frame is a normal thing to do and needs no special handling: the engine's own
+`ModelRenderer` does it for the splat-params tail of its terrain uniform buffer. Two consequences are worth
+knowing. That call can now BLOCK on this backend, briefly, if an earlier frame is still reading a segment of that
+buffer, which is what the other Direct3D 11 backend already did on every partial uniform write and which is not
+something a load-time write will ever hit. And the write is a whole-buffer-lifetime value rather than a per-frame
+one, so it is the wrong tool for something that changes per frame: use the record-time
+`IGpuCommandList.UpdateBuffer` for those, which stays a single memcpy into the frame's own segment.
 
 There is one field lever, `KE_D3D11_FRAMES_IN_FLIGHT=<n>` (default 3, range 1 to 16), which sets how many frames
 of uniform data are kept. It exists so a soak can settle whether three is enough, and the count of times a frame

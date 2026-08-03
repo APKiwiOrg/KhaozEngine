@@ -9722,7 +9722,9 @@ go from 396 to 0 and the frame cost from 1.909 to 0.376 ms.
 **On a backend with no GPU-completion fence the old behaviour is kept exactly.** Gate:
 `GpuCapabilities.SupportsCompletionFences`, true on Metal and Vulkan, false on Direct3D11 and OpenGL
 (Veldrid signals their `Fence` from the CPU as the submit call returns, so it is a submit receipt and
-not a completion signal). There, a batch waits out three frame boundaries and is destroyed behind a
+not a completion signal). The opt-in `KhaozEngine.Gpu.D3D11` native backend reports TRUE, on a real
+device-wide completion counter, but its device is not creatable yet so nothing reaches that answer
+today. Where the flag is false, a batch waits out three frame boundaries and is destroyed behind a
 single drain, which is what every backend did before. `Scene3D.RetiredResourceCount` is the observable
 either way: a healthy streaming world shows a small number that returns to 0 shortly after a burst.
 Expect it to sit HIGHER on the fence path than it used to, because the CPU is no longer being stalled

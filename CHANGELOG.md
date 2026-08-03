@@ -7,14 +7,15 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.30.0
 
-### The native Direct3D 11 backend: four prerequisites, then the recording model (#444, #445, #446, #447, #473, #448)
+### The native Direct3D 11 backend: four prerequisites, the recording model, then real fences (#444, #445, #446, #447, #473, #448, #451)
 
 The seam work an engine-owned Direct3D 11 backend needs before it can render a single pixel: `GpuDeviceContext`
 now ADOPTS an `IGpuDevice` instead of only building one, a backend that ships outside `KhaozEngine.Gpu` arrives
 through the explicit `GpuBackendProviders` registry, `GpuBackendKind` gains an appended `Direct3D11Native`, and
 the opt-in `KhaozEngine.Gpu.D3D11` package exists with its Windows guards, its machine probe and its architecture
 guards. On top of those four, the backend's recording model lands whole with both of its drivers behind the
-`KE_D3D11_RECORD` kill switch, and the adoption path stops answering a provider bug with the fallback reserved
+`KE_D3D11_RECORD` kill switch, the fence primitive lands ahead of the constant-buffer ring that depends on it,
+and the adoption path stops answering a provider bug with the fallback reserved
 for a machine that cannot run the backend. Nothing renders differently and nothing switches over: the native
 backend's two device-creation entry points still throw, so no shipped path reaches the recorder, the Windows OS
 probe still answers `Direct3D11`, `SupportedBackends()` still never offers the new kind to a player, and no
@@ -305,6 +306,58 @@ the countable native-call sink goes BELOW the real emitter or into a device-free
 the reason the encoder is written AS an emitter rather than under one. Nothing above the seam may assume a
 stream exists, because Vulkan and Metal have real deferred command buffers and their emitters would record
 straight into them, where a CPU op stream is pure overhead.
+
+#### Real completion fences, and a `WaitForIdle` that drains (#451)
+
+Decisions C5 and C6. The backend gains one device-wide monotonic completion timeline, the `IGpuFence` that sits
+on it, the signal seam a replay raises at its tail, and a real fence drain behind a kill switch. Nothing renders
+differently, because the native device still does not exist: this is the fence primitive the constant-buffer
+ring depends on, landed ahead of it deliberately, because a ring built against submit-receipt fences recycles a
+segment the GPU is still reading and corrupts a frame silently.
+
+**`SupportsCompletionFences` is true here, and it is the ONE permitted capability difference from the incumbent
+Direct3D 11 backend.** Veldrid's Direct3D 11 fence is a `ManualResetEvent` set the instant `ExecuteCommandList`
+returns, so it is a submit RECEIPT rather than a completion signal, which is why the incumbent hardcodes the
+capability false, `GpuRetireBarrier.TryCreate` returns null there, `RetiredResourcePool` keeps a frame-count
+fallback and two GPU tests skip. A counter the GPU advances is a completion signal, so none of that applies to
+the native path, and all four flip on the day its device lands.
+
+**One timeline, two mechanisms, both real.** The primary is an `ID3D11Fence` created through `ID3D11Device5` and
+advanced with `ID3D11DeviceContext4.Signal`, which is a direct fit rather than an emulation: the Direct3D 11.4
+fence IS a monotonic counter the GPU raises and `GetCompletedValue` IS the non-blocking read the seam asks for.
+The fallback, for a runtime older than Windows 10 1703, is a pool of `ID3D11Query` event queries polled with
+`DO_NOT_FLUSH`. Its ordering, its counter and its query recycling live in a device-free type and are tested on
+every operating system, because that path runs on no CI leg and no development machine, and the first machine to
+take it is a player's. The choice is taken once at device creation and nothing above the timeline may re-take
+it: a caller that branched on which mechanism it got would be building a second, quieter fallback on top of the
+one that already works.
+
+**A fence is a remembered value on that counter, not a device object.** Unarmed reads unsignalled, which is what
+the seam requires of a fence being submitted. `Submit` arms it with the value that submission signalled, and
+`Reset` unarms it so the next submission arms it with a strictly higher one. `Reset` cannot unsignal a
+device-wide monotonic counter and does not need to, since the fresh target the seam asks for is exactly what the
+next signal produces. Submitting a fence that is still armed THROWS rather than overwriting its target, because
+overwriting makes the earlier submission's completion unobservable and a consumer polling for it frees resources
+the GPU is still reading.
+
+**`WaitForIdle` replaces an empty method body.** Veldrid's `WaitForIdleCore` on Direct3D 11 does nothing, so
+every drain in the engine currently does nothing there, including one half of the only ordering guarantee the
+seam offers. That has never caused a known bug and there is a reason: Direct3D 11 tracks resource hazards
+itself, defers destruction by reference counting and blocks in `Map` by definition, so the empty body is
+arguably correct-by-API. It is implemented for real anyway, because a primitive that does nothing on one backend
+makes the seam's guarantees backend-dependent in an undocumented way, because `OceanFftProducer.LastStallMs`
+currently times an empty call, and because a real drain can only ever be MORE conservative than an empty one, so
+the risk is performance and therefore measurable rather than latent. `KE_D3D11_REAL_DRAIN=0` restores the no-op
+for the soak window, and drain count plus total drain duration per frame are recorded in the shape
+`WaterFrameStats` already uses. That pair is the M2 measurement, whose exit criterion removes the switch.
+
+**Two ends are left open on purpose, and both are one small commit at merge.** The signal at the end of replay
+is DEFINED here and not wired, because the replay loop is a sibling row being built in parallel and editing the
+shared submit path from two branches is how a merge silently drops one of them. The device liveness latch is the
+resources row's, so decision X3 (after device death a fence reads signalled and the drain is a no-op) is
+implemented against a hook this package owns, defaulting to alive. Alive is the safe default: defaulting to dead
+would make every fence read signalled before anything had died, which frees live resources and reads as
+corruption somewhere else entirely.
 
 ## 17.29.0
 

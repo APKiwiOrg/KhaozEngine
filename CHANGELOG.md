@@ -474,8 +474,9 @@ construction.
 
 **The two named races are device-free and they fail when the lock they pin is removed**, which is the only kind
 of race test worth having. `D3D11ThreadingContractTests` runs a foreign-thread device-level `UpdateBuffer`
-racing a submit (two writers filling one range with two different repeated bytes, plus the assertion that the
-write lands in the CURRENT segment and leaves the other two untouched), and a concurrent resize racing a present
+racing a submit (two writers filling one range with two different repeated bytes, plus the assertion that ONE
+writer's whole pattern lands in every segment rather than a per-segment mixture, since an off-timeline write
+covers them all inside one hold of the lock), and a concurrent resize racing a present
 (every `ResizeBuffers` in the trace pinned as the four-call sequence present, release, resize, create, all under
 the lock). Both were verified to FAIL against a deliberately unlocked build before being kept, and each names
 WHICH assertion does the failing rather than leaving the reader to assume. The update race's deterministic
@@ -643,42 +644,81 @@ than a property of the buffer, because the call is what knows whether it happens
 uniform write is unconditional per frame, so replicating those would be `FramesInFlight` memcpys for a value the
 next frame overwrites, on the hot path the whole ring exists to make cheap.
 
-**The off-timeline write can now BLOCK, which is a real semantic change and the price of the paragraph above.**
-Writing every segment means writing segments an earlier frame may still be executing, so each added segment is
-gated on the same completion read `AcquireSegment` uses. The wait is a retry loop and NEVER holds the submit lock:
-the highest outstanding completion value across the gated segments is read under the lock, the lock is released,
-that value is spun for with no sleep, and the lock is retaken and the check redone, until one hold finds every
-target free and does all the copies inside it. Taking the maximum rather than the first busy segment is what makes
-one wait enough, since the timeline is monotonic. At load time nothing has been submitted, so the first iteration
-writes every segment with no completion read at all. Mid-frame the wait is bounded by `FramesInFlight` frames of
-GPU work, which is what the incumbent already blocked for on this exact call: Veldrid's pooled staging write maps
-with no `DO_NOT_WAIT` and blocks until the GPU releases the buffer being recycled.
+**A segment the GPU has not finished with is PATCHED rather than waited for, and this call still never blocks.**
+Writing every segment means writing segments an earlier frame may still be executing, which is the silent
+corruption decision U5's fence gate exists to prevent, so a segment whose owner fence has not completed does not
+receive the copy: the byte range and a private copy of the data are queued on the ring, and the `BeginFrame` that
+next opens that segment applies them, immediately after the gate has proved the GPU is done with it. One bounded
+hold of the submit lock, at most one completion poll per call, no spin and no retry. The writer returns
+immediately, on every thread, at any pipeline depth.
 
-**The CURRENT segment stays ungated, deliberately.** Gating it would change the documented semantic that the write
-lands when it is called and the next submitted list reads it, and it would block on the GPU on every off-timeline
-write made after this frame slot's first submit, which is the pathology the ring deletes. The exposure that leaves
-is the exposure this call already had and is the case the docs already forbid (writing off-timeline to a range a
+**Waiting was tried first and it starves, which is why the design is what it is.** The first shape read the
+highest outstanding completion value under the lock, released the lock, spun, and retook it to re-check, looping
+until every non-current segment was free at once. A reviewer's probe showed that condition is never satisfiable in
+the GPU-bound steady state: the frame thread submits again for every frame the GPU retires, so at least one
+non-current segment is always in flight, and the writer chases a pipeline it can never catch while burning a core.
+A deferral has no such failure mode, because the thing it waits on is a frame boundary that is going to happen
+anyway. That probe is a permanent test now.
+
+**The guarantee is eventual consistency, and it is exactly the Veldrid persistence semantic.** When the call
+returns, every segment either already holds the write or holds a pending patch its next acquire applies, so any
+segment BOUND after the call carries the value. The window in which an in-flight segment still holds the old bytes
+is unobservable through the seam, because that segment is not bound again until it has been acquired, and
+acquiring it applies the patch first. Patches for one ring are kept in arrival order and replayed in order, so
+overlapping ranges resolve last-write-wins exactly as direct copies do, and a segment that already carries a patch
+takes every later write as a patch too rather than letting an older queued write land on top of a newer copy.
+Storage is bounded by coalescing (a new patch drops every earlier one whose range it fully covers) on top of the
+shape of the caller: off-timeline uniform writes are load-time or settings-change writes by construction, since
+the per-frame ones go through the record-time path, so a real program has a handful of distinct ranges
+outstanding at most and each lives at most `FramesInFlight` frames.
+
+**Two off-timeline writers to one buffer are unordered per segment**, and that is stated as outside the v1
+contract in the same decision W5 family as the record-time overlap: each call is atomic in the sense that all of
+its copies and deferrals happen in one hold of the lock, but two overlapping calls may land in different orders in
+different segments, because one segment can take a copy while another takes a patch replayed later. A single
+off-timeline writer, which is what every shipped caller is, sees strict last-write-wins everywhere.
+
+**The CURRENT segment is always copied, deliberately.** Gating it would change the documented semantic that the
+write lands when it is called and the next submitted list reads it, and deferring it would be worse still, since
+the current segment is bound by the very next submit and its own next acquire is a whole wrap away. It never
+carries a pending patch of its own: patches are recorded only for non-current segments, and the frame boundary
+that makes a segment current drains it in the same lock hold that publishes it. The exposure that leaves is the
+exposure this call already had and is the case the docs already forbid (writing off-timeline to a range a
 recording has already recorded a bind for). Against a concurrent record-time write to the same range the current
-segment is last-write-wins and unordered, which decision W5 already places outside the v1 contract and where it
-stays. The other segments are not contended at all, since a record-time write never touches them.
+segment is last-write-wins and unordered, which W5 already places outside the contract. The other segments are not
+contended at all, since a record-time write never touches them.
 
-**Off-timeline waits are their own counter.** `OffTimelineWaits` is a separate cumulative stat in the same
-`D3D11BackpressureStats` shape rather than a contribution to `LastFrameBackpressure`. They are not frame-boundary
-stalls: M3's exit criterion is a per-frame stall count of zero across a soak window, which reads as "three
-segments are enough on this machine", and an off-timeline wait says nothing about that. Cumulative rather than
-rolled per frame because these writes are typically load-time and happen before any frame has begun, so a
-per-frame roll would discard exactly the ones worth seeing. Under `D3D11RingMapScope.PerWrite` the map, every
-segment's copy and the unmap stay one critical section, which is the atomicity that scope exists for, over a
-wider write.
+**A caller that already holds the submit lock is legal, by construction.** With no wait inside there is nothing to
+deadlock on: the acquisition is a free `Monitor` re-entry and every step within is a memcpy or a map. That is a
+correction rather than a refinement, since the retry loop this replaces would have spun forever in exactly that
+case, holding the lock against the submission that would have ended the wait.
+
+**The counter counts patches, because there are no waits left to count.** `OffTimelinePatches` replaces the
+earlier `OffTimelineWaits`: a separate cumulative reading beside `LastFrameBackpressure`, in the same shape and
+for the same M3 reason, carrying `Deferred`, `Applied`, `Coalesced` and the `Outstanding` difference. It has no
+milliseconds field on purpose, since a duration here would report zero forever and read as "the waits are cheap"
+rather than as "there are none". It stays out of `LastFrameBackpressure` for the reason the wait counter did: M3's
+exit criterion is a per-frame stall count of zero across a soak window, which reads as "three segments are enough
+on this machine", and a deferred patch says nothing about that. Cumulative rather than rolled per frame because
+these writes are typically load-time and happen before any frame has begun. Under `D3D11RingMapScope.PerWrite` the
+map, every segment's copy and the unmap stay one critical section, and a patch replay repeats that discipline in
+its own hold.
 
 **Where the tests are.** All device-free, against the pinned-array ring memory and the fake completion timeline:
 the load-time write landing in every segment byte for byte, the `ModelRenderer` shape written once and read back
-across seven frames (more than two full wraps, the regression named for the issue), the wait pinned to the exact
-fence value by driving the timeline in steps from another thread, the retry loop's polls counted by whether the
-submit lock was held (one per hold, none during the spin), the current segment copied without waiting on a value
-the GPU never reaches, the record-time write still landing in one segment, the counter split, and the `PerWrite`
-scope covering every segment in one map and unmap pair. The central one was mutation-checked: reverted to
-current-segment-only, the regression and seven others fail, restored, they pass.
+across seven frames (more than two full wraps, the regression named for the issue) and again with the pipeline
+already full so two of its three segments arrive as patches, the write returning with one poll and a wall-clock
+bound against a segment nothing ever frees, the GPU-bound steady state driven synchronously at depth with the
+timeline lagging by a full ring, the patch applied at that segment's next boundary byte for byte and not at the
+one before it, arrival order over a partial overlap, coalescing over a covering one, a later write joining a
+queued segment even after its fence completes, the current segment never carrying a patch, a reentrant caller
+under a watchdog, disposal dropping a ring's patches, the current segment copied without gating on a value the GPU
+never reaches, the record-time write still landing in one segment, the counter split, and the `PerWrite` scope
+covering every segment in one map and unmap pair and replaying a patch in another. The central property was
+mutation-checked: with the patch replay at `BeginFrame` removed, 9 tests fail including the steady-state probe and
+the pipeline-full regression, restored, they pass.
+
+## 17.31.0
 
 ### The native Direct3D 11 backend: the replay contract, the constant-buffer ring, and the three cross-row wirings (#449, #451, #452)
 

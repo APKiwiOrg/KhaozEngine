@@ -117,7 +117,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// <see cref="GpuTextureUsage.GenerateMipmaps"/> earns a shader resource view alongside
     /// <see cref="GpuTextureUsage.Sampled"/> because <c>GenerateMips</c> is defined as reading and writing THROUGH
     /// a shader resource view. A texture asking for mip generation without asking to be sampled would otherwise
-    /// have no view to generate through, and the call would fail at the point of use.
+    /// have no view to generate through, and the call would fail at the point of use. It earns the render target
+    /// BIND FLAG too, which Direct3D 11 requires on the resource, but NO render target view: the eager view
+    /// follows <see cref="GpuTextureUsage.RenderTarget"/> alone, and one created for mip generation would be an
+    /// object nothing ever binds.
     /// </para>
     /// </summary>
     internal static class D3D11ViewPolicy
@@ -151,15 +154,17 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             D3D11BindUsage bind = D3D11BindUsage.None;
             if (sampled || mips) bind |= D3D11BindUsage.ShaderResource;
-            // Mip generation writes each level as a render target, so the bit implies both flags on the resource
-            // even when the caller never named RenderTarget.
+            // A FLAG, NOT A VIEW. GenerateMips writes each level as a render target internally, so Direct3D 11
+            // requires the render target bind flag on the resource even when the caller never named RenderTarget.
+            // The eager render target VIEW below follows RenderTarget alone, because nothing binds one for mip
+            // generation and an unbound view is an object to keep alive for no reason.
             if (renderTarget || mips) bind |= D3D11BindUsage.RenderTarget;
             if (depthStencil) bind |= D3D11BindUsage.DepthStencil;
             if (storage) bind |= D3D11BindUsage.UnorderedAccess;
 
             return new D3D11TextureViewPlan(
                 shaderResource: sampled || mips,
-                renderTarget: renderTarget || mips,
+                renderTarget: renderTarget,
                 depthStencil: depthStencil,
                 unorderedAccess: storage,
                 bind,

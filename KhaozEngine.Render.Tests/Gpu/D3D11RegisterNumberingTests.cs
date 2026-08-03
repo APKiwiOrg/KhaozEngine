@@ -300,15 +300,44 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal("b1 t1", Absolute(sharedSecond, 1));
         }
 
-        /// <summary>A set index past the pipeline's layout array is a pipeline and set mismatch, not an empty
-        /// base. Left to fall through, it would bind every register at zero and render the wrong resources.</summary>
+        /// <summary>
+        /// A set index past the pipeline's layout array is a pipeline and set mismatch, not an empty base. Left
+        /// to fall through it would bind every register at zero and render the wrong resources. The BOUNDARY
+        /// index, <c>Length</c> itself, is the case that matters and is asserted first: it is the first invalid
+        /// slot, and it is the one a fall-through answers with the sum over every layout in the pipeline, which
+        /// is a plausible-looking base rather than an obvious zero.
+        /// </summary>
         [Fact]
         public void ASetSlotPastThePipelineArray_Throws()
         {
             using var only = new D3D11ResourceLayout(new GpuResourceLayoutDescription(U("U")));
-            D3D11ResourceLayout[] pipeline = { only };
+            using var second = new D3D11ResourceLayout(new GpuResourceLayoutDescription(T("Tex")));
+            D3D11ResourceLayout[] one = { only };
+            D3D11ResourceLayout[] two = { only, second };
 
-            Assert.Throws<ArgumentOutOfRangeException>(() => D3D11RegisterScheme.BaseFor(pipeline, 2));
+            Assert.Throws<ArgumentOutOfRangeException>(() => D3D11RegisterScheme.BaseFor(one, 1));
+            Assert.Throws<ArgumentOutOfRangeException>(() => D3D11RegisterScheme.BaseFor(two, 2));
+            Assert.Throws<ArgumentOutOfRangeException>(() => D3D11RegisterScheme.BaseFor(one, 2));
+        }
+
+        /// <summary>
+        /// The other side of that boundary: <c>Length - 1</c> is the LAST valid slot and accumulates every layout
+        /// before it. The two tests are only worth anything together, because a guard off by one in either
+        /// direction still satisfies one of them alone.
+        /// </summary>
+        [Fact]
+        public void TheLastSetSlot_IsInRangeAndAccumulatesTheLayoutsBeforeIt()
+        {
+            using var first = new D3D11ResourceLayout(new GpuResourceLayoutDescription(U("A"), T("X"), S("P")));
+            using var last = new D3D11ResourceLayout(new GpuResourceLayoutDescription(U("B"), T("Y")));
+            D3D11ResourceLayout[] pipeline = { first, last };
+
+            D3D11RegisterCounts baseCounts = D3D11RegisterScheme.BaseFor(pipeline, 1);
+
+            Assert.Equal(1u, baseCounts.For(D3D11RegisterFile.ConstantBuffer));
+            Assert.Equal(1u, baseCounts.For(D3D11RegisterFile.ShaderResource));
+            Assert.Equal(1u, baseCounts.For(D3D11RegisterFile.Sampler));
+            Assert.Equal(0u, baseCounts.For(D3D11RegisterFile.UnorderedAccess));
         }
 
         static string Registers(params GpuResourceLayoutElement[] elements)

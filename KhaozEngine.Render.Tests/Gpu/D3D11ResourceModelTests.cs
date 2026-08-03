@@ -60,18 +60,22 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// Mip generation earns BOTH a shader resource view and a render target view, and the bind flags to match,
-        /// even when the caller named neither. <c>GenerateMips</c> is defined as reading and writing through a
-        /// shader resource view, so a texture that asked only for mip generation would otherwise have no view to
-        /// generate through and would fail at the point of use rather than at creation.
+        /// Mip generation earns a shader resource view, and the two halves it is easy to conflate are pinned
+        /// apart here. <c>GenerateMips</c> is defined as reading and writing through a shader resource view, so a
+        /// texture that asked only for mip generation would otherwise have no view to generate through and would
+        /// fail at the point of use rather than at creation. It carries the render target BIND FLAG as well,
+        /// which Direct3D 11 requires on the resource, and NO render target view: decision X1 hangs the eager
+        /// view on <see cref="GpuTextureUsage.RenderTarget"/> alone, so a view created here would be an object
+        /// nothing ever binds.
         /// </summary>
         [Fact]
-        public void GenerateMipmaps_ImpliesBothAViewAndATarget()
+        public void GenerateMipmaps_TakesTheRenderTargetFlagButNotTheRenderTargetView()
         {
             D3D11TextureViewPlan plan = D3D11ViewPolicy.ForTexture(GpuTextureUsage.GenerateMipmaps);
 
             Assert.True(plan.ShaderResource);
-            Assert.True(plan.RenderTarget);
+            Assert.False(plan.RenderTarget);
+            Assert.Equal(1, plan.ViewCount);
             Assert.Equal(D3D11BindUsage.ShaderResource | D3D11BindUsage.RenderTarget, plan.Bind);
         }
 
@@ -430,19 +434,30 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// The read surface is exactly two properties, and this states it because another row wires to it: the
-        /// fence work reads the same latch so a fence polled after device death answers signaled and a drain
-        /// becomes a no-op. Reaching that through the device would make every wrapper hold the device.
+        /// The read surface is exactly two properties and NEEDS NO DEVICE, which is all this pins: the latch is
+        /// constructible and both properties answer with nothing native in the process, on either side of the
+        /// flip. That is why the latch is its own type rather than a flag on the device, since reaching it
+        /// through the device would make every wrapper hold one.
+        /// <para>
+        /// The fence half of decision X3 (a fence polled after device death answering signaled, and a drain
+        /// becoming a no-op) reads this same latch and is #451's work, so there is no fence behaviour to assert
+        /// here yet.
+        /// </para>
         /// </summary>
         [Fact]
         public void TheLivenessLatch_IsReadableWithoutADevice()
         {
             var liveness = new D3D11DeviceLiveness();
-            bool signaledAfterDeath = liveness.IsDead;
-            Assert.False(signaledAfterDeath);
+            bool aliveBeforeDeath = liveness.IsAlive;
+            bool deadBeforeDeath = liveness.IsDead;
+            Assert.True(aliveBeforeDeath);
+            Assert.False(deadBeforeDeath);
 
             liveness.MarkDead();
-            Assert.True(liveness.IsDead);
+            bool aliveAfterDeath = liveness.IsAlive;
+            bool deadAfterDeath = liveness.IsDead;
+            Assert.False(aliveAfterDeath);
+            Assert.True(deadAfterDeath);
         }
 
         // ---- the platform boundary -----------------------------------------------------------------------
@@ -506,7 +521,8 @@ namespace KhaozEngine.Tests.Gpu
                 new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex)));
             using var set = new D3D11ResourceSet(new GpuResourceSetDescription(
                 layout, new FakeTexture(2, 2, 1, 1, GpuPixelFormat.R8UNorm), new FakeBuffer(64)));
-            D3D11RegisterScheme.BaseFor(new[] { layout }, 1);
+            // Two slots so the accumulation loop actually runs, at the last VALID index rather than one past it.
+            D3D11RegisterScheme.BaseFor(new[] { layout, layout }, 1);
             D3D11ConstantRange.ConstantCount(64);
             D3D11InputLayoutPlan.Build(new[]
             {

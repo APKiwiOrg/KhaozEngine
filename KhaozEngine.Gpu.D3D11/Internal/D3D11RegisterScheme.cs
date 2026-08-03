@@ -178,7 +178,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         internal static D3D11RegisterCounts BaseFor(D3D11ResourceLayout[] pipelineLayouts, uint setIndex)
         {
             ArgumentNullException.ThrowIfNull(pipelineLayouts);
-            if (setIndex > pipelineLayouts.Length)
+            // EQUAL is already out of range: the last valid slot is Length - 1. A setIndex of Length would sum
+            // every layout in the pipeline and hand back a base that looks plausible, which is the one wrong
+            // answer here that renders rather than throws.
+            if (setIndex >= pipelineLayouts.Length)
             {
                 throw new ArgumentOutOfRangeException(nameof(setIndex), setIndex,
                     "The set index addresses the pipeline's resource-layout array, so a slot past its end is a "

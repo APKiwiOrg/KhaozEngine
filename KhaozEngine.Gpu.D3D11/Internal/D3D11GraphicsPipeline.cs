@@ -44,6 +44,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             if (description.ShaderSet is not ID3D11ShaderSet shaders)
             {
+                // Not reachable device-free: the null check above runs first and this type is Windows-only, so
+                // this guard lands on the Windows leg with device creation rather than in the headless suite.
                 throw new ArgumentException(
                     "A graphics pipeline for the native Direct3D 11 backend needs a shader set this backend "
                     + "compiled. A set from another backend holds another backend's compiled modules.",
@@ -126,6 +128,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             var result = new D3D11ResourceLayout[layouts.Length];
             for (int i = 0; i < layouts.Length; i++)
             {
+                // Not reachable device-free either, for the same reason as the shader-set guard above: it is
+                // only ever entered from the constructor, past the device null check, on Windows.
                 result[i] = layouts[i] as D3D11ResourceLayout
                     ?? throw new ArgumentException(
                         $"Resource layout {i} was not created by the native Direct3D 11 backend, so it carries no "

@@ -65,7 +65,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     internal readonly struct D3D11BufferViewPlan
     {
         internal D3D11BufferViewPlan(bool shaderResource, bool unorderedAccess, bool rawViews,
-            D3D11BindUsage bind, bool dynamic, bool staging, bool indirect)
+            D3D11BindUsage bind, bool dynamic, bool staging, bool indirect, bool ring)
         {
             ShaderResource = shaderResource;
             UnorderedAccess = unorderedAccess;
@@ -74,6 +74,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             Dynamic = dynamic;
             Staging = staging;
             Indirect = indirect;
+            Ring = ring;
         }
 
         /// <summary>A full-range RAW (byte-address) shader resource view. Both structured kinds get one.</summary>
@@ -90,6 +91,19 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         internal bool Staging { get; }
         /// <summary>Indirect draw-argument buffer, which needs its own misc flag.</summary>
         internal bool Indirect { get; }
+        /// <summary>
+        /// RING-BACKED (decision U1): a uniform buffer, so the resource is created <c>DYNAMIC</c> plus
+        /// <c>CPU_ACCESS_WRITE</c> at its 256-aligned size times the frame count, and every write goes through the
+        /// mapped segment rather than through <c>UpdateSubresource</c>. True for exactly the
+        /// <see cref="GpuBufferUsage.UniformBuffer"/> buffers, which decision U3's creation invariant makes an
+        /// exclusive set.
+        /// <para>
+        /// It implies <see cref="Dynamic"/> and supersedes it. A caller that also passed
+        /// <see cref="GpuBufferUsage.Dynamic"/> gets the same resource either way, since the ring is the dynamic
+        /// path, and no renderer passes that bit at all.
+        /// </para>
+        /// </summary>
+        internal bool Ring { get; }
     }
 
     /// <summary>
@@ -185,6 +199,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// A read-only structured buffer takes the shader resource view alone, and a read-write one takes BOTH,
         /// because a read-write storage block is still readable.
         /// </para>
+        /// <para>
+        /// DECISION U3'S CREATION INVARIANT IS THE OTHER THING DECIDED HERE, and it is the one BACKEND-DIVERGENT
+        /// failure this backend has. A <see cref="GpuBufferUsage.UniformBuffer"/> buffer is ring-backed, meaning
+        /// one native buffer holding a segment per frame in flight, and the segment is added at bind time by the
+        /// constant-buffer bind alone. Every OTHER way of binding a buffer (a vertex or index bind, an indirect
+        /// argument read, a structured buffer's full-range RAW view) addresses byte zero, so it would silently
+        /// read segment zero while the same buffer's uniform bind read segment N. So the combination is refused at
+        /// CREATION rather than discovered as a wrong frame. See <see cref="RejectRingCombination"/>.
+        /// </para>
         /// </summary>
         internal static D3D11BufferViewPlan ForBuffer(GpuBufferUsage usage)
         {
@@ -198,6 +221,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                     nameof(usage));
             }
 
+            bool uniform = !staging && (usage & GpuBufferUsage.UniformBuffer) != 0;
+            if (uniform && (usage & ~(GpuBufferUsage.UniformBuffer | GpuBufferUsage.Dynamic)) != 0)
+                RejectRingCombination(usage);
+
             bool structuredRead = (usage & GpuBufferUsage.StructuredBufferReadOnly) != 0;
             bool structuredWrite = (usage & GpuBufferUsage.StructuredBufferReadWrite) != 0;
 
@@ -206,7 +233,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             {
                 if ((usage & GpuBufferUsage.VertexBuffer) != 0) bind |= D3D11BindUsage.VertexBuffer;
                 if ((usage & GpuBufferUsage.IndexBuffer) != 0) bind |= D3D11BindUsage.IndexBuffer;
-                if ((usage & GpuBufferUsage.UniformBuffer) != 0) bind |= D3D11BindUsage.ConstantBuffer;
+                if (uniform) bind |= D3D11BindUsage.ConstantBuffer;
                 if (structuredRead || structuredWrite) bind |= D3D11BindUsage.ShaderResource;
                 if (structuredWrite) bind |= D3D11BindUsage.UnorderedAccess;
             }
@@ -218,7 +245,45 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 bind,
                 dynamic: !staging && (usage & GpuBufferUsage.Dynamic) != 0,
                 staging,
-                indirect: !staging && (usage & GpuBufferUsage.IndirectBuffer) != 0);
+                indirect: !staging && (usage & GpuBufferUsage.IndirectBuffer) != 0,
+                ring: uniform);
         }
+
+        /// <summary>
+        /// THE BACKEND-DIVERGENT CREATION FAILURE, in one place with its whole reason attached. A uniform buffer
+        /// combined with any other bindable usage is legal on the seam and accepted by the Veldrid backend, and it
+        /// throws here.
+        /// <para>
+        /// WHY IT CANNOT SIMPLY BE HONOURED. The ring is what makes a per-frame uniform write cost nothing, and it
+        /// works by putting <c>FramesInFlight</c> copies of the buffer end to end in one allocation and adding the
+        /// frame's base at the constant-buffer bind. No other bind on the seam carries a frame base: a vertex bind
+        /// takes the offset the caller passed, an index bind takes none, a structured buffer's RAW view is created
+        /// once over the whole allocation, and an indirect argument read names a byte offset. Each of those would
+        /// address segment zero while the uniform bind addressed segment N, which is not an error anywhere. It is
+        /// one frame's data being read as another's, intermittently, with no diagnostic.
+        /// </para>
+        /// <para>
+        /// WHY IT IS A THROW RATHER THAN A FALLBACK to a non-ring uniform buffer. Falling back would make the
+        /// stalling <c>UpdateSubresource</c> path reachable again for exactly the buffers a consumer thought were
+        /// the fast ones, silently, and the whole point of the backend is that the per-frame path has no such
+        /// branch left in it.
+        /// </para>
+        /// <para>
+        /// It is VACUOUS in the engine today, verified across every renderer call site, which is what makes the
+        /// throw safe to add. It is still a divergence, so it is documented as one in the package README rather
+        /// than left for a consumer to discover.
+        /// </para>
+        /// </summary>
+        static void RejectRingCombination(GpuBufferUsage usage)
+            => throw new ArgumentException(
+                $"A buffer was created as {usage} on the native Direct3D 11 backend, which combines "
+                + "GpuBufferUsage.UniformBuffer with another way of binding the same bytes. A uniform buffer here "
+                + "is RING-BACKED: it holds one segment per frame in flight and the frame's base offset is added "
+                + "at the constant-buffer bind. No other bind carries that base, so the vertex, index, indirect or "
+                + "structured read would address the first segment while the uniform read addressed the current "
+                + "one, and one frame's data would be read as another's with nothing thrown and nothing logged. "
+                + "This combination IS accepted by GpuBackendKind.Direct3D11, so it is a documented divergence of "
+                + "this backend. Create two buffers, one uniform and one for the other usage.",
+                nameof(usage));
     }
 }

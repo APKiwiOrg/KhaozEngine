@@ -10,6 +10,14 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// <see cref="IGpuBuffer"/> for the native Direct3D 11 backend: one <c>ID3D11Buffer</c> plus the EAGER views
     /// its declared usage earns, created here at construction and never on the draw path (decision X1).
     /// <para>
+    /// A UNIFORM BUFFER IS RING-BACKED, AND ITS IDENTITY STILL NEVER CHANGES (decisions U1 and U3). The native
+    /// buffer is created <c>DYNAMIC</c> plus <c>CPU_ACCESS_WRITE</c> at its 256-aligned size times the frame count
+    /// rather than at the size the caller asked for, and <see cref="Ring"/> is what every write to it goes
+    /// through. <see cref="SizeInBytes"/> stays the LOGICAL size the seam asked for, because that is the number a
+    /// resource set's pinned <see cref="GpuBufferRange"/> was resolved against and the number a range check has to
+    /// use. Nothing above this type ever learns the buffer is larger.
+    /// </para>
+    /// <para>
     /// STRUCTURED BUFFERS ARE RAW, AND THAT IS DECISION C2 RATHER THAN A SHORTCUT. Both structured kinds get a
     /// <c>DEFAULT</c>-usage buffer with <c>BufferAllowRawViews</c> and a FULL-RANGE byte-address view, and
     /// <see cref="GpuBufferDescription.StructureByteStride"/> stays advisory. SPIRV-Cross emits a GLSL storage
@@ -30,16 +38,21 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// </para>
     /// </summary>
     [SupportedOSPlatform("windows")]
-    internal sealed class D3D11Buffer : IGpuBuffer
+    internal sealed class D3D11Buffer : IGpuBuffer, ID3D11RingBacked
     {
         readonly D3D11DeviceLiveness _liveness;
+        readonly D3D11RingAllocator _rings;
 
-        internal D3D11Buffer(ID3D11Device device, D3D11DeviceLiveness liveness, in GpuBufferDescription description)
+        internal D3D11Buffer(ID3D11Device device, ID3D11DeviceContext context, D3D11DeviceLiveness liveness,
+            D3D11RingAllocator rings, in GpuBufferDescription description)
         {
             ArgumentNullException.ThrowIfNull(device);
+            ArgumentNullException.ThrowIfNull(context);
             ArgumentNullException.ThrowIfNull(liveness);
+            ArgumentNullException.ThrowIfNull(rings);
 
             _liveness = liveness;
+            _rings = rings;
             SizeInBytes = description.SizeInBytes;
             Usage = description.Usage;
             StructureByteStride = description.StructureByteStride;
@@ -47,13 +60,22 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             Validate(description, Views);
 
-            Buffer = CreateBufferWindows(device, description, Views);
+            Buffer = CreateBufferWindows(device, description, Views, rings.FramesInFlight);
+            if (Views.Ring)
+                Ring = new D3D11UniformRing(rings, new D3D11BufferRingMemory(context, Buffer), SizeInBytes);
             if (Views.ShaderResource) ShaderResourceView = CreateRawSrvWindows(device, Buffer, SizeInBytes);
             if (Views.UnorderedAccess) UnorderedAccessView = CreateRawUavWindows(device, Buffer, SizeInBytes);
         }
 
-        /// <inheritdoc/>
+        /// <summary>The LOGICAL size, which is what the seam asked for. A ring-backed buffer's native allocation
+        /// is larger and nothing outside this type may use that number: a range, a dynamic offset and a write
+        /// offset are all against this one.</summary>
         public uint SizeInBytes { get; }
+
+        /// <inheritdoc/>
+        /// <remarks>Non-null for exactly the uniform buffers (decision U1). Every write to a ring-backed buffer
+        /// goes through it, and no write to any other buffer does.</remarks>
+        public D3D11UniformRing? Ring { get; }
 
         /// <summary>The declared usage, kept because the bind path needs to know a buffer is ring-backed or
         /// structured without re-deriving it.</summary>
@@ -82,6 +104,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             if (IsDisposed) return;
             IsDisposed = true;
             if (_liveness.IsDead) return;   // the device already freed every child object
+
+            // THE UNMAP COMES FIRST, and it is not tidiness. Releasing a mapped resource leaves the runtime
+            // holding a pointer into memory that no longer belongs to anyone, and leaving a disposed ring in the
+            // allocator's registry would have the next submit unmap it a second time.
+            if (Ring is not null) _rings.Forget(Ring);
 
             ShaderResourceView?.Dispose();
             UnorderedAccessView?.Dispose();
@@ -112,17 +139,24 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             }
         }
 
+        // A RING-BACKED BUFFER IS THE ONLY ONE CREATED AT A SIZE THE CALLER DID NOT ASK FOR: its 256-aligned
+        // stride times the frame count, DYNAMIC plus CPU write, so a per-frame write is a memcpy into a mapped
+        // segment instead of the incumbent's blocking staging map. Everything else is unchanged.
         [MethodImpl(MethodImplOptions.NoInlining)]
         static ID3D11Buffer CreateBufferWindows(ID3D11Device device, in GpuBufferDescription description,
-            in D3D11BufferViewPlan views)
+            in D3D11BufferViewPlan views, int framesInFlight)
         {
-            var d = new BufferDescription((int)description.SizeInBytes, D3D11Formats.ToBindFlags(views.Bind),
+            uint sizeInBytes = views.Ring
+                ? D3D11UniformRing.TotalBytesFor(description.SizeInBytes, framesInFlight)
+                : description.SizeInBytes;
+
+            var d = new BufferDescription((int)sizeInBytes, D3D11Formats.ToBindFlags(views.Bind),
                 ResourceUsage.Default);
 
             if (views.RawViews) d.MiscFlags = ResourceOptionFlags.BufferAllowRawViews;
             if (views.Indirect) d.MiscFlags |= ResourceOptionFlags.DrawIndirectArguments;
 
-            if (views.Dynamic)
+            if (views.Ring || views.Dynamic)
             {
                 d.Usage = ResourceUsage.Dynamic;
                 d.CPUAccessFlags = CpuAccessFlags.Write;

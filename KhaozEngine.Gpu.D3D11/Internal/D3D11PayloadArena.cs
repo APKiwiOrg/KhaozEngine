@@ -7,11 +7,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// the op carries an offset and a length instead of a pointer. One array per command list, grown to the
     /// frame's high-water mark and then rewound rather than reallocated, so a steady frame allocates nothing.
     /// <para>
-    /// Only bulk payloads land here. Section 5.1 is explicit that uniform writes do NOT: they go straight into
-    /// the mapped ring (U1 and U2), so the memcpy the renderer already performs IS the memcpy into GPU-visible
-    /// memory and there is no second copy. That routing decision belongs to the ring in work-breakdown row 8. All
-    /// this row does is give every <c>UpdateBuffer</c> a byte home that outlives the caller's span, which it must
-    /// have, because a recorded span is dangling by the time the list is submitted.
+    /// Only bulk payloads land here, and that is now a fact rather than a plan.
+    /// <see cref="D3D11StreamEmitter.UpdateBuffer"/> routes a write to a ring-backed uniform buffer straight into
+    /// its mapped segment (U1 and U2), so the memcpy the renderer already performs IS the memcpy into GPU-visible
+    /// memory, there is no second copy, and no arena byte is spent on it. What reaches here is the vertex, index
+    /// and other bulk writes of U4, which need a byte home that outlives the caller's span because a recorded span
+    /// is dangling by the time the list is submitted.
     /// </para>
     /// <para>
     /// <see cref="Reset"/> rewinds without clearing, and that is safe here in a way it is not for

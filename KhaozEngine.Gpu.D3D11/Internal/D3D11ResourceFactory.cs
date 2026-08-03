@@ -24,7 +24,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     internal sealed class D3D11ResourceFactory : IGpuResourceFactory
     {
         readonly ID3D11Device _device;
+        readonly ID3D11DeviceContext _context;
         readonly D3D11DeviceLiveness _liveness;
+        readonly D3D11RingAllocator _rings;
         readonly Func<IGpuCommandList> _createCommandList;
 
         /// <summary>
@@ -32,21 +34,32 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// recording driver a list uses is the device's decision (it holds the real emitter and reads
         /// <c>KE_D3D11_RECORD</c>) and threading a generic emitter type through this factory would put that choice
         /// in every signature.
+        /// <para>
+        /// <paramref name="context"/> and <paramref name="rings"/> arrive for the same reason and are used by one
+        /// member between them: a uniform buffer is ring-backed (decision U1), so it needs the segment count to
+        /// size itself and the immediate context to map itself. Both belong to the device, which owns exactly one
+        /// ring allocator.
+        /// </para>
         /// </summary>
-        internal D3D11ResourceFactory(ID3D11Device device, D3D11DeviceLiveness liveness,
-            Func<IGpuCommandList> createCommandList)
+        internal D3D11ResourceFactory(ID3D11Device device, ID3D11DeviceContext context,
+            D3D11DeviceLiveness liveness, D3D11RingAllocator rings, Func<IGpuCommandList> createCommandList)
         {
             ArgumentNullException.ThrowIfNull(device);
+            ArgumentNullException.ThrowIfNull(context);
             ArgumentNullException.ThrowIfNull(liveness);
+            ArgumentNullException.ThrowIfNull(rings);
             ArgumentNullException.ThrowIfNull(createCommandList);
 
             _device = device;
+            _context = context;
             _liveness = liveness;
+            _rings = rings;
             _createCommandList = createCommandList;
         }
 
         /// <inheritdoc/>
-        public IGpuBuffer CreateBuffer(in GpuBufferDescription d) => new D3D11Buffer(_device, _liveness, d);
+        public IGpuBuffer CreateBuffer(in GpuBufferDescription d)
+            => new D3D11Buffer(_device, _context, _liveness, _rings, d);
 
         /// <inheritdoc/>
         public IGpuTexture CreateTexture(in GpuTextureDescription d) => new D3D11Texture(_device, _liveness, d);

@@ -79,10 +79,38 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             => _stream.Append(new D3D11Op(D3D11OpCode.DrawIndexed,
                 a0: indexCount, a1: instanceCount, a2: indexStart, a3: D3D11Op.Signed(vertexOffset), a4: instanceStart));
 
-        /// <summary>The bytes are copied into the recording's arena, because the caller's span is dangling by the
-        /// time the list is submitted. The op carries the arena offset and length.</summary>
+        /// <summary>
+        /// THE ONE PLACE THE TWO UPLOAD PATHS PART (decisions U1 and U4), and the only seam call that does not
+        /// always become an op.
+        /// <para>
+        /// A UNIFORM WRITE GOES STRAIGHT INTO THE MAPPED RING AND RECORDS NOTHING. The ring is mapped
+        /// <c>NO_OVERWRITE</c> at the current frame's segment, so the memcpy the caller already asked for IS the
+        /// memcpy into GPU-visible memory and there is no second copy, no op, no arena byte and no work left for
+        /// the replay to do. That is the whole 22-blocking-staging-maps-a-frame pathology gone, and it is what
+        /// section 5.1 sizes the command stream against.
+        /// </para>
+        /// <para>
+        /// A BULK WRITE (vertex, index, anything not ring-backed) takes the arena and replays as
+        /// <c>UpdateSubresource</c>, because the caller's span is dangling by the time the list is submitted. That
+        /// costs one memcpy, which those writes already pay today, and Direct3D 11 permits a partial box on a
+        /// non-constant buffer so there is no partial penalty on top of it.
+        /// </para>
+        /// <para>
+        /// WHAT A CONSUMER CAN SEE FROM THIS, stated because it is a real behaviour difference rather than an
+        /// implementation detail. A record-time uniform write lands the moment it is made, so two writes to the
+        /// SAME range inside one frame leave the second value for every draw of that frame, including draws
+        /// recorded between them. Per-draw uniforms are addressed by dynamic offset rather than by rewriting one
+        /// range, which is what the whole renderer already does and what makes the ring possible at all.
+        /// </para>
+        /// </summary>
         public void UpdateBuffer(IGpuBuffer buffer, uint offsetBytes, ReadOnlySpan<byte> data)
         {
+            if (buffer is ID3D11RingBacked { Ring: { } ring })
+            {
+                ring.Write(offsetBytes, data);
+                return;
+            }
+
             int payload = _stream.AddPayload(data);
             _stream.Append(new D3D11Op(D3D11OpCode.UpdateBuffer, _stream.AddReference(buffer),
                 a0: offsetBytes, a1: (uint)payload, a2: (uint)data.Length));

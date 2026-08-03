@@ -50,6 +50,15 @@ namespace KhaozEngine.Tests.Gpu
         static readonly TimeSpan RaceBudget = TimeSpan.FromSeconds(5);
         static readonly TimeSpan JoinBudget = TimeSpan.FromSeconds(30);
 
+        // The update race WAITS for its writers instead of hoping they were scheduled. A first write has to land
+        // before the measured window opens, and this many have to land inside it, with the window extending itself
+        // in short extra rounds until they do or until RaceBudget above ends the whole race. A round is small on
+        // purpose: the pause between rounds is what lets a starved writer through, and a hammering submit loop
+        // that never pauses is the thing being starved by.
+        const int MinimumRacingWrites = 8;
+        const int ExtraRoundSubmits = 16;
+        static readonly TimeSpan FirstWriteBudget = TimeSpan.FromSeconds(10);
+
         // The resize race's sizes, which carry their own consistency check: every width is 640 + n and every
         // height is 480 + n for the SAME n, so a half-applied size is arithmetic rather than a judgement call.
         const uint WidthBase = 640;
@@ -79,11 +88,24 @@ namespace KhaozEngine.Tests.Gpu
         /// producing a null pointer to crash on, and the crash detector goes quiet.
         /// </para>
         /// <para>
-        /// THE WRITERS ARE ASSERTED TO HAVE MADE PROGRESS DURING THE SAMPLING WINDOW, which is what stops the
-        /// whole thing passing vacuously. Both writers being scheduled once at startup and then starved for the
-        /// entire window on a loaded runner would leave every assertion below true with nothing having raced at
-        /// all, so the shared iteration counter is read on either side of the submit loop and the difference has
-        /// to be non-zero.
+        /// THE WINDOW WAITS FOR THE RACE INSTEAD OF HOPING FOR IT, which is what stops the whole thing passing
+        /// vacuously without turning the guard itself into a coin flip. Both writers being scheduled once at
+        /// startup and then starved for the entire window on a loaded runner would leave every assertion below
+        /// true with nothing having raced at all, so the shared iteration counter is read on either side of the
+        /// submit loop and enough writes have to have landed in between.
+        /// </para>
+        /// <para>
+        /// READING THE COUNTER WAS NOT ENOUGH ON ITS OWN. The planned <see cref="SubmitIterations"/> submits are
+        /// under a millisecond of work, and on one full-suite run the writers were simply not scheduled inside
+        /// that millisecond: a 24 ms test failed on "No foreign write landed while the submit loop was running",
+        /// then passed on the immediate rerun and 3 times out of 3 in isolation. A guard that fires on scheduling
+        /// luck reports the runner rather than the code, so the window is waited for at both ends now. The writers
+        /// have to land a FIRST write before it opens, which puts thread startup latency outside the measurement
+        /// entirely, and it then extends itself in short rounds until <see cref="MinimumRacingWrites"/> writes have
+        /// landed WHILE submits were running, bounded by the same wall clock as the race. Only writes counted
+        /// inside a round of submits count, so the pause between rounds cannot satisfy the guard. Failing it now
+        /// means the writers went seconds without being scheduled against a submit loop hammering the same lock,
+        /// which is an environment worth failing on rather than a timing coincidence.
         /// </para>
         /// <para>
         /// THE SEGMENT ASSERTION IS THE OTHER HALF, and it is what distinguishes this from a plain mutual-exclusion
@@ -128,21 +150,46 @@ namespace KhaozEngine.Tests.Gpu
             writerB.Start();
             Assert.True(writing.Wait(JoinBudget), "The foreign writer threads never started.");
 
-            long writesBefore = progress.Iterations;
-            int tornSamples = 0;
-            var clock = Stopwatch.StartNew();
-            for (int i = 0; i < SubmitIterations && clock.Elapsed < RaceBudget; i++)
-            {
-                D3D11CommandDrivers.Submit(
-                    harness.SubmitLock, list, ref emitter, signal, fence: null, rings: harness.Allocator);
+            // Thread startup happens BEFORE the measured window rather than inside it. The countdown above is
+            // signalled on the way into the writer loop, so it means "running" and not yet "writing", and the
+            // window that follows is the one whose racing has to be real.
+            Assert.True(SpinWait.SpinUntil(() => progress.Iterations > 0, FirstWriteBudget),
+                "No foreign writer landed a single device-level write in "
+                + FirstWriteBudget.TotalSeconds.ToString(CultureInfo.InvariantCulture)
+                + " seconds, so the writer threads never ran at all.");
 
-                lock (harness.SubmitLock)
+            long writesDuring = 0;
+            int tornSamples = 0;
+            int submits = 0;
+            var clock = Stopwatch.StartNew();
+            for (int round = 0; ; round++)
+            {
+                int iterations = round == 0 ? SubmitIterations : ExtraRoundSubmits;
+                long writesBefore = progress.Iterations;
+
+                for (int i = 0; i < iterations && clock.Elapsed < RaceBudget; i++)
                 {
-                    if (!IsUniform(harness.Memory.Segment(segmentBase, PatternBytes))) tornSamples++;
+                    D3D11CommandDrivers.Submit(
+                        harness.SubmitLock, list, ref emitter, signal, fence: null, rings: harness.Allocator);
+                    submits++;
+
+                    lock (harness.SubmitLock)
+                    {
+                        if (!IsUniform(harness.Memory.Segment(segmentBase, PatternBytes))) tornSamples++;
+                    }
                 }
+
+                // Only what landed while the submits were running is counted, so the pause below is outside the
+                // measurement rather than a way to satisfy it.
+                writesDuring += progress.Iterations - writesBefore;
+                if (writesDuring >= MinimumRacingWrites || clock.Elapsed >= RaceBudget) break;
+
+                // The planned round found nothing, so extend the race. The pause is what a writer starved by the
+                // submit loop needs to get scheduled at all, and the round after it is where that shows up.
+                Thread.Sleep(1);
             }
 
-            long writesDuring = progress.Iterations - writesBefore;
+            clock.Stop();
             stop.Set();
             Assert.True(writerA.Join(JoinBudget) && writerB.Join(JoinBudget),
                 "A foreign writer thread never finished after the race was stopped.");
@@ -152,10 +199,15 @@ namespace KhaozEngine.Tests.Gpu
                 $"{failures.Count} thread(s) failed: {string.Join(" | ", failures)}");
 
             // And they really were writing WHILE the submits ran, so the assertion above is about a race rather
-            // than about two threads that started and were then starved for the whole window.
-            Assert.True(writesDuring > 0,
-                "No foreign write landed while the submit loop was running, so nothing raced and every assertion "
-                + "in this test is vacuous.");
+            // than about two threads that started and were then starved for the whole window. The window waited
+            // for this rather than assuming it, so reaching the failure means seconds of starvation.
+            Assert.True(writesDuring >= MinimumRacingWrites,
+                "Only " + writesDuring.ToString(CultureInfo.InvariantCulture)
+                + " foreign write(s) landed while the submit loop was running, across "
+                + submits.ToString(CultureInfo.InvariantCulture) + " submits and "
+                + clock.Elapsed.TotalSeconds.ToString("0.00", CultureInfo.InvariantCulture)
+                + " seconds of racing. The writers were starved rather than raced, so every assertion in this "
+                + "test is vacuous.");
 
             // The secondary guard. See the class doc: this one catches roughly 40% of unlocked runs, and is here
             // for the future path where the ring stays mapped and there is no pointer to crash on.
@@ -575,6 +627,9 @@ namespace KhaozEngine.Tests.Gpu
         // One foreign thread doing device-level writes of a single repeated byte until told to stop. Signals the
         // countdown once it is running, so the racing test never measures a thread that never started, and counts
         // its own iterations so the test can tell "raced and found nothing" from "never got scheduled".
+        // THE COUNTDOWN IS SIGNALLED BEFORE THE FIRST WRITE, on the way into the loop, so it means running and
+        // not writing. A caller that needs the writer to be actually WRITING waits on the counter as well, which
+        // is what the update race does before it opens its measured window.
         static Thread ForeignWriter(D3D11RingHarness harness, byte pattern, CountdownEvent running,
             ManualResetEventSlim stop, ConcurrentBag<Exception> failures, WriterProgress progress)
             => new(() =>

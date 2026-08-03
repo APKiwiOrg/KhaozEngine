@@ -28,11 +28,26 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// Everything here is created eagerly and disposed under the liveness gate. A pipeline creates four objects
     /// and a draw creates none.
     /// </para>
+    /// <para>
+    /// IT ALSO ANSWERS <see cref="ID3D11PipelineState"/>, which is how the redundancy caches of decision R6 read
+    /// it: seven get-only members over the state above, EXPLICITLY implemented because six of them collide by
+    /// name with the typed properties the emitter uses to make the calls. That is the split the interface
+    /// describes, with this seam answering what changed and the typed members answering with what, and it costs
+    /// no downcast per bind either way. Every member returns a stored field, because the caches compare by
+    /// reference identity and a value built per access is never equal to the last one.
+    /// </para>
     /// </summary>
     [SupportedOSPlatform("windows")]
-    internal sealed class D3D11GraphicsPipeline : IGpuPipeline
+    internal sealed class D3D11GraphicsPipeline : IGpuPipeline, ID3D11PipelineState
     {
         readonly D3D11DeviceLiveness _liveness;
+
+        // The topology's D3D_PRIMITIVE_TOPOLOGY value, resolved once here rather than read from Topology per
+        // access. A uint field, not a Vortice enum one: a Vortice VALUE-TYPE field anywhere in this package makes
+        // the CLR resolve the interop assembly the moment the declaring type is loaded, and the load-path guard
+        // asserts process-wide that nothing pulls it in off Windows. The cache's uint is what the interface asks
+        // for anyway, so the conversion happens once per pipeline instead of once per bind.
+        readonly uint _primitiveTopology;
 
         internal D3D11GraphicsPipeline(ID3D11Device device, D3D11DeviceLiveness liveness,
             in GpuPipelineDescription description)
@@ -55,6 +70,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             VertexShader = shaders.VertexShader;
             PixelShader = shaders.PixelShader;
             TopologyKind = description.Topology;
+            _primitiveTopology = TopologyValueWindows(description.Topology);
             BlendFactor = description.BlendFactor;
             ResourceLayouts = ToLayouts(description.ResourceLayouts);
 
@@ -109,6 +125,36 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <summary>True once disposed, whether or not anything native was released.</summary>
         internal bool IsDisposed { get; private set; }
 
+        // ---- ID3D11PipelineState: what the redundancy caches read (decision R6) ----
+        //
+        // Seven upcasts of stored fields and nothing else. Each one hands back the SAME instance on every read,
+        // which is the whole contract: the cache asks whether what it holds is what is already bound, so a value
+        // built per access would never compare equal, every bind would report a change and the cache would be
+        // defeated without anything throwing or logging. Every Direct3D handle here is a reference type, so the
+        // upcast to object boxes nothing, and the topology is the uint the interface asks for rather than a
+        // boxed enum.
+
+        /// <inheritdoc/>
+        object? ID3D11PipelineState.VertexShader => VertexShader;
+
+        /// <inheritdoc/>
+        object? ID3D11PipelineState.PixelShader => PixelShader;
+
+        /// <inheritdoc/>
+        object? ID3D11PipelineState.BlendState => BlendState;
+
+        /// <inheritdoc/>
+        object? ID3D11PipelineState.DepthStencilState => DepthStencilState;
+
+        /// <inheritdoc/>
+        object? ID3D11PipelineState.RasterizerState => RasterizerState;
+
+        /// <inheritdoc/>
+        object? ID3D11PipelineState.InputLayout => InputLayout;
+
+        /// <inheritdoc/>
+        uint ID3D11PipelineState.PrimitiveTopology => _primitiveTopology;
+
         public void Dispose()
         {
             if (IsDisposed) return;
@@ -137,6 +183,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             }
             return result;
         }
+
+        // The one Vortice-touching body this seam added, and it is behind the package's usual boundary: NoInlining
+        // with no interop type in the signature, so nothing resolves the assembly until this actually runs, which
+        // is inside a constructor that already needs a live device.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static uint TopologyValueWindows(GpuPrimitiveTopology topology) => (uint)D3D11Formats.ToTopology(topology);
 
         // IndependentBlendEnable is on, so each attachment keeps its own state. The engine's multiple-render-target
         // model pass relies on it: one attachment blends while another is set to preserve its destination.

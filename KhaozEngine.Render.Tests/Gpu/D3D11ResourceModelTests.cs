@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Reflection;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.D3D11;
 using KhaozEngine.Gpu.D3D11.Internal;
@@ -458,6 +459,47 @@ namespace KhaozEngine.Tests.Gpu
             bool deadAfterDeath = liveness.IsDead;
             Assert.False(aliveAfterDeath);
             Assert.True(deadAfterDeath);
+        }
+
+        // ---- the pipeline-state seam ---------------------------------------------------------------------
+
+        /// <summary>
+        /// THE PIPELINE HANDLE ANSWERS <c>ID3D11PipelineState</c>, which is the wiring between the state objects
+        /// this row builds and the redundancy caches the replay row drives. Without it the emitter refuses every
+        /// real pipeline by name, since a pipeline that cannot say what it is made of would rebind everything on
+        /// every draw.
+        /// <para>
+        /// STRUCTURAL RATHER THAN BEHAVIOURAL, and deliberately so. <c>D3D11GraphicsPipeline</c> takes an
+        /// <c>ID3D11Device</c> and builds four state objects in its constructor, so there is no way to make one
+        /// off Windows and no way to read what it returns without a device. The behaviour on the far side of this
+        /// relationship is already pinned device-free in <c>D3D11StateCacheTests</c> through a fake that
+        /// implements the same interface, so what is left to check here is that the SHIPPED pipeline is the shape
+        /// those tests assume. The values themselves land on the Windows leg with device creation.
+        /// </para>
+        /// <para>
+        /// Reading the interface MAP rather than the type's own properties is not incidental: reading a property
+        /// type on this class resolves an <c>ID3D11VertexShader</c> and loads the Direct3D interop, which would
+        /// turn the two load-path assertions below red in whichever test happened to run afterwards. The map's
+        /// members are all <c>object</c> and <c>uint</c>, so it stays inside the boundary.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void TheGraphicsPipeline_ImplementsThePipelineStateSeam()
+        {
+            Assert.True(typeof(ID3D11PipelineState).IsAssignableFrom(typeof(D3D11GraphicsPipeline)),
+                "D3D11GraphicsPipeline no longer implements ID3D11PipelineState, so the redundancy caches cannot "
+                + "read it and the emitter refuses every pipeline the device creates.");
+
+            InterfaceMapping map = typeof(D3D11GraphicsPipeline)
+                .GetInterfaceMap(typeof(ID3D11PipelineState));
+
+            Assert.Equal(7, map.InterfaceMethods.Length);
+            Assert.All(map.TargetMethods, m => Assert.Equal(typeof(D3D11GraphicsPipeline), m.DeclaringType));
+
+            // The six object slots plus the uint topology, which is the shape the cache compares by reference
+            // identity and the reason no member here is a Direct3D type.
+            Assert.Equal(6, map.InterfaceMethods.Count(m => m.ReturnType == typeof(object)));
+            Assert.Equal(1, map.InterfaceMethods.Count(m => m.ReturnType == typeof(uint)));
         }
 
         // ---- the platform boundary -----------------------------------------------------------------------

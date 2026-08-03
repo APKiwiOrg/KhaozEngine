@@ -112,8 +112,9 @@ What it owns today:
     against, and it leaves both new fields null.
 - **`GpuDeviceDiagnostics`** (17.32.0) - the two facts a device can only report about ITSELF and only LIVE:
   `SoftwareAdapter` (on Direct3D11, `DXGI_ADAPTER_FLAG_SOFTWARE`) and `DeviceLossReason`
-  (`GetDeviceRemovedReason`'s answer plus the call site that noticed). On `IGpuDevice.Diagnostics` and
-  `GpuDeviceContext.Diagnostics`, and read THROUGH to the device on every access rather than captured at
+  (`GetDeviceRemovedReason`'s answer plus the call site that noticed). On `IGpuDevice.Diagnostics`,
+  `GpuDeviceContext.Diagnostics` and `AppWindow.Diagnostics`, and read THROUGH to the device on every access
+  rather than captured at
   creation, because a device loss happens at an arbitrary moment long afterwards and a captured value would
   always say the device was fine.
   - Both members are nullable and **null means "nobody answered" rather than "no"**. A backend that does not

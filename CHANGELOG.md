@@ -313,10 +313,13 @@ buffers, and refused anyway because nothing further down the path would ever say
 
 The native backend can now say what the device can do, which adapter to run on, what the Direct3D debug layer is
 complaining about, and why the device died. Section 11 of the design doc, decisions G1 to G4, C4 and T4. Two
-public API additions land with it, and both are additive: `GpuDeviceDiagnostics` on `IGpuDevice.Diagnostics` and
-`GpuDeviceContext.Diagnostics`, and two new telemetry session-header fields, `softwareAdapter` and
-`deviceLossReason`. Nothing switches over and no golden moved: device creation still throws, so no shipped path
-reaches any of it.
+public API additions land with it, and both are additive: `GpuDeviceDiagnostics` on `IGpuDevice.Diagnostics`,
+`GpuDeviceContext.Diagnostics` and `AppWindow.Diagnostics`, and two new telemetry session-header fields,
+`softwareAdapter` and `deviceLossReason`. The `AppWindow` pass-through sits on the `AppWindow.Diagnostics.cs`
+partial beside `ThreadingCaps` / `AdapterDescription` / `InjectedModules`, because a windowed game holds a window
+and not a context, and without it neither fact was reachable from where a game builds its overlay or its session
+header. Nothing switches over and no golden moved: device creation still throws, so no shipped path reaches any
+of it.
 
 **Capability parity with the incumbent, one member excepted, and the assertion is the deliverable (G1, T4).**
 Five of the nine `GpuCapabilities` members are CONSTANTS of the feature levels this backend requires rather than

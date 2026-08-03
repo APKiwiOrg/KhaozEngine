@@ -8229,7 +8229,9 @@ the envelope, so `session.v` does not move and an existing reader keeps working.
   `DXGI_ERROR_DEVICE_RESET` means another process hung the GPU.
 
 Both come off the live device through `IGpuDevice.Diagnostics` (a `GpuDeviceDiagnostics`, also on
-`GpuDeviceContext.Diagnostics`), read at the moment the header is written rather than captured at creation,
+`GpuDeviceContext.Diagnostics` and, for a windowed game that holds no context, on `AppWindow.Diagnostics`
+alongside `AdapterDescription` / `InjectedModules` / `ThreadingCaps`), read at the moment the header is written
+rather than captured at creation,
 because a device loss happens at an arbitrary moment long after the device was made. `info.WithGpu(device)` fills
 them for you. The `AppWindow`-shaped overload gained a five-value sibling that takes the diagnostics as its last
 argument, and the original four-value overload is unchanged and leaves both fields `null`. **The native

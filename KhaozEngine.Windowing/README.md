@@ -72,7 +72,7 @@ Windowing + input foundation for the custom MonoGame-free stack.
 - **GPU diagnostics accessors on `AppWindow`** - read-only facts about the device the window created, for a
   game's own debug overlay or bug-report dump. Every one of them is the value `KhaozEngine.Gpu` already logs at
   device creation, so an overlay row and the log cannot disagree. `BackendSelection` (since 17.21.0) says which
-  backend ran and who chose it. The three below live on the `AppWindow.Diagnostics.cs` partial.
+  backend ran and who chose it. The four below live on the `AppWindow.Diagnostics.cs` partial.
   - `ThreadingCaps` (a `GpuThreadingCaps?`, since 17.22.0) - the Direct3D11 driver's multi-threading
     capabilities. Null on every other backend, off Windows, and when the query failed, so render it with
     `GpuThreadingDiagnostics.Describe`. A false `DriverCommandLists` is the case worth putting on screen.
@@ -84,6 +84,12 @@ Windowing + input foundation for the custom MonoGame-free stack.
     scan failed) and empty (the scan ran and found none) are opposite facts**, so render it with
     `GpuInjectedModules.Describe` rather than testing the count. Worth a row: this software injects itself into
     Direct3D and is a known cause of stutter, corrupted frames, and driver crashes that look like engine bugs.
+  - `Diagnostics` (a `GpuDeviceDiagnostics`, since 17.32.0) - whether this session is on a software rasterizer
+    (`SoftwareAdapter`) and why the device was lost if it has been (`DeviceLossReason`). Unlike the three above
+    it is read LIVE through to the device on every access rather than captured at creation, because a device loss
+    happens at an arbitrary moment long afterwards. Both members are nullable and null means "nobody answered",
+    which is what every backend on the Veldrid path says. Hand it to
+    `TelemetrySessionInfo.WithGpu`'s five-value overload for a windowed game's session header.
 - `InputState` - per-frame keyboard + mouse + gamepad + touch snapshot (`IsDown`/`WasPressed` for
   `Key`/`MouseButton`, mouse position/delta/scroll, `Gamepad(i)`). Immutable; no MonoGame. `WasRepeated(Key)` /
   `WasTyped(Key)` surface OS key auto-repeat (`AppWindow` fills it from GLFW's `REPEAT` action; `WasPressed` stays

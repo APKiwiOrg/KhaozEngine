@@ -4,8 +4,9 @@ The engine's own native Direct3D 11 backend for the [KhaozEngine.Gpu](../KhaozEn
 NO umbrella: a consumer adds this package explicitly, the same pattern as `Physics.Bepu` or
 `WorldStore.Sqlite`, and nothing that does not want the Direct3D interop ever carries it.
 
-> **Status: the package skeleton.** Registration, the platform guards and the machine-capability probe are
-> live. Device creation is not built yet, so `CreateForWindow` and `CreateHeadless` throw a message saying so.
+> **Status: registration, the platform guards, the machine-capability probe, and the recording model are
+> live.** The recording model (see "Recording, and the two drivers" below) lands behind `KE_D3D11_RECORD`, but
+> device creation is still not built, so `CreateForWindow` and `CreateHeadless` throw a message saying so.
 > `GpuBackendKind.Direct3D11` remains the working Direct3D 11 backend and stays selectable indefinitely.
 
 ## Opting in

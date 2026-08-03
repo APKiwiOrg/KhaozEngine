@@ -48,8 +48,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <summary>Bytes of bulk payload this recording holds.</summary>
         internal int PayloadLength => _payloads.Length;
 
-        /// <summary>True once <c>End</c> has sealed the recording. Submit checks it, because replaying a list
-        /// that was never ended replays a half-recorded frame rather than failing.</summary>
+        /// <summary>True once <c>End</c> has sealed the recording. This mirrors the recorder's own seal flag
+        /// for test visibility only. Replaying a list that was never ended would replay a half-recorded frame
+        /// rather than failing. In production, Submit checks the recorder's <c>IsSealed</c> instead.</summary>
         internal bool Sealed { get; private set; }
 
         /// <summary>Truncate to zero and drop every reference and payload. What <c>Begin</c> does.</summary>

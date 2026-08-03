@@ -288,8 +288,10 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(1, stream.Count);
         }
 
-        /// <summary><c>End</c> seals, and a <c>Begin</c> unseals. Submit reads this, because replaying a list
-        /// that was never ended replays a half-recorded frame rather than failing.</summary>
+        /// <summary><c>End</c> seals, and a <c>Begin</c> unseals. This is the stream's own mirror of the
+        /// recorder's seal flag, kept for test visibility. Replaying a list that was never ended would replay a
+        /// half-recorded frame rather than failing. In production, Submit reads the recorder's <c>IsSealed</c>
+        /// instead.</summary>
         [Fact]
         public void EndSealsTheRecording_AndBeginUnsealsIt()
         {

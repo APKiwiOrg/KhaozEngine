@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using KhaozEngine.Locomotion;
 using KhaozEngine.Render3D;
 
 namespace KhaozEngine.Game
@@ -100,12 +101,26 @@ namespace KhaozEngine.Game
         /// or the forward <see cref="LocomotionState.Swim"/> from the planar speed (the swim flag is threaded from the
         /// movement medium, never re-queried). When <c>speedSync</c> is enabled a Walk/Run/Swim clip advances in
         /// proportion to <paramref name="horizontalSpeed"/> (Idle/tread/air stay 1x).</summary>
-        public void Update(float horizontalSpeed, bool grounded, float verticalVelocity, bool swimming, float dt)
+        public void Update(float horizontalSpeed, bool grounded, float verticalVelocity, bool swimming, float dt) =>
+            Update(horizontalSpeed, grounded, verticalVelocity, swimming, MoveSector.Forward, dt);
+
+        /// <summary>Advance the animation for one frame from the movement state AND the directional
+        /// <paramref name="sector"/> the movement falls in relative to the character's facing. Identical to the
+        /// sector-free overload except for the playback DIRECTION: with <c>speedSync</c> enabled and its
+        /// <see cref="LocomotionSpeedSync.ReverseOnReverseSector"/> set, a <see cref="MoveSector.Reverse"/> move plays
+        /// its clip backwards at the speed-matched rate (a backpedal strides backwards instead of moonwalking).
+        ///
+        /// <para>The sign reaches the PLAYHEAD only.
+        /// <see cref="LocomotionStateMachine.Evaluate(float, bool, float, bool, LocomotionThresholds)"/> still sees the
+        /// speed MAGNITUDE, so state selection is untouched: a reverse walk is the walk state, a reverse run is the run
+        /// state, and a reverse move can never read as Idle because a negative speed fell through the thresholds. That
+        /// separation is the whole seam - direction is presentation, the state is the movement.</para></summary>
+        public void Update(float horizontalSpeed, bool grounded, float verticalVelocity, bool swimming, MoveSector sector, float dt)
         {
             LocomotionState evaluated = LocomotionStateMachine.Evaluate(horizontalSpeed, grounded, verticalVelocity, swimming, _thresholds);
             CommitState(evaluated, grounded && !swimming, dt);
             _player.Play(ClipFor(State), _crossfade);
-            _player.Update(dt, _speedSync.RateFor(State, horizontalSpeed));
+            _player.Update(dt, _speedSync.RateFor(State, horizontalSpeed, sector));
 
             // No action in flight: the byte-stable single-player path (bit-identical to pre-action behaviour). One
             // action or more: feed the locomotion crossfade to the compositor as the base layer and stack the actions.

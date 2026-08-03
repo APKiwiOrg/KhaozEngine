@@ -245,6 +245,53 @@ nearest by shape center, the same tiebreak the editor's overlay picking has alwa
 editor now runs on this resolver, so editor picking and game runtime can never disagree.
 `MapShapeGeometry.TryCenter` moves down from the editor so the center rule ships to games.
 
+### Reverse locomotion playback, behind an opt-in animator flag (#485)
+
+A character backpedaling under a held facing plays its walk clip BACKWARDS now, at the speed-matched rate, instead
+of moonwalking (the body sliding back while the feet stride forward). Additive and off by default: every existing
+game plays byte-identically until it opts in, and a game that opts in but never classifies a sector still does.
+
+**Where the direction was getting lost.** The bottom of the stack already worked. `AnimationPlayer.Update(dt,
+speedMultiplier)` scales the playhead by whatever it is handed, and `AnimationSampler.Wrap` has an explicit
+negative branch, so a looping clip wraps cleanly through zero onto its tail. What blocked it was the middle:
+`LocomotionSpeedSync.RateFor` clamped a magnitude with a positive floor and could not return a negative,
+`AnimatedCharacter.Update` took a speed that ALSO feeds `LocomotionStateMachine.Evaluate` (so a negative would have
+read as Idle), and `CharacterSample` carried no direction at all, with the bridge clamping `PlanarSpeed`
+non-negative on ingest. There was no way in for a sign, which is why the consumer could not solve this on its own.
+
+**The seam, four additive edits.** `CharacterSample` gains `Sector` (`KhaozEngine.Locomotion.MoveSector`) plus
+`WithSector(...)`, following the `WithFacingYaw` / `WithDowned` shape and composing with any sample shape.
+`CharacterAnimatorTuning` gains `ReverseLocomotionOnReverseSector` (default false), threaded into the
+`LocomotionSpeedSync` it builds as the new `ReverseOnReverseSector` field, also settable directly, or via the new
+trailing `reverseOnReverseSector` argument of `LocomotionSpeedSync.Enable`, on a brain built by a
+`Func<AnimatedCharacter>` factory. `RateFor` gains a `(state, horizontalSpeed, sector)` overload (the old two-arg
+one delegates to it at `MoveSector.Forward`). `AnimatedCharacter.Update` gains a matching sector overload, and
+`ReplicatedCharacterAnimators` passes `sample.Sector` straight through.
+
+**The sign reaches the playhead and nothing else.** `Evaluate` still sees the magnitude, so a reverse walk is the
+walk state and a reverse run is the run state, which is what keeps the whole thing additive: state selection,
+thresholds, and the debounce are all untouched. The clamp bounds the MAGNITUDE and the sign is applied last, so
+`MinMultiplier` still floors a crawling backpedal at -0.25x rather than freezing it and `MaxMultiplier` still
+ceilings a fast one at -3x. Idle, the tread, and the air states have no direction to reverse and stay at +1x. The
+forward swim stroke does reverse, since it is a syncing move state. The direction travels as its own field rather
+than as a signed speed precisely because the speed is what the state machine reads, so the ingest's non-negative
+`PlanarSpeed` clamp is deliberately left alone.
+
+**Why the sector and not a bool.** `MoveSector` is the type the sim already classifies with (`CharacterMovement.
+Sector`, the predicate that charges `MoveTuning.BackpedalSpeedScale`), and `Game.Render3D` already depends on
+`KhaozEngine.Locomotion`, so this drags in nothing new and adds no second encoding of the same three-way answer to
+drift from the first. `MoveSector.Forward` is the zero value, so every existing construction path defaults to it.
+Deriving the sector stays with the game, which is the only party that knows what the character is facing: the local
+player reads it off its own move command, and a remote (whose command axis never crosses the wire) classifies its
+render-position delta against the replicated `EntityRenderState.FacingYaw` over the same 135 degree wedge.
+
+**Layout.** `CharacterSample` and `CharacterAnimatorTuning` moved out of `ReplicatedCharacterAnimators.cs` into
+their own files, unchanged apart from the new members. That file was frozen at its 994-line baseline, and one type
+per file is the split the ratchet asks for rather than a cut at an arbitrary line. It now sits at 576, so its
+baseline entry is dropped (under the cap).
+
+Closes #485. Consumer side: https://github.com/APKiwiOrg/Ruinborne/issues/420.
+
 ## 17.30.0
 
 ### The native Direct3D 11 backend: four prerequisites, the recording model, then the resources and real fences (#444, #445, #446, #447, #473, #448, #450, #451)

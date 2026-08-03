@@ -6,16 +6,100 @@ metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned w
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 
+## 17.32.0
+
+### The native Direct3D 11 backend: the swapchain (#457)
+
+The blit-model swapchain lands with the incumbent's present path reproduced field for field, a framebuffer
+whose identity never changes across resize, and a resize queued to the present boundary. Nothing renders
+differently and nothing switches over: the native backend's two device-creation entry points still throw, so
+no shipped path reaches any of it, and no golden moved.
+
+#### The swapchain: the incumbent's present path, a stable framebuffer identity and a queued resize (#457)
+
+The native backend can present a frame and follow a window resize. Section 9 of the design doc, decisions W1, W2
+and W3. Reached by nothing, since device creation still throws.
+
+**v1 keeps the LEGACY BLIT swapchain, reproduced field for field rather than modernised (W1).** Unversioned
+`IDXGIFactory` off the adapter, `BufferCount = 2`, `Windowed = true`, `SwapEffect.Discard`,
+`SampleDescription(1, 0)`, `B8G8R8A8_UNorm` non-sRGB, `Usage.RenderTargetOutput`, the
+`MakeWindowAssociation(IgnoreAltEnter)` that stops DXGI toggling fullscreen behind the windowing layer, and a
+present at sync interval 1 or 0 with no other throttling. Flipping vsync live reconfigures nothing at all, because
+on Direct3D 11 the interval is an argument of `Present`. There is no flip model, no `ALLOW_TEARING`, no waitable
+frame-latency object and no pacing, and their absence is a decision: the swapchain is the ONE area of this backend
+that no automated test anywhere can see (the goldens are headless, the shape tests are device-free, the WARP leg
+never presents), so a flip model is validated only by a human looking at a window. Keeping the blit model is what
+makes the soak measure the recording model and the memory model and nothing else, which is what makes a regression
+attributable. All of it is one sequenced follow-up with its own manual validation.
+
+**That costs one measurement, and this is the place a reader will look for the caveat (M5, an OBSERVATION rather
+than a bet).** Because v1 carries the incumbent's blit present path unchanged, it CANNOT discriminate whether the
+blit model is the mechanism behind the frame-pacing defect on #380. A native soak that reproduces #380 unchanged
+is consistent with "blit causes it" and with "blit does not", so it proves nothing either way. The discriminating
+measurement is the same scene on the flip-model prototype, A and B against this path on the same machine and the
+same build. #380 stays its own issue with its own unverified mechanism list.
+
+**The swapchain framebuffer's identity NEVER changes, and a resize swaps the views underneath it (W2).** The
+incumbent disposes the depth texture and the whole framebuffer and builds a new object on every resize, which is
+why `VeldridGpuDevice.ResizeSwapchain` re-wraps only on a reference change, a workaround whose comment names the
+Windows black screen after going fullscreen, maximising or drag-resizing. Owning the wrapper deletes that
+workaround's reason to exist rather than guarding it, and it makes Direct3D 11 behave the way Metal already does,
+which is the behaviour the rest of the engine was written against. The output description is fixed at construction
+and a resize never touches it, so every pipeline built against the swapchain survives every resize.
+
+**`ResizeSwapchain` queues and returns, and the submit thread applies it at the next present boundary (W3).** The
+call takes no lock and touches nothing native, so a window callback on any thread returns immediately even while
+the submit thread is mid-replay, and the foreign-thread resize during recording that #415 records as a
+cross-thread `Monitor.Exit` becomes structurally impossible instead of contractually forbidden. Sizes are
+coalesced to the LAST requested, so a drag-resize burst costs one `ResizeBuffers` per frame rather than one per
+event. The cost is one frame of resize latency, which is invisible. The apply lands AFTER the present rather than
+before it, because `ResizeBuffers` discards the backbuffer contents and resizing first would throw away the frame
+that had just been rendered and present freshly allocated, undefined buffers instead.
+
+**Three departures from the incumbent, all narrow and all stated at their site.** The present's raw `HRESULT` is
+RETURNED rather than discarded, which is the seam the device-loss latch of decision G3 needs to check at the fault
+site, and a failed present skips the queued resize so the caller receives that `HRESULT` instead of a throw out of
+`ResizeBuffers` against a device that has just gone. The latch itself, `GetDeviceRemovedReason` and the session
+header are not built here. And when a depth attachment is configured it is built at the backbuffer's REAL size
+rather than at the requested one, because Direct3D 11 requires a depth-stencil view and a render target view bound
+together to have matching dimensions. The engine's own windowed path passes no depth format, matching the
+incumbent, so that second one is unreachable on every shipped path today. And the release step unbinds the
+output-merger before it disposes the views, which the incumbent never has to do: `ResizeBuffers` fails on INDIRECT
+references as well, and the immediate context holds one, because `OMSetRenderTargets` takes its own reference on
+the render target view and does not drop it when the application disposes its wrapper. The incumbent gets away
+with it by resetting the context state at the end of every submit (`ExecuteCommandList` with
+`restoreContextState` false), while decision R3 puts this backend's one `ClearState` at the HEAD of a replay and
+its end-of-submit emits nothing, so the last frame's targets are still bound when the resize applies at the
+present boundary. Without the unbind the first real window resize would throw `DXGI_ERROR_INVALID_CALL` out of
+`Present`, under the submit lock, with the views already released. The managed state cache does not see the
+unbind, and does not need to: a resize lands only at a present boundary, and R3's `ClearState` resets the context
+and the cache together before anything binds again.
+
+**Where the tests are, and what is left behind an interface.** The four native calls of a swapchain sit behind
+`ID3D11SwapchainSurface`, the same shape the ring memory and the fence timeline already have, so the queue, the
+coalescing, the present boundary, the apply order, the sync interval, the framebuffer identity and the teardown
+are all plain `[Fact]`s that run on macOS and Linux. The resize is three members rather than one on purpose:
+`IDXGISwapChain::ResizeBuffers` fails while any outstanding reference to a backbuffer survives, so releasing the
+views first is a correctness rule that the incumbent depends on silently, and splitting it puts that order on the
+engine side where a device-free test asserts it. The fake refuses the wrong order by name. The context unbind is
+the one clause of that release with no test above it anywhere, stated as such on the interface: a fake has no
+context and therefore no bindings to inspect, so its executable evidence is a real window resize on the WARP leg
+once the wiring row gives the swapchain a caller. Two further tests pin
+where W2 meets W6 and R3: stable identity means a re-bind of the same framebuffer object reports no change, so
+what makes a resize visible to the context is the one `ClearState` at the head of the next submit, and both the
+working case and the hazard are asserted so a future change that moves either one fails with the reason attached.
+
+
 ## 17.31.0
 
-### The native Direct3D 11 backend: the replay contract, the constant-buffer ring, the swapchain, and the three cross-row wirings (#449, #451, #452, #457)
+### The native Direct3D 11 backend: the replay contract, the constant-buffer ring, and the three cross-row wirings (#449, #451, #452)
 
 The replay rules the 17.30.0 recording model shipped without land here (one `ClearState` per submit, the
 redundancy caches, the precise scrub on disposal and the framebuffer-guarded viewport), the per-frame uniform
-ring lands on top of the fence primitive it recycles against, the swapchain lands with the incumbent's present
-path reproduced exactly, and the three integration points the 17.30.0 rows deliberately left unwired while they
-were built in parallel are joined. Nothing renders differently and nothing switches over: the native backend's
-two device-creation entry points still throw, so no shipped path reaches any of it, and no golden moved.
+ring lands on top of the fence primitive it recycles against, and the three integration points the 17.30.0 rows
+deliberately left unwired while they were built in parallel are joined. Nothing renders differently and nothing
+switches over: the native backend's two device-creation entry points still throw, so no shipped path reaches any
+of it, and no golden moved.
 
 #### What a replay does to the device: caches, the scrub, and the implicit viewport (#449)
 
@@ -235,80 +319,6 @@ bytes a write actually produced rather than trusting an offset calculation. `Con
 256-byte minimum first and rounds the result up to a whole constant, which is a no-op for every window the engine
 binds and stops a partial constant being truncated away rather than covered. The package gained
 `<AllowUnsafeBlocks>true</AllowUnsafeBlocks>` for exactly one body, the copy into the mapped segment.
-
-#### The swapchain: the incumbent's present path, a stable framebuffer identity and a queued resize (#457)
-
-The native backend can present a frame and follow a window resize. Section 9 of the design doc, decisions W1, W2
-and W3. Reached by nothing, since device creation still throws.
-
-**v1 keeps the LEGACY BLIT swapchain, reproduced field for field rather than modernised (W1).** Unversioned
-`IDXGIFactory` off the adapter, `BufferCount = 2`, `Windowed = true`, `SwapEffect.Discard`,
-`SampleDescription(1, 0)`, `B8G8R8A8_UNorm` non-sRGB, `Usage.RenderTargetOutput`, the
-`MakeWindowAssociation(IgnoreAltEnter)` that stops DXGI toggling fullscreen behind the windowing layer, and a
-present at sync interval 1 or 0 with no other throttling. Flipping vsync live reconfigures nothing at all, because
-on Direct3D 11 the interval is an argument of `Present`. There is no flip model, no `ALLOW_TEARING`, no waitable
-frame-latency object and no pacing, and their absence is a decision: the swapchain is the ONE area of this backend
-that no automated test anywhere can see (the goldens are headless, the shape tests are device-free, the WARP leg
-never presents), so a flip model is validated only by a human looking at a window. Keeping the blit model is what
-makes the soak measure the recording model and the memory model and nothing else, which is what makes a regression
-attributable. All of it is one sequenced follow-up with its own manual validation.
-
-**That costs one measurement, and this is the place a reader will look for the caveat (M5, an OBSERVATION rather
-than a bet).** Because v1 carries the incumbent's blit present path unchanged, it CANNOT discriminate whether the
-blit model is the mechanism behind the frame-pacing defect on #380. A native soak that reproduces #380 unchanged
-is consistent with "blit causes it" and with "blit does not", so it proves nothing either way. The discriminating
-measurement is the same scene on the flip-model prototype, A and B against this path on the same machine and the
-same build. #380 stays its own issue with its own unverified mechanism list.
-
-**The swapchain framebuffer's identity NEVER changes, and a resize swaps the views underneath it (W2).** The
-incumbent disposes the depth texture and the whole framebuffer and builds a new object on every resize, which is
-why `VeldridGpuDevice.ResizeSwapchain` re-wraps only on a reference change, a workaround whose comment names the
-Windows black screen after going fullscreen, maximising or drag-resizing. Owning the wrapper deletes that
-workaround's reason to exist rather than guarding it, and it makes Direct3D 11 behave the way Metal already does,
-which is the behaviour the rest of the engine was written against. The output description is fixed at construction
-and a resize never touches it, so every pipeline built against the swapchain survives every resize.
-
-**`ResizeSwapchain` queues and returns, and the submit thread applies it at the next present boundary (W3).** The
-call takes no lock and touches nothing native, so a window callback on any thread returns immediately even while
-the submit thread is mid-replay, and the foreign-thread resize during recording that #415 records as a
-cross-thread `Monitor.Exit` becomes structurally impossible instead of contractually forbidden. Sizes are
-coalesced to the LAST requested, so a drag-resize burst costs one `ResizeBuffers` per frame rather than one per
-event. The cost is one frame of resize latency, which is invisible. The apply lands AFTER the present rather than
-before it, because `ResizeBuffers` discards the backbuffer contents and resizing first would throw away the frame
-that had just been rendered and present freshly allocated, undefined buffers instead.
-
-**Three departures from the incumbent, all narrow and all stated at their site.** The present's raw `HRESULT` is
-RETURNED rather than discarded, which is the seam the device-loss latch of decision G3 needs to check at the fault
-site, and a failed present skips the queued resize so the caller receives that `HRESULT` instead of a throw out of
-`ResizeBuffers` against a device that has just gone. The latch itself, `GetDeviceRemovedReason` and the session
-header are not built here. And when a depth attachment is configured it is built at the backbuffer's REAL size
-rather than at the requested one, because Direct3D 11 requires a depth-stencil view and a render target view bound
-together to have matching dimensions. The engine's own windowed path passes no depth format, matching the
-incumbent, so that second one is unreachable on every shipped path today. And the release step unbinds the
-output-merger before it disposes the views, which the incumbent never has to do: `ResizeBuffers` fails on INDIRECT
-references as well, and the immediate context holds one, because `OMSetRenderTargets` takes its own reference on
-the render target view and does not drop it when the application disposes its wrapper. The incumbent gets away
-with it by resetting the context state at the end of every submit (`ExecuteCommandList` with
-`restoreContextState` false), while decision R3 puts this backend's one `ClearState` at the HEAD of a replay and
-its end-of-submit emits nothing, so the last frame's targets are still bound when the resize applies at the
-present boundary. Without the unbind the first real window resize would throw `DXGI_ERROR_INVALID_CALL` out of
-`Present`, under the submit lock, with the views already released. The managed state cache does not see the
-unbind, and does not need to: a resize lands only at a present boundary, and R3's `ClearState` resets the context
-and the cache together before anything binds again.
-
-**Where the tests are, and what is left behind an interface.** The four native calls of a swapchain sit behind
-`ID3D11SwapchainSurface`, the same shape the ring memory and the fence timeline already have, so the queue, the
-coalescing, the present boundary, the apply order, the sync interval, the framebuffer identity and the teardown
-are all plain `[Fact]`s that run on macOS and Linux. The resize is three members rather than one on purpose:
-`IDXGISwapChain::ResizeBuffers` fails while any outstanding reference to a backbuffer survives, so releasing the
-views first is a correctness rule that the incumbent depends on silently, and splitting it puts that order on the
-engine side where a device-free test asserts it. The fake refuses the wrong order by name. The context unbind is
-the one clause of that release with no test above it anywhere, stated as such on the interface: a fake has no
-context and therefore no bindings to inspect, so its executable evidence is a real window resize on the WARP leg
-once the wiring row gives the swapchain a caller. Two further tests pin
-where W2 meets W6 and R3: stable identity means a re-bind of the same framebuffer object reports no change, so
-what makes a resize visible to the context is the one `ClearState` at the head of the next submit, and both the
-working case and the hazard are asserted so a future change that moves either one fails with the reason attached.
 
 ### Map regions get a runtime: BuildRegions + RegionAt (#481)
 

@@ -109,9 +109,12 @@ namespace KhaozEngine.Tests.Gpu
         /// </para>
         /// <para>
         /// THE SEGMENT ASSERTION IS THE OTHER HALF, and it is what distinguishes this from a plain mutual-exclusion
-        /// test. The frame is advanced twice before the race, so the current segment is 2, and every one of these
-        /// writes has to land there: the write goes to the segment the NEXT submit will bind rather than the one
-        /// the GPU is executing, and segments 0 and 1 have to come out untouched.
+        /// test. An off-timeline write reaches EVERY segment (the resolution of
+        /// https://github.com/APKiwiOrg/KhaozEngine/issues/484), and it does all of those copies inside ONE hold
+        /// of the submit lock, so the ring has to come out carrying one writer's pattern in all three segments
+        /// rather than a per-segment mixture. Two writers filling the same range with different bytes is what
+        /// makes that checkable: a replication split across several holds of the lock would leave segment 2 as one
+        /// writer and segment 0 as the other.
         /// </para>
         /// <para>
         /// The ring memory fake refuses a double map and a double unmap by name, so a lost lock around the
@@ -120,7 +123,7 @@ namespace KhaozEngine.Tests.Gpu
         /// </para>
         /// </summary>
         [Fact]
-        public void AForeignThreadUpdate_RacingASubmit_IsSerializedAndLandsWholeInTheCurrentSegment()
+        public void AForeignThreadUpdate_RacingASubmit_IsSerializedAndLandsWholeInEverySegment()
         {
             using var harness = new D3D11RingHarness(sizeInBytes: 256, framesInFlight: 3);
             var log = new D3D11EmitterCallLog();
@@ -219,9 +222,17 @@ namespace KhaozEngine.Tests.Gpu
                 "Neither foreign writer reached the ring, so the race proved nothing.");
             Assert.True(IsUniform(landed), "The final segment contents are a mixture of both writers' patterns.");
 
-            // The other two segments are untouched, which is the "current segment" half of decision U5.
-            Assert.True(IsAllZero(harness.Memory.Segment(harness.Ring.FrameBaseBytes(0), PatternBytes)));
-            Assert.True(IsAllZero(harness.Memory.Segment(harness.Ring.FrameBaseBytes(1), PatternBytes)));
+            // And so is every OTHER segment, with the SAME pattern: an off-timeline write replicates into all of
+            // them inside one hold of the lock, so a per-segment mixture would mean the replication is not atomic.
+            byte winner = landed[0];
+            for (int segment = 0; segment < 3; segment++)
+            {
+                ReadOnlySpan<byte> bytes = harness.Memory.Segment(harness.Ring.FrameBaseBytes(segment), PatternBytes);
+                Assert.True(IsUniform(bytes) && bytes[0] == winner,
+                    "Segment " + segment.ToString(CultureInfo.InvariantCulture)
+                    + " did not come out of the race carrying one writer's whole pattern, so the replicated "
+                    + "off-timeline write is not one critical section.");
+            }
 
             // And the mapping bookkeeping survived the race: every map was released except at most the one the
             // ring is holding now. A lost lock around the map shows up here as well as in the fake's own refusal.
@@ -669,15 +680,6 @@ namespace KhaozEngine.Tests.Gpu
             for (int i = 1; i < bytes.Length; i++)
             {
                 if (bytes[i] != bytes[0]) return false;
-            }
-            return true;
-        }
-
-        static bool IsAllZero(ReadOnlySpan<byte> bytes)
-        {
-            for (int i = 0; i < bytes.Length; i++)
-            {
-                if (bytes[i] != 0) return false;
             }
             return true;
         }

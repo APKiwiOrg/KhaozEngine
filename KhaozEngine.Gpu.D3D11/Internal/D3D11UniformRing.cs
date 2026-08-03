@@ -137,16 +137,18 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// check it would spill into the NEXT frame's segment, which is memory the GPU may be reading right now,
         /// and would present as another frame's uniforms being subtly wrong rather than as an error here.
         /// </para>
+        /// <para>
+        /// THE OFF-TIMELINE WRITE IS THE OTHER SHAPE AND IT REACHES EVERY SEGMENT. A device-level
+        /// <see cref="D3D11RingAllocator.UpdateBuffer"/> is not a record-time write and does not come here: it
+        /// replicates into all <see cref="FramesInFlight"/> segments, so a value written once persists for the
+        /// buffer's life. This path stays current-segment only because every shipped record-time uniform write is
+        /// unconditional per frame, and replicating those would be N memcpys for a value the next frame
+        /// overwrites, on the one path the whole design exists to make cheap.
+        /// </para>
         /// </summary>
         internal void Write(uint offsetBytes, ReadOnlySpan<byte> data)
         {
-            if ((ulong)offsetBytes + (ulong)data.Length > SizeInBytes)
-            {
-                throw new ArgumentOutOfRangeException(nameof(offsetBytes), offsetBytes,
-                    $"A {data.Length}-byte write at offset {offsetBytes} runs past the end of a {SizeInBytes}-byte "
-                    + "uniform buffer. On a ring-backed buffer that would spill into the next frame's segment, "
-                    + "which the GPU may be reading, so it is refused here rather than corrupting a frame.");
-            }
+            ValidateWriteRange(offsetBytes, data.Length);
 
             if (data.Length == 0) return;
 
@@ -160,12 +162,34 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             CopyInto(_pointer, CurrentFrameBaseBytes + offsetBytes, data);
         }
 
+        /// <summary>
+        /// REFUSE A WRITE THAT WOULD LEAVE THE LOGICAL BUFFER, which is the one bounds check both write shapes
+        /// owe. Shared rather than duplicated because the off-timeline path writes every segment and would
+        /// otherwise spill each of them into the next, turning one overrun into
+        /// <see cref="FramesInFlight"/> of them.
+        /// </summary>
+        internal void ValidateWriteRange(uint offsetBytes, int length)
+        {
+            if ((ulong)offsetBytes + (ulong)length <= SizeInBytes) return;
+
+            throw new ArgumentOutOfRangeException(nameof(offsetBytes), offsetBytes,
+                $"A {length}-byte write at offset {offsetBytes} runs past the end of a {SizeInBytes}-byte "
+                + "uniform buffer. On a ring-backed buffer that would spill into the next frame's segment, "
+                + "which the GPU may be reading, so it is refused here rather than corrupting a frame.");
+        }
+
         /// <summary>The copy alone, for the write-scoped path that holds the mapping, the copy and the unmap in
         /// one critical section. CALLED ONLY BY <see cref="D3D11RingAllocator"/>, under the submit lock and with
         /// the mapping in hand. Bounds are the caller's, the same as for the copy in
         /// <see cref="Write"/>.</summary>
         internal void CopyIntoCurrentSegmentUnderLock(uint offsetBytes, ReadOnlySpan<byte> data)
-            => CopyInto(_pointer, CurrentFrameBaseBytes + offsetBytes, data);
+            => CopyIntoSegmentUnderLock(_allocator.CurrentSegment, offsetBytes, data);
+
+        /// <summary>The same copy into ANY segment, which is what the off-timeline write walks. CALLED ONLY BY
+        /// <see cref="D3D11RingAllocator"/>, under the submit lock, with the mapping in hand and with the target
+        /// segment already known to be free of the GPU. Bounds are the caller's.</summary>
+        internal void CopyIntoSegmentUnderLock(int segment, uint offsetBytes, ReadOnlySpan<byte> data)
+            => CopyInto(_pointer, FrameBaseBytes(segment) + offsetBytes, data);
 
         /// <summary>The 256-aligned stride one segment of a <paramref name="sizeInBytes"/> buffer occupies.
         /// Static because <see cref="D3D11Buffer"/> has to size the native buffer before a ring exists to ask.

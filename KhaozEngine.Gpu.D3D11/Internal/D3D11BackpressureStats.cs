@@ -23,6 +23,14 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// questions are answered yes immediately. Counting the question rather than the wait would report a stall on
     /// every frame of a run that never stalled once.
     /// </para>
+    /// <para>
+    /// TWO READINGS SHARE THIS SHAPE AND ARE NOT THE SAME NUMBER. <c>D3D11RingAllocator.LastFrameBackpressure</c>
+    /// is the M3 measurement above, per frame. <c>D3D11RingAllocator.OffTimelineWaits</c> is the device-level
+    /// <c>UpdateBuffer</c> waiting for a segment an earlier frame is still reading, cumulative since device
+    /// creation, and it is reported separately on purpose: it is not a frame-boundary stall, it usually happens
+    /// at load time before any frame exists, and folding it into the M3 number would make that criterion
+    /// unreachable for a reason unrelated to pipeline depth.
+    /// </para>
     /// </summary>
     internal readonly struct D3D11BackpressureStats
     {

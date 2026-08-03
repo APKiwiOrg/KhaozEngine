@@ -72,8 +72,16 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// recording lock-free: acquiring the mapping is once per ring per record phase and writing into it is
     /// thousands of times. Under <see cref="D3D11RingMapScope.PerWrite"/> the map, the copy and the unmap are one
     /// critical section (see <see cref="WriteUnderPerWriteScope"/>). The off-timeline path (section 6.4) takes the
-    /// same lock around the whole write, so it cannot land in the middle of a replay, and the submit path holds it
+    /// same lock around its copies, so it cannot land in the middle of a replay, and the submit path holds it
     /// from its unmap through its replay.
+    /// </para>
+    /// <para>
+    /// THE ONE PLACE THAT LOOPS ON THE LOCK is the off-timeline write, and it never holds the lock while it
+    /// waits. It can find a segment the GPU has not finished with, and the segment gate is the same one
+    /// <see cref="AcquireSegment"/> applies, so it reads the target under the lock, RELEASES it, spins, retakes it
+    /// and re-checks (see <see cref="UpdateBuffer"/>). That is the same rule <see cref="BeginFrame"/> refuses a
+    /// caller by name for breaking, expressed as a retry rather than as a refusal, because this call has no
+    /// boundary of its own to be moved outside the lock.
     /// </para>
     /// <para>
     /// AND WHAT THE LOCKING DOES NOT COVER, named combination by combination rather than papered over, because
@@ -91,8 +99,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// which is the cost the whole design exists to avoid.
     /// </para>
     /// <para>
-    /// Not thread-safe for its own counters, the same contract <see cref="D3D11FenceSubsystem"/> and
-    /// <c>RetiredResourcePool</c> already have: they are driven from the frame thread.
+    /// Not thread-safe for its FRAME counters, the same contract <see cref="D3D11FenceSubsystem"/> and
+    /// <c>RetiredResourcePool</c> already have: they are driven from the frame thread. The off-timeline wait
+    /// counters behind <see cref="OffTimelineWaits"/> are the exception and are interlocked, because that path is
+    /// any-thread by contract.
     /// </para>
     /// </summary>
     internal sealed class D3D11RingAllocator
@@ -117,6 +127,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         int _stallCount;
         long _stallTicks;
         D3D11BackpressureStats _lastFrame;
+
+        // The off-timeline write's waits, cumulative since the device was created and deliberately NOT rolled per
+        // frame. Interlocked because that path is any-thread by contract while the two counters above are the
+        // frame thread's. See OffTimelineWaits.
+        int _offTimelineWaits;
+        long _offTimelineWaitTicks;
 
         /// <summary>
         /// Build the allocator for one device.
@@ -167,8 +183,30 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         internal int MappedRingCount => _mappedRings.Count;
 
         /// <summary>The backpressure of the frame that has ENDED. Rolled by <see cref="BeginFrame"/>. This is the
-        /// M3 measurement.</summary>
+        /// M3 measurement, and it counts frame-boundary segment stalls ALONE (see
+        /// <see cref="OffTimelineWaits"/>).</summary>
         internal D3D11BackpressureStats LastFrameBackpressure => _lastFrame;
+
+        /// <summary>
+        /// THE OFF-TIMELINE WRITE'S WAITS, CUMULATIVE SINCE THE DEVICE WAS CREATED, and a SEPARATE number from
+        /// <see cref="LastFrameBackpressure"/> on purpose.
+        /// <para>
+        /// They are not frame-boundary stalls. M3's exit criterion is that
+        /// <see cref="LastFrameBackpressure"/> is ZERO across a soak window, which reads as "three segments are
+        /// enough for this machine", and an off-timeline wait says nothing about that: it says a caller wrote a
+        /// uniform buffer off-timeline while an earlier frame was still reading a segment of it. Folding the two
+        /// together would turn a load-time write into evidence against the segment count and make the M3 criterion
+        /// unreachable for reasons unrelated to pipeline depth.
+        /// </para>
+        /// <para>
+        /// CUMULATIVE RATHER THAN ROLLED PER FRAME, because the writes this counts are typically LOAD-TIME and
+        /// happen before any frame has begun. A per-frame roll would discard exactly the ones worth seeing. Same
+        /// <see cref="D3D11BackpressureStats"/> shape, so a diagnostic reports the pair the same way.
+        /// </para>
+        /// </summary>
+        internal D3D11BackpressureStats OffTimelineWaits => new D3D11BackpressureStats(
+            Volatile.Read(ref _offTimelineWaits),
+            Interlocked.Read(ref _offTimelineWaitTicks) * 1000d / Stopwatch.Frequency);
 
         /// <summary>The completion value the last submission that used <paramref name="segment"/> was signalled
         /// under, or 0 for a segment nothing has been submitted with. Present so a test and a diagnostic can see
@@ -315,32 +353,68 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         /// <summary>
         /// THE DEVICE-LEVEL <c>UpdateBuffer</c> ON A RING-BACKED BUFFER (decision U5, section 6.4), which is the
-        /// off-timeline write: no recording is required, one may be open, and the caller may be any thread.
+        /// off-timeline write: no recording is required, one may be open, and the caller may be any thread. This
+        /// is the resolution of https://github.com/APKiwiOrg/KhaozEngine/issues/484.
         /// <para>
-        /// IT WRITES THE CURRENT SEGMENT, meaning the one the next <c>Submit</c> will bind and the one any open
-        /// recording is already writing, deliberately NOT the segment the GPU is executing. So the write lands
-        /// when it is called and the next list submitted reads it.
+        /// IT WRITES EVERY SEGMENT, so a value written ONCE persists for the buffer's life exactly as the same
+        /// call on the Veldrid backend persists it, where the buffer has one copy. Writing only the current
+        /// segment was the shipped shape for one release and it was a defect rather than a documentation problem:
+        /// a load-time write reached one segment out of <see cref="FramesInFlight"/>, so two frames out of every
+        /// three bound memory nothing had ever written, intermittently, with nothing thrown and nothing logged.
+        /// <c>ModelRenderer</c>'s splat-params tail is the shipped consumer that did exactly that.
         /// </para>
         /// <para>
-        /// IT DOES NOT PERSIST BEYOND THAT SEGMENT, and this is the one place the ring diverges from the
-        /// incumbent rather than merely being faster than it. The write reaches one segment out of
-        /// <see cref="FramesInFlight"/>, so it survives exactly until the frame index wraps back round, whereas
-        /// the same call on the Veldrid backend writes the buffer's only copy and persists for the buffer's life.
-        /// The requirement that follows is plain: a ring-backed uniform buffer's FULL contents have to be
-        /// re-established every frame, and a one-shot load-time write is not preserved. One shipped consumer does
-        /// exactly that (<c>ModelRenderer</c>'s splat-params tail), which is tracked as
-        /// https://github.com/APKiwiOrg/KhaozEngine/issues/484 and blocks the device row rather than being solved
-        /// here.
+        /// A RECORD-TIME WRITE IS UNCHANGED and still reaches the current segment alone (see
+        /// <see cref="D3D11UniformRing.Write"/>). The split is the CALL rather than a usage hint on the buffer,
+        /// because the call is what knows whether it happens once: every shipped record-time uniform write is
+        /// unconditional per frame, and replicating those would be <see cref="FramesInFlight"/> memcpys for a
+        /// value the next frame overwrites, on the hot path this whole design exists to make cheap.
+        /// </para>
+        /// <para>
+        /// A SEGMENT STILL IN FLIGHT IS WAITED FOR, WITH THE LOCK RELEASED, and that is a real semantic change:
+        /// this call could previously never block. It is the same gate <see cref="AcquireSegment"/> applies,
+        /// because writing a segment the GPU is reading is the silent corruption decision U5 exists to prevent,
+        /// and it is a RETRY LOOP rather than a wait in place: under the lock the highest outstanding completion
+        /// value across the target segments is read, the lock is RELEASED, that value is spun for, and the lock is
+        /// retaken and the check redone, until one hold finds every target free and does all the copies inside it.
+        /// Waiting under the lock is refused by name elsewhere in this type for good reason (see
+        /// <see cref="BeginFrame"/>), and on the event-query fence mechanism it would also shut out the submission
+        /// that would end the wait. At load time nothing has been submitted, so the first iteration writes every
+        /// segment with no wait at all. Mid-frame the wait is bounded by <see cref="FramesInFlight"/> frames of
+        /// GPU work, which is what the incumbent already blocked for on this exact call: Veldrid's pooled staging
+        /// write maps with no <c>DO_NOT_WAIT</c> and blocks until the GPU releases the buffer being recycled
+        /// (section 6.1).
+        /// </para>
+        /// <para>
+        /// THE CURRENT SEGMENT IS COPIED WITHOUT THAT GATE, deliberately, and it is the only ungated one. Gating
+        /// it would change the documented semantic that the write lands when it is called and the next list
+        /// submitted reads it, and it would block on the GPU on every off-timeline write made after this frame
+        /// slot's first submit, which is the pathology the ring deletes. The exposure it leaves is exactly the
+        /// exposure the shipped call already had and is unchanged by this fix, and it is the forbidden case named
+        /// below. What this fix adds is the OTHER segments, and those are the ones that can newly corrupt a frame,
+        /// so those are the ones gated.
+        /// </para>
+        /// <para>
+        /// AGAINST A CONCURRENT RECORD-TIME WRITE TO THE SAME RANGE, THE CURRENT SEGMENT IS LAST-WRITE-WINS AND
+        /// THAT IS OUTSIDE THE v1 CONTRACT, unchanged by this fix. Under
+        /// <see cref="D3D11RingMapScope.AcrossRecording"/> a record-time copy runs with no lock, so the two copies
+        /// are not ordered against each other and a torn result is possible: decision W5's boundary already places
+        /// a record-time write racing a device-level write outside the contract, and it stays there. The other
+        /// <see cref="FramesInFlight"/> minus one segments are NOT contended, because a record-time write never
+        /// touches them. Under <see cref="D3D11RingMapScope.PerWrite"/> both shapes take the lock for the whole
+        /// write, so there the overlap is serialized.
         /// </para>
         /// <para>
         /// IT MAPS IDEMPOTENTLY. The ring is unmapped at the start of every submit, so a write arriving between
         /// two frames finds it unmapped, maps <c>NO_OVERWRITE</c>, writes, and under the deferred driver leaves it
         /// mapped for the next record phase to reuse. There is no refcount, just the one flag, checked under the
-        /// same lock as the write.
+        /// same lock as the write. Under <see cref="D3D11RingMapScope.PerWrite"/> the map, every segment's copy
+        /// and the unmap are one critical section, the same atomicity <see cref="WriteUnderPerWriteScope"/> holds
+        /// for a record-time write.
         /// </para>
         /// <para>
-        /// THE LOCK IS SHORT AND SCOPED TO THE WRITE, never to a frame. It is the submit lock, so an off-timeline
-        /// write cannot land in the middle of a replay, and it is released the moment the copy is done.
+        /// THE LOCK IS SHORT AND SCOPED TO THE COPIES, never to a frame and never across the wait. It is the
+        /// submit lock, so an off-timeline write cannot land in the middle of a replay.
         /// </para>
         /// <para>
         /// WHAT IS STILL FORBIDDEN, restated because the ring makes it quieter rather than because it changed:
@@ -353,8 +427,24 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         internal void UpdateBuffer(D3D11UniformRing ring, uint offsetBytes, ReadOnlySpan<byte> data)
         {
             ArgumentNullException.ThrowIfNull(ring);
+            ring.ValidateWriteRange(offsetBytes, data.Length);
 
-            lock (_submitLock) ring.Write(offsetBytes, data);
+            if (data.Length == 0) return;
+
+            while (true)
+            {
+                ulong target;
+                lock (_submitLock)
+                {
+                    if (!TryFindSegmentStillInFlight(out target))
+                    {
+                        WriteEverySegmentUnderLock(ring, offsetBytes, data);
+                        return;
+                    }
+                }
+
+                WaitOffTimeline(target);
+            }
         }
 
         /// <summary>
@@ -398,6 +488,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// The mapping still goes through the registry, so the "every mapped ring is in the registry" invariant
         /// holds without a scope test at the places that read it, and an already-mapped ring is written and left
         /// unmapped exactly as a freshly mapped one is.
+        /// </para>
+        /// <para>
+        /// THIS IS THE RECORD-TIME WRITE, so it copies the CURRENT segment alone. An off-timeline
+        /// <see cref="UpdateBuffer"/> under the same scope copies every segment and still holds the map, all the
+        /// copies and the unmap as one critical section, which is the same discipline over a wider write.
         /// </para>
         /// </summary>
         internal void WriteUnderPerWriteScope(D3D11UniformRing ring, uint offsetBytes, ReadOnlySpan<byte> data)
@@ -468,6 +563,88 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             _stallCount++;
             _stallTicks += Stopwatch.GetTimestamp() - start;
+        }
+
+        /// <summary>
+        /// THE OFF-TIMELINE WRITE'S GATE, ASKED ONCE PER LOCK HOLD: the highest completion value any segment other
+        /// than the current one is still waiting on, or false when all of them are free. Called under the submit
+        /// lock, and it polls the timeline AT MOST ONCE, because a poll on the event-query fence mechanism is a
+        /// call that re-enters this same lock and a loop of them under the lock is the shape
+        /// <see cref="BeginFrame"/> refuses by name.
+        /// <para>
+        /// THE MAXIMUM RATHER THAN THE FIRST is what makes one wait enough. The timeline is monotonic, so reaching
+        /// the highest outstanding target has reached every lower one with it, and the retry that follows finds
+        /// every segment free in one more hold instead of one hold per segment.
+        /// </para>
+        /// <para>
+        /// A ZERO OWNER IS SKIPPED WITHOUT A POLL, and at load time every segment is zero, so a one-shot write
+        /// before anything has been submitted costs no completion read at all.
+        /// </para>
+        /// </summary>
+        bool TryFindSegmentStillInFlight(out ulong target)
+        {
+            target = 0;
+
+            ulong highest = 0;
+            for (int i = 0; i < _segmentOwner.Length; i++)
+            {
+                if (i == _segment) continue;
+                if (_segmentOwner[i] > highest) highest = _segmentOwner[i];
+            }
+
+            if (highest == 0) return false;
+            if (_completion.CompletedValue >= highest) return false;
+
+            target = highest;
+            return true;
+        }
+
+        /// <summary>
+        /// SPIN FOR AN OFF-TIMELINE TARGET, WITH NO LOCK HELD, and count it. Same discipline as
+        /// <see cref="AcquireSegment"/> and for the same reason: the plain <see cref="SpinWait.SpinOnce()"/> starts
+        /// sleeping a millisecond after 20 iterations, which is longer than the frame this can be inside.
+        /// <para>
+        /// THE COUNTERS ARE INTERLOCKED WHILE THE FRAME ONES ARE NOT, because the two paths have different
+        /// callers. <see cref="BeginFrame"/> runs on the frame thread and its counters inherit that contract, while
+        /// an off-timeline write is callable from any thread by design, so two of them waiting at once would
+        /// otherwise lose a count. It costs an interlocked pair only when a wait actually happened.
+        /// </para>
+        /// </summary>
+        void WaitOffTimeline(ulong target)
+        {
+            long start = Stopwatch.GetTimestamp();
+            var spin = new SpinWait();
+            while (_completion.CompletedValue < target) spin.SpinOnce(sleep1Threshold: -1);
+
+            Interlocked.Increment(ref _offTimelineWaits);
+            Interlocked.Add(ref _offTimelineWaitTicks, Stopwatch.GetTimestamp() - start);
+        }
+
+        /// <summary>
+        /// THE COPIES THEMSELVES, under the submit lock, with every target segment already known to be free.
+        /// Mapping the ring if it is not mapped, copying into all <see cref="FramesInFlight"/> segments, and under
+        /// <see cref="D3D11RingMapScope.PerWrite"/> releasing the mapping again before the lock is dropped, so that
+        /// scope keeps the atomicity it exists for across the whole replicated write rather than around one
+        /// segment of it.
+        /// <para>
+        /// THE SEGMENT ORDER IS NOT OBSERVABLE. The segments are disjoint memory and every one of them is free of
+        /// the GPU for the duration of this hold, so index order is the arbitrary choice it looks like.
+        /// </para>
+        /// </summary>
+        void WriteEverySegmentUnderLock(D3D11UniformRing ring, uint offsetBytes, ReadOnlySpan<byte> data)
+        {
+            if (!ring.IsMapped)
+            {
+                ring.MapUnderLock();
+                _mappedRings.Add(ring);
+            }
+
+            for (int i = 0; i < _segmentOwner.Length; i++) ring.CopyIntoSegmentUnderLock(i, offsetBytes, data);
+
+            if (MapScope != D3D11RingMapScope.PerWrite) return;
+
+            ring.UnmapUnderLock();
+            _mappedRings.Remove(ring);
         }
     }
 }

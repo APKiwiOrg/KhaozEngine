@@ -617,11 +617,10 @@ exercises it, and the redundancy caches and the constant-buffer ring have not be
 record. Concretely, under the deferred driver's mapping scope the map acquisition named in the recording clause
 above is the only serialized step and the COPY runs with no lock held, so a record-time write racing a submit's
 unmap, or racing a device-level write, or two record-time writes to one ring, are all outside the contract rather
-than serialized. Do not read "it will probably work" as a
-guarantee: that is the shape that produces a bug report nobody can triage. Shipping it properly is
-https://github.com/APKiwiOrg/KhaozEngine/issues/463.
+than serialized. Do not read "it will probably work" as a guarantee: that is the shape that produces a bug report
+nobody can triage. Shipping it properly is https://github.com/APKiwiOrg/KhaozEngine/issues/463.
 
-**The immediate driver records ON the device, so the lock-free clause is the deferred driver's.** Under
+**The immediate driver records ON the device, so the recording clause is the deferred driver's.** Under
 `KE_D3D11_RECORD=immediate` (the M1 fallback lever) a seam call issues its native call as it is made, so
 recording touches device state by construction and one thread records. That arm narrows the contract rather than
 extending it.

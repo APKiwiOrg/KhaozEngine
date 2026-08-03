@@ -653,8 +653,10 @@ shipped loop and the contract hardens against a consumer that does otherwise.
 
 The shipped contract:
 
-- Recording is lock-free and touches no device state. Any number of `IGpuCommandList` instances may record
-  concurrently on any threads.
+- Recording is lock-free and touches no device state (the first record-time uniform write per ring acquires the
+  mapping under the submit lock for the Map call alone, per 6.2's lazy map, and the `KhaozEngine.Gpu.D3D11`
+  README's threading section is the authoritative statement of the threading contract). Any number of
+  `IGpuCommandList` instances may record concurrently on any threads.
 - One `_submitLock` covers replay, present and the resize apply. It is held for microseconds, not a frame.
   This deletes #415's entire hazard list rather than guarding it: there is no frame-long monitor to exit from
   a foreign thread, no `Map` serialising behind a frame, and no lock-recursion leak to fix.

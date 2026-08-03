@@ -353,16 +353,26 @@ with the segment it opens, which is up to a frame, against a lock decision W4 ca
 event-query fence mechanism every completion poll re-enters that same lock so the wait would also shut out the
 submission that would end it. Both were latent: nothing calls them wrongly today and nothing stopped the device
 row from doing so. Both are now an exception naming the rule rather than a frame-long stall that is invisible
-from outside.
+from outside. `WaitForIdle`'s refusal covers the LIVE drain and only that: the dead-device return (X3) and the
+`KE_D3D11_REAL_DRAIN` return are checked ahead of the guard, so a teardown-shaped caller holding the lock on a
+dead device still gets the quiet no-op X3 promises, and the kill switch still restores the empty method body
+rather than swapping it for a throw. Neither return touches anything, so running them under the lock is safe by
+construction.
 
 **The two named races are device-free and they fail when the lock they pin is removed**, which is the only kind
 of race test worth having. `D3D11ThreadingContractTests` runs a foreign-thread device-level `UpdateBuffer`
-racing a submit (two writers filling one range with two different repeated bytes, sampled under the lock, so a
-lost lock is observable as CONTENT rather than as timing, plus the assertion that the write lands in the CURRENT
-segment and leaves the other two untouched), and a concurrent resize racing a present (every queued size is
-`640 + n` by `480 + n` for one n, so a half-applied size is arithmetic rather than a judgement, and every
-`ResizeBuffers` in the trace is pinned as the four-call sequence present, release, resize, create, all under the
-lock). Both were verified to FAIL against a deliberately unlocked build before being kept.
+racing a submit (two writers filling one range with two different repeated bytes, plus the assertion that the
+write lands in the CURRENT segment and leaves the other two untouched), and a concurrent resize racing a present
+(every `ResizeBuffers` in the trace pinned as the four-call sequence present, release, resize, create, all under
+the lock). Both were verified to FAIL against a deliberately unlocked build before being kept, and each names
+WHICH assertion does the failing rather than leaving the reader to assume. The update race's deterministic
+detector is the writers dying on the map pointer the unmap withdraws mid-copy (5 unlocked runs out of 5): the
+under-lock content sampler catches a tear in roughly 40% of unlocked runs and is kept as the secondary guard for
+a future path where the ring stays mapped and there is no null pointer to crash on. A writer-progress assertion
+sits beside it, so a starved runner fails the test rather than passing it vacuously. The resize race's detector
+is every surface call after the constructor's arriving under the lock (3 of 3), while its whole-size and
+coalescing assertions are forward-guards against a future two-field or accumulating queue rather than live
+detectors, since one packed long cannot tear.
 `GpuDeviceLifecycleTests` stays the real-device concurrency smoke over the process-wide create and dispose gate
 and now points at its device-free sibling.
 

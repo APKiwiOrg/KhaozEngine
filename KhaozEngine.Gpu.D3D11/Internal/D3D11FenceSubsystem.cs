@@ -34,6 +34,14 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// that held the lock throughout would deadlock against exactly the submission that would let it finish.
     /// </para>
     ///
+    /// <para><b>A caller who already holds the lock is refused, and that refusal is the LAST of the three checks
+    /// <see cref="WaitForIdle"/> makes rather than the first.</b> The dead-device return (X3) and the
+    /// <c>KE_D3D11_REAL_DRAIN</c> return come ahead of it. Both do nothing at all, so running them with the lock
+    /// held is safe by construction, and putting the guard first would break both promises: a teardown-shaped
+    /// caller holding the lock on a dead device would get an exception where X3 promises a quiet no-op, and the
+    /// kill switch would stop restoring the empty method body it exists to restore. The guard therefore protects
+    /// the LIVE drain, which is the only path that can actually hang.</para>
+    ///
     /// <para><b>Not thread-safe for its own counters.</b> The telemetry accumulators are driven from the frame
     /// thread, the same contract <c>RetiredResourcePool</c> and the water renderer's counters already have.</para>
     /// </summary>
@@ -216,8 +224,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <para>
         /// It returns immediately, and counts nothing, in the two cases where it is deliberately not a drain: the
         /// device is dead (X3, a destroyed device has nothing to wait for) and the <c>KE_D3D11_REAL_DRAIN</c>
-        /// kill switch is down. Everything else drains and is counted, because the point of the counters is to
-        /// price what the drain costs.
+        /// kill switch is down. BOTH ARE CHECKED FIRST, ahead of the submit-lock guard below, because neither
+        /// touches anything and a caller holding the lock is therefore harmless to them. Everything else drains
+        /// and is counted, because the point of the counters is to price what the drain costs.
         /// </para>
         /// <para>
         /// THE SIGNAL IS FLUSHED, EXACTLY ONCE. The immediate context buffers commands, so a signal placed at the
@@ -245,17 +254,31 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// (Direct3D's own reset after a hang) releases the caller.
         /// </para>
         /// <para>
-        /// A CALLER HOLDING THE SUBMIT LOCK IS REFUSED, BY NAME (decision W4, and the enforcement half of the
-        /// paragraph above). The drain releases the lock around its wait precisely so the submission it is waiting
-        /// for can be made, and a caller that already held the lock re-enters it here rather than acquiring it, so
-        /// the release inside this method releases NOTHING: the outer level survives, no other thread can submit,
-        /// and the drain waits for work that can never arrive. That is a hang with no name on it, at teardown,
-        /// which is where a hang is hardest to attribute. The check costs one <see cref="Monitor.IsEntered"/> per
-        /// drain and turns the whole family into a message naming the rule.
+        /// A CALLER HOLDING THE SUBMIT LOCK IS REFUSED, BY NAME, ON THE LIVE DRAIN AND ONLY THERE (decision W4,
+        /// and the enforcement half of the paragraph above). The drain releases the lock around its wait precisely
+        /// so the submission it is waiting for can be made, and a caller that already held the lock re-enters it
+        /// here rather than acquiring it, so the release inside this method releases NOTHING: the outer level
+        /// survives, no other thread can submit, and the drain waits for work that can never arrive. That is a
+        /// hang with no name on it, at teardown, which is where a hang is hardest to attribute. The check costs
+        /// one <see cref="Monitor.IsEntered"/> per drain and turns the whole family into a message naming the
+        /// rule.
+        /// </para>
+        /// <para>
+        /// IT COMES AFTER THE TWO NO-OP RETURNS, WHICH IS THE ORDER THAT MATTERS. Teardown is exactly where a
+        /// caller legitimately holds the submit lock and where the device is exactly as likely to be dead, so a
+        /// guard placed ahead of the X3 return would hand that caller an exception in place of the quiet no-op X3
+        /// promises, and would leave <c>KE_D3D11_REAL_DRAIN=0</c> throwing where it is supposed to restore the
+        /// empty method body verbatim. Neither return does anything, so neither can be harmed by running under
+        /// the lock, which is why the safe ordering is also the useful one.
         /// </para>
         /// </summary>
         internal void WaitForIdle()
         {
+            // The two returns that do nothing come first, so a caller holding the submit lock reaches the guard
+            // only on the path that can actually hang. See the ordering paragraph on this method.
+            if (_liveness.IsDead) return;
+            if (!_realDrain) return;
+
             if (Monitor.IsEntered(_submitLock))
             {
                 throw new InvalidOperationException(
@@ -265,9 +288,6 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                     + "nothing, so the drain would wait for a submission no other thread can make. Call it "
                     + "outside the frame's critical section.");
             }
-
-            if (_liveness.IsDead) return;
-            if (!_realDrain) return;
 
             ulong target;
             lock (_submitLock)

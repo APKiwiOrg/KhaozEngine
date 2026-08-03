@@ -53,14 +53,18 @@ namespace KhaozEngine.Tests.Gpu
     {
         // ---- The measured absolute totals. DOCUMENTATION, not the gate. Update freely. ----------------------
         //
-        // First green run, 2026-08-03, on the frame RenderFrame builds below:
-        //   one mesh,   six draws,  one instance   ->  29 native calls
-        //   one mesh,   eighteen draws            ->  53
-        //   five meshes, eighteen draws           ->  69
-        // The fixed head is 13 (one ClearState, three for the framebuffer change, two clears, seven for the first
-        // pipeline bind), and the rest is 4 per distinct mesh plus 2 per draw.
+        // Measured on the frame RenderFrame builds below:
+        //   one mesh,   six draws,  one instance   ->  42 native calls
+        //   one mesh,   eighteen draws             ->  66
+        //   five meshes, eighteen draws            ->  82
+        // The fixed part is 26 and the rest is 4 per distinct mesh plus 2 per draw. The 26 is one ClearState,
+        // three for the framebuffer change, two clears, seven for the first pipeline bind, two for the extra
+        // width of the per-draw set's one FULL activation over its offsets-only pushes, and eleven for the tail:
+        // one drained bind, SIX for the second pipeline (the two fixtures declare the same primitive topology, so
+        // that one state object of the seven is not re-issued), three for the full activation the switch's wipe
+        // makes the next bind owe, and one draw.
 
-        const int FixedHead = 13;
+        const int FixedHead = 26;
         const int PerMesh = 4;
         const int PerDraw = 2;
 
@@ -190,6 +194,44 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(3, harness.Log.Count(D3D11NativeCall.RSSetScissorRects));
         }
 
+        /// <summary>
+        /// THE MID-FRAME PIPELINE SWITCH DRAINS UNDER THE OUTGOING LAYOUTS, AND AHEAD OF THE INCOMING PIPELINE'S
+        /// STATE CALLS. This is the clause a total cannot see on its own: a drain taken under the incoming
+        /// numbering issues the same NUMBER of calls at different registers, which compiles, draws and renders the
+        /// wrong constants. So it is asserted as the exact line and its position.
+        /// <para>
+        /// ALL THREE BASES ARE PINNED, not just the constant buffer's, because the OUTGOING pipeline's model
+        /// layout contributes one constant buffer, four shader resources and two samplers, so the drained set
+        /// lands at <c>b1 t4 s2</c>. Under the tail pipeline it would be <c>b0 t0 s0</c>, and in fact it would not
+        /// bind at all: the tail pipeline declares one layout, so slot one does not exist under it and a drain
+        /// taken after the switch throws.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void Invariant_AMidFramePipelineSwitchDrainsUnderTheOutgoingLayouts()
+        {
+            var harness = new D3D11BindFixtures.Harness();
+            using Scene scene = Scene.Build();
+            D3D11NativeTraceEmitter emitter = harness.Emitter;
+
+            emitter.SetPipeline(scene.Pipeline);
+            emitter.SetGraphicsResourceSet(1, scene.PerDraw, 256);
+            harness.Log.Reset();
+
+            emitter.SetPipeline(scene.TailPipeline);
+
+            Assert.Equal(
+                $"VSSetConstantBuffers1(1,1,{harness.Log.Id(scene.PerDrawBuffer)}@16+16)",
+                harness.Log.Trace[0]);
+            Assert.StartsWith("PSSetShaderResources(4,1,", harness.Log.Trace[1], StringComparison.Ordinal);
+            Assert.StartsWith("PSSetSamplers(2,1,", harness.Log.Trace[2], StringComparison.Ordinal);
+
+            // Those three, then the incoming pipeline's state calls, and nothing else: the wipe that follows the
+            // drain issues no call of its own. Six rather than seven, because the two pipeline fixtures declare
+            // the same primitive topology and the redundancy cache holds that one.
+            Assert.Equal(9, harness.Log.TotalCalls);
+        }
+
         // ---- (2) The marginals, which ARE the gate ---------------------------------------------------------
 
         /// <summary>
@@ -211,6 +253,12 @@ namespace KhaozEngine.Tests.Gpu
         /// EIGHTEEN DRAWS AGAINST SIX MOVES THE TOTAL BY AN EXACT PER-DRAW DELTA, and that delta is TWO: one
         /// offsets-only constant-buffer push for the per-draw uniform window, and the draw itself. That is the
         /// shadow pass's shape, thousands of times a frame, and it is the number the whole design is for.
+        /// <para>
+        /// TWO OF THE THREE MUTATIONS THIS FILE EXISTS TO CATCH LAND ON THIS NUMBER. The frame rebinds the
+        /// per-draw window TWICE between two draws, so a flush moved from the draw to the bind makes it three, and
+        /// the per-draw set carries a texture and a sampler, so tracking that collapses to always-Full makes it
+        /// four. Both used to be free.
+        /// </para>
         /// </summary>
         [Fact]
         public void EighteenDraws_CostExactlyTwelveMoreDrawsWorthThanSix()
@@ -236,9 +284,9 @@ namespace KhaozEngine.Tests.Gpu
         /// DOCUMENTATION: a legitimate change to the frame or to the emitted trace moves these and they are
         /// updated in the same commit, which is exactly what must NOT happen to the deltas above.</summary>
         [Theory]
-        [InlineData(1, 6, 29)]
-        [InlineData(1, 18, 53)]
-        [InlineData(5, 18, 69)]
+        [InlineData(1, 6, 42)]
+        [InlineData(1, 18, 66)]
+        [InlineData(5, 18, 82)]
         public void TheAbsoluteTotals_AreWhatTheyWereMeasuredToBe(int distinctMeshes, int draws, int expected)
         {
             Assert.Equal(expected, TotalFor(distinctMeshes, draws));
@@ -333,6 +381,22 @@ namespace KhaozEngine.Tests.Gpu
         // draws GROUPED BY MATERIAL, rebinding the material set when the mesh changes and pushing a per-draw
         // uniform window on every draw. Grouping is what makes the marginals separable: the material set changes
         // once per distinct mesh, and the per-draw window changes once per draw.
+        //
+        // THREE THINGS IN HERE ARE NOT DECORATION. Each one exists because the budget, taken over the plain frame,
+        // was blind to a mutation its sibling suites catch, and a gate that cannot see a break is not a gate:
+        //
+        //  1. The per-draw set carries a TEXTURE AND A SAMPLER (see Scene.Build). A full activation of it is three
+        //     calls against an offsets-only push's one, so collapsing the three-state tracking to always-Full
+        //     re-pushes them on every draw and moves the per-draw marginal from two to four. With a lone dynamic
+        //     UBO the two costs were both one call and the collapse was invisible.
+        //  2. The per-draw window is rebound TWICE between two draws, which is rule 7's collapse. A flush moved
+        //     from the draw to the bind issues both pushes and moves the same marginal to three. The plain frame
+        //     never rebound one slot between two draws, so that move cost nothing.
+        //  3. The tail leaves a set PENDING across a mid-frame pipeline switch, which is the only thing that puts
+        //     rule 5's drain in the measured frame at all: the plain frame called SetPipeline once, before any
+        //     bind, so the drain never ran. Dropping the drain now drops a call from the total, and running it
+        //     under the INCOMING layouts throws, because the tail pipeline declares ONE layout and the pending set
+        //     sits at slot one.
         static void RenderFrame(D3D11NativeTraceEmitter emitter, Scene scene, int distinctMeshes, int draws,
             int instancesPerDraw)
         {
@@ -349,11 +413,30 @@ namespace KhaozEngine.Tests.Gpu
                 int drawsForThisMesh = (draws / distinctMeshes) + (mesh < draws % distinctMeshes ? 1 : 0);
                 for (int i = 0; i < drawsForThisMesh; i++)
                 {
+                    // Twice, at two windows, and the draw pays for ONE push.
                     emitter.SetGraphicsResourceSet(1, scene.PerDraw, offset);
+                    emitter.SetGraphicsResourceSet(1, scene.PerDraw, offset + 128);
                     emitter.DrawIndexed(6, (uint)instancesPerDraw, 0, 0, 0);
                     offset += 256;
                 }
             }
+
+            RenderTail(emitter, scene, offset, instancesPerDraw);
+        }
+
+        // The fixed tail: a mid-frame pipeline switch with a set left pending across it. Everything above it
+        // scales with the mesh and draw counts and this does not, so the marginals stay exactly what they say.
+        static void RenderTail(D3D11NativeTraceEmitter emitter, Scene scene, uint offset, int instancesPerDraw)
+        {
+            // Pending at the moment of the switch, so the drain issues it under the OUTGOING numbering (slot one,
+            // past the model layout's one constant buffer, so b1).
+            emitter.SetGraphicsResourceSet(1, scene.PerDraw, offset);
+            emitter.SetPipeline(scene.TailPipeline);
+
+            // The switch forgot the records, so the same set at slot zero of the tail pipeline owes a FULL
+            // activation and numbers from b0 t0 s0.
+            emitter.SetGraphicsResourceSet(0, scene.PerDraw, offset);
+            emitter.DrawIndexed(6, (uint)instancesPerDraw, 0, 0, 0);
         }
 
         static int TotalFor(int distinctMeshes, int draws)
@@ -413,8 +496,23 @@ namespace KhaozEngine.Tests.Gpu
             return harness.BindTrace().Length;
         }
 
-        /// <summary>The fixed contents of the frame: one target, a second one to change to, the pipeline over the
-        /// model layout plus a per-draw dynamic layout, five materials and one per-draw uniform window.</summary>
+        /// <summary>
+        /// The fixed contents of the frame: one target, a second one to change to, the pipeline over the model
+        /// layout plus a per-draw layout, a SECOND pipeline over the per-draw layout alone for the tail's
+        /// mid-frame switch, five materials and one per-draw set.
+        /// <para>
+        /// THE PER-DRAW SET IS NOT A LONE DYNAMIC UBO, and that is deliberate rather than a fuller-looking
+        /// fixture. With one element a full activation and an offsets-only push both cost one call, so the
+        /// difference between the two states was unmeasurable here and the three-state tracking could collapse to
+        /// always-Full without moving a number. A texture and a sampler the pixel stage reads make a full
+        /// activation three calls, which is what gives the per-draw marginal something to move by.
+        /// </para>
+        /// <para>
+        /// THE TAIL PIPELINE DECLARES ONE LAYOUT ON PURPOSE. The tail leaves a set pending at slot ONE across the
+        /// switch, so a drain taken under the incoming layouts rather than the outgoing ones addresses a slot the
+        /// tail pipeline does not declare and throws, instead of quietly binding at the wrong register.
+        /// </para>
+        /// </summary>
         sealed class Scene : IDisposable
         {
             const int MaxMaterials = 5;
@@ -424,24 +522,35 @@ namespace KhaozEngine.Tests.Gpu
                 ModelLayout = model;
                 PerDrawLayout = perDraw;
                 Pipeline = D3D11BindFixtures.Pipeline(model, perDraw);
+                TailPipeline = D3D11BindFixtures.Pipeline(perDraw);
                 Framebuffer = Target(1280, 720);
                 SecondTarget = Target(512, 512);
                 Materials = new D3D11ResourceSet[MaxMaterials];
                 for (int i = 0; i < MaxMaterials; i++) Materials[i] = D3D11BindFixtures.ModelSet(model);
-                PerDraw = D3D11BindFixtures.Set(perDraw, new GpuBufferRange(new FakeBuffer(65536), 0, 256));
+                PerDrawBuffer = new FakeBuffer(65536);
+                PerDraw = D3D11BindFixtures.Set(perDraw, new GpuBufferRange(PerDrawBuffer, 0, 256),
+                    D3D11BindFixtures.Texture(), new FakeSampler());
             }
 
             internal D3D11ResourceLayout ModelLayout { get; }
             internal D3D11ResourceLayout PerDrawLayout { get; }
             internal D3D11StateCacheTests.FakeD3D11Pipeline Pipeline { get; }
+            internal D3D11StateCacheTests.FakeD3D11Pipeline TailPipeline { get; }
             internal FakeFramebuffer Framebuffer { get; }
             internal FakeFramebuffer SecondTarget { get; }
             internal D3D11ResourceSet[] Materials { get; }
             internal D3D11ResourceSet PerDraw { get; }
 
+            /// <summary>The buffer behind <see cref="PerDraw"/>, for the one assertion that names a register.
+            /// </summary>
+            internal IGpuBuffer PerDrawBuffer { get; }
+
             internal static Scene Build() => new(
                 D3D11BindFixtures.ModelLayout(),
-                D3D11BindFixtures.Layout(D3D11BindFixtures.U("Draw", GpuShaderStages.Vertex, dynamic: true)));
+                D3D11BindFixtures.Layout(
+                    D3D11BindFixtures.U("Draw", GpuShaderStages.Vertex, dynamic: true),
+                    D3D11BindFixtures.T("DrawTex", GpuShaderStages.Fragment),
+                    D3D11BindFixtures.S("DrawSamp", GpuShaderStages.Fragment)));
 
             public void Dispose()
             {

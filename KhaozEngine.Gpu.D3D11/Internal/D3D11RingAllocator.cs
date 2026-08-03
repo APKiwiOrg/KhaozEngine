@@ -210,13 +210,14 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <see cref="D3D11RingMapScope.AcrossRecording"/>.
         /// </para>
         /// <para>
-        /// Idempotent and cheap when nothing is mapped, which is every submit that wrote no uniforms.
+        /// Idempotent, and an empty registry costs one uncontended lock. The registry is read INSIDE the lock
+        /// rather than short-circuiting outside it: an empty count read without the lock can be stale by the time
+        /// it is acted on, and being wrong in that direction means a ring stays mapped through the replay that is
+        /// about to bind it.
         /// </para>
         /// </summary>
         internal void UnmapMappedRings()
         {
-            if (_mappedRings.Count == 0) return;
-
             lock (_submitLock)
             {
                 for (int i = 0; i < _mappedRings.Count; i++) _mappedRings[i].UnmapUnderLock();

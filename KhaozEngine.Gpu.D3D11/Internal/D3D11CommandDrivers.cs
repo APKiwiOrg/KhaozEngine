@@ -65,6 +65,16 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// reached. That is the right direction rather than an accident of ordering: an unsealed or foreign list
         /// emitted no commands, so there is no point on the timeline for it to name.
         /// </para>
+        /// <para>
+        /// THE OPPOSITE DIRECTION IS NOT SAFE THE SAME WAY. If the signal itself throws, the exception escapes
+        /// this method AFTER replay has already emitted the submission's commands to the device, and that
+        /// emission cannot be undone. <see cref="D3D11FenceSubsystem.SignalEndOfReplay"/> can throw
+        /// <see cref="ArgumentException"/> for a foreign fence, <see cref="InvalidOperationException"/> for a
+        /// still-armed one, or <see cref="ObjectDisposedException"/> for a disposed one, and a throwing signal
+        /// never means the submission was rejected. It means the commands are already out, and the caller must
+        /// treat the submission as issued regardless of the exception. What each of those three paths leaves
+        /// behind on the timeline and on the fence is documented on the subsystem, not repeated here.
+        /// </para>
         /// </summary>
         internal static void Submit<TEmitter>(object submitLock, IGpuCommandList list, ref TEmitter emitter,
             ID3D11SubmitSignal? signal = null, IGpuFence? fence = null)

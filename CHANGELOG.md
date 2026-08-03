@@ -400,7 +400,11 @@ at anything that went wrong. `D3D11DeviceLossLatch` takes the HRESULT at each si
 with the site, flips the same liveness token teardown uses so every later release is a no-op, logs an ERROR line
 saying what the reason means in words, and hands the session header a stable token plus the site. It latches
 exactly once, because the first site is the only one near the cause and two would be a race over which the header
-carries. An ordinary failure is deliberately NOT a device loss: a latch that fired on every failing HRESULT would
+carries. The claim and the RECORD are separate instants, so the reason and the site are published behind their
+own flag and the header field reports null until that flag is set: the interlocked claim lands before
+`GetDeviceRemovedReason` is even called, and a header written from another thread inside that window would
+otherwise have recorded a loss with no reason and no site in it, permanently. An ordinary failure is deliberately
+NOT a device loss: a latch that fired on every failing HRESULT would
 kill the device on a plain `DXGI_ERROR_INVALID_CALL`, after which every release is a no-op and nothing says why.
 `CheckAfterFault` covers the fourth site, which arrives as a throw rather than an HRESULT (the swapchain's resize
 apply, https://github.com/APKiwiOrg/KhaozEngine/issues/489), by asking the device for its removal reason

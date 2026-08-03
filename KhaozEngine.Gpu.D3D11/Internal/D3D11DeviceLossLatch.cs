@@ -67,6 +67,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         int _observedHresult = D3D11DeviceLossCodes.Ok;
         int _removedReason = D3D11DeviceLossCodes.Ok;
         string? _site;
+        bool _published;
 
         /// <param name="liveness">The device's one liveness token, flipped on the first observed loss.</param>
         /// <param name="reason">The device, as the one call this makes at a fault site.</param>
@@ -102,9 +103,18 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// THE SESSION-HEADER FIELD, or null while the device is fine. The stable token from
         /// <see cref="D3D11DeviceLossCodes.Token"/> plus the site, so a capture groups cleanly across sessions
         /// while still saying where it was seen. The full sentence goes in the session log, not here.
+        /// <para>
+        /// GATED ON THE PUBLISH FLAG RATHER THAN ON <see cref="IsLost"/>, because those two are not the same
+        /// instant. The claiming thread takes the latch and only THEN calls <c>GetDeviceRemovedReason</c>, so a
+        /// header written from another thread inside that window would see a latch that says lost with no reason
+        /// and no site in it, and would write a line like "an unknown reason at " into the capture that no later
+        /// read would correct. Until the reason and the site are both stored this reports null, which is the same
+        /// answer it gives for a healthy device: an ordinary session's header is written once, so the worst case
+        /// is a capture missing a field rather than a capture asserting a wrong one.
+        /// </para>
         /// </summary>
         internal string? HeaderValue
-            => IsLost ? $"{D3D11DeviceLossCodes.Token(RemovedReason)} at {Site}" : null;
+            => Volatile.Read(ref _published) ? $"{D3D11DeviceLossCodes.Token(RemovedReason)} at {Site}" : null;
 
         /// <summary>
         /// Check one HRESULT from <paramref name="site"/>. Returns true when the device is lost, which includes
@@ -165,8 +175,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             Volatile.Write(ref _removedReason, reason);
             Volatile.Write(ref _site, string.IsNullOrWhiteSpace(site) ? "an unnamed site" : site);
 
-            // Flipped after the reason is recorded, so a disposal racing the flip cannot run between the two and
-            // find a latch that says lost with no reason in it.
+            // THE PUBLISH FLAG, and it closes a READER race the once-only gate above never covered. The gate
+            // makes the CLAIM atomic, but the claim lands before the record is stored, and on the Check path
+            // before GetDeviceRemovedReason has even been called, so a reader on any other thread could see a
+            // latch that already said lost with no reason and no site in it. HeaderValue is gated on this flag
+            // rather than on that claim, so it reports the unlatched form until the whole record is here.
+            Volatile.Write(ref _published, true);
+
+            // Flipped after the reason is recorded AND published, so a disposal racing the flip cannot run
+            // between the two and find a latch that says lost with nothing readable in it.
             _liveness.MarkDead();
 
             _log.Error($"The Direct3D 11 device was LOST, first noticed at {Site} "

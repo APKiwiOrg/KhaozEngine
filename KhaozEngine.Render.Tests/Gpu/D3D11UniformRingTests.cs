@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.D3D11;
 using KhaozEngine.Gpu.D3D11.Internal;
@@ -345,6 +346,50 @@ namespace KhaozEngine.Tests.Gpu
             // mapping is released and nothing else.
             Assert.Equal((byte)1, harness.Memory.Bytes[0]);
             Assert.Equal((byte)2, harness.Memory.Bytes[16]);
+        }
+
+        /// <summary>
+        /// AND THAT WRITE IS ONE CRITICAL SECTION: the map, the copy and the unmap happen under the submit lock
+        /// together. A mapping held while no lock is held is a mapping another thread can withdraw mid-copy, and
+        /// this scope unmaps at the end of every write, so the copy would be running through a pointer the
+        /// runtime has already taken back. Serializing costs something and costs it only under
+        /// <c>KE_D3D11_RECORD=immediate</c>, where every write already pays a map and an unmap.
+        /// <para>
+        /// Asserted from the outside, which is the only place a lock scope is visible: a thread that holds the
+        /// submit lock can never catch the ring mapped, because being mapped means the writer is inside the
+        /// section this thread is currently holding.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void UnderTheImmediateDriver_TheMapTheCopyAndTheUnmap_AreOneCriticalSection()
+        {
+            using var harness = new D3D11RingHarness(sizeInBytes: 256, framesInFlight: 3,
+                mapScope: D3D11RingMapScope.PerWrite);
+
+            const int writes = 2000;
+            using var finished = new ManualResetEventSlim();
+            var writer = new Thread(() =>
+            {
+                for (int i = 0; i < writes; i++) harness.Ring.Write(0, new byte[] { 0x11 });
+                finished.Set();
+            }) { IsBackground = true };
+
+            writer.Start();
+
+            bool sawMappedWhileHoldingTheLock = false;
+            DateTime deadline = DateTime.UtcNow.AddSeconds(10);
+            while (!finished.IsSet && !sawMappedWhileHoldingTheLock && DateTime.UtcNow < deadline)
+            {
+                lock (harness.SubmitLock) sawMappedWhileHoldingTheLock = harness.Ring.IsMapped;
+            }
+
+            Assert.True(finished.Wait(TimeSpan.FromSeconds(30)), "The writing thread never finished.");
+            Assert.False(sawMappedWhileHoldingTheLock,
+                "A ring was mapped while the submit lock was held by another thread, so a write-scoped mapping is "
+                + "released outside the lock and a concurrent unmap can withdraw it mid-copy.");
+            Assert.Equal(writes, harness.Memory.MapCount);
+            Assert.Equal(writes, harness.Memory.UnmapCount);
+            Assert.Equal((byte)0x11, harness.Memory.Bytes[0]);
         }
 
         /// <summary>Which scope a driver runs is read off the recording mode in one place, so the two cannot

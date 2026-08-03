@@ -126,6 +126,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// into plain memory.
         /// </para>
         /// <para>
+        /// UNDER <see cref="D3D11RingMapScope.PerWrite"/> THE WHOLE WRITE IS SERIALIZED INSTEAD, because that
+        /// scope unmaps at the end of every write and a mapping held with no lock is a mapping another thread can
+        /// withdraw mid-copy. That scope exists only under <c>KE_D3D11_RECORD=immediate</c>, the M1 fallback
+        /// lever, where every write already pays a map and an unmap, so the lock is the cheapest part of it. See
+        /// <see cref="D3D11RingAllocator.WriteUnderPerWriteScope"/>.
+        /// </para>
+        /// <para>
         /// THE OFFSET IS AGAINST THE LOGICAL BUFFER and a write that runs past its end is refused. Without the
         /// check it would spill into the NEXT frame's segment, which is memory the GPU may be reading right now,
         /// and would present as another frame's uniforms being subtly wrong rather than as an error here.
@@ -143,10 +150,22 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             if (data.Length == 0) return;
 
+            if (_allocator.MapScope == D3D11RingMapScope.PerWrite)
+            {
+                _allocator.WriteUnderPerWriteScope(this, offsetBytes, data);
+                return;
+            }
+
             _allocator.EnsureMapped(this);
             CopyInto(_pointer, CurrentFrameBaseBytes + offsetBytes, data);
-            _allocator.AfterWrite(this);
         }
+
+        /// <summary>The copy alone, for the write-scoped path that holds the mapping, the copy and the unmap in
+        /// one critical section. CALLED ONLY BY <see cref="D3D11RingAllocator"/>, under the submit lock and with
+        /// the mapping in hand. Bounds are the caller's, the same as for the copy in
+        /// <see cref="Write"/>.</summary>
+        internal void CopyIntoCurrentSegmentUnderLock(uint offsetBytes, ReadOnlySpan<byte> data)
+            => CopyInto(_pointer, CurrentFrameBaseBytes + offsetBytes, data);
 
         /// <summary>The 256-aligned stride one segment of a <paramref name="sizeInBytes"/> buffer occupies.
         /// Static because <see cref="D3D11Buffer"/> has to size the native buffer before a ring exists to ask.

@@ -16,7 +16,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         /// <summary>
         /// The immediate driver's scope (decision R2, and the degradation section 2.1 names): the ring is mapped
-        /// for the duration of ONE write and unmapped before that write returns.
+        /// for the duration of ONE write and unmapped before that write returns, with the map, the copy and the
+        /// unmap serialized under the submit lock as one critical section.
         /// <para>
         /// It has to degrade, because under <c>KE_D3D11_RECORD=immediate</c> draws are issued as the seam is
         /// called, and Direct3D 11 forbids a mapped resource being bound to the pipeline. The spec's phrasing for
@@ -54,18 +55,28 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// </para>
     /// <para>
     /// LOCKING. The device's single submit lock (decision W4) covers the map and the unmap, because both are
-    /// immediate-context calls, and it is held for the CALL rather than for a frame. The copy is not covered at
-    /// all, which is what keeps recording lock-free: acquiring the mapping is once per ring per record phase and
-    /// writing into it is thousands of times. The off-timeline path (section 6.4) takes the same lock around the
-    /// whole write, so it cannot land in the middle of a replay.
+    /// immediate-context calls, and it is held for the CALL rather than for a frame. Under
+    /// <see cref="D3D11RingMapScope.AcrossRecording"/> the copy is not covered at all, which is what keeps
+    /// recording lock-free: acquiring the mapping is once per ring per record phase and writing into it is
+    /// thousands of times. Under <see cref="D3D11RingMapScope.PerWrite"/> the map, the copy and the unmap are one
+    /// critical section (see <see cref="WriteUnderPerWriteScope"/>). The off-timeline path (section 6.4) takes the
+    /// same lock around the whole write, so it cannot land in the middle of a replay, and the submit path holds it
+    /// from its unmap through its replay.
     /// </para>
     /// <para>
-    /// AND THE CASE THAT LOCKING DOES NOT COVER, stated rather than papered over. A record-time write does not
-    /// take the submit lock, so a recording running on ANOTHER thread while a submit unmaps could have its mapping
-    /// withdrawn mid-write. That is decision W5's territory: concurrent recording is structurally permitted and
-    /// neither exercised nor supported in v1, where one thread records and submits. The unmap clears the flag
-    /// before it releases the mapping, which narrows the window and does not close it, and closing it would mean
-    /// taking the submit lock on every uniform write.
+    /// AND WHAT THE LOCKING DOES NOT COVER, named combination by combination rather than papered over, because
+    /// "not thread-safe" is too coarse to act on. SERIALIZED, on both scopes: two device-level
+    /// <see cref="UpdateBuffer"/> calls from any threads, a device-level write against a submit's unmap, replay
+    /// and signal, a device-level write against another ring's map, and a disposal (<see cref="Forget"/>) against
+    /// any of them. Also serialized under <see cref="D3D11RingMapScope.PerWrite"/>: a record-time write against a
+    /// device-level write, and a record-time write against a submit, since that scope's whole write is inside the
+    /// lock. OUTSIDE THE v1 CONTRACT, and that is decision W5's territory: under
+    /// <see cref="D3D11RingMapScope.AcrossRecording"/>, a record-time write concurrent with a submit's unmap or
+    /// with a device-level write, and two record-time writes to one ring on two threads. Concurrent RECORDING is
+    /// structurally permitted and neither exercised nor supported in v1, where one thread records and submits.
+    /// The unmap clears the flag before it releases the mapping, which narrows the record-time window and does not
+    /// close it, and closing it would mean taking the submit lock on every uniform write of a deferred recording,
+    /// which is the cost the whole design exists to avoid.
     /// </para>
     /// <para>
     /// Not thread-safe for its own counters, the same contract <see cref="D3D11FenceSubsystem"/> and
@@ -292,16 +303,36 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         }
 
         /// <summary>
-        /// What happens to the mapping when a write finishes, which is nothing at all under the deferred driver
-        /// and an immediate unmap under <see cref="D3D11RingMapScope.PerWrite"/>. Called by the ring's write path
-        /// so the scope decision lives in one place rather than at every write site.
+        /// THE WHOLE WRITE UNDER <see cref="D3D11RingMapScope.PerWrite"/>: map, copy and unmap as ONE critical
+        /// section. Called by the ring's write path when that scope is in force, so the scope decision lives in
+        /// one place rather than at every write site.
+        /// <para>
+        /// The three steps are atomic rather than a lock around each context call, because the alternative is a
+        /// window in which the ring is mapped and no lock is held: a device-level <see cref="UpdateBuffer"/>
+        /// arriving on another thread, or a submit's unmap, would withdraw the mapping while the copy is running,
+        /// and the copy would write through a pointer the runtime has taken back. Serializing a whole write costs
+        /// something, and it costs it only under <c>KE_D3D11_RECORD=immediate</c>, which is the M1 fallback lever
+        /// and not a path anything ships on: that driver already maps and unmaps per write, so the lock is the
+        /// cheapest thing in the sequence.
+        /// </para>
+        /// <para>
+        /// The mapping still goes through the registry, so the "every mapped ring is in the registry" invariant
+        /// holds without a scope test at the places that read it, and an already-mapped ring is written and left
+        /// unmapped exactly as a freshly mapped one is.
+        /// </para>
         /// </summary>
-        internal void AfterWrite(D3D11UniformRing ring)
+        internal void WriteUnderPerWriteScope(D3D11UniformRing ring, uint offsetBytes, ReadOnlySpan<byte> data)
         {
-            if (MapScope != D3D11RingMapScope.PerWrite || !ring.IsMapped) return;
-
             lock (_submitLock)
             {
+                if (!ring.IsMapped)
+                {
+                    ring.MapUnderLock();
+                    _mappedRings.Add(ring);
+                }
+
+                ring.CopyIntoCurrentSegmentUnderLock(offsetBytes, data);
+
                 ring.UnmapUnderLock();
                 _mappedRings.Remove(ring);
             }

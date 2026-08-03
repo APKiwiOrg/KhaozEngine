@@ -8519,9 +8519,18 @@ uniforms by dynamic offset (`GpuBufferRange` plus the offset overload of `SetGra
 the engine's own renderers do. Writing off-timeline through `IGpuDevice.UpdateBuffer` and expecting an
 already-recorded bind to see the old value was never supported on any backend and is quieter here.
 
+**And you have to write the WHOLE buffer every frame.** A uniform buffer there holds one segment per frame in
+flight and a write lands in the current segment only, so it survives until the frame index wraps back to that
+segment and no further. A one-shot write, at load time or when a value changes, is NOT preserved the way it is on
+every other backend, where the buffer has one copy and a write to it persists for the buffer's life. If part of a
+uniform buffer is written once and the rest per frame, that part goes stale the moment the ring wraps. The engine
+has one renderer doing this today (the splat-params tail of `ModelRenderer`'s uniform buffer), tracked as
+https://github.com/APKiwiOrg/KhaozEngine/issues/484 and resolved before that backend becomes selectable.
+
 There is one field lever, `KE_D3D11_FRAMES_IN_FLIGHT=<n>` (default 3, range 1 to 16), which sets how many frames
-of uniform data are kept. It exists so a soak can settle whether three is enough, and the session telemetry
-carries the count of times a frame had to wait for a segment to come free.
+of uniform data are kept. It exists so a soak can settle whether three is enough, and the count of times a frame
+had to wait for a segment to come free is recorded for the session telemetry to carry once a device exists to
+report it.
 
 ---
 

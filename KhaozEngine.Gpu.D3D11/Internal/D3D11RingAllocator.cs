@@ -249,9 +249,19 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// off-timeline write: no recording is required, one may be open, and the caller may be any thread.
         /// <para>
         /// IT WRITES THE CURRENT SEGMENT, meaning the one the next <c>Submit</c> will bind and the one any open
-        /// recording is already writing, deliberately NOT the segment the GPU is executing. That is what preserves
-        /// the documented semantic: the write lands when it is called, and a later-submitted list reads what the
-        /// CPU wrote most recently.
+        /// recording is already writing, deliberately NOT the segment the GPU is executing. So the write lands
+        /// when it is called and the next list submitted reads it.
+        /// </para>
+        /// <para>
+        /// IT DOES NOT PERSIST BEYOND THAT SEGMENT, and this is the one place the ring diverges from the
+        /// incumbent rather than merely being faster than it. The write reaches one segment out of
+        /// <see cref="FramesInFlight"/>, so it survives exactly until the frame index wraps back round, whereas
+        /// the same call on the Veldrid backend writes the buffer's only copy and persists for the buffer's life.
+        /// The requirement that follows is plain: a ring-backed uniform buffer's FULL contents have to be
+        /// re-established every frame, and a one-shot load-time write is not preserved. One shipped consumer does
+        /// exactly that (<c>ModelRenderer</c>'s splat-params tail), which is tracked as
+        /// https://github.com/APKiwiOrg/KhaozEngine/issues/484 and blocks the device row rather than being solved
+        /// here.
         /// </para>
         /// <para>
         /// IT MAPS IDEMPOTENTLY. The ring is unmapped at the start of every submit, so a write arriving between

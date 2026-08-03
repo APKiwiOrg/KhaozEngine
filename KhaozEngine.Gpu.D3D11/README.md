@@ -295,9 +295,12 @@ segment stride is rounded up to 256 bytes because `*SetConstantBuffers1` wants i
 
 **The mapping belongs to the record phase, and two native calls per ring per submit is the floor.** The first
 write of a record phase maps `MAP_WRITE_NO_OVERWRITE`, every later write reuses it, and the start of the next
-`Submit` unmaps before anything is replayed. That is legal only because recording is deferred: Direct3D 11 has no
-persistent mapping and forbids a mapped resource being bound to the pipeline, so under `KE_D3D11_RECORD=immediate`,
-where draws happen during record, the mapping degrades to write-scoped (one map and one unmap per write). The
+`Submit` unmaps before anything is replayed, inside the same acquisition of the submit lock that covers the replay
+(an unmap that released the lock would let an off-timeline write re-map the ring before the replay bound it). That
+is legal only because recording is deferred: Direct3D 11 has no persistent mapping and forbids a mapped resource
+being bound to the pipeline, so under `KE_D3D11_RECORD=immediate`, where draws happen during record, the mapping
+degrades to write-scoped, one map and one unmap per write, with the map, the copy and the unmap serialized under
+the submit lock as one critical section. The
 spec's phrasing for that degradation is per-FLUSH, which is coarser and strictly better and needs a flush point to
 hang the unmap on. The flush point is the bind flush, which is not built yet, and
 `D3D11RingAllocator.UnmapMappedRings` is the one call it needs to batch the immediate driver up to per-flush.
@@ -326,6 +329,15 @@ one any open recording is already writing, deliberately not the one executing on
 thread behind a short lock scoped to the write itself and never to a frame (the submit lock, so an off-timeline
 write cannot land in the middle of a replay), and it maps idempotently when it finds the ring unmapped between two
 frames, leaving the mapping for the next record phase to reuse.
+
+**A RING-BACKED UNIFORM BUFFER'S FULL CONTENTS MUST BE RE-ESTABLISHED EVERY FRAME, and this is the one behaviour
+that does not survive the ring.** A write reaches one segment out of `FramesInFlight`, so it holds until the frame
+index wraps back round to that segment and no longer. A ONE-SHOT write, at load time or on a change, is therefore
+NOT preserved: the same call on the Veldrid backend writes the buffer's only copy and it persists for the buffer's
+life. Anything written once and expected to stay written has to be rewritten each frame, sized for a whole-buffer
+upload, or moved off a uniform buffer. One shipped consumer does exactly this (the splat-params tail of
+`ModelRenderer`'s uniform buffer), which is tracked as
+https://github.com/APKiwiOrg/KhaozEngine/issues/484 and blocks the device row.
 
 **What is still forbidden, restated because the ring makes it quieter rather than because it changed.** Writing
 off-timeline to a range a recording has ALREADY recorded a bind for, and then expecting that recorded bind to see

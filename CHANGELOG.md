@@ -161,7 +161,10 @@ frame base is bindable by construction rather than by the callers happening to u
 `MAP_WRITE_NO_OVERWRITE`, every later write reuses that mapping, and the start of the next `Submit` unmaps before
 anything is replayed. That is legal only because recording is deferred: Direct3D 11 has no persistent mapping and
 forbids a mapped resource being bound to the pipeline. Under `KE_D3D11_RECORD=immediate`, where draws are issued
-during record, the mapping degrades to write-scoped, one map and one unmap per write. The spec's phrasing for that
+during record, the mapping degrades to write-scoped, one map and one unmap per write, with that write's map, copy
+and unmap serialized under the submit lock as one critical section: a mapping held while no lock is held is one
+another thread can withdraw mid-copy, and per-write serialization is an acceptable cost on the M1 fallback lever
+that already pays two native calls per write. The spec's phrasing for that
 degradation is per-FLUSH, which is coarser and strictly better and needs a flush point to hang the unmap on, and
 the flush point is the bind flush of the next row. Write-scoped is what is correct with no cooperation from any
 other row, and `UnmapMappedRings` is the one call the bind flush needs to batch it up.
@@ -182,9 +185,12 @@ The per-frame backpressure stall count and total stall time are recorded in the 
 subsystem's drain stats, because M3's exit criterion is a stall count of ZERO across a full soak capture window
 and a non-zero count means three segments are wrong for that machine rather than the design being wrong.
 
-**The submit path brackets the replay with the ring.** Rings are unmapped BEFORE the replay and the signalled
-value is recorded against the current segment after it, which is what makes "zero `Map` or `Unmap` during replay"
-a structural property. A ring allocator handed to a submit with no signal sink is refused, for the same shape of
+**The submit path brackets the replay with the ring, in ONE acquisition of the submit lock.** Rings are unmapped
+BEFORE the replay and the signalled value is recorded against the current segment after it, which is what makes
+"zero `Map` or `Unmap` during replay" a structural property, and the unmap is inside the lock rather than in front
+of it: an unmap that took the lock for itself would release it, and a device-level `UpdateBuffer` arriving on
+another thread in the gap before the replay re-acquires it maps the ring straight back, leaving the replay to bind
+a mapped constant buffer. A ring allocator handed to a submit with no signal sink is refused, for the same shape of
 reason a fence without one already was and with a worse failure behind it: the segment would carry no completion
 value, so it would be handed back out with no wait at all.
 
@@ -213,13 +219,21 @@ bind to see the old value. For the same reason a record-time uniform write lands
 one range inside a frame leave the second value for every draw of that frame. Per-draw uniforms are addressed by
 dynamic offset, which is what the renderers already do.
 
+**What the ring does NOT preserve, since it is the one behaviour that genuinely changes.** A write reaches one
+segment out of `FramesInFlight` and holds only until the frame index wraps back to that segment, so a ring-backed
+uniform buffer's FULL contents have to be re-established every frame and a one-shot write is lost. On the Veldrid
+backend the same call writes the buffer's only copy and persists for the buffer's life, which is what a load-time
+write relies on. One shipped consumer relies on it (the splat-params tail of `ModelRenderer`'s uniform buffer),
+filed as #484 with the fit evidence and blocking the device row rather than being worked around here. The package
+README and `docs/USING-KHAOZENGINE.md` both state the requirement plainly.
+
 **Where the tests are, and what is left behind an interface.** The two native calls of a ring sit behind
 `ID3D11RingMemory`, the same shape the fence timeline already has, so the segment arithmetic, the map lifecycle,
 the write offset, the recycling under fence pressure, the wrap, the stall counter and the creation invariant are
 all plain `[Fact]`s that run on macOS and Linux. The fake ring memory is a pinned array, so a test reads back the
-bytes a write actually produced rather than trusting an offset calculation. `ConstantCount` now rounds a window up
-to a whole constant before applying the 256-byte minimum, which is a no-op for every window the engine binds and
-stops a partial constant being truncated away rather than covered. The package gained
+bytes a write actually produced rather than trusting an offset calculation. `ConstantCount` now applies the
+256-byte minimum first and rounds the result up to a whole constant, which is a no-op for every window the engine
+binds and stops a partial constant being truncated away rather than covered. The package gained
 `<AllowUnsafeBlocks>true</AllowUnsafeBlocks>` for exactly one body, the copy into the mapped segment.
 
 ### Map regions get a runtime: BuildRegions + RegionAt (#481)

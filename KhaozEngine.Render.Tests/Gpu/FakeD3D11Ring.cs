@@ -66,6 +66,16 @@ namespace KhaozEngine.Tests.Gpu
         /// the log in.</summary>
         internal int EmitterCallsAtLastUnmap { get; private set; }
 
+        /// <summary>
+        /// Whether the CALLER of the last unmap already held the submit lock, as opposed to the unmap having
+        /// taken the lock for itself. That is a different question from
+        /// <see cref="LastUnmapHeldTheSubmitLock"/>, which is true either way, and it is the one a submit's
+        /// bracket turns on: an unmap that takes the lock for itself RELEASES it on the way out, and an
+        /// off-timeline write arriving in the gap before the replay re-acquires it maps the ring straight back.
+        /// Null until something unmaps, and always null while <see cref="SubmitLock"/> is unset.
+        /// </summary>
+        internal bool? LastUnmapWasNestedInTheCallersLock { get; private set; }
+
         /// <inheritdoc/>
         public IntPtr MapWriteNoOverwrite()
         {
@@ -92,8 +102,28 @@ namespace KhaozEngine.Tests.Gpu
 
             UnmapCount++;
             IsMapped = false;
-            if (SubmitLock is object submitLock) LastUnmapHeldTheSubmitLock = Monitor.IsEntered(submitLock);
+            if (SubmitLock is object submitLock)
+            {
+                LastUnmapHeldTheSubmitLock = Monitor.IsEntered(submitLock);
+                if (LastUnmapHeldTheSubmitLock == true)
+                    LastUnmapWasNestedInTheCallersLock = HoldsItMoreThanOnce(submitLock);
+            }
+
             if (_log is not null) EmitterCallsAtLastUnmap = _log.TotalCalls;
+        }
+
+        // Whether this thread holds the lock more than once, which is the only way to tell a nested acquisition
+        // from an outermost one: a Monitor exposes no recursion count, so the question is asked by releasing one
+        // level and asking again, then taking that level straight back. Safe because the caller has just been
+        // checked to hold it, and because in the nested case nobody else can take it in between: this thread
+        // still owns the outer level. In the outermost case another thread genuinely can, and the re-entry then
+        // waits for it, which is the ordinary behaviour of the lock rather than a hazard the fake introduces.
+        static bool HoldsItMoreThanOnce(object submitLock)
+        {
+            Monitor.Exit(submitLock);
+            bool nested = Monitor.IsEntered(submitLock);
+            Monitor.Enter(submitLock);
+            return nested;
         }
 
         /// <summary>The bytes of one segment, for a test that wants to say where a write landed rather than what

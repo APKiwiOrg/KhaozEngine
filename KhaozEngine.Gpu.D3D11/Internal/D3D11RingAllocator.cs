@@ -215,6 +215,14 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// it is acted on, and being wrong in that direction means a ring stays mapped through the replay that is
         /// about to bind it.
         /// </para>
+        /// <para>
+        /// CALL IT WITH THE SUBMIT LOCK ALREADY HELD, which is what the submit path does and what the bind flush
+        /// will do. The lock is a <see cref="Monitor"/>, so re-entering it on the thread that already owns it is
+        /// free, and nothing here assumes it is the outermost holder: it acquires no other lock, waits on
+        /// nothing, and the registry is consistent again before it returns. Taking it outside instead would open
+        /// a window between this method's release and the caller's acquisition, which is exactly where an
+        /// off-timeline write re-maps a ring the caller is about to bind.
+        /// </para>
         /// </summary>
         internal void UnmapMappedRings()
         {

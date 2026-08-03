@@ -84,6 +84,14 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// Unmap during replay" is a structural invariant rather than a hope.
         /// </para>
         /// <para>
+        /// THE WHOLE BRACKET IS ONE CRITICAL SECTION, unmap included. The submit lock is taken once and held from
+        /// the unmap through the replay to the signal, because an off-timeline
+        /// <see cref="D3D11RingAllocator.UpdateBuffer"/> landing between an unmap that released the lock and a
+        /// replay that then took it would map the ring again and the replay would bind mapped memory. The
+        /// allocator takes the same lock inside its own unmap, which is a free re-entry on the thread that
+        /// already owns it.
+        /// </para>
+        /// <para>
         /// A RING ALLOCATOR WITHOUT A SIGNAL IS REFUSED, for the same shape of reason as a fence without one and
         /// with a worse failure behind it. The segment would carry no completion value, so it would be handed back
         /// out with no wait, and the CPU would write uniforms into memory the GPU is still reading. That is a
@@ -119,13 +127,18 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                     + "reading. Pass the device's fence subsystem alongside the rings.", nameof(rings));
             }
 
-            // Outside the lock deliberately: it takes the lock itself, for the unmap call alone, and taking it
-            // here first would hold it across the whole submit for no reason. It is a no-op when the submission
-            // wrote no uniforms.
-            rings?.UnmapMappedRings();
-
             lock (submitLock)
             {
+                // INSIDE the lock, and that placement is the correctness of it rather than tidiness. An unmap
+                // taken outside leaves a gap between its own lock release and this one's acquisition, and a
+                // device-level UpdateBuffer arriving on any thread in that gap maps the ring again (it maps
+                // idempotently, and under AcrossRecording it leaves the mapping in place for the next record
+                // phase), so the replay below would bind a mapped constant buffer, which Direct3D 11 forbids.
+                // Holding the lock across the unmap costs the unmap's own duration and nothing else, since the
+                // lock is held across the whole replay either way. It is a no-op when the submission wrote no
+                // uniforms, and it takes the same lock again internally, which is free on a Monitor.
+                rings?.UnmapMappedRings();
+
                 Replay(list, ref emitter);
                 ulong completionValue = signal?.SignalEndOfReplay(fence) ?? 0UL;
                 rings?.OnSubmitted(completionValue);
@@ -145,7 +158,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <para>
         /// IT OWES THE RING BRACKET TOO, for the same reason and in the same order:
         /// <c>UnmapMappedRings</c> before this call and <c>OnSubmitted</c> with the signalled value after it.
-        /// Skipping the first binds a mapped resource, and skipping the second leaves the segment ungated.
+        /// Skipping the first binds a mapped resource, and skipping the second leaves the segment ungated. Both
+        /// belong INSIDE the lock that caller already holds, and it must not release the lock between the unmap
+        /// and this call: an off-timeline write reaching the ring in that window maps it again and the replay
+        /// binds mapped memory.
         /// </para>
         /// <para>
         /// On the immediate driver this is a no-op with one check, because the native calls were made during

@@ -230,6 +230,7 @@ namespace KhaozEngine.Tests.Gpu
             var signal = new D3D11SubmitSignalTests.FakeD3D11SubmitSignal(log);
             using var harness = new D3D11RingHarness(
                 sizeInBytes: 256, framesInFlight: 3, log: log);
+            harness.Memory.SubmitLock = harness.SubmitLock;
 
             using IGpuCommandList list = D3D11CommandDrivers.CreateDeferred();
             list.Begin();
@@ -244,6 +245,45 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(0, harness.Memory.EmitterCallsAtLastUnmap);
             Assert.Equal(3, signal.EmitterCallsAtLastSignal);   // Begin, Draw, End: the signal is at the far end
             Assert.False(harness.Ring.IsMapped);
+            Assert.True(harness.Memory.LastUnmapHeldTheSubmitLock);
+        }
+
+        /// <summary>
+        /// AND IT ALREADY HOLDS THE SUBMIT LOCK WHEN IT UNMAPS, which is a separate claim from the ordering above
+        /// and the one that makes the ordering worth anything. An unmap taken OUTSIDE the lock takes the lock for
+        /// itself and releases it on the way out, and a device-level <c>UpdateBuffer</c> arriving on any thread in
+        /// the gap before the replay acquires it maps the ring straight back (it maps idempotently, and under
+        /// <see cref="D3D11RingMapScope.AcrossRecording"/> it leaves the mapping in place), so the replay binds a
+        /// mapped constant buffer, which Direct3D 11 forbids.
+        /// <para>
+        /// The window is nanoseconds wide, so racing a thread into it proves nothing either way. What is exact is
+        /// the lock's RECURSION at the unmap: nested means the submit was already holding it and there is no gap
+        /// at all, outermost means there is one. That is what the fake reports.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void ASubmit_AlreadyHoldsTheSubmitLockWhenItUnmapsTheRings()
+        {
+            var log = new D3D11EmitterCallLog();
+            var emitter = new D3D11CountingEmitter(log);
+            var signal = new D3D11SubmitSignalTests.FakeD3D11SubmitSignal(log);
+            using var harness = new D3D11RingHarness(
+                sizeInBytes: 256, framesInFlight: 3, log: log);
+            harness.Memory.SubmitLock = harness.SubmitLock;
+
+            using IGpuCommandList list = D3D11CommandDrivers.CreateDeferred();
+            list.Begin();
+            list.Draw(1);
+            list.End();
+            harness.Ring.Write(0, new byte[] { 1, 2, 3, 4 });
+
+            D3D11CommandDrivers.Submit(harness.SubmitLock, list, ref emitter, signal, null, harness.Allocator);
+
+            Assert.True(harness.Memory.LastUnmapHeldTheSubmitLock);
+            Assert.True(harness.Memory.LastUnmapWasNestedInTheCallersLock,
+                "A submit unmapped the rings without already holding the submit lock, so it releases the lock "
+                + "between the unmap and the replay and an off-timeline write can re-map a ring the replay is "
+                + "about to bind.");
         }
 
         /// <summary>

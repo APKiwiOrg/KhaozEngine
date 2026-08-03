@@ -26,10 +26,22 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <summary>The compiled pixel shader, bound with <c>PSSetShader</c>.</summary>
         object? PixelShader { get; }
 
-        /// <summary>The blend state object, bound with <c>OMSetBlendState</c>.</summary>
+        /// <summary>
+        /// The blend state object, bound with <c>OMSetBlendState</c>.
+        /// <para>
+        /// THE BLEND FACTOR IS NOT HERE YET, AND THE CACHE IS INCOMPLETE WITHOUT IT.
+        /// <c>OMSetBlendState</c> takes a blend factor and a sample mask alongside the state object, and the
+        /// blend factor rides the pipeline rather than being separately tracked state, so two pipelines that
+        /// share one blend state object and differ in blend factor would take the redundant path here and the
+        /// second one would draw with the first one's factor. Adding the factor to this interface and to the
+        /// cache belongs with the draw path that owns the per-pipeline blend factor, and must land with it.
+        /// </para>
+        /// </summary>
         object? BlendState { get; }
 
-        /// <summary>The depth-stencil state object, bound with <c>OMSetDepthStencilState</c>.</summary>
+        /// <summary>The depth-stencil state object, bound with <c>OMSetDepthStencilState</c>. The stencil
+        /// reference is the same open case as the blend factor above: it is an argument of the call rather than
+        /// part of the state object, so it has to join the cache when the pipeline starts carrying it.</summary>
         object? DepthStencilState { get; }
 
         /// <summary>The rasterizer state object, bound with <c>RSSetState</c>.</summary>

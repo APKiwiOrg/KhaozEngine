@@ -464,11 +464,17 @@ namespace KhaozEngine.Tests.Gpu
         /// A graphics pipeline that can answer what it is made of, which is what the redundancy caches compare
         /// against. Its state objects are plain <c>object</c> instances, because a cache asks only whether the
         /// same instance is already bound and the real Direct3D handles are work-breakdown row 7.
+        /// <para>
+        /// It answers <see cref="ID3D11PipelineLayouts"/> as well, with no layouts by default. A pipeline that
+        /// declares none binds no sets, which is every test in this file, and the bind-flush tests hand in the
+        /// layout array their sets are numbered against.
+        /// </para>
         /// </summary>
-        internal sealed class FakeD3D11Pipeline : IGpuPipeline, ID3D11PipelineState
+        internal sealed class FakeD3D11Pipeline : IGpuPipeline, ID3D11PipelineState, ID3D11PipelineLayouts
         {
             internal FakeD3D11Pipeline(object? vertexShader, object? pixelShader, object? blendState,
-                object? depthStencilState, object? rasterizerState, object? inputLayout, uint topology)
+                object? depthStencilState, object? rasterizerState, object? inputLayout, uint topology,
+                params D3D11ResourceLayout[] layouts)
             {
                 VertexShader = vertexShader;
                 PixelShader = pixelShader;
@@ -477,6 +483,7 @@ namespace KhaozEngine.Tests.Gpu
                 RasterizerState = rasterizerState;
                 InputLayout = inputLayout;
                 PrimitiveTopology = topology;
+                ResourceLayouts = layouts;
             }
 
             public object? VertexShader { get; }
@@ -486,6 +493,7 @@ namespace KhaozEngine.Tests.Gpu
             public object? RasterizerState { get; }
             public object? InputLayout { get; }
             public uint PrimitiveTopology { get; }
+            public D3D11ResourceLayout[] ResourceLayouts { get; }
 
             public void Dispose()
             {

@@ -18,23 +18,24 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// the first time a guard was tightened.
     /// </para>
     /// <para>
-    /// WHAT IT DOES NOT MODEL, stated so no total taken from it is read as a budget. The bind flush of decision
-    /// R5 and its array-batched fan-out are work-breakdown row 9, so a resource-set bind lands here as
-    /// <see cref="D3D11NativeCall.ResourceSetPending"/>, which holds its place in the order and is not a native
-    /// call. Where the countable sink for decision T2's budget finally goes, below the real emitter or into a
-    /// harness guarded by T3's WARP <c>[GpuFact]</c>, is still row 9's decision and this type does not take it:
-    /// two of T2's four structural invariants are what this row owes (exactly one <c>ClearState</c> per submit,
-    /// and one <c>RSSetViewports</c> plus one <c>RSSetScissorRects</c> per framebuffer CHANGE with zero for a
-    /// redundant re-bind) and those are what it is built to assert.
+    /// THE BIND FLUSH IS MODELLED TOO, and that is the sink decision of work-breakdown row 9. The schedule of
+    /// decision R5 and the array-batched fan-out of decision R6 live in <see cref="D3D11BindFlush"/> and
+    /// <see cref="D3D11SetActivation"/>, which the real emitter uses unchanged, so this type supplies only the
+    /// <see cref="ID3D11BindSink"/> end of them: which method name a register file plus a stage picks. A budget
+    /// taken here therefore measures the shipped dirty tracking, the shipped slot order, the shipped drain and the
+    /// shipped register arithmetic, and can drift from the real replay path in <see cref="D3D11NativeCallName"/>
+    /// alone. A resource-set BIND still lands as <see cref="D3D11NativeCall.ResourceSetPending"/>, which holds its
+    /// place in the order and is excluded from the total, because a bind genuinely issues nothing.
     /// </para>
     /// <para>
     /// A readonly struct over two class references, which is the shape <see cref="ID3D11Emitter"/> requires and a
     /// reflection test enforces. It RECEIVES its state rather than constructing one, which is the discipline
     /// issue #476 is about: an emitter that allocated its own would satisfy the readonly rule and still give
-    /// every command list its own cache.
+    /// every command list its own cache. The bind flush rides that same state, so it is one per device by
+    /// construction rather than by a second rule.
     /// </para>
     /// </summary>
-    internal readonly struct D3D11NativeTraceEmitter : ID3D11Emitter
+    internal readonly struct D3D11NativeTraceEmitter : ID3D11Emitter, ID3D11BindSink
     {
         readonly D3D11DeviceState _state;
         readonly D3D11NativeCallLog _log;
@@ -96,6 +97,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// DECISION R6: one native call per pipeline-level object that ACTUALLY changed, and nothing at all for a
         /// rebind of the pipeline already bound. The calls are issued in cache-slot order, which D3D11 does not
         /// require and a readable trace does.
+        /// <para>
+        /// THE PENDING SETS ARE DRAINED FIRST (decision R5, rule 5), under the OUTGOING pipeline's layouts,
+        /// because those layouts are what numbers the registers a mark recorded under the outgoing pipeline
+        /// belongs at. So the drained binds appear in the trace AHEAD of this pipeline's state calls, which is
+        /// where they happened.
+        /// </para>
         /// </summary>
         public void SetPipeline(IGpuPipeline pipeline)
         {
@@ -106,6 +113,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                     + "A pipeline this backend created also implements ID3D11PipelineState, which is what the "
                     + "redundancy caches of decision R6 compare against, so a pipeline without it would rebind "
                     + "all seven state objects on every draw.", nameof(pipeline));
+
+            D3D11NativeTraceEmitter sink = this;
+            _state.Binds.SetGraphicsPipeline(ref sink, pipeline);
 
             D3D11StateChange changed = _state.BindPipeline(state);
             if (changed == D3D11StateChange.None) return;
@@ -126,15 +136,24 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 _log.Record(D3D11NativeCall.IASetPrimitiveTopology, N(state.PrimitiveTopology));
         }
 
-        /// <summary>Recorded, not emitted. See <see cref="D3D11NativeCall.ResourceSetPending"/>: the flush is
-        /// row 9's.</summary>
+        /// <summary>
+        /// RECORDED, NOT EMITTED (decision R5, rule 1). The slot is compared against what it already holds and
+        /// left owing a full activation, an offsets-only push or nothing, and the next draw pays it. The trace
+        /// line is <see cref="D3D11NativeCall.ResourceSetPending"/>, which holds the bind's place in the order and
+        /// counts as no native call at all.
+        /// </summary>
         public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set)
-            => _log.Record(D3D11NativeCall.ResourceSetPending, $"gfx,{N(slot)},{_log.Id(set)}");
+        {
+            _log.Record(D3D11NativeCall.ResourceSetPending, $"gfx,{N(slot)},{_log.Id(set)}");
+            _state.Binds.RecordGraphics(slot, set, 0u, hasDynamicOffset: false);
+        }
 
         /// <inheritdoc cref="SetGraphicsResourceSet(uint, IGpuResourceSet)"/>
         public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset)
-            => _log.Record(D3D11NativeCall.ResourceSetPending,
-                $"gfx,{N(slot)},{_log.Id(set)},{N(dynamicOffset)}");
+        {
+            _log.Record(D3D11NativeCall.ResourceSetPending, $"gfx,{N(slot)},{_log.Id(set)},{N(dynamicOffset)}");
+            _state.Binds.RecordGraphics(slot, set, dynamicOffset, hasDynamicOffset: true);
+        }
 
         public void SetVertexBuffer(uint slot, IGpuBuffer buffer, uint offsetBytes)
             => _log.Record(D3D11NativeCall.IASetVertexBuffers,
@@ -167,14 +186,24 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             _log.Record(D3D11NativeCall.RSSetScissorRects, FullScissor(framebuffer));
         }
 
+        /// <summary>Decision R5, rule 2: the pre-command hook first, then the draw. Everything else a draw path
+        /// owes (the vertex and index binds, the topology, the blend factor) is work-breakdown row 10 and hangs
+        /// off the same hook in the same position.</summary>
         public void Draw(uint vertexCount, uint instanceCount, uint vertexStart, uint instanceStart)
-            => _log.Record(D3D11NativeCall.DrawInstanced,
+        {
+            FlushGraphicsBinds();
+            _log.Record(D3D11NativeCall.DrawInstanced,
                 $"{N(vertexCount)},{N(instanceCount)},{N(vertexStart)},{N(instanceStart)}");
+        }
 
+        /// <inheritdoc cref="Draw"/>
         public void DrawIndexed(uint indexCount, uint instanceCount, uint indexStart, int vertexOffset,
             uint instanceStart)
-            => _log.Record(D3D11NativeCall.DrawIndexedInstanced,
+        {
+            FlushGraphicsBinds();
+            _log.Record(D3D11NativeCall.DrawIndexedInstanced,
                 $"{N(indexCount)},{N(instanceCount)},{N(indexStart)},{N(vertexOffset)},{N(instanceStart)}");
+        }
 
         public void UpdateBuffer(IGpuBuffer buffer, uint offsetBytes, ReadOnlySpan<byte> data)
             => _log.Record(D3D11NativeCall.UpdateSubresource,
@@ -200,24 +229,128 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         public void ResolveTexture(IGpuTexture src, IGpuTexture dst)
             => _log.Record(D3D11NativeCall.ResolveSubresource, $"{_log.Id(src)},{_log.Id(dst)}");
 
-        /// <summary>Bound unguarded. A compute pipeline is one shader and gets its own dirty tracking with the
-        /// compute schedule of decision C1, which is work-breakdown row 12, so caching it here would be half a
-        /// rule.</summary>
+        /// <summary>
+        /// The shader itself is bound unguarded: a compute pipeline is one shader, and the redundancy cache for it
+        /// belongs with the rest of the compute schedule of decision C1, which is work-breakdown row 12, so
+        /// caching it here would be half a rule.
+        /// <para>
+        /// The pipeline-switch DRAIN is not half a rule and happens here, on the compute dirty array, for the same
+        /// reason as the graphics one: a compute set's registers are numbered under its pipeline's layout array.
+        /// </para>
+        /// </summary>
         public void SetComputePipeline(IGpuComputePipeline pipeline)
-            => _log.Record(D3D11NativeCall.CSSetShader, _log.Id(pipeline));
+        {
+            if (pipeline is null) throw new ArgumentNullException(nameof(pipeline));
+
+            D3D11NativeTraceEmitter sink = this;
+            _state.Binds.SetComputePipeline(ref sink, pipeline);
+            _log.Record(D3D11NativeCall.CSSetShader, _log.Id(pipeline));
+        }
 
         /// <inheritdoc cref="SetGraphicsResourceSet(uint, IGpuResourceSet)"/>
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set)
-            => _log.Record(D3D11NativeCall.ResourceSetPending, $"cs,{N(slot)},{_log.Id(set)}");
+        {
+            _log.Record(D3D11NativeCall.ResourceSetPending, $"cs,{N(slot)},{_log.Id(set)}");
+            _state.Binds.RecordCompute(slot, set, 0u, hasDynamicOffset: false);
+        }
 
         /// <inheritdoc cref="SetGraphicsResourceSet(uint, IGpuResourceSet)"/>
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset)
-            => _log.Record(D3D11NativeCall.ResourceSetPending,
-                $"cs,{N(slot)},{_log.Id(set)},{N(dynamicOffset)}");
+        {
+            _log.Record(D3D11NativeCall.ResourceSetPending, $"cs,{N(slot)},{_log.Id(set)},{N(dynamicOffset)}");
+            _state.Binds.RecordCompute(slot, set, dynamicOffset, hasDynamicOffset: true);
+        }
 
+        /// <summary>Decision R5, rule 2, on the compute side: the pre-command hook first, then the dispatch. The
+        /// SRV-versus-UAV auto-unbind of decision C1 is work-breakdown row 12 and is not here.</summary>
         public void Dispatch(uint groupCountX, uint groupCountY, uint groupCountZ)
-            => _log.Record(D3D11NativeCall.Dispatch,
+        {
+            FlushComputeBinds();
+            _log.Record(D3D11NativeCall.Dispatch,
                 $"{N(groupCountX)},{N(groupCountY)},{N(groupCountZ)}");
+        }
+
+        /// <summary>
+        /// THE PRE-COMMAND HOOK, and the shape work-breakdown row 10 consumes. An emitter's draw path calls it
+        /// FIRST, before the vertex and index binds and before the draw, and then issues. Kept as a named method
+        /// rather than inlined at each draw so the position is one thing to get right and the real emitter's draw
+        /// path reads the same as this one's.
+        /// </summary>
+        internal void FlushGraphicsBinds()
+        {
+            D3D11NativeTraceEmitter sink = this;
+            _state.Binds.FlushGraphics(ref sink);
+        }
+
+        /// <inheritdoc cref="FlushGraphicsBinds"/>
+        internal void FlushComputeBinds()
+        {
+            D3D11NativeTraceEmitter sink = this;
+            _state.Binds.FlushCompute(ref sink);
+        }
+
+        // ---- ID3D11BindSink: the naming translation, and the only thing a device-free budget can drift in ----
+
+        /// <inheritdoc/>
+        public void SetConstantBuffers(GpuShaderStages stage, uint startSlot,
+            ReadOnlySpan<D3D11ConstantBufferBind> binds)
+            => _log.Record(D3D11NativeCallName.ConstantBuffers(stage),
+                $"{N(startSlot)},{N(binds.Length)},{DescribeConstants(binds)}");
+
+        /// <inheritdoc/>
+        public void UnsetConstantBuffers(GpuShaderStages stage, uint startSlot, int count)
+            => _log.Record(D3D11NativeCallName.ConstantBuffers(stage), $"{N(startSlot)},{N(count)},unset");
+
+        /// <inheritdoc/>
+        public void SetShaderResources(GpuShaderStages stage, uint startSlot,
+            ReadOnlySpan<IGpuBindableResource?> resources)
+            => _log.Record(D3D11NativeCallName.ShaderResources(stage),
+                $"{N(startSlot)},{N(resources.Length)},{Describe(resources)}");
+
+        /// <inheritdoc/>
+        public void SetSamplers(GpuShaderStages stage, uint startSlot, ReadOnlySpan<IGpuBindableResource?> samplers)
+            => _log.Record(D3D11NativeCallName.Samplers(stage),
+                $"{N(startSlot)},{N(samplers.Length)},{Describe(samplers)}");
+
+        /// <inheritdoc/>
+        public void SetUnorderedAccessViews(GpuShaderStages stage, uint startSlot,
+            ReadOnlySpan<IGpuBindableResource?> views)
+            => _log.Record(D3D11NativeCallName.UnorderedAccessViews(stage),
+                $"{N(startSlot)},{N(views.Length)},{Describe(views)}");
+
+        // One entry per register in the span, separated by '|', so a reader can see which register got what and a
+        // hole is visibly a hole rather than an absent entry that shifts everything after it. A constant-buffer
+        // entry carries the window the way *SetConstantBuffers1 takes it: id@firstConstant+constantCount.
+        string DescribeConstants(ReadOnlySpan<D3D11ConstantBufferBind> binds)
+        {
+            var text = new System.Text.StringBuilder();
+            for (int i = 0; i < binds.Length; i++)
+            {
+                if (i > 0) text.Append('|');
+                if (binds[i].Buffer is null)
+                {
+                    text.Append('-');
+                    continue;
+                }
+
+                text.Append(_log.Id(binds[i].Buffer)).Append('@').Append(N(binds[i].FirstConstant))
+                    .Append('+').Append(N(binds[i].ConstantCount));
+            }
+
+            return text.ToString();
+        }
+
+        string Describe(ReadOnlySpan<IGpuBindableResource?> resources)
+        {
+            var text = new System.Text.StringBuilder();
+            for (int i = 0; i < resources.Length; i++)
+            {
+                if (i > 0) text.Append('|');
+                text.Append(resources[i] is null ? "-" : _log.Id(resources[i]));
+            }
+
+            return text.ToString();
+        }
 
         /// <summary>
         /// DECISION R8, and NOT a seam member. A resource being disposed is the one moment a cache can be left

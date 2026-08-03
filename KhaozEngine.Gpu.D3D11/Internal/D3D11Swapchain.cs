@@ -56,8 +56,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     internal sealed class D3D11Swapchain : IDisposable
     {
         // A packed size no window can be, so it doubles as "nothing queued" without a second field a writer would
-        // have to publish in the right order. Every real request packs to a non-negative value, because a width of
-        // uint.MaxValue is the only way to reach the top bit and that is a 4294967295 pixel backbuffer.
+        // have to publish in the right order. A packed request is NOT always non-negative, since any width from
+        // 0x80000000 up sets the top bit, but that is not what this sentinel needs: -1 is every one of the 64 bits
+        // set, so the one request that could collide with it is Pack(uint.MaxValue, uint.MaxValue), a 4294967295
+        // by 4294967295 pixel backbuffer.
         const long NothingPending = -1L;
 
         readonly ID3D11SwapchainSurface _surface;

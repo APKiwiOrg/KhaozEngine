@@ -364,6 +364,44 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(2UL, fences.CompletedValue);
         }
 
+        /// <summary>
+        /// THE SAME X3 BEHAVIOUR AGAINST THE REAL LATCH, which is the whole of the wiring between this row and
+        /// the resources row: <see cref="D3D11DeviceLiveness"/> is the device's shared volatile token, and it
+        /// rides this subsystem's liveness argument directly rather than through an adapter.
+        /// <para>
+        /// Worth a test of its own even though the fake already covers the behaviour, because the fake is the
+        /// shape this row ASSUMED and the latch is the shape the other row BUILT. The two agreeing is the claim,
+        /// and it is one an edit to either side could break silently: a latch whose read surface drifted would
+        /// leave every fence assertion above passing against a stand-in for a type nothing uses.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void TheDevicesRealLivenessLatch_DrivesTheSameX3Behaviour()
+        {
+            var timeline = new FakeD3D11FenceTimeline();
+            var liveness = new D3D11DeviceLiveness();
+            using D3D11FenceSubsystem fences = Subsystem(timeline, liveness);
+            IGpuFence fence = fences.CreateFence();
+            fences.SignalEndOfReplay(fence);
+
+            Assert.False(fences.IsDeviceDead);
+            Assert.False(fence.Signaled);
+
+            liveness.MarkDead();
+
+            Assert.True(fences.IsDeviceDead);
+            Assert.True(fence.Signaled);
+
+            // And the drain is a no-op: it never signals, never polls and never waits on a dead device.
+            int signalsBefore = timeline.SignalCount;
+            int pollsBefore = timeline.PollCount;
+            fences.WaitForIdle();
+
+            Assert.Equal(signalsBefore, timeline.SignalCount);
+            Assert.Equal(pollsBefore, timeline.PollCount);
+            Assert.Equal(0, timeline.WaitCallCount);
+        }
+
         /// <summary>The default when no liveness token has been wired in is ALIVE, which is the safe default: a
         /// default of dead would make every fence read signalled from the start, which is the X3 behaviour
         /// arriving before the device has died.</summary>

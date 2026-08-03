@@ -440,8 +440,8 @@ namespace KhaozEngine.Tests.Gpu
         /// through the device would make every wrapper hold one.
         /// <para>
         /// The fence half of decision X3 (a fence polled after device death answering signaled, and a drain
-        /// becoming a no-op) reads this same latch and is #451's work, so there is no fence behaviour to assert
-        /// here yet.
+        /// becoming a no-op) reads this same latch through <c>ID3D11DeviceLiveness</c>, which this type now
+        /// implements, and is asserted against it in <c>D3D11FenceLifecycleTests</c> rather than here.
         /// </para>
         /// </summary>
         [Fact]

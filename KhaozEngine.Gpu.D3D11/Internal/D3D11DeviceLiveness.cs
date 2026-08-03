@@ -27,8 +27,14 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// this. There is deliberately no way to flip it back. A device that has been destroyed does not come back,
     /// and an un-kill would turn a stale wrapper into a call against freed memory.
     /// </para>
+    /// <para>
+    /// IT IS THE ONE IMPLEMENTATION OF <see cref="ID3D11DeviceLiveness"/>, which is the read surface the fence
+    /// work was built against while this latch did not exist yet. That interface is deliberately the read half
+    /// only: the fence subsystem asks whether the device is dead and has no business flipping it, so
+    /// <see cref="MarkDead"/> stays off it and the device's teardown remains the only caller.
+    /// </para>
     /// </summary>
-    internal sealed class D3D11DeviceLiveness
+    internal sealed class D3D11DeviceLiveness : ID3D11DeviceLiveness
     {
         volatile bool _dead;
 
@@ -36,8 +42,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         internal bool IsAlive => !_dead;
 
         /// <summary>True once <see cref="MarkDead"/> has run. Every native release must be skipped from here on,
-        /// a fence reads as signaled, and a drain does nothing.</summary>
-        internal bool IsDead => _dead;
+        /// a fence reads as signaled, and a drain does nothing. Public because it implements
+        /// <see cref="ID3D11DeviceLiveness"/>, which is no wider than the class: the class is internal.</summary>
+        public bool IsDead => _dead;
 
         /// <summary>
         /// Flip the token, permanently. Called by the device's own teardown, inside its lifecycle lock and BEFORE

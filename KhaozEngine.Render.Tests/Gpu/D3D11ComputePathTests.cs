@@ -384,6 +384,75 @@ namespace KhaozEngine.Tests.Gpu
             }
         }
 
+        /// <summary>
+        /// THE PIPELINE SWITCH THAT DRAINS AN ACTIVATION NOBODY USES, pinned so the accepted cost stays a decision.
+        /// A dispatch binds a storage texture through its unordered access view, a draw then samples the same
+        /// texture and C1 nulls that view, raising the COMPUTE slot. Switching compute pipelines next drains the
+        /// raised slot under the OUTGOING layouts, which re-binds the unordered access view and, on its way
+        /// through, nulls the live graphics shader resource view that had displaced it. Rule 5 then wipes the
+        /// record.
+        /// <para>
+        /// WHAT THE WIPE COSTS is the point: the compute slot is left with nothing recorded, so the re-bind the
+        /// drain just paid for buys the compute side nothing, and re-recording the SAME set marks the slot fully
+        /// dirty again. What survives, and what makes this waste rather than a bug, is the graphics raise: the
+        /// draw's register was nulled and the graphics slot is fully dirty, so the next draw puts it back. A skip
+        /// here would be legitimate, and it MUST keep that raise.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void ASwitchAfterARaise_DrainsAnActivationTheWipeThenDiscards_AndKeepsTheGraphicsRaise()
+        {
+            var harness = new D3D11BindFixtures.Harness();
+            FakeTexture storage = D3D11BindFixtures.Texture();
+            using D3D11ResourceLayout computeLayout = StorageLayout();
+            using D3D11ResourceLayout drawLayout = SampledLayout();
+            using D3D11ResourceSet computeSet = D3D11BindFixtures.Set(computeLayout, storage);
+            using D3D11ResourceSet drawSet = D3D11BindFixtures.Set(drawLayout, storage);
+            D3D11NativeTraceEmitter emitter = harness.Emitter;
+
+            emitter.SetComputePipeline(new D3D11BindFlushTests.FakeComputePipeline(computeLayout));
+            emitter.SetComputeResourceSet(0, computeSet);
+            emitter.Dispatch(1, 1, 1);
+
+            emitter.SetPipeline(D3D11BindFixtures.Pipeline(drawLayout));
+            emitter.SetGraphicsResourceSet(0, drawSet);
+            emitter.Draw(3, 1, 0, 0);
+
+            // The draw nulled the compute set's unordered access view, so the compute slot owes a full activation
+            // that nothing has asked for.
+            Assert.Equal(D3D11SlotDirty.Full, harness.Binds.ComputeDirty(0));
+            Assert.Equal(D3D11SlotDirty.Clean, harness.Binds.GraphicsDirty(0));
+
+            // A second compute pipeline over the SAME layout is still a switch: identity is the layout ARRAY, and
+            // two pipelines built here hold two arrays.
+            harness.Log.Reset();
+            emitter.SetComputePipeline(new D3D11BindFlushTests.FakeComputePipeline(computeLayout));
+
+            string[] trace = harness.BindTrace();
+            Assert.Equal(
+                new[]
+                {
+                    "PSSetShaderResources(0,1,-)",
+                    $"CSSetUnorderedAccessViews(0,1,{harness.Log.Id(storage)})",
+                },
+                trace.Take(2));
+
+            // The incoming pipeline's own state call comes AFTER them, because the drain runs before the
+            // redundancy caches see the new pipeline. Three calls in all, so nothing else crept into the switch.
+            Assert.Equal(3, trace.Length);
+            Assert.StartsWith("CSSetShader(", trace[2], StringComparison.Ordinal);
+
+            // The correctness half: the drained activation nulled a live graphics register, and the graphics slot
+            // is fully dirty, so the next draw puts it back. Any future skip of the drain still owes this.
+            Assert.Equal(D3D11SlotDirty.Full, harness.Binds.GraphicsDirty(0));
+
+            // The waste half: the wipe left the compute slot with no record at all, so the activation the drain
+            // just issued is paid for a second time the moment the caller rebinds the same set.
+            Assert.Equal(D3D11SlotDirty.Clean, harness.Binds.ComputeDirty(0));
+            emitter.SetComputeResourceSet(0, computeSet);
+            Assert.Equal(D3D11SlotDirty.Full, harness.Binds.ComputeDirty(0));
+        }
+
         // ---- The raise entry point itself --------------------------------------------------------------------
 
         /// <summary>

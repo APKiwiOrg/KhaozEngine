@@ -195,6 +195,25 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// available: a set recorded before any pipeline has no numbering yet, and inventing one would be worse
         /// than deferring it.
         /// </para>
+        /// <para>
+        /// ONE SHAPE DRAINS AN ACTIVATION NOBODY THEN USES, AND THAT COST IS ACCEPTED RATHER THAN OVERLOOKED.
+        /// When the slot being drained is dirty ONLY because decision C1 raised it (a graphics SRV bind nulled a
+        /// compute set's unordered access view, say), the drain re-issues that whole activation under the outgoing
+        /// layouts and the wipe below then forgets the record it just satisfied. So the re-bind buys the compute
+        /// side nothing: the caller has to re-record the set under the incoming pipeline anyway, and that
+        /// re-record marks the slot full again. On its way through, the drained activation also conflicts in the
+        /// OTHER direction, nulling the live graphics shader resource view that displaced it.
+        /// </para>
+        /// <para>
+        /// CORRECTNESS STILL HOLDS, THROUGH C1 RATHER THAN THROUGH THE DRAIN: nulling that graphics register
+        /// raises the GRAPHICS slot, so the next draw puts it back. The waste is one activation plus one full
+        /// activation on the other arm, on a pipeline switch, which is not a hot path. It is not skipped because
+        /// "this slot is dirty only from a raise" is not a question the record can answer: a
+        /// <see cref="D3D11SlotDirty"/> records HOW MUCH is owed and not WHY, and a second field carrying the why
+        /// would have to be right on every path that sets a mark. ANY future skip here MUST still perform the
+        /// cross-arm raise the drained activation performs today, or the next draw reads a register this backend
+        /// nulled and never put back, which is silent. A device-free test pins the whole trace.
+        /// </para>
         /// </summary>
         internal void SetGraphicsPipeline<TSink>(ref TSink sink, IGpuPipeline pipeline)
             where TSink : struct, ID3D11BindSink
@@ -337,6 +356,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             // first draw under the incoming pipeline pays them.
             if (outgoing is null) return incoming;
 
+            // THE DRAIN IS FOR REGISTER NUMBERING, AND THE WIPE ON THE NEXT LINE CAN MAKE ITS WORK MOOT. A slot
+            // dirty only because C1 raised it gets a full activation here that nobody then uses: the wipe forgets
+            // the record, so the caller re-records under the incoming pipeline and pays that activation again. See
+            // the rule-5 remarks on SetGraphicsPipeline for why it is not skipped, and for the one thing a future
+            // skip would still owe (the cross-arm raise this activation performs on its way through).
             Drain(ref sink, arm, records, outgoing);
             Array.Clear(records);
             return incoming;

@@ -692,6 +692,16 @@ together whatever the backend does, so a steady cost on a set no renderer writes
 failures. The cross-arm case, which is what the auto-unbind exists for, settles normally at the other arm's next
 flush. A device-free test pins the repeating trace, so this cannot change by accident.
 
+**A pipeline switch after such a raise drains an activation nobody then uses, and that cost is accepted too.** A
+slot dirty ONLY because C1 raised it is drained under the outgoing layouts like any other, re-binding the
+unordered access view and, on its way through, nulling the live graphics shader resource view that displaced it.
+Rule 5's wipe then forgets the record, so the caller re-records under the incoming pipeline and pays the same
+activation again. Correctness holds through C1 rather than through the drain: nulling that graphics register
+raises the GRAPHICS slot, so the next draw puts it back. It is not skipped because the record says HOW MUCH a slot
+owes and not WHY, and a second field carrying the why would have to be right on every path that sets a mark, for a
+saving on a pipeline switch. Any future skip must still perform the cross-arm raise the drained activation
+performs today, or a draw reads a register this backend nulled and never put back.
+
 **Rule 2 is honoured as written and adds no barrier member (C3).** A dispatch reading an earlier dispatch's
 writes is separated by `End` plus `Submit` plus `WaitForIdle`, which is a cross-backend contract stated on
 `IGpuCommandList` itself, and a D3D11-only ordering primitive would be a divergence Vulkan and Metal cannot
@@ -754,8 +764,9 @@ is its size, per the seam, rather than zero, because both readback helpers divid
 rather than a copy of it: both directions of the unbind with their exact traces, the same-flush property, the one
 array call over a two-register span, the live register rebound inside the span, the raise-to-dirty proved by a
 following dispatch that rebinds, the range-versus-buffer identity, the `ClearState` boundary, the
-offsets-only path that cannot trip it, and the self-conflicting set whose second and third dispatches are the
-same four calls. The staging half is device-free in `D3D11StagingMaps`: both refusals, the
+offsets-only path that cannot trip it, the self-conflicting set whose second and third dispatches are the
+same four calls, and the pipeline switch whose drained activation the wipe discards while the graphics raise
+survives. The staging half is device-free in `D3D11StagingMaps`: both refusals, the
 pitch arithmetic, the subresource constant, and all four arms of the G3 site (success, ordinary failure, a
 removal that latches under this row's site name, and a null latch). The Windows residue is two native calls, and
 an off-Windows test asserts the whole bookkeeping surface runs without loading the Direct3D interop. The compute

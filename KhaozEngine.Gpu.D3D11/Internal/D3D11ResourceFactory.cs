@@ -15,9 +15,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// of a <c>Create*</c> member enforceable rather than aspirational.
     /// </para>
     /// <para>
-    /// NOT EVERY MEMBER IS BUILT YET. Compute pipelines and fences are separate rows of the same program, and
-    /// each throws a message naming what is missing rather than returning something that would fail later
-    /// somewhere less informative. Everything else, including the shader path, is live.
+    /// NOT EVERY MEMBER IS BUILT YET. <see cref="CreateFence"/> is a separate row of the same program and throws a
+    /// message naming what is missing rather than returning something that would fail later somewhere less
+    /// informative. Everything else, including the shader path and the compute pipelines, is live.
     /// </para>
     /// <para>
     /// SHADER COMPILATION IS EAGER TOO, and eager here means more than it does elsewhere: a shader set arrives
@@ -28,15 +28,16 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// CREATION IS FREE-THREADED, BEHIND <see cref="D3D11CreationGate"/> WHEN THE DRIVER IS NOT (decision W4).
     /// Every member below that makes a native creation call takes the gate for the duration of that call and
     /// nothing longer, which is a no-op on a driver reporting <c>DriverConcurrentCreates</c> and one uncontended
-    /// monitor otherwise. SIX MEMBERS ARE UNGATED, IN TWO GROUPS. Four are live and create NO native object:
+    /// monitor otherwise. FIVE MEMBERS ARE UNGATED, IN TWO GROUPS. Four are live and create NO native object:
     /// <see cref="CreateFramebuffer"/> aggregates views that already exist,
     /// <see cref="CreateResourceLayout"/> and <see cref="CreateResourceSet"/> are pure engine data, and
     /// <see cref="CreateCommandList"/> hands back a recorder that touches no device state at all (which is the
     /// same clause of W4 the recording model rests on). Gating those would serialize engine work behind a driver
-    /// limitation that has nothing to do with it. The other two, <see cref="CreateComputePipeline"/> and
-    /// <see cref="CreateFence"/>, are the members of the paragraph above that are not built yet: they throw
-    /// before reaching any driver, so there is nothing to gate until the rows that build them land, and each
-    /// takes the gate on the day it makes a native creation call.
+    /// limitation that has nothing to do with it. The fifth, <see cref="CreateFence"/>, is the member of the
+    /// paragraph above that is not built yet: it throws before reaching any driver, so there is nothing to gate
+    /// until the row that builds it lands, and it takes the gate on the day it makes a native creation call.
+    /// <see cref="CreateComputePipeline"/> creates no native object either and IS gated anyway, for the reason
+    /// stated on it.
     /// </para>
     /// <para>
     /// THE GATE NEVER TAKES THE SUBMIT LOCK, and no creation path here reaches it either: the ring is only asked
@@ -182,8 +183,19 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         }
 
         /// <inheritdoc/>
-        public IGpuComputePipeline CreateComputePipeline(in GpuComputePipelineDescription d) => throw NotBuiltYet(
-            "Compute pipelines");
+        /// <remarks>
+        /// GATED LIKE ITS GRAPHICS SIBLING even though it creates no native object, and that is a deliberate
+        /// exception to the ungated-when-nothing-native rule above rather than an oversight. The two pipeline
+        /// members are the pair a reader compares, the gate is a no-op on a driver that reports
+        /// <c>DriverConcurrentCreates</c> and one uncontended monitor otherwise, and a compute pipeline is the
+        /// member most likely to grow a native call later (a reflected signature check of the kind decision S5
+        /// puts on the graphics side). Paying an uncontended monitor at load time to keep the pair symmetric is
+        /// the cheaper mistake to make.
+        /// </remarks>
+        public IGpuComputePipeline CreateComputePipeline(in GpuComputePipelineDescription d)
+        {
+            using (_creation.Enter()) return new D3D11ComputePipeline(d);
+        }
 
         /// <inheritdoc/>
         public IGpuFence CreateFence() => throw NotBuiltYet("Completion fences");

@@ -269,12 +269,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             => _log.Record(D3D11NativeCall.ResolveSubresource, $"{_log.Id(src)},{_log.Id(dst)}");
 
         /// <summary>
-        /// The shader itself is bound unguarded: a compute pipeline is one shader, and the redundancy cache for it
-        /// belongs with the rest of the compute schedule of decision C1, which is work-breakdown row 12, so
-        /// caching it here would be half a rule.
+        /// The shader itself is bound unguarded, deliberately: a compute pipeline is bound a handful of times a
+        /// frame where a graphics one is bound hundreds, so a redundancy slot for it would cost a compare per
+        /// dispatch to save a call nothing measures. <see cref="D3D11ComputePipeline"/> carries the reasoning.
         /// <para>
-        /// The pipeline-switch DRAIN is not half a rule and happens here, on the compute dirty array, for the same
-        /// reason as the graphics one: a compute set's registers are numbered under its pipeline's layout array.
+        /// The pipeline-switch DRAIN happens here, on the compute dirty array, for the same reason as the graphics
+        /// one: a compute set's registers are numbered under its pipeline's layout array.
         /// </para>
         /// </summary>
         public void SetComputePipeline(IGpuComputePipeline pipeline)
@@ -300,8 +300,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             _state.Binds.RecordCompute(slot, set, dynamicOffset, hasDynamicOffset: true);
         }
 
-        /// <summary>Decision R5, rule 2, on the compute side: the pre-command hook first, then the dispatch. The
-        /// SRV-versus-UAV auto-unbind of decision C1 is work-breakdown row 12 and is not here.</summary>
+        /// <summary>Decision R5, rule 2, on the compute side: the pre-command hook first, then the dispatch.
+        /// Decision C1's SRV-versus-UAV auto-unbind rides inside that hook, where the bind arrays are assembled
+        /// (<see cref="D3D11ViewConflicts"/>), which is what makes the whole of C1 visible in this trace.</summary>
         public void Dispatch(uint groupCountX, uint groupCountY, uint groupCountZ)
         {
             FlushComputeBinds();

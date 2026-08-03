@@ -121,9 +121,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// <para>
     /// Typed <c>object</c> for the same reason every member of the graphics seam is: it keeps the emitter's
     /// compute path expressible without a Direct3D type in this file, so the shape can be driven by a device-free
-    /// test. There is deliberately no redundancy cache behind it yet. Caching the compute shader belongs with the
-    /// rest of decision C1's compute schedule, which is work-breakdown row 12, and caching it here alone would be
-    /// half a rule.
+    /// test. There is deliberately no redundancy cache behind it, and that is a settled decision rather than an
+    /// open one: a compute pipeline is bound a handful of times a frame where a graphics pipeline is bound
+    /// hundreds, so the compare would cost more than the call it saves. <see cref="D3D11ComputePipeline"/> names
+    /// what to add the day that stops being true.
     /// </para>
     /// </summary>
     internal interface ID3D11ComputePipelineState

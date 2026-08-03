@@ -1,5 +1,4 @@
 using System;
-using System.Linq;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.D3D11;
 using KhaozEngine.Gpu.D3D11.Internal;
@@ -19,20 +18,14 @@ namespace KhaozEngine.Tests.Gpu
     /// user sees is a startup crash naming an assembly they never asked for.
     /// </para>
     ///
-    /// <para><b>DO NOT ADD A REFLECTION SCAN HERE, and this is the note that saves the next reader the hour it
-    /// cost to find out.</b> The obvious complement to these tests is a sweep over the backend assembly asserting
-    /// that every method whose signature names a Vortice type carries the two attributes. That sweep cannot
-    /// exist. Reading <c>ParameterInfo.ParameterType</c> or <c>MethodInfo.ReturnType</c> RESOLVES the type, which
-    /// loads <c>Vortice.Direct3D11</c>, <c>Vortice.DirectX</c> and <c>SharpGen.Runtime</c> into the process, and
-    /// the assertion below is about exactly that list being empty. The scan would pass while making the thing it
-    /// was written to protect impossible to observe, and it would take the landed registration-path test
-    /// (<c>D3D11BackendRegistrationTests</c>) down with it, since the load is process-wide and permanent. A check
-    /// of that shape needs a <c>MetadataLoadContext</c> or a raw <c>MetadataReader</c>, which resolve nothing
-    /// into the running process, and neither is worth a package reference on this row.</para>
+    /// <para><b>DO NOT ADD A REFLECTION SCAN HERE, and the note that saves the next reader the hour it cost to
+    /// find out is on <see cref="D3D11InteropLoad"/></b>, along with the assertion itself, which
+    /// <c>D3D11BackendPackageTests</c> shares.</para>
     ///
     /// <para>Both tests assert a PROCESS-WIDE fact, so they hold only while nothing else in the suite loads the
-    /// interop. That is the same standing condition the landed registration-path test has, and it is what makes
-    /// the paragraph above binding rather than advisory.</para>
+    /// interop. That is the same standing condition the landed registration-path test
+    /// (<c>D3D11BackendRegistrationTests</c>) has, and it is what makes that note binding rather than
+    /// advisory.</para>
     /// </summary>
     public sealed class D3D11WindowsBoundaryTests
     {
@@ -75,7 +68,7 @@ namespace KhaozEngine.Tests.Gpu
                 fence.Dispose();
             }
 
-            AssertNoInteropLoaded();
+            D3D11InteropLoad.AssertNotLoaded();
         }
 
         /// <summary>
@@ -100,25 +93,7 @@ namespace KhaozEngine.Tests.Gpu
             _ = D3D11RealDrain.FromEnvironment(out _);
             Assert.Contains(D3D11RealDrain.EnvVarName, D3D11RealDrain.DisabledDescription, StringComparison.Ordinal);
 
-            AssertNoInteropLoaded();
-        }
-
-        static void AssertNoInteropLoaded()
-        {
-            string[] loaded = AppDomain.CurrentDomain.GetAssemblies()
-                .Select(a => a.GetName().Name ?? "")
-                .Where(n => n.StartsWith("Vortice", StringComparison.Ordinal)
-                    || n.StartsWith("SharpGen", StringComparison.Ordinal))
-                .Distinct(StringComparer.Ordinal)
-                .OrderBy(n => n, StringComparer.Ordinal)
-                .ToArray();
-
-            Assert.True(loaded.Length == 0,
-                "The Direct3D interop was loaded on a platform that has none: [" + string.Join(", ", loaded) +
-                "]. Either some body that names a Vortice type is no longer NoInlining behind "
-                + "KhaozEngineD3D11.IsPlatformSupported, or something in this suite resolved a Vortice type "
-                + "through reflection. See the note on this class for why the second one is not a false alarm to "
-                + "be worked around.");
+            D3D11InteropLoad.AssertNotLoaded();
         }
     }
 }

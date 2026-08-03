@@ -40,7 +40,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// Per-call state validation is deliberately absent from the record path, matching the incumbent wrapper,
     /// which validates nothing and lets the backend do it. The state that IS checked is the state a wrong answer
     /// silently corrupts a frame over: a double <see cref="Begin"/>, an <see cref="End"/> with no recording open,
-    /// and submitting a list that was never ended.
+    /// a command recorded outside a Begin and End pair (see <see cref="RequireRecording"/>, which is the one
+    /// place the two drivers would otherwise answer differently), a command on a disposed list, and submitting a
+    /// list that was never ended.
     /// </para>
     /// </summary>
     internal sealed class D3D11CommandRecorder<TEmitter> : IGpuCommandList
@@ -52,9 +54,18 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         internal D3D11CommandRecorder(TEmitter emitter) => _emitter = emitter;
 
-        /// <summary>The emitter this list drives, by reference so a mutable one (a real emitter carries
-        /// redundancy caches) is updated in place rather than through a copy.</summary>
-        internal ref TEmitter Emitter => ref _emitter;
+        /// <summary>
+        /// The emitter this list drives, by READONLY reference. An <see cref="ID3D11Emitter"/> implementation is
+        /// a readonly struct whose mutable state lives behind a class reference, so there is nothing here to
+        /// mutate and the reference exists only to avoid copying the struct out.
+        /// <para>
+        /// An earlier version of this comment said the reference let a MUTABLE emitter be updated in place. That
+        /// was wrong in the direction that matters: this field is a per-list COPY, so on the immediate driver a
+        /// mutable emitter was never one instance to update, and N lists over one device context would have held
+        /// N redundancy caches. The seam states the constraint and a test enforces it.
+        /// </para>
+        /// </summary>
+        internal ref readonly TEmitter Emitter => ref _emitter;
 
         /// <summary>True between <see cref="Begin"/> and <see cref="End"/>.</summary>
         internal bool IsRecording => _recording;
@@ -80,6 +91,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         public void End()
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
             if (!_recording)
                 throw new InvalidOperationException(
                     "End was called on a Direct3D 11 command list that is not recording. Every recording opens "
@@ -90,84 +102,199 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             _emitter.End();
         }
 
-        public void SetFramebuffer(IGpuFramebuffer fb) => _emitter.SetFramebuffer(fb);
+        /// <summary>
+        /// THE RECORD-PATH GUARD, and the one place the two drivers would otherwise answer the same program
+        /// differently. A command recorded outside a Begin and End pair is meaningless, and each driver has its
+        /// own way of accepting it silently: the deferred one appends to a stream that <see cref="End"/> already
+        /// sealed, so the command replays INSIDE the recording, while the immediate one has already emitted it,
+        /// so it lands AFTER the recording's own End. <c>Begin, Draw(1), End, Draw(2), Submit</c> therefore
+        /// renders <c>Begin Draw(1) Draw(2) End</c> on one driver and <c>Begin Draw(1) End Draw(2)</c> on the
+        /// other, from one program, with neither complaining. That breaks the premise milestone M1 rests on,
+        /// which is that the two drivers are A/B'd over the same set of legal programs.
+        /// <para>
+        /// The disposed check rides here rather than in each caller, so a command on a disposed list is an
+        /// <see cref="ObjectDisposedException"/> at the call that made it instead of an unrelated
+        /// <see cref="InvalidOperationException"/> from a later <see cref="End"/>.
+        /// </para>
+        /// </summary>
+        void RequireRecording([CallerMemberName] string member = "")
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_recording) return;
 
-        public void ClearColorTarget(uint index, Color rgba) => _emitter.ClearColorTarget(index, rgba);
+            throw new InvalidOperationException(
+                member + " was called on a Direct3D 11 command list that is not recording. Every command belongs "
+                + "to a recording that Begin opened and End closed. Recording after End would extend a sealed "
+                + "recording on the deferred driver and emit outside the list on the immediate one, so the same "
+                + "program would render two different frames depending on KE_D3D11_RECORD.");
+        }
 
-        public void ClearDepthStencil(float depth) => _emitter.ClearDepthStencil(depth);
+        public void SetFramebuffer(IGpuFramebuffer fb)
+        {
+            RequireRecording();
+            _emitter.SetFramebuffer(fb);
+        }
 
-        public void SetPipeline(IGpuPipeline p) => _emitter.SetPipeline(p);
+        public void ClearColorTarget(uint index, Color rgba)
+        {
+            RequireRecording();
+            _emitter.ClearColorTarget(index, rgba);
+        }
+
+        public void ClearDepthStencil(float depth)
+        {
+            RequireRecording();
+            _emitter.ClearDepthStencil(depth);
+        }
+
+        public void SetPipeline(IGpuPipeline p)
+        {
+            RequireRecording();
+            _emitter.SetPipeline(p);
+        }
 
         public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set)
-            => _emitter.SetGraphicsResourceSet(slot, set);
+        {
+            RequireRecording();
+            _emitter.SetGraphicsResourceSet(slot, set);
+        }
 
         public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset)
-            => _emitter.SetGraphicsResourceSet(slot, set, dynamicOffset);
+        {
+            RequireRecording();
+            _emitter.SetGraphicsResourceSet(slot, set, dynamicOffset);
+        }
 
         /// <summary>The no-offset overload is the offset overload at zero, exactly as the incumbent forwards it,
         /// so there is one binding path rather than two that could diverge.</summary>
-        public void SetVertexBuffer(uint slot, IGpuBuffer b) => _emitter.SetVertexBuffer(slot, b, 0u);
+        public void SetVertexBuffer(uint slot, IGpuBuffer b)
+        {
+            RequireRecording();
+            _emitter.SetVertexBuffer(slot, b, 0u);
+        }
 
         public void SetVertexBuffer(uint slot, IGpuBuffer b, uint offsetBytes)
-            => _emitter.SetVertexBuffer(slot, b, offsetBytes);
+        {
+            RequireRecording();
+            _emitter.SetVertexBuffer(slot, b, offsetBytes);
+        }
 
-        public void SetIndexBuffer(IGpuBuffer b, GpuIndexFormat fmt) => _emitter.SetIndexBuffer(b, fmt);
+        public void SetIndexBuffer(IGpuBuffer b, GpuIndexFormat fmt)
+        {
+            RequireRecording();
+            _emitter.SetIndexBuffer(b, fmt);
+        }
 
         public void SetScissorRect(uint index, uint x, uint y, uint w, uint h)
-            => _emitter.SetScissorRect(index, x, y, w, h);
+        {
+            RequireRecording();
+            _emitter.SetScissorRect(index, x, y, w, h);
+        }
 
-        public void SetFullScissorRects() => _emitter.SetFullScissorRects();
+        public void SetFullScissorRects()
+        {
+            RequireRecording();
+            _emitter.SetFullScissorRects();
+        }
 
         public void Draw(uint vertexCount, uint instanceCount, uint vertexStart, uint instanceStart)
-            => _emitter.Draw(vertexCount, instanceCount, vertexStart, instanceStart);
+        {
+            RequireRecording();
+            _emitter.Draw(vertexCount, instanceCount, vertexStart, instanceStart);
+        }
 
         /// <summary>One instance from vertex zero, exactly as the incumbent forwards it.</summary>
-        public void Draw(uint vertexCount) => _emitter.Draw(vertexCount, 1u, 0u, 0u);
+        public void Draw(uint vertexCount)
+        {
+            RequireRecording();
+            _emitter.Draw(vertexCount, 1u, 0u, 0u);
+        }
 
         public void DrawIndexed(uint indexCount, uint instanceCount, uint indexStart, int vertexOffset, uint instanceStart)
-            => _emitter.DrawIndexed(indexCount, instanceCount, indexStart, vertexOffset, instanceStart);
+        {
+            RequireRecording();
+            _emitter.DrawIndexed(indexCount, instanceCount, indexStart, vertexOffset, instanceStart);
+        }
 
         /// <summary>One struct, seen as its bytes. The span is built over the <c>in</c> argument and lives only
         /// for this call, which is all the emitter contract asks for: the deferred driver copies it into the
         /// recording's arena before returning.</summary>
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, in T data) where T : unmanaged
         {
+            RequireRecording();
             ReadOnlySpan<T> one = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in data), 1);
             _emitter.UpdateBuffer(b, offsetBytes, MemoryMarshal.AsBytes(one));
         }
 
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged
-            => _emitter.UpdateBuffer(b, offsetBytes, MemoryMarshal.AsBytes(data));
+        {
+            RequireRecording();
+            _emitter.UpdateBuffer(b, offsetBytes, MemoryMarshal.AsBytes(data));
+        }
 
         public void CopyBuffer(IGpuBuffer src, uint srcOffsetBytes, IGpuBuffer dst, uint dstOffsetBytes, uint sizeInBytes)
-            => _emitter.CopyBuffer(src, srcOffsetBytes, dst, dstOffsetBytes, sizeInBytes);
+        {
+            RequireRecording();
+            _emitter.CopyBuffer(src, srcOffsetBytes, dst, dstOffsetBytes, sizeInBytes);
+        }
 
-        public void CopyTexture(IGpuTexture src, IGpuTexture dst) => _emitter.CopyTexture(src, dst);
+        public void CopyTexture(IGpuTexture src, IGpuTexture dst)
+        {
+            RequireRecording();
+            _emitter.CopyTexture(src, dst);
+        }
 
         /// <summary>Mip zero and layer zero of the destination, exactly as the incumbent forwards it.</summary>
         public void CopyTextureSubresource(IGpuTexture src, uint srcMipLevel, uint srcArrayLayer, IGpuTexture dst,
             uint width, uint height)
-            => _emitter.CopyTextureSubresource(src, srcMipLevel, srcArrayLayer, dst, 0u, 0u, width, height);
+        {
+            RequireRecording();
+            _emitter.CopyTextureSubresource(src, srcMipLevel, srcArrayLayer, dst, 0u, 0u, width, height);
+        }
 
         public void CopyTextureSubresource(IGpuTexture src, uint srcMipLevel, uint srcArrayLayer,
             IGpuTexture dst, uint dstMipLevel, uint dstArrayLayer, uint width, uint height)
-            => _emitter.CopyTextureSubresource(src, srcMipLevel, srcArrayLayer, dst, dstMipLevel, dstArrayLayer,
+        {
+            RequireRecording();
+            _emitter.CopyTextureSubresource(src, srcMipLevel, srcArrayLayer, dst, dstMipLevel, dstArrayLayer,
                 width, height);
+        }
 
-        public void GenerateMipmaps(IGpuTexture texture) => _emitter.GenerateMipmaps(texture);
+        public void GenerateMipmaps(IGpuTexture texture)
+        {
+            RequireRecording();
+            _emitter.GenerateMipmaps(texture);
+        }
 
-        public void ResolveTexture(IGpuTexture src, IGpuTexture dst) => _emitter.ResolveTexture(src, dst);
+        public void ResolveTexture(IGpuTexture src, IGpuTexture dst)
+        {
+            RequireRecording();
+            _emitter.ResolveTexture(src, dst);
+        }
 
-        public void SetComputePipeline(IGpuComputePipeline p) => _emitter.SetComputePipeline(p);
+        public void SetComputePipeline(IGpuComputePipeline p)
+        {
+            RequireRecording();
+            _emitter.SetComputePipeline(p);
+        }
 
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set)
-            => _emitter.SetComputeResourceSet(slot, set);
+        {
+            RequireRecording();
+            _emitter.SetComputeResourceSet(slot, set);
+        }
 
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset)
-            => _emitter.SetComputeResourceSet(slot, set, dynamicOffset);
+        {
+            RequireRecording();
+            _emitter.SetComputeResourceSet(slot, set, dynamicOffset);
+        }
 
         public void Dispatch(uint groupCountX, uint groupCountY, uint groupCountZ)
-            => _emitter.Dispatch(groupCountX, groupCountY, groupCountZ);
+        {
+            RequireRecording();
+            _emitter.Dispatch(groupCountX, groupCountY, groupCountZ);
+        }
 
         /// <summary>
         /// Drop the recording. Under the deferred driver that RELEASES the resource references the stream holds,

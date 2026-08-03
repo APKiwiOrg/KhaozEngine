@@ -8,10 +8,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// calls themselves. A plain class, so the emitter above it can stay a struct that is copied freely while
     /// every copy still writes to the same log.
     /// <para>
-    /// The counts are what the native-call budget of decision T2 is measured against. The trace is what proves
-    /// ORDER, and it is a list of strings on purpose: comparing two drivers means comparing two sequences, and a
-    /// string sequence puts the actual divergence in the failure message rather than an index into something the
-    /// reader then has to go and decode.
+    /// The counts are SEAM-call counts, which is an upper-bound input to decision T2's native-call budget and
+    /// not the budget itself (see <see cref="D3D11CountingEmitter"/> for what the difference is and where row 9
+    /// decides it). The trace is what proves ORDER, and it is a list of strings on purpose: comparing two
+    /// drivers means comparing two sequences, and a string sequence puts the actual divergence in the failure
+    /// message rather than an index into something the reader then has to go and decode.
     /// </para>
     /// <para>
     /// Resources appear in the trace as stable ids assigned in first-seen order (<c>r0</c>, <c>r1</c>), by

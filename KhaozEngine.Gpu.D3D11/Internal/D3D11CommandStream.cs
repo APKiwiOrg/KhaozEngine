@@ -86,8 +86,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <summary>
         /// Replay every recorded op into <paramref name="emitter"/>, bracketed by one <c>Begin</c> and one
         /// <c>End</c>. Generic over a STRUCT emitter so the JIT monomorphizes the whole loop and the production
-        /// path carries no interface dispatch, which is section 5.1's shape verbatim. By reference so a mutable
-        /// emitter (a real one carries redundancy caches) is updated in place rather than through a copy.
+        /// path carries no interface dispatch, which is section 5.1's shape verbatim.
+        /// <para>
+        /// By reference to avoid copying the struct on entry and, more to the point, to avoid the defensive copy
+        /// per call that an <c>in</c> parameter of a constrained type parameter would force. It is a cost
+        /// property and not a correctness one: an emitter's mutable state lives behind a class reference (see
+        /// <see cref="ID3D11Emitter"/>), so a copy would drive the same emission.
+        /// </para>
         /// </summary>
         internal void Replay<TEmitter>(ref TEmitter emitter) where TEmitter : struct, ID3D11Emitter
             => D3D11StreamReplay.Run(this, ref emitter);

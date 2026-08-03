@@ -17,9 +17,18 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// </summary>
     internal static class D3D11CommandDrivers
     {
-        /// <summary>Create a command list on <paramref name="mode"/>'s driver. <paramref name="emitter"/> is the
-        /// device's real emitter and is used only by the immediate driver, since the deferred one does not meet
-        /// an emitter until submit.</summary>
+        /// <summary>
+        /// Create a command list on <paramref name="mode"/>'s driver. <paramref name="emitter"/> is the device's
+        /// real emitter and is used only by the immediate driver, since the deferred one does not meet an
+        /// emitter until submit.
+        /// <para>
+        /// The immediate driver COPIES it into the list, one copy per list. That is safe because an
+        /// <see cref="ID3D11Emitter"/> implementation is a readonly struct holding a class reference, so every
+        /// list's copy addresses the device's one emitter state, which is where the redundancy caches of R6 and
+        /// the scrub of R8 have to live. An emitter with inline mutable state would give each list its own copy
+        /// of a cache that describes the shared device context. See the seam for the full reasoning.
+        /// </para>
+        /// </summary>
         internal static IGpuCommandList Create<TEmitter>(D3D11RecordMode mode, TEmitter emitter)
             where TEmitter : struct, ID3D11Emitter
             => mode == D3D11RecordMode.Immediate

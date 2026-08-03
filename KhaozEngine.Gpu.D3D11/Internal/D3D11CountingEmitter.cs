@@ -6,15 +6,34 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 {
     /// <summary>
     /// AN EMITTER WITH NO DEVICE BEHIND IT: every call is counted and traced into a
-    /// <see cref="D3D11EmitterCallLog"/> and nothing else happens. This is the vehicle for the op-encoding, the
-    /// replay-ordering and (from work-breakdown row 9) the native-call budget tests, and it works because
-    /// <see cref="ID3D11Emitter"/> is written in engine-owned handle types: there is no COM pointer anywhere in
-    /// the seam that would need a real device to stand in for.
+    /// <see cref="D3D11EmitterCallLog"/> and nothing else happens. This is the vehicle for the op-encoding and
+    /// replay-ordering tests, and it works because <see cref="ID3D11Emitter"/> is written in engine-owned handle
+    /// types: there is no COM pointer anywhere in the seam that would need a real device to stand in for.
     /// <para>
     /// Section 2.1 settles what this does and does not prove. A counting emitter is a plain object under EITHER
     /// recording model, so it is not an argument for the deferred one. What it is, is the reason those tests are
     /// a device-free <c>[Fact]</c> that runs under a plain <c>dotnet test</c> on macOS and Linux rather than a
     /// <c>[GpuFact]</c> gated on a Windows machine with a D3D11 device.
+    /// </para>
+    /// <para>
+    /// WHAT IT COUNTS IS SEAM CALLS, AND DECISION T2 GATES NATIVE CALLS. The two are not the same number and
+    /// this emitter cannot see the difference: a resource-set bind here is up to six native calls inside the
+    /// real emitter (5.3), a redundant pipeline bind there is zero, and 9.4's one <c>RSSetViewports</c> plus one
+    /// <c>RSSetScissorRects</c> per framebuffer CHANGE with zero for a re-bind turns on a guard that lives in
+    /// the real emitter. So what this measures is an upper-bound input and an ordering check, and calling it the
+    /// budget test would freeze a number the budget is not made of.
+    /// </para>
+    /// <para>
+    /// THE OPEN DECISION FOR ROW 9, recorded here because row 9 is where it lands and the answer changes what
+    /// gets built. Two shapes can make T2's tally device-free and neither is built yet. ONE: a countable sink
+    /// BELOW the real emitter, meaning the real emitter names its native calls through a seam of its own that a
+    /// no-op sink and a counting sink both satisfy, so the tally is taken over the SHIPPED fan-out and there is
+    /// no second implementation to drift. It costs a second generic parameter on the emitter and a discipline
+    /// that every native call goes through the sink. TWO: a device-free harness that reproduces the fan-out and
+    /// the redundancy guards, cheap to write and structurally able to drift from the real replay path, which is
+    /// exactly the drift decision T3's <c>[GpuFact]</c> on the WARP leg exists to catch. Shape one makes T3 a
+    /// belt-and-braces check, shape two makes T3 load-bearing, and row 17 is where T3 lands, so shape two also
+    /// means the budget test has no drift guard until then. Decide it in row 9 with that in view.
     /// </para>
     /// <para>
     /// It also drives BOTH drivers unchanged, which is the sharpest test available here: record the same seam

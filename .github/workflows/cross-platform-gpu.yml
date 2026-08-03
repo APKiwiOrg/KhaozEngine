@@ -223,6 +223,23 @@ jobs:
         continue-on-error: true
         run: vulkaninfo --summary || true
 
+      # DECISION S5's CI leg, Windows only and on EVERY trigger. These are plain [Fact]s with no device: they
+      # cross-compile every shipped shader program to HLSL and run FXC over the result, then assert the reflected
+      # vertex input signature has contiguous TEXCOORD indices from 0. FXC is d3dcompiler, so this is the only
+      # leg that can run it, and it is the only thing in CI that compiles the HLSL the engine actually emits.
+      #
+      # It is a SEPARATE step rather than part of the suite run below, because the Windows leg's push-path filter
+      # is "FullyQualifiedName~Golden" and that family is device-backed pixel comparisons. Naming these tests
+      # "Golden" to get them selected would put a CPU compile inside it. Selecting them by name here keeps the
+      # naming contract intact and runs them on push, not only on the weekly schedule.
+      #
+      # No KE_GPU_TESTS and no backend selection: nothing here creates a device. Cheap enough (seconds) that it
+      # runs before the suite, so a rejected shader fails fast instead of after a full golden pass.
+      - name: Shader FXC validation (no device)
+        if: matrix.os == 'windows-latest'
+        run: dotnet test -c Release --no-build --filter "FullyQualifiedName~D3D11FxcValidationTests"
+        shell: bash
+
       # Suite selection per leg + trigger (the cost + stability split in the header):
       #   * fullSuite: always (Metal): the FULL suite on every trigger - "Category!=LiveSocket",
       #     mirroring ci.yml's exclusion (LiveSocket needs a live network peer, not available here).
@@ -233,23 +250,6 @@ jobs:
       #     the same tier, and its full-suite runs serialize xUnit test collections (KE_TEST_EXTRA_ARGS
       #     below) because lavapipe under full parallel load still shows residual driver-side
       #     instability after the four engine-defect fixes (see the header).
-      # DECISION S5's CI leg, Windows only and on EVERY trigger. These are plain [Fact]s with no device: they
-      # cross-compile every shipped shader program to HLSL and run FXC over the result, then assert the reflected
-      # vertex input signature has contiguous TEXCOORD indices from 0. FXC is d3dcompiler, so this is the only
-      # leg that can run it, and it is the only thing in CI that compiles the HLSL the engine actually emits.
-      #
-      # It is a SEPARATE step rather than part of the run below because the Windows leg's push-path filter is
-      # "FullyQualifiedName~Golden", which is for device-backed pixel comparisons. Naming these tests "Golden" to
-      # get them selected would put a CPU compile inside the golden family; selecting them by name here keeps the
-      # naming contract intact and runs them on push, not only on the weekly schedule.
-      #
-      # No KE_GPU_TESTS and no backend selection: nothing here creates a device. Cheap enough (seconds) that it
-      # runs before the suite, so a rejected shader fails fast instead of after a full golden pass.
-      - name: Shader FXC validation (no device)
-        if: matrix.os == 'windows-latest'
-        run: dotnet test -c Release --no-build --filter "FullyQualifiedName~D3D11FxcValidationTests"
-        shell: bash
-
       - name: Run test suite
         env:
           KE_GPU_TESTS: '1'

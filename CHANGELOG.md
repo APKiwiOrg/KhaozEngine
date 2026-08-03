@@ -7,14 +7,15 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.30.0
 
-### The native Direct3D 11 backend: four prerequisites, then the recording model (#444, #445, #446, #447, #473, #448)
+### The native Direct3D 11 backend: four prerequisites, the recording model, then the resources (#444, #445, #446, #447, #473, #448, #450)
 
 The seam work an engine-owned Direct3D 11 backend needs before it can render a single pixel: `GpuDeviceContext`
 now ADOPTS an `IGpuDevice` instead of only building one, a backend that ships outside `KhaozEngine.Gpu` arrives
 through the explicit `GpuBackendProviders` registry, `GpuBackendKind` gains an appended `Direct3D11Native`, and
 the opt-in `KhaozEngine.Gpu.D3D11` package exists with its Windows guards, its machine probe and its architecture
 guards. On top of those four, the backend's recording model lands whole with both of its drivers behind the
-`KE_D3D11_RECORD` kill switch, and the adoption path stops answering a provider bug with the fallback reserved
+`KE_D3D11_RECORD` kill switch, the resource model lands on top of that, and the adoption path stops answering a
+provider bug with the fallback reserved
 for a machine that cannot run the backend. Nothing renders differently and nothing switches over: the native
 backend's two device-creation entry points still throw, so no shipped path reaches the recorder, the Windows OS
 probe still answers `Direct3D11`, `SupportedBackends()` still never offers the new kind to a player, and no
@@ -305,6 +306,73 @@ the countable native-call sink goes BELOW the real emitter or into a device-free
 the reason the encoder is written AS an emitter rather than under one. Nothing above the seam may assume a
 stream exists, because Vulkan and Metal have real deferred command buffers and their emitters would record
 straight into them, where a CPU op stream is pure overhead.
+
+#### Resources, eager views, the register scheme and the state objects (#450)
+
+Buffers, textures, samplers, framebuffers, resource layouts, resource sets and graphics pipelines for the
+native backend, plus the format mapping under them. Still reached by nothing, since device creation belongs to a
+later row. Section 7 and section 8.1 of the design doc, decisions X1, X2, X3, S2 and C2.
+
+**The register-assignment scheme (S2) is a function with a table test over EVERY layout the renderers declare.**
+Within one layout each element takes the next index from a counter chosen by its kind, in declaration order:
+`UniformBuffer` to `bN`, `Sampler` to `sN`, `TextureReadOnly` and `StructuredBufferReadOnly` SHARING the `tN`
+counter, `TextureReadWrite` and `StructuredBufferReadWrite` SHARING the `uN` counter. Across layouts the sets
+flatten in PIPELINE-ARRAY order, per file, and the GLSL `set=` number decides nothing: `SpriteBatch` puts its
+texture and sampler at set 0 and its UBO at set 1, so a rule phrased as "set 0 comes first" is already false in
+shipped code. Getting any of it wrong compiles cleanly, draws successfully and renders every pixel wrong, which
+is a failure nothing else in the suite can see, so the test transcribes all 33 `CreateResourceLayout` sites
+outside the seam package rather than a sample. The "six" figure that gets quoted is the count of DYNAMIC layout
+ELEMENTS, a different and much smaller set, and asserting only those would leave the whole texture-and-sampler
+space unchecked. Worth recording from writing the test: the cross-layout BASE is exercised by no shipped
+pipeline at all, because every multi-layout pipeline the engine declares uses disjoint kinds across its sets, so
+every base is zero and a backend that dropped the accumulation entirely would still pass every golden. That case
+is synthetic in the test for exactly that reason.
+
+**Every view is created at resource creation (X1), and at most four per texture.** From the declared usage
+bits: a full-chain shader resource view if `Sampled` or `GenerateMipmaps`, a render target view at mip 0 layer
+0 if `RenderTarget`, a depth-stencil view if `DepthStencil`, an unordered access view at mip 0 if `Storage`. The
+bound of four is a fact about the seam rather than optimism, since there is no texture-view type,
+`CreateFramebuffer` has no mip or layer parameter, `ResolveTexture` names two whole textures, and per-face
+cubemap rendering is not expressible. All 25 `DEVICE_REMOVED` stacks the incumbent produced in the field
+surfaced inside a texture-view constructor reached from resource-set activation, so lazy creation put an
+allocation on the draw path and put it on the exact path a corrupted context makes fail. The POLICY (which views
+follow from which usage bits, and the bind flags with them) is engine logic tested without a device on every
+platform, while creating the objects sits behind the Windows guard. A framebuffer consequently creates and owns
+NOTHING: its views already exist on its attachments.
+
+**A `GpuBufferRange` inside a `CreateResourceSet` description resolves at SET creation.** It becomes a buffer
+plus an offset plus a size there, a bare buffer resolves to the whole buffer so both travel one path, and each
+binding carries the register its layout assigned. The per-draw dynamic offset stays out, because baking it in
+would mean one set per draw.
+
+**Structured buffers keep the RAW byte-address view (C2).** Both kinds get a `DEFAULT`-usage buffer with a
+full-range raw view and `StructureByteStride` stays advisory, because SPIRV-Cross emits a GLSL storage block as
+a `ByteAddressBuffer` and a stride-shaped structured view is not what the compiled shader reads. Keeping it
+identical to the incumbent is why the ocean compute kernels keep working.
+
+**Pipelines build their blend, depth-stencil, rasterizer and input-layout objects at creation.** The input
+layout needs the compiled vertex shader signature, which is in hand at exactly that moment, reached through a
+small internal shader-set seam the shader path will implement. Every vertex element is a `TEXCOORD` whose index
+counts across all buffer slots in order, matching what SPIRV-Cross emits for a GLSL location, so the CPU side is
+contiguous from zero by construction and a hole in the signature can only come from the shader. **The
+incumbent's 328-line `D3D11ResourceCache` is dropped (X2)**, because the Direct3D 11 runtime already returns an
+existing object for an identical state description. That is a claimed runtime behaviour rather than a measured
+one, and the worst case if it is wrong is a load-time allocation count.
+
+**`DeviceLiveness` is reproduced as a small standalone type (X3).** A volatile token flipped once by the context
+inside its lifecycle lock before the real device is destroyed, with a read surface of `IsAlive` and `IsDead`.
+Every wrapper's `Dispose` gates on it, so disposal after device death is a no-op rather than a second release of
+something the device already freed. It is its own type rather than a flag on the device because the fence work
+reads the same token, and reaching it through the device would make every wrapper hold the device.
+
+**A constraint the package now carries, found the hard way: no type in it may hold a Vortice VALUE-TYPE field.**
+Loading a type computes its layout, which resolves value-type fields and loads the assembly declaring them, and
+the suite already forces that by calling `Assembly.GetTypes` on this package. A reference field is free, so an
+`ID3D11Device` field costs nothing while a single `Format` field pulls the whole interop into a macOS process
+and turns every off-Windows load-path assertion in the run red, pointing at whichever test happened to look
+afterwards. The fix costs nothing measurable: keep the engine value in the field and expose the Direct3D reading
+as a computed property. A new guard asserts it directly, so the next occurrence names the cause instead of the
+symptom.
 
 ## 17.29.0
 

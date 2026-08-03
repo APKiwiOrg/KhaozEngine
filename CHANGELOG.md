@@ -7,16 +7,19 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.30.0
 
-### The four prerequisites of the native Direct3D 11 backend (#444, #445, #446, #447)
+### The native Direct3D 11 backend: four prerequisites, then the recording model (#444, #445, #446, #447, #473, #448)
 
 The seam work an engine-owned Direct3D 11 backend needs before it can render a single pixel: `GpuDeviceContext`
 now ADOPTS an `IGpuDevice` instead of only building one, a backend that ships outside `KhaozEngine.Gpu` arrives
 through the explicit `GpuBackendProviders` registry, `GpuBackendKind` gains an appended `Direct3D11Native`, and
 the opt-in `KhaozEngine.Gpu.D3D11` package exists with its Windows guards, its machine probe and its architecture
-guards. Nothing renders differently and nothing switches over: the native backend's two device-creation entry
-points still throw, the Windows OS probe still answers `Direct3D11`, `SupportedBackends()` still never offers the
-new kind to a player, and no golden moved. Full reasoning, including the rollout gates that govern when the
-default flips, in `docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md`.
+guards. On top of those four, the backend's recording model lands whole with both of its drivers behind the
+`KE_D3D11_RECORD` kill switch, and the adoption path stops answering a provider bug with the fallback reserved
+for a machine that cannot run the backend. Nothing renders differently and nothing switches over: the native
+backend's two device-creation entry points still throw, so no shipped path reaches the recorder, the Windows OS
+probe still answers `Direct3D11`, `SupportedBackends()` still never offers the new kind to a player, and no
+golden moved. Full reasoning, including the rollout gates that govern when the default flips, in
+`docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md`.
 
 #### `GpuDeviceContext` is inverted onto `IGpuDevice` (#444)
 
@@ -188,6 +191,120 @@ Vortice pins the same 2.3.0 line Veldrid depends on, so there is exactly one D3D
 its alone. Docs updated across the README package catalog and repo layout, `docs/USING-KHAOZENGINE.md`,
 `docs/DEPENDENCY-SEAMS.md` (a new inverted-edge section) and `docs/CROSS-PLATFORM.md` (the shared golden family
 and its bake refusal).
+
+#### A provider BUG no longer rides the driver-failure fallback (#473)
+
+`CreateFromProvider` called `Adopt` inside the try whose broad catch exists for driver failures, so both of
+adoption's engine-side guards (a provider that returned no device, and an adopted device whose `Backend`
+disagrees with the selection it is adopted with) came out as a WARN plus a boot on another backend. That is the
+shape reserved for a machine that cannot run the backend, and those two guards exist precisely to stop a run
+being attributed to a backend it did not run on, so answering a provider bug with it produces the exact
+misattribution they were written against, and ships green. The creation call is the only thing left inside the
+try. A driver failure still falls back exactly as before, adoption happens after it, and a provider bug reaches
+the caller.
+
+So provider-backed creation has THREE failure modes, not the two documented above under #445, and the third is
+the one nothing downstream can see. A missing provider throws `GpuBackendProviderMissingException` and never
+falls back. An incapable MACHINE falls back to the OS-probe backend, WARNs, and reports
+`GpuBackendSource.FallbackAfterFailure`. A provider that hands back nothing, or hands back a device belonging to
+another backend, is a bug in the provider and now propagates as one. The headless entry shares `Adopt` and has
+never had a fallback, so it was already in the third case and gains the rest of this fix for free.
+
+**Adoption also disposes the device it refuses.** Ownership transfers on a SUCCESSFUL construction only, so a
+rejected device had no context to dispose it and no other reference anywhere, and would have held its adapter,
+its swapchain and its driver allocations until the process exited. The disposal cannot replace the refusal: a
+provider handing back a device the engine will not adopt is already misbehaving, so its `Dispose` is exactly as
+likely to be broken, and a throw from there is WARNed and swallowed rather than unwinding in place of the reason
+the caller has to act on. All of this is unreachable until the native provider's creation path returns a real
+device, which is why it lands before that path exists rather than after.
+
+#### The recording model: one seam, two drivers, a 32-byte op stream (#448)
+
+The native backend's command recording, landing whole and reached by nothing. Creation still throws, so no
+shipped path constructs any of it, and it goes in first because the resource factory, the real emitter and the
+device are all written against it. Sections 2.1, 5.1, 5.3 and 16 of the design doc, decisions R1, R2, R3, X1
+and T2.
+
+**One recorded command is exactly 32 bytes**, and a test asserts that through both `Unsafe.SizeOf` and
+`Marshal.SizeOf`, so a wider op and an op that grew a managed reference are each a red test. `D3D11Op` is an
+opcode, a reference index and six payload words, none of them a managed reference, which is what makes
+truncating a stream one integer write with no write barriers and no garbage. Six words is one more than the
+widest command needs, so growth is a new word inside the existing size rather than a bigger struct. A resource
+argument is an INDEX into the recording's `D3D11ReferenceList`, the one place a recording holds a resource
+alive, and its reset nulls the slots rather than only rewinding the count, so a resource its owner disposed
+between two frames is not kept alive by last frame's array. Consecutive references to one instance collapse to a
+single entry, which is a bound rather than a micro-optimisation, because thousands of offsets-only rebinds of
+one resource set per frame is the hot path decision R5 names. Bulk payloads are copied into a per-recording
+arena, since a caller's span is dangling by the time the list is submitted.
+
+**`ID3D11Emitter` is the seam the whole backend is built on, and it names no Direct3D type.** One method per
+`IGpuCommandList` command, written in engine-owned handle types rather than raw COM pointers, and always
+consumed through a `where TEmitter : struct, ID3D11Emitter` constraint so the JIT monomorphizes each
+implementation and the production path carries no indirection. Because no member names a Direct3D type, an
+emitter can be a plain struct with no device behind it, which is what makes the counting emitter and the call
+log possible and what makes the op-encoding and replay-ordering tests plain `[Fact]`s that run under an ordinary
+`dotnet test` on macOS and Linux. **There is no `Create*` member, and that absence is decision X1**: every view
+and state object is created at resource, set or pipeline creation, so creating a view during replay is a compile
+error here rather than an assertion that fires on somebody's machine. A reflection test holds it, because a
+rule stated only in a comment is a rule somebody eventually contradicts.
+
+**The recorder IS both drivers, because the driver is its type argument.** `D3D11CommandRecorder<TEmitter>`
+implements `IGpuCommandList` and translates each seam call exactly once. Over `D3D11StreamEmitter` it is the
+deferred driver of R1, where seam calls become ops, no native call happens during record, and the stream is
+replayed inside `Submit`. Over a real emitter it is the immediate-emit driver of R2, with no stream in the
+picture at all. Expressing the split as a type argument is what makes "the fallback driver shares every line
+above the emitter" structural instead of a discipline: there is one implementation of the seam, so there is
+nothing for two drivers to drift from, and an A/B between them measures WHEN the native calls happen rather than
+a difference in what was recorded. A test walks one of every command the seam carries and asserts both drivers
+produce the same emitter calls, argument for argument and in the same order, against an expected trace written
+out by hand rather than derived from the recorder, and a coverage test fails when a seam command is missing from
+that frame, so a mapping cannot go untested on both drivers at once.
+
+**`KE_D3D11_RECORD` is the M1 kill switch and it ships from now.** The command-stream driver is the default,
+`immediate` selects the other one, and a value that was set and understood as nothing comes back verbatim for a
+WARN instead of silently running the default. This variable attributes a measurement to a driver, so a mistyped
+switch is how a number gets published under the wrong driver and then retracted, and a run off the default logs
+which driver produced it rather than resting on the tester believing they set the variable. M1 gates exactly one
+thing, removing the variable and deleting the losing driver, and until that measurement is taken on a renderable
+frame both drivers ship. The risk it is about is not the memcpy: under the deferred driver every native call
+bunches into the replay window, so record and driver-side consumption become two sequential phases instead of
+overlapping ones, and the driver threading probe measured that the overlap helps.
+
+**Begin, End and Submit.** `Begin` resets and touches no device state, which on the deferred driver means
+truncating the stream with no native call, no lock and no device contact, so N lists may record concurrently and
+two recorders are two arrays. `End` seals, and submitting a list that was never ended is refused rather than
+replaying half a frame. `Submit` takes the submit lock, replays and releases, and that lock is a PARAMETER
+because it belongs to the device under decision W4, so it arrives when the device does and recording never
+touches it. All 26 record methods now front one `RequireRecording` guard that carries the disposed check first,
+so a command on a disposed list is an `ObjectDisposedException` at the call rather than an unrelated sequencing
+error out of a later `End`. Without that guard `Begin`, draw, `End`, draw extended a sealed recording on one
+driver and emitted outside the list on the other, so the same program rendered two different frames depending on
+the environment variable, with neither driver complaining. The PORTABLE seam contract is untouched at one open
+recording per device (R4), since the Veldrid D3D11 leg ships alongside indefinitely and rejects a second
+recorder.
+
+**An emitter implementation is a readonly struct whose mutable state lives behind a class reference**, enforced
+by a reflection test, with a second test proving the checker rejects a wrong shape and a third making the defect
+itself executable. The recorder stores its emitter by value, one copy per list, so under the immediate driver N
+lists hold N copies over one `ID3D11DeviceContext`. Inline mutable state would then be per-list on one driver
+and per-device on the other, and R6's redundancy caches describe what is bound on the CONTEXT, not what a list
+recorded: two caches over one context means list B binds a pipeline, list A's cache still claims A's is bound, A
+skips the rebind and draws with B's state. R8's precise unbind-and-scrub on disposal fails the same way, since
+it is reached from the device and would find one copy out of N.
+
+**A tally taken at this seam counts SEAM calls, not native calls.** Decision T2's budget gates native calls,
+which are made inside the real emitter and fan out from one seam call: a resource-set bind becomes several
+binds, a redundant pipeline bind becomes none, and the viewport and scissor assertions turn on a framebuffer
+CHANGE, a guard that lives inside the real emitter and is invisible from here. So the counting emitter is an
+upper-bound input and an ordering check, and it is written down that way on the seam, on the emitter and in the
+package README, because the first version of that comment claimed it made the budget test device-free. Whether
+the countable native-call sink goes BELOW the real emitter or into a device-free harness guarded by a WARP
+`[GpuFact]` is a later row's decision, recorded where that row will find it and deliberately not built here.
+
+**The op stream is one DRIVER of the emitter, not a layer beneath it**, which is the property phase 3 needs and
+the reason the encoder is written AS an emitter rather than under one. Nothing above the seam may assume a
+stream exists, because Vulkan and Metal have real deferred command buffers and their emitters would record
+straight into them, where a CPU op stream is pure overhead.
 
 ## 17.29.0
 

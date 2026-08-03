@@ -259,9 +259,16 @@ route. A rising slide decelerates at full gravity, always, so the reach of a run
 exactly what it was before friction existed and every "no higher than" bound above is untouched.
 
 **One traction truth per tick.** The gate is resolved ONCE from the footing the tick started with and handed to the
-slide contact, the wall contact on all three horizontal paths, the slide resolve, the support decision and the
-wedge. The wall contact reading the same widened gate is load-bearing: otherwise a run up a bank the band is holding
-footing on would meet a fence built from the ground under its own feet.
+slide contact, the wall contact on all three horizontal paths, the slide resolve, the support decision, the wedge
+and the step-down hold. The wall contact reading the same widened gate is load-bearing: otherwise a run up a bank
+the band is holding footing on would meet a fence built from the ground under its own feet.
+
+**The step-down hold runs the traction test too, from 17.30.0.** A drop within `StepHeight` normally seats a
+character grounded in one tick so a doorstep reads as a step rather than a fall. That hold used to skip the traction
+test across its whole band, because the test it read is only computed for the smaller drops the `GroundedEpsilon`
+ground stick reaches, so a step-down onto a face far past the gate seated grounded and handed out a jump. It now
+asks the same question against the same tick-resolved gate: past the gate the seat is refused and the character goes
+over the edge as any walk-off does. Walkable treads are under the gate, so stair descent is untouched.
 
 **Compatibility.** Both knobs at 0 (which is what a bare `default(MoveTuning)` reads, and what a negative or NaN
 value reads too) restore the 17.29.0 model bit for bit. Ground well under the gate is untouched either way. The

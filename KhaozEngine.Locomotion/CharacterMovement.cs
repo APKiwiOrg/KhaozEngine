@@ -404,16 +404,11 @@ public static partial class CharacterMovement
         // refresh, and no landing latch on the face - the landing is at the bottom, and LandingImpactSpeed reports
         // there from the fall the slide accumulated. It is the rule that retired the ascent gate rather than patching
         // it, and since #475 it is HYSTERETIC: the gate resolved above already carries the band a standing character
-        // keeps its footing over, while a body arriving WITHOUT footing is judged at the bare gate and slides.
-        //   - PROP SUPPORT ALWAYS WINS. Only the ANALYTIC terrain can be traction-less here: `groundY <=
-        //     terrainGroundY` says no prop raised the floor, and propGrounded says no prop is pushing the capsule up.
-        //     A plank bridging a ravine, a ledge bolted to a cliff, or a stair against a mountain all still carry a
-        //     character, exactly as they did.
-        //   - The normal is sampled at the RESOLVED position rather than the start one, because it is THIS tick's
-        //     support being decided, and only on a tick that would otherwise ground on terrain - so an airborne tick
-        //     and a prop-supported tick pay nothing for the rule at all.
-        bool noTraction = onGround && !propGrounded && groundY <= terrainGroundY && groundNormal is not null &&
-                          IsSteepGround(groundNormal(pos.X, pos.Z), tractionGate);
+        // keeps its footing over, while a body arriving WITHOUT footing is judged at the bare gate and slides. The test
+        // itself, and the prop support it exempts, is RefusesTraction (CharacterMovement.Traction.cs), because the
+        // step-down hold below asks the identical question and a second expression of it is how #470 happened.
+        bool noTraction = onGround &&
+                          RefusesTraction(pos, propGrounded, groundY, terrainGroundY, groundNormal, tractionGate);
         if ((onGround || propGrounded) && !noTraction)
         {
             grounded = true;
@@ -495,9 +490,15 @@ public static partial class CharacterMovement
         //     Seat pos.Y onto that support this tick (a one-tick step-down snap, exactly what a within-GroundedEpsilon
         //     step-down already does); the render-height smoother glides the grounded drop instead of hard-cutting a
         //     ballistic one.
-        //     Skipped on a traction-less tick: stepping DOWN onto a too-steep face is a slide, not a step, so the
-        //     hold must not seat the character grounded on the very surface the support decision just refused.
-        if (!grounded && vVel <= 0f && s.Grounded && !noTraction)
+        //     AND IT RUNS THE TRACTION TEST ITSELF (#470). Stepping DOWN onto a face too steep to stand on is a slide,
+        //     not a step. The support decision's test is guarded by `onGround`, which only reaches drops within
+        //     GroundedEpsilon, so across THIS band - which opens exactly where that stick closes - it was vacuously
+        //     false and the hold seated the character on whatever the drop landed on, a cliff face included. Same test,
+        //     same tick-resolved gate: `s.Grounded` says footing was held at tick start, so the widened gate applies
+        //     here as everywhere else. Past it the seat is refused and the body goes over the edge, which is a
+        //     walk-off, and the slide takes it from there. Walkable stair treads are under the gate and are untouched.
+        if (!grounded && vVel <= 0f && s.Grounded &&
+            !RefusesTraction(pos, propGrounded, groundY, terrainGroundY, groundNormal, tractionGate))
         {
             float stepDrop = s.Position.Y - groundY;
             if (stepDrop > 0f && stepDrop <= t.StepHeight)

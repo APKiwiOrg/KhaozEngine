@@ -230,8 +230,23 @@ from #440, #442 and #468 is therefore unchanged.
 
 **One traction truth per tick.** `StepCore` resolves the gate ONCE from the footing the tick started with and hands
 that number to the slide contact, the wall contact on all three horizontal paths, the slide resolve, the support
-decision and the wedge. The wall contact reading the widened gate is load-bearing: without it a run up a bank the
-band is holding footing on would meet a fence made of the ground under its own feet.
+decision, the wedge and the step-down hold. The wall contact reading the widened gate is load-bearing: without it a
+run up a bank the band is holding footing on would meet a fence made of the ground under its own feet.
+
+**The step-down hold runs the traction test, closing the last route to footing on steep ground (#470).** Step
+4a-down holds a character grounded through a drop of up to `StepHeight` (0.40) so a doorstep reads as a step rather
+than a fall, and that band opens exactly where the `GroundedEpsilon` (0.30) ground stick closes. The hold read the
+support decision's traction result, which is guarded by `onGround` and therefore only ever computed for drops within
+`GroundedEpsilon`, so across the whole of the hold's own band no traction test ran at all on the surface being
+seated. Measured: a 0.15 m lip onto a 63.4 degree face, walked east at 6 m/s and 60 Hz, made the crossing tick's drop
+0.35 m, and that tick reported `Grounded` and `SupportGranted` seated on the face, with a jump pressed there
+launching at the full `JumpSpeed`. The hold now runs the same test against the same tick-resolved gate (the widened
+one on this path, since the hold only arms when footing was held at tick start), so a step-down onto ground past the
+gate refuses the seat and the character goes over the edge exactly as a walk-off does. Legitimate descent is
+untouched: walkable treads are under the gate, the existing step-down and stair-glide suites are green unmodified,
+and a 0.35 m step-down onto level ground still seats grounded in one tick. The test is now one function,
+`RefusesTraction` in `KhaozEngine.Locomotion/CharacterMovement.Traction.cs`, rather than two expressions of the same
+question.
 
 The 360-heading acceptance sweep is BIT-IDENTICAL rather than merely green (its 68.6 to 77.1 degree face is past the
 whole ramp, and it never grants footing), and re-measured with both mechanisms active it reports 0 climbers, 0

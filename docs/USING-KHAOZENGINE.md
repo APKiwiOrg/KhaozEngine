@@ -4868,7 +4868,10 @@ rules replace it, both unconditional and neither a knob:
   accelerates you down the fall line until you reach walkable ground (that landing is where `LandingImpactSpeed`
   fires, from the fall the slide accumulated), open air, or water. Input steers along the CONTOUR (across the fall
   line) at the usual `MoveTuning.AirControl`-scaled speed and has no authority along the fall line at all, in
-  either direction.
+  either direction. This covers a step DOWN onto such a surface too, which it did not before 17.30.0
+  ([#470](https://github.com/APKiwiOrg/KhaozEngine/issues/470)): a drop within `MoveTuning.StepHeight` normally seats
+  you grounded in one tick, but not onto ground past the gate, where you go over the edge and slide instead. Walkable
+  stair treads are under the gate, so descending a staircase is unchanged.
 
 **The gate has a MEMORY and the slide has FRICTION (17.30.0, [#475](https://github.com/APKiwiOrg/KhaozEngine/issues/475)).**
 A bare threshold chatters on real terrain: ground whose columns straddle it flips grip and slide every tick. Measured

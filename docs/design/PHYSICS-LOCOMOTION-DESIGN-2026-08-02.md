@@ -556,10 +556,25 @@ untouched, because the up phase they bound is byte-for-byte the same arithmetic.
 **One traction truth per tick.** The gate is now a function of state, so it can be read at two moments and give two
 answers, and a support decision that disagrees with the wall contact driving it is exactly the chatter this round
 removes. `StepCore` resolves it once from the footing the tick STARTED with and hands the same number to the slide
-contact, the wall contact on all three horizontal paths, the slide resolve, the support decision and the wedge.
-Nothing re-derives it. The wall contact needing the widened gate is not a formality either: without it a run up a
-bank the band is holding footing on would meet a fence built out of the ground under its own feet, since a fast run
-on a legal ramp rises more than a `StepHeight` in one tick.
+contact, the wall contact on all three horizontal paths, the slide resolve, the support decision, the wedge and the
+step-down hold. Nothing re-derives it. The wall contact needing the widened gate is not a formality either: without
+it a run up a bank the band is holding footing on would meet a fence built out of the ground under its own feet,
+since a fast run on a legal ramp rises more than a `StepHeight` in one tick.
+
+**The step-down hold was the last route to footing on steep ground, and it is closed here (#470).** The routes that
+can grant footing on terrain are the support decision, the swallowed-descent wedge and step 4a-down's step-down hold.
+The first two have run the traction test since it existed. The third never did, and not by omission: it read the
+support decision's `noTraction`, which is written as `onGround && ...`, and `onGround` only reaches drops within
+`GroundedEpsilon` (0.30). The step-down hold covers exactly the band ABOVE that, drops up to `StepHeight` (0.40), so
+across the whole of its own range the guard was vacuously false and no traction test ran on the surface it was
+seating onto. Measured: a 0.15 m lip onto a 63.4 degree face, walked east at 6 m/s and 60 Hz, put the crossing tick's
+drop at 0.35 m, and that tick reported `Grounded` and `SupportGranted` seated on the face with a jump pressed there
+launching at the full `JumpSpeed`. The hold now runs the same test against the same tick-resolved gate, which is the
+widened one on this path by construction (the character held footing at tick start, or `s.Grounded` would not have
+armed the hold at all). Ground past that gate refuses the seat and the body goes over the edge as any walk-off does.
+The test itself is one function now rather than two expressions of the same question, which is the actual fix: the
+band's legitimate work is untouched, because a walkable tread is under the gate whichever way the character is
+travelling over it.
 
 **Compatibility, and what it cost the fixtures.** Both mechanisms are default-ON and both change behaviour near the
 gate for any game on steep terrain, which is the precedent this program set when the slide model itself shipped

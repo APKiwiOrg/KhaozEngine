@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Locomotion;
 using Xunit;
@@ -388,6 +389,129 @@ public class TractionHysteresisTests
             Assert.Equal(a.VerticalVelocity, b.VerticalVelocity);
             Assert.Equal(a.Grounded, b.Grounded);
         }
+    }
+
+    // ---- The step-down hold is not a route to footing either (#470) ----
+    //
+    // Step 4a-down holds a character grounded through a drop of up to StepHeight (0.40) so a doorstep reads as a step
+    // instead of a fall. That band OPENS where the onGround stick closes, at GroundedEpsilon (0.30), and the support
+    // decision's traction test was written as `onGround && ...`, so inside (0.30, 0.40] the test was vacuously false
+    // and no traction test ran at all on the surface the hold was seating onto. The hold now runs the test itself,
+    // against the tick's resolved gate, so every route to footing on steep ground is closed by the same rule.
+
+    // A LIP at EdgeX: flat ground west of it, then a vertical drop of `lip` and a face descending east at `gradient`
+    // (a shore edge, a terrace, the broken top of a bank). The normal is the honest one for that height field, so this
+    // fixture says nothing about round four's two-surfaces question and everything about the gate. A gradient of 0 is
+    // a level shelf below the lip, which is the legitimate doorstep the band exists for.
+    static (Func<float, float, float> ground, Func<float, float, Vector3> normals) LipOntoFace(float lip, float gradient)
+    {
+        Vector3 n = Vector3.Normalize(new Vector3(gradient, 1f, 0f));
+        return ((x, z) => x <= EdgeX ? 0f : -lip - (x - EdgeX) * gradient,
+                (x, z) => x <= EdgeX ? Vector3.UnitY : n);
+    }
+
+    const float Dt60 = 1f / 60f;   // the repro's rate: at WalkSpeed 6 a tick advances exactly 0.1 m
+
+    readonly record struct Tick(float X, float FeetY, bool Grounded, bool Support, float VVel);
+
+    // Walk east off the lip at WalkSpeed and 60 Hz from the last flat column, so tick 0 IS the crossing tick and its
+    // drop lands squarely inside the step-down band. `jumpOnCrossing` presses jump on that tick alone.
+    static List<Tick> WalkOffTheLip(in MoveTuning t, Func<float, float, float> ground,
+        Func<float, float, Vector3> normals, int ticks, bool jumpOnCrossing = false)
+    {
+        var s = new MoveState { Position = new Vector3(EdgeX, t.CapsuleHalfHeight, 0f), Grounded = true };
+        var outp = new List<Tick>(ticks);
+        for (int i = 0; i < ticks; i++)
+        {
+            var cmd = new MoveCommand(new Vector2(1f, 0f), run: false, cameraYaw: 0f, jump: jumpOnCrossing && i == 0);
+            s = CharacterMovement.Step(s, cmd, Dt60, ground, t, normals);
+            outp.Add(new Tick(s.Position.X, s.Position.Y - t.CapsuleHalfHeight, s.Grounded, s.SupportGranted,
+                s.VerticalVelocity));
+        }
+        return outp;
+    }
+
+    [Fact]
+    public void A_step_down_onto_ground_past_the_gate_grants_no_footing()
+    {
+        // THE #470 REPRO. A 0.15 m lip onto a face descending at gradient 2.0 - 63.4 degrees, 18.4 past the bare gate
+        // and 15.4 past gate plus band - reaches the step-down band in a single tick at 6 m/s and 60 Hz: 0.15 m of lip
+        // plus 0.20 m of face is a 0.35 m drop, above the 0.30 the onGround stick reaches and at most the 0.40 the hold
+        // covers. Measured before the fix, that tick reported Grounded AND SupportGranted, seated on the face.
+        var t = Tuning;
+        (Func<float, float, float> ground, Func<float, float, Vector3> normals) = LipOntoFace(0.15f, 2f);
+        List<Tick> p = WalkOffTheLip(t, ground, normals, 120);
+
+        Tick crossing = p[0];
+        Assert.True(crossing.X > EdgeX, $"the crossing tick never left the flat, x={crossing.X:F4}");
+        Assert.False(crossing.Grounded,
+            $"the crossing tick seated Grounded on a 63.4 degree face at x={crossing.X:F4}, feet {crossing.FeetY:F4}");
+        Assert.False(crossing.Support, "the crossing tick granted support on a 63.4 degree face");
+
+        // And no later tick takes footing either: past the lip the descent is the slide model, exactly as a walk-off is.
+        for (int i = 0; i < p.Count; i++)
+            Assert.False(p[i].Grounded || p[i].Support,
+                $"tick {i} found footing on the face at x={p[i].X:F4}, feet {p[i].FeetY:F4}");
+        // It genuinely left down the fall line rather than hanging at the lip: the face descends east, so does it.
+        Assert.True(p[^1].FeetY < -3f, $"the character never slid down the face, feet {p[^1].FeetY:F4}");
+        Assert.True(p[^1].X > EdgeX, $"the character slid back onto the flat, x={p[^1].X:F4}");
+    }
+
+    [Fact]
+    public void The_step_down_hold_does_not_hand_a_jump_off_a_steep_face()
+    {
+        // The launch is the half of #470 a player would actually notice, and it is measured with CoyoteTime at 0 ON
+        // PURPOSE. Walking off a lip and jumping inside the coyote window is a jump off the FLAT the character just
+        // left, which is a feature and is untouched here. With coyote at zero the only thing left that can launch the
+        // jump is footing found ON THE FACE, so the probe measures this issue's route and nothing else. Before the fix
+        // it launched at the full JumpSpeed off a 63.4 degree face.
+        var t = Tuning with { CoyoteTime = 0f };
+        (Func<float, float, float> ground, Func<float, float, Vector3> normals) = LipOntoFace(0.15f, 2f);
+        List<Tick> p = WalkOffTheLip(t, ground, normals, 30, jumpOnCrossing: true);
+
+        Assert.True(p[0].VVel < 0f,
+            $"the crossing tick launched at {p[0].VVel:F4} m/s off a 63.4 degree face (JumpSpeed is {t.JumpSpeed:F4})");
+        // The buffered press must not cash in on a later tick of the same slide either.
+        for (int i = 0; i < p.Count; i++)
+            Assert.True(p[i].VVel < 0f, $"tick {i} launched at {p[i].VVel:F4} m/s while sliding");
+    }
+
+    [Fact]
+    public void A_step_down_onto_walkable_ground_still_seats_in_one_tick()
+    {
+        // THE BAND'S LEGITIMATE PURPOSE, which the fix must leave exactly where it was. A 0.35 m drop onto LEVEL
+        // ground is a doorstep, not a fall: it seats grounded on the tick it happens and stays there. Same lip, same
+        // speed, same band, a level shelf below instead of a face.
+        var t = Tuning;
+        (Func<float, float, float> ground, Func<float, float, Vector3> normals) = LipOntoFace(0.35f, 0f);
+        List<Tick> p = WalkOffTheLip(t, ground, normals, 60);
+
+        Assert.True(p[0].Grounded, $"the 0.35 m step-down went airborne, feet {p[0].FeetY:F4}");
+        Assert.True(p[0].Support, "the 0.35 m step-down resolved no support");
+        Assert.True(MathF.Abs(p[0].FeetY + 0.35f) < 1e-3f,
+            $"the step-down did not seat onto the shelf in one tick, feet {p[0].FeetY:F4}");
+        for (int i = 0; i < p.Count; i++)
+            Assert.True(p[i].Grounded, $"tick {i} lost footing on a level shelf, feet {p[i].FeetY:F4}");
+    }
+
+    [Fact]
+    public void A_step_down_inside_the_band_seats_because_the_walker_had_footing()
+    {
+        // THE ONE-TRUTH RULE, pinned on this path too. The step-down hold runs the same traction test the support
+        // decision runs, which means it runs it against the SAME gate: the one this tick resolved. The character HAD
+        // footing when the tick started, so the widened gate applies here exactly as it does everywhere else, and a
+        // 0.35 m step-down onto a 47 degree face - one degree inside gate plus band - keeps its feet. The control
+        // turns the band off and the identical step-down is refused, so what grants it is the band rather than a gap.
+        (Func<float, float, float> ground, Func<float, float, Vector3> normals) = LipOntoFace(0.24f, MathF.Tan(Deg(47f)));
+
+        List<Tick> banded = WalkOffTheLip(Tuning, ground, normals, 20);
+        Assert.True(banded[0].Grounded,
+            $"the step-down onto gate plus band minus one lost footing, feet {banded[0].FeetY:F4}");
+        Assert.True(banded[0].Support, "the step-down onto gate plus band minus one resolved no support");
+
+        List<Tick> bare = WalkOffTheLip(Tuning with { TractionHysteresisRadians = 0f }, ground, normals, 20);
+        Assert.False(bare[0].Grounded || bare[0].Support,
+            $"with the band off, a 47 degree face still granted footing at feet {bare[0].FeetY:F4}");
     }
 
     [Fact]

@@ -85,6 +85,32 @@ public static partial class CharacterMovement
     private static bool IsSteepGround(in Vector3 normal, float gate)
         => MathF.Acos(Math.Clamp(normal.Y, 0f, 1f)) > gate;
 
+    /// <summary>True when the ANALYTIC terrain under a resolved capsule position refuses traction at this tick's gate.
+    /// The one "may this seat grant footing" question, asked in one place by every footing grant that reads terrain.
+    /// <para>It is a function rather than a local because the support decision and the step-down hold ask exactly this
+    /// and used to ask it as two different expressions. The support decision guarded its test with <c>onGround</c>,
+    /// which only reaches drops within <see cref="MoveTuning.GroundedEpsilon"/>, so throughout the step-down hold's own
+    /// band - the drops between that and <see cref="MoveTuning.StepHeight"/> - the guard was vacuously false and NO
+    /// traction test ran at all on the surface the hold was seating onto. That was #470, and one function is what
+    /// keeps a third caller from re-opening it.</para>
+    /// <para>PROP SUPPORT ALWAYS WINS. Only the analytic terrain can be traction-less here: <paramref name="groundY"/>
+    /// at or below <paramref name="terrainGroundY"/> says no prop raised the floor, and <paramref name="propGrounded"/>
+    /// says no prop is pushing the capsule up. A plank bridging a ravine, a ledge bolted to a cliff and a stair built
+    /// against a mountain all still carry a character, exactly as they did.</para>
+    /// <para>The normal is sampled at the RESOLVED position rather than the start one, because it is THIS tick's
+    /// support being decided. Each caller keeps its own cheap precondition in front of the call, so an airborne tick
+    /// and a prop-supported tick pay nothing for the rule at all.</para></summary>
+    /// <param name="pos">The position this tick resolved to, whose column the normal is sampled at.</param>
+    /// <param name="propGrounded">True when a prop is holding the capsule up.</param>
+    /// <param name="groundY">The resolved support height (analytic terrain plus walkable props).</param>
+    /// <param name="terrainGroundY">The analytic terrain's own support height at the same column.</param>
+    /// <param name="groundNormal">The consumer's classification delegate, or null for no classification at all.</param>
+    /// <param name="gate">This tick's traction gate, from <see cref="TractionGate"/>.</param>
+    private static bool RefusesTraction(in Vector3 pos, bool propGrounded, float groundY, float terrainGroundY,
+        Func<float, float, Vector3>? groundNormal, float gate)
+        => !propGrounded && groundY <= terrainGroundY && groundNormal is not null &&
+           IsSteepGround(groundNormal(pos.X, pos.Z), gate);
+
     /// <summary>How much of gravity's fall-line pull a slide on this surface actually gets, in <c>[0, 1]</c>: the
     /// friction ramp, <c>clamp((slope - gate) / SlideFrictionRampRadians, 0, 1)</c>.
     ///

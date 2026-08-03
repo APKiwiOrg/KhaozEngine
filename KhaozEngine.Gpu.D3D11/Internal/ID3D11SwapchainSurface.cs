@@ -47,13 +47,32 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         GpuPixelFormat? DepthFormat { get; }
 
         /// <summary>
-        /// Release every view over the current backbuffer, and the depth texture with them. IDEMPOTENT, because
+        /// Drop EVERY reference to the current backbuffer that <see cref="ResizeBuffers"/> can see: the views over
+        /// it, the depth texture with them, and the immediate context's bind of those views. IDEMPOTENT, because
         /// the teardown path and the resize path both reach it and neither should have to ask what the other
         /// did.
         /// <para>
         /// This is the call <see cref="ResizeBuffers"/> cannot succeed without. It is not an optimisation and it
         /// is not tidiness: a live render target view over backbuffer 0 makes <c>ResizeBuffers</c> fail, and the
         /// window is then left presenting a swapchain whose buffers no longer match it.
+        /// </para>
+        /// <para>
+        /// THE CONTEXT'S BIND IS A REFERENCE TOO, which is the half of the obligation an implementation will miss.
+        /// <c>OMSetRenderTargets</c> takes its own reference on the render target view, and the context does not
+        /// drop it because the application released its wrapper, so releasing only the views still fails the
+        /// resize. This backend cannot inherit the incumbent's accidental immunity: the incumbent resets the
+        /// context state at the end of every submit (<c>ExecuteCommandList</c> with <c>restoreContextState</c>
+        /// false), while decision R3 puts this backend's one <c>ClearState</c> at the HEAD of a replay and the end
+        /// of a submit emits nothing, so the last frame's targets are still bound when a resize applies at the
+        /// present boundary.
+        /// </para>
+        /// <para>
+        /// THE ENGINE HALF CANNOT ASSERT THAT DEVICE-FREE, and this is the one clause on this interface with no
+        /// test above it. <see cref="D3D11Swapchain"/>'s tests drive a fake surface, which records that the release
+        /// came before the resize and refuses the wrong order by name, but a fake has no context and therefore no
+        /// bindings to inspect, so "the context's reference went too" is invisible to every <c>[Fact]</c>. The
+        /// executable evidence is a real window resize on the WARP leg, once the wiring row gives the swapchain a
+        /// caller.
         /// </para>
         /// </summary>
         void ReleaseAttachments();

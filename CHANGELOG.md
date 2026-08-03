@@ -277,14 +277,24 @@ event. The cost is one frame of resize latency, which is invisible. The apply la
 before it, because `ResizeBuffers` discards the backbuffer contents and resizing first would throw away the frame
 that had just been rendered and present freshly allocated, undefined buffers instead.
 
-**Two departures from the incumbent, both narrow and both stated at their site.** The present's raw `HRESULT` is
+**Three departures from the incumbent, all narrow and all stated at their site.** The present's raw `HRESULT` is
 RETURNED rather than discarded, which is the seam the device-loss latch of decision G3 needs to check at the fault
 site, and a failed present skips the queued resize so the caller receives that `HRESULT` instead of a throw out of
 `ResizeBuffers` against a device that has just gone. The latch itself, `GetDeviceRemovedReason` and the session
 header are not built here. And when a depth attachment is configured it is built at the backbuffer's REAL size
 rather than at the requested one, because Direct3D 11 requires a depth-stencil view and a render target view bound
 together to have matching dimensions. The engine's own windowed path passes no depth format, matching the
-incumbent, so that second one is unreachable on every shipped path today.
+incumbent, so that second one is unreachable on every shipped path today. And the release step unbinds the
+output-merger before it disposes the views, which the incumbent never has to do: `ResizeBuffers` fails on INDIRECT
+references as well, and the immediate context holds one, because `OMSetRenderTargets` takes its own reference on
+the render target view and does not drop it when the application disposes its wrapper. The incumbent gets away
+with it by resetting the context state at the end of every submit (`ExecuteCommandList` with
+`restoreContextState` false), while decision R3 puts this backend's one `ClearState` at the HEAD of a replay and
+its end-of-submit emits nothing, so the last frame's targets are still bound when the resize applies at the
+present boundary. Without the unbind the first real window resize would throw `DXGI_ERROR_INVALID_CALL` out of
+`Present`, under the submit lock, with the views already released. The managed state cache does not see the
+unbind, and does not need to: a resize lands only at a present boundary, and R3's `ClearState` resets the context
+and the cache together before anything binds again.
 
 **Where the tests are, and what is left behind an interface.** The four native calls of a swapchain sit behind
 `ID3D11SwapchainSurface`, the same shape the ring memory and the fence timeline already have, so the queue, the
@@ -292,7 +302,10 @@ coalescing, the present boundary, the apply order, the sync interval, the frameb
 are all plain `[Fact]`s that run on macOS and Linux. The resize is three members rather than one on purpose:
 `IDXGISwapChain::ResizeBuffers` fails while any outstanding reference to a backbuffer survives, so releasing the
 views first is a correctness rule that the incumbent depends on silently, and splitting it puts that order on the
-engine side where a device-free test asserts it. The fake refuses the wrong order by name. Two further tests pin
+engine side where a device-free test asserts it. The fake refuses the wrong order by name. The context unbind is
+the one clause of that release with no test above it anywhere, stated as such on the interface: a fake has no
+context and therefore no bindings to inspect, so its executable evidence is a real window resize on the WARP leg
+once the wiring row gives the swapchain a caller. Two further tests pin
 where W2 meets W6 and R3: stable identity means a re-bind of the same framebuffer object reports no change, so
 what makes a resize visible to the context is the one `ClearState` at the head of the next submit, and both the
 working case and the hazard are asserted so a future change that moves either one fails with the reason attached.

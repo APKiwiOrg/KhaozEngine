@@ -46,6 +46,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     internal sealed class D3D11DxgiSwapchain : ID3D11SwapchainSurface
     {
         readonly ID3D11Device _device;
+        readonly ID3D11DeviceContext _context;
         readonly IDXGISwapChain _swapchain;
         readonly D3D11DeviceLiveness _liveness;
 
@@ -55,10 +56,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         [SupportedOSPlatform("windows")]
-        D3D11DxgiSwapchain(ID3D11Device device, IDXGISwapChain swapchain, GpuPixelFormat? depthFormat,
-            D3D11DeviceLiveness liveness)
+        D3D11DxgiSwapchain(ID3D11Device device, ID3D11DeviceContext immediateContext, IDXGISwapChain swapchain,
+            GpuPixelFormat? depthFormat, D3D11DeviceLiveness liveness)
         {
             _device = device;
+            _context = immediateContext;
             _swapchain = swapchain;
             _liveness = liveness;
             DepthFormat = depthFormat;
@@ -70,6 +72,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// generation, so the one place attachments come from is the one place they are published.
         /// </summary>
         /// <param name="device">The device the swapchain presents from. Borrowed, never released here.</param>
+        /// <param name="immediateContext">The device's immediate context, borrowed the same way, and needed for
+        /// one reason only: <see cref="ReleaseAttachments"/> has to unbind the backbuffer's views from it before
+        /// they can be released, since the context's own reference is one <c>ResizeBuffers</c> fails on.</param>
         /// <param name="adapter">The adapter the factory is fetched off, which is how the incumbent reaches an
         /// <c>IDXGIFactory</c> and is the adapter the explicit-selection work of decision G2 will own.</param>
         /// <param name="hwnd">The Win32 window handle to present into.</param>
@@ -80,10 +85,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <param name="liveness">The device's liveness token, so a release after device death is a no-op.</param>
         [MethodImpl(MethodImplOptions.NoInlining)]
         [SupportedOSPlatform("windows")]
-        internal static D3D11DxgiSwapchain CreateWindows(ID3D11Device device, IDXGIAdapter adapter, IntPtr hwnd,
-            uint width, uint height, GpuPixelFormat? depthFormat, D3D11DeviceLiveness liveness)
+        internal static D3D11DxgiSwapchain CreateWindows(ID3D11Device device, ID3D11DeviceContext immediateContext,
+            IDXGIAdapter adapter, IntPtr hwnd, uint width, uint height, GpuPixelFormat? depthFormat,
+            D3D11DeviceLiveness liveness)
         {
             ArgumentNullException.ThrowIfNull(device);
+            ArgumentNullException.ThrowIfNull(immediateContext);
             ArgumentNullException.ThrowIfNull(adapter);
             ArgumentNullException.ThrowIfNull(liveness);
 
@@ -105,7 +112,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             // does the same, on the same flag.
             factory.MakeWindowAssociation(hwnd, WindowAssociationFlags.IgnoreAltEnter);
 
-            return new D3D11DxgiSwapchain(device, swapchain, depthFormat, liveness);
+            return new D3D11DxgiSwapchain(device, immediateContext, swapchain, depthFormat, liveness);
         }
 
         /// <inheritdoc/>
@@ -156,14 +163,44 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             DisposeWindows();
         }
 
-        // The incumbent's two release points, in one place. The depth texture releases its own views, and the
-        // liveness gate is what makes a teardown that runs after the device was destroyed a no-op rather than a
-        // release against freed memory.
+        // The incumbent's two release points, in one place, plus the unbind the incumbent never has to make. The
+        // depth texture releases its own views, and the liveness gate is what makes a teardown that runs after the
+        // device was destroyed a no-op rather than a release against freed memory. The unbind rides the same gate,
+        // for the same reason: a call on the immediate context of a destroyed device is a call against freed
+        // memory too.
+        //
+        // THE UNBIND IS THE HALF THAT IS EASY TO MISS. ResizeBuffers fails on any surviving reference to a
+        // backbuffer, INDIRECT ones included, and the immediate context holds one: OMSetRenderTargets AddRefs the
+        // render target view and does not drop it because the application disposed its wrapper. The incumbent is
+        // immune to this without doing anything about it, since it executes every command list with
+        // restoreContextState false (D3D11GraphicsDevice.SubmitCommandsCore), which resets the context state at the
+        // end of every submit. This backend deliberately does not: decision R3 puts its one ClearState at the HEAD
+        // of a replay and the end of a submit emits nothing, so after the last submit of a frame the swapchain's
+        // view is still bound in the output-merger when the resize applies at the present boundary. Without this
+        // call the first real window resize throws DXGI_ERROR_INVALID_CALL out of Present, under the submit lock,
+        // with the views already released.
+        //
+        // ZERO RENDER TARGETS IS THE NARROWEST CALL THAT PROVABLY DROPS IT. The output-merger is the only stage
+        // that can be holding either of these views (the backbuffer is created RenderTargetOutput and is never a
+        // shader resource here, and the depth texture is the swapchain's own), and one OMSetRenderTargets with a
+        // count of zero and the default null depth view unbinds every render target AND the depth-stencil view,
+        // which is exactly the set released below. ClearState would also work and is rejected as far wider than the
+        // obligation: it would drop every shader, buffer, sampler and viewport as well.
+        //
+        // THE MANAGED CACHE DOES NOT SEE THIS, and that is fine rather than merely tolerated. D3D11DeviceState
+        // still believes the framebuffer is bound, but a resize only ever lands at a present boundary (W3) and
+        // R3's single ClearState at the head of the next replay resets the context and the cache together, so
+        // nothing binds in between and the first SetFramebuffer afterwards is a change either way.
         [MethodImpl(MethodImplOptions.NoInlining)]
         [SupportedOSPlatform("windows")]
         void ReleaseAttachmentsWindows()
         {
-            if (_liveness.IsAlive) _renderTargetView?.Dispose();
+            if (_liveness.IsAlive)
+            {
+                _context.OMSetRenderTargets(0, Array.Empty<ID3D11RenderTargetView>());
+                _renderTargetView?.Dispose();
+            }
+
             _renderTargetView = null;
 
             // D3D11Texture reads the same token itself, so this is safe either way.

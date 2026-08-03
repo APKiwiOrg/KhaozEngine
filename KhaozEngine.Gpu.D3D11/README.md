@@ -410,6 +410,14 @@ are all device-free `[Fact]`s. The resize is three members rather than one on pu
 any outstanding reference to a backbuffer survives, so releasing the views first is a correctness rule the
 incumbent depends on silently, and splitting it puts that order where a test can assert it.
 
+The release does one thing the incumbent does not: it unbinds the output-merger before it disposes the views.
+`ResizeBuffers` fails on INDIRECT references too, and the immediate context holds one, since `OMSetRenderTargets`
+takes its own reference on the render target view and keeps it after the wrapper is disposed. The incumbent is
+immune by accident, because it resets the context state at the end of every submit, while R3 puts this backend's
+one `ClearState` at the head of a replay instead, so the last frame's targets are still bound when a resize
+applies at the present boundary. That half is not device-free testable, because a fake surface has no context to
+inspect, and its evidence is a real window resize on the WARP leg.
+
 ## Design
 
 `docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md` in the engine repo, section 3 (package and layering),

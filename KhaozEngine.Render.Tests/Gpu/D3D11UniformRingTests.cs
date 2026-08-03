@@ -323,9 +323,11 @@ namespace KhaozEngine.Tests.Gpu
         /// window a mapping could survive was one write.
         /// <para>
         /// NO DRIVER SELECTS IT NOW. <c>MapScopeFor</c> answers <c>AcrossRecording</c> for both, and
-        /// <c>D3D11BindFlush</c> unmaps before every draw, dispatch and pipeline switch on the immediate one,
-        /// which is the per-FLUSH shape the spec names. This scope stays constructible and tested because it is
-        /// the only one that holds the map, the copy and the unmap atomically.
+        /// <c>D3D11BindFlush</c> unmaps before every DRAW and every DISPATCH on the immediate one, which is the
+        /// per-FLUSH shape the spec names. Not at a pipeline switch: the hazard is a draw against a mapped
+        /// resource, the switch's drain only binds constant buffers, and the next draw unmaps before it issues.
+        /// This scope stays constructible and tested because it is the only one that holds the map, the copy and
+        /// the unmap atomically.
         /// </para>
         /// </summary>
         [Fact]

@@ -26,8 +26,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// point to hang the unmap on, and when this enum shipped the flush point (work-breakdown row 9) did not
         /// exist. Write-scoped was the shape that was correct with no cooperation from any other row. Row 9 built
         /// the flush point, so <see cref="D3D11RingAllocator.MapScopeFor"/> now answers
-        /// <see cref="AcrossRecording"/> for both drivers and <see cref="D3D11BindFlush"/> unmaps at every draw,
-        /// dispatch and pipeline switch.
+        /// <see cref="AcrossRecording"/> for both drivers and <see cref="D3D11BindFlush"/> unmaps at every DRAW
+        /// and every DISPATCH. Not at a pipeline switch: the hazard is a draw against a mapped resource, the
+        /// switch's drain only BINDS constant buffers, and the next draw unmaps before it issues.
         /// </para>
         /// <para>
         /// KEPT RATHER THAN DELETED because it is the only shape that holds the map, the copy and the unmap
@@ -254,10 +255,17 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// bind them all.
         /// <para>
         /// IT IS ALSO THE IMMEDIATE DRIVER'S PER-FLUSH UNMAP, which is what row 9 built and what
-        /// <see cref="MapScopeFor"/> now assumes. <see cref="D3D11BindFlush"/> calls it before every draw, every
-        /// dispatch and every pipeline switch on that driver, UNCONDITIONALLY rather than only when a bind is
-        /// pending: a draw with no dirty slot still draws against the constant buffers an earlier flush bound, and
-        /// a record-time uniform write since then has re-mapped the ring underneath them.
+        /// <see cref="MapScopeFor"/> now assumes. <see cref="D3D11BindFlush"/> calls it before every DRAW and
+        /// every DISPATCH on that driver, UNCONDITIONALLY rather than only when a bind is pending: a draw with no
+        /// dirty slot still draws against the constant buffers an earlier flush bound, and a record-time uniform
+        /// write since then has re-mapped the ring underneath them.
+        /// </para>
+        /// <para>
+        /// A PIPELINE SWITCH DOES NOT CALL IT, deliberately. What Direct3D 11 refuses is a DRAW against a mapped
+        /// resource, and the switch's drain issues bind calls alone, which are legal while the ring is mapped.
+        /// The next draw or dispatch unmaps before it issues, so the ring is released ahead of the one command
+        /// that cannot tolerate it, and an unmap at the switch as well would be an extra lock per pipeline change
+        /// buying nothing.
         /// </para>
         /// <para>
         /// Idempotent, and an empty registry costs one uncontended lock. The registry is read INSIDE the lock

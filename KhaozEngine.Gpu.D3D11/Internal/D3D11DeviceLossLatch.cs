@@ -19,12 +19,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// </para>
     ///
     /// <para><b>THE THREE HRESULT SITES, plus a fourth that arrives as a throw.</b> Decision G3 names the first
-    /// three, and the device row wires all four:
+    /// three, and <c>D3D11GpuDevice</c> wires all four:
     /// <list type="number">
     ///   <item><description>After <see cref="D3D11Swapchain.Present"/>, which returns its raw HRESULT precisely
     ///   so this can read it at the site rather than downstream of a throw.</description></item>
-    ///   <item><description>After every staging <c>Map</c>. That path arrives with the copies and readback row,
-    ///   so the seam is defined here and the call site is that row's.</description></item>
+    ///   <item><description>After every <c>Map</c>, which is the staging map and the constant-buffer ring's own
+    ///   (https://github.com/APKiwiOrg/KhaozEngine/issues/500). Both reach this through
+    ///   <see cref="D3D11StagingMaps.RequireMapped"/>, which names the site it was called from.</description></item>
     ///   <item><description>After replay, at the end of <c>Submit</c>.</description></item>
     ///   <item><description><see cref="CheckAfterFault"/>, for a site whose native call THROWS instead of
     ///   returning. The swapchain's resize apply is the known one (#489): <c>ResizeBuffers</c>, <c>GetBuffer</c>

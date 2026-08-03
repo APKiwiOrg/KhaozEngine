@@ -55,8 +55,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// </para>
         /// <para>
         /// BOTH TRAILING ARGUMENTS ARE OPTIONAL, and a submit that names neither replays exactly as it always
-        /// has and signals nothing. That is every device-free driver test and the whole package as it stands,
-        /// since no shipped path constructs a device yet. The device row passes its
+        /// has and signals nothing. That is every device-free driver test, and only those: the device passes its
         /// <see cref="D3D11FenceSubsystem"/> as <paramref name="signal"/> and whatever fence the seam's
         /// <c>Submit(IGpuCommandList, IGpuFence)</c> was handed as <paramref name="fence"/>, and a fenceless
         /// submit still signals because the timeline has to advance with the submission stream for a later

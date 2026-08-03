@@ -34,17 +34,16 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// holding this lock (<c>WaitForIdle</c> and the ring's <c>BeginFrame</c>) are unbounded in a way this is not.
     /// The package README's threading section says so in the contract rather than leaving it to this file.</para>
     ///
-    /// <para><b>THE DEVICE-LOSS CHECK SITE OF DECISION G3 IS DEFINED HERE and wired by the device row
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/497).</b> <see cref="D3D11DeviceLossLatch"/> already names
-    /// the staging map as its second site and says the call site belongs to this row, so this row defines the
+    /// <para><b>THE DEVICE-LOSS CHECK SITE OF DECISION G3 IS DEFINED HERE and the device wires it.</b>
+    /// <see cref="D3D11DeviceLossLatch"/> names the staging map as one of its sites, and this is the
     /// shape: the latch arrives OPTIONAL through the constructor, the site string is the constant
     /// <see cref="D3D11StagingMaps.MapSite"/>, and the HRESULT the seam's map answers goes straight to
     /// <see cref="D3D11StagingMaps.RequireMapped"/>, which asks the latch before it builds anything. It is the
     /// HRESULT form rather than #489's fault form because Vortice's <c>Map</c> returns a result rather than
-    /// throwing, which is exactly the shape G3 named for this site. Wiring it is one argument at the construction
-    /// site, and until then a null latch skips the attribution and still throws.</para>
+    /// throwing, which is exactly the shape G3 named for this site. A null latch, which is every device-free
+    /// test, skips the attribution and still throws.</para>
     ///
-    /// <para><b>WHAT THE DEVICE ROW CONSTRUCTS</b> is
+    /// <para><b>WHAT THE DEVICE CONSTRUCTS</b> is
     /// <c>new D3D11StagingAccess(new D3D11ContextStagingMemory(context), submitLock, latch)</c>. The immediate
     /// context is named by the Windows implementation rather than by this type, so the Vortice reference stops one
     /// class earlier and nothing else about the call site changes.</para>
@@ -60,7 +59,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <param name="submitLock">The device's single submit lock (decision W4). Not created here, for the same
         /// reason the ring allocator and the fence subsystem do not create theirs: there is exactly one of it and
         /// it belongs to the device.</param>
-        /// <param name="loss">The device's device-loss latch, or null until the device row wires one. See the type
+        /// <param name="loss">The device's device-loss latch, or null on a path that has none. See the type
         /// remarks for the check-site shape.</param>
         internal D3D11StagingAccess(ID3D11StagingMemory memory, object submitLock,
             D3D11DeviceLossLatch? loss = null)

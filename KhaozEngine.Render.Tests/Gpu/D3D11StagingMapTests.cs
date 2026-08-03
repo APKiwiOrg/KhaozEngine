@@ -246,9 +246,9 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// THE LATCH IS OPTIONAL, AND A NULL ONE STILL THROWS. That is the state until the device row
-        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/497) wires one, and it is the honest degradation: a
-        /// failed map is still a failed map, and the only thing missing is the attribution.
+        /// THE LATCH IS OPTIONAL, AND A NULL ONE STILL THROWS. A real device always wires one, so this is the
+        /// device-free fixture's arm, and it is the honest degradation: a failed map is still a failed map, and
+        /// the only thing missing is the attribution.
         /// </summary>
         [Fact]
         public void WithNoLatchWired_AFailedMapStillThrows()

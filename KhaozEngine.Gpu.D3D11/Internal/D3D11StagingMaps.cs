@@ -124,11 +124,25 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// </summary>
         internal const string MapSite = "a staging Map";
 
+        /// <summary>The site name for the OTHER map on this backend: the constant-buffer ring's
+        /// <c>MAP_WRITE_NO_OVERWRITE</c> (https://github.com/APKiwiOrg/KhaozEngine/issues/500). A second constant
+        /// rather than a literal for the same reason as the first, and a distinct one because which of the two
+        /// maps first saw a removal is the only ordering information a post-mortem gets.</summary>
+        internal const string RingMapSite = "a uniform-ring Map";
+
         /// <summary>
-        /// DECISION G3'S SECOND CHECK SITE, AND WHY IT IS IN THE DEVICE-FREE HALF. <c>ID3D11DeviceContext::Map</c>
+        /// DECISION G3'S MAP CHECK SITE, AND WHY IT IS IN THE DEVICE-FREE HALF. <c>ID3D11DeviceContext::Map</c>
         /// hands failure back as an HRESULT rather than as a throw, so a caller that ignored it would read through
         /// whatever pointer the failed call left behind, which is null, and the readback would come out as an
         /// empty image with nothing logged. This is the one place that result is interpreted.
+        /// <para>
+        /// BOTH MAPS ON THIS BACKEND LAND HERE, which is what <paramref name="site"/> is for. The staging map is
+        /// the one G3 names, and the constant-buffer ring's <c>MAP_WRITE_NO_OVERWRITE</c> is the second
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/500): it discarded its result for one release, so a
+        /// failed ring map handed back a null pointer that every later uniform write memcpy'd through. The site
+        /// is carried rather than assumed because which map first saw a removal is the only ordering information
+        /// a post-mortem gets out of a sticky HRESULT.
+        /// </para>
         /// <para>
         /// THE LATCH IS ASKED FIRST AND BEFORE ANYTHING ELSE AT ALL, which is the immediacy clause of G3 rather
         /// than an ordering preference: <c>DXGI_ERROR_DEVICE_REMOVED</c> is sticky, so the reason is only
@@ -136,19 +150,19 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// put a call between the fault and <c>GetDeviceRemovedReason</c>.
         /// </para>
         /// <para>
-        /// A NULL LATCH SKIPS THE CHECK AND STILL THROWS. That is the state until the device row
-        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/497) wires one, and it is the honest degradation: a
-        /// failed map is still a failed map, and the only thing missing is the attribution.
+        /// A NULL LATCH SKIPS THE CHECK AND STILL THROWS, which is every device-free test and any path built
+        /// without a device behind it. It is the honest degradation: a failed map is still a failed map, and the
+        /// only thing missing is the attribution.
         /// </para>
         /// </summary>
-        internal static void RequireMapped(int hresult, D3D11DeviceLossLatch? loss)
+        internal static void RequireMapped(int hresult, D3D11DeviceLossLatch? loss, string site = MapSite)
         {
             if (!D3D11DeviceLossCodes.IsFailure(hresult)) return;
 
-            bool lost = loss?.Check(hresult, MapSite) ?? false;
+            bool lost = loss?.Check(hresult, site) ?? false;
 
             throw new InvalidOperationException(
-                $"Mapping a staging resource on the native Direct3D 11 backend failed with "
+                $"Mapping a resource on the native Direct3D 11 backend failed at {site} with "
                 + $"{D3D11DeviceLossCodes.Token(hresult)}. "
                 + (lost
                     ? "The device has been LOST, and the reason is in this session's telemetry header. Nothing "

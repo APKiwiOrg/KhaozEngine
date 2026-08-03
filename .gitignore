@@ -58,3 +58,4 @@ networked-walk-world.db-shm
 
 # Build-home workaround dirs used by agent worktrees (HOME redirect for the gitconfig TCC issue)
 .buildhome/
+.worktrees/

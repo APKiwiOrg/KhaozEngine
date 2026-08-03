@@ -114,7 +114,9 @@ namespace KhaozEngine.Tests.Gpu
         /// of the submit lock, so the ring has to come out carrying one writer's pattern in all three segments
         /// rather than a per-segment mixture. Two writers filling the same range with different bytes is what
         /// makes that checkable: a replication split across several holds of the lock would leave segment 2 as one
-        /// writer and segment 0 as the other.
+        /// writer and segment 0 as the other. Only the current segment is ever submitted with here, so no segment
+        /// is in flight and nothing is deferred to a pending patch, which is what keeps every copy inside the one
+        /// hold this assertion is about. The deferral path has its own tests.
         /// </para>
         /// <para>
         /// The ring memory fake refuses a double map and a double unmap by name, so a lost lock around the

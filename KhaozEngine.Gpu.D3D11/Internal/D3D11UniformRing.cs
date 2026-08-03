@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 
 namespace KhaozEngine.Gpu.D3D11.Internal
@@ -57,6 +58,14 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         // pointer written before it and a reader that sees true sees a pointer.
         IntPtr _pointer;
         volatile bool _mapped;
+
+        // The off-timeline writes this ring owes segments the GPU had not finished with, or null for a ring that
+        // has never deferred one, which is every ring in a program that writes uniforms only at record time.
+        // Allocated on the first deferral rather than per ring, because a device may hold hundreds of rings and
+        // the per-segment lists would otherwise be pure overhead in the common case. Touched ONLY under the
+        // device's submit lock, from D3D11RingAllocator's record and apply sites, so it needs no synchronisation
+        // of its own.
+        D3D11RingPendingPatches? _patches;
 
         internal D3D11UniformRing(D3D11RingAllocator allocator, ID3D11RingMemory memory, uint sizeInBytes)
         {
@@ -140,10 +149,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <para>
         /// THE OFF-TIMELINE WRITE IS THE OTHER SHAPE AND IT REACHES EVERY SEGMENT. A device-level
         /// <see cref="D3D11RingAllocator.UpdateBuffer"/> is not a record-time write and does not come here: it
-        /// replicates into all <see cref="FramesInFlight"/> segments, so a value written once persists for the
-        /// buffer's life. This path stays current-segment only because every shipped record-time uniform write is
-        /// unconditional per frame, and replicating those would be N memcpys for a value the next frame
-        /// overwrites, on the one path the whole design exists to make cheap.
+        /// copies every segment it can and leaves a PENDING PATCH on the ones an earlier frame is still reading,
+        /// so a value written once persists for the buffer's life. This path stays current-segment only because
+        /// every shipped record-time uniform write is unconditional per frame, and replicating those would be N
+        /// memcpys for a value the next frame overwrites, on the one path the whole design exists to make cheap.
         /// </para>
         /// </summary>
         internal void Write(uint offsetBytes, ReadOnlySpan<byte> data)
@@ -190,6 +199,65 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// segment already known to be free of the GPU. Bounds are the caller's.</summary>
         internal void CopyIntoSegmentUnderLock(int segment, uint offsetBytes, ReadOnlySpan<byte> data)
             => CopyInto(_pointer, FrameBaseBytes(segment) + offsetBytes, data);
+
+        /// <summary>Whether this ring owes any segment a deferred off-timeline write. This is what puts it in, and
+        /// takes it out of, the allocator's patched-ring registry.</summary>
+        internal bool HasPendingPatches => _patches is not null && !_patches.IsEmpty;
+
+        /// <summary>Whether one segment has a deferred write queued. The off-timeline write asks before copying
+        /// directly: a segment already carrying a patch queues every later write too, so the two cannot be
+        /// applied out of order.</summary>
+        internal bool HasPendingPatchesFor(int segment) => _patches is not null && _patches.HasAnyFor(segment);
+
+        /// <summary>How many deferred writes this ring is carrying, across every segment. For a test and a
+        /// diagnostic, which is where the coalescing rule is observable.</summary>
+        internal int PendingPatchCount => _patches?.PendingCount ?? 0;
+
+        /// <summary>How many are queued for one segment.</summary>
+        internal int PendingPatchCountFor(int segment) => _patches?.CountFor(segment) ?? 0;
+
+        /// <summary>
+        /// QUEUE AN OFF-TIMELINE WRITE FOR A SEGMENT THE GPU HAS NOT FINISHED WITH, and return how many earlier
+        /// patches it fully covered and therefore replaced. CALLED ONLY BY <see cref="D3D11RingAllocator"/>, under
+        /// the submit lock. No mapping is needed and none is touched: the bytes go into managed memory and reach
+        /// the segment at <see cref="ApplyPendingPatchesUnderLock"/>.
+        /// </summary>
+        internal int RecordPendingPatchUnderLock(int segment, uint offsetBytes, ReadOnlySpan<byte> data)
+        {
+            _patches ??= new D3D11RingPendingPatches(FramesInFlight);
+            return _patches.Record(segment, offsetBytes, data);
+        }
+
+        /// <summary>
+        /// REPLAY ONE SEGMENT'S QUEUED WRITES INTO IT, oldest first, and forget them. Returns how many were
+        /// applied. CALLED ONLY BY <see cref="D3D11RingAllocator"/>, under the submit lock, with the mapping in
+        /// hand and immediately after the segment's fence gate has proved the GPU is done with it, which is the
+        /// same proof a record-time write into that segment rests on.
+        /// <para>
+        /// OLDEST FIRST IS THE WHOLE ORDERING GUARANTEE. Two off-timeline writes to overlapping ranges resolve
+        /// last-write-wins here exactly as two direct copies into mapped memory would.
+        /// </para>
+        /// </summary>
+        internal int ApplyPendingPatchesUnderLock(int segment)
+        {
+            if (_patches is null) return 0;
+
+            IReadOnlyList<D3D11RingPatch> patches = _patches.ForSegment(segment);
+            if (patches.Count == 0) return 0;
+
+            int applied = patches.Count;
+            uint segmentBase = FrameBaseBytes(segment);
+            for (int i = 0; i < patches.Count; i++)
+                CopyInto(_pointer, segmentBase + patches[i].OffsetBytes, patches[i].Data);
+
+            _patches.ClearSegment(segment);
+            return applied;
+        }
+
+        /// <summary>Forget every queued write, for a ring whose buffer is going away. CALLED ONLY BY
+        /// <see cref="D3D11RingAllocator.Forget"/>, under the submit lock: a patch left behind would be replayed
+        /// into a mapping that no longer exists.</summary>
+        internal void DropPendingPatchesUnderLock() => _patches?.ClearAll();
 
         /// <summary>The 256-aligned stride one segment of a <paramref name="sizeInBytes"/> buffer occupies.
         /// Static because <see cref="D3D11Buffer"/> has to size the native buffer before a ring exists to ask.

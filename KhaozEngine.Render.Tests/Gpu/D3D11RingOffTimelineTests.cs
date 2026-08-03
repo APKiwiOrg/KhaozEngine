@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Globalization;
 using System.Threading;
 using KhaozEngine.Gpu.D3D11.Internal;
@@ -9,7 +10,8 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>
     /// THE OFF-TIMELINE WRITE UNDER THE RING (decision U5, section 6.4), which is the device-level
     /// <c>UpdateBuffer</c> on a ring-backed uniform buffer, and the resolution of
-    /// https://github.com/APKiwiOrg/KhaozEngine/issues/484.
+    /// https://github.com/APKiwiOrg/KhaozEngine/issues/484. The mechanism it defers WITH is
+    /// <see cref="D3D11RingPendingPatchTests"/>.
     /// <para>
     /// WHAT #484 WAS. The write reached the CURRENT segment alone, so a value written once at load time survived
     /// until the frame index wrapped back round and no further, and two frames out of every three bound memory
@@ -18,13 +20,14 @@ namespace KhaozEngine.Tests.Gpu
     /// and <see cref="TheSplatParamsShape_WrittenOnceAtLoad_ReadsBackInEveryFrame"/> is that shape pinned here.
     /// </para>
     /// <para>
-    /// WHAT IT COSTS, and why half this file is about waiting. Writing every segment means writing segments an
-    /// earlier frame may still be executing, which is the silent corruption decision U5's fence gate exists to
-    /// prevent, so the write is gated on the completion timeline exactly as <c>AcquireSegment</c> is. The gate can
-    /// BLOCK, and this call could previously never block, so the shape of that wait is the thing to get right: it
-    /// is a retry loop that reads its target under the submit lock, releases the lock, spins, and retakes. Waiting
-    /// while holding that lock is the defect the whole threading contract is built to exclude, and
-    /// <see cref="TheRetryLoop_NeverPollsInALoopWhileHoldingTheSubmitLock"/> is what makes that claim checkable.
+    /// WHAT IT COSTS, AND WHY NOTHING HERE WAITS. Writing every segment means writing segments an earlier frame
+    /// may still be executing, which is the silent corruption decision U5's fence gate exists to prevent. The
+    /// first cut waited for those segments, and a reviewer's probe showed the wait STARVES: in the GPU-bound
+    /// steady state at least one non-current segment is always in flight, so "all of them are free at once" is
+    /// never true and the writer chases the pipeline forever. The shipped shape defers instead. A segment still
+    /// in flight gets a PENDING PATCH the next acquire of that segment applies, and the writer returns
+    /// immediately, always. <see cref="TheGpuBoundSteadyState_ReturnsImmediatelyAndReachesEverySegment"/> is that
+    /// probe kept as a test.
     /// </para>
     /// <para>
     /// Device-free on every operating system, like the rest of the ring's tests: the completion timeline is an
@@ -42,9 +45,10 @@ namespace KhaozEngine.Tests.Gpu
         const uint BufferBytes = HeadBytes + TailBytes;
         const int Segments = 3;
 
-        // The hand-driven wait's budget. Short, because each one is a deliberate pause during which a thread is
-        // spinning, and long enough that a loaded runner does not read a scheduling hiccup as a returned write.
-        static readonly TimeSpan StepBudget = TimeSpan.FromMilliseconds(200);
+        // A wall-clock smoke bound on a call that is supposed to be a bounded pass over three segments. Absurdly
+        // generous for the work involved, on purpose: it is here to catch a return to WAITING, which does not
+        // take milliseconds, it takes forever. A loaded runner cannot fail it.
+        static readonly TimeSpan ImmediateBudget = TimeSpan.FromSeconds(5);
         static readonly TimeSpan JoinBudget = TimeSpan.FromSeconds(30);
 
         // ---- the write reaches every segment ---------------------------------------------------------------
@@ -73,7 +77,7 @@ namespace KhaozEngine.Tests.Gpu
             }
 
             Assert.Equal(0, harness.Completion.PollCount);
-            Assert.Equal(0, harness.Allocator.OffTimelineWaits.Count);
+            Assert.Equal(0, harness.Allocator.OffTimelinePatches.Deferred);
         }
 
         /// <summary>
@@ -103,16 +107,47 @@ namespace KhaozEngine.Tests.Gpu
                 // The per-frame refresh, which touches the head alone (WriteFrameUniformsTo).
                 harness.Ring.Write(0, head);
 
-                ReadOnlySpan<byte> paramsNow = harness.Memory.Segment(
-                    harness.Ring.CurrentFrameBaseBytes + HeadBytes, TailBytes);
-                Assert.True(paramsNow.SequenceEqual(tail),
-                    "Frame " + frame.ToString(CultureInfo.InvariantCulture) + " bound segment "
-                    + harness.Allocator.CurrentSegment.ToString(CultureInfo.InvariantCulture)
-                    + ", whose splat params were not the ones written once at load. That is #484.");
+                AssertCurrentSegmentCarriesTail(harness, tail, frame);
 
                 harness.Allocator.UnmapMappedRings();   // a submit would do this
                 harness.Allocator.BeginFrame();
             }
+        }
+
+        /// <summary>
+        /// THE SAME REGRESSION WITH THE PIPELINE ALREADY FULL, so the value reaches two of its three segments as
+        /// a PATCH rather than as a copy and the reader cannot tell. A load-time write meets no in-flight segment
+        /// at all, so on its own it never exercises the deferral, and a renderer that creates a buffer mid-run
+        /// (a terrain chunk streaming in) is the case that would.
+        /// <para>
+        /// The frame loop drives the completion timeline two submissions behind, which leaves one segment busy at
+        /// every instant, and the assertion is unchanged in meaning: every frame binds a segment whose params are
+        /// the ones written once.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void TheSplatParamsShape_WrittenWithThePipelineFull_ReadsBackInEveryFrame()
+        {
+            using var harness = new D3D11RingHarness(sizeInBytes: BufferBytes, framesInFlight: Segments);
+            byte[] tail = Pattern((int)TailBytes, seed: 0x40);
+            byte[] head = Pattern((int)HeadBytes, seed: 0x90);
+            var pipeline = new SteadyStatePipeline(harness, gpuBehindBy: 2);
+
+            for (int frame = 0; frame < 4; frame++) pipeline.RunFrame();
+            Assert.True(pipeline.SegmentsInFlight() >= 1, "The pipeline was not full, so nothing was deferred.");
+
+            harness.Allocator.UpdateBuffer(harness.Ring, HeadBytes, tail);
+            Assert.True(harness.Allocator.OffTimelinePatches.Deferred >= 1,
+                "No segment was deferred, so this is the load-time case again rather than the mid-run one.");
+
+            for (int frame = 0; frame < 7; frame++)
+            {
+                harness.Ring.Write(0, head);
+                AssertCurrentSegmentCarriesTail(harness, tail, frame);
+                pipeline.RunFrame();
+            }
+
+            Assert.Equal(0, harness.Allocator.OffTimelinePatches.Outstanding);
         }
 
         /// <summary>
@@ -150,8 +185,8 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(0, harness.Memory.MapCount);
         }
 
-        /// <summary>An empty write maps nothing and copies nothing, the same as the record-time path. Three
-        /// segments of zero bytes is still zero bytes.</summary>
+        /// <summary>An empty write maps nothing, copies nothing and queues nothing, the same as the record-time
+        /// path. Three segments of zero bytes is still zero bytes.</summary>
         [Fact]
         public void AnEmptyWrite_MapsNothing()
         {
@@ -161,133 +196,116 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal(0, harness.Memory.MapCount);
             Assert.False(harness.Ring.IsMapped);
+            Assert.Equal(0, harness.Ring.PendingPatchCount);
         }
 
-        // ---- the fence gate on the segments this added -----------------------------------------------------
+        // ---- the fence gate on the segments this added, and the fact that it never waits -------------------
 
         /// <summary>
-        /// THE WAIT IS FOR THE HIGHEST OUTSTANDING VALUE ACROSS THE GATED SEGMENTS, not for the first one it
-        /// finds and not for anything lower. The timeline is monotonic, so reaching the highest has reached every
-        /// lower one with it, and one wait is enough where a per-segment wait would be one hold of the lock each.
+        /// A SEGMENT STILL IN FLIGHT IS DEFERRED AND THE CALL RETURNS, with ONE completion poll and no spinning.
+        /// This is the claim the whole redesign rests on, so it is asserted three ways at once: the poll count is
+        /// exactly one (a wait would be thousands, and the fake's runaway guard would throw at ten thousand), the
+        /// wall clock is inside a budget a spin against a timeline nobody advances could never meet, and the busy
+        /// segment is left holding a queued patch rather than the bytes.
         /// <para>
-        /// PINNED BY DRIVING THE TIMELINE IN STEPS FROM ANOTHER THREAD, which is the only way to say WHICH value
-        /// a waiter is waiting for. Segment 0 is owned by 5 and segment 1 by 9, and the write must not return at
-        /// 0, must not return at 5 (where a wait for the first busy segment's value would), and must return at 9.
-        /// A poll-count trigger cannot express the deliberate pause at 5, so the fake's runaway guard is turned
-        /// off for this one test and the <c>finally</c> below is what bounds it instead.
+        /// NOTHING EVER ADVANCES THE TIMELINE HERE, deliberately. The first cut's retry loop would have spun in
+        /// this exact setup until the fake threw, which is what makes this a mutation detector rather than a
+        /// description.
         /// </para>
         /// </summary>
         [Fact]
-        public void AnOffTimelineWrite_WaitsForExactlyTheFenceOfTheSegmentStillInFlight()
+        public void AWriteMeetingASegmentInFlight_ReturnsImmediatelyAndDefersThatSegment()
         {
             using var harness = new D3D11RingHarness(sizeInBytes: 256, framesInFlight: Segments);
-            harness.Completion.DrivenByHand = true;
 
-            harness.Allocator.OnSubmitted(5);   // segment 0's last submission signalled 5
-            harness.Allocator.BeginFrame();
-            harness.Allocator.OnSubmitted(9);   // segment 1's signalled 9
-            harness.Allocator.BeginFrame();
-            Assert.Equal(2, harness.Allocator.CurrentSegment);
-            Assert.Equal(0UL, harness.Completion.Completed);
-
-            byte[] payload = Pattern(32, seed: 0x60);
-            Exception? failure = null;
-            using var finished = new ManualResetEventSlim(false);
-            var writer = new Thread(() =>
-            {
-                try
-                {
-                    harness.Allocator.UpdateBuffer(harness.Ring, 0, payload);
-                }
-                catch (Exception ex)
-                {
-                    failure = ex;
-                }
-
-                finished.Set();
-            })
-            { IsBackground = true, Name = "off-timeline-writer" };
-
-            try
-            {
-                writer.Start();
-
-                Assert.False(finished.Wait(StepBudget),
-                    "The off-timeline write returned while both gated segments were still in flight.");
-
-                harness.Completion.Completed = 5;   // segment 0 is free, segment 1 is not
-                Assert.False(finished.Wait(StepBudget),
-                    "The off-timeline write returned as soon as the LOWEST outstanding value completed, so it "
-                    + "would write a segment the GPU is still reading.");
-
-                harness.Completion.Completed = 9;   // both are free
-                Assert.True(finished.Wait(JoinBudget),
-                    "The off-timeline write never returned after the highest outstanding value completed.");
-            }
-            finally
-            {
-                // Whatever happened above, release any waiter so a failing assertion does not leave a thread
-                // spinning behind the rest of the suite.
-                harness.Completion.Completed = ulong.MaxValue;
-                writer.Join(JoinBudget);
-            }
-
-            Assert.Null(failure);
-            AssertEverySegmentCarries(harness, 0, payload);
-
-            // One wait, counted on the off-timeline counter rather than on the frame's.
-            Assert.Equal(1, harness.Allocator.OffTimelineWaits.Count);
-            Assert.Equal(0, harness.Allocator.LastFrameBackpressure.Count);
-        }
-
-        /// <summary>
-        /// THE RETRY LOOP NEVER SPINS UNDER THE SUBMIT LOCK, which is the clause the whole threading contract
-        /// rests on (decision W4) and the one <c>D3D11RingAllocator.BeginFrame</c> refuses a caller by name for
-        /// breaking. A frame-long hold of that lock is invisible from outside, and on the event-query fence
-        /// mechanism it is worse than slow: every poll of the completion value re-enters the same lock, so a wait
-        /// under it would shut out the submission that would end it.
-        /// <para>
-        /// EXACT RATHER THAN APPROXIMATE, because the fake records where each poll happened. The gate is allowed
-        /// ONE poll per hold of the lock and the loop here takes two holds (busy, then clear), so two polls owe
-        /// the lock and every other poll of the wait owes it not to be held. A wait moved inside the lock turns
-        /// the first number into the whole poll count, which no threshold has to be chosen for.
-        /// </para>
-        /// </summary>
-        [Fact]
-        public void TheRetryLoop_NeverPollsInALoopWhileHoldingTheSubmitLock()
-        {
-            using var harness = new D3D11RingHarness(sizeInBytes: 256, framesInFlight: Segments);
-            harness.Completion.SubmitLock = harness.SubmitLock;
-
-            harness.Allocator.OnSubmitted(7);   // segment 0, still running
+            harness.Allocator.OnSubmitted(7);   // segment 0's last submission signalled 7, and the GPU is at 0
             harness.Allocator.BeginFrame();     // current is 1, so segment 0 is gated
-            harness.Completion.CompleteAfterPolls = 40;
-            harness.Completion.CompleteTo = 7;
+            byte[] payload = Pattern(32, seed: 0x60);
 
-            harness.Allocator.UpdateBuffer(harness.Ring, 0, new byte[] { 0x5A });
+            var clock = Stopwatch.StartNew();
+            harness.Allocator.UpdateBuffer(harness.Ring, 0, payload);
+            clock.Stop();
 
-            Assert.Equal(2, harness.Completion.PollsHoldingTheSubmitLock);
-            Assert.True(harness.Completion.PollsWithTheSubmitLockFree >= 30,
-                "Only " + harness.Completion.PollsWithTheSubmitLockFree.ToString(CultureInfo.InvariantCulture)
-                + " of the wait's polls ran with the submit lock free, so the spin was not outside the lock.");
-            Assert.Equal(41, harness.Completion.PollCount);
-            Assert.Equal(1, harness.Allocator.OffTimelineWaits.Count);
-            AssertEverySegmentCarries(harness, 0, new byte[] { 0x5A });
+            Assert.True(clock.Elapsed < ImmediateBudget,
+                "The off-timeline write took " + clock.Elapsed.TotalSeconds.ToString("0.00", CultureInfo.InvariantCulture)
+                + " seconds against a segment nothing ever frees, so it is waiting rather than deferring.");
+            Assert.Equal(1, harness.Completion.PollCount);
+
+            // The two free segments took the bytes, the busy one took a patch.
+            AssertSegmentCarries(harness, segment: 1, offsetBytes: 0, payload);
+            AssertSegmentCarries(harness, segment: 2, offsetBytes: 0, payload);
+            Assert.True(IsAllZero(harness.Memory.Segment(harness.Ring.FrameBaseBytes(0), (uint)payload.Length)),
+                "Segment 0 was written while the GPU was still reading it, which is the corruption the gate exists "
+                + "to prevent.");
+
+            Assert.Equal(1, harness.Ring.PendingPatchCountFor(0));
+            Assert.Equal(1, harness.Ring.PendingPatchCount);
+            Assert.Equal(1, harness.Allocator.OffTimelinePatches.Deferred);
+            Assert.Equal(0, harness.Allocator.OffTimelinePatches.Applied);
+            Assert.Equal(1, harness.Allocator.OffTimelinePatches.Outstanding);
+        }
+
+        /// <summary>
+        /// THE GPU-BOUND STEADY STATE, which is the shape a reviewer's probe used to prove the first cut starved.
+        /// A frame loop runs at pipeline depth with the completion timeline exactly <c>FramesInFlight</c>
+        /// submissions behind, so every segment other than the current one is in flight at EVERY instant and the
+        /// "all of them are free at once" condition the retry loop waited for is never satisfiable. The writer
+        /// still returns, in one poll, and the value is then visible in every segment the frame loop goes on to
+        /// acquire.
+        /// <para>
+        /// DRIVEN SYNCHRONOUSLY RATHER THAN FROM A SECOND THREAD, on purpose. A frozen timeline is the WORST case
+        /// for the writer rather than a weaker one, since waiting could not have made progress even in principle,
+        /// and driving it here buys an exact poll count and a deterministic verdict instead of a race that has to
+        /// be sampled. The old code fails this by spinning until the fake's runaway guard throws, so the failure
+        /// is named rather than a hang.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void TheGpuBoundSteadyState_ReturnsImmediatelyAndReachesEverySegment()
+        {
+            using var harness = new D3D11RingHarness(sizeInBytes: 256, framesInFlight: Segments);
+            var pipeline = new SteadyStatePipeline(harness, gpuBehindBy: Segments - 1);
+            byte[] payload = Pattern(48, seed: 0x7C);
+
+            for (int frame = 0; frame < 12; frame++) pipeline.RunFrame();
+            Assert.Equal(Segments - 1, pipeline.SegmentsInFlight());
+
+            int pollsBefore = harness.Completion.PollCount;
+            var clock = Stopwatch.StartNew();
+            harness.Allocator.UpdateBuffer(harness.Ring, 0, payload);
+            clock.Stop();
+
+            Assert.True(clock.Elapsed < ImmediateBudget,
+                "The off-timeline write took " + clock.Elapsed.TotalSeconds.ToString("0.00", CultureInfo.InvariantCulture)
+                + " seconds in the steady state, where every non-current segment is in flight at every instant. "
+                + "That is the starvation the pending-patch design exists to delete.");
+            Assert.Equal(1, harness.Completion.PollCount - pollsBefore);
+            Assert.Equal(Segments - 1, harness.Allocator.OffTimelinePatches.Deferred);
+
+            // Every segment the loop goes on to open carries it, from the first wrap onwards. Two more wraps are
+            // run so a value that survived only until the index came back round would be caught.
+            for (int frame = 0; frame < 2 * Segments; frame++)
+            {
+                pipeline.RunFrame();
+                AssertSegmentCarries(harness, harness.Allocator.CurrentSegment, offsetBytes: 0, payload);
+            }
+
+            Assert.Equal(0, harness.Allocator.OffTimelinePatches.Outstanding);
         }
 
         /// <summary>
         /// THE CURRENT SEGMENT IS COPIED WITHOUT THE GATE, and it is the only ungated one. Gating it would change
         /// the documented semantic that the write lands when it is called and the next submitted list reads it,
-        /// and it would block on the GPU on every off-timeline write made after this frame slot's first submit,
-        /// which is the pathology the ring deletes. The exposure that leaves is the one the call already had and
-        /// is not what #484 was about: what the fix ADDS is the other segments, so those are what it gates.
+        /// and deferring it would be worse still, because the current segment is bound by the very next submit
+        /// and its own next acquire is a whole wrap away. The exposure that leaves is the one the call already had
+        /// and is not what #484 was about.
         /// <para>
-        /// Asserted with a completion value the fake never reaches. A gate on the current segment would spin here
-        /// until the runaway guard threw, so this test would report the change rather than passing quietly.
+        /// Asserted with a completion value the fake never reaches, and with a poll count of zero: the other two
+        /// segments have never been submitted with, so nothing here even asks the timeline a question.
         /// </para>
         /// </summary>
         [Fact]
-        public void TheCurrentSegment_IsCopiedWithoutWaitingOnItsOwnSubmission()
+        public void TheCurrentSegment_IsCopiedWithoutGatingOnItsOwnSubmission()
         {
             using var harness = new D3D11RingHarness(sizeInBytes: 256, framesInFlight: Segments);
 
@@ -297,64 +315,64 @@ namespace KhaozEngine.Tests.Gpu
             harness.Allocator.UpdateBuffer(harness.Ring, 0, payload);
 
             Assert.Equal(0, harness.Completion.PollCount);
-            Assert.Equal(0, harness.Allocator.OffTimelineWaits.Count);
+            Assert.Equal(0, harness.Allocator.OffTimelinePatches.Deferred);
             AssertEverySegmentCarries(harness, 0, payload);
         }
 
-        // ---- the counter (M3) ------------------------------------------------------------------------------
-
         /// <summary>
-        /// OFF-TIMELINE WAITS ARE COUNTED SEPARATELY FROM THE FRAME BACKPRESSURE, AND CUMULATIVELY. Both are the
-        /// same shape and they are not the same measurement. M3's exit criterion is that the per-frame
-        /// backpressure count is ZERO across a soak window, which reads as "three segments are enough on this
-        /// machine". An off-timeline wait says nothing about that: it says a caller wrote a uniform buffer
-        /// off-timeline while an earlier frame was still reading a segment of it. Folding the two together would
-        /// turn a load-time write into evidence against the segment count and make M3 unreachable for a reason
-        /// that has nothing to do with pipeline depth.
+        /// A CALLER THAT ALREADY HOLDS THE SUBMIT LOCK IS LEGAL, and this is the case the first cut DEADLOCKED on:
+        /// its retry loop released the lock, spun and retook it, and a reentrant caller's release freed nothing,
+        /// so it spun forever holding the lock against the submission that would have ended the wait. With no wait
+        /// there is nothing to deadlock: the acquisition inside is a free <see cref="Monitor"/> re-entry.
         /// <para>
-        /// CUMULATIVE RATHER THAN ROLLED, because these writes are typically LOAD-TIME and happen before any
-        /// frame has begun, so a per-frame roll would discard exactly the ones worth seeing.
+        /// A WATCHDOG RATHER THAN A PLAIN CALL, because the failure this pins is a hang and a hung test tells
+        /// nobody anything. The work runs on a background thread with a segment deliberately in flight, and a
+        /// join budget turns the deadlock into a named failure.
         /// </para>
         /// </summary>
         [Fact]
-        public void OffTimelineWaits_AreTheirOwnCumulativeCounterAndNotTheFrameBackpressure()
+        public void AReentrantCaller_HoldingTheSubmitLock_Completes()
         {
             using var harness = new D3D11RingHarness(sizeInBytes: 256, framesInFlight: Segments);
 
-            harness.Allocator.OnSubmitted(3);   // segment 0
+            harness.Allocator.OnSubmitted(4);   // segment 0, and the GPU never reaches 4
             harness.Allocator.BeginFrame();     // current is 1, so segment 0 is gated
-            harness.Completion.CompleteAfterPolls = 6;
-            harness.Completion.CompleteTo = 3;
 
-            harness.Allocator.UpdateBuffer(harness.Ring, 0, new byte[] { 1 });
+            byte[] payload = Pattern(16, seed: 0xA0);
+            Exception? failure = null;
+            var worker = new Thread(() =>
+            {
+                try
+                {
+                    lock (harness.SubmitLock)
+                    {
+                        harness.Allocator.UpdateBuffer(harness.Ring, 0, payload);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    failure = ex;
+                }
+            })
+            { IsBackground = true, Name = "reentrant-off-timeline-writer" };
 
-            Assert.Equal(1, harness.Allocator.OffTimelineWaits.Count);
-            Assert.True(harness.Allocator.OffTimelineWaits.TotalMs >= 0d);
+            worker.Start();
+            Assert.True(worker.Join(JoinBudget),
+                "A device-level UpdateBuffer made while already holding the submit lock never returned, so the "
+                + "off-timeline path is waiting for something a reentrant caller can never let happen.");
+            Assert.Null(failure);
 
-            // The frame roll does not pick it up and does not clear it.
-            harness.Allocator.BeginFrame();
-            Assert.Equal(0, harness.Allocator.LastFrameBackpressure.Count);
-            Assert.Equal(0d, harness.Allocator.LastFrameBackpressure.TotalMs);
-            Assert.Equal(1, harness.Allocator.OffTimelineWaits.Count);
-
-            // And a second wait accumulates onto the first rather than replacing it.
-            harness.Allocator.OnSubmitted(8);   // segment 2, which is current
-            harness.Allocator.BeginFrame();     // current is 0, so segment 2 is now gated at 8
-            harness.Completion.CompleteAfterPolls = harness.Completion.PollCount + 5;
-            harness.Completion.CompleteTo = 8;
-
-            harness.Allocator.UpdateBuffer(harness.Ring, 0, new byte[] { 2 });
-
-            Assert.Equal(2, harness.Allocator.OffTimelineWaits.Count);
+            AssertSegmentCarries(harness, segment: 1, offsetBytes: 0, payload);
+            Assert.Equal(1, harness.Ring.PendingPatchCountFor(0));
         }
 
         // ---- the PerWrite scope (the immediate driver's fallback lever) ------------------------------------
 
         /// <summary>
-        /// UNDER <see cref="D3D11RingMapScope.PerWrite"/> THE WHOLE REPLICATED WRITE IS ONE CRITICAL SECTION: one
-        /// map, every segment's copy, one unmap, all inside a single hold of the submit lock. That scope exists
-        /// because it is the only one holding the map, the copy and the unmap atomically, and a replicated write
-        /// that mapped and unmapped per segment would hand that property back three times over.
+        /// UNDER <see cref="D3D11RingMapScope.PerWrite"/> THE WHOLE WRITE IS ONE CRITICAL SECTION: one map, every
+        /// segment's copy, one unmap, all inside a single hold of the submit lock. That scope exists because it is
+        /// the only one holding the map, the copy and the unmap atomically, and a write that mapped and unmapped
+        /// per segment would hand that property back three times over.
         /// <para>
         /// The record-time write under the same scope is unchanged and still current-segment only, which is the
         /// second half here: the scope decides how long the mapping is held, and the CALL decides how many
@@ -391,27 +409,133 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal((byte)0, harness.Memory.Bytes[harness.Ring.FrameBaseBytes(2) + 64]);
         }
 
+        /// <summary>
+        /// AND A DEFERRED PATCH KEEPS THAT SCOPE'S BARGAIN TOO: the frame boundary that replays one maps, copies
+        /// and unmaps inside its own single hold, so the mapping is never left outstanding on a driver that
+        /// cannot tolerate one across a draw. The patch path is the newest way to reach a mapping, so it is the
+        /// one most likely to leak that property without a test saying so.
+        /// </summary>
+        [Fact]
+        public void UnderPerWriteScope_ADeferredPatch_IsAppliedInItsOwnMapAndUnmapPair()
+        {
+            using var harness = new D3D11RingHarness(
+                sizeInBytes: 256, framesInFlight: Segments, mapScope: D3D11RingMapScope.PerWrite);
+            byte[] payload = Pattern(16, seed: 0x30);
+
+            harness.Allocator.OnSubmitted(6);   // segment 0
+            harness.Allocator.BeginFrame();     // current is 1, so segment 0 is gated
+            harness.Allocator.UpdateBuffer(harness.Ring, 0, payload);
+            int mapsBeforeApply = harness.Memory.MapCount;
+
+            harness.Completion.Completed = 6;
+            harness.Allocator.BeginFrame();     // 2, nothing queued there
+            Assert.Equal(mapsBeforeApply, harness.Memory.MapCount);
+
+            harness.Allocator.BeginFrame();     // 0, which drains
+            Assert.Equal(mapsBeforeApply + 1, harness.Memory.MapCount);
+            Assert.Equal(harness.Memory.MapCount, harness.Memory.UnmapCount);
+            Assert.False(harness.Ring.IsMapped);
+            Assert.Equal(0, harness.Allocator.MappedRingCount);
+            AssertSegmentCarries(harness, segment: 0, offsetBytes: 0, payload);
+        }
+
         // ---- helpers ---------------------------------------------------------------------------------------
 
-        static void AssertEverySegmentCarries(D3D11RingHarness harness, uint offsetBytes, byte[] expected)
+        static void AssertCurrentSegmentCarriesTail(D3D11RingHarness harness, byte[] tail, int frame)
+        {
+            ReadOnlySpan<byte> paramsNow = harness.Memory.Segment(
+                harness.Ring.CurrentFrameBaseBytes + HeadBytes, TailBytes);
+            Assert.True(paramsNow.SequenceEqual(tail),
+                "Frame " + frame.ToString(CultureInfo.InvariantCulture) + " bound segment "
+                + harness.Allocator.CurrentSegment.ToString(CultureInfo.InvariantCulture)
+                + ", whose splat params were not the ones written once at load. That is #484.");
+        }
+
+        internal static void AssertEverySegmentCarries(D3D11RingHarness harness, uint offsetBytes, byte[] expected)
         {
             for (int segment = 0; segment < harness.Allocator.FramesInFlight; segment++)
+                AssertSegmentCarries(harness, segment, offsetBytes, expected);
+        }
+
+        internal static void AssertSegmentCarries(
+            D3D11RingHarness harness, int segment, uint offsetBytes, byte[] expected)
+        {
+            ReadOnlySpan<byte> landed = harness.Memory.Segment(
+                harness.Ring.FrameBaseBytes(segment) + offsetBytes, (uint)expected.Length);
+            Assert.True(landed.SequenceEqual(expected),
+                "Segment " + segment.ToString(CultureInfo.InvariantCulture)
+                + " does not carry the off-timeline write.");
+        }
+
+        static bool IsAllZero(ReadOnlySpan<byte> bytes)
+        {
+            for (int i = 0; i < bytes.Length; i++)
             {
-                ReadOnlySpan<byte> landed = harness.Memory.Segment(
-                    harness.Ring.FrameBaseBytes(segment) + offsetBytes, (uint)expected.Length);
-                Assert.True(landed.SequenceEqual(expected),
-                    "Segment " + segment.ToString(CultureInfo.InvariantCulture)
-                    + " does not carry the off-timeline write.");
+                if (bytes[i] != 0) return false;
             }
+
+            return true;
         }
 
         // A payload whose every byte differs from its neighbours, so a copy that landed at the wrong offset or
         // ran short shows up as a mismatch rather than as one repeated value that happens to line up.
-        static byte[] Pattern(int length, byte seed)
+        internal static byte[] Pattern(int length, byte seed)
         {
             byte[] bytes = new byte[length];
             for (int i = 0; i < length; i++) bytes[i] = (byte)(seed + i);
             return bytes;
+        }
+    }
+
+    /// <summary>
+    /// A FRAME LOOP AT PIPELINE DEPTH, driven synchronously, which is what makes "the GPU is behind" a thing a
+    /// device-free test can assert against rather than describe. Each frame submits, moves the completion timeline
+    /// to <c>submitted - gpuBehindBy</c>, unmaps the way a real submit does, and opens the next frame.
+    /// <para>
+    /// <c>gpuBehindBy</c> OF <c>FramesInFlight</c> MINUS ONE is the interesting setting, and it is the deepest
+    /// the pipeline goes without the frame boundary itself stalling. The segment being opened was last submitted
+    /// exactly that many frames ago, so its gate is satisfied with nothing to spare, and every OTHER segment is
+    /// still in flight at that instant. That is the steady state in which "wait until they are all free" never
+    /// becomes true, which is what starved the first cut of the off-timeline write.
+    /// </para>
+    /// </summary>
+    internal sealed class SteadyStatePipeline
+    {
+        readonly D3D11RingHarness _harness;
+        readonly int _gpuBehindBy;
+        ulong _submitted;
+
+        internal SteadyStatePipeline(D3D11RingHarness harness, int gpuBehindBy)
+        {
+            _harness = harness;
+            _gpuBehindBy = gpuBehindBy;
+        }
+
+        /// <summary>How many segments other than the current one are still owned by a submission the GPU has not
+        /// reached. The number the whole construction exists to keep above zero.</summary>
+        internal int SegmentsInFlight()
+        {
+            ulong completed = _harness.Completion.Completed;
+            int busy = 0;
+            for (int segment = 0; segment < _harness.Allocator.FramesInFlight; segment++)
+            {
+                if (segment == _harness.Allocator.CurrentSegment) continue;
+                if (_harness.Allocator.SegmentOwner(segment) > completed) busy++;
+            }
+
+            return busy;
+        }
+
+        /// <summary>Submit this frame, advance the GPU to its lagging position, and open the next frame.</summary>
+        internal void RunFrame()
+        {
+            _submitted++;
+            _harness.Allocator.OnSubmitted(_submitted);
+            _harness.Completion.Completed =
+                _submitted > (ulong)_gpuBehindBy ? _submitted - (ulong)_gpuBehindBy : 0UL;
+
+            _harness.Allocator.UnmapMappedRings();
+            _harness.Allocator.BeginFrame();
         }
     }
 }

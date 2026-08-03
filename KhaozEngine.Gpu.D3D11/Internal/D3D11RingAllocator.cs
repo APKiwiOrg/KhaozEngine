@@ -76,12 +76,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// from its unmap through its replay.
     /// </para>
     /// <para>
-    /// THE ONE PLACE THAT LOOPS ON THE LOCK is the off-timeline write, and it never holds the lock while it
-    /// waits. It can find a segment the GPU has not finished with, and the segment gate is the same one
-    /// <see cref="AcquireSegment"/> applies, so it reads the target under the lock, RELEASES it, spins, retakes it
-    /// and re-checks (see <see cref="UpdateBuffer"/>). That is the same rule <see cref="BeginFrame"/> refuses a
-    /// caller by name for breaking, expressed as a retry rather than as a refusal, because this call has no
-    /// boundary of its own to be moved outside the lock.
+    /// THE OFF-TIMELINE WRITE NEVER WAITS FOR ANYTHING, which is what keeps <see cref="BeginFrame"/> the only
+    /// member here that can block. It can find a segment the GPU has not finished with, and rather than waiting
+    /// for that segment it records a PENDING PATCH the segment's next acquire applies (see
+    /// <see cref="UpdateBuffer"/>). One bounded hold of the lock, no spin, no retry, and no way for a caller to
+    /// be starved by a pipeline that stays full. A CALLER THAT ALREADY HOLDS THE SUBMIT LOCK IS THEREFORE LEGAL:
+    /// the lock is a <see cref="Monitor"/>, so the acquisition inside is a free re-entry, and there is nothing
+    /// inside that could wait for work only another thread could do.
     /// </para>
     /// <para>
     /// AND WHAT THE LOCKING DOES NOT COVER, named combination by combination rather than papered over, because
@@ -100,9 +101,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// </para>
     /// <para>
     /// Not thread-safe for its FRAME counters, the same contract <see cref="D3D11FenceSubsystem"/> and
-    /// <c>RetiredResourcePool</c> already have: they are driven from the frame thread. The off-timeline wait
-    /// counters behind <see cref="OffTimelineWaits"/> are the exception and are interlocked, because that path is
-    /// any-thread by contract.
+    /// <c>RetiredResourcePool</c> already have: they are driven from the frame thread. The patch counters behind
+    /// <see cref="OffTimelinePatches"/> are the exception, and they are ordered by the submit lock rather than by
+    /// that contract, because the recording half of the pair is any-thread by design.
     /// </para>
     /// </summary>
     internal sealed class D3D11RingAllocator
@@ -121,18 +122,32 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         // floor rather than the average.
         readonly List<D3D11UniformRing> _mappedRings = new();
 
+        // Every ring currently owing at least one segment a deferred off-timeline write, so a frame boundary can
+        // apply exactly those. Same shape and same reason as _mappedRings: a device may hold hundreds of rings
+        // and a walk over all of them at every frame boundary would put an O(buffers) cost on the one path that
+        // has to stay cheap, for a list that is empty in most programs and one entry long in the rest.
+        readonly List<D3D11UniformRing> _patchedRings = new();
+
         ulong _frameIndex;
+
+        // The segment the next submit binds. WRITTEN under the submit lock (see AdoptSegmentUnderLock) even
+        // though only the frame thread advances it, because the off-timeline write reads it under that lock and
+        // the pair has to be exact. The lock-free readers are CurrentSegment's record-path callers, and their
+        // stale read is benign and pre-existing: a recording is built by one thread between two frame boundaries,
+        // so a record-time write racing the boundary is decision W5's territory rather than a new exposure here.
         int _segment;
 
         int _stallCount;
         long _stallTicks;
         D3D11BackpressureStats _lastFrame;
 
-        // The off-timeline write's waits, cumulative since the device was created and deliberately NOT rolled per
-        // frame. Interlocked because that path is any-thread by contract while the two counters above are the
-        // frame thread's. See OffTimelineWaits.
-        int _offTimelineWaits;
-        long _offTimelineWaitTicks;
+        // The off-timeline write's deferrals, their replays and the ones a later write superseded, cumulative
+        // since the device was created and deliberately NOT rolled per frame. All three are mutated under the
+        // submit lock alone, so the lock orders them, and the property reads them volatile because a diagnostic
+        // may be on any thread. See OffTimelinePatches.
+        int _patchesDeferred;
+        int _patchesApplied;
+        int _patchesCoalesced;
 
         /// <summary>
         /// Build the allocator for one device.
@@ -184,29 +199,38 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         /// <summary>The backpressure of the frame that has ENDED. Rolled by <see cref="BeginFrame"/>. This is the
         /// M3 measurement, and it counts frame-boundary segment stalls ALONE (see
-        /// <see cref="OffTimelineWaits"/>).</summary>
+        /// <see cref="OffTimelinePatches"/>).</summary>
         internal D3D11BackpressureStats LastFrameBackpressure => _lastFrame;
 
         /// <summary>
-        /// THE OFF-TIMELINE WRITE'S WAITS, CUMULATIVE SINCE THE DEVICE WAS CREATED, and a SEPARATE number from
-        /// <see cref="LastFrameBackpressure"/> on purpose.
+        /// THE OFF-TIMELINE WRITE'S DEFERRALS AND REPLAYS, CUMULATIVE SINCE THE DEVICE WAS CREATED, and a
+        /// SEPARATE number from <see cref="LastFrameBackpressure"/> on purpose.
         /// <para>
-        /// They are not frame-boundary stalls. M3's exit criterion is that
-        /// <see cref="LastFrameBackpressure"/> is ZERO across a soak window, which reads as "three segments are
-        /// enough for this machine", and an off-timeline wait says nothing about that: it says a caller wrote a
-        /// uniform buffer off-timeline while an earlier frame was still reading a segment of it. Folding the two
-        /// together would turn a load-time write into evidence against the segment count and make the M3 criterion
-        /// unreachable for reasons unrelated to pipeline depth.
+        /// IT COUNTS PATCHES RATHER THAN WAITS, because there are no waits on this path to count.
+        /// <see cref="UpdateBuffer"/> never blocks: a segment an earlier frame is still reading gets the bytes
+        /// queued and the call returns, and the segment's next acquire applies them. What is worth reporting is
+        /// therefore how often that happened and whether the replays are keeping up, which is what
+        /// <see cref="D3D11PendingPatchStats.Outstanding"/> answers.
+        /// </para>
+        /// <para>
+        /// It is not a frame-boundary stall, which is why it is reported apart from the M3 number. M3's exit
+        /// criterion is that <see cref="LastFrameBackpressure"/> is ZERO across a soak window, which reads as
+        /// "three segments are enough for this machine", and a deferred patch says nothing about that: it says a
+        /// caller wrote a uniform buffer off-timeline while an earlier frame was still reading a segment of it,
+        /// which costs nobody a stall. Folding the two together would turn a load-time write into evidence
+        /// against the segment count and make the M3 criterion unreachable for reasons unrelated to pipeline
+        /// depth.
         /// </para>
         /// <para>
         /// CUMULATIVE RATHER THAN ROLLED PER FRAME, because the writes this counts are typically LOAD-TIME and
         /// happen before any frame has begun. A per-frame roll would discard exactly the ones worth seeing. Same
-        /// <see cref="D3D11BackpressureStats"/> shape, so a diagnostic reports the pair the same way.
+        /// reporting shape as <see cref="D3D11BackpressureStats"/>, so a diagnostic carries the pair the same way.
         /// </para>
         /// </summary>
-        internal D3D11BackpressureStats OffTimelineWaits => new D3D11BackpressureStats(
-            Volatile.Read(ref _offTimelineWaits),
-            Interlocked.Read(ref _offTimelineWaitTicks) * 1000d / Stopwatch.Frequency);
+        internal D3D11PendingPatchStats OffTimelinePatches => new D3D11PendingPatchStats(
+            Volatile.Read(ref _patchesDeferred),
+            Volatile.Read(ref _patchesApplied),
+            Volatile.Read(ref _patchesCoalesced));
 
         /// <summary>The completion value the last submission that used <paramref name="segment"/> was signalled
         /// under, or 0 for a segment nothing has been submitted with. Present so a test and a diagnostic can see
@@ -267,6 +291,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// submission that would end it. The present boundary calls this AFTER the present has released the lock,
         /// and the check makes wiring it the other way a message rather than a stall nobody can see.
         /// </para>
+        /// <para>
+        /// AND IT IS WHERE AN OFF-TIMELINE WRITE'S PENDING PATCHES LAND. The gate above has just proved the GPU
+        /// is finished with the segment being opened, which is the same proof any write into that segment rests
+        /// on, so the deferred bytes are copied in immediately afterwards and inside the same short lock hold
+        /// that publishes the new segment (see <see cref="AdoptSegmentUnderLock"/>). Nothing new waits: the patch
+        /// replay is a memcpy per queued write into memory the gate has already cleared.
+        /// </para>
         /// </summary>
         internal void BeginFrame()
         {
@@ -286,7 +317,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             _frameIndex++;
             int next = (int)(_frameIndex % (ulong)FramesInFlight);
             AcquireSegment(next);
-            _segment = next;
+            AdoptSegmentUnderLock(next);
         }
 
         /// <summary>
@@ -371,38 +402,63 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// value the next frame overwrites, on the hot path this whole design exists to make cheap.
         /// </para>
         /// <para>
-        /// A SEGMENT STILL IN FLIGHT IS WAITED FOR, WITH THE LOCK RELEASED, and that is a real semantic change:
-        /// this call could previously never block. It is the same gate <see cref="AcquireSegment"/> applies,
-        /// because writing a segment the GPU is reading is the silent corruption decision U5 exists to prevent,
-        /// and it is a RETRY LOOP rather than a wait in place: under the lock the highest outstanding completion
-        /// value across the target segments is read, the lock is RELEASED, that value is spun for, and the lock is
-        /// retaken and the check redone, until one hold finds every target free and does all the copies inside it.
-        /// Waiting under the lock is refused by name elsewhere in this type for good reason (see
-        /// <see cref="BeginFrame"/>), and on the event-query fence mechanism it would also shut out the submission
-        /// that would end the wait. At load time nothing has been submitted, so the first iteration writes every
-        /// segment with no wait at all. Mid-frame the wait is bounded by <see cref="FramesInFlight"/> frames of
-        /// GPU work, which is what the incumbent already blocked for on this exact call: Veldrid's pooled staging
-        /// write maps with no <c>DO_NOT_WAIT</c> and blocks until the GPU releases the buffer being recycled
-        /// (section 6.1).
+        /// A SEGMENT STILL IN FLIGHT IS PATCHED RATHER THAN WAITED FOR, AND THIS CALL NEVER BLOCKS. Writing a
+        /// segment the GPU is reading is the silent corruption decision U5 exists to prevent, so a segment whose
+        /// owner fence has not completed does not receive the copy: the byte range and a private copy of the data
+        /// are queued on the ring, and the <see cref="BeginFrame"/> that next opens that segment applies them,
+        /// right after the gate has proved the GPU is done with it. The writer returns immediately, always, on
+        /// every thread, at any pipeline depth.
         /// </para>
         /// <para>
-        /// THE CURRENT SEGMENT IS COPIED WITHOUT THAT GATE, deliberately, and it is the only ungated one. Gating
-        /// it would change the documented semantic that the write lands when it is called and the next list
-        /// submitted reads it, and it would block on the GPU on every off-timeline write made after this frame
-        /// slot's first submit, which is the pathology the ring deletes. The exposure it leaves is exactly the
-        /// exposure the shipped call already had and is unchanged by this fix, and it is the forbidden case named
-        /// below. What this fix adds is the OTHER segments, and those are the ones that can newly corrupt a frame,
-        /// so those are the ones gated.
+        /// WAITING WAS TRIED FIRST AND IT STARVES. The shape this replaces read the highest outstanding
+        /// completion value under the lock, released it, spun, and retook the lock to re-check, looping until
+        /// every non-current segment was free at once. In the GPU-bound steady state that condition is never
+        /// satisfiable: the frame thread submits again for every frame the GPU retires, so at least one
+        /// non-current segment is always in flight, and the writer chases a pipeline it can never catch while
+        /// burning a core. A deferral has no such failure mode, because the thing it waits on is a frame boundary
+        /// that is going to happen anyway.
         /// </para>
         /// <para>
-        /// AGAINST A CONCURRENT RECORD-TIME WRITE TO THE SAME RANGE, THE CURRENT SEGMENT IS LAST-WRITE-WINS AND
-        /// THAT IS OUTSIDE THE v1 CONTRACT, unchanged by this fix. Under
-        /// <see cref="D3D11RingMapScope.AcrossRecording"/> a record-time copy runs with no lock, so the two copies
-        /// are not ordered against each other and a torn result is possible: decision W5's boundary already places
-        /// a record-time write racing a device-level write outside the contract, and it stays there. The other
-        /// <see cref="FramesInFlight"/> minus one segments are NOT contended, because a record-time write never
-        /// touches them. Under <see cref="D3D11RingMapScope.PerWrite"/> both shapes take the lock for the whole
-        /// write, so there the overlap is serialized.
+        /// EVENTUAL CONSISTENCY IS THE GUARANTEE, and it is exactly what the Veldrid leg's persistence gives.
+        /// When this returns, every segment either already holds the write or holds a pending patch its next
+        /// acquire applies, so ANY segment BOUND after this call carries the value. The window in which an
+        /// in-flight segment still holds the old bytes is unobservable through the seam, because that segment is
+        /// not bound again until it has been acquired, and acquiring it applies the patch first.
+        /// </para>
+        /// <para>
+        /// ONE COMPLETION POLL PER CALL AT MOST. The gate reads the timeline once and compares that one value
+        /// against every segment's owner, since the timeline is monotonic and a second read inside one hold could
+        /// only make more segments look free. A segment with a zero owner has never been submitted with and is
+        /// skipped without a poll at all, so a load-time write, when every owner is zero, costs no completion read
+        /// whatsoever.
+        /// </para>
+        /// <para>
+        /// A SEGMENT THAT ALREADY CARRIES A PATCH TAKES THIS WRITE AS A PATCH TOO, even when its fence has since
+        /// completed. That is what keeps arrival order intact: copying directly into a segment with an older patch
+        /// still queued would let the frame boundary replay the OLDER bytes over the newer ones. Once a segment is
+        /// draining it drains in order, and one acquire empties it.
+        /// </para>
+        /// <para>
+        /// THE CURRENT SEGMENT IS ALWAYS COPIED, deliberately, and it is the only ungated one. Gating it would
+        /// change the documented semantic that the write lands when it is called and the next list submitted
+        /// reads it, and deferring it would be worse still, since the current segment is bound by the very next
+        /// submit and its next acquire is a whole wrap away. The exposure that leaves is exactly the exposure the
+        /// shipped call already had and is the forbidden case named below. It never carries a pending patch of
+        /// its own: patches are recorded only for non-current segments, and the boundary that makes a segment
+        /// current drains it in the same lock hold that publishes it.
+        /// </para>
+        /// <para>
+        /// TWO OVERLAPPING WRITERS ARE DECISION W5'S TERRITORY, in one family rather than two. Each call is
+        /// atomic in the sense that all of its copies and all of its deferrals happen in one hold of the lock, but
+        /// two OFF-TIMELINE calls overlapping in range may land in different orders in different segments, since
+        /// one segment can take a copy while another takes a patch replayed later, so their per-segment order is
+        /// outside the contract. So is an off-timeline write racing a RECORD-TIME write to the same range on the
+        /// current segment, unchanged by this fix and for the older reason: under
+        /// <see cref="D3D11RingMapScope.AcrossRecording"/> a record-time copy runs with no lock, so a torn result
+        /// is possible. The other <see cref="FramesInFlight"/> minus one segments are not contended by a
+        /// record-time write at all, and under <see cref="D3D11RingMapScope.PerWrite"/> that overlap is
+        /// serialized. A SINGLE off-timeline writer, which is what every shipped caller is, sees strict
+        /// last-write-wins in every segment.
         /// </para>
         /// <para>
         /// IT MAPS IDEMPOTENTLY. The ring is unmapped at the start of every submit, so a write arriving between
@@ -413,8 +469,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// for a record-time write.
         /// </para>
         /// <para>
-        /// THE LOCK IS SHORT AND SCOPED TO THE COPIES, never to a frame and never across the wait. It is the
-        /// submit lock, so an off-timeline write cannot land in the middle of a replay.
+        /// THE LOCK IS SHORT AND SCOPED TO ONE PASS OVER THE SEGMENTS, never to a frame. It is the submit lock,
+        /// so an off-timeline write cannot land in the middle of a replay, and a caller who already holds it
+        /// re-enters for free.
         /// </para>
         /// <para>
         /// WHAT IS STILL FORBIDDEN, restated because the ring makes it quieter rather than because it changed:
@@ -431,19 +488,40 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             if (data.Length == 0) return;
 
-            while (true)
+            lock (_submitLock)
             {
-                ulong target;
-                lock (_submitLock)
+                bool wasPatched = ring.HasPendingPatches;
+
+                if (!ring.IsMapped)
                 {
-                    if (!TryFindSegmentStillInFlight(out target))
-                    {
-                        WriteEverySegmentUnderLock(ring, offsetBytes, data);
-                        return;
-                    }
+                    ring.MapUnderLock();
+                    _mappedRings.Add(ring);
                 }
 
-                WaitOffTimeline(target);
+                ulong completed = 0;
+                bool polled = false;
+
+                for (int segment = 0; segment < _segmentOwner.Length; segment++)
+                {
+                    // _segment is READ and WRITTEN under this lock alone (see the field and
+                    // AdoptSegmentUnderLock), so this comparison is exact rather than a benign stale read. The
+                    // lock-free reader is CurrentSegment on the record path, whose staleness is decision W5's.
+                    if (segment != _segment && DeferralIsOwed(ring, segment, ref completed, ref polled))
+                    {
+                        _patchesCoalesced += ring.RecordPendingPatchUnderLock(segment, offsetBytes, data);
+                        _patchesDeferred++;
+                        continue;
+                    }
+
+                    ring.CopyIntoSegmentUnderLock(segment, offsetBytes, data);
+                }
+
+                if (!wasPatched && ring.HasPendingPatches) _patchedRings.Add(ring);
+
+                if (MapScope != D3D11RingMapScope.PerWrite) return;
+
+                ring.UnmapUnderLock();
+                _mappedRings.Remove(ring);
             }
         }
 
@@ -491,8 +569,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// </para>
         /// <para>
         /// THIS IS THE RECORD-TIME WRITE, so it copies the CURRENT segment alone. An off-timeline
-        /// <see cref="UpdateBuffer"/> under the same scope copies every segment and still holds the map, all the
-        /// copies and the unmap as one critical section, which is the same discipline over a wider write.
+        /// <see cref="UpdateBuffer"/> under the same scope holds the map, every segment it copies, every segment
+        /// it defers and the unmap as one critical section, which is the same discipline over a wider write, and
+        /// <see cref="AdoptSegmentUnderLock"/> repeats it when it replays a deferred one.
         /// </para>
         /// </summary>
         internal void WriteUnderPerWriteScope(D3D11UniformRing ring, uint offsetBytes, ReadOnlySpan<byte> data)
@@ -516,6 +595,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// Drop <paramref name="ring"/>, unmapping it first if it is mapped. Called when a ring-backed buffer is
         /// disposed, because releasing a mapped resource leaves the runtime holding a pointer into memory nobody
         /// owns, and because a disposed ring left in the registry would be unmapped again at the next submit.
+        /// <para>
+        /// ITS PENDING PATCHES GO WITH IT, for the same reason and one step further: a queued off-timeline write
+        /// names memory that is about to stop existing, so a frame boundary replaying it after the buffer was
+        /// released would write through a freed mapping.
+        /// </para>
         /// </summary>
         internal void Forget(D3D11UniformRing ring)
         {
@@ -525,6 +609,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             {
                 ring.UnmapUnderLock();
                 _mappedRings.Remove(ring);
+
+                ring.DropPendingPatchesUnderLock();
+                _patchedRings.Remove(ring);
             }
         }
 
@@ -566,85 +653,91 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         }
 
         /// <summary>
-        /// THE OFF-TIMELINE WRITE'S GATE, ASKED ONCE PER LOCK HOLD: the highest completion value any segment other
-        /// than the current one is still waiting on, or false when all of them are free. Called under the submit
-        /// lock, and it polls the timeline AT MOST ONCE, because a poll on the event-query fence mechanism is a
-        /// call that re-enters this same lock and a loop of them under the lock is the shape
-        /// <see cref="BeginFrame"/> refuses by name.
+        /// WHETHER ONE NON-CURRENT SEGMENT HAS TO TAKE THIS WRITE AS A PATCH RATHER THAN AS A COPY. Called under
+        /// the submit lock, once per segment, sharing ONE completion read across the whole pass through
+        /// <paramref name="completed"/> and <paramref name="polled"/>.
         /// <para>
-        /// THE MAXIMUM RATHER THAN THE FIRST is what makes one wait enough. The timeline is monotonic, so reaching
-        /// the highest outstanding target has reached every lower one with it, and the retry that follows finds
-        /// every segment free in one more hold instead of one hold per segment.
+        /// TWO REASONS, AND ORDER IS THE SECOND ONE. A segment whose owner fence has not completed is still being
+        /// read by the GPU, which is the gate <see cref="AcquireSegment"/> applies and the corruption U5 exists to
+        /// prevent. A segment that already has a patch queued takes this write as a patch too even though it is
+        /// free, because a direct copy would be overwritten by the older queued bytes when the frame boundary
+        /// replays them.
         /// </para>
         /// <para>
-        /// A ZERO OWNER IS SKIPPED WITHOUT A POLL, and at load time every segment is zero, so a one-shot write
-        /// before anything has been submitted costs no completion read at all.
+        /// ONE POLL AT MOST, AND OFTEN NONE. A zero owner has never been submitted with, so it is answered without
+        /// touching the timeline, and at load time every owner is zero. When a poll is owed it happens once and
+        /// the value is reused for the remaining segments: the timeline is monotonic, so a second read inside one
+        /// hold could only free more segments, and a poll on the event-query fence mechanism re-enters this same
+        /// lock.
         /// </para>
         /// </summary>
-        bool TryFindSegmentStillInFlight(out ulong target)
+        bool DeferralIsOwed(D3D11UniformRing ring, int segment, ref ulong completed, ref bool polled)
         {
-            target = 0;
+            if (ring.HasPendingPatchesFor(segment)) return true;
 
-            ulong highest = 0;
-            for (int i = 0; i < _segmentOwner.Length; i++)
+            ulong owner = _segmentOwner[segment];
+            if (owner == 0) return false;
+
+            if (!polled)
             {
-                if (i == _segment) continue;
-                if (_segmentOwner[i] > highest) highest = _segmentOwner[i];
+                completed = _completion.CompletedValue;
+                polled = true;
             }
 
-            if (highest == 0) return false;
-            if (_completion.CompletedValue >= highest) return false;
-
-            target = highest;
-            return true;
+            return completed < owner;
         }
 
         /// <summary>
-        /// SPIN FOR AN OFF-TIMELINE TARGET, WITH NO LOCK HELD, and count it. Same discipline as
-        /// <see cref="AcquireSegment"/> and for the same reason: the plain <see cref="SpinWait.SpinOnce()"/> starts
-        /// sleeping a millisecond after 20 iterations, which is longer than the frame this can be inside.
+        /// APPLY THE SEGMENT'S PENDING PATCHES AND THEN PUBLISH IT AS CURRENT, in ONE hold of the submit lock.
+        /// Called by <see cref="BeginFrame"/> after <see cref="AcquireSegment"/> has proved the GPU is finished
+        /// with it, which is what makes the copies safe.
         /// <para>
-        /// THE COUNTERS ARE INTERLOCKED WHILE THE FRAME ONES ARE NOT, because the two paths have different
-        /// callers. <see cref="BeginFrame"/> runs on the frame thread and its counters inherit that contract, while
-        /// an off-timeline write is callable from any thread by design, so two of them waiting at once would
-        /// otherwise lose a count. It costs an interlocked pair only when a wait actually happened.
+        /// THE TWO STEPS ARE ONE CRITICAL SECTION ON PURPOSE, and the order inside it is load-bearing. An
+        /// off-timeline write that observes this segment as current copies into it directly, so if it could
+        /// observe that BEFORE the replay it would have its bytes overwritten by the older queued ones. Draining
+        /// and publishing under one hold leaves a concurrent writer only two orderings, and both are correct: it
+        /// runs entirely BEFORE, sees the segment as non-current and joins the queue this drain then replays, or
+        /// it runs entirely AFTER and finds the segment current and empty. That is what makes "the current
+        /// segment never carries a pending patch" true rather than merely likely.
+        /// </para>
+        /// <para>
+        /// IT WALKS THE PATCHED RINGS ALONE, not every ring in the device, and a ring leaves that registry as soon
+        /// as it owes nothing anywhere. In a program that never writes a uniform buffer off-timeline the whole
+        /// method is one uncontended lock and an empty loop.
+        /// </para>
+        /// <para>
+        /// NOTHING HERE WAITS, so taking the lock is safe from the frame boundary: the caller has already been
+        /// refused if it held the lock, and every step inside is a memcpy or a map.
         /// </para>
         /// </summary>
-        void WaitOffTimeline(ulong target)
+        void AdoptSegmentUnderLock(int segment)
         {
-            long start = Stopwatch.GetTimestamp();
-            var spin = new SpinWait();
-            while (_completion.CompletedValue < target) spin.SpinOnce(sleep1Threshold: -1);
-
-            Interlocked.Increment(ref _offTimelineWaits);
-            Interlocked.Add(ref _offTimelineWaitTicks, Stopwatch.GetTimestamp() - start);
-        }
-
-        /// <summary>
-        /// THE COPIES THEMSELVES, under the submit lock, with every target segment already known to be free.
-        /// Mapping the ring if it is not mapped, copying into all <see cref="FramesInFlight"/> segments, and under
-        /// <see cref="D3D11RingMapScope.PerWrite"/> releasing the mapping again before the lock is dropped, so that
-        /// scope keeps the atomicity it exists for across the whole replicated write rather than around one
-        /// segment of it.
-        /// <para>
-        /// THE SEGMENT ORDER IS NOT OBSERVABLE. The segments are disjoint memory and every one of them is free of
-        /// the GPU for the duration of this hold, so index order is the arbitrary choice it looks like.
-        /// </para>
-        /// </summary>
-        void WriteEverySegmentUnderLock(D3D11UniformRing ring, uint offsetBytes, ReadOnlySpan<byte> data)
-        {
-            if (!ring.IsMapped)
+            lock (_submitLock)
             {
-                ring.MapUnderLock();
-                _mappedRings.Add(ring);
+                for (int i = _patchedRings.Count - 1; i >= 0; i--)
+                {
+                    D3D11UniformRing ring = _patchedRings[i];
+                    if (!ring.HasPendingPatchesFor(segment)) continue;
+
+                    if (!ring.IsMapped)
+                    {
+                        ring.MapUnderLock();
+                        _mappedRings.Add(ring);
+                    }
+
+                    _patchesApplied += ring.ApplyPendingPatchesUnderLock(segment);
+
+                    if (MapScope == D3D11RingMapScope.PerWrite)
+                    {
+                        ring.UnmapUnderLock();
+                        _mappedRings.Remove(ring);
+                    }
+
+                    if (!ring.HasPendingPatches) _patchedRings.RemoveAt(i);
+                }
+
+                _segment = segment;
             }
-
-            for (int i = 0; i < _segmentOwner.Length; i++) ring.CopyIntoSegmentUnderLock(i, offsetBytes, data);
-
-            if (MapScope != D3D11RingMapScope.PerWrite) return;
-
-            ring.UnmapUnderLock();
-            _mappedRings.Remove(ring);
         }
     }
 }

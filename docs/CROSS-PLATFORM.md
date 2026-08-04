@@ -119,6 +119,14 @@ The suite each leg runs is split by trigger, from measured hosted-runner cost
   `workflow_dispatch`. The full suite on hosted Windows measured 17m14s vs the golden-only 7m44s, about
   +19 billed 2x minutes per run - too costly per-push, so full hosted coverage rides the weekly cron and
   any manual dispatch instead.
+- **GitHub-hosted D3D11 native leg (2x billing)**: the engine's own `KhaozEngine.Gpu.D3D11` backend
+  (`KE_GRAPHICS_BACKEND=direct3d11-native`) on exactly the incumbent leg's tier, golden tests only on
+  `push`/`pull_request` and the WHOLE suite on the weekly `schedule` and on `workflow_dispatch`, for the same
+  measured cost reason at the same 2x rate. It is a GUEST in the incumbent's golden family: it verifies the
+  committed `.direct3d11.txt` grids on the same WARP rasterizer and never bakes them, so `KE_UPDATE_GOLDENS`
+  stays empty on it for every trigger and it sits out bake dispatches entirely. It also pins
+  `KE_D3D11_ADAPTER=warp` instead of inheriting the incumbent's implicit fallback, so a runner image that grows
+  a paravirtual adapter cannot quietly change the rasterizer under the shared goldens.
 - **GitHub-hosted Vulkan leg (1x)**: golden tests only (`FullyQualifiedName~Golden`) on
   `push`/`pull_request`, and the WHOLE suite on the weekly `schedule` and on `workflow_dispatch`, the
   same tier as D3D11, with the full-suite runs serializing xUnit test collections
@@ -171,10 +179,10 @@ not a CI filter contract):
 
 | trigger                          | behaviour                                                                     |
 | -------------------------------- | ----------------------------------------------------------------------------- |
-| `push` / `pull_request` on main  | **verify**: Metal runs the full suite. D3D11 and Vulkan run the golden tests only |
-| `schedule` (weekly, Sun 18:00 UTC) | **full sweep**: Metal + D3D11 + Vulkan all run the full suite (Vulkan serialized) |
-| `workflow_dispatch` `bake=false` | same as `schedule` (Metal + D3D11 + Vulkan full suite, Vulkan serialized)     |
-| `workflow_dispatch` `bake=true`  | **re-bake** (`KE_UPDATE_GOLDENS=1`) and upload per-backend goldens as artifacts |
+| `push` / `pull_request` on main  | **verify**: Metal runs the full suite. Both D3D11 legs and Vulkan run the golden tests only |
+| `schedule` (weekly, Sun 18:00 UTC) | **full sweep**: Metal + both D3D11 legs + Vulkan all run the full suite (Vulkan serialized) |
+| `workflow_dispatch` `bake=false` | same as `schedule` (all four legs full suite, Vulkan serialized)              |
+| `workflow_dispatch` `bake=true`  | **re-bake** (`KE_UPDATE_GOLDENS=1`) on Metal, D3D11 and Vulkan, uploaded as per-backend goldens. The native leg skips its test step: it owns no family to bake, and verifying against references being replaced mid-run would only red it |
 
 Software rasterizers on the runners (no real GPU):
 
@@ -183,10 +191,16 @@ Software rasterizers on the runners (no real GPU):
   runtime** and points `VK_ICD_FILENAMES` + `VK_DRIVER_FILES` at it rather than hardcoding. Veldrid 4.9.0's Vulkan
   binding P/Invokes the bare names `libdl` / `libvulkan`, which modern Ubuntu only ships versioned, so the workflow
   also symlinks `libdl.so` → `libdl.so.2` and `libvulkan.so` → `libvulkan.so.1`.
-- Windows D3D11 → **WARP** software adapter (automatic fallback when no hardware adapter is present). Verified.
+- Windows D3D11 → **WARP** software adapter (automatic fallback when no hardware adapter is present) on the
+  incumbent leg. Verified. The native leg does not ride that fallback: it pins `KE_D3D11_ADAPTER=warp`, so the
+  rasterizer under the shared goldens is stated rather than inherited from the runner image.
 
-Net result: **all three desktop backends are validated and blocking** - Metal (macOS), Direct3D11 (Windows/WARP),
-and Vulkan (Linux/lavapipe). The overall workflow is green only when all three verify.
+Net result: **all four legs are blocking, none of them informational** - Metal (macOS), Direct3D11
+(Windows/WARP), Direct3D11 native (Windows/WARP), and Vulkan (Linux/lavapipe). Three of them are long
+validated. The native leg blocks by design rather than by record: it is the native backend's continuous
+exercise, so it gates from its first run, and its first recorded evidence is rollout gate 1 on
+[#460](https://github.com/APKiwiOrg/KhaozEngine/issues/460). The overall workflow is green only when all four
+verify.
 
 ### Per-backend golden flow
 
@@ -213,7 +227,10 @@ also writes viewable PNGs (via the BCL-only `KhaozEngine.Imaging.PngWriter`) to 
 - **bake** (`KE_UPDATE_GOLDENS=1`) writes `.bake.png` (the full-res capture) alongside each baked grid.
 
 CI uploads these as artifacts on the `cross-platform-gpu` matrix: `golden-evidence-<backend>` on any failed leg
-(`if: failure()`), and the bake evidence rides along in the `goldens-<backend>` bake artifact.
+(`if: failure()`), and the bake evidence rides along in the `goldens-<backend>` bake artifact. Every leg also
+uploads `golden-deltas-<backend>` on `always()`, a few kilobytes of text rather than pixels: each compare
+appends its worst-cell delta to `golden-deltas.<backend>.txt` in the same evidence dir on a PASS as well as a
+fail, and a failure-only upload could only ever show that number after something had already broken.
 
 The fast inner-loop CI (`.github/workflows/ci.yml`: build/test/pack/publish, GPU tests skipped) is separate and
 untouched.

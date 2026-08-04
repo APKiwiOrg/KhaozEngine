@@ -32,15 +32,20 @@
 #   * Committed per-backend goldens live at KhaozEngine.Render.Tests/Gpu/goldens/<name>.<backend>.txt.
 #     The family in that filename is the GoldenBackendToken, not the leg name, which is how
 #     direct3d11-native reads and checks the direct3d11 files instead of owning a family of its own.
-#   * All four legs are validated, committed, and blocking: macOS Metal, Windows D3D11 (WARP),
-#     Windows D3D11 native (WARP, pinned), Linux Vulkan (Mesa lavapipe).
+#   * All four legs are committed and blocking, and they do not carry the same history. macOS Metal,
+#     Windows D3D11 (WARP) and Linux Vulkan (Mesa lavapipe) are long validated, with months of green
+#     runs behind them. Windows D3D11 native (WARP, pinned) blocks BY DESIGN rather than by record: it
+#     is the native backend's continuous exercise (decision RO3), so it gates from its first run, and
+#     its first recorded evidence is rollout gate 1 on issue #460.
 #
 # Generating goldens for a NEW scene or backend:
 #   1. Run this workflow manually (Actions -> cross-platform-gpu -> Run workflow) with bake = true.
 #   2. The bake legs render with KE_UPDATE_GOLDENS=1 and upload the per-backend grids as artifacts
 #      named goldens-<backend> (e.g. scene2d.<backend>.txt). direct3d11-native is NOT a bake leg: it
 #      shares the incumbent's family, so a bake there would overwrite the very references it is being
-#      checked against, and GoldenCompare.BakeRefusal makes that a hard test failure by design.
+#      checked against, and GoldenCompare.BakeRefusal makes that a hard test failure by design. On a bake
+#      dispatch it skips the test step outright rather than verifying against references being replaced
+#      mid-run.
 #   3. Download the artifacts, drop the files into KhaozEngine.Render.Tests/Gpu/goldens/, and commit them.
 #   4. After that, the push/PR legs VERIFY those backends, direct3d11-native included, which checks the
 #      freshly baked direct3d11 family against a second implementation on the same rasterizer.
@@ -78,8 +83,8 @@ on:
       - 'KhaozEngine.Render2D/**'
       - 'KhaozEngine.Gpu/**'
       # The native Direct3D 11 backend. Its shader path owns the FXC call, so a change here can reject HLSL
-      # that SPIRV-Cross emits, or hole a vertex input signature, and the Windows leg's FXC step below is the
-      # only thing that runs a compiler over the shipped programs (decision S5).
+      # that SPIRV-Cross emits, or hole a vertex input signature, and the incumbent Windows leg's FXC step
+      # below is the only thing that runs a compiler over the shipped programs (decision S5).
       - 'KhaozEngine.Gpu.D3D11/**'
       - 'KhaozEngine.Gui/**'
       - 'KhaozEngine.Primitives/**'
@@ -145,10 +150,13 @@ jobs:
   gpu-golden:
     name: ${{ matrix.os }} / ${{ matrix.backend }}
     runs-on: ${{ matrix.runner }}
-    # All four legs are validated and blocking: Metal (macOS), Direct3D11 (Windows/WARP), Direct3D11Native
+    # All four legs are blocking, with no continue-on-error on any of them. Three are long validated: Metal
+    # (macOS), Direct3D11 (Windows/WARP) and Vulkan (Linux/Mesa lavapipe). The fourth, Direct3D11Native
     # (Windows/WARP, the engine's own backend, verifying the shared direct3d11 goldens as a guest and never
-    # baking them), and Vulkan (Linux/Mesa lavapipe). Goldens are tolerance-based (32x18 averaged grid),
-    # robust to software-rasterizer noise. If the lavapipe leg ever flakes on a runner-image change, re-add
+    # baking them), blocks by design rather than by record: it is the native backend's continuous exercise
+    # (decision RO3), so it gates from its first run, and its first recorded evidence is rollout gate 1 on
+    # issue #460. Goldens are tolerance-based (32x18 averaged grid), robust to software-rasterizer noise. If
+    # the lavapipe leg ever flakes on a runner-image change, re-add
     # `continue-on-error: ${{ matrix.backend == 'vulkan' }}` here to drop it back to informational.
     #
     # Runner split (engine is private, so hosted minutes bill): the Metal leg runs on the self-hosted dev
@@ -262,8 +270,8 @@ jobs:
 
       # DECISION S5's CI leg, one Windows leg only and on EVERY trigger. These are plain [Fact]s with no device: they
       # cross-compile every shipped shader program to HLSL and run FXC over the result, then assert the reflected
-      # vertex input signature has contiguous TEXCOORD indices from 0. FXC is d3dcompiler, so this is the only
-      # leg that can run it, and it is the only thing in CI that compiles the HLSL the engine actually emits.
+      # vertex input signature has contiguous TEXCOORD indices from 0. FXC is d3dcompiler, so Windows is the only
+      # OS that can run it, and this step is the only thing in CI that compiles the HLSL the engine actually emits.
       #
       # It is a SEPARATE step rather than part of the suite run below, because the Windows legs' push-path filter
       # is "FullyQualifiedName~Golden" and that family is device-backed pixel comparisons. Naming these tests
@@ -285,8 +293,12 @@ jobs:
       # setting fails on each of the other 17 test projects, where matching zero is the correct outcome.
       - name: Shader FXC validation (no device)
         # ONE Windows leg, not every Windows leg. Nothing here creates a device or selects a backend, so the
-        # compile is backend-independent and the native leg would run byte-identical work for zero added
-        # coverage at the Windows 2x rate. Pinned to the incumbent leg rather than to matrix.os for that reason.
+        # compile is device-free and backend-independent and one Windows leg suffices: the native leg would run
+        # byte-identical work for zero added coverage at the Windows 2x rate. Pinned to the incumbent leg rather
+        # than to matrix.os for that reason.
+        # The pin key `matrix.backend == 'direct3d11'` is LOAD-BEARING. Rename or retire that leg and this step
+        # silently stops running, with nothing failing anywhere: the TreatNoTestsAsError guard below catches a
+        # test-class rename, not a matrix-key rename.
         if: matrix.backend == 'direct3d11'
         run: dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~D3D11FxcValidationTests" -- RunConfiguration.TreatNoTestsAsError=true
         shell: bash
@@ -302,7 +314,14 @@ jobs:
       #     rate (decision T5). Vulkan: the same tier again, and its full-suite runs serialize xUnit test
       #     collections (KE_TEST_EXTRA_ARGS below) because lavapipe under full parallel load still shows
       #     residual driver-side instability after the four engine-defect fixes (see the header).
+      #
+      # SKIPPED on direct3d11-native for a bake dispatch. A bake dispatch is a bake operation: the other three
+      # legs rewrite their goldens on that run, and the guest leg can contribute nothing to it. Running would
+      # verify the full suite against references that are being replaced mid-run, so a bake that adds a scene or
+      # moves a grid reds the native leg on a missing-golden or changed-golden Assert.Fail that says nothing
+      # about the native backend. It sits the dispatch out and verifies the new goldens on the next push.
       - name: Run test suite
+        if: ${{ !(matrix.backend == 'direct3d11-native' && github.event_name == 'workflow_dispatch' && inputs.bake) }}
         env:
           KE_GPU_TESTS: '1'
           KE_GRAPHICS_BACKEND: ${{ matrix.backend }}
@@ -314,7 +333,9 @@ jobs:
           # its token into a hard failure BY DESIGN: baking there would overwrite the very references it is
           # checked against, and the owning backend's with them. Without this guard a routine bake dispatch for
           # some unrelated new scene would turn the native leg red with 36 refusals. Bake on the incumbent leg,
-          # the native leg then verifies what it wrote.
+          # the native leg then verifies what it wrote. With the step condition above the native leg no longer
+          # reaches a bake dispatch at all, so this stays as belt and braces: it keeps the guarantee true for any
+          # future trigger that does reach the run with bake set.
           KE_UPDATE_GOLDENS: ${{ (matrix.backend != 'direct3d11-native' && github.event_name == 'workflow_dispatch' && inputs.bake) && '1' || '' }}
           KE_TEST_FILTER: ${{ (matrix.fullSuite == 'always' || (matrix.fullSuite == 'scheduled' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'))) && 'Category!=LiveSocket' || 'FullyQualifiedName~Golden' }}
           # Vulkan full-suite runs only: serialize xUnit collections, one live device at a time

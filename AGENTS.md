@@ -103,7 +103,8 @@ exception is the trivial-change case below.
   `ci.yml` build/test/pack/publish on **x64** `ubuntu-latest` (x64 is load-bearing, the test suite
   needs x64-only natives like `libveldrid-spirv`, which ships linux-x64 but not linux-arm64, so it
   cannot run on the arm64 self-hosted container), plus the path-gated `cross-platform-gpu.yml` D3D11
-  (Windows/WARP) and Vulkan (Linux/lavapipe) golden legs. The games' fleet-wide CI model (org, both
+  golden legs (Windows/WARP, the Veldrid incumbent plus the engine's own native backend) and Vulkan
+  (Linux/lavapipe). The games' fleet-wide CI model (org, both
   runners, secretless OIDC, macOS arm64-only) is in `GameTemplate/docs/CI-AND-RUNNERS.md`.
 - **Warnings are errors.** `<TreatWarningsAsErrors>true</TreatWarningsAsErrors>` in `Directory.Build.props`
   (every config), so any compiler/analyzer warning fails the build, the tests, and CI. Keep the engine at zero

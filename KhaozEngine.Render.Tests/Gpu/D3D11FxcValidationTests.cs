@@ -21,8 +21,9 @@ namespace KhaozEngine.Tests.Gpu
     /// the whole point is that HLSL which SPIRV-Cross emits happily and FXC rejects should fail on a Windows
     /// runner with no GPU work at all. A <c>[GpuFact]</c> would gate it behind <c>KE_GPU_TESTS</c> and a live
     /// device, and a name carrying "Golden" would put it in the matrix's golden filter, which is for device-backed
-    /// pixel comparisons. It is instead selected by name in <c>cross-platform-gpu.yml</c>'s Windows leg, on every
-    /// trigger, so it runs on every push that touches the path filter rather than only on the weekly schedule.
+    /// pixel comparisons. It is instead selected by name in <c>cross-platform-gpu.yml</c>'s incumbent Windows
+    /// leg, on every trigger, so it runs on every push that touches the path filter rather than only on the
+    /// weekly schedule.
     /// </para>
     /// <para>
     /// OFF WINDOWS EVERY FXC CASE RETURNS EARLY, because <c>d3dcompiler</c> exists nowhere else. The

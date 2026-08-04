@@ -75,6 +75,24 @@ namespace KhaozEngine.Tests.Gpu
         // fifteen slots it was never asked to touch.
         const int BoundCount = 1;
 
+        // WHAT THE READ-BACK MAY ASK FOR, per register file, and why it is not the poison width.
+        //
+        // The SET side stays sixteen wide at every arm below and that is legal everywhere it appears: the emitter
+        // passes its OWN count (one here, zero for the depth-only render-target bind) beside a scratch array that
+        // is longer, which is exactly the shape under test, so no Set here is ever handed a count past a limit. A
+        // call that reaches the runtime carrying sixteen IS the defect, not the test's own doing.
+        //
+        // A Get* has no such freedom. Reading past a register file's documented slot count is undefined: a runtime
+        // that writes nothing would read as a clean pass on a correct emitter, and the entries past the limit
+        // would be asserting C# array zero-init rather than device state either way. So each read is clamped to
+        // its own file's limit and the trailing-null assertion runs to the clamp.
+        const int ConstantBufferSlots = 14;   // D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT
+        const int RenderTargetSlots = 8;      // D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT
+
+        // D3D11_PS_CS_UAV_REGISTER_COUNT, the feature level 11.0 count. Level 11.1 raises the compute stage to
+        // D3D11_1_UAV_SLOT_COUNT (64), so eight is the value that is legal on either one.
+        const int UnorderedAccessSlots = 8;
+
         const string NotWindows =
             "dormant: not Windows, so there is no native Direct3D 11 device to read state back off.";
 
@@ -88,9 +106,9 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// FIRST-CHECK 1: the generated array overloads marshal the COUNT, not the array length. Driven through
-        /// the four array calls the real emitter makes (the <c>b</c>, <c>t</c> and <c>s</c> bind arms and the
-        /// batched vertex-stream flush), each one over a scratch array poisoned past the count with a LIVE
-        /// resource of the right kind, so a length-marshalling overload leaves that resource visible in the
+        /// the five array calls the real emitter makes (the <c>b</c>, <c>t</c>, <c>s</c> and <c>u</c> bind arms
+        /// and the batched vertex-stream flush), each one over a scratch array poisoned past the count with a
+        /// LIVE resource of the right kind, so a length-marshalling overload leaves that resource visible in the
         /// trailing slots instead of leaving them null.
         /// <para>
         /// Both halves are asserted at every arm. That the bound slots ARE bound is not a formality: a
@@ -155,7 +173,9 @@ namespace KhaozEngine.Tests.Gpu
         /// expects, and renders a frame reading nothing.
         /// <para>
         /// So each arm is bound to ONE stage and read back at BOTH: the named stage holds the resource, and the
-        /// other stage holds nothing.
+        /// other stage holds nothing. The <c>u</c> arm's "other" is the output merger rather than a sibling
+        /// stage, because Direct3D 11 has no per-stage unordered-access setter outside compute and a wrong arm
+        /// there could only have landed in <c>OMSetRenderTargetsAndUnorderedAccessViews</c>.
         /// </para>
         /// </summary>
         [GpuFact]
@@ -199,6 +219,8 @@ namespace KhaozEngine.Tests.Gpu
                 new GpuBufferDescription(1024, GpuBufferUsage.VertexBuffer));
             using IGpuTexture texture = Sampled(device);
             using IGpuTexture texturePoison = Sampled(device);
+            using IGpuBuffer storage = Storage(device);
+            using IGpuBuffer storagePoison = Storage(device);
 
             // ---- the 'b' file: *SetConstantBuffers1 over three parallel scratch arrays -----------------------
             //
@@ -218,8 +240,11 @@ namespace KhaozEngine.Tests.Gpu
             ReadOnlySpan<D3D11ConstantBufferBind> binds = new[] { new D3D11ConstantBufferBind(uniform, 0, 16) };
             emitter.SetConstantBuffers(GpuShaderStages.Vertex, 0, binds);
 
-            var readBuffers = new ID3D11Buffer[ScratchWidth];
-            context.Context.VSGetConstantBuffers(0, ScratchWidth, readBuffers);
+            // Read CLAMPED to D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT. The scratch behind the call is
+            // sixteen wide and the constant-buffer file is only fourteen slots deep, so asking the device for
+            // sixteen is a read past the API, and what it writes there is undefined.
+            var readBuffers = new ID3D11Buffer[ConstantBufferSlots];
+            context.Context.VSGetConstantBuffers(0, ConstantBufferSlots, readBuffers);
             AssertOnlyTheCountWasBound(readBuffers, "VSSetConstantBuffers1", output);
 
             // ---- the 't' file -------------------------------------------------------------------------------
@@ -231,6 +256,7 @@ namespace KhaozEngine.Tests.Gpu
             ReadOnlySpan<IGpuBindableResource?> resources = new IGpuBindableResource?[] { texture };
             emitter.SetShaderResources(GpuShaderStages.Fragment, 0, resources);
 
+            // The full poison width, and legal: sixteen of D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT's 128.
             var readViews = new ID3D11ShaderResourceView[ScratchWidth];
             context.Context.PSGetShaderResources(0, ScratchWidth, readViews);
             AssertOnlyTheCountWasBound(readViews, "PSSetShaderResources", output);
@@ -244,14 +270,38 @@ namespace KhaozEngine.Tests.Gpu
             ReadOnlySpan<IGpuBindableResource?> samplers = new IGpuBindableResource?[] { device.PointSampler };
             emitter.SetSamplers(GpuShaderStages.Fragment, 0, samplers);
 
+            // The full poison width, with no headroom at all: sixteen IS D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT,
+            // the limit itself rather than a number under it.
             var readSamplers = new ID3D11SamplerState[ScratchWidth];
             context.Context.PSGetSamplers(0, ScratchWidth, readSamplers);
             AssertOnlyTheCountWasBound(readSamplers, "PSSetSamplers", output);
 
+            // ---- the 'u' file -------------------------------------------------------------------------------
+            //
+            // Compute is the only stage that reaches this arm, and by refusal rather than by omission: the name
+            // resolution answers CSSetUnorderedAccessViews for compute and throws for every other stage (issue
+            // #490), because a graphics-pipeline UAV goes through the output merger instead. Two shipped compute
+            // layouts bind here, so it is live code with the same count-versus-length question as the other three.
+            ID3D11UnorderedAccessView?[] uavScratch = context.UnorderedAccessViews(ScratchWidth);
+            var uavPoison = (ID3D11UnorderedAccessView)D3D11BindResolve.ViewOf(
+                storagePoison, D3D11RegisterFile.UnorderedAccess)!;
+            for (int i = 0; i < ScratchWidth; i++) uavScratch[i] = uavPoison;
+
+            ReadOnlySpan<IGpuBindableResource?> writes = new IGpuBindableResource?[] { storage };
+            emitter.SetUnorderedAccessViews(GpuShaderStages.Compute, 0, writes);
+
+            // Read CLAMPED to D3D11_PS_CS_UAV_REGISTER_COUNT, the feature level 11.0 count, which is the smaller
+            // of the two feature levels this backend can find itself running on.
+            var readUavs = new ID3D11UnorderedAccessView[UnorderedAccessSlots];
+            context.Context.CSGetUnorderedAccessViews(0, UnorderedAccessSlots, readUavs);
+            AssertOnlyTheCountWasBound(readUavs, "CSSetUnorderedAccessViews", output);
+
             // ---- the batched vertex flush -------------------------------------------------------------------
             //
             // The strides come from the pipeline in a real frame, so they are adopted here directly: without them
-            // the flush skips a slot no input layout references and there would be no call to measure.
+            // the flush skips a slot no input layout references and there would be no call to measure. This is
+            // the ONE place the test reaches past the emitter surface it exists to check, and it is state the
+            // emitter reads rather than a call it makes.
             backend.State.Vertices.AdoptStrides(new uint[] { 16u });
 
             ID3D11Buffer?[] streamScratch = context.VertexBuffers(ScratchWidth);
@@ -266,6 +316,7 @@ namespace KhaozEngine.Tests.Gpu
             emitter.SetVertexBuffer(0, stream, 0);
             emitter.FlushVertexBuffers();
 
+            // The full poison width, and legal: sixteen of D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT's 32.
             var readStreams = new ID3D11Buffer[ScratchWidth];
             context.Context.IAGetVertexBuffers(0, ScratchWidth, readStreams,
                 new int[ScratchWidth], new int[ScratchWidth]);
@@ -294,8 +345,11 @@ namespace KhaozEngine.Tests.Gpu
             // The colour pass first, so the depth-only bind below has something to take away.
             emitter.SetFramebuffer(lit);
 
-            var afterLit = new ID3D11RenderTargetView[ScratchWidth];
-            context.Context.OMGetRenderTargets(ScratchWidth, afterLit, out ID3D11DepthStencilView? litView);
+            // Read CLAMPED to D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, here and at the depth-only read below. The
+            // output merger has eight colour slots, so asking for the sixteen the scratch is wide reads past the
+            // API and the eight entries past the limit would be asserting nothing but C# array zero-init.
+            var afterLit = new ID3D11RenderTargetView[RenderTargetSlots];
+            context.Context.OMGetRenderTargets(RenderTargetSlots, afterLit, out ID3D11DepthStencilView? litView);
             try
             {
                 Assert.True(afterLit[0] is not null,
@@ -317,11 +371,12 @@ namespace KhaozEngine.Tests.Gpu
 
             emitter.SetFramebuffer(shadow);
 
-            var afterShadow = new ID3D11RenderTargetView[ScratchWidth];
-            context.Context.OMGetRenderTargets(ScratchWidth, afterShadow, out ID3D11DepthStencilView? shadowView);
+            var afterShadow = new ID3D11RenderTargetView[RenderTargetSlots];
+            context.Context.OMGetRenderTargets(RenderTargetSlots, afterShadow,
+                out ID3D11DepthStencilView? shadowView);
             try
             {
-                for (int i = 0; i < ScratchWidth; i++)
+                for (int i = 0; i < afterShadow.Length; i++)
                 {
                     Assert.True(afterShadow[i] is null,
                         $"A depth-only framebuffer left a render target bound at slot {i}. OMSetRenderTargets was "
@@ -332,7 +387,7 @@ namespace KhaozEngine.Tests.Gpu
 
                 Assert.True(shadowView is not null,
                     "A depth-only framebuffer bound no depth-stencil view, so the shadow pass writes nowhere.");
-                output.WriteLine($"depth-only bind: {ScratchWidth} colour slots read back null, depth bound.");
+                output.WriteLine($"depth-only bind: {RenderTargetSlots} colour slots read back null, depth bound.");
             }
             finally
             {
@@ -355,6 +410,7 @@ namespace KhaozEngine.Tests.Gpu
 
             using IGpuBuffer uniform = Uniform(device);
             using IGpuTexture texture = Sampled(device);
+            using IGpuBuffer storage = Storage(device);
 
             // b file, VERTEX only.
             ReadOnlySpan<D3D11ConstantBufferBind> binds = new[] { new D3D11ConstantBufferBind(uniform, 0, 16) };
@@ -388,13 +444,42 @@ namespace KhaozEngine.Tests.Gpu
             context.Context.VSGetSamplers(0, 1, otherSamplers);
             AssertBoundHereAndNotThere(namedSamplers, otherSamplers,
                 "PSSetSamplers", "the vertex stage", output);
+
+            // u file, COMPUTE only, and the place it must NOT have reached is the graphics pipeline's own u file
+            // rather than a sibling stage. Direct3D 11 has no per-stage unordered-access setter outside compute: a
+            // pixel-stage UAV is bound through OMSetRenderTargetsAndUnorderedAccessViews alongside the render
+            // targets, so the output merger is the only other place a wrong arm could have put this one.
+            ReadOnlySpan<IGpuBindableResource?> writes = new IGpuBindableResource?[] { storage };
+            emitter.SetUnorderedAccessViews(GpuShaderStages.Compute, 0, writes);
+
+            var namedUavs = new ID3D11UnorderedAccessView[1];
+            var graphicsUavs = new ID3D11UnorderedAccessView[1];
+            var graphicsTargets = new ID3D11RenderTargetView[1];
+            context.Context.CSGetUnorderedAccessViews(0, 1, namedUavs);
+            context.Context.OMGetRenderTargetsAndUnorderedAccessViews(
+                1, graphicsTargets, out ID3D11DepthStencilView? graphicsDepth, 0, 1, graphicsUavs);
+            try
+            {
+                AssertBoundHereAndNotThere(namedUavs, graphicsUavs,
+                    "CSSetUnorderedAccessViews", "the output merger's u file", output);
+            }
+            finally
+            {
+                // The render target and depth-stencil view come back AddRef'd from the same read, and this arm is
+                // the only one whose counter-read hands back more than the slots it asked about.
+                Release(graphicsTargets);
+                graphicsDepth?.Dispose();
+            }
         }
 
         // ---- assertions and fixtures ------------------------------------------------------------------------
 
-        // Object-typed on purpose: the four scratch kinds are four unrelated Direct3D types, array covariance
+        // Object-typed on purpose: the five scratch kinds are five unrelated Direct3D types, array covariance
         // hands every one of them over as object?[], and a helper that names none of them can live outside the
         // platform guard where the interop-load rule cannot be broken by it.
+        //
+        // What arrives is the READ WINDOW, not the scratch: its length is the register file's documented slot
+        // count, which is narrower than the sixteen-wide poison wherever the file is shallower than that.
         static void AssertOnlyTheCountWasBound(object?[] slots, string call, ITestOutputHelper output)
         {
             try
@@ -411,10 +496,11 @@ namespace KhaozEngine.Tests.Gpu
                 for (int i = BoundCount; i < slots.Length; i++)
                 {
                     Assert.True(slots[i] is null,
-                        $"{call} was handed a count of {BoundCount} over a scratch array of {slots.Length}, and "
-                        + $"slot {i} came back holding the poison. Vortice is marshalling array.Length rather "
-                        + "than the count, so every array bind this backend makes writes the stale tail of a "
-                        + "reused scratch buffer. Every call site would have to pass an exactly sized array.");
+                        $"{call} was handed a count of {BoundCount} over a scratch array of {ScratchWidth}, and "
+                        + $"slot {i} of the {slots.Length} read back came back holding the poison. Vortice is "
+                        + "marshalling array.Length rather than the count, so every array bind this backend "
+                        + "makes writes the stale tail of a reused scratch buffer. Every call site would have to "
+                        + "pass an exactly sized array.");
                 }
 
                 output.WriteLine($"{call}: slot 0 bound, slots {BoundCount}..{slots.Length - 1} untouched.");
@@ -458,6 +544,12 @@ namespace KhaozEngine.Tests.Gpu
 
         static IGpuBuffer Uniform(IGpuDevice device)
             => device.Factory.CreateBuffer(new GpuBufferDescription(256, GpuBufferUsage.UniformBuffer));
+
+        // A read-write structured buffer is the one buffer usage that earns an unordered-access view on this
+        // backend (D3D11ViewPolicy.ForBuffer), and its full-range RAW view is what the 'u' arm binds.
+        static IGpuBuffer Storage(IGpuDevice device)
+            => device.Factory.CreateBuffer(
+                new GpuBufferDescription(1024, GpuBufferUsage.StructuredBufferReadWrite));
 
         static IGpuTexture Sampled(IGpuDevice device)
             => device.Factory.CreateTexture(GpuTextureDescription.Texture2D(

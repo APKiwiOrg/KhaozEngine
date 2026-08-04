@@ -8,6 +8,12 @@ namespace KhaozEngine.Tests.Gpu
     /// EVERY golden compare's worst per-cell difference, written down. One line per golden, appended to a
     /// per-backend file in the evidence directory, on a PASS exactly as much as on a failure.
     /// <para>
+    /// TWO PATHS RECORD NOTHING, and they are the ones that never reach a compare: a missing golden file and a
+    /// golden whose cell count does not match the capture both fail inside <see cref="GoldenCompare"/> before
+    /// the worst-cell number is computed, so a run carrying either one is short a line rather than holding a
+    /// zero.
+    /// </para>
+    /// <para>
     /// WHY A PASSING COMPARE HAS TO WRITE ANYTHING AT ALL. Gate 1 of the native Direct3D 11 rollout
     /// (https://github.com/APKiwiOrg/KhaozEngine/issues/460) is the OBSERVED worst-cell delta of the 36 committed
     /// goldens, and the only run that can produce it is a GREEN one: a red run says a golden moved past the

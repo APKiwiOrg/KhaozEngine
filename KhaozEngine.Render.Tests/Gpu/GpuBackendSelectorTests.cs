@@ -83,8 +83,9 @@ namespace KhaozEngine.Tests.Gpu
 
         // --- the exact KE_GRAPHICS_BACKEND values the cross-platform-gpu CI matrix sets per leg, asserted
         // regardless of the host OS so the override drives the backend (and thus the per-backend golden path).
-        // Each string below is the matrix's `backend` key verbatim, so the two windows-latest legs differ only
-        // by this value. ---
+        // Each string below is the matrix's `backend` key verbatim. It is one of the two keys the two
+        // windows-latest legs differ by: the other is `d3d11Adapter`, which the native leg pins to warp and the
+        // incumbent leg leaves empty. ---
 
         [Theory]
         [InlineData("metal", GpuBackendKind.Metal)]                        // macos-14 leg

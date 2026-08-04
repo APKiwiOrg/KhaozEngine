@@ -124,9 +124,11 @@ The suite each leg runs is split by trigger, from measured hosted-runner cost
   `push`/`pull_request` and the WHOLE suite on the weekly `schedule` and on `workflow_dispatch`, for the same
   measured cost reason at the same 2x rate. It is a GUEST in the incumbent's golden family: it verifies the
   committed `.direct3d11.txt` grids on the same WARP rasterizer and never bakes them, so `KE_UPDATE_GOLDENS`
-  stays empty on it for every trigger and it sits out bake dispatches entirely. It also pins
-  `KE_D3D11_ADAPTER=warp` instead of inheriting the incumbent's implicit fallback, so a runner image that grows
-  a paravirtual adapter cannot quietly change the rasterizer under the shared goldens.
+  stays empty on it for every trigger and it sits out bake dispatches entirely. Both Windows legs pin
+  `KE_D3D11_ADAPTER=warp` instead of inheriting the implicit fallback, so a runner image that grows a
+  paravirtual adapter cannot quietly change the rasterizer under the shared goldens. The incumbent leg needs
+  the pin because it creates native devices too, through the parity tests, and the variable is read only by the
+  native backend's adapter selection, so the Veldrid device that leg also creates is unaffected.
 - **GitHub-hosted Vulkan leg (1x)**: golden tests only (`FullyQualifiedName~Golden`) on
   `push`/`pull_request`, and the WHOLE suite on the weekly `schedule` and on `workflow_dispatch`, the
   same tier as D3D11, with the full-suite runs serializing xUnit test collections
@@ -191,9 +193,10 @@ Software rasterizers on the runners (no real GPU):
   runtime** and points `VK_ICD_FILENAMES` + `VK_DRIVER_FILES` at it rather than hardcoding. Veldrid 4.9.0's Vulkan
   binding P/Invokes the bare names `libdl` / `libvulkan`, which modern Ubuntu only ships versioned, so the workflow
   also symlinks `libdl.so` → `libdl.so.2` and `libvulkan.so` → `libvulkan.so.1`.
-- Windows D3D11 → **WARP** software adapter (automatic fallback when no hardware adapter is present) on the
-  incumbent leg. Verified. The native leg does not ride that fallback: it pins `KE_D3D11_ADAPTER=warp`, so the
-  rasterizer under the shared goldens is stated rather than inherited from the runner image.
+- Windows D3D11 → **WARP** software adapter (automatic fallback when no hardware adapter is present) for the
+  incumbent's Veldrid device. Verified. Neither Windows leg rides that fallback for the NATIVE devices it
+  creates: both pin `KE_D3D11_ADAPTER=warp`, so the rasterizer under the shared goldens is stated rather than
+  inherited from the runner image.
 
 Net result: **all four legs are blocking, none of them informational** - Metal (macOS), Direct3D11
 (Windows/WARP), Direct3D11 native (Windows/WARP), and Vulkan (Linux/lavapipe). Three of them are long

@@ -54,9 +54,11 @@
 # Software rasterizers (these runners have no real GPU):
 #   * Linux uses Mesa lavapipe (software Vulkan); the workflow discovers the lavapipe ICD manifest at runtime
 #     (its name/path drifts across Ubuntu images) and points VK_ICD_FILENAMES/VK_DRIVER_FILES at it.
-#   * Windows D3D11 falls back to WARP (software) automatically when no hardware adapter is present. The
-#     native leg does not ride that accident: it pins KE_D3D11_ADAPTER=warp (decision G2), so a runner image
-#     that grows a paravirtual adapter cannot silently change the rasterizer under the golden gate.
+#   * Windows D3D11 falls back to WARP (software) automatically when no hardware adapter is present. Neither
+#     Windows leg rides that accident: both pin KE_D3D11_ADAPTER=warp (decision G2), so a runner image that
+#     grows a paravirtual adapter cannot silently change the rasterizer under the golden gate. The incumbent
+#     leg needs the pin because the parity tests create native devices there too, and the variable is read
+#     only by the native backend's adapter selection, so the Veldrid device it also creates is unaffected.
 #
 # The headless golden tests use Render2D/3D Snapshot -> CreateHeadless (offscreen, NO window), so SDL2 is
 # NOT required here (only the Vulkan/D3D11 runtime plus a (software) rasterizer). A shipped windowed game
@@ -176,12 +178,15 @@ jobs:
         #               Vulkan bills 1x, golden subset only on push/pull_request). Vulkan full-suite
         #               runs additionally serialize xUnit collections (KE_TEST_EXTRA_ARGS, header).
         #
-        # `d3d11Adapter` is the leg's KE_D3D11_ADAPTER value, and ONLY the native leg sets it (decision G2).
-        # The incumbent leg deliberately keeps its IMPLICIT WARP fallback: it has months of green history on
-        # that path, and changing what it selects would change what the shared goldens are compared against.
-        # The native leg is new, so it STATES the rasterizer instead of inheriting an accident of the runner
-        # image. Empty on the other three legs, where blank reads as "let the API pick", which is the
-        # behaviour they already had.
+        # `d3d11Adapter` is the leg's KE_D3D11_ADAPTER value, and BOTH Windows legs pin it to warp
+        # (decision G2). The native leg pins it because it is new and should STATE its rasterizer rather than
+        # inherit an accident of the runner image. The incumbent leg pins it because the parity tests create
+        # NATIVE devices there too: unpinned, those resolve DriverType.Hardware against whatever adapter the
+        # image exposes, so the two Windows legs would exercise different rasterizers for the same native code
+        # and a parity difference could be the adapter rather than the implementation. This does NOT touch the
+        # Veldrid incumbent device itself, whose selection is unchanged (and with it what the shared goldens
+        # are compared against): KE_D3D11_ADAPTER has exactly one reader, D3D11AdapterSelection in the native
+        # backend package. Empty on macOS and Linux, where blank reads as "let the API pick".
         include:
           - os: macos-14
             backend: metal
@@ -192,7 +197,7 @@ jobs:
             backend: direct3d11
             runner: windows-latest
             fullSuite: scheduled
-            d3d11Adapter: ''
+            d3d11Adapter: warp
           # The engine's own native D3D11 backend (decision T5). Same OS, same runner and the same suite tier
           # as the incumbent leg above, which is the point: two implementations of one API on one rasterizer,
           # checked against a single shared set of goldens (decision I3).
@@ -326,8 +331,9 @@ jobs:
         env:
           KE_GPU_TESTS: '1'
           KE_GRAPHICS_BACKEND: ${{ matrix.backend }}
-          # Only the native leg pins the adapter (decision G2, matrix comment above). Empty everywhere else,
-          # and blank is parsed as "let DXGI pick", so the incumbent leg's implicit WARP fallback is unchanged.
+          # Both Windows legs pin the adapter (decision G2, matrix comment above), because both create native
+          # devices: the incumbent leg does it through the parity tests. Empty on macOS and Linux, and blank is
+          # parsed as "let DXGI pick". Read only by the native backend, so no Veldrid device sees it.
           KE_D3D11_ADAPTER: ${{ matrix.d3d11Adapter }}
           # EMPTY on direct3d11-native for every trigger, bake dispatches included (decision I3). That leg is a
           # guest in the direct3d11 golden family, so GoldenCompare.BakeRefusal turns KE_UPDATE_GOLDENS=1 under

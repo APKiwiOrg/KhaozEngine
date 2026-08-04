@@ -141,6 +141,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         long _stallTicks;
         D3D11BackpressureStats _lastFrame;
 
+        // The same stalls, never rolled. See D3D11WaitTotals for why a sampled per-frame number cannot establish
+        // M3's "zero across the capture window" and this one can.
+        D3D11WaitTotals _totalStalls;
+
         // The off-timeline write's deferrals, their replays, the ones a later write superseded and the ones that
         // went away with a disposed ring, cumulative since the device was created and deliberately NOT rolled per
         // frame. All four are mutated under the submit lock alone, so the lock orders them, and the property reads
@@ -202,6 +206,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// M3 measurement, and it counts frame-boundary segment stalls ALONE (see
         /// <see cref="OffTimelinePatches"/>).</summary>
         internal D3D11BackpressureStats LastFrameBackpressure => _lastFrame;
+
+        /// <summary>
+        /// The SAME segment stalls accumulated since the device was created, which is the half a telemetry session
+        /// can carry. <see cref="BeginFrame"/> never rolls it, so M3's exit criterion reads as one subtraction
+        /// across the capture window instead of a bet that the sampler happened to land on the stalling frame.
+        /// Still frame-boundary stalls ALONE, so it is no more foldable with <see cref="OffTimelinePatches"/> than
+        /// the per-frame roll is. See <see cref="D3D11WaitTotals"/>.
+        /// </summary>
+        internal D3D11WaitTotals TotalBackpressure => _totalStalls;
 
         /// <summary>
         /// THE OFF-TIMELINE WRITE'S DEFERRALS AND REPLAYS, CUMULATIVE SINCE THE DEVICE WAS CREATED, and a
@@ -657,8 +670,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             var spin = new SpinWait();
             while (_completion.CompletedValue < target) spin.SpinOnce(sleep1Threshold: -1);
 
+            long elapsed = Stopwatch.GetTimestamp() - start;
             _stallCount++;
-            _stallTicks += Stopwatch.GetTimestamp() - start;
+            _stallTicks += elapsed;
+            _totalStalls = _totalStalls.Plus(elapsed);
         }
 
         /// <summary>

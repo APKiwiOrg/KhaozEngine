@@ -68,6 +68,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         long _drainTicks;
         D3D11DrainStats _lastFrame;
 
+        // The same drains, never rolled. See D3D11WaitTotals for why the per-frame roll alone cannot answer the
+        // M2 question once a telemetry session samples it on its own cadence.
+        D3D11WaitTotals _totalDrain;
+
         /// <summary>
         /// Build the subsystem over <paramref name="timeline"/>, taking ownership of it.
         /// </summary>
@@ -123,6 +127,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <summary>The drains of the frame that has ENDED. Rolled by <see cref="BeginFrame"/>. This is the M2
         /// measurement.</summary>
         internal D3D11DrainStats LastFrameDrain => _lastFrame;
+
+        /// <summary>
+        /// The SAME drains accumulated since the device was created, which is the half a telemetry session can
+        /// carry. <see cref="BeginFrame"/> never rolls it, so two sampled rows bracket a window exactly and M2's
+        /// per-frame figure is their difference over the frames between them. See <see cref="D3D11WaitTotals"/>.
+        /// </summary>
+        internal D3D11WaitTotals TotalDrain => _totalDrain;
 
         /// <summary>
         /// The timeline's completed value, lock-free where the mechanism allows it and under the submit lock
@@ -309,8 +320,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 if (!_timeline.TryWaitForValue(target, DrainWaitSliceMs)) D3D11DrainSpin.SpinOnce(ref spin);
             }
 
+            long elapsed = Stopwatch.GetTimestamp() - start;
             _drainCount++;
-            _drainTicks += Stopwatch.GetTimestamp() - start;
+            _drainTicks += elapsed;
+            _totalDrain = _totalDrain.Plus(elapsed);
         }
 
         /// <summary>

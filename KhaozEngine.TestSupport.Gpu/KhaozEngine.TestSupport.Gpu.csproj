@@ -19,6 +19,12 @@
   <ItemGroup>
     <!-- GpuFactAttribute.ProbeHeadlessDevice calls KhaozEngine.Gpu.GpuDeviceContext.CreateHeadless. -->
     <ProjectReference Include="../KhaozEngine.Gpu/KhaozEngine.Gpu.csproj" />
+    <!-- D3D11BackendRegistration registers the native backend for every assembly that takes [GpuFact] from here,
+         which is what stops a GPU-testing project being wired without it (see that file). Safe to reference
+         unconditionally on every OS: the package is net10.0, not net10.0-windows, and its Windows boundary is
+         platform guards over NoInlining bodies, so nothing here puts the Vortice interop on the load path off
+         Windows (decision P1). -->
+    <ProjectReference Include="../KhaozEngine.Gpu.D3D11/KhaozEngine.Gpu.D3D11.csproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- GpuFactSkipReasonTests (Render.Tests) exercises the internal SkipReason gate. -->

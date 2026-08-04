@@ -16,6 +16,17 @@ namespace KhaozEngine.Tests.Gpu
     /// registered".
     /// </para>
     /// <para>
+    /// It lives in the SHARED support project rather than in one test assembly because a module initializer is
+    /// per-assembly and the gate that decides whether a GPU test runs is not. Every assembly with a
+    /// <c>[GpuFact]</c> in it references this project by definition (that is where the attribute lives), so
+    /// putting the registration here means no test project can be wired for GPU tests and still be missing the
+    /// backend. It was in <c>KhaozEngine.Render.Tests</c> first, and
+    /// <c>KhaozEngine.MapEditor.Tests</c> paid for it: on the native leg all four of its GPU tests threw
+    /// <c>GpuBackendProviderMissingException</c>, because it takes <c>[GpuFact]</c> from here and never had a
+    /// registration line of its own. A per-project line is a line every future test project must remember, and
+    /// the failure for forgetting it is a red leg that reads as a device problem.
+    /// </para>
+    /// <para>
     /// It is process-wide state, so tests that need the native kind UNREGISTERED say so explicitly with
     /// <c>BackendProviderScope(kind, provider: null)</c> and belong in the non-parallel
     /// <c>GraphicsBackendGlobalState</c> collection. Pinning the unregistered behaviour that way is deliberately

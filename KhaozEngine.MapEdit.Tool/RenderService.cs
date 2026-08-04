@@ -143,9 +143,15 @@ public sealed class RenderService(MapEditSession session)
     public ViewportWorld ConfigureWorld(Scene3D scene, bool textured) =>
         new(scene, session.ManifestPaths) { TexturedPropsEnabled = () => textured };
 
-    // Runs the headless capture and encodes it to a PNG, mapping any capture failure (no device, no driver) to a
-    // precise InvalidOperationException naming the selected backend so the client learns why the render failed and
-    // how to fix it. Two frames so the streamer settles before the pixels are read back.
+    // Runs the headless capture and encodes it to a PNG, wrapping any capture failure in an
+    // InvalidOperationException that names the selected backend, so the client learns which backend the render was
+    // attempted on. Two frames so the streamer settles before the pixels are read back.
+    //
+    // The wrapper states the backend and hands the inner message straight through, and does NOT name a cause. It
+    // used to say "no headless GPU device available", which is only one of the things a capture failure means: the
+    // one that produced it on the native D3D11 CI leg was a backend whose provider was never registered, a wiring
+    // fault in the test project rather than a machine without a device, and the wrapper's confident wrong cause is
+    // what the reader acts on first.
     //
     // The ViewportWorld built inside setup is deliberately NOT disposed by the caller: Render3DSnapshot.Capture
     // owns the Scene3D and disposes it before returning, and that Scene3D.Dispose already frees every GPU resource
@@ -166,9 +172,10 @@ public sealed class RenderService(MapEditSession session)
         catch (Exception ex)
         {
             GpuBackendKind selected = GpuBackendSelector.Select();
-            throw new InvalidOperationException("render failed, no headless GPU device available (backend "
-                + selected + "). Set KE_GRAPHICS_BACKEND or run on a machine with Metal, D3D11, or Vulkan. Details: "
-                + ex.Message);
+            throw new InvalidOperationException("render failed for backend " + selected
+                + ". The reason is in the details below: a machine with no headless device, a backend whose "
+                + "provider was never registered, and a failure inside the render itself all arrive here. Set "
+                + "KE_GRAPHICS_BACKEND to render on a different backend. Details: " + ex.Message);
         }
         return PngWriter.Encode(rgba, width, height);
     }

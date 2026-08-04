@@ -102,7 +102,9 @@ namespace KhaozEngine.Tests.Gpu
 
     /// <summary>
     /// That the test process actually has the REAL native provider registered, through the one
-    /// <c>[ModuleInitializer]</c> section 4.1 allows (<c>Gpu/D3D11BackendRegistration.cs</c>).
+    /// <c>[ModuleInitializer]</c> section 4.1 allows
+    /// (<c>KhaozEngine.TestSupport.Gpu/D3D11BackendRegistration.cs</c>, which every assembly taking
+    /// <c>[GpuFact]</c> loads).
     /// <para>
     /// In the non-parallel collection because it reads the process-wide registry, which the append-audit rows
     /// temporarily empty to pin the unregistered behaviour. Worth asserting at all because the registration is

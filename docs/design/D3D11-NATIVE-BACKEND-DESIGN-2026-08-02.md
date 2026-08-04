@@ -427,8 +427,15 @@ Every `UniformBuffer`-usage buffer is allocated as `size * FramesInFlight` with 
 - A record-time `UpdateBuffer(buffer, offset, data)` writes at `mapped + frameBase + offset`. No staging
   buffer, no copy command, no stall, and no whole-buffer requirement.
 - Every constant-buffer bind computes `firstConstant = (frameBase + rangeOffset + dynamicOffset) / 16` and
-  `numConstants = roundUp16(size) / 16`. Every real engine stride is already 256-aligned (256, 768, 8448,
-  9472), and ring allocations are 256-aligned, so the alignment requirement is met by the callers.
+  `numConstants = align256(max(size, 256)) / 16`. BOTH numbers carry the 16-constant rule, not just the first:
+  D3D11 wants `pNumConstants` to be a multiple of 16 constants in [0..4096], and an out-of-rule count makes the
+  runtime drop the whole `*SetConstantBuffers1` call. The setters return void, so the slot stays empty after the
+  replay's `ClearState` and the shader reads zeros with nothing reported. Rounding up is safe because
+  `align256(size)` is exactly `D3D11UniformRing.SegmentStrideFor(size)`, so a bare buffer's rounded window is the
+  frame's own segment and never reaches a neighbour. (Corrected 2026-08-05. This line originally read
+  `numConstants = roundUp16(size) / 16` and claimed every real engine stride was already 256-aligned. That was
+  false, and it was the defect: the model frame UBO binds 1008 bytes, the splat combined UBO 1120 and the palette
+  buffer 1040, none of them 256-aligned. The premise shipped the silent drop that the first WARP run caught.)
 - The ring is mapped lazily on the first write of a record phase with `MAP_WRITE_NO_OVERWRITE` and unmapped at
   the start of the next `Submit`. Two native calls per ring per submit, which is the floor.
 - Frame N uses segment `N % FramesInFlight`. Before handing out a segment the allocator checks the fence of
@@ -1022,6 +1029,11 @@ judges it as a consumer-side reading beside the device counters rather than fold
 
 **Gate 5 is met.** `softwareAdapter` and `deviceLossReason` both ship in the telemetry session header, from
 row 16.
+
+**The first `direct3d11-native` leg (run 30955744945) failed 113 of 4028**, from one mechanism plus a
+test-assembly registration gap: the 6.2 constant-count round-up was to 16 bytes rather than 256, so every window
+whose size fell strictly between two multiples of 256 was dropped silently by the runtime. Both are fixed
+in-branch.
 
 ---
 

@@ -103,14 +103,31 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             => (frameBaseBytes + offsetBytes + dynamicOffsetBytes) / ConstantSizeBytes;
 
         /// <summary>
-        /// The window size expressed in constants, after the minimum is applied. A window that is not a whole
-        /// number of constants is rounded UP, so the count covers the caller's bytes rather than truncating the
-        /// last partial constant away. That round-up is a no-op for every window the engine binds, since a uniform
-        /// buffer's size is validated as a multiple of 16 at creation and every range in the renderers is
-        /// 256-aligned.
+        /// The window size expressed in constants, after the minimum is applied. THE COUNT ITSELF HAS AN
+        /// ALIGNMENT RULE, and it is the same 16-CONSTANT (256-byte) rule as the start:
+        /// <c>*SetConstantBuffers1</c> accepts a <c>pNumConstants</c> that is a multiple of 16 constants in
+        /// [0..4096], so the round-up here is to <see cref="OffsetAlignmentBytes"/> and not to
+        /// <see cref="ConstantSizeBytes"/>.
+        /// <para>
+        /// THE FAILURE MODE IS SILENCE, which is why this is worth the extra alignment step. The setters return
+        /// void. An out-of-rule count makes the runtime DROP the whole call, so the slot is simply never filled,
+        /// and after the replay's <c>ClearState</c> it stays empty and the shader reads zeros with no error
+        /// anywhere. Rounding to 16 bytes instead shipped exactly that: the model pass bound a 1008-byte frame
+        /// UBO as 63 constants, the splat pass 1120 bytes as 70 and the palette pass 1040 bytes as 65, all
+        /// illegal, so meshes collapsed to nothing and splat terrain vanished on the first WARP run.
+        /// </para>
+        /// <para>
+        /// ROUNDING UP IS SAFE, on both shapes of buffer. A uniform buffer is ring-backed, and a ring's segment
+        /// stride is <see cref="D3D11UniformRing.SegmentStrideFor"/>, which is this same
+        /// <see cref="AlignUpToOffsetBoundary"/>. So for a bare buffer the rounded window is EXACTLY the frame's
+        /// own segment: it covers padding the frame already owns and can never reach a neighbouring segment.
+        /// Where a window is a sub-range that the round-up carries past its own end, the shader still reads only
+        /// the fields its own block declares, and a constant-buffer read past the allocation returns zero rather
+        /// than faulting.
+        /// </para>
         /// </summary>
         internal static uint ConstantCount(uint sizeBytes)
-            => AlignUp(sizeBytes < MinimumRangeBytes ? MinimumRangeBytes : sizeBytes, ConstantSizeBytes)
+            => AlignUp(sizeBytes < MinimumRangeBytes ? MinimumRangeBytes : sizeBytes, OffsetAlignmentBytes)
                 / ConstantSizeBytes;
 
         /// <summary>Round <paramref name="bytes"/> up to the 256-byte boundary a constant-buffer window may start

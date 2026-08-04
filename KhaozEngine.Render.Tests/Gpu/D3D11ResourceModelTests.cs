@@ -4,6 +4,8 @@ using System.Reflection;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.D3D11;
 using KhaozEngine.Gpu.D3D11.Internal;
+using KhaozEngine.Render3D;
+using KhaozEngine.Render3D.Rendering;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
@@ -313,13 +315,114 @@ namespace KhaozEngine.Tests.Gpu
         public void AWindowStart_IsCountedInConstants(uint offsetBytes, uint expected)
             => Assert.Equal(expected, D3D11ConstantRange.FirstConstant(offsetBytes));
 
+        /// <summary>
+        /// The exact counts, including the windows a 16-byte round-up got wrong. A count is legal only as a
+        /// multiple of 16 constants, so the round-up is to 256 bytes: 1008 bytes is 64 constants and not 63, 1040
+        /// and 1120 are both 80, 8256 is 528. Everything at or below 768 here was ALREADY legal and is pinned to
+        /// prove the fix moved no count Direct3D 11 was accepting before.
+        /// </summary>
         [Theory]
         [InlineData(16u, 16u)]     // below the minimum, rounded up
         [InlineData(255u, 16u)]
         [InlineData(256u, 16u)]
         [InlineData(512u, 32u)]
+        [InlineData(768u, 48u)]    // WaterRenderer.SlotBytes
+        [InlineData(1008u, 64u)]   // ModelRenderer.UboBytes. Was 63, which dropped the whole model pass
+        [InlineData(1040u, 80u)]   // PixelPostProcess.PaletteBufferBytes. Was 65
+        [InlineData(1120u, 80u)]   // the splat combined UBO. Was 70, which dropped splat terrain
+        [InlineData(8256u, 528u)]  // (1 + 128) * 64 unaligned. Was 516
+        [InlineData(8448u, 528u)]  // ShadowMapRenderer.SkinnedDepthSlotBytes
+        [InlineData(9472u, 592u)]  // ModelRenderer.SkinnedMainSlotBytes
         public void AWindowSize_IsCountedInConstantsWithAMinimum(uint sizeBytes, uint expected)
             => Assert.Equal(expected, D3D11ConstantRange.ConstantCount(sizeBytes));
+
+        /// <summary>
+        /// THE RULE AS AN INVARIANT, not a table. <c>*SetConstantBuffers1</c> wants a count that is a multiple of
+        /// 16 constants in [0..4096], and it returns void, so an out-of-rule count is not an error: the runtime
+        /// drops the entire call, the slot stays empty after the replay's <c>ClearState</c>, and the shader reads
+        /// zeros with nothing reported.
+        /// </summary>
+        [Theory]
+        [InlineData(16u)]
+        [InlineData(255u)]
+        [InlineData(256u)]
+        [InlineData(512u)]
+        [InlineData(1008u)]
+        [InlineData(1040u)]
+        [InlineData(1120u)]
+        [InlineData(8256u)]
+        [InlineData(9472u)]
+        public void AWindowSize_YieldsACountDirect3D11WillAccept(uint sizeBytes)
+            => AssertBindableConstantCount("window", sizeBytes);
+
+        /// <summary>The same invariant swept across every size a uniform buffer can have (16-byte multiples, the
+        /// creation rule) up to 12288 bytes, comfortably past the largest window the engine binds. A loop rather
+        /// than a random sample, so a red run names the same size every time it runs.</summary>
+        [Fact]
+        public void EveryLegalWindowSize_YieldsACountDirect3D11WillAccept()
+        {
+            for (uint sizeBytes = 16; sizeBytes <= 12288; sizeBytes += 16)
+                AssertBindableConstantCount("window", sizeBytes);
+        }
+
+        /// <summary>
+        /// EVERY shipped uniform window, against the same rule. This generalises the 14.22.0 water lesson (see
+        /// <c>UboLayoutTests.WaterUbo_BoundRangeAndStride_SatisfyTheD3D11ConstantCountRule</c>, which pinned the
+        /// one payload that had already broken) to the whole renderer surface, because the mechanism was never
+        /// water-specific: ANY bound size falling strictly between two multiples of 256 is dropped silently, and
+        /// three shipped windows did exactly that.
+        /// <para>
+        /// Each size is referenced by its own constant wherever one is reachable. The three private literals are
+        /// hardcoded against the line that owns them, so moving one fails here rather than on a Windows runner.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void EveryShippedUniformWindow_BindsACountDirect3D11WillAccept()
+        {
+            (string Window, uint Bytes)[] windows =
+            {
+                ("ModelRenderer frame UBO", ModelRenderer.UboBytes),
+                ("ModelRenderer splat combined UBO", ModelRenderer.UboBytes + SplatParamsData.SizeInBytes),
+                ("ModelRenderer skinned main slot", ModelRenderer.SkinnedMainSlotBytes),
+                ("ShadowMapRenderer skinned depth slot", ShadowMapRenderer.SkinnedDepthSlotBytes),
+                ("ShadowMapRenderer cascade slot", 256u),          // private const, ShadowMapRenderer.cs:41
+                ("WaterRenderer plane slot", WaterRenderer.SlotBytes),
+                ("PixelPostProcess palette", PixelPostProcess.PaletteBufferBytes),
+                ("PixelPostProcess blur", PixelPostProcess.BlurBufferBytes),
+                ("PixelPostProcess edge", PixelPostProcess.EdgeBufferBytes),
+                ("PixelPostProcess final", PixelPostProcess.FinalBufferBytes),
+                ("PixelPostProcess fxaa", PixelPostProcess.FxaaBufferBytes),
+                ("PixelPostProcess bright", PixelPostProcess.BrightBufferBytes),
+                ("PixelPostProcess composite", PixelPostProcess.CompositeBufferBytes),
+                ("PixelPostProcess tone", PixelPostProcess.ToneBufferBytes),
+                ("PixelPostProcess apply", PixelPostProcess.ApplyBufferBytes),
+                ("DistortionRenderer frame UBO", DistortionRenderer.FrameBufferBytes),
+                ("SkyRenderer UBO", SkyRenderer.UboBytes),
+                ("StarfieldRenderer UBO", StarfieldRenderer.UboBytes),
+                ("OceanFftProducer UBO", OceanFftProducer.UboBytes),
+                ("SpriteBatch view-proj payload", 64u),            // private const, SpriteBatch.cs:157
+                ("OverlayMeshRenderer payload", 128u),             // private const, OverlayMeshRenderer.cs:35
+            };
+
+            foreach ((string window, uint bytes) in windows) AssertBindableConstantCount(window, bytes);
+        }
+
+        // The whole rule in one place: a multiple of 16 constants, no more than 4096 of them, and covering the
+        // bytes the caller asked for. The message says what a failure LOOKS like, because it looks like nothing.
+        static void AssertBindableConstantCount(string window, uint sizeBytes)
+        {
+            uint count = D3D11ConstantRange.ConstantCount(sizeBytes);
+
+            Assert.True(count % 16 == 0,
+                $"{window}: {sizeBytes} bytes binds {count} constants, which is not a multiple of 16. "
+                + "*SetConstantBuffers1 returns void and DROPS a call with an out-of-rule count, so the slot "
+                + "stays empty after ClearState and the shader reads zeros. Nothing is logged and nothing "
+                + "throws: the pass just renders from zeros on Direct3D 11 while Metal and Vulkan stay perfect.");
+            Assert.True(count <= 4096,
+                $"{window}: {sizeBytes} bytes binds {count} constants, past the 4096 maximum. Same silent drop.");
+            Assert.True(count * D3D11ConstantRange.ConstantSizeBytes >= sizeBytes,
+                $"{window}: {sizeBytes} bytes binds only {count} constants, which truncates the caller's window.");
+        }
 
         // ---- the input layout ----------------------------------------------------------------------------
 

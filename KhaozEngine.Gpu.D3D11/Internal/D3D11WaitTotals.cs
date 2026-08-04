@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Threading;
 
 namespace KhaozEngine.Gpu.D3D11.Internal
 {
@@ -21,9 +22,16 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// frames, and summing a converted double per wait accumulates rounding the raw counter does not.
     /// </para>
     /// <para>
-    /// IMMUTABLE, with <see cref="Plus"/> returning the next value, so a host keeps one field and a reader gets a
-    /// copy nothing can mutate behind it. The writers carry whatever thread contract their host already documents.
-    /// This type adds no synchronisation of its own and claims none.
+    /// A SNAPSHOT RATHER THAN THE ACCUMULATOR, which is what makes the read safe from any thread. A host keeps the
+    /// running pair in two plain fields and hands them to <see cref="Sample"/>, which reads each ONE AT A TIME so a
+    /// diagnostic on another thread can never see half of a 64-bit value a writer was part way through. The reader
+    /// then holds a copy nothing can mutate behind it, and the writers keep whatever thread contract their host
+    /// already documents rather than taking a lock for a counter.
+    /// </para>
+    /// <para>
+    /// WHAT PER-FIELD READS CANNOT DO is make the PAIR atomic. A sample taken while a wait is being recorded can
+    /// carry the new count beside the old ticks, so it is off by ONE entry and never torn. Over a capture window
+    /// measured in millions of frames that is noise, and the alternative costs the wait path a lock.
     /// </para>
     /// </summary>
     internal readonly struct D3D11WaitTotals
@@ -44,7 +52,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// 0.</summary>
         internal double TotalMs => Ticks * 1000d / Stopwatch.Frequency;
 
-        /// <summary>This total plus one more wait lasting <paramref name="ticks"/>.</summary>
-        internal D3D11WaitTotals Plus(long ticks) => new D3D11WaitTotals(Count + 1, Ticks + ticks);
+        /// <summary>
+        /// A host's running pair, read a field at a time. Both hosts accumulate lock-free on the frame thread and
+        /// both are read by diagnostics on any thread, so the volatile pair of reads lives here once instead of
+        /// being spelled out at each property. See the paragraphs above for what the pair does and does not
+        /// promise a concurrent reader.
+        /// </summary>
+        /// <param name="count">The host's running wait count.</param>
+        /// <param name="ticks">The host's running <see cref="Stopwatch"/> tick total.</param>
+        internal static D3D11WaitTotals Sample(ref long count, ref long ticks)
+            => new D3D11WaitTotals(Volatile.Read(ref count), Volatile.Read(ref ticks));
     }
 }

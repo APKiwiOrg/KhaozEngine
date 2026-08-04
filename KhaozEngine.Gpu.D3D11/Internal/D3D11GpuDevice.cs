@@ -159,6 +159,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// still reading, which blocks nobody, usually happens at load time, and would make M3's zero-stall
         /// criterion unreachable if it were folded in.
         /// </para>
+        /// <para>
+        /// THE DENOMINATOR COMES OFF THE RING, and that is only sound because of where the two are advanced.
+        /// <c>FramesBegun</c> is the ring allocator's frame index, while the drain it divides is the fence
+        /// subsystem's, so M2's per-frame figure holds only while the two count the same frames. They do because
+        /// <see cref="Present"/> advances both at the same boundary, in adjacent calls. Separating them, or
+        /// advancing one somewhere else, would skew the per-frame drain figure without failing anything.
+        /// </para>
         /// </summary>
         public GpuDeviceCounters Counters
         {
@@ -167,14 +174,17 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 D3D11WaitTotals drain = _fences.TotalDrain;
                 D3D11WaitTotals stalls = _rings.TotalBackpressure;
                 D3D11PendingPatchStats patches = _rings.OffTimelinePatches;
+
+                // Named, because the two longs and the two doubles sit next to each other: a transposed pair here
+                // compiles, passes every test, and reports a stall count as a drain count in the field.
                 return new GpuDeviceCounters(
-                    (long)_rings.FrameIndex,
-                    drain.Count,
-                    drain.TotalMs,
-                    stalls.Count,
-                    stalls.TotalMs,
-                    patches.Deferred,
-                    patches.Outstanding);
+                    framesBegun: (long)_rings.FrameIndex,
+                    drainCount: drain.Count,
+                    drainMs: drain.TotalMs,
+                    backpressureStallCount: stalls.Count,
+                    backpressureStallMs: stalls.TotalMs,
+                    offTimelineDeferred: patches.Deferred,
+                    offTimelineOutstanding: patches.Outstanding);
             }
         }
 

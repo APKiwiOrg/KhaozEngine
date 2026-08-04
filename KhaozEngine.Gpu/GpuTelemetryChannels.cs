@@ -56,9 +56,10 @@ namespace KhaozEngine.Gpu
 
         /// <summary>
         /// How many channels <see cref="AppendTo"/> writes for a populated counter set, so a caller can size its
-        /// list once instead of discovering the number by growing.
+        /// list once instead of discovering the number by growing. Spelled out rather than named
+        /// <c>Count</c>, which among seven channel-name constants reads as an eighth channel.
         /// </summary>
-        public const int Count = 7;
+        public const int ChannelCount = 7;
 
         /// <summary>
         /// The channels for <paramref name="counters"/>, or an empty list when the device counted nothing. The
@@ -68,7 +69,7 @@ namespace KhaozEngine.Gpu
         {
             if (!counters.HasValue) return Array.Empty<TelemetryChannel>();
 
-            var channels = new List<TelemetryChannel>(Count);
+            var channels = new List<TelemetryChannel>(ChannelCount);
             AppendTo(channels, counters);
             return channels;
         }

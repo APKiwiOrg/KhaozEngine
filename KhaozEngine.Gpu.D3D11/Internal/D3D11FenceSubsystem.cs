@@ -69,8 +69,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         D3D11DrainStats _lastFrame;
 
         // The same drains, never rolled. See D3D11WaitTotals for why the per-frame roll alone cannot answer the
-        // M2 question once a telemetry session samples it on its own cadence.
-        D3D11WaitTotals _totalDrain;
+        // M2 question once a telemetry session samples it on its own cadence. Two plain fields rather than the
+        // pair struct, so TotalDrain can read each half volatile for a sampler on another thread.
+        long _totalDrainCount;
+        long _totalDrainTicks;
 
         /// <summary>
         /// Build the subsystem over <paramref name="timeline"/>, taking ownership of it.
@@ -132,8 +134,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// The SAME drains accumulated since the device was created, which is the half a telemetry session can
         /// carry. <see cref="BeginFrame"/> never rolls it, so two sampled rows bracket a window exactly and M2's
         /// per-frame figure is their difference over the frames between them. See <see cref="D3D11WaitTotals"/>.
+        /// <para>
+        /// READ A FIELD AT A TIME, because the sampler asking for it is on whatever thread the consumer runs its
+        /// telemetry on while the frame thread records drains. Each half is whole, the PAIR may be one drain apart.
+        /// </para>
         /// </summary>
-        internal D3D11WaitTotals TotalDrain => _totalDrain;
+        internal D3D11WaitTotals TotalDrain => D3D11WaitTotals.Sample(ref _totalDrainCount, ref _totalDrainTicks);
 
         /// <summary>
         /// The timeline's completed value, lock-free where the mechanism allows it and under the submit lock
@@ -323,7 +329,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             long elapsed = Stopwatch.GetTimestamp() - start;
             _drainCount++;
             _drainTicks += elapsed;
-            _totalDrain = _totalDrain.Plus(elapsed);
+            _totalDrainCount++;
+            _totalDrainTicks += elapsed;
         }
 
         /// <summary>

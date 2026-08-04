@@ -145,14 +145,34 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Single(channels);
         }
 
+        /// <summary>
+        /// THE SPELLINGS THEMSELVES, WRITTEN OUT ONCE. Every other assertion in this file looks a channel up BY
+        /// the constant, so renaming the VALUE of one would leave the whole suite green while silently desyncing
+        /// the three READMEs that quote these names and every capture already on disk. The names are a
+        /// compatibility contract with those files: an analyst loading last month's jsonl beside today's has to
+        /// find the same column in both. Changing one is a deliberate act, and this is the test it breaks first.
+        /// </summary>
+        [Fact]
+        public void TheChannelSpellingsAreAContractWithCapturesOnDisk()
+        {
+            Assert.Equal("gpuFramesBegun", GpuTelemetryChannels.FramesBegun);
+            Assert.Equal("gpuDrainCount", GpuTelemetryChannels.DrainCount);
+            Assert.Equal("gpuDrainMs", GpuTelemetryChannels.DrainMs);
+            Assert.Equal("gpuBackpressureStalls", GpuTelemetryChannels.BackpressureStalls);
+            Assert.Equal("gpuBackpressureStallMs", GpuTelemetryChannels.BackpressureStallMs);
+            Assert.Equal("gpuOffTimelineDeferred", GpuTelemetryChannels.OffTimelineDeferred);
+            Assert.Equal("gpuOffTimelineOutstanding", GpuTelemetryChannels.OffTimelineOutstanding);
+        }
+
         /// <summary>Every counter reaches a channel, under the spelling the constants name, and the count matches
-        /// what <see cref="GpuTelemetryChannels.Count"/> promises so a caller can size its list once.</summary>
+        /// what <see cref="GpuTelemetryChannels.ChannelCount"/> promises so a caller can size its list
+        /// once.</summary>
         [Fact]
         public void EveryCounterReachesAChannelUnderItsNamedSpelling()
         {
             IReadOnlyList<TelemetryChannel> channels = GpuTelemetryChannels.For(CleanSoak());
 
-            Assert.Equal(GpuTelemetryChannels.Count, channels.Count);
+            Assert.Equal(GpuTelemetryChannels.ChannelCount, channels.Count);
 
             var byName = new Dictionary<string, double>(StringComparer.Ordinal);
             foreach (TelemetryChannel channel in channels) byName[channel.Name] = channel.Value;
@@ -175,7 +195,7 @@ namespace KhaozEngine.Tests.Gpu
 
             GpuTelemetryChannels.AppendTo(channels, CleanSoak());
 
-            Assert.Equal(2 + GpuTelemetryChannels.Count, channels.Count);
+            Assert.Equal(2 + GpuTelemetryChannels.ChannelCount, channels.Count);
             Assert.Equal("fps", channels[0].Name);
             Assert.Equal(GpuTelemetryChannels.FramesBegun, channels[2].Name);
         }

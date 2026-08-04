@@ -142,8 +142,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         D3D11BackpressureStats _lastFrame;
 
         // The same stalls, never rolled. See D3D11WaitTotals for why a sampled per-frame number cannot establish
-        // M3's "zero across the capture window" and this one can.
-        D3D11WaitTotals _totalStalls;
+        // M3's "zero across the capture window" and this one can. Two plain fields rather than the pair struct, so
+        // TotalBackpressure can read each half volatile exactly the way the patch counters below are read.
+        long _totalStallCount;
+        long _totalStallTicks;
 
         // The off-timeline write's deferrals, their replays, the ones a later write superseded and the ones that
         // went away with a disposed ring, cumulative since the device was created and deliberately NOT rolled per
@@ -213,8 +215,14 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// across the capture window instead of a bet that the sampler happened to land on the stalling frame.
         /// Still frame-boundary stalls ALONE, so it is no more foldable with <see cref="OffTimelinePatches"/> than
         /// the per-frame roll is. See <see cref="D3D11WaitTotals"/>.
+        /// <para>
+        /// READ A FIELD AT A TIME, because a telemetry sampler is on whatever thread the consumer runs it on while
+        /// the frame thread is recording stalls. Same reason as <see cref="OffTimelinePatches"/> below, and the
+        /// same limit: the two halves are each whole, the PAIR may be one entry apart.
+        /// </para>
         /// </summary>
-        internal D3D11WaitTotals TotalBackpressure => _totalStalls;
+        internal D3D11WaitTotals TotalBackpressure
+            => D3D11WaitTotals.Sample(ref _totalStallCount, ref _totalStallTicks);
 
         /// <summary>
         /// THE OFF-TIMELINE WRITE'S DEFERRALS AND REPLAYS, CUMULATIVE SINCE THE DEVICE WAS CREATED, and a
@@ -673,7 +681,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             long elapsed = Stopwatch.GetTimestamp() - start;
             _stallCount++;
             _stallTicks += elapsed;
-            _totalStalls = _totalStalls.Plus(elapsed);
+            _totalStallCount++;
+            _totalStallTicks += elapsed;
         }
 
         /// <summary>

@@ -362,6 +362,12 @@ namespace KhaozEngine.Gpu
         /// zero. Metal, Vulkan and the incumbent Direct3D11 path all take the default, and correctly so, since
         /// none of them has a segment ring or a real fence drain for these to describe.
         /// </para>
+        /// <para>
+        /// SAMPLE IT FROM ANY THREAD. The values are monotone cumulative and every one of them is read whole, so a
+        /// sampler does not have to be the frame thread and does not have to synchronise with it. The one thing a
+        /// concurrent sample can do is straddle a wait that is in progress, reporting a count and a duration one
+        /// entry apart, which is noise over a capture window and never a torn number.
+        /// </para>
         /// </summary>
         GpuDeviceCounters Counters => default;
 

@@ -48,8 +48,10 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// Declare that this test needs <see cref="KhaozEngine.Gpu.GpuCapabilities.SupportsCompletionFences"/>, so
         /// it SKIPS with a reason naming the backend on a device that has none, instead of failing an assertion it
-        /// can never satisfy. Fences are a Vulkan and Metal capability today, so a Direct3D11 leg reported two red
+        /// can never satisfy. The incumbent Direct3D11 backend is the one without them, and it reported two red
         /// tests for a feature it does not have (part of <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/423">#423</see>).
+        /// Vulkan, Metal and the engine's own <c>Direct3D11Native</c> backend all report them, so this skips
+        /// nothing on those three and the gate is read off the device rather than off a backend list.
         /// <para>
         /// This is the ONE thing that skips in strict mode, and it is not the hole strict mode exists to close: a
         /// missing capability is a property of the device, decided by <c>VeldridMap</c>, not a device that failed

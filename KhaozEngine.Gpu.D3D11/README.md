@@ -79,13 +79,16 @@ rather than as the order the sections of this file happen to come in.
    `ID3D11DeviceContext1` is queried, because decision R7 needs the versioned context, and a runtime that cannot
    answer is refused here with a message rather than by a cast failing on the first draw.
 3. **One device state and one emitter context**, handed to every emitter value the device ever makes
-   (https://github.com/APKiwiOrg/KhaozEngine/issues/476).
+   (https://github.com/APKiwiOrg/KhaozEngine/issues/476). The state's bind flush is built here, so this is where
+   decision R7's unset-before-set workaround is switched on for a runtime the threading probe says is EMULATING
+   command lists, and for a probe that gave no answer at all.
 4. **The fence subsystem**, over whichever timeline the runtime offers, with `KE_D3D11_REAL_DRAIN` resolved. The
    mechanism is logged, and a drain that is switched OFF is WARNed, because a no-op drain that nobody noticed is
    how a measurement of nothing gets published.
 5. **The constant-buffer ring**, sized by `KE_D3D11_FRAMES_IN_FLIGHT` and gated on that fence subsystem.
 6. **The resource factory**, with the creation gate the driver-threading probe earned. Whether creation is
-   serialized is logged either way.
+   serialized is logged either way, and a probe that gave no answer serializes, the same reading of its silence
+   step 3 takes.
 7. **The swapchain**, on the windowed path only, and **the staging map path**, both carrying the device's
    liveness token and its device-loss latch.
 8. **The debug-layer pump**, and only when the layer is genuinely active on the created device.
@@ -533,11 +536,10 @@ than overwriting its target.
 `ID3D11SubmitSignal` is the one-member seam between the two: the driver submit takes it, and the submission's
 fence, as an optional trailing pair, so a submit that names neither replays exactly as it always did. That is
 every device-free driver test, and a real device always passes both. Placing the signal after the replay is what
-makes it name a
-point the GPU reaches only when the submission is finished, on both drivers, and a fenceless submit signals too,
-because a later fence's value covers earlier work only if the earlier work took a value of its own. A submit the
-drivers reject signals nothing, and a fence handed to a submit with no sink is refused rather than left unarmed
-for something to wait on forever.
+makes it name a point the GPU reaches only when the submission is finished, on both drivers, and a fenceless
+submit signals too, because a later fence's value covers earlier work only if the earlier work took a value of
+its own. A submit the drivers reject signals nothing, and a fence handed to a submit with no sink is refused
+rather than left unarmed for something to wait on forever.
 
 **`WaitForIdle` is a real fence drain**, replacing the empty method body the Veldrid Direct3D 11 path has. It
 signals a fresh point, flushes the context ONCE so the driver actually has that signal, and then waits for the
@@ -978,8 +980,8 @@ its boundary W5.
   groups: the four that create no native object (framebuffer, resource layout, resource set, command list), and
   `CreateFence`, which creates none either, because the device's one timeline object was created with the device
   and a fence here is an engine-side target against it. `CreateComputePipeline` creates no native object either
-  and IS gated anyway, to keep the two pipeline
-  members symmetric and because a pipeline is the member most likely to grow a native call later.
+  and IS gated anyway, to keep the two pipeline members symmetric and because a pipeline is the member most
+  likely to grow a native call later.
 - **The two locks nest in one direction only.** The submit lock is OUTER, the creation gate is INNER, and the
   gate is a strict leaf: nothing is acquired while it is held. A creation path that one day needs the immediate
   context takes the submit lock BEFORE entering the gate, never inside it.

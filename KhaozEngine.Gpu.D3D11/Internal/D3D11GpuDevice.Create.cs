@@ -211,8 +211,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             // 2. ONE STATE AND ONE EMITTER CONTEXT PER DEVICE, which is the enforcement half of issue #476: the
             // DEVICE constructs exactly one of each and every emitter value it hands out receives them, so the
             // redundancy caches describe the context rather than one command list's recording.
+            //
+            // NO ANSWER FROM THE PROBE TAKES THE WORKAROUND, which is the same rule the creation gate below
+            // applies to the same silence: an unknown answer is not a licence. The two arms are not symmetric in
+            // what being wrong costs. Skipping the unset on a runtime that IS emulating command lists is the
+            // documented way to bind a *SetConstantBuffers1 range at the wrong first constant, which renders
+            // wrong and throws nothing, and issuing it on a runtime that is not is one extra call with the same
+            // span immediately before the bind, which changes no state and costs call count.
             _state = new D3D11DeviceState(new D3D11BindFlush(
-                unsetConstantBuffersBeforeSet: threadingCaps?.CommandListsAreEmulated ?? false,
+                unsetConstantBuffersBeforeSet: threadingCaps?.CommandListsAreEmulated ?? true,
                 ringsUnmappedBeforeCommands: D3D11BindFlush.RingsFor(recordMode, _rings)));
             _emitterContext = new D3D11EmitterContext(context);
             _emitter = new D3D11NativeEmitter(_state, _emitterContext);
@@ -361,7 +368,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 result.CheckError();
                 throw new InvalidOperationException(
                     "D3D11CreateDevice reported success and handed back no device. The native Direct3D 11 "
-                    + "backend cannot run on this machine; select GpuBackendKind.Direct3D11.");
+                    + "backend cannot run on this machine. Select GpuBackendKind.Direct3D11.");
             }
 
             immediateContext = context;

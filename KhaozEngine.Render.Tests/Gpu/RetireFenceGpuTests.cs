@@ -25,9 +25,13 @@ namespace KhaozEngine.Tests.Gpu
     /// are printed, not gated, because a shared dev machine's timings are not a stable gate.</para>
     /// <para>Gated on KE_GPU_TESTS. This leg runs on Metal locally. The Direct3D11/WARP and Vulkan/lavapipe legs
     /// run in CI on tag, and lavapipe is the one that matters for the crash: until it runs there, the Vulkan fence
-    /// path is unproven and only the argument plus the Metal evidence stands behind it. Direct3D11 never takes the
-    /// fence path at all (its Veldrid fence is a CPU submit receipt), so it stays on the fallback the
-    /// suppressed-capability leg here exercises.</para>
+    /// path is unproven and only the argument plus the Metal evidence stands behind it. WHICH DIRECT3D 11 BACKEND
+    /// it is decides what happens on that WARP leg, and the two differ. The incumbent
+    /// <c>GpuBackendKind.Direct3D11</c> never takes the fence path at all (its Veldrid fence is a CPU submit
+    /// receipt), so it stays on the fallback the suppressed-capability leg here exercises and the fenced test
+    /// skips by capability. The engine's own <c>Direct3D11Native</c> backend reports completion fences on both
+    /// its timeline mechanisms (decision C5), so on a process that came up on it the fenced test RUNS, which is
+    /// part of what https://github.com/APKiwiOrg/KhaozEngine/issues/460 turns on.</para>
     /// </summary>
     public sealed class RetireFenceGpuTests
     {

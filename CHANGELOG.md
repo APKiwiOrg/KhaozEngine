@@ -918,6 +918,13 @@ layer is genuinely active. Four INFO lines and two WARNs make a session log say 
 mechanism it got, whether the drain is real, whether creation is serialized, and whether the debug layer is on,
 because a capture that cannot prove which levers were set is a capture nobody can compare.
 
+**A driver-threading probe that gives no answer takes the careful arm of both decisions it feeds.** Creation
+serializes, and decision R7's unset-before-set workaround is applied. The two arms are not symmetric in what
+being wrong costs: skipping the unset on a runtime that IS emulating command lists is the documented way to bind
+a `*SetConstantBuffers1` range at the wrong first constant, which renders wrong and throws nothing, while
+issuing it on a runtime that is not is one extra call with the same span immediately before the bind, which
+changes no state and costs call count.
+
 **One device state per device is now enforced rather than intended (#476).** The replay row proved every emitter
 implementation RECEIVES a `D3D11DeviceState`, and what was missing was that nothing else MAKES one: a readonly
 struct emitter that allocated its own state in its constructor would satisfy the first check and reintroduce the

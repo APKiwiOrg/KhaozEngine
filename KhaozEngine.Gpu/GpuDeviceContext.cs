@@ -120,6 +120,14 @@ namespace KhaozEngine.Gpu
         public GpuDeviceDiagnostics Diagnostics => GpuDevice.Diagnostics;
 
         /// <summary>
+        /// The live soak counters: drains, ring backpressure stalls, and off-timeline deferrals, cumulative since
+        /// the device was created. Read THROUGH to the device for the same reason the diagnostics are, since these
+        /// move on every frame and a captured copy would report the moment the context was built.
+        /// <see cref="GpuDeviceCounters.HasValue"/> is false on every backend that keeps none of them.
+        /// </summary>
+        public GpuDeviceCounters Counters => GpuDevice.Counters;
+
+        /// <summary>
         /// The engine-owned GPU device: on the Veldrid path, the wrapper around the underlying Veldrid device.
         /// Renderers (Render2D / Render3D) consume this instead of the raw device, so Veldrid stays hidden. That
         /// wrapper is non-owning, and disposal flows through this context's <see cref="Dispose"/> either way.

@@ -351,6 +351,20 @@ namespace KhaozEngine.Gpu
         /// </summary>
         GpuDeviceDiagnostics Diagnostics => default;
 
+        /// <summary>
+        /// The soak counters this device keeps about itself, cumulative since creation and read LIVE: how much it
+        /// waited for the GPU to go idle, how often a frame boundary blocked on a busy uniform ring segment, and
+        /// how many device-level writes were queued against a segment still in flight. Sampled into a telemetry
+        /// session's rows through <see cref="GpuTelemetryChannels"/>.
+        /// <para>
+        /// DEFAULT-IMPLEMENTED, and the default is the honest one: a device that counts none of this leaves
+        /// <see cref="GpuDeviceCounters.HasValue"/> false, which is a DIFFERENT fact from counting and finding
+        /// zero. Metal, Vulkan and the incumbent Direct3D11 path all take the default, and correctly so, since
+        /// none of them has a segment ring or a real fence drain for these to describe.
+        /// </para>
+        /// </summary>
+        GpuDeviceCounters Counters => default;
+
         /// <summary>Submit a finished command list for execution.</summary>
         void Submit(IGpuCommandList cl);
 

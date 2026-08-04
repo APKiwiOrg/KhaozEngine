@@ -133,16 +133,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         internal object SubmitLock => _submitLock;
 
         /// <summary>
-        /// THE M2 AND M3 COUNTERS, and the pending-patch pair of
-        /// https://github.com/APKiwiOrg/KhaozEngine/issues/499, reachable from the device for the first time.
-        /// <para>
-        /// Nothing in the engine READS them yet, and that is stated rather than left to be discovered: the
-        /// telemetry session header carries the GPU facts <see cref="GpuTelemetry"/> already names, and adding
-        /// backend-specific per-frame counters to it is gate 4 of
-        /// https://github.com/APKiwiOrg/KhaozEngine/issues/460, where the numbers are judged. What this row owes
-        /// them is REACHABILITY, since until it landed there was no device to read them off at all, and the pair
-        /// that must be reported together is named here so the wiring cannot pick up the per-frame number alone.
-        /// </para>
+        /// THE M2 AND M3 COUNTERS PER FRAME, and the pending-patch pair of
+        /// https://github.com/APKiwiOrg/KhaozEngine/issues/499. These are the rolled per-frame readings, for a
+        /// debug overlay and for the tests that assert the roll. What a TELEMETRY SESSION carries is
+        /// <see cref="Counters"/>, whose cumulative shape is the one that survives being sampled on the
+        /// consumer's own cadence.
         /// </summary>
         internal D3D11BackpressureStats LastFrameBackpressure => _rings.LastFrameBackpressure;
 
@@ -151,6 +146,37 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         /// <inheritdoc cref="LastFrameBackpressure"/>
         internal D3D11DrainStats LastFrameDrain => _fences.LastFrameDrain;
+
+        /// <summary>
+        /// THE SEAM'S VIEW OF THE SAME COUNTERS, cumulative since this device was created, which is what gate 4 of
+        /// https://github.com/APKiwiOrg/KhaozEngine/issues/460 judges the field soak on. This is the only backend
+        /// that answers anything but the default, because it is the only one with a fence drain and a segment ring
+        /// to count.
+        /// <para>
+        /// BOTH BACKPRESSURE READINGS CROSS, on separate members, which is the requirement of
+        /// https://github.com/APKiwiOrg/KhaozEngine/issues/499. The ring's frame-boundary stalls are M3's number.
+        /// The off-timeline deferrals are a device-level <c>UpdateBuffer</c> meeting a segment an earlier frame is
+        /// still reading, which blocks nobody, usually happens at load time, and would make M3's zero-stall
+        /// criterion unreachable if it were folded in.
+        /// </para>
+        /// </summary>
+        public GpuDeviceCounters Counters
+        {
+            get
+            {
+                D3D11WaitTotals drain = _fences.TotalDrain;
+                D3D11WaitTotals stalls = _rings.TotalBackpressure;
+                D3D11PendingPatchStats patches = _rings.OffTimelinePatches;
+                return new GpuDeviceCounters(
+                    (long)_rings.FrameIndex,
+                    drain.Count,
+                    drain.TotalMs,
+                    stalls.Count,
+                    stalls.TotalMs,
+                    patches.Deferred,
+                    patches.Outstanding);
+            }
+        }
 
         // ---- Submission ----
 

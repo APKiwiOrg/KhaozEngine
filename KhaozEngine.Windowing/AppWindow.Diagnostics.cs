@@ -59,5 +59,18 @@ namespace KhaozEngine.Windowing
         /// </para>
         /// </summary>
         public GpuDeviceDiagnostics Diagnostics => _gpu.Diagnostics;
+
+        /// <summary>
+        /// The LIVE soak counters of this window's device: how long it has spent waiting for the GPU to go idle,
+        /// how often a frame boundary blocked on a uniform ring segment the GPU was still reading, and how many
+        /// device-level buffer writes were queued against an in-flight segment. All cumulative since the device
+        /// was created, and read through on every access because they move every frame.
+        /// <para>
+        /// Feed them to a telemetry recording with <see cref="GpuTelemetryChannels.AppendTo"/>, which appends
+        /// nothing at all on a backend that keeps no counters, so a capture never carries zeros that would read as
+        /// a clean soak on a device that never looked.
+        /// </para>
+        /// </summary>
+        public GpuDeviceCounters Counters => _gpu.Counters;
     }
 }

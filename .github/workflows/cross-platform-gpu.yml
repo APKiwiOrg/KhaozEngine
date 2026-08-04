@@ -1,4 +1,4 @@
-# cross-platform-gpu: desktop GPU test matrix (Win D3D11 / Linux Vulkan / macOS Metal).
+# cross-platform-gpu: desktop GPU test matrix (Win D3D11 incumbent + Win D3D11 native / Linux Vulkan / macOS Metal).
 #
 # What this does (suite split by leg + trigger, decided from measured cost + lavapipe stability):
 #   * The self-hosted Metal leg (free) runs the FULL test suite (every [GpuFact], golden and
@@ -9,6 +9,15 @@
 #     17m14s vs the golden-only 7m44s (trial runs 29542939552 / 29545657401), about +19 billed
 #     2x minutes per run - too much per-push for this repo's cost posture, so full hosted
 #     coverage rides the weekly cron (and any manual dispatch) instead.
+#   * The GitHub-hosted D3D11 NATIVE leg (2x billing) runs the engine's own KhaozEngine.Gpu.D3D11
+#     backend (KE_GRAPHICS_BACKEND=direct3d11-native) on exactly the incumbent leg's tier: golden
+#     tests only on push / pull_request, the FULL suite on the weekly schedule and on
+#     workflow_dispatch (decision T5). It is a GUEST in the incumbent's golden family (decision I3):
+#     it VERIFIES the committed direct3d11 goldens on the same WARP rasterizer and never bakes them,
+#     so KE_UPDATE_GOLDENS stays empty on this leg for every trigger (see the test step). Cost note:
+#     this repo is private and Windows bills at 2x, so this leg doubles the D3D11 spend on the gated
+#     paths. It carries the same path filter as the rest of the matrix and its push path is
+#     golden-only, so the routine cost is small.
 #   * The GitHub-hosted Vulkan leg (1x) runs only the golden tests on push/pull_request, and the
 #     FULL suite on the weekly schedule and on workflow_dispatch, same tier as D3D11. Chasing this
 #     leg's full-suite crashes surfaced four real engine defects, all fixed: concurrent device
@@ -21,20 +30,27 @@
 #     KE_TEST_EXTRA_ARGS, one live device at a time (~22 min serialized in the validation container
 #     vs minutes parallel). Golden-only runs keep their months-green parallel configuration.
 #   * Committed per-backend goldens live at KhaozEngine.Render.Tests/Gpu/goldens/<name>.<backend>.txt.
-#   * All three legs are validated, committed, and blocking: macOS Metal, Windows D3D11 (WARP),
-#     Linux Vulkan (Mesa lavapipe).
+#     The family in that filename is the GoldenBackendToken, not the leg name, which is how
+#     direct3d11-native reads and checks the direct3d11 files instead of owning a family of its own.
+#   * All four legs are validated, committed, and blocking: macOS Metal, Windows D3D11 (WARP),
+#     Windows D3D11 native (WARP, pinned), Linux Vulkan (Mesa lavapipe).
 #
 # Generating goldens for a NEW scene or backend:
 #   1. Run this workflow manually (Actions -> cross-platform-gpu -> Run workflow) with bake = true.
 #   2. The bake legs render with KE_UPDATE_GOLDENS=1 and upload the per-backend grids as artifacts
-#      named goldens-<backend> (e.g. scene2d.<backend>.txt).
+#      named goldens-<backend> (e.g. scene2d.<backend>.txt). direct3d11-native is NOT a bake leg: it
+#      shares the incumbent's family, so a bake there would overwrite the very references it is being
+#      checked against, and GoldenCompare.BakeRefusal makes that a hard test failure by design.
 #   3. Download the artifacts, drop the files into KhaozEngine.Render.Tests/Gpu/goldens/, and commit them.
-#   4. After that, the push/PR legs VERIFY those backends.
+#   4. After that, the push/PR legs VERIFY those backends, direct3d11-native included, which checks the
+#      freshly baked direct3d11 family against a second implementation on the same rasterizer.
 #
 # Software rasterizers (these runners have no real GPU):
 #   * Linux uses Mesa lavapipe (software Vulkan); the workflow discovers the lavapipe ICD manifest at runtime
 #     (its name/path drifts across Ubuntu images) and points VK_ICD_FILENAMES/VK_DRIVER_FILES at it.
-#   * Windows D3D11 falls back to WARP (software) automatically when no hardware adapter is present.
+#   * Windows D3D11 falls back to WARP (software) automatically when no hardware adapter is present. The
+#     native leg does not ride that accident: it pins KE_D3D11_ADAPTER=warp (decision G2), so a runner image
+#     that grows a paravirtual adapter cannot silently change the rasterizer under the golden gate.
 #
 # The headless golden tests use Render2D/3D Snapshot -> CreateHeadless (offscreen, NO window), so SDL2 is
 # NOT required here (only the Vulkan/D3D11 runtime plus a (software) rasterizer). A shipped windowed game
@@ -44,8 +60,8 @@
 
 name: cross-platform-gpu
 
-# Cost control: the Metal leg runs on the self-hosted dev Mac (free), but the D3D11 (2x) and Vulkan (1x)
-# legs still bill on GitHub-hosted runners, so don't fire this matrix on EVERY push. On push it runs
+# Cost control: the Metal leg runs on the self-hosted dev Mac (free), but the two D3D11 legs (2x each) and
+# the Vulkan leg (1x) still bill on GitHub-hosted runners, so don't fire this matrix on EVERY push. On push it runs
 # only when something that can change a GPU golden is touched (rendering stack, the GPU seam, the GPU
 # test dir, or this workflow). Docs/netcode/etc. pushes skip it. PRs + manual bake still run as before.
 concurrency:
@@ -109,7 +125,7 @@ on:
   # superset of the push list above, so it already "agrees" with push and needs no separate #198 fix.
   pull_request:
     branches: [ main ]
-  # Weekly full-suite pass on the hosted D3D11 and Vulkan legs (Metal runs the full suite on every
+  # Weekly full-suite pass on the three hosted legs, both D3D11 legs and Vulkan (Metal runs the full suite on every
   # trigger anyway). Sunday 18:00 UTC: a quiet slot, and any breakage surfaces before the working week.
   schedule:
     - cron: '0 18 * * 0'
@@ -129,14 +145,17 @@ jobs:
   gpu-golden:
     name: ${{ matrix.os }} / ${{ matrix.backend }}
     runs-on: ${{ matrix.runner }}
-    # All three desktop backends are validated and blocking: Metal (macOS), Direct3D11 (Windows/WARP), and
-    # Vulkan (Linux/Mesa lavapipe). Goldens are tolerance-based (32x18 averaged grid), robust to software-
-    # rasterizer noise. If the lavapipe leg ever flakes on a runner-image change, re-add
+    # All four legs are validated and blocking: Metal (macOS), Direct3D11 (Windows/WARP), Direct3D11Native
+    # (Windows/WARP, the engine's own backend, verifying the shared direct3d11 goldens as a guest and never
+    # baking them), and Vulkan (Linux/Mesa lavapipe). Goldens are tolerance-based (32x18 averaged grid),
+    # robust to software-rasterizer noise. If the lavapipe leg ever flakes on a runner-image change, re-add
     # `continue-on-error: ${{ matrix.backend == 'vulkan' }}` here to drop it back to informational.
     #
     # Runner split (engine is private, so hosted minutes bill): the Metal leg runs on the self-hosted dev
-    # Mac (real Metal, free, and where the metal golden is baked so it matches). D3D11/Vulkan are software
-    # rasterizers with no local host, so they stay GitHub-hosted; both are path-gated (rare) => trivial spend.
+    # Mac (real Metal, free, and where the metal golden is baked so it matches). Both D3D11 legs and Vulkan
+    # are software rasterizers with no local host, so they stay GitHub-hosted. All three are path-gated
+    # (rare) => trivial spend, and the native leg's 2x Windows rate is the reason its push path stays
+    # golden-only rather than running the full suite (decision T5).
     # The matrix keys stay on `os` (drives the OS-specific setup steps + the leg name); `runner` picks where.
     strategy:
       fail-fast: false
@@ -144,22 +163,40 @@ jobs:
         # `fullSuite` picks when a leg runs the whole suite vs the golden subset (see the test step's
         # filter expression, plus the cost + lavapipe-stability rationale in the header):
         #   always    - every trigger (self-hosted Metal, free)
-        #   scheduled - weekly schedule + workflow_dispatch only (hosted D3D11 bills 2x, hosted
+        #   scheduled - weekly schedule + workflow_dispatch only (both hosted D3D11 legs bill 2x, hosted
         #               Vulkan bills 1x, golden subset only on push/pull_request). Vulkan full-suite
         #               runs additionally serialize xUnit collections (KE_TEST_EXTRA_ARGS, header).
+        #
+        # `d3d11Adapter` is the leg's KE_D3D11_ADAPTER value, and ONLY the native leg sets it (decision G2).
+        # The incumbent leg deliberately keeps its IMPLICIT WARP fallback: it has months of green history on
+        # that path, and changing what it selects would change what the shared goldens are compared against.
+        # The native leg is new, so it STATES the rasterizer instead of inheriting an accident of the runner
+        # image. Empty on the other three legs, where blank reads as "let the API pick", which is the
+        # behaviour they already had.
         include:
           - os: macos-14
             backend: metal
             runner: [self-hosted, macOS, ARM64]
             fullSuite: always
+            d3d11Adapter: ''
           - os: windows-latest
             backend: direct3d11
             runner: windows-latest
             fullSuite: scheduled
+            d3d11Adapter: ''
+          # The engine's own native D3D11 backend (decision T5). Same OS, same runner and the same suite tier
+          # as the incumbent leg above, which is the point: two implementations of one API on one rasterizer,
+          # checked against a single shared set of goldens (decision I3).
+          - os: windows-latest
+            backend: direct3d11-native
+            runner: windows-latest
+            fullSuite: scheduled
+            d3d11Adapter: warp
           - os: ubuntu-latest
             backend: vulkan
             runner: ubuntu-latest
             fullSuite: scheduled
+            d3d11Adapter: ''
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -223,12 +260,12 @@ jobs:
         continue-on-error: true
         run: vulkaninfo --summary || true
 
-      # DECISION S5's CI leg, Windows only and on EVERY trigger. These are plain [Fact]s with no device: they
+      # DECISION S5's CI leg, one Windows leg only and on EVERY trigger. These are plain [Fact]s with no device: they
       # cross-compile every shipped shader program to HLSL and run FXC over the result, then assert the reflected
       # vertex input signature has contiguous TEXCOORD indices from 0. FXC is d3dcompiler, so this is the only
       # leg that can run it, and it is the only thing in CI that compiles the HLSL the engine actually emits.
       #
-      # It is a SEPARATE step rather than part of the suite run below, because the Windows leg's push-path filter
+      # It is a SEPARATE step rather than part of the suite run below, because the Windows legs' push-path filter
       # is "FullyQualifiedName~Golden" and that family is device-backed pixel comparisons. Naming these tests
       # "Golden" to get them selected would put a CPU compile inside it. Selecting them by name here keeps the
       # naming contract intact and runs them on push, not only on the weekly schedule.
@@ -247,25 +284,38 @@ jobs:
       # And it is scoped to the ONE test project that owns these tests, because run over the whole solution the
       # setting fails on each of the other 17 test projects, where matching zero is the correct outcome.
       - name: Shader FXC validation (no device)
-        if: matrix.os == 'windows-latest'
+        # ONE Windows leg, not every Windows leg. Nothing here creates a device or selects a backend, so the
+        # compile is backend-independent and the native leg would run byte-identical work for zero added
+        # coverage at the Windows 2x rate. Pinned to the incumbent leg rather than to matrix.os for that reason.
+        if: matrix.backend == 'direct3d11'
         run: dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~D3D11FxcValidationTests" -- RunConfiguration.TreatNoTestsAsError=true
         shell: bash
 
       # Suite selection per leg + trigger (the cost + stability split in the header):
       #   * fullSuite: always (Metal): the FULL suite on every trigger - "Category!=LiveSocket",
       #     mirroring ci.yml's exclusion (LiveSocket needs a live network peer, not available here).
-      #   * fullSuite: scheduled (D3D11, Vulkan): golden tests only on push/PR ("FullyQualifiedName~Golden"),
-      #     the FULL suite on schedule + workflow_dispatch. D3D11: full hosted Windows measured +19 billed
-      #     2x minutes per run vs golden-only (17m14s vs 7m44s, runs 29542939552 / 29545657401), so
-      #     per-push hosted coverage stays golden-only and the weekly cron carries the full sweep. Vulkan:
-      #     the same tier, and its full-suite runs serialize xUnit test collections (KE_TEST_EXTRA_ARGS
-      #     below) because lavapipe under full parallel load still shows residual driver-side
-      #     instability after the four engine-defect fixes (see the header).
+      #   * fullSuite: scheduled (both D3D11 legs, Vulkan): golden tests only on push/PR
+      #     ("FullyQualifiedName~Golden"), the FULL suite on schedule + workflow_dispatch. D3D11: full hosted
+      #     Windows measured +19 billed 2x minutes per run vs golden-only (17m14s vs 7m44s, runs
+      #     29542939552 / 29545657401), so per-push hosted coverage stays golden-only and the weekly cron
+      #     carries the full sweep. The native leg takes that same tier for the same reason, at the same 2x
+      #     rate (decision T5). Vulkan: the same tier again, and its full-suite runs serialize xUnit test
+      #     collections (KE_TEST_EXTRA_ARGS below) because lavapipe under full parallel load still shows
+      #     residual driver-side instability after the four engine-defect fixes (see the header).
       - name: Run test suite
         env:
           KE_GPU_TESTS: '1'
           KE_GRAPHICS_BACKEND: ${{ matrix.backend }}
-          KE_UPDATE_GOLDENS: ${{ (github.event_name == 'workflow_dispatch' && inputs.bake) && '1' || '' }}
+          # Only the native leg pins the adapter (decision G2, matrix comment above). Empty everywhere else,
+          # and blank is parsed as "let DXGI pick", so the incumbent leg's implicit WARP fallback is unchanged.
+          KE_D3D11_ADAPTER: ${{ matrix.d3d11Adapter }}
+          # EMPTY on direct3d11-native for every trigger, bake dispatches included (decision I3). That leg is a
+          # guest in the direct3d11 golden family, so GoldenCompare.BakeRefusal turns KE_UPDATE_GOLDENS=1 under
+          # its token into a hard failure BY DESIGN: baking there would overwrite the very references it is
+          # checked against, and the owning backend's with them. Without this guard a routine bake dispatch for
+          # some unrelated new scene would turn the native leg red with 36 refusals. Bake on the incumbent leg,
+          # the native leg then verifies what it wrote.
+          KE_UPDATE_GOLDENS: ${{ (matrix.backend != 'direct3d11-native' && github.event_name == 'workflow_dispatch' && inputs.bake) && '1' || '' }}
           KE_TEST_FILTER: ${{ (matrix.fullSuite == 'always' || (matrix.fullSuite == 'scheduled' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'))) && 'Category!=LiveSocket' || 'FullyQualifiedName~Golden' }}
           # Vulkan full-suite runs only: serialize xUnit collections, one live device at a time
           # (~22 min serialized vs minutes parallel, header). Empty for every other leg and for
@@ -299,6 +349,19 @@ jobs:
           path: KhaozEngine.Render.Tests/Gpu/goldens-evidence/
           if-no-files-found: ignore
 
+      # Every golden compare appends its worst-cell delta to goldens-evidence/golden-deltas.<backend>.txt, on a
+      # PASS as well as a fail, which is why this uploads on always() rather than failure(). Rollout gate 1 of
+      # #460 is "all 36 goldens green with the observed worst-cell delta RECORDED", and a failure-only artifact
+      # can only ever show the number after something broke, which is the one reading that gate cannot use.
+      # Kilobytes of text. ignore = no spurious failure on a leg that ran no golden compares at all.
+      - name: Upload golden delta records
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: golden-deltas-${{ matrix.backend }}
+          path: KhaozEngine.Render.Tests/Gpu/goldens-evidence/golden-deltas.*.txt
+          if-no-files-found: ignore
+
       # On an HLSL byte-equality FAILURE: upload the emitted HLSL the pinned hashes no longer match (decision
       # S3). Without the text there are two indistinguishable explanations, a deliberate shader edit that was
       # not re-baked and a cross-compile option drift, and with it they are one diff apart. Kilobytes,
@@ -316,7 +379,10 @@ jobs:
       # wrote some goldens before erroring still surfaces them; ignore = no spurious failure on a leg that wrote
       # none.
       - name: Upload baked goldens
-        if: always() && github.event_name == 'workflow_dispatch' && inputs.bake
+        # Never on direct3d11-native: it can never legitimately produce bake output (guest family, so
+        # KE_UPDATE_GOLDENS is held empty above and GoldenCompare would refuse the write anyway), and skipping
+        # the step says that outright where relying on if-no-files-found leaves an empty artifact to explain.
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.bake && matrix.backend != 'direct3d11-native'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: goldens-${{ matrix.backend }}

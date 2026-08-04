@@ -8738,6 +8738,38 @@ the session log naming the site and what the reason means, and the `deviceLossRe
 session header. Nothing you write has to catch anything, and there is no recovery path: a lost device stays lost,
 which is what the liveness token makes safe.
 
+**The device counts what it waited for, and a telemetry recording can carry it.** `AppWindow.Counters` (a
+`GpuDeviceCounters`, also on `GpuDeviceContext.Counters` and `IGpuDevice.Counters`) reports, cumulative since the
+device was created: `FramesBegun`, `DrainCount` / `DrainMs` (time spent waiting for the GPU to go idle),
+`BackpressureStallCount` / `BackpressureStallMs` (frame boundaries that blocked on a uniform ring segment the GPU
+was still reading), and `OffTimelineDeferred` / `OffTimelineOutstanding`. Add them to a session's sample rows in
+one line:
+
+```csharp
+var row = new List<TelemetryChannel> { new("fps", _stats.Fps), new("frameMs", _stats.FrameMsAvg) };
+GpuTelemetryChannels.AppendTo(row, Window.Counters);    // appends nothing at all on a backend with no counters
+_recorder.Sample(elapsedSeconds, row);
+```
+
+**`HasValue` is false on every backend but this one, and that is not the same as zero.** Metal, Vulkan and the
+incumbent Direct3D11 path have neither a fence drain nor a segment ring to count, so they answer the default and
+`AppendTo` writes no columns for them. That matters because ZERO STALLS IS THE GOOD RESULT: a capture full of
+zeros from a backend that never looked would read exactly like a clean run.
+
+**The numbers are cumulative on purpose, so your sampling cadence stops mattering.** A row carrying "the frame
+that just ended" describes one frame in however many you skipped between rows. Subtract the first row's
+`gpuBackpressureStalls` from the last row's and you have the whole window's stalls exactly, and the per-frame
+drain cost is the `gpuDrainMs` difference over the `gpuFramesBegun` difference.
+
+**The two backpressure numbers are different questions and are never added together.**
+`BackpressureStallCount` is the CPU reaching a ring segment the GPU had not finished with, which is a statement
+about pipeline depth, and `KE_D3D11_FRAMES_IN_FLIGHT` is the lever for it. `OffTimelineDeferred` counts a
+device-level `UpdateBuffer` that met a segment an earlier frame was still reading and queued its bytes for that
+segment's next reopen. That blocks nobody, it usually happens at load time before any frame exists, and a
+non-zero reading beside a zero stall count is a specific diagnosis: the segment count is fine and something is
+writing off-timeline against work still in flight. `OffTimelineOutstanding` climbing rather than settling means
+writes are being queued for a segment nothing ever acquires, which on a running device means frames stopped.
+
 ---
 
 ## Is the D3D11 driver emulating command lists (`GpuThreadingCaps`, 17.22.0)

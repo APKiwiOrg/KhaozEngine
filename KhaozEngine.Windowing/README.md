@@ -90,6 +90,12 @@ Windowing + input foundation for the custom MonoGame-free stack.
     happens at an arbitrary moment long afterwards. Both members are nullable and null means "nobody answered",
     which is what every backend on the Veldrid path says. Hand it to
     `TelemetrySessionInfo.WithGpu`'s five-value overload for a windowed game's session header.
+  - `Counters` (a `GpuDeviceCounters`, since 17.32.0) - the live soak counters of this window's device, cumulative
+    since it was created: time spent waiting for the GPU to go idle, frame boundaries that blocked on a uniform
+    ring segment, and device-level buffer writes queued against an in-flight segment. Read LIVE for the same
+    reason `Diagnostics` is, since they move every frame. `HasValue` is false on every backend that keeps none of
+    them, which is a DIFFERENT fact from counting and finding zero. Feed a telemetry recording with
+    `GpuTelemetryChannels.AppendTo(row, window.Counters)`, which appends nothing at all in the absent case.
 - `InputState` - per-frame keyboard + mouse + gamepad + touch snapshot (`IsDown`/`WasPressed` for
   `Key`/`MouseButton`, mouse position/delta/scroll, `Gamepad(i)`). Immutable; no MonoGame. `WasRepeated(Key)` /
   `WasTyped(Key)` surface OS key auto-repeat (`AppWindow` fills it from GLFW's `REPEAT` action; `WasPressed` stays

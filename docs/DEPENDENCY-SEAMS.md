@@ -480,6 +480,19 @@ plain strings and nullable bools, and the mapping onto them is an extension meth
 enums. A consumer holding only an `AppWindow` calls the value overload, which is why `AppWindow` needs no new
 member and `Windowing` needs no new edge.
 
+### 17.32.0 adds a second `Diagnostics`-typed `Gpu` surface, and one more seam member
+
+`GpuTelemetryChannels` projects a `GpuDeviceCounters` onto `KhaozEngine.Diagnostics.TelemetryChannel` rows, which
+is the same edge in the same direction as `GpuTelemetry.WithGpu` above and needs no new reference either. It is a
+SEPARATE type rather than more methods on `GpuTelemetry`, because the two do different jobs: that one fills the
+header's creation-time identity once, this one appends numbers that move to every sample row.
+
+The seam member is `IGpuDevice.Counters`, default-implemented like `IGpuDevice.Diagnostics` beside it, so it was
+appended without breaking any implementer and every backend that counts nothing answers honestly
+(`GpuDeviceCounters.HasValue` false, which is a different fact from counting and finding zero). `GpuDeviceContext`
+and `AppWindow` forward it, both reading THROUGH to the device on every access, because unlike everything else the
+header carries these numbers change on every frame. Only `KhaozEngine.Gpu.D3D11` fills it.
+
 ### The stored backend preference deliberately adds NO edge (17.23.0)
 
 Letting a player pick the backend in game is naturally read as "`Gpu` needs to load a setting", which would mean

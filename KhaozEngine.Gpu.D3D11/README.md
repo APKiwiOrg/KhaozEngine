@@ -554,6 +554,35 @@ every fence reads signalled, since a destroyed device has no outstanding work to
 The fence poll does NOT flush, deliberately. Only the drain has decided to wait, so only the drain pays to have
 the work handed over, and `IGpuFence.Signaled` stays as cheap as the seam's contract expects.
 
+## What a telemetry session carries, and why it is cumulative
+
+This is the only backend that answers `IGpuDevice.Counters` with anything but the default, because it is the only
+one with a fence drain and a uniform ring to count. The seam value is a `GpuDeviceCounters` and it carries frames
+begun, the drain count and duration (M2), the backpressure stall count and duration (M3), and the off-timeline
+deferral pair, all accumulated since the device was created.
+
+**The counters that cross are CUMULATIVE, and the per-frame rolls stay here.** `LastFrameDrain`,
+`LastFrameBackpressure` and their rolls describe the frame that has ended, which is what a debug overlay wants
+and what the tests assert. Neither survives being SAMPLED: a telemetry session writes a row on its own cadence,
+so a per-frame value read a few times a second reports the frames it happened to land on and says nothing about
+the hundreds it skipped. M3's exit criterion is a stall count of ZERO across a whole capture window, which that
+reading cannot establish and a cumulative one settles by subtracting the first sampled row from the last. M2's
+per-frame drain figure is the same subtraction over the frames between them. `D3D11WaitTotals` is the shared
+count-and-duration pair behind `D3D11FenceSubsystem.TotalDrain` and `D3D11RingAllocator.TotalBackpressure`, and
+it keeps `Stopwatch` ticks rather than a running double, because a week-long soak sums tens of millions of waits.
+
+**Both backpressure readings cross, on separately named members**
+(https://github.com/APKiwiOrg/KhaozEngine/issues/499). `BackpressureStallCount` is the frame boundary that
+blocked on a segment the GPU was still reading. `OffTimelineDeferred` is a device-level `UpdateBuffer` that met
+an in-flight segment and queued its bytes, which blocks nobody and usually happens at load time. A non-zero
+off-timeline count beside a zero stall count is the specific reading you want when a load-time write is at fault:
+the segment count is fine and a caller is writing off-timeline against work still in flight. Folding them would
+destroy that diagnosis and make M3's criterion unreachable for a reason unrelated to pipeline depth.
+
+**The kill switch counts nothing, in the totals exactly as in the rolls.** A `KE_D3D11_REAL_DRAIN=0` run that
+reported hundreds of drains for zero milliseconds would read as a drain that costs nothing rather than as one
+that never ran.
+
 ## Resources, views and state objects
 
 **Every view is created at resource creation, and there are at most four per texture.** From the declared usage

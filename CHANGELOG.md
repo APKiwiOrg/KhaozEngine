@@ -28,7 +28,8 @@ that would exercise it is #460, and no golden moved.
 #### The swapchain: the incumbent's present path, a stable framebuffer identity and a queued resize (#457)
 
 The native backend can present a frame and follow a window resize. Section 9 of the design doc, decisions W1, W2
-and W3. Reached by nothing, since device creation still throws.
+and W3. Reached by nothing when this row landed, and reachable from the device row below, which is in this same version.
+Still selected by nothing: naming the backend is what reaches it.
 
 **v1 keeps the LEGACY BLIT swapchain, reproduced field for field rather than modernised (W1).** Unversioned
 `IDXGIFactory` off the adapter, `BufferCount = 2`, `Windowed = true`, `SwapEffect.Discard`,
@@ -322,8 +323,9 @@ buffers, and refused anyway because nothing further down the path would ever say
 The backend has a REAL emitter. `D3D11NativeEmitter` implements the whole `ID3D11Emitter` seam and the whole
 `ID3D11BindSink` seam against a live `ID3D11DeviceContext1`, so draw, indexed draw and dispatch issue, the
 pipeline binds its seven state objects, the vertex and index streams bind, and the resource-set flush fans out
-into the array calls decision R6 asks for. It is reached by nothing: device creation still throws, so no
-shipped path constructs one and no golden moved.
+into the array calls decision R6 asks for. Nothing constructed one when this row landed and no golden moved. The
+device row below constructs exactly one per device, in this same version, and still nothing SELECTS the backend,
+so no golden moved for that either.
 
 **It is deliberately the THINNER of the two emitters, and that split is the whole test strategy.** Every
 decision it makes was already taken somewhere device-free: the one `ClearState` per replay (R3), the redundancy
@@ -334,7 +336,8 @@ made. So what the real emitter carries alone is the translation into a Vortice c
 than it was: every stage switch here is over what `D3D11NativeCallName` resolved, which is the same function
 the trace emitter writes into its trace. The residue is no longer "which stage's method a bind picks" but "does
 the arm for `PSSetSamplers` call `PSSetSamplers`". Decision T3's WARP `[GpuFact]` and the 36 goldens on the
-`direct3d11-native` leg are what close it, and both arrive with the device row.
+`direct3d11-native` leg are what close it, and both arrive with #460, not with the device row below: a device
+can be created in this version, and no CI leg runs one.
 
 **The R6 cache key was incomplete and would have been golden-visible and silent.** `OMSetBlendState` takes a
 blend FACTOR beside the state object and `OMSetDepthStencilState` takes a stencil REFERENCE, and the factor
@@ -452,10 +455,11 @@ failure path, and reading its silence as a yes bets driver stability on whether 
 factory members that make a native creation call are gated. A framebuffer aggregates views that already exist, a
 resource layout and a resource set are pure engine data, and a command list touches no device state at all, so
 gating those four would serialize engine work behind a driver limitation that has nothing to do with it. Five
-members are ungated in all: those four, plus `CreateFence`, which is not built yet and throws before reaching any
-driver. (`CreateComputePipeline` was the sixth when this row landed, for the same reason. The compute-path row
-below made it real, and it takes the gate even though it creates no native object, to keep the two pipeline
-members symmetric.)
+members are ungated in all: those four, plus `CreateFence`, which threw when this row landed and makes no native
+call now that it does not: the device row below hands the factory its fence subsystem's own creation call, and
+the one timeline object was created with the device. (`CreateComputePipeline` was the sixth when this row landed,
+for the same reason. The compute-path row below made it real, and it takes the gate even though it creates no
+native object, to keep the two pipeline members symmetric.)
 
 **The two locks nest in one direction, and it is written down before there is a second one to get wrong.** The
 submit lock is OUTER and the creation gate is INNER, and the gate is a STRICT LEAF: nothing is acquired while it
@@ -512,7 +516,8 @@ native call as it is made, so recording touches device state by construction and
 rule lands the day the staging path exists. It landed later in this same version, in the compute-path row below,
 so the clause is now stated in the contract rather than promised, together with the one place the
 "nothing waits under the submit lock" rule is knowingly paid. Device-level `UpdateTexture` takes the same short
-lock as `UpdateBuffer` when the device row wires it, and that one is still an open end.
+lock as `UpdateBuffer`, which the device row below wires in this same version, so that clause is stated rather
+than promised too.
 
 #### Capabilities, the sampler hardcodes, adapter selection, the debug layer and device-loss reporting (#459)
 
@@ -523,8 +528,8 @@ public API additions land with it, and both are additive: `GpuDeviceDiagnostics`
 `softwareAdapter` and `deviceLossReason`. The `AppWindow` pass-through sits on the `AppWindow.Diagnostics.cs`
 partial beside `ThreadingCaps` / `AdapterDescription` / `InjectedModules`, because a windowed game holds a window
 and not a context, and without it neither fact was reachable from where a game builds its overlay or its session
-header. Nothing switches over and no golden moved: device creation still throws, so no shipped path reaches any
-of it.
+header. Nothing switches over and no golden moved. The device row below wires all of it in this same version, and
+nothing switches over then either, because nothing SELECTS this backend by default.
 
 **Capability parity with the incumbent, one member excepted, and the assertion is the deliverable (G1, T4).**
 Five of the nine `GpuCapabilities` members are CONSTANTS of the feature levels this backend requires rather than
@@ -616,20 +621,22 @@ apply, https://github.com/APKiwiOrg/KhaozEngine/issues/489), by asking the devic
 directly, and answering false there means the throw was something else and the caller must go on treating it as
 its own fault.
 
-**What is deliberately NOT here, and both are stated rather than left to be found.** Device creation does not
-exist, so nothing calls any of this yet: the adapter enumeration, the capability read, the debug flag, the pump
-and the latch all wait on the device row for their call sites, and the Windows `ID3D11InfoQueue` reader behind
-`ID3D11InfoQueueSource` lands there too, because `GetMessageW` is a two-pass call into a caller-allocated buffer
-that a Windows machine has to exercise before anyone should believe it. And #427 stays OPEN: its reporting is
-built here, and it closes when the native leg can actually observe a device loss.
+**What was deliberately NOT here when this row landed.** Device creation did not exist, so nothing called any of
+this: the adapter enumeration, the capability read, the debug flag, the pump and the latch all waited on the
+device row for their call sites, and so did the Windows `ID3D11InfoQueue` reader behind `ID3D11InfoQueueSource`,
+because `GetMessageW` is a two-pass call into a caller-allocated buffer that a Windows machine has to exercise
+before anyone should believe it. The device row below is in this same version and wires every one of them, the
+reader included. And #427 stays OPEN: its reporting is built here, and it closes when the native leg can actually
+observe a device loss, which needs the CI leg of #460.
 
 **Where the tests are.** Everything engine-owned runs device-free on macOS and Linux: the capability assembly
 from probed inputs, the descending sample-count walk, the min-over-three-formats fold, the name trimming, the
 sample-count guard, the adapter parse and selection policy against a faked adapter list, both halves of the debug
 lever, the pump and all three rate-limit caps against a fake queue, and the latch with its once-only rule,
 liveness flip, header string and fault path. `NativeVsVeldridCapabilityParityTests` carries T4 itself as a
-`[GpuFact]` that constructs both devices in one process, and it lands DORMANT, keyed to the exact
-`NotSupportedException` the unbuilt provider raises, so it starts running on its own the day creation lands. Its
+`[GpuFact]` that constructs both devices in one process. It landed DORMANT, keyed to the exact
+`NotSupportedException` the unbuilt provider raised, and the device row below took that key out in this same
+version, so a native device that will not create is now a failure rather than a reason to skip. Its
 device-free companion is a reflection check that the field-by-field comparer covers every member of
 `GpuCapabilities`, which is the guard that matters: a member appended to that struct without a line in the
 comparer would make every parity assertion silently weaker while staying green.
@@ -637,7 +644,8 @@ comparer would make every parity assertion silently weaker while staying green.
 #### The compute path: pipelines, the auto-unbind in both directions, the resolve and the staging readback (#456)
 
 The native backend can dispatch, resolve, copy and read back. Sections 10.1 and 10.2 of the design doc,
-decisions C1, C2, C3 and C4. Reached by nothing, since device creation still throws.
+decisions C1, C2, C3 and C4. Reached by nothing when this row landed, and reachable from the device row below, which is in this same version.
+Still selected by nothing: naming the backend is what reaches it.
 
 **A compute pipeline is one compiled module plus its layout array, so `CreateComputePipeline` stops throwing.**
 Direct3D 11 has no fixed-function stage behind a dispatch, so there is nothing native to create: no state
@@ -772,8 +780,8 @@ through null and report an empty readback with nothing logged anywhere. `D3D11St
 one place the result is interpreted, and it asks the device-loss latch FIRST, before building anything, because
 `DXGI_ERROR_DEVICE_REMOVED` is sticky and the reason is only meaningful at the first site that notices. The latch
 already named the staging map as its second site and said the call site belonged to this row, and this is that
-call site: it arrives optional, so the device row wires it with one constructor argument, and a null one still
-throws with the attribution missing rather than the failure.
+call site: it arrives optional, and the device row below wires it with one constructor argument, so a null latch
+is a device-free fixture and still throws with the attribution missing rather than the failure.
 
 **The row pitch is the runtime's padded stride, and the mapped size follows it.** Direct3D 11 pads each row of a
 mapped staging texture up to its own alignment, so a 300-pixel-wide RGBA texture commonly comes back at a
@@ -807,9 +815,9 @@ in 17.31.0 writing the current segment alone, which was a defect rather than a d
 write held only until the frame index wrapped back round, so two frames out of every three bound memory nothing
 had ever written, intermittently, with nothing thrown and nothing logged. `ModelRenderer`'s splat-params tail
 (`CreateSplatParamsUbo` writes the params once at load and refreshes only the frame block per frame) is the one
-shipped consumer that does that, and it works here now with no renderer change. Nothing reaches this yet, since
-device creation still throws, but it was the blocker on the device row. Resolution (a) of the issue: ring-side,
-not renderer-side and not a creation-time usage hint.
+shipped consumer that does that, and it works here now with no renderer change. It was the blocker on the device
+row, which is why it landed first, and the device row below is what makes it reachable at all. Resolution (a) of
+the issue: ring-side, not renderer-side and not a creation-time usage hint.
 
 **A RECORD-TIME write is unchanged and still reaches the current segment alone.** The split is the CALL rather
 than a property of the buffer, because the call is what knows whether it happens once: every shipped record-time

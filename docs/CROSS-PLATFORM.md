@@ -200,12 +200,15 @@ Net result: **all four legs are blocking, none of them informational** - Metal (
 validated. The native leg blocks by design rather than by record: it is the native backend's continuous
 exercise, so it gates from its first run, and its first recorded evidence is rollout gate 1 on
 [#460](https://github.com/APKiwiOrg/KhaozEngine/issues/460). The overall workflow is green only when all four
-verify.
+verify, with the one exception in the table above: on a `bake=true` dispatch the native leg skips its test step,
+so that run is green on the three baking legs alone.
 
 ### Per-backend golden flow
 
-1. **Push / PR = verify.** Each leg verifies its committed goldens (`.metal.txt`, `.direct3d11.txt`,
-   `.vulkan.txt`). A backend with no committed goldens **fails with "golden ... missing ... bake it"**.
+1. **Push / PR = verify.** Each leg verifies the committed goldens of its FAMILY (`.metal.txt`,
+   `.direct3d11.txt`, `.vulkan.txt`). Three legs own the family they verify. The native leg owns none: it is a
+   guest in `direct3d11`, so it checks the incumbent's files on the same rasterizer and never writes them. A
+   family with no committed goldens **fails with "golden ... missing ... bake it"**.
 2. **Generate a new backend's goldens:** run the workflow manually with `bake = true`. The bake legs render
    with `KE_UPDATE_GOLDENS=1` and upload artifacts named `goldens-<backend>`
    (`scene2d.<backend>.txt`, `scene3d.<backend>.txt`).
@@ -229,8 +232,13 @@ also writes viewable PNGs (via the BCL-only `KhaozEngine.Imaging.PngWriter`) to 
 CI uploads these as artifacts on the `cross-platform-gpu` matrix: `golden-evidence-<backend>` on any failed leg
 (`if: failure()`), and the bake evidence rides along in the `goldens-<backend>` bake artifact. Every leg also
 uploads `golden-deltas-<backend>` on `always()`, a few kilobytes of text rather than pixels: each compare
-appends its worst-cell delta to `golden-deltas.<backend>.txt` in the same evidence dir on a PASS as well as a
-fail, and a failure-only upload could only ever show that number after something had already broken.
+appends its worst-cell delta (via `GoldenDeltaLog`) to `golden-deltas.<backend>.txt` in the same evidence dir on
+a PASS as well as a fail, and a failure-only upload could only ever show that number after something had already
+broken. The two `<backend>` slots are not the same token, which matters when you go looking for the native leg's
+numbers: the ARTIFACT is named for the leg (`golden-deltas-direct3d11-native`) and the FILE inside it is named
+for the golden family the leg verified (`golden-deltas.direct3d11.txt`). So the guest leg's deltas arrive under
+its own artifact carrying the shared family's filename, and downloading both Windows artifacts gives you two
+same-named files that are two implementations measured against one set of references.
 
 The fast inner-loop CI (`.github/workflows/ci.yml`: build/test/pack/publish, GPU tests skipped) is separate and
 untouched.

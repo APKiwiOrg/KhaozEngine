@@ -8535,9 +8535,10 @@ KhaozEngineD3D11.Register();   // unconditionally, on every OS
 **Device creation is real, and nothing selects this backend for you.** Both creation entry points build a device
 on Windows, and off Windows they refuse with a `PlatformNotSupportedException` naming the operating system, which
 the fallback path turns into a WARN and a boot on `Direct3D11`. Reaching the native backend takes naming it:
-`KE_GRAPHICS_BACKEND=direct3d11-native`, or an explicit `GpuBackendKind.Direct3D11Native`. It has no Windows CI
-evidence yet (the `direct3d11-native` leg, its goldens and the rollout gates that decide the default flip are
-https://github.com/APKiwiOrg/KhaozEngine/issues/460), so treat it as opt-in and unproven for now.
+`KE_GRAPHICS_BACKEND=direct3d11-native`, or an explicit `GpuBackendKind.Direct3D11Native`. The
+`direct3d11-native` CI leg exists now and is blocking, verifying the shared `direct3d11` goldens on a pinned
+WARP adapter. Its first recorded evidence, and the rollout gates that decide the default flip, are
+https://github.com/APKiwiOrg/KhaozEngine/issues/460, so treat it as opt-in until those gates are green.
 `GpuBackendKind.Direct3D11` is the working Direct3D 11 backend and stays selectable indefinitely.
 
 Call `Register()` unconditionally. It is safe on macOS and Linux and names no Direct3D type: the package targets

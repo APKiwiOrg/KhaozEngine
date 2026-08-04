@@ -10,12 +10,13 @@ NO umbrella: a consumer adds this package explicitly, the same pattern as `Physi
 > capability read, the device-loss latch and the debug-layer pump. Everything the sixteen rows before it built is
 > joined up and reachable.
 >
-> **Nothing selects it by default, and there is no Windows evidence for it yet.** It is reached by naming it:
-> `KE_GRAPHICS_BACKEND=direct3d11-native`, or an explicit `GpuBackendKind.Direct3D11Native`. The
-> `direct3d11-native` CI leg, the 36 goldens on it, the WARP parity `[GpuFact]` and the five rollout gates are
-> https://github.com/APKiwiOrg/KhaozEngine/issues/460, which is where the default flip is decided. Until that
-> leg runs, what has been checked is that this compiles under CA1416, that the construction and teardown ORDER
-> are what they claim, and that every subsystem below is green against its own device-free tests.
+> **Nothing selects it by default.** It is reached by naming it: `KE_GRAPHICS_BACKEND=direct3d11-native`, or an
+> explicit `GpuBackendKind.Direct3D11Native`. The `direct3d11-native` CI leg exists now and is blocking: it
+> verifies the 36 shared `direct3d11` goldens on a pinned WARP adapter and runs the WARP parity `[GpuFact]` on
+> its full-suite triggers. Its first recorded evidence, and the five rollout gates that decide the default flip,
+> are https://github.com/APKiwiOrg/KhaozEngine/issues/460. What was checked before that leg existed still holds
+> and is the whole of the device-free story: this compiles under CA1416, the construction and teardown ORDER are
+> what they claim, and every subsystem below is green against its own device-free tests.
 > `GpuBackendKind.Direct3D11` remains the working Direct3D 11 backend and stays selectable indefinitely.
 
 ## Opting in
@@ -326,10 +327,12 @@ device-free type it uses unchanged (`D3D11DeviceState`, `D3D11BindFlush`, `D3D11
 made. What the real emitter carries alone is the translation into a Vortice call, and even the stage half of
 that is shared: every switch is over what `D3D11NativeCallName` resolved, the same function the trace emitter
 uses, so the residue is "does the arm for `PSSetSamplers` call `PSSetSamplers`" rather than "which stage's
-method". Decision T3's WARP `[GpuFact]` and the 36 goldens on the `direct3d11-native` leg close that, and both
-arrive with https://github.com/APKiwiOrg/KhaozEngine/issues/460. **There is still no Windows evidence for any of
-this**, and that is worth stating plainly rather than leaving to be inferred: a device can be created now, and
-nothing below has yet been run against one in CI.
+method". Decision T3's WARP `[GpuFact]` closes that residue directly, and it has landed as
+`D3D11NativeCallParityGpuTests`: it drives this emitter on a live device and reads the answer back out of the
+`ID3D11DeviceContext` with the `Get*` counterparts, which is what settles the two questions no device-free test
+can ask (what the Vortice array overloads do with a count smaller than the scratch they are handed, and
+`OMSetRenderTargets` at a count of zero). It runs on the Windows full-suite triggers, and the 36 goldens on the
+`direct3d11-native` leg run on every push, both against WARP.
 
 **A draw flushes the resource sets first, then the vertex streams, then issues.** That order is decision R5's
 rule 2 plus the batching below, and it is the same in both emitters.

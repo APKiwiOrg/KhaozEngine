@@ -908,9 +908,10 @@ Restored, they pass.
 
 `D3D11BackendProvider`'s two creation entry points stop throwing. `D3D11GpuDevice` implements `IGpuDevice` over
 the sixteen subsystems the rows above built, so every one of them is reachable for the first time. Nothing in
-the engine selects the backend by default and none of this has run on Windows CI yet: the `direct3d11-native`
-leg, the 36 goldens on it, the WARP parity `[GpuFact]` and the five rollout gates are #460, which is also where
-the default flip is decided. `GpuBackendKind.Direct3D11` stays the working Direct3D 11 backend indefinitely.
+the engine selects the backend by default and none of this had run on Windows CI when the row landed: the
+`direct3d11-native` leg, the 36 goldens on it and the WARP parity `[GpuFact]` are the gate row below, in this
+same version, and the five rollout gates that decide the default flip are #460.
+`GpuBackendKind.Direct3D11` stays the working Direct3D 11 backend indefinitely.
 
 **Creation follows the dependency order, and two steps of it are levers a session can set.** The adapter comes
 from `KE_D3D11_ADAPTER` (with `warp` resolved through `DriverType.Warp` rather than the enumeration, so the value
@@ -975,14 +976,130 @@ row adds no hand-written marshalling at all.
 covers the Windows boundary, the load-path assertions still pass (nothing here puts the Vortice interop on the
 macOS load path, and the new metadata tests read the assembly FILE rather than loading types), and the
 construction and teardown orders are pinned device-free. What is deferred, and stated rather than implied: every
-behaviour of a live device. The `direct3d11-native` CI leg does not exist yet, so the WARP leg that this merge
-triggers still runs the INCUMBENT Direct3D 11 backend. The T4 capability-parity `[GpuFact]` that landed dormant
-is live from this row and will run the first time a Windows leg executes it.
+behaviour of a live device. When this row landed the `direct3d11-native` CI leg did not exist, so the WARP leg
+its merge triggered still ran the INCUMBENT Direct3D 11 backend. The gate row below adds that leg. The T4
+capability-parity `[GpuFact]` that landed dormant is live from this row and runs the first time a Windows leg
+executes it.
 
-**Also reachable for the first time, and deliberately not reported yet (#499).** The device exposes the M2 drain
-telemetry, the M3 per-frame backpressure and the ring's four pending-patch counters. Nothing reads them: folding
-backend-specific per-frame counters into the telemetry session header is gate 4 of #460, where the numbers are
-judged, and what this row owed them is reachability plus a note naming the pair that must be reported together.
+**Also reachable for the first time (#499).** The device exposes the M2 drain telemetry, the M3 per-frame
+backpressure and the ring's four pending-patch counters. What this row owed them was reachability plus a note
+naming the pair that must be reported together. Reporting them is gate 4 of #460, where the numbers are judged,
+and the gate row below carries it.
+
+### The gate row opens: the `direct3d11-native` CI leg, the WARP call-parity `[GpuFact]`, and the soak counters a field capture can finally carry (#460, #499, #504)
+
+Work-breakdown row 17 minus the rollout itself. The native backend gets continuous exercise on Windows, the one
+translation no device-free test can check gets a live-device guard, and the two soak numbers gate 4 judges stop
+being internals that nothing outside `KhaozEngine.Gpu.D3D11` can read. Nothing renders differently and nothing
+switches over: reaching the backend still means naming it, and the flip is still the five gates on #460. Each
+gate's standing is now written down, in the 2026-08-05 rollout record at the end of section 14 of
+`docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md`.
+
+#### Four new public surfaces, so the M2 and M3 numbers reach a telemetry session (#499)
+
+**`IGpuDevice.Counters` returns the new `GpuDeviceCounters`, and it is default-implemented.** The soak counters a
+device keeps about itself, read live: `FramesBegun`, the drain count and total drain milliseconds (M2), the
+backpressure stall count and accumulated stall milliseconds (M3), and the two off-timeline patch readings
+(`OffTimelineDeferred` and `OffTimelineOutstanding`). Metal, Vulkan and the incumbent Direct3D11 path take the
+default and answer honestly, because `HasValue` false is a DIFFERENT fact from counting and finding zero: zero
+stalls IS the passing result for M3, so a backend that never looked must not report the same row as one that
+looked and found nothing. Sample it from any thread. Every value is monotone cumulative and read whole, so the
+worst a concurrent sample can do is straddle a wait in progress and report a count and a duration one entry
+apart, which is noise over a capture window rather than a torn number.
+
+**`GpuTelemetryChannels` is the projection onto a `TelemetryRecorder` sample row, with seven pinned channel
+names.** `AppendTo` is the form a game's frame sampler uses, since its row already carries frame rate and its own
+numbers and these join them, and `For` is the convenience form for a caller sampling the GPU alone.
+`ChannelCount` is 7 so a caller can size its list once. A device that counted nothing writes NOTHING rather than
+a row of zeros, which would read as a clean soak on a backend that never measured. The names are a contract now
+(`gpuDrainMs`, `gpuBackpressureStalls` and the rest), and `OffTimelineDeferred` is deliberately spelled nothing
+like the backpressure channels beside it, because the two answer different questions and a name that blurred them
+is how a reader would add them together. It lives in `KhaozEngine.Gpu` beside `GpuTelemetry` rather than in
+`KhaozEngine.Diagnostics`, which sits under this package and cannot name these types.
+
+**The numbers ride SAMPLE rows rather than the session header, and that is why they are cumulative.** The header
+is written once at start, when every counter is still zero and means nothing. Cumulative plus per-row makes the
+sampling cadence stop mattering: a window's stalls are the last row minus the first, exactly, rather than a
+sample of the frames the recorder happened to catch, and M2's per-frame cost is that difference over the frames
+between them.
+
+**`GpuDeviceContext.Counters` and `AppWindow.Counters` forward it**, the same path `SoftwareAdapter` and
+`DeviceLossReason` already take, so a consumer reads the counters off the window it already holds. Behind the
+seam the backend's own totals became sampleable: `D3D11WaitTotals` reads volatile so a value sampled from another
+thread cannot be a stale register, `D3D11FenceSubsystem.TotalDrain` and `D3D11RingAllocator.TotalBackpressure`
+expose the drain and stall pairs, and the ring's `Map` HRESULT path is unchanged. Closes #499.
+
+#### The `direct3d11-native` CI leg, a guest in the incumbent's golden family (#460)
+
+**`cross-platform-gpu.yml` grows a fourth leg that runs the engine's own backend on WARP, and it blocks from its
+first run.** Same OS, same runner and the same suite tier as the incumbent Windows leg (decision T5): golden tests
+only on push and pull_request, the full suite on the weekly schedule and on `workflow_dispatch`. It is a GUEST in
+the incumbent's `direct3d11` golden family (decision I3), which is the point of the whole arrangement: two
+implementations of one API, on one rasterizer, against one set of committed references. It VERIFIES those 36
+goldens and never bakes them, so `KE_UPDATE_GOLDENS` stays empty on this leg for every trigger and
+`GoldenCompare.BakeRefusal` remains the backstop.
+
+**It pins `KE_D3D11_ADAPTER=warp` rather than inheriting the runner's accident (decision G2).** The incumbent leg
+reaches WARP through the automatic fallback when no hardware adapter is present, which means a runner image that
+grows a paravirtual adapter would silently change the rasterizer under a golden gate. The native leg states the
+rasterizer instead. Blank on the other three legs is parsed as "let the API pick", so nothing about them moves.
+
+**It sits out a bake dispatch entirely.** On `bake=true` the other three legs rewrite their goldens, and a guest
+can contribute nothing to that: verifying the full suite against references being replaced mid-run would red the
+leg on a missing-golden or changed-golden failure that says nothing about the native backend. So the test step is
+skipped there and the new goldens are verified on the next push. The FXC validation step stays pinned to the
+incumbent leg, since it creates no device and selects no backend, and running it twice would buy nothing at the
+Windows 2x rate. Every leg now also uploads `golden-deltas-<backend>` on `always()`.
+
+**Blocking by design rather than by record, and that is stated where a reader meets it.** The other three legs
+carry months of green runs. This one gates from its first run because it IS the native backend's continuous
+exercise (decision RO3), and #423's push-triggered gate degrading unnoticed for weeks is the precedent that makes
+an informational leg worthless. Its first recorded evidence is rollout gate 1 on #460.
+
+#### The T3 parity `[GpuFact]`, and the Vortice count semantics it settles
+
+**`D3D11NativeCallParityGpuTests` drives the shipped emitter on a live device and reads the answer back out of
+the `ID3D11DeviceContext` with the `Get*` counterparts.** It is the drift guard the device-free budget test
+cannot be. What it deliberately does NOT do is diff the two emitters' call sequences, and that is a finding rather
+than an omission: the dirty tracking, the slot order, the pipeline-switch drain, the register arithmetic, the
+array batching and even the stage-to-method-name mapping all live in types BOTH emitters use unchanged, so a
+sequence diff compares shared code against itself and stays green through every defect this test exists to catch.
+
+**Two questions were settled empirically, on all four bind arms plus the vertex flush.** First, what Vortice
+2.3.0's generated array overloads marshal when the explicit count is smaller than the scratch array handed
+alongside it, which the shipped XML does not answer. If they marshalled `array.Length`, every bind in the engine
+would silently rewrite the stale trailing slots, which on a real frame means the previous pass's textures staying
+bound past the set that replaced them. The test poisons those trailing slots with a live resource before the
+bind, so length-marshalling would be OBSERVABLE rather than hiding behind an all-null readback that proves
+nothing, and the readbacks are clamped to the documented per-stage slot limits. Second, `OMSetRenderTargets` with
+a count of zero over a non-empty array, which is the depth-only shadow pass's exact shape, with a colour target
+bound first so "no colour target afterwards" is something that had to happen.
+
+**Not named "Golden", on purpose.** The push path selects with `--filter FullyQualifiedName~Golden`, so this
+rides the Windows full-suite schedule and dispatch runs exactly like `D3D11NativeCallBudgetTests`. It is dormant
+rather than skipped off Windows and on a Windows box the capability probe refuses, and its Vortice bodies are all
+`NoInlining` behind the platform guard so the macOS run's load-path assertions stay true.
+
+#### Every golden compare records its worst delta, on a pass as well as a fail
+
+**Rollout gate 1 wants the observed worst-cell delta of the 36 goldens from a GREEN run, and `GoldenCompare` was
+computing that number on every compare and putting it only in failure text.** So on the one run the gate cares
+about it was computed and thrown away. `AssertOrUpdate`'s compare path now appends one `<name> worst=<value>` line
+per golden to `goldens-evidence/golden-deltas.<backend>.txt` through the new `GoldenDeltaLog`, behind a static
+lock because golden tests run in parallel collections. A bake records nothing, having compared nothing. Tolerance,
+comparison, bake and refusal behaviour are untouched. Measured on Metal: 36 lines, worst 0.0111 against the 0.06
+tolerance. The artifact is named for the LEG and the file inside it for the golden FAMILY, so the guest leg's
+numbers arrive as `golden-deltas-direct3d11-native` containing `golden-deltas.direct3d11.txt`.
+
+#### The capability-parity test gets a third dormancy arm (#504)
+
+**A Windows box that cannot run the native backend at all went RED for a machine fact.**
+`NativeVsVeldridCapabilityParityTests` reached `CreateHeadless()` bare after checking only that it was on Windows
+and that the incumbent came up on Direct3D11, so a machine failing the package's own feature probe failed the
+test instead of returning dormant. It now gates that call on `GpuBackendSelector.IsBackendSupported`, which is
+exactly the question being asked (`ConstantBufferOffsetting` and `MapNoOverwriteOnDynamicConstantBuffer`, decision
+I2's machine-incapability arm). WARP satisfies both, so the CI leg is unchanged. What changes is a
+feature-deficient Windows box running the suite by hand. Closes #504.
 
 ## 17.31.0
 

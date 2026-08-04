@@ -982,6 +982,47 @@ Before the field capture, pin the session log's build line and the capture-windo
 to the wrong build is the expensive failure here, and I2 (throw rather than fall back on a missing provider)
 exists specifically to make that impossible.
 
+### Rollout record (2026-08-05)
+
+Where the five gates stand once row 17's CI leg, its parity `[GpuFact]` and the soak counters have landed.
+
+**Gate 3's marginals are frozen and measured.** `D3D11NativeCallBudgetTests` asserts them device-free on every
+`dotnet test`, so these are the numbers gate 3 asked to be recorded here, and what a future reader compares
+against:
+
+- **Fixed head, 26 calls.** What a frame costs before any mesh or draw is counted: one `ClearState`, three for
+  the framebuffer change, two clears, seven for the first pipeline bind, two for the extra width of the
+  per-draw set's one full activation over its offsets-only pushes, and eleven for the tail.
+- **Per distinct mesh, 4 calls.** One full activation of the seven-element model set, array-batched. Eight or
+  fourteen here is the #418 fan-out returning.
+- **Per draw, 2 calls.** One offsets-only push of the per-draw uniform window plus the draw itself. This is the
+  shadow pass's shape thousands of times a frame, and the number the whole recording model exists to hold.
+- **An offsets-only rebind is exactly one call per VISIBLE stage**, one for a vertex-only set and two for
+  vertex plus fragment. Not one per element, not one per resource, and not a re-activation.
+
+**Gate 1's worst-cell delta and gate 2's pass, fail and skip counts are recorded on
+[#460](https://github.com/APKiwiOrg/KhaozEngine/issues/460), from the first `direct3d11-native` leg run.** The
+mechanism for gate 1 exists rather than the number: every golden compare now appends its worst-cell delta to
+`goldens-evidence/golden-deltas.<family>.txt` on a pass as well as a fail, and the leg uploads that file as
+`golden-deltas-direct3d11-native` on `always()`, so the observed figure comes off a green run instead of
+needing one to break first.
+
+**Gate 3 is not met, and what it waits on is M1 rather than a number.** The marginals above are green, but
+`KE_D3D11_RECORD` still ships and both drivers with it, so the deferred-versus-immediate A/B on the #410
+reporting machine is still owed. Gate 3 closes when that measurement is taken, the losing driver is deleted and
+the switch is removed.
+
+**Gate 4 waits on the field soak, and its instrument is now wired end to end.** M2's drain count and duration
+and M3's two backpressure readings leave the backend through `IGpuDevice.Counters`, forwarded by
+`GpuDeviceContext` and `AppWindow`, and reach a capture as sample-row channels via
+`GpuTelemetryChannels.AppendTo`, which the consumer calls from its own frame sampler. The counters are
+cumulative, so a window's cost is the last row minus the first regardless of sampling cadence. One number the
+gate reads is deliberately NOT in that set: `OceanFftProducer.LastStallMs` is surfaced by the renderer, and M2
+judges it as a consumer-side reading beside the device counters rather than folding it in.
+
+**Gate 5 is met.** `softwareAdapter` and `deviceLossReason` both ship in the telemetry session header, from
+row 16.
+
 ---
 
 ## 15. Work breakdown

@@ -12,7 +12,8 @@
 #   * The GitHub-hosted D3D11 NATIVE leg (2x billing) runs the engine's own KhaozEngine.Gpu.D3D11
 #     backend (KE_GRAPHICS_BACKEND=direct3d11-native) on exactly the incumbent leg's tier: golden
 #     tests only on push / pull_request, the FULL suite on the weekly schedule and on
-#     workflow_dispatch (decision T5). It is a GUEST in the incumbent's golden family (decision I3):
+#     workflow_dispatch (decision T5), with one exception: it sits a BAKE dispatch out entirely
+#     (the bake note below, and the test step). It is a GUEST in the incumbent's golden family (decision I3):
 #     it VERIFIES the committed direct3d11 goldens on the same WARP rasterizer and never bakes them,
 #     so KE_UPDATE_GOLDENS stays empty on this leg for every trigger (see the test step). Cost note:
 #     this repo is private and Windows bills at 2x, so this leg doubles the D3D11 spend on the gated

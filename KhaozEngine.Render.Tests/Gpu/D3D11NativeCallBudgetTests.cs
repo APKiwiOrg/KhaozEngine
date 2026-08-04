@@ -46,7 +46,10 @@ namespace KhaozEngine.Tests.Gpu
     /// <see cref="D3D11SetActivation"/>, which the real emitter uses unchanged, and the guards live in
     /// <see cref="D3D11DeviceState"/>. What is device-free here is the SINK: which method name a register file
     /// plus a stage picks, through <see cref="D3D11NativeCallName"/>. Decision T3's WARP <c>[GpuFact]</c> guards
-    /// that one translation and is homed in work-breakdown row 17.
+    /// that one translation, and it has landed beside this file as
+    /// <see cref="D3D11NativeCallParityGpuTests"/>: it drives the real emitter on a live device and reads the
+    /// context back with the <c>Get*</c> counterparts, so the arm-to-stage routing and the Vortice array-overload
+    /// count semantics are checked against a device rather than against this harness's own model of one.
     /// </para>
     /// </summary>
     public sealed class D3D11NativeCallBudgetTests

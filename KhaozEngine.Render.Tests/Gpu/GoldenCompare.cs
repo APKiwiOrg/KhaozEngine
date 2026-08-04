@@ -159,6 +159,11 @@ namespace KhaozEngine.Tests.Gpu
             var offenders = comparison.Offenders;
             float worst = comparison.WorstDiff;
 
+            // RECORDED ON EVERY COMPARE, PASS INCLUDED, which is the whole point: rollout gate 1 of the native
+            // Direct3D 11 backend wants the observed worst-cell delta of the 36 goldens from a GREEN run, and a
+            // green run is exactly the one that used to compute this number and drop it. See GoldenDeltaLog.
+            GoldenDeltaLog.Append(evidenceDir, backend, name, worst);
+
             if (offenders.Count > 0)
             {
                 var sb = new StringBuilder();

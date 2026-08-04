@@ -69,8 +69,10 @@ namespace KhaozEngine.Tests.Gpu
             string want = Path.Combine(_evidenceDir, $"{name}.{Backend}.want.png");
             string diff = Path.Combine(_evidenceDir, $"{name}.{Backend}.diff.png");
 
-            // Exactly these three PNGs.
-            var written = Directory.GetFiles(_evidenceDir).Select(Path.GetFileName).OrderBy(x => x).ToArray();
+            // Exactly these three PNGs. The deltas file sits in the same directory and is filtered out here on
+            // purpose: it is written by every compare rather than by a failure, so it is asserted on its own below
+            // and has no business widening this list.
+            var written = Directory.GetFiles(_evidenceDir, "*.png").Select(Path.GetFileName).OrderBy(x => x).ToArray();
             Assert.Equal(new[] { $"{name}.{Backend}.diff.png", $"{name}.{Backend}.got.png", $"{name}.{Backend}.want.png" }, written);
 
             foreach (var p in new[] { got, want, diff })
@@ -157,7 +159,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [Fact]
-        public void PassingCompare_WritesNothingToEvidenceDir()
+        public void PassingCompare_WritesNoPngEvidence()
         {
             const int w = 64, h = 36;
             const string name = "passes";
@@ -168,7 +170,78 @@ namespace KhaozEngine.Tests.Gpu
             GoldenCompare.AssertOrUpdate(name, Solid(w, h, 40, 80, 120), w, h,
                 _goldenDir, _evidenceDir, Backend, updateGoldens: false);
 
-            Assert.Empty(Directory.GetFiles(_evidenceDir));
+            // The deltas file is the one thing a green compare now leaves behind, and it is asserted for content
+            // in its own test below. No PNG is written, which is what this one has always been about.
+            Assert.Empty(Directory.GetFiles(_evidenceDir, "*.png"));
+        }
+
+        /// <summary>
+        /// THE GREEN RUN IS THE ONE THE NUMBER HAS TO COME FROM, so a PASSING compare writes its worst-cell delta.
+        /// Rollout gate 1 of the native Direct3D 11 backend reads the observed delta of the 36 goldens off a green
+        /// CI run, and before this the number was computed on every compare and only ever survived into a failure
+        /// message, which is the one run where the other goldens' headroom is unknown.
+        /// </summary>
+        [Fact]
+        public void APassingCompare_AppendsItsWorstDeltaToTheDeltasFile()
+        {
+            const int w = 64, h = 36;
+            const string name = "deltapass";
+            BakeSolidGolden(name, w, h, 40, 80, 120);
+            foreach (var f in Directory.GetFiles(_evidenceDir)) File.Delete(f);
+
+            GoldenCompare.AssertOrUpdate(name, Solid(w, h, 40, 80, 120), w, h,
+                _goldenDir, _evidenceDir, Backend, updateGoldens: false);
+
+            string deltas = GoldenDeltaLog.PathFor(_evidenceDir, Backend);
+            Assert.True(File.Exists(deltas), "a passing compare must record its delta, that is the whole point");
+
+            string[] lines = File.ReadAllLines(deltas);
+            Assert.Single(lines);
+            Assert.StartsWith(name + " worst=", lines[0], StringComparison.Ordinal);
+
+            // An identical frame against its own bake is zero difference, so the recorded number is a real
+            // measurement rather than a placeholder the format would print either way.
+            Assert.Equal(name + " worst=0", lines[0]);
+        }
+
+        /// <summary>The failing half, and the accumulation with it: a second compare appends rather than replacing,
+        /// so one process run leaves one file holding every golden it compared.</summary>
+        [Fact]
+        public void AFailingCompare_AppendsItsWorstDeltaToo_BesideThePassingOne()
+        {
+            const int w = 64, h = 36;
+            const string passing = "deltapass2";
+            const string failing = "deltafail";
+            BakeSolidGolden(passing, w, h, 40, 80, 120);
+            BakeSolidGolden(failing, w, h, 220, 0, 0);
+            foreach (var f in Directory.GetFiles(_evidenceDir)) File.Delete(f);
+
+            GoldenCompare.AssertOrUpdate(passing, Solid(w, h, 40, 80, 120), w, h,
+                _goldenDir, _evidenceDir, Backend, updateGoldens: false);
+            Assert.Throws<Xunit.Sdk.FailException>(() =>
+                GoldenCompare.AssertOrUpdate(failing, Solid(w, h, 0, 220, 0), w, h,
+                    _goldenDir, _evidenceDir, Backend, updateGoldens: false));
+
+            string[] lines = File.ReadAllLines(GoldenDeltaLog.PathFor(_evidenceDir, Backend));
+            Assert.Equal(2, lines.Length);
+            Assert.StartsWith(passing + " worst=", lines[0], StringComparison.Ordinal);
+            Assert.StartsWith(failing + " worst=", lines[1], StringComparison.Ordinal);
+
+            // Solid red against solid green moves a whole channel, so the failing line carries a large number and
+            // is visibly not the passing one repeated.
+            Assert.NotEqual(lines[0], lines[1]);
+        }
+
+        /// <summary>A BAKE RECORDS NO DELTA, because it compared nothing. Writing a zero there would put a number
+        /// into the gate's evidence file that no comparison produced.</summary>
+        [Fact]
+        public void ABake_RecordsNoDelta()
+        {
+            const int w = 64, h = 36;
+            GoldenCompare.AssertOrUpdate("deltabake", Solid(w, h, 1, 2, 3), w, h,
+                _goldenDir, _evidenceDir, Backend, updateGoldens: true);
+
+            Assert.False(File.Exists(GoldenDeltaLog.PathFor(_evidenceDir, Backend)));
         }
 
         [Fact]

@@ -8,10 +8,13 @@ namespace KhaozEngine.Tests.Gpu
     /// EVERY golden compare's worst per-cell difference, written down. One line per golden, appended to a
     /// per-backend file in the evidence directory, on a PASS exactly as much as on a failure.
     /// <para>
-    /// TWO PATHS RECORD NOTHING, and they are the ones that never reach a compare: a missing golden file and a
+    /// THREE PATHS RECORD NOTHING, and they are the ones that never reach a compare: a missing golden file and a
     /// golden whose cell count does not match the capture both fail inside <see cref="GoldenCompare"/> before
     /// the worst-cell number is computed, so a run carrying either one is short a line rather than holding a
-    /// zero.
+    /// zero. The third is a bake, KE_UPDATE_GOLDENS set: the updateGoldens branch in
+    /// <see cref="GoldenCompare"/> writes the new reference and returns before it ever gets to a compare, so a
+    /// bake compares nothing and there is no delta to record. It is also the most common of the three, since it
+    /// is the deliberate way to run the suite rather than a failure mode.
     /// </para>
     /// <para>
     /// WHY A PASSING COMPARE HAS TO WRITE ANYTHING AT ALL. Gate 1 of the native Direct3D 11 rollout

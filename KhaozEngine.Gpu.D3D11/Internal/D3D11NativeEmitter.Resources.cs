@@ -10,10 +10,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// generation, the resolve and the compute pipeline bind. Split from the state and draw half so neither file
     /// grows into the 1751-line command list the fork carries.
     /// <para>
-    /// THE COMPUTE ORDERING RULES ARE NOT HERE. Decision C1's SRV-versus-UAV auto-unbind in both directions and
-    /// the compute shader's own redundancy cache are work-breakdown row 12, together with the staging map path
-    /// and the readback. What this half owes row 12 is the shape it will hang off, which is the same
-    /// <see cref="D3D11BindFlush"/> hook the graphics side uses.
+    /// THE COMPUTE ORDERING RULES ARE NOT HERE EITHER, and that is now where they landed rather than where they
+    /// are owed. Decision C1's SRV-versus-UAV auto-unbind lives where the bind arrays are ASSEMBLED
+    /// (<see cref="D3D11ViewConflicts"/>, reached from <see cref="D3D11SetActivation"/>), so it rides the same
+    /// <see cref="D3D11BindFlush"/> hook the graphics side uses and this half issues no unbind of its own. Rule 2
+    /// is honoured as written (decision C3): there is no barrier member on the emitter seam, and the ordering a
+    /// dependent dispatch needs comes from <c>End</c> plus <c>Submit</c> plus <c>WaitForIdle</c>, which is the
+    /// contract stated on <c>IGpuCommandList</c> itself. The staging map path is not on this seam at all, because
+    /// the seam's <c>Map</c> and <c>Unmap</c> are DEVICE members rather than command-list ones: they live in
+    /// <see cref="D3D11StagingAccess"/>.
     /// </para>
     /// </summary>
     [SupportedOSPlatform("windows")]
@@ -113,12 +118,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         }
 
         /// <summary>
-        /// Bind a compute pipeline. The shader is bound UNGUARDED, which is deliberate rather than an omission: a
-        /// compute pipeline is one shader, and its redundancy cache belongs with the rest of decision C1's
-        /// compute schedule in work-breakdown row 12, so caching it here alone would be half a rule.
+        /// Bind a compute pipeline. The shader is bound UNGUARDED, and that is now a decision rather than a
+        /// deferral: a frame binds a graphics pipeline hundreds of times and a compute pipeline a handful, so a
+        /// cache slot for it would pay a reference compare per dispatch to save a call no profile shows. See
+        /// <see cref="D3D11ComputePipeline"/> for the shape to add the day a consumer dispatches per object.
         /// <para>
-        /// The pipeline-switch DRAIN is not half a rule and happens here, on the compute dirty array, for the
-        /// same reason as the graphics one: a compute set's registers are numbered under its pipeline's layouts.
+        /// The pipeline-switch DRAIN happens here, on the compute dirty array, for the same reason as the graphics
+        /// one: a compute set's registers are numbered under its pipeline's layouts.
         /// </para>
         /// </summary>
         public void SetComputePipeline(IGpuComputePipeline pipeline)

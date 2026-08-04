@@ -49,23 +49,29 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// Creation is not built yet, and the failure says so in the words a reader needs. This is asserted
-        /// rather than left implicit because of what the creation path does with it: it catches the exception,
-        /// WARNs with the message and falls back to the incumbent, so a Windows tester who named the native
-        /// backend reads THIS text and must not conclude their machine is at fault.
+        /// CREATION IS BUILT NOW, so what this asserts changed with the device row
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/497): off Windows both entry points refuse with a
+        /// PLATFORM answer rather than with the old "still being built" one. It is asserted rather than left
+        /// implicit because of what the creation path does with the exception: it catches it, WARNs with the
+        /// message and falls back to the incumbent, so this text is what a tester who named the native backend
+        /// actually reads, and it must name the operating system rather than leaving them to conclude their
+        /// machine is at fault. The full transition, including the retired wording, is in
+        /// <c>D3D11DeviceWiringTests</c>.
         /// </summary>
         [Theory]
         [InlineData(true)]
         [InlineData(false)]
-        public void CreationThrows_SayingTheBackendIsUnfinished_NotThatTheMachineIsWrong(bool windowed)
+        public void OffWindows_CreationThrows_SayingThePlatformHasNoDirect3D(bool windowed)
         {
+            if (KhaozEngineD3D11.IsPlatformSupported) return;   // on Windows creation is real
+
             var provider = new D3D11BackendProvider();
 
             NotSupportedException ex = windowed
-                ? Assert.Throws<NotSupportedException>(() => provider.CreateForWindow(default))
-                : Assert.Throws<NotSupportedException>(() => provider.CreateHeadless());
+                ? Assert.Throws<PlatformNotSupportedException>(() => provider.CreateForWindow(default))
+                : Assert.Throws<PlatformNotSupportedException>(() => provider.CreateHeadless());
 
-            Assert.Contains("Direct3D11", ex.Message, StringComparison.Ordinal);
+            Assert.Contains("Direct3D 11", ex.Message, StringComparison.Ordinal);
             // It must not read as the OTHER failure mode. A missing registration is a wiring fault with its own
             // exception type and its own message, and decision I2 exists to keep the two tellable apart.
             Assert.IsNotType<GpuBackendProviderMissingException>(ex);
@@ -75,14 +81,22 @@ namespace KhaozEngine.Tests.Gpu
         /// The provider returns a real device or throws, and never hands back an empty result. Pinned here
         /// because the adopting path checks for a null device and produces its own message for it, and that guard
         /// only stays meaningful while no provider actually relies on it.
+        /// <para>
+        /// The case driven here is the one that refuses on EVERY operating system: a window handle from a
+        /// platform whose windows a Direct3D swapchain cannot present into. Off Windows the platform guard
+        /// answers first, and on Windows the handle kind does, so both are a throw rather than an empty result
+        /// and neither creates a device inside a plain unit test.
+        /// </para>
         /// </summary>
         [Fact]
         public void CreationNeverReturnsAnEmptyResult()
         {
             var provider = new D3D11BackendProvider();
 
-            Assert.ThrowsAny<Exception>(() => provider.CreateHeadless());
+            // default is a Cocoa handle, which no Direct3D swapchain can present into.
             Assert.ThrowsAny<Exception>(() => provider.CreateForWindow(default));
+            if (!KhaozEngineD3D11.IsPlatformSupported)
+                Assert.ThrowsAny<Exception>(() => provider.CreateHeadless());
         }
     }
 

@@ -15,9 +15,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// of a <c>Create*</c> member enforceable rather than aspirational.
     /// </para>
     /// <para>
-    /// NOT EVERY MEMBER IS BUILT YET. Compute pipelines and fences are separate rows of the same program, and
-    /// each throws a message naming what is missing rather than returning something that would fail later
-    /// somewhere less informative. Everything else, including the shader path, is live.
+    /// EVERY MEMBER IS LIVE ON A DEVICE. <see cref="CreateFence"/> is the one that comes from somewhere else: the
+    /// fence subsystem owns the timeline, so the device hands its factory that subsystem's own creation call.
+    /// A factory built WITHOUT one (which is every device-free test, since none of them has a timeline) still
+    /// refuses by name rather than returning something that would fail later somewhere less informative.
     /// </para>
     /// <para>
     /// SHADER COMPILATION IS EAGER TOO, and eager here means more than it does elsewhere: a shader set arrives
@@ -28,15 +29,16 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// CREATION IS FREE-THREADED, BEHIND <see cref="D3D11CreationGate"/> WHEN THE DRIVER IS NOT (decision W4).
     /// Every member below that makes a native creation call takes the gate for the duration of that call and
     /// nothing longer, which is a no-op on a driver reporting <c>DriverConcurrentCreates</c> and one uncontended
-    /// monitor otherwise. SIX MEMBERS ARE UNGATED, IN TWO GROUPS. Four are live and create NO native object:
+    /// monitor otherwise. FIVE MEMBERS ARE UNGATED, IN TWO GROUPS. Four are live and create NO native object:
     /// <see cref="CreateFramebuffer"/> aggregates views that already exist,
     /// <see cref="CreateResourceLayout"/> and <see cref="CreateResourceSet"/> are pure engine data, and
     /// <see cref="CreateCommandList"/> hands back a recorder that touches no device state at all (which is the
     /// same clause of W4 the recording model rests on). Gating those would serialize engine work behind a driver
-    /// limitation that has nothing to do with it. The other two, <see cref="CreateComputePipeline"/> and
-    /// <see cref="CreateFence"/>, are the members of the paragraph above that are not built yet: they throw
-    /// before reaching any driver, so there is nothing to gate until the rows that build them land, and each
-    /// takes the gate on the day it makes a native creation call.
+    /// limitation that has nothing to do with it. The fifth, <see cref="CreateFence"/>, creates no native object
+    /// either: the device's ONE timeline object was created with the device, and a fence on this backend is an
+    /// engine-side target against it, so there is nothing for a creation gate to serialize.
+    /// <see cref="CreateComputePipeline"/> creates no native object either and IS gated anyway, for the reason
+    /// stated on it.
     /// </para>
     /// <para>
     /// THE GATE NEVER TAKES THE SUBMIT LOCK, and no creation path here reaches it either: the ring is only asked
@@ -55,6 +57,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         readonly Func<IGpuCommandList> _createCommandList;
         readonly D3D11CreationGate _creation;
         readonly D3D11ShaderCompiler _shaders;
+        readonly Func<IGpuFence>? _createFence;
+        readonly D3D11DeviceLossLatch? _loss;
         readonly int _maxMsaaSampleCount;
 
         /// <summary>
@@ -80,10 +84,22 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <see cref="D3D11CreationGate.For"/> takes for an unknown answer, restated here so a device row that
         /// simply does not pass one cannot silently opt into free-threaded creation on a driver that cannot do it.
         /// </para>
+        /// <para>
+        /// <paramref name="createFence"/> is the device's fence subsystem, for the same reason
+        /// <paramref name="createCommandList"/> is the device's recording driver: the timeline belongs to the
+        /// device and a factory that built its own would hand out fences against a second, unrelated one. Null is
+        /// a factory with no device behind it, which refuses by name.
+        /// </para>
+        /// <para>
+        /// <paramref name="loss"/> is the device's device-loss latch, and it travels through here for ONE
+        /// destination: a ring-backed uniform buffer's mapping mechanism, whose <c>Map</c> is a G3 check site
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/500). Null skips the attribution and still throws.
+        /// </para>
         /// </summary>
         internal D3D11ResourceFactory(ID3D11Device device, ID3D11DeviceContext context,
             D3D11DeviceLiveness liveness, D3D11RingAllocator rings, Func<IGpuCommandList> createCommandList,
-            in GpuCapabilities capabilities, D3D11CreationGate? creation = null)
+            in GpuCapabilities capabilities, D3D11CreationGate? creation = null,
+            Func<IGpuFence>? createFence = null, D3D11DeviceLossLatch? loss = null)
         {
             ArgumentNullException.ThrowIfNull(device);
             ArgumentNullException.ThrowIfNull(context);
@@ -98,6 +114,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             _createCommandList = createCommandList;
             _maxMsaaSampleCount = capabilities.MaxMsaaSampleCount;
             _creation = creation ?? D3D11CreationGate.For(null);
+            _createFence = createFence;
+            _loss = loss;
             // Built here rather than passed in, because a shader compiler is a pure function of the device plus
             // two environment levers it reads ONCE (the FXC flags and the disk cache location, decisions S1 and
             // S4). Threading it through every construction path would put a session-level setting in a signature.
@@ -111,7 +129,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <inheritdoc/>
         public IGpuBuffer CreateBuffer(in GpuBufferDescription d)
         {
-            using (_creation.Enter()) return new D3D11Buffer(_device, _context, _liveness, _rings, d);
+            using (_creation.Enter()) return new D3D11Buffer(_device, _context, _liveness, _rings, d, _loss);
         }
 
         /// <inheritdoc/>
@@ -182,11 +200,30 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         }
 
         /// <inheritdoc/>
-        public IGpuComputePipeline CreateComputePipeline(in GpuComputePipelineDescription d) => throw NotBuiltYet(
-            "Compute pipelines");
+        /// <remarks>
+        /// GATED LIKE ITS GRAPHICS SIBLING even though it creates no native object, and that is a deliberate
+        /// exception to the ungated-when-nothing-native rule above rather than an oversight. The two pipeline
+        /// members are the pair a reader compares, the gate is a no-op on a driver that reports
+        /// <c>DriverConcurrentCreates</c> and one uncontended monitor otherwise, and a compute pipeline is the
+        /// member most likely to grow a native call later (a reflected signature check of the kind decision S5
+        /// puts on the graphics side). Paying an uncontended monitor at load time to keep the pair symmetric is
+        /// the cheaper mistake to make.
+        /// </remarks>
+        public IGpuComputePipeline CreateComputePipeline(in GpuComputePipelineDescription d)
+        {
+            using (_creation.Enter()) return new D3D11ComputePipeline(d);
+        }
 
-        /// <inheritdoc/>
-        public IGpuFence CreateFence() => throw NotBuiltYet("Completion fences");
+        /// <summary>
+        /// A fresh, unarmed completion fence, from the DEVICE's one timeline. There is no capability gate in
+        /// front of it, unlike the Veldrid factory's, because this backend's
+        /// <see cref="GpuCapabilities.SupportsCompletionFences"/> is unconditionally true on both timeline
+        /// mechanisms (decision C5).
+        /// </summary>
+        /// <exception cref="NotSupportedException">This factory was built with no fence source, which means it
+        /// has no device behind it. Every shipped path has one.</exception>
+        public IGpuFence CreateFence()
+            => (_createFence ?? throw NotBuiltYet("Completion fences"))();
 
         static D3D11Texture Require(IGpuTexture texture, string what)
             => texture as D3D11Texture

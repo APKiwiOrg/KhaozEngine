@@ -8532,10 +8532,13 @@ using KhaozEngine.Gpu.D3D11;
 KhaozEngineD3D11.Register();   // unconditionally, on every OS
 ```
 
-**Device creation is still being built.** Registration, the platform guard and the machine probe are live, and
-the two creation entry points currently throw a message saying so, which the fallback path turns into a WARN and
-a boot on `Direct3D11`. So today the package is what makes the backend selectable and reportable, not yet
-runnable. `GpuBackendKind.Direct3D11` is the working Direct3D 11 backend and stays selectable indefinitely.
+**Device creation is real, and nothing selects this backend for you.** Both creation entry points build a device
+on Windows, and off Windows they refuse with a `PlatformNotSupportedException` naming the operating system, which
+the fallback path turns into a WARN and a boot on `Direct3D11`. Reaching the native backend takes naming it:
+`KE_GRAPHICS_BACKEND=direct3d11-native`, or an explicit `GpuBackendKind.Direct3D11Native`. It has no Windows CI
+evidence yet (the `direct3d11-native` leg, its goldens and the rollout gates that decide the default flip are
+https://github.com/APKiwiOrg/KhaozEngine/issues/460), so treat it as opt-in and unproven for now.
+`GpuBackendKind.Direct3D11` is the working Direct3D 11 backend and stays selectable indefinitely.
 
 Call `Register()` unconditionally. It is safe on macOS and Linux and names no Direct3D type: the package targets
 `net10.0` rather than `net10.0-windows`, and every body that touches the interop sits behind
@@ -8670,9 +8673,10 @@ else: every failure is a miss and nothing propagates.
 
 ### Diagnostics on the native Direct3D 11 backend (17.32.0)
 
-Capabilities, adapter selection, the debug layer and device-loss reporting. Nothing here is reachable from a
-shipped path yet, because that backend's device creation is still being built, and every lever below is live the
-day it lands.
+Capabilities, adapter selection, the debug layer and device-loss reporting. Every lever below is live on a device
+created in 17.32.0 or later, and reaching any of it means naming the backend
+(`KE_GRAPHICS_BACKEND=direct3d11-native`, or an explicit `GpuBackendKind.Direct3D11Native`), because nothing
+selects it by default.
 
 **Capabilities are at parity with the incumbent, with exactly one deliberate difference.** Field for field,
 `GpuCapabilities` reads the same on `GpuBackendKind.Direct3D11Native` as on `GpuBackendKind.Direct3D11`, except

@@ -78,6 +78,38 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         public void Dispose() => IsDisposed = true;
 
         /// <summary>
+        /// A PIPELINE'S LAYOUT ARRAY, in pipeline-array order, refused by name for anything this backend did not
+        /// create. Shared by both pipeline types, because both flatten the same numbering across the same array
+        /// and a second copy of this check would be a second message to keep true.
+        /// <para>
+        /// It lives HERE rather than on either pipeline for the reason every shared refusal in this package does:
+        /// both pipeline types are Windows-only, so a guard inside one of their constructors is verified by the
+        /// WARP leg and by nothing else, while this one is a plain <c>[Fact]</c> on any machine.
+        /// </para>
+        /// <para>
+        /// A null or empty array answers <see cref="Array.Empty{T}"/> rather than throwing. A pipeline that
+        /// declares no layouts binds no sets, and the mismatch a caller actually made in that case is "a set at
+        /// slot k under a pipeline with fewer layouts than that", which the register scheme says in those terms at
+        /// the flush.
+        /// </para>
+        /// </summary>
+        internal static D3D11ResourceLayout[] RequireAll(IGpuResourceLayout[]? layouts, string pipelineKind)
+        {
+            if (layouts is null || layouts.Length == 0) return Array.Empty<D3D11ResourceLayout>();
+
+            var result = new D3D11ResourceLayout[layouts.Length];
+            for (int i = 0; i < layouts.Length; i++)
+            {
+                result[i] = layouts[i] as D3D11ResourceLayout
+                    ?? throw new ArgumentException(
+                        $"Resource layout {i} was not created by the native Direct3D 11 backend, so it carries no "
+                        + $"register numbering this {pipelineKind} pipeline can flatten.", nameof(layouts));
+            }
+
+            return result;
+        }
+
+        /// <summary>
         /// THE SECOND BACKEND-DIVERGENT CREATION FAILURE, refused here for the reason decision U3's ring
         /// combination is refused at buffer creation: the backend cannot honour the combination, and every way of
         /// discovering that at run time is a wrong frame rather than an error.

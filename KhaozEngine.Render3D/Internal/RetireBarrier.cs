@@ -68,8 +68,17 @@ namespace KhaozEngine.Render3D.Internal
             // What it is NOT safe against is being Begun while ANOTHER list is recording. With Direct3D11 in
             // immediate-context mode a command list is the device's immediate context and Begin resets it, so this
             // Submit inside Scene3D.Begin would wipe an open frame's bindings (#423, and #424 for the site list).
-            // Unreachable today because TryCreate returns null on Direct3D11, which reports no completion fences,
-            // and it becomes live the day that backend gets them.
+            //
+            // WHICH BACKENDS THAT IS TRUE OF, now that one of them issues real fences. On the Veldrid Direct3D11
+            // leg it stays unreachable: that backend reports no completion fences, so TryCreate returns null and
+            // no barrier exists. On the engine's own native Direct3D11 backend (GpuBackendKind.Direct3D11Native)
+            // fences ARE real, so a barrier is built there, and its default recording driver is what makes that
+            // safe: recording appends to an engine-owned command stream and touches no device state at all, so a
+            // Begin here cannot disturb an open recording, and the frame's own replay opens with its own
+            // ClearState and a reset redundancy cache, so nothing carries over from this empty submission. Under
+            // KE_D3D11_RECORD=immediate the hazard is exactly as described above and the barrier is exactly as
+            // unsafe as it is on the incumbent, which is one of the reasons that driver is an A/B lever rather
+            // than a supported configuration (decision M1, spec section 10.3).
             _cl = gd.Factory.CreateCommandList();
         }
 

@@ -14,7 +14,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// </para>
     /// <para>
     /// THE SINK IS OPTIONAL ON THE SUBMIT PATH. A submit that names none replays and signals nothing, which is
-    /// every device-free driver test and the whole package as it stands, since nothing constructs a device yet.
+    /// every device-free driver test and nothing else: a real device always passes its fence subsystem.
     /// A submit that carries a FENCE and no sink is refused instead of accepted quietly, because a fence nobody
     /// arms never reads signalled and a consumer polling it waits forever.
     /// </para>

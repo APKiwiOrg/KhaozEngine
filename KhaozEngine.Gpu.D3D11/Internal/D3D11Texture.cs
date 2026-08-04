@@ -29,7 +29,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// </para>
     /// </summary>
     [SupportedOSPlatform("windows")]
-    internal sealed class D3D11Texture : IGpuTexture, ID3D11BindableViews
+    internal sealed class D3D11Texture : IGpuTexture, ID3D11BindableViews, ID3D11MappableResource
     {
         readonly D3D11DeviceLiveness _liveness;
 
@@ -135,6 +135,16 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         /// <inheritdoc/>
         object? ID3D11BindableViews.BufferObject => null;
+
+        // ---- ID3D11MappableResource: what a staging Map needs, answered by the resource ----
+
+        /// <inheritdoc/>
+        object ID3D11MappableResource.MapTarget => DeviceTexture;
+
+        /// <inheritdoc/>
+        /// <remarks>Staging alone, unlike a buffer. A texture has no DYNAMIC arm on this seam and is never
+        /// ring-backed, so the declared staging usage is the whole of what earns CPU access.</remarks>
+        bool ID3D11MappableResource.IsMappable => Views.Staging;
 
         public void Dispose()
         {

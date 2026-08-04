@@ -12,8 +12,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// <para>
     /// THE NATIVE DEVICE IMPLEMENTS THIS ITSELF, rather than there being a wrapper here. It already holds the
     /// <c>ID3D11Device</c> and the implementation is one expression, so a separate Windows type would be an object
-    /// whose only job is forwarding. That wiring lands with the device row, which is also the row that puts the
-    /// latch at its three call sites.
+    /// whose only job is forwarding. <c>D3D11GpuDevice</c> is that implementation, and it is also what puts the
+    /// latch at its four call sites.
     /// </para>
     /// </summary>
     internal interface ID3D11RemovedReason

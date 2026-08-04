@@ -74,7 +74,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             TopologyKind = description.Topology;
             _primitiveTopology = TopologyValueWindows(description.Topology);
             BlendFactor = description.BlendFactor;
-            ResourceLayouts = ToLayouts(description.ResourceLayouts);
+            ResourceLayouts = D3D11ResourceLayout.RequireAll(description.ResourceLayouts, "graphics");
 
             InputElements = D3D11InputLayoutPlan.Build(description.VertexLayouts, out uint[] strides);
             VertexStrides = strides;
@@ -194,23 +194,6 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             DepthStencilState.Dispose();
             RasterizerState.Dispose();
             InputLayout?.Dispose();
-        }
-
-        static D3D11ResourceLayout[] ToLayouts(IGpuResourceLayout[]? layouts)
-        {
-            if (layouts is null || layouts.Length == 0) return Array.Empty<D3D11ResourceLayout>();
-
-            var result = new D3D11ResourceLayout[layouts.Length];
-            for (int i = 0; i < layouts.Length; i++)
-            {
-                // Not reachable device-free either, for the same reason as the shader-set guard above: it is
-                // only ever entered from the constructor, past the device null check, on Windows.
-                result[i] = layouts[i] as D3D11ResourceLayout
-                    ?? throw new ArgumentException(
-                        $"Resource layout {i} was not created by the native Direct3D 11 backend, so it carries no "
-                        + "register numbering this pipeline can flatten.", nameof(layouts));
-            }
-            return result;
         }
 
         // The one Vortice-touching body this seam added, and it is behind the package's usual boundary: NoInlining

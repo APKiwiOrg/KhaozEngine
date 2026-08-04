@@ -263,8 +263,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 (int)instanceStart);
         }
 
-        /// <summary>Decision R5, rule 2, on the compute side. The SRV-versus-UAV auto-unbind of decision C1 is
-        /// work-breakdown row 12 and is not here.</summary>
+        /// <summary>Decision R5, rule 2, on the compute side. Decision C1's SRV-versus-UAV auto-unbind rides
+        /// inside the flush, where the bind arrays are assembled (<see cref="D3D11ViewConflicts"/>), so this path
+        /// is the draw path's twin and neither emitter has a compute special case.</summary>
         public void Dispatch(uint groupCountX, uint groupCountY, uint groupCountZ)
         {
             FlushComputeBinds();

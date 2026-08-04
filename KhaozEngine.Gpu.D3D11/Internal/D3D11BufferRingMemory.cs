@@ -32,15 +32,23 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     {
         readonly Vortice.Direct3D11.ID3D11DeviceContext _context;
         readonly Vortice.Direct3D11.ID3D11Buffer _buffer;
+        readonly D3D11DeviceLossLatch? _loss;
 
-        /// <summary>Build the mapping mechanism for one ring-backed buffer. Neither argument is taken over.</summary>
+        /// <summary>Build the mapping mechanism for one ring-backed buffer. Neither native argument is taken
+        /// over.</summary>
+        /// <param name="context">The device's immediate context, borrowed.</param>
+        /// <param name="buffer">The ring's own dynamic constant buffer, borrowed.</param>
+        /// <param name="loss">The device's device-loss latch, or null on a path that has none (which still
+        /// throws, it just cannot attribute). See <see cref="MapWindows"/>.</param>
         [MethodImpl(MethodImplOptions.NoInlining)]
         [SupportedOSPlatform("windows")]
         internal D3D11BufferRingMemory(
-            Vortice.Direct3D11.ID3D11DeviceContext context, Vortice.Direct3D11.ID3D11Buffer buffer)
+            Vortice.Direct3D11.ID3D11DeviceContext context, Vortice.Direct3D11.ID3D11Buffer buffer,
+            D3D11DeviceLossLatch? loss = null)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
             _buffer = buffer ?? throw new ArgumentNullException(nameof(buffer));
+            _loss = loss;
         }
 
         /// <inheritdoc/>
@@ -59,12 +67,28 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             UnmapWindows();
         }
 
+        /// <summary>
+        /// THE MAP, AND ITS HRESULT IS CHECKED (https://github.com/APKiwiOrg/KhaozEngine/issues/500). Vortice's
+        /// <c>Map</c> RETURNS a result rather than throwing, and this discarded it for one release, so a failed
+        /// map handed back the null <c>DataPointer</c> the failed call left behind and every record-time uniform
+        /// write memcpy'd through it. The interpretation is the shared one on the device-free side, which asks
+        /// the device-loss latch FIRST (decision G3's immediacy clause) and throws either way.
+        /// <para>
+        /// A <c>MAP_WRITE_NO_OVERWRITE</c> on a <c>DYNAMIC</c> buffer this device created is close to unfailable
+        /// short of device loss, so this is a diagnostic-quality gap being closed rather than a live corruption
+        /// being fixed. What it buys is the site: without it a device that died between two frames is first
+        /// noticed somewhere downstream of a null write, which is exactly the sticky-HRESULT problem G3 exists
+        /// to solve.
+        /// </para>
+        /// </summary>
         [MethodImpl(MethodImplOptions.NoInlining)]
         [SupportedOSPlatform("windows")]
         IntPtr MapWindows()
         {
-            _context.Map(_buffer, 0, Vortice.Direct3D11.MapMode.WriteNoOverwrite,
-                Vortice.Direct3D11.MapFlags.None, out Vortice.Direct3D11.MappedSubresource mapped);
+            SharpGen.Runtime.Result result = _context.Map(_buffer, 0,
+                Vortice.Direct3D11.MapMode.WriteNoOverwrite, Vortice.Direct3D11.MapFlags.None,
+                out Vortice.Direct3D11.MappedSubresource mapped);
+            D3D11StagingMaps.RequireMapped(result.Code, _loss, D3D11StagingMaps.RingMapSite);
             return mapped.DataPointer;
         }
 

@@ -144,7 +144,7 @@ namespace KhaozEngine.Tests.Gpu
 
     /// <summary>
     /// One ring, its allocator, its fake memory and the submit lock they share, since every ring test needs the
-    /// same four and the wiring between them is what the device row will build. Shared rather than nested in one
+    /// same four and the wiring between them is what the device builds for real. Shared rather than nested in one
     /// test class, because the ring's own behaviour and its segment recycling are two files and both need it.
     /// </summary>
     internal sealed class D3D11RingHarness : IDisposable

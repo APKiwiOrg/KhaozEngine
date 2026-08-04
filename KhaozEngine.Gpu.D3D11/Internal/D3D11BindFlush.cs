@@ -195,13 +195,33 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// available: a set recorded before any pipeline has no numbering yet, and inventing one would be worse
         /// than deferring it.
         /// </para>
+        /// <para>
+        /// ONE SHAPE DRAINS AN ACTIVATION NOBODY THEN USES, AND THAT COST IS ACCEPTED RATHER THAN OVERLOOKED.
+        /// When the slot being drained is dirty ONLY because decision C1 raised it (a graphics SRV bind nulled a
+        /// compute set's unordered access view, say), the drain re-issues that whole activation under the outgoing
+        /// layouts and the wipe below then forgets the record it just satisfied. So the re-bind buys the compute
+        /// side nothing: the caller has to re-record the set under the incoming pipeline anyway, and that
+        /// re-record marks the slot full again. On its way through, the drained activation also conflicts in the
+        /// OTHER direction, nulling the live graphics shader resource view that displaced it.
+        /// </para>
+        /// <para>
+        /// CORRECTNESS STILL HOLDS, THROUGH C1 RATHER THAN THROUGH THE DRAIN: nulling that graphics register
+        /// raises the GRAPHICS slot, so the next draw puts it back. The waste is one activation plus one full
+        /// activation on the other arm, on a pipeline switch, which is not a hot path. It is not skipped because
+        /// "this slot is dirty only from a raise" is not a question the record can answer: a
+        /// <see cref="D3D11SlotDirty"/> records HOW MUCH is owed and not WHY, and a second field carrying the why
+        /// would have to be right on every path that sets a mark. ANY future skip here MUST still perform the
+        /// cross-arm raise the drained activation performs today, or the next draw reads a register this backend
+        /// nulled and never put back, which is silent. A device-free test pins the whole trace.
+        /// </para>
         /// </summary>
         internal void SetGraphicsPipeline<TSink>(ref TSink sink, IGpuPipeline pipeline)
             where TSink : struct, ID3D11BindSink
         {
             if (pipeline is null) throw new ArgumentNullException(nameof(pipeline));
 
-            _graphicsLayouts = Switch(ref sink, _graphics, _graphicsLayouts, LayoutsOf(pipeline));
+            _graphicsLayouts = Switch(ref sink, D3D11PipelineArm.Graphics, _graphics, _graphicsLayouts,
+                LayoutsOf(pipeline));
         }
 
         /// <inheritdoc cref="SetGraphicsPipeline{TSink}"/>
@@ -210,7 +230,43 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         {
             if (pipeline is null) throw new ArgumentNullException(nameof(pipeline));
 
-            _computeLayouts = Switch(ref sink, _compute, _computeLayouts, LayoutsOf(pipeline));
+            _computeLayouts = Switch(ref sink, D3D11PipelineArm.Compute, _compute, _computeLayouts,
+                LayoutsOf(pipeline));
+        }
+
+        /// <summary>
+        /// RAISE A SLOT BACK TO <see cref="D3D11SlotDirty.Full"/> FROM OUTSIDE A RECORD, which is the entry point
+        /// decision C1's auto-unbind needs and the one the fork's precedent shows. Veldrid's
+        /// <c>D3D11CommandList.UnbindSRVTexture</c> and <c>UnbindUAVTexture</c> both end by writing
+        /// <c>ResourceSetDirtyState.Full</c> straight into the owning arm's dirty array, and until this row there
+        /// was no way to say that here: <see cref="RecordGraphics"/> and <see cref="RecordCompute"/> both COMPARE
+        /// against what the slot holds, so re-recording the same set at the same offset marks it
+        /// <see cref="D3D11SlotDirty.Clean"/> and would raise nothing at all.
+        /// <para>
+        /// WHY IT HAS TO BE FULL. The unbind has just written a null into ONE register of a set that is otherwise
+        /// still correctly bound, and only a full activation puts that register back: the offsets-only path pushes
+        /// constant buffers and skips the two files that can conflict entirely. Full is the top state, so this can
+        /// never demote a slot that already owed more.
+        /// </para>
+        /// <para>
+        /// THE CROSS-ARM CASE IS THE ONE THAT MATTERS, and it is why the arm is a parameter rather than implied by
+        /// the caller. A graphics set binding a storage texture as an SRV unbinds the UAV a COMPUTE set left bound,
+        /// so the slot to raise is on the compute record, whose flush is not the one running. The next dispatch
+        /// pays it. Within one arm a raise of a slot the current drain has already walked past is paid at the NEXT
+        /// flush instead, which is the same answer the fork gives and is only reachable through the
+        /// bound-two-incompatible-ways case rule 4 already names.
+        /// </para>
+        /// <para>
+        /// A slot the record has never seen is IGNORED rather than grown into. There is nothing bound there to put
+        /// back, and growing the record from an unbind would let a wild slot number allocate.
+        /// </para>
+        /// </summary>
+        internal void Raise(D3D11PipelineArm arm, uint slot)
+        {
+            SlotRecord[] records = arm == D3D11PipelineArm.Compute ? _compute : _graphics;
+            if (slot >= (uint)records.Length) return;
+
+            records[slot].Dirty = D3D11SlotDirty.Full;
         }
 
         /// <summary>
@@ -228,14 +284,14 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         internal void FlushGraphics<TSink>(ref TSink sink) where TSink : struct, ID3D11BindSink
         {
             _rings?.UnmapMappedRings();
-            Drain(ref sink, _graphics, _graphicsLayouts ?? NoLayouts);
+            Drain(ref sink, D3D11PipelineArm.Graphics, _graphics, _graphicsLayouts ?? NoLayouts);
         }
 
         /// <inheritdoc cref="FlushGraphics{TSink}"/>
         internal void FlushCompute<TSink>(ref TSink sink) where TSink : struct, ID3D11BindSink
         {
             _rings?.UnmapMappedRings();
-            Drain(ref sink, _compute, _computeLayouts ?? NoLayouts);
+            Drain(ref sink, D3D11PipelineArm.Compute, _compute, _computeLayouts ?? NoLayouts);
         }
 
         /// <summary>
@@ -254,6 +310,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             Array.Clear(_compute);
             _graphicsLayouts = null;
             _computeLayouts = null;
+
+            // DECISION C1's TRACKER GOES TOO, and leaving it would be the silent half of this method. ClearState
+            // unbinds every shader resource and every unordered access view, so a tracker that survived would null
+            // a register holding nothing and raise a slot whose record was just wiped, which costs the next draw a
+            // full activation it does not owe.
+            _activation.Conflicts.Reset();
         }
 
         static void Record(ref SlotRecord[] records, uint slot, IGpuResourceSet? set, uint dynamicOffset,
@@ -283,8 +345,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         // One pipeline switch on one arm: drain under the outgoing layouts, wipe the records, and answer the array
         // to adopt. The two arms differ in nothing but which record and which layout array they hand in, so the
         // rule lives once and neither arm can drift into being the careful one.
-        D3D11ResourceLayout[] Switch<TSink>(ref TSink sink, SlotRecord[] records, D3D11ResourceLayout[]? outgoing,
-            D3D11ResourceLayout[] incoming)
+        D3D11ResourceLayout[] Switch<TSink>(ref TSink sink, D3D11PipelineArm arm, SlotRecord[] records,
+            D3D11ResourceLayout[]? outgoing, D3D11ResourceLayout[] incoming)
             where TSink : struct, ID3D11BindSink
         {
             // The same numbering, so there is nothing to drain under and nothing the records could be wrong about.
@@ -294,14 +356,20 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             // first draw under the incoming pipeline pays them.
             if (outgoing is null) return incoming;
 
-            Drain(ref sink, records, outgoing);
+            // THE DRAIN IS FOR REGISTER NUMBERING, AND THE WIPE ON THE NEXT LINE CAN MAKE ITS WORK MOOT. A slot
+            // dirty only because C1 raised it gets a full activation here that nobody then uses: the wipe forgets
+            // the record, so the caller re-records under the incoming pipeline and pays that activation again. See
+            // the rule-5 remarks on SetGraphicsPipeline for why it is not skipped, and for the one thing a future
+            // skip would still owe (the cross-arm raise this activation performs on its way through).
+            Drain(ref sink, arm, records, outgoing);
             Array.Clear(records);
             return incoming;
         }
 
         // The flush walk, shared by the draw hook and the pipeline drain. Slot order (rule 4), one activation per
         // dirty slot, and the slot is clean afterwards whether or not it issued anything.
-        void Drain<TSink>(ref TSink sink, SlotRecord[] records, D3D11ResourceLayout[] layouts)
+        void Drain<TSink>(ref TSink sink, D3D11PipelineArm arm, SlotRecord[] records,
+            D3D11ResourceLayout[] layouts)
             where TSink : struct, ID3D11BindSink
         {
             for (uint slot = 0; slot < (uint)records.Length; slot++)
@@ -331,7 +399,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
                 D3D11RegisterCounts baseCounts = D3D11RegisterScheme.BaseFor(layouts, slot);
                 _activation.Activate(ref sink, set, baseCounts, dirty == D3D11SlotDirty.DynamicOffsetsOnly,
-                    record.DynamicOffset, _unsetConstantBuffersBeforeSet);
+                    record.DynamicOffset, _unsetConstantBuffersBeforeSet, arm, slot);
 
                 // CLEAN ONLY AFTER THE ACTIVATION LANDED. Both throws above are caller mistakes that a next draw
                 // would hit again, and clearing the mark first is what would stop it: the exception escapes the
@@ -339,7 +407,32 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 // whatever the registers still hold. Losing the mark turns a loud, repeatable refusal into one
                 // throw followed by silence.
                 record.Dirty = D3D11SlotDirty.Clean;
+
+                // AND THE RAISES COME AFTER THE CLEAN, which is the ordering the whole of decision C1 rests on.
+                // The activation may have just nulled a register belonging to THIS slot (a set that binds one
+                // resource both ways at once), and applying the raise before the line above would have the clean
+                // immediately undo it. After it, the mark survives.
+                //
+                // FOR A CROSS-ARM RAISE THE OTHER ARM'S NEXT FLUSH PUTS THE REGISTER BACK, and that is the
+                // ordinary case. FOR A SELF-CONFLICT IT DOES NOT, and the difference is worth stating rather than
+                // reading as one sentence. A set binding one resource at both a 't' and a 'u' register puts the
+                // register back and re-nulls it INSIDE THIS SAME ACTIVATION (the 't' file is issued first, the
+                // 'u' file then nulls it again), so the raise this line applies is one the slot earns afresh
+                // every time it is drained. Such a slot never settles: it reads Full after every flush and pays
+                // four array calls at the next one, for as long as the caller keeps both bindings. That is
+                // deliberate rather than a leak. Settling it would mean silently dropping one of the two bindings
+                // the caller declared, and Direct3D 11 cannot honour the double bind either way (rule 4).
+                ApplyRaises();
             }
+        }
+
+        // Drain the tracker's pending raises into the two dirty records. Nothing to do on every flush that did not
+        // conflict, which is all of them outside a compute handoff, so the common path is one int compare.
+        void ApplyRaises()
+        {
+            if (_activation.Conflicts.PendingRaiseCount == 0) return;
+
+            foreach (D3D11SlotRaise raise in _activation.Conflicts.TakeRaises()) Raise(raise.Arm, raise.Slot);
         }
 
         // Grow the keyed record to cover a slot. Doubling, so a run of binds at rising slots reallocates a

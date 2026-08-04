@@ -9,18 +9,26 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// only through <see cref="IGpuBackendProvider"/>, so nothing outside this package ever names a
     /// Direct3D type.
     /// <para>
-    /// CREATION IS NOT BUILT YET. This is the package skeleton (work-breakdown row 4 of
-    /// <c>docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md</c>), which exists so the registration seam, the
-    /// architecture rows and the machine-capability probe land before the device does. The recorder, the
-    /// resources, the shader path and the swapchain are rows 5 onward, and until they land both creation entry
-    /// points throw a message that says so by name.
+    /// CREATION IS REAL, and this is where it starts. Both entry points build a <see cref="D3D11GpuDevice"/>,
+    /// which is the whole backend joined up: the adapter choice, the device and its versioned context, the one
+    /// state and emitter context, the fences, the ring, the factory, the swapchain, the capability read and the
+    /// debug-layer pump. Nothing in the engine SELECTS this backend by default: it is reached by
+    /// <c>KE_GRAPHICS_BACKEND</c> or by an explicit request, and the default flip is gated by the five rollout
+    /// gates of https://github.com/APKiwiOrg/KhaozEngine/issues/460.
     /// </para>
     /// <para>
-    /// The probe is REAL from this row, and the split is deliberate rather than an accident of ordering.
-    /// <see cref="IsSupported"/> answers a question about the MACHINE, which is knowable now and is what a
-    /// settings screen and the fallback path consume. Whether this package can build a device yet is a different
-    /// fact entirely, and folding it into the probe would make the probe answer false for a reason that has
-    /// nothing to do with the hardware, then quietly start answering true later for no observable change.
+    /// THE PLATFORM GUARD IS THE FIRST THING BOTH ENTRY POINTS DO, and it is what keeps the Vortice assembly off
+    /// the load path on macOS and Linux: the bodies that name a Direct3D type are non-inlined behind it, so the
+    /// JIT never compiles one on a machine that has no Direct3D. Off Windows this is a
+    /// <see cref="PlatformNotSupportedException"/> naming the platform rather than the old "not built yet"
+    /// message, which is now false everywhere.
+    /// </para>
+    /// <para>
+    /// The probe stays a SEPARATE question from creation, and the split is deliberate rather than an accident of
+    /// ordering. <see cref="IsSupported"/> answers a question about the MACHINE, which is what a settings screen
+    /// and the fallback path consume. Whether this package can build a device is a different fact entirely, and
+    /// folding them together would make the probe answer false for a reason that has nothing to do with the
+    /// hardware.
     /// </para>
     /// </summary>
     internal sealed class D3D11BackendProvider : IGpuBackendProvider
@@ -54,21 +62,44 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             }
         }
 
-        /// <inheritdoc/>
-        public GpuProviderDevice CreateForWindow(in GpuWindowedDeviceRequest request) => throw NotBuiltYet("windowed");
+        /// <summary>
+        /// Create the windowed device and its swapchain. The window handle must be a Win32 HWND, which is the
+        /// only kind a Direct3D swapchain can present into: a handle from any other windowing platform is a
+        /// caller error rather than a machine limitation, and it is refused by name here instead of reaching
+        /// DXGI as an opaque pointer that fails with <c>E_INVALIDARG</c>.
+        /// </summary>
+        public GpuProviderDevice CreateForWindow(in GpuWindowedDeviceRequest request)
+        {
+            if (!KhaozEngineD3D11.IsPlatformSupported) throw NotOnThisPlatform("windowed");
+
+            if (request.Window.Kind != GpuWindowKind.Win32)
+            {
+                throw new ArgumentException(
+                    $"The native Direct3D 11 backend was handed a {request.Window.Kind} window handle. A Direct3D "
+                    + "swapchain presents into a Win32 HWND and nothing else, so this is a wiring error rather "
+                    + "than a machine that cannot run the backend.", nameof(request));
+            }
+
+            return D3D11GpuDevice.CreateForWindowWindows(request.Window.Handle, request.Width, request.Height,
+                request.SyncToVerticalBlank);
+        }
 
         /// <inheritdoc/>
-        public GpuProviderDevice CreateHeadless() => throw NotBuiltYet("headless");
+        public GpuProviderDevice CreateHeadless()
+        {
+            if (!KhaozEngineD3D11.IsPlatformSupported) throw NotOnThisPlatform("headless");
 
-        // Named rather than a bare NotImplementedException, because this exception is what a Windows tester who
-        // set KE_GRAPHICS_BACKEND=d3d11-native actually sees: the creation path catches it, WARNs with this
-        // message and falls back to the incumbent, which is honest only if the message says the backend is
-        // unfinished rather than leaving the reader to conclude their machine is at fault.
-        static NotSupportedException NotBuiltYet(string path)
-            => new($"The native Direct3D 11 backend cannot create a {path} device yet. This package currently "
-                + "carries only the registration seam and the machine-capability probe. Device creation (the "
-                + "command recorder, resources, the shader path and the swapchain) is still being built, so "
-                + "KhaozEngineD3D11.Register() makes the backend selectable and reportable, not yet runnable. "
-                + "Select GpuBackendKind.Direct3D11 for a working Direct3D 11 device.");
+            return D3D11GpuDevice.CreateHeadlessWindows();
+        }
+
+        // The off-Windows refusal, and it is a PLATFORM answer rather than the "still being built" one this
+        // package used to give: creation is built, and what is missing on macOS or Linux is Direct3D itself.
+        // Named here rather than through D3D11PlatformGuard, whose wording is for a Windows-only OBJECT that was
+        // somehow constructed elsewhere, which is a different (and unreachable) fault.
+        static PlatformNotSupportedException NotOnThisPlatform(string path)
+            => new($"The native Direct3D 11 backend cannot create a {path} device on this operating system, "
+                + "which has no Direct3D 11. Registration is safe everywhere and reports the backend as "
+                + "unsupported off Windows, so read GpuBackendSelector.IsBackendSupported (or "
+                + "KhaozEngineD3D11.IsPlatformSupported) before naming this backend.");
     }
 }

@@ -69,6 +69,14 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         IGpuBindableResource?[] _resources = new IGpuBindableResource?[8];
 
         /// <summary>
+        /// DECISION C1'S TRACKER, one per device because this object is. It sits HERE rather than beside the dirty
+        /// records because C1 says the auto-unbind belongs where the bind arrays are assembled, and this is that
+        /// place: the null it writes goes into an array call of the same shape as the bind it protects, issued
+        /// inside the same activation. <see cref="D3D11BindFlush"/> resets it and drains its raises.
+        /// </summary>
+        internal D3D11ViewConflicts Conflicts { get; } = new();
+
+        /// <summary>
         /// Issue <paramref name="set"/> into <paramref name="sink"/>: one array call per register file per visible
         /// stage, at absolute registers computed from <paramref name="baseCounts"/>.
         /// </summary>
@@ -82,8 +90,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// dynamic. Ignored by every other binding.</param>
         /// <param name="unsetConstantBuffersBeforeSet">The <c>!DriverCommandLists</c> workaround of decision R7.
         /// </param>
+        /// <param name="arm">Which dirty record this activation is draining, for decision C1's raise-to-dirty. An
+        /// unbind has to name the arm as well as the slot, because the arm it invalidates is usually the OTHER
+        /// one.</param>
+        /// <param name="slot">The slot inside that record, likewise.</param>
         internal void Activate<TSink>(ref TSink sink, D3D11ResourceSet set, in D3D11RegisterCounts baseCounts,
-            bool dynamicOnly, uint dynamicOffsetBytes, bool unsetConstantBuffersBeforeSet)
+            bool dynamicOnly, uint dynamicOffsetBytes, bool unsetConstantBuffersBeforeSet,
+            D3D11PipelineArm arm, uint slot)
             where TSink : struct, ID3D11BindSink
         {
             ArgumentNullException.ThrowIfNull(set);
@@ -96,7 +109,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             {
                 D3D11RegisterFile file = Files[f];
 
-                // The offsets-only path is constant buffers and nothing else, which is the whole of rule 3.
+                // The offsets-only path is constant buffers and nothing else, which is the whole of rule 3. It is
+                // also why an offsets-only flush can never trip C1: neither file that can conflict is touched.
                 if (dynamicOnly && file != D3D11RegisterFile.ConstantBuffer) continue;
 
                 for (int s = 0; s < Stages.Length; s++)
@@ -105,7 +119,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                     if ((union & stage) == 0) continue;
 
                     IssueOne(ref sink, bindings, file, stage, baseCounts, dynamicOnly, dynamicOffsetBytes,
-                        unsetConstantBuffersBeforeSet);
+                        unsetConstantBuffersBeforeSet, arm, slot);
                 }
             }
         }
@@ -114,7 +128,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         // no visible binding, which is the common case for most of the 24 pairs a walk considers.
         void IssueOne<TSink>(ref TSink sink, ReadOnlySpan<D3D11BoundResource> bindings, D3D11RegisterFile file,
             GpuShaderStages stage, in D3D11RegisterCounts baseCounts, bool dynamicOnly, uint dynamicOffsetBytes,
-            bool unsetConstantBuffersBeforeSet)
+            bool unsetConstantBuffersBeforeSet, D3D11PipelineArm arm, uint slot)
             where TSink : struct, ID3D11BindSink
         {
             if (!SpanOf(bindings, file, stage, dynamicOnly, out uint lo, out uint hi)) return;
@@ -136,18 +150,30 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             FillResources(bindings, file, stage, lo, count);
             ReadOnlySpan<IGpuBindableResource?> resources = _resources.AsSpan(0, count);
 
+            // A SAMPLER CANNOT BE HALF OF A HAZARD, so it takes the short path with no tracking at all. The other
+            // two files are the 't' and 'u' pair decision C1 is entirely about, and each one asks the tracker to
+            // clear the opposite file FIRST, then issues, then records what it just bound.
             switch (file)
             {
-                case D3D11RegisterFile.ShaderResource:
-                    sink.SetShaderResources(stage, startSlot, resources);
-                    return;
                 case D3D11RegisterFile.Sampler:
                     sink.SetSamplers(stage, startSlot, resources);
                     return;
+
+                case D3D11RegisterFile.ShaderResource:
+                    Conflicts.UnbindConflicts(ref sink, D3D11RegisterFile.ShaderResource, resources);
+                    sink.SetShaderResources(stage, startSlot, resources);
+                    break;
+
                 default:
+                    Conflicts.UnbindConflicts(ref sink, D3D11RegisterFile.UnorderedAccess, resources);
                     sink.SetUnorderedAccessViews(stage, startSlot, resources);
-                    return;
+                    break;
             }
+
+            // AFTER the call, never before. A sink can REFUSE a bind (an unordered-access binding outside compute
+            // is refused by name), and recording a bind the sink threw on would leave the tracker describing a
+            // register the context never got, which is a null written at some later flush against nothing.
+            Conflicts.Record(file, stage, startSlot, resources, arm, slot);
         }
 
         // The stages any binding this flush will touch is visible to. Computed once per activation so the walk

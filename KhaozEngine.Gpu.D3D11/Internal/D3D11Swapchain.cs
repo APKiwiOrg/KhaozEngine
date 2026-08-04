@@ -213,14 +213,14 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// known dead, nothing binds again.
         /// </para>
         /// <para>
-        /// THE MACHINERY FOR THAT NOW EXISTS AND THIS TYPE DELIBERATELY DOES NOT CALL IT.
-        /// <see cref="D3D11DeviceLossLatch.CheckAfterFault"/> is the handler, and the device wraps its call to
-        /// <see cref="Present"/> and <see cref="ApplyPendingResize"/> in it, for the same reason the other three
-        /// device-loss check sites are at the device: the latch is the device's, this type has no reference to
-        /// one, and giving it one would put a fourth constructor argument on a class whose entire test surface is
-        /// device-free. Until the device row lands that wrapping, a throw out of here still propagates with the
-        /// reason unread. The ordinary removal path is already clean, because <see cref="Present"/> reports the
-        /// removal as an HRESULT and a failed present skips the queued resize entirely.
+        /// THE HANDLER IS THE DEVICE'S AND THIS TYPE DELIBERATELY DOES NOT CALL IT.
+        /// <see cref="D3D11DeviceLossLatch.CheckAfterFault"/> is that handler, and the device wraps its call to
+        /// <see cref="Present"/> in it, for the same reason the other three device-loss check sites are at the
+        /// device: the latch is the device's, this type has no reference to one, and giving it one would put a
+        /// fourth constructor argument on a class whose entire test surface is device-free. So a throw out of
+        /// here propagates to the device's present, which reads the removal reason at that fault before letting
+        /// the exception carry on. The ordinary removal path is already clean, because <see cref="Present"/>
+        /// reports the removal as an HRESULT and a failed present skips the queued resize entirely.
         /// </para>
         /// </summary>
         bool ApplyPendingResizeCore()

@@ -4,18 +4,19 @@ The engine's own native Direct3D 11 backend for the [KhaozEngine.Gpu](../KhaozEn
 NO umbrella: a consumer adds this package explicitly, the same pattern as `Physics.Bepu` or
 `WorldStore.Sqlite`, and nothing that does not want the Direct3D interop ever carries it.
 
-> **Status: registration, the platform guards, the machine-capability probe, the recording model, the replay
-> contract, the resource model, the fence subsystem and the constant-buffer ring are live.** The recording model
-> (see "Recording, and the two drivers" below) lands behind `KE_D3D11_RECORD`, the replay's own rules (see "What
-> a replay does to the device") land on top of it, the resource model (see "Resources, views and state objects")
-> lands beside them, the fence subsystem (see "Completion fences, and a `WaitForIdle` that drains") lands behind
-> `KE_D3D11_REAL_DRAIN`, and the per-frame uniform ring (see "Per-frame memory: the constant-buffer ring") lands
-> on top of the fences it recycles against. Those rows were built in parallel and are joined: the submit path
-> raises the end-of-replay signal and brackets the ring around the replay, the fence subsystem reads the device's
-> own liveness latch and answers the ring's segment gate, and the pipeline handle answers the redundancy caches.
-> Device creation is still not built, so `CreateForWindow` and `CreateHeadless` throw a message saying so, and
-> nothing shipped constructs any of them. `GpuBackendKind.Direct3D11` remains the working Direct3D 11 backend and
-> stays selectable indefinitely.
+> **Status: DEVICE CREATION IS REAL.** `CreateForWindow` and `CreateHeadless` build a device on Windows: the
+> adapter choice, the `ID3D11Device` and its versioned context, one device state and one emitter context, the
+> fence subsystem, the constant-buffer ring, the resource factory, the swapchain on the windowed path, the
+> capability read, the device-loss latch and the debug-layer pump. Everything the sixteen rows before it built is
+> joined up and reachable.
+>
+> **Nothing selects it by default, and there is no Windows evidence for it yet.** It is reached by naming it:
+> `KE_GRAPHICS_BACKEND=direct3d11-native`, or an explicit `GpuBackendKind.Direct3D11Native`. The
+> `direct3d11-native` CI leg, the 36 goldens on it, the WARP parity `[GpuFact]` and the five rollout gates are
+> https://github.com/APKiwiOrg/KhaozEngine/issues/460, which is where the default flip is decided. Until that
+> leg runs, what has been checked is that this compiles under CA1416, that the construction and teardown ORDER
+> are what they claim, and that every subsystem below is green against its own device-free tests.
+> `GpuBackendKind.Direct3D11` remains the working Direct3D 11 backend and stays selectable indefinitely.
 
 ## Opting in
 
@@ -62,6 +63,43 @@ committed Direct3D 11 goldens are baked on and the one CI pins.
 An incapable machine and a missing registration are kept strictly apart: the first falls back and reports
 `FallbackAfterFailure`, the second throws. Collapsing them would let a soak session silently measure the
 incumbent backend and file the numbers under this one.
+
+## What creating a device does
+
+`D3D11GpuDevice` is the whole backend joined up, and it builds in dependency order. Read it as the order below
+rather than as the order the sections of this file happen to come in.
+
+1. **The adapter.** `KE_D3D11_ADAPTER` is parsed, the DXGI enumeration is described, and the choice is logged as
+   an INFO line naming which adapter ran and why. `warp` resolves through `DriverType.Warp` rather than through
+   the enumeration, so the one value CI pins is the one value that cannot fail to resolve. A request that cannot
+   be honoured WARNs and falls back to letting DXGI pick.
+2. **The device.** `D3D11CreateDevice` at feature level 11_0, with `GpuD3D11DeviceFlags` OR'd against the
+   `KE_D3D11_DEBUG` layer flag. A machine with no Graphics Tools answers `DXGI_ERROR_SDK_COMPONENT_MISSING`, and
+   that one HRESULT retries WITHOUT the debug flag and WARNs naming the feature to install. Then
+   `ID3D11DeviceContext1` is queried, because decision R7 needs the versioned context, and a runtime that cannot
+   answer is refused here with a message rather than by a cast failing on the first draw.
+3. **One device state and one emitter context**, handed to every emitter value the device ever makes
+   (https://github.com/APKiwiOrg/KhaozEngine/issues/476). The state's bind flush is built here, so this is where
+   decision R7's unset-before-set workaround is switched on for a runtime the threading probe says is EMULATING
+   command lists, and for a probe that gave no answer at all.
+4. **The fence subsystem**, over whichever timeline the runtime offers, with `KE_D3D11_REAL_DRAIN` resolved. The
+   mechanism is logged, and a drain that is switched OFF is WARNed, because a no-op drain that nobody noticed is
+   how a measurement of nothing gets published.
+5. **The constant-buffer ring**, sized by `KE_D3D11_FRAMES_IN_FLIGHT` and gated on that fence subsystem.
+6. **The resource factory**, with the creation gate the driver-threading probe earned. Whether creation is
+   serialized is logged either way, and a probe that gave no answer serializes, the same reading of its silence
+   step 3 takes.
+7. **The swapchain**, on the windowed path only, and **the staging map path**, both carrying the device's
+   liveness token and its device-loss latch.
+8. **The debug-layer pump**, and only when the layer is genuinely active on the created device.
+
+**Teardown is the reverse and the order is load-bearing.** The drain runs first, with no lock held, because it
+refuses a caller holding the submit lock by name. Then the pump, the swapchain, the shared samplers and the fence
+subsystem are released, all while the liveness token still says the device is alive, because every one of those
+releases reads that token and no-ops when it says dead. The token is flipped LAST, and the `ID3D11Device` and its
+context are released after that. Flipping it first (which is what the Veldrid wrapper does, correctly, since
+destroying a Veldrid device frees its children) would silently skip every release and leave the device alive
+holding a swapchain nobody can reach.
 
 ## Platform boundary
 
@@ -278,8 +316,9 @@ so a drain taken under the incoming layouts throws instead of binding at the wro
 
 **`D3D11NativeEmitter` is the type a frame renders through, and every `ID3D11DeviceContext` call in this package
 is made from it.** It implements `ID3D11Emitter` and `ID3D11BindSink` over a live `ID3D11DeviceContext1`
-(versioned, because decision R7 routes every constant-buffer bind through `*SetConstantBuffers1`). Nothing
-constructs one yet: device creation still throws.
+(versioned, because decision R7 routes every constant-buffer bind through `*SetConstantBuffers1`). The device
+constructs exactly ONE of them, over its one state and its one emitter context, and every command list copies
+that value.
 
 **It is deliberately the thinner of the two emitters.** Every decision it makes was already taken in a
 device-free type it uses unchanged (`D3D11DeviceState`, `D3D11BindFlush`, `D3D11VertexStreams`,
@@ -288,8 +327,9 @@ made. What the real emitter carries alone is the translation into a Vortice call
 that is shared: every switch is over what `D3D11NativeCallName` resolved, the same function the trace emitter
 uses, so the residue is "does the arm for `PSSetSamplers` call `PSSetSamplers`" rather than "which stage's
 method". Decision T3's WARP `[GpuFact]` and the 36 goldens on the `direct3d11-native` leg close that, and both
-arrive with the device row. **There is no Windows evidence for any of this yet**, and that is worth stating
-plainly rather than leaving to be inferred: nothing below has run against a device.
+arrive with https://github.com/APKiwiOrg/KhaozEngine/issues/460. **There is still no Windows evidence for any of
+this**, and that is worth stating plainly rather than leaving to be inferred: a device can be created now, and
+nothing below has yet been run against one in CI.
 
 **A draw flushes the resource sets first, then the vertex streams, then issues.** That order is decision R5's
 rule 2 plus the batching below, and it is the same in both emitters.
@@ -337,7 +377,10 @@ the parallel arrays `*SetConstantBuffers1` takes. It is also where a REFUSAL bot
 scissor index, a buffer from another backend, and the framebuffer a clear names an attachment of (none bound, no
 colour attachment at that index, no depth attachment at all). A refusal kept in the real emitter alone means the
 trace accepts a stream the device throws on, and neither side of that is reachable by a test here. All of it
-runs under a plain `dotnet test` on macOS, which is the point: the emitter is left with a cast and a call.
+runs under a plain `dotnet test` on macOS, which is the point: the emitter is left with a cast and a call. The
+staging map asks the resource the same way, through `ID3D11MappableResource` (the native handle a `Map` names,
+and whether the declared usage gave it CPU access at all), so its two refusals are device-free for the same
+reason this one's are.
 
 **The emitter is a readonly struct over two class references it RECEIVES.** The state is the device's one cache
 (issue #476) and `D3D11EmitterContext` carries the device context plus the scratch arrays, grown geometrically
@@ -356,6 +399,110 @@ emitter inherits that refusal from `D3D11NativeCallName` rather than re-deciding
 whole array and re-issuing every rectangle below it. Veldrid keeps that array and this backend does not. Every
 shipped call site passes zero and no shipped shader writes `SV_ViewportArrayIndex`, so the path is refused
 loudly rather than scissoring the wrong output silently.
+
+## Compute, the two ordering rules, and staging readback
+
+**A compute pipeline is one compiled module plus its layout array, and it creates nothing native.** Direct3D 11
+has no fixed-function stage behind a dispatch, so there are no state objects and no input layout to build:
+`CSSetShader` takes the module the shader path already created and the register numbering is CPU-side arithmetic
+over the layouts. The module's lifetime belongs to the `IGpuComputeShader` the caller created, exactly as a
+graphics pipeline never disposes its shader set. The compute shader is bound UNGUARDED by any redundancy cache,
+deliberately: a frame binds a graphics pipeline hundreds of times and a compute pipeline a handful, so a cache
+slot for it would cost a reference compare per dispatch to save a call no profile shows.
+
+**Compute runs the same record-then-flush-at-dispatch schedule on a SEPARATE dirty array.** A
+`SetComputeResourceSet` records and issues nothing, a `Dispatch` flushes every dirty compute slot in slot order
+and then dispatches, and a compute pipeline switch drains the pending sets under the OUTGOING layouts for the
+same reason the graphics one does. Nothing about the schedule is special-cased for compute.
+
+**The SRV-versus-UAV auto-unbind runs in BOTH directions, where the bind arrays are assembled.** Direct3D 11
+will not let one resource be readable through a `t` register and writable through a `u` register at once, and
+the GPU seam's ordering contract names this backend's mechanism in as many words: rule 1's compute-writes-then-
+graphics-samples handoff works here because the backend unbinds the UAV as the SRV is bound. `D3D11ViewConflicts`
+tracks every `t` and `u` register an activation issues, and a bind that conflicts with a tracked register on the
+opposite file nulls it FIRST, in an array call of the same shape, inside the same activation. Three properties
+are worth stating because each is a way to get it wrong:
+
+- **One call per (file, stage), never one per register.** The unbind obeys the same O(kinds x stages) law as the
+  bind, so two conflicting registers are one array call over the span. A per-register unbind would be the #418
+  fan-out defect arriving on the compute side.
+- **A live register swept in by the span is REBOUND to what it already holds, never nulled.** The span runs from
+  the lowest conflicting register to the highest, so something else's resource can sit between two conflicts.
+  Writing a null across it would unbind a live view while its owner's record still called that slot clean.
+- **The owning slot is raised back to fully dirty, on whichever arm it belongs to.** That is the half a
+  same-batch unbind cannot do for itself: the draw that nulls a compute set's register is not the flush that can
+  put it back, so `D3D11BindFlush.Raise` marks the compute slot and the next dispatch pays it. It has to be the
+  FULL state, because the offsets-only path skips both files that can conflict entirely.
+
+Identity is the resource UNDERNEATH a `GpuBufferRange` rather than the value the caller bound, because that type
+is a readonly struct implementing `IGpuBindableResource`, so a set stores it boxed and two boxes of one window
+are two references. A set that binds one resource both ways at once resolves deterministically rather than being
+refused: the activation issues `t` before `u`, so the UAV wins. The tracker is reset by the one `ClearState` at
+the head of each replay, along with the records it raises.
+
+**A self-conflicting set costs four array calls per flush, for ever, and that is deliberate.** The unbind raises
+the slot that OWNED the register it nulled, and when a set binds one resource both ways the owner is the slot
+being drained at that moment: the register is put back and re-nulled inside the same activation, so the slot
+reads fully dirty again the instant the flush leaves it, and the next flush repeats the sequence (null the `u`
+file, bind the `t` file, null the `t` file, bind the `u` file). It never settles. Settling it would mean silently
+dropping one of the two bindings the caller declared, and Direct3D 11 cannot honour both at once whatever the
+backend does, so a steady cost on a set no renderer writes is the better of the two failures. The ordinary
+cross-arm case is unaffected: the other arm's next flush puts the register back and the slot goes clean. A
+device-free test pins the repeating trace, so a change here has to be a decision rather than an accident.
+
+**Rule 2 is honoured as written and adds no barrier member.** A dispatch that reads an earlier dispatch's writes
+is separated by `End` plus `Submit` plus `WaitForIdle`, which is the cross-backend contract stated on
+`IGpuCommandList` itself, and the ocean's `PrimeRowPass` is the shipped consumer of it. Worth naming so it is not
+rediscovered: Direct3D 11 tracks hazards itself and inserts that synchronisation between dependent dispatches on
+one context, so rule 2 is a Vulkan-shaped requirement being paid on a backend that does not need it. The right
+resolution is a seam capability letting a consumer skip the drain where hazards are tracked, which is a seam
+change plus a renderer change and is therefore outside this backend's "zero renderer changes by construction"
+scope. A device-free test asserts that neither seam grew a barrier member, so the decision cannot drift quietly.
+
+**Structured buffers keep the RAW byte-address treatment**, created by the resource path and consumed unchanged
+here. SPIRV-Cross emits a GLSL storage block as a `ByteAddressBuffer` or an `RWByteAddressBuffer`, never a
+`StructuredBuffer<T>`, so `StructureByteStride` stays advisory and both views are raw. Keeping this identical to
+the incumbent is why the ocean's existing kernels work.
+
+**A resolve is one `ResolveSubresource` at subresource 0 on both sides**, which is the whole of what the seam can
+express: `ResolveTexture` takes two bare textures with no mip, no layer and no region. `GenerateMipmaps` goes
+through the full-chain shader resource view the declared usage earned the texture at creation, and refuses by
+name a texture created without `Sampled` or `GenerateMipmaps`, because `GenerateMips` is defined as reading and
+writing THROUGH such a view. The copies are the region forms the seam asks for: a whole-texture copy is
+`CopyResource`, a buffer copy is `CopySubresourceRegion` with a box built from both offsets, and the shorter
+`CopyTextureSubresource` overload arrives at the emitter with a destination mip and layer of zero.
+
+**Staging `Map` and `Unmap` take the submit lock for the duration of the map call and nothing longer.** The lock
+is NOT held across the caller's read: a readback that held it from `Map` to `Unmap` would block every submit for
+as long as a consumer walked the pixels, which is the frame-long hold this design exists to delete. Everything
+that can be wrong without a GPU is device-free in `D3D11StagingMaps`: a second map of an already-mapped resource
+is refused by name (Direct3D 11 answers it with a failed HRESULT and a debug-layer message, both silent in a
+release build), an unmap of something never mapped is refused too (Direct3D 11 ignores it entirely), and the row
+pitch is the runtime's padded stride rather than the packed row width, with the mapped size following the pitch.
+Teardown and a device loss FORGET the open mappings rather than unmapping them, because after the device is gone
+the mappings do not exist.
+
+**The four native calls sit behind `ID3D11StagingMemory`, which is what makes that lock clause an assertion
+rather than a promise.** It is the same shape the ring's two calls take behind `ID3D11RingMemory` and the fence's
+behind `ID3D11FenceTimeline`: `D3D11ContextStagingMemory` is the Windows implementation over the immediate
+context, `D3D11StagingAccess` consumes the seam, and a fake recording `Monitor.IsEntered` per call pins BOTH
+halves of decision W4's staging clause off Windows (every native call under the lock, and the caller's read
+between `Map` and `Unmap` not under it). A map answers its `HRESULT` across the seam untouched, so the G3 site
+below is driven through the real path with a fake result rather than only against the static. Which resource a
+map names, and whether its declared usage allows one at all, are answered by the resource itself through
+`ID3D11MappableResource`, so both refusals stay device-free too: a cast straight to `D3D11Buffer` would be a cast
+to a Windows-only type, and nothing off Windows could reach past it. The Windows residue is the four `Map` and
+`Unmap` calls and nothing else. The device constructs
+`new D3D11StagingAccess(new D3D11ContextStagingMemory(context), submitLock, latch)`.
+
+**A failed map throws rather than handing back the null pointer it left behind**, and that is decision G3's
+second check site. Vortice's `Map` returns its result rather than throwing, so a caller that ignored it would
+read through null and report an empty readback with nothing logged. `D3D11StagingMaps.RequireMapped` is the one
+place that result is interpreted: the device-loss latch is asked FIRST, before anything else at all, because
+`DXGI_ERROR_DEVICE_REMOVED` is sticky and the reason is only meaningful at the first site that notices. The same
+method reads the constant-buffer ring's own `MAP_WRITE_NO_OVERWRITE` result, under its own site name
+(https://github.com/APKiwiOrg/KhaozEngine/issues/500), so both maps on this backend are checked. A device always
+wires the latch, and a null one (every device-free test) still throws.
 
 ## Completion fences, and a `WaitForIdle` that drains
 
@@ -388,11 +535,11 @@ than overwriting its target.
 **The signal is raised by the submit path, once per submit, after the last command and under the submit lock.**
 `ID3D11SubmitSignal` is the one-member seam between the two: the driver submit takes it, and the submission's
 fence, as an optional trailing pair, so a submit that names neither replays exactly as it always did. That is
-every call site while nothing constructs a device. Placing the signal after the replay is what makes it name a
-point the GPU reaches only when the submission is finished, on both drivers, and a fenceless submit signals too,
-because a later fence's value covers earlier work only if the earlier work took a value of its own. A submit the
-drivers reject signals nothing, and a fence handed to a submit with no sink is refused rather than left unarmed
-for something to wait on forever.
+every device-free driver test, and a real device always passes both. Placing the signal after the replay is what
+makes it name a point the GPU reaches only when the submission is finished, on both drivers, and a fenceless
+submit signals too, because a later fence's value covers earlier work only if the earlier work took a value of
+its own. A submit the drivers reject signals nothing, and a fence handed to a submit with no sink is refused
+rather than left unarmed for something to wait on forever.
 
 **`WaitForIdle` is a real fence drain**, replacing the empty method body the Veldrid Direct3D 11 path has. It
 signals a fresh point, flushes the context ONCE so the driver actually has that signal, and then waits for the
@@ -790,11 +937,13 @@ release and the recreate leaves the framebuffer pointing at released views, and 
 because holding the old views across the resize is precisely what `ResizeBuffers` forbids. The latch IS the
 repair, since once the device is known dead nothing binds again.
 
-**What is not built here.** Device creation does not exist, so nothing calls any of it yet: the adapter
-enumeration, the capability read, the debug-layer flag, the pump and the latch all wait on the device row for
-their call sites, and so does the Windows `ID3D11InfoQueue` reader behind `ID3D11InfoQueueSource`
-(`ID3D11InfoQueue::GetMessageW` is a two-pass call into a caller-allocated buffer, which is interop a Windows
-machine has to exercise before anyone should believe it).
+**Who calls all of this.** The device: the adapter enumeration and the choice run before `D3D11CreateDevice`,
+the capability read takes the created device and the adapter it landed on, the debug-layer flag is OR'd into the
+creation flags (with the retry arm for a machine that has no Graphics Tools installed), the latch sits at its
+four check sites, and the pump is built only when the layer is actually active and drained at the submit
+boundary. The Windows `ID3D11InfoQueue` reader is `D3D11InfoQueueMessages`, which reads through Vortice's own
+`Message GetMessage(ulong)`, the managed form of the two-pass `GetMessageW` call, so the marshalling is the
+binding's rather than this package's.
 
 ## Threading: the shipped contract
 
@@ -827,21 +976,33 @@ its boundary W5.
   `DriverConcurrentCreates` false.** That is `D3D11CreationGate`, the second and last lock in the package, taken
   around one native creation call and nothing longer. A driver that creates concurrently gets no lock at all, and
   an UNKNOWN answer (the threading probe did not run, or could not answer) serializes, because the probe degrades
-  to unknown on every failure and its silence is not a licence. Six factory members are ungated by design, in two
-  groups: the four live ones that create no native object (framebuffer, resource layout, resource set, command
-  list), and the two that are not built yet and throw (`CreateComputePipeline`, `CreateFence`), which have no
-  native call to gate until they exist.
+  to unknown on every failure and its silence is not a licence. Five factory members are ungated by design, in two
+  groups: the four that create no native object (framebuffer, resource layout, resource set, command list), and
+  `CreateFence`, which creates none either, because the device's one timeline object was created with the device
+  and a fence here is an engine-side target against it. `CreateComputePipeline` creates no native object either
+  and IS gated anyway, to keep the two pipeline members symmetric and because a pipeline is the member most
+  likely to grow a native call later.
 - **The two locks nest in one direction only.** The submit lock is OUTER, the creation gate is INNER, and the
   gate is a strict leaf: nothing is acquired while it is held. A creation path that one day needs the immediate
   context takes the submit lock BEFORE entering the gate, never inside it.
-- **Nothing waits under the submit lock**, and exactly two members CAN block, both of which refuse a caller who
-  holds it, by name: `WaitForIdle` (which signals and flushes under the lock and then releases it to wait, so the
-  submission it is waiting for can still be made) and the ring allocator's `BeginFrame` (which waits for the GPU
-  to finish with the segment it opens, up to a frame). Both throw rather than stall, because a frame-long hold of
-  this lock is invisible from the outside and is the exact defect the design deletes. The ring allocator's
-  `UpdateBuffer` is deliberately NOT a third one: it has no boundary of its own to be moved outside the lock, so
-  rather than waiting for a busy segment it defers the write to a patch the next frame boundary applies, which is
-  what makes a caller holding the lock legal there instead of refused.
+- **Staging `Map` and `Unmap` take the lock for the duration of that one call and nothing longer.** Two calls
+  take it twice, and between them the mapped pointer is the caller's alone, so a readback never holds it across
+  a consumer's walk over the pixels. This clause is TESTED rather than asserted in prose: the four native calls
+  sit behind `ID3D11StagingMemory`, and a fake recording `Monitor.IsEntered` per call pins both halves of it off
+  Windows. See the compute section for the seam.
+- **Nothing waits under the submit lock, with ONE knowingly paid exception**, and exactly two members CAN block
+  unboundedly, both of which refuse a caller who holds it, by name: `WaitForIdle` (which signals and flushes
+  under the lock and then releases it to wait, so the submission it is waiting for can still be made) and the
+  ring allocator's `BeginFrame` (which waits for the GPU to finish with the segment it opens, up to a frame).
+  Both throw rather than stall, because a frame-long hold of this lock is invisible from the outside and is the
+  exact defect the design deletes. The ring allocator's `UpdateBuffer` is deliberately NOT a third one: it has
+  no boundary of its own to be moved outside the lock, so rather than waiting for a busy segment it defers the
+  write to a patch the next frame boundary applies, which is what makes a caller holding the lock legal there
+  instead of refused. The exception is the staging map above: `Map(READ)` on the immediate context is DEFINED
+  to wait until the GPU is done with that resource, which is exactly what makes a readback correct without an
+  explicit drain, and the wait is bounded by the work already submitted against that one resource rather than
+  by a frame. The alternative, mapping with `DO_NOT_WAIT` and spinning outside the lock, trades a bounded wait
+  for a spin that can starve.
 - The process-wide `GpuDeviceContext._lifecycleGate` is unchanged, and still serializes device creation and
   disposal across every backend.
 
@@ -860,11 +1021,9 @@ nobody can triage. Shipping it properly is https://github.com/APKiwiOrg/KhaozEng
 recording touches device state by construction and one thread records. That arm narrows the contract rather than
 extending it.
 
-**Two open ends, both owned by other rows and neither guessed at here.** Staging `Map` and `Unmap` take the
-submit lock for the duration of the map call and nothing longer, which is where the rule lands the day the
-staging path exists: it is https://github.com/APKiwiOrg/KhaozEngine/issues/456, and there is no staging path in
-the package today to carry it. Device-level `UpdateTexture` is the same story, and takes the same short lock as
-`UpdateBuffer` when the device row wires it.
+**No open ends left in this contract.** Device-level `UpdateTexture` takes the same short lock as
+`UpdateBuffer`, scoped to the write and never to a frame, and the staging clause is `D3D11StagingAccess`'s. Both
+are stated in the contract above rather than promised.
 
 ## Design
 
@@ -872,11 +1031,12 @@ the package today to carry it. Device-level `UpdateTexture` is the same story, a
 section 4.1 (getting the assembly loaded), section 5.1 (the stream and the emitter), section 5.3 (emission),
 section 2.1 (the recording model), section 2.3 (nested `Begin` during coexistence), section 9.4 (the implicit
 viewport), section 7 (resources, views and state objects), section 8 (the shader path) with 8.1 (register
-numbering), 8.2 (pinning the cross-compile options) and 8.3 (the holed-signature hazards), sections 10.3 and
+numbering), 8.2 (pinning the cross-compile options) and 8.3 (the holed-signature hazards), sections 10.1 and
+10.2 (compute, the two ordering rules and MSAA), sections 10.3 and
 10.4 (fences and the empty `WaitForIdle`), section 6 (per-frame memory), sections 9.1 and 9.2 (the swapchain,
 the present path and the resize), section 9.3 (threading), section 11 (capabilities, diagnostics, WARP and
 device loss), and decisions P1, P2, P4, I2, R1, R2, R3, R4, R6, R8, W1, W2, W3, W4, W5, W6, T2, U1, U2, U3,
-U4, U5, X1, X2, X3, S1, S2, S3, S4, S5, C2, C4, C5, C6, G1, G2, G3, G4 and T4. The recorded non-measurement
+U4, U5, X1, X2, X3, S1, S2, S3, S4, S5, C1, C2, C3, C4, C5, C6, G1, G2, G3, G4 and T4. The recorded non-measurement
 M5 in section
 13 is the swapchain's, and its wording is reproduced above rather than referenced, because a reader of a soak
 capture will not have the design doc open.

@@ -7,7 +7,8 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>
     /// DECISION G4's PUMP AND ITS RATE LIMIT, driven off a fake queue on macOS and Linux. Everything that decides
     /// what gets logged, at which level, and when to stop is engine logic, so all of it is here. The Windows
-    /// reader that produces the messages lands with the device row (see <see cref="FakeD3D11InfoQueue"/>).
+    /// reader that produces the messages is <c>D3D11InfoQueueMessages</c>, which the device builds when
+    /// <c>KE_D3D11_DEBUG</c> is on (see <see cref="FakeD3D11InfoQueue"/> for the device-free stand-in).
     /// <para>
     /// THE RATE LIMIT IS NOT A NICETY. The debug layer's characteristic failure is ONE mistake reported once per
     /// draw call, so without a per-identity cap a session is thousands of copies of one line and the second

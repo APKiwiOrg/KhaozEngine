@@ -44,7 +44,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <summary>
         /// Wrap <paramref name="source"/>, which is taken over: <see cref="Dispose"/> disposes it.
         /// </summary>
-        /// <param name="source">The message queue. The Windows implementation lands with the device row.</param>
+        /// <param name="source">The message queue. <see cref="D3D11InfoQueueMessages"/> on Windows, a recording
+        /// fake in the tests.</param>
         /// <param name="limit">The rate limit, or null for the defaults.</param>
         /// <param name="logger">The sink, or null for this type's own category logger. Present so a test can
         /// assert what was logged and at which level, which is the half of this type worth asserting.</param>

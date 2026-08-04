@@ -228,12 +228,20 @@ namespace KhaozEngine.Tests.Gpu
         /// DECISION T4 ITSELF: both devices in one process, both capability sets read, every member compared, and
         /// completion fences asserted as the only difference.
         /// <para>
-        /// Returns early, having asserted nothing, in TWO cases, and both are facts about the machine rather than
-        /// about the code: not Windows, or the incumbent device did not come up on Direct3D11, so there is
-        /// nothing to be at parity WITH. The third early return this test shipped with is gone: it caught the
-        /// <see cref="NotSupportedException"/> the provider raised while creation was unbuilt, and creation is
-        /// built, so a native device that will not create is now a failure of exactly the kind this test exists
-        /// to report.
+        /// Returns early, having asserted nothing, in THREE cases, and every one is a fact about the MACHINE
+        /// rather than about the code: not Windows, an incumbent that did not come up on Direct3D11 so there is
+        /// nothing to be at parity WITH, or a Windows box that cannot run the native backend at all. The last one
+        /// is https://github.com/APKiwiOrg/KhaozEngine/issues/504, and it reads the package's own functional probe
+        /// through <see cref="GpuBackendSelector.IsBackendSupported"/>, which checks
+        /// <c>ConstantBufferOffsetting</c> and <c>MapNoOverwriteOnDynamicConstantBuffer</c> (decision I2's
+        /// machine-incapability arm). WARP on the CI leg satisfies both, so nothing in CI changes. What changes is
+        /// a feature-deficient Windows box running the suite by hand, which used to go red for a machine fact.
+        /// </para>
+        /// <para>
+        /// The early return that is GONE is a different one: it caught the <see cref="NotSupportedException"/> the
+        /// provider raised while creation was unbuilt, and creation is built, so a native device that refuses to
+        /// create on a machine the probe just called capable is a failure of exactly the kind this test exists to
+        /// report.
         /// </para>
         /// </summary>
         [GpuFact]
@@ -249,6 +257,13 @@ namespace KhaozEngine.Tests.Gpu
             if (incumbent.Backend != GpuBackendKind.Direct3D11)
             {
                 _out.WriteLine($"dormant: the incumbent device came up on {incumbent.Backend}, not Direct3D11.");
+                return;
+            }
+
+            if (!GpuBackendSelector.IsBackendSupported(GpuBackendKind.Direct3D11Native))
+            {
+                _out.WriteLine("dormant: this Windows machine cannot run the native Direct3D 11 backend, so "
+                    + "there is no second device to compare.");
                 return;
             }
 

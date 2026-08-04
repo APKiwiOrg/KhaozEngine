@@ -216,7 +216,11 @@ What it owns today:
   9.23.0) and `CreateHeadless()` (offscreen device) on the selected backend. Two further `CreateForWindow`
   overloads since 17.23.0: a nullable `GpuBackendKind?` preference (resolved against the environment, WITH the
   fallback below) and a non-nullable `GpuBackendKind` (exactly that backend, no resolution and no fallback, the
-  "retry as X" lever). **Creation falls back** to the OS-probe backend when the requested backend fails, rather
+  "retry as X" lever). `CreateHeadless(GpuBackendKind)` (17.32.0) is the headless twin of that last one: exactly
+  that backend, no resolution and no fallback, throwing `GpuBackendProviderMissingException` for a
+  provider-backed backend nobody registered. It is how a caller brings up TWO backends in one process (a parity
+  comparison, or replacing one implementation with another under the same measurements) without reaching around
+  this class to `GpuBackendProviders` and creating a device outside the process-wide creation gate below. **Creation falls back** to the OS-probe backend when the requested backend fails, rather
   than propagating, so a stored preference the machine cannot run cannot leave a player with a client that will
   not start. It WARNs, reports `GpuBackendSource.FallbackAfterFailure` with `Selection.RequestedBackend`, and
   **never clears the game's stored setting, which the game must do itself** (file IO is not this package's job).

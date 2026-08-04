@@ -8458,6 +8458,22 @@ since `GpuWindowHandle` is a readonly struct of native pointers carrying no devi
 None of this changes an existing game. The fallback is skipped when the requested backend already IS the
 OS-probe default, which is every call with no override and no preference, and `CreateHeadless` never falls back.
 
+`GpuDeviceContext.CreateHeadless(backend)` (17.32.0) is the headless twin of that explicit-backend overload:
+
+```csharp
+using GpuDeviceContext ctx = GpuDeviceContext.CreateHeadless(GpuBackendKind.Direct3D11Native);
+```
+
+Exactly that backend, no environment override, no stored preference, no OS probe and no fallback. A
+provider-backed backend with no registered provider throws `GpuBackendProviderMissingException`, and every other
+failure propagates. It exists for the case where two backends have to come up in ONE process, which is what a
+backend-parity comparison needs and what replacing one implementation with another under the same measurements
+needs. Use it rather than pulling the provider out of `GpuBackendProviders` and calling its `CreateHeadless()`
+yourself: `GpuDeviceContext` is what serializes device creation process-wide, providers are written on the
+promise that it does, and a device built around the outside of that gate races every device built through it.
+The resulting `Selection.Source` is `UserPreference`, the same provenance the windowed named-backend overload
+reports, since neither the environment nor the probe chose it.
+
 ### Applying the change
 
 The backend is chosen once, at device creation, so applying a new one means restarting. Use

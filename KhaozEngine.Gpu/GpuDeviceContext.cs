@@ -627,18 +627,55 @@ namespace KhaozEngine.Gpu
                 + "GpuBackendProviders.RequiresProvider before reaching the Veldrid switch. Reaching this means "
                 + "that branch was bypassed.");
 
+        // The engine-owned headless device options, in ONE place so the resolved and the backend-named entries
+        // cannot drift apart. Verbatim what the 2D snapshot path passed (no depth, no main-swapchain depth, debug
+        // off, Improved binding, sRGB on, sync off), which is what keeps the golden images pixel-identical.
+        static GraphicsDeviceOptions DefaultHeadlessOptions
+            => new(false, null, false, ResourceBindingModel.Improved, true, true);
+
         /// <summary>
-        /// Veldrid-free headless device for migrated consumers (Render2D) that must not reference Veldrid. Uses
-        /// the SAME device options the 2D snapshot path passed verbatim (no depth, no main-swapchain depth, debug
-        /// off, Improved binding, sRGB on, sync off) so the golden image stays pixel-identical.
+        /// Veldrid-free headless device for migrated consumers (Render2D) that must not reference Veldrid, on the
+        /// backend <see cref="GpuBackendSelector"/> resolves from the environment. Uses the SAME device options the
+        /// 2D snapshot path passed verbatim (no depth, no main-swapchain depth, debug off, Improved binding, sRGB
+        /// on, sync off) so the golden image stays pixel-identical.
         /// </summary>
-        public static GpuDeviceContext CreateHeadless()
-            => CreateHeadless(new GraphicsDeviceOptions(false, null, false, ResourceBindingModel.Improved, true, true));
+        public static GpuDeviceContext CreateHeadless() => CreateHeadless(DefaultHeadlessOptions);
+
+        /// <summary>
+        /// Create a headless device on EXACTLY <paramref name="backend"/>: no environment override, no stored
+        /// preference, no OS probe, and no fallback, the headless twin of
+        /// <see cref="CreateForWindow(in GpuWindowHandle, uint, uint, bool, GpuBackendKind)"/>. A provider-backed
+        /// backend with no registered provider throws <see cref="GpuBackendProviderMissingException"/> (decision
+        /// I2), and every other failure propagates, because a caller that named one backend outright is not asking
+        /// to be quietly given a different one.
+        /// <para>
+        /// PUBLIC because comparing two backends in ONE process is a first-class need rather than a test trick.
+        /// Backend-parity work drives the incumbent and the native Direct3D 11 implementations A against B, and
+        /// phase 3 of the native backend program replaces one with the other under the same measurements. The
+        /// alternative is what those callers reach for when this does not exist: pulling the provider out of
+        /// <see cref="GpuBackendProviders"/> and calling <see cref="IGpuBackendProvider.CreateHeadless"/>
+        /// directly. That skips the process-wide creation gate this class owns, and the gate is not optional
+        /// bookkeeping. Concurrent device creation races the Vulkan loader's dispatch setup, and every provider is
+        /// written on the promise that the engine serializes creation for it, so a device made around the outside
+        /// of it races every device made through it.
+        /// </para>
+        /// <para>
+        /// The resulting <see cref="Selection"/> reports <see cref="GpuBackendSource.UserPreference"/>, the same
+        /// provenance the windowed named-backend overload reports and for the same reason: naming a backend from
+        /// outside the engine is one provenance class, and neither the environment nor the probe chose it.
+        /// </para>
+        /// </summary>
+        public static GpuDeviceContext CreateHeadless(GpuBackendKind backend)
+            => CreateHeadless(DefaultHeadlessOptions,
+                new GpuBackendSelection(backend, GpuBackendSource.UserPreference, null));
 
         internal static GpuDeviceContext CreateHeadless(GraphicsDeviceOptions options)
-        {
-            GpuBackendSelection selection = GpuBackendSelector.Resolve();
+            => CreateHeadless(options, GpuBackendSelector.Resolve());
 
+        // The one headless creation path, so the resolved entry and the backend-named entry share the provider
+        // branch, the lifecycle gate and the adoption step rather than each routing its own way to a device.
+        static GpuDeviceContext CreateHeadless(GraphicsDeviceOptions options, GpuBackendSelection selection)
+        {
             // No probe and no fallback here, which is exactly what the Veldrid headless path has always done:
             // headless creation propagates its failure. A headless run that quietly changed backend would file its
             // golden images under a backend that never rendered them, and a missing registration throws with a

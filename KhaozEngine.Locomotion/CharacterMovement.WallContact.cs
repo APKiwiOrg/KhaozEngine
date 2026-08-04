@@ -26,6 +26,16 @@ public static partial class CharacterMovement
     // already carries its own for the DESTINATION test - and one symbol standing for both would read as a single
     // tolerance being spent twice.
     //
+    // ON A SLIDING TICK THE TWO COMPOSE, AND THIS IS THE PLACE THAT SAYS SO OUT LOUD. The reach a slide hands down
+    // is SlideReach, which is already the slide's own resolved rise PLUS SlideRiseSlack, and the line below adds
+    // this one on top of it. So the slide path's projected-step allowance is the slide's rise plus TWO millimetres,
+    // not one, and its exposure is correspondingly two millimetres a tick: 0.06 m/s at 30 Hz and 0.24 at 120, twice
+    // the figure the destination test carries. That is a composition rather than a bug, and it stays one: the
+    // alternative is a conditional that subtracts a slack the caller happens to have included, which would make the
+    // allowance depend on which path called and put a magic value in the middle of the one rule all three paths
+    // share. The number is stated here instead, so the next reader costs it correctly rather than reading the
+    // one-millimetre figure at SlideRiseSlack and assuming it covers the whole tick.
+    //
     // WHY THE RE-TEST NEEDS ONE (#498). The projected velocity is the destination height plane's CONTOUR by
     // construction, since that is what removing the into-face component means. So on a planar face the rise it asks
     // for is exactly zero, and which side of the comparison it lands on is decided by rounding. Both sides are
@@ -46,25 +56,38 @@ public static partial class CharacterMovement
     // it back down everything it gained. The ceiling is the bound, and no amount of holding the stick moves it.
     private const float ProjectedRiseSlack = 1e-3f;
 
-    // How many times AdvanceWallSlide HALVES a refused projected step before refusing outright: three, so the ladder
-    // is the full step, a half, a quarter and an eighth, and the whole cost is at most three extra delegate probe
-    // pairs on a CONTACT tick and nothing at all on any other tick. Three rather than a finer search because each
-    // rung buys a bounded factor on an ask that is very nearly proportional to the step length, so past a handful of
-    // rungs what is recovered stops being a walk: an eighth of walking pace is a character edging along a bank,
-    // a sixty-fourth is a character standing still with extra steps.
+    // How many times AdvanceWallSlide HALVES a refused projected step before refusing outright: SIX, so the ladder is
+    // the full step, a half, a quarter, an eighth, a sixteenth, a thirty-second and a sixty-fourth, and the whole
+    // cost is at most six extra delegate probe pairs on a CONTACT tick and nothing at all on any other tick.
     //
-    // WHAT THREE RUNGS ACTUALLY COVER, stated so nobody has to re-derive it. Where the ask is a DISCRETE feature the
-    // shorter rung simply does not reach (a lip, a rock, the far side of a walkable boundary) the ladder covers any
-    // magnitude, because the eighth lands on ground that never rose. Where it is PROPORTIONAL to the step length,
-    // which is what a bend in the face gives, an eighth of the step is about a quarter of the ask, so the ladder
-    // reaches a full-step ask of roughly four times the slack and no further. Past that the refusal stands, which
-    // is behaviour unchanged from before this rule shortened anything, and the reason it stands is #502 below
-    // rather than anything the ladder could fix by growing.
+    // THE ASK IS QUADRATIC IN THE STEP, WHICH IS WHY THE FLOOR IS A FIXED FRACTION AND WHY IT IS THIS DEEP. A bend
+    // of radius R in plan makes one tick's projected step ask for G * L^2 / (2R), with G the gradient at the contour
+    // and L = speed * dt the step length: the step line is the tangent at the FULL destination, so it cuts inside
+    // the contour by the sagitta of a chord, and that grows with the SQUARE of the step. Two consequences, and the
+    // first ladder missed both. Shortening to a fraction k does not divide the ask by k, because the line is still
+    // aimed at the full destination: it leaves k(2-k) of it, so an eighth rung still asks for 0.234 of the full ask
+    // rather than an eighth of it. And L is not a constant of the engine - it is 0.05 m for a walk at 120 Hz and
+    // 0.80 m for a run at 15 Hz, a factor of sixteen, so the ask spans a factor of 256 across ordinary configs.
+    // Three rungs therefore covered a walk at 30 Hz (bends past about 5 m) and dead-stopped a RUN at the same rate
+    // at any bend under about 21 m, which is ordinary gate-contour terrain. That was measured, not argued.
+    //
+    // WHAT A SIXTY-FOURTH BUYS, so nobody has to re-derive it. The floor rung's ask is k(2-k) = 2/64 = 0.031 of the
+    // full one, so the worst FULL ask this ladder can get under is slack / 0.031 = 32 mm of rise, and the terrain
+    // that reaches is L up to sqrt(2R * 0.032 / G). At a 5 m bend on 50 degree ground that is a 0.52 m step, which
+    // covers a run at 30 Hz (0.40 m) with margin and a walk at 15 Hz likewise. Where the ask is instead a DISCRETE
+    // feature the shorter rung does not reach (a lip, a rock, the far side of a walkable boundary) the ladder covers
+    // any magnitude at all, because the sixty-fourth lands on ground that never rose.
+    //
+    // PAST THAT THE WALKER STILL MOVES, WHICH IS WHY A DEEPER FLOOR IS NOT A CHARACTER STANDING STILL. The rung that
+    // clears is committed, so the tick that would once have been refused travels L/64 and the ride reads as a crawl
+    // through the bend rather than a park - and a crawl is the correct answer for a bend that tight, because the
+    // walker genuinely is being aimed into the face. Only an ask no rung can get under refuses, and on a smooth face
+    // that means a bend radius of about a centimetre, which is a crease rather than a bend.
     //
     // The direction bias the ladder is compensating
     // for - the projection reads its contour at the DESTINATION rather than at the walker's own column, so it aims
     // a hair into a bending face whatever its length - is #502, and closing that is what would retire this ladder.
-    private const int ProjectedStepRungs = 3;
+    private const int ProjectedStepRungs = 6;
 
     /// <summary>Advance an XZ position by a horizontal velocity for one tick, WALL-SLIDING off analytic terrain that
     /// the step cannot reach: when the destination's ground normal is steeper than
@@ -90,13 +113,24 @@ public static partial class CharacterMovement
     /// lateral half too - an invisible wall eating air control. Removing only the into-face component leaves the
     /// along-face travel exactly what it would have been with no face there at all.</para>
     /// <para>ANTI-TUNNEL, AND WHY IT SHORTENS BEFORE IT REFUSES (#498). The projected move is re-tested against the
-    /// same two conditions, and one that still lands in a wall is SHORTENED rather than dropped: retested at a half,
-    /// a quarter and an eighth of itself (<see cref="ProjectedStepRungs"/>), committing the first endpoint that
-    /// clears, and refused outright only when the eighth does not. Every committed endpoint has been tested at the
-    /// point it actually lands on, so the property the refusal gate used to carry alone is untouched: an XZ can never
-    /// be committed under terrain and left for a later ground clamp to pop the capsule up a cliff. A CONCAVE CORNER
-    /// still refuses at every rung, because every point along the step is inside both faces, which is exactly what
-    /// makes a crease a crease.</para>
+    /// same two conditions, and one that still lands in a wall is SHORTENED rather than dropped: retested by repeated
+    /// halving down to a sixty-fourth of itself (<see cref="ProjectedStepRungs"/>), committing the first endpoint
+    /// that clears, and refused outright only when the sixty-fourth does not. Every committed endpoint has been
+    /// tested at the point it actually lands on, so the property the refusal gate used to carry alone is untouched:
+    /// an XZ can never be committed under terrain and left for a later ground clamp to pop the capsule up a
+    /// cliff.</para>
+    /// <para>WHAT ACTUALLY REACHES THE REFUSAL, since the text here used to claim it was a concave corner and give a
+    /// reason that does not hold. The reason offered was that every point along the step is inside both faces, and
+    /// that is false in general: the step is the CONTOUR of the destination's height plane, and on a crease that
+    /// plane is read over a capsule-wide stencil straddling both faces, so where the step goes is a question about
+    /// that plane rather than about either face. On the symmetric case - a walk driven straight into the corner - the
+    /// plane is the exact bisector, the projection removes the WHOLE velocity, and every rung lands on the walker's
+    /// own column, so the ladder leaves through the not-steep branch at rung 0 and this refusal is never reached at
+    /// all. What does reach it is a projection that is non-zero and aimed at ground that is past the gate and rising
+    /// at every rung down to a sixty-fourth: on a smooth face that needs a bend radius of about a centimetre, and
+    /// the shape that produces it is a crease with the along-face direction running INTO it (a rising gully, an
+    /// inside corner met off-axis). Both are pinned in WallContactTangentialTravelTests, and the second one is
+    /// checked by mutation, because a refusal nothing exercises is a refusal nobody can delete safely.</para>
     /// <para>THE OLD TEXT HERE SAID THE REFUSAL ONLY HAPPENED IN A CONCAVE CORNER, AND THAT WAS MEASURABLY FALSE.
     /// The projected velocity is the destination height plane's CONTOUR, which is level by construction, so on
     /// ordinary open terrain what the re-test asks for is float rounding plus whatever the surface curves through
@@ -144,6 +178,15 @@ public static partial class CharacterMovement
         // this costs the ordinary path nothing.
         float sx = velocity.X - into * fx;
         float sz = velocity.Y - into * fz;
+
+        // A MOVE ENTIRELY INTO THE FACE HAS NO LADDER TO WALK. When the projection is exactly the zero vector every
+        // rung's endpoint is (x, z) itself, so all seven probe the SAME point and all three ways out of the loop
+        // return that same point: the not-steep branch, the under-allowance branch and the refusal all agree, and
+        // they agree with the answer here. So the result is identical and the probes are simply not made. This is
+        // the head-on case (a walk driven straight into a wall, and the degenerate FaceDirection fallback where the
+        // move direction stands in as the face's own), which is common enough to be worth a compare now that the
+        // ladder is seven rungs deep rather than four.
+        if (sx == 0f && sz == 0f) return (x, z);
 
         // The projected step, tested at its full length first and then down the shortening ladder. The allowance is
         // the tick's own reach plus the contour slack, and it is the SAME allowance at every rung: shortening moves

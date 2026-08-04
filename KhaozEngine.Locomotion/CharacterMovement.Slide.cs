@@ -243,6 +243,14 @@ public static partial class CharacterMovement
     // this one constant is not. It stays a constant anyway: it covers the ROUNDING of a difference of world heights,
     // and rounding does not get smaller when the tick does.
     //
+    // ON A SLIDING TICK THE PROJECTED STEP GETS TWO OF THEM, AND THAT IS THE HONEST NUMBER TO COST. SlideReach folds
+    // this constant into the reach it hands AdvanceWallSlide, and that reach is also what the projected step's
+    // allowance is built from - plus ProjectedRiseSlack on top. So the DESTINATION test on a sliding tick allows one
+    // millimetre and the PROJECTED step allows two, which is 0.06 m/s at 30 Hz and 0.24 at 120 rather than the
+    // figures above. Neither symbol is spent twice against the same comparison, but the two comparisons do stack
+    // within one tick, and the exposure below is the destination test's alone. The composition, and why it is left
+    // as one rather than special-cased per caller, is stated at ProjectedRiseSlack.
+    //
     // WHY THE WORST CASE IS OUT OF REACH WHERE GRAVITY IS PULLING. To bank a millimetre every tick the surface under
     // the capsule must rise, tick after tick, by between zero and one millimetre more than that tick's own descent,
     // which is to say the body must hold a near-level contour across the face indefinitely. Wherever the friction
@@ -253,8 +261,9 @@ public static partial class CharacterMovement
     // THE SCALE CAN BE EXACTLY ZERO, THOUGH, so that pull is NOT compulsory, and the earlier claim here that it was
     // is corrected rather than softened. SlideFrictionScale returns 0 at or under the gate, which FREEZES the fall
     // line: the carry neither grows nor decays, and a body with contour speed holds its line for as long as it has
-    // one. The exposure that opens is bounded on three sides. It is this slack per tick and no more (0.03 m/s at
-    // 30 Hz, 0.12 at 120). It needs BOTH a consumer whose normal delegate calls a patch steep while that consumer's
+    // one. The exposure that opens is bounded on three sides. It is this slack per tick against the DESTINATION test
+    // (0.03 m/s at 30 Hz, 0.12 at 120, and the same tick's projected step allows twice that - see the composition
+    // paragraph above). It needs BOTH a consumer whose normal delegate calls a patch steep while that consumer's
     // own height field calls it standable, which is the only way a sliding tick reaches a zero scale at all, and a
     // contour under the body that RISES. And it creeps only across ground the height field itself reads walkable,
     // because the scale leaves zero the moment the plane under the capsule passes the gate. A millimetre a tick onto

@@ -182,7 +182,8 @@ public static partial class CharacterMovement
         // A MOVE ENTIRELY INTO THE FACE HAS NO LADDER TO WALK. When the projection is exactly the zero vector every
         // rung's endpoint is (x, z) itself, so all seven probe the SAME point and all three ways out of the loop
         // return that same point: the not-steep branch, the under-allowance branch and the refusal all agree, and
-        // they agree with the answer here. So the result is identical and the probes are simply not made. This is
+        // they agree with the answer here. So the result is identical (up to the sign of a zero at the world
+        // origin, where the old path's x + 0 normalized -0.0 to +0.0) and the probes are simply not made. This is
         // the head-on case (a walk driven straight into a wall, and the degenerate FaceDirection fallback where the
         // move direction stands in as the face's own), which is common enough to be worth a compare now that the
         // ladder is seven rungs deep rather than four.

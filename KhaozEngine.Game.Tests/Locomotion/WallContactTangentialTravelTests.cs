@@ -32,7 +32,8 @@ namespace KhaozEngine.Tests.Locomotion;
 // straight-line step along the tangent at the destination cuts a little inside the contour it meant to follow. That
 // cut is the whole of the ask, and it is one knob: at a 400 m bend radius a walking step cuts 5e-5 m inside (the
 // face is planar to well under the float noise on the feet, which is the +0.000 class), and at 8 m it cuts 2.5e-3 m
-// (the curved class). Both were a permanent dead stop before this fix.
+// (the curved class). Before this fix the 8 m class was a permanent dead stop, and the 400 m class kept 13 to 18
+// percent of its travel between stalls of 245 ticks and worse.
 //
 // ---------------------------------------------------------------------------------------------------------------
 // WHAT THE LADDER COVERS, STATED AS TERRAIN, BECAUSE THE STEP LENGTH IS NOT A CONSTANT OF THE ENGINE.
@@ -166,7 +167,7 @@ public class WallContactTangentialTravelTests
     // tangent at the position it STARTED from counts only what the ride actually made along the face, and it is
     // signed, so a tick that is pushed backwards subtracts. Both numbers are printed, so the wobble stays visible.
     readonly record struct Ride(float Efficiency, int Ticks, int LongestStall, int Airborne, int Flips,
-        float MaxClimb, string Measured);
+        float MaxClimb, float MaxClimbStep, string Measured);
 
     // Walk a held angle to the face for a fixed number of seconds and report what the walk looked like. The command
     // is RE-AIMED every tick to hold the same angle to the face, which is what a stick held sideways along a bank
@@ -191,7 +192,8 @@ public class WallContactTangentialTravelTests
             Grounded = true,
         };
 
-        float tangential = 0f, path = 0f, startFeet = s.Position.Y - t.CapsuleHalfHeight, maxClimb = 0f;
+        float tangential = 0f, path = 0f, startFeet = s.Position.Y - t.CapsuleHalfHeight, maxClimb = 0f,
+            maxClimbStep = 0f;
         int longestStall = 0, stall = 0, stallTicks = 0, airborne = 0, flips = 0;
         bool previous = true;
         for (int i = 0; i < ticks; i++)
@@ -220,7 +222,15 @@ public class WallContactTangentialTravelTests
             if (next.Grounded != previous) flips++;
             previous = next.Grounded;
             float climb = next.Position.Y - t.CapsuleHalfHeight - startFeet;
-            if (climb > maxClimb) maxClimb = climb;
+            if (climb > maxClimb)
+            {
+                // The RECORD ADVANCE is the invariant-bearing quantity: a tick that pushes the ride's running peak
+                // up by more than the tick allowance is the #486 seat itself, however quiet the rest of the ride.
+                // A recovery tick regaining height it lost to a slide stays below the record and does not count.
+                float gained = climb - maxClimb;
+                if (gained > maxClimbStep) maxClimbStep = gained;
+                maxClimb = climb;
+            }
             s = next;
         }
 
@@ -234,8 +244,10 @@ public class WallContactTangentialTravelTests
                           + $"({tangential / commanded:P1}), path {path:F3}, longest stall {longestStall}/{ticks} "
                           + $"ticks, stalled {stallTicks}, airborne {airborne}, flips {flips}, ended "
                           + $"{endOffset:F4} m outside the contour, climbed at most {maxClimb:F4} m above its "
-                          + $"start. One projected step asks for {cut:F6} m inward = {rise:F6} m of rise";
-        return new Ride(tangential / commanded, ticks, longestStall, airborne, flips, maxClimb, measured);
+                          + $"start (largest single-tick record advance {maxClimbStep:F6} m). One projected step "
+                          + $"asks for {cut:F6} m inward = {rise:F6} m of rise";
+        return new Ride(tangential / commanded, ticks, longestStall, airborne, flips, maxClimb, maxClimbStep,
+            measured);
     }
 
     // ---- The sweep: lean x speed x tick rate, on both bend classes ----
@@ -257,7 +269,8 @@ public class WallContactTangentialTravelTests
     // this fix introduced and #502 will remove. A walker that gets slid back down the bank and walks in again spends
     // part of each cycle on a SLIDE tick, whose carry is the fall line plus the contour, and the contour part is
     // handed over on top of the walk - so a bank-hug can travel FASTER along the face than the stick asked for.
-    // Measured at up to 127 percent on the near-planar bend at 120 Hz, and it did not exist before this change (the
+    // Measured at up to 128 percent on the 8 m bend at walk and 120 Hz (the near-planar bend tops out at 115), and
+    // it did not exist before this change (the
     // pre-fix ride never got a slide tick because it never moved). That is a real handover of speed the player did
     // not ask for, it is bounded today, and an unbounded assertion would let it grow to any size at all without a
     // test noticing. So every case carries a two-sided band pinned from its own measurement with modest headroom,
@@ -274,9 +287,11 @@ public class WallContactTangentialTravelTests
     static Bounds Control => new(0.99f, 1.01f, 0, 0, 0);
 
     // PINNED FROM THE MEASUREMENTS OF THE RUN THAT TURNED THIS FILE GREEN, one row per (bend class, speed, rate).
-    // The efficiency band is the measured spread over leans 5 to 30 with about 5 points of headroom either side,
-    // except that the upper bound never sits below 1.05: recovering travel must never red this file, only handing
-    // over MORE than the residual measured here may. The counters are the measured worst case over those leans with
+    // The UPPER efficiency side is the measured high plus about 5 points of headroom, never below 1.05 (recovering
+    // travel must never red this file, only handing over MORE than the residual measured here may). The LOWER side
+    // floors at 0.95 wherever the measured low sits at or above it, and drops to the measured low minus headroom
+    // where it does not (the 8 m walk cases), so it is deliberately slacker downward than upward. The park row pins
+    // the park itself. The counters are the measured worst case over those leans with
     // headroom, and the flip bounds are deliberately tight enough that a 50-flip ride reds every row.
     //
     //   bend    speed   rate     measured efficiency   flips   airborne   worst climb
@@ -298,7 +313,14 @@ public class WallContactTangentialTravelTests
     static Bounds Expected(float bendRadius, float lean, bool run, float hz)
     {
         if (lean == 0f) return Control;
-        return (bendRadius < 100f, run, hz) switch
+        bool curved = bendRadius switch
+        {
+            8f => true,
+            400f => false,
+            _ => throw new ArgumentOutOfRangeException(nameof(bendRadius), bendRadius,
+                "no band is pinned for this bend radius - measure it before sweeping it"),
+        };
+        return (curved, run, hz) switch
         {
             (false, false, 15f) => new Bounds(0.95f, 1.15f, 5, 10, 30),
             (false, false, 30f) => new Bounds(0.95f, 1.18f, 5, 10, 60),
@@ -313,7 +335,7 @@ public class WallContactTangentialTravelTests
             // refused and the walker never leaves the spot it stopped on, which is the #498 dead stop itself at a
             // bend an order of magnitude tighter. Pinned to the park rather than left open, so the day it moves,
             // this file says so.
-            (true, true, 15f) => new Bounds(0f, 0.05f, 150, 4, 5),
+            (true, true, 15f) => new Bounds(0f, 0.05f, 149, 4, 5),
             (true, true, 30f) => new Bounds(0.82f, 1.05f, 5, 40, 180),
             (true, true, 120f) => new Bounds(0.95f, 1.39f, 5, 48, 650),
             _ => throw new ArgumentOutOfRangeException(nameof(hz), hz,
@@ -343,7 +365,7 @@ public class WallContactTangentialTravelTests
 
     [Theory]
     [MemberData(nameof(Rides))]
-    public void A_curved_bank_never_parks_the_walker(float lean, bool run, float hz)
+    public void A_curved_bank_ride_lands_in_its_pinned_band(float lean, bool run, float hz)
     {
         // An 8 m bend radius: one walking step's projected endpoint lands 2.5e-3 m inside the contour, a rise of
         // 2.8e-3 m, which is well past any float tolerance this rule could honestly carry, so the slack alone does
@@ -364,6 +386,8 @@ public class WallContactTangentialTravelTests
         Assert.True(r.Flips <= b.MaxFlips, $"the ride flickered its footing: {r.Measured}");
         Assert.True(r.Airborne <= b.MaxAirborne, $"the ride parked the walker in a slide: {r.Measured}");
         Assert.True(r.MaxClimb < ClimbPerTick * r.Ticks, $"the wall contact handed over altitude: {r.Measured}");
+        Assert.True(r.MaxClimbStep < ClimbStepBound,
+            $"a single tick bought more altitude than the tick allowance: {r.Measured}");
     }
 
     // WHAT THE FIX DOES NOT BUY, MEASURED RATHER THAN ARGUED, AND WHY THESE RIDES ALLOW FOOTING FLIPS AT ALL.
@@ -378,19 +402,28 @@ public class WallContactTangentialTravelTests
     // again, and the ride is a slow oscillation across the contour instead of a wall. The along-face speed that
     // oscillation hands over is the upper half of the efficiency band above.
     //
-    // THE CLIMB BOUND IS A RATE PER TICK, NOT A DISTANCE PER RIDE, AND THAT IS A CORRECTION. This file first pinned
-    // a flat 0.02 m across a ride, which is true of a walk at 30 Hz and measurably false of a run at 120 Hz: the
-    // same rides climb 0.085 m and 0.153 m. The reason is that the thing being bounded is a per-tick allowance (the
-    // 1 mm ProjectedRiseSlack), so its worst case scales with the tick COUNT exactly as the slack's own comment
-    // says, and a flat metre-bound silently tightens as the rate rises until it is measuring the clock. Bounded as a
-    // rate, every ride in the sweep creeps at most 2.9e-4 m a tick, which is under a third of one slack, and this
-    // bound is 4e-4. For scale, a genuine ratchet running at the slack's full rate would be 0.3 m over a 300-tick
-    // ride, and #486's 0.4 m StepHeight seat bought that in a single tick.
+    // THE CLIMB IS BOUNDED TWICE, BECAUSE THE TWO FAILURE SHAPES ARE DIFFERENT. This file first pinned a flat
+    // 0.02 m across a ride, which is true of a walk at 30 Hz and measurably false of a run at 120 Hz: the same
+    // rides climb 0.085 m and 0.153 m. The thing being bounded is a per-tick allowance (the 1 mm
+    // ProjectedRiseSlack), so its worst case scales with the tick COUNT, and a flat metre-bound silently tightens
+    // as the rate rises until it is measuring the clock.
+    //
+    // ClimbPerTick times Ticks bounds the CREEP RATE: the ride's net record height averaged over its ticks. Every
+    // ride in the sweep creeps at most 2.9e-4 m a tick, under a third of one slack, and this bound is 4e-4. An
+    // average alone would still admit one large pop among quiet ticks (at 120 Hz it works out to 0.48 m, more than
+    // the #486 StepHeight seat this chain exists to forbid), so ClimbStepBound separately bounds the LARGEST
+    // SINGLE-TICK ADVANCE of the running record. That bound is NOT the tick allowance: a landing that seats onto
+    // WALKABLE ground below the contour is legitimate clamp work (#468 only forbids altitude granted on STEEP
+    // ground), and the wildest measured oscillation seats a record advance of 0.044 m in one tick that way. So
+    // this is a POP guard at 0.06: above every legitimate seat in the sweep, well under the 0.4 m single-tick
+    // steep-seat #486 records. The mm-scale steep-ground grants themselves are policed by the creep-rate bound
+    // here and by the #486 fixtures on analytic steep faces, where no walkable seat can confound the reading.
     //
     // Removing the oscillation needs the projection to read its contour at the walker's column instead of at the
     // destination, which is a change to what the wall contact resolves against rather than to what it admits, and
-    // is #502. The creep that survives inside this bound is tracked there with it.
+    // is #502. The creep that survives inside these bounds is tracked there with it.
     const float ClimbPerTick = 4e-4f;
+    const float ClimbStepBound = 0.06f;
 
     // ---- What must still be refused ----
 

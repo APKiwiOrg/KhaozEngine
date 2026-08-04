@@ -774,8 +774,8 @@ aimed at the FULL destination, so an eighth rung still asked for 0.234 of the fu
 constant of the engine - 0.05 m for a walk at 120 Hz, 0.80 m for a run at 15 Hz - so the ask spans a
 factor of 256 across ordinary configurations. Three rungs therefore covered a walk at 30 Hz down to
 about a 5 m bend and dead-stopped a RUN at the same rate at anything under about 21 m, which is ordinary
-gate-contour terrain: measured on the fixture's own 8 m bend, 300 refusals out of 300 ticks and zero
-displacement. Six rungs put the floor's ask at 0.031 of the full one, which covers a 0.52 m step on a 5 m
+gate-contour terrain: measured on the fixture's own 8 m bend, three of the four leans at 300 refusals out
+of 300 ticks with zero displacement, the fourth at 299 with 0.044 m. Six rungs put the floor's ask at 0.031 of the full one, which covers a 0.52 m step on a 5 m
 bend and so a run at 30 Hz with margin. Past the ceiling every rung is refused and the walk parks, exactly
 as it did before, at a bend an order of magnitude tighter - moving that line further out is #502's job
 rather than a deeper ladder's.
@@ -808,7 +808,8 @@ against rather than to what it admits, so it is #502.
 **That oscillation also hands over SPEED, which is the other half of #502 and is now bounded.** Part of
 each cycle is a slide tick, whose carry is the fall line plus the contour, and the contour part arrives on
 top of the walk: a bank-hug can travel faster along the face than the stick asked for. Measured at 113
-percent on the near-planar bend at walk and 30 Hz, 127 at 120 Hz, and 158 at run and 15 Hz. It did not
+percent on the near-planar bend at walk and 30 Hz, 128 on the 8 m bend at walk and 120 Hz (the
+near-planar bend tops out at 115), and 158 at run and 15 Hz. It did not
 exist before this change, because the pre-fix ride never reached a slide tick - it never moved. Every case
 in the fixture now carries a two-sided band pinned from its own measurement, so the channel cannot widen
 without a test saying so, and it closes when #502 re-resolves the contact.
@@ -827,7 +828,8 @@ as along-face progress and overstated these rides by up to 2.4 points.
 is the one thing a straight face cannot show (on a straight face the projected step runs exactly along
 the contour, lands at the same steepness and the same height, and was always admitted). The bend radius
 is the only knob: 400 m for the near-planar class that eight of the ten measured blocks fell in, and 8 m
-for the curvature the slack alone cannot cover. Both were a permanent dead stop before this. Each is now
+for the curvature the slack alone cannot cover. Before this the 8 m class was a permanent dead stop and
+the 400 m class kept 13 to 18 percent of its travel between long stalls. Each is now
 swept across lean, SPEED and TICK RATE - walk and run at 15, 30 and 120 Hz, so the step length spans 0.05
 to 0.80 m and the ask spans a factor of 256 - because the ask is quadratic in the step and a walk-only
 sweep at one rate measured a single point of that curve. Every case carries a two-sided efficiency band

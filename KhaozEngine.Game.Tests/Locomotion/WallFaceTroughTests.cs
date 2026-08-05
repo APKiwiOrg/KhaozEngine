@@ -34,16 +34,25 @@ namespace KhaozEngine.Tests.Locomotion;
 // what the walk already had, and a fixture that pinned the FIXED build's numbers instead would have no way of saying
 // so. Sixteen rides, and at 17.32.0's first entry fifteen of them are red.
 //
+// AND THE SIXTEEN WERE STILL NOT ENOUGH (#501 round three). Four hand-picked leans on three shapes is four samples of
+// a flank, and round two's replacement rule failed at leans none of them visits. The one-degree window sweep further
+// down is what closes that, and its own block carries the mechanism and the numbers. The sixteen rides below are
+// unchanged and still pinned to the pre-#501 engine.
+//
 // THE BITE IS NOT MIRROR-SYMMETRIC EVEN THOUGH THE RULE IS. Which lean direction gets eaten, and at what angle, is a
 // question about where the wide read's averaged uphill lands relative to the narrow one, so it moves with the flank
 // ratio: the 1.67 V is eaten leaning into its SHALLOW flank from 15 degrees out, the 1.30 valley keeps that direction
 // clean until 35 and is eaten leaning into its STEEP flank from 55. Both directions are swept below for that reason,
 // and the rows were chosen from a 744-ride census rather than by picking an angle and hoping.
 //
-// WHAT IS DELIBERATELY NOT HERE. Past about 70 degrees off the trough axis, and at a run at 15 Hz (a 0.80 m step)
-// from about 40, the PRE-#501 engine parks on these troughs too - narrow keep under a tenth, every rung refused. That
-// is a real limitation and it is the ladder's rather than the face's, so it is not this file's business and no row
-// below sits in it. It is #530.
+// WHAT IS DELIBERATELY NOT HERE, STATED FROM THE MEASUREMENT RATHER THAN FROM ROUNDING. The pre-#501 engine has a
+// limitation of its own on these troughs, and it is the LADDER's rather than the face's, so it is not this file's
+// business. Where it starts was previously written down as "past about 70 degrees", and that is not what a one-degree
+// sweep of the window says. At a walk and at a run at 30 Hz the pre-#501 engine does not park anywhere from 60 to 74:
+// it loses travel smoothly through 71 to 74 (0.48 to 0.35 of commanded on the 0.10 m tanh trough at a walk at 15 Hz,
+// 0.38 to 0.20 at 30 Hz) and then parks ABRUPTLY at 75, where the same rows read 0.21 with 20 dead ticks and 0.02
+// with 192. At a run at 15 Hz - the 0.80 m step - it parks on the hard V shapes from 60 on. The bands below are set
+// with that shape in mind rather than around a 70 degree line that does not exist. It is #530.
 public class WallFaceTroughTests
 {
     readonly ITestOutputHelper _out;
@@ -264,13 +273,121 @@ public class WallFaceTroughTests
     // refused a move the pre-#501 engine committed. Eight is float slack, not a budget.
     const int MaxStall = 8;
 
+    // ---- The flank window at one degree, which is what caught the round-two park (#501 round three) ----
+
+    // WHY FOUR HAND-PICKED LEANS WERE NOT ENOUGH, AND THIS IS THE SECOND TIME THE SAME LESSON HAS COST A ROUND. The
+    // four rows above were read off a census and they are the right four for the bug they pin. They are also
+    // STRUCTURALLY BLIND to a selector that fails somewhere else on the same shape, because a fixed lean per shape
+    // samples the flank at one point. Round two's rule fails at leans NONE of them visits: on the 0.10 m tanh trough
+    // at a walk at 30 Hz, from 66 to 74 degrees off the axis, the narrow face keeps about 0.14 of the command
+    // pointing FORWARD along the trough and the wide read keeps 0.0002 pointing BACKWARD. The two oppose, both sit
+    // inside the doubt band, so the gated opposed trigger fires and hands the walker the 0.0002. A step that short
+    // lands on walkable ground, so the ladder ADMITS it and the refused-wide fallback never engages: measured 0.013
+    // of commanded travel with 175 consecutive dead ticks at lean 67, where the pre-#501 engine walks 0.508 with
+    // none. It reproduces on five of the six census trough shapes and at all four speed and rate pairs.
+    //
+    // So the sweep is the whole 60 to 75 window at one degree now, on three shapes by four speed and rate pairs, and
+    // it is asserted on the MEAN ride over the window rather than per lean. That is deliberate: 192 hand-pinned bands
+    // would be unmaintainable, and the window's own travel curve falls off steadily with the lean by construction, so
+    // its mean is a number that moves when a selector eats part of the window and does not move when it does not.
+    //
+    //   shape       speed  rate      pre-#501            17.32.0 as reviewed              this build
+    //                                mean  longest stall   mean   worst  longest stall    mean   worst  longest stall
+    //   Smooth10    walk   15 Hz     0.546     20         0.324  -0.103      85           0.485   0.131      0
+    //   Smooth10    walk   30 Hz     0.450    192         0.234  -0.238     175           0.399   0.063      0
+    //   Smooth10    run    15 Hz     0.153    138         0.103   0.052     138           0.153   0.053    138
+    //   Smooth10    run    30 Hz     0.549     20         0.320  -0.090      85           0.475   0.099      0
+    //   Smooth25    walk   15 Hz     0.419     53         0.212  -0.283       0           0.252  -0.283      0
+    //   Smooth25    walk   30 Hz     0.380    129         0.163  -0.301       0           0.163  -0.301      0
+    //   Smooth25    run    15 Hz     0.456     51         0.282  -0.166      61           0.350   0.055      0
+    //   Smooth25    run    30 Hz     0.419    203         0.238  -0.202       0           0.268  -0.202      0
+    //   V167        walk   15 Hz     0.513     63         0.306  -0.244       0           0.420   0.160      0
+    //   V167        walk   30 Hz     0.439    231         0.246  -0.301       0           0.302  -0.301      0
+    //   V167        run    15 Hz     0.150    140         0.067  -0.015     140           0.139   0.040    140
+    //   V167        run    30 Hz     0.512    213         0.314  -0.163       0           0.420   0.145      0
+    //
+    // NINE OF THE TWELVE ARE RED ON 17.32.0 AS REVIEWED. The two run-at-15-Hz rows carry the pre-#501 engine's own
+    // park (#530, see the file header) and are pinned around it rather than against it, which is why their stall
+    // bound is 145 and every other row's is eight.
+    //
+    // AND THIS BUILD DOES NOT RESTORE THE WHOLE WINDOW, WHICH THE WORST COLUMN SAYS OUT LOUD RATHER THAN HIDING. Past
+    // about 70 degrees the ride still loses travel against the pre-#501 engine and on three rows it matches 17.32.0
+    // exactly, because there the two builds make the same choice. What it does remove is every park: eight of the
+    // twelve rows go to a longest stall of zero where the pre-#501 engine has runs to 231 and the reviewed build has
+    // runs to 175. The remaining loss is the census residual the changelog entry costs, not a claim this file makes
+    // to have fixed.
+    //
+    // AIRBORNE TICKS AND FOOTING FLIPS ARE NOT BOUNDED HERE, unlike the four axis rows above, and that is the window
+    // rather than a weaker test: a lean of 70 degrees off the axis climbs the flank rather than following the floor,
+    // so legitimate slide ticks are part of the ride at the top of the range (up to 111 airborne on the 0.25 m tanh
+    // trough at a walk at 30 Hz on the pre-#501 engine too).
+    public static IEnumerable<object[]> FineLeanRides()
+    {
+        foreach (string trough in new[] { "V167", "Smooth10", "Smooth25" })
+            foreach (bool run in new[] { false, true })
+                foreach (float hz in new[] { 15f, 30f })
+                    yield return new object[] { trough, run, hz };
+    }
+
+    readonly record struct WindowBounds(float MeanFloor, float WorstFloor, int MaxStall);
+
+    static WindowBounds Window(string name, bool run, float hz) => (name, run, hz) switch
+    {
+        ("Smooth10", false, 15f) => new WindowBounds(0.43f, 0.08f, 8),
+        ("Smooth10", false, 30f) => new WindowBounds(0.35f, 0.01f, 8),
+        ("Smooth10", true, 15f) => new WindowBounds(0.10f, 0.00f, 145),
+        ("Smooth10", true, 30f) => new WindowBounds(0.42f, 0.04f, 8),
+        ("Smooth25", false, 15f) => new WindowBounds(0.20f, -0.34f, 8),
+        ("Smooth25", false, 30f) => new WindowBounds(0.11f, -0.36f, 8),
+        ("Smooth25", true, 15f) => new WindowBounds(0.30f, 0.00f, 8),
+        ("Smooth25", true, 30f) => new WindowBounds(0.21f, -0.26f, 8),
+        ("V167", false, 15f) => new WindowBounds(0.37f, 0.10f, 8),
+        ("V167", false, 30f) => new WindowBounds(0.25f, -0.36f, 8),
+        ("V167", true, 15f) => new WindowBounds(0.08f, -0.02f, 145),
+        ("V167", true, 30f) => new WindowBounds(0.37f, 0.09f, 8),
+        _ => throw new ArgumentOutOfRangeException(nameof(name), name,
+            "no window is pinned for this (trough, speed, tick rate) - measure it before sweeping it"),
+    };
+
+    [Theory]
+    [MemberData(nameof(FineLeanRides))]
+    public void The_flank_window_at_one_degree_keeps_the_face_that_keeps_more_of_the_command(string name, bool run,
+        float hz)
+    {
+        (Trough trough, float _) = Case(name);
+        float total = 0f, worst = float.MaxValue, worstLean = 0f, stallLean = 0f;
+        int rides = 0, longestStall = 0;
+        for (int lean = 60; lean <= 75; lean++)
+        {
+            Ride r = WalkAlong(trough, lean, run, hz, seconds: 10f);
+            total += r.Efficiency;
+            rides++;
+            if (r.Efficiency < worst) { worst = r.Efficiency; worstLean = lean; }
+            if (r.LongestStall > longestStall) { longestStall = r.LongestStall; stallLean = lean; }
+        }
+
+        float mean = total / rides;
+        string measured = $"{trough.Name}, {(run ? "run" : "walk")} at {hz:F0} Hz over leans 60 to 75: mean "
+                          + $"along-axis {mean:P1} of commanded, worst {worst:P1} (at {worstLean:F0} deg), longest "
+                          + $"stall anywhere {longestStall} ticks (at {stallLean:F0} deg)";
+        _out.WriteLine(measured);
+
+        WindowBounds b = Window(name, run, hz);
+        Assert.True(longestStall <= b.MaxStall, $"a lean in the flank window parked the walker: {measured}");
+        Assert.True(mean >= b.MeanFloor, $"the flank window lost its along-axis travel: {measured}");
+        Assert.True(worst >= b.WorstFloor,
+            $"a lean in the flank window was turned around and driven back along the trough: {measured}");
+    }
+
     // ---- Why the wide read is wrong here, measured from the surface rather than from the engine ----
 
     // WHAT THIS TEST IS FOR. The rides show the walk is not parked. They cannot show WHY the narrow face deserved to
     // keep its job, because a ride only reports where it ended up. This walks the geometry directly and reports what
-    // each read says at the column a leaning walker settles on, which is the whole argument for gating the opposition
-    // test: the narrow face is keeping most of the command, so it is not the anti-parallel facet #501 is about, and
-    // the two faces nonetheless disagree by more than a right angle.
+    // each read says at the column a leaning walker settles on, and it is the argument for BOTH halves of the shipped
+    // rule at once: the narrow face is keeping most of the command, so the doubt gate never opens here and no wide
+    // read is even made, and the two faces nonetheless disagree by more than a right angle, so any rule that decided
+    // on the two DIRECTIONS would have overruled it. Measured at the worst past-gate column of each case, the narrow
+    // read keeps 0.81, 0.70, 0.56 and 0.39 of the command against a band edge of 0.15.
     //
     // Deliberately computed from the height field rather than from CharacterMovement, so it is a statement about the
     // surface and not a re-derivation of the rule under test.
@@ -289,8 +406,8 @@ public class WallFaceTroughTests
         // The columns a wall contact on this flank can actually READ. A walker is stopped at the gate contour and
         // aims one step past it, so the band is the contour to one walking step beyond, and nothing further out is
         // reachable at the speeds this file sweeps. Reported at the WORST disagreement inside that band, because one
-        // such column is all the ungated trigger needs: the walk drifts along the flank and the first one it reaches
-        // is where it stops.
+        // such column is all a direction-comparing rule needs: the walk drifts along the flank and the first one it
+        // reaches is where it stops.
         float gateZ = 0f;
         for (int i = 0; i <= 2000 && !PastGate(trough, gateZ); i++) gateZ = MathF.Sign(lean) * i * 0.001f;
         float reach = Tuning.WalkSpeed / 30f;
@@ -318,14 +435,16 @@ public class WallFaceTroughTests
                           + $"the two travels are {worstBetween:F1} degrees apart";
         _out.WriteLine(measured);
 
-        // Both halves are the bug. A healthy narrow face is what makes the override wrong, and a disagreement past a
-        // right angle is what makes the ungated trigger fire on it. Either one alone is an ordinary contact.
+        // Both halves are the bug. A healthy narrow face is what puts this column outside the doubt band, so the
+        // shipped rule never reads wide here at all, and a disagreement past a right angle is what any rule deciding
+        // on the two directions would have fired on. Either one alone is an ordinary contact.
         Assert.True(atNarrow > ShippedDoubtFraction,
             $"no past-gate column here has a healthy narrow face, so this fixture has stopped reproducing #501: "
             + measured);
         Assert.True(worstBetween > 90f,
-            $"the two faces no longer disagree past a right angle where the narrow one is healthy, so the ungated "
-            + $"trigger would not have fired and this fixture has stopped reproducing #501: {measured}");
+            $"the two faces no longer disagree past a right angle where the narrow one is healthy, so a rule that "
+            + $"compared their directions would not have fired and this fixture has stopped reproducing #501: "
+            + measured);
     }
 
     // Mirrors CharacterMovement's own constants, which are private. Restated on purpose rather than read through a

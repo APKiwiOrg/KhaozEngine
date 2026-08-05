@@ -1445,9 +1445,12 @@ tried, because the band it blends over is exactly where healthy contacts live: a
 normal the control drops from 0.857 to 0.154 and parks for 123 ticks. The gated trigger keeps that row
 untouched. Measured over 744 rides (six troughs at 25 headings by walk and run at 15 and 30 Hz, plus the bank
 at 30 headings by the same four), counting rides the pre-#501 engine walked cleanly where the build under
-test stalls or loses a tenth of that travel: 260 for #501 as first shipped, 99 to 40 for the gate alone as
-the band narrows from 0.30 to 0.15, 95 to 33 for the blend across its own bands with the control red
-throughout, and 0 for the shipped pair.
+test stalls or loses a tenth of that travel, bucketed by how healthy that ride was: 99 / 213 / 260 for #501
+as first shipped, 7 / 52 / 99 down to 7 / 12 / 40 for the gate alone as the band narrows from 0.30 to 0.15,
+the blend red on the control heading at every band it was tried at, and 0 / 4 / 32 for the shipped pair. An
+earlier draft of this passage quoted only the first of those three numbers and read as though the shipped
+pair left no residual at all. It leaves 32 rides at the loosest tier, and the round below is what those 32
+turned out to be hiding.
 
 **What it costs.** Nothing on any contact whose narrow face keeps 0.15 or more, which is most of them and all
 of the engine's creases: those no longer pay for a wide read they were never going to use. Of 134154 wall
@@ -1466,10 +1469,100 @@ rate pairs, pinning no stalled tick anywhere (zero measured, against runs of 269
 and a two-sided 0.20 to 1.25 band. That upper bound is the switch's rectification residual, which is real and
 is now bounded: a heading steep enough to spend most of its ticks on the wall comes out of the switch
 travelling faster along the bank than the stick asked for, peaking at 1.30 on #501 as first shipped and at
-1.20 here. The 62 tangential-travel cases, the twelve original attractor rides, the #486 cliff-toe fixtures,
+1.20 here. Both of those are readings off a ONE-DEGREE grid and the round below re-takes them at a tenth of
+that, where this build's own peak turns out to be 1.2565 rather than 1.1993 - over the 1.25 the same sentence
+pins. The 62 tangential-travel cases, the twelve original attractor rides, the #486 cliff-toe fixtures,
 the 360-heading clamp-ratchet sweeps, the crease containment and the rising-gully refusal are all unchanged
 and green with their thresholds untouched, and the 32 smooth-bank rides that never engage the fallback are
 bit-for-bit identical to the pre-#501 engine.
+
+### The wall contact takes the face that keeps more of the command, and nothing else (#501, round three)
+
+Round two gated its opposed-travel trigger and moved the park it was meant to remove instead of removing it.
+On a trough narrower than the capsule, at 66 to 74 degrees off the axis, the narrow face keeps about 0.14 of
+the command pointing FORWARD along the trough while the 2 m read keeps 0.0002 pointing BACKWARD. Both sit
+inside the doubt band, they oppose, so the gated trigger fires and hands the walker the 0.0002. It is a park
+the refused-wide fallback cannot answer, because a step that short lands on walkable ground and the ladder
+ADMITS it. Measured at one-degree leans on the shipped fixture's own troughs: 0.013 of commanded travel with
+175 consecutive dead ticks where the pre-#501 engine walks 0.508 with none. It reproduces on five of six
+census trough shapes, at all four speed and rate pairs, over a lean window of 66 to 75.
+
+**What the player saw, for the third time in this chain.** A character fully footed and upright, holding a
+direction, going nowhere. Same sentence, third shape.
+
+**The fix is a magnitude comparison, and it is what the first three rounds were all missing.** Every selector
+before this one compared the two DIRECTIONS, and a direction cannot say which of two faces is telling the
+truth about a wall. Round one took the wide face when the two travels opposed. Round two took it when they
+opposed AND the narrow keep was small. Each of the three substituted a face that preserved LESS of the move
+than the one it replaced, which is the whole of both failures said once. So the rule is now that, and only
+that: inside the doubt band the wall contact projects the command onto both faces and keeps whichever
+projection preserves more of it. The keep threshold and the opposed-dot test are gone, and so are their two
+constants. Nothing needed a shape-specific test afterwards, because every measured failure is answered by
+construction: on the trough 0.14 beats 0.0002, in the attractor basin the wide read's 0.4 beats the narrow
+0.002, and on a crease the narrow 0.28 is above the band entirely and no wide read is even made.
+
+**The doubt band stays, and it stays at 0.15 because it was re-measured rather than inherited.** A band edge
+carried across a rewrite of the thing it gates is a number nobody has checked. Swept under the new rule over
+a 3824-ride census, both of its cliffs are still there and they are still different cliffs: below 0.13 the
+band no longer reaches the attractor's own columns and the 79 degree bank ride collapses to 0.31 of its
+command against a pinned 0.90, and above 0.15 the regressions climb (162, 181, 206, 239, 303 as it widens to
+0.16, 0.175, 0.20 and 0.25) with the control heading taking 14 footing flips at 0.20 and the rectification
+residual breaking its ceiling at 0.175.
+
+**The retry is symmetric now, and one half of it has never fired.** Whichever face the comparison chose, the
+other one gets the same full ladder before the tick refuses. Counted over the census, of 634065 wall contacts
+past the head-on short-circuit, 80676 made the wide read, 60748 substituted, and 15418 walked the second
+ladder - every one of them a refused wide winner falling back to the narrow projection, and every one of them
+committed there. A refused NARROW winner happened 0 times, which is what the geometry predicts and is
+recorded rather than implied. The exactly-zero wide travel round two had to guard for is now unreachable by
+construction, and it occurred 0 times anyway.
+
+**The census is the referee, and this build dominates the one it replaces at every tier.** 3824 rides: six
+troughs at one-degree leans from -75 to +75 plus the noisy bank from 40 to 89, walk and run at 15 and 30 Hz.
+A regression is a ride the pre-#501 engine walked with no stall and at least 0.30 of its command where the
+build under test stalls past eight ticks or loses more than 0.10 of that travel, bucketed by how healthy the
+pre-#501 ride was.
+
+| build | over 0.75 | over 0.50 | over 0.30 |
+|---|---|---|---|
+| pre-#501 (the reference) | 0 | 0 | 0 |
+| #501 round two as shipped | 0 | 37 | 205 |
+| this build | 0 | 9 | 162 |
+
+At ten times the resolution the gap is wider than the table shows. Over the same range scanned at 0.1 degrees
+(37988 rides), round two stalls past eight ticks on 128 rides the pre-#501 engine walked cleanly, with a
+worst run of 243 dead ticks. This build stalls on none of them.
+
+**What it does not fix, said plainly.** 162 rides still lose more than a tenth of their pre-#501 travel, and
+they are concentrated past about 70 degrees off a trough axis, where the pre-#501 engine is itself running
+into the ladder limitation filed as #530. On three of the twelve fine-lean rows this build and round two make
+the same choice and read the same number. What it removes everywhere is the park.
+
+**Numbers of record corrected in this round.** The rectification ceiling and the boundary floor are both
+re-pinned from a 0.1-degree scan rather than a one-degree grid, because a bound a finer scan steps across is
+not a bound: round two's own peak is 1.2565 there against the 1.25 it pins, and this build's is 1.2266. The
+fixture's "not one stalled tick anywhere" now says at what granularity, since a 0.02-degree scan finds two
+sub-degree headings on this build that hitch for 18 and up to 37 ticks inside rides that still travel 0.87
+and 0.78 of their command, where the pre-#501 engine at the same headings reads 0.10 with 233 dead ticks and
+0.14 with 120. And the trough fixture's claim that the pre-#501 engine parks past about 70 degrees is wrong:
+at a walk and at a run at 30 Hz it does not park anywhere from 60 to 74, it loses travel smoothly through 71
+to 74 and parks abruptly at 75.
+
+**Where the tests are.** `WallFaceTroughTests` grows a fine-lean family: the whole 60 to 75 window at one
+degree on three trough shapes by four speed and rate pairs, asserted on the mean ride over the window plus a
+park bound and a floor, with the pre-#501 and round-two numbers in the comment table. Eight of its twelve
+rows are red on round two as shipped, reproducing parks of 61 to 175 dead ticks. The four original trough
+rows are unchanged and still pinned to the pre-#501 engine. `WallFaceAttractorTests` keeps its twelve rides
+and its one-degree boundary sweep with every threshold untouched, and gains the granularity statement behind
+both bounds.
+
+Byte identity holds where it must, verified per code path over a 2180640-sample differential probe against
+the pre-#501 engine rather than by argument: every tick that makes no wall contact, every tick that commits
+on the narrow face, every tick that falls back to the narrow face after the wide one is refused, and every
+tick that refuses outright is bit-for-bit identical in all three position components. Only the 206602
+samples that commit on a substituted wide face differ, which is the fix. The 32 smooth-bank rides that never
+substitute at all are bit-for-bit identical over every tick of every ride. All 138 wall-contact and
+steep-terrain referees green, full engine suite green, zero warnings.
 
 ## 17.31.0
 

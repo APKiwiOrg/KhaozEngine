@@ -70,8 +70,10 @@ namespace KhaozEngine.Tests.Locomotion;
 //
 // LEAN 68 IS THE CONTROL AND IT IS LOAD-BEARING. Its wall contacts are real and frequent, its narrow face never
 // reaches anti-parallel, and it must come through the fix untouched. A change that fired the wide read on healthy
-// contacts would show up here first: measured at fallback thresholds of 0.15 and 0.25 this row drops to 0.08, which
-// is how those thresholds were ruled out.
+// contacts shows up here first, and it is what has ruled out every over-wide setting the rule has been swept over:
+// under the round-one keep trigger this row dropped to 0.08 at a threshold of 0.15, and under the shipped max-keep
+// comparison it is the row that breaks first as the doubt band widens, taking 14 footing flips and 65 airborne ticks
+// at a band of 0.20 where a band of 0.15 leaves it clean. Both are the same measurement about the same row.
 //
 // 120 HZ IS NOT SWEPT, and the reason is a property of the fixture rather than of the rule. The wall contact pins a
 // walker where its DESTINATION is past the gate, so the walker's own footing headroom is the bank's gradient ramp
@@ -327,13 +329,13 @@ public class WallFaceAttractorTests
     // and #468 fixtures on analytic steep faces, where no walkable seat can confound the reading.
     const float InsideContourBound = 0.15f;
 
-    // ---- The whole heading range at one degree, which is what caught the fallback's own attractor (#501) ----
+    // ---- The whole heading range at one degree, which is what caught the wide read's own attractor (#501) ----
 
     // WHY THREE HEADINGS WERE NOT ENOUGH. The sweep above pins 68, 75 and 79 because those are where the census put
-    // the bug. A fallback can move a park instead of removing one, and a moved park lands wherever the new rule's own
+    // the bug. A substitution can move a park instead of removing one, and a moved park lands wherever the new rule's
     // boundary happens to sit, which is not a heading anybody picked in advance. It landed ONE DEGREE off the control:
-    // at 69, 70 and 71 degrees the walker settled where its narrow face keeps 0.094 of the command, just inside the
-    // trigger, took a wide face pointing straight up the local wiggle rather than along it, and stopped dead. The
+    // at 69, 70 and 71 degrees the walker settled where its narrow face keeps 0.094 of the command, just inside that
+    // build's keep trigger, took a wide face pointing straight up the local wiggle rather than along it, and stopped dead. The
     // wall contact had done nothing wrong at that column - the wide direction is a contour of a 2 m plane and simply
     // is not level on the metre-scale surface the ladder reads, so every rung of it climbed and every rung was
     // refused. Measured on 17.32.0's first entry: 0.17 of commanded travel with 118 consecutive dead ticks at 15 Hz,
@@ -341,27 +343,42 @@ public class WallFaceAttractorTests
     //
     // SO THE SWEEP IS THE WHOLE RANGE AT ONE DEGREE NOW, and the assertion is a park bound rather than a per-heading
     // band, because 112 hand-pinned bands would be unmaintainable and would not be checking anything the two numbers
-    // below do not. THE PARK BOUND IS ZERO. Over the entire range this build has not one stalled tick anywhere,
-    // where 17.32.0's first entry has runs of 269 and the keep-trigger-only build it replaced has the same.
+    // below do not. Over the range at ONE DEGREE this build has not one stalled tick anywhere, where 17.32.0's first
+    // entry has runs of 269 and the keep-trigger-only build it replaced has the same.
+    //
+    // THE GRANULARITY IS PART OF THAT STATEMENT AND USED TO BE MISSING FROM IT, WHICH MADE IT TOO STRONG. A
+    // one-degree grid steps ACROSS the extremes of a quantity that varies this fast with the heading, so "not one
+    // stalled tick anywhere" is a claim about the grid rather than about the range. Re-scanned at 0.02 degrees, this
+    // build has exactly two headings in 60 to 87 that stall past eight ticks: a run at 15 Hz near 78.3 (30 to 37
+    // ticks) and a run at 30 Hz near 72.8 (18). Both are hitches inside otherwise healthy rides - 0.78 and 0.87 of
+    // commanded travel, against 0.14 with 120 dead ticks and 0.10 with 233 on the pre-#501 engine at the same
+    // headings - and 17.32.0 as reviewed has none there. Over the whole census range at 0.1 degrees the ledger runs
+    // the other way by a wide margin: of 37988 rides, 17.32.0 stalls past eight ticks on 128 that the pre-#501 engine
+    // walked cleanly, with a worst run of 243, and this build stalls on none of them.
     //
     // 88 AND 89 DEGREES ARE OUTSIDE THE RANGE ON PURPOSE. A command that close to the face normal is a walk INTO a
     // wall, and the pre-#501 engine parks there too (measured 95 to 245 dead ticks at 89 degrees, against 84 to 234
     // on this build). Pinning a heading the rule was never able to walk would be pinning something else's bug.
     //
-    // WHAT THE BAND IS, AND THE RECTIFICATION RESIDUAL IN IT. Two-sided, 0.20 to 1.25, from a measured 0.2394 (at 83
-    // degrees at a run at 30 Hz) to 1.1993 (at 85 degrees at a run at 15 Hz). The high side is the residual the
-    // review asked to have pinned: a heading steep enough to spend most of its ticks on the wall can come out of the
-    // switch travelling FASTER along the bank than the stick asked for, because the fallback only ever fires on the
-    // ticks whose narrow answer was small and so acts as a rectifier on an oscillation. It is bounded and it is
-    // smaller than it was: 17.32.0's first entry peaks at 1.3025 over the same sweep, and falling back to the narrow
-    // projection when the ladder refuses the wide one takes the peak to 1.1993 without moving where it sits.
+    // WHAT THE BAND IS, AND THE RECTIFICATION RESIDUAL IN IT. Two-sided, 0.20 to 1.25, and BOTH BOUNDS ARE PINNED
+    // FROM A 0.1-DEGREE SCAN rather than from the one-degree grid the sweep below walks, for the reason above: a
+    // bound a finer scan steps across is not a bound. At one degree this build reads 0.2134 to 1.1882 and at 0.1
+    // degrees it reads 0.2048 (at 80.4 at a walk at 30 Hz) to 1.2266, and the second pair is what the numbers below
+    // clear. That correction matters most on the high side, where the reviewed build's own peak was recorded as
+    // 1.1993 from a one-degree grid and is really 1.2565 at 0.1 degrees - OVER the 1.25 this file pins, so 17.32.0 as
+    // shipped breaches its own ceiling and only the grid hid it. This build peaks at 1.2266 with 0.0234 to spare.
+    //
+    // The high side is the residual the review asked to have pinned: a heading steep enough to spend most of its
+    // ticks on the wall can come out of the switch travelling FASTER along the bank than the stick asked for, because
+    // the substitution only ever fires on the ticks whose narrow answer was small and so acts as a rectifier on an
+    // oscillation.
     //
     // WHAT IS NOT PINNED HERE, AND THE MEASUREMENT BEHIND THAT. The review asked for a toggle count as well. Every
     // ride-observable proxy for one was tried and none of them discriminate: the obvious one, sign reversals of the
     // per-tick along-face step, reads 6 on the chattering keep-trigger-only build at 79 degrees and 15 on this one,
     // because a walker parked on a chattering boundary does not reverse anything - it stops. Toggles were counted
-    // instead from an instrumented engine build while the constants were being chosen, and that measurement lives
-    // at CharacterMovement.WideFaceOpposedDot where the constant it justifies is. What a fixture can see is the
+    // instead from instrumented engine builds while the constants were being chosen, and that measurement lives at
+    // CharacterMovement.WideFaceKeepMargin where the constant it justifies is. What a fixture can see is the
     // consequence, and both of this build's consequences are asserted below.
     [Theory]
     [InlineData(false, 15f)]
@@ -391,9 +408,15 @@ public class WallFaceAttractorTests
             $"the switch rectified a heading into more travel than the stick asked for: {measured}");
     }
 
-    // Zero measured, so this is float slack rather than a budget: one stalled tick on this bank at these headings is
-    // already a wall contact refusing a move the pre-#501 engine committed.
+    // Zero measured on the one-degree grid this sweep walks, so this is float slack rather than a budget: one stalled
+    // tick on this bank at these headings is already a wall contact refusing a move the pre-#501 engine committed.
+    // The two sub-degree hitches a 0.02-degree scan finds are in the block above, and they are not what this number
+    // is about.
     const int BoundaryStallBound = 8;
+
+    // Both pinned from a 0.1-DEGREE scan of the same range rather than from the one-degree grid below, so neither is
+    // a number a finer scan can step across. Measured 0.2048 and 1.2266 there, against 0.2134 and 1.1882 at one
+    // degree. See the block above for why the difference is load-bearing and what it caught.
     const float BoundaryFloor = 0.20f;
     const float BoundaryCeiling = 1.25f;
 
@@ -406,7 +429,7 @@ public class WallFaceAttractorTests
     // stay justified.
     //
     // The assertion is deliberately about the SHAPE rather than the exact numbers: the capsule-width read must reach
-    // zero (or the fixture has stopped reproducing the bug at all) and the shipped width must not (or the fallback
+    // zero (or the fixture has stopped reproducing the bug at all) and the shipped width must not (or the wide read
     // has a fixed point of its own and the census's warning applies to it).
     [Theory]
     [InlineData(68f)]

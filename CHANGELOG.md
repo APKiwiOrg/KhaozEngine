@@ -1199,6 +1199,127 @@ Metal, and (255,0,0) versus (0,0,255) is the whole distance between the two addr
 also stops being satisfiable by either mode: its pixel-difference count was true under clamp as well, so it now
 asserts WHERE the warped tap lands, as the share of the sprite reading as the blend of cells 2 and 0.
 
+### A wall contact keeps its along-face travel on open terrain (#498)
+
+Eighth round of the steep-terrain chain, and like #475 and #486 it comes from a playtest rather than an
+exploit sweep. Walking SIDEWAYS along a slope while leaning lightly on it stopped a character dead, and
+stayed stopped: the trace was binary (full commanded speed or exactly nothing), and because the refusal
+returned the character to where it already was, the next tick refused the same move for the same reason
+forever. Measured on Ruinborne's island heightfield at 17.31.0, 32 of 63 (site, heading) pairs kept under
+90 percent of their commanded sideways travel and the worst kept 6 percent, with ZERO footing flips and
+zero slide ticks anywhere in the trace. The wall contact was eating the along-face travel its own
+documentation promises to leave alone.
+
+**The mechanism is one line, and #486 is what armed it.** `AdvanceWallSlide` re-tests the PROJECTED move
+against the same two conditions it tested the original destination with, and refused the WHOLE move when
+that projection still landed on past-gate ground above the reach. Since #486 the reach on a grounded
+walking tick is exactly 0, because a walker has no upward velocity and the reach is the tick's own
+resolved upward motion, so the refusal fired whenever the projected destination was past-gate and rose by
+ANY amount at all. And the projected velocity is the destination height plane's CONTOUR by construction,
+since that is what removing the into-face component means, so what it was actually asking for was float
+rounding plus whatever the surface curves through under one tick of travel. The ten measured
+first-blocked ticks asked for +0.000 to +0.021 m, eight of them at +0.000 or +0.001. The comment on that
+branch claimed it could only happen in a concave corner. It happened on open banks, at headings ten
+degrees off tangential.
+
+**The rise comparison gets a slack, `ProjectedRiseSlack`, the same 1 mm the slide path has carried since
+17.28.0.** Both sides of it are differences of world heights, so their rounding is proportional to the
+height magnitude at about 1e-7 per operand, and a millimetre covers several kilometres of world height.
+It is a sibling of `SlideRiseSlack` rather than the same symbol because the two are different
+comparisons and both are live on a sliding tick, one inside the reach that path hands down and one
+against the projected step. `SlideRiseSlack`'s own comment used to be headed "why the slide needs one and
+no other path does", which this measurement refutes, and it now says so. On a SLIDING tick the two
+compose rather than overlapping: the reach that path hands down already carries its own millimetre, so
+the projected step there is allowed two, which is 0.06 m/s at 30 Hz and 0.24 at 120 rather than the
+destination test's 0.03 and 0.12. That composition is now stated at both constants, because the
+alternative is a conditional that subtracts a slack depending on which path called.
+
+**A refused projection is SHORTENED before it is refused outright, by repeated halving down to a
+sixty-fourth of itself.** Committing the first endpoint that clears, refused only when the sixty-fourth
+does not. Every committed endpoint is tested at the point it actually lands on, against the same
+allowance at every rung, so the #468 invariant is preserved exactly rather than approximately: no XZ is
+ever committed under terrain for a later ground clamp to pop the capsule up a cliff. The whole cost is at
+most six extra delegate probe pairs, on a contact tick only, and nothing at all on any other tick, and a
+move aimed entirely into the face short-circuits out before any of them.
+
+**The floor is a sixty-fourth because the ask is QUADRATIC in the step, which the first ladder's three
+rungs missed twice over.** A bend of radius R makes one tick ask for `G * L^2 / (2R)`, with L the step
+length: shortening to a fraction k leaves `k(2-k)` of that rather than k of it, since the step line stays
+aimed at the FULL destination, so an eighth rung still asked for 0.234 of the full ask. And L is not a
+constant of the engine - 0.05 m for a walk at 120 Hz, 0.80 m for a run at 15 Hz - so the ask spans a
+factor of 256 across ordinary configurations. Three rungs therefore covered a walk at 30 Hz down to
+about a 5 m bend and dead-stopped a RUN at the same rate at anything under about 21 m, which is ordinary
+gate-contour terrain: measured on the fixture's own 8 m bend, three of the four leans at 300 refusals out
+of 300 ticks with zero displacement, the fourth at 299 with 0.044 m. Six rungs put the floor's ask at 0.031 of the full one, which covers a 0.52 m step on a 5 m
+bend and so a run at 30 Hz with margin. Past the ceiling every rung is refused and the walk parks, exactly
+as it did before, at a bend an order of magnitude tighter - moving that line further out is #502's job
+rather than a deeper ladder's.
+
+**The concave-crease refusal is now exercised, and the reason it used to give was wrong.** The claim was
+that a crease refuses because every point along the step is inside both faces. It is not: the step is the
+CONTOUR of the destination's height plane, and on the symmetric crease that plane is the exact bisector,
+so the projection removes the whole velocity, every rung lands on the walker's own column, and the ladder
+leaves through the not-steep branch at rung 0 without the refusal ever running. Deleting the refusal
+outright left that test passing bit-identically. What reaches it is a non-zero projection aimed at ground
+that is past the gate and rising at every rung, which on a smooth face means a bend of about a centimetre:
+a rising gully now rides in the fixture for exactly that, and it is checked by mutation - a build whose
+last rung commits unconditionally fails it on all three assertions.
+
+**What the fix does not buy, measured rather than argued.** A walker leaning into a bank comes to rest
+exactly ON its traction ceiling, since that is where the wall contact stops it. On a face that BENDS in
+plan the projected step is aimed at the contour through the FULL step's destination rather than through
+the walker's own column, so it points a hair inside the contour whatever its length, and the only
+endpoints available at the ceiling are past it. Committing the longest one inside the allowance is what
+returns the travel, and the support decision at the end of that tick then reads ground past the ceiling
+and slides the character a few centimetres back down before it walks in again. Over ten seconds at 30 Hz
+that is 2 to 6 footing flips on a near-planar face and 12 to 20 on an 8 m bend, against #486's record of
+112 flips and 539 airborne ticks out of 600. The difference is where the altitude goes: across every ride
+in the sweep the wall contact hands over at most 2.9e-4 m of climb per TICK, under a third of one slack,
+where a ratchet running at the slack's full rate would be 0.3 m over a 300-tick ride and #486's 0.4 m
+StepHeight seat bought that in a single tick. Reading the contour at the walker's column instead of at
+the destination is what would remove the slips, and that is a change to what the wall contact RESOLVES
+against rather than to what it admits, so it is #502.
+
+**That oscillation also hands over SPEED, which is the other half of #502 and is now bounded.** Part of
+each cycle is a slide tick, whose carry is the fall line plus the contour, and the contour part arrives on
+top of the walk: a bank-hug can travel faster along the face than the stick asked for. Measured at 113
+percent on the near-planar bend at walk and 30 Hz, 128 on the 8 m bend at walk and 120 Hz (the
+near-planar bend tops out at 115), and 158 at run and 15 Hz. It did not
+exist before this change, because the pre-fix ride never reached a slide tick - it never moved. Every case
+in the fixture now carries a two-sided band pinned from its own measurement, so the channel cannot widen
+without a test saying so, and it closes when #502 re-resolves the contact.
+
+**Before and after, on the fixture, corrected.** The figures first published here did not reproduce and
+are replaced by the measured record. A walker holding 5 to 30 degrees into a bank for 10 seconds at walk
+speed and 30 Hz, BEFORE: 13.3 to 18.3 percent of its commanded along-face travel on the 400 m bend with
+stalls of 245 to 260 consecutive ticks, and 0.0 to 0.3 percent on the 8 m bend with stalls of 299 to 300
+of 300. (Not 3.6 percent, and the 400 m stalls do not reach 300.) AFTER, at the same speed and rate:
+104.0 to 112.9 percent on the 400 m bend and 98.3 to 102.3 on the 8 m one, with no stalled tick anywhere
+and at most 8.8 mm of climb. Efficiency is measured as the displacement PROJECTED ON THE CONTOUR TANGENT
+rather than as a path length, which the first version summed: a path length counts the radial oscillation
+as along-face progress and overstated these rides by up to 2.4 points.
+
+**Where the tests are.** `WallContactTangentialTravelTests` builds a bank whose gate contour BENDS, which
+is the one thing a straight face cannot show (on a straight face the projected step runs exactly along
+the contour, lands at the same steepness and the same height, and was always admitted). The bend radius
+is the only knob: 400 m for the near-planar class that eight of the ten measured blocks fell in, and 8 m
+for the curvature the slack alone cannot cover. Before this the 8 m class was a permanent dead stop and
+the 400 m class kept 13 to 18 percent of its travel between long stalls. Each is now
+swept across lean, SPEED and TICK RATE - walk and run at 15, 30 and 120 Hz, so the step length spans 0.05
+to 0.80 m and the ask spans a factor of 256 - because the ask is quadratic in the step and a walk-only
+sweep at one rate measured a single point of that curve. Every case carries a two-sided efficiency band
+plus pinned stall, flip and airborne counts and a per-tick climb rate, all from measurement, and an
+unpinned combination throws rather than passing. The file header states the coverage ceiling as terrain
+(smallest bend held, by speed and rate) and the 8 m bend at run speed and 15 Hz is swept deliberately on
+the far side of it. The rides print their own numbers whether they pass or fail. The #486 cliff-toe
+fixtures, the 360-heading clamp-ratchet sweeps at four tick rates on two faces, and the rest of the
+locomotion suite are unchanged and green with their thresholds untouched.
+
+`AdvanceWallSlide` and `NoFootingReach` moved to `CharacterMovement.WallContact.cs` in the same change,
+because the documentation this round adds pushed `CharacterMovement.Slide.cs` past the file-size ratchet.
+Same partial type, same private core, and rule 1 of the steep-terrain model (the wall contact) now sits
+beside rule 2 (no traction) instead of inside it. The geometry both rules read stays where it was.
+
 ## 17.31.0
 
 ### The native Direct3D 11 backend: the replay contract, the constant-buffer ring, and the three cross-row wirings (#449, #451, #452)

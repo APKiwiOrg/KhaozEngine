@@ -331,9 +331,19 @@ namespace KhaozEngine.Gpu
         IGpuResourceFactory Factory { get; }
         /// <summary>The main swapchain framebuffer (null on a headless no-swapchain device).</summary>
         IGpuFramebuffer? SwapchainFramebuffer { get; }
-        /// <summary>A shared point (nearest) sampler owned by the device.</summary>
+        /// <summary>A shared point (nearest) sampler owned by the device, WRAP-addressed on all three axes.
+        /// <para>
+        /// THE ADDRESS MODE IS PART OF THE CONTRACT, and it is the opposite of what the identically named
+        /// <see cref="GpuSamplerDescription.Point"/> static gives you: that static defaults every axis to
+        /// <see cref="GpuSamplerAddress.Clamp"/>, this shared sampler wraps. Renderers sample through this pair
+        /// assuming wrap (<c>ModelRenderer</c> says so in writing), so a backend that builds its shared pair from
+        /// the engine statics renders every out-of-range tap clamped, which throws nothing and only a golden
+        /// sees. Build the pair from wrap-addressed descriptions, not from the statics.
+        /// </para></summary>
         IGpuSampler PointSampler { get; }
-        /// <summary>A shared linear (bilinear) sampler owned by the device.</summary>
+        /// <summary>A shared linear (bilinear) sampler owned by the device, WRAP-addressed on all three axes. The
+        /// address-mode contract, and the clamp/wrap name collision behind it, are on
+        /// <see cref="PointSampler"/>.</summary>
         IGpuSampler LinearSampler { get; }
 
         /// <summary>

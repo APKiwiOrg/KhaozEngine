@@ -242,9 +242,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                     + "No creation lock is taken at all.");
 
             // The two shared samplers the seam promises, built through the factory so they carry the same
-            // hardcodes every other sampler on this backend does (decision G1).
-            _pointSampler = _factory.CreateSampler(GpuSamplerDescription.Point);
-            _linearSampler = _factory.CreateSampler(GpuSamplerDescription.Linear);
+            // hardcodes every other sampler on this backend does (decision G1), and from D3D11SharedSamplers
+            // rather than from the engine's identically named GpuSamplerDescription.Point / .Linear statics. The
+            // statics are CLAMPED and the seam's shared pair is WRAP, which is the collision that cost two
+            // goldens. See D3D11SharedSamplers for the record.
+            _pointSampler = _factory.CreateSampler(D3D11SharedSamplers.Point);
+            _linearSampler = _factory.CreateSampler(D3D11SharedSamplers.Linear);
 
             // The staging map path, with decision G3's second check site wired: the latch arrives here so a
             // failed map asks it BEFORE it builds an exception message.

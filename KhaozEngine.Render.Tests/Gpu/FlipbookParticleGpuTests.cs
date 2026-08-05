@@ -240,6 +240,25 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(dAvg < Dist2(r, g, b, 3), "frame 2.5 should not read as pure cell 3");
         }
 
+        // How many lit pixels read as CELL, judged on HUE alone: each pixel is scaled so its brightest channel is
+        // 255 before ClosestCell sees it. The normalisation is load-bearing rather than tidiness. A tap that
+        // leaves the sheet under a CLAMP-addressed sampler lands on the atlas edge, where the cell's disc is
+        // transparent, so it contributes its hue with zero coverage and halves the pixel's brightness. Raw
+        // ClosestCell against full-value hues then drifts toward whichever cell happens to sit nearest a dimmed
+        // colour, which would make the count below say wrap on a clamped device.
+        static int CellPixels(byte[] rgba, int cell)
+        {
+            int n = 0;
+            for (int i = 0; i < rgba.Length; i += 4)
+            {
+                int r = rgba[i], g = rgba[i + 1], b = rgba[i + 2];
+                if (r + g + b <= 90) continue;   // background and bloom skirt, as MarkerCentroid
+                int m = Math.Max(1, Math.Max(r, Math.Max(g, b)));
+                if (ClosestCell(r * 255 / m, g * 255 / m, b * 255 / m) == cell) n++;
+            }
+            return n;
+        }
+
         [GpuFact]
         public void Flipbook_motion_vectors_warp()
         {
@@ -259,6 +278,32 @@ namespace KhaozEngine.Tests.Gpu
                 }
             }
             Assert.True(differing > 100, $"expected the motion warp to move many pixels, only {differing} differed");
+
+            // WHERE THE WARPED TAP LANDS, which the pixel count above cannot see: a moved pixel is a moved pixel
+            // under either address mode, so that assertion held while the native Direct3D 11 backend was sampling
+            // this scene through a CLAMPED shared sampler and the golden moved by 0.359 (CI run 30963173087).
+            //
+            // Frame 2.5 blends cell 2 (tap A) with cell 3 (tap B) half and half. The offset sheet pushes tap B a
+            // fifth of a cell further along u, so over one lobe of the sprite it walks off the right edge of the
+            // sheet. WRAPPED it re-enters at cell 0, and that lobe reads as the 50/50 blend of cells 2 and 0.
+            // CLAMPED it holds the sheet's last column, which is cell 3 again, so the lobe stays the plain
+            // cross-fade the neutral render already shows and cell 0 is never sampled at all.
+            //
+            // On this sheet's hue ramp the blend of cells 2 and 0 IS cell 1's own colour, asserted rather than
+            // asserted-in-a-comment below, which lets the whole check run through ClosestCell.
+            (byte r0, byte g0, byte b0) = FlipbookTestSheets.CellRgb(0, FrameCount);
+            (byte r2, byte g2, byte b2) = FlipbookTestSheets.CellRgb(2, FrameCount);
+            Assert.Equal(1, ClosestCell((r0 + r2) / 2, (g0 + g2) / 2, (b0 + b2) / 2));
+
+            int wrappedLobe = CellPixels(warped, 1);
+            int neutralLobe = CellPixels(neutral, 1);
+            Assert.True(neutralLobe < 50,
+                $"control failed: the UNWARPED render already has {neutralLobe} pixels reading as the wrapped-to "
+                + "blend, so the assertion below cannot mean anything");
+            Assert.True(wrappedLobe > 300,
+                $"only {wrappedLobe} pixels of the warped sprite read as the blend of cells 2 and 0. The tap that "
+                + "leaves the sheet is landing on the clamped edge (cell 3) instead of wrapping to cell 0, which "
+                + "is what a clamp-addressed IGpuDevice.LinearSampler does to this scene");
         }
 
         // A grazing, flat-on-ground quad on the CONTRAST sheet, minified hard along one axis. The camera is

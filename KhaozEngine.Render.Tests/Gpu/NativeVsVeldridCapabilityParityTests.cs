@@ -226,6 +226,73 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         // ---------------------------------------------------------------------------------------------------
+        // The shared sampler pair, against the incumbent's built-ins. Device-free, so it runs on every OS.
+        // ---------------------------------------------------------------------------------------------------
+
+        /// <summary>
+        /// THE SHARED PAIR IS SEAM-CONTRACT WRAP, AND IT MUST TRACK THE INCUMBENT BYTE FOR BYTE UNTIL PHASE 3
+        /// RETIRES IT. <see cref="IGpuDevice.PointSampler"/> and <see cref="IGpuDevice.LinearSampler"/> are the
+        /// samplers most of the engine renders through, the incumbent builds them from
+        /// <c>Veldrid.SamplerDescription.Point</c> and <c>.Linear</c>, and while both backends exist a difference
+        /// between the two pairs is a difference in every scene that samples past the edge of a texture.
+        /// <para>
+        /// THE FIELD THIS EXISTS FOR IS THE ADDRESS MODE. The native device used to build its pair from the
+        /// engine's <see cref="GpuSamplerDescription.Point"/> / <see cref="GpuSamplerDescription.Linear"/>
+        /// statics, whose ctor defaults every axis to <see cref="GpuSamplerAddress.Clamp"/>: the same names, the
+        /// opposite behaviour, and nothing to notice it. CI run 30963173087 noticed it as
+        /// <c>scene3d_texbillboard</c> (worst 0.393) and <c>scene3d_particles_flipbook</c> (worst 0.359).
+        /// </para>
+        /// <para>
+        /// The last four assertions are the values the seam does not expose at all, so they cannot be compared
+        /// through a <see cref="GpuSamplerDescription"/>: they are asserted against the incumbent directly, and
+        /// <c>D3D11Sampler</c> hardcodes exactly these four (decision G1).
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void TheSharedSamplerPairMirrorsTheIncumbentsBuiltIns()
+        {
+            AssertMirrorsTheIncumbent(D3D11SharedSamplers.Point, Veldrid.SamplerDescription.Point,
+                GpuSamplerFilter.MinPointMagPointMipPoint, Veldrid.SamplerFilter.MinPoint_MagPoint_MipPoint);
+            AssertMirrorsTheIncumbent(D3D11SharedSamplers.Linear, Veldrid.SamplerDescription.Linear,
+                GpuSamplerFilter.MinLinearMagLinearMipLinear, Veldrid.SamplerFilter.MinLinear_MagLinear_MipLinear);
+        }
+
+        static void AssertMirrorsTheIncumbent(in GpuSamplerDescription ours, in Veldrid.SamplerDescription theirs,
+            GpuSamplerFilter ourFilter, Veldrid.SamplerFilter theirFilter)
+        {
+            // Address modes, all three axes, in both directions: the incumbent really is wrap, and ours really is
+            // the same wrap. Asserting only the mapping would pass on a day the incumbent changed too.
+            Assert.Equal(Veldrid.SamplerAddressMode.Wrap, theirs.AddressModeU);
+            Assert.Equal(Veldrid.SamplerAddressMode.Wrap, theirs.AddressModeV);
+            Assert.Equal(Veldrid.SamplerAddressMode.Wrap, theirs.AddressModeW);
+            Assert.Equal(Mapped(theirs.AddressModeU), ours.AddressModeU);
+            Assert.Equal(Mapped(theirs.AddressModeV), ours.AddressModeV);
+            Assert.Equal(Mapped(theirs.AddressModeW), ours.AddressModeW);
+
+            // Filter, and the engine kind it maps to.
+            Assert.Equal(theirFilter, theirs.Filter);
+            Assert.Equal(ourFilter, ours.Filter);
+
+            // The two remaining fields the seam DOES expose.
+            Assert.Equal(theirs.MaximumAnisotropy, ours.MaximumAnisotropy);
+            Assert.Equal(theirs.LodBias, ours.MipLodBias);
+
+            // And the four the seam does not, which D3D11Sampler hardcodes to exactly these.
+            Assert.Equal(0u, theirs.MinimumLod);
+            Assert.Equal(uint.MaxValue, theirs.MaximumLod);
+            Assert.Null(theirs.ComparisonKind);
+            Assert.Equal(Veldrid.SamplerBorderColor.TransparentBlack, theirs.BorderColor);
+        }
+
+        static GpuSamplerAddress Mapped(Veldrid.SamplerAddressMode mode) => mode switch
+        {
+            Veldrid.SamplerAddressMode.Wrap => GpuSamplerAddress.Wrap,
+            Veldrid.SamplerAddressMode.Mirror => GpuSamplerAddress.Mirror,
+            Veldrid.SamplerAddressMode.Clamp => GpuSamplerAddress.Clamp,
+            _ => GpuSamplerAddress.Border,
+        };
+
+        // ---------------------------------------------------------------------------------------------------
         // The two-device half. Live since the device row.
         // ---------------------------------------------------------------------------------------------------
 

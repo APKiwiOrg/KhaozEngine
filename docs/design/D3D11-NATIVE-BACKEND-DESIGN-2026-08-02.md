@@ -1016,13 +1016,19 @@ against:
 - **An offsets-only rebind is exactly one call per VISIBLE stage**, one for a vertex-only set and two for
   vertex plus fragment. Not one per element, not one per resource, and not a re-activation.
 
-**Gate 1's worst-cell delta and gate 2's pass, fail and skip counts are recorded on
-[#460](https://github.com/APKiwiOrg/KhaozEngine/issues/460), from the first `direct3d11-native` leg run to come
-back green, since the very first run was red and its fixes (below) landed in-branch before this one.** The
-mechanism for gate 1 exists rather than the number: every golden compare now appends its worst-cell delta to
+**Gate 1 is met.** All 36 goldens ran green against the shared `direct3d11` family at the 0.06 tolerance, on
+the first `direct3d11-native` leg run to come back green (run 30968278343, commit d5778fc7), since the very
+first run was red and its fixes (below) landed in-branch before this one. The observed worst-cell delta was
+0.011 (`scene3d_splat_shadow`), the next worst 0.0057, and most scenes sat at or under 0.0006. The mechanism
+behind the number: every golden compare now appends its worst-cell delta to
 `goldens-evidence/golden-deltas.<family>.txt` on a pass as well as a fail, and the leg uploads that file as
 `golden-deltas-direct3d11-native` on `always()`, so the observed figure comes off a green run instead of
 needing one to break first.
+
+**Gate 2 is met.** The same run's full WARP suite passed 4052, failed 0, skipped 0 on the native leg, against
+the incumbent leg's 4050 passed, 0 failed, 2 skipped, on the same commit in the same run. The two incumbent
+skips are the `RequiresCompletionFences` pair, which the native leg runs, and running that pair is the
+absolute criterion gate 2 asked for.
 
 **Gate 3 is not met, and what it waits on is M1 rather than a number.** The marginals above are green, but
 `KE_D3D11_RECORD` still ships and both drivers with it, so the deferred-versus-immediate A/B on the #410

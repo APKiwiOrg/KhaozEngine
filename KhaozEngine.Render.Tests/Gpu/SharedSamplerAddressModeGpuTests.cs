@@ -99,7 +99,7 @@ void main() {
 
             Assert.True(r > 200 && b < 60,
                 $"{dev.Backend}: the shared linear sampler read ({r},{g},{b}) at u=1.25 on a 2x1 red/blue "
-                + "texture. Wrapped that is texel 0 (255,0,0); clamped it is texel 1 (0,0,255). A blue answer "
+                + "texture. Wrapped that is texel 0 (255,0,0). Clamped it is texel 1 (0,0,255). A blue answer "
                 + "means the device's shared sampler pair is clamp-addressed, which is the defect CI run "
                 + "30963173087 caught as two moved goldens.");
         }

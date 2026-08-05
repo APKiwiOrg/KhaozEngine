@@ -284,7 +284,7 @@ namespace KhaozEngine.Tests.Gpu
             // this scene through a CLAMPED shared sampler and the golden moved by 0.359 (CI run 30963173087).
             //
             // Frame 2.5 blends cell 2 (tap A) with cell 3 (tap B) half and half. The offset sheet pushes tap B a
-            // fifth of a cell further along u, so over one lobe of the sprite it walks off the right edge of the
+            // bit over a quarter of a cell further along u, so over one lobe of the sprite it walks off the right edge of the
             // sheet. WRAPPED it re-enters at cell 0, and that lobe reads as the 50/50 blend of cells 2 and 0.
             // CLAMPED it holds the sheet's last column, which is cell 3 again, so the lobe stays the plain
             // cross-fade the neutral render already shows and cell 0 is never sampled at all.

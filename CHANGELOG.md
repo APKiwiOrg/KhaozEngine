@@ -636,7 +636,8 @@ lever, the pump and all three rate-limit caps against a fake queue, and the latc
 liveness flip, header string and fault path. `NativeVsVeldridCapabilityParityTests` carries T4 itself as a
 `[GpuFact]` that constructs both devices in one process. It landed DORMANT, keyed to the exact
 `NotSupportedException` the unbuilt provider raised, and the device row below took that key out in this same
-version, so a native device that will not create is now a failure rather than a reason to skip. Its
+version, so a native device that will not create is now a failure rather than a reason to skip, on a machine
+the probe calls capable. Its
 device-free companion is a reflection check that the field-by-field comparer covers every member of
 `GpuCapabilities`, which is the guard that matters: a member appended to that struct without a line in the
 comparer would make every parity assertion silently weaker while staying green.

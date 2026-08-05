@@ -14,11 +14,15 @@
          backend is unsafe by construction rather than by choice, unlike the ONE ring copy that earns the flag in
          KhaozEngine.Gpu.D3D11. Same flag KhaozEngine.Gpu, Render2D and Render3D already carry. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Description>Engine-owned native Vulkan backend for the KhaozEngine.Gpu seam (opt-in, NOT in any umbrella, add explicitly like Physics.Bepu). Targets net10.0 with no OS suffix and no platform guards, because Vulkan is not a Windows API and the assembly loads harmlessly anywhere. Binds Vulkan through Silk.NET.Vulkan on the same 2.23.0 line the windowing, input and audio stacks already pin. SKELETON: this package currently carries its entry point and the binding-sufficiency spike only, and registers nothing. Spec: docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md.</Description>
+    <Description>Engine-owned native Vulkan backend for the KhaozEngine.Gpu seam (opt-in, NOT in any umbrella, add explicitly like Physics.Bepu). Targets net10.0 with no OS suffix and no platform guards, because Vulkan is not a Windows API and the assembly loads harmlessly anywhere. Binds Vulkan through Silk.NET.Vulkan on the same 2.23.0 line the windowing, input and audio stacks already pin. IN PROGRESS: KhaozEngineVulkan.Register() and the functional machine-capability probe are real, and device creation is not built yet. Spec: docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Gpu/KhaozEngine.Gpu.csproj" />
+    <!-- The engine logger, for the one line the support probe writes when it answers no. Declared explicitly
+         rather than ridden transitively through KhaozEngine.Gpu, the same way KhaozEngine.Gpu.D3D11 declares it:
+         a backend that logs should say so in its own project file. -->
+    <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- The Vulkan binding (V-P2). Pinned centrally in Directory.Packages.props to the 2.23.0 Silk.NET line the

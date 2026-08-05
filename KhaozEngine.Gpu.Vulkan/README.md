@@ -203,6 +203,7 @@ had to read the reasoning to make.
 
 ```
 KhaozEngine.Gpu.Vulkan -> KhaozEngine.Gpu                     (the only direction. Gpu never references a backend package)
+KhaozEngine.Gpu.Vulkan -> KhaozEngine.Diagnostics             (the probe's one log line, same as the D3D11 instance)
 KhaozEngine.Gpu.Vulkan -> Silk.NET.Vulkan(+.Extensions.KHR/.EXT)   (its subject matter)
 KhaozEngine.Gpu.Vulkan -> Veldrid*                            (never, asserted two ways)
 ```

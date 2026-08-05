@@ -4,12 +4,15 @@ The engine's own native Vulkan backend for the [KhaozEngine.Gpu](../KhaozEngine.
 umbrella: a consumer adds this package explicitly, the same pattern as `Physics.Bepu` or `WorldStore.Sqlite`,
 and nothing that does not want the Vulkan binding ever carries it.
 
-> **Status: SKELETON.** This package currently contains its entry point, the binding-sufficiency spike, and
-> nothing else. It registers no provider, it creates no device, `GpuBackendKind` has no native Vulkan member
-> yet, and there is no way for a consumer to reach a Vulkan device through it. What HAS landed is the package
-> itself, its guard rows, the two verification tasks row 1 owed, and the Silk.NET pin. `KhaozEngine.Gpu`'s
-> `Vulkan` backend, which goes through Veldrid, remains the working Vulkan path and stays selectable
-> indefinitely.
+> **Status: REGISTRATION AND PROBE.** `KhaozEngineVulkan.Register()` is real and so is the machine-capability
+> probe behind it: registering makes the provider reachable, and `GpuBackendSelector.IsBackendSupported` then
+> answers for THIS machine by resolving a Vulkan loader, creating a throwaway instance at the 1.3 floor and
+> reading every physical device against the design's requirements. Creating a DEVICE is not built yet and
+> refuses with a message naming the row that builds it
+> ([#514](https://github.com/APKiwiOrg/KhaozEngine/issues/514)). `GpuBackendKind` still has no native Vulkan
+> member, which is [#513](https://github.com/APKiwiOrg/KhaozEngine/issues/513), so nothing can SELECT this
+> backend yet either. `KhaozEngine.Gpu`'s `Vulkan` backend, which goes through Veldrid, remains the working
+> Vulkan path and stays selectable indefinitely.
 
 ## The spec
 
@@ -21,6 +24,46 @@ phase 3 of the staged native GPU backend program
 implementation issue comes from, section 2 carries the eight contested decisions with their arguments and
 rulings, and section 16 is the honesty ledger of what nobody can currently measure. Read the design before
 adding anything here: several of the shapes below look like oversights and are decisions.
+
+## Registering it, and the one machine question it can answer
+
+```csharp
+using KhaozEngine.Gpu.Vulkan;
+
+KhaozEngineVulkan.Register();   // once, at startup, on every OS
+```
+
+That is the package's entire public surface, and the pin test in `KhaozEngine.Render.Tests` holds it to one
+member. Everything else (the provider, the probe, the requirement check, the binding spike) is internal, because
+the seam speaks engine types in both directions and a `Silk.NET.Vulkan` type on a public signature would make a
+consumer that merely reads it compile against the Vulkan binding.
+
+Registering is a fact about your app's WIRING and says nothing about the hardware. Whether the machine can run
+the backend is the separate question `GpuBackendSelector.IsBackendSupported` answers, through this package's own
+functional probe: a Vulkan loader, a throwaway instance at the 1.3 floor, then every physical device read
+against section 5.2's four hard requirements (apiVersion at or above 1.3, `dynamicRendering`,
+`synchronization2`, `timelineSemaphore`) and section 4.1's three further reads (a host-visible `HOST_COHERENT`
+memory type, `maxDescriptorSetUniformBuffersDynamic` at or above what the shipped pipeline layouts spend, and,
+on the windowed path, a graphics family that presents). The instance is destroyed before the answer comes back,
+on every path, which is why the decision is taken over a copied snapshot rather than over live handles.
+
+The probe NEVER throws. A machine with no loader, no ICD or a pre-1.3 driver answers false, because "we could
+not even ask" and "no" are the same answer to a settings screen and to the fallback that consume it. On the
+macOS developer machines this is written on there is no Vulkan loader at all, so the first read answers and the
+rest is never reached.
+
+Keeping those two questions apart is decision V-I4, and here it bites harder than it did on Direct3D 11. On
+Linux the OS probe already returns `GpuBackendKind.Vulkan`, so a native request that fails falls back to the
+incumbent Vulkan backend and reports `FallbackAfterFailure`, which in a log line looks a great deal like a
+forgotten registration. A forgotten registration THROWS instead, and telling those two apart is what the whole
+soak measurement rests on.
+
+**The kind it registers under is a pinned ordinal, deliberately and temporarily.** `GpuBackendKind.VulkanNative
+= 5` is [#513](https://github.com/APKiwiOrg/KhaozEngine/issues/513)'s to append, and that row parallelises with
+this one rather than preceding it, so `KhaozEngineVulkan` carries `(GpuBackendKind)5` instead. The registry keys
+by value, so the registration is correct today and becomes correct by NAME the moment the member lands. A test
+fails the moment ordinal 5 gains a name, with the two-line replacement as its message, because a magic number
+nobody is forced to remove is how a temporary shim becomes permanent.
 
 ## Why there are no platform guards, and why nobody should add them
 
@@ -149,6 +192,12 @@ externally visible surface either. Not for load-path reasons, which V-P1 removes
 `Silk.NET.Vulkan` type in a public signature makes a consumer that merely reads that signature compile against
 the Vulkan binding, which turns an opt-in backend package into a second GPU vocabulary the engine would then
 owe stability to.
+
+`GpuPublicApiTests.GpuVulkanPublicSurface_IsExactlyTheApprovedMembers` is the fourth, and it catches what none
+of the three above can. They ask what the surface exposes and say nothing about how much of it there is, so a
+new public member that happens to name no forbidden type is invisible to every one of them. That row pins the
+surface member by member at one exported type carrying one method, so widening it is a deliberate edit somebody
+had to read the reasoning to make.
 
 ## Layering
 

@@ -565,11 +565,15 @@ and decisions P4 and I2.
 
 The pattern above is now used twice, which is what turns it from a one-off into the shape an out-of-package
 graphics backend has here. `KhaozEngine.Gpu.Vulkan` is phase 3 of the same program and takes the same inverted
-edge, and as of `17.32.0` it is a SKELETON: the package, its guard rows and its binding spike exist, it
-registers no provider, and `GpuBackendKind` has no native Vulkan member yet.
+edge. As of `17.32.0` it registers a real provider through `KhaozEngineVulkan.Register()` and answers a real
+functional machine probe, and it creates no device yet
+([#514](https://github.com/APKiwiOrg/KhaozEngine/issues/514)). `GpuBackendKind` still has no native Vulkan
+member ([#513](https://github.com/APKiwiOrg/KhaozEngine/issues/513)), so the provider registers under the
+ordinal that append pins and nothing can select the backend yet.
 
 ```
 KhaozEngine.Gpu.Vulkan -> KhaozEngine.Gpu      (the only direction, again)
+KhaozEngine.Gpu.Vulkan -> KhaozEngine.Diagnostics   (the probe's one log line, same as the D3D11 instance)
 KhaozEngine.Gpu.Vulkan -> Silk.NET.Vulkan(+.Extensions.KHR/.EXT)
 ```
 
@@ -590,7 +594,9 @@ are mapped to `Gpu.Vulkan` alone in `ArchitectureTests.ThirdPartyHomes`, and no 
 package's externally visible surface (`GpuPublicApiTests.GpuVulkanPublicApi_DoesNotLeakBackendTypes`). The
 reason is the seam rather than the load path: a `Silk.NET.Vulkan` type in a public signature makes a consumer
 that merely reads it compile against the Vulkan binding, which turns an opt-in backend into a second GPU
-vocabulary the engine would owe stability to.
+vocabulary the engine would owe stability to. Both packages also have their surface pinned member by member
+(`GpuD3D11PublicSurface_IsExactlyTheApprovedMembers` and `GpuVulkanPublicSurface_IsExactlyTheApprovedMembers`),
+which is what catches a new member that leaks no forbidden type and is therefore invisible to every scan above.
 
 The no-Veldrid rule below applies to BOTH packages, and both assertions are theories over the two of them.
 

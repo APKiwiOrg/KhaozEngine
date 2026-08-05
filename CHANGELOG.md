@@ -1383,6 +1383,73 @@ summary form prints zero limit lines and the bare form prints the whole `VkPhysi
 one-word change makes the numbers readable in every Vulkan leg log. The step was already `continue-on-error`,
 so the cost is log volume. Recording the observed values against the design doc is #541.
 
+### `KhaozEngineVulkan.Register()`, the native Vulkan provider, and a functional `IsSupported` probe with real content (#512)
+
+`KhaozEngine.Gpu.Vulkan` stops being a skeleton. It registers a real `IGpuBackendProvider`, and that provider
+answers a real machine-capability probe: a Vulkan loader, a throwaway instance at the 1.3 floor, and every
+physical device read against the design's requirements. Creating a DEVICE is still not built (#514), and
+`GpuBackendKind` still has no native Vulkan member (#513), so nothing SELECTS this backend and no consumer path
+reaches it. No golden moved and no behaviour changed anywhere.
+
+**`KhaozEngineVulkan.Register()` is the whole public surface**, one call at consumer startup, no
+`[ModuleInitializer]` and no reflection, for the reasons section 4.1 records and phase 2 already paid for. The
+package's exported surface is now pinned member by member by
+`GpuPublicApiTests.GpuVulkanPublicSurface_IsExactlyTheApprovedMembers`, at one type carrying one method: the
+three existing leak scans ask what the surface exposes and cannot see a new member that happens to name no
+forbidden type. Note what is deliberately absent from that list. There is no `IsPlatformSupported` here, because
+V-P1 says Vulkan is not a Windows API, and a guard property appearing in the pin would be that decision quietly
+reversing.
+
+**The probe is functional and it has real content on this backend.** `IsSupported()` resolves the loader,
+refuses a loader below 1.3, creates a throwaway instance at `min(1.3, vkEnumerateInstanceVersion())` (V-N2's
+clamp, kept in its stated form), enumerates physical devices and judges each one against section 5.2's four hard
+requirements (device apiVersion at or above 1.3, `dynamicRendering`, `synchronization2`, `timelineSemaphore`)
+plus section 4.1's three further reads: a host-visible `HOST_COHERENT` memory type (V-M4, which the uniform ring
+is pinned to and 9.2's no-flush-required claim rests on), `maxDescriptorSetUniformBuffersDynamic` at or above
+what the shipped pipeline layouts spend (8.3's fourth defence, and the only one of that section's four that
+answers for the MACHINE at runtime), and a graphics queue family. **The instance is destroyed before the answer
+returns, on every path**, which is why the decision is taken over a copied snapshot rather than over live
+handles, and it deliberately does not use #514's refcounted process instance because it must answer before any
+device exists.
+
+**It never throws.** A machine with no loader, no ICD or a pre-1.3 driver answers false and routes through the
+existing reported fallback, because "we could not even ask" and "no" are the same answer to the settings screen
+and the fallback that consume it. On a macOS developer machine, which has no Vulkan loader at all, the first
+read answers and nothing under it is reached.
+
+**Split so the decisions are testable without a driver.** The reading half needs a loader, an instance and a
+driver, which one CI leg has and no developer machine here does. The deciding half is seven comparisons over a
+plain snapshot struct, so it lives on its own and is driven device-free from fabricated values, one requirement
+failed at a time, on every leg. That covers the requirements nobody can produce hardware to fail: no rig in this
+fleet offers a device with no coherent host-visible memory type, or one reporting
+`maxDescriptorSetUniformBuffersDynamic` below Vulkan's own required minimum. The check ORDER is pinned too, so a
+1.2 device reads as one version problem rather than as three unrelated missing features, which is the same
+failure phrased three times.
+
+**The presenting-graphics-family clause is a parameter rather than a fact of the device**, because it is the one
+requirement that differs by path. `IsSupported()` receives no window, and `vkGetPhysicalDeviceSurfaceSupportKHR`
+needs a `VkSurfaceKHR` that cannot exist without one. Building a surface inside the probe would also mean
+enabling a platform surface extension on the headless path, which V-N6 forbids. So the probe asks with the flag
+false and swapchain creation (#527) asks the same method with it true, and both halves are pinned.
+
+**The `VulkanBackendRegistration` seat is in `KhaozEngine.TestSupport.Gpu`, not in one test assembly**, called
+from `GpuFactAttribute`'s static constructor beside its Direct3D 11 sibling. That is the row's own instruction
+and it is the D3D11 regression being paid forward rather than re-earned: when registration lived only in
+`KhaozEngine.Render.Tests`, all four of `KhaozEngine.MapEditor.Tests`' GPU tests threw
+`GpuBackendProviderMissingException` on the native leg. `Render.Tests` keeps a thin module-initializer belt of
+its own for the registry rows that carry no `[GpuFact]` and would otherwise never fire the hook.
+
+**The kind is a PINNED ORDINAL, temporarily and visibly.** `GpuBackendKind.VulkanNative = 5` belongs to #513,
+which parallelises with this row rather than preceding it, so this row may not do that work: appending the
+member without #513's `GoldenBackendToken` mapping would leave a kind that throws out of the golden filename
+path, which is exactly the silent-orphan failure that row's audit test exists to prevent. So `KhaozEngineVulkan`
+registers under `(GpuBackendKind)5`, the ordinal the design pins (V-I1), and `GpuBackendProviders` keys by
+value, which makes the registration correct TODAY and correct by NAME the moment the member lands. The
+alternative considered and rejected was a `Register()` that throws until #513 lands, which would be a public
+method that lies about what the package does and a registration seat with nothing to register. A test fails the
+moment ordinal 5 gains a name, carrying the two-line replacement as its message, because a magic number nobody
+is forced to remove is how a temporary shim becomes permanent.
+
 ## 17.31.0
 
 ### The native Direct3D 11 backend: the replay contract, the constant-buffer ring, and the three cross-row wirings (#449, #451, #452)

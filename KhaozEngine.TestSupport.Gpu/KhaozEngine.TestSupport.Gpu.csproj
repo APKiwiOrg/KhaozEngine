@@ -26,6 +26,12 @@
          platform guards over NoInlining bodies, so nothing here puts the Vortice interop on the load path off
          Windows (decision P1). -->
     <ProjectReference Include="../KhaozEngine.Gpu.D3D11/KhaozEngine.Gpu.D3D11.csproj" />
+    <!-- VulkanBackendRegistration.EnsureRegistered, the second half of that same static constructor. Safe to
+         reference unconditionally for a simpler reason than the Direct3D 11 package needs: decision V-P1 gives
+         it net10.0 with no OS suffix and no platform guard at all, because Vulkan is not a Windows API. The
+         Vulkan loader is resolved at runtime and a machine without one answers the functional probe with false,
+         so referencing this on macOS costs nothing and loads nothing. -->
+    <ProjectReference Include="../KhaozEngine.Gpu.Vulkan/KhaozEngine.Gpu.Vulkan.csproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- GpuFactSkipReasonTests (Render.Tests) exercises the internal SkipReason gate. -->

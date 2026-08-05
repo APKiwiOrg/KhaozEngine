@@ -303,6 +303,12 @@ it, compare against it, or derive a string from it. **Three of them degrade the 
 missed, and the worst of those does not throw.** Two further rows are listed only so a later reader does not
 re-raise them.
 
+(Corrected 2026-08-06. The enumeration below undercounts: fifteen sites in fact, the two extras being
+`GpuBackendProviderMissingException.BuildMessage` and the token list in `GpuDeviceContext.LogSelection`'s
+unrecognized-override warning (now derived from `GpuBackendSelector.RecognizedTokens` and pinned by audit
+tests). The full corrected record is in the Vulkan design's section 4.2, so the Metal program's append
+inherits the complete list.)
+
 | Site | Behaviour today | Decision |
 |---|---|---|
 | `GpuDeviceContext.cs:160` (`LogThreadingCaps`) | `if (backend != Direct3D11) return;` | **Must change.** Include the native kind or the native leg loses the threading log AND the telemetry threading caps |

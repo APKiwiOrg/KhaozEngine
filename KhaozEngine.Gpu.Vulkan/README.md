@@ -55,19 +55,34 @@ hand-rolled P/Invoke, TerraFX and vendoring Veldrid's own `Vulkan.*` namespace a
 there.
 
 `Internal/VulkanBindingSpike.cs` is what holds that decision honest. It is one file of never-called static
-methods, one per area, touching every API surface the design spends:
+methods, one per area, covering the API surfaces the design spends:
 
+- The loader entry points above, plus `VK_EXT_validation_features` chained into instance creation for the
+  synchronization-validation rung.
+- The device feature chain: `VkPhysicalDeviceFeatures2` with the 1.2 and 1.3 feature structures on its `pNext`,
+  which is both how the device probe reads support and how device creation enables features by name.
 - Timeline semaphore creation, host signal, host wait, the non-blocking counter read, and the submit-side value
   structure.
 - `vkCmdBeginRendering` and `vkCmdEndRendering` with `VkRenderingInfo` and its attachment structure, plus the
   pipeline-side `VkPipelineRenderingCreateInfo`.
 - `vkCmdPipelineBarrier2` with `VkDependencyInfo` and all three barrier2 structures.
-- The three platform surface extensions (Win32, Xlib, Wayland).
-- The `VK_EXT_debug_utils` messenger with its callback signature.
-- The loader entry points above, plus the 1.2 and 1.3 feature structures the device enables by name.
+- Dedicated allocations in both directions: `VkMemoryDedicatedRequirements` on the requirement query's `pNext`,
+  and `VkMemoryDedicatedAllocateInfo` on the allocation that acts on the answer.
+- The three platform surface extensions (Win32, Xlib, Wayland), and the four `VK_KHR_surface` queries the
+  swapchain is sized and the presenting queue family is chosen from.
+- The swapchain's whole cycle: create, image enumeration, acquire, present, destroy.
+- The `VK_EXT_debug_utils` messenger with its callback signature, plus object naming.
 
 It exists to fail at COMPILE time if a binding regression, a downgrade or a rename lands, so the failure
-surfaces in the change that caused it rather than in whichever row first needed the member.
+surfaces in the change that caused it rather than in whichever row first needed the member. The swapchain and
+surface entries are the ones that most earn their place: every GPU CI leg in this repo is headless, so those
+design sections have no automated coverage at all, and a binding surprise there would otherwise land in a
+hand-run windowed session many rows later.
+
+Be clear about what it is and is not. It is a compile tripwire over an API inventory, and that is the entire
+claim: nothing in the list is ever called, so nothing here says a single one of those calls behaves correctly at
+runtime. The one runtime observation anywhere near this package is the loader smoke below, which is a single
+local run and covers the loader alone.
 
 **Verdict, taken once and recorded here: the binding is sufficient.** Every API listed above exists on the
 `2.23.0` line with the shape the design assumes, so decision V-P2 stands and the named replacement
@@ -76,7 +91,7 @@ types the debug-utils callback as a CDECL function pointer, so the messenger cal
 `[UnmanagedCallersOnly]` and therefore cannot capture. That is a compile error rather than a wrong ABI, which
 is the right failure direction, and it constrains the row that wires the validation pump.
 
-## The Linux loader, verified rather than assumed
+## The Linux loader, measured locally rather than assumed
 
 `.github/workflows/cross-platform-gpu.yml` carries a step titled "Symlink libdl / libvulkan for Veldrid
 (Linux)". It exists because Veldrid's Vulkan binding P/Invokes the bare names `libdl` and `libvulkan`, while
@@ -86,9 +101,9 @@ resolve through `Silk.NET.Core`'s native-context search, which includes the vers
 need no such step. That was asserted by a design draft and would have been expensive to discover in the
 swapchain row, so it was checked here first.
 
-**It resolves.** Measured in an `amd64` Ubuntu 25.10 container with `mesa-vulkan-drivers` 25.2.8 (the CI Mesa
-version) and lavapipe pinned through `VK_ICD_FILENAMES`, with **no unversioned `libvulkan.so` present** and the
-bare name confirmed unresolvable in the same process as a control:
+**It resolves.** Measured on a developer machine, in a LOCAL `amd64` Ubuntu 25.10 Apple container running under
+Rosetta, with `mesa-vulkan-drivers` 25.2.8 and lavapipe pinned through `VK_ICD_FILENAMES`, with **no unversioned
+`libvulkan.so` present** and the bare name confirmed unresolvable in the same process as a control:
 
 ```
 precondition: NO unversioned /usr/lib/x86_64-linux-gnu/libvulkan.so
@@ -102,6 +117,15 @@ vkDestroyInstance: OK
 
 So the native Vulkan CI leg needs no symlink step of its own. The existing one stays where it is, because the
 Veldrid leg it was written for still needs it.
+
+Two caveats on how far that carries, because the run above did NOT happen in CI. It was one local container,
+not a workflow leg, so what it establishes is that Silk.NET's native-context search finds a versioned soname
+with no unversioned symlink present, which is a property of the binding rather than of any particular runner.
+And the Mesa version is not CI's version: `cross-platform-gpu.yml` installs `mesa-vulkan-drivers` unpinned on
+`ubuntu-latest`, and nothing has yet recorded what that resolves to, so 25.2.8 is EXPECTED to match CI and is
+unverified until the `vulkaninfo` record in
+[#541](https://github.com/APKiwiOrg/KhaozEngine/issues/541) lands. Neither caveat changes the conclusion about
+the symlink step, and both are worth stating before somebody cites this section as a CI result.
 
 ## What the package may reference, and the one edge it may not
 

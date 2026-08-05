@@ -1349,22 +1349,33 @@ generalised from its D3D11 originals into theories over both native backends
 `GpuPublicApiTests` gains a public-surface walk over the new assembly for `Veldrid` and for `Silk`.
 
 **Verification one: the binding is sufficient, so V-P2 stands.** `Internal/VulkanBindingSpike.cs` is one file of
-never-called static methods that compiles against every API this design spends: timeline semaphore create,
+never-called static methods that compiles against the API surfaces this design spends: the loader's own
+function-pointer acquisition and `VK_EXT_validation_features` on the instance chain, the
+`VkPhysicalDeviceFeatures2` device feature chain carrying the 1.2 and 1.3 structures, timeline semaphore create,
 signal, host wait and the non-blocking counter read, `vkCmdBeginRendering` and `vkCmdEndRendering` with
-`VkRenderingInfo`, `vkCmdPipelineBarrier2` with `VkDependencyInfo` and all three barrier2 structures, the Win32,
-Xlib and Wayland surface extensions, the `VK_EXT_debug_utils` messenger, and the loader's own function-pointer
-acquisition. Nothing was missing, so the named replacement (`Vortice.Vulkan`) is not taken. One constraint the
-design's prose did not state came out of it: Silk.NET types the debug-utils callback as a CDECL function
-pointer, so the messenger callback must be `[UnmanagedCallersOnly]` and cannot capture. The spike exists to fail
-at COMPILE time if a binding regression lands.
+`VkRenderingInfo`, `vkCmdPipelineBarrier2` with `VkDependencyInfo` and all three barrier2 structures, the
+dedicated-allocation query and allocate chain, the Win32, Xlib and Wayland surface extensions, the four
+`VK_KHR_surface` queries, the swapchain's create, enumerate, acquire, present and destroy cycle, and the
+`VK_EXT_debug_utils` messenger plus object naming. Nothing was missing, so the named replacement
+(`Vortice.Vulkan`) is not taken. One constraint the design's prose did not state came out of it: Silk.NET types
+the debug-utils callback as a CDECL function pointer, so the messenger callback must be `[UnmanagedCallersOnly]`
+and cannot capture. The swapchain and surface entries are the ones that most earn their place, because every GPU
+CI leg here is headless, so those design sections have no automated coverage at all and the compile tripwire is
+the only cheap check they get. And a tripwire is all of it: no method in the file is ever called, so it asserts
+that the members exist with the assumed shapes and asserts nothing about runtime behaviour.
 
 **Verification two: the Linux loader resolves with no symlink step.** The CI workflow's "Symlink libdl /
 libvulkan for Veldrid (Linux)" step exists because Veldrid P/Invokes the bare names while modern Ubuntu ships
-only versioned sonames. Silk.NET was ASSERTED to do better and is now measured doing it: in an amd64 Ubuntu
-25.10 container with `mesa-vulkan-drivers` 25.2.8, lavapipe pinned through `VK_ICD_FILENAMES`, no unversioned
-`libvulkan.so` present, and the bare name confirmed unresolvable in the same process as a control, `Vk.GetApi()`,
+only versioned sonames. Silk.NET was ASSERTED to do better and is now measured doing it, in a LOCAL Apple
+container rather than in CI: an amd64 Ubuntu 25.10 image under Rosetta on a developer machine, with
+`mesa-vulkan-drivers` 25.2.8, lavapipe pinned through `VK_ICD_FILENAMES`, no unversioned `libvulkan.so` present,
+and the bare name confirmed unresolvable in the same process as a control, where `Vk.GetApi()`,
 `vkEnumerateInstanceVersion` and a 1.3 instance create and destroy all succeed. So the native Vulkan leg needs
-no symlink step of its own.
+no symlink step of its own. Two caveats ride with that. It is one local run, so what it establishes is a
+property of the binding's native-context search rather than of any runner, and 25.2.8 is not known to be CI's
+Mesa version: `cross-platform-gpu.yml` installs `mesa-vulkan-drivers` unpinned on `ubuntu-latest` and nothing
+has observed what that resolves to, so the match is EXPECTED and unverified until #541's `vulkaninfo` record
+lands.
 
 **And the CI `vulkaninfo` step drops `--summary` (V-D7).** No Vulkan device limit was observable anywhere in
 this repo, so every limit the Vulkan design touches rested on a spec minimum plus an assumption (MV10). The

@@ -4,6 +4,7 @@ using System.Runtime.Versioning;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.D3D11;
 using KhaozEngine.Gpu.D3D11.Internal;
+using KhaozEngine.Render3D.Rendering;
 using Vortice.Direct3D11;
 using Xunit;
 using Xunit.Abstractions;
@@ -63,7 +64,16 @@ namespace KhaozEngine.Tests.Gpu
     /// method's types when it compiles that method, and this assembly's device-free D3D11 tests assert
     /// process-wide that the Direct3D interop was never loaded (<see cref="D3D11InteropLoad"/>). A Vortice type
     /// named in a body the macOS run compiles would take all of them down at once.</para>
+    ///
+    /// <para><b>EVERY DEVICE HERE COMES THROUGH <see cref="GpuDeviceContext.CreateHeadless(GpuBackendKind)"/>,</b>
+    /// naming the native kind, rather than out of <c>GpuBackendProviders.Require(...).CreateHeadless()</c>. The
+    /// provider call reaches around the process-wide creation gate that <see cref="GpuDeviceContext"/> owns, and
+    /// every provider is written on the promise that the engine serializes creation for it, so a device made
+    /// outside the gate races every device made through it. These tests bring a second device up beside the
+    /// suite's own, which is precisely the shape that promise is about. The context also owns disposal, so the
+    /// <c>using</c> on it replaces the one that was on the raw device.</para>
     /// </summary>
+    [Collection("NativeDeviceLifecycle")]
     public sealed class D3D11NativeCallParityGpuTests
     {
         // The scratch is grown to this, every bind below passes a count well under it, and the gap is where the
@@ -196,14 +206,61 @@ namespace KhaozEngine.Tests.Gpu
             StageArmsWindows(_out);
         }
 
+        /// <summary>
+        /// THE <c>ConstantCount</c> DEFECT, PINNED ON A DEVICE. A real 1008-byte uniform buffer
+        /// (<see cref="ModelRenderer.UboBytes"/>, the shipped size the runtime was dropping) goes through the
+        /// PRODUCTION path end to end: a real layout, a real resource set, and <see cref="D3D11SetActivation"/>
+        /// computing the window itself, so the count that reaches <c>VSSetConstantBuffers1</c> is the one a frame
+        /// would send and not one this test chose. Then the slot is read back and must hold the buffer.
+        /// <para>
+        /// UNDER THE PRE-<c>fba3117e</c> ARITHMETIC THIS FAILS, and that is the whole point of it. The count was
+        /// rounded to 16 BYTES where <c>*SetConstantBuffers1</c> wants a multiple of 16 CONSTANTS, so 1008 bytes
+        /// bound as 63 constants rather than 64. The setter returns void, the runtime drops the entire call, the
+        /// slot stays empty behind the replay's <c>ClearState</c> and every shader reading that block reads zeros
+        /// with nothing logged and nothing thrown. That is the bulk of the 113 failures on the first
+        /// direct3d11-native leg (run 30955744945).
+        /// </para>
+        /// <para>
+        /// THE DEVICE-FREE TESTS PIN THE SAME RULE ARITHMETICALLY and this one pins it EMPIRICALLY, which is a
+        /// different claim.
+        /// <c>D3D11ResourceModelTests.EveryShippedUniformWindow_BindsACountDirect3D11WillAccept</c> asserts that
+        /// the engine's own idea of the rule holds over every shipped window, and it would stay green against a
+        /// rule that was correctly applied and wrongly stated. What it cannot do is ask Direct3D 11, which is
+        /// exactly what settled the count-versus-length question above and is what settles this: the bind either
+        /// survives to the slot or it does not.
+        /// </para>
+        /// <para>
+        /// The read is not vacuous in either direction. <c>Begin</c> issues decision R3's one <c>ClearState</c>
+        /// before anything here binds, so a non-null slot afterwards was put there by this activation, and the
+        /// buffer bound is the one asserted rather than merely something.
+        /// </para>
+        /// </summary>
+        [GpuFact]
+        public void AShippedConstantWindowSurvivesTheProductionArithmeticOnTheDevice()
+        {
+            if (!KhaozEngineD3D11.IsPlatformSupported)
+            {
+                _out.WriteLine(NotWindows);
+                return;
+            }
+
+            if (!GpuBackendSelector.IsBackendSupported(GpuBackendKind.Direct3D11Native))
+            {
+                _out.WriteLine(NotCapable);
+                return;
+            }
+
+            ShippedConstantWindowWindows(_out);
+        }
+
         // ---- the Windows bodies -----------------------------------------------------------------------------
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         [SupportedOSPlatform("windows")]
         static void CountSemanticsWindows(ITestOutputHelper output)
         {
-            GpuProviderDevice created = GpuBackendProviders.Require(GpuBackendKind.Direct3D11Native).CreateHeadless();
-            using IGpuDevice device = created.Device;
+            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless(GpuBackendKind.Direct3D11Native);
+            IGpuDevice device = gpu.GpuDevice;
             var backend = (D3D11GpuDevice)device;
             D3D11EmitterContext context = backend.EmitterContext;
             var emitter = new D3D11NativeEmitter(backend.State, context);
@@ -327,8 +384,8 @@ namespace KhaozEngine.Tests.Gpu
         [SupportedOSPlatform("windows")]
         static void DepthOnlyTargetsWindows(ITestOutputHelper output)
         {
-            GpuProviderDevice created = GpuBackendProviders.Require(GpuBackendKind.Direct3D11Native).CreateHeadless();
-            using IGpuDevice device = created.Device;
+            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless(GpuBackendKind.Direct3D11Native);
+            IGpuDevice device = gpu.GpuDevice;
             var backend = (D3D11GpuDevice)device;
             D3D11EmitterContext context = backend.EmitterContext;
             var emitter = new D3D11NativeEmitter(backend.State, context);
@@ -400,8 +457,8 @@ namespace KhaozEngine.Tests.Gpu
         [SupportedOSPlatform("windows")]
         static void StageArmsWindows(ITestOutputHelper output)
         {
-            GpuProviderDevice created = GpuBackendProviders.Require(GpuBackendKind.Direct3D11Native).CreateHeadless();
-            using IGpuDevice device = created.Device;
+            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless(GpuBackendKind.Direct3D11Native);
+            IGpuDevice device = gpu.GpuDevice;
             var backend = (D3D11GpuDevice)device;
             D3D11EmitterContext context = backend.EmitterContext;
             var emitter = new D3D11NativeEmitter(backend.State, context);
@@ -469,6 +526,68 @@ namespace KhaozEngine.Tests.Gpu
                 // the only one whose counter-read hands back more than the slots it asked about.
                 Release(graphicsTargets);
                 graphicsDepth?.Dispose();
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        [SupportedOSPlatform("windows")]
+        static void ShippedConstantWindowWindows(ITestOutputHelper output)
+        {
+            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless(GpuBackendKind.Direct3D11Native);
+            IGpuDevice device = gpu.GpuDevice;
+            var backend = (D3D11GpuDevice)device;
+            D3D11EmitterContext context = backend.EmitterContext;
+            var emitter = new D3D11NativeEmitter(backend.State, context);
+
+            emitter.Begin();
+
+            // The shipped size, by its own constant. A literal here would keep passing on the day the frame UBO
+            // grows into some other unaligned size, which is the case this exists to catch.
+            using IGpuBuffer ubo = device.Factory.CreateBuffer(
+                new GpuBufferDescription(ModelRenderer.UboBytes, GpuBufferUsage.UniformBuffer));
+
+            // A real layout and a real set, so the window is RESOLVED the way a renderer's is (whole buffer, since
+            // a bare IGpuBuffer is bound) rather than handed to the emitter pre-computed.
+            using IGpuResourceLayout layout = device.Factory.CreateResourceLayout(
+                new GpuResourceLayoutDescription(
+                    new GpuResourceLayoutElement("Frame", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex)));
+            using IGpuResourceSet set = device.Factory.CreateResourceSet(
+                new GpuResourceSetDescription(layout, ubo));
+
+            // THE PRODUCTION ARITHMETIC, and the reason this goes through the activation rather than through a
+            // hand-built D3D11ConstantBufferBind: D3D11SetActivation.ConstantBind is what reads the ring's frame
+            // base and calls D3D11ConstantRange.ConstantCount, and that call is the defect's site. Base counts of
+            // zero because this is set 0 of a one-layout pipeline, which is what puts the bind at b0. The R7
+            // unset is off, so the span is one call and the read below has one thing to explain it.
+            var activation = new D3D11SetActivation();
+            activation.Activate(ref emitter, (D3D11ResourceSet)set, default, dynamicOnly: false,
+                dynamicOffsetBytes: 0, unsetConstantBuffersBeforeSet: false, D3D11PipelineArm.Graphics, slot: 0);
+
+            uint constants = D3D11ConstantRange.ConstantCount(ModelRenderer.UboBytes);
+            var expected = (ID3D11Buffer)D3D11BindResolve.ViewOf(ubo, D3D11RegisterFile.ConstantBuffer)!;
+
+            // Clamped to the constant-buffer file's own depth, for the reason the count-semantics read is.
+            var read = new ID3D11Buffer[ConstantBufferSlots];
+            context.Context.VSGetConstantBuffers(0, ConstantBufferSlots, read);
+            try
+            {
+                Assert.True(read[0] is not null,
+                    $"A {ModelRenderer.UboBytes}-byte uniform buffer bound as {constants} constants left b0 EMPTY. "
+                    + "*SetConstantBuffers1 returns void and drops a call whose count is not a multiple of 16 "
+                    + "constants, so this is the count arithmetic producing an illegal window and the runtime "
+                    + "throwing the whole bind away. Nothing is logged and nothing throws: every shader reading "
+                    + "this block reads zeros, which is how the model pass and splat terrain disappeared on the "
+                    + "first WARP run of the native leg.");
+
+                Assert.Equal(expected.NativePointer, read[0].NativePointer);
+
+                output.WriteLine(
+                    $"VSSetConstantBuffers1: {ModelRenderer.UboBytes} bytes bound as {constants} constants, b0 "
+                    + "holds the buffer.");
+            }
+            finally
+            {
+                Release(read);
             }
         }
 

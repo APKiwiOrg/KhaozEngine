@@ -77,7 +77,12 @@ namespace KhaozEngine.Tests.Gpu
     /// above cannot answer: that a device created by name comes up, and that disposing it releases the creation
     /// gate rather than holding it. The second create is what pins the release, since a gate left held would hang
     /// here instead of quietly working for the rest of the suite.
+    /// <para>
+    /// In <c>NativeDeviceLifecycle</c> rather than <c>GraphicsBackendGlobalState</c>: it mutates neither the
+    /// registry nor the environment, it just brings a device up and down beside the suite's own.
+    /// </para>
     /// </summary>
+    [Collection("NativeDeviceLifecycle")]
     public sealed class HeadlessNamedBackendDeviceGpuTests
     {
         [GpuFact]
@@ -95,4 +100,30 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(kind, second.Backend);
         }
     }
+
+    /// <summary>
+    /// Groups the tests that BUILD AND TEAR DOWN whole GPU devices beside the suite's own, so no two of them are
+    /// ever doing it at once and none of them is doing it while the rest of the pool is mid-frame.
+    ///
+    /// <para><b>THE COST IS MEASURED, NOT SUSPECTED.</b> The first WARP run of the direct3d11-native leg took 49
+    /// minutes where that leg normally takes 17 (run 30955744945), with these tests creating their devices in
+    /// parallel with everything else. A software rasterizer pays for a device in real seconds, the suite's primary
+    /// device is busy rendering goldens throughout, and the two contend for the same driver.</para>
+    ///
+    /// <para><b>WHY NOT <c>GraphicsBackendGlobalState</c>,</b> which is the other non-parallel graphics collection
+    /// and was the obvious candidate. That one is named for the state it protects and means it: the
+    /// <c>KE_GRAPHICS_BACKEND</c> variable and the <c>GpuBackendProviders</c> registry, both of which its members
+    /// temporarily set to something the run was not launched with. The members here mutate neither. They contend
+    /// for the DEVICE, and for the creation gate underneath it, which is a different resource with a different
+    /// reason to be serialized. Folding them in would put slow device work behind fast registry work for no
+    /// reason, and would leave that collection's doc describing something it no longer only does. Its own
+    /// <c>D3D11BackendRegistrationTests</c> sibling stays there, correctly, because that one really does read the
+    /// registry the append-audit rows empty.</para>
+    ///
+    /// <para>Per-assembly, like every xUnit collection definition. Nothing outside
+    /// <c>KhaozEngine.Render.Tests</c> uses this name yet, and a second assembly that needs it carries its own
+    /// identical copy, the way <c>AllocSensitive</c> already does.</para>
+    /// </summary>
+    [CollectionDefinition("NativeDeviceLifecycle", DisableParallelization = true)]
+    public sealed class NativeDeviceLifecycleCollection { }
 }

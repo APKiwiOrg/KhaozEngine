@@ -35,7 +35,12 @@ namespace KhaozEngine.Tests.Gpu
     /// <para><b>Why the MSAA member is the one to care about.</b> A different answer there silently changes what
     /// <c>AntiAliasing.ResolveFor</c> picks, which changes the field look and the golden output. It would not
     /// throw and it would not log. The parity assertion is the only thing that would notice.</para>
+    ///
+    /// <para><b>THE WHOLE CLASS SITS IN THE <c>NativeDeviceLifecycle</c> COLLECTION,</b> which costs the
+    /// device-free rows above nothing measurable and is what the two-device row needs. See the collection's own
+    /// definition for why.</para>
     /// </summary>
+    [Collection("NativeDeviceLifecycle")]
     public sealed class NativeVsVeldridCapabilityParityTests
     {
         readonly ITestOutputHelper _out;
@@ -228,6 +233,15 @@ namespace KhaozEngine.Tests.Gpu
         /// DECISION T4 ITSELF: both devices in one process, both capability sets read, every member compared, and
         /// completion fences asserted as the only difference.
         /// <para>
+        /// BOTH devices come up through <see cref="GpuDeviceContext"/>, the native one by naming its kind to
+        /// <see cref="GpuDeviceContext.CreateHeadless(GpuBackendKind)"/>. Two backends in one process is what that
+        /// overload was made public for, and it is what keeps the second device inside the process-wide creation
+        /// gate: reaching into <c>GpuBackendProviders</c> and calling the provider's own <c>CreateHeadless</c>
+        /// creates a device around the outside of the gate every other device in the run went through. The
+        /// capability set is unchanged by the move, since a context reports its adopted device's own
+        /// <see cref="GpuCapabilities"/> verbatim.
+        /// </para>
+        /// <para>
         /// Returns early, having asserted nothing, in THREE cases, and every one is a fact about the MACHINE
         /// rather than about the code: not Windows, an incumbent that did not come up on Direct3D11 so there is
         /// nothing to be at parity WITH, or a Windows box that cannot run the native backend at all. The last one
@@ -267,10 +281,7 @@ namespace KhaozEngine.Tests.Gpu
                 return;
             }
 
-            IGpuBackendProvider provider = GpuBackendProviders.Require(GpuBackendKind.Direct3D11Native);
-            GpuProviderDevice created = provider.CreateHeadless();
-
-            using IGpuDevice native = created.Device;
+            using GpuDeviceContext native = GpuDeviceContext.CreateHeadless(GpuBackendKind.Direct3D11Native);
             GpuCapabilities fromVeldrid = incumbent.Capabilities;
             GpuCapabilities fromNative = native.Capabilities;
 

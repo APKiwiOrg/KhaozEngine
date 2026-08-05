@@ -143,9 +143,9 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void TheTestAssembly_RegistersTheRealNativeBackend()
         {
-            Assert.True(GpuBackendProviders.IsRegistered(KhaozEngineVulkan.VulkanNativeKind));
+            Assert.True(GpuBackendProviders.IsRegistered(GpuBackendKind.VulkanNative));
 
-            IGpuBackendProvider provider = GpuBackendProviders.Require(KhaozEngineVulkan.VulkanNativeKind);
+            IGpuBackendProvider provider = GpuBackendProviders.Require(GpuBackendKind.VulkanNative);
             Assert.Same(typeof(KhaozEngineVulkan).Assembly, provider.GetType().Assembly);
         }
 
@@ -156,69 +156,40 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void Register_IsIdempotent()
         {
-            IGpuBackendProvider first = GpuBackendProviders.Require(KhaozEngineVulkan.VulkanNativeKind);
+            IGpuBackendProvider first = GpuBackendProviders.Require(GpuBackendKind.VulkanNative);
 
             KhaozEngineVulkan.Register();
             KhaozEngineVulkan.Register();
 
-            Assert.Same(first, GpuBackendProviders.Require(KhaozEngineVulkan.VulkanNativeKind));
+            Assert.Same(first, GpuBackendProviders.Require(GpuBackendKind.VulkanNative));
         }
 
         /// <summary>
         /// The fourteenth append site, answered for Vulkan the same way it was for Direct3D 11 and with no edit
         /// at all: <see cref="GpuBackendProviders.RequiresProvider"/> is stated as "everything the built-in path
         /// does not build", so an appended kind is provider-backed by default. That is the safe direction, and it
-        /// is what makes registering under the pinned ordinal below reach the provider registry rather than the
-        /// Veldrid creation switch.
+        /// is what makes the registration reach the provider registry rather than the Veldrid creation switch.
         /// </summary>
         [Fact]
         public void TheNativeKind_IsProviderBacked_WithNoEditToTheRegistry()
         {
-            Assert.True(GpuBackendProviders.RequiresProvider(KhaozEngineVulkan.VulkanNativeKind));
+            Assert.True(GpuBackendProviders.RequiresProvider(GpuBackendKind.VulkanNative));
             Assert.False(GpuBackendProviders.RequiresProvider(GpuBackendKind.Vulkan));
         }
 
         /// <summary>
-        /// THE TRIPWIRE ON THE PINNED ORDINAL, and it is meant to go red exactly once.
-        /// <para>
-        /// Row 2 registers under <c>(GpuBackendKind)5</c> because row 3
-        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/513) owns the <c>VulkanNative = 5</c> append and
-        /// parallelises with this row rather than preceding it. The registry keys by VALUE, so the registration
-        /// is correct today and becomes correct BY NAME the moment that member lands. What must not happen is the
-        /// cast surviving the append, because a magic number nobody is forced to remove is how a temporary shim
-        /// becomes permanent.
-        /// </para>
-        /// <para>
-        /// So this row fails the moment ordinal 5 gains a name, and its message is the instruction. If you are
-        /// reading this because it just went red: that is the design working. Do what it says.
-        /// </para>
-        /// </summary>
-        [Fact]
-        public void ThePinnedOrdinal_IsStillAShim_AndItsReplacementIsRow3sJob()
-        {
-            Assert.Equal(5, (int)KhaozEngineVulkan.VulkanNativeKind);
-
-            Assert.False(Enum.IsDefined(typeof(GpuBackendKind), KhaozEngineVulkan.VulkanNativeKind),
-                "GpuBackendKind ordinal 5 now has a name, so row 3's append has landed and the shim it was "
-                + "written around is done. Two edits and this is finished: replace the (GpuBackendKind)5 cast on "
-                + "KhaozEngineVulkan.VulkanNativeKind with GpuBackendKind.VulkanNative (or drop the constant and "
-                + "name the member directly in Register), then delete this test. The rest of this class keeps "
-                + "holding either way, because it never spells the ordinal anywhere but here.");
-        }
-
-        /// <summary>
         /// The registration is what makes the machine question askable at all, so the selector must route the
-        /// pinned kind to THIS provider's functional probe rather than to Veldrid, which cannot answer for a
+        /// native kind to THIS provider's functional probe rather than to Veldrid, which cannot answer for a
         /// backend it does not implement. Compared against the provider's own answer rather than pinned to a
         /// constant, because the right answer is a fact about the machine the suite is running on.
         /// </summary>
         [Fact]
         public void IsBackendSupported_RoutesToTheVulkanProvidersOwnProbe()
         {
-            IGpuBackendProvider provider = GpuBackendProviders.Require(KhaozEngineVulkan.VulkanNativeKind);
+            IGpuBackendProvider provider = GpuBackendProviders.Require(GpuBackendKind.VulkanNative);
 
             Assert.Equal(provider.IsSupported(),
-                GpuBackendSelector.IsBackendSupported(KhaozEngineVulkan.VulkanNativeKind));
+                GpuBackendSelector.IsBackendSupported(GpuBackendKind.VulkanNative));
         }
     }
 }

@@ -3,8 +3,8 @@ namespace KhaozEngine.Gpu
     /// <summary>
     /// The graphics backend the engine runs on. Selection is centralized in <see cref="GpuBackendSelector"/>, and
     /// the active backend is exposed on <see cref="GpuDeviceContext.Backend"/>. Four of the members name a Veldrid
-    /// backend the engine creates itself. <see cref="Direct3D11Native"/> names an engine-owned implementation that
-    /// arrives through <see cref="GpuBackendProviders"/> instead.
+    /// backend the engine creates itself. <see cref="Direct3D11Native"/> and <see cref="VulkanNative"/> name
+    /// engine-owned implementations that arrive through <see cref="GpuBackendProviders"/> instead.
     /// </summary>
     /// <remarks>
     /// Members are APPEND-ONLY and pinned to explicit values, the same contract
@@ -13,10 +13,18 @@ namespace KhaozEngine.Gpu
     /// every saved graphics setting at a different backend. Never reorder, renumber, or remove one.
     /// <para>
     /// Appending IS supported, and section 4.3 of
-    /// <c>docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md</c> is the audit an append has to pass. The enum
+    /// <c>docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md</c> is the audit an append has to pass, walked a
+    /// second time for Vulkan in section 4.2 of
+    /// <c>docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md</c>. The enum
     /// itself is the safe part. What is not safe is every place that switches on it, compares against it, or
     /// derives a string from it: three of those degrade a new backend SILENTLY rather than failing, and the worst
     /// of them does not throw at all (a discard arm that asks Veldrid for a Metal device). Walk the table.
+    /// </para>
+    /// <para>
+    /// The audit is an executable one now, which is what made the second append a diff rather than a
+    /// re-derivation: <c>GpuBackendKindAppendAuditTests</c> and its Vulkan sibling in
+    /// <c>KhaozEngine.Render.Tests</c> carry one device-free test per site, so a third append finds every
+    /// decision already written down and pinned.
     /// </para>
     /// </remarks>
     public enum GpuBackendKind
@@ -39,13 +47,31 @@ namespace KhaozEngine.Gpu
         /// golden family rather than owning one.
         /// </summary>
         Direct3D11Native = 4,
+
+        /// <summary>
+        /// Vulkan through the engine's OWN native backend (<c>KhaozEngine.Gpu.Vulkan</c>) rather than through
+        /// Veldrid. Selected by name (<c>KE_GRAPHICS_BACKEND=vulkan-native</c>, or the shorter
+        /// <c>vk-native</c>) and created by the <see cref="IGpuBackendProvider"/> that package registers, never
+        /// by this one, for the same attribution reason <see cref="Direct3D11Native"/> is a separate member: a
+        /// session log, a telemetry header and a frame time have to name the implementation that actually ran.
+        /// It renders the SAME images as <see cref="Vulkan"/>, so it shares that backend's golden family rather
+        /// than owning one.
+        /// <para>
+        /// The one place this differs from its Direct3D 11 sibling is what a default flip would MEAN. Windows
+        /// probes to <see cref="Direct3D11"/>, so flipping there changes the Windows default. Linux probes to
+        /// <see cref="Vulkan"/>, so flipping here changes the LINUX default, and it stays unflipped until every
+        /// rollout gate is green (decision V-RO3). Until then this member is reached only by naming it.
+        /// </para>
+        /// </summary>
+        VulkanNative = 5,
     }
 
     /// <summary>
-    /// Predicates over <see cref="GpuBackendKind"/> that more than one site needs. They live here rather than being
-    /// spelled out at each site so the answer cannot drift: <see cref="IsDirect3D11"/> in particular is read by the
-    /// driver-threading probe and by the log line that reports what the probe found, and a copy that disagreed
-    /// would produce a session log claiming an answer nobody asked for.
+    /// Predicates over <see cref="GpuBackendKind"/> that more than one site needs, one per API that has two
+    /// implementations. They live here rather than being spelled out at each site so the answer cannot drift:
+    /// <see cref="IsDirect3D11"/> in particular is read by the driver-threading probe and by the log line that
+    /// reports what the probe found, and a copy that disagreed would produce a session log claiming an answer
+    /// nobody asked for.
     /// </summary>
     public static class GpuBackendKinds
     {
@@ -58,6 +84,24 @@ namespace KhaozEngine.Gpu
         /// </summary>
         public static bool IsDirect3D11(this GpuBackendKind kind)
             => kind is GpuBackendKind.Direct3D11 or GpuBackendKind.Direct3D11Native;
+
+        /// <summary>
+        /// Whether <paramref name="kind"/> is Vulkan through EITHER implementation. The sibling of
+        /// <see cref="IsDirect3D11"/> and it exists for the same reason (decision V-I5 of
+        /// <c>docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md</c>): the question gets asked at more than
+        /// one site, and a copy of it spelled out at each site drifts.
+        /// <para>
+        /// It is the right question for anything that talks to the Vulkan API or reports on the Vulkan driver,
+        /// because the driver and the ICD underneath are the same ones whichever implementation drove them. It is
+        /// the WRONG question for anything that maps a kind onto a Veldrid backend or creates a device, since only
+        /// <see cref="GpuBackendKind.Vulkan"/> is Veldrid's. Nothing in the engine gates on it today, unlike
+        /// <see cref="IsDirect3D11"/>, whose two readers are the driver-threading probe and the log line that
+        /// reports what the probe found: Vulkan has no <c>D3D11_FEATURE_DATA_THREADING</c> analogue to ask about,
+        /// so those two sites correctly exclude both Vulkan implementations.
+        /// </para>
+        /// </summary>
+        public static bool IsVulkan(this GpuBackendKind kind)
+            => kind is GpuBackendKind.Vulkan or GpuBackendKind.VulkanNative;
     }
 
     /// <summary>

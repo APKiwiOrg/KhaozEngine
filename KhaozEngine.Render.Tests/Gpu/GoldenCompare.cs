@@ -63,14 +63,22 @@ namespace KhaozEngine.Tests.Gpu
         /// <c>&lt;name&gt;.&lt;backend&gt;.txt</c>. Usually just the kind's own lower-cased name, which is what the
         /// two filename sites used to derive inline, one each.
         /// <para>
-        /// The exception is the whole point (decision I3 of
-        /// <c>docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md</c>).
+        /// The exceptions are the whole point (decision I3 of
+        /// <c>docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md</c>, and V-I3 of
+        /// <c>docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md</c>).
         /// <see cref="KhaozEngine.Gpu.GpuBackendKind.Direct3D11Native"/> is a second IMPLEMENTATION of Direct3D 11,
         /// not a second API, so it renders the same images on the same rasterizer and SHARES the
         /// <c>direct3d11</c> family. That sharing is not a convenience: holding the native backend to the
         /// incumbent's already-committed references, unmodified, at the existing tolerance, is the strongest free
         /// proof the whole port has, and deriving the token from the enum name would have thrown it away by
         /// orphaning 36 goldens behind a name nothing had ever baked.
+        /// </para>
+        /// <para>
+        /// <see cref="KhaozEngine.Gpu.GpuBackendKind.VulkanNative"/> is the same shape a second time, into the
+        /// <c>vulkan</c> family. Owning a <c>vulkan-native</c> family of its own was rejected outright: a guest
+        /// verifies the incumbent's committed references on the same rasterizer, which is one implementation
+        /// checking the other, while a family of its own would be a backend checking a reference it baked itself
+        /// and would check nothing at all.
         /// </para>
         /// <para>
         /// No discard that guesses. An appended kind lands on the throwing arm rather than silently inventing a
@@ -84,6 +92,7 @@ namespace KhaozEngine.Tests.Gpu
             KhaozEngine.Gpu.GpuBackendKind.Vulkan => "vulkan",
             KhaozEngine.Gpu.GpuBackendKind.Direct3D11 => "direct3d11",
             KhaozEngine.Gpu.GpuBackendKind.Direct3D11Native => "direct3d11",
+            KhaozEngine.Gpu.GpuBackendKind.VulkanNative => "vulkan",
             KhaozEngine.Gpu.GpuBackendKind.OpenGL => "opengl",
             _ => throw new NotSupportedException(
                 $"No golden family is decided for {kind}. Appending a GpuBackendKind member means deciding "

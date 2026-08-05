@@ -75,7 +75,7 @@ namespace KhaozEngine.Gpu
     /// <summary>
     /// Centralizes graphics-backend selection. <see cref="Select()"/> reads the <c>KE_GRAPHICS_BACKEND</c>
     /// environment variable as an override (case-insensitive, one of
-    /// <c>metal</c>/<c>vulkan</c>/<c>d3d11</c>/<c>d3d11-native</c>/<c>gl</c>) and otherwise probes the OS
+    /// <c>metal</c>/<c>vulkan</c>/<c>vulkan-native</c>/<c>d3d11</c>/<c>d3d11-native</c>/<c>gl</c>) and otherwise probes the OS
     /// (macOS -> Metal, Windows -> Direct3D11, Linux -> Vulkan,
     /// with Vulkan as the catch-all default). <see cref="Resolve()"/> answers the same question but also reports
     /// WHERE the answer came from, via <see cref="GpuBackendSelection"/>. The pure overloads
@@ -95,7 +95,8 @@ namespace KhaozEngine.Gpu
 
         /// <summary>
         /// Pure backend-selection logic. If <paramref name="envOverride"/> is a recognized backend name
-        /// (case-insensitive, one of <c>metal</c>/<c>vulkan</c>/<c>d3d11</c>/<c>d3d11-native</c>/<c>gl</c>) it wins,
+        /// (case-insensitive, one of
+        /// <c>metal</c>/<c>vulkan</c>/<c>vulkan-native</c>/<c>d3d11</c>/<c>d3d11-native</c>/<c>gl</c>) it wins,
         /// otherwise (null, empty, or unrecognized) the choice falls through to the <paramref name="os"/> probe.
         /// </summary>
         public static GpuBackendKind Select(string? envOverride, OSPlatformKind os)
@@ -173,7 +174,9 @@ namespace KhaozEngine.Gpu
         /// Every backend is reachable by name, including the ones the OS probe never picks, because naming one
         /// variable is the whole ergonomic story of a field soak: <c>d3d11</c> and <c>d3d11-native</c> are two
         /// implementations of the same API and the difference between them is exactly what a soak session is
-        /// measuring, so it has to be expressible in the variable a tester already knows.
+        /// measuring, so it has to be expressible in the variable a tester already knows. <c>vulkan</c> and
+        /// <c>vulkan-native</c> are the second such pair, and the incumbent token in each pair keeps pointing at
+        /// the incumbent indefinitely.
         /// </para>
         /// </summary>
         public static bool TryParseBackend(string? value, out GpuBackendKind backend)
@@ -188,6 +191,11 @@ namespace KhaozEngine.Gpu
                 // diagnostic rather than a silent run on the incumbent implementation under the new name.
                 case "d3d11-native": case "direct3d11-native":
                     backend = GpuBackendKind.Direct3D11Native; return true;
+                // The same shape for the second native backend (decision V-I1). `vulkan` still means Veldrid's
+                // Vulkan and keeps meaning it indefinitely, which is what makes it the kill switch the native
+                // Vulkan design leans on: an A/B against the native implementation is one variable away.
+                case "vulkan-native": case "vk-native":
+                    backend = GpuBackendKind.VulkanNative; return true;
                 case "gl": case "opengl": backend = GpuBackendKind.OpenGL; return true;
                 default: backend = default; return false;
             }
@@ -202,6 +210,12 @@ namespace KhaozEngine.Gpu
         /// LAST step of that program, not a side effect of the member existing: until then the native leg is
         /// exercised by naming it, through <c>KE_GRAPHICS_BACKEND</c> and its own CI matrix leg.
         /// </para>
+        /// <para>
+        /// Linux answers <see cref="GpuBackendKind.Vulkan"/> on exactly the same terms and for exactly the same
+        /// reason (decision V-RO3). Worth stating separately because the two flips are not the same edit: this
+        /// line is where a native Vulkan default would land, so flipping it changes the LINUX default while the
+        /// Windows one stays where it is, and the two programs reach their gates independently.
+        /// </para>
         /// </summary>
         public static GpuBackendKind ProbeOS(OSPlatformKind os) => os switch
         {
@@ -215,11 +229,12 @@ namespace KhaozEngine.Gpu
         // deliberately absent: CreateForWindow has no windowed GL path (Silk would have to own the GL context),
         // so offering it to a player would be offering a choice that cannot boot.
         //
-        // Direct3D11Native is absent for a different reason, and stays absent until the default flip (decision I4).
+        // Direct3D11Native and VulkanNative are absent for a different reason, and stay absent until their
+        // respective default flips (decisions I4 and V-RO3).
         // This list is what a game's graphics settings screen OFFERS, and a player picks an API, not an
         // implementation of one: two entries both reading "Direct3D 11" is a choice nobody outside this repo can
-        // make. The native leg is named explicitly instead, through KE_GRAPHICS_BACKEND, until it becomes what
-        // "Direct3D 11" means.
+        // make, and two both reading "Vulkan" is the same choice again. The native legs are named explicitly
+        // instead, through KE_GRAPHICS_BACKEND, until each becomes what its API's name means.
         static readonly GpuBackendKind[] _windowCandidates =
             { GpuBackendKind.Metal, GpuBackendKind.Vulkan, GpuBackendKind.Direct3D11 };
 
@@ -360,6 +375,7 @@ namespace KhaozEngine.Gpu
             GpuBackendKind.Direct3D11 => GraphicsBackend.Direct3D11,
             GpuBackendKind.OpenGL => GraphicsBackend.OpenGL,
             GpuBackendKind.Direct3D11Native => throw NotAVeldridBackend(kind),
+            GpuBackendKind.VulkanNative => throw NotAVeldridBackend(kind),
             _ => throw NotAVeldridBackend(kind),
         };
 

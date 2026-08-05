@@ -70,6 +70,8 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData("direct3d11", true, GpuBackendKind.Direct3D11)]   // alias matching GpuBackendKind.ToString()
         [InlineData("d3d11-native", true, GpuBackendKind.Direct3D11Native)]
         [InlineData("direct3d11-native", true, GpuBackendKind.Direct3D11Native)]
+        [InlineData("vulkan-native", true, GpuBackendKind.VulkanNative)]
+        [InlineData("vk-native", true, GpuBackendKind.VulkanNative)]   // the short form, no unsuffixed twin
         [InlineData("gl", true, GpuBackendKind.OpenGL)]
         [InlineData("opengl", true, GpuBackendKind.OpenGL)]           // alias matching GpuBackendKind.ToString()
         [InlineData("nonsense", false, default(GpuBackendKind))]

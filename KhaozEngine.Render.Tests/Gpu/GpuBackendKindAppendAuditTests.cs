@@ -35,6 +35,14 @@ namespace KhaozEngine.Tests.Gpu
     /// because they are the ones that touch the process-wide provider registry under the REAL kind and so cannot
     /// share the parallel pool. Everything in this class is pure, so it does.
     /// </para>
+    /// <para>
+    /// THE SECOND APPEND, <see cref="GpuBackendKind.VulkanNative"/>, walks the same thirteen sites in
+    /// <c>GpuBackendKindVulkanAppendAuditTests</c>. Its own rows live in their own file rather than here for the
+    /// file-size ratchet's reason, and the split is legible: this file is the audit that DISCOVERED the sites,
+    /// that one is the audit that answered them a second time and records where the two appends differ (four
+    /// rows do). What stays here is every row where the two appends share ONE assertion rather than having one
+    /// each: the pinned ordinals, the family predicates, and the theories that walk every member.
+    /// </para>
     /// </summary>
     public sealed class GpuBackendKindAppendAuditTests
     {
@@ -51,6 +59,7 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData(GpuBackendKind.Direct3D11, 2)]
         [InlineData(GpuBackendKind.OpenGL, 3)]
         [InlineData(GpuBackendKind.Direct3D11Native, 4)]
+        [InlineData(GpuBackendKind.VulkanNative, 5)]
         public void Ordinals_ArePinnedAndAppendOnly(GpuBackendKind kind, int expected)
             => Assert.Equal(expected, (int)kind);
 
@@ -74,6 +83,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.False(GpuBackendKind.Metal.IsDirect3D11());
             Assert.False(GpuBackendKind.Vulkan.IsDirect3D11());
             Assert.False(GpuBackendKind.OpenGL.IsDirect3D11());
+            Assert.False(GpuBackendKind.VulkanNative.IsDirect3D11());
         }
 
         // --- row 1: GpuDeviceContext.LogThreadingCaps, and row 2: D3D11ThreadingProbe.IsApplicable ---
@@ -87,6 +97,7 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData(GpuBackendKind.Direct3D11, true, true)]
         [InlineData(GpuBackendKind.Metal, true, false)]
         [InlineData(GpuBackendKind.Vulkan, true, false)]
+        [InlineData(GpuBackendKind.VulkanNative, true, false)]
         [InlineData(GpuBackendKind.OpenGL, true, false)]
         public void ThreadingProbe_AppliesToBothDirect3D11Implementations(
             GpuBackendKind backend, bool isWindows, bool expected)
@@ -406,6 +417,9 @@ namespace KhaozEngine.Tests.Gpu
 
                 Assert.Equal(GpuBackendKind.Direct3D11Native, ex.Backend);
                 Assert.DoesNotContain("Metal", ex.Message);
+                // The actionable line stays THIS backend's own. Pinned once the second provider-backed backend
+                // arrived and the message stopped being able to name one entry point as though it were generic.
+                Assert.Contains("KhaozEngineD3D11.Register()", ex.Message, StringComparison.Ordinal);
             }
         }
 

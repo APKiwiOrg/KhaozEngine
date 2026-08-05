@@ -36,10 +36,19 @@ namespace KhaozEngine.Gpu
         {
         }
 
+        // The naming CONVENTION rather than one package's name, and rather than a switch. When this message was
+        // written there was one provider-backed backend, so naming its entry point read as generic. The second
+        // one arrived and the same sentence started telling a Vulkan tester to call KhaozEngineD3D11.Register().
+        // A switch on the kind would fix that and would add another append site to the audit, for a diagnostic
+        // string. The convention is real and holds for every package (KhaozEngine.Gpu.<Backend> exposes
+        // KhaozEngine<Backend>.Register()), so stating it degrades correctly for a backend added later: that
+        // reader is told the rule, not somebody else's entry point.
         static string BuildMessage(GpuBackendKind backend)
             => $"No graphics backend provider is registered for {backend}. That backend lives in an opt-in package "
-                + "outside KhaozEngine.Gpu, and registering it is one explicit call the consuming app makes at "
-                + "startup (KhaozEngine.Gpu.D3D11 exposes KhaozEngineD3D11.Register()). Referencing the package is "
+                + "outside KhaozEngine.Gpu, one package per backend, and registering it is one explicit call the "
+                + "consuming app makes at startup: KhaozEngine.Gpu.<Backend> exposes a single static "
+                + "KhaozEngine<Backend>.Register(), so KhaozEngine.Gpu.D3D11 exposes KhaozEngineD3D11.Register() "
+                + "and KhaozEngine.Gpu.Vulkan exposes KhaozEngineVulkan.Register(). Referencing the package is "
                 + "not enough on its own: the CLR loads an assembly lazily on first type reference, so a "
                 + "self-registering module initializer would run on some machines and not others. This does not "
                 + "fall back to another backend, on purpose. A run that quietly used a backend other than the one "

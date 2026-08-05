@@ -1101,6 +1101,81 @@ exactly the question being asked (`ConstantBufferOffsetting` and `MapNoOverwrite
 I2's machine-incapability arm). WARP satisfies both, so the CI leg is unchanged. What changes is a
 feature-deficient Windows box running the suite by hand. Closes #504.
 
+#### What the first WARP run of the native leg found, and everything it cost (#460, run 30955744945)
+
+The `direct3d11-native` leg ran for real for the first time and came back with 113 failures in 49 minutes against
+a leg that normally takes 17. Nothing below is a golden move or a behaviour change on any other backend: it is one
+real bind defect on the native backend, plus the wiring and hygiene the run exposed on the way to finding it.
+
+**The constant-buffer window was rounded to the wrong multiple, and the failure mode was SILENCE.**
+`*SetConstantBuffers1` wants `pNumConstants` as a multiple of 16 CONSTANTS (256 bytes) in [0..4096], and
+`D3D11ConstantRange.ConstantCount` rounded to 16 BYTES, so any window whose size fell strictly between two
+multiples of 256 produced an illegal count. The setters return void. The runtime drops the whole call, the slot
+stays empty behind decision R3's `ClearState` at the head of the replay, and the shader reads zeros with nothing
+logged and nothing thrown. Three shipped windows did exactly that: `ModelRenderer`'s 1008-byte frame UBO bound as
+63 constants and took the whole model pass with it, the 1120-byte splat combined UBO as 70 took splat terrain, and
+`PixelPostProcess`'s 1040-byte palette buffer as 65. That is the bulk of the 113. It matches the pass/fail split on
+WARP down to the in-class discriminator, an 8192-byte bone buffer passing where 8256 failed with occupancy all
+zeros. The round-up is now to `OffsetAlignmentBytes`, which is safe on both shapes of buffer: `align256(size)` IS
+`D3D11UniformRing.SegmentStrideFor(size)`, so a bare buffer's rounded window is exactly the frame's own segment and
+cannot reach a neighbour, and a sub-range carried past its own end still has the shader reading only its declared
+fields. Every count that was already legal is unchanged. The rule is pinned three ways now: exact values, a
+deterministic sweep from 16 to 12288, and a table over all 21 shipped uniform windows, which generalises the
+14.22.0 water lesson past water. Design doc section 6.2 carried the false premise verbatim and is corrected in
+place.
+
+**A fourth `[GpuFact]` pins that rule on a device rather than in arithmetic.**
+`D3D11NativeCallParityGpuTests` now builds a real 1008-byte uniform buffer, a real layout and a real resource set,
+runs `D3D11SetActivation` over them so the count reaching the runtime is the one a frame would send, and reads b0
+back. It fails under the pre-fix arithmetic. The device-free tests assert that the engine's idea of the rule holds
+over every shipped window and would stay green against a rule correctly applied and wrongly stated, which is
+exactly the gap a live device closes.
+
+**The native backend registration moved to `KhaozEngine.TestSupport.Gpu`, and now hangs off the ATTRIBUTE.** It was
+a `[ModuleInitializer]` in `KhaozEngine.Render.Tests`, and a module initializer is per-assembly, so
+`KhaozEngine.MapEditor.Tests` had all four of its GPU tests throw `GpuBackendProviderMissingException` on the
+native leg: it takes `[GpuFact]` from the shared support project and never had a registration line of its own. The
+registration lives beside the attribute now, reached from `GpuFactAttribute`'s static constructor, which the CLR
+runs when xUnit's discovery pass first touches the type in any assembly with a `[GpuFact]` or a `[GpuTheory]` in
+it. So it follows the attribute rather than the assembly load, and a project cannot be wired for GPU tests and
+still be missing the backend. The mechanism is a static constructor and not a module initializer because the
+support project is a LIBRARY, where CA2255 rejects one for the same lazy-load reason section 4.1 rejects one in the
+backend package, and the fix is the right trigger rather than a suppression. `KhaozEngine.Render.Tests` keeps a
+thin module initializer of its own calling the same shared `EnsureRegistered`, as the belt for its registry
+`[Fact]`s that never touch a `[GpuFact]`. The support project's new `KhaozEngine.Gpu.D3D11` reference is safe on
+every OS (net10.0, platform guards over `NoInlining` bodies, decision P1) and correctly widens the affected graph so
+a `Gpu.D3D11` change marks `MapEditor.Tests` affected.
+
+**`GpuDeviceContext.CreateHeadless(GpuBackendKind)` is public, and the parity tests use it.** It is the headless
+twin of the windowed named-backend overload: exactly that backend, no environment override, no stored preference,
+no OS probe and no fallback, with a missing provider throwing per decision I2 and `Selection.Source` reporting
+`UserPreference`. Public rather than internal because two backends in one process is a first-class need and not a
+test trick, since parity work drives incumbent against native and phase 3 replaces one with the other under the
+same measurements. Without it those callers reach into `GpuBackendProviders` and call the provider's own
+`CreateHeadless`, which skips the process-wide creation gate. That gate is not bookkeeping: concurrent creation
+races the Vulkan loader's dispatch setup, and every provider is written on the promise that the engine serializes
+creation for it. The four native-creating parity test bodies now go through it, and the two headless entries share
+one body so the resolved path and the named path cannot drift on the provider branch, the gate or adoption.
+
+**The device-creating tests are serialized into one `NativeDeviceLifecycle` collection.** They build and tear down
+whole devices beside the suite's busy primary one, which is what turned 17 minutes into 49 on a software
+rasterizer. Not folded into `GraphicsBackendGlobalState`, which is named for the state it protects and means it:
+these mutate neither `KE_GRAPHICS_BACKEND` nor the provider registry, they contend for the device and the creation
+gate under it.
+
+**Both Windows legs now pin `KE_D3D11_ADAPTER=warp`, not just the native one.** The incumbent leg's implicit WARP
+fallback had months of green history behind it, and that reasoning predates the parity tests, which create NATIVE
+devices on the incumbent leg as well. Unpinned they resolve `DriverType.Hardware` against whatever adapter the
+runner image exposes, so the two Windows legs would exercise different rasterizers for the same native code and a
+parity difference could be the adapter rather than the implementation. The Veldrid incumbent device is untouched,
+so what the shared goldens compare against does not move: `KE_D3D11_ADAPTER` has exactly one reader,
+`D3D11AdapterSelection` in the native backend package.
+
+**And `RenderService`'s capture wrapper stops asserting a cause it cannot know.** "no headless GPU device
+available" was one possible reason for the failure and not the one that produced it, which was the missing
+registration above. It names the backend, hands the inner message through, and keeps the `KE_GRAPHICS_BACKEND`
+hint.
+
 ## 17.31.0
 
 ### The native Direct3D 11 backend: the replay contract, the constant-buffer ring, and the three cross-row wirings (#449, #451, #452)

@@ -37,7 +37,8 @@ namespace KhaozEngine.Tests.Locomotion;
 // AND THE SIXTEEN WERE STILL NOT ENOUGH (#501 round three). Four hand-picked leans on three shapes is four samples of
 // a flank, and round two's replacement rule failed at leans none of them visits. The one-degree window sweep further
 // down is what closes that, and its own block carries the mechanism and the numbers. The sixteen rides below are
-// unchanged and still pinned to the pre-#501 engine.
+// unchanged and still pinned to the pre-#501 engine. That window sweeps ONE flank, so it has a mirror now, pinned
+// beside it and carrying the deeper half of the residual.
 //
 // THE BITE IS NOT MIRROR-SYMMETRIC EVEN THOUGH THE RULE IS. Which lean direction gets eaten, and at what angle, is a
 // question about where the wide read's averaged uphill lands relative to the narrow one, so it moves with the flank
@@ -306,9 +307,10 @@ public class WallFaceTroughTests
     //   V167        run    15 Hz     0.150    140         0.067  -0.015     140           0.139   0.040    140
     //   V167        run    30 Hz     0.512    213         0.314  -0.163       0           0.420   0.145      0
     //
-    // NINE OF THE TWELVE ARE RED ON 17.32.0 AS REVIEWED. The two run-at-15-Hz rows carry the pre-#501 engine's own
-    // park (#530, see the file header) and are pinned around it rather than against it, which is why their stall
-    // bound is 145 and every other row's is eight.
+    // EIGHT OF THE TWELVE ARE RED ON 17.32.0 AS REVIEWED, which is a count of the rows this file's own bounds reject
+    // rather than of the rows that lost travel. The two run-at-15-Hz rows carry the pre-#501 engine's own park (#530,
+    // see the file header) and are pinned around it rather than against it, which is why their stall bound is 145 and
+    // every other row's is eight.
     //
     // AND THIS BUILD DOES NOT RESTORE THE WHOLE WINDOW, WHICH THE WORST COLUMN SAYS OUT LOUD RATHER THAN HIDING. Past
     // about 70 degrees the ride still loses travel against the pre-#501 engine and on three rows it matches 17.32.0
@@ -355,9 +357,27 @@ public class WallFaceTroughTests
         float hz)
     {
         (Trough trough, float _) = Case(name);
+        Swept s = SweepWindow(trough, run, hz, 60, 75);
+        _out.WriteLine(s.Measured);
+
+        WindowBounds b = Window(name, run, hz);
+        Assert.True(s.LongestStall <= b.MaxStall, $"a lean in the flank window parked the walker: {s.Measured}");
+        Assert.True(s.Mean >= b.MeanFloor, $"the flank window lost its along-axis travel: {s.Measured}");
+        Assert.True(s.Worst >= b.WorstFloor,
+            $"a lean in the flank window was turned around and driven back along the trough: {s.Measured}");
+    }
+
+    readonly record struct Swept(float Mean, float Worst, int LongestStall, string Measured);
+
+    /// <summary>Walk a lean window at one degree and report the three numbers both window families assert on: the
+    /// mean ride over the window, the worst single ride in it, and the longest stall anywhere in it. One helper
+    /// rather than two loops, so the positive window and its mirror are measured by the same arithmetic in the same
+    /// order and a difference between them is a difference in the GEOMETRY.</summary>
+    static Swept SweepWindow(in Trough trough, bool run, float hz, int loLean, int hiLean)
+    {
         float total = 0f, worst = float.MaxValue, worstLean = 0f, stallLean = 0f;
         int rides = 0, longestStall = 0;
-        for (int lean = 60; lean <= 75; lean++)
+        for (int lean = loLean; lean <= hiLean; lean++)
         {
             Ride r = WalkAlong(trough, lean, run, hz, seconds: 10f);
             total += r.Efficiency;
@@ -367,16 +387,95 @@ public class WallFaceTroughTests
         }
 
         float mean = total / rides;
-        string measured = $"{trough.Name}, {(run ? "run" : "walk")} at {hz:F0} Hz over leans 60 to 75: mean "
-                          + $"along-axis {mean:P1} of commanded, worst {worst:P1} (at {worstLean:F0} deg), longest "
-                          + $"stall anywhere {longestStall} ticks (at {stallLean:F0} deg)";
-        _out.WriteLine(measured);
+        string measured = $"{trough.Name}, {(run ? "run" : "walk")} at {hz:F0} Hz over leans {loLean} to {hiLean}: "
+                          + $"mean along-axis {mean:P1} of commanded, worst {worst:P1} (at {worstLean:F0} deg), "
+                          + $"longest stall anywhere {longestStall} ticks (at {stallLean:F0} deg)";
+        return new Swept(mean, worst, longestStall, measured);
+    }
 
-        WindowBounds b = Window(name, run, hz);
-        Assert.True(longestStall <= b.MaxStall, $"a lean in the flank window parked the walker: {measured}");
-        Assert.True(mean >= b.MeanFloor, $"the flank window lost its along-axis travel: {measured}");
-        Assert.True(worst >= b.WorstFloor,
-            $"a lean in the flank window was turned around and driven back along the trough: {measured}");
+    // ---- The MIRROR of that window, which is the deeper half of the residual (#501, still round three) ----
+
+    // WHY THE MIRROR NEEDED ITS OWN ROWS, AND IT IS THE SAME LESSON A THIRD TIME. The window above sweeps +60 to +75
+    // and nothing else, which on every shape is the STEEP flank. The bite is not mirror-symmetric even though the rule
+    // is (see the file header), so the shallow flank is not a redundant copy of it - and measured, it is the WORSE
+    // half. The deepest reversal in either window is on the 0.25 m tanh trough at a walk at 15 Hz, where the mirrored
+    // window's worst ride runs BACKWARD at 0.352 of the command against the positive window's own worst of 0.301. It
+    // sat unswept for three rounds behind the phrase "both directions are swept", which is true of the four axis rows
+    // at the top of this file and was never true of the window.
+    //
+    //   shape       speed  rate      pre-#501            17.32.0 as reviewed              this build
+    //                                mean  longest stall   mean   worst  longest stall    mean   worst  longest stall
+    //   Smooth10    walk   15 Hz     0.359      0         0.293   0.048       0           0.294   0.048       0
+    //   Smooth10    walk   30 Hz     0.348      0         0.315   0.057       0           0.305   0.057       0
+    //   Smooth10    run    15 Hz     0.067    146         0.021   0.007     146           0.021   0.007     146
+    //   Smooth10    run    30 Hz     0.356      0         0.291   0.045       0           0.292   0.045       0
+    //   Smooth25    walk   15 Hz     0.344      0         0.105  -0.352       0           0.105  -0.352       0
+    //   Smooth25    walk   30 Hz     0.329     73         0.110  -0.317       0           0.110  -0.317       0
+    //   Smooth25    run    15 Hz     0.352      0         0.138  -0.260       0           0.190  -0.260       0
+    //   Smooth25    run    30 Hz     0.342      0         0.166  -0.209       0           0.166  -0.209       0
+    //   V167        walk   15 Hz     0.361    117         0.290   0.037       0           0.287   0.037       0
+    //   V167        walk   30 Hz     0.359    246         0.301   0.052       0           0.299   0.052       0
+    //   V167        run    15 Hz     0.070    146        -0.010  -0.082     146          -0.010  -0.082     146
+    //   V167        run    30 Hz     0.361    267         0.289   0.036       0           0.287   0.036       0
+    //
+    // WHAT THE TABLE SAYS, AND IT IS TWO DIFFERENT THINGS ON TWO DIFFERENT SHAPES. On the hard V the mirror is where
+    // the wide read EARNS its place: the pre-#501 engine parks there for 117, 246 and 267 ticks and this build has not
+    // one dead tick on any of those rows. On the 0.25 m tanh trough it is where the residual is worst: a window mean
+    // of 0.105 against the pre-#501 engine's 0.344, concentrated past 68 degrees, with individual rides turned around
+    // and driven back along the trough (lean -69 at a walk at 15 Hz reads -0.194 against a pre-#501 0.325).
+    //
+    // NEITHER HALF OF THAT IS NEW ON THIS BUILD, WHICH IS WHY THE REVIEWED COLUMN IS HERE. Its worst ride is identical
+    // to this build's on all twelve rows and its mean is within 0.01 on eleven of them, the exception being the 0.25 m
+    // tanh trough at a run at 15 Hz, where this build travels 0.190 against 0.138. So the mirror is not a regression
+    // anybody introduced and not a fix anybody made: it is a half of the shape nobody had measured. This family exists
+    // so the next round inherits it as numbers instead of rediscovering it as a surprise.
+    //
+    // SO THE MIRROR ROWS ARE PINNED TO THIS BUILD, NOT TO THE PRE-#501 ENGINE, which is the same choice the positive
+    // window makes and the opposite of the four axis rows at the top of the file. The axis rows can be pinned to the
+    // pre-#501 ride because the wide read owes them exactly what they already had. The window cannot: the residual
+    // IS the window, so a pre-#501 band there would be a wish rather than a bound. Every floor below is this build's
+    // own measurement minus about five points.
+    //
+    // THE TWO RUN-AT-15-HZ ROWS CARRY A PARK THAT PREDATES #501, exactly as their positive-window siblings do. Both
+    // read 146 dead ticks of a 150-tick ride, and so does the pre-#501 engine at the same leans, so the park is the
+    // 0.80 m step walking into the ladder limitation filed as #530 and not this rule. Their stall bound is set around
+    // that at 148 rather than against it, which still forbids a ride that parks end to end, and every other row's is
+    // eight. Airborne ticks and footing flips are unbounded here for the same reason as in the positive window: a lean
+    // 70 degrees off the axis climbs the flank rather than following the floor, so slide ticks are legitimate there.
+    readonly record struct MirrorBounds(float MeanFloor, float WorstFloor, int MaxStall);
+
+    static MirrorBounds MirrorWindow(string name, bool run, float hz) => (name, run, hz) switch
+    {
+        ("Smooth10", false, 15f) => new MirrorBounds(0.24f, -0.01f, 8),
+        ("Smooth10", false, 30f) => new MirrorBounds(0.25f, 0.00f, 8),
+        ("Smooth10", true, 15f) => new MirrorBounds(-0.03f, -0.05f, 148),
+        ("Smooth10", true, 30f) => new MirrorBounds(0.24f, -0.01f, 8),
+        ("Smooth25", false, 15f) => new MirrorBounds(0.05f, -0.41f, 8),
+        ("Smooth25", false, 30f) => new MirrorBounds(0.05f, -0.37f, 8),
+        ("Smooth25", true, 15f) => new MirrorBounds(0.13f, -0.32f, 8),
+        ("Smooth25", true, 30f) => new MirrorBounds(0.11f, -0.26f, 8),
+        ("V167", false, 15f) => new MirrorBounds(0.23f, -0.02f, 8),
+        ("V167", false, 30f) => new MirrorBounds(0.24f, 0.00f, 8),
+        ("V167", true, 15f) => new MirrorBounds(-0.07f, -0.14f, 148),
+        ("V167", true, 30f) => new MirrorBounds(0.23f, -0.02f, 8),
+        _ => throw new ArgumentOutOfRangeException(nameof(name), name,
+            "no mirrored window is pinned for this (trough, speed, tick rate) - measure it before sweeping it"),
+    };
+
+    [Theory]
+    [MemberData(nameof(FineLeanRides))]
+    public void The_mirrored_flank_window_carries_the_deeper_half_of_the_residual(string name, bool run, float hz)
+    {
+        (Trough trough, float _) = Case(name);
+        Swept s = SweepWindow(trough, run, hz, -75, -60);
+        _out.WriteLine(s.Measured);
+
+        MirrorBounds b = MirrorWindow(name, run, hz);
+        Assert.True(s.LongestStall <= b.MaxStall,
+            $"a lean in the mirrored flank window parked the walker: {s.Measured}");
+        Assert.True(s.Mean >= b.MeanFloor, $"the mirrored flank window lost its along-axis travel: {s.Measured}");
+        Assert.True(s.Worst >= b.WorstFloor,
+            $"a lean in the mirrored flank window was turned around and driven back along the trough: {s.Measured}");
     }
 
     // ---- Why the wide read is wrong here, measured from the surface rather than from the engine ----

@@ -349,24 +349,45 @@ public class WallFaceAttractorTests
     // THE GRANULARITY IS PART OF THAT STATEMENT AND USED TO BE MISSING FROM IT, WHICH MADE IT TOO STRONG. A
     // one-degree grid steps ACROSS the extremes of a quantity that varies this fast with the heading, so "not one
     // stalled tick anywhere" is a claim about the grid rather than about the range. Re-scanned at 0.02 degrees, this
-    // build has exactly two headings in 60 to 87 that stall past eight ticks: a run at 15 Hz near 78.3 (30 to 37
-    // ticks) and a run at 30 Hz near 72.8 (18). Both are hitches inside otherwise healthy rides - 0.78 and 0.87 of
-    // commanded travel, against 0.14 with 120 dead ticks and 0.10 with 233 on the pre-#501 engine at the same
-    // headings - and 17.32.0 as reviewed has none there. Over the whole census range at 0.1 degrees the ledger runs
-    // the other way by a wide margin: of 37988 rides, 17.32.0 stalls past eight ticks on 128 that the pre-#501 engine
-    // walked cleanly, with a worst run of 243, and this build stalls on none of them.
+    // build has two headings in 60 to 87 that stall past eight ticks, both hitches inside otherwise healthy rides: a
+    // run at 15 Hz near 78.3 and a run at 30 Hz near 72.5.
+    //
+    // REFINING THAT SCAN FINDS THEIR FLOOR RATHER THAN A DEEPER PARK, WHICH IS THE PROPERTY WORTH DISCLOSING. A hitch
+    // that grew every time the grid got finer would be a park the grid was hiding, and neither of these does. From
+    // 0.005 degrees down to 0.0002 the first SATURATES at 39 ticks (at lean 78.464, with the ride's travel steady at
+    // 0.79 of its command) and the second reaches 23 (at 72.535, travel 0.86). It is 39 rather than the 37 recorded
+    // when the finest scan run was 0.02 degrees: the number the record carries has to be the saturated one, since a
+    // depth read off a coarse grid is a lower bound on the depth and reads as an upper one. The pre-#501 engine at
+    // those same two headings reads 0.14 with 120 dead ticks and 0.10 with 178, and 17.32.0 as reviewed has no stall
+    // at either. Over the whole census range at 0.1 degrees the ledger runs the same way by a wide margin: of 37988
+    // rides, 17.32.0 stalls past eight ticks on 128 that the pre-#501 engine walked cleanly, with a worst run of 243,
+    // and this build stalls on none of them.
     //
     // 88 AND 89 DEGREES ARE OUTSIDE THE RANGE ON PURPOSE. A command that close to the face normal is a walk INTO a
     // wall, and the pre-#501 engine parks there too (measured 95 to 245 dead ticks at 89 degrees, against 84 to 234
     // on this build). Pinning a heading the rule was never able to walk would be pinning something else's bug.
     //
-    // WHAT THE BAND IS, AND THE RECTIFICATION RESIDUAL IN IT. Two-sided, 0.20 to 1.25, and BOTH BOUNDS ARE PINNED
-    // FROM A 0.1-DEGREE SCAN rather than from the one-degree grid the sweep below walks, for the reason above: a
-    // bound a finer scan steps across is not a bound. At one degree this build reads 0.2134 to 1.1882 and at 0.1
-    // degrees it reads 0.2048 (at 80.4 at a walk at 30 Hz) to 1.2266, and the second pair is what the numbers below
-    // clear. That correction matters most on the high side, where the reviewed build's own peak was recorded as
-    // 1.1993 from a one-degree grid and is really 1.2565 at 0.1 degrees - OVER the 1.25 this file pins, so 17.32.0 as
-    // shipped breaches its own ceiling and only the grid hid it. This build peaks at 1.2266 with 0.0234 to spare.
+    // WHAT THE BAND IS, AND THE RECTIFICATION RESIDUAL IN IT. Two-sided, 0.20 to 1.25, and THE TWO BOUNDS ARE NOT THE
+    // SAME KIND OF NUMBER, which the file used to claim they were. The CEILING is pinned from a 0.1-degree scan
+    // rather than from the one-degree grid the sweep below walks, because on the high side a finer grid finds a
+    // HIGHER peak and a ceiling a finer scan steps over is no ceiling: this build reads 1.1882 at one degree and
+    // 1.2266 at 0.1, and 1.25 clears the second. That correction is what caught the reviewed build, whose own peak
+    // was recorded as 1.1993 from a one-degree grid and is really 1.2565 at 0.1 degrees - OVER the 1.25 this file
+    // pins, so 17.32.0 as shipped breaches its own ceiling and only the grid hid it. This build peaks at 1.2266 with
+    // 0.0234 to spare.
+    //
+    // THE FLOOR CANNOT BE THAT KIND OF NUMBER, AND SAYING IT WAS IS THE ERROR CORRECTED HERE. On the low side a finer
+    // grid finds a LOWER trough, so no finite scan pins a floor the next one cannot get under, and the honest
+    // statement is which scan the pin guards. It guards the integer-degree scan the sweep below walks, where this
+    // build reads 0.2134. A 0.1-degree scan of the same range reads 0.2058, at 82.2 at a RUN at 30 Hz (the earlier
+    // record of 0.2048 at 80.4 at a walk at 30 Hz was a misattribution: 80.4 at a walk reads 0.342). Refined to
+    // convergence the floor is 0.1989, at 81.96 at the same run at 30 Hz and stable from 0.02 degrees down to 0.001 -
+    // UNDER this file's 0.20, at a heading the sweep below never visits.
+    //
+    // THAT SUB-PIN TROUGH IS A GRID ARTEFACT AND NOT A MOVEMENT DEFECT, WHICH IS WHY IT IS DISCLOSED RATHER THAN
+    // CHASED. The ride at 81.96 has ZERO dead ticks, where the pre-#501 engine at the same heading reads 0.198 with
+    // 208 of its 300 ticks dead. A walker losing four fifths of its travel to a bank it is nearly facing is what a
+    // near-normal heading does, and the fix's job was to stop it PARKING there, which it did.
     //
     // The high side is the residual the review asked to have pinned: a heading steep enough to spend most of its
     // ticks on the wall can come out of the switch travelling FASTER along the bank than the stick asked for, because
@@ -414,9 +435,11 @@ public class WallFaceAttractorTests
     // is about.
     const int BoundaryStallBound = 8;
 
-    // Both pinned from a 0.1-DEGREE scan of the same range rather than from the one-degree grid below, so neither is
-    // a number a finer scan can step across. Measured 0.2048 and 1.2266 there, against 0.2134 and 1.1882 at one
-    // degree. See the block above for why the difference is load-bearing and what it caught.
+    // The FLOOR guards the integer-degree scan the sweep below actually walks, where this build reads 0.2134. It is
+    // not a floor a finer scan cannot get under, and the block above says what is under it: 0.2058 at 0.1 degrees and
+    // a converged 0.1989 at 81.96 at a run at 30 Hz. The CEILING is the other way round and IS pinned from the
+    // 0.1-degree scan, because there the finer grid finds the higher peak: 1.2266 against 1.1882 at one degree. See
+    // the block above for why that asymmetry is load-bearing and what the ceiling half of it caught.
     const float BoundaryFloor = 0.20f;
     const float BoundaryCeiling = 1.25f;
 

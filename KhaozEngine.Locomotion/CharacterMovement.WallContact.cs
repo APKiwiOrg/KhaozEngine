@@ -223,7 +223,17 @@ public static partial class CharacterMovement
     // floor crosses its own pinned 0.20 at about 1.03 and the sweep reds outright at 1.50, where the 79 degree ride
     // falls to 0.31, and at 2.00 the sweep parks for 59 ticks. Biasing the wide face instead (0.85, 0.95) lifts the
     // floor and costs regressions. So the choice is the largest margin that still clears the floor, and that is one:
-    // the comparison itself, with 0.0048 of floor headroom and 43 fewer regressions than the build it replaces.
+    // the comparison itself, with 43 fewer regressions than the build it replaces.
+    //
+    // THE HEADROOM IN THAT SENTENCE IS A PROPERTY OF THE GRID, SO IT IS NAMED AS ONE RATHER THAN QUOTED BARE. What
+    // clears is the INTEGER-DEGREE criterion WallFaceAttractorTests actually executes, where a margin of one reads
+    // 0.2134 against the 0.20 that fixture pins. The row above is read at 0.1 degrees, which is a finer grid than the
+    // criterion and a coarser one than the trough it is sampling, and refined to convergence the floor at a margin of
+    // one is 0.1989 - under the pin, at one heading (81.96, a run at 30 Hz) with zero dead ticks in the ride. It stays
+    // under it for every margin from one upward, and across 0.85 to 1.10 the converged floor slides smoothly from
+    // 0.215 to 0.189 with no cliff and no edge anywhere in it. So the converged floor does not choose the margin: it is
+    // the regression columns above that discriminate, and the floor row is the coarse-grid check that goes with the
+    // fixture. See BoundaryFloor in WallFaceAttractorTests, which carries the same statement from the other side.
     //
     // WHAT IT DOES TO THE SUBSTITUTION ITSELF, at 11 degrees off the face normal walking at 30 Hz, from instrumented
     // builds. ENGAGED TICKS are the ticks whose narrow projection was replaced. TOGGLES are changes in that flag
@@ -474,6 +484,17 @@ public static partial class CharacterMovement
         // inside the doubt band, so both candidates are short there, and a step that short lands on ground the ladder
         // admits. The branch is kept because a rule that says "the other candidate" and then only means one of them
         // is a rule with a hidden case, and it costs nothing where it does not fire.
+        //
+        // WHAT THAT UNFIRED HALF WOULD HAND THE LADDER, WRITTEN DOWN SO A LATER ROUND FINDS IT HERE RATHER THAN
+        // REDISCOVERING IT. It is the round-two park with the two faces swapped. The candidate it retries with is the
+        // WIDE travel that just LOST the comparison, so it is by construction no larger than the narrow one and may
+        // be arbitrarily small - and an arbitrarily small step lands on ground the ladder admits, which is exactly
+        // the shape that let round two hand a walker 0.0002 of its command and call it a move. The difference is that
+        // nothing here CHOSE it: the comparison already preferred the narrow face and this runs only after the
+        // heights refused that, so the alternative on this path is not a better step but the flat refusal the
+        // pre-#501 engine gave, and a tiny committed step is never worse than that. It is disclosed rather than
+        // guarded because it has never happened, and a guard on a branch with no measured occurrences is a second
+        // untested path bolted to an untested one.
         float allowance = reach + ProjectedRiseSlack;
         if (TryProjectedStep(x, z, sx, sz, dt, groundNormal, groundHeight, feetY, allowance, gate,
                 out float rx, out float rz))

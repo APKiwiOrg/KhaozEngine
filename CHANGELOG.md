@@ -1542,27 +1542,38 @@ the same choice and read the same number. What it removes everywhere is the park
 re-pinned from a 0.1-degree scan rather than a one-degree grid, because a bound a finer scan steps across is
 not a bound: round two's own peak is 1.2565 there against the 1.25 it pins, and this build's is 1.2266. The
 fixture's "not one stalled tick anywhere" now says at what granularity, since a 0.02-degree scan finds two
-sub-degree headings on this build that hitch for 18 and up to 37 ticks inside rides that still travel 0.87
-and 0.78 of their command, where the pre-#501 engine at the same headings reads 0.10 with 233 dead ticks and
-0.14 with 120. And the trough fixture's claim that the pre-#501 engine parks past about 70 degrees is wrong:
-at a walk and at a run at 30 Hz it does not park anywhere from 60 to 74, it loses travel smoothly through 71
-to 74 and parks abruptly at 75.
+sub-degree headings on this build that hitch inside rides which still travel 0.86 and 0.79 of their command,
+where the pre-#501 engine at the same headings reads 0.10 with 178 dead ticks and 0.14 with 120. Their depth
+is recorded from the scan that stops changing it rather than from the coarsest one that finds them: refined
+from 0.005 degrees down to 0.0002 the deeper hitch saturates at 39 ticks and the shallower reaches 23, and
+BOUNDED RATHER THAN DEEPENING is the property worth disclosing, since a hitch that grew with every finer grid
+would be a park the grid was hiding. And the trough fixture's claim that the pre-#501 engine parks past about
+70 degrees is wrong: at a walk and at a run at 30 Hz it does not park anywhere from 60 to 74, it loses travel
+smoothly through 71 to 74 and parks abruptly at 75.
 
 **Where the tests are.** `WallFaceTroughTests` grows a fine-lean family: the whole 60 to 75 window at one
 degree on three trough shapes by four speed and rate pairs, asserted on the mean ride over the window plus a
 park bound and a floor, with the pre-#501 and round-two numbers in the comment table. Eight of its twelve
-rows are red on round two as shipped, reproducing parks of 61 to 175 dead ticks. The four original trough
-rows are unchanged and still pinned to the pre-#501 engine. `WallFaceAttractorTests` keeps its twelve rides
-and its one-degree boundary sweep with every threshold untouched, and gains the granularity statement behind
-both bounds.
+rows are red on round two as shipped, reproducing parks of 61 to 175 dead ticks. That window samples the
+STEEP flank and only that one, so the MIRROR of it is pinned beside it on the same shapes and pairs, and the
+shallow flank is the deeper half: its worst ride runs backward at 0.352 of the command against the positive
+window's own worst of 0.301, and on the hard V it is where the pre-#501 engine's own 117, 246 and 267 tick
+parks live and this build has none. The four original trough rows are unchanged and still pinned to the
+pre-#501 engine.
+`WallFaceAttractorTests` keeps its twelve rides and its one-degree boundary sweep with every threshold
+untouched, and gains the granularity statement behind both bounds.
 
 Byte identity holds where it must, verified per code path over a 2180640-sample differential probe against
 the pre-#501 engine rather than by argument: every tick that makes no wall contact, every tick that commits
 on the narrow face, every tick that falls back to the narrow face after the wide one is refused, and every
 tick that refuses outright is bit-for-bit identical in all three position components. Only the 206602
 samples that commit on a substituted wide face differ, which is the fix. The 32 smooth-bank rides that never
-substitute at all are bit-for-bit identical over every tick of every ride. All 138 wall-contact and
-steep-terrain referees green, full engine suite green, zero warnings.
+substitute at all are bit-for-bit identical over every tick of every ride. There is a fifth path and it would
+NOT be identical, so the list above is a partition of what RAN rather than of what exists: a contact that
+opens the doubt gate, keeps its narrow face on the comparison, has that face refused by the heights, and then
+commits the losing wide candidate on the retry. It ran 0 times in the 631755 contacts past the head-on
+short-circuit, which is the same zero the retry paragraph above reports from the other side. All 138
+wall-contact and steep-terrain referees green, full engine suite green, zero warnings.
 
 ## 17.31.0
 

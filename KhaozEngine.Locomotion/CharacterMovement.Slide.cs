@@ -167,8 +167,15 @@ public static partial class CharacterMovement
     // there it keeps the divide finite instead of poisoning the position with an infinity.
     private const float MinStencilRadius = 1e-3f;
 
+    /// <summary>The stencil half-width every height-plane read starts from: the capsule radius, floored so a
+    /// degenerate tuning cannot divide by zero (<see cref="MinStencilRadius"/>). Named rather than inlined because
+    /// <see cref="AdvanceWallSlide"/>'s wide-face fallback reads a MULTIPLE of it (see
+    /// <see cref="WideFaceStencilScale"/>), and a second copy of the floor would let the two reads disagree about
+    /// what a zero-radius capsule means.</summary>
+    private static float StencilRadius(in MoveTuning tuning) => MathF.Max(tuning.CapsuleRadius, MinStencilRadius);
+
     /// <summary>The local surface plane READ OFF THE HEIGHT FIELD, as a unit normal: a central difference of the
-    /// ground height at <see cref="MoveTuning.CapsuleRadius"/> either side of the point, x first and then z.
+    /// ground height at half-width <paramref name="r"/> either side of the point, x first and then z.
     ///
     /// <para>THIS IS THE GEOMETRY A NO-FOOTING TICK RESOLVES AGAINST (#468), and the module header says why: the
     /// ground clamp seats the capsule on the HEIGHT FIELD, so anything that decides where the capsule ends up has to
@@ -183,6 +190,14 @@ public static partial class CharacterMovement
     /// exactly how the retired <see cref="MoveTuning.StepHeight"/> admission was played. Capsule radius is the
     /// engine's existing statement of "how wide is this body", and the wedge ring already scales by it.</para>
     ///
+    /// <para>SO THE SPAN IS A PARAMETER RATHER THAN A LOOKUP, since #501, and every caller but one passes
+    /// <see cref="StencilRadius"/> and gets exactly the plane the rest of this text describes. The exception is
+    /// <see cref="AdvanceWallSlide"/>'s wide-face fallback, which passes a MULTIPLE of it. A wider read is a coarser
+    /// plane and none of the paragraph above is repealed for it: it is only ever safe where nothing but a DIRECTION
+    /// is taken from the result, which the wall contact is and the slide is not, and the fallback's own block is
+    /// where that argument is made. Making the span explicit at each call site is the point, since a reader can then
+    /// see which surface a rule resolves against without going to look.</para>
+    ///
     /// <para>IT IS A CENTRAL DIFFERENCE, four reads, rather than the three of a forward one. A forward stencil is
     /// asymmetric: the plane it reports depends on which way +x and +z happen to point in the world, so on a creased
     /// face there are headings whose stencil straddles a crease on one side only and reads a plane tilted in the
@@ -196,10 +211,9 @@ public static partial class CharacterMovement
     /// Falling back to the classification normal is what keeps a consumer whose height field is flat while its normal
     /// delegate reports a face behaving exactly as it did before this rule existed, rather than having its slide
     /// silently collapse into a hover.</para></summary>
-    private static Vector3 HeightPlaneNormal(float x, float z, in MoveTuning tuning,
+    private static Vector3 HeightPlaneNormal(float x, float z, float r,
         Func<float, float, float> groundHeight, in Vector3 classification)
     {
-        float r = MathF.Max(tuning.CapsuleRadius, MinStencilRadius);
         float inv2r = 0.5f / r;
         float gx = (groundHeight(x + r, z) - groundHeight(x - r, z)) * inv2r;
         float gz = (groundHeight(x, z + r) - groundHeight(x, z - r)) * inv2r;
@@ -444,7 +458,7 @@ public static partial class CharacterMovement
         // contour. That is the honest reading of a consumer whose classification and geometry disagree about one
         // patch, and it is a rest, never a climb: the invariant this frame exists to buy is about altitude, and a
         // level patch pays none.
-        Vector3 plane = HeightPlaneNormal(state.Position.X, state.Position.Z, tuning, groundHeight, normal);
+        Vector3 plane = HeightPlaneNormal(state.Position.X, state.Position.Z, StencilRadius(tuning), groundHeight, normal);
         float ny = Math.Clamp(plane.Y, 0f, 1f);
         float h = MathF.Sqrt(MathF.Max(0f, 1f - ny * ny));
         (float hx, float hz) = FaceDirection(plane, moveDir);
@@ -603,7 +617,7 @@ public static partial class CharacterMovement
         // the V-gully fixture as 0 grounded ticks in 400, the capsule at rest on the crease floor and a held jump that
         // never fires. The symptom vanished because the model got better at seeing the shape that caused it.
         bool standableUnderfoot =
-            !IsSteepGround(HeightPlaneNormal(resolved.X, resolved.Z, tuning, groundHeight, Vector3.UnitY), gate);
+            !IsSteepGround(HeightPlaneNormal(resolved.X, resolved.Z, StencilRadius(tuning), groundHeight, Vector3.UnitY), gate);
         if (!standableUnderfoot)
         {
             float arming = tuning.Gravity * MathF.Max(tuning.CoyoteTime, dt);

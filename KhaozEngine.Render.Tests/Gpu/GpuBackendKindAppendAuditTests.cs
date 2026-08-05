@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using KhaozEngine.Diagnostics;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Internal;
@@ -42,6 +43,14 @@ namespace KhaozEngine.Tests.Gpu
     /// that one is the audit that answered them a second time and records where the two appends differ (four
     /// rows do). What stays here is every row where the two appends share ONE assertion rather than having one
     /// each: the pinned ordinals, the family predicates, and the theories that walk every member.
+    /// </para>
+    /// <para>
+    /// The enumeration is thirteen rows and the real count is fifteen. Both extras were found by landing the
+    /// second append rather than by reading the table: <c>GpuBackendProviders.RequiresProvider</c>, which stopped
+    /// being an append site once it was stated as membership rather than a switch, and the unrecognized-override
+    /// warning's token list, asserted below. Section 4.2 of
+    /// <c>docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md</c> records both against the table, so the next
+    /// append inherits the full list.
     /// </para>
     /// </summary>
     public sealed class GpuBackendKindAppendAuditTests
@@ -204,6 +213,79 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(GpuBackendKind.Direct3D11Native, selection.Backend);
             Assert.Equal(GpuBackendSource.EnvironmentOverride, selection.Source);
             Assert.Equal("d3d11-native", selection.RequestedOverride);
+        }
+
+        // --- the FIFTEENTH site, and the one BOTH appends walked past: the token list the unrecognized-override
+        // WARN prints. It was a literal in GpuDeviceContext, so it named five tokens while the parser accepted
+        // six, and the field consequence is the whole reason that warning exists. A typo'd KE_GRAPHICS_BACKEND
+        // does not fail: the run boots on the OS probe and looks entirely normal, so this list is the only clue
+        // the tester gets that their variable did nothing. One naming a token they cannot type, or missing the one
+        // they meant, sends them hunting a machine problem instead. It is single-sourced on
+        // GpuBackendSelector.RecognizedTokens now, and these rows are what keeps it agreeing with the switch.
+        //
+        // Here rather than in either native audit because it is a theory over EVERY member, which is this file's
+        // half of the split. ---
+
+        /// <summary>
+        /// Every token the warning offers parses, and parses to a DISTINCT backend. A list carrying a stale token
+        /// is worse than a short one, because it tells the reader to type something the parser rejects.
+        /// </summary>
+        [Fact]
+        public void EveryTokenTheWarningNames_Parses_ToADistinctBackend()
+        {
+            var named = new List<GpuBackendKind>();
+
+            foreach (string token in WarningTokens())
+            {
+                Assert.True(GpuBackendSelector.TryParseBackend(token, out GpuBackendKind backend), token);
+                Assert.DoesNotContain(backend, named);
+                named.Add(backend);
+            }
+        }
+
+        /// <summary>
+        /// And every member is named by one of them. This is the half an append breaks: the appending change edits
+        /// the parse switch because nothing works without it, then leaves the list alone because nothing fails.
+        /// </summary>
+        [Fact]
+        public void EveryBackendKind_IsNamedByTheWarning()
+        {
+            var named = new HashSet<GpuBackendKind>();
+            foreach (string token in WarningTokens())
+            {
+                if (GpuBackendSelector.TryParseBackend(token, out GpuBackendKind backend))
+                    named.Add(backend);
+            }
+
+            foreach (GpuBackendKind kind in Enum.GetValues<GpuBackendKind>())
+                Assert.Contains(kind, named);
+        }
+
+        /// <summary>
+        /// The rest of the sentence, pinned in one row because the token list is only actionable beside it: the
+        /// variable to fix, the value that did nothing, and the backend that ran instead of it.
+        /// </summary>
+        [Fact]
+        public void TheWarning_NamesTheVariable_TheTypo_AndTheBackendThatRanInstead()
+        {
+            string warning = GpuDeviceContext.UnrecognizedOverrideWarning("vulcan", GpuBackendKind.Metal);
+
+            Assert.Contains(GpuBackendSelector.EnvVarName, warning, StringComparison.Ordinal);
+            Assert.Contains("'vulcan'", warning, StringComparison.Ordinal);
+            Assert.Contains(nameof(GpuBackendKind.Metal), warning, StringComparison.Ordinal);
+        }
+
+        // The tokens as the tester reads them, taken out of the real warning text rather than off the constant, so
+        // the pin covers the composition too: a message that stopped interpolating the list would still satisfy a
+        // test that read the constant directly.
+        static IEnumerable<string> WarningTokens()
+        {
+            string warning = GpuDeviceContext.UnrecognizedOverrideWarning("vulcan", GpuBackendKind.Metal);
+            int open = warning.IndexOf('(');
+            int close = warning.IndexOf(')');
+
+            Assert.True(open >= 0 && close > open + 1, warning);
+            return warning.Substring(open + 1, close - open - 1).Split('/');
         }
 
         // --- row 6: GpuBackendSelector.IsBackendSupported, asserted in GpuBackendKindAppendAuditRegistryTests

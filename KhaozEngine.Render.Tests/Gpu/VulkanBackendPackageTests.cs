@@ -165,18 +165,9 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Same(first, GpuBackendProviders.Require(GpuBackendKind.VulkanNative));
         }
 
-        /// <summary>
-        /// The fourteenth append site, answered for Vulkan the same way it was for Direct3D 11 and with no edit
-        /// at all: <see cref="GpuBackendProviders.RequiresProvider"/> is stated as "everything the built-in path
-        /// does not build", so an appended kind is provider-backed by default. That is the safe direction, and it
-        /// is what makes the registration reach the provider registry rather than the Veldrid creation switch.
-        /// </summary>
-        [Fact]
-        public void TheNativeKind_IsProviderBacked_WithNoEditToTheRegistry()
-        {
-            Assert.True(GpuBackendProviders.RequiresProvider(GpuBackendKind.VulkanNative));
-            Assert.False(GpuBackendProviders.RequiresProvider(GpuBackendKind.Vulkan));
-        }
+        // The fourteenth append site, RequiresProvider answering provider-backed with no edit at all, is asserted
+        // once in GpuBackendKindVulkanAppendAuditTests where the audit narrative reads it. It was duplicated
+        // verbatim here, which is a row that can only ever go red in two places at once.
 
         /// <summary>
         /// The registration is what makes the machine question askable at all, so the selector must route the

@@ -230,10 +230,7 @@ namespace KhaozEngine.Gpu
             // since 17.23.0 includes the case where a stored preference supplied the backend instead. Keying off
             // the raw value rather than the source is what keeps that warning alive on the new path.
             if (selection.RequestedOverride != null && selection.Source != GpuBackendSource.EnvironmentOverride)
-            {
-                log.Warn($"{GpuBackendSelector.EnvVarName}='{selection.RequestedOverride}' is not a recognized "
-                    + $"backend (metal/vulkan/d3d11/d3d11-native/gl). Using {selection.Backend} instead.");
-            }
+                log.Warn(UnrecognizedOverrideWarning(selection.RequestedOverride, selection.Backend));
 
             // Every member is spelled out rather than leaning on a discard arm: an appended member must show up
             // here as a compile-time gap to fill, not silently render as "OS probe" in a tester's log.
@@ -248,6 +245,16 @@ namespace KhaozEngine.Gpu
             };
             log.Info($"GPU backend: {selection.Backend} ({origin})");
         }
+
+        /// <summary>
+        /// The unrecognized-override WARN as a tester reads it, built here rather than inline so a test can read
+        /// the same string the log gets. The token list comes from <see cref="GpuBackendSelector.RecognizedTokens"/>
+        /// and is never spelled out here: as a literal it went stale on both native appends, which is a diagnostic
+        /// that omits the very token the reader meant to type.
+        /// </summary>
+        internal static string UnrecognizedOverrideWarning(string requestedOverride, GpuBackendKind chosen)
+            => $"{GpuBackendSelector.EnvVarName}='{requestedOverride}' is not a recognized backend "
+                + $"({GpuBackendSelector.RecognizedTokens}). Using {chosen} instead.";
 
         // Which physical adapter the session actually ran on, right under the backend line. Logged on EVERY
         // backend, unlike the D3D11 lines below, because an adapter name means something everywhere and a bug

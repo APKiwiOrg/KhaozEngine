@@ -202,6 +202,22 @@ namespace KhaozEngine.Gpu
         }
 
         /// <summary>
+        /// One canonical token per backend, in the order the diagnostics name them: each API's incumbent followed
+        /// by its native implementation. This is the list the unrecognized-override WARN prints, and it lives
+        /// HERE, one screen from the switch above, because it lived as a literal inside
+        /// <see cref="GpuDeviceContext"/> and both native appends walked past it. The result was a warning that
+        /// named five tokens while the parser accepted six.
+        /// <para>
+        /// This list and <see cref="TryParseBackend"/> must agree, and the pair of rows in
+        /// <c>GpuBackendKindAppendAuditTests</c> named after the warning is what holds them together: every token
+        /// here has to parse, and every <see cref="GpuBackendKind"/> has to be named by one of them. The aliases
+        /// (<c>direct3d11</c>, <c>vk-native</c>, <c>opengl</c>) are deliberately absent, since this is what a
+        /// reader is asked to type rather than everything the parser tolerates.
+        /// </para>
+        /// </summary>
+        internal const string RecognizedTokens = "metal/vulkan/vulkan-native/d3d11/d3d11-native/gl";
+
+        /// <summary>
         /// The default backend for an OS family (macOS -> Metal, Windows -> D3D11, else Vulkan).
         /// <para>
         /// Windows deliberately still answers <see cref="GpuBackendKind.Direct3D11"/>, the Veldrid implementation,

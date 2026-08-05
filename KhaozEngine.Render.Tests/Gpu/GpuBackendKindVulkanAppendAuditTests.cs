@@ -182,16 +182,18 @@ namespace KhaozEngine.Tests.Gpu
         /// would change. That is the whole difference from the Direct3D 11 audit's version of this row, where the
         /// flip is a Windows one: the two programs reach their gates independently, and a reader who assumes one
         /// enum append flips one default would have the wrong OS in mind.
+        /// <para>
+        /// Only the Linux row is here. The full four-OS mapping is the same assertion for both appends, so it is
+        /// pinned once in <c>GpuBackendKindAppendAuditTests.ProbeOS_StillAnswersTheIncumbent_OnEveryOs</c>, and
+        /// "this kind is never what the probe answers" is walked over every OS by
+        /// <see cref="ANativeRequest_IsNeverItsOwnFallback_OnAnyOs"/> below.
+        /// </para>
         /// </summary>
-        [Theory]
-        [InlineData(OSPlatformKind.MacOS, GpuBackendKind.Metal)]
-        [InlineData(OSPlatformKind.Windows, GpuBackendKind.Direct3D11)]
-        [InlineData(OSPlatformKind.Linux, GpuBackendKind.Vulkan)]
-        [InlineData(OSPlatformKind.Unknown, GpuBackendKind.Vulkan)]
-        public void ProbeOS_StillAnswersTheIncumbent_OnEveryOs(OSPlatformKind os, GpuBackendKind expected)
+        [Fact]
+        public void ProbeOS_StillAnswersTheIncumbent_OnLinux()
         {
-            Assert.Equal(expected, GpuBackendSelector.ProbeOS(os));
-            Assert.NotEqual(GpuBackendKind.VulkanNative, GpuBackendSelector.ProbeOS(os));
+            Assert.Equal(GpuBackendKind.Vulkan, GpuBackendSelector.ProbeOS(OSPlatformKind.Linux));
+            Assert.NotEqual(GpuBackendKind.VulkanNative, GpuBackendSelector.ProbeOS(OSPlatformKind.Linux));
         }
 
         // --- row 8: GpuBackendSelector._windowCandidates. In the registry class below. ---
@@ -273,11 +275,9 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Null(GoldenCompare.BakeRefusal(GpuBackendKind.VulkanNative, familyOverride: true));
         }
 
-        /// <summary>The incumbent still bakes as it always did. A guard that cost the owning backend its ordinary
-        /// rebake would get worked around rather than respected.</summary>
-        [Fact]
-        public void Baking_IsStillAllowedOnTheBackendThatOwnsTheFamily()
-            => Assert.Null(GoldenCompare.BakeRefusal(GpuBackendKind.Vulkan, familyOverride: false));
+        // That the incumbent still bakes as it always did is the other half of this row, and it is not asserted
+        // here: GpuBackendKindAppendAuditTests.Baking_IsAllowedOnEveryBackendThatOwnsItsFamily already walks all
+        // four owning backends, Vulkan among them, which is the stronger form of the same claim.
 
         // --- row 12: VeldridMap.SupportsCompletionFences and VeldridGpuDevice's Metal frame capture, neither an
         // append site. The first switches on Veldrid's own GraphicsBackend rather than on GpuBackendKind, and it

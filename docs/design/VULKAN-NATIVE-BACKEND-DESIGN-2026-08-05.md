@@ -722,6 +722,20 @@ differently than they did for `Direct3D11Native`.
 Beyond the table: `GpuBackendKinds.IsVulkan()` is added beside `IsDirect3D11()` (V-I5), because a copy of the
 question at each site drifts, and that is the reason the D3D11 predicate exists.
 
+(Corrected 2026-08-06. The enumeration is thirteen rows above and fifteen in fact. Both extras were found by
+landing this append rather than by reading the table, which is the point: a site nobody listed is a site nobody
+checks. The fourteenth is `GpuBackendProviderMissingException.BuildMessage`, which named `KhaozEngineD3D11.Register()`
+unconditionally, so the second provider-backed backend turned it into a message telling a Vulkan tester to
+register Direct3D 11. It was fixed by stating the naming convention (`KhaozEngine.Gpu.<Backend>` exposes
+`KhaozEngine<Backend>.Register()`) rather than by switching on the kind, so it stops being an append site at all
+and degrades correctly for a backend added later. The fifteenth is the token list inside
+`GpuDeviceContext.LogSelection`'s unrecognized-override WARN, carried as a literal and missed by BOTH native
+appends: it named five tokens while the parser accepted six, and that warning is the only clue a tester gets that
+their typo'd `KE_GRAPHICS_BACKEND` did nothing, since the run boots on the OS probe and looks entirely normal. It
+reads `GpuBackendSelector.RecognizedTokens` now, one screen from the switch that parses them, with rows in
+`GpuBackendKindAppendAuditTests` asserting every listed token parses and every `GpuBackendKind` is listed. Row 19's
+audit and the Metal program's append inherit both.)
+
 ---
 
 ## 5. Instance, device, queue

@@ -1328,6 +1328,50 @@ adjudicated into 103 numbered decisions and a 19-row work breakdown. Spec only, 
 phase 2's own design doc picked up corrected-in-place notes in its section 16 where this design supersedes what
 it predicted.
 
+### The `KhaozEngine.Gpu.Vulkan` package, its guard rows, and the two verification tasks row 1 owed (#511)
+
+A new packable package, `KhaozEngine.Gpu.Vulkan`, opt-in and in NO umbrella. It is a SKELETON on purpose: the
+package, its guard rows and the binding spike exist, and nothing else does. It registers no provider,
+`GpuBackendKind` has no native Vulkan member, and no consumer can reach a Vulkan device through it.
+`KhaozEngine.Gpu`'s Veldrid-backed `Vulkan` backend is unchanged and stays the working Vulkan path. No golden
+moved and no behaviour changed anywhere.
+
+**The shape, and the guards that hold it.** `net10.0` with no OS suffix, no `[SupportedOSPlatformGuard]` and no
+`NoInlining` bodies, which is decision V-P1: Vulkan is not a Windows API, so the CA1416 apparatus
+`KhaozEngine.Gpu.D3D11` needs has no analogue here, and the package README states that so nobody adds it back by
+analogy. The binding is `Silk.NET.Vulkan` plus `.Extensions.KHR` and `.Extensions.EXT`, pinned centrally to the
+same `2.23.0` Silk.NET line the windowing, input and audio stacks already pin (V-P2). `ArchitectureTests` gains
+the package in `OptInBackends`, which makes `OptInBackends_AreNotReachableFromAnyUmbrella` enforce the umbrella
+exclusion, and the three Silk.NET Vulkan package ids in `ThirdPartyHomes`. The no-Veldrid-edge pair is
+generalised from its D3D11 originals into theories over both native backends
+(`NativeGpuBackend_DeclaresNoVeldridPackage` reads the project file,
+`NativeGpuBackend_ReferencesNoVeldridAssembly` walks the built IL, which is the half that binds), and
+`GpuPublicApiTests` gains a public-surface walk over the new assembly for `Veldrid` and for `Silk`.
+
+**Verification one: the binding is sufficient, so V-P2 stands.** `Internal/VulkanBindingSpike.cs` is one file of
+never-called static methods that compiles against every API this design spends: timeline semaphore create,
+signal, host wait and the non-blocking counter read, `vkCmdBeginRendering` and `vkCmdEndRendering` with
+`VkRenderingInfo`, `vkCmdPipelineBarrier2` with `VkDependencyInfo` and all three barrier2 structures, the Win32,
+Xlib and Wayland surface extensions, the `VK_EXT_debug_utils` messenger, and the loader's own function-pointer
+acquisition. Nothing was missing, so the named replacement (`Vortice.Vulkan`) is not taken. One constraint the
+design's prose did not state came out of it: Silk.NET types the debug-utils callback as a CDECL function
+pointer, so the messenger callback must be `[UnmanagedCallersOnly]` and cannot capture. The spike exists to fail
+at COMPILE time if a binding regression lands.
+
+**Verification two: the Linux loader resolves with no symlink step.** The CI workflow's "Symlink libdl /
+libvulkan for Veldrid (Linux)" step exists because Veldrid P/Invokes the bare names while modern Ubuntu ships
+only versioned sonames. Silk.NET was ASSERTED to do better and is now measured doing it: in an amd64 Ubuntu
+25.10 container with `mesa-vulkan-drivers` 25.2.8, lavapipe pinned through `VK_ICD_FILENAMES`, no unversioned
+`libvulkan.so` present, and the bare name confirmed unresolvable in the same process as a control, `Vk.GetApi()`,
+`vkEnumerateInstanceVersion` and a 1.3 instance create and destroy all succeed. So the native Vulkan leg needs
+no symlink step of its own.
+
+**And the CI `vulkaninfo` step drops `--summary` (V-D7).** No Vulkan device limit was observable anywhere in
+this repo, so every limit the Vulkan design touches rested on a spec minimum plus an assumption (MV10). The
+summary form prints zero limit lines and the bare form prints the whole `VkPhysicalDeviceLimits` block, so the
+one-word change makes the numbers readable in every Vulkan leg log. The step was already `continue-on-error`,
+so the cost is log volume. Recording the observed values against the design doc is #541.
+
 ## 17.31.0
 
 ### The native Direct3D 11 backend: the replay contract, the constant-buffer ring, and the three cross-row wirings (#449, #451, #452)

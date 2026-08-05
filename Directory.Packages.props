@@ -29,6 +29,16 @@
     <PackageVersion Include="Silk.NET.Input" Version="2.23.0" />
     <PackageVersion Include="Silk.NET.Input.Glfw" Version="2.23.0" />
     <PackageVersion Include="Silk.NET.GLFW" Version="2.23.0" />
+    <!-- The Vulkan binding for the engine-owned native Vulkan backend (KhaozEngine.Gpu.Vulkan). Same 2.23.0
+         Silk.NET line as the windowing, input and audio stacks above, which is decision V-P2 rather than a
+         coincidence: a binding off the same generated line adds a package and not a vendor, shares
+         Silk.NET.Core with what is already in the graph, and rides the lockstep upgrade the comment at the top
+         of this file exists to enforce. The two extension packages carry the KHR and EXT entry points the
+         backend loads by hand (swapchain, the three platform surfaces, debug utils), which are separate
+         assemblies in this binding rather than members of the core one. -->
+    <PackageVersion Include="Silk.NET.Vulkan" Version="2.23.0" />
+    <PackageVersion Include="Silk.NET.Vulkan.Extensions.KHR" Version="2.23.0" />
+    <PackageVersion Include="Silk.NET.Vulkan.Extensions.EXT" Version="2.23.0" />
     <PackageVersion Include="StbTrueTypeSharp" Version="1.26.12" />
     <PackageVersion Include="StbImageSharp" Version="2.30.15" />
     <PackageVersion Include="SharpGLTF.Core" Version="1.0.6" />

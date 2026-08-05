@@ -39,6 +39,11 @@ public class ArchitectureTests
         // the D3D11 interop non-optional for the Linux server heads (decision P1 of
         // docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md).
         "Gpu.D3D11",
+        // The engine-owned native Vulkan backend, opt-in for the same two reasons (decision V-P1 of
+        // docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md). Silk.NET.Vulkan is a large assembly, and the
+        // premise of this phase is Veldrid leaving rather than dependency count falling, so a consumer that
+        // never names Vulkan must never load it.
+        "Gpu.Vulkan",
     };
 
     // The GPU / runtime stack. None of these may appear in the Foundation or Server umbrella closures (both
@@ -73,6 +78,13 @@ public class ArchitectureTests
         ["Silk.NET.Input"] = new[] { "Windowing" },
         ["Silk.NET.Input.Glfw"] = new[] { "Windowing" },
         ["Silk.NET.GLFW"] = new[] { "Windowing" },
+        // The Vulkan binding (decision V-P2), contained in the native Vulkan backend package and nowhere else.
+        // Same Silk.NET 2.23.0 line as the windowing and audio stacks, which is the whole argument for taking
+        // it: one vendor, one Silk.NET.Core, one lockstep upgrade. The two extension assemblies are separate
+        // packages in this binding rather than members of the core one, so all three are mapped.
+        ["Silk.NET.Vulkan"] = new[] { "Gpu.Vulkan" },
+        ["Silk.NET.Vulkan.Extensions.KHR"] = new[] { "Gpu.Vulkan" },
+        ["Silk.NET.Vulkan.Extensions.EXT"] = new[] { "Gpu.Vulkan" },
         // Audio backend: OpenAL plus the ogg / mp3 decoders, all contained in KhaozEngine.Audio.
         ["Silk.NET.OpenAL"] = new[] { "Audio" },
         ["Silk.NET.OpenAL.Soft.Native"] = new[] { "Audio" },
@@ -319,26 +331,28 @@ public class ArchitectureTests
     }
 
     /// <summary>
-    /// Decision P2: the engine-owned native Direct3D11 backend declares NO Veldrid package of its own. The
-    /// shader path needs SPIRV-Cross, which ships as <c>Veldrid.SPIRV</c>, and the tempting shortcut is to
-    /// reference it straight from the backend and bless the edge above. That is rejected: blessing a Veldrid
-    /// package inside a backend whose entire premise is being Veldrid-free is a bad signal no other guard would
-    /// ever catch, and it would scatter the eventual SPIRV-Cross replacement across three packages instead of
-    /// one. The edge stays in <c>KhaozEngine.Gpu</c> behind an internal, Veldrid-free cross-compile helper
-    /// (<c>Internal/SpirvCrossCompile</c>) plus <c>InternalsVisibleTo</c>.
+    /// Decisions P2 (Direct3D 11) and V-P3 (Vulkan): an engine-owned native backend declares NO Veldrid package
+    /// of its own. Both shader paths need SPIRV-Cross, which ships as <c>Veldrid.SPIRV</c>, and the tempting
+    /// shortcut is to reference it straight from the backend and bless the edge above. That is rejected:
+    /// blessing a Veldrid package inside a backend whose entire premise is being Veldrid-free is a bad signal
+    /// no other guard would ever catch, and it would scatter the eventual SPIRV-Cross replacement across
+    /// several packages instead of one. The edge stays in <c>KhaozEngine.Gpu</c> behind an internal,
+    /// Veldrid-free cross-compile helper (<c>Internal/SpirvCrossCompile</c>) plus <c>InternalsVisibleTo</c>.
     /// <para>
-    /// What is asserted is the DECLARED edge, which is the one a person adds. Veldrid is of course still in the
+    /// What is asserted is the DECLARED edge, which is the one a person adds. Veldrid is of course still in each
     /// backend's transitive closure, through <c>KhaozEngine.Gpu</c>, and must be: that is where the helper lives.
-    /// The property that actually matters is that no Veldrid TYPE is reachable from the backend's IL, and a
+    /// The property that actually matters is that no Veldrid TYPE is reachable from a backend's IL, and a
     /// project-file scan cannot see types, so <c>GpuPublicApiTests</c> asserts that half by reflecting over the
-    /// built assembly's references. The two together are the guard.
+    /// built assemblies' references. The two together are the guard, and the IL walk is the load-bearing half.
     /// </para>
     /// </summary>
-    [Fact]
-    public void GpuD3D11_DeclaresNoVeldridPackage()
+    [Theory]
+    [InlineData("KhaozEngine.Gpu.D3D11")]
+    [InlineData("KhaozEngine.Gpu.Vulkan")]
+    public void NativeGpuBackend_DeclaresNoVeldridPackage(string backendProject)
     {
         IReadOnlyDictionary<string, Project> graph = LoadGraph();
-        Project backend = graph["KhaozEngine.Gpu.D3D11"];
+        Project backend = graph[backendProject];
 
         string[] veldrid = backend.PackageRefs
             .Where(p => p.StartsWith("Veldrid", StringComparison.Ordinal))
@@ -347,8 +361,8 @@ public class ArchitectureTests
 
         bool clean = veldrid.Length == 0;
         Assert.True(clean,
-            "KhaozEngine.Gpu.D3D11 declares a Veldrid PackageReference: [" + string.Join(", ", veldrid) + "]. " +
-            "The native backend is Veldrid-free by construction. If this was added for the SPIRV-Cross shader " +
+            backendProject + " declares a Veldrid PackageReference: [" + string.Join(", ", veldrid) + "]. " +
+            "A native backend is Veldrid-free by construction. If this was added for the SPIRV-Cross shader " +
             "path, put the call behind KhaozEngine.Gpu's internal SpirvCrossCompile helper instead, whose " +
             "signatures are Veldrid-free precisely so this edge never has to exist.");
     }

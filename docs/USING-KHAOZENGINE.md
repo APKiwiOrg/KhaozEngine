@@ -8568,6 +8568,42 @@ hardware adapter, then WARP) and two hard requirements read off it, `ConstantBuf
 `MapNoOverwriteOnDynamicConstantBuffer`. A machine missing either cannot run the backend at all, and answering
 that up front is what routes it through the reported fallback instead of a crash on the first frame.
 
+### The native Vulkan package (`KhaozEngine.Gpu.Vulkan`, 17.32.0)
+
+Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
+
+```xml
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="17.32.0" />
+```
+
+```csharp
+using KhaozEngine.Gpu.Vulkan;
+
+KhaozEngineVulkan.Register();   // unconditionally, on every OS
+```
+
+**Nothing can select this backend yet, and that is the honest state of it.** Registration and the machine probe
+are real. Device creation is not: both entry points refuse with a message naming
+https://github.com/APKiwiOrg/KhaozEngine/issues/514, the row that builds the instance, the device and the queue.
+There is also no `GpuBackendKind` member for it yet (that is
+https://github.com/APKiwiOrg/KhaozEngine/issues/513), so there is no name to pass and no
+`KE_GRAPHICS_BACKEND` token to set. `GpuBackendKind.Vulkan`, which goes through Veldrid, is the working Vulkan
+backend and stays selectable indefinitely. Calling `Register()` today costs one dictionary entry and changes
+nothing about how your game boots.
+
+Call it unconditionally anyway, and on every OS. Unlike `KhaozEngine.Gpu.D3D11` there is no platform guard to
+read first and none to add: Vulkan is not a Windows API, the same managed code runs everywhere, the loader is
+resolved at runtime, and a machine without one is answered by the probe rather than by a platform predicate. The
+package's whole public surface is that one method.
+
+Whether the machine can run it is the separate question `IsBackendSupported` answers, through this package's own
+functional probe: a Vulkan loader, a throwaway instance at the 1.3 floor, then every physical device checked for
+apiVersion at or above 1.3, `dynamicRendering`, `synchronization2`, `timelineSemaphore`, a host-visible
+`HOST_COHERENT` memory type, `maxDescriptorSetUniformBuffersDynamic` at or above what the engine's pipeline
+layouts spend, and a graphics queue family. The instance is destroyed before the answer comes back. The probe
+never throws, so a machine with no loader, no ICD or a pre-1.3 driver is a plain false: on macOS, which has no
+Vulkan loader, that is the answer you get and it is the correct one.
+
 ### How many command lists may be open at once (`IGpuCommandList.Begin` / `End`, 17.30.0)
 
 **The rule to write code against: one open recording per device.** Between a `Begin()` and its `End()`, do not

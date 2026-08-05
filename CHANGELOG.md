@@ -1320,6 +1320,136 @@ because the documentation this round adds pushed `CharacterMovement.Slide.cs` pa
 Same partial type, same private core, and rule 1 of the steep-terrain model (the wall contact) now sits
 beside rule 2 (no traction) instead of inside it. The geometry both rules read stays where it was.
 
+#### The Vulkan native backend design lands, adjudicated from two adversarial drafts (#420)
+
+`docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md` is phase 3 of the #420 program: Vulkan next, Metal
+after, Veldrid exit at the end. Two independent drafts, one reuse-first and one Vulkan-idiomatic, were
+adjudicated into 103 numbered decisions and a 19-row work breakdown. Spec only, implementation not started, and
+phase 2's own design doc picked up corrected-in-place notes in its section 16 where this design supersedes what
+it predicted.
+
+### The `KhaozEngine.Gpu.Vulkan` package, its guard rows, and the two verification tasks row 1 owed (#511)
+
+A new packable package, `KhaozEngine.Gpu.Vulkan`, opt-in and in NO umbrella. It is a SKELETON on purpose: the
+package, its guard rows and the binding spike exist, and nothing else does. It registers no provider,
+`GpuBackendKind` has no native Vulkan member, and no consumer can reach a Vulkan device through it.
+`KhaozEngine.Gpu`'s Veldrid-backed `Vulkan` backend is unchanged and stays the working Vulkan path. No golden
+moved and no behaviour changed anywhere.
+
+**The shape, and the guards that hold it.** `net10.0` with no OS suffix, no `[SupportedOSPlatformGuard]` and no
+`NoInlining` bodies, which is decision V-P1: Vulkan is not a Windows API, so the CA1416 apparatus
+`KhaozEngine.Gpu.D3D11` needs has no analogue here, and the package README states that so nobody adds it back by
+analogy. The binding is `Silk.NET.Vulkan` plus `.Extensions.KHR` and `.Extensions.EXT`, pinned centrally to the
+same `2.23.0` Silk.NET line the windowing, input and audio stacks already pin (V-P2). `ArchitectureTests` gains
+the package in `OptInBackends`, which makes `OptInBackends_AreNotReachableFromAnyUmbrella` enforce the umbrella
+exclusion, and the three Silk.NET Vulkan package ids in `ThirdPartyHomes`. The no-Veldrid-edge pair is
+generalised from its D3D11 originals into theories over both native backends
+(`NativeGpuBackend_DeclaresNoVeldridPackage` reads the project file,
+`NativeGpuBackend_ReferencesNoVeldridAssembly` walks the built IL, which is the half that binds), and
+`GpuPublicApiTests` gains a public-surface walk over the new assembly for `Veldrid` and for `Silk`.
+
+**Verification one: the binding is sufficient, so V-P2 stands.** `Internal/VulkanBindingSpike.cs` is one file of
+never-called static methods that compiles against the API surfaces this design spends: the loader's own
+function-pointer acquisition and `VK_EXT_validation_features` on the instance chain, the
+`VkPhysicalDeviceFeatures2` device feature chain carrying the 1.2 and 1.3 structures, timeline semaphore create,
+signal, host wait and the non-blocking counter read, `vkCmdBeginRendering` and `vkCmdEndRendering` with
+`VkRenderingInfo`, `vkCmdPipelineBarrier2` with `VkDependencyInfo` and all three barrier2 structures, the
+dedicated-allocation query and allocate chain, the Win32, Xlib and Wayland surface extensions, the four
+`VK_KHR_surface` queries, the swapchain's create, enumerate, acquire, present and destroy cycle, and the
+`VK_EXT_debug_utils` messenger plus object naming. Nothing was missing, so the named replacement
+(`Vortice.Vulkan`) is not taken. One constraint the design's prose did not state came out of it: Silk.NET types
+the debug-utils callback as a CDECL function pointer, so the messenger callback must be `[UnmanagedCallersOnly]`
+and cannot capture. The swapchain and surface entries are the ones that most earn their place, because every GPU
+CI leg here is headless, so those design sections have no automated coverage at all and the compile tripwire is
+the only cheap check they get. And a tripwire is all of it: no method in the file is ever called, so it asserts
+that the members exist with the assumed shapes and asserts nothing about runtime behaviour.
+
+**Verification two: the Linux loader resolves with no symlink step.** The CI workflow's "Symlink libdl /
+libvulkan for Veldrid (Linux)" step exists because Veldrid P/Invokes the bare names while modern Ubuntu ships
+only versioned sonames. Silk.NET was ASSERTED to do better and is now measured doing it, in a LOCAL Apple
+container rather than in CI: an amd64 Ubuntu 25.10 image under Rosetta on a developer machine, with
+`mesa-vulkan-drivers` 25.2.8, lavapipe pinned through `VK_ICD_FILENAMES`, no unversioned `libvulkan.so` present,
+and the bare name confirmed unresolvable in the same process as a control, where `Vk.GetApi()`,
+`vkEnumerateInstanceVersion` and a 1.3 instance create and destroy all succeed. So the native Vulkan leg needs
+no symlink step of its own. Two caveats ride with that. It is one local run, so what it establishes is a
+property of the binding's native-context search rather than of any runner, and 25.2.8 is not known to be CI's
+Mesa version: `cross-platform-gpu.yml` installs `mesa-vulkan-drivers` unpinned on `ubuntu-latest` and nothing
+has observed what that resolves to, so the match is EXPECTED and unverified until #541's `vulkaninfo` record
+lands.
+
+**And the CI `vulkaninfo` step drops `--summary` (V-D7).** No Vulkan device limit was observable anywhere in
+this repo, so every limit the Vulkan design touches rested on a spec minimum plus an assumption (MV10). The
+summary form prints zero limit lines and the bare form prints the whole `VkPhysicalDeviceLimits` block, so the
+one-word change makes the numbers readable in every Vulkan leg log. The step was already `continue-on-error`,
+so the cost is log volume. Recording the observed values against the design doc is #541.
+
+### `KhaozEngineVulkan.Register()`, the native Vulkan provider, and a functional `IsSupported` probe with real content (#512)
+
+`KhaozEngine.Gpu.Vulkan` stops being a skeleton. It registers a real `IGpuBackendProvider`, and that provider
+answers a real machine-capability probe: a Vulkan loader, a throwaway instance at the 1.3 floor, and every
+physical device read against the design's requirements. Creating a DEVICE is still not built (#514), and
+`GpuBackendKind` still has no native Vulkan member (#513), so nothing SELECTS this backend and no consumer path
+reaches it. No golden moved and no behaviour changed anywhere.
+
+**`KhaozEngineVulkan.Register()` is the whole public surface**, one call at consumer startup, no
+`[ModuleInitializer]` and no reflection, for the reasons section 4.1 records and phase 2 already paid for. The
+package's exported surface is now pinned member by member by
+`GpuPublicApiTests.GpuVulkanPublicSurface_IsExactlyTheApprovedMembers`, at one type carrying one method: the
+three existing leak scans ask what the surface exposes and cannot see a new member that happens to name no
+forbidden type. Note what is deliberately absent from that list. There is no `IsPlatformSupported` here, because
+V-P1 says Vulkan is not a Windows API, and a guard property appearing in the pin would be that decision quietly
+reversing.
+
+**The probe is functional and it has real content on this backend.** `IsSupported()` resolves the loader,
+refuses a loader below 1.3, creates a throwaway instance at `min(1.3, vkEnumerateInstanceVersion())` (V-N2's
+clamp, kept in its stated form), enumerates physical devices and judges each one against section 5.2's four hard
+requirements (device apiVersion at or above 1.3, `dynamicRendering`, `synchronization2`, `timelineSemaphore`)
+plus section 4.1's three further reads: a host-visible `HOST_COHERENT` memory type (V-M4, which the uniform ring
+is pinned to and 9.2's no-flush-required claim rests on), `maxDescriptorSetUniformBuffersDynamic` at or above
+what the shipped pipeline layouts spend (8.3's fourth defence, and the only one of that section's four that
+answers for the MACHINE at runtime), and a graphics queue family. **The instance is destroyed before the answer
+returns, on every path**, which is why the decision is taken over a copied snapshot rather than over live
+handles, and it deliberately does not use #514's refcounted process instance because it must answer before any
+device exists.
+
+**It never throws.** A machine with no loader, no ICD or a pre-1.3 driver answers false and routes through the
+existing reported fallback, because "we could not even ask" and "no" are the same answer to the settings screen
+and the fallback that consume it. On a macOS developer machine, which has no Vulkan loader at all, the first
+read answers and nothing under it is reached.
+
+**Split so the decisions are testable without a driver.** The reading half needs a loader, an instance and a
+driver, which one CI leg has and no developer machine here does. The deciding half is seven comparisons over a
+plain snapshot struct, so it lives on its own and is driven device-free from fabricated values, one requirement
+failed at a time, on every leg. That covers the requirements nobody can produce hardware to fail: no rig in this
+fleet offers a device with no coherent host-visible memory type, or one reporting
+`maxDescriptorSetUniformBuffersDynamic` below Vulkan's own required minimum. The check ORDER is pinned too, so a
+1.2 device reads as one version problem rather than as three unrelated missing features, which is the same
+failure phrased three times.
+
+**The presenting-graphics-family clause is a parameter rather than a fact of the device**, because it is the one
+requirement that differs by path. `IsSupported()` receives no window, and `vkGetPhysicalDeviceSurfaceSupportKHR`
+needs a `VkSurfaceKHR` that cannot exist without one. Building a surface inside the probe would also mean
+enabling a platform surface extension on the headless path, which V-N6 forbids. So the probe asks with the flag
+false and swapchain creation (#527) asks the same method with it true, and both halves are pinned.
+
+**The `VulkanBackendRegistration` seat is in `KhaozEngine.TestSupport.Gpu`, not in one test assembly**, called
+from `GpuFactAttribute`'s static constructor beside its Direct3D 11 sibling. That is the row's own instruction
+and it is the D3D11 regression being paid forward rather than re-earned: when registration lived only in
+`KhaozEngine.Render.Tests`, all four of `KhaozEngine.MapEditor.Tests`' GPU tests threw
+`GpuBackendProviderMissingException` on the native leg. `Render.Tests` keeps a thin module-initializer belt of
+its own for the registry rows that carry no `[GpuFact]` and would otherwise never fire the hook.
+
+**The kind is a PINNED ORDINAL, temporarily and visibly.** `GpuBackendKind.VulkanNative = 5` belongs to #513,
+which parallelises with this row rather than preceding it, so this row may not do that work: appending the
+member without #513's `GoldenBackendToken` mapping would leave a kind that throws out of the golden filename
+path, which is exactly the silent-orphan failure that row's audit test exists to prevent. So `KhaozEngineVulkan`
+registers under `(GpuBackendKind)5`, the ordinal the design pins (V-I1), and `GpuBackendProviders` keys by
+value, which makes the registration correct TODAY and correct by NAME the moment the member lands. The
+alternative considered and rejected was a `Register()` that throws until #513 lands, which would be a public
+method that lies about what the package does and a registration seat with nothing to register. A test fails the
+moment ordinal 5 gains a name, carrying the two-line replacement as its message, because a magic number nobody
+is forced to remove is how a temporary shim becomes permanent.
+
 ### A wall contact reads its face over the bank, not over a 0.4 m facet of it (#501)
 
 Walking along a bank on Ruinborne stopped the character dead in localised sticky PLACES, and the fix for

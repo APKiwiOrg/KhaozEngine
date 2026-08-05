@@ -25,7 +25,7 @@ namespace KhaozEngine.Tests.Gpu
     public sealed class GpuFactAttribute : FactAttribute
     {
         /// <summary>
-        /// WHERE THE NATIVE DIRECT3D 11 BACKEND GETS REGISTERED, for every assembly that runs GPU tests. An
+        /// WHERE THE ENGINE'S NATIVE BACKENDS GET REGISTERED, for every assembly that runs GPU tests. An
         /// explicit static constructor is what makes the CLR run this the first time anything touches this type,
         /// which is during xUnit's discovery pass in any assembly carrying a <c>[GpuFact]</c> (or a
         /// <c>[GpuTheory]</c>, whose own constructor calls straight into this one's statics), so it lands before
@@ -36,8 +36,17 @@ namespace KhaozEngine.Tests.Gpu
         /// the ATTRIBUTE, which is what says "this assembly runs GPU tests", not the assembly load, which says
         /// nothing. Full reasoning on <see cref="D3D11BackendRegistration"/>.
         /// </para>
+        /// <para>
+        /// BOTH native backend packages register here, which is the property the shared home was moved for and
+        /// the first thing to check when a third one arrives. Each call is idempotent and thread-safe on its own
+        /// side, so ordering between them means nothing and neither can be reached twice.
+        /// </para>
         /// </summary>
-        static GpuFactAttribute() => D3D11BackendRegistration.EnsureRegistered();
+        static GpuFactAttribute()
+        {
+            D3D11BackendRegistration.EnsureRegistered();
+            VulkanBackendRegistration.EnsureRegistered();
+        }
 
         // One headless device-creation attempt per process. null = a device was created (and disposed) fine, so
         // probe mode may run; a non-null string is the reason probe mode skips.

@@ -561,6 +561,45 @@ and reported through the existing `FallbackAfterFailure` path). Full reasoning i
 [design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md](design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md), section 4.1
 and decisions P4 and I2.
 
+### The second instance: `KhaozEngine.Gpu.Vulkan`
+
+The pattern above is now used twice, which is what turns it from a one-off into the shape an out-of-package
+graphics backend has here. `KhaozEngine.Gpu.Vulkan` is phase 3 of the same program and takes the same inverted
+edge. As of `17.32.0` it registers a real provider through `KhaozEngineVulkan.Register()` and answers a real
+functional machine probe, and it creates no device yet
+([#514](https://github.com/APKiwiOrg/KhaozEngine/issues/514)). `GpuBackendKind` still has no native Vulkan
+member ([#513](https://github.com/APKiwiOrg/KhaozEngine/issues/513)), so the provider registers under the
+ordinal that append pins and nothing can select the backend yet.
+
+```
+KhaozEngine.Gpu.Vulkan -> KhaozEngine.Gpu      (the only direction, again)
+KhaozEngine.Gpu.Vulkan -> KhaozEngine.Diagnostics   (the probe's one log line, same as the D3D11 instance)
+KhaozEngine.Gpu.Vulkan -> Silk.NET.Vulkan(+.Extensions.KHR/.EXT)
+```
+
+Two things differ from the Direct3D 11 instance, and both are worth knowing before reading one package as a
+template for the other.
+
+**No platform guards, and their absence is the decision** (V-P1 of
+[design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md](design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md)). The
+D3D11 package targets `net10.0` and then spends a whole `[SupportedOSPlatformGuard]`-over-`NoInlining`
+apparatus keeping the Vortice interop off the load path on macOS and Linux, because Direct3D is a Windows API
+in an assembly that must load everywhere. Vulkan is not: the same managed code runs on Windows and Linux, the
+loader resolves at runtime, and a machine without one fails the functional probe and routes through the
+existing fallback. So the Vulkan package has no OS-suffixed TFM, no guard attributes and no `NoInlining`
+bodies, and adding them back by analogy would create a boundary the backend does not have.
+
+**The binding is contained the same way the Veldrid one is.** `Silk.NET.Vulkan` and its two extension packages
+are mapped to `Gpu.Vulkan` alone in `ArchitectureTests.ThirdPartyHomes`, and no `Silk` type may appear on the
+package's externally visible surface (`GpuPublicApiTests.GpuVulkanPublicApi_DoesNotLeakBackendTypes`). The
+reason is the seam rather than the load path: a `Silk.NET.Vulkan` type in a public signature makes a consumer
+that merely reads it compile against the Vulkan binding, which turns an opt-in backend into a second GPU
+vocabulary the engine would owe stability to. Both packages also have their surface pinned member by member
+(`GpuD3D11PublicSurface_IsExactlyTheApprovedMembers` and `GpuVulkanPublicSurface_IsExactlyTheApprovedMembers`),
+which is what catches a new member that leaks no forbidden type and is therefore invisible to every scan above.
+
+The no-Veldrid rule below applies to BOTH packages, and both assertions are theories over the two of them.
+
 ### What the backend package may reference, and the one edge it may NOT
 
 `KhaozEngine.Gpu.D3D11` references `KhaozEngine.Gpu`, `KhaozEngine.Diagnostics` (so the support probe can say
@@ -591,14 +630,16 @@ no Direct3D type at all, and all of it is tested headlessly on macOS and Linux. 
 the same profile, the same flags and the same pinned cross-compile options as the shipped path, so it cannot
 drift into validating a shader nobody ships.
 
-Two ways, because one of them alone would not bind. `ArchitectureTests.GpuD3D11_DeclaresNoVeldridPackage` reads
-the project file, which catches the deliberate edit. It cannot catch the subtler failure: Veldrid is in the
+Two ways, because one of them alone would not bind. `ArchitectureTests.NativeGpuBackend_DeclaresNoVeldridPackage`
+reads the project file, which catches the deliberate edit. It cannot catch the subtler failure: Veldrid is in a
 backend's transitive closure through `KhaozEngine.Gpu` whatever the project file says, so an INTERNAL helper
 signature mentioning a Veldrid type would compile, would put a Veldrid assembly reference in the backend's IL,
-and would be invisible to every public-surface scan there is. `GpuPublicApiTests.GpuD3D11_ReferencesNoVeldridAssembly`
+and would be invisible to every public-surface scan there is.
+`GpuPublicApiTests.NativeGpuBackend_ReferencesNoVeldridAssembly`
 reflects over the built assembly's references and closes exactly that gap, which is why the helper's whole
 contract is expressed in engine mirrors (`CrossCompiledPair` / `ShaderReflection` over `GpuVertexElement` and
-`GpuResourceLayoutDescription`).
+`GpuResourceLayoutDescription`). Both are theories over `KhaozEngine.Gpu.D3D11` and `KhaozEngine.Gpu.Vulkan`,
+so a third native backend joins them by adding one row each.
 
 The same `InternalsVisibleTo` carries the other internal the backend needs, `IGpuDeviceLifecycle`: a natively
 created device implements it to get the same disposal latch the Veldrid wrapper has, so a resource wrapper

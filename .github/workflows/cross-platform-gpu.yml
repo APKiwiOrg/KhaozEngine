@@ -269,10 +269,16 @@ jobs:
           [ -n "$vk" ] && sudo ln -sf "$vk" "$libdir/libvulkan.so" || echo "WARN: libvulkan.so.1 not found"
           ls -l "$libdir/libdl.so" "$libdir/libvulkan.so" 2>/dev/null || true
 
+      # No --summary, deliberately (decision V-D7 of docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md).
+      # The summary prints the driver and the API version and NO device limits at all, so no Vulkan device limit
+      # has ever been observable anywhere in this repo, and every limit that design touches rests on a spec
+      # minimum plus an assumption (MV10). The full dump lands the whole VkPhysicalDeviceLimits block in every
+      # Vulkan leg log instead. The step is already continue-on-error, so the cost is log volume. The observed
+      # lavapipe values get recorded once a run has them: https://github.com/APKiwiOrg/KhaozEngine/issues/541
       - name: Vulkan diagnostics
         if: matrix.os == 'ubuntu-latest'
         continue-on-error: true
-        run: vulkaninfo --summary || true
+        run: vulkaninfo || true
 
       # DECISION S5's CI leg, one Windows leg only and on EVERY trigger. These are plain [Fact]s with no device: they
       # cross-compile every shipped shader program to HLSL and run FXC over the result, then assert the reflected

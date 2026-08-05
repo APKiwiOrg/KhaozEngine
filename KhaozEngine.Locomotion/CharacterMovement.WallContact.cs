@@ -89,6 +89,104 @@ public static partial class CharacterMovement
     // a hair into a bending face whatever its length - is #502, and closing that is what would retire this ladder.
     private const int ProjectedStepRungs = 6;
 
+    // How much wider than the ordinary height stencil AdvanceWallSlide reads its SECOND face direction over: FIVE
+    // times it, so 2.0 m at the fleet's 0.4 m capsule radius. A multiple rather than a metre literal, because the
+    // ordinary read is the capsule's own width (StencilRadius) and a fixed metre span would mean something different
+    // for a giant than for a rat.
+    //
+    // WHAT A 0.4 M FACE DIRECTION COSTS (#501). A central difference at the capsule radius describes a 0.4 m FACET of
+    // a bank rather than the bank, and the along-face speed a facet leaves is the commanded speed times the sine of
+    // the angle between the command and that facet's outward. So where the facet's outward lands anti-parallel to the
+    // command the projection keeps NOTHING - and that point is a stable attractor, because the walker's own along-face
+    // drift carries it there while the drift rate vanishes on arrival. It arrives, it stops, the geometry under it
+    // never changes, and every later tick sheds the same move for the same reason. On Ruinborne's island the 0.4 m
+    // outward read 180.000 degrees off the command with 0.002 of the speed surviving, and the worst censused ride
+    // made 0.028 of its commanded travel with 248 of 300 ticks dead. What the player sees is a walker that is fully
+    // footed and upright, holding a direction, going nowhere: no falling pose, no slide, no refusal.
+    //
+    // WHY FIVE. Two measurements over the noisy-bank fixture in WallFaceAttractorTests, and they agree. The first
+    // sweeps the stencil against the WORST face direction any position along the traverse produces, as the fraction
+    // of the commanded speed a projection onto it would keep there:
+    //
+    //     stencil    0.4 m    0.8 m    1.2 m    1.6 m    2.0 m    2.4 m    3.2 m    4.0 m
+    //     lean 68    0.003    0.270    0.296    0.302    0.334    0.341    0.355    0.353
+    //     lean 75    0.001    0.150    0.177    0.184    0.216    0.224    0.239    0.236
+    //     lean 79    0.001    0.081    0.108    0.115    0.148    0.155    0.171    0.168
+    //
+    // The 0.4 m column reaches zero at every heading, which is the whole bug: a fallback whose own direction has a
+    // zero along the traverse only MOVES the attractor, and the census behind #501 says so in as many words. Two and
+    // three times the stencil are the ones that matter to rule out, and they are ruled out by their own worst case
+    // sitting at or barely above WideFaceKeepFraction: a fallback direction that is itself inside the band that
+    // triggered the fallback is not a second opinion. Five clears that band by half again.
+    //
+    // The second measurement is the rides themselves, as the worst of the twelve, in fractions of commanded travel:
+    //
+    //     stencil            2x       3x       4x       5x       6x       8x      10x
+    //     worst ride       0.28     0.38     0.86     0.86     0.83     0.83     0.44
+    //
+    // Four and five are the plateau. Ten collapses a ride because a 4 m read spans more bank than bank, and the
+    // agreement between the two measurements is what picks five over four: at four the wide direction's own worst
+    // keep is 0.115 against a 0.10 trigger, and at five it is 0.148. Ruinborne's real island agrees at the same
+    // widths: at its worst censused site the 0.4 m read keeps 0.002 while 1 m keeps 0.286, 2 m 0.384 and 4 m 0.413.
+    //
+    // WHAT IT COSTS. Four more height probes on a CONTACT tick and nothing at all on any other tick, since the wide
+    // read is made only after the steepness and reach tests have already said this destination is a wall. Against the
+    // ladder's up-to-seven probe pairs on the same tick that is a small addition to a path that is already the rare
+    // one.
+    private const float WideFaceStencilScale = 5f;
+
+    // The first of the two things that make AdvanceWallSlide stop believing its narrow face: the kept along-face
+    // speed, as a fraction of the commanded speed, at or under which the facet is not describing a wall. A TENTH.
+    // Below this the projection is shedding more than nine tenths of the move, which is not what a wall does to a
+    // command aimed along it.
+    //
+    // WHERE THE NUMBER COMES FROM. The 266-row Ruinborne census behind #501 measured two populations rather than one
+    // continuum: every dead-stop row it found kept 0.002 or less, and the healthy contact rows beside them kept 0.2
+    // and up. A tenth sits in the gap, fifty times the dead rows and half the lowest healthy one, so it is a line
+    // drawn through empty space rather than through either population. The census warns specifically that a 0.25 line
+    // does NOT have that property, since it cuts a continuum of real contacts. Swept on the fixture, as the worst of
+    // the twelve rides in fractions of commanded travel:
+    //
+    //     trigger        0.02     0.05     0.10     0.15     0.25
+    //     worst ride     0.69     0.82     0.86     0.08     0.08
+    //
+    // The cliff on the high side is the control heading, the one that never had the attractor: at 0.15 and 0.25 the
+    // fallback starts firing on healthy contacts and makes that ride worse than doing nothing. The slope on the low
+    // side is the fallback engaging too late to catch the drift. A tenth is not a compromise between the two, it is
+    // the measured plateau.
+    //
+    // THE ENGINE'S OWN CREASES LIVE ABOVE THIS LINE, WHICH IS THE REASON IT IS A LINE AT ALL RATHER THAN NO TEST.
+    // A rising gully met off-axis keeps 0.28 of its command through the narrow face, and its narrow face is the
+    // TRUTH there: a crease is a real feature at capsule scale, and the wide read averages its two walls to almost
+    // nothing, leaving a projection small enough for the ladder's shortest rung to squeeze a step onto the far wall.
+    // That is the #468 shape the refusal exists to forbid, and it is what taking the wide face UNCONDITIONALLY
+    // reintroduced: measured, A_rising_gully_crease_is_refused goes to 2.4 mm of climb and 150 of 300 ticks airborne,
+    // and it passes at every trigger tried here. So the narrow face keeps its job wherever it is still doing it.
+    private const float WideFaceKeepFraction = 0.1f;
+
+    // The second of the two, and the one that keeps the first from becoming a park of its own. THE THRESHOLD ABOVE IS
+    // A SWITCHING SURFACE, AND THE NARROW FIELD DRIVES THE WALKER STRAIGHT ONTO IT: inside the region the wide face
+    // carries the walker along the bank and out, while just outside it the narrow face is PAST anti-parallel, so its
+    // along-face travel points back toward the attractor. Two candidate motions that oppose across a boundary make
+    // that boundary a park, and the walker rides it instead of the attractor - the fallback having relocated the bug
+    // rather than removed it. Measured on the fixture at a lean of 79 degrees, walking at 30 Hz: 0.31 of the commanded
+    // travel with the fallback engaging and disengaging on 138 of 300 ticks, against 0.29 with no fallback at all.
+    //
+    // So the wide face is ALSO taken whenever the two candidate travels oppose by more than a right angle, which is
+    // what this constant compares against (zero: a plain sign test on their dot product). That cannot leave a park
+    // anywhere, and the argument is short. On the keep boundary the narrow face is only ever used when it agrees with
+    // the wide one to within a right angle, so both sides of that boundary travel the same way. On the new boundary
+    // the two are exactly perpendicular, so again neither side opposes the other. There is no surface left where the
+    // two available motions point against each other, which is the only thing that can hold a walker still. Measured:
+    // the same 79 degree ride goes to 1.04 of its commanded travel, and the worst of the twelve rides goes from 0.31
+    // to 0.86.
+    //
+    // HYSTERESIS WOULD BE THE TEXTBOOK ANSWER TO A CHATTERING THRESHOLD AND IS NOT AVAILABLE HERE. It needs carried
+    // state, and this file has none by construction, because that is what makes a wall contact replay bit-identically
+    // through ClientPrediction.Reconcile. A geometric test that cannot chatter is the version of the same idea that
+    // costs no state.
+    private const float WideFaceOpposedDot = 0f;
+
     /// <summary>Advance an XZ position by a horizontal velocity for one tick, WALL-SLIDING off analytic terrain that
     /// the step cannot reach: when the destination's ground normal is steeper than
     /// <see cref="MoveTuning.MaxSlopeRadians"/> AND its ground stands more than <paramref name="reach"/> above the
@@ -112,6 +210,17 @@ public static partial class CharacterMovement
     /// moment any of it pointed at a face, so holding a direction 45 degrees into a cliff while jumping lost the
     /// lateral half too - an invisible wall eating air control. Removing only the into-face component leaves the
     /// along-face travel exactly what it would have been with no face there at all.</para>
+    /// <para>WHEN THE FACE IS READ WIDE, AND WHY ONLY THE DIRECTION EVER IS (#501). The face comes from a central
+    /// difference at the capsule radius, which on metre-wavelength micro-geometry describes a 0.4 m FACET rather than
+    /// the bank - and where that facet's outward lands anti-parallel to the command, the projection keeps nothing at
+    /// all. That is a stable fixed point rather than a coincidence, since the walker's own drift carries it in while
+    /// the drift rate vanishes as it arrives, so it reads as a footed, upright walker holding a direction and going
+    /// nowhere. So the face is re-read over <see cref="WideFaceStencilScale"/> times the stencil, which has no zero
+    /// along a traverse to fall into, and the ORIGINAL velocity is re-projected onto it whenever the narrow face
+    /// either keeps less than <see cref="WideFaceKeepFraction"/> of the command or wants to travel against the wide
+    /// face (<see cref="WideFaceOpposedDot"/>). Everything else keeps the narrow face, which is what leaves a crease
+    /// alone. The steepness test above and the ladder below still read the ordinary narrow values throughout, so a
+    /// wider direction can change where the walker goes and never what altitude it may take.</para>
     /// <para>ANTI-TUNNEL, AND WHY IT SHORTENS BEFORE IT REFUSES (#498). The projected move is re-tested against the
     /// same two conditions, and one that still lands in a wall is SHORTENED rather than dropped: retested by repeated
     /// halving down to a sixty-fourth of itself (<see cref="ProjectedStepRungs"/>), committing the first endpoint
@@ -164,7 +273,16 @@ public static partial class CharacterMovement
         // THE FACE DIRECTION COMES FROM THE HEIGHTS (#468), not from destNormal. destNormal has already done its one
         // job on the line above - the steepness classification - and its idea of downhill is exactly what disagreed
         // with the column the ground clamp seats to. See HeightPlaneNormal.
-        (float fx, float fz) = FaceDirection(HeightPlaneNormal(nx, nz, tuning, groundHeight, destNormal), velocity);
+        //
+        // AND IT IS READ WIDE (#501), over WideFaceStencilScale times the stencil every other height-plane read uses.
+        // At the capsule's own width the direction is a 0.4 m facet of the surface rather than the surface, and where
+        // that facet's outward drifts anti-parallel to the command the projection below keeps nothing - a stable
+        // attractor a walker falls into and cannot leave. The constant carries the measured stencil profile, the
+        // reason the width is five and not two or ten, and the reason the wide read is taken on every contact rather
+        // than as a fallback. What the wide read is allowed to decide is only the DIRECTION: the steepness test above
+        // and the ladder below still read the ordinary narrow heights, which is what keeps #468 exact - see the
+        // ladder's own note.
+        (float fx, float fz) = FaceDirection(HeightPlaneNormal(nx, nz, StencilRadius(tuning), groundHeight, destNormal), velocity);
         float into = velocity.X * fx + velocity.Y * fz;
         // NO OUTWARD EARLY-OUT. Until 17.29.0 a move with `into >= 0` was admitted here unconditionally, on the
         // argument that the face direction is the destination column's own downhill so an outward move cannot be
@@ -179,21 +297,67 @@ public static partial class CharacterMovement
         float sx = velocity.X - into * fx;
         float sz = velocity.Y - into * fz;
 
-        // A MOVE ENTIRELY INTO THE FACE HAS NO LADDER TO WALK. When the projection is exactly the zero vector every
-        // rung's endpoint is (x, z) itself, so all seven probe the SAME point and all three ways out of the loop
-        // return that same point: the not-steep branch, the under-allowance branch and the refusal all agree, and
-        // they agree with the answer here. So the result is identical (up to the sign of a zero at the world
-        // origin, where the old path's x + 0 normalized -0.0 to +0.0) and the probes are simply not made. This is
-        // the head-on case (a walk driven straight into a wall, and the degenerate FaceDirection fallback where the
-        // move direction stands in as the face's own), which is common enough to be worth a compare now that the
-        // ladder is seven rungs deep rather than four.
+        // A MOVE ENTIRELY INTO THE FACE HAS NO LADDER TO WALK, so an exactly zero projection short-circuits. Every
+        // rung's endpoint would be (x, z) itself, so all seven probe the SAME point and all three ways out of the
+        // loop return it: the not-steep branch, the under-allowance branch and the refusal all agree, and they agree
+        // with the answer here. So the result is identical (up to the sign of a zero at the world origin, where the
+        // old path's x + 0 normalized -0.0 to +0.0) and the probes are simply not made. Two shapes reach it, and
+        // both mean there is nothing along this face to keep: a move driven straight at the face, and the degenerate
+        // FaceDirection fallback where the move direction stands in as the face's own (see there).
+        //
+        // THE BLOCK ABOVE USED TO CALL THIS CASE COMMON, AND THAT WAS THE #501 MISREADING. What was common on real
+        // terrain was a NEAR-zero projection, and near-zero is not a quiet variant of head-on: it is a bank whose
+        // 0.4 m facet has drifted anti-parallel to the command, which is a face direction read at the wrong scale
+        // rather than a wall. Exact zero still means what it says and still short-circuits. Near-zero is now the
+        // wide read's business, two lines down.
         if (sx == 0f && sz == 0f) return (x, z);
+
+        // THE SECOND, WIDER FACE, AND THE TWO THINGS THAT MAKE THE MOVE TAKE IT INSTEAD (#501). The narrow projection
+        // above stands unless the facet it came from is provably not describing the wall, and there are exactly two
+        // ways to be sure of that from this tick alone:
+        //
+        //   IT KEEPS ALMOST NOTHING (WideFaceKeepFraction). A face that sheds more than nine tenths of a command
+        //   aimed along it is anti-parallel to that command, which is the attractor itself.
+        //
+        //   IT WANTS TO TRAVEL AGAINST THE BANK (WideFaceOpposedDot). Past the anti-parallel point the facet's
+        //   along-face direction FLIPS, so the narrow answer is to walk back the way the wide face says the surface
+        //   runs. Without this clause the first one is a trap: the walker is driven onto the keep boundary from
+        //   outside and pushed off it from inside, and parks on the boundary instead of on the attractor. Both
+        //   constants carry the measurement.
+        //
+        // Anything else keeps the narrow face, which is what leaves the engine's creases alone: at a rising gully met
+        // off-axis the narrow face is the truth, it keeps 0.28 of the command, and the two travels agree.
+        (float wx, float wz) = FaceDirection(
+            HeightPlaneNormal(nx, nz, StencilRadius(tuning) * WideFaceStencilScale, groundHeight, destNormal),
+            velocity);
+        float wideInto = velocity.X * wx + velocity.Y * wz;
+        float wsx = velocity.X - wideInto * wx;
+        float wsz = velocity.Y - wideInto * wz;
+        float speedSq = velocity.X * velocity.X + velocity.Y * velocity.Y;
+        if (sx * sx + sz * sz < WideFaceKeepFraction * WideFaceKeepFraction * speedSq
+            || sx * wsx + sz * wsz < WideFaceOpposedDot)
+        {
+            sx = wsx;
+            sz = wsz;
+            // The wide face can be head-on too, and then the paragraph above it applies to it word for word.
+            if (sx == 0f && sz == 0f) return (x, z);
+        }
 
         // The projected step, tested at its full length first and then down the shortening ladder. The allowance is
         // the tick's own reach plus the contour slack, and it is the SAME allowance at every rung: shortening moves
         // the endpoint, never the bar it has to clear, which is what keeps the #468 invariant exact rather than
         // approximately preserved. `scale` is exactly 1 on the first pass, so an admitted full-length step is
         // byte-identical to every release since the wall slide shipped.
+        //
+        // THIS LADDER IS WHAT MAKES A WIDE FACE DIRECTION SAFE (#501 leaning on #468). The anti-tunnel invariant here
+        // is DIRECTION-INDEPENDENT by construction: every endpoint committed below has passed the same steepness and
+        // height tests, against the delegates' own REAL values at the point it actually lands on, whatever direction
+        // pointed it there. So the face above chooses only WHERE along the surface the walker goes, never WHAT
+        // ALTITUDE it may take, and a coarse direction aimed at ground that climbs is refused by exactly the rungs
+        // that refuse a fine one. That is also why the #468 mixed-surface scar - the direction and the heights must
+        // describe the same surface - does not bar reading the direction wide: the heights that admit or refuse are
+        // still the narrow, real ones. The SLIDE has no such separation, since it commits the drop its plane says,
+        // which is why nothing in #501 changes what ResolveSlide reads.
         float allowance = reach + ProjectedRiseSlack;
         float scale = 1f;
         for (int rung = 0; rung <= ProjectedStepRungs; rung++, scale *= 0.5f)

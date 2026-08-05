@@ -1320,6 +1320,81 @@ because the documentation this round adds pushed `CharacterMovement.Slide.cs` pa
 Same partial type, same private core, and rule 1 of the steep-terrain model (the wall contact) now sits
 beside rule 2 (no traction) instead of inside it. The geometry both rules read stays where it was.
 
+### A wall contact reads its face over the bank, not over a 0.4 m facet of it (#501)
+
+Walking along a bank on Ruinborne stopped the character dead in localised sticky PLACES, and the fix for
+#498 above did not touch them. That was the point of splitting them: the #498 dead stop was the anti-tunnel
+re-test refusing a projected step and it left a trace full of refusals, while about fifteen percent of the
+dead rows in the same sweep had ZERO refusals. There the projection itself was handing the ladder almost
+nothing to walk. One bank blocked at a PURELY tangential heading, which no wall geometry should ever do.
+
+**The mechanism, and it is a fixed point rather than bad luck.** `AdvanceWallSlide` derived its face
+direction from a central difference at the capsule radius, so on ground whose micro-geometry varies at metre
+wavelength what it described was a 0.4 m FACET of the bank rather than the bank. The along-face speed a
+facet leaves is the commanded speed times the sine of the angle between the command and that facet's
+outward, so it vanishes exactly where the outward is anti-parallel to the command. A walker's own along-face
+drift carries it toward that point, and the drift rate vanishes as it arrives. So it arrives, it stops, the
+geometry under it never changes, and every later tick sheds the same move for the same reason. A 266-row
+census on the real island measured the arrival: the facet outward reads 180.000 degrees off the command with
+0.002 of the speed surviving, while the same column read at 1 m keeps 0.286, at 2 m 0.384 and at 4 m 0.413.
+The worst censused ride made 0.028 of its commanded travel with 248 of 300 ticks dead.
+
+**What the player saw.** A character that is fully footed and upright, holding a direction, going nowhere.
+No falling pose, no slide, no stutter, no refusal, and nothing on screen to walk around.
+
+**The fix.** The face is re-read over five times the ordinary stencil, 2.0 m at the fleet's capsule radius,
+and the ORIGINAL velocity is re-projected onto that wider face whenever the narrow one either keeps less
+than a tenth of the command or wants to travel against the wide face. Anything else keeps the narrow face
+exactly as before. Only the DIRECTION is ever read wide: the steepness test and the whole seven-rung
+anti-tunnel ladder still read the ordinary narrow values, which is what keeps the #468 invariant exact. That
+invariant is direction-independent by construction, since every endpoint the ladder commits has passed the
+same tests against the real heights at the point it lands on, whatever direction pointed it there. So a
+wider face can change where a walker goes along a surface and never what altitude it may take.
+
+**Why both conditions, and not just the first.** A trigger on the kept speed alone is a switching surface,
+and the narrow face drives the walker straight onto it: inside the region the wide face carries the walker
+along the bank and out, while just outside it the narrow face is past anti-parallel, so its along-face
+travel points BACK toward the attractor. Two motions that oppose across a boundary make that boundary a park
+of its own, and the fallback relocates the bug instead of removing it. Measured on the fixture at 11 degrees
+off the face normal, walking at 30 Hz: 31 percent of the commanded travel with the fallback engaging and
+disengaging on 138 of 300 ticks, against 29 percent with no fallback at all. Adding the opposed-travel test
+takes the same ride to 104 percent with 19 engagements. Hysteresis is the textbook answer to a chattering
+threshold and is not available here, because the wall contact carries no state by construction and that is
+what makes it replay bit-identically through a reconcile.
+
+**Both constants come from measurement, and both have a cliff on each side.** The width was swept at two,
+three, four, five, six, eight and ten times the stencil: below four the fallback direction has near-zeros
+of its own along the traverse, which only moves the attractor, and at ten a 4 m read spans more bank than
+bank and collapses a ride to 44 percent. Four and five are the plateau, and five wins because its own worst
+face keeps 0.148 of the command against the 0.10 trigger where four keeps 0.115. The trigger was swept at
+0.02, 0.05, 0.10, 0.15 and 0.25, with the worst of twelve rides reading 0.69, 0.82, 0.86, 0.08 and 0.08:
+the high side fires the wide read on healthy contacts and makes the control heading worse than doing
+nothing, and the low side engages too late to catch the drift.
+
+**Creases keep the narrow face, which is why the fallback is conditional at all.** A rising gully met
+off-axis keeps 0.28 of its command through the narrow face, and there the narrow face is the truth: a crease
+is a real feature at capsule scale, and a wide read averages its two walls to almost nothing, leaving a
+projection small enough for the ladder's shortest rung to squeeze a step onto the far wall. Taking the wide
+face unconditionally reintroduced exactly that, measured at 2.4 mm of climb and 150 of 300 ticks airborne on
+the gully fixture. Under the shipped rule the gully never enters the fallback and its refusal is untouched.
+
+**Where the tests are.** `WallFaceAttractorTests` builds a bank whose gate contour is wiggled by seeded
+metre-wavelength noise, so the facet outward sweeps through anti-parallel to a held heading, and its normal
+delegate is the SAME capsule-radius central difference the height plane reads, because the census confirmed
+the two surfaces agree exactly at the sticky sites and this is not a #468 mismatched-pair bug. Twelve rides
+sweep three headings against walk and run at 15 and 30 Hz, each pinned two-sided from its own measurement
+with stall, flip, airborne and inside-the-contour bounds beside it, and an unpinned combination throws
+rather than passing. BEFORE, on the eight attractor rides: 10.9 to 29.4 percent of commanded along-face
+travel, with the walk parked for 91 to 238 consecutive ticks and at most two footing flips in the whole
+ride. AFTER: 91.4 to 107.0 percent with no stalled tick anywhere. The shallowest heading is a CONTROL that
+never had the attractor and must come through untouched, which is what caught the two triggers that fire on
+healthy contacts. A second test walks the whole traverse and reports the worst face direction each stencil
+width produces anywhere on it, asserting the shape the constants rest on: the capsule-width read reaches
+zero and the shipped width does not. The 62 tangential-travel cases, the #486 cliff-toe fixtures, the
+360-heading clamp-ratchet sweeps, the crease containment and the rising-gully refusal are all unchanged and
+green with their thresholds untouched.
+
+
 ## 17.31.0
 
 ### The native Direct3D 11 backend: the replay contract, the constant-buffer ring, and the three cross-row wirings (#449, #451, #452)

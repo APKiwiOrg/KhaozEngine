@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Gpu.Vulkan</PackageId>
+    <!-- Shared engine version line: <KhaozEngineVersion> in Directory.Build.props. -->
+    <Version>$(KhaozEngineVersion)</Version>
+    <!-- net10.0 with NO OS suffix, NO [SupportedOSPlatformGuard] and NO NoInlining bodies, which is decision
+         V-P1. Vulkan is not a Windows API: the same managed code runs on Windows and Linux, the loader is found
+         at runtime, and a machine without one fails the functional probe and routes through the existing
+         fallback. The whole CA1416 apparatus KhaozEngine.Gpu.D3D11 needs has no analogue here, so its absence is
+         a simplification rather than an omission. Nobody should add it back by analogy with the D3D11 package. -->
+    <!-- Vulkan's structures carry raw pointer arrays as a matter of ABI (VkRenderingInfo.pColorAttachments,
+         VkDependencyInfo's three barrier arrays, VkSemaphoreWaitInfo's parallel semaphore and value arrays), and
+         the debug-utils messenger takes a function pointer. There is no safe spelling of any of that, so this
+         backend is unsafe by construction rather than by choice, unlike the ONE ring copy that earns the flag in
+         KhaozEngine.Gpu.D3D11. Same flag KhaozEngine.Gpu, Render2D and Render3D already carry. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Description>Engine-owned native Vulkan backend for the KhaozEngine.Gpu seam (opt-in, NOT in any umbrella, add explicitly like Physics.Bepu). Targets net10.0 with no OS suffix and no platform guards, because Vulkan is not a Windows API and the assembly loads harmlessly anywhere. Binds Vulkan through Silk.NET.Vulkan on the same 2.23.0 line the windowing, input and audio stacks already pin. SKELETON: this package currently carries its entry point and the binding-sufficiency spike only, and registers nothing. Spec: docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Gpu/KhaozEngine.Gpu.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The Vulkan binding (V-P2). Pinned centrally in Directory.Packages.props to the 2.23.0 Silk.NET line the
+         engine already runs everywhere else. The two extension packages are where the KHR and EXT entry points
+         live in this binding: KHR carries the swapchain and the three platform surface extensions, EXT carries
+         the debug-utils messenger the validation knob pumps. -->
+    <PackageReference Include="Silk.NET.Vulkan" />
+    <PackageReference Include="Silk.NET.Vulkan.Extensions.KHR" />
+    <PackageReference Include="Silk.NET.Vulkan.Extensions.EXT" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
+  </ItemGroup>
+</Project>

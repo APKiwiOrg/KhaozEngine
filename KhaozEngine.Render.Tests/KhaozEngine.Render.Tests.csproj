@@ -46,6 +46,12 @@
          Linux and macOS legs too, and Gpu/D3D11BackendRegistration.cs registers it for the whole test process
          through the one [ModuleInitializer] section 4.1 allows, here where assembly load is guaranteed. -->
     <ProjectReference Include="../KhaozEngine.Gpu.D3D11/KhaozEngine.Gpu.D3D11.csproj" />
+    <!-- The opt-in native Vulkan backend, referenced unconditionally for the same reason and with less
+         ceremony: decision V-P1 gives it net10.0 with no OS suffix and no platform guard at all, so it compiles
+         and loads on every leg. GpuPublicApiTests reflects over the built assembly here for the no-Veldrid IL
+         walk and the no-Silk public-surface walk, both of which need the real assembly rather than its
+         project file. -->
+    <ProjectReference Include="../KhaozEngine.Gpu.Vulkan/KhaozEngine.Gpu.Vulkan.csproj" />
     <!-- 7 Gpu-folder golden tests render Gui widgets (BootScreen, PatchNotesView, PopupPanel, SlotGrid, TabBar). -->
     <ProjectReference Include="../KhaozEngine.Gui/KhaozEngine.Gui.csproj" />
     <ProjectReference Include="../KhaozEngine.Imaging/KhaozEngine.Imaging.csproj" />

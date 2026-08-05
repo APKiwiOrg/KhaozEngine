@@ -58,18 +58,54 @@ public class GpuPublicApiTests
     }
 
     /// <summary>
-    /// The IL half of the no-Veldrid-edge guard (decision P2), and the half that actually binds.
-    /// <c>ArchitectureTests</c> asserts the backend declares no Veldrid <c>PackageReference</c>, which catches a
-    /// deliberate edit to the project file. It cannot catch the subtler failure: the backend reaches Veldrid
+    /// The same no-leak property for the native Vulkan backend (decision V-P3 of
+    /// <c>docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md</c>), whose forbidden set is its own again.
+    /// <para>
+    /// <c>Veldrid</c> for the reason every native backend carries it: the premise of the phase is Veldrid
+    /// leaving the graph. <c>Silk</c> because the binding must stay INSIDE this package. Unlike the Direct3D 11
+    /// case the reason is not load-path safety (decision V-P1 needs no platform guard here, and the Vulkan
+    /// binding resolves harmlessly on every OS), it is the seam itself: a <c>Silk.NET.Vulkan</c> type on the
+    /// public surface would make a consumer that merely reads a signature compile against the Vulkan binding,
+    /// which turns an opt-in backend package into a second GPU vocabulary the engine would then owe stability
+    /// to. The seam speaks engine types in both directions, and this is what holds it to that.
+    /// </para>
+    /// </summary>
+    [Theory]
+    [InlineData("Veldrid")]
+    [InlineData("Silk")]
+    public void GpuVulkanPublicApi_DoesNotLeakBackendTypes(string forbidden)
+    {
+        Assembly backend = typeof(KhaozEngine.Gpu.Vulkan.KhaozEngineVulkan).Assembly;
+        List<string> leaks = FindLeakedTypes(backend, forbidden);
+
+        bool clean = leaks.Count == 0;
+        Assert.True(clean,
+            $"KhaozEngine.Gpu.Vulkan exposes {forbidden} types on its externally visible surface. The Vulkan " +
+            "binding is contained inside this package: everything the backend hands the seam is an engine type, " +
+            "and everything Silk.NET-shaped belongs behind an internal type:\n" + string.Join("\n", leaks));
+    }
+
+    /// <summary>
+    /// The IL half of the no-Veldrid-edge guard (decisions P2 and V-P3), and the half that actually binds.
+    /// <c>ArchitectureTests</c> asserts each backend declares no Veldrid <c>PackageReference</c>, which catches
+    /// a deliberate edit to the project file. It cannot catch the subtler failure: a backend reaches Veldrid
     /// through <c>KhaozEngine.Gpu</c>'s transitive closure whatever the project file says, so an INTERNAL helper
-    /// signature that mentioned a Veldrid type would compile, would put a Veldrid assembly reference in this
+    /// signature that mentioned a Veldrid type would compile, would put a Veldrid assembly reference in that
     /// assembly's IL, and would be invisible to every public-surface scan there is. That is precisely why the
     /// cross-compile helper's signatures are engine types, and this is what proves it.
     /// </summary>
-    [Fact]
-    public void GpuD3D11_ReferencesNoVeldridAssembly()
+    [Theory]
+    [InlineData("KhaozEngine.Gpu.D3D11")]
+    [InlineData("KhaozEngine.Gpu.Vulkan")]
+    public void NativeGpuBackend_ReferencesNoVeldridAssembly(string backendAssemblyName)
     {
-        Assembly backend = typeof(KhaozEngine.Gpu.D3D11.KhaozEngineD3D11).Assembly;
+        Assembly backend = backendAssemblyName == "KhaozEngine.Gpu.D3D11"
+            ? typeof(KhaozEngine.Gpu.D3D11.KhaozEngineD3D11).Assembly
+            : typeof(KhaozEngine.Gpu.Vulkan.KhaozEngineVulkan).Assembly;
+
+        // Asserted rather than assumed: the ternary above is the one place the theory rows and the assemblies
+        // they name could drift apart, and a silent mismatch would run one row twice and the other never.
+        Assert.Equal(backendAssemblyName, backend.GetName().Name);
 
         string[] veldrid = backend.GetReferencedAssemblies()
             .Select(a => a.Name ?? "")
@@ -80,7 +116,7 @@ public class GpuPublicApiTests
 
         bool clean = veldrid.Length == 0;
         Assert.True(clean,
-            "KhaozEngine.Gpu.D3D11 names a type from a Veldrid assembly: [" + string.Join(", ", veldrid) + "]. " +
+            backendAssemblyName + " names a type from a Veldrid assembly: [" + string.Join(", ", veldrid) + "]. " +
             "The SPIRV-Cross edge stays behind KhaozEngine.Gpu's internal SpirvCrossCompile helper, whose " +
             "signatures are engine types (CrossCompiledPair / ShaderReflection over GpuVertexElement and " +
             "GpuResourceLayoutDescription) exactly so calling it adds no Veldrid reference here.");

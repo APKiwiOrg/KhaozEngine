@@ -4,18 +4,22 @@ The GPU backend seam for the custom MonoGame-free stack: Veldrid contained behin
 
 What it owns today:
 
-- **`GpuBackendKind`** - Metal / Vulkan / Direct3D11 / OpenGL / Direct3D11Native. Members are pinned to explicit
-  values and are APPEND-ONLY: a game persists the player's backend choice as a stored preference and hands it back
-  as a `GpuBackendKind`, so renumbering repoints every saved graphics setting. `Direct3D11Native` (17.30.0) is
-  Direct3D 11 through the engine's own backend (`KhaozEngine.Gpu.D3D11`) rather than through Veldrid, and it is a
-  separate member so a session log, a telemetry header and a frame time each name the implementation that actually
-  ran. `GpuBackendKinds.IsDirect3D11(kind)` (17.30.0) is the family predicate for anything that talks to the D3D11
-  API or reports on the D3D11 driver, and it answers true for both.
+- **`GpuBackendKind`** - Metal / Vulkan / Direct3D11 / OpenGL / Direct3D11Native / VulkanNative. Members are
+  pinned to explicit values and are APPEND-ONLY: a game persists the player's backend choice as a stored
+  preference and hands it back as a `GpuBackendKind`, so renumbering repoints every saved graphics setting.
+  `Direct3D11Native` (17.30.0) and `VulkanNative` (17.32.0) are those two APIs through the engine's own backends
+  (`KhaozEngine.Gpu.D3D11`, `KhaozEngine.Gpu.Vulkan`) rather than through Veldrid, and each is a separate member
+  so a session log, a telemetry header and a frame time each name the implementation that actually ran.
+  `GpuBackendKinds.IsDirect3D11(kind)` (17.30.0) and `GpuBackendKinds.IsVulkan(kind)` (17.32.0) are the family
+  predicates for anything that talks to that API or reports on its driver, and each answers true for both of its
+  implementations.
 - **`GpuBackendSelector`** - `Select()` reads the `KE_GRAPHICS_BACKEND` env override
-  (`metal`/`vulkan`/`d3d11`/`d3d11-native`/`gl`, case-insensitive) and otherwise probes the OS (macOS -> Metal,
-  Windows -> Direct3D11, Linux -> Vulkan). The Windows probe stays on the Veldrid `Direct3D11` until the native
-  backend's rollout gates are green, so `d3d11-native` is reached by naming it. `Select(string?, OSPlatformKind)`
-  is the pure, headless-testable overload.
+  (`metal`/`vulkan`/`vulkan-native`/`d3d11`/`d3d11-native`/`gl`, case-insensitive, plus the `vk-native`,
+  `direct3d11`, `direct3d11-native` and `opengl` aliases) and otherwise probes the OS (macOS -> Metal,
+  Windows -> Direct3D11, Linux -> Vulkan). Both OS probes stay on the Veldrid implementation until that native
+  backend's rollout gates are green, so `d3d11-native` and `vulkan-native` are reached by naming them, and note
+  which default each flip would move: the Direct3D 11 one is Windows, the Vulkan one is LINUX.
+  `Select(string?, OSPlatformKind)` is the pure, headless-testable overload.
 - **`GpuBackendSelection` / `GpuBackendSource`** (17.21.0) - the same choice, reported with its provenance.
   `Resolve()` and the pure `Resolve(string?, OSPlatformKind)` return `GpuBackendSelection(Backend, Source,
   RequestedOverride)`, where `Source` is `OsProbe`, `EnvironmentOverride`, or `UnrecognizedOverride`, and

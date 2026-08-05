@@ -8320,15 +8320,18 @@ Scene3D render-path GPU tests.
 
 ## Which graphics backend actually ran (`GpuBackendSelection`, 17.21.0)
 
-`KE_GRAPHICS_BACKEND` overrides the OS probe (`metal` / `vulkan` / `d3d11` / `d3d11-native` / `gl`,
-case-insensitive, aliases `direct3d11`, `direct3d11-native` and `opengl`). `d3d11-native` is the engine's own
-Direct3D11 implementation rather than the Veldrid one, and it is a separate value precisely so a session log, a
-telemetry header and a frame time say which of the two ran.
+`KE_GRAPHICS_BACKEND` overrides the OS probe (`metal` / `vulkan` / `vulkan-native` / `d3d11` / `d3d11-native` /
+`gl`, case-insensitive, aliases `vk-native`, `direct3d11`, `direct3d11-native` and `opengl`). `d3d11-native` and
+`vulkan-native` (17.32.0) are the engine's own implementations of those two APIs rather than the Veldrid ones,
+and each is a separate value precisely so a session log, a telemetry header and a frame time say which of the
+two ran. The unsuffixed `d3d11` and `vulkan` keep pointing at the Veldrid implementations indefinitely, which is
+what makes an A/B between the two implementations of either API one environment variable away.
 
-Because the two are separate values, code that cares about the API rather than the implementation asks
-`kind.IsDirect3D11()` (the `GpuBackendKinds` extension, 17.30.0), which is true for both `Direct3D11` and
-`Direct3D11Native`. Use it for anything that talks to the D3D11 API or reports on the D3D11 driver, and plain
-equality against `GpuBackendKind.Direct3D11` for anything that means Veldrid's implementation specifically.
+Because each pair is two separate values, code that cares about the API rather than the implementation asks
+`kind.IsDirect3D11()` or `kind.IsVulkan()` (the `GpuBackendKinds` extensions, 17.30.0 and 17.32.0), which are
+true for both implementations of their API. Use them for anything that talks to that API or reports on its
+driver, and plain equality against `GpuBackendKind.Direct3D11` / `GpuBackendKind.Vulkan` for anything that means
+Veldrid's implementation specifically.
 
 The trap is what happens when the override is wrong. A typo, a variable set in the wrong shell,
 or a launcher that drops the environment all fall back to the OS probe, and the run looks completely normal. If
@@ -8344,7 +8347,7 @@ GPU backend: Vulkan (KE_GRAPHICS_BACKEND override)
 GPU backend: Direct3D11 (OS probe)
 GPU backend: Vulkan (stored user preference)
 GPU backend: Direct3D11 (fallback, Vulkan failed)
-KE_GRAPHICS_BACKEND='vulcan' is not a recognized backend (metal/vulkan/d3d11/d3d11-native/gl). Using Direct3D11 instead.
+KE_GRAPHICS_BACKEND='vulcan' is not a recognized backend (metal/vulkan/vulkan-native/d3d11/d3d11-native/gl). Using Direct3D11 instead.
 ```
 
 Read it yourself to put the backend on a game's own debug overlay. `GameApp.Window` is `protected`, so a
@@ -8582,12 +8585,14 @@ using KhaozEngine.Gpu.Vulkan;
 KhaozEngineVulkan.Register();   // unconditionally, on every OS
 ```
 
-**Nothing can select this backend yet, and that is the honest state of it.** Registration and the machine probe
-are real. Device creation is not: both entry points refuse with a message naming
-https://github.com/APKiwiOrg/KhaozEngine/issues/514, the row that builds the instance, the device and the queue.
-There is also no `GpuBackendKind` member for it yet (that is
-https://github.com/APKiwiOrg/KhaozEngine/issues/513), so there is no name to pass and no
-`KE_GRAPHICS_BACKEND` token to set. `GpuBackendKind.Vulkan`, which goes through Veldrid, is the working Vulkan
+**The backend is nameable and cannot yet produce a device, which is the honest state of it.** Registration and
+the machine probe are real, and `GpuBackendKind.VulkanNative` exists with the tokens
+`KE_GRAPHICS_BACKEND=vulkan-native` and the shorter `vk-native`. Device creation is not real: both entry points
+refuse with a message naming https://github.com/APKiwiOrg/KhaozEngine/issues/514, the row that builds the
+instance, the device and the queue, so naming the backend today boots on the incumbent through the reported
+fallback (`GpuBackendSource.FallbackAfterFailure`) rather than crashing. Nothing SELECTS it for you either: the
+Linux default is still `GpuBackendKind.Vulkan`, and flipping that is the last step of the rollout rather than a
+side effect of the member existing. `GpuBackendKind.Vulkan`, which goes through Veldrid, is the working Vulkan
 backend and stays selectable indefinitely. Calling `Register()` today costs one dictionary entry and changes
 nothing about how your game boots.
 

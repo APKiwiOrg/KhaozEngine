@@ -1450,6 +1450,67 @@ method that lies about what the package does and a registration seat with nothin
 moment ordinal 5 gains a name, carrying the two-line replacement as its message, because a magic number nobody
 is forced to remove is how a temporary shim becomes permanent.
 
+### `GpuBackendKind.VulkanNative`, the `vulkan-native` tokens, the shared `vulkan` golden family, and the thirteen sites answered a second time (#513)
+
+The native Vulkan backend is nameable. `GpuBackendKind.VulkanNative = 5` is appended with an explicit ordinal
+and the append-only contract the enum already carries, `KE_GRAPHICS_BACKEND=vulkan-native` (or the shorter
+`vk-native`) selects it, and `GpuBackendKind.Vulkan` still means Veldrid's Vulkan and keeps meaning it
+indefinitely. Nothing renders differently: naming the backend today reaches the device refusal #514 will
+replace, through the reported fallback rather than a crash. No golden moved, no default changed, and
+`SupportedBackends()` still offers a player an API rather than an implementation of one.
+
+**The pinned-ordinal shim is gone in the same commit that made it wrong.** Row #512 registered under
+`(GpuBackendKind)5` because this row parallelised with it rather than following it, and it left a tripwire that
+failed the moment ordinal 5 gained a name, carrying the replacement as its message. It fired exactly as written.
+`KhaozEngineVulkan` registers under the named member now and the internal constant is DROPPED rather than
+re-pointed at it, because a second name for one thing is the drift the audit exists to catch. Nothing else in
+that package or its tests ever spelled the ordinal.
+
+**`VulkanNative` is a GUEST in the committed `vulkan` golden family**, through `GoldenBackendToken`, so the
+native backend will be held to the incumbent's already-committed reference grids, unmodified, on the same
+rasterizer at the same tolerance. That is one implementation checking the other, and owning a `vulkan-native`
+family was rejected outright: a backend comparing against a reference it baked itself checks nothing. The bake
+refusal picks the new kind up with NO edit, because it derives guest-ness generically (the token does not match
+the kind's own name under the `OrdinalIgnoreCase` compare it already used) rather than from a list somebody has
+to remember. "No edit needed" is indistinguishable from "nobody checked", so it is asserted now.
+
+**The thirteen-site append audit is a diff rather than a discovery**, which is what phase 2 paid for by turning
+it into a test. `GpuBackendKindVulkanAppendAuditTests` walks all thirteen device-free, in its own file so the
+four rows that answer DIFFERENTLY are not buried in a copy of the first audit:
+
+- `LogThreadingCaps` and `D3D11ThreadingProbe.IsApplicable` take NO edit. Both gate on `IsDirect3D11()`, which
+  correctly excludes both Vulkan implementations, and there is no `D3D11_FEATURE_DATA_THREADING` analogue to
+  log. The two telemetry threading fields stay null on this backend, which is "there was nothing to ask" rather
+  than a default, and the session header row asserts the null rather than the value.
+- The `CreateWindowed` / `CreateHeadless` switches RIDE the arm phase 2 made explicit. Their obligation here was
+  a verification, and it found something (below).
+- `ProbeOS` is unchanged until the flip, and the flip means something else here: Linux maps to `Vulkan`, so a
+  native Vulkan default would change the LINUX default while Windows stays where it is. The two programs reach
+  their gates independently.
+- `CreateOrFallBack` is correct by default for a reason that differs. On Linux the probe answers `Vulkan` while
+  the request is `VulkanNative`, so a machine whose native creation fails falls back to the INCUMBENT Vulkan
+  backend and reports `FallbackAfterFailure`, while a missing registration still throws. Those two look alike in
+  a log line and the soak depends on telling them apart.
+
+`ToVeldrid` gains one more explicit throwing arm, and it matters more here than it did for Direct3D 11: there IS
+a `GraphicsBackend.Vulkan`, so mapping the native kind onto it would not fail, it would quietly build the
+incumbent device and attribute a whole soak session to the implementation that did not run.
+`GpuBackendProviders.RequiresProvider` needed no edit at all, because `IsBuiltIn` is a positive membership test
+over the four Veldrid kinds rather than a switch, so an appended member is provider-backed by default.
+
+**`GpuBackendKinds.IsVulkan()` lands beside `IsDirect3D11()`**, for the reason that one exists: the question
+gets asked at more than one site as the backend lands, and a copy of it spelled out at each site drifts. It has
+no reader in the engine yet, so it is pinned before its first one arrives rather than after, and a row asserts
+the two family predicates never both claim one kind.
+
+**One message was WRONG rather than merely unverified, and the second backend is what exposed it.**
+`GpuBackendProviderMissingException` named `KhaozEngineD3D11.Register()` as though it were the generic
+instruction, which it was while there was exactly one provider-backed backend. With the token landing, naming
+`vulkan-native` without registering told the tester to register Direct3D 11. It states the package naming
+CONVENTION now (`KhaozEngine.Gpu.<Backend>` exposes `KhaozEngine<Backend>.Register()`, with both current
+packages named), not a switch on the kind, which would have bought a correct diagnostic at the price of another
+append site. Both audits pin their own backend's actionable line.
+
 ### A wall contact reads its face over the bank, not over a 0.4 m facet of it (#501)
 
 Walking along a bank on Ruinborne stopped the character dead in localised sticky PLACES, and the fix for

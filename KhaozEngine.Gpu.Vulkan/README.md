@@ -9,10 +9,11 @@ and nothing that does not want the Vulkan binding ever carries it.
 > answers for THIS machine by resolving a Vulkan loader, creating a throwaway instance at the 1.3 floor and
 > reading every physical device against the design's requirements. Creating a DEVICE is not built yet and
 > refuses with a message naming the row that builds it
-> ([#514](https://github.com/APKiwiOrg/KhaozEngine/issues/514)). `GpuBackendKind` still has no native Vulkan
-> member, which is [#513](https://github.com/APKiwiOrg/KhaozEngine/issues/513), so nothing can SELECT this
-> backend yet either. `KhaozEngine.Gpu`'s `Vulkan` backend, which goes through Veldrid, remains the working
-> Vulkan path and stays selectable indefinitely.
+> ([#514](https://github.com/APKiwiOrg/KhaozEngine/issues/514)). The backend IS nameable now:
+> `GpuBackendKind.VulkanNative` and the `vulkan-native` / `vk-native` tokens landed with
+> [#513](https://github.com/APKiwiOrg/KhaozEngine/issues/513), so naming it reaches that refusal and boots on the
+> incumbent through the reported fallback. Nothing selects it by default. `KhaozEngine.Gpu`'s `Vulkan` backend,
+> which goes through Veldrid, remains the working Vulkan path and stays selectable indefinitely.
 
 ## The spec
 
@@ -58,12 +59,36 @@ incumbent Vulkan backend and reports `FallbackAfterFailure`, which in a log line
 forgotten registration. A forgotten registration THROWS instead, and telling those two apart is what the whole
 soak measurement rests on.
 
-**The kind it registers under is a pinned ordinal, deliberately and temporarily.** `GpuBackendKind.VulkanNative
-= 5` is [#513](https://github.com/APKiwiOrg/KhaozEngine/issues/513)'s to append, and that row parallelises with
-this one rather than preceding it, so `KhaozEngineVulkan` carries `(GpuBackendKind)5` instead. The registry keys
-by value, so the registration is correct today and becomes correct by NAME the moment the member lands. A test
-fails the moment ordinal 5 gains a name, with the two-line replacement as its message, because a magic number
-nobody is forced to remove is how a temporary shim becomes permanent.
+## Naming it
+
+`GpuBackendKind.VulkanNative` is the kind this package registers under, and two `KE_GRAPHICS_BACKEND` tokens
+reach it:
+
+```
+KE_GRAPHICS_BACKEND=vulkan-native   # or the shorter vk-native
+```
+
+The whole token is matched, so a typo'd suffix is an unrecognized override with its own loud diagnostic rather
+than a silent run on the incumbent implementation under the new name. **`vulkan` still means Veldrid's Vulkan
+and keeps meaning it indefinitely**, which is not a transitional state: it is the kill switch every structural
+decision in the design leans on, so an A/B between the two implementations is one environment variable away.
+
+Naming the backend today reaches the device refusal above, and reaches it through the reported fallback rather
+than a crash: the creation path catches, WARNs with the message and boots on the incumbent, reporting
+`GpuBackendSource.FallbackAfterFailure`. Nothing selects it for you. The Linux default is still
+`GpuBackendKind.Vulkan` and stays there until every rollout gate is green (decision V-RO3), and
+`GpuBackendSelector.SupportedBackends()` does not offer the native kind to a player at all, because a settings
+screen offers an API rather than an implementation of one.
+
+`VulkanNative` renders the same images as `Vulkan`, so it is a GUEST in the committed `vulkan` golden family
+rather than owning one (decision V-I3). That is what will hold it to the incumbent's already-committed
+reference grids, unmodified, on the same rasterizer at the same tolerance. `KE_UPDATE_GOLDENS` is REFUSED on it
+for the same reason: a bake would overwrite the very references it is being checked against, and the file it
+wrote would be exactly the file it would then have compared against.
+
+Code that cares about the API rather than the implementation asks `kind.IsVulkan()`, true for both members.
+Plain equality against `GpuBackendKind.Vulkan` is the right question only when Veldrid's implementation
+specifically is meant.
 
 ## Why there are no platform guards, and why nobody should add them
 

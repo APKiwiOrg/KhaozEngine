@@ -567,9 +567,10 @@ The pattern above is now used twice, which is what turns it from a one-off into 
 graphics backend has here. `KhaozEngine.Gpu.Vulkan` is phase 3 of the same program and takes the same inverted
 edge. As of `17.32.0` it registers a real provider through `KhaozEngineVulkan.Register()` and answers a real
 functional machine probe, and it creates no device yet
-([#514](https://github.com/APKiwiOrg/KhaozEngine/issues/514)). `GpuBackendKind` still has no native Vulkan
-member ([#513](https://github.com/APKiwiOrg/KhaozEngine/issues/513)), so the provider registers under the
-ordinal that append pins and nothing can select the backend yet.
+([#514](https://github.com/APKiwiOrg/KhaozEngine/issues/514)). It registers under
+`GpuBackendKind.VulkanNative`, which landed in the same version, so the backend is selectable by name
+(`KE_GRAPHICS_BACKEND=vulkan-native`) and naming it reaches that creation refusal through the reported
+fallback. Nothing selects it by default.
 
 ```
 KhaozEngine.Gpu.Vulkan -> KhaozEngine.Gpu      (the only direction, again)

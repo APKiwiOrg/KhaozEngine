@@ -132,9 +132,10 @@ namespace KhaozEngine.Tests.Gpu
     /// that second one exists: they carry no <c>[GpuFact]</c>, so a filtered run of them alone would never touch
     /// the attribute and never fire the hook.
     /// <para>
-    /// In the non-parallel collection because it reads the process-wide registry, which the Direct3D 11
-    /// append-audit rows temporarily empty. Worth asserting at all because the registration is invisible: no GPU
-    /// test runs on this backend yet, so nothing else in the suite fails if it silently stops happening.
+    /// In the non-parallel collection because it reads the process-wide registry, which BOTH append audits
+    /// temporarily empty, this backend's own included. Worth asserting at all because the registration is
+    /// invisible: no GPU test runs on this backend yet, so nothing else in the suite fails if it silently stops
+    /// happening.
     /// </para>
     /// </summary>
     [Collection("GraphicsBackendGlobalState")]

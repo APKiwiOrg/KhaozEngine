@@ -32,7 +32,7 @@ rejected from both.
 | P1 | Package | New `KhaozEngine.Gpu.D3D11`, opt-in, outside every umbrella, `net10.0` (not `-windows`) with `[SupportedOSPlatformGuard("windows")]` entry points and `NoInlining` bodies | Both, converged |
 | P2 | Package | References `KhaozEngine.Gpu` and Vortice only. The `Veldrid.SPIRV` edge stays in `KhaozEngine.Gpu` behind an internal, Veldrid-free cross-compile helper plus `InternalsVisibleTo`. New guard: no package id starting with `Veldrid` is reachable from `Gpu.D3D11` | A |
 | P3 | Wiring | `GpuDeviceContext` refactored onto `IGpuDevice`: second constructor, disposal hook replacing the `((VeldridGpuDevice)GpuDevice)` cast, `D3D11ThreadingProbe` gains a raw-pointer entry point | Both, converged |
-| P4 | Wiring | Explicit registration through a `GpuBackendProviders` registry via `KhaozEngineD3D11.Register()`. No `[ModuleInitializer]` and no reflection in the consumer path. A module initializer IS used inside the test assembly, where load is guaranteed | Both, converged (B's nuance) |
+| P4 | Wiring | Explicit registration through a `GpuBackendProviders` registry via `KhaozEngineD3D11.Register()`. No `[ModuleInitializer]` and no reflection in the consumer path. (Corrected 2026-08-05. This row originally closed with "A module initializer IS used inside the test assembly, where load is guaranteed." The shipped mechanism is a static constructor on `GpuFactAttribute` in `KhaozEngine.TestSupport.Gpu` instead, since a library may not carry a module initializer under CA2255, with a thin belt initializer remaining in `KhaozEngine.Render.Tests`.) | Both, converged (B's nuance) |
 | I1 | Identity | Append `GpuBackendKind.Direct3D11Native = 4`, pin explicit ordinals on all four existing members, add the append-only comment `GpuBackendSource` already carries. New tokens `d3d11-native` and `direct3d11-native` | B |
 | I2 | Identity | A missing provider registration THROWS and never falls back. Machine incapability is a different case: `IsBackendSupported` answers it with its own functional probe and the existing `CreateOrFallBack` / `AfterFallback` path reports it | B, split made explicit |
 | I3 | Goldens | SHARE the `direct3d11` golden family through a `GoldenBackendToken(GpuBackendKind)` mapping. `KE_UPDATE_GOLDENS` under the native token REFUSES to write unless `KE_GOLDEN_FAMILY_OVERRIDE=1` | B |
@@ -274,8 +274,12 @@ is the opt-in. It is compile-time visible, trim-safe and testable.
 Rejected: `[ModuleInitializer]` self-registration. The CLR loads an assembly lazily on first type reference,
 so a `PackageReference` with no static type use does not guarantee the initializer runs. That failure is
 silent and machine-dependent, which is the worst shape for a rollout whose purpose is attributing field
-measurements to a backend. The same mechanism IS used inside `KhaozEngine.Render.Tests`, where the test
-assembly is always loaded and the property it lacks for consumers is guaranteed.
+measurements to a backend. (Corrected 2026-08-05. This paragraph originally closed with "The same mechanism IS
+used inside `KhaozEngine.Render.Tests`, where the test assembly is always loaded and the property it lacks for
+consumers is guaranteed." The shipped mechanism is a static constructor on `GpuFactAttribute` in the shared
+`KhaozEngine.TestSupport.Gpu` project, fired at test discovery, since CA2255 rejects a module initializer
+inside that library too. `KhaozEngine.Render.Tests` keeps a thin module-initializer belt of its own, covering
+the registry tests that carry no `[GpuFact]`.)
 
 Rejected: reflection probing by assembly name. Trim and AOT hostile, invisible to `ArchitectureTests`, and it
 turns a missing reference into a runtime string mismatch.
@@ -1008,7 +1012,8 @@ against:
   vertex plus fragment. Not one per element, not one per resource, and not a re-activation.
 
 **Gate 1's worst-cell delta and gate 2's pass, fail and skip counts are recorded on
-[#460](https://github.com/APKiwiOrg/KhaozEngine/issues/460), from the first `direct3d11-native` leg run.** The
+[#460](https://github.com/APKiwiOrg/KhaozEngine/issues/460), from the first `direct3d11-native` leg run to come
+back green, since the very first run was red and its fixes (below) landed in-branch before this one.** The
 mechanism for gate 1 exists rather than the number: every golden compare now appends its worst-cell delta to
 `goldens-evidence/golden-deltas.<family>.txt` on a pass as well as a fail, and the leg uploads that file as
 `golden-deltas-direct3d11-native` on `always()`, so the observed figure comes off a green run instead of
@@ -1032,8 +1037,9 @@ row 16.
 
 **The first `direct3d11-native` leg (run 30955744945) failed 113 of 4028**, from one mechanism plus a
 test-assembly registration gap: the 6.2 constant-count round-up was to 16 bytes rather than 256, so every window
-whose size fell strictly between two multiples of 256 was dropped silently by the runtime. Both are fixed
-in-branch.
+whose size fell strictly between two multiples of 256 was dropped silently by the runtime, and the module
+initializer lived only in `KhaozEngine.Render.Tests`, so `KhaozEngine.MapEditor.Tests` carried `[GpuFact]`
+without ever registering the backend it needed. Both are fixed in-branch.
 
 ---
 

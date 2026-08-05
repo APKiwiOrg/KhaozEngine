@@ -402,6 +402,15 @@ namespace KhaozEngine.Tests.Gpu
                 ("OceanFftProducer UBO", OceanFftProducer.UboBytes),
                 ("SpriteBatch view-proj payload", 64u),            // private const, SpriteBatch.cs:157
                 ("OverlayMeshRenderer payload", 128u),             // private const, OverlayMeshRenderer.cs:35
+                ("TexturedBillboardRenderer UBO", 64u),            // literal, TexturedBillboardRenderer.cs:36
+                ("TrailRenderer UBO", 64u),                        // literal, TrailRenderer.cs:52
+                ("DepthLineRenderer UBO", 64u),                    // literal, DepthLineRenderer.cs:35
+                ("OverlayRenderer UBO", 64u),                      // literal, OverlayRenderer.cs:45
+                ("BeamRenderer UBO", 80u),                         // literal, BeamRenderer.cs:53
+                ("GroundDecalRenderer frame UBO", 80u),            // literal, GroundDecalRenderer.cs:131
+                ("ParticleRenderer frame UBO", 192u),              // literal, ParticleRenderer.cs:100
+                ("TransitionRenderer solid fill UBO", 16u),        // literal, TransitionRenderer.cs:60
+                ("TransitionRenderer crossfade params UBO", 16u),  // literal, TransitionRenderer.cs:61
             };
 
             foreach ((string window, uint bytes) in windows) AssertBindableConstantCount(window, bytes);

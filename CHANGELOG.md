@@ -1120,7 +1120,7 @@ zeros. The round-up is now to `OffsetAlignmentBytes`, which is safe on both shap
 `D3D11UniformRing.SegmentStrideFor(size)`, so a bare buffer's rounded window is exactly the frame's own segment and
 cannot reach a neighbour, and a sub-range carried past its own end still has the shader reading only its declared
 fields. Every count that was already legal is unchanged. The rule is pinned three ways now: exact values, a
-deterministic sweep from 16 to 12288, and a table over all 21 shipped uniform windows, which generalises the
+deterministic sweep from 16 to 12288, and a table over all 30 shipped uniform windows, which generalises the
 14.22.0 water lesson past water. Design doc section 6.2 carried the false premise verbatim and is corrected in
 place.
 

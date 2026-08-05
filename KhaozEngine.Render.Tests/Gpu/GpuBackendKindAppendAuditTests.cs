@@ -105,8 +105,9 @@ namespace KhaozEngine.Tests.Gpu
 
         // --- row 3: the CreateForWindow / CreateHeadless Veldrid switches, the worst of the three. Asserted in
         // GpuBackendKindAppendAuditRegistryTests below, because pinning "nothing registered" is now itself a
-        // registry mutation: KhaozEngine.Gpu.D3D11 exists and the shared GPU test-support project registers its
-        // real provider at load (KhaozEngine.TestSupport.Gpu/D3D11BackendRegistration.cs). ---
+        // registry mutation: KhaozEngine.Gpu.D3D11 exists and a static constructor on GpuFactAttribute in the
+        // shared KhaozEngine.TestSupport.Gpu project registers its real provider, fired at test discovery
+        // (KhaozEngine.TestSupport.Gpu/D3D11BackendRegistration.cs). ---
 
         /// <summary>
         /// The fourteenth site, and the one section 4.3 does not list because it did not exist when the table was
@@ -375,10 +376,11 @@ namespace KhaozEngine.Tests.Gpu
     /// <para>
     /// Every row here that means "nothing is registered" now says so with an explicit
     /// <c>BackendProviderScope(kind, provider: null)</c>, because nothing is no longer the ambient state:
-    /// <c>KhaozEngine.Gpu.D3D11</c> exists and the shared GPU test-support project registers its REAL provider at
-    /// load (<c>KhaozEngine.TestSupport.Gpu/D3D11BackendRegistration.cs</c>), which is the module initializer
-    /// section 4.1 allows inside a test assembly. Pinning the unregistered behaviour explicitly is the stronger
-    /// form anyway: it asserts what the
+    /// <c>KhaozEngine.Gpu.D3D11</c> exists and a static constructor on <c>GpuFactAttribute</c> in the shared
+    /// <c>KhaozEngine.TestSupport.Gpu</c> project registers its REAL provider, fired at test discovery
+    /// (<c>KhaozEngine.TestSupport.Gpu/D3D11BackendRegistration.cs</c>), with a thin module-initializer belt
+    /// remaining in <c>KhaozEngine.Render.Tests</c> covering the registry tests that carry no <c>[GpuFact]</c>.
+    /// Pinning the unregistered behaviour explicitly is the stronger form anyway: it asserts what the
     /// code does when no provider is present rather than what it happens to do given today's ambient
     /// registration, so it keeps holding the day a second backend package registers here too.
     /// </para>

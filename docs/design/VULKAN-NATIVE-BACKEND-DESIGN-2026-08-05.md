@@ -690,7 +690,7 @@ expensive anywhere later:
 - a host-visible `HOST_COHERENT` memory type, which the uniform ring is pinned to (V-M4). The spec requires one
   to exist, so this fails loudly on a device that somehow has none rather than being a gate anything real trips.
 - `maxDescriptorSetUniformBuffersDynamic` at or above the count the engine's layouts need, which is 8.3's fourth
-  defence and the only one of the four that answers BEFORE a device is created, so a machine below the count
+  defence and the one of the four that answers for the machine, at runtime, so a machine below the count
   falls back through the reported path instead of throwing partway into a run.
 - on the windowed path, a graphics family that presents.
 
@@ -876,10 +876,12 @@ the retire list exists for resources anyway.
 in every set being bound by that call, in set order then binding order, and it is POSITIONAL. Bind a run of
 three sets and the array must carry an entry for each dynamic descriptor in all three, in order, including ring
 bases for uniform buffers the caller never named. Each entry composes as
-`ringBase(buffer, currentFrame) + (isTheDeclaredDynamicElement ? engineDynamicOffset : 0)`, and every entry must
-be a multiple of `minUniformBufferOffsetAlignment`, which V-M5's stride guarantees. A device-free test asserts
-the composed array for every shipped layout shape, because an off-by-one here reads the wrong slice of the right
-buffer, which renders plausible garbage rather than throwing.
+`ringBase(buffer, currentFrame) + rangeOffset + (isTheDeclaredDynamicElement ? engineDynamicOffset : 0)`. Only
+the `ringBase` term is guaranteed a multiple of `minUniformBufferOffsetAlignment` by V-M5's stride. The
+`rangeOffset` and `engineDynamicOffset` terms hold that alignment in practice because every shipped slot size is
+itself 256-aligned, an invariant the renderers already obey rather than a consequence of the stride. A
+device-free test asserts the composed array for every shipped layout shape, because an off-by-one here reads
+the wrong slice of the right buffer, which renders plausible garbage rather than throwing.
 
 **The incumbent's own bug here is not inherited.** Its batching flush resets the batch count and first-set but
 NOT the accumulated dynamic-offset count, so a second batch within one flush passes a too-large count built from

@@ -1320,6 +1320,14 @@ because the documentation this round adds pushed `CharacterMovement.Slide.cs` pa
 Same partial type, same private core, and rule 1 of the steep-terrain model (the wall contact) now sits
 beside rule 2 (no traction) instead of inside it. The geometry both rules read stays where it was.
 
+#### The Vulkan native backend design lands, adjudicated from two adversarial drafts (#420)
+
+`docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md` is phase 3 of the #420 program: Vulkan next, Metal
+after, Veldrid exit at the end. Two independent drafts, one reuse-first and one Vulkan-idiomatic, were
+adjudicated into 103 numbered decisions and a 19-row work breakdown. Spec only, implementation not started, and
+phase 2's own design doc picked up corrected-in-place notes in its section 16 where this design supersedes what
+it predicted.
+
 ## 17.31.0
 
 ### The native Direct3D 11 backend: the replay contract, the constant-buffer ring, and the three cross-row wirings (#449, #451, #452)

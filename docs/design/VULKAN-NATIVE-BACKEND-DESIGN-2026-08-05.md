@@ -5,8 +5,9 @@
 (`docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md`). This document is the phase 3 deliverable.
 Implementation is a numbered issue list in section 18 and none of it has been written. Nothing here has run on
 a device. Section 16 lists every decision that rests on reasoning rather than measurement, each with the
-measurement that settles it, the switch that turns it off, the criterion that retires the switch, and the
-deadline past which the switch may not survive.
+measurement that settles it, the switch that turns it off, the criterion that retires the switch, and a
+deadline: the gate at which a switch keeping a second implementation alive is removed, or by which a bet
+carrying no such switch must be resolved.
 
 Written against engine `17.32.0` (`Directory.Build.props`). The incumbent this design replaces and must reach
 parity with is **`Veldrid 4.9.103`**, the vendored fork package `Directory.Packages.props` pins, whose
@@ -33,16 +34,16 @@ what was rejected from both.
 | V-P2 | Binding | `Silk.NET.Vulkan` plus `Silk.NET.Vulkan.Extensions.KHR` and `.EXT`, pinned to the `2.23.0` line the windowing, input and audio stacks already pin. Hand-rolled P/Invoke, TerraFX and vendoring Veldrid's `Vulkan.*` namespace all rejected (section 3.1) | Both, converged |
 | V-P3 | Layering | References `KhaozEngine.Gpu` and Silk.NET only. The no-Veldrid-edge assertion is extended in BOTH its forms: the csproj read and the IL reference walk. The walk is the load-bearing one, because Veldrid is in the transitive closure through `KhaozEngine.Gpu` whatever the csproj says | A's two-way form |
 | V-P4 | Shared home | NOTHING is extracted from `KhaozEngine.Gpu.D3D11` into a shared home in this phase. The rule of three is not satisfied by two, and section 2.2 names each candidate and what fails it | B |
-| V-P5 | Shared home | What IS shared now is the uniform ring's SEMANTIC tests, run against both backends' rings through one internal test-only interface. Share the tests at two implementations, share the code at three | B |
+| V-P5 | Shared home | What IS shared now is the uniform ring's SEMANTIC tests, run against both backends' rings through one internal test-only interface. Share the tests at two implementations, share the code at three. The interface and BOTH adapters live in `KhaozEngine.TestSupport.Gpu`, which already references `Gpu.D3D11`, is `IsPackable=false` and ships nothing, so V-P4's no-shared-PRODUCTION-home rule is untouched. `Gpu.D3D11` grants it `InternalsVisibleTo` beside the one grant it has today | B, home named by the judge |
 | V-P6 | Shared home | Section 9.4 carries the explicit POLICY INVENTORY the Vulkan ring must satisfy, so the decision not to share code does not become a decision to re-derive the policy from memory. The extraction issue is filed now, triggered by phase 4 | Judge, new |
 | V-I1 | Identity | Append `GpuBackendKind.VulkanNative = 5` with an explicit ordinal and the existing append-only comment. New tokens `vulkan-native` and `vk-native` | Both, converged |
 | V-I2 | Identity | The append is CHEAPER than D3D11's by three rows, and the thirteen-site audit is a TEST now (`GpuBackendKindAppendAuditTests`) rather than a discovery. Section 4.2 walks all thirteen anyway | B |
-| V-I3 | Goldens | GUEST in the committed `vulkan` family through `GoldenBackendToken`. The switch has no discard arm and throws with a message naming the decision, so the audit test turns a missed mapping into a device-free red. Bake refusal derives guest-ness generically from `token != kind.ToString()` | B |
+| V-I3 | Goldens | GUEST in the committed `vulkan` family through `GoldenBackendToken`. The switch has no discard arm and throws with a message naming the decision, so the audit test turns a missed mapping into a device-free red. Bake refusal derives guest-ness generically, from the token not matching the kind's own name under the `OrdinalIgnoreCase` compare `BakeRefusal` already uses, which is what makes `vulkan` an OWNER token for `Vulkan` and a GUEST token for `VulkanNative` | B |
 | V-I4 | Identity | A missing provider registration THROWS and never falls back. An incapable machine is the different case, answered by `IsBackendSupported`'s functional probe and reported through `AfterFallback`. `PreflightProvider` already fixes the order so a wiring fault cannot present as an incapable machine | Both, converged |
 | V-I5 | Identity | Add `GpuBackendKinds.IsVulkan()` beside the existing `IsDirect3D11()`, for the same reason that one exists: a copy of the question at each site drifts | A |
 | V-I6 | Citation | Every citation into the incumbent in this document and in the implementation issues names a MEMBER, not a line number. Both drafts cite lines, both cite lines from different trees, and `GpuBackendKindAppendAuditTests` already records that phase 2's cited line numbers went stale | Judge, against both |
 | V-N1 | Instance | ONE process-wide `VkInstance`, refcounted, created and destroyed under `GpuDeviceContext`'s existing `_lifecycleGate`. The gate STAYS: it also covers disposal and it is not this backend's to remove | Both, converged |
-| V-N2 | Device | Request `min(VK_API_VERSION_1_3, vkEnumerateInstanceVersion())`. Four hard requirements checked by the probe: device apiVersion at or above 1.3, `dynamicRendering`, `synchronization2`, `timelineSemaphore`. All three features are mandatory on a 1.3 device, so the check fails loudly on a 1.2 machine instead of crashing on frame one. The incumbent hardcodes `1.0.0` at two sites and never calls `vkEnumerateInstanceVersion` at all (verified) | B, reason corrected |
+| V-N2 | Device | Request `min(VK_API_VERSION_1_3, vkEnumerateInstanceVersion())`. Four hard version-and-feature requirements: device apiVersion at or above 1.3, `dynamicRendering`, `synchronization2`, `timelineSemaphore`. All three features are mandatory on a 1.3 device, so the check fails loudly on a 1.2 machine instead of crashing on frame one. The probe checks these plus the three further reads 4.1 lists. The incumbent hardcodes `1.0.0` at two sites and never calls `vkEnumerateInstanceVersion` at all (verified) | B, reason corrected |
 | V-N3 | Device | The DEFAULT physical device reproduces the incumbent's `physicalDevices[0]`, filtered by V-N2's hard requirements, with any substitution LOGGED. `KE_VULKAN_DEVICE=<index>\|<substring>\|llvmpipe\|discrete\|integrated\|cpu` is explicit selection. Preferring a discrete device by default is a follow-up, not this phase | A's default, B's filter |
 | V-N4 | Device | Features are enabled SELECTIVELY, by name, through the `pNext` chain. The incumbent hands `vkCreateDevice` the entire supported feature struct (verified), which makes the engine's real dependencies unknowable and moves a missing-feature failure to an unrelated call site | B |
 | V-N5 | Queue | ONE graphics queue that also presents, required to be one family. A device whose graphics family cannot present is REJECTED by the probe with a named reason and routed through the reported fallback. No transfer queue, no async compute | B |
@@ -71,13 +72,14 @@ what was rejected from both.
 | V-M1 | Memory | NO VMA. An engine-owned block suballocator. **The decline is CONDITIONAL on V-T4's synchronisation-validation gate existing**, because that gate is the only instrument in the net that sees an aliasing or hazard defect a golden on a software rasterizer cannot | Both on the decline, judge on the condition |
 | V-M2 | Memory | Chunks pooled by `(memoryTypeIndex, linear\|optimal)` so `bufferImageGranularity` is satisfied by SEPARATION rather than by the incumbent's per-allocation rounding. First-fit over a sorted free list with alignment correction, split on allocate, merge on free, dedicated allocation on driver preference or above a threshold | B |
 | V-M3 | Memory | Host-visible chunks are `vkMapMemory`'d once at creation and NEVER unmapped, so every host-visible allocation has a stable pointer for the chunk's life. This is the thing D3D11 could not do and had to emulate with a record-phase map | Both, converged |
-| V-M4 | Memory | Prefer `HOST_COHERENT`, and when the selected type lacks it emit `vkFlushMappedMemoryRanges` and `vkInvalidateMappedMemoryRanges`. The incumbent emits neither anywhere and rests entirely on coherence being available | B |
+| V-M4 | Memory | The uniform ring is PINNED to a host-visible `HOST_COHERENT` type as a hard requirement, and the probe fails a device that reports none. The spec requires at least one such type, so the check is a formality that fails loudly rather than a gate anything real trips. Everywhere else the allocator PREFERS coherent and, when the chosen type lacks it (readback staging prefers cached), emits `vkFlushMappedMemoryRanges` and `vkInvalidateMappedMemoryRanges`. The incumbent emits neither anywhere and rests entirely on coherence being available | B, ring pinned by the judge |
 | V-M5 | Uniforms | Every `UniformBuffer`-usage buffer is one `VkBuffer` of `stride * FramesInFlight` in host-visible persistently mapped memory, where `stride = align(size, max(256, minUniformBufferOffsetAlignment))`. `IGpuBuffer` identity NEVER changes and the base is applied at BIND. `FramesInFlight = 3` | Both, converged, A's stride |
-| V-M6 | Uniforms | The descriptor is written once at set creation with `offset = 0` and `range = stride`, never `VK_WHOLE_SIZE`, so a dynamic offset of the frame base addresses exactly the frame's own segment and cannot run past the buffer | A |
+| V-M6 | Uniforms | The descriptor is written once at set creation with `offset = 0` and `range` equal to the BIND WINDOW: `GpuBufferRange.Size` where the set was created from a range, the buffer's own logical size otherwise. Never `VK_WHOLE_SIZE`, and never the stride, which is the shape that overruns. `VUID-vkCmdBindDescriptorSets-pDescriptorSets-01979` requires effective offset plus range to stay inside the buffer, and five shipped renderers pass a non-zero caller offset, so the invariant the ring owes is `rangeOffset + callerDynamicOffset + range <= stride` (9.2) | A's shape, corrected against the VUID |
 | V-M7 | Uniforms | U3's two creation-time invariants are adopted VERBATIM: only `UniformBuffer` usage is ring-backed, and a ring-backed buffer never receives a non-uniform binding. Including the part that matters most, that the throw is a BACKEND-DIVERGENT CREATION FAILURE and must be documented as one rather than discovered by a consumer | Both, converged |
 | V-M8 | Uniforms | #484's correction is adopted WHOLESALE without re-deriving it: an off-timeline `UpdateBuffer` reaches EVERY segment, gated on the same completion read, with a non-current segment deferred as a pending patch rather than waited on, and the current segment always written ungated. It cost a consumer defect to learn once | Both, converged |
 | V-M9 | Uploads | Record-time bulk payloads take a per-list persistently mapped staging arena and replay as `vkCmdCopyBuffer` or `vkCmdCopyBufferToImage`. Staging buffers are pooled BY SIZE with a real retention cap. The incumbent destroys any returned staging buffer over 512 bytes, so every real upload allocates and destroys a buffer plus a memory block per call | Both, converged |
-| V-M10 | Textures | Texture creation issues NO queue submit. The incumbent's clear-if-render-target plus transition-if-sampled cost a whole `vkQueueSubmit` EACH. Here both are appended to ONE device-owned setup command buffer, flushed lazily at the next submit OR at any device-level read (`Map`, readback, drain), which is what makes "no submit per texture" true without leaving a hole. The clear is preserved deliberately, because undefined is not stable across runs | A's mechanism, B's motivation |
+| V-M10 | Textures | Texture creation issues NO queue submit. The incumbent's clear-if-render-target plus transition-if-sampled cost a whole `vkQueueSubmit` EACH. Here both are appended to ONE device-owned setup command buffer under a short SETUP-BUFFER LOCK (a `VkCommandPool` and its buffers are externally synchronised, 6.1, so free-threaded creation may not append unsynchronised), flushed lazily at the next submit OR at any device-level read (`Map`, readback, drain), which is what makes "no submit per texture" true without leaving a hole. The clear is preserved deliberately, because undefined is not stable across runs | A's mechanism, B's motivation |
+| V-M11 | Views | Every `VkImageView` is created at RESOURCE creation from the declared usage bits. None at bind, none at draw. This is X1's analogue and X1's evidence is why: all 25 `DEVICE_REMOVED` stacks in #423 surfaced inside the lazy view constructor on the draw path, so lazy creation put an allocation on the hot path and put it on the exact path a broken device makes fail. Enforced the way V-D2 enforces the descriptor pool, by unreachability: no view factory is reachable from the recording type | Judge, new (X1 precedent) |
 | V-F1 | Fences | ONE device-wide monotonic TIMELINE semaphore. Every submit signals `++value`, `IGpuFence` holds a target, and `Signaled` is a non-blocking `vkGetSemaphoreCounterValue` comparison. `SupportsCompletionFences = true`, which is what the incumbent already reports, so this is PARITY rather than the upgrade it was on D3D11 | Both, converged |
 | V-F2 | Fences | The timeline's monotonicity makes the seam's documented fence ordering a theorem rather than a convention, which is the argument for one device timeline over per-submit `VkFence` objects. Section 10.1 | B |
 | V-F3 | Fences | `Submit(cl, fence)` is ONE `vkQueueSubmit`. The incumbent's second empty submit signalling an internal tracking fence is not inherited | A |
@@ -91,11 +93,11 @@ what was rejected from both.
 | V-W1 | Swapchain | Present-path semantics are reproduced from the incumbent exactly where they are visible only to a human: surface format and colour space, present-mode preference order including `FIFO_RELAXED` under a vsync request, image count, usage, composite alpha, `clipped`. W1's lesson applied where it actually binds | Both, converged |
 | V-W2 | Swapchain | Two deliberate departures from that reproduction, both bugs rather than behaviours: `preTransform` reads `currentTransform` rather than being hardcoded to `IDENTITY`, and the sRGB fallback that compares an already-`Undefined` format is not reproduced | Both, converged |
 | V-W3 | Swapchain | The every-frame CPU acquire stall is NOT reproduced. Acquire signals a binary semaphore the frame's submit waits on at `COLOR_ATTACHMENT_OUTPUT`, and the submit signals a render-finished semaphore the present waits on. Behind `KE_VULKAN_ACQUIRE=stall`. Section 2.6 shows this is FORCED by V-T4 rather than merely preferred | Both, judge's argument |
-| V-W4 | Swapchain | An acquire returning `OUT_OF_DATE` SKIPS the frame's present, the recreate runs at that same present boundary, and the semaphore handed to the failed acquire is retired by the recreate's drain rather than reused. Neither draft says what happens to that frame | Judge, new |
+| V-W4 | Swapchain | An acquire returning `OUT_OF_DATE` recreates at that same present boundary, retires the failed acquire's semaphore through the recreate's drain rather than reusing it, and takes ONE fresh acquire on the new swapchain before the boundary returns, so the next frame starts with an image index exactly as an ordinary boundary leaves it. Only if that retry also fails does a frame go imageless, and then it binds the device's ORPHAN TARGET, submits normally and skips its present. `FramesBegun` counts it, because a skipped present is not a skipped frame. Neither draft says what happens to that frame | Judge, new |
 | V-W5 | Swapchain | `IGpuFramebuffer` wrapper identity is STABLE across resize and across a present-mode change (W2 precedent), which matters more here than on D3D11 because every image view object is replaced | Both, converged |
 | V-W6 | Swapchain | `ResizeSwapchain`, `OUT_OF_DATE` and `SUBOPTIMAL` from either call, and a runtime `SyncToVerticalBlank` change all queue and apply at the next present boundary on the submit thread. Recreation drains the timeline first, which is what makes retiring pending acquire semaphores safe | Both, converged, B's present-mode row |
 | V-W7 | Swapchain | `vkQueuePresentKHR`'s result is CHECKED. The incumbent ignores it entirely | B |
-| V-W8 | Threading | No frame-long lock. Recording is lock-free and per-list. One `_submitLock` covers `vkQueueSubmit`, present and the resize apply. The allocator has its own short lock scoped to a suballocation. Creation is free-threaded, with no `DriverConcurrentCreates` analogue to ask about | Both, converged |
+| V-W8 | Threading | No frame-long lock. Recording is lock-free and per-list. One `_submitLock` covers `vkQueueSubmit`, present and the resize apply. Three short locks sit beside it, each scoped to one operation: the allocator's around a suballocation, the descriptor pool manager's, and the SETUP-BUFFER lock V-M10's device-owned command buffer needs. Creation is otherwise free-threaded, with no `DriverConcurrentCreates` analogue to ask about | Both, converged, setup lock named by the judge |
 | V-S1 | Shaders | GLSL 450 stays the single source. The backend calls the existing `SpirvCrossCompile.ToSpirv` across `InternalsVisibleTo` and hands the bytes to `vkCreateShaderModule`. Zero cross-compilation, zero new shader machinery, zero reflection | Both, converged |
 | V-S2 | Shaders | The byte-identical-SPIR-V parity claim is TWO artefacts, not one: a `SpirvFrontEndPin` constant set with its citation, and a ONE-OFF in-process parity measurement against the incumbent, taken and RECORDED here before the first golden run. The per-program hash table detects DRIFT only, and phase 2's own test header says so | B |
 | V-S3 | Shaders | `SpirvCrossCompile` is SPLIT along the seam it already has: front end (`ToSpirv`) and back end (`VertexFragmentToHlsl`, `ComputeToHlsl`). Vulkan depends on the front end only, asserted by an architecture test that it names no back-end member | B |
@@ -117,20 +119,20 @@ what was rejected from both.
 | V-G3 | Diagnostics | `KE_VULKAN_VALIDATION=0\|1\|strict\|sync`. `1` enables `VK_LAYER_KHRONOS_validation` plus a `VK_EXT_debug_utils` messenger pumping through a rate limiter, `strict` latches and throws on error severity at a controlled point, `sync` adds the synchronisation-validation feature | B's ladder, A's sync rung |
 | V-G4 | Diagnostics | `VK_ERROR_DEVICE_LOST` is checked in EVERY configuration and latched AT THE FAULT SITE with the call name and result. The incumbent's `VulkanUtil.CheckResult` is `[Conditional("DEBUG")]`, so a latch built on its shape would never fire in Release, and #427 asks for exactly that latch | A |
 | V-G5 | Diagnostics | The debug messenger LOGS and never throws. The incumbent's callback throws a managed exception and calls `Debugger.Break()` from inside a native driver callback, and unwinding through native frames is not a diagnostic. `VK_EXT_debug_utils` only, never the deprecated `VK_EXT_debug_report`. Object names are set so a validation message names a buffer instead of a handle | A's rule, B's mechanism |
-| V-G6 | Diagnostics | `GpuDeviceCounters` is populated in full with NO seam change. The struct already exists, already documents that absent is not zero, and is answered by exactly one backend today | B |
-| V-T1 | Tests | The 36 committed `vulkan` goldens run unmodified against the native backend on the same lavapipe rasterizer at the existing 0.06 absolute per-channel tolerance, where zero of the 1728 values may exceed it. No rebake, ever | Both, converged |
+| V-G6 | Diagnostics | `GpuDeviceCounters` is populated in full with exactly ONE seam addition, named rather than assumed away: an acquire-wait pair (`AcquireWaitCount` and `AcquireWaitMs`, the shape every other reading on the struct already has) plus its two `GpuTelemetryChannels` names, without which MV2 cannot read its own result. Everything else is already there, already documents that absent is not zero, and is answered by exactly one backend today. `BackpressureStallCount` keeps its member and gains a sentence of doc comment, because here it also counts the command-buffer slot wait | B, one addition named by the judge |
+| V-T1 | Tests | The 36 committed `vulkan` goldens run unmodified against the native backend on the same lavapipe rasterizer at the existing 0.06 absolute per-channel tolerance, where zero of the 1728 values IN A GOLDEN GRID may exceed it. No rebake, ever | Both, converged |
 | V-T2 | Tests | A device-free native-call budget test aimed at the VULKAN fan-out class through a narrow `IVkCmdSink`, generic-constrained to a struct, covering ONLY the three call classes that scale with draw count: descriptor binds, draws and dispatches, and barriers. Everything else goes straight to `vkCmd*` | B |
 | V-T3 | Tests | `NativeVsVeldridVulkanCapabilityParityTests`, both structs in one process on the Linux leg, zero permitted differences | Both, converged |
 | V-T4 | Tests | Validation is a CI GATE, in two tiers: `strict` core validation on the scheduled full suite, and `sync` on a SEPARATE, smaller golden-plus-compute job on the schedule only. Installing `vulkan-validationlayers` and enabling the layer is NET-NEW CI WORK, not an env-var flip: no validation layer is present in CI today (verified) | A's gate, judge split and costed |
 | V-T5 | Tests | SPIR-V byte equality per program against a checked-in hash, device-free, on every `dotnet test`, understood as a DRIFT detector per V-S2 | Both, converged |
-| V-T6 | Tests | The uniform ring's semantic tests run against BOTH backends' rings through one internal test-only interface (V-P5), covering #484's every-segment rule, the pending-patch queue, the never-blocks property, segment recycling under fence pressure and the ring-backed-view invariant | B |
+| V-T6 | Tests | The uniform ring's semantic tests run against BOTH backends' rings through one internal test-only interface (V-P5), covering SEVEN of section 9.4's ten policy rows: segment selection, fence gating under pressure, backpressure counting, #484's every-segment reach, its gating, the never-blocks pending-patch queue, and record-time writes staying current-segment. The other three (Ordering, Lock legality, Stride) are each backend's OWN, because their mechanisms differ where the policy does not, and 9.4 names the owner per row. The ring-backed-view invariant is V-M7's creation-time throw rather than a ring semantic, so it is not on either list | B, partitioned by the judge |
 | V-T7 | Tests | Device-free barrier-shape, resting-layout, recording-contract and descriptor-invariant tests. The descriptor invariant is the structural one from V-D2 rather than a counter the sink cannot see | B, plus V-D2 |
 | V-T8 | Tests | A `vulkan-native` matrix leg on `ubuntu-latest`, golden-only on push, full suite on schedule and dispatch. At 1x billing this is the cheapest leg the program has added, roughly a quarter of the `direct3d11-native` leg per run at the same tier | Both, converged |
 | V-T9 | Tests | The `NativeDeviceLifecycle` collection definition is copied into BOTH test assemblies (definitions are per assembly), and the full-suite leg is budgeted at the incumbent's serialised order or worse before anyone reads a first schedule run as a hang | B |
 | V-RO1 | Rollout | Five gates, all green before any default flip (section 17) | Both, converged |
 | V-RO2 | Rollout | `Vulkan` through Veldrid stays selectable by token INDEFINITELY. It is the kill switch for every STRUCTURAL decision in this design, which is why most bets carry no switch of their own | B |
 | V-RO3 | Rollout | The Linux headless default stays on Veldrid until gate 4. The `vulkan-native` CI leg is the continuous exercise | Both, converged |
-| V-RO4 | Rollout | EVERY kill switch in this design carries a DECISION DEADLINE tied to a named gate, past which it is removed and the losing path deleted. A switch that outlives its bet is phase 2's M1 failure, where gate 3 is still blocked behind an unresolved A/B with two drivers shipping | Judge, new |
+| V-RO4 | Rollout | EVERY kill switch carries a decision deadline in its Deadline cell, and 2.7's taxonomy decides what the deadline MEANS. A switch that keeps a SECOND IMPLEMENTATION shipping is removed at its named gate and the losing path deleted with it, whichever way the bet went, because a switch that outlives its bet is phase 2's M1 failure, where gate 3 is still blocked behind an unresolved A/B with two drivers shipping. A TUNING KNOB or an OBSERVATION FLAG selects a value or a mode inside one implementation, keeps no second path alive, and MAY survive its gate, in which case its Deadline cell says so and says on what condition | Judge, new |
 
 ---
 
@@ -234,7 +236,11 @@ each draft actually specifies.
 
 The 256-byte constant-count round-up is a D3D11 mechanism whose Vulkan sibling is
 `minUniformBufferOffsetAlignment` on a byte offset. Different arithmetic, different failure (a validation error
-rather than a silent dropped bind), and no shared code. The framebuffer-change viewport guard is a one-line
+rather than a silent dropped bind), and no shared IMPLEMENTATION. One constant is shared, the 256 in V-M5's
+stride, and even that is derived independently on this side rather than borrowed: 256 is the spec's required
+MAXIMUM for `minUniformBufferOffsetAlignment`, so flooring the stride there makes it device-independent instead
+of leaving a device-shaped number under a golden-bearing path. A constant with two independent derivations is
+not shared code. The framebuffer-change viewport guard is a one-line
 emit rule plus a test assertion, and BOTH drafts specify it independently without any extraction. The
 WRAP-on-all-three-axes shared sampler pair is already written as a contract on `IGpuDevice.PointSampler`, so it
 is carried by the seam rather than by any extracted type. **The pipeline-switch record wipe does not port at
@@ -260,7 +266,17 @@ test-only interface, so the Vulkan ring must pass the tests #484 was fixed by be
 **Two amendments, because the winning position has a cost it underprices.** First, that shared test interface
 is itself an abstraction derived from one implementation, which is the sin the decision is avoiding, just
 moved into the test layer. It is a much smaller one (acquire a segment, write off-timeline, read a segment
-base) and it is worth paying, but it should be named rather than presented as free. Second, and this is V-P6:
+base, read the stall count) and it is worth paying, but it should be named rather than presented as free. It
+also has to be given a HOME, and neither draft gives it one. The home is `KhaozEngine.TestSupport.Gpu`: it
+already references `KhaozEngine.Gpu` and `KhaozEngine.Gpu.D3D11`, it gains a `Gpu.Vulkan` reference in row 2
+anyway for the `VulkanBackendRegistration` seat, and it is `IsPackable=false` and `IsTestProject=false`, so it
+ships nothing and V-P4's rule against a shared PRODUCTION home is untouched. The interface and both adapters
+live there, the semantic tests live in the shared ring-test project that references it, and the visibility
+this costs is one line: `KhaozEngine.Gpu.D3D11` grants `InternalsVisibleTo` to `KhaozEngine.TestSupport.Gpu`
+beside the single `KhaozEngine.Render.Tests` grant it carries today. The Vulkan package carries the same grant
+from its first commit. **That is real D3D11-side work and row 8 owns it explicitly**, because "share the
+tests" with no adapter on the other side is a decision that quietly becomes one backend's tests. Second, and
+this is V-P6:
 a decision not to share code is not a decision to re-derive the policy from memory. Section 9.4 writes the
 policy inventory out as a checklist the Vulkan ring is implemented against, because the continuity draft is
 right that the expensive thing here is the lessons, and the answer to that has to be written down somewhere.
@@ -306,8 +322,9 @@ something correct to port.
 clears it (2.1), and the field GPU has cleared it since 2022. A Linux desktop machine on an older driver
 answers false at V-I4's functional probe and routes through the existing reported fallback to the Veldrid leg,
 which is the designed behaviour rather than a regression. What the cost buys is that 1.3 is also where
-`synchronization2` and `timelineSemaphore` are core, both of which this design uses, so the floor is not being
-spent on dynamic rendering alone.
+`synchronization2` is core, and `synchronization2` and `dynamicRendering` together are what the floor is
+actually spent on. `timelineSemaphore` is core at **1.2**, so it rides the floor rather than justifying it,
+and saying otherwise would credit the move with something it does not buy.
 
 **Decision.** V-A1 through V-A6. No render-pass path is written and no in-backend fallback is built, per
 2.7. The incumbent's clear-arrival semantics are ported deliberately, which is the continuity draft's instinct
@@ -441,11 +458,13 @@ sized it on frames in flight and the other on image count, and acquires are pace
 while recording is paced by the frame loop, so the ring has to clear both.
 
 **V-W4 fills a gap both drafts leave.** Neither says what happens to a frame whose acquire returned
-`OUT_OF_DATE`. That frame has no image, so it cannot render. The rule: the frame's present is SKIPPED, the
-swapchain recreate runs at that same present boundary rather than being queued to a later one, and the
-semaphore handed to the failed acquire is retired by the recreate's unconditional drain rather than being
-reused. Without the same-boundary rule the semaphore is either reused while pending, which is the reuse bug, or
-destroyed while pending, which is undefined behaviour.
+`OUT_OF_DATE`. That frame has no image, so it cannot render. The rule, written out in 11.2: the swapchain
+recreate runs at that same present boundary rather than being queued to a later one, the semaphore handed to
+the failed acquire is retired by the recreate's unconditional drain rather than being reused, and ONE fresh
+acquire follows the recreate before the boundary returns. Without the same-boundary rule the semaphore is
+either reused while pending, which is the reuse bug, or destroyed while pending, which is undefined behaviour.
+Without the fresh acquire the recording path needs a second "no image yet" state, which is the state the rule
+exists to have exactly one of.
 
 ### 2.7 Kill switches, deadlines, and the phase-2 lesson
 
@@ -476,9 +495,15 @@ model rather than the exception.
 
 **Decision.** V-RO2 as the rule (Veldrid Vulkan by token is the kill switch for every structural decision),
 the two branch switches kept, the two implementation switches rejected. **And the amendment neither draft
-applies universally, V-RO4: every switch in this design names the gate at which it is removed.** A bet without
-a deadline is not a bet, it is a permanent fork with optimistic documentation, and that is exactly what phase 2
-is currently paying for.
+applies universally, V-RO4: every switch in this design names a gate in its Deadline cell, and the SORT above
+decides what the deadline means.** A switch keeping a second implementation shipping is removed at that gate
+and its losing path deleted, whichever way the bet went, because a bet without a deadline is not a bet, it is
+a permanent fork with optimistic documentation, and that is exactly what phase 2 is currently paying for. A
+tuning knob or an observation flag keeps no second path alive, so it may survive its gate, and its Deadline
+cell says so and says on what condition. `KE_VULKAN_ACQUIRE` is the first kind and dies at gate 4.
+`KE_VULKAN_FRAMES_IN_FLIGHT` is the second kind and may live on as a knob, but only if MV3's exit criterion
+was met at its default, which is the condition that stops "it is only a knob" from becoming a way to keep a
+failed default.
 
 ### 2.8 The validation gate, split and costed
 
@@ -659,8 +684,17 @@ Three inherited properties, each of which was a decision somebody had to make:
   `Render.Tests`, all four `MapEditor.Tests` GPU tests threw on the native leg.
 
 `IsSupported()` is a functional probe with real content on this backend: create a throwaway instance, enumerate
-physical devices, and check V-N2's four hard requirements plus, on the windowed path, a graphics family that
-presents. It must never throw. A machine with no loader, no ICD or a pre-1.3 driver answers false and routes
+physical devices, and check V-N2's four hard requirements, then three more reads, each cheap at the probe and
+expensive anywhere later:
+
+- a host-visible `HOST_COHERENT` memory type, which the uniform ring is pinned to (V-M4). The spec requires one
+  to exist, so this fails loudly on a device that somehow has none rather than being a gate anything real trips.
+- `maxDescriptorSetUniformBuffersDynamic` at or above the count the engine's layouts need, which is 8.3's fourth
+  defence and the only one of the four that answers BEFORE a device is created, so a machine below the count
+  falls back through the reported path instead of throwing partway into a run.
+- on the windowed path, a graphics family that presents.
+
+It must never throw. A machine with no loader, no ICD or a pre-1.3 driver answers false and routes
 through `AfterFallback` as `FallbackAfterFailure`, exactly as today.
 
 ### 4.2 The `GpuBackendKind` append audit, second time
@@ -720,7 +754,10 @@ zero cost, because serialisation stays on by default.
 
 **Four hard requirements**, checked by the probe and by device creation: device apiVersion at or above 1.3,
 `dynamicRendering`, `synchronization2`, `timelineSemaphore`. All three features are mandatory on a 1.3 device,
-so the feature checks are formalities that fail loudly on a 1.2 machine rather than crashing on frame one.
+so the feature checks are formalities that fail loudly on a 1.2 machine rather than crashing on frame one. The
+probe checks three more things beyond these four (a coherent host-visible memory type, the dynamic-uniform
+descriptor limit, and a presenting graphics family on the windowed path), and 4.1 lists them, because they are
+probe content rather than device-version floor.
 
 **Physical device selection reproduces `physicalDevices[0]` as the default** (2.9), filtered by those
 requirements, with any substitution LOGGED so a soak session can tell a substitution from a selection.
@@ -793,6 +830,14 @@ the pool's arena in one operation. The cost is three pool objects per list inste
 deeper command-buffer ring is dead capacity behind a shallower gate, and one number governing both is one
 number to move if MV3 says 3 is wrong.
 
+**The shared number is not a shared index, and conflating them is the mistake available here.** The pool slot
+is PER LIST and advances on every `Begin`. The ring segment is PER FRAME and advances at the frame boundary. A
+list begun twice in one frame therefore takes two different pool slots while both of its records write the
+SAME ring segment, which is correct in both directions: two records must not share a command buffer that is
+still in flight, and two records in one frame must see one frame's uniform values. A list begun more times per
+frame than `FramesInFlight` wraps onto its own oldest slot and waits on that slot's recorded timeline value,
+which is real backpressure and is counted as such.
+
 **Why this gives real N-concurrent recording.** A `VkCommandPool` and every buffer allocated from it are
 externally synchronised, one thread at a time. Per-list pools mean two lists recording on two threads never
 touch the same pool. Combined with list-local layout tracking (V-F7), nothing shared is read or written during
@@ -862,7 +907,8 @@ protection, and neither of those is a sink call, so no counting seam sees them. 
 instead, in the shape X1 used on D3D11 where the absence of a `Create*` member made draw-time creation a compile
 error: the descriptor pool is not reachable from the recording type, asserted by an architecture test over the
 type graph, and the device-free harness additionally runs every shipped scene shape against a fake pool whose
-allocate and write counters must both read zero.
+allocate and write counters must both read zero. **V-M11 applies the same shape to image views** for the same
+reason and on X1's own evidence, so the one architecture test covers both unreachability claims (9.3).
 
 ### 6.4 What is not here
 
@@ -1041,7 +1087,16 @@ is already aligned. Separating the pools by tiling makes the constraint structur
 **Flush and invalidate when coherence is absent.** The incumbent has no `vkFlushMappedMemoryRanges` or
 `vkInvalidateMappedMemoryRanges` anywhere and rests entirely on a `HOST_COHERENT` type existing. Every desktop
 driver provides one, so this has never bitten, and it is a few lines to be correct rather than lucky. Coherent
-types are preferred, and cached types are preferred for readback staging.
+types are preferred, and cached types are preferred for readback staging, which is where a non-coherent type is
+actually reachable and where the invalidate is therefore real code rather than a defensive branch.
+
+**The ring is the one place this is a requirement rather than a preference (V-M4).** 9.2's whole no-barrier
+argument rests on the uniform ring's memory being coherent, so the ring asks for a host-visible `HOST_COHERENT`
+type and nothing else, and `IsSupported()` answers false on a device that reports none. The spec requires such
+a type to exist, so this fails loudly on a device that cannot happen rather than gating one that can, and the
+alternative (a per-frame flush over every written segment range before every submit) would put back exactly the
+per-frame work the ring exists to remove. Preference elsewhere, hard requirement here, and 9.2 may then say
+"no flush is required" as a fact.
 
 **Rejecting VMA, and the condition attached to the rejection.** VMA is a C++ library with no maintained managed
 binding, so the real proposal is a native binary per RID in the package, which is the exact bundling burden
@@ -1061,17 +1116,32 @@ re-argued.** MV6 is the falsifying measurement.
 
 ### 9.2 The ring, and the corrected argument for it (V-M5 to V-M8)
 
-Every `UniformBuffer`-usage buffer is one `VkBuffer` of `stride * FramesInFlight` in host-visible persistently
-mapped memory, where `stride = align(size, max(256, minUniformBufferOffsetAlignment))`. `FramesInFlight = 3`.
+Every `UniformBuffer`-usage buffer is one `VkBuffer` of `stride * FramesInFlight` in host-visible, coherent,
+persistently mapped memory (V-M4 pins the type and the probe fails a device reporting none), where
+`stride = align(size, max(256, minUniformBufferOffsetAlignment))`. `FramesInFlight = 3`.
 
 - A record-time `UpdateBuffer(buffer, offset, data)` is `memcpy(mapped + frameBase + offset, data, n)`. No
   staging buffer, no `vkCmdCopyBuffer`, no memory barrier, and **no render-pass split**.
 - Every bind of a ring-backed uniform descriptor supplies `frameBase + rangeOffset + callerDynamicOffset` as its
   `pDynamicOffsets` entry, composed in the flush's array (6.2).
-- The descriptor is written ONCE at set creation with `offset = 0` and `range = stride`. `VK_WHOLE_SIZE` is
-  deliberately not used, because a whole-size range combined with a dynamic offset can address past the end of
-  the buffer. With `range` equal to the segment stride, a dynamic offset of `frameBase` addresses exactly the
-  frame's own segment and never reaches a neighbour.
+- The descriptor is written ONCE at set creation with `offset = 0` and `range` equal to the BIND WINDOW:
+  `GpuBufferRange.Size` where the set was created from a range, and the buffer's own logical size where it was
+  created from a bare buffer. `VK_WHOLE_SIZE` is deliberately not used, because a whole-size range combined
+  with a dynamic offset addresses past the end of the buffer.
+- **And the range is NOT the stride**, which is the shape that looks safe and is not.
+  `VUID-vkCmdBindDescriptorSets-pDescriptorSets-01979` requires the effective offset plus the range to stay
+  within the buffer, and the effective offset here is `frameBase + rangeOffset + callerDynamicOffset`. At the
+  last frame slot `frameBase` is `(FramesInFlight - 1) * stride`, so a range of `stride` overruns the buffer by
+  exactly the caller's own offset the moment that offset is non-zero. It is non-zero in five shipped
+  renderers: `ShadowMapRenderer` passes `cascade * CascadeSlotBytes` (and `slot * SkinnedDepthSlotBytes` on the
+  skinned path), `ModelRenderer` `slot * SkinnedMainSlotBytes`, `WaterRenderer` and `OverlayMeshRenderer` a
+  per-plane and per-draw slot, and `SpriteBatch` its view-projection slot. Every one of those sets is created
+  from a `GpuBufferRange(buffer, 0, slotBytes)`, so the window is already on the seam and the descriptor takes
+  it verbatim. The invariant the ring owes is then
+  `rangeOffset + callerDynamicOffset + range <= stride`, which keeps the whole sum inside the buffer at every
+  frame slot by construction. **This is the same invariant an unringed buffer already obeys**, since a windowed
+  bind with a dynamic offset must stay inside the buffer on any backend. The ring adds `frameBase` to the
+  offset and `stride` to the ceiling, and the arithmetic is otherwise untouched.
 - Frame N uses segment `N % FramesInFlight`. Before handing out a segment the allocator checks the completion
   value the frame that last owned it recorded and blocks if it has not been reached, counting the stall.
 
@@ -1108,9 +1178,9 @@ different direction is a convergence rather than an inheritance.
 **What replaces `MAP_WRITE_NO_OVERWRITE`: nothing needs to.** D3D11 has no persistent mapping and forbids a
 mapped resource being bound to the pipeline, so the whole map-for-the-record-phase and unmap-at-submit dance
 existed to work around an API restriction Vulkan does not have. The discipline that replaces it is that the
-memory is `HOST_COHERENT` so no explicit flush is required, that `vkQueueSubmit` performs an implicit
-host-write availability operation for coherent memory so writes made before the submit are visible with no
-barrier, and that the ONLY remaining invariant is that the CPU never writes into a segment the GPU is still
+memory is `HOST_COHERENT` BY REQUIREMENT rather than by luck (V-M4), so no explicit flush is required, that
+`vkQueueSubmit` performs an implicit host-write availability operation for coherent memory so writes made
+before the submit are visible with no barrier, and that the ONLY remaining invariant is that the CPU never writes into a segment the GPU is still
 reading, which is exactly the fence gate. The Vulkan ring is strictly simpler than the D3D11 ring while running
 the same policy, and that asymmetry is the answer to anyone who reads "persistent mapping IS available on
 Vulkan" as an invitation to design something new.
@@ -1122,7 +1192,7 @@ throws at creation. That combination is vacuous in the engine today, so nothing 
 but it is legal on the seam and the Veldrid backend accepts it, so this is a **backend-divergent creation
 failure** and must be documented as one rather than discovered by a consumer.
 
-### 9.3 Bulk uploads and texture creation (V-M9, V-M10)
+### 9.3 Bulk uploads, texture creation and views (V-M9 to V-M11)
 
 Record-time `UpdateBuffer` on a non-uniform buffer, and `UpdateTexture`, write into a per-list staging arena
 (host-visible, persistently mapped, sub-allocated, recycled on the list's slot retirement) and record
@@ -1145,24 +1215,46 @@ design that only flushes at the next submit leaves that case reading memory noth
 preserved deliberately, because dropping it would change what a render target reads before anything writes it,
 and undefined contents are not stable across runs while the goldens require stability.
 
+**That buffer needs a lock, and V-W8 names it rather than leaving creation "free-threaded" unqualified.** A
+`VkCommandPool` and every buffer allocated from it are externally synchronised (6.1), so two threads creating
+two textures may not append to one setup buffer at once. Creation stays free-threaded everywhere else and takes
+a SETUP-BUFFER LOCK for the append and for the lazy flush, held for the record of one or two commands and
+released before creation returns. It is the third short lock beside the allocator's and the descriptor pool
+manager's, and the flush path takes the submit lock under it in that order, never the reverse.
+
+**Every image view is created eagerly, at resource creation (V-M11).** From the declared usage bits: a
+full-chain sampled view if `Sampled` or `GenerateMipmaps`, an attachment view at mip 0 layer 0 if `RenderTarget`
+or `DepthStencil`, a storage view at mip 0 if `Storage`. The bound is real rather than optimistic because the
+seam cannot express anything else: `CreateFramebuffer` carries no mip or layer parameter, `ResolveTexture` is
+subresource 0 only, and per-face cubemap rendering is not expressible. This is X1's decision on X1's evidence,
+which is blunt and worth restating in a Vulkan seat where `vkCreateImageView` looks cheap enough to do at a
+bind: all 25 `DEVICE_REMOVED` stacks in #423 surfaced inside the lazy view constructor on the draw path, so
+lazy creation put an allocation on the hot path and put it on the exact path a broken device makes fail. The
+enforcement is V-D2's, not a counter: no view factory is reachable from the recording type, so a draw-time view
+is a compile error. A `GpuBufferRange` inside a `CreateResourceSet` description likewise resolves at SET
+creation and never at draw time.
+
 ### 9.4 The ring policy inventory (V-P6)
 
 2.2 decided not to share the ring's code. This is the checklist that decision owes, so the Vulkan ring is
-implemented against the policy rather than against somebody's memory of it. Every row is covered by a shared
-semantic test under V-P5 and V-T6.
+implemented against the policy rather than against somebody's memory of it. **The Owner column says who checks
+each row, because "covered by shared tests" was too broad a claim to leave standing.** Seven rows are the
+shared semantic tests of V-P5 and V-T6, run against both backends' rings through the one test-only interface.
+Three are each backend's OWN, because the POLICY is identical and the MECHANISM is not, which is 2.2's whole
+ruling applied one row at a time rather than in bulk.
 
-| Policy | What it means here |
-|---|---|
-| Segment selection | Frame N uses segment `N % FramesInFlight`. The base is applied at BIND and never baked into a descriptor or a resource set |
-| Fence gating | A segment is acquired only after the completion value the frame that last owned it recorded has been reached. On this backend that read is `vkGetSemaphoreCounterValue` on the device timeline |
-| Ordering | The ring cannot recycle safely before the completion primitive exists. This is the dependency edge phase 2's first draft dropped, and a ring built against submit receipts corrupts a frame silently |
-| Backpressure | A blocked acquire increments the stall count and accumulates stall time, into the existing seam counters |
-| Off-timeline reach (#484) | A device-level write reaches EVERY segment, not only the current one. A value written once must persist for the buffer's life, or two frames in three bind memory nothing has ever written |
-| Off-timeline gating | The added segments are gated on the same completion read. The CURRENT segment is ungated and always written, because gating it would change the documented semantic |
-| Off-timeline never blocks | A segment failing the gate is queued as a PENDING PATCH applied at that segment's next acquire. It is never waited for. A retry loop that waits for every non-current segment at once NEVER TERMINATES in the GPU-bound steady state, because the frame thread submits again for every frame the GPU retires |
-| Lock legality | Because it never waits, a caller already holding the submit lock is legal. That is the case the waiting draft would have deadlocked on |
-| Record-time writes | Stay current-segment only. Every shipped one is unconditional per frame, so replicating them would be N memcpys for a value the next frame overwrites, on the hot path |
-| Stride | The segment stride is what the descriptor's `range` is set to, so a frame's window is its own segment and never a neighbour's |
+| Policy | What it means here | Owner |
+|---|---|---|
+| Segment selection | Frame N uses segment `N % FramesInFlight`. The base is applied at BIND and never baked into a descriptor or a resource set | Shared (V-T6) |
+| Fence gating | A segment is acquired only after the completion value the frame that last owned it recorded has been reached. On this backend that read is `vkGetSemaphoreCounterValue` on the device timeline | Shared (V-T6) |
+| Ordering | The ring cannot recycle safely before the completion primitive exists. This is the dependency edge phase 2's first draft dropped, and a ring built against submit receipts corrupts a frame silently | Backend's own. It is a BUILD-ORDER fact, not a runtime semantic: nothing a test can observe, and what enforces it is row 8 depending on row 5 |
+| Backpressure | A blocked acquire increments the stall count and accumulates stall time, into the existing seam counters | Shared (V-T6). The interface exposes the stall count for exactly this row |
+| Off-timeline reach (#484) | A device-level write reaches EVERY segment, not only the current one. A value written once must persist for the buffer's life, or two frames in three bind memory nothing has ever written | Shared (V-T6) |
+| Off-timeline gating | The added segments are gated on the same completion read. The CURRENT segment is ungated and always written, because gating it would change the documented semantic | Shared (V-T6) |
+| Off-timeline never blocks | A segment failing the gate is queued as a PENDING PATCH applied at that segment's next acquire. It is never waited for. A retry loop that waits for every non-current segment at once NEVER TERMINATES in the GPU-bound steady state, because the frame thread submits again for every frame the GPU retires | Shared (V-T6) |
+| Lock legality | Because it never waits, a caller already holding the submit lock is legal. That is the case the waiting draft would have deadlocked on | Backend's own. Each backend has its own lock and its own deadlock to not have, and a shared test would assert against a lock the interface cannot see |
+| Record-time writes | Stay current-segment only. Every shipped one is unconditional per frame, so replicating them would be N memcpys for a value the next frame overwrites, on the hot path | Shared (V-T6) |
+| Stride | The stride is the SPACING of the segments, and it is not what the descriptor's `range` is set to. The range is the bind window (V-M6), and the invariant the stride carries is `rangeOffset + callerDynamicOffset + range <= stride`, so a frame's window lands inside its own segment and never in a neighbour's | Backend's own. The arithmetic differs (`align256` and a 16-constant count on D3D11, `max(256, minUniformBufferOffsetAlignment)` and a descriptor range here) where the invariant does not, and the Vulkan half additionally answers to a VUID (9.2) |
 
 ---
 
@@ -1311,11 +1403,38 @@ while deliberately reproducing a configuration validation rejects.
 therefore NOT usable together with `KE_VULKAN_VALIDATION`, which is a documented limitation rather than a bug,
 and per V-RO4 it is removed at gate 4 with the blocking path deleted.
 
-**A frame whose acquire returns `OUT_OF_DATE` (V-W4).** That frame has no image and cannot render. Its present
-is SKIPPED, the swapchain recreate runs at that same present boundary rather than being queued to a later one,
-and the semaphore handed to the failed acquire is retired by the recreate's unconditional drain rather than
-being reused. Without the same-boundary rule that semaphore is either reused while pending, which is the reuse
-bug, or destroyed while pending, which is undefined behaviour.
+**A frame whose acquire returns `OUT_OF_DATE` (V-W4).** Neither draft says what happens to it, and the gap is
+four questions, not one. All four are answered inside `SwapBuffers`, which is the only place any of this
+happens: it presents the frame just submitted IF an image is held, then applies any pending recreation, then
+acquires for the next frame. It never throws, never reports failure upward, and the frame loop above it is
+unchanged.
+
+- **The recreate runs at that same boundary**, not queued to a later one, and the semaphore handed to the
+  failed acquire is retired by the recreate's unconditional drain rather than being reused. Without the
+  same-boundary rule that semaphore is either reused while pending, which is the reuse bug, or destroyed while
+  pending, which is undefined behaviour.
+- **ONE fresh acquire follows the recreate, at that same boundary.** This is the half neither draft reaches and
+  it is the one that decides the shape of everything else. The reason the incumbent's acquire TIMING is kept at
+  all is that acquiring for the next frame at present time makes the image index known before recording starts
+  (above), and a recreate that returns without re-acquiring throws that away for one frame, which means the
+  record path needs a second "no image yet" state. Re-acquiring immediately means an ordinary boundary and a
+  recreating boundary leave the device in the same state, and the imageless state exists in exactly one place
+  instead of two. The retry is ONE. If the fresh acquire also fails, the boundary returns with the pending flag
+  still set and tries again next time, so a surface mid-resize cannot spin the boundary.
+- **What an imageless frame binds.** The V-W5 wrapper's identity is stable across all of this, so the question
+  is what its views POINT AT, and recording against destroyed views is a use-after-free CI cannot see (MV9).
+  Two rules make it unreachable. The old views are destroyed and the wrapper repointed inside one operation on
+  the submit thread, after the drain and with no recording in flight (11.3), so there is no window in which the
+  wrapper names a dead view. And when the double failure does leave the device with no image, the wrapper is
+  repointed at a device-owned ORPHAN TARGET rather than at nothing: one colour image at the current extent
+  clamped to a minimum of 1 by 1, matching the swapchain framebuffer's shape, which carries no depth (11.1).
+  It is created lazily the first time this path is reached and destroyed at the next successful acquire. The
+  frame then records, submits and completes exactly like any other frame, and only its present is skipped. That
+  costs one image in a state a minimised or zero-extent window reaches and nothing else does, and it buys
+  `SetFramebuffer` being legal at every instant without a seam change and without a use-after-free.
+- **The skipped frame counts into `FramesBegun`.** A skipped PRESENT is not a skipped frame: the device opened
+  it, the recording and the submit really happened, and `FramesBegun` is the denominator every per-frame figure
+  is divided by. Leaving it out would understate per-frame costs on exactly the frames that were unusual.
 
 ### 11.3 Resize, present-mode change, and the retirement hazard (V-W5 to V-W7)
 
@@ -1350,8 +1469,12 @@ retirement safe, which is why it is unconditional rather than only on resize.**
 - `Map` and `Unmap` on staging take it for the map call only.
 - Device-level `UpdateBuffer` and `UpdateTexture` are callable from any thread behind the same short lock scoped
   to the write, and legal from a caller already holding it, because the ring policy never waits (9.4).
-- Resource creation is free-threaded. Vulkan has no `DriverConcurrentCreates` analogue to ask about, and the
-  allocator and the descriptor pool manager keep their own short locks.
+- Resource creation is free-threaded. Vulkan has no `DriverConcurrentCreates` analogue to ask about, and three
+  short locks cover what is genuinely shared: the allocator's, the descriptor pool manager's, and the
+  SETUP-BUFFER lock around the device-owned command buffer texture creation appends to (V-M10, 9.3), which is
+  needed because a `VkCommandPool` is externally synchronised and creation is otherwise unsynchronised. Held
+  for an append or a flush, never across a creation call. The flush takes the submit lock under the setup lock,
+  in that order and never the reverse.
 - Submit order is the observable order, with the caveat the seam already documents in rule 2.
 - The process-wide `GpuDeviceContext._lifecycleGate` is unchanged and still serialises device creation and
   disposal across backends. **That gate exists because concurrent device creation raced the Vulkan loader on
@@ -1622,10 +1745,29 @@ the callback.
 No frame-capture integration. RenderDoc attaches externally and needs no engine support.
 
 **Counters (V-G6).** `FramesBegun`, `DrainCount`, `DrainMs`, `BackpressureStallCount`, `BackpressureStallMs`,
-`OffTimelineDeferred` and `OffTimelineOutstanding` are all populated, with NO seam change: the struct exists,
+`OffTimelineDeferred` and `OffTimelineOutstanding` are all populated from the struct as it stands: it exists,
 already documents that absent is not zero, and is answered by exactly one backend today. They leave through
 `IGpuDevice.Counters`, are forwarded by `GpuDeviceContext` and `AppWindow`, and reach a capture as sample-row
 channels, which is the path gate 4 reads.
+
+**One member pair is ADDED, and calling that "no seam change" would have cost MV2 its result.** The acquire
+wait is the whole subject of V-W3 and there is nothing on the struct that counts it, so `AcquireWaitCount` and
+`AcquireWaitMs` are appended, with the two matching `GpuTelemetryChannels` names, in the count-and-milliseconds
+shape every other reading on the struct already uses and for the reason its own doc comment gives: a count with
+no cost attached cannot be weighed, and a duration with no count cannot separate one long wait from many short
+ones. Row 17 owns it, and the pair goes on the populating constructor too, so the D3D11 native device's single
+call site is updated with it and passes zero, which is the honest reading on a backend with no acquire to wait
+on rather than a gap. Without the pair MV2's A/B
+has only mean frame time to read, and section 16 explains why that number cannot answer the question on the
+reporting machine.
+
+**And one shipped member's doc comment changes meaning here, which is a smaller thing said out loud rather than
+a silent one.** `BackpressureStallCount` is documented as the ring-segment stall, and on this backend it also
+counts the command-buffer slot wait at `Begin` (6.1). The two are folded onto one accumulator deliberately,
+because they are the same statement about pipeline depth with the same lever (`FramesInFlight`), which is the
+exact criterion #499 used when it ruled that the off-timeline reading must stay SEPARATE. So the member stays
+one member and its XML doc gains a sentence naming the second thing it counts, as an owned doc task in row 19
+rather than as a fact a reader has to infer from a design document.
 
 ---
 
@@ -1633,7 +1775,7 @@ channels, which is the path gate 4 reads.
 
 | Layer | What it covers | Runs where |
 |---|---|---|
-| The 36 committed `vulkan` goldens, shared family (V-T1) | Pixel equivalence against the SHIPPED Vulkan backend on the same lavapipe rasterizer, at the one global tolerance of 0.06 absolute per channel where zero of the 1728 values may exceed it. No rebake | New `vulkan-native` leg, golden-only on push, full on schedule |
+| The 36 committed `vulkan` goldens, shared family (V-T1) | Pixel equivalence against the SHIPPED Vulkan backend on the same lavapipe rasterizer, at the one global tolerance of 0.06 absolute per channel where zero of the 1728 values in a golden grid may exceed it. No rebake | New `vulkan-native` leg, golden-only on push, full on schedule |
 | `CrossBackendGoldenTests` | Unchanged. Still three families, still the 0.20 ceiling. It is the thing that would catch a bad `vulkan` bake | Every `dotnet test` |
 | Native-call budget, device-free `[Fact]` (V-T2) | The VULKAN fan-out class through `IVkCmdSink`: binds, draws and dispatches, barriers | Every `dotnet test`, every PR, both cheap legs |
 | Descriptor invariant, structural plus device-free (V-D2) | Zero `vkAllocateDescriptorSets` and zero `vkUpdateDescriptorSets` between `Begin` and `End`, enforced by unreachability from the recording type AND by a fake-pool counter over every shipped scene shape | Every `dotnet test` |
@@ -1642,21 +1784,22 @@ channels, which is the path gate 4 reads.
 | Layout dynamic-UBO limit, device-free (V-T4 sibling, V-D6) | A layout that exceeds the Vulkan required minimum of 8 and works on lavapipe but not on a minimum-spec device | Every `dotnet test` |
 | SPIR-V byte equality per program (V-T5) | Front-end DRIFT, understood as drift and not as parity (12.1) | Every `dotnet test` |
 | The one-off SPIR-V parity measurement against the incumbent (V-S2) | What actually licenses "no rebake". Taken once, recorded here | Once, in-process, before the first golden run |
-| Shared uniform-ring semantic tests (V-P5, V-T6) | Section 9.4's whole inventory, run against BOTH backends' rings | Every `dotnet test` |
+| Shared uniform-ring semantic tests (V-P5, V-T6) | Section 9.4's SEVEN shared rows, run against BOTH backends' rings through the test-only interface in `KhaozEngine.TestSupport.Gpu`. The other three rows are each backend's own and 9.4's Owner column says which | Every `dotnet test` |
+| Ring stride and bind-window invariant, device-free (9.4's Stride row, V-M6) | `rangeOffset + callerDynamicOffset + range <= stride` for every shipped resource-set shape, which is what keeps the effective offset plus range inside the buffer at the last frame slot. The Vulkan half of a row whose D3D11 half is the 16-constant count | Every `dotnet test` |
 | `set` and `binding` table test (V-S8) | "Everything compiles and every pixel is wrong" | Every `dotnet test` |
 | Staging subresource layout table test (V-C7) | A garbled readback on all 36 goldens at once | Every `dotnet test` |
 | Pipeline-layout compatibility guard (V-R7) | That the computed compatible prefix is never longer than the true identical-handle prefix, for every ordered pair of shipped pipelines | Every `dotnet test` |
 | Composed `pDynamicOffsets` test (6.2) | An off-by-one in a positional array, which renders plausible garbage rather than throwing | Every `dotnet test` |
 | Barrier-shape and resting-layout tests, device-free (V-T7) | Restoration at `End`, no transition from `UNDEFINED` on live contents, one barrier per touched texture per pass rather than per draw | Every `dotnet test` |
 | Recording-contract test, device-free | N lists open concurrently, interleaved records, submitted out of record order, per-list order asserted and concatenated in submit order | Every `dotnet test` |
-| Acquire-ring index test, device-free (10.2) | Semaphore reuse across a simulated acquire sequence including `OUT_OF_DATE` returns | Every `dotnet test` |
+| Acquire-ring index test, device-free (10.2) | Semaphore reuse across a simulated acquire sequence including `OUT_OF_DATE` returns, plus V-W4's boundary: the recreate, the retired semaphore, the one fresh acquire, and the double-failure frame that binds the orphan target and skips its present | Every `dotnet test` |
 | Negative viewport height, device-free (7.2) | Every golden upside down | Every `dotnet test` |
 | Full lavapipe suite | 0 failed, 0 skipped, passed at or above the incumbent's on the same commit | Linux leg, schedule and dispatch |
 | `OpenListTrackingGpuDevice` | Nested `Begin`. Stays the PORTABLE guard, passes trivially here, and is NOT evidence about this backend (2.5) | Every `dotnet test` |
 | `GpuFactSkipReasonTests` extension | That `KE_GPU_TESTS=probe` still answers correctly once a second provider registers | Every `dotnet test` |
 | `GpuDeviceLifecycleTests` | Concurrent create, use and dispose against the native provider, plus the instance refcount reaching zero | Linux leg |
 | `GpuBackendKindAppendAuditTests` | The thirteen sites, extended for `VulkanNative` | Every `dotnet test` |
-| `ArchitectureTests`, `VeldridLockdownTests`, `GpuPublicApiTests`, the no-Veldrid pair, the front-end-only edge | Zero renderer changes, no Veldrid leakage, opt-in isolation, and that the backend names no cross-compile back-end member | Every `dotnet test` |
+| `ArchitectureTests`, `VeldridLockdownTests`, `GpuPublicApiTests`, the no-Veldrid pair, the front-end-only edge | Zero renderer changes, no Veldrid leakage, opt-in isolation, that the backend names no cross-compile back-end member, and that neither the descriptor pool (V-D2) nor an image-view factory (V-M11) is reachable from the recording type | Every `dotnet test` |
 
 **The budget test's gate, stated the way T2 states it.** The gate is (a) structural invariants: zero descriptor
 allocations and zero descriptor writes during recording, exactly one `vkCmdSetViewport` and one
@@ -1703,8 +1846,9 @@ they run on the cheap legs instead of inside the golden filter.
 ## 16. Unproven bets: gates, kill switches, exit criteria, deadlines
 
 Every decision below rests on reasoning rather than measurement. Each names the measurement that settles it, the
-switch that turns it off, the criterion that retires the switch, and **the gate past which the switch may not
-survive (V-RO4)**. A bet without all four is not shipped.
+switch that turns it off, the criterion that retires the switch, and **a deadline, which is the gate at which a
+second-implementation switch is REMOVED, or the gate by which a bet carrying no such switch must be RESOLVED
+(V-RO4, sorted by 2.7)**. A bet without all four is not shipped.
 
 **One switch covers most of them, and that is deliberate.** V-RO2 keeps Veldrid Vulkan selectable by token
 indefinitely, so every STRUCTURAL decision here (dynamic rendering, direct recording, the descriptor model, the
@@ -1719,15 +1863,15 @@ that still gates its rollout. There is no M1 analogue here, because Vulkan has a
 and the list writes into it. Every bet below is a counter reading or a switch flip, and none of them gates an
 implementation row.
 
-| # | Bet | Measurement gate | Kill switch | Exit criterion | Deadline |
+| # | Bet | Measurement gate | Kill switch | Exit criterion | Deadline: switch removed, or bet resolved |
 |---|---|---|---|---|---|
 | MV1 | The ring is worth as much on Vulkan as on D3D11, because a record-time `UpdateBuffer` costs a render-pass split plus a full pipeline flush plus a global barrier (9.2). The magnitude is unmeasured: nobody has counted how many record-time `UpdateBuffer` calls per frame the #410 scene makes on Vulkan today | Count record-time `UpdateBuffer` calls, render-pass begins and global barriers per frame on the #410 scene ON THE INCUMBENT, before the ring exists. Then the same three counters on the native backend | None. The ring is not optional on Vulkan (9.2), so there is no in-backend fallback to hold | Native render-pass begins per frame at or below the framebuffer-change count, native record-time global barriers at zero, and frame time no worse than 6.9 ms. If the incumbent's counts turn out near zero already, the ring is still taken because it is the only correct design, and this bet is RECORDED AS NOT PAYING rather than quietly forgotten | Gate 4 |
-| MV2 | The semaphore acquire (V-W3) removes a per-frame CPU stall with no presentation regression | Frame time and frame-time variance on the reporting machine with the switch in both positions, same build, same scene, same capture window, plus a human windowed pass | `KE_VULKAN_ACQUIRE=stall`. NOT usable with `KE_VULKAN_VALIDATION`, because `stall` restores a configuration validation rejects (2.6) | Semaphore acquire at or better than `stall` on mean and 99th percentile with no visual anomaly across two consecutive soak builds | **Gate 4. The switch is REMOVED there and the blocking path deleted, whichever way it goes** |
-| MV3 | `FramesInFlight = 3` is enough that ring segment backpressure and command-buffer slot waits never block the CPU | `BackpressureStallCount` and `BackpressureStallMs`, which the seam already carries, covering BOTH the ring and the command-buffer slot wait on one accumulator | `KE_VULKAN_FRAMES_IN_FLIGHT=<n>` | Stall count zero across a full capture window. A non-zero count means 3 is wrong, not that the design is | Gate 4. A tuning knob may survive as a knob, but only if the exit criterion was met at its default |
+| MV2 | The semaphore acquire (V-W3) removes a per-frame CPU stall with no presentation regression | Frame time and frame-time variance on the reporting machine with the switch in both positions, same build, same scene, same capture window, **and the frame cap and vsync BOTH OFF**, because the reporting machine otherwise runs pinned at 144 fps and 6.9 ms and the two positions produce the same mean by construction, which is a gate that cannot read its own result. Plus `AcquireWaitCount` and `AcquireWaitMs` (V-G6), which are what actually see the stall, and a human windowed pass | `KE_VULKAN_ACQUIRE=stall`. NOT usable with `KE_VULKAN_VALIDATION`, because `stall` restores a configuration validation rejects (2.6) | On the uncapped capture, semaphore acquire at or better than `stall` on mean and 99th percentile, `AcquireWaitMs` per frame near zero on the semaphore side against a substantial fraction of the frame interval on the `stall` side, and no visual anomaly across two consecutive soak builds | **Gate 4. A second-implementation switch by 2.7's sort, so it is REMOVED there and the blocking path deleted, whichever way it goes** |
+| MV3 | `FramesInFlight = 3` is enough that ring segment backpressure and command-buffer slot waits never block the CPU | `BackpressureStallCount` and `BackpressureStallMs`, which the seam already carries, covering BOTH the ring and the command-buffer slot wait on one accumulator. The fold is deliberate (same statement, same lever) and it CHANGES what the shipped member documents, so `BackpressureStallCount`'s doc comment gains the second meaning explicitly in row 19 rather than being widened in silence (section 14) | `KE_VULKAN_FRAMES_IN_FLIGHT=<n>`, owned by row 7 | Stall count zero across a full capture window. A non-zero count means 3 is wrong, not that the design is | Gate 4. A TUNING KNOB by 2.7's sort, keeping no second path alive, so it may survive the gate as a knob, but only if the exit criterion was met at its DEFAULT. A knob is not a way to ship a failed default |
 | MV4 | The descriptor model collapses a full activation to ONE `vkCmdBindDescriptorSets` and an offsets-only rebind to ONE, with zero descriptor writes during recording | The device-free budget test (V-T2) plus V-D2's structural check, confirmed on the first green run and then frozen as marginals | None needed. It is a call-count property with no runtime risk | The first green run's measured marginals are recorded in this document's history and become the frozen numbers | Gate 3 |
 | MV5 | The resting-layout barrier model (V-F7) costs a bounded number of barriers per frame and does not scale with draws | The device-free barrier-shape test, plus field frame time | None. A wrong barrier model is a correctness failure caught by goldens and validation, not a tuning knob | Barrier count per frame proportional to passes times touched textures, asserted, AND `KE_VULKAN_VALIDATION=sync` clean on the barrier-and-compute job | Gate 3 |
 | MV6 | An engine-owned allocator (V-M1) is sufficient without VMA. **This bet is conditional on MV5's sync-validation job existing**, because that is the instrument that sees an aliasing defect (9.1) | `vkAllocateMemory` call count against `maxMemoryAllocationCount` with margin, zero allocation failures across a soak, and peak resident device memory against the incumbent on the same scene | None in-backend. V-RO2 is the escape | Allocation count under a quarter of the device limit and resident memory within 10 per cent of the incumbent | Gate 4 |
-| MV7 | The single-instance model (V-N1) does not make the residual lavapipe parallel instability worse, and may improve it | Four consecutive green weekly full-suite runs on the native leg with serialisation ON, then ONE dispatch with `KE_TEST_EXTRA_ARGS` empty | Serialisation stays on by default, so this bet costs nothing if it loses | The unserialised dispatch is green twice, after which serialisation is removed from the NATIVE leg only. The incumbent leg keeps it, because this bet says nothing about the incumbent. Failing changes nothing | Open past gate 5. It gates no rollout gate and its cost is one dispatch |
+| MV7 | The single-instance model (V-N1) does not make the residual lavapipe parallel instability worse, and may improve it | Four consecutive green weekly full-suite runs on the native leg with serialisation ON, then ONE dispatch with `KE_TEST_EXTRA_ARGS` empty | Serialisation stays on by default, so this bet costs nothing if it loses | The unserialised dispatch is green twice, after which serialisation is removed from the NATIVE leg only. The incumbent leg keeps it, because this bet says nothing about the incumbent. Failing changes nothing | Open past gate 5, deliberately. An OBSERVATION FLAG by 2.7's sort, keeping no second path alive and gating no rollout gate, and its cost is one dispatch |
 | MV8 | The `pipelineCacheUUID` key plus header validation is enough that a stale or corrupt `VkPipelineCache` file can never crash a launch (V-S7) | Startup time with a cold and a warm cache, plus a deliberate corruption test that truncates and mutates the file and asserts a clean discard | The cache path is best-effort by construction: any read or write failure is a silent discard, which IS the fallback | Corruption test green and no launch failure attributable to the cache across the soak | Gate 4 |
 | MV9 | (observation, not a bet) **The swapchain has ZERO CI coverage on this backend**, because a headless Vulkan device enables no surface extension at all. Every present-path decision in section 11 is validated by a human at a window, or not at all | None available. A native soak that reproduces a presentation defect is consistent with several mechanisms | n/a | Recorded so a reader does not mistake a green golden leg for evidence about presentation. Rollout gate 5's manual pass is the only instrument | n/a |
 | MV10 | (observation, not a bet) **No Vulkan device limit is observable in CI today** (2.1), so `maxDescriptorSetUniformBuffersDynamic` and every other limit this design touches currently rest on spec minimums plus assumption. Both drafts asserted vendor-specific values and neither is checkable | V-D7 makes it measurable, which is the entire remedy. Until that lands, no claim about a real device's value appears in this document | n/a | Once V-D7 ships, the observed lavapipe values are recorded here and the spec floor stops being the only fact | Row 1 of the work breakdown |
@@ -1755,8 +1899,11 @@ through Ruinborne's established update-feed flow, then the default. Five gates, 
    driver and nothing to A/B, which is the single biggest difference from phase 2's rollout.
 4. **A field session on the reporting machine at or above the incumbent Vulkan's numbers** (144 fps, 6.9 ms)
    across a full capture window, with zero device loss, the session header naming `VulkanNative`, and MV1, MV2,
-   MV3, MV6 and MV8's exit criteria met. MV2's reading is taken with `KE_VULKAN_ACQUIRE` in BOTH positions on
-   the same build, and the switch is removed here.
+   MV3, MV6 and MV8's exit criteria met. That session is the CAPPED one, because 144 and 6.9 are what it is
+   being held to. **MV2's A/B is a SEPARATE capture with the frame cap and vsync both off**, taken with
+   `KE_VULKAN_ACQUIRE` in both positions on the same build, and it is read off `AcquireWaitMs` rather than off
+   mean frame time. At a pinned 144 fps the two positions have the same mean by construction, so a gate stated
+   against the capped session alone could not tell them apart. The switch is removed here.
 5. **A human windowed pass**: resize by drag, maximise, fullscreen toggle, alt-tab, and a vsync toggle
    mid-session, on both Windows and Linux. This is gate 5's whole content and it exists because section 11 is
    invisible to CI (MV9). `deviceLossReason` and `softwareAdapter` present in the session header.
@@ -1802,24 +1949,24 @@ phase 3 spec issue.
 | # | Scope | Regression evidence |
 |---|---|---|
 | 1 | Project skeleton, Silk.NET references, architecture rows, `OptInBackends`, README catalog row, package README, slnx, `GpuPublicApiTests` extension, the no-Veldrid pair, AND two verification tasks: the **binding-sufficiency spike** (one file touching every API this design needs, timeline semaphores, `vkCmdBeginRendering`, `vkCmdPipelineBarrier2`, the three surface extensions, `VK_EXT_debug_utils`, compiling against Silk.NET `2.23.0`, plus a Linux smoke run proving the loader resolves without the CI symlink step), and **dropping `--summary` from the CI `vulkaninfo` step** so device limits become observable (V-D7, MV10's deadline) | `check-doc-versions.sh` fails on a packable project without a catalog row. The symlink step exists because Veldrid P/Invokes bare `libvulkan`, and assuming Silk.NET does better without checking would surface in row 17. No Vulkan device limit is observable in CI today |
-| 2 | `KhaozEngineVulkan.Register()`, the provider, `IsSupported` functional probe checking apiVersion at or above 1.3, the three mandatory features and, on the windowed path, a presenting graphics family. The `VulkanBackendRegistration` seat in `KhaozEngine.TestSupport.Gpu`, not in a single test assembly | A silent fallback would let a soak session measure the incumbent and report it as the native backend. Registration living only in `Render.Tests` threw in all four `MapEditor.Tests` GPU tests on the D3D11 leg's first run |
+| 2 | `KhaozEngineVulkan.Register()`, the provider, `IsSupported` functional probe checking apiVersion at or above 1.3, the three mandatory features, **a host-visible `HOST_COHERENT` memory type** (V-M4, which the ring is pinned to), **`maxDescriptorSetUniformBuffersDynamic` at or above what the shipped layouts need** (8.3's fourth defence) and, on the windowed path, a presenting graphics family. The `VulkanBackendRegistration` seat in `KhaozEngine.TestSupport.Gpu`, not in a single test assembly | A silent fallback would let a soak session measure the incumbent and report it as the native backend. Registration living only in `Render.Tests` threw in all four `MapEditor.Tests` GPU tests on the D3D11 leg's first run. The limit read is the only one of 8.3's four defences that answers before a device exists, so a machine below the count falls back instead of throwing partway into a run, and the coherent-type read is what lets 9.2 claim no flush is required |
 | 3 | Append `GpuBackendKind.VulkanNative = 5` with the explicit ordinal, tokens, `GoldenBackendToken` mapping at BOTH sites, the generic bake refusal, `GpuBackendKinds.IsVulkan()`, and the thirteen-site audit test extension per 4.2 | `GoldenCompare` lower-cases the kind into the filename at two sites, so a new kind silently orphans 36 goldens. The switch's throwing arm plus the audit test is what makes this a device-free red rather than a GPU-leg mystery |
 | 4 | Single refcounted `VkInstance` under the lifecycle gate, device creation with selective feature enable through the `pNext` chain, `KE_VULKAN_DEVICE` selection defaulting to device 0 with substitutions logged, `KE_VULKAN_VALIDATION` with the debug-utils pump, the device-loss latch with Release-mode result checking, `DeviceLiveness`, and `vkDeviceWaitIdle` BEFORE teardown | The lifecycle gate exists because concurrent device creation raced the Vulkan loader on lavapipe. The incumbent takes `physicalDevices[0]` unconditionally, hardcodes apiVersion 1.0.0 at two sites, enables every supported feature wholesale, and destroys the memory manager and pools before it waits. `CheckResult` is `[Conditional("DEBUG")]`, so a latch built on its shape would never fire |
 | 5 | **The timeline subsystem, an early prerequisite of 7 and 8.** The device timeline semaphore, `IGpuFence`, `SupportsCompletionFences`, `WaitForIdle` as `vkWaitSemaphores` with `DrainCount` and `DrainMs`, and the deferred-disposal retire list | The ring's segment recycling reads a completion value, so a ring built before the timeline exists is a silent corruption. That dependency edge is the one phase 2's first spec dropped. `RetireFenceGpuTests` and `Scene3DUnloadDrainTests` must RUN and pass |
 | 6 | Memory allocator: chunks pooled by `(memoryTypeIndex, tiling)`, first-fit with alignment correction and coalescing free, persistent whole-chunk mapping, dedicated allocations on driver preference, flush and invalidate when the type is not coherent, plus the allocation-count counter (MV6) | The incumbent shares chunks between linear and optimal with per-allocation granularity rounding and has no flush or invalidate anywhere. A memory aliasing corruption is invisible on lavapipe and is what the `sync` validation job exists to catch |
-| 7 | Command list: per-slot `VkCommandPool`s reset with `vkResetCommandPool`, buffer slots retired by the timeline, `Begin`, `End` and submit, the narrow `IVkCmdSink` over binds, draws and barriers, and the device-free recording-contract test | A `VkCommandPool` is externally synchronised, so a shared pool makes concurrent recording a data race that mostly works. `RESET_COMMAND_BUFFER` forces the driver's slower per-buffer allocator |
-| 8 | Uniform ring on persistently mapped memory: segments, bind-time base, the ring-backed-view invariant, the per-list staging arena for bulk payloads, `UpdateBuffer` routing at both levels including #484's every-segment rule and its pending-patch queue, the backpressure counters, AND the **shared ring-test project** (V-P5) with section 9.4's inventory as its checklist. **Depends on 5** | 22 blocking staging maps per frame on the other API. #484's silent two-frames-in-three-read-nothing defect, which this ring must not reintroduce. A ring built against submit receipts recycles a segment the GPU is still reading |
-| 9 | Resources: formats, buffers, textures with resting layouts assigned at creation, eager image views, samplers with the WRAP shared pair, staging as `VkBuffer` with the incumbent's software subresource layout reproduced plus its device-free table test, `Map` and `Unmap` with the read drain, and the device-owned setup command buffer flushed at the next submit OR at any device-level read | Every golden reads back through `Map` and `RowPitch`, so a different arithmetic garbles all 36 at once. Reading the shared samplers' address mode off the engine statics cost two goldens on the D3D11 leg. The incumbent issues a whole `vkQueueSubmit` per render-target or sampled texture created |
-| 10 | Descriptors: content-deduplicated set layouts and pipeline layouts, pools with correct per-type accounting including both dynamic types, sets allocated and written at creation, the dynamic-UBO limit check plus its device-free layout test, and **V-D2's structural enforcement** that the pool is unreachable from the recording type | The incumbent's pool free forgets both dynamic counters, and no layout dedup means every pipeline switch invalidates every set. `SpriteBatch` puts its UBO at `set = 1`, so "set 0 first" is false in shipped code |
-| 11 | Bind flush: two-state per-slot records, contiguous-run `vkCmdBindDescriptorSets`, the composed positional `pDynamicOffsets`, pipeline-layout compatibility-prefix invalidation with **V-R7's conservativeness guard and its validation-build draw assertion**, plus the device-free budget test | An off-by-one in the positional dynamic-offset array reads the wrong slice of the right buffer, which renders plausible garbage rather than throwing. The incumbent fails to reset its accumulated dynamic-offset count between batches in one flush |
+| 7 | Command list: per-slot `VkCommandPool`s reset with `vkResetCommandPool`, buffer slots retired by the timeline, `Begin`, `End` and submit, the narrow `IVkCmdSink` over binds, draws and barriers, the device-free recording-contract test, AND **the `FramesInFlight` depth constant with its `KE_VULKAN_FRAMES_IN_FLIGHT=<n>` override** (MV3's knob, which had no owning row), which row 8's ring READS rather than defining a second one | A `VkCommandPool` is externally synchronised, so a shared pool makes concurrent recording a data race that mostly works. `RESET_COMMAND_BUFFER` forces the driver's slower per-buffer allocator. The knob lands here because this row creates the number and row 8 consumes it, and because the slot index and the ring's frame index are different indexes off one depth (6.1) |
+| 8 | Uniform ring on coherent persistently mapped memory: segments, bind-time base, **the bind-window range and its `rangeOffset + callerDynamicOffset + range <= stride` invariant** (V-M6) with the device-free test over every shipped set shape, the ring-backed-view invariant, the per-list staging arena for bulk payloads, `UpdateBuffer` routing at both levels including #484's every-segment rule and its pending-patch queue, the backpressure counters, AND the **shared ring-test project** (V-P5): the test-only interface and BOTH adapters in `KhaozEngine.TestSupport.Gpu`, the `InternalsVisibleTo` grant that costs `KhaozEngine.Gpu.D3D11` one csproj line, **the D3D11-side adapter itself**, and section 9.4's seven shared rows as the checklist. **Depends on 5** | 22 blocking staging maps per frame on the other API. #484's silent two-frames-in-three-read-nothing defect, which this ring must not reintroduce. A ring built against submit receipts recycles a segment the GPU is still reading. A range of `stride` overruns the buffer at the last frame slot for any non-zero caller offset, and five shipped renderers pass one. "Share the tests" with no adapter on the other side quietly becomes one backend's tests |
+| 9 | Resources: formats, buffers, textures with resting layouts assigned at creation, **eager `VkImageView` creation from the declared usage bits with NO view factory reachable from the recording type** (V-M11, asserted by the same architecture test that holds V-D2's pool), samplers with the WRAP shared pair, staging as `VkBuffer` with the incumbent's software subresource layout reproduced plus its device-free table test, `Map` and `Unmap` with the read drain, and the device-owned setup command buffer **under its own short lock** (V-W8, 9.3) flushed at the next submit OR at any device-level read | Every golden reads back through `Map` and `RowPitch`, so a different arithmetic garbles all 36 at once. Reading the shared samplers' address mode off the engine statics cost two goldens on the D3D11 leg. The incumbent issues a whole `vkQueueSubmit` per render-target or sampled texture created. All 25 `DEVICE_REMOVED` stacks in #423 surfaced inside the lazy view constructor on the draw path. Free-threaded creation appending to one externally synchronised pool is a data race that mostly works |
+| 10 | Descriptors: content-deduplicated set layouts and pipeline layouts, pools with correct per-type accounting including both dynamic types, sets allocated and written at creation **with `offset = 0` and `range` taken from the bind window, `GpuBufferRange.Size` or the buffer's own size, never `VK_WHOLE_SIZE` and never the stride** (V-M6), the dynamic-UBO limit check plus its device-free layout test, and **V-D2's structural enforcement** that the pool is unreachable from the recording type | The incumbent's pool free forgets both dynamic counters, and no layout dedup means every pipeline switch invalidates every set. `SpriteBatch` puts its UBO at `set = 1`, so "set 0 first" is false in shipped code. A stride-sized range is the shape that violates `VUID-vkCmdBindDescriptorSets-pDescriptorSets-01979` at the last frame slot, and this row is where the range is written |
+| 11 | Bind flush: two-state per-slot records, contiguous-run `vkCmdBindDescriptorSets`, the composed positional `pDynamicOffsets` of `frameBase + rangeOffset + callerDynamicOffset` **asserted against the descriptor's own range so the effective offset plus range stays inside the buffer at every frame slot** (V-M6), pipeline-layout compatibility-prefix invalidation with **V-R7's conservativeness guard and its validation-build draw assertion**, plus the device-free budget test | An off-by-one in the positional dynamic-offset array reads the wrong slice of the right buffer, which renders plausible garbage rather than throwing. The incumbent fails to reset its accumulated dynamic-offset count between batches in one flush. The offset composed here is the one the VUID measures, so this row and row 10 have to agree or validation fails on the last frame slot only |
 | 12 | Dynamic rendering: deferred begin, clear folding into `loadOp`, the clear-only-pass flush, the end-before-illegal-command invariant, and the framebuffer-change-guarded viewport and scissor with NEGATIVE HEIGHT | An unguarded viewport emit silently resets a live scissor, which is golden-visible and which phase 2's first spec froze the wrong way. A positive-height viewport renders every golden upside down |
-| 13 | Pipelines: graphics and compute, `VkPipelineRenderingCreateInfo` built from `GpuOutputDescription`, vertex input from the seam's layouts, dynamic state limited to viewport and scissor, the `VkPipelineCache` persisted to disk with header validation and best-effort discard, module dedup by SPIR-V hash | The incumbent passes a null cache at both creation sites and compiles every pipeline from SPIR-V on every launch. A corrupt cache is a crash class, which is what the header validation and the truncation test (MV8) exist for |
+| 13 | Pipelines: graphics and compute, `VkPipelineRenderingCreateInfo` built from `GpuOutputDescription`, vertex input from the seam's layouts, dynamic state limited to viewport and scissor, the `VkPipelineCache` persisted to disk with header validation and best-effort discard. **Depends on 16**, which creates and dedups the modules | The incumbent passes a null cache at both creation sites and compiles every pipeline from SPIR-V on every launch. A corrupt cache is a crash class, which is what the header validation and the truncation test (MV8) exist for. A pipeline needs `VkShaderModule` handles, which is why 16 is inside the renderable path and not beside it |
 | 14 | Barrier and layout tracker: `vkCmdPipelineBarrier2`, per-subresource tracking, LIST-LOCAL state, resting-layout restore at `End`, the `UNDEFINED`-discard rule, plus the device-free barrier-shape tests | The incumbent's transition helper fails a debug assertion on an unhandled layout pair and silently emits `NONE` stage masks in Release. Record-time layout tracking on the texture object is what makes two concurrent lists disagree |
 | 15 | Draw and dispatch paths, vertex and index binding, compute rule 1 barriers, dependent-dispatch barriers, MSAA resolve with `MaxMsaaSampleCount` **READ OFF the incumbent's own computation and pinned**, mip generation as a blit chain, copies | The 36 goldens, and the compute `[GpuFact]` suite that proves rule 1 on all three backends. Both drafts invented a different MSAA formula and both then asserted equality with the incumbent, which is the C4 failure phase 2 had to correct in flight |
-| 16 | Shader path: the front-end and back-end split of `SpirvCrossCompile`, `vkCreateShaderModule`, `SpirvFrontEndPin`, **the one-off in-process SPIR-V parity measurement against the incumbent, taken and RECORDED in this document**, the per-program byte-equality drift test, the architecture test that the backend names no back-end member, and the `set` and `binding` table test | Byte-identical modules are the parity claim the whole golden gate rests on, and the drift test alone does not establish it. Phase 2's own test header records that a wrong emission baked once passes forever |
-| 17 | Swapchain: surface creation per `GpuWindowKind`, present-mode and format reproduction with the two deliberate departures, the acquire ring and per-image render-finished semaphores, `KE_VULKAN_ACQUIRE`, the checked present result, **the `OUT_OF_DATE`-frame rule (V-W4)**, queued resize and present-mode change applied at the present boundary, stable framebuffer identity, and the drain-before-retire rule | The incumbent presents with no wait semaphore, blocks the CPU on acquire every frame, and ignores `vkQueuePresentKHR`'s result entirely. Destroying a pending acquire semaphore is undefined behaviour. Zero automated coverage anywhere in the net (MV9) |
+| 16 | **Shader path, a prerequisite of 13 rather than a parallel row**: the front-end and back-end split of `SpirvCrossCompile`, `vkCreateShaderModule`, module dedup by SPIR-V hash, `SpirvFrontEndPin`, **the one-off in-process SPIR-V parity measurement against the incumbent, taken and RECORDED in this document**, the per-program byte-equality drift test, the architecture test that the backend names no back-end member, and the `set` and `binding` table test | Byte-identical modules are the parity claim the whole golden gate rests on, and the drift test alone does not establish it. Phase 2's own test header records that a wrong emission baked once passes forever. A pipeline cannot be created without module handles, so scheduling this outside the renderable path would block 13 on a row nothing said 13 needed |
+| 17 | Swapchain: surface creation per `GpuWindowKind`, present-mode and format reproduction with the two deliberate departures, the acquire ring and per-image render-finished semaphores, `KE_VULKAN_ACQUIRE`, the checked present result, **the `OUT_OF_DATE`-boundary rule in full (V-W4): the same-boundary recreate, the retired semaphore, the one fresh acquire, the orphan target an imageless frame binds, and the skipped present that still counts into `FramesBegun`**, queued resize and present-mode change applied at the present boundary, stable framebuffer identity, the drain-before-retire rule, AND **the `AcquireWaitCount` and `AcquireWaitMs` addition to `GpuDeviceCounters` with its two `GpuTelemetryChannels` names** (V-G6) | The incumbent presents with no wait semaphore, blocks the CPU on acquire every frame, and ignores `vkQueuePresentKHR`'s result entirely. Destroying a pending acquire semaphore is undefined behaviour. Recording against views a recreate destroyed is a use-after-free no leg can see. Zero automated coverage anywhere in the net (MV9). Without the acquire-wait counter MV2's gate reads mean frame time on a machine pinned at 144 fps, where both switch positions are identical by construction |
 | 18 | Capability read and the ZERO-difference parity test with its reflection-completeness check, the `GpuDeviceCounters` fill, `GpuDeviceDiagnostics` with `softwareAdapter` and `deviceLossReason` | Capability drift is silent and golden-visible through `AntiAliasing.ResolveFor`. `ClipSpaceYInverted` is the one capability that flips every image |
-| 19 | The `vulkan-native` CI leg, **installing `vulkan-validationlayers` and wiring both validation tiers** (`strict` on the full suite, `sync` on the golden-and-compute job), the `NativeDeviceLifecycle` collection in BOTH test assemblies, the seam rule 1 and rule 2 comment rewording (V-C3), the `Begin` XML doc's Vulkan sentence (V-R4), the doc sweep below, the soak build, the five rollout gates, and the `ProbeOS` flip | #423 records the push-triggered D3D11 golden gate degraded for weeks without anyone noticing. No validation layer is installed on any leg today, so the gate is net-new work rather than a toggle. A second live-device backend without the collection took one leg from 17 minutes to 49 |
+| 19 | The `vulkan-native` CI leg, **installing `vulkan-validationlayers` and wiring both validation tiers** (`strict` on the full suite, `sync` on the golden-and-compute job), the `NativeDeviceLifecycle` collection in BOTH test assemblies, the seam rule 1 and rule 2 comment rewording (V-C3), the `Begin` XML doc's Vulkan sentence (V-R4), **`BackpressureStallCount`'s doc comment gaining the command-buffer slot wait as its second meaning** (section 14, MV3), the doc sweep below, the soak build, the five rollout gates, and the `ProbeOS` flip | #423 records the push-triggered D3D11 golden gate degraded for weeks without anyone noticing. No validation layer is installed on any leg today, so the gate is net-new work rather than a toggle. A second live-device backend without the collection took one leg from 17 minutes to 49 |
 
 **Order.**
 
@@ -1828,15 +1975,20 @@ phase 3 spec issue.
 - **5 (the timeline) is pulled early**, because 7 and 8 both read it, for the same reason 13a was pulled early
   in phase 2.
 - **6 follows 4.**
-- **7, 9, 10, 11, 12, 13 and 14 are the minimal renderable path** and follow their own prerequisites. **8
+- **7, 9, 10, 11, 12, 13, 14 and 16 are the minimal renderable path** and follow their own prerequisites. **8
   follows 5** and parallelises with them.
-- **15, 16 and 18 parallelise** after theirs.
+- **16 lands before 13** inside that path, for the same reason 5 lands before 8: a graphics pipeline is created
+  from `VkShaderModule` handles, so the shader row is a prerequisite rather than a parallel one. Row 16's later
+  half (the parity measurement, the drift test, the two device-free table tests) can follow 13 freely. What may
+  not follow it is module creation.
+- **15 and 18 parallelise** after theirs.
 - **17 can start any time after 4 and lands late**, because CI cannot test it and it should not be the thing
   blocking rows that CI can.
 - **19 is last.**
 
-**KESIZE.** The incumbent's `VkGraphicsDevice.cs` is 1674 lines and `VkCommandList.cs` 1367, against an
-800-line cap, which is a warning about what happens without a file plan. The device, instance, allocator, ring,
+**KESIZE.** The incumbent's `VkGraphicsDevice.cs` is 1667 lines and `VkCommandList.cs` 1361 (counted on
+`4.9.103`, whose Vulkan tree is `v4.9.0`, not on the master-based branch, which is V-I6's rule applied to a
+line count), against an 800-line cap, which is a warning about what happens without a file plan. The device, instance, allocator, ring,
 command list, bind flush, barrier tracker, descriptor pool, pipeline factory, resource factory, swapchain and
 shader path are twelve types by construction, so the ratchet is satisfied by design rather than by a late split.
 **The precedent says this is achievable rather than hopeful**: `KhaozEngine.Gpu.D3D11` is 17,713 lines across
@@ -1851,6 +2003,12 @@ out-of-package graphics backends section gains the second instance of the invert
 variables. `docs/CROSS-PLATFORM.md`'s platform-to-backend mapping gains the native Vulkan leg.
 `GpuInterfaces.cs`'s `Begin` XML doc gains its Vulkan sentence, and its rule 1 and rule 2 comment must be
 reworded to name the implementation it describes, or it becomes false the day this backend ships.
+`GpuDeviceCounters.cs` gains the acquire-wait pair's own doc and the second meaning
+`BackpressureStallCount` acquires here (section 14). And
+`docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md` is on this list, which a design doc usually is not: its
+section 16 promises a phase 3 that extracts the recorder and the emitter into a shared home, which 2.2 declines,
+so it carries a corrected-in-place note in that doc's own established style rather than being left to read as a
+plan somebody is still executing.
 
 ---
 

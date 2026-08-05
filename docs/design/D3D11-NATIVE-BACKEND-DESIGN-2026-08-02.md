@@ -1118,6 +1118,15 @@ is, that is the user's call.
   D3D11-shaped, because it exists so register numbering is computed under the right layout, and Vulkan's
   descriptor-set model has no equivalent need. What genuinely generalises is the three-state dirty tracking,
   the record-then-flush-at-draw schedule and the emitter seam. The rest is a candidate, not a given.
+  (Corrected 2026-08-05. Two things moved under this bullet. The program renumbered: phase 3 is Vulkan ALONE
+  and Metal is phase 4, so every "Phase 3" in this section means the Vulkan-and-Metal span it was written as.
+  And the refactor it anticipates was DECLINED rather than scheduled: `VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05`
+  section 2.2 and its V-P4 extract nothing, on the rule of three and on the argument that D3D11 is the likely
+  OUTLIER of the eventual three, so an abstraction extracted from two backends today would be shaped by the
+  outlier and then asked to fit Metal. Even the three-state dirty tracking named here as genuinely general did
+  not survive: Vulkan collapses it to two, because a descriptor bind is one call whether one offset moved or
+  every image changed. What IS shared at two implementations is the uniform ring's SEMANTIC TESTS. The
+  extraction is filed as that document's VF1, triggered by phase 4 landing.)
 - The `Veldrid.SPIRV` edge is confined to `KhaozEngine.Gpu` behind one internal helper (P2), so the
   "no Veldrid in the graph" endpoint is one package to change, not three.
 - Making `WaitForIdle` real on D3D11 means all three backends will honour rule 2 identically, so the
@@ -1135,7 +1144,12 @@ is, that is the user's call.
   costs a refactor in Phase 3, so it is called out in implementation issue 5.
 - Two D3D11 backends coexist indefinitely (RO2). #424's seven nested sites, #428's guardrail and #429's
   pre-record phase all stay live work until the Veldrid D3D11 leg is removed, and only Phase 3 can remove it.
-  F8 tracks retiring them together.
+  F8 tracks retiring them together. (Corrected 2026-08-05. Phase 3 as it shipped is Vulkan alone and it removes
+  no Veldrid path at all: `Veldrid` and `Veldrid.SPIRV` both stay in the graph after it, for Metal and for the
+  shader front end, and the phase 3 design's own VF11 retires the Veldrid VULKAN leg only once phase 4 removes
+  Veldrid entirely. So this coexistence outlives phase 3 and F8 waits on phase 4. RO2's wording in section 1
+  is unchanged in substance, since the token lives until the Veldrid path goes, and it reads as phase 4 under
+  the new numbering.)
 - The shader-signature workarounds stay load-bearing while SPIRV-Cross does. They come out with SPIRV-Cross
   (F2), not before, and removing one early would corrupt the Veldrid leg.
 

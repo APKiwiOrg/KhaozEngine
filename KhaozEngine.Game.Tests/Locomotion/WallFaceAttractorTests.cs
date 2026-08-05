@@ -327,6 +327,76 @@ public class WallFaceAttractorTests
     // and #468 fixtures on analytic steep faces, where no walkable seat can confound the reading.
     const float InsideContourBound = 0.15f;
 
+    // ---- The whole heading range at one degree, which is what caught the fallback's own attractor (#501) ----
+
+    // WHY THREE HEADINGS WERE NOT ENOUGH. The sweep above pins 68, 75 and 79 because those are where the census put
+    // the bug. A fallback can move a park instead of removing one, and a moved park lands wherever the new rule's own
+    // boundary happens to sit, which is not a heading anybody picked in advance. It landed ONE DEGREE off the control:
+    // at 69, 70 and 71 degrees the walker settled where its narrow face keeps 0.094 of the command, just inside the
+    // trigger, took a wide face pointing straight up the local wiggle rather than along it, and stopped dead. The
+    // wall contact had done nothing wrong at that column - the wide direction is a contour of a 2 m plane and simply
+    // is not level on the metre-scale surface the ladder reads, so every rung of it climbed and every rung was
+    // refused. Measured on 17.32.0's first entry: 0.17 of commanded travel with 118 consecutive dead ticks at 15 Hz,
+    // and 0.08 with 269 at a run at 30 Hz, against 0.83 and 0.81 with no wide read at all.
+    //
+    // SO THE SWEEP IS THE WHOLE RANGE AT ONE DEGREE NOW, and the assertion is a park bound rather than a per-heading
+    // band, because 112 hand-pinned bands would be unmaintainable and would not be checking anything the two numbers
+    // below do not. THE PARK BOUND IS ZERO. Over the entire range this build has not one stalled tick anywhere,
+    // where 17.32.0's first entry has runs of 269 and the keep-trigger-only build it replaced has the same.
+    //
+    // 88 AND 89 DEGREES ARE OUTSIDE THE RANGE ON PURPOSE. A command that close to the face normal is a walk INTO a
+    // wall, and the pre-#501 engine parks there too (measured 95 to 245 dead ticks at 89 degrees, against 84 to 234
+    // on this build). Pinning a heading the rule was never able to walk would be pinning something else's bug.
+    //
+    // WHAT THE BAND IS, AND THE RECTIFICATION RESIDUAL IN IT. Two-sided, 0.20 to 1.25, from a measured 0.2394 (at 83
+    // degrees at a run at 30 Hz) to 1.1993 (at 85 degrees at a run at 15 Hz). The high side is the residual the
+    // review asked to have pinned: a heading steep enough to spend most of its ticks on the wall can come out of the
+    // switch travelling FASTER along the bank than the stick asked for, because the fallback only ever fires on the
+    // ticks whose narrow answer was small and so acts as a rectifier on an oscillation. It is bounded and it is
+    // smaller than it was: 17.32.0's first entry peaks at 1.3025 over the same sweep, and falling back to the narrow
+    // projection when the ladder refuses the wide one takes the peak to 1.1993 without moving where it sits.
+    //
+    // WHAT IS NOT PINNED HERE, AND THE MEASUREMENT BEHIND THAT. The review asked for a toggle count as well. Every
+    // ride-observable proxy for one was tried and none of them discriminate: the obvious one, sign reversals of the
+    // per-tick along-face step, reads 6 on the chattering keep-trigger-only build at 79 degrees and 15 on this one,
+    // because a walker parked on a chattering boundary does not reverse anything - it stops. Toggles were counted
+    // instead from an instrumented engine build while the constants were being chosen, and that measurement lives
+    // at CharacterMovement.WideFaceOpposedDot where the constant it justifies is. What a fixture can see is the
+    // consequence, and both of this build's consequences are asserted below.
+    [Theory]
+    [InlineData(false, 15f)]
+    [InlineData(false, 30f)]
+    [InlineData(true, 15f)]
+    [InlineData(true, 30f)]
+    public void No_heading_across_the_trigger_boundary_parks_the_walker(bool run, float hz)
+    {
+        float worst = float.MaxValue, best = float.MinValue, worstLean = 0f, bestLean = 0f;
+        int longestStall = 0, stallLean = 0;
+        for (int lean = 60; lean <= 87; lean++)
+        {
+            Ride r = WalkAlong(Tuning, lean, run, hz, seconds: 10f);
+            if (r.Efficiency < worst) { worst = r.Efficiency; worstLean = lean; }
+            if (r.Efficiency > best) { best = r.Efficiency; bestLean = lean; }
+            if (r.LongestStall > longestStall) { longestStall = r.LongestStall; stallLean = lean; }
+        }
+
+        string measured = $"{(run ? "run" : "walk")} at {hz:F0} Hz over leans 60 to 87: efficiency {worst:P1} (at "
+                          + $"{worstLean:F0} deg) to {best:P1} (at {bestLean:F0} deg), longest stall anywhere "
+                          + $"{longestStall} ticks (at {stallLean} deg)";
+        _out.WriteLine(measured);
+
+        Assert.True(longestStall <= BoundaryStallBound, $"a heading in the sweep parked the walker: {measured}");
+        Assert.True(worst >= BoundaryFloor, $"a heading in the sweep lost its along-face travel: {measured}");
+        Assert.True(best <= BoundaryCeiling,
+            $"the switch rectified a heading into more travel than the stick asked for: {measured}");
+    }
+
+    // Zero measured, so this is float slack rather than a budget: one stalled tick on this bank at these headings is
+    // already a wall contact refusing a move the pre-#501 engine committed.
+    const int BoundaryStallBound = 8;
+    const float BoundaryFloor = 0.20f;
+    const float BoundaryCeiling = 1.25f;
+
     // ---- The stencil profile itself, measured rather than asserted from the ride ----
 
     // WHY THIS TEST EXISTS SEPARATELY FROM THE RIDES. The rides show that the walk no longer parks. They cannot show

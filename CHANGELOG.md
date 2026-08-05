@@ -1356,11 +1356,14 @@ and the narrow face drives the walker straight onto it: inside the region the wi
 along the bank and out, while just outside it the narrow face is past anti-parallel, so its along-face
 travel points BACK toward the attractor. Two motions that oppose across a boundary make that boundary a park
 of its own, and the fallback relocates the bug instead of removing it. Measured on the fixture at 11 degrees
-off the face normal, walking at 30 Hz: 31 percent of the commanded travel with the fallback engaging and
-disengaging on 138 of 300 ticks, against 29 percent with no fallback at all. Adding the opposed-travel test
-takes the same ride to 104 percent with 19 engagements. Hysteresis is the textbook answer to a chattering
-threshold and is not available here, because the wall contact carries no state by construction and that is
-what makes it replay bit-identically through a reconcile.
+off the face normal, walking at 30 Hz, from an instrumented build that counts the substitution itself, with
+ENGAGED TICKS meaning ticks whose narrow projection was replaced and TOGGLES meaning changes in that flag
+between consecutive ticks: the keep trigger alone travels 31 percent of the command with 113 engaged ticks
+of 300 and 147 toggles, against 29 percent with no fallback at all. Adding the opposed-travel test takes the
+same ride to 104 percent with 104 engaged ticks and 20 toggles, which is the shape of a boundary that has
+stopped being a park rather than of a fallback that stopped firing. Hysteresis is the textbook answer to a
+chattering threshold and is not available here, because the wall contact carries no state by construction and
+that is what makes it replay bit-identically through a reconcile.
 
 **Both constants come from measurement, and both have a cliff on each side.** The width was swept at two,
 three, four, five, six, eight and ten times the stencil: below four the fallback direction has near-zeros
@@ -1394,6 +1397,79 @@ zero and the shipped width does not. The 62 tangential-travel cases, the #486 cl
 360-heading clamp-ratchet sweeps, the crease containment and the rising-gully refusal are all unchanged and
 green with their thresholds untouched.
 
+### A wide face does not overrule a narrow one that is still telling the truth (#501, round two)
+
+The fix above shipped with a trigger that asks the wrong question. Taking the wide face whenever the two
+candidate travels oppose by more than a right angle assumes that two faces disagreeing settles WHICH of them
+is wrong, and it does not. On every shape #501 was measured against the narrow face was the wrong one
+whenever they disagreed. On a trough narrower than the capsule with UNEQUAL flanks it is the right one, and
+the fix walked straight into it.
+
+**What the player saw, and it is the same sentence as #501.** A character fully footed and upright, holding
+a direction, going nowhere - this time walking a gully, ravine or streambed rather than a bank, and only in
+the direction leaning into the shallower of its two sides. The rule is exactly mirror-symmetric and the
+geometry is not, which is why one direction walks and the other stops.
+
+**The mechanism.** The capsule-radius stencil straddles the floor line of a narrow trough, so the narrow read
+is a real local plane tilted toward whichever side the walker leans on, and it is honest: it keeps most of
+the command and points along the trough. The 2 m read spans the floor and BOTH sides at once and averages
+them, so on unequal sides it reports an uphill leaning the other way and a contour pointing across the
+trough. Measured on a 16.7 degree floor between 63.4 and 50.2 degree sides, leaning 20 degrees into the
+shallower one: the narrow face keeps 0.83 of the command, the wide face points 114 degrees away from it, the
+opposed trigger fires, and the walk goes from 0.908 of its commanded travel to 0.017 with 291 of 300 ticks
+dead.
+
+**The fix, and it is one word longer than the bug.** The opposed test now only speaks where the narrow face
+is ALREADY suspect: keeps between a tenth of the command and 0.15 of it. Above that band the narrow face is
+doing its job and is not second-guessed, whichever way the wide face happens to point - and the wide read is
+not even made there, so an ordinary contact costs exactly the probes it cost before #501. Both edges of the
+band are cliffs and they are different cliffs: below 0.13 the guard no longer covers the chatter #501 added
+it for and the 79 degree ride reds outright, above 0.15 the band starts eating the trough again.
+
+**A second park, one degree from the heading the #501 fixture pins as its control.** Sweeping the bank at
+one degree instead of three headings found the fallback had moved a park rather than only removing one. At
+69, 70 and 71 degrees the walker settled where its narrow face keeps 0.094, just inside the trigger, took a
+wide face pointing straight up the local micro-geometry rather than along it, and stopped: 0.17 of commanded
+travel with 118 consecutive dead ticks at 15 Hz and 0.08 with 269 at a run at 30 Hz, against 0.83 and 0.81
+before #501. The wide direction is a contour of a 2 m plane and simply is not level on the metre-scale
+surface the anti-tunnel ladder reads, so every rung of it climbed and every rung was refused. A substituted
+face is a second opinion now, and the heights get to veto it: when the ladder refuses the whole of a wide
+substitution the move falls back to the narrow projection it replaced, which is exactly what the walker would
+have travelled with no wide read at all, and only then refuses. The ladder is unchanged and still the one
+altitude authority, since both passes run it in full.
+
+**Both repairs were measured against each other before either was written into the rule.** A continuous
+blend between the two faces was the alternative, and it is the more elegant one on paper - no switching
+surface at all, so no chatter and no sliding mode by construction. It reds the control heading at every band
+tried, because the band it blends over is exactly where healthy contacts live: at 22 degrees off the face
+normal the control drops from 0.857 to 0.154 and parks for 123 ticks. The gated trigger keeps that row
+untouched. Measured over 744 rides (six troughs at 25 headings by walk and run at 15 and 30 Hz, plus the bank
+at 30 headings by the same four), counting rides the pre-#501 engine walked cleanly where the build under
+test stalls or loses a tenth of that travel: 260 for #501 as first shipped, 99 to 40 for the gate alone as
+the band narrows from 0.30 to 0.15, 95 to 33 for the blend across its own bands with the control red
+throughout, and 0 for the shipped pair.
+
+**What it costs.** Nothing on any contact whose narrow face keeps 0.15 or more, which is most of them and all
+of the engine's creases: those no longer pay for a wide read they were never going to use. Of 134154 wall
+contacts in the sweep, 13915 made the wide read and 1304 walked the second ladder.
+
+**Where the tests are.** New fixture `WallFaceTroughTests`: sixteen rides over three troughs spanning flank
+ratios 1.30 to 2.00 and a hard V plus two tanh-smoothed valleys, both lean directions, walk and run at 15 and
+30 Hz, every band pinned to the PRE-#501 engine's own ride rather than to this build's - the wide read exists
+to remove a park, so where the narrow face was never in trouble it owes the walk exactly what the walk
+already had. Fifteen of the sixteen are red on #501 as first shipped, at 0.4 to 29.0 percent of commanded
+travel with runs of up to 297 dead ticks in 300, and all sixteen reproduce the pre-#501 ride to every digit
+printed here. A companion test walks the flank geometry directly and asserts the two properties that make the
+override wrong: a healthy narrow face, and a disagreement past a right angle at the same column.
+`WallFaceAttractorTests` gains a one-degree sweep of the whole 60 to 87 degree range at all four speed and
+rate pairs, pinning no stalled tick anywhere (zero measured, against runs of 269 on #501 as first shipped)
+and a two-sided 0.20 to 1.25 band. That upper bound is the switch's rectification residual, which is real and
+is now bounded: a heading steep enough to spend most of its ticks on the wall comes out of the switch
+travelling faster along the bank than the stick asked for, peaking at 1.30 on #501 as first shipped and at
+1.20 here. The 62 tangential-travel cases, the twelve original attractor rides, the #486 cliff-toe fixtures,
+the 360-heading clamp-ratchet sweeps, the crease containment and the rising-gully refusal are all unchanged
+and green with their thresholds untouched, and the 32 smooth-bank rides that never engage the fallback are
+bit-for-bit identical to the pre-#501 engine.
 
 ## 17.31.0
 

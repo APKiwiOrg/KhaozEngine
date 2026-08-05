@@ -169,23 +169,65 @@ public static partial class CharacterMovement
     // carries the walker along the bank and out, while just outside it the narrow face is PAST anti-parallel, so its
     // along-face travel points back toward the attractor. Two candidate motions that oppose across a boundary make
     // that boundary a park, and the walker rides it instead of the attractor - the fallback having relocated the bug
-    // rather than removed it. Measured on the fixture at a lean of 79 degrees, walking at 30 Hz: 0.31 of the commanded
-    // travel with the fallback engaging and disengaging on 138 of 300 ticks, against 0.29 with no fallback at all.
+    // rather than removed it. So the wide face is ALSO taken when the two candidate travels oppose by more than a
+    // right angle, which is what this constant compares against (zero: a plain sign test on their dot product).
     //
-    // So the wide face is ALSO taken whenever the two candidate travels oppose by more than a right angle, which is
-    // what this constant compares against (zero: a plain sign test on their dot product). That cannot leave a park
-    // anywhere, and the argument is short. On the keep boundary the narrow face is only ever used when it agrees with
-    // the wide one to within a right angle, so both sides of that boundary travel the same way. On the new boundary
-    // the two are exactly perpendicular, so again neither side opposes the other. There is no surface left where the
-    // two available motions point against each other, which is the only thing that can hold a walker still. Measured:
-    // the same 79 degree ride goes to 1.04 of its commanded travel, and the worst of the twelve rides goes from 0.31
-    // to 0.86.
+    // MEASURED, ON THE LEAN OF 79 DEGREES AT 30 HZ, from an instrumented build that counts the substitution itself.
+    // Two numbers per build, because they are different questions and 17.32.0's first entry conflated them: ENGAGED
+    // TICKS are the ticks whose narrow projection was replaced, and TOGGLES are the changes in that flag between
+    // consecutive ticks of the ride (a non-contact tick counts as not engaged).
+    //
+    //     build                              travel    engaged    toggles
+    //     no fallback at all                   0.29       0/300          0
+    //     keep trigger alone                   0.31     113/300        147
+    //     keep + opposed, ungated              1.04     104/300         20
+    //     keep + opposed, gated (shipped)      1.07     100/300         20
+    //
+    // The keep trigger alone is the chatter: 147 crossings in 300 ticks and a third of the travel. Adding the opposed
+    // test removes the crossings without removing the engagements, which is the signature of a boundary that has
+    // stopped being a park rather than of a fallback that stopped firing.
+    //
+    // WHY THE OPPOSED TEST IS GATED ON THE KEEP AS WELL (#501, round two). Ungated it overrides a HEALTHY narrow face.
+    // On an asymmetric trough narrower than the capsule the narrow read straddles the crease and is the truth - it
+    // keeps 0.72 of a command and points 14 degrees off it - while the wide read averages the floor and both flanks
+    // and points 85 degrees the other way. The two are 99 degrees apart, so the ungated test fires, the walker takes a
+    // face the ladder refuses at every rung, and it parks: measured 0.016 of commanded travel with 294 of 300 ticks
+    // dead where the parent walked 0.85 with none. That is the same player-facing signature #501 exists to kill,
+    // reintroduced on a different shape. So the opposed test now only speaks where the narrow face is ALREADY
+    // suspect, and this fraction is where that band ends.
+    //
+    // WHERE THE BAND EDGE COMES FROM. It is a guard rail on the keep threshold rather than a second opinion about the
+    // whole contact, so it wants to be the narrowest band that still covers the chatter. Swept over 744 rides (six
+    // troughs at 25 headings by walk and run at 15 and 30 Hz, plus the noisy bank at 30 headings by the same four),
+    // counting rides the PARENT walked with no stall and at least 0.30 of its command where this build stalls or
+    // loses more than 0.10 of that travel, split by how healthy the parent's ride was:
+    //
+    //     band edge     0.125    0.13    0.15    0.175    0.20    0.25    0.30
+    //     parent >0.75      0       0       0        0       0       0       0
+    //     parent >0.50      4       4       4       14      16      20      43
+    //     parent >0.30     31      31      32       47      62      66      89
+    //
+    // Cliffs on both sides, and they are different cliffs. Below 0.13 the guard band no longer covers the chatter and
+    // the lean 79 ride reds the shipped fixture outright (measured at 0.125 and 0.11). Above 0.15 the band starts
+    // eating the trough again, which is the row that climbs from 4 to 14 to 43. A band from the keep threshold to
+    // half again as much is the plateau, and 0.15 is the end of it furthest from the chatter cliff.
     //
     // HYSTERESIS WOULD BE THE TEXTBOOK ANSWER TO A CHATTERING THRESHOLD AND IS NOT AVAILABLE HERE. It needs carried
     // state, and this file has none by construction, because that is what makes a wall contact replay bit-identically
     // through ClientPrediction.Reconcile. A geometric test that cannot chatter is the version of the same idea that
     // costs no state.
     private const float WideFaceOpposedDot = 0f;
+
+    // How far above WideFaceKeepFraction the opposed test is allowed to speak: to HALF AGAIN as much, so it covers
+    // keeps between a tenth and 0.15 of the command and nothing else. Past this the narrow face is doing its job and
+    // is not second-guessed, whichever way the wide face happens to point. The measurement and both cliffs are at
+    // WideFaceOpposedDot above, since the two constants are one rule.
+    //
+    // IT ALSO BOUNDS THE COST, which the first entry did not. The wide read is now made only where one of the two
+    // triggers could still fire, so a contact whose narrow face keeps 0.15 or more of the command pays exactly the
+    // probes it paid before #501 rather than four more. The engine's own creases sit above the line (a rising gully
+    // keeps 0.28), so they no longer pay for a read they were never going to use.
+    private const float WideFaceDoubtFraction = 0.15f;
 
     /// <summary>Advance an XZ position by a horizontal velocity for one tick, WALL-SLIDING off analytic terrain that
     /// the step cannot reach: when the destination's ground normal is steeper than
@@ -274,14 +316,13 @@ public static partial class CharacterMovement
         // job on the line above - the steepness classification - and its idea of downhill is exactly what disagreed
         // with the column the ground clamp seats to. See HeightPlaneNormal.
         //
-        // AND IT IS READ WIDE (#501), over WideFaceStencilScale times the stencil every other height-plane read uses.
-        // At the capsule's own width the direction is a 0.4 m facet of the surface rather than the surface, and where
-        // that facet's outward drifts anti-parallel to the command the projection below keeps nothing - a stable
-        // attractor a walker falls into and cannot leave. The constant carries the measured stencil profile, the
-        // reason the width is five and not two or ten, and the reason the wide read is taken on every contact rather
-        // than as a fallback. What the wide read is allowed to decide is only the DIRECTION: the steepness test above
-        // and the ladder below still read the ordinary narrow heights, which is what keeps #468 exact - see the
-        // ladder's own note.
+        // THIS READ IS THE NARROW ONE, AT THE ORDINARY STENCIL, AND IT IS THE ANSWER ON ALMOST EVERY CONTACT. A
+        // SECOND, WIDER read exists (#501) and is made further down, but only where this one is already suspect: at
+        // the capsule's own width the direction can be a 0.4 m facet of the surface rather than the surface, and
+        // where that facet's outward drifts anti-parallel to the command the projection below keeps nothing - a
+        // stable attractor a walker falls into and cannot leave. That is a condition this projection reports on
+        // itself, by keeping almost none of the command, so the wide read is a FALLBACK rather than the standard
+        // path. See the block below it for both triggers and WideFaceStencilScale for the width.
         (float fx, float fz) = FaceDirection(HeightPlaneNormal(nx, nz, StencilRadius(tuning), groundHeight, destNormal), velocity);
         float into = velocity.X * fx + velocity.Y * fz;
         // NO OUTWARD EARLY-OUT. Until 17.29.0 a move with `into >= 0` was admitted here unconditionally, on the
@@ -305,6 +346,16 @@ public static partial class CharacterMovement
         // both mean there is nothing along this face to keep: a move driven straight at the face, and the degenerate
         // FaceDirection fallback where the move direction stands in as the face's own (see there).
         //
+        // THE TEST IS EXACT, SO IT CATCHES MOST HEAD-ON CONTACTS AND NOT ALL OF THEM, and the difference is float
+        // rounding rather than geometry. FaceDirection normalizes by 1/sqrt(lenSq), so the unit face it hands back is
+        // a unit vector only to within an ulp, and `velocity - (velocity . f) f` therefore lands exactly on zero only
+        // when that rounding happens to cancel. Measured driving straight at an axis-aligned 76 degree planar wall
+        // from a hundred start columns, 1481 of 1899 wall contacts (78 percent) short-circuit here and the rest do
+        // not. The remainder is harmless and is deliberately left alone: what they keep is 1e-7 of the command, which
+        // the keep trigger below reads as a face that keeps nothing and answers correctly, and widening this test to
+        // an epsilon would move committed endpoints on a shape whose answer is already right. The figure is unchanged
+        // by #501 and by this round - both were measured at 1481 of 1899.
+        //
         // THE BLOCK ABOVE USED TO CALL THIS CASE COMMON, AND THAT WAS THE #501 MISREADING. What was common on real
         // terrain was a NEAR-zero projection, and near-zero is not a quiet variant of head-on: it is a bank whose
         // 0.4 m facet has drifted anti-parallel to the command, which is a face direction read at the wrong scale
@@ -312,35 +363,44 @@ public static partial class CharacterMovement
         // wide read's business, two lines down.
         if (sx == 0f && sz == 0f) return (x, z);
 
-        // THE SECOND, WIDER FACE, AND THE TWO THINGS THAT MAKE THE MOVE TAKE IT INSTEAD (#501). The narrow projection
-        // above stands unless the facet it came from is provably not describing the wall, and there are exactly two
-        // ways to be sure of that from this tick alone:
+        // THE SECOND, WIDER FACE, AND WHAT MAKES THE MOVE TAKE IT INSTEAD (#501). The narrow projection above
+        // stands unless the facet it came from is provably not describing the wall, and the whole of the evidence for
+        // that is how little of the command it kept. So the wide read is not even MADE unless the keep is under
+        // WideFaceDoubtFraction, and inside that band there are two ways to be sure:
         //
         //   IT KEEPS ALMOST NOTHING (WideFaceKeepFraction). A face that sheds more than nine tenths of a command
         //   aimed along it is anti-parallel to that command, which is the attractor itself.
         //
-        //   IT WANTS TO TRAVEL AGAINST THE BANK (WideFaceOpposedDot). Past the anti-parallel point the facet's
-        //   along-face direction FLIPS, so the narrow answer is to walk back the way the wide face says the surface
-        //   runs. Without this clause the first one is a trap: the walker is driven onto the keep boundary from
-        //   outside and pushed off it from inside, and parks on the boundary instead of on the attractor. Both
-        //   constants carry the measurement.
+        //   IT KEEPS LITTLE AND WANTS TO TRAVEL AGAINST THE BANK (WideFaceOpposedDot inside WideFaceDoubtFraction).
+        //   Just past the anti-parallel point the facet's along-face direction FLIPS, so the narrow answer is to walk
+        //   back the way the wide face says the surface runs. Without this the keep trigger is a trap: the walker is
+        //   driven onto its boundary from outside and pushed off it from inside, and parks on the boundary instead of
+        //   on the attractor. The band is what keeps this from becoming a trap of its own, since a HEALTHY narrow
+        //   face on an asymmetric crease disagrees with the wide read by a right angle and more and is still the
+        //   truth. Both constants carry the measurement.
         //
         // Anything else keeps the narrow face, which is what leaves the engine's creases alone: at a rising gully met
-        // off-axis the narrow face is the truth, it keeps 0.28 of the command, and the two travels agree.
-        (float wx, float wz) = FaceDirection(
-            HeightPlaneNormal(nx, nz, StencilRadius(tuning) * WideFaceStencilScale, groundHeight, destNormal),
-            velocity);
-        float wideInto = velocity.X * wx + velocity.Y * wz;
-        float wsx = velocity.X - wideInto * wx;
-        float wsz = velocity.Y - wideInto * wz;
+        // off-axis the narrow face is the truth, it keeps 0.28 of the command, and that is above the band entirely.
         float speedSq = velocity.X * velocity.X + velocity.Y * velocity.Y;
-        if (sx * sx + sz * sz < WideFaceKeepFraction * WideFaceKeepFraction * speedSq
-            || sx * wsx + sz * wsz < WideFaceOpposedDot)
+        float keepSq = sx * sx + sz * sz;
+        float nsx = sx, nsz = sz;
+        bool widened = false;
+        if (keepSq < WideFaceDoubtFraction * WideFaceDoubtFraction * speedSq)
         {
-            sx = wsx;
-            sz = wsz;
-            // The wide face can be head-on too, and then the paragraph above it applies to it word for word.
-            if (sx == 0f && sz == 0f) return (x, z);
+            (float wx, float wz) = FaceDirection(
+                HeightPlaneNormal(nx, nz, StencilRadius(tuning) * WideFaceStencilScale, groundHeight, destNormal),
+                velocity);
+            float wideInto = velocity.X * wx + velocity.Y * wz;
+            float wsx = velocity.X - wideInto * wx;
+            float wsz = velocity.Y - wideInto * wz;
+            if (keepSq < WideFaceKeepFraction * WideFaceKeepFraction * speedSq
+                || sx * wsx + sz * wsz < WideFaceOpposedDot)
+            {
+                sx = wsx;
+                sz = wsz;
+                widened = true;
+                if (sx == 0f && sz == 0f) return (x, z);
+            }
         }
 
         // The projected step, tested at its full length first and then down the shortening ladder. The allowance is
@@ -358,19 +418,64 @@ public static partial class CharacterMovement
         // describe the same surface - does not bar reading the direction wide: the heights that admit or refuse are
         // still the narrow, real ones. The SLIDE has no such separation, since it commits the drop its plane says,
         // which is why nothing in #501 changes what ResolveSlide reads.
+        //
+        // A SUBSTITUTED FACE IS A SECOND OPINION, AND THE HEIGHTS GET TO VETO IT (#501 round two, over a mechanism
+        // that is #502's one scale out). The wide direction is a contour of a 2 m plane, which is NOT a contour of
+        // the metre-scale surface the ladder reads, so a step along it can climb where the narrow one would not -
+        // and when every rung of it climbs past the allowance the walker parks, holding a direction, going nowhere.
+        // That is the #501 signature again, moved rather than removed. Measured on the noisy bank at 15 Hz, one
+        // degree off the heading the fixture pins as its control: at leans 69, 70 and 71 the walker settled where its
+        // narrow face kept 0.094, just inside the keep trigger, took a wide face pointing straight up the local
+        // wiggle, and stopped dead - 0.17 of commanded travel with 118 consecutive stalled ticks against 0.83 with no
+        // fallback at all.
+        //
+        // So a refused substitution falls back to the projection it replaced, which is exactly what the walker would
+        // have travelled with no wide read at all, and only then refuses. The ladder is unchanged and is still the
+        // one altitude authority: BOTH passes run it in full, so every committed endpoint has still been tested at
+        // the point it actually lands on, and the second pass cannot commit anything the pre-#501 engine would not
+        // have. Over the 744-ride sweep this takes the rides that stall where the parent walks from 7 to 0.
+        //
+        // WHAT IT COSTS. A second ladder, so at most seven more probe pairs, and only on a tick that BOTH substituted
+        // and had its substitution refused at every rung. Counted over the same sweep, of 134154 wall contacts past
+        // the head-on short-circuit, 13915 (10.4 percent) substituted and 1304 (0.97 percent) walked the second
+        // ladder. Nothing else in the engine pays anything: with `widened` false the second call is not made, and a
+        // contact whose narrow face keeps 0.15 or more never even makes the wide read.
         float allowance = reach + ProjectedRiseSlack;
+        if (TryProjectedStep(x, z, sx, sz, dt, groundNormal, groundHeight, feetY, allowance, gate,
+                out float rx, out float rz))
+            return (rx, rz);
+        if (widened && TryProjectedStep(x, z, nsx, nsz, dt, groundNormal, groundHeight, feetY, allowance, gate,
+                out rx, out rz))
+            return (rx, rz);
+        return (x, z);
+    }
+
+    /// <summary>One walk down <see cref="AdvanceWallSlide"/>'s shortening ladder for ONE candidate projected travel:
+    /// the full step first, then repeated halvings to a sixty-fourth (<see cref="ProjectedStepRungs"/>), committing
+    /// the first endpoint that is either not steep or within <paramref name="allowance"/> of the feet, and reporting
+    /// false when none of them is.
+    /// <para>IT IS A METHOD RATHER THAN A LOOP IN PLACE ONLY BECAUSE THERE ARE TWO CANDIDATES since #501 - the wide
+    /// substitution and the narrow projection it replaced - and both have to be walked by the SAME rungs against the
+    /// SAME bar. The arithmetic is unchanged from the inline version it replaces, in the same order, so an admitted
+    /// step is byte-identical to every release since the wall slide shipped.</para></summary>
+    private static bool TryProjectedStep(float x, float z, float sx, float sz, float dt,
+        Func<float, float, Vector3> groundNormal, Func<float, float, float> groundHeight, float feetY,
+        float allowance, float gate, out float rx, out float rz)
+    {
         float scale = 1f;
         for (int rung = 0; rung <= ProjectedStepRungs; rung++, scale *= 0.5f)
         {
             float tx = x + sx * dt * scale;
             float tz = z + sz * dt * scale;
-            // Same fixed order as the destination test above: the normal first, its height only inside the steep
-            // branch, so a rung that lands on walkable ground costs one delegate call and not two.
+            // Same fixed order as the destination test in the caller: the normal first, its height only inside the
+            // steep branch, so a rung that lands on walkable ground costs one delegate call and not two.
             Vector3 tangentNormal = groundNormal(tx, tz);
-            if (!IsSteepGround(tangentNormal, gate)) return (tx, tz);
-            if (groundHeight(tx, tz) - feetY <= allowance) return (tx, tz);
+            if (!IsSteepGround(tangentNormal, gate)) { rx = tx; rz = tz; return true; }
+            if (groundHeight(tx, tz) - feetY <= allowance) { rx = tx; rz = tz; return true; }
         }
-        return (x, z);
+        rx = x;
+        rz = z;
+        return false;
     }
 
     /// <summary>The height a tick may find its destination ground standing above its feet and still be SEATED on it

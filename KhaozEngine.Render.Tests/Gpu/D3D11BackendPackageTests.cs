@@ -101,15 +101,17 @@ namespace KhaozEngine.Tests.Gpu
     }
 
     /// <summary>
-    /// That the test process actually has the REAL native provider registered, through the one
-    /// <c>[ModuleInitializer]</c> section 4.1 allows
-    /// (<c>KhaozEngine.TestSupport.Gpu/D3D11BackendRegistration.cs</c>, which every assembly taking
-    /// <c>[GpuFact]</c> loads).
+    /// That the test process actually has the REAL native provider registered, through
+    /// <c>KhaozEngine.TestSupport.Gpu/D3D11BackendRegistration.cs</c>, which every assembly taking
+    /// <c>[GpuFact]</c> reaches from that attribute's static constructor and which this assembly also calls from
+    /// the thin module initializer in <c>D3D11BackendRegistrationInitializer.cs</c>. These rows are exactly why
+    /// that second one exists: they carry no <c>[GpuFact]</c>, so a filtered run of them alone would never touch
+    /// the attribute and never fire the hook.
     /// <para>
     /// In the non-parallel collection because it reads the process-wide registry, which the append-audit rows
     /// temporarily empty to pin the unregistered behaviour. Worth asserting at all because the registration is
-    /// invisible: nothing else in the suite fails if the initializer silently stops running, and the tests that
-    /// would notice are exactly the ones that unregister it first.
+    /// invisible: nothing else in the suite fails if it silently stops happening, and the tests that would notice
+    /// are exactly the ones that unregister it first.
     /// </para>
     /// </summary>
     [Collection("GraphicsBackendGlobalState")]

@@ -24,6 +24,21 @@ namespace KhaozEngine.Tests.Gpu
     /// </summary>
     public sealed class GpuFactAttribute : FactAttribute
     {
+        /// <summary>
+        /// WHERE THE NATIVE DIRECT3D 11 BACKEND GETS REGISTERED, for every assembly that runs GPU tests. An
+        /// explicit static constructor is what makes the CLR run this the first time anything touches this type,
+        /// which is during xUnit's discovery pass in any assembly carrying a <c>[GpuFact]</c> (or a
+        /// <c>[GpuTheory]</c>, whose own constructor calls straight into this one's statics), so it lands before
+        /// any test body rather than whenever the loader happens to pull the support assembly in.
+        /// <para>
+        /// It is deliberately not a <c>[ModuleInitializer]</c>: this is a LIBRARY, where CA2255 rejects one, and
+        /// the reason the analyzer gives is the reason the hook belongs here anyway. Registration should follow
+        /// the ATTRIBUTE, which is what says "this assembly runs GPU tests", not the assembly load, which says
+        /// nothing. Full reasoning on <see cref="D3D11BackendRegistration"/>.
+        /// </para>
+        /// </summary>
+        static GpuFactAttribute() => D3D11BackendRegistration.EnsureRegistered();
+
         // One headless device-creation attempt per process. null = a device was created (and disposed) fine, so
         // probe mode may run; a non-null string is the reason probe mode skips.
         static readonly Lazy<string?> ProbeReason = new(ProbeHeadlessDevice);

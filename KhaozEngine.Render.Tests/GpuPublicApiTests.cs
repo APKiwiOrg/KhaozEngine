@@ -164,6 +164,52 @@ public class GpuPublicApiTests
         Assert.Equal(new[] { "KhaozEngine.Gpu.D3D11.KhaozEngineD3D11" }, exported);
     }
 
+    /// <summary>
+    /// The same member-by-member pin for the native Vulkan backend, which the leak scans above cannot give: they
+    /// ask what the surface EXPOSES and say nothing about how much of it there is, so a new public method that
+    /// happens to name no Silk type is invisible to every one of them.
+    /// <para>
+    /// The list is one entry, and one entry is the claim. Everything a consumer needs from this package is
+    /// <c>Register()</c>: the backend arrives through <c>IGpuBackendProvider</c>, the seam speaks engine types in
+    /// both directions, and the Vulkan binding stays inside the package (decision V-P3). There is deliberately no
+    /// <c>IsPlatformSupported</c> here, which is the one member the Direct3D 11 sibling has that this must not
+    /// grow by analogy: V-P1 says Vulkan is not a Windows API, the loader is resolved at runtime, and a machine
+    /// without one is answered by the functional probe rather than by a platform predicate. A guard property
+    /// appearing in this list would be that decision quietly reversing.
+    /// </para>
+    /// <para>
+    /// So widening the surface is a deliberate edit to the array below, made by someone who had to read this.
+    /// Adding a member and updating it is the whole cost. Not noticing is what this removes.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void GpuVulkanPublicSurface_IsExactlyTheApprovedMembers()
+    {
+        string[] approvedMembers = { "Register" };
+
+        Type entryPoint = typeof(KhaozEngine.Gpu.Vulkan.KhaozEngineVulkan);
+
+        string[] members = entryPoint
+            .GetMembers(BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            .Where(m => m is not MethodBase { IsSpecialName: true })
+            .Select(m => m.Name)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(n => n, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(approvedMembers, members);
+
+        // And one exported type, which is the other half of the same claim. The provider, the probe, the
+        // requirement check and the binding spike are all internal, which is what keeps the package's whole
+        // vocabulary out of a consumer's compile.
+        string[] exported = entryPoint.Assembly.GetExportedTypes()
+            .Select(t => t.FullName ?? t.Name)
+            .OrderBy(n => n, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(new[] { "KhaozEngine.Gpu.Vulkan.KhaozEngineVulkan" }, exported);
+    }
+
     // Walks the externally visible (public + protected) surface of every exported type in <paramref name="assembly"/>
     // and returns each place a type declared in an assembly whose simple name starts with
     // <paramref name="forbiddenAssemblyPrefix"/> is reachable. Kept generic (assembly + prefix) so the no-leak

@@ -1176,6 +1176,28 @@ available" was one possible reason for the failure and not the one that produced
 registration above. It names the backend, hands the inner message through, and keeps the `KE_GRAPHICS_BACKEND`
 hint.
 
+#### The shared samplers wrap like the incumbent's, not like their namesakes (#460, run 30963173087)
+
+The native device built its device-owned point and linear samplers from `GpuSamplerDescription.Point` and
+`.Linear`, whose ctor defaults every axis to CLAMP. The incumbent's pair is Veldrid's identically named
+`SamplerDescription.Point` / `.Linear`, which are WRAP. Same names, opposite address mode, and
+`IGpuDevice.PointSampler` / `LinearSampler` never said which the seam promised, while the renderers assumed wrap
+(`ModelRenderer` says so in writing). Every tap that leaves [0,1] held the edge instead of repeating, which
+throws nothing and logs nothing, so the only witnesses were the two goldens still failing on the native leg:
+`scene3d_texbillboard` at a worst delta of 0.393, a two-texel-wide billboard texture whose edge fringe is half
+the quad, and `scene3d_particles_flipbook` at 0.359, whose motion-vector warp walks a tap out of the atlas by
+design. The pair now comes from a new internal `D3D11SharedSamplers`, wrap on all three axes, whose whole reason
+for existing is that the name collision cannot be read off a call site. The public statics are untouched: their
+clamp is documented API, and a caller who names them asked for it.
+
+Pinned three ways, none of them a golden. `IGpuDevice.PointSampler` states the address mode and names the
+collision. `NativeVsVeldridCapabilityParityTests` compares the shared pair against Veldrid's built-ins field by
+field, device-free, so it runs on every OS. And a new backend-agnostic `[GpuFact]` samples a 2x1 red/blue
+texture at u = 1.25 through the DEVICE's own linear sampler and asserts the wrapped texel: it reads red on
+Metal, and (255,0,0) versus (0,0,255) is the whole distance between the two address modes. `Flipbook_motion_vectors_warp`
+also stops being satisfiable by either mode: its pixel-difference count was true under clamp as well, so it now
+asserts WHERE the warped tap lands, as the share of the sprite reading as the blend of cells 2 and 0.
+
 ## 17.31.0
 
 ### The native Direct3D 11 backend: the replay contract, the constant-buffer ring, and the three cross-row wirings (#449, #451, #452)

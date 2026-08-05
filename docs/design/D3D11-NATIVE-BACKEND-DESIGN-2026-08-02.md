@@ -847,7 +847,12 @@ the device.
 | `SupportsCompletionFences` | **true** (C5) | the ONE permitted difference |
 
 The incumbent's sampler HARDCODES are reproduced (comparison null, minLod 0, maxLod `uint.MaxValue`, border
-`TransparentBlack`), because they are reachable and they affect output. Its two silent DEGRADATIONS
+`TransparentBlack`), because they are reachable and they affect output. **The device's shared point and linear
+pair adds a fifth: WRAP on all three axes**, taken from `D3D11SharedSamplers` rather than from the engine's
+identically named `GpuSamplerDescription.Point` / `.Linear` statics, which default every axis to CLAMP. The
+incumbent's pair is Veldrid's `SamplerDescription.Point` / `.Linear`, which wrap, and the renderers assume wrap.
+Reading the address mode off the statics because the names matched is what cost `scene3d_texbillboard` (0.393)
+and `scene3d_particles_flipbook` (0.359) on run 30963173087. Its two silent DEGRADATIONS
 (anisotropic falling to trilinear when `SamplerAnisotropy` is false, `MipLodBias` forced to 0 when
 `SamplerLodBias` is false) are dropped, because both capabilities are always available on the feature levels
 this backend requires and reproducing unreachable code is pure cost. `GpuClip.Correct` needs no change: it
@@ -1064,7 +1069,7 @@ Each row becomes one implementation issue, `kind/backlog` unless noted, `confide
 | 13 | **13a (fence primitive, an early prerequisite of 8):** `ID3D11Fence` via `ID3D11Device5` with the `ID3D11Query(Event)` fallback and the monotonic signal at end of replay. **13b (the seam-visible half):** `SupportsCompletionFences = true`, `IGpuFence` wiring, and a real `WaitForIdle` behind `KE_D3D11_REAL_DRAIN` with drain telemetry (M2). Split so 8 can depend on 13a without waiting on 13b | `RetireFenceGpuTests` and `Scene3DUnloadDrainTests` must RUN and pass, and the suite reports 0 failed and 0 skipped |
 | 14 | Blit-model swapchain matching the incumbent exactly, present, stable framebuffer identity, queued resize applied at the present boundary | The Windows black screen after fullscreen or drag-resize, and #415's cross-thread `Monitor.Exit` from the resize path |
 | 15 | Threading contract: lock-free recording, the single short submit lock, staging map scoping, creation lock when `DriverConcurrentCreates` is false | `GpuDeviceLifecycleTests` extended with a foreign-thread update case and a concurrent-resize case |
-| 16 | Capability reads and the parity test (T4), **the sampler creation path: reproduce the incumbent's hardcodes (comparison null, minLod 0, maxLod max, border `TransparentBlack`) and drop the two unreachable degradations (G1)**, `KE_D3D11_ADAPTER`, the software-adapter telemetry flag, `KE_D3D11_DEBUG` with the `ID3D11InfoQueue` pump, device-loss latch and `GetDeviceRemovedReason` in the session header (closes #427 for the native leg) | `cross-platform-gpu.yml` relies on accidental WARP fallback, so a runner image change silently reshapes the golden leg. The sampler hardcodes are golden-visible and G1 had no owner before this |
+| 16 | Capability reads and the parity test (T4), **the sampler creation path: reproduce the incumbent's hardcodes (comparison null, minLod 0, maxLod max, border `TransparentBlack`, and WRAP on all three axes for the device's shared pair) and drop the two unreachable degradations (G1)**, `KE_D3D11_ADAPTER`, the software-adapter telemetry flag, `KE_D3D11_DEBUG` with the `ID3D11InfoQueue` pump, device-loss latch and `GetDeviceRemovedReason` in the session header (closes #427 for the native leg) | `cross-platform-gpu.yml` relies on accidental WARP fallback, so a runner image change silently reshapes the golden leg. The sampler hardcodes are golden-visible and G1 had no owner before this |
 | 17 | The `direct3d11-native` CI matrix leg, **the T3 WARP native-call parity `[GpuFact]` that guards the device-free harness against drift**, the soak build, the five rollout gates, and the `ProbeOS` flip | #423 records the push-triggered D3D11 golden gate degraded from 2026-07-30 until 17.26.0 without anyone noticing. T3 only has meaning once a CI leg exists to run it on, which is why it is homed here and not with the budget test |
 
 **Order.**

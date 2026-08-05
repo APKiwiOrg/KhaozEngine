@@ -916,6 +916,16 @@ of them so a caller cannot ask for anything else. The incumbent's anisotropic-to
 forcing of `MipLodBias` to 0 are NOT reproduced, because both read capabilities that are constants here, so both
 branches are unreachable and carrying them would mean shipping a fallback nothing can enter.
 
+**And the device's shared sampler pair is WRAP on all three axes, which is a fifth hardcode (G1).** It comes
+from `D3D11SharedSamplers`, not from the engine's `GpuSamplerDescription.Point` / `.Linear` statics, because
+those statics default every axis to CLAMP while the incumbent's built-in pair (Veldrid's
+`SamplerDescription.Point` / `.Linear`, which `GraphicsDevice.PointSampler` and `LinearSampler` are built from)
+wraps. Same names, opposite behaviour, and renderers assume wrap: `ModelRenderer` says so in writing. Building
+the pair from the statics is what moved `scene3d_texbillboard` (worst 0.393) and `scene3d_particles_flipbook`
+(worst 0.359) on CI run 30963173087, both scenes whose sampling leaves [0,1] by design.
+`NativeVsVeldridCapabilityParityTests` now compares the pair against the incumbent's built-ins field by field,
+device-free, so a drift fails on every OS rather than only on a Windows golden.
+
 **`KE_D3D11_ADAPTER=warp|hardware|<index>|<name substring>` pins the adapter (G2).** Unset leaves DXGI to pick.
 A request that cannot be honoured WARNs and falls back to the default enumeration, never fails, and the warning
 lists the adapters that WERE enumerated, because a name substring is machine-specific and "nothing matched"

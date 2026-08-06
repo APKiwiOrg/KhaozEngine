@@ -138,11 +138,18 @@ climbing it. Measured over the fixture bank sweep: 543 footing flips to 2, 5102 
 along-face speed of 158 percent of commanded to 105, a climb creep of 2.9e-4 m per tick to 1.4e-5, and the one ride
 past the shortening ladder's coverage ceiling from a dead park to full travel.
 
-It is taken only when the walker's own column stands within two degrees of the tick's traction gate (so it is
-resting on the face rather than on a walkable floor with a wall ahead of it) and only when it costs under 1.2
-percent of the travel (so the two reads describe one surface rather than two). Neither the ladder below nor the
-wide-face read changes: this decides where along the surface the character is pointed and never what altitude it
-may take.
+Three gates, and the third is a SIGN. It is taken only when the walker's own column stands at most two degrees
+short of the tick's traction gate (so it is resting on the face rather than on a walkable floor with a wall ahead
+of it), only when it costs under 1.2 percent of the travel (so the two reads describe one surface rather than
+two), and only when it LOWERS what the step asks the surface for. That last one is what makes the rule right on
+both kinds of bend rather than one: on a CONCAVE face - a cove, a bowl, the inside of a curve - the destination
+anchor is the one that already descends by the sagitta and the walker's own column is the one that climbs, so the
+same arithmetic would add exactly the rise it removes on a convex face. Measured on the exact mirror of the bank
+sweep, without the sign gate that costs 471 footing flips and 13225 airborne ticks of 12600 against a pre-#502
+engine that spends 6 and 171, with one row sliding a walker 2.04 times as far as the stick asked. With it, all
+sixty mirror rides reproduce the pre-#502 ride to every digit while the convex sixty keep every number above.
+Neither the ladder below nor the wide-face read changes: this decides where along the surface the character is
+pointed and never what altitude it may take.
 The steepness test is what leaves walkable ground untouched, since a fast run up a legal ramp can rise more than a
 `StepHeight` in one tick. The height test is what keeps this a CONTACT rather than the old gate for the ticks that
 have no footing: ground at or below the feet is admitted, so a fall, a graze and a slide all still meet the surface

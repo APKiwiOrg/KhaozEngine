@@ -153,7 +153,9 @@ player uses, orientation slerped between snapshots.
    the slide resolves against has to be the surface the ground clamp seats to, or the two pump energy every tick.
    A wall contact reads that plane at TWO points (17.32.0/#502): the destination's, which says which component the
    wall eats, and the walker's own column's, which the survivor is then made level on so a face that bends in plan
-   stops selling altitude to a character already resting on its traction ceiling.
+   stops selling altitude to a character already resting on its traction ceiling. That levelling only ever REMOVES
+   rise: on a face bending the other way (a cove, a bowl) the same arithmetic would add it, so it is gated on its
+   own sign and the concave case keeps the behaviour it had before the rule existed, bit for bit.
    Then it resolves against the
    world: a capsule **sweep** along the move, a downward **support probe** so the character stands on prop
    tops, and a **depenetration** push-out (`ComputePenetration`, iterated) to collide-and-slide. A `null`

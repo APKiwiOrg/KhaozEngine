@@ -2178,6 +2178,121 @@ Full Locomotion suite green (856), full engine suite green (10029 passed, 0 fail
 warnings. The rising-gully refusal, the symmetric-crease containment, the #486 cliff-toe fixtures and the #468
 ratchet and sweep are untouched and green.
 
+#### Round two: the levelling only ever removes rise, never adds it (#502)
+
+The rule above was right on one kind of bend and exactly backwards on the other, and every bank fixture in the
+#498, #501 and #502 arc bends the same way, so it shipped green.
+
+**The mechanism, which is the same sentence read in a mirror.** The correction removes the travel's component
+along the walker's own column's outward. On a CONVEX face - the outside of a spur, a headland, the bank the whole
+of #502 was reported on - the destination anchor is the one that climbs by the sagitta of a chord and the
+walker's own is the one that descends, so removing that component sheds a climb. On a CONCAVE face - a cove, a
+bowl, the inside of a curve - the two swap: the destination anchor already descends by the sagitta and the
+walker's own column is the one that climbs, so the identical arithmetic replaces the right answer with the wrong
+one, by the same size, in the opposite direction. Neither gate could see it. The keep is an ABSOLUTE cosine (the
+own-column component enters squared, and the levelled vector is invariant under negating the outward), and the
+band is a steepness test, so both are blind to which way a face bends by construction.
+
+**What it cost, on the exact mirror of the fixture bank sweep** - same radii, same leans, same speeds, same
+rates, uphill outward instead of inward:
+
+| build | efficiency | flips | airborne | longest stall | creep per tick |
+|---|---|---|---|---|---|
+| pre-#502 (the reference) | 0.948 to 1.049 | 6 | 171 | 0 | 1.51e-5 |
+| round one | 0.827 to 2.044 | 471 | 13225 | 0 | 3.47e-4 |
+| this build | 0.948 to 1.049 | 6 | 171 | 0 | 1.51e-5 |
+
+The worst single row is the 8 m concave bend at a walk at 120 Hz and a LEAN OF ZERO, a walker holding a purely
+tangential heading on a bowl, which round one spends 1187 of its 1200 ticks AIRBORNE while covering 2.044 times
+the travel the stick asked for, because it is being slid down the face rather than walked along it. The pre-#502
+engine reads 1.000 with no airborne tick at all. Over a wider family (bends 400, 50, 20 and 8 at leans 0 to 45,
+192 rides) round one reads 0.750 to 2.044 with 1565 flips and 40162 airborne ticks.
+
+**The fix is a third gate, and it is a sign.** The levelling is applied only where it LOWERS what the projected
+step asks the surface for. To first order in the step the un-levelled travel's rise over one tick is
+`-G * ownInto * dt` and the levelled one's is exactly zero, so the correction lowers the ask when the travel
+points into the walker's own hill and raises it when the travel already descends - which is the concave case,
+exactly. One comparison against a zero the block already computed, no fifth height probe, and the probe budget
+stays at four. On the concave family the block becomes arithmetically absent and all sixty mirror rides
+reproduce the pre-#502 ride TO EVERY DIGIT, while the convex sixty are unchanged from round one to every digit,
+so the shape the fix was reported on keeps every number the entry above claims.
+
+**It cures a second shape the review found.** An asymmetric gully (walls 4.0 and 1.2, so the capsule-wide stencil
+straddling the axis no longer cancels them, entered 5 cm off axis at 3 and 10 degree leans on both sides) is a
+wall contact the anti-tunnel rule refuses exactly, gaining at most 1.78 mm of altitude anywhere - the
+`ProjectedRiseSlack` the re-test spends at most once a tick. Round one turns that refusal into a creep of up to
+48.7 mm, on rides that gain it with every one of their 300 ticks airborne, which is the #468 shape itself. Here
+the walker's own column is the SHALLOW wall and its outward points across the gully, so the levelling adds the
+rise the destination's contour was shedding. With the sign gate the whole family returns to 1.78 mm on every row.
+
+**The census re-taken under the gate**, against the pre-#501 reference over the same 3824 rides:
+
+| build | over 0.75 | over 0.50 | over 0.30 | improvements over 0.75 |
+|---|---|---|---|---|
+| pre-#501 (the reference) | 0 | 0 | 0 | 0 |
+| pre-#502 | 0 | 9 | 167 | 38 |
+| round one | 9 | 23 | 180 | 40 |
+| this build | 1 | 10 | 167 | 39 |
+
+Every one of round one's nine top-tier regressions is on the noisy bank and the gate removes eight of them,
+including all three of the CENSUS PARKS the review found at leans 45, 49 and 50 (a run at 15 Hz reading 0.35,
+0.03 and 0.03 of its command with 68, 137 and 137 consecutive dead ticks, back to 0.76, 0.81 and 0.72 with no
+dead tick). The loosest tier returns exactly to the pre-#502 count, and the six trough shapes read one row better
+than pre-#502 rather than worse. What remains is two noisy-bank rides that lose more than a tenth of their
+pre-#501 travel without stalling at all.
+
+**Three review findings about the record, all corrected here rather than left.**
+
+The claim that #501's selector was untouched **was false as coded**, and the composition it names was measured
+rather than restated. The correction overwrites the projected travel before the selector reads it, so the doubt
+gate, the max-keep margin and the fallback candidate all read the LEVELLED narrow projection, and the wide travel
+is never levelled at all. The alternative was built and swept side by side: read the selector on the un-levelled
+projection and level whichever candidate it chose. On everything the census resolves the two are the same build
+(identical tiers, identical on all sixty convex rides, all sixty concave, the gully, and the 40-to-60 scan),
+differing only on the noisy bank inside its own control band. What chooses is the rectification ceiling
+`WallFaceAttractorTests` pins at 1.25: scanned at 0.02 degrees the pre-#502 build peaks at 1.2263 and this
+composition at 1.2263, while the un-levelled-selector one peaks at 1.2435 - three quarters of the remaining
+headroom, on the one bound in this chain a build has already breached once by reading it off too coarse a grid.
+So the composition ships as it is, the doc sentence is corrected to describe it, and the two things it gives up
+are stated at the site.
+
+The **perturbation control was cited for the wrong quantity**. The block defending the round-one census delta
+quoted the control at 0.001, 0.05 and 0.2 degrees as evidence about census PARKS. Re-swept, a rotation of 0.001
+degrees costs nothing at all, 0.05 costs one top-tier row, 0.2 costs two, and none of the three produces a single
+new park: parks need ONE DEGREE and up, where the control costs ten top-tier rows and produces its first. The
+conclusion survives, the evidence did not, and the control now ships as a runnable procedure with its exact steps
+(a skipped-by-default test in `WallContactOwnColumnTests`) rather than as a paragraph of numbers nobody could
+reproduce. Re-measured on the fixture rows it defends, a hundredth of a degree moves a pinned efficiency by up
+to 0.049.
+
+The **inside-contour baseline in round one's own re-basing note was wrong**: it recorded the bound as having been
+set from 0.073 and pinned at double that, where the pre-#502 engine's own deepest ride is 0.1375. The original
+0.15 was a tenth of margin over the real measurement rather than double it, which makes round one's 0.1507 a
+genuine ten percent regression rather than a rounding one.
+
+**So two of round one's three referee re-baselines are reverted rather than kept.** This build reaches 0.1117
+inside the contour (against 0.1375 on the pre-#502 engine), so the inside-contour bound goes back to 0.15, and it
+reads 1.053 on the efficiency ceiling that round one raised to admit its 1.106, so that goes back to 1.10. The
+airborne bound did not come back: 57 measured here against 58 on round one, 41 on the pre-#502 engine and 19 when
+the row was first pinned, so it is re-pinned at 70 rather than round one's 75, with the measurement on the record.
+
+**Two new fixture families and one new sweep.** `WallContactOwnColumnTests` gains the concave mirror of its own
+sixty rides under a band of its own and the thirty-two asymmetric-gully rides, 49 red of 161 against round one.
+`WallFaceAttractorTests` gains a scan of leans 40 to 60, which nothing in this chain had ever walked - the three
+census parks the review found sit entirely below the 60-to-87 window every existing scan uses. What lives there
+is two stories: the run at 15 Hz parks for 135 ticks in the pre-#501 engine, the pre-#502 engine and both rounds
+of #502 alike, so it is nobody's regression and is pinned as a disclosed pre-existing park rather than fixed. And
+the run at 30 Hz parks for 212 of its 300 ticks in the pre-#501 AND pre-#502 engines and is removed outright by
+#502, 0.285 to 0.894 of commanded travel with no dead tick, which nobody had recorded because nobody was looking.
+
+`CharacterMovement.WallContactLevel.cs` is split out of `CharacterMovement.WallContact.cs` for the same reason
+that file was split out of `CharacterMovement.Slide.cs`: the round-two prose pushed it past the size ratchet.
+Same partial type, one concern each, and the correction plus its three gates and every measurement they are
+chosen on now live together.
+
+Full Locomotion suite green (952 passed, 1 skipped by design), full engine suite green (10125 passed, 0 failed
+across 18 projects), zero warnings.
+
 ## 17.31.0
 
 ### The native Direct3D 11 backend: the replay contract, the constant-buffer ring, and the three cross-row wirings (#449, #451, #452)

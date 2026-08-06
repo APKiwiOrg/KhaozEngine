@@ -4,12 +4,15 @@ The engine's own native Vulkan backend for the [KhaozEngine.Gpu](../KhaozEngine.
 umbrella: a consumer adds this package explicitly, the same pattern as `Physics.Bepu` or `WorldStore.Sqlite`,
 and nothing that does not want the Vulkan binding ever carries it.
 
-> **Status: REGISTRATION, PROBE AND A HEADLESS DEVICE.** `KhaozEngineVulkan.Register()` is real, so is the
-> machine-capability probe behind it, and since
+> **Status: REGISTRATION, PROBE, A HEADLESS DEVICE AND ITS COMPLETION TIMELINE.** `KhaozEngineVulkan.Register()`
+> is real, so is the machine-capability probe behind it, and since
 > [#514](https://github.com/APKiwiOrg/KhaozEngine/issues/514) so is headless device creation:
 > `GpuDeviceContext.CreateHeadless(GpuBackendKind.VulkanNative)` builds a real `VkDevice` and a graphics queue on
 > the one refcounted process `VkInstance`, with its features enabled by name, its device-loss latch armed and
-> `KE_VULKAN_VALIDATION` wired. That device cannot yet RENDER: recording is
+> `KE_VULKAN_VALIDATION` wired. Since [#515](https://github.com/APKiwiOrg/KhaozEngine/issues/515) that device
+> also owns its ONE timeline semaphore, a real `IGpuFence` over it, the deferred-disposal retire list, and a
+> `WaitForIdle` that is a counted `vkWaitSemaphores` rather than a device-wide wait. That device cannot yet
+> RENDER: recording is
 > [#517](https://github.com/APKiwiOrg/KhaozEngine/issues/517), resources and samplers are
 > [#519](https://github.com/APKiwiOrg/KhaozEngine/issues/519), and each unbuilt member throws a message naming
 > its own row. Creating a WINDOWED device refuses, naming the swapchain row
@@ -140,6 +143,36 @@ which is the one thing this backend could not inherit: the incumbent's `CheckRes
 later destroy is a no-op, and the reason reaches you two ways: an ERROR line in the session log and the
 `deviceLossReason` field of the telemetry session header. There is no recovery path, which is what the liveness
 token makes safe. Teardown calls `vkDeviceWaitIdle` FIRST, before anything is destroyed.
+
+## One timeline, and why one is enough
+
+**The device owns ONE `VkSemaphore` of type TIMELINE, created at 0.** Every submission takes its next value,
+every `IGpuFence` holds a target on it, and `WaitForIdle` waits for the last value handed out. There is no
+`VkFence` anywhere in this backend, and there is no second submit signalling an internal tracking fence.
+
+**That is a correctness argument, not a tidiness one.** The seam promises that a fence handed to a submission
+made after some earlier work signals only once the queue has drained through it. With per-submit fences that is
+a convention, because fence B signalling says nothing about submission A. With one monotonic timeline it is a
+theorem: a timeline semaphore's signal operations must strictly increase, and a queue's signal operations on one
+semaphore execute in submission order, so the counter reaching 6 requires the signal at 5 to have happened,
+which requires submission 5's commands to have completed. Polling a later fence therefore transitively covers
+every earlier submission, which is what `RetiredResourcePool` relies on.
+
+**A fence poll never waits and never takes a lock.** `IGpuFence.Signaled` is one `vkGetSemaphoreCounterValue`
+compared against the fence's target, and `Reset` unarms it for a later submit. After the device is destroyed
+every fence reads SIGNALLED, because a dead device has no outstanding work and answering otherwise strands a
+retire pool on a batch it can never free.
+
+**`WaitForIdle` is `vkWaitSemaphores` on the last submitted value, with no timeout, counted into `DrainCount`
+and `DrainMs`.** Not `vkQueueWaitIdle`: a semaphore wait holds no queue lock, so a drain on one thread does not
+block a submit on another, and it names a value, which is what gives a drain a number. A drain that found the
+GPU already caught up is not counted, because the seam's own counter documents that it should not be.
+
+**Disposal is DEFERRED behind the timeline.** Disposing a resource records the device's current timeline value
+and holds the native destroy until the counter passes it, drained at the frame boundary and again at device
+teardown. That makes "mid-life resource disposal racing queued async work" structurally impossible on this
+backend rather than merely conventionally avoided. The engine's own `WaitForIdle` calls stay where they are,
+because they are the seam's contract and the Veldrid leg still needs them.
 
 ## `KE_VULKAN_DEVICE` and `KE_VULKAN_VALIDATION`
 

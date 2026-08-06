@@ -1665,6 +1665,79 @@ probe's stability across two real calls is a property a test asserts through tha
 a three-way branch on the probe's own sentence now rather than on the operating system, so whichever state a
 runner is in, it asserts that state's contract instead of skipping.
 
+### One device timeline semaphore, a real `IGpuFence`, a counted `WaitForIdle` and the deferred-disposal retire list (#515)
+
+The native Vulkan device owns ONE `VkSemaphore` of type TIMELINE, created at 0 with the device and destroyed
+before it, and everything the seam calls a fence now sits on it. Work-breakdown row 5, decisions V-F1 to V-F4
+and V-F9. Nothing submits yet, so no value is raised by real GPU work on this row: what lands is the primitive
+the submit path (#517) and the uniform ring (#518) both read, which is why the row was pulled in front of them.
+
+**Why one device timeline rather than a `VkFence` per submit, which is the decision this row settles.** The seam
+promises that a fence handed to a submission made after some earlier work signals only once the queue has
+drained through it. With per-submit fences that is a CONVENTION, because fence B signalling says nothing at all
+about submission A. With one monotonic timeline it is a THEOREM: a timeline semaphore's signal operations must
+strictly increase, and a queue's signal operations on one semaphore execute in submission order, so the counter
+reaching 6 requires the signal at 5 to have happened, which requires submission 5's commands to have completed.
+Polling a later fence therefore transitively covers every earlier submission, which is exactly what
+`RetiredResourcePool` relies on.
+
+**The fence is two fields and a comparison.** `VulkanGpuFence` holds a target, `Signaled` is
+`vkGetSemaphoreCounterValue() >= target` (a free-threaded, non-blocking read that takes no lock, which is what
+the seam demands), and `Reset` unarms it so it can be handed to a later submit. Reset cannot unsignal anything
+and does not need to: the counter is device-wide and monotonic, so a reset fence is re-armed with a strictly
+higher value than the one it just held. `SupportsCompletionFences` was already true in this device's partial
+capability read and is now backed by a real primitive rather than by a promise about one. The seam reaches a
+fence through `IGpuResourceFactory.CreateFence`, and the factory is row 9 (#519), so the fence is created off
+the device's timeline meanwhile and the resources row wires the one call site.
+
+**`WaitForIdle` is `vkWaitSemaphores` on the last submitted value now, not `vkDeviceWaitIdle` (V-F4).** A
+semaphore wait does not need the queue lock, so a drain from one thread does not block a submit from another
+until it finishes, and it names a VALUE, which is what turns a drain into something with a number attached. It
+is counted into `DrainCount` and `DrainMs`, which the device's `GpuDeviceCounters` now fills. Teardown still
+calls `vkDeviceWaitIdle`, where there is no submission left to protect. There is no C6-style bet here and nobody
+should look for that win twice: the incumbent's Vulkan drain is already real, and phase 2's `WaitForIdleCore`
+was an empty method body whose whole win was in existing.
+
+**Three cases return without counting, and each is a case where nothing blocked.** The device is dead, nothing
+has ever been submitted, or the counter has already passed the last submitted value. The seam's own `DrainCount`
+doc says a wait that found the GPU caught up is not counted, and honouring it here costs one non-blocking read.
+The Direct3D 11 backend counts every drain past its early returns because it signals a FRESH point per drain and
+therefore always has something outstanding to wait for, which is a different situation rather than a different
+rule. A wait that ended because the device was LOST is still counted, because it did block.
+
+**Deferred disposal (V-F9): `Dispose` records a value, the destroy runs when the timeline passes it.** That
+turns "mid-life resource disposal racing queued async work", one of the four defects the cross-platform GPU
+workflow header records as fixed engine-side, from convention-safe into a structural property of this backend.
+No resource type exists yet, so the list is a value plus a destroy callback, which is what lets row 7 hand it a
+command pool and row 9 hand it a buffer without the list learning either. Out-of-order values are ordinary (the
+submit path allocates, whoever disposes retires), so a drain scans the whole list rather than stopping at the
+first unready entry, and callbacks run with the lock released so a destroy that retires something else appends
+to a list nobody is iterating. A throwing callback is logged and the drain carries on, because the teardown
+drain runs between `vkDeviceWaitIdle` and `vkDestroyDevice` and letting one out would leak the whole device.
+
+**The teardown order gained two entries, in the only window they can go.** It was wait, flip, destroy, release.
+It is now `vkDeviceWaitIdle`, the retire list's teardown drain, the timeline semaphore, the liveness flip,
+`vkDestroyDevice`, the instance lease. Both new entries sit between the wait and the flip because that is the
+only window in which destroying a child object of the device is both safe and legal: before the wait it would be
+a destroy of something the GPU may still be reading, and after the flip every native destroy is skipped by
+contract. A device that was already DEAD abandons the retire list instead of draining it, since its children
+went with it and a destroy call there is a call against freed memory that aborts through the loader.
+
+**`GpuDeviceCounters` reports the drain half as a measurement and everything else as a true zero.**
+`DrainCount` and `DrainMs` are counted. `FramesBegun` is 0 because no frame has been opened (`Present` is row
+17), and the three ring-derived fields are 0 because no ring exists to stall or defer against (row 8). Each is
+literally true about this device rather than a placeholder, which is the bar the struct's own "absent is not
+zero" rule sets for reporting `HasValue` at all. Row 18 (#528) is where every field becomes a reading taken from
+the subsystem that owns it. The `VulkanWaitTotals` accumulator is a deliberate duplicate of the Direct3D 11
+one under V-P4: the rule of three is not satisfied by two, and this phase extracts nothing into a shared home.
+
+**Everything above is tested device-free**, over a fake timeline semaphore behind the three-member
+`IVulkanTimelineSemaphore` seam, so the value allocation (including its behaviour under eight concurrent
+threads), the fence lifecycle, the dead-device answers, the drain's counting rule and the retire list's release
+rule all run on a machine with no Vulkan loader. What no fake can prove is a value signalled because real GPU
+work finished, and that boundary is named in the test docs: row 7 owns the submit path and is where a counter
+first advances because a queue drained.
+
 ### A wall contact reads its face over the bank, not over a 0.4 m facet of it (#501)
 
 Walking along a bank on Ruinborne stopped the character dead in localised sticky PLACES, and the fix for

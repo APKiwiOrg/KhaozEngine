@@ -333,7 +333,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Empty(fixture.CommandApi.Submissions);
             Assert.False(fixture.Setup.HasPendingWork);
 
-            fixture.Setup.Prepare(new VulkanImageSetup(1, false, 1, 1, false, false,
+            fixture.Setup.Prepare(new VulkanImageSetup(1, false, GpuPixelFormat.R8G8B8A8UNorm, 1, 1, false, false,
                 VulkanRestingLayout.ShaderReadOnlyOptimal));
             Assert.False(fixture.Setup.HasPendingWork);
         }

@@ -207,11 +207,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 VulkanStagingLayout.TotalBytes(StagingShape),
                 VulkanBufferBinding.TransferSrc | VulkanBufferBinding.TransferDst);
 
+            // OUTSIDE THE TRY, for the reason the image path's is: a catch that cannot see the allocation cannot
+            // free it.
+            VulkanMemoryAllocation allocation = default;
+
             try
             {
                 VulkanResourceRequirements requirements = owner.Api.BufferRequirements(StagingBuffer);
 
-                VulkanMemoryAllocation allocation = owner.Memory.Allocate(new VulkanMemoryRequest(
+                allocation = owner.Memory.Allocate(new VulkanMemoryRequest(
                     requirements.Size,
                     requirements.Alignment,
                     requirements.MemoryTypeBits,
@@ -230,6 +234,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             catch
             {
                 owner.Api.DestroyBuffer(StagingBuffer);
+                if (allocation.IsValid) owner.Memory.Free(allocation);
                 StagingBuffer = 0;
                 throw;
             }
@@ -244,11 +249,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 Width, Height, MipLevels, ArrayLayers, Format, Plan.DepthStencil, Plan.Usage, SampleCount,
                 Plan.Cubemap));
 
+            // OUTSIDE THE TRY, so the catch below can free it. See that catch for what a leak here would cost.
+            VulkanMemoryAllocation allocation = default;
+
             try
             {
                 VulkanResourceRequirements requirements = owner.Api.ImageRequirements(Image);
 
-                VulkanMemoryAllocation allocation = owner.Memory.Allocate(new VulkanMemoryRequest(
+                allocation = owner.Memory.Allocate(new VulkanMemoryRequest(
                     requirements.Size,
                     requirements.Alignment,
                     requirements.MemoryTypeBits,
@@ -264,9 +272,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
                 CreateViews(owner);
 
-                // THE ONLY THING TEXTURE CREATION RECORDS, and it records rather than submits (V-M10).
+                // THE ONLY THING TEXTURE CREATION RECORDS, and it records rather than submits (V-M10). The FORMAT
+                // travels with it because the barrier and the clear name every aspect the format has, which on a
+                // combined depth-stencil format is both planes and not just depth.
                 setup.Prepare(new VulkanImageSetup(
-                    Image, Plan.DepthStencil, MipLevels, ActualArrayLayers,
+                    Image, Plan.DepthStencil, Format, MipLevels, ActualArrayLayers,
                     Plan.ClearColorAtCreation, Plan.ClearDepthAtCreation, Plan.Resting));
 
                 return allocation;
@@ -277,6 +287,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 if (AttachmentView != 0) owner.Api.DestroyImageView(AttachmentView);
                 if (StorageView != 0) owner.Api.DestroyImageView(StorageView);
                 owner.Api.DestroyImage(Image);
+
+                // THE ALLOCATION TOO, which is why it is declared outside the try. A catch that destroyed the
+                // image and left its suballocation behind would leak that memory for the process's life, and the
+                // block allocator would never hand it out again. Freed LAST, in the order this type's own
+                // terminal destroy uses, and the same hoist VulkanBuffer's and VulkanStagingSource's failure
+                // paths already take.
+                if (allocation.IsValid) owner.Memory.Free(allocation);
+
                 SampledView = AttachmentView = StorageView = 0;
                 Image = 0;
                 throw;

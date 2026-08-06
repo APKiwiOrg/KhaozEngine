@@ -102,13 +102,48 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         };
 
         /// <summary>
-        /// The aspect mask a view and a barrier name. DEPTH ALONE for a depth-stencil texture, reproduced from
+        /// The aspect mask a VIEW and a COPY REGION name. DEPTH ALONE for a depth-stencil texture, reproduced from
         /// <c>VkTextureView</c>, which does the same and does NOT add the stencil aspect: nothing in this engine
-        /// samples or clears a stencil plane, and a view carrying both aspects cannot be bound as a sampled image
-        /// at all.
+        /// samples a stencil plane, a view carrying both aspects cannot be bound as a sampled image at all, and a
+        /// <c>vkCmdCopyBufferToImage</c> region must name exactly one aspect bit.
+        /// <para>
+        /// A BARRIER AND A CREATION-TIME CLEAR TAKE THE OTHER ANSWER. See <see cref="ToBarrierAspect"/>: the two
+        /// rules genuinely differ on a combined depth-stencil format, and one helper answering both is what made
+        /// this backend emit a spec-invalid barrier and leave the stencil plane uncleared.
+        /// </para>
         /// </summary>
         internal static ImageAspectFlags ToAspect(bool depthStencil)
             => depthStencil ? ImageAspectFlags.DepthBit : ImageAspectFlags.ColorBit;
+
+        /// <summary>
+        /// Whether a pixel format carries a STENCIL plane as well as a depth one. Both depth formats the seam has
+        /// are combined, so this is true for every depth format except the single-channel float a depth-stencil
+        /// texture turns into <c>VK_FORMAT_D32_SFLOAT</c>.
+        /// </summary>
+        internal static bool IsStencilFormat(GpuPixelFormat format)
+            => format is GpuPixelFormat.D32FloatS8UInt or GpuPixelFormat.D24UNormS8UInt;
+
+        /// <summary>
+        /// The aspect mask a BARRIER and a CREATION-TIME CLEAR name: EVERY aspect the format has, which on a
+        /// combined format is depth AND stencil. Reproduced from the incumbent's <c>VkTexture</c>, whose barrier
+        /// helper adds the stencil bit for a format that has one and whose creation-time clear range does the same.
+        ///
+        /// <para><b>IT IS NOT A REFINEMENT OF THE VIEW ANSWER, IT IS A DIFFERENT RULE.</b> A layout transition
+        /// applies to the whole image, and without <c>separateDepthStencilLayouts</c> a barrier over a combined
+        /// format MUST name both planes: naming depth alone is
+        /// <c>VUID-VkImageMemoryBarrier2-image-03319</c> rather than a narrower transition. And the creation-time
+        /// clear inherits it for a reason V-M10 is entirely about: a clear range over depth alone leaves the
+        /// stencil plane in whatever <c>UNDEFINED</c> gave it, which is not stable between two runs of the same
+        /// golden. The preserved clear exists to remove exactly that.</para>
+        /// </summary>
+        internal static ImageAspectFlags ToBarrierAspect(bool depthStencil, GpuPixelFormat format)
+        {
+            if (!depthStencil) return ImageAspectFlags.ColorBit;
+
+            return IsStencilFormat(format)
+                ? ImageAspectFlags.DepthBit | ImageAspectFlags.StencilBit
+                : ImageAspectFlags.DepthBit;
+        }
 
         /// <summary>
         /// The sample-count bit for a requested count, reproduced from <c>VkFormats.VdToVkSampleCount</c> over the

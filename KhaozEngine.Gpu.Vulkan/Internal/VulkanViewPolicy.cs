@@ -230,16 +230,21 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // TransferSrc | TransferDst on EVERY image, then one bit per declared usage. Reproduced from
             // VkFormats.VdToVkTextureUsage, which opens with exactly those two and adds the same four.
             VulkanImageUsage image = VulkanImageUsage.TransferSrc | VulkanImageUsage.TransferDst;
-            if (sampled) image |= VulkanImageUsage.Sampled;
+
+            // SAMPLED FOR EITHER REASON, and the second one is not a nicety. A mip-generating texture earns the
+            // full-chain sampled view below, and vkCreateImageView REFUSES a view over an image whose usage bits
+            // name no view-compatible use at all (VUID-VkImageViewCreateInfo-image-04441): TransferSrc and
+            // TransferDst are not among them. Deriving the bit from `sampled` alone while deriving the VIEW from
+            // `sampled || mips` made GenerateMipmaps on its own an image whose one view cannot be created.
+            if (sampled || mips) image |= VulkanImageUsage.Sampled;
             if (depthStencil) image |= VulkanImageUsage.DepthStencilAttachment;
             if (renderTarget) image |= VulkanImageUsage.ColorAttachment;
             if (storage) image |= VulkanImageUsage.Storage;
 
-            // A MIP-GENERATING TEXTURE NEEDS NO EXTRA USAGE BIT HERE, unlike Direct3D 11, where GenerateMips is
-            // defined through a shader resource view and forces the render-target bind flag onto the resource.
-            // Mip generation on this backend is a BLIT CHAIN (row 15), which needs TransferSrc and TransferDst,
-            // and both are already on every image above. It still earns the full-chain SAMPLED VIEW below, because
-            // a generated chain that nothing can sample is a chain nobody asked for.
+            // IT STILL NEEDS NO ATTACHMENT BIT, which is where this backend and Direct3D 11 differ: there
+            // GenerateMips is defined through a shader resource view and forces the render-target bind flag onto
+            // the resource. Mip generation here is a BLIT CHAIN (row 15), which needs TransferSrc and TransferDst,
+            // and both are on every image above.
 
             return new VulkanTextureViewPlan(
                 Staging: false,

@@ -237,24 +237,43 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// A DEPTH TARGET TAKES THE DEPTH CLEAR AND THE DEPTH ASPECT, with the incumbent's own value of depth 0 and
-        /// stencil 0. The aspect is DEPTH ALONE, matching <c>VkTextureView</c>: nothing in this engine samples or
-        /// clears a stencil plane.
+        /// A DEPTH TARGET TAKES THE DEPTH CLEAR WITH THE INCUMBENT'S OWN VALUE of depth 0 and stencil 0, AND ITS
+        /// BARRIERS AND ITS CLEAR RANGE NAME BOTH PLANES. Both of the seam's depth formats are COMBINED and this
+        /// backend does not enable <c>separateDepthStencilLayouts</c>, so a barrier over depth alone is
+        /// <c>VUID-VkImageMemoryBarrier2-image-03319</c> rather than a narrower transition, and a clear over depth
+        /// alone leaves the stencil plane wherever <c>UNDEFINED</c> put it, which is not stable between two runs of
+        /// the same golden. Preserving the clear at all (V-M10) is exactly about that stability, so half a clear is
+        /// the shape of the defect it exists to prevent.
+        /// <para>
+        /// The VIEW is still depth alone, which is the rule that genuinely differs and is asserted in
+        /// <c>VulkanViewPolicyTests</c>.
+        /// </para>
         /// </summary>
-        [Fact]
-        public void ADepthTarget_TakesTheDepthClearAndTheDepthAspect()
+        [Theory]
+        [InlineData(GpuPixelFormat.D32FloatS8UInt)]
+        [InlineData(GpuPixelFormat.D24UNormS8UInt)]
+        public void ADepthTarget_TakesTheDepthClearAndBothPlanes(GpuPixelFormat format)
         {
+            const Silk.NET.Vulkan.ImageAspectFlags both =
+                Silk.NET.Vulkan.ImageAspectFlags.DepthBit | Silk.NET.Vulkan.ImageAspectFlags.StencilBit;
+
             var fixture = new VulkanResourceFixture();
 
             using IGpuTexture texture = fixture.Factory.CreateTexture(VulkanResourceFixture.Texture(
-                8, 8, GpuTextureUsage.DepthStencil, GpuPixelFormat.D32FloatS8UInt));
+                8, 8, GpuTextureUsage.DepthStencil, format));
 
             FakeClear clear = Assert.Single(fixture.SetupSink.Clears);
             Assert.True(clear.Depth);
             Assert.Equal(0f, clear.DepthValue);
+            Assert.Equal(both, clear.Aspect);
 
-            Assert.All(fixture.SetupSink.ImageBarriers,
-                b => Assert.Equal(Silk.NET.Vulkan.ImageAspectFlags.DepthBit, b.Aspect));
+            Assert.All(fixture.SetupSink.ImageBarriers, b => Assert.Equal(both, b.Aspect));
+
+            // The same texture's view carries the depth flag across the seam, and VulkanResourceApi turns that
+            // into the DEPTH-ALONE aspect on the far side. Which mask each rule produces is pinned in
+            // VulkanViewPolicyTests, because the fake seam takes the flag rather than the mask.
+            VulkanImageViewSpec view = Assert.Single(fixture.Views);
+            Assert.True(view.DepthStencil);
         }
 
         /// <summary>
@@ -346,13 +365,20 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// A FAILED CREATION LEAVES NOTHING BEHIND. Between the native create and the last assignment a constructor
-        /// holds objects nothing else knows about, so a throw in the middle would leak them for the process's life.
-        /// They are destroyed IMMEDIATELY rather than retired, because nothing was ever submitted against a
-        /// resource that failed to finish being built.
+        /// A FAILED CREATION LEAVES NOTHING BEHIND, INCLUDING ITS MEMORY. Between the native create and the last
+        /// assignment a constructor holds objects nothing else knows about, so a throw in the middle would leak
+        /// them for the process's life. They are destroyed IMMEDIATELY rather than retired, because nothing was
+        /// ever submitted against a resource that failed to finish being built.
+        /// <para>
+        /// THE SUBALLOCATION IS THE HALF A HANDLE COUNT CANNOT SEE. A view creation fails AFTER the image is bound
+        /// to memory, and an allocation the catch cannot reach is leaked into the pool's used space rather than
+        /// into the driver, so <c>vkFreeMemory</c> is never called either way and counting it proves nothing. What
+        /// proves it is the next allocation of the same size landing back at the freed OFFSET, which is the same
+        /// observation <see cref="ADeferredDestroy_FreesTheSuballocationAsWell"/> turns on.
+        /// </para>
         /// </summary>
         [Fact]
-        public void AFailedViewCreation_LeavesNoImageBehind()
+        public void AFailedViewCreation_LeavesNoImageAndNoMemoryBehind()
         {
             var fixture = new VulkanResourceFixture();
             fixture.ResourceApi.FailOn = "vkCreateImageView";
@@ -362,6 +388,15 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Empty(fixture.ResourceApi.Live);
             Assert.Equal(0, fixture.Retired.Count);
+
+            // One chunk was taken for the image that failed. The FailOn latch is spent, so this creation succeeds.
+            Assert.Equal(1, fixture.MemoryApi.AllocateCount);
+
+            using IGpuTexture next = fixture.Factory.CreateTexture(
+                VulkanResourceFixture.Texture(8, 8, GpuTextureUsage.Sampled));
+
+            Assert.Equal(1, fixture.MemoryApi.AllocateCount);
+            Assert.Equal(0UL, fixture.ResourceApi.Binds[^1].Offset);
         }
 
         /// <summary>

@@ -40,19 +40,40 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// A MIP-GENERATING TEXTURE EARNS THE SAMPLED VIEW WITHOUT ASKING TO BE SAMPLED, because a generated chain
-        /// nothing can sample is a chain nobody asked for, and because the blit chain that generates it needs the
-        /// transfer bits every image already carries. It earns NO extra usage bit, which is where this backend and
-        /// the Direct3D 11 one differ: there <c>GenerateMips</c> is defined through a shader resource view and
-        /// forces the render-target bind flag onto the resource.
+        /// nothing can sample is a chain nobody asked for, AND IT EARNS THE SAMPLED USAGE BIT WITH IT.
+        /// <c>vkCreateImageView</c> refuses a view over an image whose usage names no view-compatible use at all
+        /// (<c>VUID-VkImageViewCreateInfo-image-04441</c>), and the two transfer bits are not among them, so a
+        /// plan that created the view without the bit described an image whose one view cannot be made.
+        /// <para>
+        /// It earns no ATTACHMENT bit, which is where this backend and the Direct3D 11 one differ: there
+        /// <c>GenerateMips</c> is defined through a shader resource view and forces the render-target bind flag
+        /// onto the resource.
+        /// </para>
         /// </summary>
         [Fact]
-        public void AMipGeneratingTexture_EarnsTheSampledViewAndNoExtraUsageBit()
+        public void AMipGeneratingTexture_EarnsTheSampledViewAndTheSampledBit()
         {
             VulkanTextureViewPlan plan = VulkanViewPolicy.ForTexture(GpuTextureUsage.GenerateMipmaps);
 
             Assert.True(plan.SampledView);
             Assert.False(plan.AttachmentView);
-            Assert.Equal(VulkanImageUsage.TransferSrc | VulkanImageUsage.TransferDst, plan.Usage);
+            Assert.Equal(
+                VulkanImageUsage.TransferSrc | VulkanImageUsage.TransferDst | VulkanImageUsage.Sampled,
+                plan.Usage);
+
+            // THE INVARIANT BEHIND IT, over every usage shape: a plan that creates the sampled view always carries
+            // the bit that makes the view creatable.
+            foreach (GpuTextureUsage usage in new[]
+                     {
+                         GpuTextureUsage.GenerateMipmaps,
+                         GpuTextureUsage.Sampled,
+                         GpuTextureUsage.GenerateMipmaps | GpuTextureUsage.RenderTarget,
+                         GpuTextureUsage.GenerateMipmaps | GpuTextureUsage.Storage,
+                     })
+            {
+                VulkanTextureViewPlan each = VulkanViewPolicy.ForTexture(usage);
+                Assert.True(!each.SampledView || (each.Usage & VulkanImageUsage.Sampled) != 0);
+            }
         }
 
         /// <summary>
@@ -256,15 +277,45 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// THE ASPECT IS DEPTH ALONE FOR A DEPTH-STENCIL TEXTURE, reproduced from <c>VkTextureView</c>, which does
-        /// the same and does NOT add the stencil aspect: nothing in this engine samples or clears a stencil plane,
-        /// and a view carrying both aspects cannot be bound as a sampled image at all.
+        /// THE VIEW ASPECT IS DEPTH ALONE FOR A DEPTH-STENCIL TEXTURE, reproduced from <c>VkTextureView</c>, which
+        /// does the same and does NOT add the stencil aspect: nothing in this engine samples a stencil plane, a
+        /// view carrying both aspects cannot be bound as a sampled image at all, and a copy region must name
+        /// exactly one aspect bit anyway.
         /// </summary>
         [Fact]
-        public void TheAspect_IsDepthAloneForADepthTexture()
+        public void TheViewAspect_IsDepthAloneForADepthTexture()
         {
             Assert.Equal(ImageAspectFlags.DepthBit, VulkanFormats.ToAspect(depthStencil: true));
             Assert.Equal(ImageAspectFlags.ColorBit, VulkanFormats.ToAspect(depthStencil: false));
+        }
+
+        /// <summary>
+        /// THE BARRIER AND CLEAR ASPECT IS THE OTHER ANSWER, AND IT IS NOT THE SAME RULE. A layout transition
+        /// applies to the whole image, and without <c>separateDepthStencilLayouts</c> a barrier over a COMBINED
+        /// format must name both planes or it is
+        /// <c>VUID-VkImageMemoryBarrier2-image-03319</c>. The creation-time clear inherits the same range, which is
+        /// what keeps the stencil plane out of the undefined contents V-M10's preserved clear exists to remove:
+        /// both of the seam's depth formats are combined, so a depth-only clear left half of every depth target
+        /// varying run to run.
+        /// </summary>
+        [Fact]
+        public void TheBarrierAspect_AddsTheStencilPlaneOnACombinedFormat()
+        {
+            const ImageAspectFlags both = ImageAspectFlags.DepthBit | ImageAspectFlags.StencilBit;
+
+            Assert.Equal(both, VulkanFormats.ToBarrierAspect(true, GpuPixelFormat.D32FloatS8UInt));
+            Assert.Equal(both, VulkanFormats.ToBarrierAspect(true, GpuPixelFormat.D24UNormS8UInt));
+            Assert.True(VulkanFormats.IsStencilFormat(GpuPixelFormat.D32FloatS8UInt));
+            Assert.True(VulkanFormats.IsStencilFormat(GpuPixelFormat.D24UNormS8UInt));
+
+            // The one depth reading that has NO stencil plane: a single-channel float on a depth-stencil texture
+            // becomes VK_FORMAT_D32_SFLOAT, where naming the stencil aspect would be the invalid answer.
+            Assert.Equal(ImageAspectFlags.DepthBit, VulkanFormats.ToBarrierAspect(true, GpuPixelFormat.R32Float));
+            Assert.False(VulkanFormats.IsStencilFormat(GpuPixelFormat.R32Float));
+
+            // And a colour texture is colour whatever its format is.
+            Assert.Equal(ImageAspectFlags.ColorBit,
+                VulkanFormats.ToBarrierAspect(false, GpuPixelFormat.R8G8B8A8UNorm));
         }
 
         /// <summary>

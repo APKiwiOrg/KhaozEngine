@@ -46,15 +46,19 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <c>VkTexture.ClearIfRenderTarget</c>'s <c>new VkClearDepthStencilValue(0, 0)</c>.</summary>
         internal static ClearDepthStencilValue ZeroDepth => new(0f, 0);
 
-        /// <summary>The subresource range covering a whole image: every mip level and every array layer, with the
-        /// aspect the usage bits decide.</summary>
-        internal static ImageSubresourceRange WholeImage(bool depthStencil, uint mipLevels, uint arrayLayers)
-            => new(VulkanFormats.ToAspect(depthStencil), 0, mipLevels, 0, arrayLayers);
+        /// <summary>The subresource range covering a whole image: every mip level and every array layer, with
+        /// EVERY aspect the format has (<see cref="VulkanFormats.ToBarrierAspect"/>), which on a combined
+        /// depth-stencil format is both planes.</summary>
+        internal static ImageSubresourceRange WholeImage(bool depthStencil, GpuPixelFormat format, uint mipLevels,
+            uint arrayLayers)
+            => new(VulkanFormats.ToBarrierAspect(depthStencil, format), 0, mipLevels, 0, arrayLayers);
 
         /// <summary>The subresource range covering ONE mip level of one array layer, which is what an upload
-        /// touches.</summary>
-        internal static ImageSubresourceRange OneSubresource(bool depthStencil, uint mipLevel, uint arrayLayer)
-            => new(VulkanFormats.ToAspect(depthStencil), mipLevel, 1, arrayLayer, 1);
+        /// touches. Both aspects again: the barrier around a copy transitions the whole image's layout even when
+        /// the copy itself writes one plane.</summary>
+        internal static ImageSubresourceRange OneSubresource(bool depthStencil, GpuPixelFormat format,
+            uint mipLevel, uint arrayLayer)
+            => new(VulkanFormats.ToBarrierAspect(depthStencil, format), mipLevel, 1, arrayLayer, 1);
 
         /// <summary>
         /// A newly created image's FIRST-EVER transition, out of <c>UNDEFINED</c> and into

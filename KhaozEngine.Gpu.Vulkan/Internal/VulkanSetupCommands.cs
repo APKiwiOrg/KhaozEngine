@@ -7,14 +7,18 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <summary>What a newly created image needs recorded before anything may use it.</summary>
     /// <param name="Image">The <c>VkImage</c>.</param>
     /// <param name="DepthStencil">Whether the aspect is depth rather than colour.</param>
+    /// <param name="Format">The image's pixel format, which decides whether the barrier and the clear name a
+    /// stencil plane as well as a depth one (<see cref="VulkanFormats.ToBarrierAspect"/>). Carried rather than
+    /// derived from <paramref name="DepthStencil"/> because the two seam depth formats are COMBINED and the third
+    /// depth reading (a single-channel float) is not.</param>
     /// <param name="MipLevels">Mip level count, so the transitions cover the whole image.</param>
     /// <param name="ArrayLayers">The REAL array layer count, already expanded for a cubemap.</param>
     /// <param name="ClearColor">Clear to transparent black first (a colour render target).</param>
     /// <param name="ClearDepth">Clear to depth 0, stencil 0 first (a depth target).</param>
     /// <param name="Resting">The canonical resting layout this image is left in (V-F7).</param>
     internal readonly record struct VulkanImageSetup(
-        ulong Image, bool DepthStencil, uint MipLevels, uint ArrayLayers, bool ClearColor, bool ClearDepth,
-        VulkanRestingLayout Resting);
+        ulong Image, bool DepthStencil, GpuPixelFormat Format, uint MipLevels, uint ArrayLayers, bool ClearColor,
+        bool ClearDepth, VulkanRestingLayout Resting);
 
     /// <summary>Where a device-level <c>UpdateTexture</c> is writing.</summary>
     /// <param name="Image">The destination <c>VkImage</c>.</param>
@@ -79,8 +83,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// </summary>
     internal sealed class VulkanSetupCommands : IDisposable
     {
-        // THE THIRD SHORT LOCK (V-W8). Held for an append or a flush, never across a creation call and never
-        // across anything that could block on a caller.
+        // THE THIRD SHORT LOCK (V-W8). Held for an append or a flush, and never across a creation call.
+        //
+        // IT IS HELD ACROSS EXACTLY ONE BLOCKING WAIT, and naming it is the honest version of the claim: opening a
+        // batch calls VulkanCommandPoolRing.Advance, which waits for the slot it lands on to finish its own last
+        // submission before resetting that pool. What it waits for is PRIOR SETUP WORK on this same buffer, never
+        // a caller's frame and never a resource this thread is creating, and at the device's frame depth a batch
+        // is that far behind only when setup batches are being flushed as fast as frames, which is the case
+        // V-M10's whole design removes. Every other path under this lock is a memcpy and a handful of records.
         readonly object _gate;
 
         readonly VulkanCommandPoolRing _ring;
@@ -164,7 +174,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
                 ulong buffer = _ring.BufferAt(_slot);
                 ImageSubresourceRange range = VulkanSetupBarrier.WholeImage(
-                    setup.DepthStencil, setup.MipLevels, setup.ArrayLayers);
+                    setup.DepthStencil, setup.Format, setup.MipLevels, setup.ArrayLayers);
 
                 if (!setup.ClearColor && !setup.ClearDepth)
                 {
@@ -238,7 +248,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 lease.Write(data[..(int)required]);
 
                 ImageSubresourceRange range = VulkanSetupBarrier.OneSubresource(
-                    upload.DepthStencil, upload.MipLevel, upload.ArrayLayer);
+                    upload.DepthStencil, upload.Format, upload.MipLevel, upload.ArrayLayer);
                 ImageLayout resting = VulkanFormats.ToImageLayout(upload.Resting);
 
                 Barrier(buffer, VulkanSetupBarrier.ToTransferDestination(upload.Image, range, resting));
@@ -409,6 +419,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         // The engine-shaped copy region to the real one. Kept here rather than in VulkanStagingLayout so that type
         // stays free of Silk.NET entirely and its table test can assert plain numbers.
+        //
+        // THE VIEW ASPECT, DELIBERATELY, AND NOT THE BARRIER ONE. A vkCmdCopyBufferToImage region names EXACTLY
+        // ONE aspect bit (VUID-VkBufferImageCopy-aspectMask-00212), so the depth-and-stencil mask the surrounding
+        // barriers take would be invalid here. The two rules differ, which is why there are two helpers.
         static BufferImageCopy ToVulkan(in VulkanBufferImageCopy region, bool depthStencil)
             => new(
                 bufferOffset: region.BufferOffset,

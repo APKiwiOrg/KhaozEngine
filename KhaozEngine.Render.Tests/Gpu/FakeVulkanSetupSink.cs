@@ -18,10 +18,11 @@ namespace KhaozEngine.Tests.Gpu
         ulong CommandBuffer, ulong Buffer, ulong Offset, ulong Size,
         PipelineStageFlags2 DestinationStage, AccessFlags2 DestinationAccess);
 
-    /// <summary>One recorded clear, colour or depth.</summary>
+    /// <summary>One recorded clear, colour or depth. <c>Aspect</c> is the CLEAR RANGE's mask, which on a combined
+    /// depth-stencil format covers both planes and is why the stencil plane is not left undefined.</summary>
     internal readonly record struct FakeClear(
         ulong CommandBuffer, ulong Image, bool Depth, float Red, float DepthValue, uint LevelCount,
-        uint LayerCount);
+        uint LayerCount, ImageAspectFlags Aspect);
 
     /// <summary>One recorded buffer-to-image copy.</summary>
     internal readonly record struct FakeImageCopy(
@@ -106,7 +107,7 @@ namespace KhaozEngine.Tests.Gpu
             in ImageSubresourceRange range)
         {
             Clears.Add(new FakeClear(commandBuffer, image, Depth: false, color.Float32_0, 0f, range.LevelCount,
-                range.LayerCount));
+                range.LayerCount, range.AspectMask));
             _log.Add("vkCmdClearColorImage");
         }
 
@@ -115,7 +116,7 @@ namespace KhaozEngine.Tests.Gpu
             in ClearDepthStencilValue depthStencil, in ImageSubresourceRange range)
         {
             Clears.Add(new FakeClear(commandBuffer, image, Depth: true, 0f, depthStencil.Depth, range.LevelCount,
-                range.LayerCount));
+                range.LayerCount, range.AspectMask));
             _log.Add("vkCmdClearDepthStencilImage");
         }
 

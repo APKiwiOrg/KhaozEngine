@@ -57,6 +57,18 @@ not even ask" and "no" are the same answer to a settings screen and to the fallb
 macOS developer machines this is written on there is no Vulkan loader at all, so the first read answers and the
 rest is never reached.
 
+**Three machine states, not two, and creation asks about them before it creates anything.** A machine with no
+loader is one state and a machine with a loader and a driver is another, and between them sits a machine with a
+**loader and no ICD**: the ordinary state of a bare CI image and of most servers. There the loader resolves and
+answers `vkEnumerateInstanceVersion` out of its own version, and the first call that can know there is nothing
+behind it is `vkCreateInstance`, which fails `VK_ERROR_INCOMPATIBLE_DRIVER`. The probe reports that as the
+machine fact it is, with the same sentence it gives an instance that creates and then enumerates zero devices,
+and it names the fix (`mesa-vulkan-drivers` on Debian and Ubuntu, which brings lavapipe). `CreateHeadless`
+consults the probe FIRST, so all three states behave: no loader and no driver both refuse with a
+`NotSupportedException` about the MACHINE, and a loader with a driver gets a real device. A creation-time
+`InvalidOperationException` is therefore what it says it is, a failure on a machine whose probe really did
+answer yes.
+
 Keeping those two questions apart is decision V-I4, and here it bites harder than it did on Direct3D 11. On
 Linux the OS probe already returns `GpuBackendKind.Vulkan`, so a native request that fails falls back to the
 incumbent Vulkan backend and reports `FallbackAfterFailure`, which in a log line looks a great deal like a

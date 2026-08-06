@@ -1629,6 +1629,42 @@ coverage anywhere in the net yet and is deferred to the `vulkan-native` Linux le
 only machine in the fleet with a loader: the integration row asserts the machine-level refusal here and the real
 create-and-dispose round trip there, and it is deliberately not skippable so it cannot go quiet.
 
+#### A loader with no driver behind it is a machine fact, not a creation surprise (#514, run 31062315211)
+
+`CreateHeadless` on the native Vulkan backend asks the support probe BEFORE it creates anything, so all three
+machine states behave. The row above landed with two of them in mind and the third turned main red on the plain
+`ubuntu-latest` CI runner.
+
+**The three states.** A machine with NO LOADER refuses at the first read. A machine with a LOADER AND A DRIVER
+gets a real device. Between them sits a machine with a LOADER AND NO ICD, which is the ordinary state of a bare
+CI image and of most servers, and it answers every question up to `vkCreateInstance`: the loader resolves, and
+`vkEnumerateInstanceVersion` reports the LOADER's version because that is whose version it is. Only
+`vkCreateInstance` can know there is nothing behind it, and it says so with `VK_ERROR_INCOMPATIBLE_DRIVER`.
+
+**What actually diverged.** The probe was right the whole time and was never consulted. It creates its own
+throwaway instance, so it had already answered no with a reason, while `CreateHeadless` went straight to the
+device. The only machine check on the creation path was whether the loader RESOLVED, which is exactly one of the
+three states, so a machine that cannot run this backend at all raised an `InvalidOperationException` reading
+"a creation-time failure on a machine whose support probe answered yes" about a probe nothing had asked. The
+report was true of the code and false about the machine, which is the worst shape a diagnostic can take.
+
+**The refusal now names the driver, and carries the fix.** A machine with a loader and no ICD refuses with a
+`NotSupportedException` about the MACHINE, quoting the probe's own sentence: a loader is installed and a driver
+is not, this is expected on a bare CI runner, and `mesa-vulkan-drivers` (which brings lavapipe) is what makes the
+backend real there. Telling a reader whose loader is present to install a loader is a wrong turn, so the two
+sentences are named constants and a plain test asserts neither contains the other. The same sentence covers the
+other spelling of the same machine, an instance that creates and then enumerates zero physical devices, because
+it is the same machine. Decision V-I4's split is unchanged and now enforced rather than implied: a missing
+REGISTRATION throws, machine incapability refuses through the probe, and the creation-time
+`InvalidOperationException` keeps its meaning because the probe really was asked.
+
+The probe costs one throwaway instance per PROVIDER rather than per device, memoized on the provider instance,
+whose lifetime is its registration's and is therefore the lifetime `GpuBackendSelector` already drops its own
+cached answer on. `IsSupported` deliberately does not read that memo, since the selector caches above it and the
+probe's stability across two real calls is a property a test asserts through that method. The integration row is
+a three-way branch on the probe's own sentence now rather than on the operating system, so whichever state a
+runner is in, it asserts that state's contract instead of skipping.
+
 ### A wall contact reads its face over the bank, not over a 0.4 m facet of it (#501)
 
 Walking along a bank on Ruinborne stopped the character dead in localised sticky PLACES, and the fix for

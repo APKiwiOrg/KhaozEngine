@@ -14,10 +14,12 @@ namespace KhaozEngine.Tests.Gpu
     /// <para>
     /// Every test here runs on macOS, Linux and Windows alike, and unlike the Direct3D 11 package that needs no
     /// arranging at all (decision V-P1: no OS-suffixed TFM, no platform guard, no <c>NoInlining</c> bodies). The
-    /// probe rows below therefore run the REAL probe on whatever machine the suite is on, which on a developer
-    /// Mac with no Vulkan loader means the "no loader" answer and on the Linux leg means lavapipe. Both are a
-    /// pass: what is asserted is that the probe answers rather than what it answers, because the answer is a fact
-    /// about the machine and the contract is that asking never throws.
+    /// probe rows below therefore run the REAL probe on whatever machine the suite is on, and there are THREE
+    /// answers it can give rather than two: no loader at all (a developer Mac), a loader with no driver behind it
+    /// (a plain <c>ubuntu-latest</c> runner, the state that turned main red in CI run 31062315211), and a loader
+    /// with lavapipe behind it (the Linux GPU leg). All three are a pass: what is asserted is that the probe
+    /// answers, and that CREATION agrees with whatever it answered, because the answer is a fact about the
+    /// machine and the contract is that asking never throws.
     /// </para>
     /// </summary>
     public sealed class VulkanBackendPackageTests
@@ -94,16 +96,25 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// HEADLESS CREATION IS REAL FROM ROW 4, and this row asserts whichever half of that this machine can
-        /// show. On a machine the probe accepts, a device is created, reports the native backend, answers its
-        /// capability read and disposes cleanly, and the shared instance goes with it. On a machine the probe
-        /// refuses, which is every developer Mac in this fleet, creation fails with a message about the MACHINE
+        /// HEADLESS CREATION IS REAL FROM ROW 4, and this row asserts whichever of the THREE machine states the
+        /// machine it is running on is in. A machine with a loader and an ICD creates a device, which reports the
+        /// native backend, answers its capability read and disposes cleanly with the shared instance. A machine
+        /// with NO LOADER, which is every developer Mac in this fleet, refuses with a message about the MACHINE
         /// rather than about the package: no loader is not an unfinished row, and the old "the device lands in
-        /// row 4" refusal must be gone from this path entirely.
+        /// row 4" refusal must be gone from this path entirely. A machine with a LOADER AND NO DRIVER refuses the
+        /// same way and names the driver, which is the state a bare CI image is in.
         /// <para>
-        /// THE REAL PATH IS CI-DEFERRED to the <c>vulkan-native</c> Linux leg row 19 brings up
+        /// THE THIRD STATE IS WHY THIS ROW IS WRITTEN THIS WAY. It was written as a two-way branch, and the plain
+        /// <c>ubuntu-latest</c> runner turned out to be in neither half: it has a loader, so the "no loader"
+        /// reasoning did not hold, and no ICD, so creation failed with the wrong exception type and a message
+        /// claiming a probe had answered yes. CI run 31062315211 is the record. The branch is on the PROBE's own
+        /// sentence rather than on the operating system, because the machine is what decides and the runner
+        /// images move.
+        /// </para>
+        /// <para>
+        /// THE REAL-DEVICE PATH IS CI-DEFERRED to the <c>vulkan-native</c> Linux leg row 19 brings up
         /// (https://github.com/APKiwiOrg/KhaozEngine/issues/529), which is the only machine in the net with a
-        /// loader. Everything about the device that CAN be asserted without one is asserted device-free in
+        /// driver. Everything about the device that CAN be asserted without one is asserted device-free in
         /// <see cref="VulkanInstanceLifecycleTests"/>, <see cref="VulkanFeatureChainTests"/>,
         /// <see cref="VulkanDeviceSelectionTests"/> and <see cref="VulkanDeviceLossLatchTests"/>. This row is the
         /// one that will start meaning something the day the leg exists, and it is deliberately not skippable so
@@ -114,21 +125,48 @@ namespace KhaozEngine.Tests.Gpu
         public void HeadlessCreation_BuildsARealDevice_OrFailsAboutTheMachine()
         {
             var provider = new VulkanBackendProvider();
+            string? missing = TryProbe();
 
-            if (TryProbe() is not null)
+            if (missing is not null)
             {
+                // NOT an InvalidOperationException, which is what a creation that skipped the probe raises. That
+                // type is reserved for the genuinely surprising case, a machine that answered yes and then failed
+                // anyway, and its message says so in as many words.
                 NotSupportedException ex = Assert.Throws<NotSupportedException>(() => provider.CreateHeadless());
 
                 Assert.Contains("this machine", ex.Message, StringComparison.Ordinal);
                 // The row-4 refusal is retired from this path. A message naming 514 here would mean the device
                 // row did not actually wire itself in.
                 Assert.DoesNotContain("514", ex.Message, StringComparison.Ordinal);
+
+                if (missing.Contains(VulkanSupportProbe.NoDriverInstalled, StringComparison.Ordinal))
+                {
+                    // MACHINE STATE TWO: a loader with nothing behind it, the ordinary state of a bare CI runner
+                    // and of most servers. The refusal has to name the DRIVER rather than the loader, because
+                    // the loader is present and telling this reader to install one sends them after a library
+                    // they already have. It also has to carry the fix, since "expected on CI" and "broken" are
+                    // the same log line otherwise.
+                    Assert.Contains(VulkanSupportProbe.NoDriverInstalled, ex.Message, StringComparison.Ordinal);
+                    Assert.Contains("mesa-vulkan-drivers", ex.Message, StringComparison.Ordinal);
+                }
+                else if (missing.Contains(VulkanSupportProbe.NoLoaderResolved, StringComparison.Ordinal))
+                {
+                    // MACHINE STATE ONE: no libvulkan at all, which is every macOS machine this is written on.
+                    Assert.Contains(VulkanSupportProbe.NoLoaderResolved, ex.Message, StringComparison.Ordinal);
+                }
+
+                // Any OTHER refusal (a pre-1.3 loader, a device under the descriptor limit, a probe that threw)
+                // is still a machine refusal and is still pinned by the two assertions above the branch. What is
+                // not asserted is its wording, because those states have no machine in the net to read it on.
+
                 // And nothing was claimed on the way out, which is what stops a failed creation holding the
-                // process instance alive for the rest of the run.
+                // process instance alive for the rest of the run. Stronger than it was: the refusal now happens
+                // before the lease is taken at all rather than being unwound after it.
                 Assert.Equal(0, VulkanInstance.LeaseCount);
                 return;
             }
 
+            // MACHINE STATE THREE: a loader and a driver, so a real device.
             GpuProviderDevice created = provider.CreateHeadless();
             try
             {
@@ -164,6 +202,34 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
+        /// The two refusing machine states have to be TELLABLE APART, and no machine in this fleet can show both,
+        /// so the discrimination itself is asserted here rather than being left to whichever runner happens to
+        /// run the row above. If either sentence ever contained the other, that row's branch would silently take
+        /// the wrong arm and assert the wrong contract while staying green, which is a failure mode that a
+        /// machine-dependent branch has and a plain one does not.
+        /// <para>
+        /// The driver sentence also has to carry its FIX. "Expected on a bare CI runner" and "this backend is
+        /// broken" are the same log line to a reader who is not told which, and that ambiguity is what cost CI run
+        /// 31062315211 its diagnosis time.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void TheTwoRefusingMachineStates_ReadAsThemselves()
+        {
+            Assert.DoesNotContain(VulkanSupportProbe.NoLoaderResolved, VulkanSupportProbe.NoDriverInstalled,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(VulkanSupportProbe.NoDriverInstalled, VulkanSupportProbe.NoLoaderResolved,
+                StringComparison.Ordinal);
+
+            // The loader sentence is about a missing LOADER and the driver sentence is about a missing DRIVER, on
+            // a machine whose loader is present. Sending a reader after a library they already have is the one
+            // wrong turn a merged message would cause.
+            Assert.Contains("loader", VulkanSupportProbe.NoLoaderResolved, StringComparison.Ordinal);
+            Assert.Contains("driver (ICD)", VulkanSupportProbe.NoDriverInstalled, StringComparison.Ordinal);
+            Assert.Contains("mesa-vulkan-drivers", VulkanSupportProbe.NoDriverInstalled, StringComparison.Ordinal);
+        }
+
+        /// <summary>
         /// The members later rows own throw a message naming their row rather than returning something that fails
         /// later somewhere less informative, which is the discipline <c>D3D11ResourceFactory</c> established
         /// between its own row and the ones that filled it in. Asserted through the seam type so the list cannot
@@ -172,7 +238,9 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void TheUnbuiltMembers_NameTheirOwnRow()
         {
-            if (TryProbe() is not null) return;   // no loader here, and the row above already asserted that
+            // No device to ask on this machine, whichever of the two refusing states it is in, and the row above
+            // is the one that asserts the refusal itself.
+            if (TryProbe() is not null) return;
 
             GpuProviderDevice created = new VulkanBackendProvider().CreateHeadless();
             try

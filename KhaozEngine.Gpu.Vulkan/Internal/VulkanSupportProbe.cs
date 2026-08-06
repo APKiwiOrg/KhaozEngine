@@ -18,6 +18,16 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// at all, the first read answers and the rest is never reached.
     /// </para>
     /// <para>
+    /// THREE MACHINE STATES, not two, and the third is the one this file was written blind to. A machine with NO
+    /// LOADER answers at the very first read (<see cref="NoLoaderResolved"/>). A machine with a LOADER AND AN ICD
+    /// answers null and gets a real device. Between them sits a machine with a LOADER AND NO DRIVER
+    /// (<see cref="NoDriverInstalled"/>), which is the ordinary state of a bare CI image and of most servers: the
+    /// loader resolves, <c>vkEnumerateInstanceVersion</c> answers with the LOADER's version, and the first call
+    /// that knows there is nothing behind it is <c>vkCreateInstance</c>. Both of that state's two spellings, the
+    /// <c>VK_ERROR_INCOMPATIBLE_DRIVER</c> refusal and an instance that creates and then enumerates zero devices,
+    /// report the SAME sentence, because they are the same machine.
+    /// </para>
+    /// <para>
     /// THE INSTANCE IS DESTROYED BEFORE THIS RETURNS, on every path, which is why the decision is taken over a
     /// snapshot (<see cref="VulkanDeviceFacts"/>) rather than over live handles. The probe deliberately does NOT
     /// use the refcounted process instance row 4 created
@@ -27,14 +37,40 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// handoff put it: one walk, one requirement list, so the probe and device creation cannot disagree.
     /// </para>
     /// <para>
-    /// NOTHING IS CACHED HERE, mirroring <c>D3D11FeatureProbe</c>. The per-backend answer is cached for the
-    /// process by <c>GpuBackendSelector.IsBackendSupported</c>, which is also the only caller and the only place
-    /// that knows when a registration replaces the answerer. A second cache in the package would be a second
-    /// lifetime to get wrong and would survive a re-registration the selector's own cache correctly drops.
+    /// NOTHING IS CACHED HERE, mirroring <c>D3D11FeatureProbe</c>, and every caller that wants an answer more
+    /// than once memoizes it at its own lifetime. <c>GpuBackendSelector.IsBackendSupported</c> caches the
+    /// per-backend boolean for the process and drops it when a registration replaces the answerer, and
+    /// <see cref="VulkanBackendProvider"/> memoizes the sentence for the lifetime of ONE provider instance, which
+    /// is the same lifetime. A cache in here would be a third one, owned by a static that no re-registration can
+    /// reach.
     /// </para>
     /// </summary>
     internal static unsafe class VulkanSupportProbe
     {
+        /// <summary>
+        /// The sentence for a machine with NO Vulkan loader on it at all. A named constant rather than a literal
+        /// because two readers need to recognise the state and not merely read it: the provider's creation
+        /// refusal quotes it, and the integration test branches on it to assert the right half of the contract on
+        /// whatever machine it is running on.
+        /// </summary>
+        internal const string NoLoaderResolved =
+            "no Vulkan loader could be resolved on this machine, so there is no libvulkan on the search path at "
+            + "all, which is the expected state on macOS, where this package loads harmlessly and is never "
+            + "selected";
+
+        /// <summary>
+        /// The sentence for a machine with a Vulkan LOADER and no DRIVER behind it, which is one machine state
+        /// with two spellings: <c>vkCreateInstance</c> answering <c>VK_ERROR_INCOMPATIBLE_DRIVER</c>, and an
+        /// instance that creates and then enumerates zero physical devices. Named once so the two paths cannot
+        /// drift into describing the same machine two different ways, and so the reader is told the fix rather
+        /// than only the fault.
+        /// </summary>
+        internal const string NoDriverInstalled =
+            "a Vulkan loader is installed on this machine but no Vulkan driver (ICD) is, so there is nothing "
+            + "behind the loader for an instance to run on. On a bare CI runner or a headless server that is the "
+            + "expected state, and installing mesa-vulkan-drivers, which brings the lavapipe software "
+            + "rasterizer, is what makes the native Vulkan backend real there";
+
         /// <summary>
         /// Null when this machine can run the native Vulkan backend, or a sentence saying what is missing, phrased
         /// for a log line a player or a tester will read. Never returns an empty string, so null is the only "yes".
@@ -55,10 +91,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             }
             catch (Exception ex)
             {
-                // No loader at all: no libvulkan on the search path, or nothing behind it. The common case on
-                // macOS, where this package ships, is never selected, and phase 4 brings a real Metal backend.
-                return "no Vulkan loader could be resolved on this machine (" + ex.GetType().Name + ": "
-                    + ex.Message + ")";
+                // No loader at all, which is machine state one. The common case on macOS, where this package
+                // ships, is never selected, and phase 4 brings a real Metal backend.
+                return NoLoaderResolved + " (" + ex.GetType().Name + ": " + ex.Message + ")";
             }
 
             uint loaderVersion = 0;
@@ -106,11 +141,21 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 sType: StructureType.InstanceCreateInfo, pApplicationInfo: &applicationInfo);
 
             Result created = vk.CreateInstance(in createInfo, null, out Instance instance);
+            if (created == Result.ErrorIncompatibleDriver)
+            {
+                // MACHINE STATE TWO, and the state that turned main red on the plain ubuntu-latest runner (CI run
+                // 31062315211). Every read above this line answers on a loader with no ICD behind it, because a
+                // loader answers them out of its own version rather than a driver's, so this is the first call
+                // that can know. Reported as the machine fact it is rather than by its result code, and folded
+                // into the same sentence the zero-device path below uses, because the two are one machine.
+                return NoDriverInstalled + " (vkCreateInstance returned " + VulkanResultCodes.Token(created) + ")";
+            }
+
             if (created != Result.Success)
             {
                 return "a Vulkan instance could not be created at apiVersion "
                     + VulkanDeviceRequirements.FormatApiVersion(apiVersion) + " (vkCreateInstance returned "
-                    + created + ")";
+                    + VulkanResultCodes.Token(created) + ")";
             }
 
             try
@@ -140,8 +185,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (deviceCount == 0)
             {
-                return "the Vulkan loader resolved but found no physical device, which is a loader with no "
-                    + "installed ICD behind it";
+                // Machine state two's OTHER spelling. Some loaders refuse at vkCreateInstance and some create an
+                // instance with nothing under it, and a reader who has to tell those apart has been given a
+                // distinction that costs them time and buys them nothing.
+                return NoDriverInstalled + " (the instance created and vkEnumeratePhysicalDevices found none)";
             }
 
             var devices = new PhysicalDevice[deviceCount];

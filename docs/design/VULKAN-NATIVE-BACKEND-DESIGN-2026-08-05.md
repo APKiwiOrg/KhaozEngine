@@ -697,6 +697,21 @@ expensive anywhere later:
 It must never throw. A machine with no loader, no ICD or a pre-1.3 driver answers false and routes
 through `AfterFallback` as `FallbackAfterFailure`, exactly as today.
 
+**Corrected in flight (row 4, CI run 31062315211): CREATION consults this probe, and the machine has THREE states
+rather than two.** The prose above says "no loader, no ICD or a pre-1.3 driver" as though those were one case,
+and row 4's creation path treated them as one: it checked only whether the loader RESOLVED, renaming that single
+failure to a `NotSupportedException` about the machine, and let everything after it fall through the ordinary
+`VkResult` check. On a plain `ubuntu-latest` runner, which has `libvulkan` and no ICD, the loader resolves and
+answers `vkEnumerateInstanceVersion` out of its own version, so nothing knew anything was wrong until
+`vkCreateInstance` returned `VK_ERROR_INCOMPATIBLE_DRIVER` and the check raised an `InvalidOperationException`
+whose message asserted the probe had answered yes. It had never been asked. The fix is the ordering V-I4 already
+implied and nothing enforced: `CreateHeadless` refuses on the probe BEFORE creating, so a machine-level refusal is
+always a `NotSupportedException` naming what is missing (the loader, or the driver plus the package that installs
+one), a missing REGISTRATION still throws its own exception, and the creation-time `InvalidOperationException`
+narrows to the genuinely surprising case its message describes. The probe pays for one throwaway instance per
+provider instance rather than per device, memoized on the provider, whose lifetime is the registration's and is
+therefore the same lifetime `GpuBackendSelector` invalidates its own cached boolean on.
+
 ### 4.2 The `GpuBackendKind` append audit, second time
 
 The audit is a TEST now (`GpuBackendKindAppendAuditTests`), which is the phase-2 dividend and makes this a diff

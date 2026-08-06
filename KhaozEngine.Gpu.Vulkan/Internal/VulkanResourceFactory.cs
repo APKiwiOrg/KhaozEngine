@@ -19,12 +19,21 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// with two hundred textures is two hundred submissions before a frame is drawn. Here they are appended and
     /// flushed lazily. See <see cref="VulkanSetupCommands"/>.</para>
     ///
-    /// <para><b>NOT EVERY MEMBER IS BUILT YET, and each one that is not names the row that builds it.</b> This row
-    /// owns buffers, textures, samplers, command lists and fences. Resource layouts and resource sets are row 10's,
-    /// framebuffers are row 12's, shader sets are row 16's and pipelines are row 13's, and each refuses with its
-    /// own issue in the message rather than returning something that fails later somewhere less informative. That
-    /// is the same discipline <c>D3D11ResourceFactory</c> established between its own row and the ones that filled
-    /// it in, and this paragraph is a ledger: a stale one is worse than none.</para>
+    /// <para><b>NOT EVERY MEMBER IS BUILT YET, and each one that is not names the row that builds it.</b> Row 9
+    /// owns buffers, textures, samplers, command lists and fences, and row 10
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/520) added RESOURCE LAYOUTS and RESOURCE SETS: a
+    /// content-deduplicated <c>VkDescriptorSetLayout</c> and one <c>VkDescriptorSet</c> allocated and written
+    /// once. Framebuffers are row 12's, shader sets are row 16's and pipelines are row 13's, and each refuses with
+    /// its own issue in the message rather than returning something that fails later somewhere less informative.
+    /// That is the same discipline <c>D3D11ResourceFactory</c> established between its own row and the ones that
+    /// filled it in, and this paragraph is a ledger: a stale one is worse than none.</para>
+    ///
+    /// <para><b>AND THE DESCRIPTOR SUBSYSTEM IS HELD HERE RATHER THAN ON THE RESOURCE OWNER, WHICH IS DECISION
+    /// V-D2 (6.3).</b> The recording type's field graph legitimately reaches a <see cref="VulkanResourceOwner"/>
+    /// through the staging block lifetime edge, so a descriptor pool hung off that record would sit on the far
+    /// side of the one allowance the unreachability walk makes, and the architecture test would keep passing
+    /// while a draw could allocate a descriptor set. This factory is already on that test's forbidden list, so
+    /// <see cref="VulkanDescriptors"/> lives here and on the device and nowhere a recorder can see.</para>
     ///
     /// <para><b>CREATION IS FREE-THREADED, WITH TWO SHORT LOCKS UNDERNEATH IT (V-W8).</b> Vulkan has no
     /// <c>DriverConcurrentCreates</c> analogue to ask about, so there is no creation gate here at all. What is
@@ -37,6 +46,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         readonly VulkanResourceOwner _owner;
         readonly VulkanRingAllocator _rings;
         readonly VulkanSetupCommands _setup;
+        readonly VulkanDescriptors _descriptors;
         readonly Func<IGpuCommandList> _createCommandList;
         readonly Func<IGpuFence> _createFence;
         readonly ulong _minUniformBufferOffsetAlignment;
@@ -46,6 +56,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="owner">The device's resource seam, allocator, timeline and retire list.</param>
         /// <param name="rings">The device's ONE ring allocator, which a uniform buffer cuts a ring out of.</param>
         /// <param name="setup">The device's setup command buffer, which every texture appends to.</param>
+        /// <param name="descriptors">The device's ONE descriptor subsystem: the two content-dedup caches and the
+        /// pools (row 10). It is held HERE and by the device and by nothing a recorder can reach, which is
+        /// decision V-D2's structural enforcement rather than a preference.</param>
         /// <param name="createCommandList">The device's own list factory. It comes from the device rather than
         /// being built here for the reason <c>D3D11ResourceFactory</c>'s equivalent does: the depth, the timeline
         /// and the backpressure accumulator a list gates on are all the device's, and threading them through this
@@ -57,19 +70,21 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// change.</param>
         /// <param name="minUniformBufferOffsetAlignment">The device limit the ring stride is rounded to.</param>
         internal VulkanResourceFactory(VulkanResourceOwner owner, VulkanRingAllocator rings,
-            VulkanSetupCommands setup, Func<IGpuCommandList> createCommandList, Func<IGpuFence> createFence,
-            in GpuCapabilities capabilities,
+            VulkanSetupCommands setup, VulkanDescriptors descriptors, Func<IGpuCommandList> createCommandList,
+            Func<IGpuFence> createFence, in GpuCapabilities capabilities,
             ulong minUniformBufferOffsetAlignment = VulkanRingStride.OffsetAlignmentFloor)
         {
             ArgumentNullException.ThrowIfNull(owner);
             ArgumentNullException.ThrowIfNull(rings);
             ArgumentNullException.ThrowIfNull(setup);
+            ArgumentNullException.ThrowIfNull(descriptors);
             ArgumentNullException.ThrowIfNull(createCommandList);
             ArgumentNullException.ThrowIfNull(createFence);
 
             _owner = owner;
             _rings = rings;
             _setup = setup;
+            _descriptors = descriptors;
             _createCommandList = createCommandList;
             _createFence = createFence;
             _minUniformBufferOffsetAlignment = minUniformBufferOffsetAlignment;
@@ -146,12 +161,34 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             => throw NotBuiltYet("Creating a framebuffer", RenderingRow);
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// THE <c>VkDescriptorSetLayout</c> IS CONTENT-DEDUPLICATED AND SHARED (V-D5), so two layouts created
+        /// from identical descriptions hand back the same native handle. That is what makes row 11's
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/521) pipeline compatibility test a pointer compare and
+        /// what makes bound descriptors survive a pipeline switch at all. It follows that
+        /// <c>IGpuResourceLayout.Dispose</c> destroys nothing: the cache retires every handle at device teardown.
+        /// <para>
+        /// EVERY <see cref="GpuResourceKind.UniformBuffer"/> ELEMENT BECOMES A DYNAMIC UNIFORM DESCRIPTOR (V-D4),
+        /// whether or not it carries <see cref="GpuResourceLayoutElement.Dynamic"/>, because the per-frame ring
+        /// base is applied at bind. A declared-dynamic element that is NOT a uniform buffer is refused here.
+        /// </para>
+        /// </remarks>
+        /// <exception cref="ArgumentException">An element is declared dynamic and is not a uniform buffer
+        /// (<see cref="VulkanDescriptorPolicy.TypeFor"/>).</exception>
         public IGpuResourceLayout CreateResourceLayout(in GpuResourceLayoutDescription d)
-            => throw NotBuiltYet("Creating a resource layout", DescriptorRow);
+            => _descriptors.CreateLayout(d);
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// ONE <c>VkDescriptorSet</c>, ALLOCATED AND WRITTEN ONCE and never touched again (V-D1). A single
+        /// <c>vkUpdateDescriptorSets</c> covers every binding, every <see cref="GpuBufferRange"/> is resolved
+        /// here rather than at a draw, and the descriptor's range is the BIND WINDOW: never
+        /// <c>VK_WHOLE_SIZE</c> and never the ring stride (V-M6). See <see cref="VulkanResourceSet"/>.
+        /// </remarks>
+        /// <exception cref="ArgumentException">The layout was not created by this backend, the resource count
+        /// does not match the element count, or a resource does not fit the element it was given to.</exception>
         public IGpuResourceSet CreateResourceSet(in GpuResourceSetDescription d)
-            => throw NotBuiltYet("Creating a resource set", DescriptorRow);
+            => _descriptors.CreateSet(d);
 
         /// <inheritdoc/>
         public IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl)
@@ -179,8 +216,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         static NotSupportedException NotBuiltYet(string what, string row)
             => new($"{what} is not built yet on the native Vulkan backend: it lands in {row}. Buffers, textures, "
-                + "samplers, command lists and fences ARE live (work-breakdown row 9, "
-                + "https://github.com/APKiwiOrg/KhaozEngine/issues/519). This is a statement about the package and "
+                + "samplers, command lists, fences, resource layouts and resource sets ARE live (work-breakdown "
+                + "rows 9 and 10, https://github.com/APKiwiOrg/KhaozEngine/issues/519 and "
+                + "https://github.com/APKiwiOrg/KhaozEngine/issues/520). This is a statement about the package and "
                 + "not about this machine. Select GpuBackendKind.Vulkan, which goes through Veldrid, for a fully "
                 + "working Vulkan device.");
     }

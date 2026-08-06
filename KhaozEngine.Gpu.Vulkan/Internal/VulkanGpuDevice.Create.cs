@@ -116,6 +116,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     // sampler mapping all run under dotnet test with no loader.
                     new VulkanResourceApi(vk, device, loss, liveness),
                     new VulkanSetupSink(vk),
+                    // THE DESCRIPTOR SEAM (row 10), a pure driver-call adapter for the same reason the two above
+                    // are: the type mapping, the content dedup, the pool sizing, the per-type accounting and the
+                    // bind window all sit above it in device-free types.
+                    new VulkanDescriptorApi(vk, device, loss, liveness),
+                    // The device's own maxDescriptorSetUniformBuffersDynamic, read off the SAME physical-device
+                    // read the support probe gated on, so 8.3's third and fourth defences measure against one
+                    // number rather than two reads that can disagree.
+                    read.Facts.MaxDescriptorSetUniformBuffersDynamic,
                     framesInFlight);
 
                 log.Info(created.Memory.Describe());

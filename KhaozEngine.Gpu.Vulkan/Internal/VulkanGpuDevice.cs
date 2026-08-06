@@ -34,11 +34,23 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// uniform buffer arrives ring-backed, everything else with device-local memory), real textures (a
     /// <c>VkImage</c> with every image view it will ever need already made and its canonical resting layout
     /// assigned, or a <c>VkBuffer</c> with the incumbent's software subresource layout when it is a staging
-    /// texture), real samplers, real command lists and real fences. Layouts, sets, framebuffers, shaders and
+    /// texture), real samplers, real command lists and real fences. Framebuffers, shaders and
     /// pipelines still refuse by naming their own row. NO CREATION SUBMITS ANYTHING: the clear and the first-ever
     /// transition go into ONE device-owned setup command buffer under its own short lock, flushed at the next
     /// submit or at any device-level read. See <c>VulkanGpuDevice.Resources.cs</c> and
     /// <see cref="VulkanSetupCommands"/>.
+    /// </para>
+    /// <para>
+    /// <b>DESCRIPTORS ARE LIVE TOO</b> (row 10, https://github.com/APKiwiOrg/KhaozEngine/issues/520). The device
+    /// owns one <see cref="VulkanDescriptors"/>: content-deduplicated <c>VkDescriptorSetLayout</c>s and
+    /// <c>VkPipelineLayout</c>s (V-D5, which is what makes row 11's compatibility test a pointer compare), and
+    /// descriptor pools sized from actual demand whose free path restores EVERY counted type including both
+    /// dynamic ones (V-D3). <c>CreateResourceLayout</c> and <c>CreateResourceSet</c> hand out real objects: one
+    /// <c>VkDescriptorSet</c> allocated and written once at creation with the bind window as its range (V-M6).
+    /// The subsystem hangs off THIS object and off the resource factory and off nothing a recorder can reach,
+    /// which is decision V-D2's structural enforcement rather than a preference. Row 13
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/523) is the first caller of the pipeline-layout cache and
+    /// of the dynamic-uniform limit check that lives with it.
     /// </para>
     /// <para>
     /// <b>THE COMMAND PATH IS LIVE IN ITS LIFECYCLE AND IN ONE RECORDING MEMBER</b> (rows 7 and 8,
@@ -113,6 +125,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         readonly VulkanResourceOwner _resources;
         readonly VulkanStagingSource _staging;
         readonly VulkanSetupCommands _setup;
+        readonly VulkanDescriptors _descriptors;
         readonly VulkanResourceFactory _factory;
         readonly VulkanStagingMaps _maps = new();
         readonly VulkanSampler _pointSampler;
@@ -135,7 +148,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             uint graphicsQueueFamily, GpuCapabilities capabilities, bool softwareAdapter,
             VulkanDeviceLiveness liveness, VulkanDeviceLossLatch loss, VulkanTimeline timeline,
             IVulkanDeviceMemoryApi memoryApi, VulkanMemoryFacts memoryFacts, IVulkanCommandApi commands,
-            IVulkanResourceApi resourceApi, IVulkanSetupSink setupSink, int framesInFlight)
+            IVulkanResourceApi resourceApi, IVulkanSetupSink setupSink, IVulkanDescriptorApi descriptorApi,
+            uint maxDynamicUniformBuffers, int framesInFlight)
         {
             _instance = instance;
             _device = device;
@@ -185,8 +199,16 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 _submits,
                 liveness);
 
-            _factory = new VulkanResourceFactory(_resources, _rings, _setup, () => CreateCommandList(),
-                () => _timeline.CreateFence(), capabilities, memoryFacts.MinUniformBufferOffsetAlignment);
+            // THE DESCRIPTOR SUBSYSTEM (row 10), on its OWN owner rather than on _resources. That separation is
+            // decision V-D2's enforcement: the recording type's field graph legitimately reaches
+            // VulkanResourceOwner through the staging block lifetime edge, so a descriptor pool hung off that
+            // record would sit on the far side of the one allowance the unreachability walk makes.
+            _descriptors = new VulkanDescriptors(
+                new VulkanDescriptorOwner(descriptorApi, timeline, _retired), maxDynamicUniformBuffers);
+
+            _factory = new VulkanResourceFactory(_resources, _rings, _setup, _descriptors,
+                () => CreateCommandList(), () => _timeline.CreateFence(), capabilities,
+                memoryFacts.MinUniformBufferOffsetAlignment);
 
             // THE SHARED PAIR WRAPS ON ALL THREE AXES (section 14), built from VulkanSharedSamplers and NOT from
             // the identically named GpuSamplerDescription statics, which default every axis to CLAMP. Neither
@@ -544,6 +566,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                             _retired.DrainAll();
                         }
 
+                        // THE DESCRIPTOR SUBSYSTEM GOES AFTER BOTH DRAINS, and the order is the one thing here
+                        // that could look arbitrary. A resource set's disposal is a DEFERRED free, so the
+                        // vkFreeDescriptorSets calls are entries in the retire list: destroying the pools before
+                        // the drains would leave those calls naming a pool that no longer exists. After them,
+                        // every free has run against a live pool and destroying a pool only collects whatever a
+                        // consumer never disposed. Skipped natively on a dead device by the same liveness token
+                        // as every other destroy.
+                        ReportDescriptorTeardown(_descriptors.DestroyAll());
+
                         // Skips its own native destroy on the lost path, for the same reason, through the same
                         // liveness token.
                         _timeline.Dispose();
@@ -562,6 +593,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                         ReportForgottenMaps(_maps.Forget());
                         _setup.Retire(_retired);
                         ReportAbandoned(_retired.Abandon(), _memory.Abandon());
+                        ReportDescriptorTeardown(_descriptors.DestroyAll());
                         _timeline.Dispose();
                     }
                 }
@@ -583,6 +615,19 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             log.Warn($"{open} native Vulkan staging mappings were still open when the device was disposed. The "
                 + "memory behind them went with the device, so they are forgotten rather than closed, and an "
                 + "Unmap after this point is a call about a resource with nothing under it.");
+        }
+
+        // Says what the descriptor subsystem released. Logged at debug rather than warn because none of these
+        // numbers is a defect: a non-zero pool count at teardown is a program that built resource sets, and the
+        // gap between the layouts asked for and the set layouts created is decision V-D5's dedup working.
+        static void ReportDescriptorTeardown((int PipelineLayouts, int SetLayouts, int Pools) destroyed)
+        {
+            if (destroyed.PipelineLayouts == 0 && destroyed.SetLayouts == 0 && destroyed.Pools == 0) return;
+
+            log.Debug($"The native Vulkan device destroyed {destroyed.PipelineLayouts} shared pipeline layouts, "
+                + $"{destroyed.SetLayouts} shared descriptor set layouts and {destroyed.Pools} descriptor pools "
+                + "at teardown. Both layout kinds are CONTENT-SHARED, so these counts are distinct shapes rather "
+                + "than distinct IGpuResourceLayout objects.");
         }
 
         // Says how many deferred destroys and how many memory chunks went unfreed on a dead device. A report
@@ -607,9 +652,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         static NotSupportedException NotBuiltYet(string what, string row)
             => new($"{what} is not built yet on the native Vulkan backend: it lands in {row}. The instance, the "
                 + "device, the queue, the device-loss latch, the validation pump, the completion timeline, the "
-                + "memory allocator, the uniform ring, the command list's lifecycle AND the resource factory ARE "
-                + "live (work-breakdown rows 4 to 9, https://github.com/APKiwiOrg/KhaozEngine/issues/514 through "
-                + "https://github.com/APKiwiOrg/KhaozEngine/issues/519). This is a statement about the package and "
+                + "memory allocator, the uniform ring, the command list's lifecycle, the resource factory AND the "
+                + "descriptor subsystem ARE live (work-breakdown rows 4 to 10, "
+                + "https://github.com/APKiwiOrg/KhaozEngine/issues/514 through "
+                + "https://github.com/APKiwiOrg/KhaozEngine/issues/520). This is a statement about the package and "
                 + "not about this machine. Select GpuBackendKind.Vulkan, which goes through Veldrid, for a fully "
                 + "working Vulkan device.");
     }

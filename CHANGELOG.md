@@ -7,6 +7,28 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.32.0
 
+### CI: the GPU matrix gets a leg selector, and the Vulkan package joins the push filter (#546)
+
+`cross-platform-gpu.yml` takes a second `workflow_dispatch` input, `legs`, choosing one backend
+(`metal`, `direct3d11`, `direct3d11-native`, `vulkan`) instead of the whole matrix. Default is `all`, and
+only a dispatch can choose, so push, pull_request and the weekly schedule behave exactly as before.
+
+This exists because a dispatch runs the FULL suite on every leg, which is the most expensive thing the
+workflow does: about 87 Windows minutes and 65 Linux minutes per dispatch, roughly $1.26, measured across
+seven dispatches in the first week of August 2026. Most dispatches chase ONE backend and the other three
+buy nothing. A targeted dispatch now costs about $0.39.
+
+A matrix cannot be filtered by an input from a job-level `if` (the strategy expands first) and a step-level
+`if` would still boot the runner and bill for it, so the selection arrives as data from a small `legs` job
+that also now holds the leg table. That job costs one Ubuntu minute per run of the workflow. The matrix it
+emits for `all` is identical, leg for leg and field for field, to the static `include` list it replaced.
+
+Separately, the push `paths` filter now watches `KhaozEngine.Gpu.Vulkan/**`. It never did. A sibling package
+does not ride `KhaozEngine.Gpu/**`, which is why `KhaozEngine.Gpu.D3D11/**` always carried its own entry, and
+the Vulkan package landed after the #198 sweep that added the others. A push touching only Vulkan sources got
+no matrix run. The gap stayed invisible because branch merges bundle `Render.Tests` changes into the same
+push, so the matrix fired via a sibling path rather than via the backend being written.
+
 ### The native Direct3D 11 backend: the swapchain, the shader path, the bind flush, the draw path, the compute path, the threading contract, the diagnostics, and the DEVICE that wires all of it (#453, #454, #455, #456, #457, #458, #459, #476, #494, #497, #500)
 
 The blit-model swapchain lands with the incumbent's present path reproduced field for field, a framebuffer

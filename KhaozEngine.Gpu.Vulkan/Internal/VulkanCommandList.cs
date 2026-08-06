@@ -153,12 +153,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     + "record that has not been sealed.");
             }
 
+            // Cleared BEFORE Advance, not after: a native throw mid-advance must not leave a stale record marked
+            // sealed.
+            _sealedSlot = NoSeal;
+
             _ring.Advance();
 
             // ROWS 11, 12 AND 14 RESET THEIR RECORDER STATE HERE, between the native begin and the flag. See the
             // remarks above for the full list and for why this is the only correct place for it.
 
-            _sealedSlot = NoSeal;
             _recording = true;
         }
 

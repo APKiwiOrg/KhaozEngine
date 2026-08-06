@@ -53,6 +53,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         readonly ulong[] _pools;
         readonly ulong[] _buffers;
+
+        // THE VISIBILITY CONTRACT: written by RecordSubmitted under the submit lock, and read by WaitForSlot
+        // (inside Advance) with no lock at all. That is correct when the thread calling Advance is the same
+        // thread that called Submit, or when the consumer's own handoff between a recording thread and a
+        // submitting thread supplies the memory barrier a lock would otherwise give this read. Nothing in this
+        // type enforces either side of that. It is the seam's documented threading model, not this array's own.
         readonly ulong[] _lastSubmitted;
 
         // -1 so the first Advance lands on slot 0 rather than on slot 1. A ring that started at 0 and
@@ -216,6 +222,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // hold, so this returns without waiting rather than blocking on a counter nothing can advance.
             if (_timeline.CompletedValue >= recorded) return;
 
+            // A device loss landing between the poll above and the wait below still records one near-zero entry
+            // here, because WaitForValue returns fast once the device is dead. That is the honest direction: a
+            // wait that ended because the device died is still counted rather than dropped. But it means a loss
+            // inside a capture window can put a 1 into a counter whose exit criterion is zero, so a gate-4
+            // reading with a device loss in the window is judged on the loss, not on the count.
             long start = Stopwatch.GetTimestamp();
             _timeline.WaitForValue(recorded);
             _backpressure.Record(Stopwatch.GetTimestamp() - start);

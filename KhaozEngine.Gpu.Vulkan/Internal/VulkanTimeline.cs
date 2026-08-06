@@ -268,12 +268,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// is dead (V-F10, a destroyed device has nothing to wait for). Nothing has ever been submitted, so there
         /// is no point on the timeline to wait for at all, which is also the state a device that has only ever
         /// FAILED a submit is in. And the counter has ALREADY passed the last submitted value, which is a caller
-        /// who asked and
-        /// found the GPU caught up. The seam's own <c>DrainCount</c> doc says a wait that found the GPU already
-        /// caught up is not counted, and this is the backend where honouring that costs one non-blocking read.
-        /// The other backend counts every drain past its early returns, because it signals a FRESH point per drain
-        /// and therefore always has something outstanding to wait for. Here the target is the last SUBMITTED
-        /// value, so a second drain with no submission between them has genuinely nothing to do.</para>
+        /// who asked and found the GPU caught up. The seam's own <c>DrainCount</c> doc says a wait that found the
+        /// GPU already caught up is not counted, and this is the backend where honouring that costs one
+        /// non-blocking read. The other backend counts every drain past its early returns, because it signals a
+        /// FRESH point per drain and therefore always has something outstanding to wait for. Here the target is
+        /// the last SUBMITTED value, so a second drain with no submission between them has genuinely nothing to
+        /// do.</para>
         ///
         /// <para><b>A WAIT THAT ENDED BECAUSE THE DEVICE DIED IS STILL COUNTED.</b> It blocked, for the time
         /// recorded, and dropping it would under-report exactly the drains a post-mortem cares about. What is not

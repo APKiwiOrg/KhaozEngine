@@ -26,6 +26,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// the value this submission took get registered as one the GPU will reach) and the timeline is not visible
     /// from down here. A throw at this line would take the submit lock's bookkeeping with it.
     /// </para>
+    /// <para>
+    /// <see cref="ResetPool"/> AND <see cref="BeginOneTimeSubmit"/> CARRY A DELIBERATE LIVENESS-GATE ASYMMETRY
+    /// against <see cref="DestroyPool"/>. A LOST device reaching either of them is safe with no explicit gate,
+    /// because the loss latch's <c>Check</c> returns quietly on a device already latched lost. A DESTROYED device
+    /// reaching either of them is caller misuse instead, the same as a use-after-dispose call anywhere else in
+    /// this package, which is why only <see cref="DestroyPool"/> carries the explicit <c>_liveness.IsDead</c>
+    /// gate: it is the one call here with a native result too weak to catch that case on its own.
+    /// </para>
     /// </summary>
     internal sealed unsafe class VulkanCommandApi : IVulkanCommandApi
     {

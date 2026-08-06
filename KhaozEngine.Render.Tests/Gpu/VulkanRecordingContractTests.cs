@@ -50,9 +50,11 @@ namespace KhaozEngine.Tests.Gpu
             using var fixture = new VulkanCommandListTests.Fixture(depth: 3);
             VulkanCommandList[] lists = CreateLists(fixture);
 
-            // All four inside their Begin at the SAME TIME, which is the state the seam's portable contract
-            // forbids and this backend permits. Dedicated threads rather than Parallel.For, because a barrier
-            // needs every participant actually running at once and the pool is free to schedule fewer.
+            // The barrier releases AFTER Begin returns, not while a thread is still inside it, so what this
+            // establishes is all four lists in the OPEN-RECORDING state at the SAME TIME, which is the state the
+            // seam's portable contract forbids and this backend permits. Dedicated threads rather than
+            // Parallel.For, because a barrier needs every participant actually running at once and the pool is
+            // free to schedule fewer.
             using var allBegun = new Barrier(Lists);
             var threads = new Thread[Lists];
             for (int i = 0; i < Lists; i++)

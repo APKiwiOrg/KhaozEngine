@@ -13,6 +13,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// that turn a foreign list or a foreign fence into a named refusal, and the wiring that gives every list on
     /// this device the same depth, the same retire list and the same backpressure accumulator.
     /// </para>
+    /// <para>
+    /// THE CHECKS REFUSE BY TYPE, NOT BY DEVICE. A list or fence made by another GPU BACKEND is caught, but one
+    /// made by a DIFFERENT native Vulkan device would pass the same cast, because nothing here compares device
+    /// identity. Running two native Vulkan devices in one process is not a shape this backend ships today
+    /// though: the lifecycle gate serialises creation and nothing constructs a second one.
+    /// </para>
     /// </summary>
     internal sealed unsafe partial class VulkanGpuDevice
     {

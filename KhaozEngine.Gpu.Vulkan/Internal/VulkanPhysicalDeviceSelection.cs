@@ -61,7 +61,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <param name="Class">The device type, which the <c>discrete</c>, <c>integrated</c> and <c>cpu</c> tokens
     /// select on.</param>
     /// <param name="IsLlvmpipe">Whether <c>VkPhysicalDeviceDriverProperties.driverID</c> is
-    /// <c>VK_DRIVER_ID_MESA_LLVMPIPE</c>, or the name says llvmpipe on a driver too old to report one.</param>
+    /// <c>VK_DRIVER_ID_MESA_LLVMPIPE</c>, or the name says llvmpipe. The name check always runs, as a belt to the
+    /// driverID check rather than only a fallback for a driver too old to report one.</param>
     /// <param name="MeetsRequirements">Whether <see cref="VulkanDeviceRequirements"/> accepted it. An INELIGIBLE
     /// device is never chosen, whatever the variable asks for: honouring a pin onto a device that cannot run the
     /// backend would turn a diagnostic lever into a crash on frame one.</param>

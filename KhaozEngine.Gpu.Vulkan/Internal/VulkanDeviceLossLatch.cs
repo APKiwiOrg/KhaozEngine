@@ -27,9 +27,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// DECISION V-G4: the device-loss latch. One per device. It is handed a <c>VkResult</c> at each of the sites
     /// that can see a loss, and on the first one that IS a loss it records the result and the site, appends
     /// whatever <see cref="IVulkanDeviceFault"/> can add, flips <see cref="VulkanDeviceLiveness"/> so every later
-    /// destroy is a no-op, and hands the reason to the telemetry session header through
-    /// <c>GpuDeviceDiagnostics.DeviceLossReason</c>. That closes #427 for the Vulkan leg on the day the backend
-    /// lands, which is the correct time: retrofitting the reporting after the first field crash wastes the crash.
+    /// destroy is a no-op, and exposes the reason through <see cref="HeaderValue"/>, which
+    /// <c>VulkanGpuDevice.Diagnostics</c> reads into the telemetry session header. That closes #427 for the
+    /// Vulkan leg on the day the backend lands, which is the correct time: retrofitting the reporting after the
+    /// first field crash wastes the crash.
     /// </summary>
     ///
     /// <para><b>EVERY RESULT IS CHECKED IN EVERY CONFIGURATION, and that is the whole reason this is not built on

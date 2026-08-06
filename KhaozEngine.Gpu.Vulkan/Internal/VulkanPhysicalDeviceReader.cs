@@ -130,9 +130,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         }
 
         // V-G2's read. The driver id is the authoritative half and comes off VkPhysicalDeviceDriverProperties,
-        // which is 1.2 core, so it is only asked of a device that clears the floor. The name check is the fallback
-        // for a driver too old to report one, and it is deliberately not the primary: "llvmpipe" appears in a
-        // vendor string this backend does not get to police.
+        // which is 1.2 core, so it is only asked of a device that clears the floor. The name check runs
+        // unconditionally, on every path, as a belt to the driverID check rather than only as a fallback for a
+        // driver too old to report one. That is slightly wider than V-G2's letter and harmless: lavapipe reports
+        // itself as a Cpu device type regardless.
         static bool IsLlvmpipe(Vk vk, PhysicalDevice device, bool clearsVersionFloor, string name)
         {
             if (clearsVersionFloor)

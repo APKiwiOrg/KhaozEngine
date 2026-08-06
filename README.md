@@ -191,7 +191,7 @@ KhaozEngine.Imaging/   KhaozEngine.Snapshot/   KhaozEngine.Snapshot.Render3D/
 KhaozEngine.Audio/   KhaozEngine.Particles/   KhaozEngine.Game/   KhaozEngine.Game.Render3D/
 KhaozEngine.Particles.Render3D/   KhaozEngine.Telegraphs/   KhaozEngine.Telegraphs.Render3D/   KhaozEngine.Terrain.Render3D/
 KhaozEngine.Gpu.D3D11/         Opt-in engine-owned native Direct3D 11 backend (in no umbrella)
-KhaozEngine.Gpu.Vulkan/        Opt-in engine-owned native Vulkan backend, nameable, no device yet (in no umbrella)
+KhaozEngine.Gpu.Vulkan/        Opt-in engine-owned native Vulkan backend (in no umbrella)
 KhaozEngine.MapEditor/         Opt-in in-engine map editor runtime over MapDoc (in no umbrella)
 # Foundation (GPU-free, pure .NET)
 KhaozEngine.Primitives/

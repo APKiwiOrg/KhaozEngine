@@ -206,6 +206,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// lease would hold the process instance alive for the rest of the run, and every later device would
         /// share an instance whose first holder is gone.
         /// </para>
+        /// <para>
+        /// The wait-flip-destroy-release order below is held by nothing more than the sequence of statements: no
+        /// test asserts it, because there is no seam that can observe teardown order device-free. An edit that
+        /// reorders these lines must re-read this block rather than trust a green suite to catch the regression.
+        /// </para>
         /// </summary>
         public void Dispose()
         {

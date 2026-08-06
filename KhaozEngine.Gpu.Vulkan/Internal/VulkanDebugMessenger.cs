@@ -44,8 +44,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         // The statically reachable sink the CDECL callback logs through, which is the constraint row 1's spike
         // recorded. One process instance means one messenger, so one field is enough and a registry would be a
-        // second lifetime to get wrong. Written before the messenger exists and cleared after it is destroyed, so
-        // a callback can never find it null while a messenger is live.
+        // second lifetime to get wrong. Written before the messenger exists and cleared before it is destroyed
+        // (see Dispose), on purpose: a callback that lands in the teardown window finds this null and drops the
+        // message, which is the safe direction, rather than logging through a pump whose native handles are
+        // already being torn down.
         static VulkanValidationPump? _active;
 
         readonly Vk _vk;

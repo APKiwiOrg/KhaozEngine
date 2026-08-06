@@ -26,8 +26,16 @@ namespace KhaozEngine.Tests.Gpu
         const VulkanMemoryTrait Coherent = VulkanMemoryTrait.HostCoherent;
         const VulkanMemoryTrait Cached = VulkanMemoryTrait.HostCached;
 
+        /// <param name="framesInFlight">The device depth every ring and pool ring is cut to.</param>
+        /// <param name="samplerAnisotropy">Whether the device enabled the feature.</param>
+        /// <param name="maxMsaaSampleCount">The MSAA ceiling the texture refusal measures against.</param>
+        /// <param name="setupLock">A shared lock, for the nesting assertions.</param>
+        /// <param name="maxDynamicUniformBuffers">The device's
+        /// <c>maxDescriptorSetUniformBuffersDynamic</c>, which 8.3's third defence measures against at
+        /// pipeline-layout creation. 0 degrades to Vulkan's required minimum of 8, exactly as a device whose
+        /// limit was never read does.</param>
         internal VulkanResourceFixture(int framesInFlight = 3, bool samplerAnisotropy = true,
-            int maxMsaaSampleCount = 1, object? setupLock = null)
+            int maxMsaaSampleCount = 1, object? setupLock = null, uint maxDynamicUniformBuffers = 0)
         {
             FramesInFlight = framesInFlight;
             SubmitLock = new object();
@@ -77,7 +85,11 @@ namespace KhaozEngine.Tests.Gpu
                 supportsCompute: true,
                 supportsCompletionFences: true);
 
-            Factory = new VulkanResourceFactory(Owner, Rings, Setup,
+            DescriptorApi = new FakeVulkanDescriptorApi();
+            DescriptorOwner = new VulkanDescriptorOwner(DescriptorApi, Timeline, Retired);
+            Descriptors = new VulkanDescriptors(DescriptorOwner, maxDynamicUniformBuffers);
+
+            Factory = new VulkanResourceFactory(Owner, Rings, Setup, Descriptors,
                 () => throw new NotSupportedException("This rig has no command list."),
                 () => Timeline.CreateFence(),
                 Capabilities);
@@ -121,7 +133,81 @@ namespace KhaozEngine.Tests.Gpu
 
         internal GpuCapabilities Capabilities { get; }
 
+        internal FakeVulkanDescriptorApi DescriptorApi { get; }
+
+        internal VulkanDescriptorOwner DescriptorOwner { get; }
+
+        /// <summary>The device's ONE descriptor subsystem (row 10): both content-dedup caches and the pools. Wired
+        /// on the device's OWN timeline and retire list, so a set's deferred free lands in the same
+        /// <see cref="Drain"/> every other deferred destroy does.</summary>
+        internal VulkanDescriptors Descriptors { get; }
+
         internal VulkanResourceFactory Factory { get; }
+
+        /// <summary>A layout description with the shape most shipped renderers declare: one uniform buffer,
+        /// optionally declared dynamic.</summary>
+        internal static GpuResourceLayoutDescription UniformLayout(bool dynamic = false, string name = "U")
+            => new(new GpuResourceLayoutElement(name, GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex,
+                dynamic));
+
+        /// <summary>A buffer description with the defaults the uniform call sites use.</summary>
+        internal static GpuBufferDescription Buffer(uint sizeInBytes, GpuBufferUsage usage)
+            => new(sizeInBytes, usage);
+
+        /// <summary>
+        /// A real <see cref="VulkanCommandList"/> on this rig's own fakes, so a recording can be driven against
+        /// the SAME descriptor seam the sets were built through. That is what makes decision V-D2's zero-count
+        /// assertion meaningful: two rigs would prove nothing about the one that recorded.
+        /// <para>
+        /// No uploader, deliberately: the record-time write into a ring-backed uniform buffer needs none, and the
+        /// staging path needs a real <c>Vk</c> that no device-free rig has.
+        /// </para>
+        /// </summary>
+        internal VulkanCommandList CreateList()
+            => new(new VulkanCommandPoolRing(CommandApi, FramesInFlight, Timeline, Backpressure), Retired);
+
+        /// <summary>
+        /// A resource set over <paramref name="description"/> with a freshly created resource of the right kind
+        /// at every element, so a whole shipped layout shape can be built without naming its resources one by
+        /// one. Everything created is appended to <paramref name="owned"/> for the caller to dispose.
+        /// </summary>
+        internal IGpuResourceSet CreateSetFor(in GpuResourceLayoutDescription description,
+            List<IDisposable> owned)
+        {
+            ArgumentNullException.ThrowIfNull(owned);
+
+            IGpuResourceLayout layout = Factory.CreateResourceLayout(description);
+            owned.Add(layout);
+
+            GpuResourceLayoutElement[] elements = description.Elements ?? [];
+            var resources = new IGpuBindableResource[elements.Length];
+            for (int i = 0; i < elements.Length; i++)
+            {
+                IGpuBindableResource resource = elements[i].Kind switch
+                {
+                    GpuResourceKind.UniformBuffer => Factory.CreateBuffer(
+                        Buffer(256, GpuBufferUsage.UniformBuffer)),
+                    GpuResourceKind.StructuredBufferReadOnly => Factory.CreateBuffer(
+                        Buffer(256, GpuBufferUsage.StructuredBufferReadOnly)),
+                    GpuResourceKind.StructuredBufferReadWrite => Factory.CreateBuffer(
+                        Buffer(256, GpuBufferUsage.StructuredBufferReadWrite)),
+                    GpuResourceKind.TextureReadOnly => Factory.CreateTexture(
+                        Texture(8, 8, GpuTextureUsage.Sampled)),
+                    GpuResourceKind.TextureReadWrite => Factory.CreateTexture(
+                        Texture(8, 8, GpuTextureUsage.Storage)),
+                    GpuResourceKind.Sampler => Factory.CreateSampler(GpuSamplerDescription.Linear),
+                    _ => throw new NotSupportedException("A resource kind this rig cannot build: "
+                        + elements[i].Kind),
+                };
+
+                owned.Add((IDisposable)resource);
+                resources[i] = resource;
+            }
+
+            IGpuResourceSet set = Factory.CreateResourceSet(new GpuResourceSetDescription(layout, resources));
+            owned.Add(set);
+            return set;
+        }
 
         /// <summary>Run every deferred destroy the timeline has passed. Nothing has usually been submitted, so
         /// <see cref="VulkanTimeline.CompletedValue"/> releases everything, which is the retire list's own

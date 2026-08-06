@@ -496,12 +496,6 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Contains("522",
                 Assert.Throws<NotSupportedException>(() => factory.CreateFramebuffer(null)).Message,
                 StringComparison.Ordinal);
-            Assert.Contains("520",
-                Assert.Throws<NotSupportedException>(() => factory.CreateResourceLayout(default)).Message,
-                StringComparison.Ordinal);
-            Assert.Contains("520",
-                Assert.Throws<NotSupportedException>(() => factory.CreateResourceSet(default)).Message,
-                StringComparison.Ordinal);
             Assert.Contains("526",
                 Assert.Throws<NotSupportedException>(() => factory.CreateShadersFromSpirv("a", "b")).Message,
                 StringComparison.Ordinal);
@@ -537,13 +531,16 @@ namespace KhaozEngine.Tests.Gpu
                 nameof(IGpuResourceFactory.CreateSampler),
                 nameof(IGpuResourceFactory.CreateCommandList),
                 nameof(IGpuResourceFactory.CreateFence),
+
+                // Row 10 (https://github.com/APKiwiOrg/KhaozEngine/issues/520) took these two off the refusal
+                // list below, which is the movement this pair of sets exists to make visible.
+                nameof(IGpuResourceFactory.CreateResourceLayout),
+                nameof(IGpuResourceFactory.CreateResourceSet),
             ];
 
             string[] refusing =
             [
                 nameof(IGpuResourceFactory.CreateFramebuffer),
-                nameof(IGpuResourceFactory.CreateResourceLayout),
-                nameof(IGpuResourceFactory.CreateResourceSet),
                 nameof(IGpuResourceFactory.CreateShadersFromSpirv),
                 nameof(IGpuResourceFactory.CreateComputeShaderFromSpirv),
                 nameof(IGpuResourceFactory.CreateGraphicsPipeline),

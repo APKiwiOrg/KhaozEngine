@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Vulkan.Internal;
 using Xunit;
 
@@ -44,17 +45,32 @@ namespace KhaozEngine.Tests.Gpu
     /// <see cref="TheAllowedEdge_IsLoadBearingAndTheOnlyRouteToTheViewFactory"/> pins that it is load-bearing and
     /// one edge wide, so it can neither rot into a tautology nor quietly cover a second route.</para>
     ///
-    /// <para><b>THIS FILE IS SHARED WITH ROW 10</b> (https://github.com/APKiwiOrg/KhaozEngine/issues/520). Row 9
-    /// lands the walk and the view half of the forbidden set. Row 10 adds its descriptor pool type to
-    /// <see cref="ForbiddenFromRecording"/> and nothing else: the walk, the assertion and the diagnostic are
-    /// already here, which is the point of landing the shape one row early.</para>
+    /// <para><b>ROW 10 HAS LANDED AND ITS HALF IS HERE</b>
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/520). Row 9 landed the walk and the view half of the
+    /// forbidden set. Row 10 added the descriptor pool, its seam and the subsystem that bundles them, and needed
+    /// nothing else: the walk, the assertion and the diagnostic were already here, which was the point of landing
+    /// the shape one row early.</para>
     ///
-    /// <para><b>AND ROW 10 INHERITS THE ALLOWED EDGE, WHICH IS THE ONE THING IT HAS TO WATCH.</b> Adding the pool
-    /// type to the list is not enough on its own: a pool manager hung off <see cref="VulkanResourceOwner"/>, or off
-    /// anything else behind <see cref="VulkanStagingSource"/>'s owner reference, would sit on the far side of the
-    /// allowance and the walk would never see it. V-D2 wants no descriptor ALLOCATION at draw time, so row 10's
-    /// pool belongs on the device, reached from nothing a recorder holds, and if it ever has to live behind that
-    /// edge then the allowance has to be replaced rather than inherited.</para>
+    /// <para><b>AND ROW 10 INHERITED THE ALLOWED EDGE, WHICH WAS THE ONE THING IT HAD TO WATCH.</b> Adding the
+    /// pool type to the list would not have been enough on its own: a pool manager hung off
+    /// <see cref="VulkanResourceOwner"/>, or off anything else behind <see cref="VulkanStagingSource"/>'s owner
+    /// reference, would sit on the far side of the allowance and the walk would never see it. So the descriptor
+    /// subsystem has its OWN owner record (<see cref="VulkanDescriptorOwner"/>) carrying its own seam, the
+    /// device's timeline and the device's retire list, held by the device and by
+    /// <see cref="VulkanResourceFactory"/> and by nothing a recorder can reach.
+    /// <see cref="TheWalk_FindsTheDescriptorPoolWhereItReallyIs"/> proves the walk can find it where it really
+    /// lives, which is what stops this claim from resting on a walk that reaches nothing.</para>
+    ///
+    /// <para><b>THE OBLIGATION ROW 10 HANDS TO ROW 11</b>
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/521), in the same spirit row 9 handed one to row 10. A
+    /// <see cref="VulkanResourceSet"/> HOLDS the descriptor pool, because it frees itself back into one, so a
+    /// bind-flush record with a FIELD of that type would put <c>vkAllocateDescriptorSets</c> into the recorder's
+    /// graph and fail <see cref="TheRecordingType_ReachesNoViewFactory"/>. The set therefore exposes everything a
+    /// bind needs as plain data (its <c>VkDescriptorSet</c> handle, its layout, and
+    /// <c>VulkanResourceSet.DynamicUniforms</c>, which is a ring plus three integers per dynamic descriptor), and
+    /// row 11 reads those into its own per-slot records rather than holding the set. A resource set is a fine
+    /// method PARAMETER: this walk is over fields, because a field is what a recorder could call through at draw
+    /// time.</para>
     /// </summary>
     public sealed class VulkanRecordingUnreachabilityTests
     {
@@ -70,8 +86,17 @@ namespace KhaozEngine.Tests.Gpu
             "VulkanResourceApi",
             // The factory that calls it, which is the other way a recorder could reach a creation.
             "VulkanResourceFactory",
-            // V-D2: the descriptor pool manager, added by row 10
-            // (https://github.com/APKiwiOrg/KhaozEngine/issues/520) when it exists.
+
+            // V-D2, added by row 10 (https://github.com/APKiwiOrg/KhaozEngine/issues/520). The pool is what
+            // vkAllocateDescriptorSets is made through and the seam is where that call and
+            // vkUpdateDescriptorSets both live, so both are named: a recorder holding the seam could write a set
+            // without allocating one, which is the other half of the same prohibition.
+            "VulkanDescriptorPoolManager",
+            "IVulkanDescriptorApi",
+            "VulkanDescriptorApi",
+            // And the bundle that reaches all three, so a future field typed as the subsystem is caught by name
+            // rather than by whichever of its members the walk happened to descend into first.
+            "VulkanDescriptors",
         ];
 
         /// <summary>
@@ -169,6 +194,103 @@ namespace KhaozEngine.Tests.Gpu
             IReadOnlyCollection<Type> reachable = ReachableFrom(typeof(VulkanResourceFactory));
 
             Assert.Contains(reachable, t => string.Equals(t.Name, "IVulkanResourceApi", StringComparison.Ordinal));
+        }
+
+        /// <summary>
+        /// AND IT FINDS THE DESCRIPTOR POOL WHERE IT REALLY IS, which is the same assertion for decision V-D2's
+        /// half and matters more here, because the pool was PLACED to be findable. Hanging it off
+        /// <see cref="VulkanResourceOwner"/> would have been the obvious home and would have put it behind the
+        /// one edge this walk does not cross, where <see cref="TheRecordingType_ReachesNoViewFactory"/> would
+        /// have kept passing while a draw could allocate a descriptor set.
+        /// <para>
+        /// The resource factory holds <see cref="VulkanDescriptors"/>, and the walk reaches the pool, the seam
+        /// and the bundle through it. So the forbidden list is not a list of names nothing has.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void TheWalk_FindsTheDescriptorPoolWhereItReallyIs()
+        {
+            string[] reachable = ReachableFrom(typeof(VulkanResourceFactory)).Select(t => t.Name).ToArray();
+
+            Assert.Contains("VulkanDescriptors", reachable);
+            Assert.Contains("VulkanDescriptorPoolManager", reachable);
+            Assert.Contains("IVulkanDescriptorApi", reachable);
+        }
+
+        /// <summary>
+        /// AND THE POOL IS NOT BEHIND THE ALLOWED EDGE, which is the trap row 9's note warned row 10 about. Even
+        /// with the one allowance CROSSED, the recorder must not reach the descriptor pool: the edge exists for a
+        /// staging block's lifetime and nothing about a descriptor is on the far side of it.
+        /// <para>
+        /// This is deliberately stronger than <see cref="TheRecordingType_ReachesNoViewFactory"/>, which the
+        /// allowance protects. If a later row moves the pool onto <see cref="VulkanResourceOwner"/>, that test
+        /// keeps passing and this one fails, which is exactly the failure that would otherwise be silent.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void TheDescriptorPool_IsNotEvenBehindTheAllowedEdge()
+        {
+            string[] reachable = ReachableFrom(typeof(VulkanCommandList), crossLifetimeEdge: true)
+                .Select(t => t.Name)
+                .ToArray();
+
+            Assert.DoesNotContain("VulkanDescriptorPoolManager", reachable);
+            Assert.DoesNotContain("IVulkanDescriptorApi", reachable);
+            Assert.DoesNotContain("VulkanDescriptors", reachable);
+        }
+
+        /// <summary>
+        /// DECISION V-D2's OTHER HALF: the zero-count assertion against a FAKE POOL. Every shipped layout shape
+        /// is built into a real resource set BEFORE recording opens, and then a whole record-and-submit cycle
+        /// moves neither the allocate counter nor the update counter.
+        ///
+        /// <para><b>THE UNREACHABILITY WALK IS THE STRONGER GUARANTEE AND THIS IS STILL WORTH HAVING</b>, because
+        /// the walk answers a question about the type graph and this answers one about the shipped shapes: every
+        /// layout the renderers declare really can be turned into a set with its descriptors resolved at creation,
+        /// with nothing left over for a draw to finish.</para>
+        ///
+        /// <para><b>WHAT ROW 11 EXTENDS.</b> A recording today is a <c>Begin</c>, a record-time uniform write and
+        /// an <c>End</c>, because binds and draws are row 11's
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/521). That row adds the binds to the middle of this
+        /// cycle and the two counters must still read zero afterwards, which is the assertion in its shipped
+        /// form. The shape below is written to take that extension without moving.</para>
+        /// </summary>
+        [Fact]
+        public void RecordingEveryShippedSetShape_MakesNoDescriptorCallAtAll()
+        {
+            var fixture = new VulkanResourceFixture();
+            var owned = new List<IDisposable>();
+
+            try
+            {
+                foreach (GpuResourceLayoutDescription description
+                    in VulkanDescriptorLimitTests.ShippedLayouts.Values)
+                {
+                    fixture.CreateSetFor(description, owned);
+                }
+
+                int allocatesBeforeRecording = fixture.DescriptorApi.AllocateCount;
+                int updatesBeforeRecording = fixture.DescriptorApi.UpdateCount;
+
+                Assert.Equal(VulkanDescriptorLimitTests.ShippedLayouts.Count, allocatesBeforeRecording);
+
+                IGpuBuffer uniform = fixture.Factory.CreateBuffer(
+                    VulkanResourceFixture.Buffer(256, GpuBufferUsage.UniformBuffer));
+                owned.Add(uniform);
+
+                using VulkanCommandList list = fixture.CreateList();
+                list.Begin();
+                list.UpdateBuffer<byte>(uniform, 0, new byte[] { 1, 2, 3, 4 });
+                list.End();
+                fixture.Submits.Submit(list, null);
+
+                Assert.Equal(allocatesBeforeRecording, fixture.DescriptorApi.AllocateCount);
+                Assert.Equal(updatesBeforeRecording, fixture.DescriptorApi.UpdateCount);
+            }
+            finally
+            {
+                for (int i = owned.Count - 1; i >= 0; i--) owned[i].Dispose();
+            }
         }
 
         /// <summary>

@@ -155,6 +155,19 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// </summary>
         internal ReadOnlySpan<VulkanDynamicUniform> DynamicUniforms => _dynamicUniforms;
 
+        /// <summary>
+        /// THE SAME THREE THINGS AS ONE VALUE, which is what row 11's per-slot record actually holds: the
+        /// descriptor set handle, the shared set-layout handle, and the dynamic uniform array by reference. The
+        /// obligation above stated as a type, so a bind record cannot accidentally hold the set by holding
+        /// "everything a bind needs".
+        /// <para>
+        /// THE ARRAY IS HANDED OVER BY REFERENCE AND NEVER COPIED, so recording a bind allocates nothing on a path
+        /// that runs thousands of times a frame. Neither side mutates it: this set writes it once at creation and a
+        /// bind reads it.
+        /// </para>
+        /// </summary>
+        internal VulkanBoundSet AsBound => new(_token.Set, Layout.SetLayout, _dynamicUniforms);
+
         /// <summary>What this set spends in its pool, restored in full when it is freed.</summary>
         internal VulkanDescriptorCounts Counts => _counts;
 

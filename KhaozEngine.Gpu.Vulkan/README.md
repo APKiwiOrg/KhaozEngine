@@ -4,8 +4,8 @@ The engine's own native Vulkan backend for the [KhaozEngine.Gpu](../KhaozEngine.
 umbrella: a consumer adds this package explicitly, the same pattern as `Physics.Bepu` or `WorldStore.Sqlite`,
 and nothing that does not want the Vulkan binding ever carries it.
 
-> **Status: REGISTRATION, PROBE, A HEADLESS DEVICE, ITS COMPLETION TIMELINE, ITS MEMORY ALLOCATOR AND THE
-> COMMAND LIST'S LIFECYCLE.**
+> **Status: REGISTRATION, PROBE, A HEADLESS DEVICE, ITS COMPLETION TIMELINE, ITS MEMORY ALLOCATOR, THE COMMAND
+> LIST'S LIFECYCLE AND THE UNIFORM RING.**
 > `KhaozEngineVulkan.Register()`
 > is real, so is the machine-capability probe behind it, and since
 > [#514](https://github.com/APKiwiOrg/KhaozEngine/issues/514) so is headless device creation:
@@ -18,8 +18,10 @@ and nothing that does not want the Vulkan binding ever carries it.
 > with nothing yet allocating out of it, because the first resource is
 > [#519](https://github.com/APKiwiOrg/KhaozEngine/issues/519). And since
 > [#517](https://github.com/APKiwiOrg/KhaozEngine/issues/517) it hands out real command lists with their own
-> per-slot `VkCommandPool`s, and `Submit` is one `vkQueueSubmit` on the queue: what those lists cannot do yet is
-> RECORD anything. That device cannot yet
+> per-slot `VkCommandPool`s, and `Submit` is one `vkQueueSubmit` on the queue. Since
+> [#518](https://github.com/APKiwiOrg/KhaozEngine/issues/518) it also owns the UNIFORM RING and the per-list
+> staging arena, and both `UpdateBuffer` levels route through them, so the one recording member those lists CAN
+> do is a uniform write. Everything else a list records is still unbuilt. That device cannot yet
 > RENDER: recording content is
 > [#521](https://github.com/APKiwiOrg/KhaozEngine/issues/521),
 > [#522](https://github.com/APKiwiOrg/KhaozEngine/issues/522),
@@ -236,6 +238,118 @@ sees aliasing and hazard errors. **That linkage is a decision rather than a rema
 is ever dropped, the VMA decline must be re-argued.** The live and lifetime `vkAllocateMemory` counts the
 allocator keeps are what measurement gate MV6 is settled on, and they are deliberately not on
 `GpuDeviceCounters`, which has no field for them and which the other backends would have nothing to put in.
+
+## Per-frame memory: the uniform ring
+
+**Every `UniformBuffer`-usage buffer is ONE `VkBuffer` of `stride * FramesInFlight`**, in host-visible coherent
+persistently mapped memory, where `stride = align(size, max(256, minUniformBufferOffsetAlignment))` and
+`FramesInFlight` is 3. The `IGpuBuffer` identity never changes and the per-frame base is applied at BIND, as the
+dynamic uniform descriptor's `pDynamicOffsets` entry, which is what keeps a resource set's pinned
+`GpuBufferRange` valid across all 68 sites that build one at load time.
+
+**A record-time `UpdateBuffer` on a uniform buffer is a `memcpy` and NOTHING else**: no staging buffer, no
+`vkCmdCopyBuffer`, no memory barrier and no render-pass split. That is the whole of what the ring buys, and the
+obvious reading of why it is not worth much here is wrong. On the shipped incumbent the same call takes a
+staging buffer from a per-list pool, memcpys into it, and calls a copy path whose FIRST statement ends the
+active render pass. Ending it transitions the attachments and emits a full pipeline flush. Then the copy. Then a
+GLOBAL `VkMemoryBarrier`. Then the next draw lazily re-begins the pass. So a record-time uniform write on the
+incumbent is a render-pass split plus a pipeline flush plus a global barrier, not a memcpy. And that barrier's
+destination is `VertexAttributeRead` at `VertexInput`, so it does not cover a uniform read at all: the write is
+both expensive AND under-synchronised for the usage every per-frame uniform buffer in the engine has.
+
+**On Vulkan the segments are a REQUIREMENT rather than an optimisation.** Direct3D 11's `MAP_WRITE_DISCARD`
+gives the driver licence to rename the buffer under a write. Vulkan renames nothing, so writing bytes the GPU
+may still be reading from a previous frame's submission is a plain data race with no diagnostic. Nothing needs
+to replace `MAP_WRITE_NO_OVERWRITE` either: that dance worked around an API restriction Vulkan does not have.
+What makes the writes visible with no flush is that the memory is `HOST_COHERENT` by requirement and that
+`vkQueueSubmit` performs an implicit host-write availability operation for coherent memory. The only invariant
+left is the fence gate below.
+
+**A segment is recycled against a COMPLETION value, never a submit receipt.** Frame N writes segment
+`N % FramesInFlight`, and before handing that segment out the allocator waits until the timeline's counter has
+reached the value that segment's frame was closed at, counting the wait as backpressure. The owner value is the
+timeline's REGISTERED submit high-water read under the submit lock, which is exact because a submission
+allocates and registers its value inside that same lock. It is deliberately not the ALLOCATION high-water: a
+submit that failed with a non-loss result took a value nothing will ever signal, and gating a segment on it
+would block that segment for good. The deferred-disposal retire list gates on the allocation high-water instead,
+for the opposite reason.
+
+**The descriptor's range is the BIND WINDOW, and it is never `VK_WHOLE_SIZE` and never the stride.**
+`VUID-vkCmdBindDescriptorSets-pDescriptorSets-01979` requires the effective offset plus the range to stay inside
+the buffer, and the effective offset here is `frameBase + rangeOffset + callerDynamicOffset`. At the last frame
+slot `frameBase` is `(FramesInFlight - 1) * stride`, so a range of the STRIDE overruns the buffer by exactly the
+caller's own offset the moment that offset is non-zero, which it is in five shipped renderers. The invariant the
+ring owes is therefore `rangeOffset + callerDynamicOffset + range <= stride`, asserted device-free over every
+shipped resource-set shape. It is the same invariant an unringed buffer already obeys: the ring adds `frameBase`
+to the offset and `stride` to the ceiling and leaves the arithmetic otherwise untouched.
+
+**BACKEND-DIVERGENT CREATION FAILURE: a uniform buffer combined with any other bindable usage throws here.**
+`UniformBuffer | StructuredBufferReadOnly` (or either read-write structured bit, or the vertex, index or
+indirect bits) is legal on the seam and is ACCEPTED by `GpuBackendKind.Vulkan`, the Veldrid leg. It is refused at
+creation on this backend, because only the dynamic uniform descriptor carries the ring's per-frame base: a
+vertex bind, an index bind, an indirect argument read and a storage descriptor all address byte zero, so they
+would read the first segment while the uniform bind read the current one. Nothing about that is an error at run
+time, it is one frame's data being read as another's. The combination is vacuous in the engine today, and the
+divergence is written down here rather than left for a consumer to meet as a surprise. Create two buffers.
+
+**A DEVICE-LEVEL `UpdateBuffer` WRITES EVERY SEGMENT, A RECORD-TIME ONE WRITES THE CURRENT SEGMENT.** That split
+is adopted wholesale from [#484](https://github.com/APKiwiOrg/KhaozEngine/issues/484) rather than re-derived,
+because it cost a consumer defect to learn once on the other backend: a load-time write that reached the current
+segment alone held only until the frame index wrapped, so two frames out of every three bound memory nothing had
+ever written, intermittently, with nothing thrown and nothing logged. The off-timeline write reaches all
+`FramesInFlight` segments, so a value written once persists for the buffer's life exactly as it does on the
+Veldrid leg where the buffer has one copy.
+
+**And that write NEVER BLOCKS.** A segment an earlier frame is still reading does not receive the copy: the byte
+range and a private copy of the data are queued as a PENDING PATCH, and the frame boundary that next opens that
+segment applies them right after the gate has proved the GPU is done with it. So the call returns immediately,
+on every thread, at any pipeline depth, which is what makes it legal from a caller already holding the submit
+lock. Waiting instead does not merely cost time, it does not terminate: a loop waiting for every non-current
+segment to be free AT ONCE is unsatisfiable in the GPU-bound steady state, because the frame thread submits
+again for every frame the GPU retires. The deferral ledger is reported through `GpuDeviceCounters`'
+`OffTimelineDeferred` and `OffTimelineOutstanding`, separately from the backpressure count, because a deferred
+patch is not a stall at all.
+
+**Bulk payloads take a per-list staging arena instead, and the render-pass split is theirs.** A record-time
+write to a NON-uniform buffer, and a texture upload, sub-allocate out of a host-visible persistently mapped
+arena, record a copy, and take a barrier narrowed to the destination's actual usage rather than the incumbent's
+one global `VertexAttributeRead` guess. Staging blocks are pooled by power-of-two size class with a real
+retention cap of 8 MiB. The incumbent destroys any returned staging buffer over 512 bytes, so every real-sized
+upload creates and destroys a `VkBuffer` AND a device memory block per call, and raising that to a real cap is
+removing an allocation storm from every load rather than an optimisation. The arena recycles PER SLOT, in the
+window where `Begin` has already waited for the slot it is advancing onto, because the blocks the previous
+record filled belong to a submission that may still be in flight.
+
+**Where measurement gate MV1's NATIVE reading comes from, stated because no counter here answers it.** MV1 bets
+that the ring is worth as much on Vulkan as on Direct3D 11, and its magnitude is unmeasured because nobody has
+counted how many record-time `UpdateBuffer` calls per frame the [#410] scene makes on the INCUMBENT. That first
+half is an incumbent measurement and is not this backend's code at all. The native half is three counters, and
+each already has a home that is not a new field on the ring:
+
+- **Record-time `UpdateBuffer` calls per frame** are counted by the CALLER, on the renderer side, and are the
+  same number on both legs by construction, because the call sites are shared engine code rather than backend
+  code. The ring's own write path counts NOTHING, deliberately: it is a memcpy on the hot path this design
+  exists to make cheap, and a counter on it would be the one piece of per-write work the ring removed.
+- **Render-pass begins per frame** come off the dynamic-rendering row's own `vkCmdBeginRendering` accounting
+  ([#522](https://github.com/APKiwiOrg/KhaozEngine/issues/522)). The exit criterion is that this lands at or
+  below the framebuffer-change count, which is a statement about that row's deferred begin rather than about the
+  ring, and the ring's contribution to it is a NEGATIVE one: it removes the pass splits the incumbent's uniform
+  writes cause.
+- **Record-time global barriers** are countable through `IVkCmdSink`'s barrier class, which is already the
+  budget seam. The exit criterion is ZERO, and the ring is why: a uniform write records no barrier at all, and
+  the staging arena's barriers are per-buffer rather than global and are not on the per-draw path.
+
+No speculative counter is added here for any of the three. **And if the incumbent's counts turn out near zero
+already, the ring is still taken because it is the only correct design on this API, and the bet is RECORDED AS
+NOT PAYING rather than quietly forgotten.**
+
+[#410]: https://github.com/APKiwiOrg/KhaozEngine/issues/410
+
+**The ring's SEMANTIC tests are shared with the Direct3D 11 backend.** Neither ring's code is shared, on the
+rule of three and because the policy is identical where the mechanism is not, but section 9.4 of the design
+writes the policy out as a ten-row inventory and seven of those rows run against BOTH backends' rings through
+one internal test-only interface in `KhaozEngine.TestSupport.Gpu`. The other three (ordering, lock legality and
+the stride arithmetic) are each backend's own, because their mechanisms differ where the policy does not.
 
 ## Recording: a pool per slot, and no op stream at all
 

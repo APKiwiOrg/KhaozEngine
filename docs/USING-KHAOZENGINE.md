@@ -8768,6 +8768,39 @@ of uniform data are kept. It exists so a soak can settle whether three is enough
 had to wait for a segment to come free is recorded for the session telemetry to carry once a device exists to
 report it.
 
+### Uniform buffers on the native Vulkan backend (17.32.0)
+
+The same three things are true on `GpuBackendKind.VulkanNative`, for the same reason and with one different
+number, and again only the first can make it refuse something the other backends accept.
+
+**A uniform buffer may not also be something else there either.** Creating a buffer as
+`GpuBufferUsage.UniformBuffer | GpuBufferUsage.StructuredBufferReadOnly` (or with either read-write structured
+bit, or with the vertex, index or indirect bits) is legal on the seam and is accepted by
+`GpuBackendKind.Vulkan`, the Veldrid Vulkan backend. `GpuBackendKind.VulkanNative` REFUSES it at creation, with
+a message saying so. A uniform buffer there is ring-backed: it holds one copy of itself per frame in flight, and
+the frame's base offset is supplied at the bind as the dynamic uniform descriptor's offset. No other binding
+carries that base, so the vertex, index, indirect or storage read would address the first copy while the uniform
+read addressed the current one, and one frame's data would be read as another's with nothing thrown. Create two
+buffers instead. Nothing in the engine or in any game does this today, which is why the refusal is safe to have.
+
+**A uniform write lands when you make it, not when the list is submitted.** A record-time
+`IGpuCommandList.UpdateBuffer` to a uniform buffer there is a memcpy straight into GPU-visible memory. On that
+backend the write it replaces was not a stall but a render-pass split plus a full pipeline flush plus a global
+memory barrier, so the same rule applies with a different cost behind it: two writes to the SAME range inside
+one frame leave the second value for every draw of that frame, including draws you recorded between them.
+Address per-draw uniforms by dynamic offset, which is what the engine's own renderers do.
+
+**A one-shot write through `IGpuDevice.UpdateBuffer` IS preserved, the same as on every other backend.** It
+reaches every segment, so a value written once at load time or when a setting changes persists for the buffer's
+life, and the call does not block, ever, including when an earlier frame is still reading a segment: those
+segments take the write at their next frame boundary instead. It is not a per-frame tool, for the same reason it
+is not one on the other native backend.
+
+The field lever is `KE_VULKAN_FRAMES_IN_FLIGHT=<n>`, default 3, and its range is **2 to 16 rather than 1 to
+16**. One frame in flight is honest on Direct3D 11, where the number sizes uniform rings alone. Here it also
+sizes each command list's pools, so 1 would make every `Begin` wait for its own previous record to finish on the
+GPU, which is a synchronous round trip per recording rather than one frame of latency.
+
 ### Shaders on the native Direct3D 11 backend (17.32.0)
 
 GLSL 450 stays the single source. That backend cross-compiles it to HLSL with the same SPIRV-Cross every other

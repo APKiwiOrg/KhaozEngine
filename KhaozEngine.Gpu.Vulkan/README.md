@@ -4,7 +4,8 @@ The engine's own native Vulkan backend for the [KhaozEngine.Gpu](../KhaozEngine.
 umbrella: a consumer adds this package explicitly, the same pattern as `Physics.Bepu` or `WorldStore.Sqlite`,
 and nothing that does not want the Vulkan binding ever carries it.
 
-> **Status: REGISTRATION, PROBE, A HEADLESS DEVICE, ITS COMPLETION TIMELINE AND ITS MEMORY ALLOCATOR.**
+> **Status: REGISTRATION, PROBE, A HEADLESS DEVICE, ITS COMPLETION TIMELINE, ITS MEMORY ALLOCATOR AND THE
+> COMMAND LIST'S LIFECYCLE.**
 > `KhaozEngineVulkan.Register()`
 > is real, so is the machine-capability probe behind it, and since
 > [#514](https://github.com/APKiwiOrg/KhaozEngine/issues/514) so is headless device creation:
@@ -15,9 +16,15 @@ and nothing that does not want the Vulkan binding ever carries it.
 > `WaitForIdle` that is a counted `vkWaitSemaphores` rather than a device-wide wait. Since
 > [#516](https://github.com/APKiwiOrg/KhaozEngine/issues/516) it owns its block suballocator too, complete and
 > with nothing yet allocating out of it, because the first resource is
-> [#519](https://github.com/APKiwiOrg/KhaozEngine/issues/519). That device cannot yet
-> RENDER: recording is
-> [#517](https://github.com/APKiwiOrg/KhaozEngine/issues/517), resources and samplers are
+> [#519](https://github.com/APKiwiOrg/KhaozEngine/issues/519). And since
+> [#517](https://github.com/APKiwiOrg/KhaozEngine/issues/517) it hands out real command lists with their own
+> per-slot `VkCommandPool`s, and `Submit` is one `vkQueueSubmit` on the queue: what those lists cannot do yet is
+> RECORD anything. That device cannot yet
+> RENDER: recording content is
+> [#521](https://github.com/APKiwiOrg/KhaozEngine/issues/521),
+> [#522](https://github.com/APKiwiOrg/KhaozEngine/issues/522),
+> [#524](https://github.com/APKiwiOrg/KhaozEngine/issues/524) and
+> [#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525), resources and samplers are
 > [#519](https://github.com/APKiwiOrg/KhaozEngine/issues/519), and each unbuilt member throws a message naming
 > its own row. Creating a WINDOWED device refuses, naming the swapchain row
 > ([#527](https://github.com/APKiwiOrg/KhaozEngine/issues/527)), rather than handing back a device that cannot
@@ -230,7 +237,80 @@ is ever dropped, the VMA decline must be re-argued.** The live and lifetime `vkA
 allocator keeps are what measurement gate MV6 is settled on, and they are deliberately not on
 `GpuDeviceCounters`, which has no field for them and which the other backends would have nothing to put in.
 
-## `KE_VULKAN_DEVICE` and `KE_VULKAN_VALIDATION`
+## Recording: a pool per slot, and no op stream at all
+
+**There is NO op stream, and that is a DECISION rather than an omission.** `VulkanCommandList` calls `vkCmd*` at
+RECORD TIME into a `VkCommandBuffer`. There is no second driver, no `KE_VULKAN_RECORD` and no A/B, and phase 2's
+own section 16 predicted exactly this: the CPU op stream in
+[KhaozEngine.Gpu.D3D11](../KhaozEngine.Gpu.D3D11) is a Direct3D 11 adapter that exists because that API's
+immediate context has no usable deferred recording. A `VkCommandBuffer` between `vkBeginCommandBuffer` and
+`vkEndCommandBuffer` IS an engine-invisible op stream that the driver encodes into its own format, so recording
+into a managed array first would encode twice, allocate once more, and move the driver-side encode inside the
+submit lock, which is the one serialised point in the frame. **The largest unproven bet in phase 2 is simply
+absent here.** Do not port the stream across as a "missing" feature.
+
+**Each list owns `FramesInFlight` `VkCommandPool`s with one primary buffer each, reset with
+`vkResetCommandPool`.** Not one pool with `VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT`, which is what the
+incumbent creates: that flag tells the driver every buffer must be individually resettable and pushes it onto
+the slower per-buffer allocator, while resetting the whole pool is the documented fast path and returns the last
+record's memory to the pool's arena in one operation. The cost is three pool objects per list instead of one.
+The flag is not merely unused, it is unreachable: the package's internal command seam has no parameter through
+which it could be asked for.
+
+`Begin` advances to the next slot, waits on that slot's recorded timeline value, resets the pool and begins the
+buffer with `ONE_TIME_SUBMIT`. `End` calls `vkEndCommandBuffer` and seals. `Submit` is the device's, and records
+the value it signalled back into the slot the record came from.
+
+**The DEPTH is shared with the uniform ring and the INDEX is not, and conflating them is the mistake available
+here.** The pool slot is PER LIST and advances on every `Begin`. The ring segment is PER FRAME and advances at
+the frame boundary. A list begun twice in one frame therefore takes two different pool slots while both of its
+records write the SAME ring segment, which is correct in both directions: two records must not share a command
+buffer that is still in flight, and two records in one frame must see one frame's uniform values. A list begun
+more times per frame than `FramesInFlight` wraps onto its own oldest slot and waits on that slot's recorded
+value, which is real backpressure and is counted as such.
+
+**N lists record CONCURRENTLY on this backend, and the portable seam contract is unchanged.** `IGpuCommandList`
+documents exactly one open recording per device, and that is what portable code is written against. This backend
+is more permissive as a BACKEND PROPERTY: a `VkCommandPool` and every buffer allocated from it are externally
+synchronised one thread at a time, per-list pools mean two lists on two threads never touch the same pool, and
+layout tracking is list-local ([#524](https://github.com/APKiwiOrg/KhaozEngine/issues/524)), so nothing shared is
+read or written during recording at all. That is the property the Direct3D 11 stream buys by touching no device
+state, obtained here from the API's own threading model plus the barrier design. It holds for a reason a reader
+has to know rather than one they can see, which is why it is written down twice. One list is still ONE thread at
+a time.
+
+**A list disposed with submissions outstanding hands its pools to the retire list** at the highest timeline value
+any of its slots was submitted at, and they are destroyed once the counter passes it. The incumbent uses a
+refcount, which also works and which this design does not need because the retire list exists for resources
+anyway.
+
+**One `vkQueueSubmit` per submission, with the timeline value allocated inside the lock that orders it.** The
+value the submission signals rides in the `VkTimelineSemaphoreSubmitInfo` chained onto the submit info, and there
+is no `VkFence` anywhere in this backend. Allocating inside the lock is load-bearing rather than tidy: a timeline
+semaphore's signals must strictly increase, and allocating outside it would let two threads take 5 and 6 and then
+reach the queue in the other order. **A submit that FAILS with a non-loss result registers nothing**, so the
+value it took becomes a hole nothing waits on and `WaitForIdle` keeps a target the GPU can still reach. The
+failure is still thrown. Host-signalling the taken value to close the hole was weighed and declined: a host
+signal has to respect the same strictly-increasing rule against signals still pending on the queue, so doing it
+correctly means blocking inside the submit lock on the path where the machine is out of memory.
+
+**What the recording members do TODAY is refuse by naming their own row.** The lifecycle is complete and the
+content is not: binds are [#521](https://github.com/APKiwiOrg/KhaozEngine/issues/521), the rendering and clear
+path is [#522](https://github.com/APKiwiOrg/KhaozEngine/issues/522), barriers are
+[#524](https://github.com/APKiwiOrg/KhaozEngine/issues/524), and draws, dispatches and copies are
+[#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525).
+
+**`IVkCmdSink` is the seam a device-free native-call BUDGET is counted through**, struct-constrained so the JIT
+monomorphizes it away, covering only the three call classes that scale with draw count: descriptor binds, draws
+and dispatches, and barriers. Everything else goes straight to `vkCmd*`. Aiming it at Direct3D 11's call classes
+would have been the mistake: that API binds RESOURCES and its fan-out defect was one call per resource per stage,
+while Vulkan binds SETS and the Vulkan fan-out class is per-draw descriptor set ALLOCATION, per-draw
+`vkUpdateDescriptorSets` and per-draw barrier emission. Neither of those two calls is a member of the sink and
+neither should become one: their absence is enforced structurally by the descriptor pool being unreachable from
+the recording type, and a call that cannot be made is a stronger guarantee than a call counted and found to be
+zero.
+
+## `KE_VULKAN_DEVICE`, `KE_VULKAN_VALIDATION` and `KE_VULKAN_FRAMES_IN_FLIGHT`
 
 **`KE_VULKAN_DEVICE` pins which physical device the backend runs on.** Six forms, case-insensitive and
 whitespace-trimmed:
@@ -272,6 +352,26 @@ believes it is running `strict` and is running nothing produces a clean run that
 from inside a native driver callback, which is undefined behaviour that destroys the stack the diagnostic was
 about. `strict`'s throw is what that behaviour is for, and it happens at a controlled point after the latch.
 RenderDoc attaches externally and needs nothing from the engine.
+
+**`KE_VULKAN_FRAMES_IN_FLIGHT=<n>` moves the ONE depth this backend pipelines at** (2 to 16, default 3, an
+unparseable or out-of-range value warns and keeps 3). It sizes both rings at once: how many `VkCommandPool`s each
+command list cuts, and how many per-frame segments each uniform ring is cut into. One number, because a deeper
+command-buffer ring behind a shallower uniform gate is dead capacity, and one number to move if the measurement
+says 3 is wrong.
+
+The floor is 2 rather than the Direct3D 11 lever's 1, and that difference is deliberate. There the number sizes
+constant-buffer rings only, so 1 is an honest degenerate case: one frame of latency, and the shape that proves
+the backpressure counter counts something real. Here 1 would give every list ONE pool, so every `Begin` would
+advance onto the slot it just used and wait for that record's own submission to complete: a synchronous round
+trip per RECORD, which on a frame recording several lists is several full GPU drains, and a capture taken there
+measures the drain rather than the pipeline.
+
+The variable exists to settle measurement gate MV3, whose exit criterion is `BackpressureStallCount` reading zero
+across a full capture window AT THE DEFAULT. That counter is ONE accumulator covering both meanings, a command
+list wrapping onto its own oldest pool slot and a frame boundary finding its uniform segment still in flight,
+because they are the same statement about the same lever. Raising the depth is the response to a non-zero count.
+**The knob may outlive its gate only if the exit criterion was met at 3**, which is the condition that stops "it
+is only a knob" from becoming a way to keep a failed default.
 
 ## Why there are no platform guards, and why nobody should add them
 

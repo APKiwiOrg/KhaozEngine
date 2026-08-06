@@ -1807,6 +1807,137 @@ ever overlap and that everything comes back as one coalesced range. The ladders 
 as by result, on a discrete-card layout and a unified-memory one. The retire ordering is driven through the REAL
 timeline and retire list over a fake semaphore, not a stub of either.
 
+### The native Vulkan command list: a pool per slot, one `vkQueueSubmit`, and the depth knob both rings read (#517)
+
+The native Vulkan device hands out real command lists and submits them. Work-breakdown row 7, decisions V-R1 to
+V-R4, V-T2 and V-F3, and the first row of the minimal renderable path. `Begin`, `End`, disposal and `Submit` all
+work end to end. What a list cannot do yet is RECORD anything: the drawing, binding, clearing and copying members
+throw a message naming their own row (#521, #522, #524, #525), so the lifecycle lands complete and the content
+follows.
+
+**There is no op stream, no second recording driver, no `KE_VULKAN_RECORD` and no A/B, and that is a DECISION
+rather than an omission (V-R1).** Phase 2's own section 16 predicted exactly this: the CPU op stream on the
+Direct3D 11 backend is an adapter for an API whose immediate context has no usable deferred recording, and a
+`VkCommandBuffer` between `vkBeginCommandBuffer` and `vkEndCommandBuffer` IS an engine-invisible op stream that
+the driver encodes into its own format. Recording into a managed array first would encode twice, allocate once
+more, and move the driver-side encode inside the submit lock, which is the one serialised point in the frame.
+The largest unproven bet in phase 2, its milestone M1, has no analogue here at all.
+
+**A pool per slot, not one pool with `RESET_COMMAND_BUFFER` (V-R2).** Each list owns `FramesInFlight`
+`VkCommandPool`s with one primary `VkCommandBuffer` allocated out of each at construction, and a parallel array
+of the timeline value each was last submitted at. The incumbent creates one pool per list with that flag, which
+tells the driver every buffer must be individually resettable and pushes it onto the slower per-buffer
+allocator. Resetting the whole pool is the documented fast path and returns the last record's memory to the
+pool's arena in one operation, and the cost is three pool objects per list instead of one. The flag is not
+merely unused: the package's internal command seam takes no flags parameter, so there is nothing a call site
+could ask for it through, and undoing the decision means editing the seam where the reason is written.
+
+**`Begin` advances a slot, waits on that slot's own recorded value, resets the pool and begins with
+`ONE_TIME_SUBMIT` (V-R3).** In the steady state at depth 3 that wait is one non-blocking read that finds the
+value already passed, and nothing is counted. When it blocks, the CPU is more than three records ahead of the
+GPU on that list and the wait is recorded as backpressure. A poll that found the GPU caught up counts nothing,
+deliberately, because a counter that ticks on a non-wait cannot answer "was anything ever blocked" with a zero.
+Every pool and every buffer is created up front rather than lazily: a `Begin` that could allocate a driver
+object is a `Begin` that can fail on frame 4000, which is the shape all 25 `DEVICE_REMOVED` stacks in #423 came
+out of on the other backend.
+
+**The DEPTH is shared with the uniform ring and the INDEX is not.** `KE_VULKAN_FRAMES_IN_FLIGHT=<n>` (2 to 16,
+default 3) lands here because this row creates the number and row 8 READS it rather than defining a second one:
+a command-buffer ring deeper than the uniform gate in front of it is dead capacity, so one number governs both
+and there is one number to move if MV3 says 3 is wrong. The pool slot is per LIST and advances on every `Begin`,
+while the ring segment is per FRAME and advances at the frame boundary, so a list begun twice in one frame takes
+two pool slots and writes one ring segment. Both directions are correct: two records must not share a command
+buffer still in flight, and two records in one frame must see one frame's uniform values.
+
+**The floor is 2 and not the Direct3D 11 lever's 1.** There the number sizes constant-buffer rings only, so 1 is
+an honest degenerate case worth having: one frame of latency, and the shape that proves the backpressure counter
+counts something real. Here 1 would give every list ONE pool, so every `Begin` would advance onto the slot it
+just used and wait for that record's own submission, which is a synchronous round trip per RECORD rather than
+per frame. A frame recording several lists would pay several full GPU drains, and a capture taken there measures
+the drain rather than the pipeline, which is the one thing the MV3 lever must not be able to do quietly.
+
+**`BackpressureStallCount` and `BackpressureStallMs` are now filled on this backend**, on ONE accumulator that
+also takes row 8's uniform ring stalls when that row lands. The fold is deliberate and MV3 asks for it: the two
+are the same statement about the same lever, and the exit criterion is a single zero rather than two numbers a
+reader has to add up first. `IGpuDevice.Counters` on this backend therefore reports four of its seven fields
+from live measurement, with the rest still honestly zero.
+
+**`Submit` is ONE `vkQueueSubmit` (V-F3), with the timeline value allocated INSIDE the lock that orders it.**
+The value the submission signals rides in the `VkTimelineSemaphoreSubmitInfo` chained onto the submit info, and
+there is no `VkFence` anywhere in this backend. Allocating inside the lock is load-bearing rather than tidy: a
+timeline semaphore's signal operations must strictly increase, which is what the whole one-timeline theorem
+rests on, and allocating outside the lock would let two threads take 5 and 6 and then reach the queue in the
+other order, asking it to signal 6 and then 5.
+
+**A failed submit can no longer strand `WaitForIdle`, and it is prevented structurally rather than repaired.**
+Row 5's review recorded the hazard exactly: the two out-of-memory results do NOT flip device liveness, and the
+spec requires the implementation to leave every referenced synchronisation primitive unaffected on them, so a
+value taken by a submission that then failed will never be signalled by anything. With the drain targeting the
+allocation high-water that left it waiting forever on the very next call. `VulkanTimeline` now keeps TWO
+high-waters: `LastSubmitted`, raised only after `vkQueueSubmit` has returned success, which is what the drain
+targets, and `LastAllocated`, every value ever handed out, which is what deferred disposal gates on. A failed
+submission simply leaves a hole in the value space that nothing waits on, and the failure is still thrown.
+
+**Host-signalling the taken value to close the hole was weighed and declined.** Keeping the drain on the
+allocation high-water and repairing the gap with `vkSignalSemaphore` looks cleaner and is wrong under load: a
+host signal must ALSO respect the strictly-increasing rule against the signals still PENDING on the queue. Take
+value 8, fail, host-signal 8 while submissions 6 and 7 are still executing, and the counter reaches 8 before the
+queue signals 6, which is a decreasing signal and undefined behaviour. Doing it correctly means first BLOCKING
+until the counter reaches 7, inside the submit lock, on the path where the machine is out of memory, and
+depending on a spec corner no device-free test can exercise. The high-water costs one comparison, makes no
+native call, is provable device-free, and leaves the timeline semaphore seam's "there is no signal member here,
+deliberately" rule unweakened.
+
+**The two high-waters answer different questions, and deferred disposal takes the larger one.** A submission
+whose value has been taken and whose `vkQueueSubmit` has not returned yet can already reference a resource and
+is invisible to the registered high-water for a few instructions, so gating a destroy on that number would free
+memory underneath a submission in flight. The allocation high-water cannot be too small, only too conservative.
+And a gap does not strand an entry gated on it, because the retire list releases on `completed >= value` against
+a counter that steps OVER holes, so the next successful signal releases it, with teardown draining
+unconditionally as the backstop.
+
+**A list disposed with submissions outstanding hands its pools to the retire list** at the highest value any of
+its slots was submitted at (V-F9), destroyed once the timeline passes it. No refcount, unlike the incumbent,
+which also works: the retire list exists for resources anyway, and a second lifetime mechanism would be a second
+rule about when a deferred destroy is safe. Each held destroy is TERMINAL, allocating nothing and retiring
+nothing, which is what makes it legal in the teardown drain that runs between `vkDeviceWaitIdle` and
+`vkDestroyDevice`.
+
+**N lists record concurrently on this backend, and the portable seam contract is unchanged (V-R4).**
+`IGpuCommandList.Begin` documents exactly one open recording per device and that is still the only rule portable
+code may rely on. This backend is more permissive as a BACKEND PROPERTY, obtained from the API's own threading
+model rather than from an engine mechanism: a `VkCommandPool` and its buffers are externally synchronised one
+thread at a time, per-list pools mean two lists on two threads never touch the same pool, and layout tracking
+will be list-local (#524). There is no per-device open-list counter here, matching the native Direct3D 11
+backend, and `OpenListTrackingGpuDevice` passing on this leg is therefore not evidence about this backend.
+
+**`IVkCmdSink` lands as the device-free native-call BUDGET seam (V-T2)**, struct-constrained so the JIT
+monomorphizes it away, covering only the three call classes that scale with draw count: descriptor binds, draws
+and dispatches, and barriers. Clears, copies, mip generation, resolves and the `vkCmdBeginRendering` and
+`vkCmdEndRendering` pair go straight to `vkCmd*`, because nothing about them scales per draw and freezing
+numbers over them would gate on figures nobody should gate on. Aiming it at Direct3D 11's call classes would
+have been the mistake: that API binds RESOURCES and its #418 defect was one call per resource per stage, while
+Vulkan binds SETS and its fan-out class is per-draw descriptor set ALLOCATION, per-draw `vkUpdateDescriptorSets`
+and per-draw barrier emission. Neither of those two calls is a member of the sink and neither should become one:
+their absence is enforced structurally by the descriptor pool being unreachable from the recording type, and a
+call that cannot be made is a stronger guarantee than a call counted and found to be zero. The real sink and a
+counting sink both land here. The budget test itself is #521's, because the numbers it freezes come from the
+bind flush that row builds.
+
+**Everything above is tested device-free**, behind a seven-member native command seam (`vkCreateCommandPool`,
+`vkAllocateCommandBuffers`, `vkResetCommandPool`, `vkBeginCommandBuffer`, `vkEndCommandBuffer`, `vkQueueSubmit`,
+`vkDestroyCommandPool`) in `ulong` handles, with the ordering types naming no Silk.NET type at all. The
+recording-contract test is the shape the Direct3D 11 one takes at the seam level: four lists opened
+CONCURRENTLY on four real threads at a barrier, sealed in reverse order, submitted in a third order, with each
+list's own pool trace asserted to be exactly its own reset, begin, end and submit and nothing from another list
+interleaved into it, plus timeline values following submit order and not record order. Eight threads submitting
+in a loop assert that allocation order and submit order are the same order, which is the property the submit
+lock exists for and which a single-threaded test cannot see at all. The failure rows drive a forced non-loss
+submit failure and assert that the timeline has no unreachable target afterwards, that `WaitForIdle` still
+completes, that the fence is unarmed again, and that the slot records nothing. Row 11 EXTENDS the contract test
+rather than replacing it: the per-pool trace is already the assertion unit, and real commands go into it through
+the counting sink.
+
 ### A wall contact reads its face over the bank, not over a 0.4 m facet of it (#501)
 
 Walking along a bank on Ruinborne stopped the character dead in localised sticky PLACES, and the fix for

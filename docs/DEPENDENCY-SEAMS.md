@@ -567,8 +567,12 @@ The pattern above is now used twice, which is what turns it from a one-off into 
 graphics backend has here. `KhaozEngine.Gpu.Vulkan` is phase 3 of the same program and takes the same inverted
 edge. As of `17.32.0` it registers a real provider through `KhaozEngineVulkan.Register()`, answers a real
 functional machine probe, and creates a real HEADLESS device
-([#514](https://github.com/APKiwiOrg/KhaozEngine/issues/514)) that cannot yet record or present: recording is
-[#517](https://github.com/APKiwiOrg/KhaozEngine/issues/517), resources are
+([#514](https://github.com/APKiwiOrg/KhaozEngine/issues/514)) that hands out command lists and submits them
+([#517](https://github.com/APKiwiOrg/KhaozEngine/issues/517)) but cannot yet record content into them or
+present: the recording members are [#521](https://github.com/APKiwiOrg/KhaozEngine/issues/521),
+[#522](https://github.com/APKiwiOrg/KhaozEngine/issues/522),
+[#524](https://github.com/APKiwiOrg/KhaozEngine/issues/524) and
+[#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525), resources are
 [#519](https://github.com/APKiwiOrg/KhaozEngine/issues/519), and the windowed swapchain is
 [#527](https://github.com/APKiwiOrg/KhaozEngine/issues/527), which is what the windowed entry point still
 refuses by name. It registers under `GpuBackendKind.VulkanNative`, which landed in the same version, so the

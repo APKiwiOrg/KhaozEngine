@@ -16,7 +16,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <para>
     /// WHAT IS DELIBERATELY NOT HERE is recording CONTENT, because there is none yet: rows 11, 12, 14 and 15 own
     /// the drawing, binding, clearing and copying members, and every one of them refuses by naming its row. The
-    /// row that pins the refusals is here; the rows that replace them are theirs.
+    /// row that pins the refusals is here, and the rows that replace them are theirs.
     /// </para>
     /// </summary>
     public sealed class VulkanCommandListTests

@@ -8589,8 +8589,12 @@ KhaozEngineVulkan.Register();   // unconditionally, on every OS
 Registration and the machine probe are real, `GpuBackendKind.VulkanNative` exists with the tokens
 `KE_GRAPHICS_BACKEND=vulkan-native` and the shorter `vk-native`, and
 `GpuDeviceContext.CreateHeadless(GpuBackendKind.VulkanNative)` builds a real `VkDevice` and a graphics queue on
-one refcounted process `VkInstance`. What that device cannot do yet is everything a frame needs: recording is
-https://github.com/APKiwiOrg/KhaozEngine/issues/517, resources and samplers are
+one refcounted process `VkInstance`. That device now hands out real command lists and submits them
+(https://github.com/APKiwiOrg/KhaozEngine/issues/517), so `Begin`, `End`, `Submit` and completion fences all
+work end to end. What it cannot do yet is put anything INTO a list: the drawing, binding, clearing and copying
+members are https://github.com/APKiwiOrg/KhaozEngine/issues/521,
+https://github.com/APKiwiOrg/KhaozEngine/issues/522, https://github.com/APKiwiOrg/KhaozEngine/issues/524 and
+https://github.com/APKiwiOrg/KhaozEngine/issues/525, resources and samplers are
 https://github.com/APKiwiOrg/KhaozEngine/issues/519, and each of those members throws a message naming its own
 row rather than returning something that fails later somewhere less informative. Creating a WINDOWED device
 refuses outright, naming https://github.com/APKiwiOrg/KhaozEngine/issues/527, the row that builds the surface
@@ -8614,9 +8618,9 @@ layouts spend, and a graphics queue family. The instance is destroyed before the
 never throws, so a machine with no loader, no ICD or a pre-1.3 driver is a plain false: on macOS, which has no
 Vulkan loader, that is the answer you get and it is the correct one.
 
-### Diagnostics on the native Vulkan backend (17.32.0)
+### Diagnostics and levers on the native Vulkan backend (17.32.0)
 
-Two environment variables, both read at device creation and both following the same shape as the `KE_D3D11_*`
+Three environment variables, all read at device creation and all following the same shape as the `KE_D3D11_*`
 levers above: a request that cannot be honoured WARNs and carries on, and never stops the app starting.
 
 **`KE_VULKAN_DEVICE` pins which physical device the backend runs on.** Six forms, all case-insensitive and
@@ -8665,6 +8669,28 @@ run that proved nothing.
 throw happens at a controlled point after the error is latched and logged, never inside the driver callback that
 saw it, because unwinding a managed exception through native driver frames destroys the stack the diagnostic was
 about. RenderDoc attaches externally and needs nothing from the engine.
+
+**`KE_VULKAN_FRAMES_IN_FLIGHT=<n>` sets how far ahead of the GPU the CPU may run** (2 to 16, default 3, an
+unparseable or out-of-range value warns and keeps 3). One number sizes two things at once on this backend: how
+many `VkCommandPool`s each command list cuts, so how many records it can have in flight before a `Begin` has to
+wait, and how many per-frame segments each uniform ring is cut into. They are the same statement about pipeline
+depth, so there is one lever rather than two to keep in step.
+
+```
+KE_VULKAN_FRAMES_IN_FLIGHT=4   # deeper, if a soak reports backpressure stalls at the default
+KE_VULKAN_FRAMES_IN_FLIGHT=2   # the shallowest depth that pipelines at all
+```
+
+The floor is 2 rather than the Direct3D 11 lever's 1, and the difference is real rather than a copied constant
+drifting. There the number sizes constant-buffer rings only, so 1 means one frame of latency. Here 1 would give
+every command list one pool, so every `Begin` would wait for that list's own previous record to finish on the
+GPU, which is a full round trip per record rather than per frame.
+
+Read `BackpressureStallCount` and `BackpressureStallMs` off `IGpuDevice.Counters` to decide whether to touch it.
+On this backend they are ONE accumulator covering both meanings: a command list waiting for its own oldest pool
+slot, and a frame boundary waiting for a uniform ring segment. A count of zero across a capture window means the
+default is deep enough, and a non-zero count is what the lever answers. Raising it costs one command pool per
+list plus one copy of every uniform buffer, per extra frame.
 
 **A device loss reports why, at the site that noticed.** Every `VkResult` this backend reads is checked in every
 configuration including Release, and on `VK_ERROR_DEVICE_LOST` the call's name and the result are latched

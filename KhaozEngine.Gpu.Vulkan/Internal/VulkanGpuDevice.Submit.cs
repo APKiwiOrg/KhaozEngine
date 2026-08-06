@@ -52,7 +52,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             var uploads = new VulkanListUploads(
                 _instance.Value.Api, ring, new VulkanStagingArena(_staging, _framesInFlight));
 
-            return new VulkanCommandList(ring, _retired, uploads);
+            // DECISION V-R7's DRAW-TIME HALF FOLLOWS THE SAME LEVER THE LAYER ITSELF DOES. The assertion that every
+            // bound set's layout is the pipeline layout's set layout at that index is a per-bind loop, so it is
+            // armed exactly when KE_VULKAN_VALIDATION armed the layer, read off the instance this device leased
+            // rather than off the environment a second time: two reads could disagree if the variable moved
+            // mid-process, and a device whose lists disagree with its own instance about validation is the worst
+            // available answer.
+            bool assertBoundSetLayouts = _instance.Value.Validation != VulkanValidationMode.Off;
+
+            return new VulkanCommandList(ring, _retired, uploads, assertBoundSetLayouts);
         }
 
         /// <summary>How many frames this device pipelines at (MV3), resolved once at creation from

@@ -2,6 +2,7 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using KhaozEngine.Primitives;
+using Silk.NET.Vulkan;
 
 namespace KhaozEngine.Gpu.Vulkan.Internal
 {
@@ -26,11 +27,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// none, which is the same discipline <c>VulkanGpuDevice</c>'s equivalent paragraph is under.</para>
     ///
     /// <para><b>THE MEMBERS THAT ARE LIVE:</b> <see cref="Begin"/>, <see cref="End"/> and <see cref="Dispose"/>,
-    /// everything the device's <c>Submit</c> reaches through this type, and both <c>UpdateBuffer</c> overloads at
-    /// both ends of their routing. On a RING-BACKED buffer that is a memcpy into the current segment which records
-    /// nothing at all (9.2), and on any other buffer it is a staged copy through this list's own arena with a
-    /// barrier narrowed to the destination's real usage, which row 9 wired
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/519).</para>
+    /// everything the device's <c>Submit</c> reaches through this type, both <c>UpdateBuffer</c> overloads at
+    /// both ends of their routing, and all four resource-set binds. On a RING-BACKED buffer an update is a memcpy
+    /// into the current segment which records nothing at all (9.2), and on any other buffer it is a staged copy
+    /// through this list's own arena with a barrier narrowed to the destination's real usage, which row 9 wired
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/519). A resource-set bind RECORDS ONLY into
+    /// <see cref="VulkanBindRecords"/> and issues nothing until a draw flushes it, which is row 11
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/521).</para>
     ///
     /// <para><b>N LISTS RECORD CONCURRENTLY ON THIS BACKEND, AND THE PORTABLE CONTRACT IS UNCHANGED (V-R4).</b>
     /// The seam documents exactly one open recording per device, and that rule is what portable code is written
@@ -60,6 +63,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         readonly VulkanRetireList _retired;
         readonly IVulkanRecordUploads? _uploads;
 
+        // ONE PER BIND POINT, because the seam's graphics and compute bindings are separate and Vulkan's are too.
+        // Row 11's whole schedule lives in these two objects, which hold no set, no layout object and nothing that
+        // reaches the descriptor pool: see VulkanBoundSet for the V-D2 obligation that shapes them.
+        readonly VulkanBindRecords _graphicsBinds;
+        readonly VulkanBindRecords _computeBinds;
+
         bool _recording;
         bool _disposed;
 
@@ -78,8 +87,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="uploads">This list's staging arena and copy recorder (9.3), or null while there is no
         /// non-uniform buffer that could reach it. See <see cref="IVulkanRecordUploads"/> for why the list holds
         /// the interface rather than the arena, and why null is correct today rather than a placeholder.</param>
+        /// <param name="assertBoundSetLayouts">Decision V-R7's draw-time half: under
+        /// <c>KE_VULKAN_VALIDATION</c> the bind flush additionally asserts that every bound set's layout IS the
+        /// current pipeline layout's set layout at that index. The device reads it off the instance it leased, so
+        /// the assertion follows the same lever the layer itself does.</param>
         internal VulkanCommandList(VulkanCommandPoolRing ring, VulkanRetireList retired,
-            IVulkanRecordUploads? uploads = null)
+            IVulkanRecordUploads? uploads = null, bool assertBoundSetLayouts = false)
         {
             ArgumentNullException.ThrowIfNull(ring);
             ArgumentNullException.ThrowIfNull(retired);
@@ -87,10 +100,24 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _ring = ring;
             _retired = retired;
             _uploads = uploads;
+            _graphicsBinds = new VulkanBindRecords(PipelineBindPoint.Graphics, assertBoundSetLayouts);
+            _computeBinds = new VulkanBindRecords(PipelineBindPoint.Compute, assertBoundSetLayouts);
         }
 
         /// <summary>The pools, exposed for the submit path and for tests. Every other caller names slots.</summary>
         internal VulkanCommandPoolRing Ring => _ring;
+
+        /// <summary>
+        /// THE GRAPHICS BIND SCHEDULE (V-R5 to V-R7). Exposed because row 13
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/523) drives its
+        /// <see cref="VulkanBindRecords.SetPipelineLayout"/> from <c>SetPipeline</c>, and because the device-free
+        /// tests drive the whole schedule through it before either <c>SetPipeline</c> or the draw members exist.
+        /// </summary>
+        internal VulkanBindRecords GraphicsBinds => _graphicsBinds;
+
+        /// <summary>The compute bind schedule. Separate records, separate <c>VkPipelineLayout</c>, separate
+        /// flush.</summary>
+        internal VulkanBindRecords ComputeBinds => _computeBinds;
 
         /// <summary>True between <see cref="Begin"/> and <see cref="End"/>.</summary>
         internal bool IsRecording => _recording;
@@ -143,11 +170,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// reports at the NEXT call rather than at this one.
         /// </para>
         /// <para>
-        /// THE RECORDER STATE RESET GOES HERE, and today there is none to do. Section 6.1 lists what a
-        /// <c>Begin</c> resets on this backend: the framebuffer, both pipelines, both dirty arrays, the scissor,
-        /// and the list-local layout map. Not one of those exists yet, because they are created by rows 11
-        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/521), 12
-        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/522) and 14
+        /// THE RECORDER STATE RESET GOES HERE. Section 6.1 lists what a <c>Begin</c> resets on this backend: the
+        /// framebuffer, both pipelines, both dirty arrays, the scissor, and the list-local layout map. Row 11
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/521) added the two dirty arrays and, with them, the
+        /// pipeline LAYOUT each is bound under. The framebuffer and the scissor are row 12's
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/522) and the layout map is row 14's
         /// (https://github.com/APKiwiOrg/KhaozEngine/issues/524). Each of those rows adds its reset immediately
         /// after the native calls below and before the recording flag flips, and this paragraph is the hook they
         /// are looking for. A reset added anywhere else is a reset that a re-Begun list can be observed without.
@@ -179,8 +206,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // still reading.
             _uploads?.BeginSlot(slot);
 
-            // ROWS 11, 12 AND 14 RESET THEIR RECORDER STATE HERE, between the native begin and the flag. See the
+            // ROWS 12 AND 14 RESET THEIR RECORDER STATE HERE TOO, between the native begin and the flag. See the
             // remarks above for the full list and for why this is the only correct place for it.
+            //
+            // ROW 11's HALF: a fresh VkCommandBuffer has no descriptor set and no pipeline bound, so both records
+            // forget their slots AND the pipeline layout they were bound under. Keeping either would let the first
+            // flush of the next recording skip a bind as clean against state that lives on another buffer.
+            _graphicsBinds.Reset();
+            _computeBinds.Reset();
 
             _recording = true;
         }
@@ -243,27 +276,81 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         public void SetFullScissorRects() => throw NotBuiltYet("Resetting the scissor rects", RenderingRow);
 
         /// <inheritdoc/>
-        public void SetPipeline(IGpuPipeline p) => throw NotBuiltYet("Binding a graphics pipeline", BindRow);
+        /// <remarks>
+        /// STILL REFUSES, AND ROW 13 (https://github.com/APKiwiOrg/KhaozEngine/issues/523) IS WHERE IT LANDS,
+        /// because a pipeline is what carries the <c>VkPipelineLayout</c> this row's compatibility prefix compares.
+        /// The prefix computation and both of its guards are already here: row 13's <c>SetPipeline</c> emits
+        /// <c>vkCmdBindPipeline</c> and then calls
+        /// <see cref="VulkanBindRecords.SetPipelineLayout"/> on <see cref="GraphicsBinds"/> with the pipeline's own
+        /// layout handle and set-layout sequence, which invalidates the recorded slots from the first incompatible
+        /// set onward. Nothing else about clause 4 is left to write.
+        /// </remarks>
+        public void SetPipeline(IGpuPipeline p) => throw NotBuiltYet("Binding a graphics pipeline", PipelineRow);
 
         /// <inheritdoc/>
-        public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set)
-            => throw NotBuiltYet("Binding a graphics resource set", BindRow);
+        /// <remarks>
+        /// CLAUSE 1, RECORD ONLY (V-R5). No native call and no descriptor work: the slot's record takes the set's
+        /// handle, its layout handle and its dynamic uniform array, and goes dirty if either the set or the offset
+        /// moved. The bind itself happens at the next draw, one <c>vkCmdBindDescriptorSets</c> per contiguous run
+        /// of dirty slots.
+        /// <para>
+        /// A RECORD MADE OUTSIDE A RECORDING IS DISCARDED RATHER THAN REFUSED, which is the same answer
+        /// <see cref="UpdateBuffer{T}(IGpuBuffer,uint,in T)"/> gives and is safe for a different reason:
+        /// <see cref="Begin"/> resets both records, so a bind made before one cannot leak into the recording that
+        /// follows.
+        /// </para>
+        /// </remarks>
+        public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set) => Bind(_graphicsBinds, slot, set, 0);
 
         /// <inheritdoc/>
+        /// <remarks>The same record, carrying the caller's per-draw byte offset, which the flush adds on top of the
+        /// ring base for the ONE element the layout declared dynamic (V-D4).</remarks>
         public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset)
-            => throw NotBuiltYet("Binding a graphics resource set with a dynamic offset", BindRow);
+            => Bind(_graphicsBinds, slot, set, dynamicOffset);
 
         /// <inheritdoc/>
+        /// <remarks>Row 13's (https://github.com/APKiwiOrg/KhaozEngine/issues/523), on the compute arm, and the
+        /// same shape as <see cref="SetPipeline"/>: it calls
+        /// <see cref="VulkanBindRecords.SetPipelineLayout"/> on <see cref="ComputeBinds"/>.</remarks>
         public void SetComputePipeline(IGpuComputePipeline p)
-            => throw NotBuiltYet("Binding a compute pipeline", BindRow);
+            => throw NotBuiltYet("Binding a compute pipeline", PipelineRow);
 
         /// <inheritdoc/>
-        public void SetComputeResourceSet(uint slot, IGpuResourceSet set)
-            => throw NotBuiltYet("Binding a compute resource set", BindRow);
+        /// <remarks>The compute arm of <see cref="SetGraphicsResourceSet(uint,IGpuResourceSet)"/>, into its own
+        /// records: a graphics bind does not feed a dispatch and this does not feed a draw.</remarks>
+        public void SetComputeResourceSet(uint slot, IGpuResourceSet set) => Bind(_computeBinds, slot, set, 0);
 
         /// <inheritdoc/>
+        /// <remarks>The compute arm of the offset-carrying overload.</remarks>
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset)
-            => throw NotBuiltYet("Binding a compute resource set with a dynamic offset", BindRow);
+            => Bind(_computeBinds, slot, set, dynamicOffset);
+
+        /// <summary>
+        /// THE PRE-COMMAND HOOK, GRAPHICS ARM (clause 2). Row 15
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/525) calls this FIRST in <c>Draw</c> and
+        /// <c>DrawIndexed</c>, before the vertex and index binds and before the draw itself, then issues. It emits
+        /// one <c>vkCmdBindDescriptorSets</c> per contiguous run of dirty slots and leaves every slot clean.
+        /// <para>
+        /// GENERIC OVER THE SINK AND <c>ref</c> RATHER THAN <c>in</c>, so the JIT monomorphizes the seam away and
+        /// no defensive copy is made per call on the per-draw path. That is V-T2's whole "generic-constrained to a
+        /// struct" clause arriving at its first real caller.
+        /// </para>
+        /// </summary>
+        internal void FlushGraphicsBinds<TSink>(ref TSink sink) where TSink : struct, IVkCmdSink
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+
+            _graphicsBinds.Flush(ref sink);
+        }
+
+        /// <summary>The compute arm, which <c>Dispatch</c> calls for the same reason and in the same
+        /// place.</summary>
+        internal void FlushComputeBinds<TSink>(ref TSink sink) where TSink : struct, IVkCmdSink
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+
+            _computeBinds.Flush(ref sink);
+        }
 
         /// <inheritdoc/>
         public void SetVertexBuffer(uint slot, IGpuBuffer b) => throw NotBuiltYet("Binding a vertex buffer", DrawRow);
@@ -389,6 +476,19 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _uploads?.Dispose();
         }
 
+        // THE RECORD ITSELF, in ONE place rather than at each of the four overloads, so the two arms and the two
+        // offset shapes cannot drift apart by an edit to one of them. Everything it does is a type check and a
+        // compare-and-store: see VulkanBindRecords for why that is the whole of a bind at record time.
+        void Bind(VulkanBindRecords records, uint slot, IGpuResourceSet set, uint dynamicOffset)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+
+            // NULL IS A LEGAL RECORD AND NOT A CALLER ERROR (clause 5). It says the slot holds no set, and the
+            // flush skips it rather than unbinding: a descriptor slot nothing reads costs nothing to leave.
+            records.Record(slot, set is null ? null : VulkanResourceSet.Require(set, "a native Vulkan bind"),
+                dynamicOffset);
+        }
+
         // THE ROUTING ITSELF, in ONE place rather than at each of the two overloads, so a uniform write and a bulk
         // write cannot drift apart by an edit to one of them.
         void Upload(IGpuBuffer buffer, uint offsetBytes, ReadOnlySpan<byte> data)
@@ -418,7 +518,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         // has just hit one and needs to know whether to wait for a row or file a bug.
         const string RenderingRow =
             "the dynamic-rendering row (https://github.com/APKiwiOrg/KhaozEngine/issues/522)";
-        const string BindRow = "the bind-flush row (https://github.com/APKiwiOrg/KhaozEngine/issues/521)";
+        const string PipelineRow = "the pipeline row (https://github.com/APKiwiOrg/KhaozEngine/issues/523)";
         const string DrawRow = "the draw-and-dispatch row (https://github.com/APKiwiOrg/KhaozEngine/issues/525)";
         const string ResourcesRow = "the resources row (https://github.com/APKiwiOrg/KhaozEngine/issues/519)";
 

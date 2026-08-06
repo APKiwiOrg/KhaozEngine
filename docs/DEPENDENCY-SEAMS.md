@@ -567,8 +567,14 @@ The pattern above is now used twice, which is what turns it from a one-off into 
 graphics backend has here. `KhaozEngine.Gpu.Vulkan` is phase 3 of the same program and takes the same inverted
 edge. As of `17.32.0` it registers a real provider through `KhaozEngineVulkan.Register()`, answers a real
 functional machine probe, and creates a real HEADLESS device
-([#514](https://github.com/APKiwiOrg/KhaozEngine/issues/514)) that cannot yet record or present: recording is
-[#517](https://github.com/APKiwiOrg/KhaozEngine/issues/517), resources are
+([#514](https://github.com/APKiwiOrg/KhaozEngine/issues/514)) that hands out command lists and submits them
+([#517](https://github.com/APKiwiOrg/KhaozEngine/issues/517)). The ONE recording member those lists can serve is
+`UpdateBuffer` on a uniform buffer, which goes into the uniform ring
+([#518](https://github.com/APKiwiOrg/KhaozEngine/issues/518)). Nothing else can be recorded yet and nothing can
+be presented: the remaining recording members are [#521](https://github.com/APKiwiOrg/KhaozEngine/issues/521),
+[#522](https://github.com/APKiwiOrg/KhaozEngine/issues/522),
+[#524](https://github.com/APKiwiOrg/KhaozEngine/issues/524) and
+[#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525), resources are
 [#519](https://github.com/APKiwiOrg/KhaozEngine/issues/519), and the windowed swapchain is
 [#527](https://github.com/APKiwiOrg/KhaozEngine/issues/527), which is what the windowed entry point still
 refuses by name. It registers under `GpuBackendKind.VulkanNative`, which landed in the same version, so the
@@ -601,6 +607,16 @@ that merely reads it compile against the Vulkan binding, which turns an opt-in b
 vocabulary the engine would owe stability to. Both packages also have their surface pinned member by member
 (`GpuD3D11PublicSurface_IsExactlyTheApprovedMembers` and `GpuVulkanPublicSurface_IsExactlyTheApprovedMembers`),
 which is what catches a new member that leaks no forbidden type and is therefore invisible to every scan above.
+
+**Both packages grant `InternalsVisibleTo` to `KhaozEngine.TestSupport.Gpu`, and that is the whole cost of one
+decision.** Section 2.2 of the Vulkan design declined to extract either backend's uniform ring into a shared
+PRODUCTION home, on the rule of three and on the observation that the policy is identical where the mechanism is
+not. What is shared instead is the ring's SEMANTIC tests, run against both rings through one internal test-only
+interface plus one adapter per backend, all of which live in `KhaozEngine.TestSupport.Gpu`. That project is
+`IsPackable=false` and `IsTestProject=false`, so it ships nothing and no shared production home exists, and it
+already references both backend packages for the `[GpuFact]` registration seats. So the visibility this costs is
+one csproj line each, beside the `KhaozEngine.Render.Tests` grant both already carried. The edge direction is
+unchanged: `TestSupport.Gpu -> Gpu.D3D11` and `TestSupport.Gpu -> Gpu.Vulkan`, never the reverse.
 
 The no-Veldrid rule below applies to BOTH packages, and both assertions are theories over the two of them.
 

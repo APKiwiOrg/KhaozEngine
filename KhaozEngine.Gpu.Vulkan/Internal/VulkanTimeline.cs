@@ -19,7 +19,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// semaphore execute in submission order, so the counter reaching 6 requires the signal at 5 to have happened,
     /// which requires submission 5's commands to have completed. Polling a later fence therefore transitively
     /// covers every earlier submission, which is exactly what <c>RetiredResourcePool</c> relies on and what the
-    /// retire list below is built on.</para>
+    /// retire list below is built on. Stated precisely, so a gap cannot be read as a hole in it: the counter
+    /// reaching V implies every submission that SIGNALS a value at or below V has completed, and a value nobody
+    /// ever submitted signals nothing and covers nothing (see <see cref="LastSubmitted"/>).</para>
     ///
     /// <para><b>ONE <c>vkQueueSubmit</c> PER SUBMISSION (V-F3).</b> The incumbent's second empty submit signalling
     /// an internal tracking fence is not inherited. One timeline collapses three separate completion mechanisms
@@ -30,14 +32,21 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <para><b>EVERYTHING HERE IS DEVICE-FREE.</b> The native calls are three members on
     /// <see cref="IVulkanTimelineSemaphore"/> and the liveness is <see cref="IVulkanDeviceLiveness"/>, so the
     /// value allocation, the fence lifecycle, the dead-device answers and the drain accounting all run on a
-    /// machine with no Vulkan loader. What is NOT exercised device-free is a value being signalled by real GPU
-    /// work, because nothing submits yet: row 7 (https://github.com/APKiwiOrg/KhaozEngine/issues/517) owns the
-    /// submit path and is where a value first advances because a GPU finished something.</para>
+    /// machine with no Vulkan loader. Since row 7 (https://github.com/APKiwiOrg/KhaozEngine/issues/517) that
+    /// includes the whole submit ORDERING, driven through <see cref="VulkanSubmitQueue"/> over a fake command
+    /// seam. What is still NOT exercised device-free is a value being signalled because REAL GPU WORK finished,
+    /// which needs a live queue and belongs to the CI leg rather than to a <c>[Fact]</c>.</para>
     ///
     /// <para><b>AFTER DEVICE DEATH EVERY ANSWER IS "DONE" (V-F10).</b> <see cref="CompletedValue"/> reports the
     /// last value ever allocated instead of touching a destroyed device's semaphore, so every fence reads
     /// signalled and every waiter is released. Answering anything else would strand a retire pool forever on a
     /// batch it can never free, which is a teardown-order hazard rather than a hypothetical.</para>
+    ///
+    /// <para><b>TWO HIGH-WATERS, AND THEY ARE FOR DIFFERENT QUESTIONS.</b> <see cref="LastAllocated"/> is every
+    /// value ever handed out and gates deferred DISPOSAL. <see cref="LastSubmitted"/> is every value a
+    /// <c>vkQueueSubmit</c> actually accepted and is what <c>WaitForIdle</c> targets. They differ by exactly the
+    /// submissions that failed, and keeping them apart is what makes a failed submit unable to hang the next
+    /// drain. Each property carries its own argument.</para>
     /// </summary>
     internal sealed class VulkanTimeline : IDisposable
     {
@@ -46,10 +55,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         readonly IVulkanTimelineSemaphore _semaphore;
         readonly IVulkanDeviceLiveness _liveness;
 
-        // The last value ALLOCATED to a submission, which is not the same as the last value the GPU has reached.
-        // Read after device death in place of asking the semaphore, since a destroyed device's objects must not be
-        // touched and everything issued is complete by then anyway.
+        // The last value ALLOCATED to a submission, which is not the same as the last value the GPU has reached
+        // and not the same as the last value a submission actually took to the queue. Read after device death in
+        // place of asking the semaphore, since a destroyed device's objects must not be touched and everything
+        // issued is complete by then anyway.
         ulong _issued;
+
+        // The highest value a vkQueueSubmit ACCEPTED, raised by RegisterSubmitted after the submit returned
+        // success and never by the allocation. See LastSubmitted for why the two are different fields.
+        ulong _submitted;
 
         long _totalDrainCount;
         long _totalDrainTicks;
@@ -72,13 +86,53 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         internal bool IsDeviceDead => _liveness.IsDead;
 
         /// <summary>
-        /// The highest value ever allocated by <see cref="NextSubmitValue"/>, and therefore the value the GPU has
-        /// to reach for every submission ever made to have completed. 0 before anything has been submitted.
+        /// THE HIGHEST VALUE A <c>vkQueueSubmit</c> ACTUALLY ACCEPTED, and therefore the value the GPU has to
+        /// reach for every submission ever MADE to have completed. 0 before anything has been submitted.
         /// <para>This is what <c>WaitForIdle</c> waits for, which is the whole of V-F4: "the GPU is idle" and "the
-        /// counter has reached the last value handed to a submit" are the same statement on a device with one
-        /// queue that all work goes through.</para>
+        /// counter has reached the last value a submission took to the queue" are the same statement on a device
+        /// with one queue that all work goes through.</para>
+        /// <para>
+        /// <b>IT IS THE REGISTERED SIGNAL HIGH-WATER AND NOT THE ALLOCATION HIGH-WATER, which is the structural
+        /// fix row 7 took</b> (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/517">#517</see>). A
+        /// submission allocates its value and then submits, and the submit can FAIL with a non-loss result: the
+        /// two out-of-memory codes do not flip liveness, and the spec requires the implementation to leave every
+        /// referenced synchronisation primitive unaffected, so that value will never be signalled by anything. If
+        /// this property reported the allocation instead, it would sit permanently above anything the GPU will
+        /// ever reach and the next <c>WaitForIdle</c> would block forever. Raising it only after the submit
+        /// returned success makes the target reachable BY CONSTRUCTION rather than by a repair that has to run
+        /// correctly on the worst path in the backend.
+        /// </para>
+        /// <para>
+        /// THE GAP IS HARMLESS AND THE THEOREM SURVIVES IT. A value nobody signals is a hole in the value space,
+        /// not in the ORDER: a later submission signalling a higher value still satisfies the timeline's
+        /// strictly-increasing rule, because the counter simply steps over the hole. What the one-timeline theorem
+        /// actually says is that the counter reaching V implies every submission signalling a value at or below V
+        /// has completed, and a submission that was never made signals nothing and has nothing to cover.
+        /// </para>
         /// </summary>
-        internal ulong LastSubmitted => Volatile.Read(ref _issued);
+        internal ulong LastSubmitted => Volatile.Read(ref _submitted);
+
+        /// <summary>
+        /// The highest value ever handed out by <see cref="NextSubmitValue"/>, whether or not its submit
+        /// succeeded. 0 before anything has been allocated.
+        /// <para>
+        /// THIS IS THE DEFERRED-DISPOSAL GATE and <see cref="LastSubmitted"/> is not, which is the one place the
+        /// two readings genuinely differ in what they are FOR. A resource retiring at disposal wants the most
+        /// conservative bound on "no submission that could reference me is still outstanding", and the allocation
+        /// high-water is that bound: a submission whose value was taken but whose <c>vkQueueSubmit</c> has not
+        /// returned yet is invisible to the registered high-water for a few instructions, and gating a destroy on
+        /// the lower number in that window would free memory a submission in flight is about to read. Gating on
+        /// the higher number cannot do that.
+        /// </para>
+        /// <para>
+        /// AND A GAP DOES NOT STRAND AN ENTRY GATED ON IT, which is the obvious objection. The retire list
+        /// releases on <c>completed &gt;= value</c> against a counter that steps OVER holes, so the very next
+        /// successful submission's signal releases everything held at the failed value. The one case where it does
+        /// not is a device that fails a submit and never submits again, and there the teardown drain runs every
+        /// held destroy unconditionally.
+        /// </para>
+        /// </summary>
+        internal ulong LastAllocated => Volatile.Read(ref _issued);
 
         /// <summary>
         /// The SAME drains accumulated since the device was created, which is the half a telemetry session can
@@ -101,10 +155,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             get
             {
-                if (_liveness.IsDead) return LastSubmitted;
+                // LastAllocated rather than LastSubmitted on the dead path, because "after death every answer is
+                // done" has to release every waiter, and a retire entry is gated on the ALLOCATION high-water,
+                // which can sit above the registered one. Answering with the smaller of the two would leave
+                // exactly those entries unreleased at exactly the moment nothing can ever advance the counter
+                // again.
+                if (_liveness.IsDead) return LastAllocated;
 
                 ulong read = _semaphore.Read();
-                return _liveness.IsDead ? LastSubmitted : read;
+                return _liveness.IsDead ? LastAllocated : read;
             }
         }
 
@@ -121,21 +180,69 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <para>
         /// A VALUE IS SPENT WHETHER OR NOT ITS SUBMIT SUCCEEDS. Monotonicity is the property that matters and it
         /// is preserved: no value is handed out twice, and a submission that failed after taking one leaves a gap
-        /// nothing ever reads. Row 7 owns the call site.
+        /// nothing ever reads.
         /// </para>
         /// <para>
-        /// PRECONDITION ON THE CALLER. The value must be allocated INSIDE whatever lock orders
-        /// <c>vkQueueSubmit</c>, the submit that took the value must be the one that signals it, and every submit
-        /// must take a value. Break this and two hazards follow. A submit that takes a value and fails with a
-        /// non-loss result leaves <see cref="LastSubmitted"/> above anything the GPU will ever signal, so the next
-        /// <c>WaitForIdle</c> blocks forever. Two threads allocating outside the submit lock can signal out of
-        /// order, violating the timeline's strictly-increasing requirement that the type's own theorem rests on.
-        /// Row 7 (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/517">#517</see>) owns the integration
-        /// and must satisfy this precondition or replace the <see cref="LastSubmitted"/> target with a registered
-        /// signal high-water.
+        /// <b>PRECONDITION ON THE CALLER, AND ROW 7 SATISFIES IT</b>
+        /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/517">#517</see>). The value must be
+        /// allocated INSIDE whatever lock orders <c>vkQueueSubmit</c>, the submit that took the value must be the
+        /// one that signals it, and every submit must take a value. <see cref="VulkanSubmitQueue"/> is the only
+        /// caller and does all three: the allocation is the first statement inside its submit lock and the
+        /// <c>vkQueueSubmit</c> that signals the value is the second, so no two threads can allocate in one order
+        /// and submit in another. That is the half of the precondition this member cannot enforce and the whole
+        /// reason the theorem in this type's summary holds: a timeline semaphore's signal operations must strictly
+        /// increase, and an allocation outside the lock is how two threads come to signal out of order.
+        /// </para>
+        /// <para>
+        /// THE OTHER HALF IS NOT REPAIRED, IT IS STRUCTURALLY ABSENT. A submit that takes a value and then fails
+        /// with a non-loss result cannot leave <see cref="LastSubmitted"/> above what the GPU will signal, because
+        /// this member does not move <see cref="LastSubmitted"/> at all. <see cref="RegisterSubmitted"/> does, and
+        /// only after the submit returned success. See <see cref="LastSubmitted"/> for why that was chosen over
+        /// host-signalling the taken value to close the gap.
         /// </para>
         /// </summary>
         internal ulong NextSubmitValue() => Interlocked.Increment(ref _issued);
+
+        /// <summary>
+        /// Record that a <c>vkQueueSubmit</c> ACCEPTED <paramref name="value"/>, raising
+        /// <see cref="LastSubmitted"/> to it. Called by <see cref="VulkanSubmitQueue"/> immediately after a
+        /// successful submit, inside the same lock the value was allocated in, and by nothing else.
+        /// <para>
+        /// MONOTONIC BY ASSERTION RATHER THAN BY ARITHMETIC. The submit lock already orders allocation and
+        /// registration together, so values arrive here in increasing order and a plain write would be correct.
+        /// The comparison is kept anyway because it is free next to a driver call and because it turns a future
+        /// caller that registers out of order into a value that stays put rather than a counter that goes
+        /// backwards, and a target that went backwards would release a fence over work that has not finished.
+        /// </para>
+        /// </summary>
+        /// <param name="value">The value the successful submission will signal.</param>
+        internal void RegisterSubmitted(ulong value)
+        {
+            if (value > Volatile.Read(ref _submitted)) Volatile.Write(ref _submitted, value);
+        }
+
+        /// <summary>
+        /// Block until the counter reaches <paramref name="value"/>, with no timeout and NO ACCOUNTING. The
+        /// primitive behind a command list's slot wait (row 7) and the uniform ring's segment gate (row 8), both
+        /// of which count their own blocking into <see cref="VulkanBackpressure"/> rather than into the drain
+        /// totals: a stall waiting for a slot to come free is a statement about pipeline DEPTH, and folding it
+        /// into <c>DrainCount</c> would report it as a statement about draining.
+        /// <para>
+        /// THE CALLER DECIDES WHETHER IT BLOCKED. This member waits unconditionally when the device is alive, so
+        /// every caller polls <see cref="CompletedValue"/> first and calls here only when the counter has not
+        /// arrived. That keeps the "a wait that found the GPU already caught up is not counted" rule in one place
+        /// per caller instead of being inferred from a return value.
+        /// </para>
+        /// </summary>
+        /// <param name="value">The timeline value to wait for.</param>
+        /// <returns>True when the counter reached it. False when the device is dead, or was LOST during the wait,
+        /// which the semaphore latches at its own site before returning.</returns>
+        internal bool WaitForValue(ulong value)
+        {
+            if (_liveness.IsDead) return false;
+
+            return _semaphore.WaitUntil(value);
+        }
 
         /// <summary>A fresh, unarmed fence on this timeline. The seam's <c>IGpuResourceFactory.CreateFence</c>
         /// lands here when row 9 (https://github.com/APKiwiOrg/KhaozEngine/issues/519) builds the factory, and
@@ -159,13 +266,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         ///
         /// <para><b>THREE CASES RETURN WITHOUT COUNTING, and each is a case where nothing blocked.</b> The device
         /// is dead (V-F10, a destroyed device has nothing to wait for). Nothing has ever been submitted, so there
-        /// is no point on the timeline to wait for at all, which is the state this backend is in until row 7
-        /// lands. And the counter has ALREADY passed the last submitted value, which is a caller who asked and
-        /// found the GPU caught up. The seam's own <c>DrainCount</c> doc says a wait that found the GPU already
-        /// caught up is not counted, and this is the backend where honouring that costs one non-blocking read.
-        /// The other backend counts every drain past its early returns, because it signals a FRESH point per drain
-        /// and therefore always has something outstanding to wait for. Here the target is the last SUBMITTED
-        /// value, so a second drain with no submission between them has genuinely nothing to do.</para>
+        /// is no point on the timeline to wait for at all, which is also the state a device that has only ever
+        /// FAILED a submit is in. And the counter has ALREADY passed the last submitted value, which is a caller
+        /// who asked and found the GPU caught up. The seam's own <c>DrainCount</c> doc says a wait that found the
+        /// GPU already caught up is not counted, and this is the backend where honouring that costs one
+        /// non-blocking read. The other backend counts every drain past its early returns, because it signals a
+        /// FRESH point per drain and therefore always has something outstanding to wait for. Here the target is
+        /// the last SUBMITTED value, so a second drain with no submission between them has genuinely nothing to
+        /// do.</para>
         ///
         /// <para><b>A WAIT THAT ENDED BECAUSE THE DEVICE DIED IS STILL COUNTED.</b> It blocked, for the time
         /// recorded, and dropping it would under-report exactly the drains a post-mortem cares about. What is not

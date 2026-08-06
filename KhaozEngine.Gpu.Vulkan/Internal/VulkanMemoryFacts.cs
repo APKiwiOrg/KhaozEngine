@@ -148,10 +148,22 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <see cref="VulkanMemoryAllocator.LiveDeviceAllocations"/> is counted at all. The spec's required minimum is
     /// 4096 and real drivers report exactly that far more often than not.
     /// </param>
+    /// <param name="MinUniformBufferOffsetAlignment">
+    /// <c>VkPhysicalDeviceLimits.minUniformBufferOffsetAlignment</c>: the granularity a dynamic uniform
+    /// descriptor's offset must be a multiple of, and therefore the alignment the uniform ring's segment stride is
+    /// rounded to (V-M5, section 9.2). It DEFAULTS to <see cref="VulkanRingStride.OffsetAlignmentFloor"/> rather
+    /// than to 0, and that default is safe rather than convenient: 256 is the spec's required MAXIMUM for this
+    /// limit, so a conformant device can only ever report a SMALLER value, and
+    /// <see cref="VulkanRingStride.AlignmentFor"/> floors at 256 regardless. A facts value built without the read
+    /// therefore produces exactly the stride a real read produces on every conformant device. See
+    /// <see cref="VulkanRingStride"/> for why that floor is derived on this side rather than borrowed from the
+    /// other backend's 256.
+    /// </param>
     internal readonly record struct VulkanMemoryFacts(
         IReadOnlyList<VulkanMemoryTypeInfo> Types,
         ulong NonCoherentAtomSize,
-        uint MaxAllocationCount)
+        uint MaxAllocationCount,
+        ulong MinUniformBufferOffsetAlignment = VulkanRingStride.OffsetAlignmentFloor)
     {
         /// <summary>What a device with nothing readable looks like: no types, an atom size of 1 (which makes
         /// every range rounding an identity) and no allocation budget. Never produced by a real read.</summary>

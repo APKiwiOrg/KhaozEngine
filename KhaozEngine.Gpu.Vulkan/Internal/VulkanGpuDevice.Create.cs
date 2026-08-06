@@ -92,13 +92,25 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 NameTimeline(instance, device, semaphore.Handle);
                 var timeline = new VulkanTimeline(semaphore, liveness);
 
+                // MV3's DEPTH, resolved ONCE per device rather than once per command list or once per ring. Two
+                // reads of the environment could disagree if the variable changed mid-run, and a device whose
+                // lists were three slots deep and whose uniform rings were four segments deep is exactly the
+                // shared-number-two-indexes confusion section 6.1 warns about.
+                int framesInFlight = VulkanFramesInFlight.FromEnvironment(out string? unrecognizedDepth);
+                if (unrecognizedDepth != null)
+                    log.Warn(VulkanFramesInFlight.UnrecognizedWarning(unrecognizedDepth));
+                log.Info(VulkanFramesInFlight.ActiveDescription(framesInFlight));
+
                 // THE ONE ALLOCATOR (V-M1) is built by the constructor, from the native seam and the memory facts
                 // handed in here. It is the device that owns the retire list its chunk destroys go through, so
                 // wiring the hook out here would mean handing that list out before the device exists, or building
                 // a second one and silently splitting the deferred destroys across two.
                 var created = new VulkanGpuDevice(lease, device, graphicsQueue, read.GraphicsQueueFamily,
                     ReadCapabilities(read, features), candidates[chosen].IsSoftwareRasterizer, liveness, loss,
-                    timeline, new VulkanDeviceMemoryApi(vk, device, loss, liveness), read.Memory);
+                    timeline, new VulkanDeviceMemoryApi(vk, device, loss, liveness), read.Memory,
+                    new VulkanCommandApi(vk, device, graphicsQueue, read.GraphicsQueueFamily, semaphore.Handle,
+                        loss, liveness),
+                    framesInFlight);
 
                 log.Info(created.Memory.Describe());
 

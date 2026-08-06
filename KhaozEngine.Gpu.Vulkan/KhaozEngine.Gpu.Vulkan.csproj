@@ -36,5 +36,10 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
+    <!-- The uniform ring's SEMANTIC tests are shared with the Direct3D 11 backend (decisions V-P5, V-T6): one
+         internal test-only interface and BOTH adapters live in KhaozEngine.TestSupport.Gpu, which is
+         IsPackable=false and ships nothing, so V-P4's no-shared-PRODUCTION-home rule is untouched. The Direct3D 11
+         package carries the same grant, added by the same row. -->
+    <InternalsVisibleTo Include="KhaozEngine.TestSupport.Gpu" />
   </ItemGroup>
 </Project>

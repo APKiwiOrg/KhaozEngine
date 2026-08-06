@@ -21,9 +21,10 @@ on:
 jobs:
   # Runs on GitHub-hosted x64 ubuntu, NOT the self-hosted arm64 container. The engine test suite needs
   # x64-only native deps (notably libveldrid-spirv, which the Veldrid.SPIRV package ships for linux-x64
-  # but NOT linux-arm64 - the SPIRV shader-source tests DllNotFound on the arm64 fleet). Cost is fine:
-  # Linux is 1x and even a full run is ~2 min, within the free tier. The only expensive work - the 10x
-  # macOS Metal golden - is the one thing self-hosted (on the dev Mac), in cross-platform-gpu.yml.
+  # but NOT linux-arm64 - the SPIRV shader-source tests DllNotFound on the arm64 fleet). That constraint
+  # is about the natives, not about cost, so it outlived the repo going public: the arm64 fleet still
+  # cannot run this suite. Cost is no longer a factor either way, because a public repo's GitHub-hosted
+  # standard runners are free. Every leg of cross-platform-gpu.yml is hosted now too, Metal included.
   build-test-pack:
     runs-on: ubuntu-latest
     permissions:

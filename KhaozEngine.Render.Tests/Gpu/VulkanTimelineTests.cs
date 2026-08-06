@@ -12,10 +12,15 @@ namespace KhaozEngine.Tests.Gpu
     /// here runs on a machine with no Vulkan loader.
     /// <para>
     /// WHAT THESE ROWS DO NOT COVER, and it is the boundary worth naming: no value here is signalled by real GPU
-    /// work, because nothing submits on this backend yet. Row 7
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/517) owns the submit path and is where a counter first
-    /// advances because a queue drained. What is asserted here is everything that decides what the backend DOES
-    /// with such a value once it has one.
+    /// work, because that needs a live queue and belongs to the CI leg. What is asserted here is everything that
+    /// decides what the backend DOES with such a value once it has one. The SUBMIT ORDERING that produces the
+    /// values is asserted in <see cref="VulkanSubmitPathTests"/>, over the same timeline.
+    /// </para>
+    /// <para>
+    /// EVERY ROW THAT MODELS A SUBMISSION GOES THROUGH <see cref="Submitted"/>, which allocates and then registers
+    /// exactly as <c>VulkanSubmitQueue</c> does. An allocation on its own is NOT a submission on this timeline and
+    /// deliberately moves no drain target: that split is what stops a failed <c>vkQueueSubmit</c> from leaving
+    /// <c>WaitForIdle</c> waiting forever for a value nothing will signal.
     /// </para>
     /// </summary>
     public sealed class VulkanTimelineTests
@@ -29,6 +34,7 @@ namespace KhaozEngine.Tests.Gpu
             using var timeline = new VulkanTimeline(semaphore);
 
             Assert.Equal(0UL, timeline.LastSubmitted);
+            Assert.Equal(0UL, timeline.LastAllocated);
             Assert.Equal(0UL, timeline.CompletedValue);
             Assert.Equal(0, timeline.TotalDrain.Count);
         }
@@ -44,7 +50,10 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(1UL, timeline.NextSubmitValue());
             Assert.Equal(2UL, timeline.NextSubmitValue());
             Assert.Equal(3UL, timeline.NextSubmitValue());
-            Assert.Equal(3UL, timeline.LastSubmitted);
+            Assert.Equal(3UL, timeline.LastAllocated);
+
+            // And NOT the drain target, which no allocation ever moves.
+            Assert.Equal(0UL, timeline.LastSubmitted);
         }
 
         /// <summary>
@@ -76,7 +85,7 @@ namespace KhaozEngine.Tests.Gpu
             var distinct = new System.Collections.Generic.HashSet<ulong>(taken);
             Assert.Equal(threads * perThread, taken.Count);
             Assert.Equal(threads * perThread, distinct.Count);
-            Assert.Equal((ulong)(threads * perThread), timeline.LastSubmitted);
+            Assert.Equal((ulong)(threads * perThread), timeline.LastAllocated);
         }
 
         /// <summary>The completed value is the semaphore's, read fresh every time, because a cached one would let
@@ -163,7 +172,7 @@ namespace KhaozEngine.Tests.Gpu
             var semaphore = new FakeVulkanTimelineSemaphore();
             using var timeline = new VulkanTimeline(semaphore);
 
-            ulong submitted = timeline.NextSubmitValue();
+            ulong submitted = Submitted(timeline);
             semaphore.Completed = submitted;
 
             timeline.WaitForIdle();
@@ -183,9 +192,9 @@ namespace KhaozEngine.Tests.Gpu
             var semaphore = new FakeVulkanTimelineSemaphore();
             using var timeline = new VulkanTimeline(semaphore);
 
-            timeline.NextSubmitValue();
-            timeline.NextSubmitValue();
-            ulong last = timeline.NextSubmitValue();
+            Submitted(timeline);
+            Submitted(timeline);
+            ulong last = Submitted(timeline);
 
             timeline.WaitForIdle();
 
@@ -207,11 +216,11 @@ namespace KhaozEngine.Tests.Gpu
             var semaphore = new FakeVulkanTimelineSemaphore();
             using var timeline = new VulkanTimeline(semaphore);
 
-            timeline.NextSubmitValue();
+            Submitted(timeline);
             timeline.WaitForIdle();
             Assert.Equal(1, timeline.TotalDrain.Count);
 
-            timeline.NextSubmitValue();
+            Submitted(timeline);
             timeline.WaitForIdle();
             Assert.Equal(2, timeline.TotalDrain.Count);
 
@@ -231,7 +240,7 @@ namespace KhaozEngine.Tests.Gpu
             var semaphore = new FakeVulkanTimelineSemaphore();
             using var timeline = new VulkanTimeline(semaphore, liveness);
 
-            timeline.NextSubmitValue();
+            Submitted(timeline);
             liveness.MarkDead();
 
             timeline.WaitForIdle();
@@ -253,7 +262,7 @@ namespace KhaozEngine.Tests.Gpu
             using var timeline = new VulkanTimeline(semaphore, liveness);
 
             semaphore.OnWait = liveness.MarkDead;
-            timeline.NextSubmitValue();
+            Submitted(timeline);
 
             timeline.WaitForIdle();
 
@@ -291,6 +300,93 @@ namespace KhaozEngine.Tests.Gpu
             timeline.Dispose();
 
             Assert.False(semaphore.Disposed);
+        }
+
+        // ---- The two high-waters, which row 7 split apart ----
+
+        /// <summary>
+        /// AN ALLOCATION WHOSE SUBMIT FAILED MOVES NOTHING A WAITER CAN SEE, which is the whole of the structural
+        /// fix. The value is spent (no other submission will ever get it) and the drain target stays where the
+        /// last SUCCESSFUL submission put it, so <c>WaitForIdle</c> waits for a value the GPU can still reach
+        /// rather than for one nothing will ever signal.
+        /// </summary>
+        [Fact]
+        public void AnAllocationWithoutARegistration_LeavesTheDrainTargetWhereItWas()
+        {
+            var semaphore = new FakeVulkanTimelineSemaphore();
+            using var timeline = new VulkanTimeline(semaphore);
+
+            ulong good = Submitted(timeline);
+            ulong failed = timeline.NextSubmitValue();
+
+            Assert.Equal(failed, timeline.LastAllocated);
+            Assert.Equal(good, timeline.LastSubmitted);
+            Assert.NotEqual(timeline.LastAllocated, timeline.LastSubmitted);
+
+            timeline.WaitForIdle();
+
+            Assert.Equal(good, semaphore.LastWaitValue);
+        }
+
+        /// <summary>
+        /// THE COUNTER STEPS OVER THE HOLE, so a later submission's signal releases everything held at the failed
+        /// value. This is why a deferred destroy gated on the ALLOCATION high-water is not stranded by a failed
+        /// submit, and it is the property that lets the retire list keep the more conservative of the two numbers.
+        /// </summary>
+        [Fact]
+        public void AValueNothingSignalled_IsPassedByTheNextSuccessfulOne()
+        {
+            var semaphore = new FakeVulkanTimelineSemaphore();
+            using var timeline = new VulkanTimeline(semaphore);
+
+            ulong failed = timeline.NextSubmitValue();
+            ulong next = Submitted(timeline);
+
+            semaphore.Completed = next;
+
+            Assert.True(timeline.CompletedValue >= failed);
+        }
+
+        /// <summary>Registration never goes backwards, so a later registration of a lower value cannot pull the
+        /// drain target down and release a fence over work that has not finished.</summary>
+        [Fact]
+        public void RegisterSubmitted_NeverLowersTheDrainTarget()
+        {
+            var semaphore = new FakeVulkanTimelineSemaphore();
+            using var timeline = new VulkanTimeline(semaphore);
+
+            timeline.RegisterSubmitted(7);
+            timeline.RegisterSubmitted(3);
+
+            Assert.Equal(7UL, timeline.LastSubmitted);
+        }
+
+        /// <summary>
+        /// AFTER DEATH THE ANSWER IS THE LARGER OF THE TWO. A retire entry is gated on the allocation high-water,
+        /// so answering with the registered one would leave exactly those entries unreleased at the moment nothing
+        /// can advance the counter again, which is the teardown-order strand V-F10 exists to prevent.
+        /// </summary>
+        [Fact]
+        public void AfterDeviceDeath_TheAnswerCoversTheAllocationHighWaterAndNotJustTheRegisteredOne()
+        {
+            var liveness = new VulkanDeviceLiveness();
+            var semaphore = new FakeVulkanTimelineSemaphore();
+            using var timeline = new VulkanTimeline(semaphore, liveness);
+
+            Submitted(timeline);
+            ulong retiredAt = timeline.NextSubmitValue();
+            liveness.MarkDead();
+
+            Assert.Equal(retiredAt, timeline.CompletedValue);
+        }
+
+        /// <summary>What a successful submission does to the timeline, in the same two steps and the same order
+        /// <c>VulkanSubmitQueue</c> does them: allocate, then register once the queue has accepted it.</summary>
+        static ulong Submitted(VulkanTimeline timeline)
+        {
+            ulong value = timeline.NextSubmitValue();
+            timeline.RegisterSubmitted(value);
+            return value;
         }
     }
 }

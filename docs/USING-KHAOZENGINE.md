@@ -7740,6 +7740,33 @@ and show the waiting screen on `ServerRestarting` / `ServerDown`, block on `Upda
 No engine change to the connect path is required. The state derivation is intentionally standalone so it can be
 adopted incrementally without touching the movement/replication code.
 
+### Idle shutdown for a metered server head
+
+`IdleShutdownService` watches a player count and requests a graceful shutdown once the server has been empty
+for a chosen window. It is for server heads billed by the second, where an empty world costs the same as a
+full one, and a game with infrequent sessions pays all month to serve nobody.
+
+```csharp
+var idle = new IdleShutdownService(
+    () => world.ConnectedPlayerCount,      // read fresh each tick, not a snapshot
+    idleAfter: TimeSpan.FromMinutes(60),
+    enabled: !isLocalDevRun);              // a dev server should not vanish while you read its logs
+
+idle.IdleShutdownRequested += () => hostLifetime.StopApplication();
+await idle.RunAsync(ct);                   // returns once the window elapses; or drive idle.Tick(now) yourself
+```
+
+`Tick` returns true exactly once per empty streak, so a host can act on the return value and ignore the event.
+A player arriving clears both the streak and the latch, so the next streak gets a full fresh window rather than
+the remainder of an old one. A player-count accessor that throws counts as OCCUPIED, never as empty: an unknown
+count must not shut down a live server.
+
+Two things belong to the game, not the engine. **The exit** (this service only asks), and **the wake path**,
+because a server that can stop and cannot start is just an outage. On Azure Container Instances specifically,
+exit code 0 is what stops the meter: billing runs until the container group reaches a terminal state, the
+default `restartPolicy: Always` never gets there, and `OnFailure` lets a clean exit 0 land on `Succeeded` while
+still restarting a genuine crash.
+
 ---
 
 ## HTTP retry (`KhaozEngine.Http`)
@@ -8589,8 +8616,12 @@ KhaozEngineVulkan.Register();   // unconditionally, on every OS
 Registration and the machine probe are real, `GpuBackendKind.VulkanNative` exists with the tokens
 `KE_GRAPHICS_BACKEND=vulkan-native` and the shorter `vk-native`, and
 `GpuDeviceContext.CreateHeadless(GpuBackendKind.VulkanNative)` builds a real `VkDevice` and a graphics queue on
-one refcounted process `VkInstance`. What that device cannot do yet is everything a frame needs: recording is
-https://github.com/APKiwiOrg/KhaozEngine/issues/517, resources and samplers are
+one refcounted process `VkInstance`. That device now hands out real command lists and submits them
+(https://github.com/APKiwiOrg/KhaozEngine/issues/517), so `Begin`, `End`, `Submit` and completion fences all
+work end to end. What it cannot do yet is put anything INTO a list: the drawing, binding, clearing and copying
+members are https://github.com/APKiwiOrg/KhaozEngine/issues/521,
+https://github.com/APKiwiOrg/KhaozEngine/issues/522, https://github.com/APKiwiOrg/KhaozEngine/issues/524 and
+https://github.com/APKiwiOrg/KhaozEngine/issues/525, resources and samplers are
 https://github.com/APKiwiOrg/KhaozEngine/issues/519, and each of those members throws a message naming its own
 row rather than returning something that fails later somewhere less informative. Creating a WINDOWED device
 refuses outright, naming https://github.com/APKiwiOrg/KhaozEngine/issues/527, the row that builds the surface
@@ -8614,9 +8645,9 @@ layouts spend, and a graphics queue family. The instance is destroyed before the
 never throws, so a machine with no loader, no ICD or a pre-1.3 driver is a plain false: on macOS, which has no
 Vulkan loader, that is the answer you get and it is the correct one.
 
-### Diagnostics on the native Vulkan backend (17.32.0)
+### Diagnostics and levers on the native Vulkan backend (17.32.0)
 
-Two environment variables, both read at device creation and both following the same shape as the `KE_D3D11_*`
+Three environment variables, all read at device creation and all following the same shape as the `KE_D3D11_*`
 levers above: a request that cannot be honoured WARNs and carries on, and never stops the app starting.
 
 **`KE_VULKAN_DEVICE` pins which physical device the backend runs on.** Six forms, all case-insensitive and
@@ -8665,6 +8696,28 @@ run that proved nothing.
 throw happens at a controlled point after the error is latched and logged, never inside the driver callback that
 saw it, because unwinding a managed exception through native driver frames destroys the stack the diagnostic was
 about. RenderDoc attaches externally and needs nothing from the engine.
+
+**`KE_VULKAN_FRAMES_IN_FLIGHT=<n>` sets how far ahead of the GPU the CPU may run** (2 to 16, default 3, an
+unparseable or out-of-range value warns and keeps 3). One number sizes two things at once on this backend: how
+many `VkCommandPool`s each command list cuts, so how many records it can have in flight before a `Begin` has to
+wait, and how many per-frame segments each uniform ring is cut into. They are the same statement about pipeline
+depth, so there is one lever rather than two to keep in step.
+
+```
+KE_VULKAN_FRAMES_IN_FLIGHT=4   # deeper, if a soak reports backpressure stalls at the default
+KE_VULKAN_FRAMES_IN_FLIGHT=2   # the shallowest depth that pipelines at all
+```
+
+The floor is 2 rather than the Direct3D 11 lever's 1, and the difference is real rather than a copied constant
+drifting. There the number sizes constant-buffer rings only, so 1 means one frame of latency. Here 1 would give
+every command list one pool, so every `Begin` would wait for that list's own previous record to finish on the
+GPU, which is a full round trip per record rather than per frame.
+
+Read `BackpressureStallCount` and `BackpressureStallMs` off `IGpuDevice.Counters` to decide whether to touch it.
+On this backend they are ONE accumulator covering both meanings: a command list waiting for its own oldest pool
+slot, and a frame boundary waiting for a uniform ring segment. A count of zero across a capture window means the
+default is deep enough, and a non-zero count is what the lever answers. Raising it costs one command pool per
+list plus one copy of every uniform buffer, per extra frame.
 
 **A device loss reports why, at the site that noticed.** Every `VkResult` this backend reads is checked in every
 configuration including Release, and on `VK_ERROR_DEVICE_LOST` the call's name and the result are latched
@@ -8741,6 +8794,39 @@ There is one field lever, `KE_D3D11_FRAMES_IN_FLIGHT=<n>` (default 3, range 1 to
 of uniform data are kept. It exists so a soak can settle whether three is enough, and the count of times a frame
 had to wait for a segment to come free is recorded for the session telemetry to carry once a device exists to
 report it.
+
+### Uniform buffers on the native Vulkan backend (17.32.0)
+
+The same three things are true on `GpuBackendKind.VulkanNative`, for the same reason and with one different
+number, and again only the first can make it refuse something the other backends accept.
+
+**A uniform buffer may not also be something else there either.** Creating a buffer as
+`GpuBufferUsage.UniformBuffer | GpuBufferUsage.StructuredBufferReadOnly` (or with either read-write structured
+bit, or with the vertex, index or indirect bits) is legal on the seam and is accepted by
+`GpuBackendKind.Vulkan`, the Veldrid Vulkan backend. `GpuBackendKind.VulkanNative` REFUSES it at creation, with
+a message saying so. A uniform buffer there is ring-backed: it holds one copy of itself per frame in flight, and
+the frame's base offset is supplied at the bind as the dynamic uniform descriptor's offset. No other binding
+carries that base, so the vertex, index, indirect or storage read would address the first copy while the uniform
+read addressed the current one, and one frame's data would be read as another's with nothing thrown. Create two
+buffers instead. Nothing in the engine or in any game does this today, which is why the refusal is safe to have.
+
+**A uniform write lands when you make it, not when the list is submitted.** A record-time
+`IGpuCommandList.UpdateBuffer` to a uniform buffer there is a memcpy straight into GPU-visible memory. On that
+backend the write it replaces was not a stall but a render-pass split plus a full pipeline flush plus a global
+memory barrier, so the same rule applies with a different cost behind it: two writes to the SAME range inside
+one frame leave the second value for every draw of that frame, including draws you recorded between them.
+Address per-draw uniforms by dynamic offset, which is what the engine's own renderers do.
+
+**A one-shot write through `IGpuDevice.UpdateBuffer` IS preserved, the same as on every other backend.** It
+reaches every segment, so a value written once at load time or when a setting changes persists for the buffer's
+life, and the call does not block, ever, including when an earlier frame is still reading a segment: those
+segments take the write at their next frame boundary instead. It is not a per-frame tool, for the same reason it
+is not one on the other native backend.
+
+The field lever is `KE_VULKAN_FRAMES_IN_FLIGHT=<n>`, default 3, and its range is **2 to 16 rather than 1 to
+16**. One frame in flight is honest on Direct3D 11, where the number sizes uniform rings alone. Here it also
+sizes each command list's pools, so 1 would make every `Begin` wait for its own previous record to finish on the
+GPU, which is a synchronous round trip per recording rather than one frame of latency.
 
 ### Shaders on the native Direct3D 11 backend (17.32.0)
 

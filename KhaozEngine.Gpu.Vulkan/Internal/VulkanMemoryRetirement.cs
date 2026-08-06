@@ -26,14 +26,21 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     }
 
     /// <summary>
-    /// The real hook: record <see cref="VulkanTimeline.LastSubmitted"/> with the destroy and hand it to the
+    /// The real hook: record <see cref="VulkanTimeline.LastAllocated"/> with the destroy and hand it to the
     /// device's <see cref="VulkanRetireList"/>.
     /// <para>
-    /// <c>LastSubmitted</c> is the right value for the reason the retire list's own documentation gives: it is the
+    /// <c>LastAllocated</c> is the right value for the reason the retire list's own documentation gives: it is the
     /// last value allocated to a submission, so every submission that could have referenced this memory has
     /// already been made, and a counter that has reached it has finished all of them. Before anything has been
-    /// submitted it is 0, and an entry at 0 is released by the very next drain, which is correct rather than a
+    /// allocated it is 0, and an entry at 0 is released by the very next drain, which is correct rather than a
     /// special case.
+    /// </para>
+    /// <para>
+    /// NOT <c>LastSubmitted</c>, WHICH IS THE SMALLER OF THE TWO. A submission that has taken its value and whose
+    /// <c>vkQueueSubmit</c> has not returned yet is already able to reference this memory and is not yet in the
+    /// registered high-water, so gating on that number would free a chunk underneath a submission in flight. The
+    /// allocation high-water cannot be too small, only too conservative, and a gap left by a failed submit is
+    /// stepped over by the next successful signal rather than stranding the entry.
     /// </para>
     /// </summary>
     internal sealed class VulkanTimelineRetirement : IVulkanMemoryRetirement
@@ -53,6 +60,6 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         }
 
         /// <inheritdoc/>
-        public void Retire(Action destroy) => _retired.Retire(_timeline.LastSubmitted, destroy);
+        public void Retire(Action destroy) => _retired.Retire(_timeline.LastAllocated, destroy);
     }
 }

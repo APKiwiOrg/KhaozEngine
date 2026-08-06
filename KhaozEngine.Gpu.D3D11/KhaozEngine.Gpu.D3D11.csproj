@@ -39,5 +39,11 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
+    <!-- The constant-buffer ring's SEMANTIC tests are shared with the native Vulkan backend (its decisions V-P5
+         and V-T6): one internal test-only interface and BOTH adapters live in KhaozEngine.TestSupport.Gpu, which
+         already references this package, is IsPackable=false and ships nothing. This grant is the whole visibility
+         cost of that decision, and it is on THIS side because "share the tests" with no adapter on the other side
+         quietly becomes one backend's tests. -->
+    <InternalsVisibleTo Include="KhaozEngine.TestSupport.Gpu" />
   </ItemGroup>
 </Project>

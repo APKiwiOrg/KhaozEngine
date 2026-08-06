@@ -152,6 +152,37 @@ and types are the game's). A write failure is contained (logged, surfaced via `C
 `LastError`, never rethrown into the server loop) and skips at most one beat rather than storming. Use
 `NullServerHeartbeatSink` for local runs and `InMemoryServerHeartbeatSink` in tests.
 
+## Idle shutdown (a server head that stops costing money when nobody is playing)
+
+A server billed by the second charges the same for an empty world as a full one, so a game with scheduled or
+infrequent sessions spends most of its month serving nobody. `IdleShutdownService` watches a player-count
+accessor and asks the host to shut down once the server has been empty continuously for a chosen window.
+
+```csharp
+var idle = new IdleShutdownService(
+    () => world.ConnectedPlayerCount,           // read fresh every tick
+    idleAfter: TimeSpan.FromMinutes(60),
+    enabled: !isLocalDevRun);                   // a dev server should not vanish mid-session
+
+idle.IdleShutdownRequested += () => hostLifetime.StopApplication();
+
+// Drive it from the server loop...
+if (idle.Tick(DateTimeOffset.UtcNow)) { /* returns true exactly once */ }
+// ...or await the built-in loop and exit when it returns:
+await idle.RunAsync(ct);
+```
+
+It decides WHEN, never HOW: ending the process is the host's business, which is what keeps it headless and
+lets a listen server or a test host reuse it. A player arriving clears both the streak and the latch, so the
+next empty streak gets a full fresh window. A player-count accessor that THROWS is treated as occupied, never
+as empty, because shutting a live server down on a failed read is the one mistake it must not make.
+
+**Exit code 0 is load-bearing on Azure Container Instances.** Billing stops only when the container group
+reaches a terminal state. Under the default `restartPolicy: Always` a group never terminates on its own and
+bills forever. Under `OnFailure` a clean exit 0 reaches `Succeeded` and the meter stops, while a real crash
+still restarts. Pair this with a per-game wake path (something that starts the group again on demand), or all
+you have built is a server that becomes unreachable.
+
 ## Pieces
 
 - **`ServerStatusReport`** / **`ServerHealth`** - the tolerant-read wire contract + health enum (`TryParse` /
@@ -166,6 +197,8 @@ and types are the game's). A write failure is contained (logged, surfaced via `C
   ordered row list for an in-game "server status" page (GPU-free, Gui-free).
 - **`IServerHeartbeatSink`** / **`ServerHeartbeat`** / **`ServerHeartbeatService`** - the liveness-write seam,
   its row value type, and the cadence driver (+ `Null` / `InMemory` reference sinks).
+- **`IdleShutdownService`** - watches a player count and requests a graceful shutdown once the server has been
+  empty for a configured window, for server heads billed by the second.
 - **`VersionOrder`** - numeric `x.y.z` comparison for the version gates. A thin wrapper over
   `KhaozEngine.Primitives.VersionComparer`, the rule shared with `KhaozEngine.Updates.UpdateVersion` so
   the two packages cannot drift apart.

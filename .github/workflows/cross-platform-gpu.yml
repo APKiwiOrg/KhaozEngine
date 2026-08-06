@@ -1,8 +1,21 @@
 # cross-platform-gpu: desktop GPU test matrix (Win D3D11 incumbent + Win D3D11 native / Linux Vulkan / macOS Metal).
 #
+# BILLING: this repo is PUBLIC, so GitHub-hosted standard runners are free. Three legs run hosted and cost
+# nothing; Metal runs on the self-hosted dev Mac and always did.
+# The suite split that follows was decided when the repo was private and hosted minutes billed
+# (Linux 1x, Windows 2x, macOS 10x). It is KEPT on its merits rather than its cost: the golden subset is
+# the fast signal a push wants, and the full suite is a slower sweep that belongs on the cron. Read the
+# "2x billing" notes below as history explaining how the tiers were chosen, not as a live constraint. If
+# a tier is ever revisited, the argument now has to be about feedback speed and lavapipe stability,
+# because the money is gone. The engine went public 2026-08-06 after its private CI became the largest
+# line on the org's GitHub bill.
+#
 # What this does (suite split by leg + trigger, decided from measured cost + lavapipe stability):
-#   * The self-hosted Metal leg (free) runs the FULL test suite (every [GpuFact], golden and
-#     behavioral, plus the headless suite) on EVERY trigger.
+#   * The Metal leg runs the FULL test suite (every [GpuFact], golden and behavioral, plus the headless
+#     suite) on the self-hosted dev Mac, which is the only real Metal device available: hosted macos-14 has
+#     none (#547). Because the repo is public, that leg is dropped on pull_request so a fork can never
+#     route work onto that machine, and the org requires approval for all external contributors on top.
+#     The full security rationale is on the leg table below, and it is load-bearing.
 #   * The GitHub-hosted D3D11 leg (2x billing) runs only the golden tests
 #     (FullyQualifiedName~Golden) on push / pull_request, and the FULL suite on the weekly
 #     schedule and on workflow_dispatch. Rationale: the full suite on hosted Windows measured
@@ -15,10 +28,10 @@
 #     workflow_dispatch (decision T5), with one exception: it sits a BAKE dispatch out entirely
 #     (the bake note below, and the test step). It is a GUEST in the incumbent's golden family (decision I3):
 #     it VERIFIES the committed direct3d11 goldens on the same WARP rasterizer and never bakes them,
-#     so KE_UPDATE_GOLDENS stays empty on this leg for every trigger (see the test step). Cost note:
-#     this repo is private and Windows bills at 2x, so this leg doubles the D3D11 spend on the gated
-#     paths. It carries the same path filter as the rest of the matrix and its push path is
-#     golden-only, so the routine cost is small.
+#     so KE_UPDATE_GOLDENS stays empty on this leg for every trigger (see the test step). Its golden-only
+#     push tier was chosen when this repo was private and Windows billed at 2x, where the leg doubled the
+#     D3D11 spend on the gated paths. The repo is public and those minutes are free now, so the tier is
+#     kept for feedback speed rather than money.
 #   * The GitHub-hosted Vulkan leg (1x) runs only the golden tests on push/pull_request, and the
 #     FULL suite on the weekly schedule and on workflow_dispatch, same tier as D3D11. Chasing this
 #     leg's full-suite crashes surfaced four real engine defects, all fixed: concurrent device
@@ -68,8 +81,9 @@
 
 name: cross-platform-gpu
 
-# Cost control: the Metal leg runs on the self-hosted dev Mac (free), but the two D3D11 legs (2x each) and
-# the Vulkan leg (1x) still bill on GitHub-hosted runners, so don't fire this matrix on EVERY push. On push it runs
+# The push path filter below was written as cost control, when every leg but Metal billed. On a public repo
+# it costs nothing, and it stays because it is also the right behaviour: a matrix that fires on every push
+# buries a real golden break in noise, and a docs push has no way to move a rendered pixel. On push it runs
 # only when something that can change a GPU golden is touched (rendering stack, the GPU seam, the GPU
 # test dir, or this workflow). Docs/netcode/etc. pushes skip it. PRs + manual bake still run as before.
 concurrency:
@@ -150,10 +164,13 @@ on:
         type: boolean
         default: false
       # A dispatch runs the FULL suite on every leg, which is the most expensive thing this workflow does:
-      # measured at about 87 Windows minutes and 65 Linux minutes per dispatch in August 2026, roughly $1.26.
-      # Most dispatches are chasing ONE backend, and paying for the other three buys nothing. Targeting a
-      # single leg drops that to about $0.39. Default stays 'all' so an unattended dispatch behaves exactly
-      # as it did before this input existed.
+      # A dispatch runs the FULL suite on every leg, which was the most expensive thing this workflow did
+      # while the repo was private: about 87 Windows minutes and 65 Linux minutes per dispatch, roughly
+      # $1.26. Most dispatches chase ONE backend and the others buy nothing. The repo is public now so the
+      # minutes are free, but the selector stays: a targeted dispatch also finishes far sooner, which is
+      # the reason that outlives the billing. Default is 'all' so an unattended dispatch is unchanged.
+      # `metal` is here, but a metal dispatch runs on the dev Mac, so only someone with write access to
+      # this repo can start one. That is the same gate as every other trigger that carries the leg.
       legs:
         description: 'Which legs to run. Pick one backend when debugging it, "all" for the full matrix.'
         type: choice
@@ -188,6 +205,8 @@ jobs:
         env:
           # Only a dispatch can choose. Every other trigger gets the whole matrix, as before.
           WANT: ${{ github.event_name == 'workflow_dispatch' && inputs.legs || 'all' }}
+          # Drives the pull_request gate below, which keeps the self-hosted Mac off fork-reachable paths.
+          EVENT: ${{ github.event_name }}
         run: |
           set -euo pipefail
 
@@ -212,6 +231,26 @@ jobs:
           # direct3d11-native is the engine's own native D3D11 backend (decision T5). Same OS, same runner
           # and the same suite tier as the incumbent leg, which is the point: two implementations of one API
           # on one rasterizer, checked against a single shared set of goldens (decision I3).
+          # METAL RUNS ON THE DEV MAC, and that machine must never be reachable by anyone outside the org.
+          # It has to be self-hosted: GitHub-hosted macos-14 has NO usable Metal device (Veldrid's
+          # MTLGraphicsDevice ctor calls MTLDevice.get_name(), the runner returns nil, and every [GpuFact]
+          # dies with a NullReferenceException inside GpuDeviceContext.CreateHeadless before rendering a
+          # pixel: 363 failures, all under 1ms, run 31091112757). That is device creation failing, not a
+          # golden mismatch, so no re-bake fixes it. The dev Mac is the only real Metal available (#547).
+          #
+          # The repo is PUBLIC, so reaching that Mac is a security question, not a cost one. Two layers,
+          # and the first is the one that actually holds:
+          #   1. The `metal` leg is DROPPED from the matrix on pull_request, below. What remains are push,
+          #      schedule and workflow_dispatch, and every one of those requires write access to this repo.
+          #      A stranger has no way to select this leg, because they have no way to cause those events.
+          #   2. The org requires approval for ALL external contributors before any fork workflow runs at
+          #      all (approval_policy: all_external_contributors, tightened 2026-08-06 from the far weaker
+          #      first_time_contributors). So an outside PR does not execute anything, on any runner,
+          #      hosted or not, until a maintainer approves it.
+          # Layer 1 is structural and needs nobody to be careful. Layer 2 is the backstop for the case where
+          # someone edits layer 1 out. DO NOT add `metal` to a pull_request path, and DO NOT relax the
+          # approval policy, without re-reading this block: together they are the only thing standing
+          # between a public repo and a personal machine.
           all='[
             {"os":"macos-14",      "backend":"metal",             "runner":["self-hosted","macOS","ARM64"], "fullSuite":"always",    "d3d11Adapter":""},
             {"os":"windows-latest","backend":"direct3d11",        "runner":"windows-latest",                "fullSuite":"scheduled", "d3d11Adapter":"warp"},
@@ -226,6 +265,23 @@ jobs:
             # An empty selection would silently pass the whole workflow with nothing tested, which reads as
             # green. Fail loudly instead: the only way here is a typo in the choice list above.
             [ "$(jq 'length' <<<"$picked")" -gt 0 ] || { echo "::error::no leg matches '$WANT'"; exit 1; }
+          fi
+
+          # SECURITY GATE, see the metal note above. A pull_request can come from a fork, and for
+          # pull_request GitHub builds the workflow from the PR's merge ref, so the PR's own edits to THIS
+          # file are what run. That means nothing written here can be trusted to defend itself on that path.
+          # What CAN be trusted is that the leg is dropped here for every pull_request, so the version of
+          # this file on main never routes a PR to the dev Mac, and that an external PR does not execute at
+          # all without maintainer approval. Metal coverage on a PR is deliberately traded away: it is
+          # re-established the moment the branch lands on main, where push events do carry it.
+          if [ "$EVENT" = pull_request ]; then
+            before=$(jq -r '[.[].backend] | join(", ")' <<<"$picked")
+            picked=$(jq -c '[.[] | select(.backend != "metal")]' <<<"$picked")
+            after=$(jq -r '[.[].backend] | join(", ")' <<<"$picked")
+            [ "$before" = "$after" ] || echo "pull_request: metal dropped (self-hosted runner is not exposed to PRs)"
+            # A metal-only dispatch cannot happen on a pull_request, but if the list above ever changes so
+            # that this empties the matrix, say so rather than reporting a green run that tested nothing.
+            [ "$(jq 'length' <<<"$picked")" -gt 0 ] || { echo "::error::pull_request left no legs to run"; exit 1; }
           fi
 
           echo "selected legs: $(jq -r '[.[].backend] | join(", ")' <<<"$picked")"
@@ -244,11 +300,11 @@ jobs:
     # the lavapipe leg ever flakes on a runner-image change, re-add
     # `continue-on-error: ${{ matrix.backend == 'vulkan' }}` here to drop it back to informational.
     #
-    # Runner split (engine is private, so hosted minutes bill): the Metal leg runs on the self-hosted dev
-    # Mac (real Metal, free, and where the metal golden is baked so it matches). Both D3D11 legs and Vulkan
-    # are software rasterizers with no local host, so they stay GitHub-hosted. All three are path-gated
-    # (rare) => trivial spend, and the native leg's 2x Windows rate is the reason its push path stays
-    # golden-only rather than running the full suite (decision T5).
+    # Runner split: every leg that runs is GitHub-hosted, and free, because the repo is public. Both D3D11
+    # legs and Vulkan are software rasterizers and were always hosted, so the visibility flip cost them
+    # nothing. Metal was the one leg that needed real hardware, and it is absent (see the leg table).
+    # The suite tiers (native leg golden-only on push, decision T5) were chosen against 2x Windows billing
+    # and are kept for feedback speed.
     # The matrix keys stay on `os` (drives the OS-specific setup steps + the leg name); `runner` picks where.
     strategy:
       fail-fast: false

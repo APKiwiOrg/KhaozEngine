@@ -508,8 +508,11 @@ public class WallContactOwnColumnTests
     // and is a DIFFERENT statement with a different threshold: there the control costs nothing measurable below
     // one degree, so the two must not be quoted for each other.
     //
-    // The bank rides in THIS file are not part of that caveat and the control says so: they are analytic, smooth,
-    // and their sixty-row sweep does not move at all until the rotation reaches a degree.
+    // The bank rides in THIS file are analytic and smooth, and the control still moves some of them: at a
+    // hundredth of a degree, 8 of the 60 convex rows move over 0.01 and 3 leave the shipped band, all of them
+    // the near-planar 400 m bend at 120 Hz, whose float-noise sensitivity this file already flags. The concave
+    // sixty are immune at every angle tried. Scope any robustness claim to the rows the control actually
+    // certifies, which is everything except the 400 m 120 Hz class.
     [Fact(Skip = "measurement, not an assertion: see the procedure above, it needs an engine edit to mean anything")]
     public void The_perturbation_control_for_every_sensitivity_claim_in_this_chain()
     {

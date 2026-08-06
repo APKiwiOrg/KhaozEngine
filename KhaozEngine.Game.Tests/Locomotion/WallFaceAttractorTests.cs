@@ -290,10 +290,12 @@ public class WallFaceAttractorTests
     // THE CENSUS HALF OF THE SAME CONTROL IS A DIFFERENT STATEMENT AND USED TO BE QUOTED FOR THIS ONE, WHICH WAS
     // WRONG (corrected round two, #502). An earlier draft here cited the control at 0.001, 0.05 and 0.2 degrees
     // as evidence about census PARKS. It is not: re-swept over the 3824-ride census, a rotation of 0.001 degrees
-    // costs nothing at all, 0.05 costs one top-tier row, 0.2 costs two, and NONE of the three produces a single
-    // new park anywhere. Parks need ONE DEGREE and up, where the control costs ten top-tier rows and produces its
-    // first park. The conclusion the draft drew survives, because the movement it was defending is smaller than
-    // what a degree of nonsense produces. The numbers it drew it from were about the wrong quantity.
+    // costs nothing at all, 0.05 costs one top-tier row, 0.2 costs two. At the AGGREGATE tier level the first
+    // park appears at one degree, but an INDIVIDUAL chaotic bank row can park at 0.2 (lean 48, run 15 Hz, the
+    // rotated build reads 0.014 with 146 dead ticks where the shipped one rides clean), so the tier table is not
+    // a per-row immunity claim. The criterion that separates chaos from mechanism is ensemble determinism under
+    // start perturbation: round one's lean-49 park was 21 of 21 deterministic while the pre-#502 build never
+    // parks there in the same ensemble, which is what made it a real defect and not noise.
     //
     // WHAT THAT MEANS FOR A READER OF THIS TABLE, AND IT IS NOT THAT THE FILE IS WEAK. The park these rows exist
     // to forbid is a factor-of-five effect (0.11 to 0.22 of commanded against 0.9 and up), and no perturbation of
@@ -524,8 +526,11 @@ public class WallFaceAttractorTests
     // and not #502's. A walker at 46 degrees off this bank's contour at a 0.80 m step is being driven into
     // metre-wavelength micro-geometry a step and a half wide, and the pre-#501 engine stops there for 135 ticks
     // of its 150. It is pinned below rather than fixed, at a bound that admits the measurement and nothing worse,
-    // so it cannot grow silently while nobody is scanning here. Naming it is the point: the three census parks
-    // the review found are this row, not a #502 regression.
+    // so it cannot grow silently while nobody is scanning here. Naming it is the point, so name it precisely:
+    // the pre-existing park lives at leans 46 and 47. The three census parks the round-one review found sat at
+    // leans 45, 49 and 50, were clean in every build before round one, and round two REMOVED them (0.72 to 0.81
+    // with no dead tick). Round one had also accidentally ridden the pre-existing lean-46 park (0.547 with none),
+    // and round two returns that row to its pre-existing state, inside this pin.
     //
     // THE RUN AT 30 HZ IS THE OPPOSITE AND IS THE FIND WORTH HAVING. The pre-#501 engine parks there for 212 of
     // its 300 ticks at lean 44, and BOTH rounds of #502 remove it outright - 0.285 to 0.894 of commanded travel

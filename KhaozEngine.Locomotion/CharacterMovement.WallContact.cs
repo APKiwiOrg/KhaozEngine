@@ -482,10 +482,11 @@ public static partial class CharacterMovement
         // census resolves the two are the same build. Identical tier counts against the pre-#501 reference
         // (1/10/167 with 39 improvements), identical on all sixty convex bank rides, identical on all sixty
         // concave ones, identical on the asymmetric gully, identical over the 40 to 60 degree noisy-bank scan.
-        // They differ only on the noisy bank inside the band its own control measures: the twelve pinned attractor
-        // rides total 324 airborne ticks that way against 337 this way (the pre-#502 build reads 326), and one row
-        // moves 0.052 of efficiency, which is under the 0.058 that a hundredth of a degree of meaningless rotation
-        // moves the same row.
+        // They differ only on the noisy bank: the twelve pinned attractor rides total 324 airborne ticks that way
+        // against 337 this way (the pre-#502 build reads 326), and the largest efficiency moves are 0.072, 0.063
+        // and 0.052, which is 1.5x to 7x what a hundredth of a degree of meaningless rotation moves those rows
+        // (0.049 at the worst, and under 0.02 on those three). So the noise argument does NOT cover the
+        // composition difference on that fixture, and the census tiers do not separate the two either.
         //
         // SO THE CENSUS DOES NOT CHOOSE, AND WHAT DOES IS THE ONE REFEREE EDGE THAT IS NOT NOISE: the rectification
         // ceiling WallFaceAttractorTests pins at 1.25. Scanned at 0.02 degrees over leans 60 to 87, the pre-#502

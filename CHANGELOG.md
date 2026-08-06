@@ -2238,8 +2238,15 @@ Every one of round one's nine top-tier regressions is on the noisy bank and the 
 including all three of the CENSUS PARKS the review found at leans 45, 49 and 50 (a run at 15 Hz reading 0.35,
 0.03 and 0.03 of its command with 68, 137 and 137 consecutive dead ticks, back to 0.76, 0.81 and 0.72 with no
 dead tick). The loosest tier returns exactly to the pre-#502 count, and the six trough shapes read one row better
-than pre-#502 rather than worse. What remains is two noisy-bank rides that lose more than a tenth of their
-pre-#501 travel without stalling at all.
+than pre-#502 rather than worse. On the residual, stated precisely: this census set reads one top-tier row the
+sweep could not localize to a shape and lean, and the round-three verify's independent census (exact bank half,
+reconstructed troughs) corroborates ZERO top-tier rows, zero rides worse than pre-#502 by over 0.30, and zero
+new parks, so the row is inside the sets' reconstruction differences rather than a located defect. The concrete
+known residual is two noisy-bank rides that lose more than a tenth of their pre-#501 travel without stalling at
+all. Two more disclosures that rode this round: the band threshold gained a MathF.Max(0f, ...) clamp with the
+file split (inert on every shipped tuning, documented at the constant), and the pre-existing lean-46 bank park,
+which round one had accidentally ridden clean, returns to its pre-existing state inside the disclosed 160-tick
+pin (the pre-existing park row is leans 46 to 47, not the 45/49/50 trio this round removes).
 
 **Three review findings about the record, all corrected here rather than left.**
 

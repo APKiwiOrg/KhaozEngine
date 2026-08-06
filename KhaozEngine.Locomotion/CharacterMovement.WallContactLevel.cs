@@ -64,8 +64,9 @@ public static partial class CharacterMovement
     // real: at six and eight the band reaches trough columns, and WallFaceTroughTests reds on its axis rows and
     // its flank window - the walkable up-grade being eaten, which is the failure the band exists to prevent. The
     // LOWER one is not: at a quarter, a half and three quarters of a degree the only thing that reds is
-    // WallFaceAttractorTests' noisy-bank rides, whose efficiency moves 0.06 for a HUNDREDTH of a degree of
-    // meaningless rotation (see OwnColumnLevelKeep for that control). So the band is bounded above by geometry
+    // WallFaceAttractorTests' noisy-bank rides, whose efficiency moves up to 0.049 for a HUNDREDTH of a degree
+    // of meaningless rotation (the runnable control lives in WallContactOwnColumnTests, the skipped-by-default
+    // perturbation test). So the band is bounded above by geometry
     // and below by noise, and two degrees is the middle of the window both leave green.
     private const float OwnColumnCeilingBand = 2f * MathF.PI / 180f;
 

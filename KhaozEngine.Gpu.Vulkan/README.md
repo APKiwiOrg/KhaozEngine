@@ -5,7 +5,7 @@ umbrella: a consumer adds this package explicitly, the same pattern as `Physics.
 and nothing that does not want the Vulkan binding ever carries it.
 
 > **Status: REGISTRATION, PROBE, A HEADLESS DEVICE, ITS COMPLETION TIMELINE, ITS MEMORY ALLOCATOR, THE COMMAND
-> LIST'S LIFECYCLE, THE UNIFORM RING, THE RESOURCE FACTORY AND THE DESCRIPTORS.**
+> LIST'S LIFECYCLE, THE UNIFORM RING, THE RESOURCE FACTORY, THE DESCRIPTORS AND THE BIND FLUSH.**
 > `KhaozEngineVulkan.Register()`
 > is real, so is the machine-capability probe behind it, and since
 > [#514](https://github.com/APKiwiOrg/KhaozEngine/issues/514) so is headless device creation:
@@ -29,9 +29,13 @@ and nothing that does not want the Vulkan binding ever carries it.
 > [#520](https://github.com/APKiwiOrg/KhaozEngine/issues/520) it has DESCRIPTORS: content-deduplicated
 > `VkDescriptorSetLayout`s and `VkPipelineLayout`s, pools sized from actual demand whose free path restores every
 > counted type, and `CreateResourceLayout` and `CreateResourceSet` handing out one `VkDescriptorSet` allocated
-> and written once at creation with the bind window as its range. That device cannot yet
-> RENDER: recording content is
-> [#521](https://github.com/APKiwiOrg/KhaozEngine/issues/521),
+> and written once at creation with the bind window as its range. And since
+> [#521](https://github.com/APKiwiOrg/KhaozEngine/issues/521) all four resource-set binds are LIVE: they record
+> into a two-state per-slot array and issue nothing, and the flush behind them emits one
+> `vkCmdBindDescriptorSets` per contiguous run of dirty slots with a positional `pDynamicOffsets` composed over
+> every dynamic descriptor in the run. The pipeline-layout compatibility prefix and both of decision V-R7's guards
+> landed with it, ahead of the pipeline row that calls them. That device cannot yet
+> RENDER: the rest of the recording content is
 > [#522](https://github.com/APKiwiOrg/KhaozEngine/issues/522),
 > [#524](https://github.com/APKiwiOrg/KhaozEngine/issues/524) and
 > [#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525), framebuffers are
@@ -606,6 +610,79 @@ or silently promoting some uniform buffer and diverging from what the other two 
 keeps the pipeline-layout compatibility computation a pure set-layout prefix compare. **The trigger that reopens
 it is named**: a consumer needing per-draw material variety beyond one dynamic offset, which today means a
 texture-array atlas the splat terrain cannot express.
+
+## Binding: two states, one call per contiguous run, and a compatibility prefix with a guard
+
+**A resource-set bind RECORDS ONLY.** `SetGraphicsResourceSet` and `SetComputeResourceSet`, both overloads of
+each, write into a per-slot array of `(set, engineDynamicOffset)` and issue nothing. A slot goes dirty when
+either the set or the offset differs from what is already recorded, several marks between two draws collapse to
+one flush, and a rebind that changes nothing leaves the slot clean. The record is one struct per SLOT, replaced
+in place, so its size follows the highest slot ever used and never the number of rebinds: the shadow pass does
+thousands of offsets-only rebinds of one set per frame and an O(rebinds) record would make that an O(n squared)
+frame. `Draw`, `DrawIndexed` and `Dispatch` flush every dirty slot through a pre-command hook and then issue.
+
+**TWO STATES, NOT THREE, AND THE THIRD IS NOT MISSING.** The Direct3D 11 backend carries a `DynamicOffsetsOnly`
+state so an offsets-only rebind can push the constant buffers and skip the textures and samplers, which on that
+API is a real saving in native calls. A Vulkan descriptor bind is ONE call whether one offset moved or every
+image in the set changed, `pDynamicOffsets` is positional over every dynamic descriptor in the run, and every
+ring-backed uniform's base moves every frame, so the array is recomposed on any bind regardless. A third state
+would change no call and skip no work. The "was there an offset overload" flag the other backend keeps is gone
+for the same reason: with no second activation path to choose, a bind with an offset of zero and a bind without
+one are the same call. The one thing that distinction still buys is a refusal, so a NON-ZERO offset passed to a
+set whose layout declares no dynamic element is rejected by name rather than silently dropped.
+
+**One `vkCmdBindDescriptorSets` per CONTIGUOUS RUN of dirty slots**, with `firstSet` at the run's start. A full
+activation of the engine's shapes is ONE call carrying every set and an offsets-only rebind of one set is ONE
+call carrying one. A clean slot cuts the run because rebinding it would be a call bought for nothing, and a slot
+whose recorded set has gone null cuts it because there is no handle to name: neither can be a hole in the middle
+of an array that starts at one index. A null slot is SKIPPED rather than unbound, and it goes clean on the way
+past so the skip happens once. `SpriteBatch` puts its uniform buffer at SET 1, so "set 0 first" is false in
+shipped code and a run's own `firstSet` is load-bearing rather than decorative.
+
+**`pDynamicOffsets` is POSITIONAL and covers sets the caller never named.** One entry for every dynamic
+descriptor in every set of the run, in SET ORDER then BINDING ORDER, including ring bases for uniform buffers
+nobody passed an offset for. Each entry is `ringBase(buffer, currentFrame) + rangeOffset + (declaredDynamic ?
+engineOffset : 0)`, and the declared flag is the only thing that decides that last term. There is no key and no
+name anywhere in the array: position is the only thing that says which entry belongs to which descriptor, which
+is why an off-by-one here reads the wrong slice of the RIGHT buffer and renders plausible garbage rather than
+throwing. A device-free test composes it for all 33 shipped layout shapes at every frame slot and asserts each
+entry plus the descriptor's own range stays inside the buffer, which is
+`VUID-vkCmdBindDescriptorSets-pDescriptorSets-01979` measured against the range the set wrote at creation and the
+stride the ring owns. Those three have to agree or validation fails on the LAST FRAME SLOT ONLY, which is the
+hardest version of this bug to find, so the composition re-asserts the bind-window invariant with the caller's
+real offset rather than the zero set creation had to assume.
+
+**The array is recomposed at the head of every RUN, which is the incumbent's own bug not inherited.** Its
+batching flush resets the batch count and the first set but NOT the accumulated dynamic-offset count, so a second
+batch inside one flush passes a too-large count built from stale entries. The invariant here is that the count
+passed equals the sum of that call's sets' dynamic descriptors, and the device-free budget test asserts it over a
+whole frame rather than leaving it to a reading of the code.
+
+**A pipeline switch invalidates recorded slots from the first INCOMPATIBLE set onward, and the rule runs the
+opposite way to Direct3D 11's.** There a switch drains the pending sets under the OUTGOING layouts and forgets
+the records, because the layout array decides register numbering. Here nothing is renumbered: Vulkan itself
+invalidates bound descriptor sets from the first incompatible set, and two pipeline layouts are compatible for
+set N when they were created with identically defined set layouts for sets 0 through N and identical
+push-constant ranges. Content dedup makes "identically defined" into HANDLE IDENTITY and push constants are
+declined, so the computation is the longest common prefix of the two layouts' set-layout handle sequences. A
+rebind of the layout already current does nothing. Without dedup this would answer zero every time, which is
+exactly what the incumbent pays and what a blunt clear-everything version reproduces by construction rather than
+by choice.
+
+**That prefix is GUARDED rather than trusted, and the asymmetry is why.** A prefix shorter than the truth costs a
+redundant bind. A prefix LONGER than the truth leaves a set the driver has already invalidated marked clean, so
+the next draw reads whatever that descriptor slot now holds, which renders wrong and throws nothing. Two checks:
+a device-free test walks all 1089 ordered pairs of the 33 shipped pipelines and asserts the computed prefix never
+exceeds the true prefix of identically DEFINED set layouts, computed from the binding tables rather than from the
+handles so the guard is not a restatement of the thing it guards. And under `KE_VULKAN_VALIDATION` the flush
+additionally asserts that every bound set's layout IS the current pipeline layout's set layout at that index,
+which is the half that runs where a draw would consume the answer.
+
+**What is not built yet, and where it lands.** `SetPipeline` and `SetComputePipeline` still refuse, naming the
+pipeline row ([#523](https://github.com/APKiwiOrg/KhaozEngine/issues/523)): the prefix computation and both of
+its guards are already here, and that row calls `SetPipelineLayout` with the pipeline's own layout handle and
+set-layout sequence. The draw and dispatch members still refuse, naming
+[#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525), which calls the flush hook FIRST and then issues.
 
 ## `KE_VULKAN_DEVICE`, `KE_VULKAN_VALIDATION` and `KE_VULKAN_FRAMES_IN_FLIGHT`
 

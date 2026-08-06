@@ -1,0 +1,31 @@
+name: metal-probe
+on: { workflow_dispatch: {} }
+permissions: { contents: read }
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix: { os: [macos-14, macos-15] }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: What GPU does this runner have
+        run: |
+          sw_vers; uname -m
+          echo "--- displays/GPU ---"
+          system_profiler SPDisplaysDataType 2>/dev/null | head -20 || echo "(none reported)"
+      - name: Does MTLCreateSystemDefaultDevice return a device, and does it have a name
+        run: |
+          cat > /tmp/probe.swift <<'SWIFT'
+          import Metal
+          if let d = MTLCreateSystemDefaultDevice() {
+              print("DEVICE: yes")
+              print("NAME: '\(d.name)'  empty=\(d.name.isEmpty)")
+              print("lowPower=\(d.isLowPower) headless=\(d.isHeadless) registryID=\(d.registryID)")
+          } else {
+              print("DEVICE: nil  (MTLCreateSystemDefaultDevice returned nil)")
+          }
+          let all = MTLCopyAllDevices()
+          print("MTLCopyAllDevices count: \(all.count)")
+          for d in all { print("  - '\(d.name)'") }
+          SWIFT
+          swift /tmp/probe.swift

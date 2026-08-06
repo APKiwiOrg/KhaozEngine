@@ -286,6 +286,38 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
+        /// A FAILED <c>vkUpdateDescriptorSets</c> FREES THE SET IT ALREADY ALLOCATED RATHER THAN LEAKING IT. The
+        /// constructor validates and resolves everything before anything native happens, so the ONLY way the
+        /// native write itself can fail is the driver call, and by then a real set has already been allocated.
+        /// The catch sends it back through the normal deferred free (V-F9) and rethrows, so the caller still
+        /// sees the failure and the pool's budget still balances.
+        /// </summary>
+        [Fact]
+        public void AFailedUpdate_FreesTheAllocatedSetAndSurfacesTheFailure()
+        {
+            var fixture = new VulkanResourceFixture();
+
+            using IGpuResourceLayout layout = fixture.Factory.CreateResourceLayout(
+                VulkanResourceFixture.UniformLayout());
+            using IGpuBuffer uniform = fixture.Factory.CreateBuffer(
+                VulkanResourceFixture.Buffer(256, GpuBufferUsage.UniformBuffer));
+
+            fixture.DescriptorApi.FailOn = "vkUpdateDescriptorSets";
+
+            Assert.Throws<InvalidOperationException>(() => fixture.Factory.CreateResourceSet(
+                new GpuResourceSetDescription(layout, uniform)));
+
+            Assert.Equal(1, fixture.DescriptorApi.AllocateCount);
+            Assert.Equal(0, fixture.DescriptorApi.FreeCount);
+            Assert.Equal(1, fixture.Descriptors.Pools.OutstandingSets);
+
+            fixture.Drain();
+
+            Assert.Equal(1, fixture.DescriptorApi.FreeCount);
+            Assert.Equal(0, fixture.Descriptors.Pools.OutstandingSets);
+        }
+
+        /// <summary>
         /// EVERY WAY A SET CAN BE BUILT WRONG IS REFUSED BY NAME, naming the ELEMENT rather than an index,
         /// because a message about "element 4" is unactionable in a seven-element material layout. A descriptor
         /// set is written once at creation and never again, so there is no later point at which any of these could

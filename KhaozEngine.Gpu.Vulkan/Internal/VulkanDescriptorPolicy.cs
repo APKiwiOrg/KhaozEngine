@@ -49,11 +49,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// buffer because neither of that API's shader-resource binds carries a per-bind window, so the offset
         /// would be silently dropped. Here a dynamic structured buffer would additionally have to become
         /// <c>STORAGE_BUFFER_DYNAMIC</c>, which 8.1's mapping does not produce, and a dynamic TEXTURE or SAMPLER
-        /// has no dynamic form at all. Both would leave row 11
-        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/521) composing a POSITIONAL <c>pDynamicOffsets</c>
-        /// array whose entries no longer line up with the set's dynamic descriptors, which reads the wrong slice
-        /// of the right buffer and renders plausible garbage rather than throwing. Vacuous in the engine today:
-        /// all six shipped dynamic elements are uniform buffers.
+        /// has no dynamic form at all. Both would leave the caller's per-draw offset with no dynamic descriptor
+        /// to land on, so it is silently dropped, and a bind that supplied one anyway would carry a
+        /// dynamicOffsetCount the set's dynamic descriptors do not match
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/521). Vacuous in the engine today: all six shipped
+        /// dynamic elements are uniform buffers.
         /// </remarks>
         internal static VulkanDescriptorType TypeFor(in GpuResourceLayoutElement element)
         {
@@ -64,12 +64,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     + "cannot honour. The engine's dynamic offset is a per-draw byte rebase, and the only Vulkan "
                     + "descriptor this backend gives a bind-time offset to is the dynamic UNIFORM buffer "
                     + "(decision V-D4): a structured buffer maps to STORAGE_BUFFER and an image or a sampler has "
-                    + "no dynamic form at all. Accepting it would leave the positional pDynamicOffsets array "
-                    + "misaligned against the set's real dynamic descriptors, which reads the wrong slice of the "
-                    + "right buffer and renders plausible garbage rather than throwing. The Direct3D 11 backend "
-                    + "refuses the structured half of this for its own reason, so an element like this is already "
-                    + "unshippable on two of the three backends. Declare it as a uniform buffer, or build one "
-                    + "resource set per window.",
+                    + "no dynamic form at all. Accepting it would leave the caller's per-draw offset with no "
+                    + "dynamic descriptor to land on, so it is silently dropped, and a bind that supplied one "
+                    + "anyway would carry a dynamicOffsetCount the set's dynamic descriptors do not match. The "
+                    + "Direct3D 11 backend refuses the structured half of this for its own reason, so an element "
+                    + "like this is already unshippable on two of the three backends. Declare it as a uniform "
+                    + "buffer, or build one resource set per window.",
                     nameof(element));
             }
 

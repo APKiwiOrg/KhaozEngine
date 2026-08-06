@@ -32,7 +32,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// buffers than samplers into a pool that cannot hold it, and then fails inside
     /// <c>vkAllocateDescriptorSets</c> where the message says nothing about budgets.
     /// <see cref="VulkanDescriptorCounts.Fits"/> is one expression over seven fields, which is the same defence
-    /// as above applied to the other direction.</para>
+    /// as above applied to the other direction. Fixed upstream on Veldrid's default branch (commit
+    /// 35c6f23, 2023-09-16), but that commit is not an ancestor of the vendored v4.9.103 line, so a future fork
+    /// rebase may pick it up on its own and the guard test above stays valid either way.</para>
     ///
     /// <para><b>ONE SHORT LOCK, because creation is free-threaded (V-W8).</b> It covers the pool walk, the
     /// budget arithmetic, the append and the native allocate, because a budget checked outside the lock and spent

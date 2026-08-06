@@ -30,6 +30,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// </summary>
     internal sealed unsafe class VulkanDescriptorApi : IVulkanDescriptorApi
     {
+        // ABOVE THIS MANY ELEMENTS THE NATIVE ARRAYS BELOW MOVE TO THE HEAP. Every one of them is sized from a
+        // consumer-supplied count (a layout's binding count, a pipeline layout's set-layout count, a set's write
+        // count), and a stackalloc has no bound the CLR can catch: past the thread's stack it corrupts memory
+        // instead of throwing, where the heap array below fails safely with an OutOfMemoryException. No shipped
+        // call site is anywhere near this: the largest is 7 elements.
+        const int StackallocThreshold = 32;
+
         readonly Vk _vk;
         readonly Device _device;
         readonly VulkanDeviceLossLatch _loss;
@@ -57,33 +64,40 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             // One extra slot so a zero-binding layout still has a valid pointer to hand over. An empty layout is
             // real: the seam permits new GpuResourceLayoutDescription() and two shipped tests use one.
-            DescriptorSetLayoutBinding* native = stackalloc DescriptorSetLayoutBinding[bindings.Length + 1];
+            int count = bindings.Length + 1;
+            Span<DescriptorSetLayoutBinding> nativeSpan = count <= StackallocThreshold
+                ? stackalloc DescriptorSetLayoutBinding[count]
+                : new DescriptorSetLayoutBinding[count];
 
-            for (int i = 0; i < bindings.Length; i++)
+            fixed (DescriptorSetLayoutBinding* native = nativeSpan)
             {
-                native[i] = new DescriptorSetLayoutBinding(
-                    binding: bindings[i].Binding,
-                    descriptorType: VulkanFormats.ToDescriptorType(bindings[i].Type),
-                    descriptorCount: bindings[i].DescriptorCount,
-                    stageFlags: VulkanFormats.ToShaderStages(bindings[i].Stages),
-                    // NULL. Immutable samplers would bake a VkSampler into the layout, which would make two
-                    // layouts with the same shape and different samplers different objects and break the content
-                    // dedup that V-D5 rests on. The engine binds its samplers as descriptors like everything else.
-                    pImmutableSamplers: null);
+                for (int i = 0; i < bindings.Length; i++)
+                {
+                    native[i] = new DescriptorSetLayoutBinding(
+                        binding: bindings[i].Binding,
+                        descriptorType: VulkanFormats.ToDescriptorType(bindings[i].Type),
+                        descriptorCount: bindings[i].DescriptorCount,
+                        stageFlags: VulkanFormats.ToShaderStages(bindings[i].Stages),
+                        // NULL. Immutable samplers would bake a VkSampler into the layout, which would make two
+                        // layouts with the same shape and different samplers different objects and break the
+                        // content dedup that V-D5 rests on. The engine binds its samplers as descriptors like
+                        // everything else.
+                        pImmutableSamplers: null);
+                }
+
+                var createInfo = new DescriptorSetLayoutCreateInfo(
+                    sType: StructureType.DescriptorSetLayoutCreateInfo,
+                    // NO FLAGS (V-D8). UPDATE_AFTER_BIND_POOL and PUSH_DESCRIPTOR are both
+                    // descriptor-indexing-shaped features this backend declines.
+                    flags: DescriptorSetLayoutCreateFlags.None,
+                    bindingCount: (uint)bindings.Length,
+                    pBindings: native);
+
+                Result created = _vk.CreateDescriptorSetLayout(
+                    _device, in createInfo, null, out DescriptorSetLayout layout);
+                Check(created, "vkCreateDescriptorSetLayout", "create a descriptor set layout");
+                return layout.Handle;
             }
-
-            var createInfo = new DescriptorSetLayoutCreateInfo(
-                sType: StructureType.DescriptorSetLayoutCreateInfo,
-                // NO FLAGS (V-D8). UPDATE_AFTER_BIND_POOL and PUSH_DESCRIPTOR are both descriptor-indexing-shaped
-                // features this backend declines.
-                flags: DescriptorSetLayoutCreateFlags.None,
-                bindingCount: (uint)bindings.Length,
-                pBindings: native);
-
-            Result created = _vk.CreateDescriptorSetLayout(
-                _device, in createInfo, null, out DescriptorSetLayout layout);
-            Check(created, "vkCreateDescriptorSetLayout", "create a descriptor set layout");
-            return layout.Handle;
         }
 
         /// <inheritdoc/>
@@ -97,20 +111,27 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <inheritdoc/>
         public ulong CreatePipelineLayout(ReadOnlySpan<ulong> setLayouts)
         {
-            DescriptorSetLayout* native = stackalloc DescriptorSetLayout[setLayouts.Length + 1];
-            for (int i = 0; i < setLayouts.Length; i++) native[i] = new DescriptorSetLayout(setLayouts[i]);
+            int count = setLayouts.Length + 1;
+            Span<DescriptorSetLayout> nativeSpan = count <= StackallocThreshold
+                ? stackalloc DescriptorSetLayout[count]
+                : new DescriptorSetLayout[count];
 
-            var createInfo = new PipelineLayoutCreateInfo(
-                sType: StructureType.PipelineLayoutCreateInfo,
-                setLayoutCount: (uint)setLayouts.Length,
-                pSetLayouts: native,
-                // ZERO PUSH CONSTANT RANGES, which is decision V-D8 and not an omission. See the class note.
-                pushConstantRangeCount: 0,
-                pPushConstantRanges: null);
+            fixed (DescriptorSetLayout* native = nativeSpan)
+            {
+                for (int i = 0; i < setLayouts.Length; i++) native[i] = new DescriptorSetLayout(setLayouts[i]);
 
-            Result created = _vk.CreatePipelineLayout(_device, in createInfo, null, out PipelineLayout layout);
-            Check(created, "vkCreatePipelineLayout", "create a pipeline layout");
-            return layout.Handle;
+                var createInfo = new PipelineLayoutCreateInfo(
+                    sType: StructureType.PipelineLayoutCreateInfo,
+                    setLayoutCount: (uint)setLayouts.Length,
+                    pSetLayouts: native,
+                    // ZERO PUSH CONSTANT RANGES, which is decision V-D8 and not an omission. See the class note.
+                    pushConstantRangeCount: 0,
+                    pPushConstantRanges: null);
+
+                Result created = _vk.CreatePipelineLayout(_device, in createInfo, null, out PipelineLayout layout);
+                Check(created, "vkCreatePipelineLayout", "create a pipeline layout");
+                return layout.Handle;
+            }
         }
 
         /// <inheritdoc/>
@@ -196,49 +217,61 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             if (writes.Length == 0) return;
 
-            WriteDescriptorSet* native = stackalloc WriteDescriptorSet[writes.Length];
-            DescriptorBufferInfo* buffers = stackalloc DescriptorBufferInfo[writes.Length];
-            DescriptorImageInfo* images = stackalloc DescriptorImageInfo[writes.Length];
+            Span<WriteDescriptorSet> nativeSpan = writes.Length <= StackallocThreshold
+                ? stackalloc WriteDescriptorSet[writes.Length]
+                : new WriteDescriptorSet[writes.Length];
+            Span<DescriptorBufferInfo> bufferSpan = writes.Length <= StackallocThreshold
+                ? stackalloc DescriptorBufferInfo[writes.Length]
+                : new DescriptorBufferInfo[writes.Length];
+            Span<DescriptorImageInfo> imageSpan = writes.Length <= StackallocThreshold
+                ? stackalloc DescriptorImageInfo[writes.Length]
+                : new DescriptorImageInfo[writes.Length];
 
-            for (int i = 0; i < writes.Length; i++)
+            fixed (WriteDescriptorSet* native = nativeSpan)
+            fixed (DescriptorBufferInfo* buffers = bufferSpan)
+            fixed (DescriptorImageInfo* images = imageSpan)
             {
-                VulkanDescriptorWrite write = writes[i];
-
-                native[i] = new WriteDescriptorSet(
-                    sType: StructureType.WriteDescriptorSet,
-                    dstSet: new DescriptorSet(set),
-                    dstBinding: write.Binding,
-                    dstArrayElement: 0,
-                    descriptorCount: 1,
-                    descriptorType: VulkanFormats.ToDescriptorType(write.Type));
-
-                if (VulkanDescriptorPolicy.IsBuffer(write.Type))
+                for (int i = 0; i < writes.Length; i++)
                 {
-                    // THE RANGE IS THE BIND WINDOW (V-M6): never VK_WHOLE_SIZE and never the ring stride. The
-                    // decision is VulkanResourceSet's and this line only carries it across.
-                    buffers[i] = new DescriptorBufferInfo(
-                        new Buffer(write.Buffer), write.BufferOffset, write.BufferRange);
-                    native[i].PBufferInfo = &buffers[i];
-                    continue;
-                }
+                    VulkanDescriptorWrite write = writes[i];
 
-                if (write.Type == VulkanDescriptorType.Sampler)
-                {
+                    native[i] = new WriteDescriptorSet(
+                        sType: StructureType.WriteDescriptorSet,
+                        dstSet: new DescriptorSet(set),
+                        dstBinding: write.Binding,
+                        dstArrayElement: 0,
+                        descriptorCount: 1,
+                        descriptorType: VulkanFormats.ToDescriptorType(write.Type));
+
+                    if (VulkanDescriptorPolicy.IsBuffer(write.Type))
+                    {
+                        // THE RANGE IS THE BIND WINDOW (V-M6): never VK_WHOLE_SIZE and never the ring stride. The
+                        // decision is VulkanResourceSet's and this line only carries it across.
+                        buffers[i] = new DescriptorBufferInfo(
+                            new Buffer(write.Buffer), write.BufferOffset, write.BufferRange);
+                        native[i].PBufferInfo = &buffers[i];
+                        continue;
+                    }
+
+                    if (write.Type == VulkanDescriptorType.Sampler)
+                    {
+                        images[i] = new DescriptorImageInfo(
+                            new Sampler(write.Sampler), default, ImageLayout.Undefined);
+                        native[i].PImageInfo = &images[i];
+                        continue;
+                    }
+
                     images[i] = new DescriptorImageInfo(
-                        new Sampler(write.Sampler), default, ImageLayout.Undefined);
+                        default, new ImageView(write.ImageView),
+                        VulkanFormats.ToDescriptorImageLayout(write.ImageLayout));
                     native[i].PImageInfo = &images[i];
-                    continue;
                 }
 
-                images[i] = new DescriptorImageInfo(
-                    default, new ImageView(write.ImageView),
-                    VulkanFormats.ToDescriptorImageLayout(write.ImageLayout));
-                native[i].PImageInfo = &images[i];
+                // ONE CALL COVERING EVERY BINDING (V-D1), made exactly once in a set's life. It returns nothing,
+                // so there is no result to latch: a malformed write is a validation-layer error rather than a
+                // code.
+                _vk.UpdateDescriptorSets(_device, (uint)writes.Length, native, 0, null);
             }
-
-            // ONE CALL COVERING EVERY BINDING (V-D1), made exactly once in a set's life. It returns nothing, so
-            // there is no result to latch: a malformed write is a validation-layer error rather than a code.
-            _vk.UpdateDescriptorSets(_device, (uint)writes.Length, native, 0, null);
         }
 
         // The latch first, so the site's own name is what the telemetry header carries, and then the plain result

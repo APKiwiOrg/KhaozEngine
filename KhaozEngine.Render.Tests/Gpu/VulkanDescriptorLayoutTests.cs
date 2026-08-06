@@ -149,10 +149,11 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// A DECLARED-DYNAMIC ELEMENT THAT IS NOT A UNIFORM BUFFER IS REFUSED BY NAME, before anything native
-        /// happens. Accepting one would leave the positional <c>pDynamicOffsets</c> array misaligned against the
-        /// set's real dynamic descriptors, which reads the wrong slice of the right buffer and renders plausible
-        /// garbage rather than throwing. The Direct3D 11 backend refuses the structured half of this for its own
-        /// reason, so an element like this is already unshippable on two of the three backends.
+        /// happens. Accepting one would leave the caller's per-draw offset with no dynamic descriptor to land on,
+        /// so it is silently dropped, and a bind that supplied one anyway would carry a
+        /// <c>dynamicOffsetCount</c> the set's dynamic descriptors do not match. The Direct3D 11 backend refuses
+        /// the structured half of this for its own reason, so an element like this is already unshippable on two
+        /// of the three backends.
         /// </summary>
         [Theory]
         [InlineData(GpuResourceKind.StructuredBufferReadOnly)]

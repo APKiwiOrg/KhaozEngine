@@ -5,7 +5,7 @@ umbrella: a consumer adds this package explicitly, the same pattern as `Physics.
 and nothing that does not want the Vulkan binding ever carries it.
 
 > **Status: REGISTRATION, PROBE, A HEADLESS DEVICE, ITS COMPLETION TIMELINE, ITS MEMORY ALLOCATOR, THE COMMAND
-> LIST'S LIFECYCLE, THE UNIFORM RING AND THE RESOURCE FACTORY.**
+> LIST'S LIFECYCLE, THE UNIFORM RING, THE RESOURCE FACTORY AND THE DESCRIPTORS.**
 > `KhaozEngineVulkan.Register()`
 > is real, so is the machine-capability probe behind it, and since
 > [#514](https://github.com/APKiwiOrg/KhaozEngine/issues/514) so is headless device creation:
@@ -25,13 +25,16 @@ and nothing that does not want the Vulkan binding ever carries it.
 > with every image view they will ever need already made and a canonical resting layout assigned, samplers with
 > the wrap-addressed shared pair, staging textures backed by a `VkBuffer` with the incumbent's software
 > subresource layout, `Map` and `Unmap` with the read drain, and a device-owned setup command buffer under its
-> own short lock that means NO texture creation submits anything to the queue. That device cannot yet
+> own short lock that means NO texture creation submits anything to the queue. And since
+> [#520](https://github.com/APKiwiOrg/KhaozEngine/issues/520) it has DESCRIPTORS: content-deduplicated
+> `VkDescriptorSetLayout`s and `VkPipelineLayout`s, pools sized from actual demand whose free path restores every
+> counted type, and `CreateResourceLayout` and `CreateResourceSet` handing out one `VkDescriptorSet` allocated
+> and written once at creation with the bind window as its range. That device cannot yet
 > RENDER: recording content is
 > [#521](https://github.com/APKiwiOrg/KhaozEngine/issues/521),
 > [#522](https://github.com/APKiwiOrg/KhaozEngine/issues/522),
 > [#524](https://github.com/APKiwiOrg/KhaozEngine/issues/524) and
-> [#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525), descriptor layouts and sets are
-> [#520](https://github.com/APKiwiOrg/KhaozEngine/issues/520), framebuffers are
+> [#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525), framebuffers are
 > [#522](https://github.com/APKiwiOrg/KhaozEngine/issues/522), shaders are
 > [#526](https://github.com/APKiwiOrg/KhaozEngine/issues/526) and pipelines are
 > [#523](https://github.com/APKiwiOrg/KhaozEngine/issues/523), and each unbuilt member throws a message naming
@@ -446,7 +449,7 @@ VIEW CONSTRUCTOR on the draw path, so lazy creation put an allocation on the hot
 path a broken device makes fail. The enforcement is STRUCTURAL rather than a counter, and it has to be: neither
 `vkCreateImageView` nor `vkAllocateDescriptorSets` is a bind, a draw or a barrier, so the budget sink cannot see
 either. `VulkanRecordingUnreachabilityTests` walks the type graph from `VulkanCommandList` and asserts it reaches
-no view factory. The descriptor row adds its pool to the same list.
+no view factory. The descriptor pool is on the same list, for the same reason.
 
 **Every texture is assigned a canonical RESTING LAYOUT at creation** from its usage bits:
 `SHADER_READ_ONLY_OPTIMAL` if sampled, else `GENERAL` if storage, else its attachment layout. Sampled wins
@@ -508,6 +511,101 @@ CPU-mappable here, where it does on the Veldrid leg. The only dynamic buffers th
 buffers, which are ring-backed and host-visible for a better reason, so a dynamic vertex buffer lives in
 device-local memory and is written through the staging path like any other. Read back by copying into a
 `GpuBufferUsage.Staging` buffer, which is what `GpuReadback.ReadBuffer` already does.
+
+## Descriptors: shared layouts, honest pools, and a range that is the bind window
+
+**The seam was designed against a Vulkan-shaped API and it shows.** `IGpuResourceLayout` IS a
+`VkDescriptorSetLayout`, `IGpuResourceSet` IS a `VkDescriptorSet` allocated and written at creation, the
+pipeline's layout array IS a `VkPipelineLayout`, `SetGraphicsResourceSet(slot, set)` IS
+`vkCmdBindDescriptorSets(firstSet: slot, ...)`, and `GpuResourceLayoutElement.Dynamic` IS the dynamic uniform
+buffer. Binding index equals element index, `descriptorCount` is always 1, sampled images bind
+`SHADER_READ_ONLY_OPTIMAL` and storage images bind `GENERAL`, and `SAMPLED_IMAGE` and `SAMPLER` are separate and
+never `COMBINED_IMAGE_SAMPLER`, which the shared GLSL sources already assume by declaring `texture2D` and
+`sampler` separately. Structured read-only and read-write both map to `STORAGE_BUFFER`. **The write-once
+immutable set is a PORT rather than an invention** and the incumbent already does it. What is new is the
+enforcement below, and that it now holds by construction.
+
+**`VkDescriptorSetLayout` and `VkPipelineLayout` are content-deduplicated, and that is load-bearing.**
+Identity-shared set layouts are what make bound descriptors SURVIVE a pipeline switch: Vulkan decides
+pipeline-layout compatibility by comparing set layouts slot by slot, so one handle per distinct CONTENT turns
+that into a pointer compare that always answers correctly, which is exactly what the bind-flush row computes its
+compatible prefix with. The incumbent creates one per `ResourceLayout` object with no dedup, so nothing there is
+ever compatible with anything and every switch forces a full rebind of every set.
+
+The key is exactly what `vkCreateDescriptorSetLayout` reads, in order: binding number, descriptor type,
+descriptor count, stage flags. **Two omissions are deliberate.** Element NAMES are not in it, because Vulkan
+binds by number and splitting on names would make a genuinely compatible pipeline pair compare as incompatible
+for the rest of the run. And `GpuResourceLayoutElement.Dynamic` is not in it either: the dynamic-ness the key
+carries is the DESCRIPTOR TYPE's, which is the only kind the create-info has. Layouts share a handle and never
+destroy one, so `IGpuResourceLayout.Dispose` releases nothing and the caches retire every handle at device
+teardown.
+
+**Every uniform buffer binds as `UNIFORM_BUFFER_DYNAMIC`, not only the element the layout declared dynamic.**
+The per-frame ring base has to be applied at bind and the dynamic offset is the only bind-time knob Vulkan
+offers on a uniform buffer, so the type comes from the KIND alone and the declared flag decides exactly one
+thing: whether the caller's own per-draw offset is added on top for that element. A declared-dynamic element
+that is not a uniform buffer is REFUSED at layout creation, one case wider than the Direct3D 11 backend's
+identical refusal for structured buffers, because a texture or a sampler has no dynamic form at all and either
+would leave the positional `pDynamicOffsets` array misaligned against the set's real dynamic descriptors.
+Vacuous in the engine today: all six shipped dynamic elements are uniform buffers.
+
+**Pools are sized from actual demand and freeing restores EVERY counted type.** The incumbent creates every pool
+with `maxSets = 1000` and 100 descriptors of each of seven types, whose per-type ceiling is reached long before
+its set ceiling, and its free path restores five of the seven it spends: it forgets `UniformBufferDynamicCount`
+and `StorageBufferDynamicCount`, both of which its own allocate does spend. An application that churns
+dynamic-offset resource sets leaks pool budget until a fresh pool spawns, and every fresh pool leaks the same
+way. This engine's sets are overwhelmingly dynamic-offset ones, the map editor churns them on every document
+load, and the rule above makes far more descriptors dynamic here than there, so the leak is aimed squarely at
+this consumer. Here take and restore are one pair of methods over one value with structural equality, so there
+is no second list of field names to fall out of step, and a churn test allocates and frees in a loop and asserts
+the pool count does not grow. A new pool holds as many sets as the most that have ever been live at once
+(floored at 8, capped at 1024) and for each type that many sets of the heaviest single shape seen so far, never
+below the request that just failed. Freeing is deferred behind the completion timeline like every other resource
+destroy, because a descriptor set freed under a submission that binds it is undefined behaviour of the quiet
+kind.
+
+**The range is the BIND WINDOW.** `GpuBufferRange.Size` where the set was created from a range, the buffer's own
+logical size where it was created from a bare buffer. **Never `VK_WHOLE_SIZE`**, because a whole-size range
+combined with a dynamic offset addresses past the end of the buffer. **And never the stride**, which is the shape
+that looks safe and is not: at the last frame slot a range of `stride` overruns the buffer by exactly the
+caller's own offset, and five shipped renderers pass a non-zero one, so it violates
+`VUID-vkCmdBindDescriptorSets-pDescriptorSets-01979` on one frame in three rather than on every frame. A dynamic
+uniform descriptor is written with `offset = 0` and its window offset travels at bind time, because Vulkan ADDS
+the two. A non-dynamic buffer has no bind-time term, so its window offset goes into the descriptor. Every
+`GpuBufferRange` is resolved at set creation and none at a draw.
+
+**The limit this spends has four defences.** `maxDescriptorSetUniformBuffersDynamic` has a Vulkan required
+minimum of 8 across a whole pipeline layout, and required minimums are never lowered across core versions.
+Beyond that floor nothing about real device values is verifiable from this repository, so no claim is made here
+about what lavapipe, NVIDIA or AMD report. In the order they fire: only `UniformBuffer`-usage buffers are
+ring-backed, so a storage buffer never becomes dynamic. A device-free test computes the count for all 33 shipped
+`CreateResourceLayout` sites grouped into all 33 shipped pipelines and asserts every one is at or under 8, so a
+breaking combination fails on the free Linux leg rather than on a player's machine (the heaviest shipped
+pipeline spends exactly ONE, which is the engine's own one-uniform-buffer-per-pipeline convention arriving as
+seven descriptors of headroom). Pipeline-layout creation counts them and refuses above the device's actual limit
+by name. And `IsSupported()` reads the limit, so a machine below what the engine needs falls back rather than
+throwing partway into a run.
+
+**Zero descriptor allocations and zero descriptor writes during recording, enforced structurally.** Neither
+`vkAllocateDescriptorSets` nor `vkUpdateDescriptorSets` is a bind, a draw or a barrier, so the native-call budget
+sink cannot see either and no counting seam ever will. The guarantee is instead that a recorder's field graph
+cannot reach the descriptor pool or its seam at all, asserted by `VulkanRecordingUnreachabilityTests` over the
+type graph alongside the image-view claim, plus a zero-count assertion against a fake pool with every shipped
+layout shape built into a real set first. The subsystem therefore gets its OWN owner record rather than hanging
+off the resource owner, because a recorder legitimately reaches that one through the staging block lifetime edge
+and a pool behind it would be invisible to the walk.
+
+**Descriptor indexing, bindless, push constants and descriptor buffers are declined, and the decline is argued
+rather than omitted** because descriptor indexing is core in 1.2 and the CI rasterizer clears it. There is no
+consumer: bindless exists to remove per-material set switching from renderers binding hundreds of distinct
+material sets per frame, and this engine's per-frame traffic is dominated by offsets-only rebinds of ONE set,
+which already cost one call each. Every route to it changes the SHARED GLSL, which puts all three backends'
+pixels in play at once and weakens the byte-identical-SPIR-V parity claim the whole golden gate rests on. Push
+constants additionally have no seam concept, so using them means inventing seam API with one backend behind it
+or silently promoting some uniform buffer and diverging from what the other two do. Their absence is also what
+keeps the pipeline-layout compatibility computation a pure set-layout prefix compare. **The trigger that reopens
+it is named**: a consumer needing per-draw material variety beyond one dynamic offset, which today means a
+texture-array atlas the splat terrain cannot express.
 
 ## `KE_VULKAN_DEVICE`, `KE_VULKAN_VALIDATION` and `KE_VULKAN_FRAMES_IN_FLIGHT`
 

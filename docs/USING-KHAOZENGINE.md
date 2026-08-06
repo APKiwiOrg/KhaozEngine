@@ -5232,7 +5232,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.32.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.33.0" />
 ```
 
 ```csharp
@@ -8569,7 +8569,7 @@ run inside the engine's process-wide device-creation gate, so a provider needs n
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.32.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.33.0" />
 ```
 
 ```csharp
@@ -8603,7 +8603,7 @@ that up front is what routes it through the reported fallback instead of a crash
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="17.32.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="17.33.0" />
 ```
 
 ```csharp
@@ -8620,11 +8620,12 @@ one refcounted process `VkInstance`. That device now hands out real command list
 (https://github.com/APKiwiOrg/KhaozEngine/issues/517), so `Begin`, `End`, `Submit` and completion fences all
 work end to end, and since https://github.com/APKiwiOrg/KhaozEngine/issues/519 it has a real
 `IGpuResourceFactory` behind it: buffers, textures, samplers, staging `Map` and `Unmap`, and both
-`UpdateTexture` overloads. What it cannot do yet is put anything INTO a list: the drawing, binding, clearing and
+`UpdateTexture` overloads. Since https://github.com/APKiwiOrg/KhaozEngine/issues/520 that factory also builds
+resource layouts and resource sets, so a set is a real `VkDescriptorSet` allocated and written once at creation.
+What it cannot do yet is put anything INTO a list: the drawing, binding, clearing and
 copying members are https://github.com/APKiwiOrg/KhaozEngine/issues/521,
 https://github.com/APKiwiOrg/KhaozEngine/issues/522, https://github.com/APKiwiOrg/KhaozEngine/issues/524 and
-https://github.com/APKiwiOrg/KhaozEngine/issues/525, resource layouts and sets are
-https://github.com/APKiwiOrg/KhaozEngine/issues/520, framebuffers are
+https://github.com/APKiwiOrg/KhaozEngine/issues/525, framebuffers are
 https://github.com/APKiwiOrg/KhaozEngine/issues/522, shaders are
 https://github.com/APKiwiOrg/KhaozEngine/issues/526 and pipelines are
 https://github.com/APKiwiOrg/KhaozEngine/issues/523, and each of those members throws a message naming its own

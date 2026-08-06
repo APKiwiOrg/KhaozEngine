@@ -5,6 +5,85 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.33.0
+
+### Native Vulkan descriptors: shared set layouts, honest pools, and a range that is the bind window (#520)
+
+`KhaozEngine.Gpu.Vulkan`'s `CreateResourceLayout` and `CreateResourceSet` stop refusing and hand out real
+objects. Work-breakdown row 10 of the phase 3 program (#510), device-free throughout, and nothing selects this
+backend by default so no shipped pixel moves.
+
+**`VkDescriptorSetLayout` and `VkPipelineLayout` are CONTENT-DEDUPLICATED, and that is not a micro-optimisation.**
+Identity-shared set layouts are what make bound descriptors survive a pipeline switch: Vulkan decides
+pipeline-layout compatibility by comparing set layouts slot by slot, so one handle per distinct CONTENT turns
+that comparison into a pointer compare that always answers correctly. The incumbent creates one handle per
+`ResourceLayout` object with no dedup at all, so nothing there is ever compatible with anything and every switch
+forces a full rebind of every set. The equality key is exactly what `vkCreateDescriptorSetLayout` reads, in
+order: binding number, descriptor type, descriptor count, stage flags. Element NAMES are deliberately absent,
+because Vulkan binds by number and splitting on names would make a genuinely compatible pipeline pair compare as
+incompatible. So is `GpuResourceLayoutElement.Dynamic`, and that is the subtle one: the dynamic-ness in the key
+is the DESCRIPTOR TYPE's, which is the only kind the create-info carries.
+
+**Every uniform buffer binds as `UNIFORM_BUFFER_DYNAMIC`, not only the element declared dynamic.** The per-frame
+ring base has to be applied at bind and the dynamic offset is the only bind-time knob Vulkan offers on a uniform
+buffer, so the descriptor type comes from the KIND alone. The declared flag then decides exactly one thing:
+whether the caller's own per-draw offset is added on top for that element. The seam's "at most one
+declared-dynamic element per set" rule is a statement about the engine's dynamic-offset API and is unchanged.
+A declared-dynamic element that is NOT a uniform buffer is refused at layout creation, which is wider than the
+Direct3D 11 backend's identical refusal for structured buffers by the image and sampler cases, and vacuous in the
+engine today: all six shipped dynamic elements are uniform buffers.
+
+**Descriptor pools are sized from ACTUAL demand and their free path restores EVERY counted type.** The incumbent
+creates every pool with `maxSets = 1000` and 100 descriptors of each of seven types, so its per-type ceiling is
+reached long before its set ceiling, and its `PoolInfo.Free` restores five of the seven it spends: it forgets
+`UniformBufferDynamicCount` and `StorageBufferDynamicCount` (verified in `v4.9.0`, unchanged upstream). An
+application that churns dynamic-offset resource sets therefore leaks pool budget until a fresh pool spawns, and
+every fresh pool leaks the same way. This engine's sets are overwhelmingly dynamic-offset ones, the map editor
+churns them on every document load, and the change above makes far more descriptors dynamic here than there, so
+the leak was aimed squarely at this consumer. Here take and restore are one pair of methods over one value with
+structural equality, so there is no second list of field names to fall out of step, and a churn test allocates
+and frees in a loop and asserts the pool count does not grow. The allocation walk gets the same treatment: the
+incumbent compares `StorageBufferCount >= counts.SamplerCount`, a transposed term that admits a set the pool
+cannot hold.
+
+**A set is allocated and written ONCE at creation, with one `vkUpdateDescriptorSets` covering every binding.**
+That part is a PORT rather than an invention, and saying so matters: the incumbent already does it. What is new
+is that it now holds by construction. Neither `vkAllocateDescriptorSets` nor `vkUpdateDescriptorSets` is a bind,
+a draw or a barrier, so no counting seam can ever see them, and the enforcement is instead that the descriptor
+pool and its seam are UNREACHABLE from the recording type, asserted over the type graph by the same architecture
+test that carries the image-view claim. The descriptor subsystem gets its own owner record rather than hanging
+off the resource owner, because the recorder legitimately reaches that one through the staging block lifetime
+edge and a pool behind it would have been invisible to the walk.
+
+**The descriptor's range is the BIND WINDOW: `GpuBufferRange.Size`, or the buffer's own logical size for a bare
+buffer.** Never `VK_WHOLE_SIZE`, because a whole-size range combined with a dynamic offset addresses past the end
+of the buffer. And never the ring stride, which is the shape that looks safe and is not: at the last frame slot a
+range of `stride` overruns the buffer by exactly the caller's own offset, and five shipped renderers pass a
+non-zero one, so it violates `VUID-vkCmdBindDescriptorSets-pDescriptorSets-01979` on one frame in three rather
+than on every frame. A dynamic uniform descriptor is written with `offset = 0` and its window offset travels at
+bind time, because Vulkan ADDS the two and carrying it in both would double it. A non-dynamic buffer has no
+bind-time term, so its window offset goes into the descriptor. Every `GpuBufferRange` is resolved at set creation
+rather than at a draw.
+
+**The dynamic uniform limit has four defences and two of them land here.** A device-free test computes the
+dynamic uniform descriptor count for all 33 shipped `CreateResourceLayout` sites grouped into all 33 shipped
+pipelines and asserts every one stays at or under Vulkan's required minimum of 8 for
+`maxDescriptorSetUniformBuffersDynamic`, so a layout combination that would break a minimum-spec device fails on
+the free Linux leg rather than on a player's machine. The heaviest shipped pipeline spends exactly one, which is
+the engine's own one-uniform-buffer-per-pipeline convention arriving as seven descriptors of headroom.
+Pipeline-layout creation counts them and refuses above the device's actual limit by name, which is where row 13's
+pipelines will call it. Beyond the spec floor nothing about real device values is verifiable from this
+repository, so no claim is made about what any particular driver reports.
+
+**Descriptor indexing, bindless, push constants and descriptor buffers stay declined.** There is no consumer:
+bindless removes per-material set switching from renderers binding hundreds of distinct material sets per frame,
+and this engine's per-frame traffic is dominated by offsets-only rebinds of ONE set, which already cost one call
+each. Every route to it changes the SHARED GLSL, which puts all three backends' pixels in play at once. Push
+constants additionally have no seam concept. Their absence is what keeps the pipeline-layout compatibility
+computation a pure set-layout prefix compare. The trigger that reopens it is named: a consumer needing per-draw
+material variety beyond one dynamic offset, which today means a texture-array atlas the splat terrain cannot
+express.
+
 ## 17.32.0
 
 ### `IdleShutdownService`: a metered server head that stops costing money when nobody is playing (#548)

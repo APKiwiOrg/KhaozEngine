@@ -85,6 +85,58 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             return flags;
         }
 
+        /// <summary>
+        /// The real <c>VkShaderStageFlags</c> for the seam's stage set. Read by every descriptor set layout
+        /// binding, and by row 13's pipeline stages when it lands.
+        /// <para>
+        /// <see cref="GpuShaderStages.None"/> maps to no bits, which <c>vkCreateDescriptorSetLayout</c> accepts
+        /// and which means the binding is visible to no stage. It is not refused here, because the honest place
+        /// to notice a binding no shader can see is the shader-validation pass rather than a flag translation.
+        /// </para>
+        /// </summary>
+        internal static ShaderStageFlags ToShaderStages(GpuShaderStages stages)
+        {
+            ShaderStageFlags flags = ShaderStageFlags.None;
+            if ((stages & GpuShaderStages.Vertex) != 0) flags |= ShaderStageFlags.VertexBit;
+            if ((stages & GpuShaderStages.Geometry) != 0) flags |= ShaderStageFlags.GeometryBit;
+            if ((stages & GpuShaderStages.TessellationControl) != 0)
+                flags |= ShaderStageFlags.TessellationControlBit;
+            if ((stages & GpuShaderStages.TessellationEvaluation) != 0)
+                flags |= ShaderStageFlags.TessellationEvaluationBit;
+            if ((stages & GpuShaderStages.Fragment) != 0) flags |= ShaderStageFlags.FragmentBit;
+            if ((stages & GpuShaderStages.Compute) != 0) flags |= ShaderStageFlags.ComputeBit;
+            return flags;
+        }
+
+        /// <summary>The real <c>VkDescriptorType</c> for one of the seven this backend counts (8.1).</summary>
+        internal static DescriptorType ToDescriptorType(VulkanDescriptorType type) => type switch
+        {
+            VulkanDescriptorType.UniformBuffer => DescriptorType.UniformBuffer,
+            VulkanDescriptorType.UniformBufferDynamic => DescriptorType.UniformBufferDynamic,
+            VulkanDescriptorType.StorageBuffer => DescriptorType.StorageBuffer,
+            VulkanDescriptorType.StorageBufferDynamic => DescriptorType.StorageBufferDynamic,
+            // SEPARATE from the sampler, never COMBINED_IMAGE_SAMPLER, which the shared GLSL sources already
+            // assume by declaring texture2D and sampler separately.
+            VulkanDescriptorType.SampledImage => DescriptorType.SampledImage,
+            VulkanDescriptorType.StorageImage => DescriptorType.StorageImage,
+            VulkanDescriptorType.Sampler => DescriptorType.Sampler,
+            _ => throw new ArgumentOutOfRangeException(nameof(type), type,
+                "A native Vulkan descriptor type outside the seven this backend counts."),
+        };
+
+        /// <summary>The real <c>VkImageLayout</c> a sampled or storage image descriptor is written with
+        /// (8.1).</summary>
+        /// <exception cref="ArgumentOutOfRangeException"><see cref="VulkanDescriptorImageLayout.None"/>, which
+        /// means the write is not an image write at all and its layout should never have been read.</exception>
+        internal static ImageLayout ToDescriptorImageLayout(VulkanDescriptorImageLayout layout) => layout switch
+        {
+            VulkanDescriptorImageLayout.ShaderReadOnlyOptimal => ImageLayout.ShaderReadOnlyOptimal,
+            VulkanDescriptorImageLayout.General => ImageLayout.General,
+            _ => throw new ArgumentOutOfRangeException(nameof(layout), layout,
+                "A native Vulkan descriptor write that is not an image write has no image layout. Reading one "
+                + "means the write's descriptor type and its payload disagree."),
+        };
+
         /// <summary>The real <c>VkImageLayout</c> for a canonical resting layout (V-F7).</summary>
         /// <exception cref="ArgumentOutOfRangeException"><see cref="VulkanRestingLayout.None"/>, which is a staging
         /// texture: it is a <c>VkBuffer</c> with no image, so asking for its layout is a caller that lost track of

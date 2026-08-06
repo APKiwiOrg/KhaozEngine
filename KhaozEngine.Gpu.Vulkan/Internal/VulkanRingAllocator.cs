@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Globalization;
 using System.Threading;
 
 namespace KhaozEngine.Gpu.Vulkan.Internal
@@ -295,17 +294,6 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 _patchedRings.Remove(ring);
             }
         }
-
-        /// <summary>
-        /// The INFO line naming the depth and the segment count this device's rings run at, so a capture proves the
-        /// number its backpressure counter was measured against.
-        /// </summary>
-        internal string Describe()
-            => "The native Vulkan uniform ring is up: "
-                + FramesInFlight.ToString(CultureInfo.InvariantCulture)
-                + " segments per buffer, each stride-aligned to at least "
-                + VulkanRingStride.OffsetAlignmentFloor.ToString(CultureInfo.InvariantCulture)
-                + " bytes, gated on the device timeline's completed value and never on a submit receipt.";
 
         // Record what the OUTGOING segment has to be waited for before it is handed out again. Under the submit
         // lock, which is what makes LastSubmitted exact: a submission allocates and registers its value inside that

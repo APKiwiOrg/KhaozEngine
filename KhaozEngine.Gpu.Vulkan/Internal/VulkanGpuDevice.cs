@@ -22,19 +22,31 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <para>
     /// <b>THE MEMBERS THAT ARE LIVE:</b> <see cref="Backend"/>, <see cref="Capabilities"/> (in the part that can
     /// be read honestly, see below), <see cref="Diagnostics"/> with both of its fields, <see cref="Counters"/> (in
-    /// the drain and backpressure halves, see below), both <c>Submit</c> overloads, <see cref="WaitForIdle"/>,
-    /// and <see cref="Dispose"/>.
+    /// the drain, backpressure and off-timeline halves, see below), both <c>Submit</c> overloads, all three
+    /// <c>UpdateBuffer</c> overloads ON A RING-BACKED BUFFER, <see cref="WaitForIdle"/>, and
+    /// <see cref="Dispose"/>.
     /// </para>
     /// <para>
-    /// <b>THE COMMAND PATH IS LIVE IN ITS LIFECYCLE AND NOT IN ITS CONTENT</b> (row 7,
-    /// https://github.com/APKiwiOrg/KhaozEngine/issues/517). <c>CreateCommandList</c> hands out a real
+    /// <b>THE COMMAND PATH IS LIVE IN ITS LIFECYCLE AND IN ONE RECORDING MEMBER</b> (rows 7 and 8,
+    /// https://github.com/APKiwiOrg/KhaozEngine/issues/517 and
+    /// https://github.com/APKiwiOrg/KhaozEngine/issues/518). <c>CreateCommandList</c> hands out a real
     /// <see cref="VulkanCommandList"/> with its own per-slot <c>VkCommandPool</c>s, <c>Begin</c> and <c>End</c>
-    /// work, and <c>Submit</c> is ONE <c>vkQueueSubmit</c> under one short lock that allocates and signals the
-    /// timeline value inside it. What no list can do yet is RECORD anything: every drawing, binding, clearing and
-    /// copying member names the row that builds it. The list is not reachable through the SEAM either, because
-    /// that is <c>IGpuResourceFactory.CreateCommandList</c> and <see cref="Factory"/> is row 9's, so this device's
-    /// own internal member is how the rows built on recording get one meanwhile. See
-    /// <c>VulkanGpuDevice.Submit.cs</c>.
+    /// work, <c>Submit</c> is ONE <c>vkQueueSubmit</c> under one short lock that allocates and signals the
+    /// timeline value inside it, and a record-time <c>UpdateBuffer</c> on a ring-backed uniform buffer is a memcpy
+    /// into that frame's segment. Everything else a list could record names the row that builds it. The list is
+    /// not reachable through the SEAM either, because that is <c>IGpuResourceFactory.CreateCommandList</c> and
+    /// <see cref="Factory"/> is row 9's, so this device's own internal member is how the rows built on recording
+    /// get one meanwhile. See <c>VulkanGpuDevice.Submit.cs</c>.
+    /// </para>
+    /// <para>
+    /// <b>THE UNIFORM RING IS LIVE AND NOTHING CONSTRUCTS ONE YET</b> (row 8,
+    /// https://github.com/APKiwiOrg/KhaozEngine/issues/518). The device owns one
+    /// <see cref="VulkanRingAllocator"/>: the device-wide frame segment, the completion gate that recycles it into
+    /// the same backpressure accumulator the command lists stall into, and the off-timeline write's pending-patch
+    /// queue. What it has no callers for is BUFFERS, so a ring is built by row 9's <c>CreateBuffer</c> after
+    /// <see cref="VulkanBufferRingPolicy.ForBuffer"/> answers, and the frame boundary that rotates the segment is
+    /// row 17's <see cref="Present"/>. Both <c>UpdateBuffer</c> levels already route through it, so the routing is
+    /// settled here rather than by whichever row first has a buffer to write.
     /// </para>
     /// <para>
     /// <b>THE COMPLETION TIMELINE IS LIVE AND IS NOT REACHABLE THROUGH THE SEAM YET</b> (row 5,

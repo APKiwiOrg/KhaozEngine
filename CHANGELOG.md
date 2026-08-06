@@ -2127,6 +2127,91 @@ the dynamic-rendering row's, and the record-time global barrier count is already
 sink's barrier class. If the incumbent's counts turn out near zero already, the ring is still taken because it is
 the only correct design on this API, and the bet is recorded as not paying rather than quietly forgotten.
 
+### Native Vulkan resources: eager image views, resting layouts, the WRAP sampler pair, and the staging layout reproduced byte for byte (#519)
+
+`IGpuResourceFactory` is live on the native Vulkan backend: buffers, textures, samplers, command lists and fences
+are real objects, and no creation submits anything to the queue.
+
+**Every image view is created at RESOURCE creation and none at a bind or a draw (V-M11).** A full-chain sampled
+view when the texture is sampled or generates mips, an attachment view at mip 0 layer 0 when it is a render
+target or a depth target, and a storage view at mip 0 when it is a storage image. The bound is real rather than
+optimistic because the seam cannot express anything else: `CreateFramebuffer` carries no mip or layer parameter,
+`ResolveTexture` is subresource 0 only, and per-face cubemap rendering is not expressible. It is worth restating
+in a Vulkan seat where `vkCreateImageView` looks cheap enough to do at a bind: all 25 `DEVICE_REMOVED` stacks in
+#423 surfaced inside a lazy view constructor on the draw path, so lazy creation put an allocation on the hot path
+and put it on the exact path a broken device makes fail. The enforcement is STRUCTURAL rather than a counter, and
+it has to be: neither `vkCreateImageView` nor `vkAllocateDescriptorSets` is a bind, a draw or a barrier, so no
+counting seam can see either. `VulkanRecordingUnreachabilityTests` walks the type graph from the recording type
+and asserts it reaches no view factory, which the descriptor row extends with its pool.
+
+**Every texture is assigned its canonical RESTING LAYOUT at creation (V-F7)**, from its usage bits:
+`SHADER_READ_ONLY_OPTIMAL` if sampled, else `GENERAL` if storage, else its attachment layout. That is a property
+of the resource rather than of a recording, which is what lets the barrier row make lists composable in any
+submit order.
+
+**No queue submit happens at texture creation (V-M10).** The incumbent's texture constructor clears render
+targets and transitions sampled textures, and each of those grabs a shared pool, records one command and issues a
+WHOLE `vkQueueSubmit`: loading a scene with two hundred textures is two hundred queue submissions before a frame
+is drawn. Both are appended to ONE device-owned setup command buffer instead, flushed lazily at the next submit
+OR at any device-level read (`Map`, a readback, `WaitForIdle`). The read-path half is what makes the claim true
+without a hole: a render target created and immediately read back must still see cleared contents. The clear
+itself is preserved deliberately, because undefined contents are not stable across runs while the goldens require
+stability. That buffer takes its OWN short lock, the third beside the allocator's and the descriptor pool
+manager's, because a `VkCommandPool` and its buffers are externally synchronised and creation is otherwise
+free-threaded. The flush takes the submit lock UNDER the setup lock, in that order and never the reverse, and the
+one path that touches both takes them sequentially rather than nested.
+
+**Staging is a `VkBuffer` with the incumbent's SOFTWARE subresource layout reproduced byte for byte (V-C7).**
+Every golden in the suite reads back through `IGpuDevice.Map(staging, ...)` and consumes `MappedData.RowPitch`,
+and the incumbent computes the row pitch, the depth pitch, the array pitch and the subresource offset in
+software rather than through `vkGetImageSubresourceLayout`, so a different arithmetic garbles all 36 goldens at
+once and does it silently. `VulkanStagingLayoutTableTests` carries a checked-in table of 63 rows across formats,
+sizes, mip levels and array layers, produced by a throwaway generator that transcribed the incumbent's nine
+functions independently of the code under test, with every formula's source line cited in the test's own header.
+That converts "should be identical" into a checked fact before a single golden runs.
+
+**`Map(staging, Read)` waits on the timeline's last submitted value before returning the pointer (V-C8)**, and
+the wait is counted as a drain. Direct3D 11's `Map(READ)` on the immediate context blocks until the resource is
+ready by definition, so this is where Vulkan has to be explicit about something the other API did implicitly:
+getting it wrong returns a pointer to bytes the copy has not written yet, which reads as an intermittently wrong
+golden rather than as a failure. Readback staging memory prefers host-visible, cached and coherent, falling back
+to cached alone before coherent alone, which is the one ladder rung that makes the block allocator's invalidate
+real code rather than a defensive branch.
+
+**The device's shared point and linear samplers WRAP on all three axes**, built from wrap-addressed descriptions
+and NOT from the identically named `GpuSamplerDescription.Point` and `.Linear` statics, which default every axis
+to CLAMP. Reading the address mode off the statics because the names matched cost two goldens on the Direct3D 11
+leg. Everything else about a sampler is the incumbent's, including the four values the seam does not expose (no
+comparison sampler, minimum LOD 0, maximum LOD `uint.MaxValue`, transparent-black border). The anisotropy
+degradation IS reproduced here, unlike on the Direct3D 11 backend where it was unreachable: an anisotropic
+request on a device without `samplerAnisotropy` becomes trilinear, exactly as the Veldrid path does it, and
+lavapipe is such a device.
+
+**Disposal is one TERMINAL retire per resource.** The single held entry destroys a texture's image views inline,
+then its image, then its memory, and never re-retires a child. A compound resource whose destroy retired another
+destroy that then freed an allocation would append a third generation of retirement after the teardown drain had
+taken its snapshot, and that chunk would never be freed. Destroying children inline bounds the depth at the one
+generation the device's two teardown drains already cover. The staging source satisfies the same rule from the
+other side: its `Destroy` defers the native free through the retire list rather than making it, because the
+staging arena's own disposal is ungated, and it ABANDONS rather than frees on a dead device.
+
+**Four deliberate departures from the incumbent, all of them its defects.** An image is created with
+`VK_IMAGE_LAYOUT_UNDEFINED` rather than `PREINITIALIZED`, which describes a host-written linear image and is
+meaningless for the optimal-tiled images this backend creates. The memory-requirements call is the `2` form
+unconditionally, with no run-time probe and no 1.0 fallback, because this backend requires Vulkan 1.3. A sample
+count above the device's ceiling is refused rather than silently rounded down. And `GpuPixelFormat.R16G16Float`
+maps to `VK_FORMAT_R16G16_SFLOAT`: the incumbent maps it to the FOUR-channel `VK_FORMAT_R16G16B16A16_SFLOAT`,
+which is invisible there because the one texture using that format is the distortion offset target and is written
+and sampled through red and green alone, and would not be invisible here because the reproduced staging
+arithmetic sizes that format at four bytes per texel.
+
+**Two consumer-visible divergences from the Veldrid Vulkan leg.** `GpuBufferUsage.Dynamic` does not make a buffer
+CPU-mappable on the native backend: the only dynamic buffers this engine creates are uniform buffers, which are
+ring-backed and host-visible for a better reason, so a dynamic vertex buffer lives in device-local memory and is
+written through the staging path. And a device-level `UpdateBuffer` on a non-uniform buffer, and
+`UpdateTexture` on any texture, now stage through a device-owned arena into the setup command buffer rather than
+refusing. Both are documented in `docs/USING-KHAOZENGINE.md` rather than left for a consumer to discover.
+
 ### A wall contact reads its face over the bank, not over a 0.4 m facet of it (#501)
 
 Walking along a bank on Ruinborne stopped the character dead in localised sticky PLACES, and the fix for

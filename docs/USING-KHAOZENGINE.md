@@ -8618,11 +8618,16 @@ Registration and the machine probe are real, `GpuBackendKind.VulkanNative` exist
 `GpuDeviceContext.CreateHeadless(GpuBackendKind.VulkanNative)` builds a real `VkDevice` and a graphics queue on
 one refcounted process `VkInstance`. That device now hands out real command lists and submits them
 (https://github.com/APKiwiOrg/KhaozEngine/issues/517), so `Begin`, `End`, `Submit` and completion fences all
-work end to end. What it cannot do yet is put anything INTO a list: the drawing, binding, clearing and copying
-members are https://github.com/APKiwiOrg/KhaozEngine/issues/521,
+work end to end, and since https://github.com/APKiwiOrg/KhaozEngine/issues/519 it has a real
+`IGpuResourceFactory` behind it: buffers, textures, samplers, staging `Map` and `Unmap`, and both
+`UpdateTexture` overloads. What it cannot do yet is put anything INTO a list: the drawing, binding, clearing and
+copying members are https://github.com/APKiwiOrg/KhaozEngine/issues/521,
 https://github.com/APKiwiOrg/KhaozEngine/issues/522, https://github.com/APKiwiOrg/KhaozEngine/issues/524 and
-https://github.com/APKiwiOrg/KhaozEngine/issues/525, resources and samplers are
-https://github.com/APKiwiOrg/KhaozEngine/issues/519, and each of those members throws a message naming its own
+https://github.com/APKiwiOrg/KhaozEngine/issues/525, resource layouts and sets are
+https://github.com/APKiwiOrg/KhaozEngine/issues/520, framebuffers are
+https://github.com/APKiwiOrg/KhaozEngine/issues/522, shaders are
+https://github.com/APKiwiOrg/KhaozEngine/issues/526 and pipelines are
+https://github.com/APKiwiOrg/KhaozEngine/issues/523, and each of those members throws a message naming its own
 row rather than returning something that fails later somewhere less informative. Creating a WINDOWED device
 refuses outright, naming https://github.com/APKiwiOrg/KhaozEngine/issues/527, the row that builds the surface
 and the swapchain, because a device that cannot present is a worse answer than a refusal. That refusal arrives
@@ -8827,6 +8832,41 @@ The field lever is `KE_VULKAN_FRAMES_IN_FLIGHT=<n>`, default 3, and its range is
 16**. One frame in flight is honest on Direct3D 11, where the number sizes uniform rings alone. Here it also
 sizes each command list's pools, so 1 would make every `Begin` wait for its own previous record to finish on the
 GPU, which is a synchronous round trip per recording rather than one frame of latency.
+
+### Textures, staging and readback on the native Vulkan backend (17.32.0)
+
+Four things reach you, and only the last two can make `GpuBackendKind.VulkanNative` refuse something the other
+backends accept.
+
+**Creating textures does not submit anything to the queue, so a load no longer costs one submission per
+texture.** On the Veldrid Vulkan backend a texture constructor clears a render target or transitions a sampled
+texture and issues a whole `vkQueueSubmit` for it, which is two hundred submissions to load a scene with two
+hundred textures. Here both are appended to one device-owned setup command buffer and flushed at the next
+`Submit` or at the next device-level read. Nothing about how you create a texture changes, and you do not have to
+flush it yourself: `IGpuDevice.Map`, `IGpuDevice.WaitForIdle` and both `Submit` overloads all flush first, which
+is why a render target created and immediately read back still sees its cleared contents.
+
+**`IGpuDevice.Map(staging, GpuMapMode.Read)` blocks until the GPU has finished, and it says so where the other
+backends did it silently.** Direct3D 11's `Map(READ)` on the immediate context blocks by definition. Vulkan has
+to be explicit, so the native backend waits on the device timeline before returning the pointer and counts that
+wait into `GpuDeviceCounters.DrainCount` and `DrainMs`. A `GpuMapMode.Write` map does not wait, matching the
+Veldrid leg. `MappedData.RowPitch` and `MappedData.SizeInBytes` mean exactly what they mean there, because the
+subresource arithmetic behind them is reproduced from it byte for byte.
+
+**A sample count above the device's `GpuCapabilities.MaxMsaaSampleCount` is REFUSED at texture creation rather
+than rounded down to one.** `AntiAliasing.ResolveFor` is the one place a request is meant to be clamped, so a
+count arriving at the factory above the maximum came from a caller that skipped it, and a framebuffer that is
+quietly not multisampled reads as a rendering bug rather than as a missing clamp. Clamp upstream, which the
+engine's own renderers already do.
+
+**`GpuBufferUsage.Dynamic` does NOT make a buffer CPU-mappable there, where it does on `GpuBackendKind.Vulkan`.**
+Only `GpuBufferUsage.Staging` buffers and staging textures can be mapped on the native backend. The reason is the
+uniform ring: the only dynamic buffers this engine creates are uniform buffers, those are ring-backed and
+host-visible for a better reason, and a dynamic VERTEX buffer is better off in device-local memory written
+through the staging path than in host memory the GPU reads across the bus every frame. Read a buffer back by
+copying into a `GpuBufferUsage.Staging` buffer and mapping that, which is what `GpuReadback.ReadBuffer` already
+does for you, and read a texture back through `GpuReadback.ToRgba`. Nothing in the engine or in any game maps a
+dynamic buffer today, which is why the divergence is safe to have.
 
 ### Shaders on the native Direct3D 11 backend (17.32.0)
 

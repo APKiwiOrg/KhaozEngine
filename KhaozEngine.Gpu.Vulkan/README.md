@@ -5,7 +5,7 @@ umbrella: a consumer adds this package explicitly, the same pattern as `Physics.
 and nothing that does not want the Vulkan binding ever carries it.
 
 > **Status: REGISTRATION, PROBE, A HEADLESS DEVICE, ITS COMPLETION TIMELINE, ITS MEMORY ALLOCATOR, THE COMMAND
-> LIST'S LIFECYCLE AND THE UNIFORM RING.**
+> LIST'S LIFECYCLE, THE UNIFORM RING AND THE RESOURCE FACTORY.**
 > `KhaozEngineVulkan.Register()`
 > is real, so is the machine-capability probe behind it, and since
 > [#514](https://github.com/APKiwiOrg/KhaozEngine/issues/514) so is headless device creation:
@@ -20,14 +20,21 @@ and nothing that does not want the Vulkan binding ever carries it.
 > [#517](https://github.com/APKiwiOrg/KhaozEngine/issues/517) it hands out real command lists with their own
 > per-slot `VkCommandPool`s, and `Submit` is one `vkQueueSubmit` on the queue. Since
 > [#518](https://github.com/APKiwiOrg/KhaozEngine/issues/518) it also owns the UNIFORM RING and the per-list
-> staging arena, and both `UpdateBuffer` levels route through them, so the one recording member those lists CAN
-> do is a uniform write. Everything else a list records is still unbuilt. That device cannot yet
+> staging arena, and both `UpdateBuffer` levels route through them. And since
+> [#519](https://github.com/APKiwiOrg/KhaozEngine/issues/519) it has a REAL RESOURCE FACTORY: buffers, textures
+> with every image view they will ever need already made and a canonical resting layout assigned, samplers with
+> the wrap-addressed shared pair, staging textures backed by a `VkBuffer` with the incumbent's software
+> subresource layout, `Map` and `Unmap` with the read drain, and a device-owned setup command buffer under its
+> own short lock that means NO texture creation submits anything to the queue. That device cannot yet
 > RENDER: recording content is
 > [#521](https://github.com/APKiwiOrg/KhaozEngine/issues/521),
 > [#522](https://github.com/APKiwiOrg/KhaozEngine/issues/522),
 > [#524](https://github.com/APKiwiOrg/KhaozEngine/issues/524) and
-> [#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525), resources and samplers are
-> [#519](https://github.com/APKiwiOrg/KhaozEngine/issues/519), and each unbuilt member throws a message naming
+> [#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525), descriptor layouts and sets are
+> [#520](https://github.com/APKiwiOrg/KhaozEngine/issues/520), framebuffers are
+> [#522](https://github.com/APKiwiOrg/KhaozEngine/issues/522), shaders are
+> [#526](https://github.com/APKiwiOrg/KhaozEngine/issues/526) and pipelines are
+> [#523](https://github.com/APKiwiOrg/KhaozEngine/issues/523), and each unbuilt member throws a message naming
 > its own row. Creating a WINDOWED device refuses, naming the swapchain row
 > ([#527](https://github.com/APKiwiOrg/KhaozEngine/issues/527)), rather than handing back a device that cannot
 > present. The backend IS nameable: `GpuBackendKind.VulkanNative` and the `vulkan-native` / `vk-native` tokens
@@ -423,6 +430,84 @@ while Vulkan binds SETS and the Vulkan fan-out class is per-draw descriptor set 
 neither should become one: their absence is enforced structurally by the descriptor pool being unreachable from
 the recording type, and a call that cannot be made is a stronger guarantee than a call counted and found to be
 zero.
+
+## Resources: eager views, resting layouts, a setup buffer that never submits, and the staging layout
+
+**Every `VkImageView` is created at RESOURCE creation and none at a bind or a draw.** A full-chain sampled view
+when the texture is sampled or generates mips, an attachment view at mip 0 layer 0 when it is a render target or
+a depth target, and a storage view at mip 0 when it is a storage image. The bound is real rather than optimistic
+because the seam cannot express anything else: `CreateFramebuffer` carries no mip or layer parameter,
+`ResolveTexture` is subresource 0 only, and per-face cubemap rendering is not expressible. Widening any of those
+is a seam change, and a seam change is where the extra view would be added.
+
+It is worth restating in a Vulkan seat, where `vkCreateImageView` looks cheap enough to do at a bind: all 25
+`DEVICE_REMOVED` stacks in [#423](https://github.com/APKiwiOrg/KhaozEngine/issues/423) surfaced inside a LAZY
+VIEW CONSTRUCTOR on the draw path, so lazy creation put an allocation on the hot path and put it on the exact
+path a broken device makes fail. The enforcement is STRUCTURAL rather than a counter, and it has to be: neither
+`vkCreateImageView` nor `vkAllocateDescriptorSets` is a bind, a draw or a barrier, so the budget sink cannot see
+either. `VulkanRecordingUnreachabilityTests` walks the type graph from `VulkanCommandList` and asserts it reaches
+no view factory. The descriptor row adds its pool to the same list.
+
+**Every texture is assigned a canonical RESTING LAYOUT at creation** from its usage bits:
+`SHADER_READ_ONLY_OPTIMAL` if sampled, else `GENERAL` if storage, else its attachment layout. Sampled wins
+outright, so a post-chain intermediate that is both a render target and sampled rests as sampled and a list that
+renders into it transitions and restores. It is a property of the RESOURCE rather than of a recording, which is
+what makes lists composable in any submit order.
+
+**No texture creation submits anything to the queue.** The incumbent's texture constructor clears render targets
+and transitions sampled textures, and each of those grabs a shared pool, records one command and issues a WHOLE
+`vkQueueSubmit`: two hundred textures is two hundred submissions before a frame is drawn. Here both are appended
+to ONE device-owned setup command buffer, flushed lazily at the next submit **or at any device-level read**
+(`Map`, a readback, `WaitForIdle`). The read-path half is what removes the hole rather than moving it: a render
+target created and immediately read back must still see cleared contents. The clear itself is preserved
+deliberately, because undefined contents are not stable across runs and the goldens require stability on the same
+rasterizer.
+
+**That buffer takes its own short lock, the third one.** A `VkCommandPool` and every buffer allocated from it are
+externally synchronised, so two threads creating two textures may not append to one setup buffer at once.
+Creation stays free-threaded everywhere else and takes the SETUP lock for the append and for the flush, held for
+the record of one or two commands. The flush takes the SUBMIT lock **under** it, in that order and never the
+reverse, and the one path that touches both (a device `Submit`, which flushes the setup buffer and then queues
+the frame's list) takes them sequentially rather than nested. `VulkanSetupBufferTests` pins the nesting by
+asserting from inside the submit that the setup lock is held.
+
+**A staging texture is a `VkBuffer` and its subresource layout is computed in SOFTWARE, reproduced from the
+incumbent byte for byte.** This is the highest-risk parity surface in the backend. Every golden reads back
+through `IGpuDevice.Map(staging, ...)` and consumes `MappedData.RowPitch`, so a different arithmetic garbles all
+36 at once and does it silently. `VulkanStagingLayoutTableTests` carries a checked-in table of 63 rows across
+formats, sizes, mip levels and array layers, produced by a throwaway generator that transcribed the incumbent's
+nine functions independently of the code under test, with each formula's source line cited. Two numbers in it
+look wrong and are not: `D32FloatS8UInt` is FIVE bytes per texel in that layout, and the `arrayPitch` field is
+set equal to the `depthPitch` rather than to the distance between array layers.
+
+**`Map(staging, Read)` waits on the timeline's last submitted value before returning the pointer**, counted as a
+drain. Direct3D 11's `Map(READ)` blocks by definition, so this is where Vulkan has to be explicit about something
+the other API did implicitly. A WRITE map does not wait, matching the incumbent. There is no `vkMapMemory` and no
+`vkUnmapMemory` anywhere on this path: host-visible chunks are mapped once at chunk creation and never unmapped,
+so a map is a pointer plus an offset and an unmap is bookkeeping plus, on a non-coherent memory type, a flush.
+
+**Disposal is one TERMINAL retire per resource.** The single held entry destroys a texture's views inline, then
+its image, then its memory, and never re-retires a child. A destroy that retired another destroy that then freed
+an allocation would append a third generation of retirement after the teardown drain had taken its snapshot, and
+that chunk would never be freed. Destroying children inline bounds the depth at the one generation the device's
+two teardown drains already cover. The staging source obeys the same rule from the other side: its `Destroy`
+defers the native free through the retire list rather than making it, because the staging arena's own disposal is
+ungated, and it ABANDONS rather than frees on a dead device.
+
+**Four departures from the incumbent, all of them its defects.** An image is created with
+`VK_IMAGE_LAYOUT_UNDEFINED` rather than `PREINITIALIZED`, which describes a host-written linear image. The
+memory-requirements call is the `2` form unconditionally, because this backend requires Vulkan 1.3 where it and
+`VkMemoryDedicatedRequirements` are core. An out-of-range sample count is refused rather than rounded down. And
+`GpuPixelFormat.R16G16Float` maps to `VK_FORMAT_R16G16_SFLOAT`: the incumbent maps it to the FOUR-channel
+`VK_FORMAT_R16G16B16A16_SFLOAT`, which is invisible there because the only texture using that format is the
+distortion offset target and it is written and sampled through red and green alone, and would not be invisible
+here because the reproduced staging arithmetic sizes that format at four bytes per texel.
+
+**And one more consumer-visible divergence beside the ring's.** `GpuBufferUsage.Dynamic` does NOT make a buffer
+CPU-mappable here, where it does on the Veldrid leg. The only dynamic buffers this engine creates are uniform
+buffers, which are ring-backed and host-visible for a better reason, so a dynamic vertex buffer lives in
+device-local memory and is written through the staging path like any other. Read back by copying into a
+`GpuBufferUsage.Staging` buffer, which is what `GpuReadback.ReadBuffer` already does.
 
 ## `KE_VULKAN_DEVICE`, `KE_VULKAN_VALIDATION` and `KE_VULKAN_FRAMES_IN_FLIGHT`
 

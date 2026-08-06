@@ -84,8 +84,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 vk.GetDeviceQueue(device, read.GraphicsQueueFamily, 0, out Queue graphicsQueue);
                 Name(instance, device, graphicsQueue);
 
+                // THE ONE TIMELINE (V-F1), created with the device because everything else is created against it:
+                // a submission takes its next value, a fence holds one, the retire list gates on one, and the ring
+                // recycles a segment against one. Creating it here rather than lazily is what lets every later row
+                // assume it exists, and a failure here is caught below and destroys the half-built device.
+                var semaphore = new VulkanTimelineSemaphore(vk, device, loss);
+                NameTimeline(instance, device, semaphore.Handle);
+                var timeline = new VulkanTimeline(semaphore, liveness);
+
                 var created = new VulkanGpuDevice(lease, device, graphicsQueue, read.GraphicsQueueFamily,
-                    ReadCapabilities(read, features), candidates[chosen].IsSoftwareRasterizer, liveness, loss);
+                    ReadCapabilities(read, features), candidates[chosen].IsSoftwareRasterizer, liveness, loss,
+                    timeline);
 
                 // The strict rung's FIRST controlled point. Device creation is the noisiest moment a validation
                 // layer sees, so an error raised by the create-info above is caught here rather than surviving
@@ -230,6 +239,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             messenger.NameObject(device, ObjectType.Device, (ulong)device.Handle, "KhaozEngine.Device");
             messenger.NameObject(device, ObjectType.Queue, (ulong)queue.Handle, "KhaozEngine.GraphicsQueue");
+        }
+
+        // The timeline semaphore's own name, separate because it is created after the queue and because it is the
+        // object a synchronisation validation message is most likely to name. A bare handle there is exactly the
+        // message nobody can act on.
+        static void NameTimeline(VulkanInstance instance, Device device, Silk.NET.Vulkan.Semaphore timeline)
+        {
+            VulkanDebugMessenger? messenger = instance.Messenger;
+            if (messenger is null) return;
+
+            messenger.NameObject(device, ObjectType.Semaphore, timeline.Handle, "KhaozEngine.DeviceTimeline");
         }
 
         static InvalidOperationException NoEligibleDevice(IReadOnlyList<VulkanPhysicalDeviceInfo> candidates)

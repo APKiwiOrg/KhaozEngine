@@ -41,9 +41,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <para><b>THE SITES.</b> <c>VK_ERROR_DEVICE_LOST</c> can come back from <c>vkQueueSubmit</c>,
     /// <c>vkQueuePresentKHR</c>, <c>vkAcquireNextImageKHR</c>, <c>vkWaitSemaphores</c>,
     /// <c>vkGetSemaphoreCounterValue</c>, <c>vkMapMemory</c>, <c>vkDeviceWaitIdle</c> and every creation call.
-    /// This row wires the two it owns (<c>vkDeviceWaitIdle</c> at <c>WaitForIdle</c> and at teardown), and each
-    /// later row wires its own as it lands, which is what "latched at the fault site" means: the site's own name
-    /// travels into <see cref="Check"/> rather than being inferred downstream.</para>
+    /// The device row wired <c>vkDeviceWaitIdle</c> at teardown, the timeline row added
+    /// <c>vkGetSemaphoreCounterValue</c> and <c>vkWaitSemaphores</c> (which is what <c>WaitForIdle</c> became),
+    /// and each later row wires its own as it lands. That is what "latched at the fault site" means: the site's
+    /// own name travels into <see cref="Check"/> rather than being inferred downstream.</para>
     ///
     /// <para><b>THE LATCH IS TAKEN EXACTLY ONCE.</b> Two threads can notice a loss in the same instant, and one
     /// recorded reason with one recorded site is the only useful post-mortem: two would be a race over which one

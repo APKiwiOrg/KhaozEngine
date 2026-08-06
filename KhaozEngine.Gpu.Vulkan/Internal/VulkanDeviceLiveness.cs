@@ -15,8 +15,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <para>
     /// AN INTERFACE RATHER THAN THE DEVICE ITSELF, for the reason the Direct3D 11 package's equivalent gives:
     /// reaching the device would make every wrapper hold the device, which is the reference cycle the incumbent
-    /// deliberately does not have, and it keeps the whole behaviour headless-testable. The timeline row
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/515) is the first consumer.
+    /// deliberately does not have, and it keeps the whole behaviour headless-testable.
+    /// <see cref="VulkanTimeline"/> is the first consumer, and all three behaviours above are asserted through it
+    /// on a machine with no Vulkan loader.
     /// </para>
     /// </summary>
     internal interface IVulkanDeviceLiveness

@@ -520,7 +520,6 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             "the dynamic-rendering row (https://github.com/APKiwiOrg/KhaozEngine/issues/522)";
         const string PipelineRow = "the pipeline row (https://github.com/APKiwiOrg/KhaozEngine/issues/523)";
         const string DrawRow = "the draw-and-dispatch row (https://github.com/APKiwiOrg/KhaozEngine/issues/525)";
-        const string ResourcesRow = "the resources row (https://github.com/APKiwiOrg/KhaozEngine/issues/519)";
 
         // Named rather than a bare NotImplementedException, and it names WHAT IS LIVE as well as what is not,
         // which is the shape VulkanGpuDevice's equivalent settled on: a reader who hits this needs to know whether

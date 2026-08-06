@@ -8,11 +8,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <see cref="KhaozEngineVulkan.Register"/> and consumed only through <see cref="IGpuBackendProvider"/>, so
     /// nothing outside this package ever names a Silk.NET type.
     /// <para>
-    /// THE PROBE IS REAL AND CREATION IS NOT, which is exactly the state work-breakdown row 2 of
-    /// <c>docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md</c> leaves the package in.
-    /// <see cref="IsSupported"/> resolves a loader, creates a throwaway instance and reads every physical device
-    /// against section 5.2's requirements. Both creation entry points throw until row 4
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/514) builds the refcounted instance and the device.
+    /// THE PROBE AND HEADLESS CREATION ARE BOTH REAL, and the WINDOWED path is not, which is exactly the state
+    /// work-breakdown row 4 of <c>docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md</c> leaves the package
+    /// in. <see cref="IsSupported"/> resolves a loader, creates a throwaway instance and reads every physical
+    /// device against section 5.2's requirements. <see cref="CreateHeadless"/> then builds a real device on the
+    /// shared refcounted instance (row 4, https://github.com/APKiwiOrg/KhaozEngine/issues/514).
+    /// <see cref="CreateForWindow"/> throws until row 17
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/527) builds the surface and the swapchain.
     /// </para>
     /// <para>
     /// That ordering is deliberate rather than an artefact. The probe answers a question about the MACHINE, which
@@ -21,6 +23,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// numbers under the native one. Whether this package can build a device is a different fact, answered by
     /// whether the row that builds it has landed, and folding the two together would make the probe answer false
     /// for a reason that has nothing to do with the hardware.
+    /// </para>
+    /// <para>
+    /// THE WINDOWED PATH REFUSES RATHER THAN HANDING BACK A DEVICE THAT CANNOT PRESENT, and that is a decision
+    /// rather than an ordering accident. Everything a windowed device needs beyond a headless one (a
+    /// <c>VkSurfaceKHR</c>, the presenting-family check V-N5 makes against it, <c>VK_KHR_swapchain</c>, the
+    /// acquire ring) is row 17's. A device created without them would be adopted by <c>GpuDeviceContext</c>, would
+    /// report a null swapchain framebuffer, and would render a window that never updates, which is a far worse
+    /// answer to a tester than a refusal naming the row.
     /// </para>
     /// <para>
     /// No platform guard, anywhere, and that is decision V-P1 rather than an omission. Vulkan is not a Windows
@@ -59,21 +69,22 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         }
 
         /// <inheritdoc/>
-        public GpuProviderDevice CreateForWindow(in GpuWindowedDeviceRequest request)
-            => throw NotBuiltYet("windowed");
+        public GpuProviderDevice CreateForWindow(in GpuWindowedDeviceRequest request) => throw NotBuiltYet();
 
         /// <inheritdoc/>
-        public GpuProviderDevice CreateHeadless() => throw NotBuiltYet("headless");
+        public GpuProviderDevice CreateHeadless() => VulkanGpuDevice.CreateHeadless();
 
-        // The row-2 refusal. It says which row builds the device, because the creation path CATCHES this, WARNs
-        // with the message and falls back to the incumbent, so this text is what a tester who named the native
-        // backend actually reads. It must not read as a machine problem: an incapable machine is answered by
-        // IsSupported above, with its own sentence, and decision V-I4 exists to keep the two tellable apart.
-        static NotSupportedException NotBuiltYet(string path)
-            => new($"The native Vulkan backend cannot create a {path} device yet. This package currently carries "
-                + "its registration and its machine-capability probe, and the instance, the device and the queue "
-                + "land in https://github.com/APKiwiOrg/KhaozEngine/issues/514. This is a statement about the "
-                + "package, not about this machine: read GpuBackendSelector.IsBackendSupported for that. Until "
-                + "then the Vulkan path through Veldrid is the working one.");
+        // The windowed refusal. It says which row builds the swapchain, because the creation path CATCHES this,
+        // WARNs with the message and falls back to the incumbent, so this text is what a tester who named the
+        // native backend actually reads. It must not read as a machine problem: an incapable machine is answered
+        // by IsSupported above, with its own sentence, and decision V-I4 exists to keep the two tellable apart.
+        static NotSupportedException NotBuiltYet()
+            => new("The native Vulkan backend cannot create a windowed device yet. The instance, the device and "
+                + "the queue ARE built (https://github.com/APKiwiOrg/KhaozEngine/issues/514) and the HEADLESS "
+                + "path works, so the golden and snapshot paths reach a real native device. What is missing is "
+                + "the surface, the presenting-family check and the swapchain, which land in "
+                + "https://github.com/APKiwiOrg/KhaozEngine/issues/527. This is a statement about the package, "
+                + "not about this machine: read GpuBackendSelector.IsBackendSupported for that. Until then the "
+                + "Vulkan path through Veldrid is the working windowed one.");
     }
 }

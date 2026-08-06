@@ -7,9 +7,10 @@ using Xunit;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// The <c>KhaozEngine.Gpu.Vulkan</c> package as work-breakdown row 2 of
+    /// The <c>KhaozEngine.Gpu.Vulkan</c> package as work-breakdown row 4 of
     /// <c>docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md</c> leaves it: a real registration, a real
-    /// functional probe, and creation that refuses by naming the row that builds it.
+    /// functional probe, real HEADLESS device creation, and a windowed path that refuses by naming the row that
+    /// builds the swapchain.
     /// <para>
     /// Every test here runs on macOS, Linux and Windows alike, and unlike the Direct3D 11 package that needs no
     /// arranging at all (decision V-P1: no OS-suffixed TFM, no platform guard, no <c>NoInlining</c> bodies). The
@@ -67,23 +68,22 @@ namespace KhaozEngine.Tests.Gpu
             => Assert.Equal(TryProbe() is null, new VulkanBackendProvider().IsSupported());
 
         /// <summary>
-        /// Creation is not built yet, and the refusal is asserted rather than left implicit because of what the
-        /// creation path does with it: it catches, WARNs with the message and falls back to the incumbent, so
-        /// this text is what a tester who named the native backend actually reads. It must name the row that
-        /// builds the device, and it must not read as a machine problem, which is a different failure with a
-        /// different answer (<see cref="VulkanBackendProvider.IsSupported"/>) and its own sentence.
+        /// The WINDOWED path is not built yet, and the refusal is asserted rather than left implicit because of
+        /// what the creation path does with it: it catches, WARNs with the message and falls back to the
+        /// incumbent, so this text is what a tester who named the native backend actually reads. It must name the
+        /// row that builds the swapchain, it must say the device itself IS built (so the reader does not conclude
+        /// the whole backend is absent), and it must not read as a machine problem, which is a different failure
+        /// with a different answer (<see cref="VulkanBackendProvider.IsSupported"/>) and its own sentence.
         /// </summary>
-        [Theory]
-        [InlineData(true)]
-        [InlineData(false)]
-        public void Creation_RefusesByNamingTheRowThatBuildsIt(bool windowed)
+        [Fact]
+        public void WindowedCreation_RefusesByNamingTheSwapchainRow()
         {
             var provider = new VulkanBackendProvider();
 
-            NotSupportedException ex = windowed
-                ? Assert.Throws<NotSupportedException>(() => provider.CreateForWindow(default))
-                : Assert.Throws<NotSupportedException>(() => provider.CreateHeadless());
+            NotSupportedException ex = Assert.Throws<NotSupportedException>(
+                () => provider.CreateForWindow(default));
 
+            Assert.Contains("527", ex.Message, StringComparison.Ordinal);
             Assert.Contains("514", ex.Message, StringComparison.Ordinal);
             // Not the OTHER failure mode. A missing registration is a wiring fault with its own exception type
             // and its own message, and decision V-I4 exists to keep the two tellable apart.
@@ -94,18 +94,114 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
+        /// HEADLESS CREATION IS REAL FROM ROW 4, and this row asserts whichever half of that this machine can
+        /// show. On a machine the probe accepts, a device is created, reports the native backend, answers its
+        /// capability read and disposes cleanly, and the shared instance goes with it. On a machine the probe
+        /// refuses, which is every developer Mac in this fleet, creation fails with a message about the MACHINE
+        /// rather than about the package: no loader is not an unfinished row, and the old "the device lands in
+        /// row 4" refusal must be gone from this path entirely.
+        /// <para>
+        /// THE REAL PATH IS CI-DEFERRED to the <c>vulkan-native</c> Linux leg row 19 brings up
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/529), which is the only machine in the net with a
+        /// loader. Everything about the device that CAN be asserted without one is asserted device-free in
+        /// <see cref="VulkanInstanceLifecycleTests"/>, <see cref="VulkanFeatureChainTests"/>,
+        /// <see cref="VulkanDeviceSelectionTests"/> and <see cref="VulkanDeviceLossLatchTests"/>. This row is the
+        /// one that will start meaning something the day the leg exists, and it is deliberately not skippable so
+        /// it cannot go quiet.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void HeadlessCreation_BuildsARealDevice_OrFailsAboutTheMachine()
+        {
+            var provider = new VulkanBackendProvider();
+
+            if (TryProbe() is not null)
+            {
+                NotSupportedException ex = Assert.Throws<NotSupportedException>(() => provider.CreateHeadless());
+
+                Assert.Contains("this machine", ex.Message, StringComparison.Ordinal);
+                // The row-4 refusal is retired from this path. A message naming 514 here would mean the device
+                // row did not actually wire itself in.
+                Assert.DoesNotContain("514", ex.Message, StringComparison.Ordinal);
+                // And nothing was claimed on the way out, which is what stops a failed creation holding the
+                // process instance alive for the rest of the run.
+                Assert.Equal(0, VulkanInstance.LeaseCount);
+                return;
+            }
+
+            GpuProviderDevice created = provider.CreateHeadless();
+            try
+            {
+                Assert.NotNull(created.Device);
+                Assert.Equal(GpuBackendKind.VulkanNative, created.Device.Backend);
+                Assert.False(string.IsNullOrWhiteSpace(created.Device.Capabilities.DeviceName));
+                // A headless device has no swapchain, which is a fact about the path rather than an unbuilt
+                // member.
+                Assert.Null(created.Device.SwapchainFramebuffer);
+                // Nothing is latched on a healthy device, so the header field stays absent.
+                Assert.Null(created.Device.Diagnostics.DeviceLossReason);
+                Assert.False(created.Device.Diagnostics.IsDeviceLost);
+                // There is no Vulkan analogue of the Direct3D 11 driver-threading query, so both halves are null
+                // rather than a probe that failed.
+                Assert.Null(created.ThreadingCaps);
+                Assert.Null(created.ThreadingProbeFailure);
+
+                Assert.True(VulkanInstance.LeaseCount >= 1);
+                Assert.True(VulkanInstance.IsLive);
+
+                // Safe after the device is alive and safe again after it is dead, which is the V-F10 contract.
+                created.Device.WaitForIdle();
+            }
+            finally
+            {
+                created.Device.Dispose();
+            }
+
+            // Disposed twice on purpose: a consumer is entitled to, and a second release that dropped the
+            // refcount again would destroy an instance a concurrent device is still calling through.
+            created.Device.Dispose();
+            created.Device.WaitForIdle();
+        }
+
+        /// <summary>
+        /// The members later rows own throw a message naming their row rather than returning something that fails
+        /// later somewhere less informative, which is the discipline <c>D3D11ResourceFactory</c> established
+        /// between its own row and the ones that filled it in. Asserted through the seam type so the list cannot
+        /// drift from what <see cref="IGpuDevice"/> actually declares.
+        /// </summary>
+        [Fact]
+        public void TheUnbuiltMembers_NameTheirOwnRow()
+        {
+            if (TryProbe() is not null) return;   // no loader here, and the row above already asserted that
+
+            GpuProviderDevice created = new VulkanBackendProvider().CreateHeadless();
+            try
+            {
+                IGpuDevice device = created.Device;
+
+                Assert.Contains("519", Assert.Throws<NotSupportedException>(() => device.Factory).Message,
+                    StringComparison.Ordinal);
+                Assert.Contains("519", Assert.Throws<NotSupportedException>(() => device.PointSampler).Message,
+                    StringComparison.Ordinal);
+                Assert.Contains("517", Assert.Throws<NotSupportedException>(() => device.Submit(null!)).Message,
+                    StringComparison.Ordinal);
+                Assert.Contains("527", Assert.Throws<NotSupportedException>(() => device.Present()).Message,
+                    StringComparison.Ordinal);
+            }
+            finally
+            {
+                created.Device.Dispose();
+            }
+        }
+
+        /// <summary>
         /// The provider returns a real device or throws, and never hands back an empty result. Pinned here
         /// because the adopting path checks for a null device and produces its own message for it, and that guard
         /// only stays meaningful while no provider actually relies on it.
         /// </summary>
         [Fact]
-        public void CreationNeverReturnsAnEmptyResult()
-        {
-            var provider = new VulkanBackendProvider();
-
-            Assert.ThrowsAny<Exception>(() => provider.CreateForWindow(default));
-            Assert.ThrowsAny<Exception>(() => provider.CreateHeadless());
-        }
+        public void WindowedCreationNeverReturnsAnEmptyResult()
+            => Assert.ThrowsAny<Exception>(() => new VulkanBackendProvider().CreateForWindow(default));
 
         // The probe, with the same swallow the provider applies, so a machine whose loader throws out of the
         // P/Invoke layer is a "no" here too rather than a red test. Reaching past the provider is deliberate: the

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using KhaozEngine.Gpu.Vulkan.Internal;
 
 namespace KhaozEngine.Tests.Gpu
@@ -33,12 +34,19 @@ namespace KhaozEngine.Tests.Gpu
     /// are calls against freed memory, which abort the process through the Vulkan loader rather than failing
     /// quietly, so a fake that shrugged at them would be the one place the defect is survivable.
     /// </para>
+    /// <para>
+    /// A MAPPING IS REAL PINNED MEMORY, not a pretend address. Row 9's staged uploads and the uniform ring both
+    /// WRITE through the pointer this hands back, so an invented address would crash the test run rather than
+    /// fail it. Pinning a managed array keeps the lifetime bounded by the handle rather than by a manual free:
+    /// a chunk nobody frees leaks one pin for the process, which for a test run is nothing.
+    /// </para>
     /// </summary>
     internal sealed class FakeVulkanDeviceMemoryApi : IVulkanDeviceMemoryApi
     {
         readonly List<FakeVulkanAllocation> _allocations = new();
         readonly HashSet<ulong> _liveHandles = new();
         readonly HashSet<ulong> _mappedHandles = new();
+        readonly Dictionary<ulong, GCHandle> _pinned = new();
 
         ulong _nextHandle = 0x1000;
 
@@ -93,9 +101,11 @@ namespace KhaozEngine.Tests.Gpu
 
             MapCount++;
 
-            // A pretend address that is distinct per chunk and far from zero, so an allocation's base-plus-offset
-            // arithmetic is checkable and a null base is obvious.
-            return (nint)(memory * 16);
+            // REAL memory, pinned, so a caller may write through the pointer and read the bytes back. See the
+            // class note: a pretend address crashes rather than fails once anything stages an upload through one.
+            GCHandle handle = GCHandle.Alloc(new byte[size], GCHandleType.Pinned);
+            _pinned[memory] = handle;
+            return handle.AddrOfPinnedObject();
         }
 
         /// <inheritdoc/>
@@ -119,6 +129,9 @@ namespace KhaozEngine.Tests.Gpu
 
             _liveHandles.Remove(memory);
             _mappedHandles.Remove(memory);
+
+            if (_pinned.Remove(memory, out GCHandle pinned)) pinned.Free();
+
             FreeCount++;
         }
 

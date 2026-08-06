@@ -88,6 +88,57 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         }
 
         /// <summary>
+        /// Submit the DEVICE-OWNED SETUP COMMAND BUFFER (V-M10, section 9.3): one sealed <c>VkCommandBuffer</c>,
+        /// no fence, no list behind it.
+        ///
+        /// <para><b>THE LOCK ORDER IS THE WHOLE REASON THIS MEMBER EXISTS RATHER THAN THE SETUP PATH TAKING THE
+        /// SUBMIT LOCK ITSELF.</b> V-W8 pins it: the flush takes the SETUP lock, then the submit lock UNDER it,
+        /// in that order and never the reverse. This method is called with the setup lock already held and takes
+        /// the submit lock here, so the nesting is written in one place instead of being a convention two call
+        /// sites have to keep. Nothing in this backend takes the setup lock while holding the submit lock, and the
+        /// one path that touches both (a device <c>Submit</c>, which flushes the setup buffer and then queues the
+        /// frame's list) takes them SEQUENTIALLY rather than nested, so there is no cycle to have.</para>
+        ///
+        /// <para>Everything else is the list submit's, including the reason the drain target moves only after
+        /// success: a setup buffer whose <c>vkQueueSubmit</c> failed took a value nothing will ever signal, and
+        /// raising the high-water to it would hang the next <c>WaitForIdle</c>.</para>
+        /// </summary>
+        /// <param name="commandBuffer">The sealed setup buffer.</param>
+        /// <returns>The timeline value this submission signals, or 0 when the device was already dead and nothing
+        /// was submitted.</returns>
+        /// <exception cref="InvalidOperationException">The submit failed with a non-loss result.</exception>
+        internal ulong SubmitSetup(ulong commandBuffer)
+        {
+            if (_timeline.IsDeviceDead) return 0;
+
+            lock (_submitLock)
+            {
+                ulong value = _timeline.NextSubmitValue();
+                VulkanSubmitStatus status = _api.Submit(commandBuffer, value, out string? failure);
+
+                if (status == VulkanSubmitStatus.Success)
+                {
+                    _timeline.RegisterSubmitted(value);
+                    return value;
+                }
+
+                if (status == VulkanSubmitStatus.DeviceLost) return 0;
+
+                _log.Error($"A native Vulkan vkQueueSubmit of the device setup command buffer failed with "
+                    + $"{failure}. Timeline value {value} was allocated to it and will never be signalled, so the "
+                    + "drain target was not raised to it.");
+
+                throw new InvalidOperationException(
+                    $"The native Vulkan backend's vkQueueSubmit of its setup command buffer failed: {failure}. "
+                    + "That buffer carries the creation-time clears and layout transitions of every texture made "
+                    + "since the last flush, so those textures have undefined contents and are not in their "
+                    + "resting layout. The device timeline is unharmed: the value this submission took is never "
+                    + "signalled and never waited for. Both results that reach here mean the process or the "
+                    + "device is out of memory.");
+            }
+        }
+
+        /// <summary>
         /// Submit <paramref name="list"/>'s sealed recording, optionally arming <paramref name="fence"/> with the
         /// value it signals.
         /// </summary>

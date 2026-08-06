@@ -6,6 +6,10 @@
          test project (goldens are loaded by [CallerFilePath], not manifest name, but the pin keeps namespaces
          and any future resource inference consistent). -->
     <RootNamespace>KhaozEngine.Tests</RootNamespace>
+    <!-- The native Vulkan setup-buffer fake reads VkDependencyInfo's barrier arrays, which are raw pointers as a
+         matter of ABI, and the staging-map tests write through a pinned span. Both are test-side mirrors of what
+         KhaozEngine.Gpu.Vulkan is unsafe by construction for. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />

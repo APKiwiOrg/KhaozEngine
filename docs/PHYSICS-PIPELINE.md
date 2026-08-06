@@ -151,6 +151,9 @@ player uses, orientation slerped between snapshots.
    contour, the face of a wall contact - is read from the ground-HEIGHT field by a central difference at capsule
    scale, not from the ground-normal delegate, which only classifies steepness and folds (17.29.0/#468): the plane
    the slide resolves against has to be the surface the ground clamp seats to, or the two pump energy every tick.
+   A wall contact reads that plane at TWO points (17.32.0/#502): the destination's, which says which component the
+   wall eats, and the walker's own column's, which the survivor is then made level on so a face that bends in plan
+   stops selling altitude to a character already resting on its traction ceiling.
    Then it resolves against the
    world: a capsule **sweep** along the move, a downward **support probe** so the character stands on prop
    tops, and a **depenetration** push-out (`ComputePenetration`, iterated) to collide-and-slide. A `null`

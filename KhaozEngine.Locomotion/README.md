@@ -122,6 +122,27 @@ about a destination it has already been told it cannot stand on. A DESCENDING de
 The face's horizontal direction is the XZ projection of the HEIGHT-DERIVED plane at the destination (see "Which
 delegate answers what" below), with the movement direction standing in when that projection is degenerate, which
 meets the face head-on and kills the whole move - the conservative direction. Both conditions are load-bearing.
+
+**What survives is then made LEVEL on the column the walker is standing on** (17.32.0,
+[#502](https://github.com/APKiwiOrg/KhaozEngine/issues/502)). The face above says which component the wall eats. It
+does not say what altitude the survivor takes, and on a face that BENDS in plan it quietly buys some: the contour it
+hands back is level on the plane at the DESTINATION, so a step along that line taken from the walker's own position
+cuts inside the contour by the sagitta of a chord and climbs by `G * L^2 / (2R)` whatever its length. A walker
+leaning on a bank is resting exactly ON its traction ceiling, so the only endpoints that climb at all are past it,
+and the ride became a slow oscillation across that ceiling: the step is committed, the support decision at the end
+of the same tick takes the footing, the character slides back down and walks in again. That is what a playtest
+reports as getting stuck sprinting alongside a bank and as the falling pose flickering on and off while walking one.
+So the surviving travel has its component along the WALKER's own column's outward removed, which makes it level on
+the surface the character is actually standing on and, on a bend, descending by that same sagitta instead of
+climbing it. Measured over the fixture bank sweep: 543 footing flips to 2, 5102 airborne ticks to 57, a peak
+along-face speed of 158 percent of commanded to 105, a climb creep of 2.9e-4 m per tick to 1.4e-5, and the one ride
+past the shortening ladder's coverage ceiling from a dead park to full travel.
+
+It is taken only when the walker's own column stands within two degrees of the tick's traction gate (so it is
+resting on the face rather than on a walkable floor with a wall ahead of it) and only when it costs under 1.2
+percent of the travel (so the two reads describe one surface rather than two). Neither the ladder below nor the
+wide-face read changes: this decides where along the surface the character is pointed and never what altitude it
+may take.
 The steepness test is what leaves walkable ground untouched, since a fast run up a legal ramp can rise more than a
 `StepHeight` in one tick. The height test is what keeps this a CONTACT rather than the old gate for the ticks that
 have no footing: ground at or below the feet is admitted, so a fall, a graze and a slide all still meet the surface

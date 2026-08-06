@@ -21,8 +21,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// that row. What is live from this row is the decision itself: a ring-backed buffer goes to the ring and
     /// everything else comes here, made once in <see cref="VulkanCommandList.UpdateBuffer{T}(IGpuBuffer, uint,
     /// ReadOnlySpan{T})"/> rather than repeated as a convention at each write site.</para>
+    ///
+    /// <para><b><see cref="IDisposable"/> BECAUSE THE ARENA'S LIFETIME NEEDS AN OWNER.</b>
+    /// <see cref="VulkanCommandList.Dispose"/> disposes this beside its own pool retirement, so row 9's
+    /// implementation (which wraps <see cref="VulkanStagingArena"/>) has a place to hand its blocks to
+    /// <see cref="IVulkanStagingSource.Destroy"/> when the list dies. The default body below is a no-op rather than
+    /// abstract, because a caller with nothing to own (a test double that only counts calls, for instance) is not
+    /// obliged to implement a destructor for memory it never allocated.</para>
     /// </summary>
-    internal interface IVulkanRecordUploads
+    internal interface IVulkanRecordUploads : IDisposable
     {
         /// <summary>
         /// Stage <paramref name="data"/> and record its copy into <paramref name="destination"/> at
@@ -37,6 +44,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// belong to a submission that may still be in flight.
         /// </summary>
         void BeginSlot(int slot);
+
+        /// <summary>
+        /// Release whatever this uploader owns. A no-op by default: see the class remarks for why a caller with
+        /// nothing to release is not required to override it.
+        /// </summary>
+        void IDisposable.Dispose()
+        {
+        }
     }
 
     /// <summary>

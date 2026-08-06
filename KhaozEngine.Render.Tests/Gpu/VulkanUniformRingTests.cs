@@ -218,7 +218,7 @@ namespace KhaozEngine.Tests.Gpu
                 // PayloadBytes = 128 are private consts at OverlayMeshRenderer.cs:35-36; capacity starts at 8.
                 ("OverlayMeshRenderer per-draw", 256u, 128u, new uint[] { 8, 16, 32, 64 }),
 
-                // ShadowMapRenderer.cs:129, GpuBufferRange(_lightUbo, 0, 64). CascadeSlotBytes = 256 is a private
+                // ShadowMapRenderer.cs:122, GpuBufferRange(_lightUbo, 0, 64). CascadeSlotBytes = 256 is a private
                 // const at ShadowMapRenderer.cs:41; the capacity is fixed at MaxCascades.
                 ("ShadowMapRenderer cascade", 256u, 64u, new uint[] { (uint)ShadowMapRenderer.MaxCascades }),
 

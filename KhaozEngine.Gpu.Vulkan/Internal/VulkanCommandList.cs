@@ -358,6 +358,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// safe, and this backend deliberately has exactly one.
         /// </para>
         /// <para>
+        /// THE STAGING ARENA DISPOSES ALONGSIDE THE POOLS, deferred the same way and for the same reason: an
+        /// in-flight submission can still be reading a block this list's arena filled, exactly as it can still be
+        /// reading a command buffer from this list's pool. <see cref="IVulkanRecordUploads"/> is
+        /// <see cref="IDisposable"/> so row 9's implementation, which wraps <see cref="VulkanStagingArena"/>, has an
+        /// owner for that arena's lifetime. See <see cref="IVulkanStagingSource.Destroy"/> for the deferral
+        /// contract the native free must satisfy on the far side of it.
+        /// </para>
+        /// <para>
         /// DISPOSING MID-RECORDING IS LEGAL AND ENDS NOTHING. <c>vkDestroyCommandPool</c> frees every buffer
         /// allocated from the pool whatever state it is in, so sealing a record nobody will submit would be a
         /// native call bought for nothing. What it does mean is that the recording is discarded, which is what
@@ -365,7 +373,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// </para>
         /// <para>
         /// IDEMPOTENT, because a consumer disposing a list twice is a teardown-order accident rather than a
-        /// defect, and retiring the same pools twice would double-destroy them.
+        /// defect, and retiring the same pools twice would double-destroy them. The same guard covers the arena:
+        /// <c>_uploads?.Dispose()</c> is only reached once, on the first Dispose.
         /// </para>
         /// </summary>
         public void Dispose()
@@ -376,6 +385,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _sealedSlot = NoSeal;
 
             _ring.RetireInto(_retired);
+            _uploads?.Dispose();
         }
 
         // THE ROUTING ITSELF, in ONE place rather than at each of the two overloads, so a uniform write and a bulk

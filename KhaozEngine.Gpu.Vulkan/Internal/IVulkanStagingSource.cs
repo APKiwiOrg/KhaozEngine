@@ -76,6 +76,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <summary>
         /// Destroy a block and free its memory. Called when the retention cap turns one away and at the arena's own
         /// disposal, and by nothing else: a block returned inside the cap is KEPT, which is the whole point.
+        /// <para>
+        /// THE CONTRACT ROW 9'S IMPLEMENTATION MUST SATISFY. On a live device, Destroy defers the native free
+        /// through the device's retire list at the list's highest submitted value, exactly as the command pools do
+        /// (<see cref="VulkanCommandPoolRing.RetireInto"/> over <see cref="VulkanRetireList.Retire"/>), because an
+        /// immediate free of a block an in-flight submission still reads is the corruption class the arena's own
+        /// <see cref="VulkanStagingArena.BeginSlot"/> gate exists to prevent, and calling this method natively
+        /// rather than deferred is how that same corruption arrives anyway, through the one call the arena trusts
+        /// to be safe. On a dead device Destroy abandons rather than frees, matching
+        /// <see cref="VulkanRetireList.Abandon"/> and <see cref="VulkanMemoryAllocator.Abandon"/>: the block's
+        /// memory went with the device, so a free now is a call against memory the driver already released.
+        /// </para>
         /// </summary>
         void Destroy(in VulkanStagingBlock block);
     }

@@ -322,6 +322,45 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(2, arena.BlocksDestroyed);
         }
 
+        /// <summary>
+        /// DISPOSE REACHES EVERY BLOCK, OPEN AND FREE, EXACTLY ONCE. The fake source counts calls per block, so a
+        /// block reachable from two paths (an open slot the loop revisits, or a free-list entry Dispose also walks)
+        /// would show a count of two rather than one.
+        /// <para>
+        /// WHAT THIS DOES NOT PROVE: that a LIVE device defers the native free behind the retire list rather than
+        /// running it immediately. The fake source has no timeline to defer against, so an immediate call and a
+        /// correctly deferred one look identical here. That half of the contract on
+        /// <see cref="IVulkanStagingSource.Destroy"/> is row 9's to prove, against the real source over
+        /// <see cref="VulkanRetireList"/>, once it exists.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void Disposal_DestroysOpenAndFreeBlocksExactlyOnceEach()
+        {
+            var source = new FakeStagingSource();
+            var arena = new VulkanStagingArena(source, framesInFlight: 3, blockBytes: 1024);
+
+            arena.BeginSlot(0);
+            arena.Take(900);   // slot 0's open block, a 1024 class
+            arena.BeginSlot(1);
+            arena.Take(900);   // slot 1's open block, another 1024 class
+            arena.BeginSlot(0);   // slot 0's block returns to the free list
+            arena.BeginSlot(2);
+            arena.Take(5000);   // too big for the freed 1024 block, so this opens a fresh one rather than reusing it
+
+            List<ulong> handles = source.Live.ConvertAll(block => block.Buffer);
+            Assert.Equal(3, handles.Count);
+            Assert.Equal(2, arena.OpenBlockCount);
+            Assert.Equal(1, arena.FreeBlockCount);
+
+            arena.Dispose();
+
+            foreach (ulong handle in handles)
+            {
+                Assert.Equal(1, source.DestroyCountOf(handle));
+            }
+        }
+
         // ---- the narrowed barrier ------------------------------------------------------------------------
 
         /// <summary>
@@ -483,11 +522,18 @@ namespace KhaozEngine.Tests.Gpu
         {
             readonly Dictionary<ulong, byte[]> _bytes = new();
             readonly Dictionary<ulong, GCHandle> _pins = new();
+            readonly Dictionary<ulong, int> _destroyCounts = new();
             ulong _next = 1;
 
             internal List<VulkanStagingBlock> Live { get; } = new();
 
             internal byte[] BytesOf(ulong buffer) => _bytes[buffer];
+
+            /// <summary>How many times <see cref="Destroy"/> was called for <paramref name="buffer"/>. What
+            /// <see cref="Disposal_DestroysOpenAndFreeBlocksExactlyOnceEach"/> reads: a block reachable from both an
+            /// open slot and the free list, or destroyed by two overlapping paths, would show a count over one.
+            /// </summary>
+            internal int DestroyCountOf(ulong buffer) => _destroyCounts.GetValueOrDefault(buffer);
 
             public VulkanStagingBlock Create(ulong sizeBytes)
             {
@@ -507,6 +553,7 @@ namespace KhaozEngine.Tests.Gpu
             {
                 ulong handle = block.Buffer;
                 Live.RemoveAll(live => live.Buffer == handle);
+                _destroyCounts[handle] = _destroyCounts.GetValueOrDefault(handle) + 1;
 
                 if (!_pins.Remove(handle, out GCHandle pin)) return;
 

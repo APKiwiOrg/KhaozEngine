@@ -295,6 +295,13 @@ public class WallContactTangentialTravelTests
     // headroom, and the flip bounds are deliberately tight enough that a 50-flip ride reds every row.
     //
     //   bend    speed   rate     measured efficiency   flips   airborne   worst climb
+    // THE ROWS BELOW ARE THE OSCILLATION'S MEASURED SIZE AND THEY STAY THAT, WHICH IS WHY THEY ARE NOT RETIGHTENED
+    // (2026-08-06, #502). Every one of them now rides at 0.999 to 1.047 with no stall and at most two footing
+    // flips, so a band that admits 48 flips is enormously slack against this build. It is deliberately left slack:
+    // the numbers here are the RECORD of what the oscillation cost, the tight acceptance is one uniform band in
+    // WallContactOwnColumnTests, and re-pinning these to the same values would delete the record and leave two
+    // copies of one assertion. The one row that had to move is the park, and it carries its own dated note.
+    //
     //   400 m   walk    15 Hz    103.5 - 109.9 %         6        15       0.0024 m
     //   400 m   walk    30 Hz    104.0 - 112.9 %         6        39       0.0088 m
     //   400 m   walk   120 Hz    104.1 - 109.4 %         4       114       0.0345 m
@@ -331,11 +338,17 @@ public class WallContactTangentialTravelTests
             (true, false, 15f) => new Bounds(0.80f, 1.05f, 5, 28, 70),
             (true, false, 30f) => new Bounds(0.93f, 1.08f, 5, 28, 150),
             (true, false, 120f) => new Bounds(0.95f, 1.34f, 5, 28, 550),
-            // Past the ladder's coverage ceiling: an 8 m bend needs an 11 m one at a 0.80 m step. Every rung is
-            // refused and the walker never leaves the spot it stopped on, which is the #498 dead stop itself at a
-            // bend an order of magnitude tighter. Pinned to the park rather than left open, so the day it moves,
-            // this file says so.
-            (true, true, 15f) => new Bounds(0f, 0.05f, 149, 4, 5),
+            // RE-BASELINED 2026-08-06 (#502): THIS ROW WAS THE PARK, AND THE DAY IT MOVED HAS COME.
+            //
+            // It was pinned at (0f, 0.05f, 149, 4, 5) - past the ladder's coverage ceiling, since an 8 m bend
+            // needs an 11 m one at a 0.80 m step, so every rung was refused and the walker never left the spot it
+            // stopped on. The note here said the pin existed so that the day it moved, this file would say so.
+            // #502 moved it: the projected travel is now levelled against the column the walker is standing on,
+            // so it descends by the sagitta instead of climbing it, and the ladder is not consulted at all.
+            // Measured over leans 5 to 30: 99.9 to 104.3 percent of commanded, longest stall 0, airborne 0, flips
+            // 0, climbed at most 0.0022 m in ten seconds. The band is the measurement with the file's usual
+            // headroom, and it is tighter than every other row here in four of its five numbers.
+            (true, true, 15f) => new Bounds(0.95f, 1.10f, 0, 0, 0),
             (true, true, 30f) => new Bounds(0.82f, 1.05f, 5, 40, 180),
             (true, true, 120f) => new Bounds(0.95f, 1.39f, 5, 48, 650),
             _ => throw new ArgumentOutOfRangeException(nameof(hz), hz,

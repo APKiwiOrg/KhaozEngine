@@ -148,12 +148,13 @@ Full wiring reference (the 3D `OnDraw3D`/`GameApp3D` pass, scenes, input, fonts,
 
 ## Consuming the packages
 
-Published to a private GitHub Packages feed on tagged releases, and packed to a local file-feed for day-to-day development.
+Published to GitHub Packages on tagged releases, and packed to a local file-feed for day-to-day development.
+The repo is public, so the Packages feed needs no authentication to restore from.
 
 ```xml
 <!-- nuget.config (additive) -->
-<add key="khaozengine-local" value="/Users/antonio/KhaozEngine/local-feed" />
-<!-- or the GitHub Packages feed (private - needs a PAT with read:packages):
+<add key="khaozengine-local" value="~/KhaozEngine/local-feed" />
+<!-- or the GitHub Packages feed (public, no PAT needed):
      https://nuget.pkg.github.com/APKiwiOrg/index.json -->
 ```
 ```xml

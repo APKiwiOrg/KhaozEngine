@@ -7,6 +7,63 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.32.0
 
+### `IdleShutdownService`: a metered server head that stops costing money when nobody is playing (#548)
+
+New in `KhaozEngine.ServerStatus`. Watches a player-count accessor and raises `IdleShutdownRequested` once the
+server has been empty continuously for a configured window. Additive, so nothing changes for a server that
+does not construct one.
+
+```csharp
+var idle = new IdleShutdownService(() => world.ConnectedPlayerCount, idleAfter: TimeSpan.FromMinutes(60),
+                                   enabled: !isLocalDevRun);
+idle.IdleShutdownRequested += () => hostLifetime.StopApplication();
+await idle.RunAsync(ct);          // or drive idle.Tick(now) from the server loop
+```
+
+It decides WHEN, never HOW: ending the process stays the host's business, which is what keeps it headless and
+lets a listen server or a test host reuse it. `Tick` returns true exactly once per empty streak, a player
+arriving clears both the streak and the latch so the next streak gets a full fresh window, and a player-count
+accessor that THROWS counts as occupied rather than empty, because shutting down a live server on a failed
+read is the one mistake this must never make. `Enabled: false` disables it outright for local runs.
+
+Written for Azure Container Instances, where the meter runs until the whole container group reaches a terminal
+state: the default `restartPolicy: Always` never gets there and bills forever, while `OnFailure` lets a clean
+exit 0 land on `Succeeded` and stop the meter, and still restarts a real crash. That is why the host must exit
+0 on this path and must not route a crash through it. The wake half stays per-game and is the other half of
+the feature, because a server that can stop and cannot start is an outage, not a saving:
+https://github.com/APKiwiOrg/Ruinborne/issues/441.
+
+14 headless tests drive it with an explicit clock: the exact boundary, one-shot firing, reset on reconnect, a
+throwing accessor never being read as empty, the disabled path, the countdown flooring at zero, and both
+`RunAsync` exits.
+
+### The repo is public again, and every CI leg moves back to GitHub-hosted runners
+
+`KhaozEngine` is public. It was briefly public before, went private in 2026-07 with the move to the
+`APKiwiOrg` org, and that flip is what put it on the bill: a private repo bills GitHub-hosted minutes
+(Linux 1x, Windows 2x, macOS 10x), and the engine grew into 71 percent of the org's GitHub spend. A public
+repo's GitHub-hosted standard runners are free, so the engine's CI costs nothing again.
+
+**The Metal leg stays on the self-hosted dev Mac, and the repo being public makes that a security
+question.** Hosted `macos-14` cannot run it: that runner has no usable Metal device, Veldrid's
+`MTLGraphicsDevice` ctor calls `MTLDevice.get_name()`, gets nil, and all 363 `[GpuFact]`s die with a
+`NullReferenceException` inside `GpuDeviceContext.CreateHeadless` in under a millisecond each, before
+rendering anything. That is device creation failing, not a golden mismatch, so no re-bake fixes it (#547).
+The dev Mac is the only real Metal available.
+
+Two layers keep that machine out of reach of anyone outside the org:
+
+1. The `metal` leg is dropped from the matrix on every `pull_request`. What is left carrying it is `push`,
+   `schedule` and `workflow_dispatch`, and all three require write access to the repo. This is structural
+   and depends on nobody remembering anything.
+2. The org now requires approval for **all** external contributors before a fork workflow runs at all,
+   tightened from the much weaker `first_time_contributors` default. An outside PR executes nothing, on
+   any runner, until a maintainer approves it.
+
+Layer 1 is the guarantee. Layer 2 is the backstop for someone editing layer 1 out. Both are documented at
+the leg table in the workflow, because together they are the only thing between a public repo and a
+personal machine.
+
 ### CI: the GPU matrix gets a leg selector, and the Vulkan package joins the push filter (#546)
 
 `cross-platform-gpu.yml` takes a second `workflow_dispatch` input, `legs`, choosing one backend

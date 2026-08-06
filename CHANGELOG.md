@@ -7,6 +7,36 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.32.0
 
+### `IdleShutdownService`: a metered server head that stops costing money when nobody is playing (#548)
+
+New in `KhaozEngine.ServerStatus`. Watches a player-count accessor and raises `IdleShutdownRequested` once the
+server has been empty continuously for a configured window. Additive, so nothing changes for a server that
+does not construct one.
+
+```csharp
+var idle = new IdleShutdownService(() => world.ConnectedPlayerCount, idleAfter: TimeSpan.FromMinutes(60),
+                                   enabled: !isLocalDevRun);
+idle.IdleShutdownRequested += () => hostLifetime.StopApplication();
+await idle.RunAsync(ct);          // or drive idle.Tick(now) from the server loop
+```
+
+It decides WHEN, never HOW: ending the process stays the host's business, which is what keeps it headless and
+lets a listen server or a test host reuse it. `Tick` returns true exactly once per empty streak, a player
+arriving clears both the streak and the latch so the next streak gets a full fresh window, and a player-count
+accessor that THROWS counts as occupied rather than empty, because shutting down a live server on a failed
+read is the one mistake this must never make. `Enabled: false` disables it outright for local runs.
+
+Written for Azure Container Instances, where the meter runs until the whole container group reaches a terminal
+state: the default `restartPolicy: Always` never gets there and bills forever, while `OnFailure` lets a clean
+exit 0 land on `Succeeded` and stop the meter, and still restarts a real crash. That is why the host must exit
+0 on this path and must not route a crash through it. The wake half stays per-game and is the other half of
+the feature, because a server that can stop and cannot start is an outage, not a saving:
+https://github.com/APKiwiOrg/Ruinborne/issues/441.
+
+14 headless tests drive it with an explicit clock: the exact boundary, one-shot firing, reset on reconnect, a
+throwing accessor never being read as empty, the disabled path, the countdown flooring at zero, and both
+`RunAsync` exits.
+
 ### The repo is public again, and every CI leg moves back to GitHub-hosted runners
 
 `KhaozEngine` is public. It was briefly public before, went private in 2026-07 with the move to the

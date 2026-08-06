@@ -7740,6 +7740,33 @@ and show the waiting screen on `ServerRestarting` / `ServerDown`, block on `Upda
 No engine change to the connect path is required. The state derivation is intentionally standalone so it can be
 adopted incrementally without touching the movement/replication code.
 
+### Idle shutdown for a metered server head
+
+`IdleShutdownService` watches a player count and requests a graceful shutdown once the server has been empty
+for a chosen window. It is for server heads billed by the second, where an empty world costs the same as a
+full one, and a game with infrequent sessions pays all month to serve nobody.
+
+```csharp
+var idle = new IdleShutdownService(
+    () => world.ConnectedPlayerCount,      // read fresh each tick, not a snapshot
+    idleAfter: TimeSpan.FromMinutes(60),
+    enabled: !isLocalDevRun);              // a dev server should not vanish while you read its logs
+
+idle.IdleShutdownRequested += () => hostLifetime.StopApplication();
+await idle.RunAsync(ct);                   // returns once the window elapses; or drive idle.Tick(now) yourself
+```
+
+`Tick` returns true exactly once per empty streak, so a host can act on the return value and ignore the event.
+A player arriving clears both the streak and the latch, so the next streak gets a full fresh window rather than
+the remainder of an old one. A player-count accessor that throws counts as OCCUPIED, never as empty: an unknown
+count must not shut down a live server.
+
+Two things belong to the game, not the engine. **The exit** (this service only asks), and **the wake path**,
+because a server that can stop and cannot start is just an outage. On Azure Container Instances specifically,
+exit code 0 is what stops the meter: billing runs until the container group reaches a terminal state, the
+default `restartPolicy: Always` never gets there, and `OnFailure` lets a clean exit 0 land on `Succeeded` while
+still restarting a genuine crash.
+
 ---
 
 ## HTTP retry (`KhaozEngine.Http`)

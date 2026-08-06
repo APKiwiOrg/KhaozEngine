@@ -296,10 +296,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// intact anyway: nothing that reads the timeline runs after the timeline has gone.
         /// </para>
         /// <para>
-        /// A DEAD DEVICE ABANDONS THE RETIRE LIST INSTEAD OF DRAINING IT. On that path the device was destroyed by
-        /// its loss rather than by this method, so every object made from it is already gone and running a destroy
-        /// would be a call against freed memory, which aborts the process through the Vulkan loader rather than
-        /// failing quietly.
+        /// A DEAD DEVICE ABANDONS THE RETIRE LIST INSTEAD OF DRAINING IT, on BOTH of the paths that reach one. The
+        /// device can be dead when this method is entered, and it can be lost BY the wait above, which is the
+        /// easier one to miss: the loss flips liveness mid-teardown, and from that moment every wrapper-level
+        /// destroy is skipped by contract, so a drain that ran anyway would make exactly the calls that contract
+        /// exists to stop. Running a destroy against a lost device is a call against freed memory, which aborts
+        /// the process through the Vulkan loader rather than failing quietly.
         /// </para>
         /// <para>
         /// The lease goes LAST and always, including when the wait or the destroy failed. A device that leaked its
@@ -328,7 +330,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                         // FIRST. A device destroyed with work in flight takes the driver down with it on some
                         // implementations and corrupts silently on others.
                         Result waited = vk.DeviceWaitIdle(_device);
-                        if (!_loss.Check(waited, "vkDeviceWaitIdle (teardown)") && waited != Result.Success)
+                        bool lost = _loss.Check(waited, "vkDeviceWaitIdle (teardown)");
+                        if (!lost && waited != Result.Success)
                         {
                             log.Warn("vkDeviceWaitIdle returned "
                                 + $"{VulkanResultCodes.Token(waited)} during native Vulkan device teardown. The "
@@ -336,9 +339,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                                 + "teardown and leaving it alive would leak everything behind it.");
                         }
 
-                        // The wait above is what makes an unconditional drain correct: the GPU is idle, so every
-                        // recorded timeline value has been passed and the values have nothing left to say.
-                        _retired.DrainAll();
+                        // THE DRAIN IS GATED ON THE WAIT HAVING ACTUALLY HAPPENED. A loss latched by the wait
+                        // above flipped liveness, and from that moment every wrapper-level destroy is skipped by
+                        // contract, because the objects went with the device. Draining anyway would run exactly
+                        // the calls that contract exists to stop. Otherwise the wait is what makes an
+                        // unconditional drain correct: the GPU is idle, so every recorded timeline value has been
+                        // passed and the values have nothing left to say.
+                        if (lost) ReportAbandoned(_retired.Abandon());
+                        else _retired.DrainAll();
+
+                        // Skips its own native destroy on the lost path, for the same reason, through the same
+                        // liveness token.
                         _timeline.Dispose();
 
                         // Flipped BEFORE the destroy and after the wait, so no wrapper can observe "alive" after
@@ -349,17 +360,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     }
                     else
                     {
-                        // A LOST device. Its children went with it, so the held destroys are dropped rather than
-                        // run, and the timeline's own Dispose skips the native destroy for the same reason.
-                        int dropped = _retired.Abandon();
+                        // A device that was ALREADY dead when Dispose arrived. Its children went with it, so the
+                        // held destroys are dropped rather than run, and the timeline's own Dispose skips the
+                        // native destroy for the same reason.
+                        ReportAbandoned(_retired.Abandon());
                         _timeline.Dispose();
-
-                        if (dropped > 0)
-                        {
-                            log.Warn($"{dropped} deferred native Vulkan destroys were dropped without running, "
-                                + "because the device they belonged to was already dead when it was disposed. The "
-                                + "objects went with the device, so this is a report rather than a leak.");
-                        }
                     }
                 }
                 finally
@@ -369,6 +374,18 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     _instance.Dispose();
                 }
             }
+        }
+
+        // Says how many deferred destroys went unrun on a dead device. A report rather than a leak, since the
+        // objects were destroyed with the device, and worth a line because a large number here says the consumer
+        // was still creating and disposing resources after the device had gone.
+        static void ReportAbandoned(int dropped)
+        {
+            if (dropped == 0) return;
+
+            log.Warn($"{dropped} deferred native Vulkan destroys were dropped without running, because the device "
+                + "they belonged to was dead by the time it was disposed. The objects went with the device, so "
+                + "this is a report rather than a leak.");
         }
 
         // The row that owns each unbuilt member, as a full URL, because these messages are read by somebody who

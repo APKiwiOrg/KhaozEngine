@@ -1720,8 +1720,9 @@ It is now `vkDeviceWaitIdle`, the retire list's teardown drain, the timeline sem
 `vkDestroyDevice`, the instance lease. Both new entries sit between the wait and the flip because that is the
 only window in which destroying a child object of the device is both safe and legal: before the wait it would be
 a destroy of something the GPU may still be reading, and after the flip every native destroy is skipped by
-contract. A device that was already DEAD abandons the retire list instead of draining it, since its children
-went with it and a destroy call there is a call against freed memory that aborts through the loader.
+contract. A DEAD device abandons the retire list instead of draining it, on both of the paths that reach one:
+dead on entry, and lost BY the teardown wait, which is the easier one to miss. Its children went with the
+device, so a destroy call there is a call against freed memory that aborts through the loader.
 
 **`GpuDeviceCounters` reports the drain half as a measurement and everything else as a true zero.**
 `DrainCount` and `DrainMs` are counted. `FramesBegun` is 0 because no frame has been opened (`Present` is row

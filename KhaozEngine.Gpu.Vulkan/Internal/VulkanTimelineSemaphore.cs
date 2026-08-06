@@ -60,9 +60,23 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             var createInfo = new SemaphoreCreateInfo(
                 sType: StructureType.SemaphoreCreateInfo, pNext: &typeInfo);
 
-            VulkanResultCodes.Require(
-                _vk.CreateSemaphore(_device, in createInfo, null, out Semaphore handle),
-                "vkCreateSemaphore (the device timeline)");
+            Result created = _vk.CreateSemaphore(_device, in createInfo, null, out Semaphore handle);
+
+            // THE LATCH FIRST, even here. A creation call is one of the sites the spec allows a device loss to
+            // surface at, and a loss noticed at this one has to carry this call's own name into the telemetry
+            // header rather than reaching a reader as an anonymous creation failure. It also catches the other
+            // shape: a device already latched as lost, where the result can be VK_SUCCESS and the object is
+            // worthless anyway.
+            if (_loss.Check(created, "vkCreateSemaphore (the device timeline)"))
+            {
+                throw new InvalidOperationException(
+                    "The native Vulkan backend could not create the device timeline semaphore, because the device "
+                    + "was LOST. There is no completion signal to run without, so the half-built device is "
+                    + "destroyed rather than handed back. The loss itself is in the session log and in the "
+                    + "telemetry session header, with the call that first noticed it.");
+            }
+
+            VulkanResultCodes.Require(created, "vkCreateSemaphore (the device timeline)");
 
             _handle = handle;
         }

@@ -11,16 +11,28 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <b>NOT EVERY MEMBER IS BUILT YET, and each one that is not names the row that builds it.</b> This is
     /// work-breakdown row 4 of <c>docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md</c>: the instance, the
     /// device, the queue, the selective feature enable, the device-loss latch, the liveness token and the
-    /// validation pump. The command list is row 7, resources and samplers are row 9, and the swapchain is row 17,
-    /// so the members those rows own throw a message saying so rather than returning something that fails later
-    /// somewhere less informative. The Direct3D 11 package's <c>D3D11ResourceFactory</c> landed the same way and
-    /// its doc paragraph was rewritten at every fill-in, which is the discipline this paragraph is under too: it
-    /// is a ledger, and a stale one is worse than none.
+    /// validation pump. Resources and samplers are row 9 and the swapchain is row 17, so the members those rows
+    /// own throw a message saying so rather than returning something that fails later somewhere less informative.
+    /// The Direct3D 11 package's <c>D3D11ResourceFactory</c> landed the same way and its doc paragraph was
+    /// rewritten at every fill-in, which is the discipline this paragraph is under too: it is a ledger, and a
+    /// stale one is worse than none.
     /// </para>
     /// <para>
     /// <b>THE MEMBERS THAT ARE LIVE:</b> <see cref="Backend"/>, <see cref="Capabilities"/> (in the part that can
     /// be read honestly, see below), <see cref="Diagnostics"/> with both of its fields, <see cref="Counters"/> (in
-    /// the drain half, see below), <see cref="WaitForIdle"/>, and <see cref="Dispose"/>.
+    /// the drain and backpressure halves, see below), both <c>Submit</c> overloads, <see cref="WaitForIdle"/>,
+    /// and <see cref="Dispose"/>.
+    /// </para>
+    /// <para>
+    /// <b>THE COMMAND PATH IS LIVE IN ITS LIFECYCLE AND NOT IN ITS CONTENT</b> (row 7,
+    /// https://github.com/APKiwiOrg/KhaozEngine/issues/517). <c>CreateCommandList</c> hands out a real
+    /// <see cref="VulkanCommandList"/> with its own per-slot <c>VkCommandPool</c>s, <c>Begin</c> and <c>End</c>
+    /// work, and <c>Submit</c> is ONE <c>vkQueueSubmit</c> under one short lock that allocates and signals the
+    /// timeline value inside it. What no list can do yet is RECORD anything: every drawing, binding, clearing and
+    /// copying member names the row that builds it. The list is not reachable through the SEAM either, because
+    /// that is <c>IGpuResourceFactory.CreateCommandList</c> and <see cref="Factory"/> is row 9's, so this device's
+    /// own internal member is how the rows built on recording get one meanwhile. See
+    /// <c>VulkanGpuDevice.Submit.cs</c>.
     /// </para>
     /// <para>
     /// <b>THE COMPLETION TIMELINE IS LIVE AND IS NOT REACHABLE THROUGH THE SEAM YET</b> (row 5,
@@ -69,6 +81,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         readonly VulkanTimeline _timeline;
         readonly VulkanRetireList _retired = new();
         readonly VulkanMemoryAllocator _memory;
+        readonly IVulkanCommandApi _commands;
+        readonly VulkanSubmitQueue _submits;
+        readonly VulkanBackpressure _backpressure = new();
+        readonly int _framesInFlight;
         readonly Device _device;
         readonly bool _softwareAdapter;
         readonly object _lifecycle = new();
@@ -79,7 +95,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         VulkanGpuDevice(VulkanInstanceLease<VulkanInstance> instance, Device device, Queue graphicsQueue,
             uint graphicsQueueFamily, GpuCapabilities capabilities, bool softwareAdapter,
             VulkanDeviceLiveness liveness, VulkanDeviceLossLatch loss, VulkanTimeline timeline,
-            IVulkanDeviceMemoryApi memoryApi, VulkanMemoryFacts memoryFacts)
+            IVulkanDeviceMemoryApi memoryApi, VulkanMemoryFacts memoryFacts, IVulkanCommandApi commands,
+            int framesInFlight)
         {
             _instance = instance;
             _device = device;
@@ -89,7 +106,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _liveness = liveness;
             _loss = loss;
             _timeline = timeline;
+            _commands = commands;
+            _framesInFlight = framesInFlight;
             Capabilities = capabilities;
+
+            // BUILT HERE for the same reason the allocator below is: the lock that orders vkQueueSubmit and the
+            // timeline it allocates values from are both this device's, and a submit queue handed in would either
+            // need the timeline before the device exists or bring a second lock, and two locks over one queue is
+            // not a serialisation at all.
+            _submits = new VulkanSubmitQueue(commands, timeline);
 
             // BUILT HERE rather than handed in, because the retire list its chunk destroys go through is this
             // object's own field. Passing the allocator in would mean either handing that list out before the
@@ -127,9 +152,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         /// <summary>
         /// The deferred-disposal retire list (V-F9). A resource's <c>Dispose</c> records
-        /// <see cref="VulkanTimeline.LastSubmitted"/> here with its own native destroy, and the destroy runs once
-        /// the counter passes that value. Empty today, because no row that creates a destroyable object has landed
-        /// yet, and here now because rows 7 and 9 both hand to it.
+        /// <see cref="VulkanTimeline.LastAllocated"/> here with its own native destroy, and the destroy runs once
+        /// the counter passes that value. Its first real depositor is row 7's command list, whose per-slot
+        /// <c>VkCommandPool</c>s go here when a list is disposed with submissions outstanding, and row 9's
+        /// resources are the next.
         /// </summary>
         internal VulkanRetireList Retired => _retired;
 
@@ -174,14 +200,18 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         /// <inheritdoc/>
         /// <remarks>
-        /// THE DRAIN HALF IS A MEASUREMENT AND THE REST IS ARITHMETIC ABOUT SUBSYSTEMS THAT DO NOT EXIST YET, and
-        /// the difference matters enough to say here. <c>DrainCount</c> and <c>DrainMs</c> come off
-        /// <see cref="VulkanTimeline.TotalDrain"/> and are the M2 numbers, counted by this row (V-F4). Every other
-        /// field is 0 because the thing that could move it is not built: no frame has been OPENED, since
-        /// <see cref="Present"/> is row 17's, and no uniform ring exists to stall or to defer a write against,
-        /// since that is row 8's (https://github.com/APKiwiOrg/KhaozEngine/issues/518). Each of those zeros is
-        /// therefore literally true about this device rather than a placeholder, which is the bar the struct's own
-        /// "absent is not zero" rule sets for reporting <c>HasValue</c> at all.
+        /// TWO PAIRS ARE MEASUREMENTS AND THE REST IS ARITHMETIC ABOUT SUBSYSTEMS THAT DO NOT EXIST YET, and the
+        /// difference matters enough to say here. <c>DrainCount</c> and <c>DrainMs</c> come off
+        /// <see cref="VulkanTimeline.TotalDrain"/> and are the M2 numbers (V-F4). <c>BackpressureStallCount</c>
+        /// and <c>BackpressureStallMs</c> come off <see cref="VulkanBackpressure"/> and are MV3's, counting a
+        /// command list's <c>Begin</c> blocking on its own oldest pool slot. That is the FIRST of that
+        /// accumulator's two meanings, and the second (a uniform ring segment still in flight) is row 8's
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/518), which records into this same object rather than
+        /// a second one. Every other field is 0 because the thing that could move it is not built: no frame has
+        /// been OPENED, since <see cref="Present"/> is row 17's, and no uniform ring exists to defer a write
+        /// against. Each of those zeros is therefore literally true about this device rather than a placeholder,
+        /// which is the bar the struct's own "absent is not zero" rule sets for reporting <c>HasValue</c> at
+        /// all.
         /// <para>
         /// WHAT A READER STILL MUST NOT DO is divide by <c>FramesBegun</c> while it is 0, and row 18
         /// (https://github.com/APKiwiOrg/KhaozEngine/issues/528) is where every field becomes a reading taken from
@@ -193,6 +223,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             get
             {
                 VulkanWaitTotals drain = _timeline.TotalDrain;
+                VulkanWaitTotals stalls = _backpressure.Totals;
 
                 // Named, because the two longs and the two doubles sit next to each other: a transposed pair here
                 // compiles, passes every test, and reports a stall count as a drain count in the field.
@@ -200,8 +231,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     framesBegun: 0,
                     drainCount: drain.Count,
                     drainMs: drain.TotalMs,
-                    backpressureStallCount: 0,
-                    backpressureStallMs: 0d,
+                    backpressureStallCount: stalls.Count,
+                    backpressureStallMs: stalls.TotalMs,
                     offTimelineDeferred: 0,
                     offTimelineOutstanding: 0);
             }
@@ -232,13 +263,6 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             get => _syncToVerticalBlank;
             set => _syncToVerticalBlank = value;
         }
-
-        /// <inheritdoc/>
-        public void Submit(IGpuCommandList cl) => throw NotBuiltYet("Submitting a command list", CommandListRow);
-
-        /// <inheritdoc/>
-        public void Submit(IGpuCommandList cl, IGpuFence fence)
-            => throw NotBuiltYet("Submitting a command list with a completion fence", CommandListRow);
 
         /// <summary>
         /// Block until the GPU is idle: <c>vkWaitSemaphores</c> on the last value the timeline handed to a
@@ -450,7 +474,6 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         // The row that owns each unbuilt member, as a full URL, because these messages are read by somebody who
         // has just hit one and needs to know whether to wait for a row or file a bug.
-        const string CommandListRow = "the command-list row (https://github.com/APKiwiOrg/KhaozEngine/issues/517)";
         const string ResourcesRow = "the resources row (https://github.com/APKiwiOrg/KhaozEngine/issues/519)";
         const string SwapchainRow = "the swapchain row (https://github.com/APKiwiOrg/KhaozEngine/issues/527)";
 

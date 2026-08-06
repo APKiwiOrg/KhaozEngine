@@ -136,7 +136,7 @@ namespace KhaozEngine.Tests.Gpu
         /// pure texture and sampler resources into the other, so neither places a uniform buffer in both.
         /// </para>
         /// </summary>
-        static IReadOnlyList<(string Pipeline, string[] Slots)> ShippedPipelines { get; } =
+        internal static IReadOnlyList<(string Pipeline, string[] Slots)> ShippedPipelines { get; } =
         [
             // Render2D/SpriteBatch.cs:214, both the alpha and the additive pipeline through one Describe(blend).
             ("SpriteBatch", ["SpriteBatch.texture", "SpriteBatch.vp"]),

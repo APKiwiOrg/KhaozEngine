@@ -14,9 +14,11 @@ namespace KhaozEngine.Tests.Gpu
     /// Decisions V-R2, V-R3 and V-F9, over <see cref="FakeVulkanCommandApi"/> and
     /// <see cref="FakeVulkanTimelineSemaphore"/>.
     /// <para>
-    /// WHAT IS DELIBERATELY NOT HERE is recording CONTENT, because there is none yet: rows 11, 12, 14 and 15 own
-    /// the drawing, binding, clearing and copying members, and every one of them refuses by naming its row. The
-    /// row that pins the refusals is here, and the rows that replace them are theirs.
+    /// WHAT IS DELIBERATELY NOT HERE is recording CONTENT: rows 12, 13, 14 and 15 own the clearing, pipeline,
+    /// barrier and drawing members, and every one of them still refuses by naming its own row. The row that pins
+    /// the refusals is here, and the rows that replace them are theirs. Row 11
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/521) has taken the four resource-set binds across, whose
+    /// schedule is pinned by <see cref="VulkanBindFlushTests"/>.
     /// </para>
     /// </summary>
     public sealed class VulkanCommandListTests
@@ -423,7 +425,9 @@ namespace KhaozEngine.Tests.Gpu
         /// here.</summary>
         static readonly string[] BuiltRecordingMembers =
         {
-            nameof(IGpuCommandList.UpdateBuffer),   // row 8, the uniform ring
+            nameof(IGpuCommandList.UpdateBuffer),               // row 8, the uniform ring
+            nameof(IGpuCommandList.SetGraphicsResourceSet),     // row 11, the bind flush, both overloads
+            nameof(IGpuCommandList.SetComputeResourceSet),      // row 11, the bind flush, both overloads
         };
 
         // ---- Fixtures ----
@@ -437,8 +441,6 @@ namespace KhaozEngine.Tests.Gpu
                 (nameof(IGpuCommandList.ClearColorTarget), l => l.ClearColorTarget(0, new Color(1f, 1f, 1f, 1f))),
                 (nameof(IGpuCommandList.ClearDepthStencil), l => l.ClearDepthStencil(1f)),
                 (nameof(IGpuCommandList.SetPipeline), l => l.SetPipeline(null!)),
-                (nameof(IGpuCommandList.SetGraphicsResourceSet), l => l.SetGraphicsResourceSet(0, null!)),
-                (nameof(IGpuCommandList.SetGraphicsResourceSet), l => l.SetGraphicsResourceSet(0, null!, 256)),
                 (nameof(IGpuCommandList.SetVertexBuffer), l => l.SetVertexBuffer(0, null!)),
                 (nameof(IGpuCommandList.SetVertexBuffer), l => l.SetVertexBuffer(0, null!, 64)),
                 (nameof(IGpuCommandList.SetIndexBuffer), l => l.SetIndexBuffer(null!, GpuIndexFormat.UInt32)),
@@ -456,8 +458,6 @@ namespace KhaozEngine.Tests.Gpu
                 (nameof(IGpuCommandList.GenerateMipmaps), l => l.GenerateMipmaps(null!)),
                 (nameof(IGpuCommandList.ResolveTexture), l => l.ResolveTexture(null!, null!)),
                 (nameof(IGpuCommandList.SetComputePipeline), l => l.SetComputePipeline(null!)),
-                (nameof(IGpuCommandList.SetComputeResourceSet), l => l.SetComputeResourceSet(0, null!)),
-                (nameof(IGpuCommandList.SetComputeResourceSet), l => l.SetComputeResourceSet(0, null!, 256)),
                 (nameof(IGpuCommandList.Dispatch), l => l.Dispatch(1, 1, 1)),
             };
 

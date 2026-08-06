@@ -9,8 +9,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// Raw handles rather than <c>VkBuffer</c> and <c>VkImage</c>, so the whole allocator above the native seam
     /// stays free of Silk.NET types and therefore testable with no loader. Exactly one of the two is set, or
     /// neither: a dedicated allocation with no target is legal and simply omits the chain, which is the form a
-    /// size-threshold dedication takes before row 9
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/519) exists to hand a resource over.
+    /// size-threshold dedication took before row 9
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/519) existed to hand a resource over. Every resource
+    /// created since names its own buffer or image here.
     /// </para>
     /// </summary>
     /// <param name="Buffer">A <c>VkBuffer</c> handle, or 0.</param>

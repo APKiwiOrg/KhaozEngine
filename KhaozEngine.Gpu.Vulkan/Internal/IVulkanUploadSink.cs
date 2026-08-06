@@ -18,10 +18,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// to watch. An upload barrier is not on the per-draw path, so it does not violate the gated invariant, and
     /// counting it is exactly how a recorder that started emitting one per draw would be caught.</para>
     ///
-    /// <para><b>WHAT IS NOT HERE YET.</b> <c>vkCmdCopyBufferToImage</c> is the texture half of the same path and
-    /// lands with textures, in <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/519">row 9</see>. It is
-    /// named here rather than added speculatively, because a member with no implementation and no caller is a
-    /// second thing to keep in sync with a shape nobody has settled.</para>
+    /// <para><b>THE TEXTURE HALF LANDED SOMEWHERE ELSE, and the reason is worth a sentence.</b>
+    /// <c>vkCmdCopyBufferToImage</c> was expected here when this interface was written. Row 9
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/519) put it on <see cref="IVulkanSetupSink"/> instead,
+    /// because the only texture upload that exists is the DEVICE-level one, which records into the device-owned
+    /// setup command buffer rather than into a list. A record-time <c>UpdateTexture</c> is not on the seam at all,
+    /// so a member here would have had no caller.</para>
     /// </summary>
     internal interface IVulkanUploadSink
     {

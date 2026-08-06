@@ -29,11 +29,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     ///
     /// <para><b>THE HOOK ROW 9 CALLS.</b> Buffer creation is
     /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/519">row 9</see>'s
-    /// <c>IGpuResourceFactory.CreateBuffer</c>, which does not exist yet. This type is the check that row calls as
-    /// its FIRST statement, before it allocates anything: <see cref="ForBuffer"/> either throws or answers whether
-    /// to build a <see cref="VulkanUniformRing"/> for the buffer and size the <c>VkBuffer</c> at
+    /// <c>IGpuResourceFactory.CreateBuffer</c>. This type is the check <see cref="VulkanBuffer"/>'s constructor
+    /// makes as its FIRST statement, before it allocates anything: <see cref="ForBuffer"/> either throws or
+    /// answers whether to build a <see cref="VulkanUniformRing"/> for the buffer and size the <c>VkBuffer</c> at
     /// <see cref="VulkanRingStride.TotalBytesFor"/> instead of the caller's own size. It is a static function over
-    /// a flags word rather than a method on the factory precisely so it can be complete and tested one row early.
+    /// a flags word rather than a method on the factory precisely so it could be complete and tested one row
+    /// early.
     /// </para>
     /// </summary>
     internal static class VulkanBufferRingPolicy

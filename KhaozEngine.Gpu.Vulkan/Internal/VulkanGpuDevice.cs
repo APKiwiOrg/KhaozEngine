@@ -13,8 +13,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <b>NOT EVERY MEMBER IS BUILT YET, and each one that is not names the row that builds it.</b> This is
     /// work-breakdown row 4 of <c>docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md</c>: the instance, the
     /// device, the queue, the selective feature enable, the device-loss latch, the liveness token and the
-    /// validation pump. Resources and samplers are row 9 and the swapchain is row 17, so the members those rows
-    /// own throw a message saying so rather than returning something that fails later somewhere less informative.
+    /// validation pump. The swapchain is row 17, so the two members that row owns throw a message saying so rather
+    /// than returning something that fails later somewhere less informative.
     /// The Direct3D 11 package's <c>D3D11ResourceFactory</c> landed the same way and its doc paragraph was
     /// rewritten at every fill-in, which is the discipline this paragraph is under too: it is a ledger, and a
     /// stale one is worse than none.
@@ -23,8 +23,22 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <b>THE MEMBERS THAT ARE LIVE:</b> <see cref="Backend"/>, <see cref="Capabilities"/> (in the part that can
     /// be read honestly, see below), <see cref="Diagnostics"/> with both of its fields, <see cref="Counters"/> (in
     /// the drain, backpressure and off-timeline halves, see below), both <c>Submit</c> overloads, all three
-    /// <c>UpdateBuffer</c> overloads ON A RING-BACKED BUFFER, <see cref="WaitForIdle"/>, and
-    /// <see cref="Dispose"/>.
+    /// <c>UpdateBuffer</c> overloads at BOTH levels, <see cref="Factory"/>, <see cref="PointSampler"/>,
+    /// <see cref="LinearSampler"/>, both <c>UpdateTexture</c> overloads, both <c>Map</c> and <c>Unmap</c> pairs,
+    /// <see cref="WaitForIdle"/>, and <see cref="Dispose"/>. What remains unbuilt on this type is the swapchain
+    /// pair, <see cref="ResizeSwapchain"/> and <see cref="Present"/>.
+    /// </para>
+    /// <para>
+    /// <b>RESOURCES ARE LIVE, AND SO IS THE SETUP COMMAND BUFFER THEY APPEND TO</b> (row 9,
+    /// https://github.com/APKiwiOrg/KhaozEngine/issues/519). <see cref="Factory"/> hands out real buffers (a
+    /// uniform buffer arrives ring-backed, everything else with device-local memory), real textures (a
+    /// <c>VkImage</c> with every image view it will ever need already made and its canonical resting layout
+    /// assigned, or a <c>VkBuffer</c> with the incumbent's software subresource layout when it is a staging
+    /// texture), real samplers, real command lists and real fences. Layouts, sets, framebuffers, shaders and
+    /// pipelines still refuse by naming their own row. NO CREATION SUBMITS ANYTHING: the clear and the first-ever
+    /// transition go into ONE device-owned setup command buffer under its own short lock, flushed at the next
+    /// submit or at any device-level read. See <c>VulkanGpuDevice.Resources.cs</c> and
+    /// <see cref="VulkanSetupCommands"/>.
     /// </para>
     /// <para>
     /// <b>THE COMMAND PATH IS LIVE IN ITS LIFECYCLE AND IN ONE RECORDING MEMBER</b> (rows 7 and 8,
@@ -33,41 +47,38 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <see cref="VulkanCommandList"/> with its own per-slot <c>VkCommandPool</c>s, <c>Begin</c> and <c>End</c>
     /// work, <c>Submit</c> is ONE <c>vkQueueSubmit</c> under one short lock that allocates and signals the
     /// timeline value inside it, and a record-time <c>UpdateBuffer</c> on a ring-backed uniform buffer is a memcpy
-    /// into that frame's segment. Everything else a list could record names the row that builds it. The list is
-    /// not reachable through the SEAM either, because that is <c>IGpuResourceFactory.CreateCommandList</c> and
-    /// <see cref="Factory"/> is row 9's, so this device's own internal member is how the rows built on recording
-    /// get one meanwhile. See <c>VulkanGpuDevice.Submit.cs</c>.
+    /// into that frame's segment. Everything else a list could record names the row that builds it. A list is
+    /// reachable through the SEAM from row 9 onward, as <c>IGpuResourceFactory.CreateCommandList</c>, and it now
+    /// arrives with its own staging arena so a record-time write to a NON-uniform buffer stages and copies rather
+    /// than refusing. See <c>VulkanGpuDevice.Submit.cs</c>.
     /// </para>
     /// <para>
-    /// <b>THE UNIFORM RING IS LIVE AND NOTHING CONSTRUCTS ONE YET</b> (row 8,
+    /// <b>THE UNIFORM RING IS LIVE AND HAS BUFFERS IN IT</b> (row 8,
     /// https://github.com/APKiwiOrg/KhaozEngine/issues/518). The device owns one
     /// <see cref="VulkanRingAllocator"/>: the device-wide frame segment, the completion gate that recycles it into
     /// the same backpressure accumulator the command lists stall into, and the off-timeline write's pending-patch
-    /// queue. What it has no callers for is BUFFERS, so a ring is built by row 9's <c>CreateBuffer</c> after
-    /// <see cref="VulkanBufferRingPolicy.ForBuffer"/> answers, and the frame boundary that rotates the segment is
-    /// row 17's <see cref="Present"/>. Both <c>UpdateBuffer</c> levels already route through it, so the routing is
-    /// settled here rather than by whichever row first has a buffer to write.
+    /// queue. Row 9's <c>CreateBuffer</c> cuts a ring for every uniform buffer, after
+    /// <see cref="VulkanBufferRingPolicy.ForBuffer"/> has answered. What still has no caller is the FRAME BOUNDARY
+    /// that rotates the segment, which is row 17's <see cref="Present"/>.
     /// </para>
     /// <para>
-    /// <b>THE COMPLETION TIMELINE IS LIVE AND IS NOT REACHABLE THROUGH THE SEAM YET</b> (row 5,
+    /// <b>THE COMPLETION TIMELINE IS LIVE AND IS NOW REACHABLE THROUGH THE SEAM</b> (row 5,
     /// https://github.com/APKiwiOrg/KhaozEngine/issues/515). The device owns one timeline <c>VkSemaphore</c>, a
     /// real <c>IGpuFence</c> over it and the deferred-disposal retire list, and <see cref="WaitForIdle"/> is the
-    /// counted <c>vkWaitSemaphores</c> drain on it. What the seam cannot reach is the FENCE FACTORY: the seam
-    /// creates a fence through <c>IGpuResourceFactory.CreateFence</c>, and <see cref="Factory"/> is row 9's, so
-    /// <see cref="VulkanTimeline.CreateFence"/> is reached through <see cref="Timeline"/> by the rows that build
-    /// on it and by nothing else meanwhile. <c>SupportsCompletionFences</c> was already true in this device's
-    /// partial capability read, and it is now backed by a real primitive rather than by a promise about one.
+    /// counted <c>vkWaitSemaphores</c> drain on it. Row 9's <c>IGpuResourceFactory.CreateFence</c> hands out
+    /// <see cref="VulkanTimeline.CreateFence"/>'s fences, which is the last thing that subsystem was waiting for.
+    /// <c>SupportsCompletionFences</c> was already true in this device's partial capability read, and it is now
+    /// backed by a real primitive rather than by a promise about one.
     /// </para>
     /// <para>
-    /// <b>THE BLOCK SUBALLOCATOR IS LIVE AND NOTHING ALLOCATES OUT OF IT YET</b> (row 6,
+    /// <b>THE BLOCK SUBALLOCATOR IS LIVE AND EVERY RESOURCE ALLOCATES OUT OF IT</b> (row 6,
     /// https://github.com/APKiwiOrg/KhaozEngine/issues/516). The device owns one
     /// <see cref="VulkanMemoryAllocator"/>: chunks pooled by <c>(memoryTypeIndex, linear|optimal)</c>, first-fit
     /// with alignment correction and coalescing free, persistent whole-chunk mapping, dedicated allocations on
-    /// driver preference or above a size threshold, and flush and invalidate on the non-coherent path. What it has
-    /// no callers for is RESOURCES: buffers and images are row 9, so the allocator is complete internal machinery
-    /// driven by tests until that row binds the first <c>VkBuffer</c> to one of its offsets. The retire path is
-    /// wired from this row, so a chunk that empties is already returned behind the timeline rather than freed
-    /// underneath a submission.
+    /// driver preference or above a size threshold, and flush and invalidate on the non-coherent path. Row 9 binds
+    /// every <c>VkBuffer</c> and every <c>VkImage</c> to one of its offsets, on the ladder
+    /// <see cref="VulkanViewPolicy.MemoryFor"/> chooses. The retire path was wired from that row, so a chunk that
+    /// empties is returned behind the timeline rather than freed underneath a submission.
     /// </para>
     /// <para>
     /// <b><see cref="Capabilities"/> IS PARTIAL AND SAYS WHICH PART.</b> Row 18
@@ -99,6 +110,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         readonly VulkanSubmitQueue _submits;
         readonly VulkanBackpressure _backpressure = new();
         readonly VulkanRingAllocator _rings;
+        readonly VulkanResourceOwner _resources;
+        readonly VulkanStagingSource _staging;
+        readonly VulkanSetupCommands _setup;
+        readonly VulkanResourceFactory _factory;
+        readonly VulkanStagingMaps _maps = new();
+        readonly VulkanSampler _pointSampler;
+        readonly VulkanSampler _linearSampler;
         readonly int _framesInFlight;
         readonly Device _device;
         readonly bool _softwareAdapter;
@@ -117,7 +135,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             uint graphicsQueueFamily, GpuCapabilities capabilities, bool softwareAdapter,
             VulkanDeviceLiveness liveness, VulkanDeviceLossLatch loss, VulkanTimeline timeline,
             IVulkanDeviceMemoryApi memoryApi, VulkanMemoryFacts memoryFacts, IVulkanCommandApi commands,
-            int framesInFlight)
+            IVulkanResourceApi resourceApi, IVulkanSetupSink setupSink, int framesInFlight)
         {
             _instance = instance;
             _device = device;
@@ -149,6 +167,34 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // two so that neither drain sees all of them.
             _memory = new VulkanMemoryAllocator(memoryApi, memoryFacts, new VulkanTimelineRetirement(
                 timeline, _retired));
+
+            // THE RESOURCE SUBSYSTEM (row 9), built here for the reason everything else on this line is: it is
+            // assembled out of four things only the device has (the native resource seam, the one allocator, the
+            // one timeline and the one retire list), and a resource created against a second allocator or a second
+            // retire list would free memory into a pool nobody drains.
+            _resources = new VulkanResourceOwner(resourceApi, _memory, timeline, _retired);
+            _staging = new VulkanStagingSource(_resources, liveness);
+
+            // THE SETUP COMMAND BUFFER (V-M10) AND ITS OWN LOCK (V-W8), on the device's frame depth, its own
+            // command pools and its own staging arena. Its flush takes the submit lock UNDER its own lock, which
+            // is why it is handed the submit queue rather than the raw lock.
+            _setup = new VulkanSetupCommands(
+                new VulkanCommandPoolRing(commands, framesInFlight, timeline, _backpressure),
+                setupSink,
+                new VulkanStagingArena(_staging, framesInFlight),
+                _submits,
+                liveness);
+
+            _factory = new VulkanResourceFactory(_resources, _rings, _setup, () => CreateCommandList(),
+                () => _timeline.CreateFence(), capabilities, memoryFacts.MinUniformBufferOffsetAlignment);
+
+            // THE SHARED PAIR WRAPS ON ALL THREE AXES (section 14), built from VulkanSharedSamplers and NOT from
+            // the identically named GpuSamplerDescription statics, which default every axis to CLAMP. Neither
+            // wrapper owns its VkSampler, so a consumer that disposes one destroys nothing.
+            _pointSampler = new VulkanSampler(
+                _resources, VulkanSharedSamplers.Point, capabilities.SamplerAnisotropy, ownsSampler: false);
+            _linearSampler = new VulkanSampler(
+                _resources, VulkanSharedSamplers.Linear, capabilities.SamplerAnisotropy, ownsSampler: false);
         }
 
         /// <inheritdoc/>
@@ -180,9 +226,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <summary>
         /// The deferred-disposal retire list (V-F9). A resource's <c>Dispose</c> records
         /// <see cref="VulkanTimeline.LastAllocated"/> here with its own native destroy, and the destroy runs once
-        /// the counter passes that value. Its first real depositor is row 7's command list, whose per-slot
-        /// <c>VkCommandPool</c>s go here when a list is disposed with submissions outstanding, and row 9's
-        /// resources are the next.
+        /// the counter passes that value. Its depositors are row 7's command lists, whose per-slot
+        /// <c>VkCommandPool</c>s go here when a list is disposed with submissions outstanding, row 9's buffers,
+        /// textures and samplers, row 9's staging blocks, and the allocator's own emptied chunks. Every entry is
+        /// TERMINAL: it ends its own children inline rather than retiring them, which is what bounds the
+        /// retirement depth at the two generations the teardown drains twice for. See
+        /// <see cref="VulkanResourceOwner.RetireTerminal"/>.
         /// </summary>
         internal VulkanRetireList Retired => _retired;
 
@@ -191,12 +240,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// ever makes goes through it, and its chunk destroys are already routed through <see cref="Retired"/>, so
         /// memory returns to the driver only once the timeline has passed the value recorded at free time.
         /// <para>
-        /// Nothing allocates out of it yet, because no resource type exists: buffers and images are row 9
-        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/519) and the uniform ring is row 8
-        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/518). It is created with the device rather than with
-        /// the first resource for the reason the timeline was: a device-owned primitive that every later row can
-        /// assume exists needs no lazy-creation rule, and its teardown slot in <see cref="Dispose"/> is decided
-        /// once here instead of by whichever row first allocated something.
+        /// Every buffer, every image and every staging block comes out of it. It is created with the device rather
+        /// than with the first resource for the reason the timeline was: a device-owned primitive that every later
+        /// row can assume exists needs no lazy-creation rule, and its teardown slot in <see cref="Dispose"/> is
+        /// decided once here instead of by whichever row first allocated something.
         /// </para>
         /// </summary>
         internal VulkanMemoryAllocator Memory => _memory;
@@ -206,11 +253,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// buffer writes into, the completion gate that recycles it, and the off-timeline write's pending-patch
         /// queue.
         /// <para>
-        /// Nothing constructs a ring out of it yet, because no BUFFER exists: row 9
-        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/519) is where <c>CreateBuffer</c> asks
-        /// <see cref="VulkanBufferRingPolicy.ForBuffer"/> whether to build one. What is already wired is everything
-        /// a ring needs from the device: this object's segment index, the timeline its gate reads, the submit lock
-        /// its off-timeline write takes, and the backpressure accumulator its stalls land in.
+        /// Every uniform buffer cuts a ring out of it, at the point <see cref="VulkanBufferRingPolicy.ForBuffer"/>
+        /// answers yes inside <c>CreateBuffer</c>. Everything a ring needs from the device is this object's:
+        /// the segment index, the timeline its gate reads, the submit lock its off-timeline write takes, and the
+        /// backpressure accumulator its stalls land in.
         /// </para>
         /// <para>
         /// AND ITS FRAME BOUNDARY HAS NO CALLER YET, for the same reason <see cref="DrainRetiredResources"/> has
@@ -298,15 +344,6 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         public IGpuFramebuffer? SwapchainFramebuffer => null;
 
         /// <inheritdoc/>
-        public IGpuResourceFactory Factory => throw NotBuiltYet("The resource factory", ResourcesRow);
-
-        /// <inheritdoc/>
-        public IGpuSampler PointSampler => throw NotBuiltYet("The shared point sampler", ResourcesRow);
-
-        /// <inheritdoc/>
-        public IGpuSampler LinearSampler => throw NotBuiltYet("The shared linear sampler", ResourcesRow);
-
-        /// <inheritdoc/>
         /// <remarks>A backing value on a headless device, which is what the seam asks for. It reconfigures
         /// nothing because there is no swapchain to reconfigure, and row 17 is where it starts meaning
         /// something.</remarks>
@@ -338,6 +375,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             if (_liveness.IsDead) return;
 
+            // THE EXPLICIT DRAIN IS A DEVICE-LEVEL READ, so it flushes the setup buffer first (V-M10). A caller
+            // that created a render target and then drained is entitled to find its creation-time clear executed,
+            // and the wait below is what makes that true rather than merely queued.
+            FlushSetup();
+
             _timeline.WaitForIdle();
 
             // The strict rung's controlled throw. Placed after the wait rather than before it, so a validation
@@ -354,9 +396,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// patch that the frame boundary opening that segment replays, so a caller already holding the submit lock
         /// is legal.
         /// <para>
-        /// A NON-UNIFORM buffer needs a device-owned staging pool and the setup command buffer of V-M10, which is
-        /// row 9's (https://github.com/APKiwiOrg/KhaozEngine/issues/519), and no such buffer can exist before that
-        /// row anyway.
+        /// A NON-UNIFORM buffer takes the other path: its bytes go into the DEVICE-OWNED staging arena and a
+        /// <c>vkCmdCopyBuffer</c> plus a narrowed barrier are appended to the setup command buffer of V-M10, which
+        /// is what off-timeline means for anything that is not persistently mapped. Nothing is submitted here
+        /// either: that batch flushes at the next submit or at the next device-level read.
         /// </para>
         /// </remarks>
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged
@@ -376,29 +419,6 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, in T data) where T : unmanaged
             => UpdateOffTimeline(b, offsetBytes,
                 MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in data), 1)));
-
-        /// <inheritdoc/>
-        public void UpdateTexture(IGpuTexture texture, byte[] data, uint x, uint y, uint width, uint height)
-            => throw NotBuiltYet("Uploading to a texture", ResourcesRow);
-
-        /// <inheritdoc/>
-        public void UpdateTexture(IGpuTexture texture, byte[] data, uint x, uint y, uint width, uint height,
-            uint mipLevel, uint arrayLayer)
-            => throw NotBuiltYet("Uploading to a texture", ResourcesRow);
-
-        /// <inheritdoc/>
-        public MappedData Map(IGpuTexture staging, GpuMapMode mode)
-            => throw NotBuiltYet("Mapping a staging texture", ResourcesRow);
-
-        /// <inheritdoc/>
-        public void Unmap(IGpuTexture staging) => throw NotBuiltYet("Mapping a staging texture", ResourcesRow);
-
-        /// <inheritdoc/>
-        public MappedData Map(IGpuBuffer staging, GpuMapMode mode)
-            => throw NotBuiltYet("Mapping a staging buffer", ResourcesRow);
-
-        /// <inheritdoc/>
-        public void Unmap(IGpuBuffer staging) => throw NotBuiltYet("Mapping a staging buffer", ResourcesRow);
 
         /// <inheritdoc/>
         public void ResizeSwapchain(uint w, uint h) => throw NotBuiltYet("Resizing the swapchain", SwapchainRow);
@@ -429,8 +449,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <para>
         /// THE ALLOCATOR GOES AFTER THE RETIRE LIST'S DRAIN, because objects are destroyed before the memory they
         /// are bound into. Freeing a chunk while a <c>VkBuffer</c> or <c>VkImage</c> is still bound into it is the
-        /// hazard, and row 9 (https://github.com/APKiwiOrg/KhaozEngine/issues/519) is where those objects start
-        /// existing, so the order is settled here rather than by the row that first trips it. The chunks are then
+        /// hazard, and row 9 (https://github.com/APKiwiOrg/KhaozEngine/issues/519) is where those objects started
+        /// existing, so the order was settled here rather than by the row that first trips it. The chunks are then
         /// freed IMMEDIATELY rather than retired: the wait above already made the GPU idle, so retiring them would
         /// only mean the same calls one line later.
         /// </para>
@@ -491,12 +511,32 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                         // the calls that contract exists to stop. Otherwise the wait is what makes an
                         // unconditional drain correct: the GPU is idle, so every recorded timeline value has been
                         // passed and the values have nothing left to say.
+                        // EVERY OPEN MAPPING IS FORGOTTEN rather than closed. After the flip the memory behind one
+                        // does not exist, so a later Unmap is a caller error about a resource with nothing under
+                        // it, and there is no vkUnmapMemory to make anyway (V-M3).
+                        ReportForgottenMaps(_maps.Forget());
+
                         if (lost)
                         {
+                            // The setup buffer still hands over on this path: its arena's blocks go through the
+                            // staging source, which ABANDONS on a dead device rather than freeing, and its pools
+                            // land in a list the abandon below empties.
+                            _setup.Retire(_retired);
                             ReportAbandoned(_retired.Abandon(), _memory.Abandon());
                         }
                         else
                         {
+                            // THE SHARED SAMPLER PAIR IS DESTROYED DIRECTLY rather than retired. The wait above
+                            // already made the GPU idle, so retiring them would mean the same two calls one line
+                            // later, and their wrappers deliberately refuse to destroy themselves so a consumer
+                            // cannot.
+                            _pointSampler.DestroyShared();
+                            _linearSampler.DestroyShared();
+
+                            // THE SETUP BUFFER'S POOLS AND ITS ARENA, before the first drain, so both generations
+                            // of what they retire are covered by the two drains below.
+                            _setup.Retire(_retired);
+
                             // Objects first, then the memory they are bound into, then anything the object
                             // destroys retired on their way out. See the doc block above for both orderings.
                             _retired.DrainAll();
@@ -519,6 +559,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                         // A device that was ALREADY dead when Dispose arrived. Its children went with it, so the
                         // held destroys are dropped rather than run, every memory chunk is forgotten rather than
                         // freed, and the timeline's own Dispose skips the native destroy for the same reason.
+                        ReportForgottenMaps(_maps.Forget());
+                        _setup.Retire(_retired);
                         ReportAbandoned(_retired.Abandon(), _memory.Abandon());
                         _timeline.Dispose();
                     }
@@ -532,21 +574,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             }
         }
 
-        // THE ROUTING, in ONE place rather than at each of the three overloads, and the mirror of the command
-        // list's: a ring-backed buffer takes the every-segment off-timeline write and everything else needs the
-        // device-owned staging pool row 9 builds.
-        void UpdateOffTimeline(IGpuBuffer buffer, uint offsetBytes, ReadOnlySpan<byte> data)
+        // Says how many mappings were still open when the device was torn down. A correct consumer closes every
+        // one, and a non-zero count is a readback that held a pointer across teardown.
+        static void ReportForgottenMaps(int open)
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            ArgumentNullException.ThrowIfNull(buffer);
+            if (open == 0) return;
 
-            if (buffer is IVulkanRingBacked { Ring: { } ring })
-            {
-                _rings.UpdateBuffer(ring, offsetBytes, data);
-                return;
-            }
-
-            throw NotBuiltYet("Uploading to a NON-UNIFORM buffer", ResourcesRow);
+            log.Warn($"{open} native Vulkan staging mappings were still open when the device was disposed. The "
+                + "memory behind them went with the device, so they are forgotten rather than closed, and an "
+                + "Unmap after this point is a call about a resource with nothing under it.");
         }
 
         // Says how many deferred destroys and how many memory chunks went unfreed on a dead device. A report
@@ -563,7 +599,6 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         // The row that owns each unbuilt member, as a full URL, because these messages are read by somebody who
         // has just hit one and needs to know whether to wait for a row or file a bug.
-        const string ResourcesRow = "the resources row (https://github.com/APKiwiOrg/KhaozEngine/issues/519)";
         const string SwapchainRow = "the swapchain row (https://github.com/APKiwiOrg/KhaozEngine/issues/527)";
 
         // Named rather than a bare NotImplementedException, and it names WHAT IS LIVE as well as what is not,
@@ -571,9 +606,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         // whether the backend is unfinished or their machine is wrong, and those have different answers.
         static NotSupportedException NotBuiltYet(string what, string row)
             => new($"{what} is not built yet on the native Vulkan backend: it lands in {row}. The instance, the "
-                + "device, the queue, the device-loss latch and the validation pump ARE live (work-breakdown row "
-                + "4, https://github.com/APKiwiOrg/KhaozEngine/issues/514). This is a statement about the "
-                + "package and not about this machine. Select GpuBackendKind.Vulkan, which goes through Veldrid, "
-                + "for a fully working Vulkan device.");
+                + "device, the queue, the device-loss latch, the validation pump, the completion timeline, the "
+                + "memory allocator, the uniform ring, the command list's lifecycle AND the resource factory ARE "
+                + "live (work-breakdown rows 4 to 9, https://github.com/APKiwiOrg/KhaozEngine/issues/514 through "
+                + "https://github.com/APKiwiOrg/KhaozEngine/issues/519). This is a statement about the package and "
+                + "not about this machine. Select GpuBackendKind.Vulkan, which goes through Veldrid, for a fully "
+                + "working Vulkan device.");
     }
 }

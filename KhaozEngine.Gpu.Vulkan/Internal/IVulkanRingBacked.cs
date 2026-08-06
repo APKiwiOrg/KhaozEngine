@@ -5,10 +5,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// everything else. The routing seam of section 9.2 and 9.3, and the reason both <c>UpdateBuffer</c> levels
     /// make ONE decision rather than repeating a convention.
     /// <para>
-    /// IT KEEPS THE ROUTING BUILDABLE ONE ROW EARLY. Buffers are
-    /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/519">row 9</see>'s, and the ring is this row's,
-    /// so the write paths name this interface rather than a concrete buffer type. Row 9's buffer implements it and
-    /// returns a <see cref="VulkanUniformRing"/> for exactly the
+    /// IT KEPT THE ROUTING BUILDABLE ONE ROW EARLY. Buffers are
+    /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/519">row 9</see>'s, and the ring is row 8's,
+    /// so the write paths name this interface rather than a concrete buffer type. <see cref="VulkanBuffer"/>
+    /// implements it and returns a <see cref="VulkanUniformRing"/> for exactly the
     /// <see cref="GpuBufferUsage.UniformBuffer"/> buffers, which
     /// <see cref="VulkanBufferRingPolicy.ForBuffer"/> makes an exclusive set: a uniform buffer combined with any
     /// other binding is refused at creation, so a ring-backed buffer can never also be a vertex, index, indirect

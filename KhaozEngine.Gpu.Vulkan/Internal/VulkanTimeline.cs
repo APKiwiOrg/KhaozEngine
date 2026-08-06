@@ -245,7 +245,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         }
 
         /// <summary>A fresh, unarmed fence on this timeline. The seam's <c>IGpuResourceFactory.CreateFence</c>
-        /// lands here when row 9 (https://github.com/APKiwiOrg/KhaozEngine/issues/519) builds the factory, and
+        /// landed here when row 9 (https://github.com/APKiwiOrg/KhaozEngine/issues/519) built the factory, and
         /// there is no capability gate in front of it, because <c>SupportsCompletionFences</c> is unconditionally
         /// true on this backend.</summary>
         internal VulkanGpuFence CreateFence() => new(this);

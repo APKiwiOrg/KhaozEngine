@@ -110,6 +110,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     timeline, new VulkanDeviceMemoryApi(vk, device, loss, liveness), read.Memory,
                     new VulkanCommandApi(vk, device, graphicsQueue, read.GraphicsQueueFamily, semaphore.Handle,
                         loss, liveness),
+                    // THE RESOURCE SEAMS (row 9). Both are pure driver-call adapters: everything that decides
+                    // anything about a resource sits above them in device-free types, which is what lets the
+                    // usage derivation, the eager view set, the resting layouts, the staging arithmetic and the
+                    // sampler mapping all run under dotnet test with no loader.
+                    new VulkanResourceApi(vk, device, loss, liveness),
+                    new VulkanSetupSink(vk),
                     framesInFlight);
 
                 log.Info(created.Memory.Describe());

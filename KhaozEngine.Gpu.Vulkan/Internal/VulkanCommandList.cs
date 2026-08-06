@@ -26,10 +26,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// none, which is the same discipline <c>VulkanGpuDevice</c>'s equivalent paragraph is under.</para>
     ///
     /// <para><b>THE MEMBERS THAT ARE LIVE:</b> <see cref="Begin"/>, <see cref="End"/> and <see cref="Dispose"/>,
-    /// everything the device's <c>Submit</c> reaches through this type, and both <c>UpdateBuffer</c> overloads on a
-    /// RING-BACKED buffer, which is a memcpy into the current segment and records nothing at all (9.2). An
-    /// <c>UpdateBuffer</c> to a non-uniform buffer names row 9, because no such buffer can exist until that row
-    /// builds <c>IGpuResourceFactory</c>.</para>
+    /// everything the device's <c>Submit</c> reaches through this type, and both <c>UpdateBuffer</c> overloads at
+    /// both ends of their routing. On a RING-BACKED buffer that is a memcpy into the current segment which records
+    /// nothing at all (9.2), and on any other buffer it is a staged copy through this list's own arena with a
+    /// barrier narrowed to the destination's real usage, which row 9 wired
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/519).</para>
     ///
     /// <para><b>N LISTS RECORD CONCURRENTLY ON THIS BACKEND, AND THE PORTABLE CONTRACT IS UNCHANGED (V-R4).</b>
     /// The seam documents exactly one open recording per device, and that rule is what portable code is written
@@ -313,10 +314,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <c>FramesInFlight</c> memcpys for a value the next frame overwrites, on the hot path.
         /// </para>
         /// <para>
-        /// A NON-UNIFORM BUFFER CANNOT EXIST YET, so the arena leg refuses by naming
-        /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/519">row 9</see>. The DECISION is live from
-        /// this row and the implementation behind it arrives with the sink: see
-        /// <see cref="IVulkanRecordUploads"/>.
+        /// BOTH LEGS ARE LIVE since <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/519">row 9</see>,
+        /// which built the buffers and the uploader behind the arena leg. What still refuses here is a buffer from
+        /// ANOTHER backend, which holds no <c>VkBuffer</c> to copy into. See
+        /// <see cref="IVulkanRecordUploads"/> and <see cref="VulkanListUploads"/>.
         /// </para>
         /// </remarks>
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged
@@ -361,8 +362,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// THE STAGING ARENA DISPOSES ALONGSIDE THE POOLS, deferred the same way and for the same reason: an
         /// in-flight submission can still be reading a block this list's arena filled, exactly as it can still be
         /// reading a command buffer from this list's pool. <see cref="IVulkanRecordUploads"/> is
-        /// <see cref="IDisposable"/> so row 9's implementation, which wraps <see cref="VulkanStagingArena"/>, has an
-        /// owner for that arena's lifetime. See <see cref="IVulkanStagingSource.Destroy"/> for the deferral
+        /// <see cref="IDisposable"/> so row 9's <see cref="VulkanListUploads"/>, which wraps
+        /// <see cref="VulkanStagingArena"/>, has an owner for that arena's lifetime. See <see cref="IVulkanStagingSource.Destroy"/> for the deferral
         /// contract the native free must satisfy on the far side of it.
         /// </para>
         /// <para>
@@ -403,7 +404,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (_uploads is null || buffer is not IVulkanUploadDestination destination)
             {
-                throw NotBuiltYet("Uploading to a NON-UNIFORM buffer at record time", ResourcesRow);
+                throw new ArgumentException(
+                    "That buffer cannot be written by a native Vulkan command list: it holds no VkBuffer to copy "
+                    + "into, which means it was created by another GPU backend. Create buffers through the device "
+                    + "you record against. (A list built with no staging arena reaches this too, which is only a "
+                    + "list constructed by a test rather than by the device.)", nameof(buffer));
             }
 
             _uploads.Upload(destination, offsetBytes, data);

@@ -58,11 +58,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// Silk.NET type at all.
     /// </para>
     /// <para>
-    /// ROW 9 (https://github.com/APKiwiOrg/KhaozEngine/issues/519) IMPLEMENTS IT, over
-    /// <see cref="VulkanMemoryAllocator"/> with <see cref="VulkanMemoryUsage.Upload"/>, because that is the row
-    /// where a <c>VkBuffer</c> starts existing at all. The arena is complete and driven by tests one row early on
-    /// purpose: it is the type the incumbent's allocation storm lives in, and the fix is its POLICY rather than its
-    /// native calls.
+    /// ROW 9 (https://github.com/APKiwiOrg/KhaozEngine/issues/519) IMPLEMENTED IT as
+    /// <see cref="VulkanStagingSource"/>, over <see cref="VulkanMemoryAllocator"/> with
+    /// <see cref="VulkanMemoryUsage.Upload"/>, because that is the row where a <c>VkBuffer</c> starts existing at
+    /// all. The arena was complete and driven by tests one row early on purpose: it is the type the incumbent's
+    /// allocation storm lives in, and the fix is its POLICY rather than its native calls.
     /// </para>
     /// </summary>
     internal interface IVulkanStagingSource

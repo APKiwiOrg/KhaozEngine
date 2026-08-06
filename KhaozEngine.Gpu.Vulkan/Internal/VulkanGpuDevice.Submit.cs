@@ -27,10 +27,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// buffer each, gating on this device's timeline and stalling into this device's backpressure
         /// accumulator.
         /// <para>
-        /// REACHED THROUGH THE SEAM AS <c>IGpuResourceFactory.CreateCommandList</c>, which is row 9's
-        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/519), so until that row lands this is how the rows
-        /// built on recording get a list. Exposed for exactly the reason <see cref="Timeline"/> is: it is a
-        /// device-owned primitive that later rows have to be able to assume exists.
+        /// REACHED THROUGH THE SEAM AS <c>IGpuResourceFactory.CreateCommandList</c>, which row 9
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/519) wired to this member. It stays internal as well
+        /// as seam-reachable for the reason <see cref="Timeline"/> is: it is a device-owned primitive later rows
+        /// have to be able to assume exists.
         /// </para>
         /// <para>
         /// THE POOLS ARE CREATED HERE, at list creation, and never on a record path. A <c>Begin</c> that could
@@ -43,8 +43,16 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
 
-            return new VulkanCommandList(
-                new VulkanCommandPoolRing(_commands, _framesInFlight, _timeline, _backpressure), _retired);
+            var ring = new VulkanCommandPoolRing(_commands, _framesInFlight, _timeline, _backpressure);
+
+            // ITS OWN STAGING ARENA (V-M9, 9.3), on the device's ONE staging source so every block on the device
+            // comes out of the same allocator and every block's destroy is deferred behind the same timeline. The
+            // arena is PER LIST because its recycling boundary is the list's own slot wait, which is the one proof
+            // available that the blocks it hands back are finished with.
+            var uploads = new VulkanListUploads(
+                _instance.Value.Api, ring, new VulkanStagingArena(_staging, _framesInFlight));
+
+            return new VulkanCommandList(ring, _retired, uploads);
         }
 
         /// <summary>How many frames this device pipelines at (MV3), resolved once at creation from
@@ -63,7 +71,18 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <remarks>A submit with no fence STILL takes a timeline value, because the timeline has to advance with
         /// the submission stream for a later fence's value to cover the earlier work at all. That transitivity is
         /// what the deferred-disposal retire list is built on.</remarks>
-        public void Submit(IGpuCommandList cl) => _submits.Submit(Recording(cl), null);
+        public void Submit(IGpuCommandList cl)
+        {
+            VulkanCommandList list = Recording(cl);
+
+            // THE SETUP BUFFER GOES FIRST (V-M10), so the creation-time clears and transitions of everything made
+            // since the last flush execute BEFORE the frame that reads them. Two sequential lock acquisitions
+            // rather than a nested pair: this returns having released the setup lock before the submit below takes
+            // the submit lock, which is what keeps the two locks a strict order rather than a cycle.
+            FlushSetup();
+
+            _submits.Submit(list, null);
+        }
 
         /// <inheritdoc/>
         /// <remarks>
@@ -84,7 +103,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     + "has no value on it. Create fences through the device you submit to.", nameof(fence));
             }
 
-            _submits.Submit(Recording(cl), armed);
+            VulkanCommandList list = Recording(cl);
+
+            // Same order and same reason as the fenceless overload.
+            FlushSetup();
+
+            _submits.Submit(list, armed);
         }
 
         // The list check, shared by both overloads. A foreign list is refused by NAME rather than by a cast

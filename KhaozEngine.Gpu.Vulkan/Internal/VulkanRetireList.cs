@@ -16,8 +16,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// because they are the seam's contract and the Veldrid leg still needs them.</para>
     ///
     /// <para><b>A VALUE AND A CALLBACK, because there is nothing else to be generic over yet.</b> No resource type
-    /// exists on this backend: buffers, textures and samplers are row 9
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/519) and command pools are row 7
+    /// exists on this backend: buffers, textures and samplers arrived with row 9
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/519) and command pools with row 7
     /// (https://github.com/APKiwiOrg/KhaozEngine/issues/517), and row 7 is why this list is here now rather than
     /// with the first resource. A list over <c>Action</c> is what lets both rows hand it their own destroy without
     /// this type learning either one, and it is why row 7's command lists need no refcount of their own.</para>

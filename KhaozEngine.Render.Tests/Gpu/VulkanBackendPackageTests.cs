@@ -234,6 +234,13 @@ namespace KhaozEngine.Tests.Gpu
         /// later somewhere less informative, which is the discipline <c>D3D11ResourceFactory</c> established
         /// between its own row and the ones that filled it in. Asserted through the seam type so the list cannot
         /// drift from what <see cref="IGpuDevice"/> actually declares.
+        /// <para>
+        /// THIS IS A LEDGER AND IT SHRINKS ONE ROW AT A TIME. Row 9
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/519) took the factory and the shared sampler pair off
+        /// it, so both are asserted LIVE here now: a member that still refused after its row landed would be a
+        /// device that never wired itself in, which is the same failure this test caught for row 4's own refusal.
+        /// The swapchain pair is what is left.
+        /// </para>
         /// </summary>
         [Fact]
         public void TheUnbuiltMembers_NameTheirOwnRow()
@@ -247,13 +254,17 @@ namespace KhaozEngine.Tests.Gpu
             {
                 IGpuDevice device = created.Device;
 
-                Assert.Contains("519", Assert.Throws<NotSupportedException>(() => device.Factory).Message,
-                    StringComparison.Ordinal);
-                Assert.Contains("519", Assert.Throws<NotSupportedException>(() => device.PointSampler).Message,
-                    StringComparison.Ordinal);
-                Assert.Contains("517", Assert.Throws<NotSupportedException>(() => device.Submit(null!)).Message,
-                    StringComparison.Ordinal);
+                Assert.NotNull(device.Factory);
+                Assert.NotNull(device.PointSampler);
+                Assert.NotNull(device.LinearSampler);
+
+                // A null list is an argument error rather than a "not built yet", now that the member is built.
+                Assert.Throws<ArgumentNullException>(() => device.Submit(null!));
+
                 Assert.Contains("527", Assert.Throws<NotSupportedException>(() => device.Present()).Message,
+                    StringComparison.Ordinal);
+                Assert.Contains("527",
+                    Assert.Throws<NotSupportedException>(() => device.ResizeSwapchain(1, 1)).Message,
                     StringComparison.Ordinal);
             }
             finally

@@ -105,11 +105,15 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(2, uploads.LastLength);
         }
 
-        /// <summary>With no uploader the non-uniform leg refuses by naming ROW 9, because no such buffer can exist
-        /// until that row builds the factory. The refusal moved off row 8 when the ring landed, which is what the
-        /// list's refusal-coverage pair records.</summary>
+        /// <summary>
+        /// WITH NO UPLOADER the non-uniform leg refuses as an ARGUMENT error rather than a "not built yet", which
+        /// is what row 9 (https://github.com/APKiwiOrg/KhaozEngine/issues/519) changed when it built the arena
+        /// implementation behind that leg. The two ways to reach this now are a buffer from ANOTHER backend, which
+        /// holds no <c>VkBuffer</c> to copy into, and a list constructed by a test with no uploader at all. Neither
+        /// is a statement about the package being unfinished, so neither may name a row.
+        /// </summary>
         [Fact]
-        public void WithNoUploader_ANonUniformWrite_NamesTheResourcesRow()
+        public void WithNoUploader_ANonUniformWrite_IsAnArgumentError()
         {
             using var fixture = new VulkanCommandListTests.Fixture();
             using VulkanCommandList list = fixture.CreateList();
@@ -117,11 +121,11 @@ namespace KhaozEngine.Tests.Gpu
 
             var buffer = new FakeVulkanUploadBuffer(0xBEEF, 256, GpuBufferUsage.VertexBuffer);
 
-            NotSupportedException ex = Assert.Throws<NotSupportedException>(
+            ArgumentException ex = Assert.Throws<ArgumentException>(
                 () => list.UpdateBuffer<byte>(buffer, 0, new byte[] { 1 }));
 
-            Assert.Contains("519", ex.Message, StringComparison.Ordinal);
-            Assert.DoesNotContain("518", ex.Message, StringComparison.Ordinal);
+            Assert.Contains("VkBuffer", ex.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain("519", ex.Message, StringComparison.Ordinal);
         }
 
         /// <summary>A null buffer is an argument error rather than a "not built yet", now that the member is

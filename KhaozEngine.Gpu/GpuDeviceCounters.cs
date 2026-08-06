@@ -19,8 +19,9 @@ namespace KhaozEngine.Gpu
     /// <para>
     /// ABSENT IS NOT ZERO, and <see cref="HasValue"/> is the whole reason this is not a bag of nullable longs.
     /// Zero stalls IS the passing result, so a backend that keeps no counters must not report the same numbers as
-    /// a backend that kept them and never stalled. The default value answers false and is what Metal, Vulkan and
-    /// the incumbent Direct3D11 path all give, since none of them has a segment ring or a fence drain to count.
+    /// a backend that kept them and never stalled. The default value answers false and is what Metal and the
+    /// incumbent Veldrid paths all give. The two native backends give a true value instead: D3D11 all seven
+    /// fields, Vulkan the drain pair until its remaining subsystems land.
     /// </para>
     /// <para>
     /// THE TWO BACKPRESSURE READINGS ARE SEPARATE MEMBERS AND MUST STAY SEPARATE

@@ -169,10 +169,11 @@ block a submit on another, and it names a value, which is what gives a drain a n
 GPU already caught up is not counted, because the seam's own counter documents that it should not be.
 
 **Disposal is DEFERRED behind the timeline.** Disposing a resource records the device's current timeline value
-and holds the native destroy until the counter passes it, drained at the frame boundary and again at device
-teardown. That makes "mid-life resource disposal racing queued async work" structurally impossible on this
-backend rather than merely conventionally avoided. The engine's own `WaitForIdle` calls stay where they are,
-because they are the seam's contract and the Veldrid leg still needs them.
+and holds the native destroy until the counter passes it. Today that list drains only at device teardown, the
+frame-boundary drain arrives with row 17's `Present` path, which is the only thing that can call it. That makes
+"mid-life resource disposal racing queued async work" structurally impossible on this backend rather than merely
+conventionally avoided. The engine's own `WaitForIdle` calls stay where they are, because they are the seam's
+contract and the Veldrid leg still needs them.
 
 ## `KE_VULKAN_DEVICE` and `KE_VULKAN_VALIDATION`
 

@@ -194,7 +194,6 @@ namespace KhaozEngine.Tests.Gpu
 
             VulkanWaitTotals drain = timeline.TotalDrain;
             Assert.Equal(1, drain.Count);
-            Assert.True(drain.TotalMs >= 0d);
         }
 
         /// <summary>
@@ -273,7 +272,7 @@ namespace KhaozEngine.Tests.Gpu
             timeline.Dispose();
             timeline.Dispose();
 
-            Assert.True(semaphore.Disposed);
+            Assert.Equal(1, semaphore.DisposeCount);
         }
 
         /// <summary>

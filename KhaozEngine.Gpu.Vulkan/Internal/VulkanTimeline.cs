@@ -123,6 +123,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// is preserved: no value is handed out twice, and a submission that failed after taking one leaves a gap
         /// nothing ever reads. Row 7 owns the call site.
         /// </para>
+        /// <para>
+        /// PRECONDITION ON THE CALLER. The value must be allocated INSIDE whatever lock orders
+        /// <c>vkQueueSubmit</c>, the submit that took the value must be the one that signals it, and every submit
+        /// must take a value. Break this and two hazards follow. A submit that takes a value and fails with a
+        /// non-loss result leaves <see cref="LastSubmitted"/> above anything the GPU will ever signal, so the next
+        /// <c>WaitForIdle</c> blocks forever. Two threads allocating outside the submit lock can signal out of
+        /// order, violating the timeline's strictly-increasing requirement that the type's own theorem rests on.
+        /// Row 7 (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/517">#517</see>) owns the integration
+        /// and must satisfy this precondition or replace the <see cref="LastSubmitted"/> target with a registered
+        /// signal high-water.
+        /// </para>
         /// </summary>
         internal ulong NextSubmitValue() => Interlocked.Increment(ref _issued);
 

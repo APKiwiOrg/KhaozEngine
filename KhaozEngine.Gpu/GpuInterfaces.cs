@@ -369,8 +369,9 @@ namespace KhaozEngine.Gpu
         /// <para>
         /// DEFAULT-IMPLEMENTED, and the default is the honest one: a device that counts none of this leaves
         /// <see cref="GpuDeviceCounters.HasValue"/> false, which is a DIFFERENT fact from counting and finding
-        /// zero. Metal, Vulkan and the incumbent Direct3D11 path all take the default, and correctly so, since
-        /// none of them has a segment ring or a real fence drain for these to describe.
+        /// zero. Metal and the incumbent Veldrid paths take the default. The two native backends report what
+        /// their subsystems count, D3D11 all seven fields, Vulkan the drain pair until its remaining subsystems
+        /// land.
         /// </para>
         /// <para>
         /// SAMPLE IT FROM ANY THREAD. The values are monotone cumulative and every one of them is read whole, so a

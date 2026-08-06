@@ -150,8 +150,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <summary>
         /// THE SEAM'S VIEW OF THE SAME COUNTERS, cumulative since this device was created, which is what gate 4 of
         /// https://github.com/APKiwiOrg/KhaozEngine/issues/460 judges the field soak on. This is the only backend
-        /// that answers anything but the default, because it is the only one with a fence drain and a segment ring
-        /// to count.
+        /// that answers all seven fields, because it is the only one with a fence drain and a segment ring to
+        /// count. The Vulkan native device is the second backend to answer anything but the default: it reports
+        /// the drain pair off its own timeline and leaves the rest at zero until its segment ring lands.
         /// <para>
         /// BOTH BACKPRESSURE READINGS CROSS, on separate members, which is the requirement of
         /// https://github.com/APKiwiOrg/KhaozEngine/issues/499. The ring's frame-boundary stalls are M3's number.

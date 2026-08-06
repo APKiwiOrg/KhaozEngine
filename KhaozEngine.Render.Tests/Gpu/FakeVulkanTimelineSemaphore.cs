@@ -53,6 +53,11 @@ namespace KhaozEngine.Tests.Gpu
         /// and that a dead device skips the native destroy.</summary>
         internal bool Disposed { get; private set; }
 
+        /// <summary>How many times <see cref="Dispose"/> has run. <see cref="Disposed"/> alone cannot tell a
+        /// single destroy from a repeated one, and the timeline's own guard against destroying the semaphore
+        /// twice is exactly what this counts.</summary>
+        internal int DisposeCount { get; private set; }
+
         /// <inheritdoc/>
         public ulong Read()
         {
@@ -73,6 +78,10 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <inheritdoc/>
-        public void Dispose() => Disposed = true;
+        public void Dispose()
+        {
+            Disposed = true;
+            DisposeCount++;
+        }
     }
 }

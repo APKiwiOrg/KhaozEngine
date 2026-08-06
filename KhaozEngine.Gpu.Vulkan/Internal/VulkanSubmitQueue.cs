@@ -58,7 +58,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         // THE ONE SERIALISED POINT IN THE FRAME (V-W8). Recording is lock-free and takes nothing, and this lock is
         // held across exactly two operations: taking the next timeline value and handing one command buffer to the
         // queue.
-        readonly object _submitLock = new();
+        //
+        // IT IS THE DEVICE'S LOCK RATHER THAN THIS TYPE'S, because the uniform ring's off-timeline write takes the
+        // same one (9.2): a device-level UpdateBuffer must not land in the middle of a submit, and the ring's
+        // segment-owner read is only exact while no submission sits between allocating its value and registering
+        // it, which is a window that exists inside this lock alone. A ring with a second lock would order nothing.
+        readonly object _submitLock;
 
         readonly IVulkanCommandApi _api;
         readonly VulkanTimeline _timeline;
@@ -66,14 +71,19 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         /// <param name="api">The native command seam.</param>
         /// <param name="timeline">The device's one completion timeline.</param>
+        /// <param name="submitLock">The device's single submit lock, or null to own one. Null is for the tests that
+        /// drive this type alone: a real device always passes its own, because the uniform ring gates on the same
+        /// lock.</param>
         /// <param name="logger">The sink, or null for this type's own category logger.</param>
-        internal VulkanSubmitQueue(IVulkanCommandApi api, VulkanTimeline timeline, ILogger? logger = null)
+        internal VulkanSubmitQueue(IVulkanCommandApi api, VulkanTimeline timeline, object? submitLock = null,
+            ILogger? logger = null)
         {
             ArgumentNullException.ThrowIfNull(api);
             ArgumentNullException.ThrowIfNull(timeline);
 
             _api = api;
             _timeline = timeline;
+            _submitLock = submitLock ?? new object();
             _log = logger ?? log;
         }
 

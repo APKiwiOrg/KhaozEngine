@@ -1,4 +1,6 @@
 using System;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Gpu.Vulkan.Internal
@@ -18,12 +20,16 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <para><b>NOT EVERY MEMBER IS BUILT YET, and each one that is not names the row that builds it.</b> This is
     /// work-breakdown row 7 (https://github.com/APKiwiOrg/KhaozEngine/issues/517), which owns the list's
     /// LIFECYCLE: the pools, the slot machinery, <see cref="Begin"/>, <see cref="End"/>, disposal, and the
-    /// submit path on the device. The RECORDING CONTENT belongs to four later rows and each unbuilt member throws
-    /// a message naming its own. This paragraph is a ledger and a stale one is worse than none, which is the same
-    /// discipline <c>VulkanGpuDevice</c>'s equivalent paragraph is under.</para>
+    /// submit path on the device. Row 8 (https://github.com/APKiwiOrg/KhaozEngine/issues/518) added the record-time
+    /// <c>UpdateBuffer</c> on top of it. The rest of the RECORDING CONTENT belongs to four later rows and each
+    /// unbuilt member throws a message naming its own. This paragraph is a ledger and a stale one is worse than
+    /// none, which is the same discipline <c>VulkanGpuDevice</c>'s equivalent paragraph is under.</para>
     ///
     /// <para><b>THE MEMBERS THAT ARE LIVE:</b> <see cref="Begin"/>, <see cref="End"/> and <see cref="Dispose"/>,
-    /// plus everything the device's <c>Submit</c> reaches through this type.</para>
+    /// everything the device's <c>Submit</c> reaches through this type, and both <c>UpdateBuffer</c> overloads on a
+    /// RING-BACKED buffer, which is a memcpy into the current segment and records nothing at all (9.2). An
+    /// <c>UpdateBuffer</c> to a non-uniform buffer names row 9, because no such buffer can exist until that row
+    /// builds <c>IGpuResourceFactory</c>.</para>
     ///
     /// <para><b>N LISTS RECORD CONCURRENTLY ON THIS BACKEND, AND THE PORTABLE CONTRACT IS UNCHANGED (V-R4).</b>
     /// The seam documents exactly one open recording per device, and that rule is what portable code is written
@@ -51,6 +57,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     {
         readonly VulkanCommandPoolRing _ring;
         readonly VulkanRetireList _retired;
+        readonly IVulkanRecordUploads? _uploads;
 
         bool _recording;
         bool _disposed;
@@ -67,13 +74,18 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// too.</param>
         /// <param name="retired">The device's deferred-disposal list, which this list's pools go to when it is
         /// disposed with submissions outstanding.</param>
-        internal VulkanCommandList(VulkanCommandPoolRing ring, VulkanRetireList retired)
+        /// <param name="uploads">This list's staging arena and copy recorder (9.3), or null while there is no
+        /// non-uniform buffer that could reach it. See <see cref="IVulkanRecordUploads"/> for why the list holds
+        /// the interface rather than the arena, and why null is correct today rather than a placeholder.</param>
+        internal VulkanCommandList(VulkanCommandPoolRing ring, VulkanRetireList retired,
+            IVulkanRecordUploads? uploads = null)
         {
             ArgumentNullException.ThrowIfNull(ring);
             ArgumentNullException.ThrowIfNull(retired);
 
             _ring = ring;
             _retired = retired;
+            _uploads = uploads;
         }
 
         /// <summary>The pools, exposed for the submit path and for tests. Every other caller names slots.</summary>
@@ -157,7 +169,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // sealed.
             _sealedSlot = NoSeal;
 
-            _ring.Advance();
+            int slot = _ring.Advance();
+
+            // THE STAGING ARENA OPENS THE SLOT THE RING JUST ADVANCED ONTO (9.3), which is the one boundary at
+            // which its blocks are provably finished with: Advance waited for that slot's last submission before it
+            // reset the pool, and the blocks being handed back are the ones that slot filled the previous time
+            // round. Recycling the WHOLE arena here would hand back the blocks the last record's submission is
+            // still reading.
+            _uploads?.BeginSlot(slot);
 
             // ROWS 11, 12 AND 14 RESET THEIR RECORDER STATE HERE, between the native begin and the flag. See the
             // remarks above for the full list and for why this is the only correct place for it.
@@ -273,12 +292,35 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             => throw NotBuiltYet("Dispatching compute", DrawRow);
 
         /// <inheritdoc/>
+        /// <remarks>The single-value overload, which is what every shipped renderer's per-draw uniform write is.
+        /// Same routing as the span overload below.</remarks>
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, in T data) where T : unmanaged
-            => throw NotBuiltYet("Uploading to a buffer at record time", RingRow);
+            => Upload(b, offsetBytes,
+                MemoryMarshal.AsBytes(
+                    MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in data), 1)));
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// THE RECORD-TIME WRITE, AND THE ONE ROUTING DECISION BOTH LEVELS MAKE (9.2, 9.3). A ring-backed uniform
+        /// buffer takes a <c>memcpy</c> into the CURRENT segment and records nothing at all: no staging buffer, no
+        /// <c>vkCmdCopyBuffer</c>, no barrier and NO RENDER-PASS SPLIT. Everything else stages through this list's
+        /// arena and records a copy plus a narrowed barrier, with the pass split those copies unavoidably cause.
+        /// <para>
+        /// CURRENT-SEGMENT ONLY, deliberately, and the DEVICE-level <c>UpdateBuffer</c> is the other shape: it
+        /// reaches every segment so a value written once persists for the buffer's life (V-M8). The split is the
+        /// CALL rather than a usage hint on the buffer, because the call is what knows whether it happens once.
+        /// Every shipped record-time uniform write is unconditional per frame, so replicating those would be
+        /// <c>FramesInFlight</c> memcpys for a value the next frame overwrites, on the hot path.
+        /// </para>
+        /// <para>
+        /// A NON-UNIFORM BUFFER CANNOT EXIST YET, so the arena leg refuses by naming
+        /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/519">row 9</see>. The DECISION is live from
+        /// this row and the implementation behind it arrives with the sink: see
+        /// <see cref="IVulkanRecordUploads"/>.
+        /// </para>
+        /// </remarks>
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged
-            => throw NotBuiltYet("Uploading to a buffer at record time", RingRow);
+            => Upload(b, offsetBytes, MemoryMarshal.AsBytes(data));
 
         /// <inheritdoc/>
         public void CopyBuffer(IGpuBuffer src, uint srcOffsetBytes, IGpuBuffer dst, uint dstOffsetBytes,
@@ -336,13 +378,34 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _ring.RetireInto(_retired);
         }
 
+        // THE ROUTING ITSELF, in ONE place rather than at each of the two overloads, so a uniform write and a bulk
+        // write cannot drift apart by an edit to one of them.
+        void Upload(IGpuBuffer buffer, uint offsetBytes, ReadOnlySpan<byte> data)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            ArgumentNullException.ThrowIfNull(buffer);
+
+            if (buffer is IVulkanRingBacked { Ring: { } ring })
+            {
+                ring.Write(offsetBytes, data);
+                return;
+            }
+
+            if (_uploads is null || buffer is not IVulkanUploadDestination destination)
+            {
+                throw NotBuiltYet("Uploading to a NON-UNIFORM buffer at record time", ResourcesRow);
+            }
+
+            _uploads.Upload(destination, offsetBytes, data);
+        }
+
         // The row that owns each unbuilt member, as a full URL, because these messages are read by somebody who
         // has just hit one and needs to know whether to wait for a row or file a bug.
         const string RenderingRow =
             "the dynamic-rendering row (https://github.com/APKiwiOrg/KhaozEngine/issues/522)";
         const string BindRow = "the bind-flush row (https://github.com/APKiwiOrg/KhaozEngine/issues/521)";
         const string DrawRow = "the draw-and-dispatch row (https://github.com/APKiwiOrg/KhaozEngine/issues/525)";
-        const string RingRow = "the uniform-ring row (https://github.com/APKiwiOrg/KhaozEngine/issues/518)";
+        const string ResourcesRow = "the resources row (https://github.com/APKiwiOrg/KhaozEngine/issues/519)";
 
         // Named rather than a bare NotImplementedException, and it names WHAT IS LIVE as well as what is not,
         // which is the shape VulkanGpuDevice's equivalent settled on: a reader who hits this needs to know whether

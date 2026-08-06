@@ -387,14 +387,23 @@ namespace KhaozEngine.Tests.Gpu
             }
         }
 
-        /// <summary>The coverage above is a hand-written list, so this is what keeps it honest when the seam grows
-        /// a member: every method on the interface is either a lifecycle member this row built or a recording
-        /// member the list above refuses.</summary>
+        /// <summary>
+        /// The coverage above is a hand-written list, so this is what keeps it honest when the seam grows a member:
+        /// every method on the interface is either a lifecycle member row 7 built, a recording member the list
+        /// above refuses, or a member a LATER ROW HAS SINCE BROUGHT ALIVE.
+        /// <para>
+        /// THE THIRD SET IS THE ONE THAT MOVES. <c>UpdateBuffer</c> left the refusal list at row 8
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/518), which built the uniform ring behind it, and every
+        /// later row that lands a recording member moves it across the same way. A member that simply VANISHED
+        /// from the refusal list without arriving here is the regression this pair of sets exists to catch.
+        /// </para>
+        /// </summary>
         [Fact]
         public void TheRefusalCoverage_NamesEveryRecordingSeamMember()
         {
             string[] covered = EveryRecordingCommand()
                 .Select(c => c.Member)
+                .Concat(BuiltRecordingMembers)
                 .Distinct()
                 .OrderBy(n => n, StringComparer.Ordinal)
                 .ToArray();
@@ -409,9 +418,15 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(declared, covered);
         }
 
-        // ---- Fixtures ----
+        /// <summary>The members that have LEFT the refusal list, and the row that took each one. Asserted as a set
+        /// rather than left implicit, so a member dropped from the refusal list without a row behind it fails
+        /// here.</summary>
+        static readonly string[] BuiltRecordingMembers =
+        {
+            nameof(IGpuCommandList.UpdateBuffer),   // row 8, the uniform ring
+        };
 
-        static readonly uint OneWord = 1u;
+        // ---- Fixtures ----
 
         /// <summary>One call per recording member. Arguments are irrelevant: every call is expected to refuse
         /// before it looks at one.</summary>
@@ -432,8 +447,6 @@ namespace KhaozEngine.Tests.Gpu
                 (nameof(IGpuCommandList.Draw), l => l.Draw(3)),
                 (nameof(IGpuCommandList.Draw), l => l.Draw(3, 1, 0, 0)),
                 (nameof(IGpuCommandList.DrawIndexed), l => l.DrawIndexed(3, 1, 0, 0, 0)),
-                (nameof(IGpuCommandList.UpdateBuffer), l => l.UpdateBuffer(null!, 0, in OneWord)),
-                (nameof(IGpuCommandList.UpdateBuffer), l => l.UpdateBuffer<byte>(null!, 0, new byte[] { 1 })),
                 (nameof(IGpuCommandList.CopyBuffer), l => l.CopyBuffer(null!, 0, null!, 0, 16)),
                 (nameof(IGpuCommandList.CopyTexture), l => l.CopyTexture(null!, null!)),
                 (nameof(IGpuCommandList.CopyTextureSubresource),

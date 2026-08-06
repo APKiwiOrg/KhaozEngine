@@ -14,29 +14,25 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 (Linux 1x, Windows 2x, macOS 10x), and the engine grew into 71 percent of the org's GitHub spend. A public
 repo's GitHub-hosted standard runners are free, so the engine's CI costs nothing again.
 
-**The Metal leg has no home and is out of the matrix. The other three legs gate.** Going public took its
-runner away, because a public repo cannot use the org's self-hosted runners (the group sets
-`allows_public_repositories: false`, and that default exists so a fork PR cannot run arbitrary code on the
-dev Mac). Moving it to hosted `macos-14` was tried first and does not work: that runner has no usable Metal
-device. Veldrid's `MTLGraphicsDevice` ctor calls `MTLDevice.get_name()`, gets nil back, and all 363
-`[GpuFact]`s die with a `NullReferenceException` inside `GpuDeviceContext.CreateHeadless` in under a
-millisecond each, before rendering anything. That is not a golden mismatch and no re-bake fixes it. The word
-"real" in the old comment about the dev Mac having "real Metal" was carrying that fact.
+**The Metal leg stays on the self-hosted dev Mac, and the repo being public makes that a security
+question.** Hosted `macos-14` cannot run it: that runner has no usable Metal device, Veldrid's
+`MTLGraphicsDevice` ctor calls `MTLDevice.get_name()`, gets nil, and all 363 `[GpuFact]`s die with a
+`NullReferenceException` inside `GpuDeviceContext.CreateHeadless` in under a millisecond each, before
+rendering anything. That is device creation failing, not a golden mismatch, so no re-bake fixes it (#547).
+The dev Mac is the only real Metal available.
 
-Metal coverage is therefore currently absent from CI, tracked in the issue linked from the workflow. The two
-ways back are to allow the runner group for public repos (keeping the Metal leg off `pull_request` so fork
-code can never reach the Mac), or to leave Metal to a local pre-release run. The committed metal goldens are
-untouched either way, so restoring the leg is a one-line edit to the leg table plus the dispatch options.
+Two layers keep that machine out of reach of anyone outside the org:
 
-The suite tiers are unchanged and are now kept on their merits rather than their cost: the golden subset is
-the fast signal a push wants and the full suite is a slower sweep that belongs on the cron. The push path
-filter stays for the same reason, because a matrix firing on every push buries a real golden break in noise.
-The `2x billing` notes still in `cross-platform-gpu.yml` are history explaining how the tiers were chosen,
-not a live constraint.
+1. The `metal` leg is dropped from the matrix on every `pull_request`. What is left carrying it is `push`,
+   `schedule` and `workflow_dispatch`, and all three require write access to the repo. This is structural
+   and depends on nobody remembering anything.
+2. The org now requires approval for **all** external contributors before a fork workflow runs at all,
+   tightened from the much weaker `first_time_contributors` default. An outside PR executes nothing, on
+   any runner, until a maintainer approves it.
 
-For consumers, the GitHub Packages feed no longer needs a PAT with `read:packages`. The per-repo
-`vendor/khaozengine` nupkg vendoring exists only because the feed required auth, so it can now be retired in
-the games at their own pace. Nothing is forced: vendoring still restores fine and is still the offline path.
+Layer 1 is the guarantee. Layer 2 is the backstop for someone editing layer 1 out. Both are documented at
+the leg table in the workflow, because together they are the only thing between a public repo and a
+personal machine.
 
 ### CI: the GPU matrix gets a leg selector, and the Vulkan package joins the push filter (#546)
 

@@ -73,5 +73,21 @@ namespace KhaozEngine.Tests.Gpu
             // requirement is about what a device CAN do and must not swallow a device that is not there.
             Assert.Null(GpuFactAttribute.CompletionFenceSkipReason(null));
         }
+
+        [Theory]
+        [InlineData("Apple Paravirtual device", true)]
+        [InlineData("Microsoft Basic Render Driver", false)]
+        [InlineData("Apple M2 Pro", false)]
+        [InlineData("llvmpipe (LLVM 15.0.7, 256 bits)", false)]
+        [InlineData("", false)]
+        [InlineData(null, false)]
+        public void Virtual_gpu_skip_fires_only_on_a_virtualised_adapter(string? deviceName, bool expectSkip)
+        {
+            // A null name means no device could be created. That must RUN so the failure surfaces downstream as an
+            // error, never a quiet capability skip, which is the rule CompletionFenceSkipReason already follows.
+            string? reason = GpuFactAttribute.VirtualGpuSkipReason(deviceName);
+            Assert.Equal(expectSkip, reason != null);
+            if (expectSkip) Assert.Contains(deviceName!, reason!);
+        }
     }
 }

@@ -148,7 +148,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(occludedDiff < 60, $"occluded distortion should barely differ from no-distortion, {occludedDiff} pixels differed");
         }
 
-        [GpuFact]
+        [GpuFact(RequiresRealGpu = true)]
         public void Distortion_warps_the_starfield()
         {
             // Pre-migration, the starfield was painted in the final blit, AFTER the whole post chain including

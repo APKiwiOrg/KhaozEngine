@@ -60,6 +60,7 @@ namespace KhaozEngine.Tests.Gpu
         // and whether that backend signals a fence on GPU completion. Null when no device could be created, which
         // deliberately does NOT skip - see RequiresCompletionFences.
         static readonly Lazy<(string Backend, bool Fences)?> Caps = new(ProbeCapabilities);
+        static readonly Lazy<string?> DeviceName = new(ProbeDeviceName);
 
         public GpuFactAttribute()
         {
@@ -130,6 +131,54 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>Create a headless device once, read what it can do, dispose it. Null when it could not be
         /// created: a capability requirement never turns a dead device into a skip.</summary>
+        /// <summary>
+        /// Declare that this test needs a REAL GPU, so it SKIPS on a virtualised adapter instead of failing an
+        /// assertion that adapter can never satisfy. GitHub's hosted macOS runners expose an "Apple Paravirtual
+        /// device", and it renders some effects as a no-op: the distortion apply pass resamples at a warped UV and
+        /// perturbs nothing, so a test asserting "the ripple moved pixels" measures zero and fails. That is a gap in
+        /// the virtual adapter, not a rendering regression, and the goldens all pass on it.
+        /// <para>
+        /// Use this ONLY where the assertion is about an effect being visible at all. A golden comparison does not
+        /// need it: goldens are tolerance-based and pass on the paravirtual device, so gating them here would hide
+        /// real regressions on the leg that runs most often.
+        /// </para>
+        /// </summary>
+        public bool RequiresRealGpu
+        {
+            get => _requiresRealGpu;
+            set
+            {
+                _requiresRealGpu = value;
+                if (value && Skip == null) Skip = VirtualGpuSkipReason(DeviceName.Value);
+            }
+        }
+
+        bool _requiresRealGpu;
+
+        /// <summary>Pure decision for <see cref="RequiresRealGpu"/>: the skip reason for a virtualised adapter, or
+        /// null to RUN. A null name (no device could be created) RUNS, so a broken device errors downstream rather
+        /// than going quiet, exactly as <see cref="CompletionFenceSkipReason"/> does.</summary>
+        internal static string? VirtualGpuSkipReason(string? deviceName)
+            => deviceName is { Length: > 0 } n
+                && (n.Contains("Paravirtual", StringComparison.OrdinalIgnoreCase)
+                    || n.Contains("Virtual", StringComparison.OrdinalIgnoreCase))
+                ? $"the active adapter is '{n}', a virtualised GPU that renders some effects as a no-op, "
+                    + "and this test asserts an effect is visible rather than comparing a golden"
+                : null;
+
+        static string? ProbeDeviceName()
+        {
+            try
+            {
+                using var ctx = KhaozEngine.Gpu.GpuDeviceContext.CreateHeadless();
+                return ctx.Capabilities.DeviceName;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
         static (string Backend, bool Fences)? ProbeCapabilities()
         {
             try

@@ -14,13 +14,19 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 (Linux 1x, Windows 2x, macOS 10x), and the engine grew into 71 percent of the org's GitHub spend. A public
 repo's GitHub-hosted standard runners are free, so the engine's CI costs nothing again.
 
-**The Metal leg moves off the self-hosted dev Mac back to `macos-14`.** Not only because hosted macOS is
-now free, but because it has to: a public repo cannot use the org's self-hosted runners at all, since the
-runner group sets `allows_public_repositories: false`. Left alone, the leg would never have been assigned a
-runner. **Watch the first hosted Metal run.** The committed metal golden was baked on the dev Mac's GPU and
-a hosted `macos-14` runner is different Apple-silicon hardware. The goldens are tolerance-based (32x18
-averaged grid) so it should carry, but a metal-only golden failure right after this change means a re-bake
-on the hosted runner, not a rendering regression.
+**The Metal leg has no home and is out of the matrix. The other three legs gate.** Going public took its
+runner away, because a public repo cannot use the org's self-hosted runners (the group sets
+`allows_public_repositories: false`, and that default exists so a fork PR cannot run arbitrary code on the
+dev Mac). Moving it to hosted `macos-14` was tried first and does not work: that runner has no usable Metal
+device. Veldrid's `MTLGraphicsDevice` ctor calls `MTLDevice.get_name()`, gets nil back, and all 363
+`[GpuFact]`s die with a `NullReferenceException` inside `GpuDeviceContext.CreateHeadless` in under a
+millisecond each, before rendering anything. That is not a golden mismatch and no re-bake fixes it. The word
+"real" in the old comment about the dev Mac having "real Metal" was carrying that fact.
+
+Metal coverage is therefore currently absent from CI, tracked in the issue linked from the workflow. The two
+ways back are to allow the runner group for public repos (keeping the Metal leg off `pull_request` so fork
+code can never reach the Mac), or to leave Metal to a local pre-release run. The committed metal goldens are
+untouched either way, so restoring the leg is a one-line edit to the leg table plus the dispatch options.
 
 The suite tiers are unchanged and are now kept on their merits rather than their cost: the golden subset is
 the fast signal a push wants and the full suite is a slower sweep that belongs on the cron. The push path

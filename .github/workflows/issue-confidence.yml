@@ -20,15 +20,21 @@ permissions:
 
 jobs:
   confidence:
-    # The kind/backlog test sits HERE rather than in the step below, and that placement is the whole
-    # cost of this workflow. GitHub rounds every job up to a billed minute, so a job that boots only
-    # to discover it has nothing to do still bills as much as one that works. This fires on every
-    # label change in the repo, and the repo carries hundreds of issues, so a bulk relabel used to
-    # spend a minute per issue to print a line and exit. A job-level `if` never allocates a runner,
-    # so the same skip is free. It reads the same payload field the step used to read, so nothing
-    # about which issues get rated changed. Measured: 522 runs over six days in August 2026, of which
-    # the overwhelming majority were this no-op.
-    if: contains(github.event.issue.labels.*.name, 'kind/backlog')
+    # This test sits HERE rather than in the step below, and that placement is the entire cost of the
+    # workflow. GitHub rounds every job up to a billed minute, so a job that boots only to find it has
+    # nothing to do bills the same as one that works. A job-level `if` never allocates a runner, so
+    # the same skip is free.
+    #
+    # The condition mirrors the step's own branches, so the set of issues that get rated is unchanged.
+    # There is work to do only when the issue is a backlog item AND either it carries no rating yet,
+    # or it carries a rating alongside a stale needs/confidence flag for the step to clear. A rated
+    # issue with no flag is the case with nothing to do, and it is almost every event this repo emits:
+    # of 539 issues, 446 are kind/backlog, all 446 are already rated and none carry needs/confidence.
+    # That left 522 runs over six days in August 2026 doing nothing but proving there was nothing to do.
+    if: >-
+      contains(github.event.issue.labels.*.name, 'kind/backlog')
+      && ( !contains(join(github.event.issue.labels.*.name, ','), 'confidence/')
+           || contains(github.event.issue.labels.*.name, 'needs/confidence') )
     runs-on: ubuntu-latest
     steps:
       - name: Apply or demand a confidence label

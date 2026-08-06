@@ -1,7 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
-using Silk.NET.Core.Native;
 using Silk.NET.Vulkan;
 
 namespace KhaozEngine.Gpu.Vulkan.Internal
@@ -22,10 +20,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <para>
     /// THE INSTANCE IS DESTROYED BEFORE THIS RETURNS, on every path, which is why the decision is taken over a
     /// snapshot (<see cref="VulkanDeviceFacts"/>) rather than over live handles. The probe deliberately does NOT
-    /// use the refcounted process instance row 4 creates
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/514): it has to answer before any device exists, which is
-    /// before that instance is allowed to. Whichever of the two lands second shares the physical-device walk below
-    /// rather than growing a second copy of the requirement list.
+    /// use the refcounted process instance row 4 created
+    /// (<see cref="VulkanInstance"/>): it has to answer before any device exists, which is before that instance is
+    /// allowed to, and the lifecycle test asserts that asking the probe leaves that refcount at zero. The
+    /// physical-device WALK is shared, through <see cref="VulkanPhysicalDeviceReader"/>, which is where row 3's
+    /// handoff put it: one walk, one requirement list, so the probe and device creation cannot disagree.
     /// </para>
     /// <para>
     /// NOTHING IS CACHED HERE, mirroring <c>D3D11FeatureProbe</c>. The per-backend answer is cached for the
@@ -159,7 +158,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             var rejections = new List<string>();
             for (uint i = 0; i < deviceCount; i++)
             {
-                VulkanDeviceFacts facts = Read(vk, devices[i]);
+                VulkanDeviceFacts facts = VulkanPhysicalDeviceReader.Read(vk, devices[i]).Facts;
 
                 // presentationRequired: false. IsSupported() receives no window, so there is no VkSurfaceKHR to
                 // ask about, and building one would need a platform surface extension the headless path is not
@@ -175,102 +174,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 + string.Join(". ", rejections);
         }
 
-        // One device, read into plain data. Four calls, in the order the requirements consume them: properties
-        // (the version floor and the descriptor limit), the chained feature query (the three feature bits),
-        // memory (the coherent host-visible type), queue families (the graphics family).
-        static VulkanDeviceFacts Read(Vk vk, PhysicalDevice device)
-        {
-            PhysicalDeviceProperties properties;
-            vk.GetPhysicalDeviceProperties(device, &properties);
-
-            (bool dynamicRendering, bool synchronization2, bool timelineSemaphore) = properties.ApiVersion
-                >= VulkanDeviceRequirements.MinimumApiVersion
-                    ? ReadFeatures(vk, device)
-                    : (false, false, false);
-
-            return new VulkanDeviceFacts(
-                DeviceName: ReadDeviceName(&properties),
-                ApiVersion: properties.ApiVersion,
-                DynamicRendering: dynamicRendering,
-                Synchronization2: synchronization2,
-                TimelineSemaphore: timelineSemaphore,
-                HasCoherentHostVisibleMemoryType: HasCoherentHostVisibleMemoryType(vk, device),
-                MaxDescriptorSetUniformBuffersDynamic:
-                    properties.Limits.MaxDescriptorSetUniformBuffersDynamic,
-                HasGraphicsQueueFamily: HasGraphicsQueueFamily(vk, device),
-                // Not asked, and not askable without a surface. False here is never read, because the probe
-                // passes presentationRequired: false.
-                GraphicsFamilyPresents: false);
-        }
-
-        // The three feature bits, off ONE chained query. Asked only of a device that already clears the version
-        // floor, and that gate is load-bearing rather than an optimisation: a device below 1.3 is rejected on its
-        // VERSION by the decision half, so its feature bits are never the reason it is turned away, and chaining a
-        // VkPhysicalDeviceVulkan13Features onto a query a 1.2 implementation never promised to understand is
-        // exactly the shape a driver is free to handle badly and the validation layers are right to flag. Leaving
-        // them false on that path asks nothing that is not owed and changes no answer.
-        static (bool DynamicRendering, bool Synchronization2, bool TimelineSemaphore) ReadFeatures(
-            Vk vk, PhysicalDevice device)
-        {
-            var features13 = new PhysicalDeviceVulkan13Features(
-                sType: StructureType.PhysicalDeviceVulkan13Features);
-            var features12 = new PhysicalDeviceVulkan12Features(
-                sType: StructureType.PhysicalDeviceVulkan12Features, pNext: &features13);
-            var features2 = new PhysicalDeviceFeatures2(
-                sType: StructureType.PhysicalDeviceFeatures2, pNext: &features12);
-            vk.GetPhysicalDeviceFeatures2(device, &features2);
-
-            return (features13.DynamicRendering, features13.Synchronization2, features12.TimelineSemaphore);
-        }
-
-        // The driver's name for the device, copied out of the fixed byte buffer into a managed string so it can
-        // outlive the instance. A driver that reports nothing readable still has to be nameable in a log line, so
-        // this never returns null or empty.
-        static string ReadDeviceName(PhysicalDeviceProperties* properties)
-        {
-            string? name = SilkMarshal.PtrToString((nint)properties->DeviceName);
-            return string.IsNullOrWhiteSpace(name)
-                ? "unnamed device 0x" + properties->DeviceID.ToString("x8", CultureInfo.InvariantCulture)
-                : name;
-        }
-
-        // V-M4's read. One type carrying both bits is enough, and the Vulkan spec requires at least one to exist,
-        // so this is the check that fails loudly on a device that cannot happen rather than one that gates a
-        // device that can.
-        static bool HasCoherentHostVisibleMemoryType(Vk vk, PhysicalDevice device)
-        {
-            const MemoryPropertyFlags required =
-                MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit;
-
-            PhysicalDeviceMemoryProperties memory;
-            vk.GetPhysicalDeviceMemoryProperties(device, &memory);
-
-            for (uint i = 0; i < memory.MemoryTypeCount; i++)
-            {
-                if ((memory.MemoryTypes[(int)i].PropertyFlags & required) == required) return true;
-            }
-            return false;
-        }
-
-        // V-N5's read, the half that needs no surface: does a graphics family exist at all. Whether it can also
-        // present is the windowed clause, decided where a surface exists.
-        static bool HasGraphicsQueueFamily(Vk vk, PhysicalDevice device)
-        {
-            uint familyCount = 0;
-            vk.GetPhysicalDeviceQueueFamilyProperties(device, &familyCount, null);
-            if (familyCount == 0) return false;
-
-            var families = new QueueFamilyProperties[familyCount];
-            fixed (QueueFamilyProperties* handles = families)
-            {
-                vk.GetPhysicalDeviceQueueFamilyProperties(device, &familyCount, handles);
-            }
-
-            foreach (QueueFamilyProperties family in families)
-            {
-                if ((family.QueueFlags & QueueFlags.GraphicsBit) != 0) return true;
-            }
-            return false;
-        }
+        // Every physical-device read goes through VulkanPhysicalDeviceReader, which is where they moved when
+        // row 4 needed the same four calls plus the feature bits it enables and the queue family it creates. Row
+        // 3's handoff resolved the overlap this way, from the probe side: two copies of a physical-device walk
+        // would drift the day a requirement moved, and the failure would be the worst available, a probe that
+        // says yes and a creation that then refuses.
     }
 }

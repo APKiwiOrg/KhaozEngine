@@ -16,8 +16,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// queue model (V-N5).</param>
     /// <param name="SupportsShadowMapFormat">Whether <c>R32_SFLOAT</c> can be both a depth-stencil attachment and
     /// a sampled image, which is <c>GpuCapabilities.SupportsShadowMaps</c>.</param>
-    /// <param name="Memory">Every memory type plus the two limits the block suballocator's arithmetic needs
-    /// (section 9.1). Read here rather than at the allocator because it is the same walk
+    /// <param name="Memory">Every memory type plus the three limits the block suballocator's and the uniform
+    /// ring's arithmetic need (sections 9.1 and 9.2). Read here rather than at the allocator because it is the
+    /// same walk
     /// <see cref="VulkanDeviceFacts.HasCoherentHostVisibleMemoryType"/> already needed, and two walks of one
     /// device's memory properties would be two chances to disagree about what it exposes.</param>
     internal readonly record struct VulkanPhysicalDeviceRead(
@@ -158,9 +159,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         }
 
         // The memory walk, ONCE. It answers V-M4's question (is there a host-visible coherent type, which the
-        // probe refuses a device without) and it produces the type table plus the two limits the block
-        // suballocator runs on (section 9.1). Doing it once is what stops the probe's answer and the allocator's
-        // view of the same device drifting apart.
+        // probe refuses a device without) and it produces the type table plus the three limits the block
+        // suballocator and the uniform ring run on (sections 9.1 and 9.2). Doing it once is what stops the probe's
+        // answer and the allocator's view of the same device drifting apart.
         //
         // NOTHING HERE READS bufferImageGranularity, and that is deliberate rather than an omission: linear and
         // optimal allocations never share a chunk (V-M2), so the constraint is satisfied structurally and there is
@@ -183,7 +184,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             ulong atom = properties->Limits.NonCoherentAtomSize;
             if (atom == 0) atom = 1;
 
-            return new VulkanMemoryFacts(types, atom, properties->Limits.MaxMemoryAllocationCount);
+            return new VulkanMemoryFacts(types, atom, properties->Limits.MaxMemoryAllocationCount,
+                properties->Limits.MinUniformBufferOffsetAlignment);
         }
 
         // VkMemoryPropertyFlags to the allocator's own flags, in the ONE place a Silk.NET memory enum is turned

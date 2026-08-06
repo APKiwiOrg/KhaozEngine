@@ -4,14 +4,18 @@ The engine's own native Vulkan backend for the [KhaozEngine.Gpu](../KhaozEngine.
 umbrella: a consumer adds this package explicitly, the same pattern as `Physics.Bepu` or `WorldStore.Sqlite`,
 and nothing that does not want the Vulkan binding ever carries it.
 
-> **Status: REGISTRATION, PROBE, A HEADLESS DEVICE AND ITS COMPLETION TIMELINE.** `KhaozEngineVulkan.Register()`
+> **Status: REGISTRATION, PROBE, A HEADLESS DEVICE, ITS COMPLETION TIMELINE AND ITS MEMORY ALLOCATOR.**
+> `KhaozEngineVulkan.Register()`
 > is real, so is the machine-capability probe behind it, and since
 > [#514](https://github.com/APKiwiOrg/KhaozEngine/issues/514) so is headless device creation:
 > `GpuDeviceContext.CreateHeadless(GpuBackendKind.VulkanNative)` builds a real `VkDevice` and a graphics queue on
 > the one refcounted process `VkInstance`, with its features enabled by name, its device-loss latch armed and
 > `KE_VULKAN_VALIDATION` wired. Since [#515](https://github.com/APKiwiOrg/KhaozEngine/issues/515) that device
 > also owns its ONE timeline semaphore, a real `IGpuFence` over it, the deferred-disposal retire list, and a
-> `WaitForIdle` that is a counted `vkWaitSemaphores` rather than a device-wide wait. That device cannot yet
+> `WaitForIdle` that is a counted `vkWaitSemaphores` rather than a device-wide wait. Since
+> [#516](https://github.com/APKiwiOrg/KhaozEngine/issues/516) it owns its block suballocator too, complete and
+> with nothing yet allocating out of it, because the first resource is
+> [#519](https://github.com/APKiwiOrg/KhaozEngine/issues/519). That device cannot yet
 > RENDER: recording is
 > [#517](https://github.com/APKiwiOrg/KhaozEngine/issues/517), resources and samplers are
 > [#519](https://github.com/APKiwiOrg/KhaozEngine/issues/519), and each unbuilt member throws a message naming
@@ -174,6 +178,57 @@ frame-boundary drain arrives with row 17's `Present` path, which is the only thi
 "mid-life resource disposal racing queued async work" structurally impossible on this backend rather than merely
 conventionally avoided. The engine's own `WaitForIdle` calls stay where they are, because they are the seam's
 contract and the Veldrid leg still needs them.
+
+## The memory allocator, and the condition attached to declining VMA
+
+**An engine-owned block suballocator.** Chunks of 64 MiB, one `vkAllocateMemory` each, pooled by
+`(memoryTypeIndex, linear|optimal)`. First-fit over a sorted free list with alignment correction, split on
+allocate, merge with both neighbours on free, one short lock around allocate and free because allocation is not
+on the hot path. A request at or above 16 MiB, or one the driver says it prefers or requires a dedicated
+allocation for, gets its own `vkAllocateMemory` outside the pools.
+
+**Linear and optimal never share a chunk, and that is the whole `bufferImageGranularity` implementation.**
+Buffers and optimal-tiling images may not share a granularity page. The incumbent rounds every non-dedicated
+request up to a multiple of that granularity and shares chunks, which is correct and wasteful, and its rounding
+adds a granule even when the size is already aligned. Separating the pools by tiling makes the constraint
+structural, so there is no granularity arithmetic anywhere in this package and none to get wrong.
+
+**Host-visible chunks are `vkMapMemory`'d once at creation and never unmapped.** Every host-visible allocation
+therefore has a stable pointer for its chunk's life, with no map call on any path. This is the thing Direct3D 11
+could not do and had to emulate with a record-phase map, and it is what makes the uniform ring
+([#518](https://github.com/APKiwiOrg/KhaozEngine/issues/518)) strictly simpler here while running the same
+policy. Anyone porting the D3D11 ring's map-and-unmap dance across is porting a workaround for a restriction
+Vulkan does not have, and the native seam has no unmap member so the alternative is not expressible.
+
+**Coherent memory is preferred everywhere and cached is preferred for readback.** The incumbent has no
+`vkFlushMappedMemoryRanges` and no `vkInvalidateMappedMemoryRanges` anywhere and rests entirely on a
+`HOST_COHERENT` type existing. Here both are real: a coherent chunk skips them entirely, and a cached
+non-coherent chunk, which is what readback staging deliberately prefers, emits them with the range widened to
+`nonCoherentAtomSize`. Widening is why every suballocation in such a chunk is also aligned and sized to that
+atom: a widened invalidate that reached a neighbour would discard the host's cached view of writes that
+neighbour has not flushed.
+
+**The uniform ring is the one place coherence is a requirement rather than a preference.** It asks for a
+host-visible `HOST_COHERENT` type and nothing else, with no fallback rung, and `IsSupported()` already answers
+false on a device reporting none. The spec requires such a type to exist, so this fails loudly on a device that
+cannot happen rather than gating one that can.
+
+**A chunk's memory goes back behind the timeline.** When the last allocation in a chunk is freed the chunk is
+retired rather than destroyed, and its `vkFreeMemory` runs only once the completion timeline has passed the
+value recorded at that moment. A pool keeps its last chunk, so a load-unload cycle does not become one
+`vkAllocateMemory` per iteration.
+
+**VMA is declined, and the decline is CONDITIONAL.** VMA is a C++ library with no maintained managed binding, so
+the real proposal is a native binary per RID in a backend whose premise is reducing native surface. The workload
+has no allocation problem to solve: meshes and textures allocate at load, uniform rings allocate once at
+creation, and the steady-state frame allocates nothing. The counterargument owed is that hand-rolled allocators
+are where memory corruption lives and the failure mode is an aliasing bug no test on a software rasterizer will
+show. The answer is this code's readability and device-free testability plus the synchronisation-validation job
+of [#529](https://github.com/APKiwiOrg/KhaozEngine/issues/529), which is the only instrument in the net that
+sees aliasing and hazard errors. **That linkage is a decision rather than a remark: if the sync-validation gate
+is ever dropped, the VMA decline must be re-argued.** The live and lifetime `vkAllocateMemory` counts the
+allocator keeps are what measurement gate MV6 is settled on, and they are deliberately not on
+`GpuDeviceCounters`, which has no field for them and which the other backends would have nothing to put in.
 
 ## `KE_VULKAN_DEVICE` and `KE_VULKAN_VALIDATION`
 

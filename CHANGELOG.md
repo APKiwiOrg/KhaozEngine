@@ -1739,6 +1739,74 @@ rule all run on a machine with no Vulkan loader. What no fake can prove is a val
 work finished, and that boundary is named in the test docs: row 7 owns the submit path and is where a counter
 first advances because a queue drained.
 
+### The native Vulkan block suballocator: pools split by tiling, persistent whole-chunk mapping, flush and invalidate (#516)
+
+The native Vulkan device owns an engine-owned block suballocator, complete and with nothing allocating out of it
+yet. Work-breakdown row 6, decisions V-M1 to V-M4. Chunks of 64 MiB, one `vkAllocateMemory` each, pooled by
+`(memoryTypeIndex, linear|optimal)`, first-fit over a sorted free list with alignment correction, split on
+allocate, merge with both neighbours on free, one short lock around allocate and free. Resources are #519, so
+this row lands the machinery and the tests that hold it rather than a caller for it.
+
+**Linear and optimal never share a chunk, and that is the entire `bufferImageGranularity` implementation
+(V-M2).** Buffers and optimal-tiling images may not share a granularity page. The incumbent rounds every
+non-dedicated request up to a multiple of that granularity and shares chunks, which is correct and wasteful, and
+its rounding adds a granule even when the size is already aligned. Putting tiling in the pool key makes the
+constraint structural, so there is no granularity read and no granularity arithmetic anywhere in the package.
+
+**Host-visible chunks are mapped once at creation and never unmapped (V-M3).** Every host-visible allocation has
+a stable pointer for its chunk's life, with no map call on any path, which is what will make the uniform ring
+(#518) strictly simpler than the Direct3D 11 one while running the same policy. The native seam has no unmap
+member at all, so the D3D11 record-phase map-and-unmap dance cannot be ported across by analogy: it was a
+workaround for an API restriction Vulkan does not have.
+
+**Flush and invalidate are real code, not a defensive branch (V-M4).** The incumbent has neither
+`vkFlushMappedMemoryRanges` nor `vkInvalidateMappedMemoryRanges` anywhere and rests entirely on a `HOST_COHERENT`
+type existing. Here the memory-type ladders prefer coherent everywhere, which keeps both free on the common
+path, and prefer CACHED for readback staging, which is what makes a non-coherent type reachable and the
+invalidate real. Ranges widen to `nonCoherentAtomSize` per the spec's own rules. **Widening also forces a
+structural fix that is easy to miss**: a widened range covers the neighbouring suballocations, and for an
+invalidate that discards a neighbour's un-flushed host writes, so every suballocation inside a host-visible
+non-coherent chunk is aligned AND sized to the atom, which makes the widening a no-op. Coherent chunks do no such
+rounding, because they never widen anything.
+
+**The uniform ring is the one hard requirement rather than a preference.** Its ladder has a single rung and no
+fallback, so a device with no host-visible coherent type refuses with V-M4 named rather than silently falling
+back to a per-frame flush over every written segment. The support probe already answers false on such a device.
+
+**A chunk's memory goes back behind the timeline.** Freeing the last allocation in a chunk retires the chunk
+through the row 5 retire list rather than freeing it, so `vkFreeMemory` runs only once the completion timeline
+has passed the value recorded at that moment. A pool keeps its last chunk, so a load-unload cycle does not become
+one `vkAllocateMemory` per iteration. Teardown gained two entries and one ordering rule: the device now drains
+the retire list, disposes the allocator, and drains again, because objects are destroyed before the memory they
+are bound into and because a resource destroy in the first drain can retire the chunk it was the last tenant of.
+A dead device abandons the chunks instead of freeing them, for the same reason it abandons the retire list.
+
+**Dedicated allocations on driver preference or above a threshold.** `prefersDedicatedAllocation` and
+`requiresDedicatedAllocation` are both honoured, and so is a size threshold of 16 MiB, a quarter of a chunk.
+Dedicated chunks bypass the pools, carry `VkMemoryDedicatedAllocateInfo` when a resource names one, and count in
+the same allocation counter and retire the same way.
+
+**The `vkAllocateMemory` counter MV6 reads is internal, deliberately.** Live and lifetime counts, plus a
+one-per-device WARN when the live count reaches a quarter of `maxMemoryAllocationCount`, which is MV6's own exit
+criterion. It is NOT on `GpuDeviceCounters`: that struct has no allocation-count field, and widening a
+cross-backend seam for one backend's internal reading is the wrong direction when Direct3D 11 and Metal have
+nothing to put in it. Row 18 (#528) owns the counter surface.
+
+**VMA stays declined and the decline stays CONDITIONAL (V-M1).** The counterargument owed is that hand-rolled
+allocators are where memory corruption lives and the failure mode is an aliasing bug no test on lavapipe will
+show. The answer is this code's readability and device-free testability plus #529's synchronisation-validation
+job, the only instrument in the net that sees aliasing and hazard errors. That linkage is a decision rather than
+a remark: if the sync-validation gate is ever dropped, the VMA decline must be re-argued.
+
+**Everything above is tested device-free**, behind a five-member native seam (`vkAllocateMemory`, `vkMapMemory`,
+`vkFlushMappedMemoryRanges`, `vkInvalidateMappedMemoryRanges`, `vkFreeMemory`) with the policy types taking no
+Silk.NET dependency at all, the same split row 2 took. The free list is driven case by case (alignment-padding
+reclamation, first fit, splitting, merging on both sides, exhaustion, oversize, the zero-size guard, freeing an
+unknown offset, freeing twice) and then under seeded randomized churn asserting that no two live suballocations
+ever overlap and that everything comes back as one coalesced range. The ladders are pinned rung by rung as well
+as by result, on a discrete-card layout and a unified-memory one. The retire ordering is driven through the REAL
+timeline and retire list over a fake semaphore, not a stub of either.
+
 ### A wall contact reads its face over the bank, not over a 0.4 m facet of it (#501)
 
 Walking along a bank on Ruinborne stopped the character dead in localised sticky PLACES, and the fix for

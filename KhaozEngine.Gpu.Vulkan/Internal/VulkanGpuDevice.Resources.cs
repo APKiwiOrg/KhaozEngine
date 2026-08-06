@@ -19,9 +19,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// (V-C8).</b> Direct3D 11's <c>Map(READ)</c> on the immediate context blocks until the resource is ready BY
     /// DEFINITION, so this is where Vulkan has to be explicit about something the other API did implicitly.
     /// Getting it wrong returns a pointer to bytes the copy has not written yet, which reads as an intermittently
-    /// wrong golden rather than as a failure. A WRITE map does not wait, matching the incumbent: nothing on this
-    /// backend reads a staging resource except a copy the caller ordered, and the seam's own contract for an
-    /// off-timeline write is that it lands when you call it.</para>
+    /// wrong golden rather than as a failure. A WRITE map does not wait, and the reason is this design's own
+    /// rather than the incumbent's, whose <c>Map</c> does not wait on either mode: a write map hands back memory
+    /// the CALLER is about to fill, so the only thing a wait could order it behind is a read of the same bytes by
+    /// work already queued, and nothing on this backend reads a staging resource except a copy the caller ordered
+    /// itself. The seam's contract for an off-timeline write is that it lands when you call it.</para>
     ///
     /// <para><b>THE MAP PAIR TAKES THE SUBMIT LOCK FOR THE MAP CALL AND NOTHING LONGER (11.4).</b> The flush and
     /// the drain both happen BEFORE it, so the lock covers the bookkeeping, the invalidate and the pointer

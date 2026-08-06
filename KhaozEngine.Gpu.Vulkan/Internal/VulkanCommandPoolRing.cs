@@ -5,9 +5,17 @@ using System.Diagnostics;
 namespace KhaozEngine.Gpu.Vulkan.Internal
 {
     /// <summary>
-    /// ONE COMMAND LIST'S POOLS: <see cref="VulkanFramesInFlight"/> <c>VkCommandPool</c>s, one primary
+    /// ONE RECORDER'S POOLS: <see cref="VulkanFramesInFlight"/> <c>VkCommandPool</c>s, one primary
     /// <c>VkCommandBuffer</c> allocated out of each at construction, and a parallel array of the timeline value
     /// each slot was last submitted at. Decisions V-R2 and V-R3, section 6.1.
+    ///
+    /// <para><b>TWO KINDS OF RECORDER RIDE IT, AND EVERYTHING BELOW HOLDS FOR BOTH.</b> Every
+    /// <see cref="VulkanCommandList"/> owns one, and so does the device's own
+    /// <see cref="VulkanSetupCommands"/> buffer (V-M10), whose batches advance a slot exactly as a list's records
+    /// do. Reusing this type rather than writing a second one means the wait, the reset and the retirement have
+    /// one implementation and one set of tests. Where the text below says a list, read the owner: the setup
+    /// buffer's slot advances once per BATCH rather than once per frame, which changes how often the wait is
+    /// reached and nothing about what it means.</para>
     ///
     /// <para><b>A POOL PER SLOT, NOT ONE POOL WITH <c>RESET_COMMAND_BUFFER</c>.</b> The incumbent creates one pool
     /// per list with that flag, which tells the driver every buffer must be individually resettable and pushes it
@@ -81,9 +89,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             if (framesInFlight < VulkanFramesInFlight.Minimum || framesInFlight > VulkanFramesInFlight.Maximum)
             {
                 throw new ArgumentOutOfRangeException(nameof(framesInFlight), framesInFlight,
-                    $"A native Vulkan command list runs between {VulkanFramesInFlight.Minimum} and "
-                    + $"{VulkanFramesInFlight.Maximum} command pools. {VulkanFramesInFlight.EnvVarName} clamps to "
-                    + "that range before it gets here.");
+                    $"A native Vulkan command pool ring runs between {VulkanFramesInFlight.Minimum} and "
+                    + $"{VulkanFramesInFlight.Maximum} command pools, whether it belongs to a command list or to "
+                    + $"the device's setup command buffer. {VulkanFramesInFlight.EnvVarName} clamps to that range "
+                    + "before it gets here.");
             }
 
             _api = api;
@@ -182,8 +191,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         internal void RecordSubmitted(int slot, ulong value) => _lastSubmitted[slot] = value;
 
         /// <summary>
-        /// Hand every pool to <paramref name="retired"/>, held behind <see cref="HighestSubmitted"/>. The list's
-        /// disposal, and the only place these pools are ever destroyed.
+        /// Hand every pool to <paramref name="retired"/>, held behind <see cref="HighestSubmitted"/>. The owner's
+        /// disposal (a command list's, or the setup buffer's <see cref="VulkanSetupCommands.Retire"/>), and the
+        /// only place these pools are ever destroyed.
         /// <para>
         /// ONE ENTRY PER POOL rather than one entry closing over the array, because the retire list invokes its
         /// callbacks outside its own lock and a callback that threw part way through a loop would leak the pools

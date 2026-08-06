@@ -7,6 +7,31 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.32.0
 
+### The repo is public again, and every CI leg moves back to GitHub-hosted runners
+
+`KhaozEngine` is public. It was briefly public before, went private in 2026-07 with the move to the
+`APKiwiOrg` org, and that flip is what put it on the bill: a private repo bills GitHub-hosted minutes
+(Linux 1x, Windows 2x, macOS 10x), and the engine grew into 71 percent of the org's GitHub spend. A public
+repo's GitHub-hosted standard runners are free, so the engine's CI costs nothing again.
+
+**The Metal leg moves off the self-hosted dev Mac back to `macos-14`.** Not only because hosted macOS is
+now free, but because it has to: a public repo cannot use the org's self-hosted runners at all, since the
+runner group sets `allows_public_repositories: false`. Left alone, the leg would never have been assigned a
+runner. **Watch the first hosted Metal run.** The committed metal golden was baked on the dev Mac's GPU and
+a hosted `macos-14` runner is different Apple-silicon hardware. The goldens are tolerance-based (32x18
+averaged grid) so it should carry, but a metal-only golden failure right after this change means a re-bake
+on the hosted runner, not a rendering regression.
+
+The suite tiers are unchanged and are now kept on their merits rather than their cost: the golden subset is
+the fast signal a push wants and the full suite is a slower sweep that belongs on the cron. The push path
+filter stays for the same reason, because a matrix firing on every push buries a real golden break in noise.
+The `2x billing` notes still in `cross-platform-gpu.yml` are history explaining how the tiers were chosen,
+not a live constraint.
+
+For consumers, the GitHub Packages feed no longer needs a PAT with `read:packages`. The per-repo
+`vendor/khaozengine` nupkg vendoring exists only because the feed required auth, so it can now be retired in
+the games at their own pace. Nothing is forced: vendoring still restores fine and is still the offline path.
+
 ### CI: the GPU matrix gets a leg selector, and the Vulkan package joins the push filter (#546)
 
 `cross-platform-gpu.yml` takes a second `workflow_dispatch` input, `legs`, choosing one backend

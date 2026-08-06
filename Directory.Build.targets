@@ -1,6 +1,6 @@
 <Project>
   <!-- Relativize the source/PDB paths embedded in packed (Release) DLLs so no absolute build-box
-       home path (e.g. /Users/antonio/KhaozEngine/...) ships in the shipped DLL's PE debug directory,
+       home path (e.g. /Users/&lt;name&gt;/KhaozEngine/...) ships in the shipped DLL's PE debug directory,
        regardless of which machine packs the release. The embedded path is recoverable via `strings`
        even though PDBs themselves ship only in the .snupkg (never pushed), so this closes the residual
        leak. ContinuousIntegrationBuild turns on deterministic builds + the well-known source-root

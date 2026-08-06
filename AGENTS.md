@@ -238,8 +238,9 @@ exception is the trivial-change case below.
 - **Two guards keep the backlog files retired.** A pre-commit check and a `Write`/`Edit` agent hook both
   reject re-creating `docs/TODO.md` or `docs/ROADMAP.md` (migrated to GitHub Issues 2026-07-17, deleted),
   pointing you at `gh issue create` instead. Override a deliberate exception with `BACKLOG_FILE_OK=1`.
-- **The ledger needs a token, and it will tell you so.** The backlog is GitHub Issues in a private repo,
-  so there is no anonymous read: `scripts/ledger.sh` needs `gh auth login` or `GH_TOKEN` exported. Codex
+- **The ledger still wants a token.** The repo is public now, so the issues are anonymously readable, but
+  `gh` rate-limits unauthenticated calls hard enough (60/hour per IP) that a mirror sync will fail part way
+  through and look like an outage. Keep `gh auth login` or `GH_TOKEN` exported. Codex
   and CI generally need the env var. When it cannot read, it says `BACKLOG: UNKNOWN` or `STALE MIRROR` and
   names the fix. **It never says `0`**, deliberately, because a count is only ever printed when it was
   actually read (the full case is in the `ledger.sh` header).

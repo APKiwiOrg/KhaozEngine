@@ -1,8 +1,20 @@
 # cross-platform-gpu: desktop GPU test matrix (Win D3D11 incumbent + Win D3D11 native / Linux Vulkan / macOS Metal).
 #
+# BILLING: this repo is PUBLIC, so GitHub-hosted standard runners are free and every leg below runs
+# hosted. The suite split that follows was decided when the repo was private and hosted minutes billed
+# (Linux 1x, Windows 2x, macOS 10x). It is KEPT on its merits rather than its cost: the golden subset is
+# the fast signal a push wants, and the full suite is a slower sweep that belongs on the cron. Read the
+# "2x billing" notes below as history explaining how the tiers were chosen, not as a live constraint. If
+# a tier is ever revisited, the argument now has to be about feedback speed and lavapipe stability,
+# because the money is gone. The engine went public 2026-08-06 after its private CI became the largest
+# line on the org's GitHub bill.
+#
 # What this does (suite split by leg + trigger, decided from measured cost + lavapipe stability):
-#   * The self-hosted Metal leg (free) runs the FULL test suite (every [GpuFact], golden and
-#     behavioral, plus the headless suite) on EVERY trigger.
+#   * The Metal leg runs the FULL test suite (every [GpuFact], golden and behavioral, plus the headless
+#     suite) on EVERY trigger. It ran on the self-hosted dev Mac while the repo was private, because
+#     hosted macOS bills at 10x. On a public repo hosted macOS is free, so it moved back to `macos-14`:
+#     a public repo cannot use the org's self-hosted runners anyway (the runner group sets
+#     allows_public_repositories: false), so this move is required for the leg to get a runner at all.
 #   * The GitHub-hosted D3D11 leg (2x billing) runs only the golden tests
 #     (FullyQualifiedName~Golden) on push / pull_request, and the FULL suite on the weekly
 #     schedule and on workflow_dispatch. Rationale: the full suite on hosted Windows measured
@@ -68,8 +80,9 @@
 
 name: cross-platform-gpu
 
-# Cost control: the Metal leg runs on the self-hosted dev Mac (free), but the two D3D11 legs (2x each) and
-# the Vulkan leg (1x) still bill on GitHub-hosted runners, so don't fire this matrix on EVERY push. On push it runs
+# The push path filter below was written as cost control, when every leg but Metal billed. On a public repo
+# it costs nothing, and it stays because it is also the right behaviour: a matrix that fires on every push
+# buries a real golden break in noise, and a docs push has no way to move a rendered pixel. On push it runs
 # only when something that can change a GPU golden is touched (rendering stack, the GPU seam, the GPU
 # test dir, or this workflow). Docs/netcode/etc. pushes skip it. PRs + manual bake still run as before.
 concurrency:
@@ -213,7 +226,7 @@ jobs:
           # and the same suite tier as the incumbent leg, which is the point: two implementations of one API
           # on one rasterizer, checked against a single shared set of goldens (decision I3).
           all='[
-            {"os":"macos-14",      "backend":"metal",             "runner":["self-hosted","macOS","ARM64"], "fullSuite":"always",    "d3d11Adapter":""},
+            {"os":"macos-14",      "backend":"metal",             "runner":"macos-14",                      "fullSuite":"always",    "d3d11Adapter":""},
             {"os":"windows-latest","backend":"direct3d11",        "runner":"windows-latest",                "fullSuite":"scheduled", "d3d11Adapter":"warp"},
             {"os":"windows-latest","backend":"direct3d11-native", "runner":"windows-latest",                "fullSuite":"scheduled", "d3d11Adapter":"warp"},
             {"os":"ubuntu-latest", "backend":"vulkan",            "runner":"ubuntu-latest",                 "fullSuite":"scheduled", "d3d11Adapter":""}
@@ -244,11 +257,14 @@ jobs:
     # the lavapipe leg ever flakes on a runner-image change, re-add
     # `continue-on-error: ${{ matrix.backend == 'vulkan' }}` here to drop it back to informational.
     #
-    # Runner split (engine is private, so hosted minutes bill): the Metal leg runs on the self-hosted dev
-    # Mac (real Metal, free, and where the metal golden is baked so it matches). Both D3D11 legs and Vulkan
-    # are software rasterizers with no local host, so they stay GitHub-hosted. All three are path-gated
-    # (rare) => trivial spend, and the native leg's 2x Windows rate is the reason its push path stays
-    # golden-only rather than running the full suite (decision T5).
+    # Runner split: every leg is GitHub-hosted now that the repo is public and hosted minutes are free.
+    # The Metal leg ran on the self-hosted dev Mac while the repo was private (hosted macOS bills 10x) and
+    # moved back to `macos-14` with the visibility flip. WATCH THIS ONE: the committed metal golden was
+    # baked on the dev Mac's GPU, and a hosted macos-14 runner is different Apple-silicon hardware. The
+    # goldens are tolerance-based (32x18 averaged grid) so it should carry, but a metal-only golden failure
+    # after the move means a re-bake on the hosted runner, not a rendering regression. Both D3D11 legs and
+    # Vulkan are software rasterizers and were always hosted. The suite tiers (native leg golden-only on
+    # push, decision T5) were chosen against 2x Windows billing and are kept for feedback speed.
     # The matrix keys stay on `os` (drives the OS-specific setup steps + the leg name); `runner` picks where.
     strategy:
       fail-fast: false

@@ -33,6 +33,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// partial capability read, and it is now backed by a real primitive rather than by a promise about one.
     /// </para>
     /// <para>
+    /// <b>THE BLOCK SUBALLOCATOR IS LIVE AND NOTHING ALLOCATES OUT OF IT YET</b> (row 6,
+    /// https://github.com/APKiwiOrg/KhaozEngine/issues/516). The device owns one
+    /// <see cref="VulkanMemoryAllocator"/>: chunks pooled by <c>(memoryTypeIndex, linear|optimal)</c>, first-fit
+    /// with alignment correction and coalescing free, persistent whole-chunk mapping, dedicated allocations on
+    /// driver preference or above a size threshold, and flush and invalidate on the non-coherent path. What it has
+    /// no callers for is RESOURCES: buffers and images are row 9, so the allocator is complete internal machinery
+    /// driven by tests until that row binds the first <c>VkBuffer</c> to one of its offsets. The retire path is
+    /// wired from this row, so a chunk that empties is already returned behind the timeline rather than freed
+    /// underneath a submission.
+    /// </para>
+    /// <para>
     /// <b><see cref="Capabilities"/> IS PARTIAL AND SAYS WHICH PART.</b> Row 18
     /// (https://github.com/APKiwiOrg/KhaozEngine/issues/528) owns the capability read and the ZERO-permitted-
     /// difference parity test against the incumbent. What this row fills is everything readable off a device with
@@ -57,6 +68,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         readonly VulkanDeviceLossLatch _loss;
         readonly VulkanTimeline _timeline;
         readonly VulkanRetireList _retired = new();
+        readonly VulkanMemoryAllocator _memory;
         readonly Device _device;
         readonly bool _softwareAdapter;
         readonly object _lifecycle = new();
@@ -66,7 +78,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         VulkanGpuDevice(VulkanInstanceLease<VulkanInstance> instance, Device device, Queue graphicsQueue,
             uint graphicsQueueFamily, GpuCapabilities capabilities, bool softwareAdapter,
-            VulkanDeviceLiveness liveness, VulkanDeviceLossLatch loss, VulkanTimeline timeline)
+            VulkanDeviceLiveness liveness, VulkanDeviceLossLatch loss, VulkanTimeline timeline,
+            IVulkanDeviceMemoryApi memoryApi, VulkanMemoryFacts memoryFacts)
         {
             _instance = instance;
             _device = device;
@@ -77,6 +90,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _loss = loss;
             _timeline = timeline;
             Capabilities = capabilities;
+
+            // BUILT HERE rather than handed in, because the retire list its chunk destroys go through is this
+            // object's own field. Passing the allocator in would mean either handing that list out before the
+            // device exists or building a second one, and a second retire list splits the deferred destroys in
+            // two so that neither drain sees all of them.
+            _memory = new VulkanMemoryAllocator(memoryApi, memoryFacts, new VulkanTimelineRetirement(
+                timeline, _retired));
         }
 
         /// <inheritdoc/>
@@ -112,6 +132,21 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// yet, and here now because rows 7 and 9 both hand to it.
         /// </summary>
         internal VulkanRetireList Retired => _retired;
+
+        /// <summary>
+        /// The device's ONE block suballocator (V-M1, section 9.1). Every <c>vkAllocateMemory</c> this backend
+        /// ever makes goes through it, and its chunk destroys are already routed through <see cref="Retired"/>, so
+        /// memory returns to the driver only once the timeline has passed the value recorded at free time.
+        /// <para>
+        /// Nothing allocates out of it yet, because no resource type exists: buffers and images are row 9
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/519) and the uniform ring is row 8
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/518). It is created with the device rather than with
+        /// the first resource for the reason the timeline was: a device-owned primitive that every later row can
+        /// assume exists needs no lazy-creation rule, and its teardown slot in <see cref="Dispose"/> is decided
+        /// once here instead of by whichever row first allocated something.
+        /// </para>
+        /// </summary>
+        internal VulkanMemoryAllocator Memory => _memory;
 
         /// <summary>
         /// THE FRAME-BOUNDARY DRAIN of the retire list: run every held destroy the timeline has passed, and leave
@@ -277,8 +312,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         /// <summary>
         /// Destroy the device, in the ONE order V-F10 permits: <c>vkDeviceWaitIdle</c> FIRST, then the retire
-        /// list's teardown drain, then the timeline semaphore, then the liveness flip, then
-        /// <c>vkDestroyDevice</c>, then the instance lease.
+        /// list's teardown drain, then the block suballocator's chunks, then a second drain, then the timeline
+        /// semaphore, then the liveness flip, then <c>vkDestroyDevice</c>, then the instance lease.
         /// <para>
         /// The incumbent destroys its memory manager and its pools and only THEN waits, which destroys objects the
         /// GPU may still be reading. Waiting first is the whole fix, and it is why the wait was written here at
@@ -294,6 +329,21 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// look arbitrary. The held destroys are gated on timeline VALUES, and the teardown drain runs them all
         /// regardless because the wait above already made every value passed. Draining them first keeps the rule
         /// intact anyway: nothing that reads the timeline runs after the timeline has gone.
+        /// </para>
+        /// <para>
+        /// THE ALLOCATOR GOES AFTER THE RETIRE LIST'S DRAIN, because objects are destroyed before the memory they
+        /// are bound into. Freeing a chunk while a <c>VkBuffer</c> or <c>VkImage</c> is still bound into it is the
+        /// hazard, and row 9 (https://github.com/APKiwiOrg/KhaozEngine/issues/519) is where those objects start
+        /// existing, so the order is settled here rather than by the row that first trips it. The chunks are then
+        /// freed IMMEDIATELY rather than retired: the wait above already made the GPU idle, so retiring them would
+        /// only mean the same calls one line later.
+        /// </para>
+        /// <para>
+        /// THE SECOND DRAIN IS NOT BELT AND BRACES. A resource destroy running in the first drain may free its own
+        /// allocation, and freeing the last allocation in a chunk RETIRES that chunk, appending to a list the
+        /// drain has already taken its entries from. Without the second drain that chunk is never freed, and the
+        /// leak is one that only appears once resources exist, which is to say in somebody else's row. A drain on
+        /// an empty list is one length read.
         /// </para>
         /// <para>
         /// A DEAD DEVICE ABANDONS THE RETIRE LIST INSTEAD OF DRAINING IT, on BOTH of the paths that reach one. The
@@ -345,8 +395,18 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                         // the calls that contract exists to stop. Otherwise the wait is what makes an
                         // unconditional drain correct: the GPU is idle, so every recorded timeline value has been
                         // passed and the values have nothing left to say.
-                        if (lost) ReportAbandoned(_retired.Abandon());
-                        else _retired.DrainAll();
+                        if (lost)
+                        {
+                            ReportAbandoned(_retired.Abandon(), _memory.Abandon());
+                        }
+                        else
+                        {
+                            // Objects first, then the memory they are bound into, then anything the object
+                            // destroys retired on their way out. See the doc block above for both orderings.
+                            _retired.DrainAll();
+                            _memory.Dispose();
+                            _retired.DrainAll();
+                        }
 
                         // Skips its own native destroy on the lost path, for the same reason, through the same
                         // liveness token.
@@ -361,9 +421,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     else
                     {
                         // A device that was ALREADY dead when Dispose arrived. Its children went with it, so the
-                        // held destroys are dropped rather than run, and the timeline's own Dispose skips the
-                        // native destroy for the same reason.
-                        ReportAbandoned(_retired.Abandon());
+                        // held destroys are dropped rather than run, every memory chunk is forgotten rather than
+                        // freed, and the timeline's own Dispose skips the native destroy for the same reason.
+                        ReportAbandoned(_retired.Abandon(), _memory.Abandon());
                         _timeline.Dispose();
                     }
                 }
@@ -376,16 +436,16 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             }
         }
 
-        // Says how many deferred destroys went unrun on a dead device. A report rather than a leak, since the
-        // objects were destroyed with the device, and worth a line because a large number here says the consumer
-        // was still creating and disposing resources after the device had gone.
-        static void ReportAbandoned(int dropped)
+        // Says how many deferred destroys and how many memory chunks went unfreed on a dead device. A report
+        // rather than a leak, since both went with the device, and worth a line because a large number of either
+        // says the consumer was still creating and disposing resources after the device had gone.
+        static void ReportAbandoned(int dropped, int chunks)
         {
-            if (dropped == 0) return;
+            if (dropped == 0 && chunks == 0) return;
 
-            log.Warn($"{dropped} deferred native Vulkan destroys were dropped without running, because the device "
-                + "they belonged to was dead by the time it was disposed. The objects went with the device, so "
-                + "this is a report rather than a leak.");
+            log.Warn($"{dropped} deferred native Vulkan destroys and {chunks} device memory chunks were dropped "
+                + "without running, because the device they belonged to was dead by the time it was disposed. "
+                + "Both went with the device, so this is a report rather than a leak.");
         }
 
         // The row that owns each unbuilt member, as a full URL, because these messages are read by somebody who

@@ -92,9 +92,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 NameTimeline(instance, device, semaphore.Handle);
                 var timeline = new VulkanTimeline(semaphore, liveness);
 
+                // THE ONE ALLOCATOR (V-M1) is built by the constructor, from the native seam and the memory facts
+                // handed in here. It is the device that owns the retire list its chunk destroys go through, so
+                // wiring the hook out here would mean handing that list out before the device exists, or building
+                // a second one and silently splitting the deferred destroys across two.
                 var created = new VulkanGpuDevice(lease, device, graphicsQueue, read.GraphicsQueueFamily,
                     ReadCapabilities(read, features), candidates[chosen].IsSoftwareRasterizer, liveness, loss,
-                    timeline);
+                    timeline, new VulkanDeviceMemoryApi(vk, device, loss, liveness), read.Memory);
+
+                log.Info(created.Memory.Describe());
 
                 // The strict rung's FIRST controlled point. Device creation is the noisiest moment a validation
                 // layer sees, so an error raised by the create-info above is caught here rather than surviving

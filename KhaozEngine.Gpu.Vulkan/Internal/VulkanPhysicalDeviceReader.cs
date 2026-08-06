@@ -16,13 +16,18 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// queue model (V-N5).</param>
     /// <param name="SupportsShadowMapFormat">Whether <c>R32_SFLOAT</c> can be both a depth-stencil attachment and
     /// a sampled image, which is <c>GpuCapabilities.SupportsShadowMaps</c>.</param>
+    /// <param name="Memory">Every memory type plus the two limits the block suballocator's arithmetic needs
+    /// (section 9.1). Read here rather than at the allocator because it is the same walk
+    /// <see cref="VulkanDeviceFacts.HasCoherentHostVisibleMemoryType"/> already needed, and two walks of one
+    /// device's memory properties would be two chances to disagree about what it exposes.</param>
     internal readonly record struct VulkanPhysicalDeviceRead(
         VulkanDeviceFacts Facts,
         VulkanFeatureSupport Features,
         VulkanPhysicalDeviceClass Class,
         bool IsLlvmpipe,
         uint GraphicsQueueFamily,
-        bool SupportsShadowMapFormat);
+        bool SupportsShadowMapFormat,
+        VulkanMemoryFacts Memory);
 
     /// <summary>
     /// The one place a <c>VkPhysicalDevice</c> is turned into plain data, shared by the support probe and by
@@ -62,6 +67,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             string name = ReadDeviceName(&properties);
             uint graphicsFamily = FirstGraphicsQueueFamily(vk, device);
+            VulkanMemoryFacts memory = ReadMemory(vk, device, &properties);
 
             var facts = new VulkanDeviceFacts(
                 DeviceName: name,
@@ -69,7 +75,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 DynamicRendering: features.DynamicRendering,
                 Synchronization2: features.Synchronization2,
                 TimelineSemaphore: features.TimelineSemaphore,
-                HasCoherentHostVisibleMemoryType: HasCoherentHostVisibleMemoryType(vk, device),
+                HasCoherentHostVisibleMemoryType: memory.HasCoherentHostVisibleType,
                 MaxDescriptorSetUniformBuffersDynamic: properties.Limits.MaxDescriptorSetUniformBuffersDynamic,
                 HasGraphicsQueueFamily: graphicsFamily != NoQueueFamily,
                 // Not asked, and not askable without a surface. The windowed clause is evaluated at swapchain
@@ -83,7 +89,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 Classify(properties.DeviceType),
                 IsLlvmpipe(vk, device, clearsVersionFloor, name),
                 graphicsFamily,
-                SupportsShadowMapFormat(vk, device));
+                SupportsShadowMapFormat(vk, device),
+                memory);
         }
 
         /// <summary>The driver's name for the device, copied out of the fixed byte buffer into a managed string so
@@ -150,22 +157,49 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             return name.Contains("llvmpipe", StringComparison.OrdinalIgnoreCase);
         }
 
-        // V-M4's read. One type carrying both bits is enough, and the Vulkan spec requires at least one to exist,
-        // so this is the check that fails loudly on a device that cannot happen rather than one that gates a
-        // device that can.
-        static bool HasCoherentHostVisibleMemoryType(Vk vk, PhysicalDevice device)
+        // The memory walk, ONCE. It answers V-M4's question (is there a host-visible coherent type, which the
+        // probe refuses a device without) and it produces the type table plus the two limits the block
+        // suballocator runs on (section 9.1). Doing it once is what stops the probe's answer and the allocator's
+        // view of the same device drifting apart.
+        //
+        // NOTHING HERE READS bufferImageGranularity, and that is deliberate rather than an omission: linear and
+        // optimal allocations never share a chunk (V-M2), so the constraint is satisfied structurally and there is
+        // no arithmetic to feed. The incumbent reads it and rounds every non-dedicated request by it.
+        static VulkanMemoryFacts ReadMemory(Vk vk, PhysicalDevice device, PhysicalDeviceProperties* properties)
         {
-            const MemoryPropertyFlags required =
-                MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit;
-
             PhysicalDeviceMemoryProperties memory;
             vk.GetPhysicalDeviceMemoryProperties(device, &memory);
 
+            var types = new VulkanMemoryTypeInfo[memory.MemoryTypeCount];
             for (uint i = 0; i < memory.MemoryTypeCount; i++)
             {
-                if ((memory.MemoryTypes[(int)i].PropertyFlags & required) == required) return true;
+                MemoryType type = memory.MemoryTypes[(int)i];
+                types[i] = new VulkanMemoryTypeInfo(i, type.HeapIndex, Translate(type.PropertyFlags));
             }
-            return false;
+
+            // nonCoherentAtomSize is required to be a power of two and at least 1, but a driver that reports 0
+            // would make every range rounding a division by a mask of all ones. Substituting 1 turns that into an
+            // identity rather than into a throw at device creation on a machine that is otherwise fine.
+            ulong atom = properties->Limits.NonCoherentAtomSize;
+            if (atom == 0) atom = 1;
+
+            return new VulkanMemoryFacts(types, atom, properties->Limits.MaxMemoryAllocationCount);
+        }
+
+        // VkMemoryPropertyFlags to the allocator's own flags, in the ONE place a Silk.NET memory enum is turned
+        // into something the device-free policy types can decide on.
+        static VulkanMemoryTrait Translate(MemoryPropertyFlags flags)
+        {
+            VulkanMemoryTrait traits = VulkanMemoryTrait.None;
+
+            if ((flags & MemoryPropertyFlags.DeviceLocalBit) != 0) traits |= VulkanMemoryTrait.DeviceLocal;
+            if ((flags & MemoryPropertyFlags.HostVisibleBit) != 0) traits |= VulkanMemoryTrait.HostVisible;
+            if ((flags & MemoryPropertyFlags.HostCoherentBit) != 0) traits |= VulkanMemoryTrait.HostCoherent;
+            if ((flags & MemoryPropertyFlags.HostCachedBit) != 0) traits |= VulkanMemoryTrait.HostCached;
+            if ((flags & MemoryPropertyFlags.LazilyAllocatedBit) != 0) traits |= VulkanMemoryTrait.LazilyAllocated;
+            if ((flags & MemoryPropertyFlags.ProtectedBit) != 0) traits |= VulkanMemoryTrait.Protected;
+
+            return traits;
         }
 
         // V-N5's read, the half that needs no surface: the FIRST family with VK_QUEUE_GRAPHICS_BIT. Whether it can

@@ -84,9 +84,16 @@ public static partial class CharacterMovement
     // walker genuinely is being aimed into the face. Only an ask no rung can get under refuses, and on a smooth face
     // that means a bend radius of about a centimetre, which is a crease rather than a bend.
     //
-    // The direction bias the ladder is compensating
-    // for - the projection reads its contour at the DESTINATION rather than at the walker's own column, so it aims
-    // a hair into a bending face whatever its length - is #502, and closing that is what would retire this ladder.
+    // THE DIRECTION BIAS THIS LADDER WAS COMPENSATING FOR IS CLOSED (#502), AND THE LADDER STAYS. The projection
+    // read its contour at the DESTINATION rather than at the walker's own column, so it aimed a hair into a
+    // bending face whatever its length, and the note here said closing that would retire the ladder. It does not,
+    // for two reasons worth stating rather than leaving a reader to find. The levelling only fires inside its own
+    // three gates (OwnColumnCeilingBand, OwnColumnLevelKeep, and the sign), so a bend tighter than about 6.4 step
+    // lengths still hands this ladder the un-levelled travel it always got, and so does every bend that turns the
+    // other way. And where the levelling DOES fire the ask becomes quadratic in the rung rather than k(2-k), which
+    // makes the same six rungs 128 times more effective rather than unnecessary. What has changed is how often the
+    // ladder is reached at all: over the CONVEX fixture bank sweep it went from deciding every contact tick to
+    // deciding none of them, while over the concave mirror it still decides every one of them.
     private const int ProjectedStepRungs = 6;
 
     // How much wider than the ordinary height stencil AdvanceWallSlide reads its SECOND face direction over: FIVE
@@ -260,6 +267,13 @@ public static partial class CharacterMovement
     // is the version of the same idea that costs no state.
     private const float WideFaceKeepMargin = 1f;
 
+    // THE #502 OWN-COLUMN LEVELLING'S TWO CONSTANTS LIVE NEXT DOOR, in CharacterMovement.WallContactLevel.cs
+    // together with the correction itself (LevelOnOwnColumn), its third gate and every measurement all four are
+    // chosen on. They moved there when the round-two sign gate grew this file past the size ratchet, and they
+    // are named from here rather than restated: OwnColumnCeilingBand is how close the walker's own column has to
+    // stand to this tick's traction gate for that ground to count as the face that stopped it, and
+    // OwnColumnLevelKeep is how much of the travel the correction has to leave behind.
+
     /// <summary>Advance an XZ position by a horizontal velocity for one tick, WALL-SLIDING off analytic terrain that
     /// the step cannot reach: when the destination's ground normal is steeper than
     /// <see cref="MoveTuning.MaxSlopeRadians"/> AND its ground stands more than <paramref name="reach"/> above the
@@ -296,6 +310,20 @@ public static partial class CharacterMovement
     /// crease's two walls to nothing. The steepness test above and the ladder below still read the ordinary narrow
     /// HEIGHTS throughout, so a wider direction can change where the walker goes and never what altitude it may
     /// take.</para>
+    /// <para>AND WHAT SURVIVES IS MADE LEVEL ON THE COLUMN THE WALKER IS STANDING ON (#502). The face says which
+    /// component the wall eats and nothing about the altitude the survivor takes, and on a face that BENDS in plan
+    /// the survivor quietly buys some: the contour is level on the plane at the DESTINATION, so a step along that
+    /// line taken from here cuts inside the contour by the sagitta of a chord and climbs whatever its length. A
+    /// walker pinned by a wall contact is resting ON its traction ceiling, so every endpoint that climbs at all is
+    /// past it, and the ride was a slow oscillation across that ceiling - seat, lose footing, slide back, walk in.
+    /// So the surviving travel has its component along the WALKER'S OWN column's outward removed, which on that
+    /// bend sign descends by the same sagitta instead of climbing it. Three gates, and the third is a SIGN: the
+    /// walker's own column must be at least <see cref="OwnColumnCeilingBand"/> short of this tick's gate rather
+    /// than somewhere else entirely, the levelling must keep at least <see cref="OwnColumnLevelKeep"/> of the
+    /// travel, and it must LOWER what the step asks the surface for rather than raise it - which on a CONCAVE bend
+    /// it would, by the same sagitta, since there the destination anchor is the one that already descends. A naive
+    /// re-anchor, reading the face itself at the walker's column, turns the anti-tunnel refusal into a seat. All
+    /// four of those are measured dead or alive at <see cref="LevelOnOwnColumn"/>, which is the rule itself.</para>
     /// <para>ANTI-TUNNEL, AND WHY IT SHORTENS BEFORE IT REFUSES (#498). The projected move is re-tested against the
     /// same two conditions, and one that still lands in a wall is SHORTENED rather than dropped: retested by repeated
     /// halving down to a sixty-fourth of itself (<see cref="ProjectedStepRungs"/>), committing the first endpoint
@@ -397,6 +425,30 @@ public static partial class CharacterMovement
         // wide read's business, two lines down.
         if (sx == 0f && sz == 0f) return (x, z);
 
+        // LEVELLING THE PROJECTED TRAVEL AGAINST THE WALKER'S OWN COLUMN (#502). The face above says which
+        // component of the move the wall eats. It does NOT say what altitude the survivor takes, and on a face
+        // that BENDS in plan it quietly buys some, because the contour it hands back is level on the plane at the
+        // DESTINATION rather than here. So the survivor is made level on the plane the walker IS STANDING ON, by
+        // removing its component along that plane's own outward - which on the bend sign that climbs turns a step
+        // that gained the sagitta of a chord into one that sheds it, and on the mirror is refused outright. The
+        // whole rule, its three gates, the anchor table it is chosen on, the naive re-anchor it is not, and the
+        // measurements behind every one of those live at LevelOnOwnColumn in CharacterMovement.WallContactLevel.cs.
+        //
+        // WHAT THIS LINE OWES THE RULE IS THE OWN PLANE AND THE BAND, and both are here rather than there because
+        // both are the CALLER'S: the four height probes are read on this tick's stencil, and the band is measured
+        // against this tick's gate. FaceDirection is handed a ZERO velocity on purpose - a level own column has no
+        // face, and the degenerate branch then returns the zero vector instead of standing the movement direction
+        // in as the face's own, which is the same "not this tick" answer the failed band gives.
+        //
+        // WHAT IT COSTS: four height probes on a wall-contact tick, and nothing at all on any other tick. They are
+        // read after the head-on short-circuit rather than before it, so the 78 percent of head-on contacts that
+        // return there do not pay for them.
+        Vector3 ownPlane = HeightPlaneNormal(x, z, StencilRadius(tuning), groundHeight, Vector3.UnitY);
+        (float ox, float oz) = IsSteepGround(ownPlane, MathF.Max(0f, gate - OwnColumnCeilingBand))
+            ? FaceDirection(ownPlane, Vector2.Zero)
+            : (0f, 0f);
+        (sx, sz) = LevelOnOwnColumn(sx, sz, ox, oz);
+
         // THE SECOND, WIDER FACE, AND WHAT MAKES THE MOVE TAKE IT INSTEAD (#501, round three). A GATE and a
         // COMPARISON, where this rule used to carry a gate and two triggers:
         //
@@ -415,6 +467,36 @@ public static partial class CharacterMovement
         // pointed and nothing else: the ladder underneath tests whichever candidate it is handed against the
         // delegates' own real heights at the point that candidate actually lands on, and refuses it there. So a wider
         // direction cannot buy a metre of climb a narrow one could not, whichever way this comparison goes.
+        //
+        // WHAT THIS RULE COMPARES IS THE LEVELLED NARROW TRAVEL AGAINST A RAW WIDE ONE, AND #502 SAYING IT LEFT THE
+        // SELECTOR UNTOUCHED WAS FALSE AS CODED. The correction above overwrites (sx, sz) before this block reads
+        // them, so all three of the selector's inputs are the LEVELLED narrow projection: the doubt gate that
+        // decides whether a wide read is made at all, the max-keep margin that decides whether it wins, and the
+        // fallback candidate the ladder retries with. The wide travel is never levelled, so where the wide face
+        // wins the correction is discarded for that tick. It is a composition, and it is one that was measured
+        // rather than inherited.
+        //
+        // THE ALTERNATIVE WAS BUILT AND SWEPT SIDE BY SIDE: read the selector on the UN-LEVELLED narrow travel and
+        // apply the correction to whichever candidate the comparison chose (and to the one it beat), which is the
+        // arrangement that would make #501's own account of this block literally true again. On everything the
+        // census resolves the two are the same build. Identical tier counts against the pre-#501 reference
+        // (1/10/167 with 39 improvements), identical on all sixty convex bank rides, identical on all sixty
+        // concave ones, identical on the asymmetric gully, identical over the 40 to 60 degree noisy-bank scan.
+        // They differ only on the noisy bank: the twelve pinned attractor rides total 324 airborne ticks that way
+        // against 337 this way (the pre-#502 build reads 326), and the largest efficiency moves are 0.072, 0.063
+        // and 0.052, which is 1.5x to 7x what a hundredth of a degree of meaningless rotation moves those rows
+        // (0.049 at the worst, and under 0.02 on those three). So the noise argument does NOT cover the
+        // composition difference on that fixture, and the census tiers do not separate the two either.
+        //
+        // SO THE CENSUS DOES NOT CHOOSE, AND WHAT DOES IS THE ONE REFEREE EDGE THAT IS NOT NOISE: the rectification
+        // ceiling WallFaceAttractorTests pins at 1.25. Scanned at 0.02 degrees over leans 60 to 87, the pre-#502
+        // build peaks at 1.2263 and this composition at 1.2263, while the un-levelled-selector one peaks at 1.2435
+        // - three quarters of the remaining headroom, on the single bound in this chain that a build has already
+        // breached once by reading it off too coarse a grid, and on the side where every refinement of the grid
+        // finds a HIGHER peak. That is a bad trade for a doc sentence, so the composition ships as it is and the
+        // sentence is corrected instead. What is given up is stated rather than hidden: the levelling can push a
+        // contact across the doubt band and so change whether a wide read is made, and it does not survive a tick
+        // the wide face wins. Neither is free, and both are smaller than the ceiling.
         //
         // Squared throughout, so the comparison costs no square root and the margin enters squared with it. The
         // narrow keep cannot be zero here, since the head-on short-circuit above has already returned on that, so a

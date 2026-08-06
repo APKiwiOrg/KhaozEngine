@@ -243,7 +243,7 @@ jobs:
           # nothing here touches that machine, so the pull_request exclusion that used to guard it is gone too and
           # Metal covers PRs again.
           all='[
-            {"os":"macos-15",      "backend":"metal",             "runner":"macos-15",                      "fullSuite":"always",    "d3d11Adapter":""},
+            {"os":"macos-26",      "backend":"metal",             "runner":"macos-26",                      "fullSuite":"always",    "d3d11Adapter":""},
             {"os":"windows-latest","backend":"direct3d11",        "runner":"windows-latest",                "fullSuite":"scheduled", "d3d11Adapter":"warp"},
             {"os":"windows-latest","backend":"direct3d11-native", "runner":"windows-latest",                "fullSuite":"scheduled", "d3d11Adapter":"warp"},
             {"os":"ubuntu-latest", "backend":"vulkan",            "runner":"ubuntu-latest",                 "fullSuite":"scheduled", "d3d11Adapter":""}

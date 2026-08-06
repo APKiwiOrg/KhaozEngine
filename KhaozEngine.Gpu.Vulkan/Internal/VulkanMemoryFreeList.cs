@@ -71,8 +71,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// difference between this and <c>Capacity - FreeBytes</c> would be a leak, and it is always zero.</summary>
         internal ulong UsedBytes => _used;
 
-        /// <summary>How many bytes are on the free list. Always exactly <c>Capacity - UsedBytes</c>, which is
-        /// the invariant that catches a split or a merge that lost or duplicated a range.</summary>
+        /// <summary>How many bytes are on the free list, computed as <c>Capacity - UsedBytes</c>. The tests
+        /// prove that number rather than trust it, checking <see cref="UsedBytes"/> against an externally
+        /// tracked running total, and asserting the churn run ends with one coalesced free block covering the
+        /// whole capacity, which is what actually catches a lost or duplicated range.</summary>
         internal ulong FreeBytes => Capacity - _used;
 
         /// <summary>How many DISJOINT free ranges there are. One means the chunk is either untouched or fully

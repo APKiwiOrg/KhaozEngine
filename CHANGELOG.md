@@ -1511,6 +1511,124 @@ CONVENTION now (`KhaozEngine.Gpu.<Backend>` exposes `KhaozEngine<Backend>.Regist
 packages named), not a switch on the kind, which would have bought a correct diagnostic at the price of another
 append site. Both audits pin their own backend's actionable line.
 
+### One refcounted `VkInstance`, a native Vulkan device with its features named, and a device-loss latch that fires in Release (#514)
+
+`GpuDeviceContext.CreateHeadless(GpuBackendKind.VulkanNative)` builds a real `VkDevice`. The instance, the
+physical-device selection, the selective feature enable, the one graphics queue, the device-loss latch, the
+liveness token and the `KE_VULKAN_VALIDATION` pump all land together, which is work-breakdown row 4 and the last
+of the four prerequisites. The device cannot RENDER yet: recording is #517, resources and samplers are #519, and
+the windowed swapchain is #527, so each of those members throws a message naming its own row. Nothing selects
+this backend, no golden moved, and the Veldrid-backed `Vulkan` backend is untouched.
+
+**ONE `VkInstance` FOR THE PROCESS, refcounted** (V-N1). The first device creates it, the last one destroys it,
+and the assertion is a lifecycle test that creates and destroys thirty-two devices and finds one instance, gone
+at zero. `VkApplicationInfo.apiVersion` is `min(VK_API_VERSION_1_3, vkEnumerateInstanceVersion())`, asked rather
+than assumed: the incumbent hardcodes `1.0.0` at two sites and never calls `vkEnumerateInstanceVersion` at all,
+which is why everything past 1.0 has to arrive there as an extension. The instance extension list is the whole
+list, and on the headless path it is EMPTY but for the debug-utils extension under the validation knob. Not even
+`VK_KHR_surface`, which is what lets the golden suite run on a machine with no display server, and which is not
+a harmless extra: a loader without the Xlib libraries fails instance creation outright on a surface extension it
+cannot supply. One layer, `VK_LAYER_KHRONOS_validation`, only under the knob, and never the long-removed
+`VK_LAYER_LUNARG_standard_validation` the incumbent also asks for, and no layers passed to `vkCreateDevice`,
+which modern loaders ignore anyway.
+
+Why one instance is more than tidiness, stated as the hypothesis it is: concurrent device creation raced the
+Vulkan loader on lavapipe and was fixed by serialising creation process-wide. The racing operation was
+`vkCreateInstance` and the ICD enumeration under it, so with one refcounted instance the golden suite's repeated
+device creation stops touching that path after the first device. Bet MV7 tests that on the leg #529 brings up,
+and the process-wide creation gate stays on regardless, so the bet costs nothing if it loses. The refcount
+BOOKKEEPING is a separate type from the native calls, over an injected factory, which is the only reason the
+lifecycle assertion above is runnable at all on a machine with no Vulkan loader. The support probe is
+deliberately NOT a holder, and a test asserts that asking it leaves the shared refcount where it found it: the
+probe has to answer before any device exists, which is before the shared instance is allowed to.
+
+**`KE_VULKAN_DEVICE` pins the physical device, and the default reproduces `physicalDevices[0]`** (V-N3, V-G2).
+Six forms: `llvmpipe`, `discrete`, `integrated`, `cpu`, a zero-based index, or any other text as a
+case-insensitive name substring. A request that cannot be honoured WARNs and takes the default, never fails, and
+the warning lists what was actually enumerated. An INELIGIBLE device is never chosen even by an explicit index,
+because honouring the pin would trade a warning now for a crash on frame one. When the default has to skip past
+an ineligible device zero, the INFO line says SUBSTITUTED in as many words, which is the whole reason this
+backend logs on the default path where the Direct3D 11 one stays quiet: a soak session has to be able to tell
+"this run chose device 1" from "device 0 cannot run the backend", and only one of those is comparable with an
+incumbent run that took device zero unconditionally. Scoring devices was rejected in section 2.9, and preferring
+a discrete device by default is follow-up VF3. `SoftwareRasterizer` is `deviceType == Cpu || driverID ==
+MesaLlvmpipe` and lands in the EXISTING `softwareAdapter` telemetry field rather than a new one.
+
+The hole this closes is worse than the Direct3D 11 one it mirrors. There, `KE_D3D11_ADAPTER` guards against a
+runner image growing a paravirtual adapter. Here the Linux leg pins lavapipe through `VK_ICD_FILENAMES` and
+`VK_DRIVER_FILES`, a LOADER-level pin the workflow has already had to repair once when an image moved the ICD
+manifest, and the incumbent then takes device zero unconditionally. `KE_VULKAN_DEVICE=llvmpipe` is the belt to
+that brace.
+
+**Features are enabled BY NAME through the `pNext` chain** (V-N4). `dynamicRendering`, `synchronization2` and
+`timelineSemaphore` are REQUIRED, and a device missing one is refused with that feature's name and what depends
+on it in the message. `samplerAnisotropy`, `fillModeNonSolid`, `depthClamp` and `independentBlend` are enabled
+when the device offers them and degrade to a capability of false when it does not. `geometryShader`,
+`tessellationShader`, `multiViewport`, `drawIndirectFirstInstance` and `shaderFloat64` are READ for capability
+reporting and never enabled, which a test pins by asserting the enabled list on a device that offers everything.
+The incumbent hands `vkCreateDevice` the entire supported feature struct, so its real dependencies are
+unknowable from the code and a device missing one fails at an unrelated call site instead of at creation. ONE
+graphics queue, one family, and the incumbent's cross-family path is not reproduced: its queue-create loop
+writes the graphics family index for every entry instead of the loop variable, which is a spec violation
+validation flags, so that configuration has never worked in this fork.
+
+**Every `VkResult` is checked in EVERY configuration, which is the one thing this backend could not inherit**
+(V-G4). The incumbent's `VulkanUtil.CheckResult` is `[Conditional("DEBUG")]`, so a Release build checks nothing
+and a latch built on that shape would never fire in the only configuration anybody ships, while #427 asks for
+exactly that latch. On `VK_ERROR_DEVICE_LOST` the call's name and the result are latched IMMEDIATELY at the
+fault site, the liveness token flips so every later destroy is a no-op, and the reason reaches a session two
+ways: an ERROR line naming the site and the `deviceLossReason` field of the telemetry session header. The latch
+is taken exactly once under contention, so one dead device is one record rather than a race over which site the
+header names, and a `VK_EXT_device_fault` detail is appended when a driver has one to give. That closes #427 for
+the Vulkan leg on the day the backend lands, which is the correct time: retrofitting the reporting after the
+first field crash wastes the crash.
+
+**Teardown calls `vkDeviceWaitIdle` FIRST** (V-F10), then flips the liveness token, then destroys the device.
+The incumbent destroys its memory manager and its pools and only THEN waits, which destroys objects the GPU may
+still be reading. The order is established by the row that creates the device rather than left to whichever
+later row adds the first destroyable resource, because a teardown order set once is an order every later row
+inherits. A device disposed twice releases its instance lease once, which matters more here than the usual
+dispose hygiene: dropping the refcount twice would destroy an instance another live device is still calling
+through, and destroying a live `VkInstance` aborts the process through the Vulkan loader rather than failing
+quietly.
+
+**`KE_VULKAN_VALIDATION` is a four-rung ladder with a pump that LOGS** (V-G3, V-G5). `0` is the default, `1`
+adds `VK_LAYER_KHRONOS_validation` plus a `VK_EXT_debug_utils` messenger pumping into the engine log at a rate
+limit with warning at WARN and error at ERROR, `strict` latches an error and throws at a controlled point, and
+`sync` chains `VkValidationFeaturesEXT` asking for synchronisation validation. The limiter has two caps rather
+than the Direct3D 11 pump's three, and the missing one is missing for a structural reason: that pump DRAINS a
+queue at the frame boundary, while a debug-utils messenger is PUSHED from whatever thread made the offending
+call and has no boundary to reset a per-frame budget at. Objects are NAMED through the debug-utils naming call,
+so a message names the device or the queue instead of a bare handle. A machine with no layer installed gets a
+WARN naming what to install and a device created without it, because the person who set the variable is by
+definition mid-diagnosis.
+
+The callback is the part the binding decided rather than the design. Silk.NET types
+`PfnDebugUtilsMessengerCallbackEXT` as a CDECL function pointer, so it MUST be
+`[UnmanagedCallersOnly(CallConvs = [CallConvCdecl])]`, which is a compile error rather than a silently wrong ABI
+if anyone writes it as a plain static method, and it therefore cannot capture: it logs through statically
+reachable state, copies every string out before returning, swallows everything, and returns `VK_FALSE`. The
+incumbent's throws a managed exception and calls `Debugger.Break()` from inside a native driver callback.
+Unwinding a managed exception through native driver frames is not a diagnostic, it is undefined behaviour that
+destroys the stack the diagnostic was about, so `strict`'s throw happens at a controlled point after the latch
+and never in the callback.
+
+**`Capabilities` is partial and says which part.** Everything readable off a device with no renderer on it is
+filled: the device name, `samplerAnisotropy` from the enabled feature, `SupportsShadowMaps` from a real
+`R32_SFLOAT` format query, `ClipSpaceYInverted` false, `SupportsCompletionFences` true (identical to the
+incumbent by construction, which is section 14's zero-permitted-difference bar). `MaxMsaaSampleCount` is pinned
+to 1 rather than guessed, because V-C5 says the incumbent's own computation is what #528 reproduces and a
+formula invented here would be a silent lie `AntiAliasing.ResolveFor` would act on.
+
+The physical-device walk is now SHARED between the probe and device creation, which is how #513's handoff said
+the overlap should resolve: two copies would drift the day a requirement moved, and the failure would be the
+worst available, a probe that says yes and a creation that then refuses. 181 new device-free rows cover the
+refcount lifecycle, the `KE_VULKAN_DEVICE` parse and choice, the feature chain against fabricated feature data,
+the loss latch and liveness, the validation ladder, the pump and its limiter. REAL device creation has no
+coverage anywhere in the net yet and is deferred to the `vulkan-native` Linux leg #529 brings up, which is the
+only machine in the fleet with a loader: the integration row asserts the machine-level refusal here and the real
+create-and-dispose round trip there, and it is deliberately not skippable so it cannot go quiet.
+
 ### A wall contact reads its face over the bank, not over a 0.4 m facet of it (#501)
 
 Walking along a bank on Ruinborne stopped the character dead in localised sticky PLACES, and the fix for

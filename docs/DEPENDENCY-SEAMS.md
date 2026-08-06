@@ -565,12 +565,15 @@ and decisions P4 and I2.
 
 The pattern above is now used twice, which is what turns it from a one-off into the shape an out-of-package
 graphics backend has here. `KhaozEngine.Gpu.Vulkan` is phase 3 of the same program and takes the same inverted
-edge. As of `17.32.0` it registers a real provider through `KhaozEngineVulkan.Register()` and answers a real
-functional machine probe, and it creates no device yet
-([#514](https://github.com/APKiwiOrg/KhaozEngine/issues/514)). It registers under
-`GpuBackendKind.VulkanNative`, which landed in the same version, so the backend is selectable by name
-(`KE_GRAPHICS_BACKEND=vulkan-native`) and naming it reaches that creation refusal through the reported
-fallback. Nothing selects it by default.
+edge. As of `17.32.0` it registers a real provider through `KhaozEngineVulkan.Register()`, answers a real
+functional machine probe, and creates a real HEADLESS device
+([#514](https://github.com/APKiwiOrg/KhaozEngine/issues/514)) that cannot yet record or present: recording is
+[#517](https://github.com/APKiwiOrg/KhaozEngine/issues/517), resources are
+[#519](https://github.com/APKiwiOrg/KhaozEngine/issues/519), and the windowed swapchain is
+[#527](https://github.com/APKiwiOrg/KhaozEngine/issues/527), which is what the windowed entry point still
+refuses by name. It registers under `GpuBackendKind.VulkanNative`, which landed in the same version, so the
+backend is selectable by name (`KE_GRAPHICS_BACKEND=vulkan-native`) and the windowed refusal arrives through the
+reported fallback. Nothing selects it by default.
 
 ```
 KhaozEngine.Gpu.Vulkan -> KhaozEngine.Gpu      (the only direction, again)

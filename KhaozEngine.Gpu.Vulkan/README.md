@@ -4,16 +4,20 @@ The engine's own native Vulkan backend for the [KhaozEngine.Gpu](../KhaozEngine.
 umbrella: a consumer adds this package explicitly, the same pattern as `Physics.Bepu` or `WorldStore.Sqlite`,
 and nothing that does not want the Vulkan binding ever carries it.
 
-> **Status: REGISTRATION AND PROBE.** `KhaozEngineVulkan.Register()` is real and so is the machine-capability
-> probe behind it: registering makes the provider reachable, and `GpuBackendSelector.IsBackendSupported` then
-> answers for THIS machine by resolving a Vulkan loader, creating a throwaway instance at the 1.3 floor and
-> reading every physical device against the design's requirements. Creating a DEVICE is not built yet and
-> refuses with a message naming the row that builds it
-> ([#514](https://github.com/APKiwiOrg/KhaozEngine/issues/514)). The backend IS nameable now:
-> `GpuBackendKind.VulkanNative` and the `vulkan-native` / `vk-native` tokens landed with
-> [#513](https://github.com/APKiwiOrg/KhaozEngine/issues/513), so naming it reaches that refusal and boots on the
-> incumbent through the reported fallback. Nothing selects it by default. `KhaozEngine.Gpu`'s `Vulkan` backend,
-> which goes through Veldrid, remains the working Vulkan path and stays selectable indefinitely.
+> **Status: REGISTRATION, PROBE AND A HEADLESS DEVICE.** `KhaozEngineVulkan.Register()` is real, so is the
+> machine-capability probe behind it, and since
+> [#514](https://github.com/APKiwiOrg/KhaozEngine/issues/514) so is headless device creation:
+> `GpuDeviceContext.CreateHeadless(GpuBackendKind.VulkanNative)` builds a real `VkDevice` and a graphics queue on
+> the one refcounted process `VkInstance`, with its features enabled by name, its device-loss latch armed and
+> `KE_VULKAN_VALIDATION` wired. That device cannot yet RENDER: recording is
+> [#517](https://github.com/APKiwiOrg/KhaozEngine/issues/517), resources and samplers are
+> [#519](https://github.com/APKiwiOrg/KhaozEngine/issues/519), and each unbuilt member throws a message naming
+> its own row. Creating a WINDOWED device refuses, naming the swapchain row
+> ([#527](https://github.com/APKiwiOrg/KhaozEngine/issues/527)), rather than handing back a device that cannot
+> present. The backend IS nameable: `GpuBackendKind.VulkanNative` and the `vulkan-native` / `vk-native` tokens
+> landed with [#513](https://github.com/APKiwiOrg/KhaozEngine/issues/513). Nothing selects it by default.
+> `KhaozEngine.Gpu`'s `Vulkan` backend, which goes through Veldrid, remains the working Vulkan path and stays
+> selectable indefinitely.
 
 ## The spec
 
@@ -73,8 +77,9 @@ than a silent run on the incumbent implementation under the new name. **`vulkan`
 and keeps meaning it indefinitely**, which is not a transitional state: it is the kill switch every structural
 decision in the design leans on, so an A/B between the two implementations is one environment variable away.
 
-Naming the backend today reaches the device refusal above, and reaches it through the reported fallback rather
-than a crash: the creation path catches, WARNs with the message and boots on the incumbent, reporting
+Naming the backend today reaches a real HEADLESS device and the windowed refusal above, and the refusal arrives
+through the reported fallback rather than as a crash: the creation path catches, WARNs with the message and
+boots on the incumbent, reporting
 `GpuBackendSource.FallbackAfterFailure`. Nothing selects it for you. The Linux default is still
 `GpuBackendKind.Vulkan` and stays there until every rollout gate is green (decision V-RO3), and
 `GpuBackendSelector.SupportedBackends()` does not offer the native kind to a player at all, because a settings
@@ -89,6 +94,83 @@ wrote would be exactly the file it would then have compared against.
 Code that cares about the API rather than the implementation asks `kind.IsVulkan()`, true for both members.
 Plain equality against `GpuBackendKind.Vulkan` is the right question only when Veldrid's implementation
 specifically is meant.
+
+## The instance, the device and the queue
+
+**One `VkInstance` for the process, refcounted.** The first device creates it, the last one destroys it, and
+every device in between shares it. `VkApplicationInfo.apiVersion` is `min(1.3, vkEnumerateInstanceVersion())`,
+asked rather than assumed. The instance extension list is the whole list: nothing at all on the headless path,
+which is why the golden suite runs on a machine with no display server, plus `VK_EXT_debug_utils` under the
+validation knob. The support probe is deliberately NOT a holder: it creates and destroys its own throwaway
+instance, because it has to answer before any device exists.
+
+Why one instance is more than tidiness, stated as the hypothesis it is: concurrent device creation once raced
+the Vulkan loader on lavapipe and was fixed by serialising creation process-wide. The racing operation was
+`vkCreateInstance` and the ICD enumeration under it, so with one refcounted instance the golden suite's repeated
+device creation stops touching that path after the first device. Bet MV7 tests that on the CI leg, and the
+process-wide creation gate stays on regardless, so the bet costs nothing if it loses.
+
+**One graphics queue.** No transfer queue and no async compute. The graphics family must also present on the
+windowed path, and a device whose graphics family cannot present is refused with a named reason and routed
+through the reported fallback.
+
+**Features are enabled by name.** `dynamicRendering`, `synchronization2` and `timelineSemaphore` are REQUIRED,
+and a device missing one is refused with that feature's name and what depends on it in the message.
+`samplerAnisotropy`, `fillModeNonSolid`, `depthClamp` and `independentBlend` are enabled when the device offers
+them and degrade quietly when it does not. `geometryShader`, `tessellationShader`, `multiViewport`,
+`drawIndirectFirstInstance` and `shaderFloat64` are READ for capability reporting and never enabled, because
+nothing in this engine uses them.
+
+**A device loss reports why, at the site that noticed.** Every `VkResult` is checked in EVERY configuration,
+which is the one thing this backend could not inherit: the incumbent's `CheckResult` is
+`[Conditional("DEBUG")]`, so a latch built on its shape would never fire in a Release build. On
+`VK_ERROR_DEVICE_LOST` the call's name and the result are latched immediately, the liveness token flips so every
+later destroy is a no-op, and the reason reaches you two ways: an ERROR line in the session log and the
+`deviceLossReason` field of the telemetry session header. There is no recovery path, which is what the liveness
+token makes safe. Teardown calls `vkDeviceWaitIdle` FIRST, before anything is destroyed.
+
+## `KE_VULKAN_DEVICE` and `KE_VULKAN_VALIDATION`
+
+**`KE_VULKAN_DEVICE` pins which physical device the backend runs on.** Six forms, case-insensitive and
+whitespace-trimmed:
+
+```
+KE_VULKAN_DEVICE=llvmpipe     # the Mesa software rasterizer, by driver id or name. The value CI pins
+KE_VULKAN_DEVICE=discrete     # the first discrete GPU
+KE_VULKAN_DEVICE=integrated   # the first integrated GPU
+KE_VULKAN_DEVICE=cpu          # the first CPU device
+KE_VULKAN_DEVICE=1            # a zero-based index into the vkEnumeratePhysicalDevices order
+KE_VULKAN_DEVICE=GeForce      # a case-insensitive substring of a device name
+```
+
+Unset takes the first device that meets the requirements, which reproduces the incumbent's
+`physicalDevices[0]` on every machine where device zero qualifies. **A request that cannot be honoured WARNs and
+falls back to that default, and never fails the run**, and the warning lists what was actually enumerated. A
+device that cannot run the backend is never chosen even by an explicit index, because honouring the pin would
+trade a warning now for a crash on frame one. When the default has to skip past an ineligible device zero, the
+INFO line says SUBSTITUTED in as many words, so a soak session can tell a substitution from a selection.
+
+**`KE_VULKAN_VALIDATION` is a four-rung ladder**, `0` (the default) / `1` / `strict` / `sync`:
+
+```
+KE_VULKAN_VALIDATION=1        # VK_LAYER_KHRONOS_validation plus a VK_EXT_debug_utils messenger
+KE_VULKAN_VALIDATION=strict   # 1, and an error-severity message throws at a controlled point
+KE_VULKAN_VALIDATION=sync     # 1, plus synchronisation validation through VkValidationFeaturesEXT
+```
+
+Messages are pumped into the engine log at a rate limit, with warning severity at WARN and error severity at
+ERROR. The limiter has two caps, and a cap that suppresses says so exactly once rather than going quiet: per
+repeated message (the one that does the real work, since validation's characteristic failure is one mistake
+reported once per draw call) and per session (the soak backstop). Objects this backend creates are NAMED, so a
+message names the device or the queue instead of a bare handle. A machine with no layer installed gets a WARN
+naming what to install and a device created without it, rather than an app that refuses to start on somebody who
+is mid-diagnosis. An unrecognized value is off plus a warning listing what works, because a session that
+believes it is running `strict` and is running nothing produces a clean run that proves nothing.
+
+**The callback LOGS and never throws.** The incumbent's throws a managed exception and calls `Debugger.Break()`
+from inside a native driver callback, which is undefined behaviour that destroys the stack the diagnostic was
+about. `strict`'s throw is what that behaviour is for, and it happens at a controlled point after the latch.
+RenderDoc attaches externally and needs nothing from the engine.
 
 ## Why there are no platform guards, and why nobody should add them
 

@@ -6,16 +6,16 @@ namespace KhaozEngine.Gpu.Vulkan
     /// The public surface of the engine-owned native Vulkan backend, and for now the whole of it: one call that
     /// registers the backend with <see cref="GpuBackendProviders"/>.
     /// <para>
-    /// WHAT THIS PACKAGE CAN DO TODAY. Registration and the machine-capability probe are real: registering makes
-    /// the provider reachable, and <see cref="GpuBackendSelector.IsBackendSupported"/> then answers for this
-    /// machine by resolving a Vulkan loader, creating a throwaway instance at the 1.3 floor and reading every
-    /// physical device against section 5.2's requirements. Creating a DEVICE is not built yet and throws a
-    /// message naming the row that builds it
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/514). Work-breakdown row 2 of
-    /// <c>docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md</c>, plus row 3's
-    /// <see cref="GpuBackendKind.VulkanNative"/> append, which is what gives the registration a NAME and makes
-    /// the backend nameable through <c>KE_GRAPHICS_BACKEND=vulkan-native</c>. Naming it today reaches the
-    /// refusal above, through the reported fallback rather than a crash.
+    /// WHAT THIS PACKAGE CAN DO TODAY. Registration, the machine-capability probe and HEADLESS device creation
+    /// are all real. Registering makes the provider reachable, and <see cref="GpuBackendSelector.IsBackendSupported"/>
+    /// then answers for this machine by resolving a Vulkan loader, creating a throwaway instance at the 1.3 floor
+    /// and reading every physical device against section 5.2's requirements.
+    /// <c>GpuDeviceContext.CreateHeadless(GpuBackendKind.VulkanNative)</c> then builds a real <c>VkDevice</c> on
+    /// the one refcounted process instance, with its features enabled by name and its device-loss latch armed
+    /// (work-breakdown row 4, https://github.com/APKiwiOrg/KhaozEngine/issues/514). Creating a WINDOWED device is
+    /// not built yet and throws a message naming the row that builds the swapchain
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/527), and a headless device cannot yet record, submit or
+    /// create a resource: each of those members throws a message naming its own row.
     /// </para>
     /// <para>
     /// This type is safe to touch on ANY operating system, and unlike the Direct3D 11 package it needs no

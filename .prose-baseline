@@ -1,0 +1,109 @@
+# .prose-baseline - frozen prose-semicolon counts for .md files written before the ban.
+#
+# Format: "<count> <path>", worst first. Managed by scripts/check-prose.sh:
+#   scripts/check-prose.sh --preview  what --init would freeze, writes nothing
+#   scripts/check-prose.sh --init     create this file (adoption only)
+#   scripts/check-prose.sh --update   ratchet down after cleaning some out
+#
+# A listed file may drop its count freely without editing this file. It may not raise it. A file NOT
+# listed here must have none at all. Ratchet an entry down with --update once real work has landed.
+# Adding an entry or raising a number is a deliberate hand-edit, on purpose: it should show up in
+# review as "we are blessing new prose semicolons in shipped text".
+#
+# These counts are HISTORY, not a cleanup queue. They sit in released changelog builds, dated design
+# records, per-version ledger entries, and third-party attribution files. Rewriting that text to drive
+# a number down is revisionism at best and a misstated licence at worst. Read the header of
+# scripts/check-prose.sh before you decide to sweep any of it.
+#
+# A path can instead be marked "exempt <path>" in place of a number, for a file whose text is not ours
+# to rewrite (a vendored licence, a CREDITS file quoting an upstream notice verbatim). Its count moves
+# when the upstream text changes rather than when our writing does, so a frozen number would just fail
+# the next honest re-sync. Put the reason on a "#" comment line right above the exempt line, since the
+# line itself is the path verbatim (paths may contain spaces) and cannot also carry a trailing comment:
+#
+#   # upstream licence text, copied verbatim, not ours to reword
+#   exempt assets/thirdparty/CREDITS.md
+#
+# Exemption is always a deliberate hand-edit: --init and --update never write an exempt line, only a
+# human adds one, and --update carries every exempt line (and its comment) through unchanged when it
+# rewrites this file. An exempt entry wins over a numeric entry for the same path, whichever appears
+# first, because exemption is the more explicit statement.
+#
+# Staged mode (the pre-commit hook) never reads this file. What you ADD must be clean regardless of
+# what the file already carries.
+#
+# This file is per-repo and is NOT part of the verbatim template layer.
+
+832 CHANGELOG.md
+318 docs/USING-KHAOZENGINE.md
+35 README.md
+33 KhaozEngine.NetWorld/README.md
+26 docs/SECURITY-BASELINE.md
+25 KhaozEngine.Gui/README.md
+24 KhaozEngine.Render3D/README.md
+21 KhaozEngine.Updates/README.md
+20 KhaozEngine.Windowing/README.md
+15 docs/DEPENDENCY-SEAMS.md
+14 docs/UPDATER.md
+14 KhaozEngine.Netcode/README.md
+14 KhaozEngine.Game.Render3D/README.md
+13 KhaozEngine.Physics.Bepu/README.md
+11 AGENTS.md
+10 docs/CROSS-PLATFORM.md
+10 KhaozEngine.Replication/README.md
+9 KhaozEngine.Benchmarks/README.md
+8 KhaozEngine.Gui.Tests/Gui/Fixtures/RuinbornePlayChangelog.md
+8 KhaozEngine.App/README.md
+7 KhaozEngine.Render2D/README.md
+7 KhaozEngine.Gpu/README.md
+7 KhaozEngine.Diagnostics/README.md
+6 tools/proxy-authoring/README.md
+6 docs/design/WATER-CLIPMAP-DESIGN-2026-07-27.md
+6 docs/design/NAV-LAYERED-SURFACES-DESIGN.md
+6 NOTICE.md
+6 KhaozEngine.Locomotion/README.md
+5 docs/design/WATER-STYLIZED-OCEAN-DESIGN-2026-07-25.md
+5 docs/design/WATER-SAMPLING-FRAME-DESIGN-2026-07-26.md
+5 docs/design/GPU-COMPUTE-DESIGN-2026-07-26.md
+5 docs/design/FFT-OCEAN-DESIGN-2026-07-26.md
+5 docs/PHYSICS-PIPELINE.md
+5 KhaozEngine.Platform/README.md
+5 KhaozEngine.Physics/README.md
+5 KhaozEngine.Game/README.md
+5 KhaozEngine.Audio/README.md
+4 docs/design/WATER-SHORE-DESIGN-2026-07-27.md
+4 docs/RENDER-PIPELINE.md
+4 docs/INDEX.md
+4 KhaozEngine.Terrain.Render3D/README.md
+4 KhaozEngine.Objectives/README.md
+4 KhaozEngine.Commerce.SqlServer/README.md
+3 tools/PixelLabSheetAssembler/README.md
+3 docs/design/MAP-EDITOR-DESIGN.md
+3 docs/design/GUI-DRAG-AND-DROP-DESIGN-2026-07-28.md
+3 KhaozEngine.WorldStore.SqlServer/README.md
+3 KhaozEngine.Primitives/README.md
+3 KhaozEngine.MapEdit.Tool/README.md
+3 KhaozEngine.MapDoc/README.md
+3 KhaozEngine.Localization.TestKit/README.md
+3 KhaozEngine.Collision/README.md
+2 SnapshotTool/README.md
+2 KhaozEngine.WorldStore.Sqlite/README.md
+2 KhaozEngine.Social.Discord/README.md
+2 KhaozEngine.Showcase/assets/character/CREDITS.md
+2 KhaozEngine.MapEditor/README.md
+2 KhaozEngine.Commerce/README.md
+1 docs/design/SCREEN-COMPONENT-DESIGN-2026-07-18.md
+1 KhaozEngine.Updates.Tool/README.md
+1 KhaozEngine.Terrain/README.md
+1 KhaozEngine.Social/README.md
+1 KhaozEngine.Simulation/README.md
+1 KhaozEngine.Progression/README.md
+1 KhaozEngine.Persistence/README.md
+1 KhaozEngine.Particles/README.md
+1 KhaozEngine.Identity/README.md
+1 KhaozEngine.Identity.Oidc/README.md
+1 KhaozEngine.Identity.Discord/README.md
+1 KhaozEngine.Ecs/README.md
+1 KhaozEngine.Content/README.md
+1 KhaozEngine.Commerce.Sqlite/README.md
+1 CLAUDE.md

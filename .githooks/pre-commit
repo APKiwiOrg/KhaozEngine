@@ -15,8 +15,10 @@ fi
 
 # 1b) Prose-semicolon ban in staged ADDED lines of .md (scripts/check-prose.sh). Same staged contract
 #     as the dash check above: semicolons already in the file are ignored, only what you are adding
-#     counts, and code (fenced blocks, indented blocks, inline spans) is stripped before looking. Not
-#     in CI yet: the docs predate the rule, so --tree still reports pre-existing hits fleet-wide.
+#     counts, and code (fenced blocks, indented blocks, inline spans) is stripped before looking. The
+#     whole-tree leg is a separate ratchet over .prose-baseline, which freezes the pre-existing pile
+#     rather than sweeping it (the script header says why). This hook is the leg that keeps that pile
+#     from growing, and it never reads the baseline.
 if [ -f scripts/check-prose.sh ]; then
   if ! sh scripts/check-prose.sh; then
     echo "            Fix them, or 'git commit --no-verify' to override." >&2

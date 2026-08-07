@@ -1,4 +1,9 @@
 # ===== Standard base (keep in sync across game repos; ASCII hyphens only, no em-dashes) =====
+# EXTENSIBLE layer: everything between these two markers is byte-identical in every repo and is
+# checked by scripts/check-template-sync.sh. Change it in game-template and re-propagate, never here.
+# Repo-specific rules go BELOW the end marker, where they are yours and are never compared.
+# Nothing in this block may contain a __GAME__ placeholder: substitution would make it un-comparable,
+# which is exactly why local.settings.json went six repos without being ignored.
 
 # Build outputs
 **/bin/
@@ -21,6 +26,10 @@ Thumbs.db
 .env.local
 .env.*.local
 .env.production
+
+# Azure Functions local dev settings (may hold a local connection string); commit
+# local.settings.json.example instead. See the game's status-function project + docs/SERVER-STATUS.md.
+local.settings.json
 
 # Local AI / tooling settings (the shared .claude/settings.json and .codex/settings.json are tracked)
 .claude/settings.local.json

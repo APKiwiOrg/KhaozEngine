@@ -116,7 +116,7 @@ https://github.com/APKiwiOrg/Ruinborne/issues/441.
 throwing accessor never being read as empty, the disabled path, the countdown flooring at zero, and both
 `RunAsync` exits.
 
-### Metal moves to hosted macos-15, and no CI leg touches a personal machine any more (#552)
+### Metal moves to hosted macos-26, and no CI leg touches a personal machine any more (#552)
 
 The Metal leg ran on the self-hosted dev Mac because hosted macOS was believed to have no usable Metal device.
 That was wrong, and only true of ONE image. Measured directly on both:
@@ -125,9 +125,12 @@ That was wrong, and only true of ONE image. Measured directly on both:
 |---|---|---|
 | `macos-14` | nil | 1, `Apple Paravirtual device` |
 | `macos-15` | returns the device | 1, `Apple Paravirtual device` |
+| `macos-26` | returns the device | 1, `Apple Paravirtual device` |
 
-Veldrid's `MTLGraphicsDevice` ctor dereferences the default-device call, so `macos-14` produced 363 failures in
-under a millisecond each. `macos-15` works, and the full suite passes there: **4807 of 4808**, every golden green
+Veldrid's `MTLGraphicsDevice` ctor dereferences the default-device call, so `macos-14` (which GitHub has since
+deprecated) produced 363 failures in under a millisecond each. The leg runs on **`macos-26`**, which is
+`macos-latest` and GA, pinned to the number so an image promotion cannot move the GPU under a golden gate.
+The full suite passes there: **4813 passed, 1 skipped, 0 failed**, every golden green
 against goldens baked on real Apple silicon, because the goldens are tolerance-based.
 
 **This is a security improvement more than a convenience.** A self-hosted runner was the only reason this public

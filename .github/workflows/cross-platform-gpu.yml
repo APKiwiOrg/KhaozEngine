@@ -229,13 +229,16 @@ jobs:
           # direct3d11-native is the engine's own native D3D11 backend (decision T5). Same OS, same runner
           # and the same suite tier as the incumbent leg, which is the point: two implementations of one API
           # on one rasterizer, checked against a single shared set of goldens (decision I3).
-          # METAL RUNS ON HOSTED macos-15, not the dev Mac and not macos-14. All three facts were measured.
-          # macos-14 is the one that does not work: MTLCreateSystemDefaultDevice() returns nil there even though
-          # MTLCopyAllDevices() reports an "Apple Paravirtual device", and that nil is what Veldrid dereferences,
-          # which was the whole of the 363-failure run 31091112757. macos-15 returns the device and the full suite
-          # passes on it: 4807 of 4808, every golden green against goldens baked on real Apple silicon, because the
-          # goldens are tolerance-based. The single behavioural failure is handled by [GpuFact(RequiresRealGpu)]
-          # (#552). Do NOT "fix" a future Metal problem by moving this back to macos-14.
+          # METAL RUNS ON HOSTED macos-26, which is `macos-latest` and GA. Pinned to the number, not to
+          # `macos-latest`, so a future image promotion cannot silently move the GPU under a golden gate.
+          # macos-14 is DEPRECATED by GitHub and is the one image that does not work at all:
+          # MTLCreateSystemDefaultDevice() returns nil there even though MTLCopyAllDevices() reports an
+          # "Apple Paravirtual device", and that nil is what Veldrid dereferences, which was the whole of the
+          # 363-failure run 31091112757. macos-15 and macos-26 both return the device and both run the full
+          # suite green (4813 passed / 1 skipped; run 31131019941 is the macos-26 one). Every golden passes on
+          # the paravirtual adapter against goldens baked on real Apple silicon, because they are
+          # tolerance-based. The single behavioural skip is [GpuFact(RequiresRealGpu)] (#552).
+          # Do NOT "fix" a future Metal problem by moving this back to macos-14.
           #
           # This leg used to be self-hosted, and moving it off is a security improvement as much as a convenience:
           # a self-hosted runner was the only reason this PUBLIC repo needed allows_public_repositories on the org

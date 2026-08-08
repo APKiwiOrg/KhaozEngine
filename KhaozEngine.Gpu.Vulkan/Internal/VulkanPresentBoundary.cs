@@ -468,14 +468,18 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // the same now-retired handle to the next attempt, which the specification forbids
             // (VUID-VkSwapchainCreateInfoKHR-oldSwapchain-01933). So the old generation is retired here and the
             // frame binds the orphan target, exactly as a zero-extent surface does.
+            //
+            // THE FIRST GENERATION REFUSES BEFORE ANY OF THAT IS SAID, because there is no old generation to
+            // retire and no frame to bind anything for: that is the device constructor, and its own message is
+            // the whole of what a reader needs.
+            if (firstGeneration) throw NoFirstSwapchain(spec, failure);
+
             _log.Warn("The native Vulkan backend could not create a swapchain at "
                 + spec.Extent.Width + "x" + spec.Extent.Height + ": " + (failure ?? "no reason reported")
                 + ". vkCreateSwapchainKHR retires the old swapchain even when it fails, so the previous "
                 + "generation is retired here rather than kept, the frame binds the orphan target, and the "
                 + "recreate is retried at the next present boundary with no old swapchain to pass.");
             _pending.QueueRecreate();
-
-            if (firstGeneration) throw NoFirstSwapchain(spec, failure);
 
             FallToOrphan(spec.Extent.AtLeastOnePixel);
         }

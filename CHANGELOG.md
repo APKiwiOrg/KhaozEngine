@@ -56,7 +56,12 @@ transitioning four attachments is one `vkCmdPipelineBarrier2` carrying four barr
 proportional to passes times touched textures rather than to draws: a device-free test drives twenty draws into
 one pass and asserts the pass's transitions are emitted once. Both the call count and the barrier count are
 countable through the existing counting sink, because a budget that froze only the call count would pass a
-recorder that put a barrier per draw into one batch.
+recorder that put a barrier per draw into one batch. That countability is STRUCTURAL rather than incidental: the
+tracker's emitter is substitutable, both implementations reach the driver through one batching function that
+takes the command sink as a generic parameter, and the device-free one drives the same counting sink the binds
+and the staged upload's buffer barrier already write into. An emitter that built its concrete sink inside its own
+body would have left the barrier tallies unable to see an image barrier at all, which would have made the
+per-draw barrier budget pass vacuously forever.
 
 **The staged upload path's barriers are untouched, deliberately.** Those are BUFFER memory barriers over the
 written range, with no image and no layout in them, so the layout tracker neither subsumes nor duplicates them.

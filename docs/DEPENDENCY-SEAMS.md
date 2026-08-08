@@ -591,8 +591,11 @@ AND LAYOUT TRACKER ([#524](https://github.com/APKiwiOrg/KhaozEngine/issues/524))
 `IVulkanBarrierRecorder`, and it is a seam for a reason worth stating because it looks redundant next to the
 budget seam that already carries `vkCmdPipelineBarrier2`: that one is consumed through a `where TSink : struct`
 constraint so the JIT monomorphizes it onto the per-draw path, so it cannot be held as a FIELD without boxing,
-and the tracker needs a held emitter. The real implementation is a three-line adapter onto a concrete
-`VulkanCmdSink`, so every barrier still passes through the budget seam and is still counted. Nothing can
+and the tracker needs a held emitter. Both implementations are one call into a batching function that takes the
+command sink as a generic parameter, so every barrier still passes through the budget seam, and the seam is
+where the sink is SUBSTITUTED: the real recorder drives a `VulkanCmdSink` over the command buffer it is handed
+and the device-free one drives the counting sink, which is what makes the per-draw barrier budget an assertion
+that can fail rather than one that cannot see an image barrier at all. Nothing can
 be DRAWN yet and nothing can be presented: the remaining recording members are
 [#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525), and the windowed swapchain is
 [#527](https://github.com/APKiwiOrg/KhaozEngine/issues/527), which is what the windowed entry point still

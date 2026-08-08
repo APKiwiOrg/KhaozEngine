@@ -8,13 +8,22 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// barrier in the span. A line, so the whole tracker above it (V-F6 to V-F8) runs under a plain <c>[Fact]</c>
     /// on a machine with no Vulkan loader.
     ///
-    /// <para><b>IT IS NOT <see cref="IVkCmdSink"/> AND IT DOES NOT REPLACE IT.</b> The real implementation is a
-    /// three-line adapter that builds the <c>VkDependencyInfo</c> and hands it to
-    /// <see cref="IVkCmdSink.PipelineBarrier"/> on a concrete <see cref="VulkanCmdSink"/>, so every barrier this
-    /// backend emits still passes through the budget seam and <see cref="VulkanCountingCmdSink"/> still counts it.
-    /// What this line adds is the ability to hold the emitter as a FIELD, which the budget seam deliberately
-    /// forbids: it is consumed through a <c>where TSink : struct</c> constraint so the JIT monomorphizes it, and a
-    /// field of that interface type would box the struct and pay a dispatch on every draw in the frame.</para>
+    /// <para><b>IT IS NOT <see cref="IVkCmdSink"/> AND IT DOES NOT REPLACE IT.</b> Every implementation is one
+    /// call into <see cref="VulkanBarrierBatch"/>, which builds the <c>VkDependencyInfo</c> and hands it to
+    /// <see cref="IVkCmdSink.PipelineBarrier"/> on a sink it takes as a generic PARAMETER, so every barrier this
+    /// backend emits still passes through the budget seam. What this line adds is the ability to hold the emitter
+    /// as a FIELD, which the budget seam deliberately forbids: it is consumed through a
+    /// <c>where TSink : struct</c> constraint so the JIT monomorphizes it, and a field of that interface type
+    /// would box the struct and pay a dispatch on every draw in the frame.</para>
+    ///
+    /// <para><b>SO THIS LINE IS ALSO WHERE THE SINK IS SUBSTITUTED, AND THAT IS NOT A CONVENIENCE.</b>
+    /// <see cref="VulkanBarrierRecorder"/> drives a <see cref="VulkanCmdSink"/> over the command buffer it is
+    /// handed, and <see cref="VulkanCountingBarrierRecorder"/> drives a <see cref="VulkanCountingCmdSink"/> over
+    /// the same <see cref="VulkanCmdCallCounts"/> the binds and the staged upload's buffer barrier write into. An
+    /// earlier shape had the real recorder build its concrete sink INSIDE its own body, which made the emitter
+    /// unsubstitutable and left <see cref="VulkanCmdCallCounts.BarrierCalls"/> structurally unable to see an image
+    /// barrier at all: V-T2's "no pipeline barriers on the per-draw path" would then have passed vacuously
+    /// forever, which is the failure mode a budget exists to prevent rather than to exhibit.</para>
     ///
     /// <para><b>ONE INTERFACE CALL PER BATCH, AT A PASS BOUNDARY, IS NOT THE COST THAT CONSTRAINT EXISTS TO
     /// AVOID.</b> The tracker emits at a begin, at an <c>End</c>, and at the copy, resolve and dispatch

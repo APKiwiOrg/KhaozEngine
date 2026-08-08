@@ -47,7 +47,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     ///
     /// <para><b>BARRIERS ARE BATCHED INTO ONE CALL PER BOUNDARY.</b> A begin transitioning four attachments is one
     /// <c>vkCmdPipelineBarrier2</c> carrying four barriers, not four calls, and so is the restore at <c>End</c>.
-    /// Both numbers are countable off <see cref="VulkanCountingCmdSink"/>, because a budget that froze only the
+    /// Both numbers are countable off <see cref="VulkanCountingCmdSink"/>, reached by handing this tracker a
+    /// <see cref="VulkanCountingBarrierRecorder"/> in place of the real one, because a budget that froze only the
     /// call count would pass a recorder that put a barrier per draw into one batch.</para>
     ///
     /// <para><b>NOTHING HERE IS SYNCHRONISED</b>, on the same grounds as the list that owns it: one list records on

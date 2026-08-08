@@ -289,6 +289,40 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(2, recorder.BarrierCount);
         }
 
+        /// <summary>
+        /// AND THE TRACKER'S BARRIERS LAND IN THE BUDGET SEAM'S OWN TALLIES, which is what makes row 15's per-draw
+        /// gate capable of failing. The emitter is substitutable, so the same tracker that drives a real
+        /// <c>VulkanCmdSink</c> on a device drives <see cref="VulkanCountingCmdSink"/> here, and both barrier
+        /// numbers move.
+        /// <para>
+        /// THIS IS THE ASSERTION THAT STOPS "<c>BarrierCalls == 0</c> BETWEEN TWO DRAWS" FROM BEING VACUOUS. An
+        /// emitter that could only ever be the real one would leave those counters at zero whatever the tracker
+        /// did, and a budget that cannot fail reads as evidence while being none.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void TheTrackersImageBarriers_AreCountedByTheBudgetSeam()
+        {
+            var counts = new VulkanCmdCallCounts();
+            var tracker = new VulkanLayoutTracker(new VulkanCountingBarrierRecorder(counts));
+            var schedule = new VulkanRenderingSchedule(new FakeVulkanRenderApi(), tracker);
+
+            schedule.SetFramebuffer(Buffer, Framebuffer(
+                VulkanRestingLayout.ShaderReadOnlyOptimal, VulkanRestingLayout.ShaderReadOnlyOptimal));
+            schedule.PrepareDraw(Buffer);
+
+            // ONE call carrying TWO barriers, which is the batching claim, and neither number is reachable if the
+            // tracker's emitter is not substitutable.
+            Assert.Equal(1, counts.BarrierCalls);
+            Assert.Equal(2, counts.BarriersEmitted);
+
+            tracker.RestoreResting(Buffer);
+
+            Assert.Equal(2, counts.BarrierCalls);
+            Assert.Equal(4, counts.BarriersEmitted);
+            Assert.Equal(new[] { "PipelineBarrier2(2)", "PipelineBarrier2(2)" }, counts.Trace);
+        }
+
         // ---- Per-subresource tracking (V-F6) ----
 
         /// <summary>

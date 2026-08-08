@@ -965,10 +965,16 @@ sampled, storage and resolve rows of that table arrive with the draw and dispatc
 
 **A transition to the layout an image is already in emits nothing**, and a whole boundary is ONE barrier call
 carrying one barrier per image that actually moved. That is what keeps the barrier count proportional to passes
-times touched textures rather than to draws, and both numbers are counted through the same budget seam the binds
-and draws go through. A plain render target rests in `COLOR_ATTACHMENT_OPTIMAL`, so an ordinary pass pays nothing
-at either end. A post-chain target, which is a render target that is also `Sampled` and therefore rests in
-`SHADER_READ_ONLY_OPTIMAL`, pays one barrier in and one back.
+times touched textures rather than to draws. A plain render target rests in `COLOR_ATTACHMENT_OPTIMAL`, so an
+ordinary pass pays nothing at either end. A post-chain target, which is a render target that is also `Sampled`
+and therefore rests in `SHADER_READ_ONLY_OPTIMAL`, pays one barrier in and one back.
+
+**Both numbers are counted through the same budget seam the binds and draws go through**, because the tracker's
+emitter is SUBSTITUTABLE: the two implementations differ only in which command sink they drive, one over a real
+command buffer and one over the device-free counting sink, and both reach it through the same batching function.
+That substitution is what makes "no pipeline barriers on the per-draw path" an assertion that can fail. An
+emitter that built its concrete sink inside its own body would leave the barrier tallies at zero whatever the
+tracker did, and a budget that cannot fail is worse than no budget, because it reads as evidence.
 
 **`VK_IMAGE_LAYOUT_UNDEFINED` as an OLD layout discards the image's contents, so it is refused.** It is the cheap
 transition and the tempting one, and using it on contents that are still wanted produces output that varies by

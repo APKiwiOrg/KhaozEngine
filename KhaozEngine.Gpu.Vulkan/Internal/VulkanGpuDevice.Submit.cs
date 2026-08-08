@@ -49,6 +49,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // comes out of the same allocator and every block's destroy is deferred behind the same timeline. The
             // arena is PER LIST because its recycling boundary is the list's own slot wait, which is the one proof
             // available that the blocks it hands back are finished with.
+            //
+            // THE RENDERING SCOPE IS DELIBERATELY NOT WIRED HERE. The list below takes this uploader and hands
+            // ITSELF back as the scope from its own constructor, which is what makes a bulk upload's pass-end
+            // (V-A4) reachable on every list rather than on the ones a caller remembered to finish wiring. See
+            // IVulkanRecordUploads.UseRenderingScope.
             var uploads = new VulkanListUploads(
                 _instance.Value.Api, ring, new VulkanStagingArena(_staging, _framesInFlight));
 

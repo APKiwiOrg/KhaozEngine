@@ -60,7 +60,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// external synchronisation over both anyway. Driving ONE list from two threads is a data race here and would
     /// be one inside the driver too.</para>
     /// </summary>
-    internal sealed class VulkanCommandList : IGpuCommandList
+    internal sealed class VulkanCommandList : IGpuCommandList, IVulkanRenderingScope
     {
         readonly VulkanCommandPoolRing _ring;
         readonly VulkanRetireList _retired;
@@ -115,6 +115,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _graphicsBinds = new VulkanBindRecords(PipelineBindPoint.Graphics, assertBoundSetLayouts);
             _computeBinds = new VulkanBindRecords(PipelineBindPoint.Compute, assertBoundSetLayouts);
             _rendering = render is null ? null : new VulkanRenderingSchedule(render);
+
+            // THE UPLOADER TAKES THIS LIST AS ITS RENDERING SCOPE, so a bulk staged UpdateBuffer ends the render
+            // pass instance before it records its vkCmdCopyBuffer (V-A4). Wired HERE rather than by the device
+            // because this list owns both ends of it: the uploader is disposed with this list, and the scope IS
+            // this list, so the cycle closes inside one constructor and no construction path can leave it
+            // half-wired. A list with NO rendering seam hands nothing over, because then there is genuinely no
+            // pass to end and the uploader's null scope is the right answer.
+            if (_rendering is not null) _uploads?.UseRenderingScope(this);
         }
 
         /// <summary>The pools, exposed for the submit path and for tests. Every other caller names slots.</summary>
@@ -360,9 +368,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <summary>
         /// THE END-BEFORE-ANYTHING-ILLEGAL INVARIANT (V-A4), as the ONE helper every such command calls: a
         /// dispatch, a resolve, a copy and a mip generation are all illegal inside a render pass instance, so each
-        /// ends the pending rendering first. Those callers land in rows 13 and 15, and the invariant lands here
-        /// with its device-free test, one row early, for the reason row 11's compatibility prefix did: a rule
-        /// landed with its consumer is a rule nobody tested on its own.
+        /// ends the pending rendering first.
+        /// <para>
+        /// THE BULK UPLOAD PATH CALLS IT TODAY, through <see cref="IVulkanRenderingScope"/> below: a staged
+        /// <c>UpdateBuffer</c> records a <c>vkCmdCopyBuffer</c>, which is as illegal inside a pass as a dispatch
+        /// is. The dispatch, resolve and mip-generation callers land in rows 13 and 15 and call this rather than
+        /// writing the rule a second time.
+        /// </para>
         /// <para>
         /// SAFE TO CALL WHEN NOTHING IS OPEN, so a caller never has to ask first, and it takes the clear-only
         /// flush with it when a pass collected clears that no draw consumed.
@@ -370,6 +382,18 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// </summary>
         internal void EndRenderingBeforeIllegalCommand()
             => RequireRendering("This command").EndRendering(CurrentBuffer);
+
+        /// <summary>
+        /// THE UPLOAD PATH'S ARM OF THAT INVARIANT, as <see cref="IVulkanRenderingScope"/> asks for it, and the
+        /// helper above unchanged rather than a second copy of the rule.
+        /// <para>
+        /// EXPLICIT, because it is not a member a caller inside this backend should reach for: the one call site
+        /// is <see cref="VulkanBufferUpload.Record"/>, through the scope this list hands its own uploader in the
+        /// constructor, and every other illegal command names
+        /// <see cref="EndRenderingBeforeIllegalCommand"/> directly.
+        /// </para>
+        /// </summary>
+        void IVulkanRenderingScope.EndActiveRendering() => EndRenderingBeforeIllegalCommand();
 
         /// <inheritdoc/>
         /// <remarks>

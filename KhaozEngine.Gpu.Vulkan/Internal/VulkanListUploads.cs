@@ -53,11 +53,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// as an interface-typed field would box it and pay a dispatch, which is the one way to spend the cost that
     /// seam was shaped to avoid.</para>
     ///
-    /// <para><b>THE RENDERING SCOPE IS NULL UNTIL ROW 12</b>
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/522), and null is correct rather than unbuilt: with no
-    /// dynamic rendering there is no pass to end, and a <c>vkCmdCopyBuffer</c> outside one is legal. The moment
-    /// that row lands, a bulk upload mid-frame ends the pass, copies, barriers and lets the next draw begin it
-    /// again, which is the split the uniform ring exists so a per-frame write never pays.</para>
+    /// <para><b>THE RENDERING SCOPE ARRIVES AFTER CONSTRUCTION, WHICH IS THE CYCLE RATHER THAN AN OVERSIGHT.</b>
+    /// The scope IS the list (<see cref="VulkanCommandList"/> implements <see cref="IVulkanRenderingScope"/>) and
+    /// that list takes this uploader in its own constructor, so one of the two edges has to be wired second. The
+    /// list wires it, from that constructor, through <see cref="UseRenderingScope"/>. A bulk upload mid-frame
+    /// therefore ends the pass, copies, barriers and lets the next draw begin it again
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/522), which is the split the uniform ring exists so a
+    /// per-frame write never pays. It stays null on a list with no rendering seam, which is only a list a test
+    /// constructed: with no dynamic rendering there is no pass to end, and a <c>vkCmdCopyBuffer</c> outside one is
+    /// legal.</para>
     ///
     /// <para><b>THE ARENA IS DISPOSED WITH THE LIST</b>, which is what <see cref="IVulkanRecordUploads"/> being
     /// <see cref="IDisposable"/> is for. Its blocks go through <see cref="IVulkanStagingSource.Destroy"/>, which
@@ -69,14 +73,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         readonly Vk _vk;
         readonly VulkanCommandPoolRing _ring;
         readonly VulkanStagingArena _arena;
-        readonly IVulkanRenderingScope? _rendering;
+
+        IVulkanRenderingScope? _rendering;
 
         /// <param name="vk">The instance's loaded API.</param>
         /// <param name="ring">The owning list's pools, which supply the buffer being recorded into.</param>
         /// <param name="arena">This list's own staging arena.</param>
-        /// <param name="rendering">The list's rendering state, or null while there is no rendering to end.</param>
-        internal VulkanListUploads(Vk vk, VulkanCommandPoolRing ring, VulkanStagingArena arena,
-            IVulkanRenderingScope? rendering = null)
+        internal VulkanListUploads(Vk vk, VulkanCommandPoolRing ring, VulkanStagingArena arena)
         {
             ArgumentNullException.ThrowIfNull(vk);
             ArgumentNullException.ThrowIfNull(ring);
@@ -85,7 +88,6 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _vk = vk;
             _ring = ring;
             _arena = arena;
-            _rendering = rendering;
         }
 
         /// <inheritdoc/>
@@ -115,6 +117,26 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         /// <inheritdoc/>
         public void BeginSlot(int slot) => _arena.BeginSlot(slot);
+
+        /// <inheritdoc/>
+        /// <exception cref="InvalidOperationException">A scope was already taken. One uploader belongs to one
+        /// list, so a second scope means two lists share an arena and a bulk upload on one would end the other's
+        /// render pass instance.</exception>
+        public void UseRenderingScope(IVulkanRenderingScope scope)
+        {
+            ArgumentNullException.ThrowIfNull(scope);
+
+            if (_rendering is not null)
+            {
+                throw new InvalidOperationException(
+                    "A native Vulkan command list's staging uploader was handed a second rendering scope. One "
+                    + "uploader belongs to ONE list and takes that list's scope once, from its constructor, so a "
+                    + "second scope means two lists are sharing one staging arena. A bulk upload on either of "
+                    + "them would then end the other's render pass instance and leave its own open.");
+            }
+
+            _rendering = scope;
+        }
 
         /// <inheritdoc/>
         public void Dispose() => _arena.Dispose();

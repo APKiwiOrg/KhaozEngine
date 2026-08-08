@@ -46,6 +46,27 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         void BeginSlot(int slot);
 
         /// <summary>
+        /// Take the rendering scope a staged upload ends before it records its copy. Called ONCE, by
+        /// <see cref="VulkanCommandList"/>'s own constructor, with the list itself.
+        ///
+        /// <para><b>THE LIST WIRES THIS, NOT THE DEVICE.</b> The scope IS the list, and the list takes this
+        /// uploader in its constructor, so one of the two edges has to be wired second. The list is the end that
+        /// owns both (it disposes this uploader and it implements the scope), so closing the cycle inside its
+        /// constructor is what keeps a null scope unreachable on any list that has a rendering seam at all. Wiring
+        /// it from the far side instead leaves a construction path that can forget the call, and a forgotten call
+        /// is silent: a null scope makes the pass-end a no-op rather than an error, and the copy lands inside an
+        /// open render pass instance.</para>
+        ///
+        /// <para>A no-op by default, for the reason <see cref="IDisposable.Dispose"/> below is: an uploader that
+        /// records no copy has no pass to end, so a test double that only counts calls is not obliged to hold a
+        /// scope it would never use.</para>
+        /// </summary>
+        /// <param name="scope">The list this uploader records into.</param>
+        void UseRenderingScope(IVulkanRenderingScope scope)
+        {
+        }
+
+        /// <summary>
         /// Release whatever this uploader owns. A no-op by default: see the class remarks for why a caller with
         /// nothing to release is not required to override it.
         /// </summary>
@@ -64,9 +85,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// lets the next draw begin it again. That is the same cost the incumbent pays for EVERY uniform write, and the
     /// ring's entire value is that a uniform write no longer comes here at all.</para>
     ///
-    /// <para>Implemented by <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/522">row 12</see>, which
-    /// owns the deferred begin and therefore knows whether a pass is open. Null until then, and null is correct
-    /// rather than unbuilt: with no rendering there is no pass to end.</para>
+    /// <para><b>IMPLEMENTED BY <see cref="VulkanCommandList"/></b>, which owns the deferred begin
+    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/522">row 12</see>) and therefore knows whether
+    /// a pass is open. Its body is the SAME <c>EndRenderingBeforeIllegalCommand</c> helper a dispatch, a resolve
+    /// and a mip generation call, so the upload path takes the clear-only flush with it and cannot drift from the
+    /// other commands that may not appear inside a render pass instance. The list hands itself over through
+    /// <see cref="IVulkanRecordUploads.UseRenderingScope"/>. Still null on a list built with no rendering seam,
+    /// which is only a list a test constructed, and null is correct rather than unbuilt there: with no rendering
+    /// there is no pass to end.</para>
     /// </summary>
     internal interface IVulkanRenderingScope
     {

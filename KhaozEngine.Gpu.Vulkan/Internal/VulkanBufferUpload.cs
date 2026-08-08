@@ -39,8 +39,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="copies">Where the copy is recorded. Not the budget seam: see
         /// <see cref="IVulkanUploadSink"/>.</param>
         /// <param name="arena">The list's staging arena.</param>
-        /// <param name="rendering">The list's rendering state, or null while there is no rendering to end
-        /// (row 12).</param>
+        /// <param name="rendering">The list's rendering state, which is the list itself
+        /// (<see cref="VulkanCommandList"/> implements <see cref="IVulkanRenderingScope"/>). Null only on a list
+        /// built with no rendering seam, which is only a list a test constructed, and there is no pass to end
+        /// then.</param>
         /// <param name="destination">The buffer being written, which supplies both the handle and the usage the
         /// barrier is narrowed to.</param>
         /// <param name="destinationOffsetBytes">Where in that buffer the payload lands.</param>

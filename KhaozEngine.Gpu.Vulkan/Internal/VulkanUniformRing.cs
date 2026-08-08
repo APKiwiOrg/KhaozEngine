@@ -101,8 +101,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <summary>
         /// The alignment every <c>pDynamicOffsets</c> entry composed against this ring owes
         /// (<c>VUID-vkCmdBindDescriptorSets-pDynamicOffsets-01971</c>): <see cref="VulkanRingStride.AlignmentFor"/>
-        /// of the device limit, so it is the 256-byte floor on every conformant device rather than whatever this
-        /// driver happens to report. Every segment base is a multiple of it by construction, which is what leaves
+        /// of the device limit, so it is the 256-byte floor on every conformant device and the device's own larger
+        /// limit on one that is not. Every segment base is a multiple of it by construction, which is what leaves
         /// only the caller's own terms to check at the bind. Row 11 does that check.
         /// </summary>
         internal ulong OffsetAlignmentBytes { get; }

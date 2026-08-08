@@ -49,8 +49,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <c>minUniformBufferOffsetAlignment</c>. Only the ring base carries that alignment by construction: the
     /// <c>rangeOffset</c> and caller terms hold it because every shipped slot size is itself 256-aligned, which is
     /// an invariant the renderers obey rather than anything the ring guarantees. So it is CHECKED here, on the
-    /// composed entry, against the engine's portable 256-byte floor. See <see cref="RequireAligned"/> for why the
-    /// floor and not the device's own limit.</para>
+    /// composed entry, against the ring's derived alignment: the 256-byte portable floor or this device's own
+    /// limit, whichever is larger. See <see cref="RequireAligned"/> for why the floor binds even where the device
+    /// is laxer.</para>
     ///
     /// <para><b>ONE INSTANCE PER BIND RECORD, GROWN ONCE AND REUSED FOREVER.</b> The hot path is thousands of
     /// offsets-only rebinds of one set per frame, so an array allocated per bind would be an allocation per rebind.
@@ -99,8 +100,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         }
 
         /// <summary>
-        /// ONE ENTRY, and the whole of the composition rule. Exposed so the device-free test that pins it for every
-        /// shipped layout shape asserts against the SHIPPED arithmetic rather than against a second copy of it.
+        /// ONE ENTRY, and the whole of the composition rule. The device-free tests that pin it for every shipped
+        /// layout shape drive it through the flush, so they assert against the SHIPPED arithmetic rather than
+        /// against a second copy of it.
         /// </summary>
         internal static uint Compose(in VulkanDynamicUniform dynamicUniform, uint callerDynamicOffset, uint slot)
         {
@@ -170,8 +172,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 + applied.ToString(CultureInfo.InvariantCulture)
                 + ". Round the slot size that offset indexes up to "
                 + alignment.ToString(CultureInfo.InvariantCulture)
-                + " bytes. That alignment is the engine's portable floor rather than this device's own limit, so a "
-                + "bind refused here would have been refused on a device reporting the spec's required maximum.");
+                + " bytes. That alignment is the 256-byte portable floor or this device's own limit, whichever is "
+                + "larger, so an offset cannot pass on a lax dev device and fail validation on one reporting the "
+                + "spec's required maximum.");
         }
 
         // Doubling from eight, so a run over the engine's widest shipped shapes never reallocates after the first

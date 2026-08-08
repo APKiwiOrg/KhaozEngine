@@ -658,12 +658,12 @@ than assumed.** `VUID-vkCmdBindDescriptorSets-pDynamicOffsets-01971` requires ev
 caller terms hold it because every shipped slot size is itself 256-aligned, which is an invariant the renderers
 obey rather than anything the ring guarantees, so the composition states it instead of relying on it. The check
 is on the COMPOSED entry, which is what the VUID measures: two terms that are each misaligned and sum to an
-aligned entry are legal and are accepted. The alignment it is held to is the engine's portable 256-byte floor
-rather than this device's own limit, so an offset cannot pass on a lax dev device and fail validation on one
+aligned entry are legal and are accepted. The alignment it is held to is the 256-byte portable floor or this
+device's own limit, whichever is larger, so an offset cannot pass on a lax dev device and fail validation on one
 reporting the spec's required maximum. Like the window refusal, it leaves the slot dirty, so it repeats at the
 next draw instead of being spent on the first.
 
-**The array is recomposed at the head of every RUN, which is the incumbent's own bug not inherited.** Its
+**The array is recomposed once per RUN, which is the incumbent's own bug not inherited.** Its
 batching flush resets the batch count and the first set but NOT the accumulated dynamic-offset count, so a second
 batch inside one flush passes a too-large count built from stale entries. The invariant here is that the count
 passed equals the sum of that call's sets' dynamic descriptors, and the device-free budget test asserts it over a

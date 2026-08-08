@@ -294,10 +294,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// moved. The bind itself happens at the next draw, one <c>vkCmdBindDescriptorSets</c> per contiguous run
         /// of dirty slots.
         /// <para>
-        /// A RECORD MADE OUTSIDE A RECORDING IS DISCARDED RATHER THAN REFUSED, which is the same answer
-        /// <see cref="UpdateBuffer{T}(IGpuBuffer,uint,in T)"/> gives and is safe for a different reason:
-        /// <see cref="Begin"/> resets both records, so a bind made before one cannot leak into the recording that
-        /// follows.
+        /// A RECORD MADE OUTSIDE A RECORDING IS DISCARDED RATHER THAN REFUSED, and that is these records' own
+        /// semantics rather than anything shared with the write path:
+        /// <see cref="UpdateBuffer{T}(IGpuBuffer,uint,in T)"/> discards nothing, it writes a ring-backed buffer
+        /// immediately and routes everything else to the staging arena. What makes the discard safe here is
+        /// <see cref="Begin"/>, which resets both records, so a bind made before a recording cannot leak into the
+        /// one that follows.
         /// </para>
         /// </remarks>
         public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set) => Bind(_graphicsBinds, slot, set, 0);

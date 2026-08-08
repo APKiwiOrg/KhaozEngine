@@ -109,8 +109,8 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// AND A WHOLE FRAME'S WORTH OF BINDS EMITS NO BARRIER AT ALL, which is the bind half of "zero barriers
         /// between two draws in one pass that touch no new texture". The meaningful version of that invariant needs
-        /// row 14's tracker (https://github.com/APKiwiOrg/KhaozEngine/issues/524), which is what would emit one;
-        /// what this pins is that the BIND path never will.
+        /// row 14's tracker (https://github.com/APKiwiOrg/KhaozEngine/issues/524), which is what would emit one.
+        /// What this pins is that the BIND path never will.
         /// </summary>
         [Fact]
         public void AFramesWorthOfBinds_EmitsNoBarrier()

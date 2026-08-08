@@ -201,6 +201,39 @@ namespace KhaozEngine.Tests.Gpu
             }
         }
 
+        /// <summary>
+        /// THE PARSER READS A MEMORY QUALIFIER ON EITHER SIDE OF THE STORAGE KEYWORD, asserted over a synthetic
+        /// source because nothing shipped is spelled the canonical way yet. That is precisely why it earns a
+        /// test: GLSL's canonical placement is <c>layout(...) readonly buffer B</c>, the pattern here used to
+        /// demand the storage keyword immediately after the layout group and skipped that spelling whole, and a
+        /// skipped declaration surfaces through
+        /// <see cref="EveryLayoutElementOfEveryShippedPipeline_IsDeclaredBySomeStageOfItsProgram"/> as an
+        /// undeclared LAYOUT ELEMENT, which reads as a pipeline bug rather than a parser one.
+        /// </summary>
+        [Fact]
+        public void TheParser_ReadsAMemoryQualifierOnEitherSideOfTheStorageKeyword()
+        {
+            const string glsl = """
+                layout(std430, set = 0, binding = 0) readonly buffer Before { vec4 a[]; };
+                layout(std430, set = 0, binding = 1) buffer readonly After { vec4 b[]; };
+                layout(std430, set = 0, binding = 2) buffer Writable { vec4 c[]; };
+                layout(set = 1, binding = 0) uniform texture2D Tex;
+                layout(rgba16f, set = 1, binding = 1) uniform readonly image2D Img;
+                """;
+
+            Declaration[] parsed = Parse(glsl).ToArray();
+
+            Assert.Equal(5, parsed.Length);
+            Assert.Equal(new Declaration(0, 0, GpuResourceKind.StructuredBufferReadOnly, "Before"), parsed[0]);
+            Assert.Equal(new Declaration(0, 1, GpuResourceKind.StructuredBufferReadOnly, "After"), parsed[1]);
+            Assert.Equal(new Declaration(0, 2, GpuResourceKind.StructuredBufferReadWrite, "Writable"), parsed[2]);
+            Assert.Equal(new Declaration(1, 0, GpuResourceKind.TextureReadOnly, "Tex"), parsed[3]);
+
+            // A readonly storage image stays the read-write kind on purpose: Vulkan gives it the same descriptor
+            // type as a writable one, and only the buffer case maps to a different engine kind.
+            Assert.Equal(new Declaration(1, 1, GpuResourceKind.TextureReadWrite, "Img"), parsed[4]);
+        }
+
         // ---- the join ------------------------------------------------------------------------------------
 
         static IEnumerable<(string Program, string[] Slots, IEnumerable<Declaration> Declarations)> EveryProgram()
@@ -274,12 +307,29 @@ namespace KhaozEngine.Tests.Gpu
 
         readonly record struct Declaration(int Set, int Binding, GpuResourceKind Kind, string Name);
 
-        // One layout qualifier list, then the storage keyword, then whatever it declares up to the ; or {. The
-        // qualifier list is matched as a whole because it carries other keys in shipped code (std430 first on
-        // every storage buffer, an rgba16f format qualifier on the ocean's storage image), so a pattern anchored
-        // on "layout(set" alone would miss exactly the compute declarations this most needs to see.
+        // Memory and precision qualifiers, which GLSL allows on EITHER side of the storage keyword. Declared
+        // first because the pattern below is built from this list rather than repeating it, and a static field
+        // initialiser reads the ones above it.
+        static readonly string[] MemoryQualifiers =
+            ["readonly", "writeonly", "coherent", "volatile", "restrict", "highp", "mediump", "lowp"];
+
+        // One layout qualifier list, then any memory qualifiers, then the storage keyword, then whatever it
+        // declares up to the ; or {. The qualifier list is matched as a whole because it carries other keys in
+        // shipped code (std430 first on every storage buffer, an rgba16f format qualifier on the ocean's storage
+        // image), so a pattern anchored on "layout(set" alone would miss exactly the compute declarations this
+        // most needs to see.
+        //
+        // THE MEMORY QUALIFIER GROUP IS THERE BECAUSE GLSL TAKES THEM ON EITHER SIDE of the storage keyword and
+        // the canonical placement is BEFORE it: `layout(...) readonly buffer B { ... }`. A pattern that demanded
+        // uniform|buffer immediately after the layout group skipped that spelling entirely. The skip is not
+        // silent (the coverage test then reports the layout element as declared by no stage) but it is the wrong
+        // problem reported loudly, which costs whoever reads it the time to find out the parser never saw the
+        // line. Nothing shipped is spelled that way today, which is exactly why this has to be right now rather
+        // than on the day a kernel is.
         static readonly Regex DeclarationPattern = new(
-            @"layout\s*\(([^)]*)\)\s*(uniform|buffer)\s+([^;{]+)[;{]", RegexOptions.Compiled);
+            @"layout\s*\((?<keys>[^)]*)\)\s*(?<memory>(?:(?:" + string.Join("|", MemoryQualifiers)
+            + @")\s+)*)(?<storage>uniform|buffer)\s+(?<rest>[^;{]+)[;{]",
+            RegexOptions.Compiled);
 
         static readonly Regex KeyPattern = new(@"\b(set|binding)\s*=\s*(\d+)", RegexOptions.Compiled);
 
@@ -288,7 +338,7 @@ namespace KhaozEngine.Tests.Gpu
             foreach (Match match in DeclarationPattern.Matches(glsl))
             {
                 int set = -1, binding = -1;
-                foreach (Match key in KeyPattern.Matches(match.Groups[1].Value))
+                foreach (Match key in KeyPattern.Matches(match.Groups["keys"].Value))
                 {
                     int value = int.Parse(key.Groups[2].Value, CultureInfo.InvariantCulture);
                     if (key.Groups[1].Value == "set") set = value;
@@ -299,29 +349,41 @@ namespace KhaozEngine.Tests.Gpu
                 // which this test has nothing to say about.
                 if (set < 0 || binding < 0) continue;
 
-                string[] words = match.Groups[3].Value
-                    .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+                string[] declared = match.Groups["rest"].Value
+                    .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+
+                string[] words = declared
                     .Where(w => !MemoryQualifiers.Contains(w, StringComparer.Ordinal))
                     .ToArray();
 
-                yield return new Declaration(set, binding, KindOf(match.Groups[2].Value, words),
+                // Read from BOTH sides of the storage keyword, since either is legal and neither is preferred by
+                // anything but habit.
+                bool readOnly = match.Groups["memory"].Value
+                        .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+                        .Concat(declared)
+                        .Contains("readonly", StringComparer.Ordinal);
+
+                yield return new Declaration(set, binding, KindOf(match.Groups["storage"].Value, words, readOnly),
                     words.Length > 0 ? words[^1] : "?");
             }
         }
 
-        // Memory and precision qualifiers that may sit between the storage keyword and the type. Dropped so the
-        // type is always the first word left, which is what the kind is read off.
-        static readonly string[] MemoryQualifiers =
-            ["readonly", "writeonly", "coherent", "volatile", "restrict", "highp", "mediump", "lowp"];
-
-        static GpuResourceKind KindOf(string storage, string[] words)
+        static GpuResourceKind KindOf(string storage, string[] words, bool readOnly)
         {
             string type = words.Length > 0 ? words[0] : "";
 
-            // A storage buffer block. The engine declares none readonly today, and the qualifier is read anyway
-            // rather than assumed, because a readonly one maps to the OTHER engine kind and both are legal.
+            // A storage buffer block, and the ONE place the readonly qualifier changes the answer. The engine
+            // declares no buffer readonly today, and the qualifier is read rather than assumed away because a
+            // readonly block is the other engine kind and both are legal. It deliberately does NOT do the same
+            // for a storage image: a readonly image2D is still a storage image to Vulkan, the same descriptor
+            // type as a writable one, so mapping it to the sampled-texture kind would be a new bug rather than a
+            // fixed one.
             if (string.Equals(storage, "buffer", StringComparison.Ordinal))
-                return GpuResourceKind.StructuredBufferReadWrite;
+            {
+                return readOnly
+                    ? GpuResourceKind.StructuredBufferReadOnly
+                    : GpuResourceKind.StructuredBufferReadWrite;
+            }
 
             if (type.StartsWith("image", StringComparison.Ordinal)) return GpuResourceKind.TextureReadWrite;
             if (type.StartsWith("texture", StringComparison.Ordinal)) return GpuResourceKind.TextureReadOnly;

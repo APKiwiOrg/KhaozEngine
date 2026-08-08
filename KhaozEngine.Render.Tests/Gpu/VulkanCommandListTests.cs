@@ -433,6 +433,8 @@ namespace KhaozEngine.Tests.Gpu
             nameof(IGpuCommandList.ClearDepthStencil),          // row 12, folded into loadOp
             nameof(IGpuCommandList.SetScissorRect),             // row 12, the framebuffer-change guard
             nameof(IGpuCommandList.SetFullScissorRects),        // row 12, the framebuffer-change guard
+            nameof(IGpuCommandList.SetPipeline),                // row 13, the bind plus the layout adoption
+            nameof(IGpuCommandList.SetComputePipeline),         // row 13, the compute arm of the same
         };
 
         // ---- Fixtures ----
@@ -442,7 +444,6 @@ namespace KhaozEngine.Tests.Gpu
         static IEnumerable<(string Member, Action<IGpuCommandList> Call)> EveryRecordingCommand()
             => new (string, Action<IGpuCommandList>)[]
             {
-                (nameof(IGpuCommandList.SetPipeline), l => l.SetPipeline(null!)),
                 (nameof(IGpuCommandList.SetVertexBuffer), l => l.SetVertexBuffer(0, null!)),
                 (nameof(IGpuCommandList.SetVertexBuffer), l => l.SetVertexBuffer(0, null!, 64)),
                 (nameof(IGpuCommandList.SetIndexBuffer), l => l.SetIndexBuffer(null!, GpuIndexFormat.UInt32)),
@@ -457,7 +458,6 @@ namespace KhaozEngine.Tests.Gpu
                     l => l.CopyTextureSubresource(null!, 0, 0, null!, 0, 0, 16, 16)),
                 (nameof(IGpuCommandList.GenerateMipmaps), l => l.GenerateMipmaps(null!)),
                 (nameof(IGpuCommandList.ResolveTexture), l => l.ResolveTexture(null!, null!)),
-                (nameof(IGpuCommandList.SetComputePipeline), l => l.SetComputePipeline(null!)),
                 (nameof(IGpuCommandList.Dispatch), l => l.Dispatch(1, 1, 1)),
             };
 

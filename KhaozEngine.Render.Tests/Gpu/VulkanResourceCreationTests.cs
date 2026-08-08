@@ -483,33 +483,16 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// THE MEMBERS LATER ROWS OWN REFUSE BY NAMING THEIR OWN ISSUE, which is the discipline
-        /// <c>D3D11ResourceFactory</c> established between its own row and the ones that filled it in. Asserted
-        /// through the seam type so the list cannot drift from what <see cref="IGpuResourceFactory"/> declares.
-        /// </summary>
-        [Fact]
-        public void TheUnbuiltFactoryMembers_NameTheirOwnRow()
-        {
-            var fixture = new VulkanResourceFixture();
-            IGpuResourceFactory factory = fixture.Factory;
-
-            Assert.Contains("523",
-                Assert.Throws<NotSupportedException>(() => factory.CreateGraphicsPipeline(default)).Message,
-                StringComparison.Ordinal);
-            Assert.Contains("523",
-                Assert.Throws<NotSupportedException>(() => factory.CreateComputePipeline(default)).Message,
-                StringComparison.Ordinal);
-        }
-
-        /// <summary>
         /// THE REFUSAL COVERAGE IS HONEST, which the hand-written list above cannot be on its own. Every method on
         /// <see cref="IGpuResourceFactory"/> is either a member THIS row brought alive or a member that refuses by
         /// naming its own row, and the union is exactly what the interface declares.
         /// <para>
-        /// THE BUILT SET IS THE ONE THAT MOVES. Rows 10, 12, 13 and 16 each take members off the refusal list and
-        /// add them here as they land. A member that simply VANISHED from the refusal list without arriving in the
-        /// built set is the regression this pair of sets exists to catch, and it is the same shape
-        /// <c>VulkanCommandListTests</c> uses for the recording seam.
+        /// THE BUILT SET IS THE ONE THAT MOVED, AND IT HAS NOW SWALLOWED THE OTHER ONE. Rows 10, 12, 16 and 13
+        /// each took members off the refusal list and added them here as they landed, and row 13
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/523) took the last two, so the refusal half is EMPTY:
+        /// this factory refuses nothing at all any more. The empty set is kept rather than deleted, both because
+        /// the equality below is what proves it is empty for the right reason (every member accounted for) rather
+        /// than by somebody trimming a list, and because it is the shape a later seam member would land in.
         /// </para>
         /// </summary>
         [Fact]
@@ -537,13 +520,14 @@ namespace KhaozEngine.Tests.Gpu
                 // front end plus vkCreateShaderModule over the bytes verbatim.
                 nameof(IGpuResourceFactory.CreateShadersFromSpirv),
                 nameof(IGpuResourceFactory.CreateComputeShaderFromSpirv),
-            ];
 
-            string[] refusing =
-            [
+                // And row 13 (https://github.com/APKiwiOrg/KhaozEngine/issues/523) took the last two, which is
+                // what empties the refusal list below. See VulkanPipelineCreationTests for what they build.
                 nameof(IGpuResourceFactory.CreateGraphicsPipeline),
                 nameof(IGpuResourceFactory.CreateComputePipeline),
             ];
+
+            string[] refusing = [];
 
             string[] declared = typeof(IGpuResourceFactory).GetMethods()
                 .Select(m => m.Name)

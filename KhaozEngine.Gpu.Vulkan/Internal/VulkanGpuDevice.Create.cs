@@ -348,9 +348,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             }
         }
 
-        // Section 14's table, filled to the extent a device with no renderer on it can answer honestly. Row 18
-        // (https://github.com/APKiwiOrg/KhaozEngine/issues/528) owns the rest and the zero-difference parity test
-        // that pins all of it.
+        // Section 14's table. Row 18 (https://github.com/APKiwiOrg/KhaozEngine/issues/528) owns the
+        // zero-difference parity test that pins all of it against the incumbent, and every member below is now a
+        // real reading rather than a placeholder.
         static GpuCapabilities ReadCapabilities(in VulkanPhysicalDeviceRead read,
             in VulkanFeatureSelection features)
             => new(
@@ -362,10 +362,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 deviceName: read.Facts.DeviceName,
                 samplerAnisotropy: features.SamplerAnisotropy,
                 samplerLodBias: true,
-                // PINNED TO 1 rather than computed. V-C5 says the incumbent's own computation is reproduced, and
-                // row 18 is where that happens: a formula invented here would be a silent lie that
-                // AntiAliasing.ResolveFor acts on, and 1 is the direction that under-promises.
-                maxMsaaSampleCount: 1,
+                // THE INCUMBENT'S OWN COMPUTATION, REPRODUCED (V-C5), rather than either draft's invented
+                // formula: the minimum over the engine's three MRT targets of the highest sample count each
+                // supports, read through vkGetPhysicalDeviceImageFormatProperties exactly as
+                // VkGraphicsDevice.GetSampleCountLimit does. See VulkanMsaaLimit for the citation and for what
+                // the design document says about this that turned out to be wrong.
+                maxMsaaSampleCount: read.MaxMsaaSampleCount,
                 supportsShadowMaps: read.SupportsShadowMapFormat,
                 supportsCompute: true,
                 // TRUE, unlike Direct3D 11's, and identical to the incumbent's: VeldridMap already answers true

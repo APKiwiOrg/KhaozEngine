@@ -16,6 +16,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// queue model (V-N5).</param>
     /// <param name="SupportsShadowMapFormat">Whether <c>R32_SFLOAT</c> can be both a depth-stencil attachment and
     /// a sampled image, which is <c>GpuCapabilities.SupportsShadowMaps</c>.</param>
+    /// <param name="MaxMsaaSampleCount">The incumbent's own computation reproduced (V-C5): the minimum, over the
+    /// three formats the 3D scene's MRT renders into, of the highest sample count each supports. See
+    /// <see cref="VulkanMsaaLimit"/> for the citation and for why neither draft's invented formula is
+    /// taken.</param>
     /// <param name="Memory">Every memory type plus the three limits the block suballocator's and the uniform
     /// ring's arithmetic need (sections 9.1 and 9.2). Read here rather than at the allocator because it is the
     /// same walk
@@ -33,6 +37,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         bool IsLlvmpipe,
         uint GraphicsQueueFamily,
         bool SupportsShadowMapFormat,
+        int MaxMsaaSampleCount,
         VulkanMemoryFacts Memory,
         VulkanPipelineCacheIdentity PipelineCacheIdentity);
 
@@ -97,6 +102,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 IsLlvmpipe(vk, device, clearsVersionFloor, name),
                 graphicsFamily,
                 SupportsShadowMapFormat(vk, device),
+                MaxMsaaSampleCount(vk, device),
                 memory,
                 ReadPipelineCacheIdentity(&properties));
         }
@@ -254,6 +260,39 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 FormatFeatureFlags.DepthStencilAttachmentBit | FormatFeatureFlags.SampledImageBit;
             return (properties.OptimalTilingFeatures & required) == required;
         }
+
+        // GpuCapabilities.MaxMsaaSampleCount (V-C5), which is the INCUMBENT'S computation and not one of its
+        // two drafts': vkGetPhysicalDeviceImageFormatProperties per format with the usage that format is used
+        // under, reduced to the highest supported bit, minimised over the engine's three MRT targets. The fold,
+        // the reduction and the three-format table are VulkanMsaaLimit's and are device-free; this is the one line
+        // that names the driver call.
+        //
+        // A FAILED QUERY ANSWERS "NO MSAA" RATHER THAN THROWING, which is the incumbent's answer arrived at
+        // explicitly. It ignores the result entirely, so a failure leaves it reading a zeroed structure whose
+        // sampleCounts is 0, which its ladder reduces to 1. Checking the result and saying 1 is the same
+        // observable value with the reason written down: a format the device cannot make an image of at all
+        // supports no multisampling of it either.
+        static int MaxMsaaSampleCount(Vk vk, PhysicalDevice device)
+            => VulkanMsaaLimit.MinOverTheEngineTargets((format, depthAttachment) =>
+            {
+                ImageUsageFlags usage = ImageUsageFlags.SampledBit
+                    | (depthAttachment
+                        ? ImageUsageFlags.DepthStencilAttachmentBit
+                        : ImageUsageFlags.ColorAttachmentBit);
+
+                Result queried = vk.GetPhysicalDeviceImageFormatProperties(
+                    device,
+                    // THE DEPTH FLAG DOES NOT REACH HERE, deliberately: the incumbent passes its own depthFormat
+                    // argument to the USAGE bits alone and maps the format with the default. See VulkanMsaaLimit.
+                    VulkanFormats.ToVkFormat(format, depthStencil: false),
+                    ImageType.Type2D,
+                    ImageTiling.Optimal,
+                    usage,
+                    ImageCreateFlags.None,
+                    out ImageFormatProperties properties);
+
+                return queried == Result.Success ? properties.SampleCounts : SampleCountFlags.Count1Bit;
+            });
 
         static VulkanPhysicalDeviceClass Classify(PhysicalDeviceType type) => type switch
         {

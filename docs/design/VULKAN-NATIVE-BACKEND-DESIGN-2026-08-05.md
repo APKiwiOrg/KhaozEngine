@@ -1724,9 +1724,20 @@ had to correct in flight, where the first draft asked the driver a different que
 
 So: **the computation is READ OFF the incumbent's own `GetSampleCountLimit` and reproduced**, with the citation
 pinned in a constant, and the implementation issue re-reads it before writing. Then "asserted identical" is
-satisfiable by construction rather than by luck. The incumbent's shape is a per-format
-`vkGetPhysicalDeviceFormatProperties` read reduced to the highest supported bit, so reproducing it is cheap, and
-neither draft's invented formula is taken.
+satisfiable by construction rather than by luck. The incumbent's shape is a per-format read reduced to the
+highest supported bit, so reproducing it is cheap, and neither draft's invented formula is taken.
+
+**CORRECTED IN FLIGHT (row 15).** This paragraph named the wrong call, and re-reading the source before writing
+is what caught it, which is the whole reason that obligation was put on the row. The sentence above said
+`vkGetPhysicalDeviceFormatProperties`. `VkGraphicsDevice.GetSampleCountLimit` calls
+`vkGetPhysicalDeviceImageFormatProperties` and reduces the `sampleCounts` field of the `VkImageFormatProperties`
+it returns. Those are different queries with different answers: the image-format one takes the image type, the
+tiling and the USAGE, and a format's supported sample counts genuinely differ by usage, so a backend that had
+taken this paragraph at its word would have asked a different question and then asserted equality with the
+incumbent, which is precisely the failure the paragraph exists to prevent. `VulkanMsaaLimit` carries the real
+shape with its citation, and it also pins the clause that reads like a bug: `GetSampleCountLimit` hands its own
+`depthFormat` argument to the USAGE bits alone and maps the format with `VdToVkPixelFormat`'s default, so the
+linear-depth target is queried as `R32_SFLOAT` with a COLOUR attachment usage.
 
 `ResolveTexture` is `vkCmdResolveImage` at mip 0 layer 0 outside a render pass instance, with both images
 transitioned to the transfer layouts and restored afterwards per V-F7. An out-of-range requested sample count

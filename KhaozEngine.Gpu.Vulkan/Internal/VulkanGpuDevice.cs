@@ -105,13 +105,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// empties is returned behind the timeline rather than freed underneath a submission.
     /// </para>
     /// <para>
-    /// <b><see cref="Capabilities"/> IS PARTIAL AND SAYS WHICH PART.</b> Row 18
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/528) owns the capability read and the ZERO-permitted-
-    /// difference parity test against the incumbent. What this row fills is everything readable off a device with
-    /// no renderer on it, and <c>MaxMsaaSampleCount</c> is pinned to 1 rather than guessed, because the incumbent's
-    /// own computation is what row 18 reproduces and a number invented here would be a silent lie that
-    /// <c>AntiAliasing.ResolveFor</c> would act on. Nothing selects this backend, so a conservative 1 costs
-    /// nothing and an invented value would cost the parity test its meaning.
+    /// <b><see cref="Capabilities"/> IS FILLED AND ROW 18 PINS IT.</b> That row
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/528) owns the ZERO-permitted-difference parity test
+    /// against the incumbent. <c>MaxMsaaSampleCount</c> was pinned to 1 until row 15
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/525) reproduced the incumbent's OWN computation rather
+    /// than inventing a formula (V-C5), which is what makes "asserted identical" satisfiable by construction
+    /// rather than by luck: see <see cref="VulkanMsaaLimit"/>.
     /// </para>
     /// <para>
     /// <b>TEARDOWN CALLS <c>vkDeviceWaitIdle</c> FIRST</b> (V-F10), unlike the incumbent, which destroys the

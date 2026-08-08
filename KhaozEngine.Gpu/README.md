@@ -115,7 +115,8 @@ What it owns today:
     four-value overload is unchanged, so an already-compiled consumer keeps binding to what it was compiled
     against, and it leaves both new fields null.
 - **`GpuDeviceDiagnostics`** (17.32.0) - the two facts a device can only report about ITSELF and only LIVE:
-  `SoftwareAdapter` (on Direct3D11, `DXGI_ADAPTER_FLAG_SOFTWARE`) and `DeviceLossReason`
+  `SoftwareAdapter` (on Direct3D11, `DXGI_ADAPTER_FLAG_SOFTWARE`, and on the native Vulkan backend a physical
+  device whose type is CPU or whose driver id is Mesa's llvmpipe) and `DeviceLossReason`
   (`GetDeviceRemovedReason`'s answer plus the call site that noticed). On `IGpuDevice.Diagnostics`,
   `GpuDeviceContext.Diagnostics` and `AppWindow.Diagnostics`, and read THROUGH to the device on every access
   rather than captured at

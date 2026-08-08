@@ -8242,7 +8242,8 @@ like `GpuInjectedModules.Describe`, and `threading` is null on every backend but
 the envelope, so `session.v` does not move and an existing reader keeps working.
 
 - `softwareAdapter` is three-valued. `true` means the session ran on a software rasterizer (on Direct3D11,
-  `DXGI_ADAPTER_FLAG_SOFTWARE`, which covers WARP and the Microsoft Basic Render Driver), `false` means it did
+  `DXGI_ADAPTER_FLAG_SOFTWARE`, which covers WARP and the Microsoft Basic Render Driver, and on the native
+  Vulkan backend a physical device whose type is CPU or whose driver id is Mesa's llvmpipe), `false` means it did
   not, and `null` means nobody answered. Keep those apart when you read them: performance numbers off a software
   rasterizer are not comparable with numbers off a GPU at all, and a capture that cannot say which it was is a
   capture that gets averaged in with the others. It is a separate field from `adapter` rather than something you

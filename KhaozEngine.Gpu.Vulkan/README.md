@@ -887,9 +887,11 @@ are all defensive:
 - **Every failure is a colder start and nothing else.** No file, an unreadable one, a full disk, a directory that
   cannot be created: all of them fall back to compiling. That best-effort construction is the measurement's own
   kill switch, so there is nothing to turn off.
-- **A driver that refuses an accepted blob gets ONE retry with no seed.** Without it, a single file a driver
-  dislikes would leave the process with no cache at all for its whole life, so one bad file would cost every
-  launch after it too.
+- **A driver that refuses an accepted blob gets ONE retry with no seed, and the file it refused is deleted.** The
+  retry rescues the run, because without it a single file a driver dislikes would leave the process with no cache
+  at all for its whole life. The delete rescues the launches after it: the entry is otherwise only replaced by a
+  clean teardown, and a refused seed is exactly where a launch is likely to end without one, so the same blob
+  would be read, seeded and refused once per launch for as long as it survived.
 
 `KE_VULKAN_PIPELINE_CACHE=<directory>` relocates it and `KE_VULKAN_PIPELINE_CACHE=off` turns it off, so a session
 chasing a pipeline miscompile can prove it is compiling fresh rather than believing it.

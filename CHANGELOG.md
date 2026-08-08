@@ -58,8 +58,9 @@ write is a process-unique temp-and-move so a reader sees a whole entry or none, 
 a colder start rather than a throw. That best-effort construction IS measurement MV8's kill switch, so there is
 nothing to switch off, and the corruption half of MV8 ships with it: truncation at every point, a mutated header
 byte per field, and a header from another device, each asserted to discard cleanly. A driver that refuses a blob
-this backend's own check accepted gets ONE retry with no seed, so a single bad file cannot cost every launch
-after it. `KE_VULKAN_PIPELINE_CACHE` relocates the cache or turns it off.
+this backend's own check accepted gets ONE retry with no seed AND the refused file deleted, which takes both: the
+retry rescues the run, and the delete is what stops the same rejected blob being read, seeded and refused once
+per launch after an unclean exit. `KE_VULKAN_PIPELINE_CACHE` relocates the cache or turns it off.
 
 **A pipeline switch invalidates recorded descriptor slots from the first incompatible set onward, and this is the
 row that wires it.** Row 11 landed the compatibility-prefix computation and both of decision V-R7's guards one

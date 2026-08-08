@@ -248,6 +248,18 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         }
 
         /// <summary>
+        /// Delete the entry, best effort, and never throw. A file that was never there is not a failure.
+        /// <para>
+        /// THE ONE CALLER IS THE DRIVER-REFUSED-THE-SEED PATH. A blob this type validated and the driver then
+        /// rejected is otherwise only replaced at a clean teardown, so a process that dies before one leaves the
+        /// same rejected file for the next launch to read, seed and be refused again, once per launch for as long
+        /// as the file survives. The retry with no seed rescues the RUN, and only a delete rescues the ones after
+        /// it.
+        /// </para>
+        /// </summary>
+        internal void TryDiscard() => TryDelete(Path);
+
+        /// <summary>
         /// THE HEADER CHECK, AS A PURE FUNCTION. True when <paramref name="blob"/> begins with a
         /// <c>VkPipelineCacheHeaderVersionOne</c> that names <paramref name="identity"/>'s device.
         /// <para>
@@ -278,7 +290,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             }
             catch (Exception ex) when (IsRecoverable(ex))
             {
-                // A leftover temporary file is litter rather than a failure. The next write takes a fresh name.
+                // A file that will not delete is litter rather than a failure. A leftover temporary is replaced
+                // by the next write, which takes a fresh name, and a rejected seed nothing could remove costs one
+                // more refused create on the next launch.
             }
         }
 

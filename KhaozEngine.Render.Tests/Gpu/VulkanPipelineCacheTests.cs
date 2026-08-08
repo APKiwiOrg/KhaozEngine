@@ -309,6 +309,31 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
+        /// A SEED THE DRIVER REFUSES IS DELETED THERE AND THEN, which is the half the retry alone does not cover.
+        /// The file is otherwise only replaced by a clean teardown, and a refused seed is exactly the situation
+        /// where a launch is likely to end without one, so the same rejected blob would be read, seeded and
+        /// refused once per launch for as long as it survived.
+        /// </summary>
+        [Fact]
+        public void ASeedTheDriverRefuses_IsDiscardedFromDisk()
+        {
+            using var directory = new TempCacheDirectory();
+            VulkanPipelineCacheIdentity identity = Identity();
+            var file = new VulkanPipelineCacheFile(directory.Path, identity);
+            Assert.True(file.TryWrite(Blob(identity, bodyBytes: 64)));
+            Assert.True(File.Exists(file.Path));
+
+            var api = new FakeVulkanPipelineApi { FailCacheCreation = true };
+            var cache = new VulkanPipelineCache(api, file);
+
+            Assert.False(File.Exists(file.Path));
+            Assert.Null(file.TryRead());
+
+            // And the run it happened on still has a cache, so the discard is not the retry undone.
+            Assert.NotEqual(0UL, cache.Handle);
+        }
+
+        /// <summary>
         /// NO DISK FILE STILL MAKES A LIVE CACHE, and that is worth having on its own: several shipped programs
         /// differ only in blend or depth state, so their pipelines share compiled stages within one run even when
         /// nothing is persisted between runs.

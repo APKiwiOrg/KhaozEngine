@@ -15,11 +15,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// create that fails outright leaves handle 0, which every pipeline creation passes through as "no cache".
     /// </para>
     ///
-    /// <para><b>THE RETRY WITH NO SEED IS THE ONE PIECE OF BEHAVIOUR THAT IS NOT OBVIOUS.</b> Without it, a driver
-    /// that dislikes a blob this backend's own header check accepted (a legal header over a body the driver has
-    /// since stopped understanding, which is what a driver is entitled to do while keeping its
-    /// <c>pipelineCacheUUID</c>) would leave the process with no cache at all for its whole life, so ONE bad file
-    /// would cost every subsequent launch as well. The retry costs one extra call at device creation.</para>
+    /// <para><b>A REFUSED SEED IS DISCARDED AND THEN RETRIED WITH NOTHING, AND IT TAKES BOTH TO BOUND THE
+    /// DAMAGE.</b> The driver in question dislikes a blob this backend's own header check accepted (a legal header
+    /// over a body the driver has since stopped understanding, which is what a driver is entitled to do while
+    /// keeping its <c>pipelineCacheUUID</c>). The RETRY rescues this run: without it the process would have no
+    /// cache at all for its whole life. The DISCARD rescues the runs after it: the file is otherwise only replaced
+    /// by a clean teardown, and a refused seed is exactly the situation where a launch is likely to end without
+    /// one, so the same blob would be read, seeded and refused once per launch for as long as it survived.
+    /// Together they cost one extra create call and one delete at device creation.</para>
     ///
     /// <para><b>IT IS WRITTEN BACK ONCE, AT TEARDOWN, RATHER THAN AS PIPELINES ARE CREATED.</b> A blob is the
     /// whole cache and there is no incremental form of <c>vkGetPipelineCacheData</c>, so writing per pipeline
@@ -53,7 +56,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (_handle == 0 && seed is not null)
             {
-                // See the type remarks: the seed is what the driver refused, so try again without it.
+                // See the type remarks: the seed is what the driver refused, so the file goes before the retry.
+                // Discarding it first means an unclean exit, which is the exit a refused seed makes likely,
+                // cannot leave the same rejected blob behind for the next launch to fail on again.
+                _file?.TryDiscard();
                 _handle = _api.CreateCache([]);
             }
         }

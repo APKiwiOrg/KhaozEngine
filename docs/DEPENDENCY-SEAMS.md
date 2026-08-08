@@ -565,7 +565,7 @@ and decisions P4 and I2.
 
 The pattern above is now used twice, which is what turns it from a one-off into the shape an out-of-package
 graphics backend has here. `KhaozEngine.Gpu.Vulkan` is phase 3 of the same program and takes the same inverted
-edge. As of `17.33.0` it registers a real provider through `KhaozEngineVulkan.Register()`, answers a real
+edge. As of `17.34.0` it registers a real provider through `KhaozEngineVulkan.Register()`, answers a real
 functional machine probe, and creates a real HEADLESS device
 ([#514](https://github.com/APKiwiOrg/KhaozEngine/issues/514)) that hands out command lists and submits them
 ([#517](https://github.com/APKiwiOrg/KhaozEngine/issues/517)), with a real resource factory behind it

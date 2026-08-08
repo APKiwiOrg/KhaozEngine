@@ -195,8 +195,8 @@ namespace KhaozEngine.Tests.Gpu
         /// </para>
         /// <para>
         /// Returns early, having asserted nothing, in TWO cases, and both are facts about the MACHINE rather than
-        /// about the code: an incumbent that did not come up on Vulkan, so there is nothing to be at parity WITH,
-        /// or a machine the native backend's own functional probe refuses. The second reads
+        /// about the code: a machine the native backend's own functional probe refuses, or an incumbent that did
+        /// not come up on Vulkan, so there is nothing to be at parity WITH. The first reads
         /// <see cref="GpuBackendSelector.IsBackendSupported"/>, which resolves a loader, creates a throwaway
         /// instance at the 1.3 floor and reads every physical device against the design's requirements. That is
         /// the shape #504 settled on the Direct3D 11 side, where a feature-deficient box used to go red for a
@@ -213,17 +213,19 @@ namespace KhaozEngine.Tests.Gpu
         [GpuFact]
         public void NativeAndVeldridVulkanCapabilitiesDoNotDifferAtAll()
         {
-            using GpuDeviceContext incumbent = GpuDeviceContext.CreateHeadless();
-            if (incumbent.Backend != GpuBackendKind.Vulkan)
-            {
-                _out.WriteLine($"dormant: the incumbent device came up on {incumbent.Backend}, not Vulkan.");
-                return;
-            }
-
+            // The probe first, because it is the cheap machine fact and answering it second would build a whole
+            // incumbent device on every leg that was never going to have a second one to compare it against.
             if (!GpuBackendSelector.IsBackendSupported(GpuBackendKind.VulkanNative))
             {
                 _out.WriteLine("dormant: this machine cannot run the native Vulkan backend, so there is no "
                     + "second device to compare.");
+                return;
+            }
+
+            using GpuDeviceContext incumbent = GpuDeviceContext.CreateHeadless();
+            if (incumbent.Backend != GpuBackendKind.Vulkan)
+            {
+                _out.WriteLine($"dormant: the incumbent device came up on {incumbent.Backend}, not Vulkan.");
                 return;
             }
 

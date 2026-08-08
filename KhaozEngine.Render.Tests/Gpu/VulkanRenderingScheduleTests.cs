@@ -164,6 +164,65 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
+        /// AND A REDUNDANT REBIND LEAVES THE CLEAR PENDING RATHER THAN FLUSHING IT, so the next begin still folds
+        /// it into <c>loadOp</c>. This is the whole-method identity guard doing work the viewport rule does not
+        /// explain: a guard narrowed to the viewport and the scissor would run the rest of the body on a rebind,
+        /// which ends the pass, and ending it with clears outstanding spends a begin-and-end pair on them and
+        /// leaves the following draw loading instead of clearing. The ordering is correct today and nothing else
+        /// pins it, so a future narrowing of that guard has to fail here.
+        /// </summary>
+        [Fact]
+        public void ARedundantRebind_LeavesAPendingClearForTheNextBeginToFold()
+        {
+            var api = new FakeVulkanRenderApi();
+            var schedule = new VulkanRenderingSchedule(api);
+            VulkanBoundFramebuffer framebuffer = Framebuffer(1, colour: 1, depth: false);
+
+            schedule.SetFramebuffer(Buffer, framebuffer);
+            schedule.ClearColourTarget(Buffer, 0, Color.White);
+            schedule.SetFramebuffer(Buffer, framebuffer);      // redundant
+
+            Assert.True(schedule.HasPendingClears);
+            Assert.Empty(api.Begins);
+            Assert.Equal(0, api.EndCount);
+
+            schedule.PrepareDraw(Buffer);
+
+            VulkanRecordedBegin begin = Assert.Single(api.Begins);
+            Assert.Equal(VulkanLoadOp.Clear, begin.Colour[0].LoadOp);
+            Assert.Equal(Color.White, begin.Colour[0].ClearValue);
+            Assert.Empty(api.Clears);
+        }
+
+        /// <summary>
+        /// TWO CLEARS OF ONE ATTACHMENT BEFORE THE BEGIN FOLD LAST-WINS INTO THE SINGLE <c>loadOp</c> VALUE. A
+        /// <c>loadOp</c> carries ONE value per attachment, so the pending slot is a value rather than a queue and
+        /// the second write overwrites the first. Emitting the first as a <c>vkCmdClearAttachments</c> to make
+        /// room for the second would be a call bought for a colour no draw ever saw, and folding the FIRST would
+        /// clear to a value the caller replaced. The depth arm is the same single slot.
+        /// </summary>
+        [Fact]
+        public void TwoClearsOfOneAttachmentBeforeTheBegin_FoldLastWins()
+        {
+            var api = new FakeVulkanRenderApi();
+            var schedule = new VulkanRenderingSchedule(api);
+
+            schedule.SetFramebuffer(Buffer, Framebuffer(1, colour: 1, depth: true));
+            schedule.ClearColourTarget(Buffer, 0, Color.White);
+            schedule.ClearColourTarget(Buffer, 0, Color.Black);
+            schedule.ClearDepthStencil(Buffer, 1f);
+            schedule.ClearDepthStencil(Buffer, 0.25f);
+            schedule.PrepareDraw(Buffer);
+
+            VulkanRecordedBegin begin = Assert.Single(api.Begins);
+
+            Assert.Equal(VulkanLoadOp.Clear, begin.Colour[0].LoadOp);
+            Assert.Equal(Color.Black, begin.Colour[0].ClearValue);
+            Assert.Equal(0.25f, Assert.NotNull(begin.Depth).ClearDepth);
+            Assert.Empty(api.Clears);
+        }
+
+        /// <summary>
         /// A PASS WITH NEITHER CLEARS NOR DRAWS OPENS NOTHING, which is what stops the flush above from becoming
         /// a begin-and-end pair per framebuffer bind. A bind is not a pass.
         /// </summary>

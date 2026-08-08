@@ -855,12 +855,17 @@ two-element array a plain `[Fact]` reads, translated verbatim at the driver boun
 else is baked into the pipeline object, including the constant blend colour, which is the incumbent's shape kept
 deliberately.
 
-**One divergence from what the seam's shape suggests: the blend attachment count is the OUTPUT's rather than the
-declaration's.** Vulkan requires the colour blend state's attachment count to EQUAL the rendering create-info's
-colour attachment count, and the seam lets the two differ with nothing checking either way. A mismatch is a
-validation error at creation on a shipped renderer, which is a failure a player sees, so a declared state past
-the last colour output is dropped (there is no attachment for it to affect) and an output the caller declared no
-state for gets a disabled blend that writes every channel.
+**A blend state count that is not the colour output count is refused by name, in both directions.** Vulkan
+requires the colour blend state's attachment count to EQUAL the rendering create-info's colour attachment count,
+and the seam lets the two differ with nothing checking either way, so a mismatch is a validation error at
+creation on a shipped renderer, which is a failure a player sees. Repairing it was the earlier answer and is
+worse: padding an undeclared output with a disabled blend that writes every channel invents a per-backend
+semantic for a state the caller never gave, and the Direct3D 11 native backend answers the same description with
+its own struct defaults, so the two would quietly disagree about the same undeclared attachment. Dropping a
+declared state past the last colour output throws away a state the caller wrote and meant.
+`GpuPipelineDescription.BlendAttachments` is already documented as one per colour output and every shipped call
+site declares exactly that, so enforcing the contract costs nothing and only fires on a description that was
+already wrong.
 
 **The `VkPipelineCache` is persisted, and a corrupt file cannot crash a launch.** The incumbent passes
 `VkPipelineCache.Null` at both of its creation sites, so every launch recompiles every pipeline from SPIR-V,

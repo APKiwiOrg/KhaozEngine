@@ -160,33 +160,85 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// THE BLEND ATTACHMENT COUNT IS THE OUTPUT'S RATHER THAN THE DECLARATION'S, in both directions, and that
-        /// is a real divergence from what the seam's shape suggests. Vulkan requires the colour blend state's
-        /// attachment count to EQUAL the rendering create-info's colour attachment count, the seam lets the two
-        /// differ, and a mismatch is a validation error at creation on a shipped renderer, which is a failure a
-        /// player sees rather than one a test catches.
+        /// A MATCHING COUNT IS CARRIED THROUGH IN ORDER, which is the happy path the two refusals below are
+        /// measured against: a resolver that threw on everything would pass them both.
         /// </summary>
         [Fact]
-        public void TheBlendAttachmentCount_IsTheOutputsRatherThanTheDeclarations()
+        public void TheDeclaredBlendStates_ArriveInOrderWhenTheCountMatches()
         {
-            // Fewer declared than there are outputs: the gap is a disabled blend that writes every channel.
-            GpuBlendAttachment[] padded = VulkanGraphicsPipelineSpec.ResolveBlends(
-                [GpuBlendAttachment.AlphaBlend], colourCount: 3);
+            GpuBlendAttachment[] matched = VulkanGraphicsPipelineSpec.ResolveBlends(
+                [GpuBlendAttachment.AlphaBlend, GpuBlendAttachment.Additive], colourCount: 2);
 
-            Assert.Equal(3, padded.Length);
-            Assert.True(padded[0].BlendEnabled);
-            Assert.False(padded[1].BlendEnabled);
-            Assert.False(padded[2].BlendEnabled);
+            Assert.Equal(2, matched.Length);
+            Assert.True(matched[0].BlendEnabled);
+            Assert.Equal(GpuBlendFactor.InverseSourceAlpha, matched[0].DestinationColorFactor);
+            Assert.Equal(GpuBlendFactor.One, matched[1].DestinationColorFactor);
 
-            // More declared than there are outputs: the extras name attachments that do not exist.
-            GpuBlendAttachment[] trimmed = VulkanGraphicsPipelineSpec.ResolveBlends(
-                [GpuBlendAttachment.AlphaBlend, GpuBlendAttachment.Additive], colourCount: 1);
+            // A depth-only pass declares nothing for nothing, which is the one matching count that is empty.
+            Assert.Empty(VulkanGraphicsPipelineSpec.ResolveBlends(null, 0));
+        }
 
-            Assert.Single(trimmed);
-            Assert.Equal(GpuBlendFactor.InverseSourceAlpha, trimmed[0].DestinationColorFactor);
+        /// <summary>
+        /// A BLEND STATE COUNT THAT IS NOT THE COLOUR OUTPUT COUNT IS REFUSED BY NAME, IN BOTH DIRECTIONS, rather
+        /// than repaired. Vulkan requires the colour blend state's attachment count to EQUAL the rendering
+        /// create-info's colour attachment count, and the seam lets the two differ, but repairing the mismatch
+        /// means inventing a state the caller never declared, which the Direct3D 11 native backend answers with
+        /// its own struct defaults instead, so the two backends would quietly disagree about the same undeclared
+        /// attachment. The seam already documents <c>BlendAttachments</c> as one per colour output and every
+        /// shipped call site declares exactly that, so enforcing the contract costs nothing and only fires on a
+        /// description that was already wrong.
+        /// </summary>
+        [Fact]
+        public void ABlendStateCountThatIsNotTheOutputCount_IsRefusedByName()
+        {
+            // Fewer declared than there are outputs. Padding would write every channel of an attachment nobody
+            // described.
+            ArgumentException tooFew = Assert.Throws<ArgumentException>(
+                () => VulkanGraphicsPipelineSpec.ResolveBlends([GpuBlendAttachment.AlphaBlend], colourCount: 3));
 
-            // A depth-only pass declares no colour attachment, so it gets no blend state at all.
-            Assert.Empty(VulkanGraphicsPipelineSpec.ResolveBlends([GpuBlendAttachment.OverrideBlend], 0));
+            Assert.Contains("1 blend attachment state", tooFew.Message, StringComparison.Ordinal);
+            Assert.Contains("3 colour output", tooFew.Message, StringComparison.Ordinal);
+            Assert.Contains("one per colour output", tooFew.Message, StringComparison.Ordinal);
+
+            // More declared than there are outputs: the extras name attachments that do not exist, and dropping
+            // them throws away a state the caller wrote and meant.
+            Assert.Throws<ArgumentException>(() => VulkanGraphicsPipelineSpec.ResolveBlends(
+                [GpuBlendAttachment.AlphaBlend, GpuBlendAttachment.Additive], colourCount: 1));
+
+            // Declaring none is a mismatch too, whenever there IS a colour output to describe.
+            Assert.Throws<ArgumentException>(() => VulkanGraphicsPipelineSpec.ResolveBlends(null, 1));
+            Assert.Throws<ArgumentException>(
+                () => VulkanGraphicsPipelineSpec.ResolveBlends([GpuBlendAttachment.OverrideBlend], 0));
+        }
+
+        /// <summary>
+        /// AND THE FACTORY REFUSES IT TOO, before anything native happens, which is what makes the resolver's own
+        /// refusal reachable from a description a caller actually writes rather than only from a direct call.
+        /// </summary>
+        [Fact]
+        public void AMismatchedBlendCountOnADescription_IsRefusedBeforeCreation()
+        {
+            var fixture = new VulkanResourceFixture();
+            var owned = new List<IDisposable>();
+
+            try
+            {
+                var shaders = (VulkanShaderSet)fixture.Factory.CreateShadersFromSpirv(VertGlsl, FragGlsl);
+                owned.Add(shaders);
+
+                ArgumentException ex = Assert.Throws<ArgumentException>(
+                    () => fixture.Factory.CreateGraphicsPipeline(Description(shaders, [],
+                        outputs: new GpuOutputDescription(
+                            null, GpuPixelFormat.R8G8B8A8UNorm, GpuPixelFormat.R16G16B16A16Float),
+                        blends: [GpuBlendAttachment.AlphaBlend])));
+
+                Assert.Contains("one per colour output", ex.Message, StringComparison.Ordinal);
+                Assert.Empty(fixture.PipelineApi.Graphics);
+            }
+            finally
+            {
+                DisposeAll(owned);
+            }
         }
 
         /// <summary>

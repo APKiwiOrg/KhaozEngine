@@ -38,11 +38,15 @@ including the constant blend colour, which is the incumbent's shape kept deliber
 disk cache below is worth having: baking everything means considerably more pipeline permutations to compile on a
 cold start.
 
-**One real divergence lands with it: the blend attachment count is the OUTPUT's rather than the declaration's.**
-Vulkan requires the colour blend state's attachment count to equal the rendering create-info's colour attachment
-count, and the seam lets the two differ with nothing checking. A mismatch would be a validation error at creation
-on a shipped renderer, so a declared state past the last colour output is dropped and an output the caller
-declared no state for gets a disabled blend that writes every channel.
+**A blend state count that is not the colour output count is refused by name, in both directions.** Vulkan
+requires the colour blend state's attachment count to equal the rendering create-info's colour attachment count,
+and the seam lets the two differ with nothing checking, so a mismatch would be a validation error at creation on
+a shipped renderer. Repairing it is the answer this row does NOT take: padding an undeclared output with a
+disabled blend that writes every channel invents a per-backend semantic for a state the caller never gave, and
+the Direct3D 11 native backend answers the same description with its own struct defaults, so the two would
+quietly disagree about an attachment nobody described. `GpuPipelineDescription.BlendAttachments` is already
+documented as one per colour output and all 22 shipped call sites declare exactly that, so the refusal costs
+nothing and only fires on a description that was already wrong under at least one backend.
 
 **The `VkPipelineCache` is persisted, and the caution one design draft raised is adopted as a REQUIREMENT rather
 than as a reason to defer it.** The incumbent passes `VkPipelineCache.Null` at both creation sites, so every

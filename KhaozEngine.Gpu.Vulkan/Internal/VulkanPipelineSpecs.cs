@@ -91,7 +91,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <summary>One per shader input location, in location order.</summary>
         internal VulkanVertexAttribute[] VertexAttributes { get; }
 
-        /// <summary>One per COLOUR ATTACHMENT, which is not necessarily one per declared blend state. See
+        /// <summary>One per COLOUR ATTACHMENT, which is also one per DECLARED blend state, because the two counts
+        /// are required to match and a description whose counts differ never gets this far. See
         /// <see cref="ResolveBlends"/>.</summary>
         internal GpuBlendAttachment[] BlendAttachments { get; }
 
@@ -127,8 +128,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="pipelineLayout">The shared <c>VkPipelineLayout</c>, non-zero.</param>
         /// <param name="vertexModule">The vertex stage's module, non-zero.</param>
         /// <param name="fragmentModule">The fragment stage's module, non-zero.</param>
-        /// <exception cref="ArgumentException">A handle is null, or a vertex layout declares an instance step rate
-        /// this backend cannot express.</exception>
+        /// <exception cref="ArgumentException">A handle is null, a vertex layout declares an instance step rate
+        /// this backend cannot express, or the description declares a blend state count that is not its colour
+        /// output count.</exception>
         internal static VulkanGraphicsPipelineSpec For(in GpuPipelineDescription description, ulong pipelineLayout,
             ulong vertexModule, ulong fragmentModule)
         {
@@ -146,34 +148,47 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         }
 
         /// <summary>
-        /// THE BLEND ATTACHMENT COUNT IS THE OUTPUT'S, NOT THE DECLARATION'S, and that is a real divergence from
-        /// what the seam's shape suggests rather than a tidy-up.
+        /// ONE DECLARED BLEND STATE PER COLOUR OUTPUT, ENFORCED RATHER THAN REPAIRED. A count that is not the
+        /// output count is refused by name, in both directions.
         /// <para>
         /// Vulkan requires <c>VkPipelineColorBlendStateCreateInfo.attachmentCount</c> to EQUAL the rendering
-        /// create-info's colour attachment count, and the seam lets the two differ, because Veldrid's own
-        /// validation of the pair is not something the engine's descriptions are checked against anywhere. A
-        /// mismatch would be a validation error at creation on a shipped renderer, which is a failure a player
-        /// sees, so the count is taken from the attachments that really exist: a declared state past the last
-        /// colour output is DROPPED (there is no attachment for it to affect), and an output the caller declared
-        /// no state for gets a disabled blend that writes every channel, which is the only neutral answer
-        /// available and matches <see cref="GpuBlendAttachment.OverrideBlend"/>.
+        /// create-info's colour attachment count, and the seam lets the two differ, because the engine's
+        /// descriptions are not checked against that pairing anywhere. An earlier draft of this row REPAIRED the
+        /// mismatch instead, dropping a declared state past the last colour output and padding an output nobody
+        /// declared with <see cref="GpuBlendAttachment.OverrideBlend"/>. Refusing is better on both halves. The
+        /// padding wrote every channel of an attachment the caller never described, which is a per-backend answer
+        /// invented for a state that was never given, and the Direct3D 11 native backend answers the same
+        /// description with its own struct defaults, so the two backends would quietly disagree about the same
+        /// undeclared attachment. The drop threw away a state the caller wrote and meant.
+        /// </para>
+        /// <para>
+        /// IT COSTS NOTHING TO ENFORCE, because the contract is the one the seam already states:
+        /// <see cref="GpuPipelineDescription.BlendAttachments"/> is documented as one per colour output, and every
+        /// shipped call site declares exactly that. So the refusal only fires on a description that was already
+        /// wrong under at least one backend, at creation, by name, instead of at a draw.
         /// </para>
         /// </summary>
-        /// <param name="declared">What the caller declared, possibly null.</param>
+        /// <param name="declared">What the caller declared, possibly null, which counts as none.</param>
         /// <param name="colourCount">How many colour attachments the pipeline's outputs really carry.</param>
+        /// <exception cref="ArgumentException">The two counts differ.</exception>
         internal static GpuBlendAttachment[] ResolveBlends(GpuBlendAttachment[]? declared, int colourCount)
         {
-            if (colourCount <= 0) return [];
-
-            var resolved = new GpuBlendAttachment[colourCount];
-            for (int i = 0; i < colourCount; i++)
+            int declaredCount = declared?.Length ?? 0;
+            if (declaredCount != colourCount)
             {
-                resolved[i] = declared is not null && i < declared.Length
-                    ? declared[i]
-                    : GpuBlendAttachment.OverrideBlend;
+                throw new ArgumentException(
+                    "A graphics pipeline declared " + declaredCount.ToString(CultureInfo.InvariantCulture)
+                    + " blend attachment state(s) for " + colourCount.ToString(CultureInfo.InvariantCulture)
+                    + " colour output(s). GpuPipelineDescription.BlendAttachments is one per colour output, and "
+                    + "Vulkan requires the colour blend state's attachment count to equal the rendering "
+                    + "create-info's, so neither dropping the extras nor inventing a state for an attachment "
+                    + "nobody described is an answer this backend is willing to give.",
+                    nameof(declared));
             }
 
-            return resolved;
+            // Copied rather than kept, because the spec holds it for the pipeline's creation and the array is the
+            // caller's own, which a shipped renderer is free to reuse for the next description it builds.
+            return declaredCount == 0 ? [] : [.. declared!];
         }
 
         static void RequireHandle(ulong handle, string what)

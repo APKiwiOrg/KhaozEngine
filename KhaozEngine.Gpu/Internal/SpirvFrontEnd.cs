@@ -39,7 +39,10 @@ namespace KhaozEngine.Gpu.Internal
     internal static class SpirvFrontEnd
     {
         /// <summary>
-        /// The compile options every SPIR-V emission in the engine uses, in ONE place. PRIVATE, because it is the
+        /// The compile options every ENGINE-OWNED SPIR-V emission uses, in ONE place, which is every emission
+        /// that comes through this type. The incumbent <see cref="VeldridGpuDevice"/> keeps the library's own
+        /// defaults deliberately and does not read these, so the equality of the two sets is asserted by
+        /// <c>VulkanSpirvIncumbentParityTests</c> rather than held by construction. PRIVATE, because it is the
         /// one member here whose type is a Veldrid type, and the rest of this class is part of the Veldrid-free
         /// contract the native backends consume across <c>InternalsVisibleTo</c>.
         /// <para>
@@ -72,9 +75,10 @@ namespace KhaozEngine.Gpu.Internal
                 // THE FILE NAME IS A DIAGNOSTIC TAG AND NOT AN INPUT TO THE EMISSION. shaderc uses it to identify
                 // the source string in its own error text, and it reaches the module only when debug info is
                 // generated, which SpirvFrontEndPin.Debug turns off. The one-off parity measurement recorded in
-                // section 12.1 of the Vulkan design is what establishes that rather than assuming it: the
+                // section 12.1 of the Vulkan design is what established that rather than assuming it: the
                 // incumbent's own path passes NO file name, and every shipped program still compiled to
-                // byte-identical SPIR-V under both.
+                // byte-identical SPIR-V under both. VulkanSpirvIncumbentParityTests re-checks it on every leg,
+                // so a flip of the Debug pin fails there rather than quietly moving the bytes.
                 return SpirvCompilation.CompileGlslToSpirv(glsl, $"{tag}.{stage}", veldridStage, _options)
                     .SpirvBytes;
             }

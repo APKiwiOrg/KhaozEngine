@@ -40,9 +40,11 @@ derived cache key by construction. Separately, a ONE-OFF in-process measurement 
 through this path and through a faithful replication of the incumbent's own SPIR-V production and compared the
 modules byte for byte: **76 of 76 stages identical, 0 mismatches, taken 2026-08-08 before the first golden run**,
 recorded in section 12.1 of the design. That is what licenses the committed `vulkan` golden family carrying over
-without a rebake. The per-program hash table that ships alongside it is a DRIFT detector and its header says so,
-transplanted from the Direct3D 11 test rather than rediscovered, because a wrong emission baked once passes
-forever and reading a green run there as parity evidence reads it backwards.
+without a rebake, and `VulkanSpirvIncumbentParityTests` now asserts the same equality on every leg, because the
+two option sets are maintained independently and nothing else would notice them diverging. The per-program hash
+table that ships alongside both is a DRIFT detector and its header says so, transplanted from the Direct3D 11
+test rather than rediscovered, because a wrong emission baked once passes forever and reading a green run there
+as parity evidence reads it backwards.
 
 **`VkShaderModule`s are deduplicated by SPIR-V hash within a device.** The shipped set is 76 stage emissions and
 59 distinct modules: one fullscreen vertex source backs eleven post-processing programs on its own, and the
@@ -63,11 +65,12 @@ refactor.
 
 **Two smaller consequences of the split reach the other backend.** `ShaderValidation` stops making its own
 `CompileGlslToSpirv` call with the library defaults and routes through the same front-end seat, so the pin now
-governs every GLSL-to-SPIR-V compile in the engine rather than most of them, and a validator can no longer
-silently compile under a different set from the shipped path. And `D3D11ShaderKey` hashes BOTH pins, since a DXBC
-entry is a function of both halves of the toolchain and a key naming one of them is a time bomb across the change
-that flips the other. That is a new field, so the key schema moves to `v2` and warm DXBC cache entries on
-developer machines are orphaned once, which costs one cold compile.
+governs every engine-owned front-end call rather than most of them, and a validator can no longer silently
+compile under a different set from the shipped path. The incumbent Veldrid device keeps the library defaults on
+its own two paths deliberately, which is why the equality of the two sets is asserted rather than assumed. And
+`D3D11ShaderKey` hashes BOTH pins, since a DXBC entry is a function of both halves of the toolchain and a key
+naming one of them is a time bomb across the change that flips the other. That is a new field, so the key schema
+moves to `v2` and warm DXBC cache entries on developer machines are orphaned once, which costs one cold compile.
 
 ### Native Vulkan bind flush: two states, contiguous-run binds, and a compatibility prefix with a guard (#521)
 

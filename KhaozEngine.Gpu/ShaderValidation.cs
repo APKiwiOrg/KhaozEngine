@@ -221,7 +221,9 @@ namespace KhaozEngine.Gpu
         // THE ONE FRONT-END SEAT (decision V-S2). This validator used to make its own CompileGlslToSpirv call with
         // the library defaults, which meant a change to the pinned options would have moved the shipped shader
         // path and left the validator compiling under the old set, silently. Routing it through SpirvFrontEnd is
-        // what makes SpirvFrontEndPin govern every GLSL to SPIR-V compile in the engine rather than most of them.
+        // what makes SpirvFrontEndPin govern every ENGINE-OWNED front-end call rather than most of them. The
+        // incumbent VeldridGpuDevice still compiles under the library defaults, deliberately, and the two sets
+        // are asserted equal by VulkanSpirvIncumbentParityTests rather than by construction.
         static byte[] CompileToSpirv(string glsl, GpuShaderStages stage, string tag)
             => Internal.SpirvFrontEnd.ToSpirv(glsl, stage, tag);
     }

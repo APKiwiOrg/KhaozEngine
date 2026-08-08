@@ -17,8 +17,12 @@ namespace KhaozEngine.Gpu.Internal
     /// Direct3D 11 call site has.
     /// </para>
     /// <para>
-    /// The Veldrid wrapper <see cref="VeldridGpuDevice"/> still calls <c>SpirvCompilation</c> directly for its
-    /// cross-compiles, and remains a direct caller because it leaves the graph only when Veldrid itself does.
+    /// The Veldrid wrapper <see cref="VeldridGpuDevice"/> still calls <c>Veldrid.SPIRV</c> directly, and remains
+    /// a direct caller because it leaves the graph only when Veldrid itself does. That is true of BOTH halves of
+    /// the toolchain there, which is worth saying plainly: it hands GLSL to <c>CreateFromSpirv</c>, which runs
+    /// the FRONT end internally, and it makes its own <c>SpirvCompilation.CompileGlslToSpirv</c> call with
+    /// <c>GlslCompileOptions.Default</c> for the compute path. So neither pin governs that wrapper, and the
+    /// front-end halves are asserted equal by <c>VulkanSpirvIncumbentParityTests</c> rather than shared.
     /// </para>
     /// <para>
     /// WHY IT LIVES IN <c>KhaozEngine.Gpu</c> RATHER THAN IN THE BACKEND (decision P2, section 3 of

@@ -4,25 +4,35 @@ namespace KhaozEngine.Gpu.Internal
 {
     /// <summary>
     /// DECISION V-S2, AND THE ONE PLACE THE FRONT-END OPTIONS ARE WRITTEN DOWN (section 12.1 of
-    /// <c>docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md</c>). Every GLSL to SPIR-V compile in the engine
-    /// runs under exactly these values, so the native Vulkan backend hands <c>vkCreateShaderModule</c> the same
-    /// bytes the incumbent hands it, and the 36 committed goldens test the BACKEND rather than the compiler.
+    /// <c>docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md</c>). Every ENGINE-OWNED GLSL to SPIR-V compile
+    /// runs under exactly these values, which means every call that goes through <see cref="SpirvFrontEnd"/>:
+    /// both native backends and <c>ShaderValidation</c>. It is NOT every compile in the process, and the
+    /// difference matters. The incumbent <c>VeldridGpuDevice</c> deliberately keeps the library's own defaults on
+    /// both of its paths, so the two sets are maintained independently and their equality is ASSERTED by
+    /// <c>VulkanSpirvIncumbentParityTests</c> rather than guaranteed by construction. That assertion is what
+    /// keeps the native Vulkan backend handing <c>vkCreateShaderModule</c> the same bytes the incumbent hands it,
+    /// and so what keeps the 36 committed goldens testing the BACKEND rather than the compiler.
     ///
     /// <para>
-    /// V-S2 IS TWO ARTEFACTS AND THIS IS ONLY THE FIRST. The second is a ONE-OFF in-process parity measurement
-    /// against the incumbent's own path, taken once and RECORDED in section 12.1 of the design. That measurement is
-    /// what licenses carrying the goldens over without a rebake. <c>VulkanSpirvByteEqualityTests</c> is a DRIFT
-    /// detector baked from this path's own emission, so a green run there is not parity evidence and reading it as
-    /// such reads it backwards. Both artefacts are needed and neither substitutes for the other.
+    /// V-S2 IS TWO ARTEFACTS AND THIS IS ONLY THE FIRST. The second is the parity check against the incumbent's
+    /// own path, first taken as a ONE-OFF in-process measurement and RECORDED in section 12.1 of the design,
+    /// which is what licensed carrying the goldens over without a rebake, and now also asserted continuously on
+    /// every leg by <c>VulkanSpirvIncumbentParityTests</c>. <c>VulkanSpirvByteEqualityTests</c> is neither: it is
+    /// a DRIFT detector baked from this path's own emission, so a green run there is not parity evidence and
+    /// reading it as such reads it backwards. All of it is needed and none of it substitutes for the rest.
     /// </para>
     /// <para>
     /// WHAT THE INCUMBENT ACTUALLY DOES, read rather than assumed. <c>VeldridGpuDevice.CreateShadersFromSpirv</c>
-    /// calls <c>Veldrid.SPIRV</c>'s <c>CreateFromSpirv</c> with GLSL bytes and no options. On a Vulkan device that
-    /// overload takes the short path: the source is compiled to SPIR-V with the library's own defaults and handed
-    /// straight to <c>vkCreateShaderModule</c>, with no cross-compilation at all, because Vulkan consumes SPIR-V.
-    /// The only thing that differs between the two call shapes is the diagnostic FILE NAME, which the incumbent
-    /// leaves null and this engine sets to <c>&lt;label&gt;.&lt;stage&gt;</c>. The parity measurement is what
-    /// established that the name never reaches the module while <see cref="Debug"/> is false.
+    /// calls <c>Veldrid.SPIRV</c>'s <c>CreateFromSpirv</c> with GLSL bytes and no options, and
+    /// <c>CreateComputeShaderFromSpirv</c> calls <c>SpirvCompilation.CompileGlslToSpirv</c> itself with
+    /// <c>GlslCompileOptions.Default</c> so it can read the workgroup size back. Neither goes through this pin,
+    /// on purpose: that wrapper leaves the graph only when Veldrid itself does. On a Vulkan device the
+    /// <c>CreateFromSpirv</c> overload takes the short path: the source is compiled to SPIR-V with the library's
+    /// own defaults and handed straight to <c>vkCreateShaderModule</c>, with no cross-compilation at all, because
+    /// Vulkan consumes SPIR-V. The only thing that differs between the two call shapes is the diagnostic FILE
+    /// NAME, which the incumbent leaves null and this engine sets to <c>&lt;label&gt;.&lt;stage&gt;</c>. The
+    /// parity check is what establishes that the name never reaches the module while <see cref="Debug"/> is
+    /// false, and what would catch it starting to.
     /// </para>
     /// <para>
     /// WHY EACH VALUE IS WHAT IT IS. <see cref="Debug"/> off is the value the engine has always shipped under, and

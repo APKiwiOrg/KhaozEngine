@@ -123,6 +123,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     // THE SHADER SEAM (row 16), two driver calls wide, because Vulkan consumes SPIR-V and the
                     // whole shader path above it is the engine's existing front end plus a hash-keyed dedup.
                     new VulkanShaderApi(vk, device, loss, liveness),
+                    // THE PIPELINE SEAM (row 13), a pure driver-call adapter like the four above it: the vertex
+                    // input derivation, the blend attachment count, the dynamic state list and the whole disk
+                    // cache all sit above it in device-free types.
+                    new VulkanPipelineApi(vk, device, loss, liveness),
+                    // The device's own pipeline cache identity, off the SAME physical-device read, so the file the
+                    // cache is seeded from is keyed on the device that was actually selected (V-S7).
+                    read.PipelineCacheIdentity,
                     // The device's own maxDescriptorSetUniformBuffersDynamic, read off the SAME physical-device
                     // read the support probe gated on, so 8.3's third and fourth defences measure against one
                     // number rather than two reads that can disagree.

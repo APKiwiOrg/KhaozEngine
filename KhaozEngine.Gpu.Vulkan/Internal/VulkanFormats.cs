@@ -276,6 +276,118 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <c>VkFormats.VdToVkSamplerBorderColor</c>.</summary>
         internal static BorderColor TransparentBlackBorder => BorderColor.FloatTransparentBlack;
 
+        // ---- Pipeline state (row 13, https://github.com/APKiwiOrg/KhaozEngine/issues/523) ----
+
+        /// <summary>The vertex attribute format. Every seam format is a float vector, so this is the one mapping
+        /// here with no incumbent quirk in it at all.</summary>
+        internal static Format ToVertexFormat(GpuVertexElementFormat format) => format switch
+        {
+            GpuVertexElementFormat.Float1 => Format.R32Sfloat,
+            GpuVertexElementFormat.Float2 => Format.R32G32Sfloat,
+            GpuVertexElementFormat.Float3 => Format.R32G32B32Sfloat,
+            GpuVertexElementFormat.Float4 => Format.R32G32B32A32Sfloat,
+            _ => throw Unmapped(format),
+        };
+
+        /// <summary>Primitive topology. Reproduced from <c>VkFormats.VdToVkPrimitiveTopology</c>.</summary>
+        internal static PrimitiveTopology ToTopology(GpuPrimitiveTopology topology) => topology switch
+        {
+            GpuPrimitiveTopology.TriangleList => PrimitiveTopology.TriangleList,
+            GpuPrimitiveTopology.TriangleStrip => PrimitiveTopology.TriangleStrip,
+            GpuPrimitiveTopology.LineList => PrimitiveTopology.LineList,
+            GpuPrimitiveTopology.LineStrip => PrimitiveTopology.LineStrip,
+            GpuPrimitiveTopology.PointList => PrimitiveTopology.PointList,
+            _ => throw Unmapped(topology),
+        };
+
+        /// <summary>The depth comparison.</summary>
+        internal static CompareOp ToCompareOp(GpuComparison comparison) => comparison switch
+        {
+            GpuComparison.Never => CompareOp.Never,
+            GpuComparison.Less => CompareOp.Less,
+            GpuComparison.Equal => CompareOp.Equal,
+            GpuComparison.LessEqual => CompareOp.LessOrEqual,
+            GpuComparison.Greater => CompareOp.Greater,
+            GpuComparison.NotEqual => CompareOp.NotEqual,
+            GpuComparison.GreaterEqual => CompareOp.GreaterOrEqual,
+            GpuComparison.Always => CompareOp.Always,
+            _ => throw Unmapped(comparison),
+        };
+
+        /// <summary>The cull mode.</summary>
+        internal static CullModeFlags ToCullMode(GpuFaceCull cull) => cull switch
+        {
+            GpuFaceCull.Back => CullModeFlags.BackBit,
+            GpuFaceCull.Front => CullModeFlags.FrontBit,
+            GpuFaceCull.None => CullModeFlags.None,
+            _ => throw Unmapped(cull),
+        };
+
+        /// <summary>The fill mode. <c>Wireframe</c> needs the <c>fillModeNonSolid</c> feature, which
+        /// <see cref="VulkanFeatureChain"/> enables by name where the device has it.</summary>
+        internal static PolygonMode ToPolygonMode(GpuPolygonFill fill) => fill switch
+        {
+            GpuPolygonFill.Solid => PolygonMode.Fill,
+            GpuPolygonFill.Wireframe => PolygonMode.Line,
+            _ => throw Unmapped(fill),
+        };
+
+        /// <summary>
+        /// The front-facing winding, MAPPED STRAIGHT ACROSS, and the reason is the single most consequential line
+        /// in this design rather than a coincidence. The viewport carries a NEGATIVE height (V-A5,
+        /// <see cref="VulkanViewportRect"/>), which makes Vulkan's clip space match Direct3D's, so a triangle that
+        /// is clockwise in the engine's clip space is clockwise in framebuffer space here exactly as it is there.
+        /// Flipping the winding to "compensate" for Vulkan's y-down NDC would double-correct and cull every front
+        /// face in the engine, and it would do it silently.
+        /// </summary>
+        internal static FrontFace ToFrontFace(GpuFrontFace face) => face switch
+        {
+            GpuFrontFace.Clockwise => FrontFace.Clockwise,
+            GpuFrontFace.CounterClockwise => FrontFace.CounterClockwise,
+            _ => throw Unmapped(face),
+        };
+
+        /// <summary>A blend factor. The two constant arms read <c>blendConstants</c>, which this backend bakes
+        /// into the pipeline from <see cref="GpuPipelineDescription.BlendFactor"/> rather than leaving
+        /// dynamic.</summary>
+        internal static BlendFactor ToBlendFactor(GpuBlendFactor factor) => factor switch
+        {
+            GpuBlendFactor.Zero => BlendFactor.Zero,
+            GpuBlendFactor.One => BlendFactor.One,
+            GpuBlendFactor.SourceColor => BlendFactor.SrcColor,
+            GpuBlendFactor.InverseSourceColor => BlendFactor.OneMinusSrcColor,
+            GpuBlendFactor.SourceAlpha => BlendFactor.SrcAlpha,
+            GpuBlendFactor.InverseSourceAlpha => BlendFactor.OneMinusSrcAlpha,
+            GpuBlendFactor.DestinationColor => BlendFactor.DstColor,
+            GpuBlendFactor.InverseDestinationColor => BlendFactor.OneMinusDstColor,
+            GpuBlendFactor.DestinationAlpha => BlendFactor.DstAlpha,
+            GpuBlendFactor.InverseDestinationAlpha => BlendFactor.OneMinusDstAlpha,
+            GpuBlendFactor.BlendFactor => BlendFactor.ConstantColor,
+            GpuBlendFactor.InverseBlendFactor => BlendFactor.OneMinusConstantColor,
+            _ => throw Unmapped(factor),
+        };
+
+        /// <summary>A blend equation.</summary>
+        internal static BlendOp ToBlendOp(GpuBlendFunction function) => function switch
+        {
+            GpuBlendFunction.Add => BlendOp.Add,
+            GpuBlendFunction.Subtract => BlendOp.Subtract,
+            GpuBlendFunction.ReverseSubtract => BlendOp.ReverseSubtract,
+            GpuBlendFunction.Minimum => BlendOp.Min,
+            GpuBlendFunction.Maximum => BlendOp.Max,
+            _ => throw Unmapped(function),
+        };
+
+        /// <summary>The two dynamic states this backend leaves dynamic, and there is deliberately no third. See
+        /// <see cref="VulkanPipelineDynamicState"/> for why the list is a value rather than a line inside the
+        /// pipeline seam.</summary>
+        internal static DynamicState ToDynamicState(VulkanDynamicState state) => state switch
+        {
+            VulkanDynamicState.Viewport => DynamicState.Viewport,
+            VulkanDynamicState.Scissor => DynamicState.Scissor,
+            _ => throw Unmapped(state),
+        };
+
         static ArgumentOutOfRangeException Unmapped<T>(T value) where T : struct
             => new(nameof(value), value,
                 $"Unmapped {typeof(T).Name} on the native Vulkan backend. The seam gained a member that this "

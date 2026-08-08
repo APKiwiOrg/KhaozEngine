@@ -21,6 +21,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// same walk
     /// <see cref="VulkanDeviceFacts.HasCoherentHostVisibleMemoryType"/> already needed, and two walks of one
     /// device's memory properties would be two chances to disagree about what it exposes.</param>
+    /// <param name="PipelineCacheIdentity">The vendor id, device id, driver version and
+    /// <c>pipelineCacheUUID</c> the persisted <c>VkPipelineCache</c> is keyed and validated on (V-S7). Read here
+    /// for the reason everything else here is: it comes off the SAME
+    /// <c>VkPhysicalDeviceProperties</c> the version floor and the dynamic-uniform limit came off, and a second
+    /// query could answer for a different device on a machine whose enumeration order moved.</param>
     internal readonly record struct VulkanPhysicalDeviceRead(
         VulkanDeviceFacts Facts,
         VulkanFeatureSupport Features,
@@ -28,7 +33,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         bool IsLlvmpipe,
         uint GraphicsQueueFamily,
         bool SupportsShadowMapFormat,
-        VulkanMemoryFacts Memory);
+        VulkanMemoryFacts Memory,
+        VulkanPipelineCacheIdentity PipelineCacheIdentity);
 
     /// <summary>
     /// The one place a <c>VkPhysicalDevice</c> is turned into plain data, shared by the support probe and by
@@ -91,8 +97,20 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 IsLlvmpipe(vk, device, clearsVersionFloor, name),
                 graphicsFamily,
                 SupportsShadowMapFormat(vk, device),
-                memory);
+                memory,
+                ReadPipelineCacheIdentity(&properties));
         }
+
+        /// <summary>
+        /// The four values a persisted <c>VkPipelineCache</c> is keyed and header-validated on (V-S7). The UUID is
+        /// COPIED out of the fixed buffer for the same reason
+        /// <see cref="ReadDeviceName"/>'s string is: this whole read is a snapshot that outlives the properties
+        /// structure it came from, and on the probe's path it outlives the instance as well.
+        /// </summary>
+        internal static VulkanPipelineCacheIdentity ReadPipelineCacheIdentity(
+            PhysicalDeviceProperties* properties)
+            => new(properties->VendorID, properties->DeviceID, properties->DriverVersion,
+                new ReadOnlySpan<byte>(properties->PipelineCacheUuid, VulkanPipelineCacheIdentity.UuidLength));
 
         /// <summary>The driver's name for the device, copied out of the fixed byte buffer into a managed string so
         /// it can outlive the instance. A driver that reports nothing readable still has to be nameable in a log

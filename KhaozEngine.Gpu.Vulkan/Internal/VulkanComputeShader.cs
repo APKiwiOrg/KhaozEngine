@@ -63,5 +63,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <summary>Release nothing. The module is shared and the cache ends it at device teardown. Idempotent.
         /// </summary>
         public void Dispose() => IsDisposed = true;
+
+        /// <summary>A compute shader this backend compiled, refused by name for anything else. The compute twin of
+        /// <see cref="VulkanShaderSet.Require"/>, and row 13's compute pipeline is the caller.</summary>
+        internal static VulkanComputeShader Require(IGpuComputeShader? shader, string what)
+            => shader as VulkanComputeShader
+                ?? throw new ArgumentException(
+                    $"The compute shader handed to {what} was not compiled by the native Vulkan backend, so it "
+                    + "holds no VkShaderModule. Compile shaders through the same IGpuDevice.Factory the pipeline "
+                    + "is being created from.",
+                    nameof(shader));
     }
 }

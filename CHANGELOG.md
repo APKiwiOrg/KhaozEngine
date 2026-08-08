@@ -85,7 +85,11 @@ the driver may already have freed, and would hand the same retired handle to the
 `VUID-VkSwapchainCreateInfoKHR-oldSwapchain-01933` forbids. Every retirement path also forgets the held image and
 the frame's semaphore pair, so a frame that opened and closed without drawing (which KEEPS its image, since
 nothing may present an image nothing rendered into) cannot leave a later submit waiting on a destroyed
-render-finished semaphore, and cannot strand the boundary with no generation and no pending recreate.
+render-finished semaphore, and cannot strand the boundary with no generation and no pending recreate. Nothing the
+recreate reads can throw out of `Present` either: the surface capability query reports its result the way the
+acquire and the present do, which is what gives `VK_ERROR_SURFACE_LOST_KHR` a path at the first place a dead
+window shows up, and a surface with no formats or with a format `GpuPixelFormat` cannot name binds the orphan
+target instead of raising out of the frame loop.
 
 **One seam member pair is ADDED, and calling it "no seam change" would have cost the acquire A/B its result.**
 `GpuDeviceCounters` gains `AcquireWaitCount` and `AcquireWaitMs` with the `gpuAcquireWaits` and `gpuAcquireWaitMs`

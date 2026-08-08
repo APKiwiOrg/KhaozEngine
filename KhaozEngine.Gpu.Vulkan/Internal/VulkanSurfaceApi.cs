@@ -99,15 +99,25 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         }
 
         /// <inheritdoc/>
-        public VulkanSurfaceReport Query(ulong surface)
+        public VulkanPresentOutcome Query(ulong surface, out VulkanSurfaceReport report)
         {
+            report = default;
             var handle = new SurfaceKHR(surface);
 
-            VulkanResultCodes.Require(
-                _surface.GetPhysicalDeviceSurfaceCapabilities(_physicalDevice, handle, out SurfaceCapabilitiesKHR caps),
-                "vkGetPhysicalDeviceSurfaceCapabilitiesKHR");
+            // REPORTED RATHER THAN REQUIRED, unlike every other creation-time call in this file. The caller is the
+            // present boundary on a running frame loop rather than the device constructor, and this is where a
+            // window that died shows up as VK_ERROR_SURFACE_LOST_KHR first.
+            Result capabilities = _surface.GetPhysicalDeviceSurfaceCapabilities(
+                _physicalDevice, handle, out SurfaceCapabilitiesKHR caps);
 
-            return new VulkanSurfaceReport(
+            if (VulkanResultCodes.IsFailure(capabilities))
+            {
+                return capabilities == Result.ErrorSurfaceLostKhr
+                    ? VulkanPresentOutcome.SurfaceLost
+                    : VulkanPresentOutcome.Failed;
+            }
+
+            report = new VulkanSurfaceReport(
                 caps.MinImageCount,
                 caps.MaxImageCount,
                 new VulkanExtent(caps.CurrentExtent.Width, caps.CurrentExtent.Height),
@@ -116,6 +126,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 caps.CurrentTransform,
                 ReadFormats(handle),
                 ReadPresentModes(handle));
+
+            return VulkanPresentOutcome.Success;
         }
 
         /// <inheritdoc/>

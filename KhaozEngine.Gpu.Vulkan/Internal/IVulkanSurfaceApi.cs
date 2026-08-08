@@ -59,8 +59,22 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// third. It needs no queue and takes no lock, which is what lets the present boundary decide the whole
         /// create-info BEFORE it takes the submit lock.
         /// </para>
+        /// <para>
+        /// <b>IT REPORTS RATHER THAN THROWS, for the same reason the acquire and the present do.</b> Its caller is
+        /// the present boundary, which never throws and never reports failure upward, and
+        /// <c>VK_ERROR_SURFACE_LOST_KHR</c> shows up HERE first when a window dies under a running frame loop: the
+        /// capability query is the first thing a recreate does. A throw at that point would leave
+        /// <c>IGpuDevice.Present</c> propagating a driver failure into a frame loop that has no answer for one.
+        /// </para>
         /// </summary>
-        VulkanSurfaceReport Query(ulong surface);
+        /// <param name="surface">The surface to read.</param>
+        /// <param name="report">The reading, or the default when the answer is anything but
+        /// <see cref="VulkanPresentOutcome.Success"/>.</param>
+        /// <returns><see cref="VulkanPresentOutcome.Success"/>,
+        /// <see cref="VulkanPresentOutcome.SurfaceLost"/> when the surface is gone, or
+        /// <see cref="VulkanPresentOutcome.Failed"/> for anything else, which in practice is one of the two
+        /// out-of-memory results.</returns>
+        VulkanPresentOutcome Query(ulong surface, out VulkanSurfaceReport report);
 
         /// <summary><c>vkDestroySurfaceKHR</c>. TERMINAL, and called only once every swapchain made against the
         /// surface has been destroyed and the device has gone idle.</summary>

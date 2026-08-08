@@ -51,9 +51,33 @@ namespace KhaozEngine.Tests.Gpu
             MaxExtent = new VulkanExtent(0, 0),
         };
 
+        /// <summary>A surface whose FORMAT query failed. The real seam answers an empty format list on any failed
+        /// <c>vkGetPhysicalDeviceSurfaceFormatsKHR</c>, and the specification requires a presentable surface to
+        /// report at least one, so an empty list is a failed query rather than a surface with no formats.</summary>
+        internal static VulkanSurfaceReport NoFormats() => Desktop() with
+        {
+            Formats = Array.Empty<VulkanSurfaceFormatPair>(),
+        };
+
+        /// <summary>A surface offering ONE format the seam cannot name, which is what makes
+        /// <c>VulkanSwapchainPolicy.SeamFormatFor</c> reachable rather than unreachable by construction: the
+        /// format ladder's last arm takes the surface's first format when it offers no BGRA8 at all.</summary>
+        internal static VulkanSurfaceReport UnnameableFormat() => Desktop() with
+        {
+            Formats = new[]
+            {
+                new VulkanSurfaceFormatPair(Format.A2B10G10R10UnormPack32, ColorSpaceKHR.SpaceSrgbNonlinearKhr),
+            },
+        };
+
         /// <summary>What <see cref="Query"/> answers. Settable mid-test, which is how a resize and a minimise are
         /// simulated.</summary>
         internal VulkanSurfaceReport Report { get; set; } = Desktop();
+
+        /// <summary>What <see cref="Query"/> RETURNS, which is a different question from what it reports. Anything
+        /// but <see cref="VulkanPresentOutcome.Success"/> is a query that failed, and the report is not read.
+        /// </summary>
+        internal VulkanPresentOutcome QueryOutcome { get; set; } = VulkanPresentOutcome.Success;
 
         /// <summary>How many times the boundary re-read the surface. Every recreate must, because a window that
         /// changed can change any of it.</summary>
@@ -72,10 +96,11 @@ namespace KhaozEngine.Tests.Gpu
         public bool SupportsPresent(ulong surface, uint queueFamily) => PresentSupported;
 
         /// <inheritdoc/>
-        public VulkanSurfaceReport Query(ulong surface)
+        public VulkanPresentOutcome Query(ulong surface, out VulkanSurfaceReport report)
         {
             Queries++;
-            return Report;
+            report = QueryOutcome == VulkanPresentOutcome.Success ? Report : default;
+            return QueryOutcome;
         }
 
         /// <inheritdoc/>

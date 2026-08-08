@@ -472,6 +472,114 @@ namespace KhaozEngine.Tests.Gpu
             Assert.False(rig.Boundary.IsOrphanBound);
         }
 
+        // ---- the recreate's own failures, which must not escape Present ---------------------------------------
+
+        /// <summary>
+        /// A SURFACE QUERY THAT FAILED FALLS TO THE ORPHAN RATHER THAN THROWING. The boundary never throws and
+        /// never reports failure upward, and the capability query used to go through
+        /// <c>VulkanResultCodes.Require</c>, so an out-of-memory result there propagated straight out of
+        /// <c>IGpuDevice.Present</c> into a frame loop with no answer for one.
+        /// </summary>
+        [Fact]
+        public void ASurfaceQueryThatFailedBindsTheOrphanRatherThanThrowing()
+        {
+            using var rig = new Rig();
+
+            rig.Surfaces.QueryOutcome = VulkanPresentOutcome.Failed;
+            rig.Boundary.QueueResize(800, 600);
+
+            rig.Frame();
+
+            Assert.True(rig.Boundary.IsOrphanBound);
+            Assert.False(rig.Boundary.HasImage);
+            Assert.Empty(rig.Swapchains.LiveSwapchains);
+            Assert.True(rig.Boundary.HasPendingRecreate);
+        }
+
+        /// <summary>
+        /// A SURFACE LOST AT THE QUERY LATCHES EXACTLY AS ONE LOST AT THE ACQUIRE DOES. It is the FIRST place a
+        /// window that died under a running frame loop shows up, because the capability re-read is the first thing
+        /// a recreate does, and it was the one path with no surface-lost handling at all.
+        /// </summary>
+        [Fact]
+        public void ASurfaceLostAtTheQueryStopsTheBoundaryRatherThanSpinning()
+        {
+            using var rig = new Rig();
+
+            rig.Surfaces.QueryOutcome = VulkanPresentOutcome.SurfaceLost;
+            rig.Boundary.QueueResize(800, 600);
+            rig.Frame();
+
+            Assert.True(rig.Boundary.IsOrphanBound);
+            Assert.Empty(rig.Swapchains.LiveSwapchains);
+
+            int queries = rig.Surfaces.Queries;
+            rig.Frame();
+            rig.Frame();
+
+            // Latched: the boundary does not re-read a surface it was told is gone, and creates nothing.
+            Assert.Equal(queries, rig.Surfaces.Queries);
+            Assert.Empty(rig.Swapchains.LiveSwapchains);
+        }
+
+        /// <summary>
+        /// A SURFACE REPORTING NO FORMATS IS A FAILED FORMAT QUERY, not a surface with none, and it used to reach
+        /// <c>ChooseFormat</c>'s <c>ArgumentException</c>. The seam answers an empty list on ANY failed
+        /// <c>vkGetPhysicalDeviceSurfaceFormatsKHR</c>, and the specification requires a presentable surface to
+        /// report at least one.
+        /// </summary>
+        [Fact]
+        public void ASurfaceWithNoFormatsBindsTheOrphanRatherThanThrowing()
+        {
+            using var rig = new Rig();
+
+            rig.Surfaces.Report = FakeVulkanSurfaceApi.NoFormats();
+            rig.Boundary.QueueResize(800, 600);
+
+            rig.Frame();
+
+            Assert.True(rig.Boundary.IsOrphanBound);
+            Assert.False(rig.Boundary.HasImage);
+            Assert.True(rig.Boundary.HasPendingRecreate);
+        }
+
+        /// <summary>
+        /// A FORMAT THE SEAM CANNOT NAME IS REACHABLE RATHER THAN UNREACHABLE BY CONSTRUCTION, which is why its
+        /// <c>NotSupportedException</c> is caught at the recreate instead of being left to escape: the format
+        /// ladder's last arm takes the surface's FIRST format when the surface offers no BGRA8 at all, and that
+        /// can be any format the surface happens to have.
+        /// </summary>
+        [Fact]
+        public void AFormatTheSeamCannotNameBindsTheOrphanRatherThanThrowing()
+        {
+            using var rig = new Rig();
+
+            rig.Surfaces.Report = FakeVulkanSurfaceApi.UnnameableFormat();
+            rig.Boundary.QueueResize(800, 600);
+
+            rig.Frame();
+
+            Assert.True(rig.Boundary.IsOrphanBound);
+            Assert.False(rig.Boundary.HasImage);
+            Assert.Empty(rig.Swapchains.LiveSwapchains);
+        }
+
+        /// <summary>
+        /// THE FIRST GENERATION STILL REFUSES, on all three, because that is the device CONSTRUCTOR rather than a
+        /// frame boundary. A windowed device that cannot describe its own surface has nothing to hand back, which
+        /// is the same posture the failed-first-swapchain path already takes.
+        /// </summary>
+        [Fact]
+        public void AFirstGenerationThatCannotReadItsSurfaceRefuses()
+        {
+            var surfaces = new FakeVulkanSurfaceApi { QueryOutcome = VulkanPresentOutcome.Failed };
+
+            Assert.Throws<InvalidOperationException>(() => new VulkanPresentBoundary(
+                surfaces, new FakeVulkanSwapchainApi(), FakeVulkanSurfaceApi.Handle, new VulkanExtent(1280, 720),
+                true, VulkanAcquireMode.Semaphore, 3, new object(), () => { }, new FakeVulkanOrphanTarget(),
+                new VulkanAcquireWaits()));
+        }
+
         // ---- the checked present result ---------------------------------------------------------------------
 
         /// <summary>

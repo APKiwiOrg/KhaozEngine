@@ -904,6 +904,15 @@ naming images the driver may have taken back, and it would hand the same retired
 which the specification forbids outright. The failure retires the old generation, binds the orphan target and
 retries with no old swapchain to pass, exactly as a zero-extent surface does.
 
+**Nothing the recreate reads can throw out of `Present`.** The surface capability query REPORTS its result the
+way the acquire and the present do rather than throwing, which matters most for `VK_ERROR_SURFACE_LOST_KHR`,
+because the capability re-read is the first thing a recreate does and is therefore the first place a window that
+died under a running frame loop shows up. A surface reporting no formats at all is read as a failed format query
+rather than as a surface with none, and a surface format `GpuPixelFormat` cannot name is caught rather than left
+to escape, since the format ladder's last arm takes the surface's first format when it offers no BGRA8 at all.
+All three bind the orphan target and say so once. The device CONSTRUCTOR still refuses on all three, because a
+windowed device that cannot describe its own surface has nothing to hand back.
+
 **One process cannot hold a headless device and a windowed one at the same time.** A live `VkInstance`'s
 extension list is fixed at creation and Vulkan offers no way to add one afterwards, so the second configuration
 is refused by name. Create the WINDOWED device first, or run them in separate processes. Serving the case would

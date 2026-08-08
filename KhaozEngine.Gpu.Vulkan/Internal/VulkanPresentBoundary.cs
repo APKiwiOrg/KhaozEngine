@@ -85,6 +85,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         bool _disposed;
         bool _saidNothingRendered;
         bool _saidNoPresentTransition;
+        bool _saidUndecidable;
 
         /// <param name="surfaces">The surface seam, for the capability re-read every recreate does.</param>
         /// <param name="swapchains">The swapchain seam.</param>
@@ -382,16 +383,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         void Recreate(bool firstGeneration)
         {
-            VulkanSurfaceReport report = _surfaces.Query(_surface);
-            VulkanSwapchainSpec spec = VulkanSwapchainPolicy.Decide(
-                report, _requested, _syncToVerticalBlank, srgb: false, out string? warning);
-
-            if (warning != null) _log.Warn(warning);
-
-            // RESOLVED BEFORE ANYTHING IS CREATED, so the orphan and the swapchain framebuffer always agree about
-            // the format a pipeline is validated against, on every path including the one where no swapchain is
-            // ever made.
-            _seamFormat = VulkanSwapchainPolicy.SeamFormatFor(spec.Format);
+            if (!TryDecide(firstGeneration, out VulkanSwapchainSpec spec))
+            {
+                // THE SURFACE COULD NOT BE READ, OR WHAT IT SAID CANNOT BE TURNED INTO A SWAPCHAIN. There is
+                // nothing to create against and nothing to throw at, so the frame goes on the orphan target at
+                // the last size the framebuffer carried.
+                FallToOrphan(LastKnownExtent());
+                return;
+            }
 
             // A ZERO-EXTENT SURFACE, which is what a minimised window reports and what the extent clamp turns into
             // a spec that reads as not creatable. There is nothing to call vkCreateSwapchainKHR with.
@@ -449,9 +448,85 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             FallToOrphan(spec.Extent.AtLeastOnePixel);
         }
 
+        /// <summary>
+        /// WHAT THE SURFACE SAYS AND WHAT THE POLICY MAKES OF IT, with every failure routed exactly the way an
+        /// acquire's or a present's is. Answers false when there is nothing to create against, having already
+        /// logged and latched whatever it found.
+        /// <para>
+        /// THIS EXISTS BECAUSE ALL THREE OF THESE USED TO THROW OUT OF <c>IGpuDevice.Present</c>, which is a
+        /// contradiction of this type's first sentence: the capability query through
+        /// <c>VulkanResultCodes.Require</c>, <c>ChooseFormat</c> on an empty format list, and
+        /// <c>SeamFormatFor</c> on a format the seam cannot name. The first is the one that matters most, because
+        /// <c>VK_ERROR_SURFACE_LOST_KHR</c> shows up THERE first when a window dies under a running frame loop,
+        /// and the boundary had a surface-lost path for the acquire and the present and none for the query that
+        /// runs before both.
+        /// </para>
+        /// <para>
+        /// THE FIRST GENERATION STILL THROWS, on all three, because it is the device constructor rather than a
+        /// frame boundary: a windowed device that cannot describe its own surface has nothing to hand back, and
+        /// refusing at creation is what the failed-first-swapchain path already does.
+        /// </para>
+        /// </summary>
+        bool TryDecide(bool firstGeneration, out VulkanSwapchainSpec spec)
+        {
+            spec = default;
+
+            VulkanPresentOutcome queried = _surfaces.Query(_surface, out VulkanSurfaceReport report);
+            if (queried != VulkanPresentOutcome.Success)
+            {
+                if (firstGeneration) throw NoFirstSurface(queried.ToString());
+
+                // THE SAME DISCIPLINE THE ACQUIRE AND THE PRESENT GET (V-W7), through the same method: a lost
+                // surface latches and stops the boundary rather than spinning on a recreate that cannot succeed,
+                // and anything else queues a recreate and tries again at the next boundary.
+                Interpret(queried, "vkGetPhysicalDeviceSurfaceCapabilitiesKHR");
+                return false;
+            }
+
+            if (report.Formats.Count == 0)
+            {
+                // READ AS A FAILED QUERY RATHER THAN AS AN EMPTY ANSWER. The specification requires a surface the
+                // device can present to to report at least one format, and the surface seam answers an empty list
+                // on ANY failed format query, so there is no case where this is a surface that simply has none.
+                if (firstGeneration) throw NoFirstSurface("vkGetPhysicalDeviceSurfaceFormatsKHR reported no format");
+
+                SayUndecidableOnce("the surface reports no format at all, which means its format query failed");
+                _pending.QueueRecreate();
+                return false;
+            }
+
+            spec = VulkanSwapchainPolicy.Decide(
+                report, _requested, _syncToVerticalBlank, srgb: false, out string? warning);
+
+            if (warning != null) _log.Warn(warning);
+
+            try
+            {
+                // RESOLVED BEFORE ANYTHING IS CREATED, so the orphan and the swapchain framebuffer always agree
+                // about the format a pipeline is validated against, on every path including the one where no
+                // swapchain is ever made.
+                _seamFormat = VulkanSwapchainPolicy.SeamFormatFor(spec.Format);
+            }
+            catch (NotSupportedException unnameable)
+            {
+                // CAUGHT RATHER THAN LEFT TO ESCAPE, because it is REACHABLE rather than unreachable by
+                // construction: ChooseFormat's last arm takes the surface's FIRST format when the surface offers
+                // no BGRA8 at all, and that can be any format the surface happens to have.
+                if (firstGeneration) throw;
+
+                SayUndecidableOnce(unnameable.Message);
+                _pending.QueueRecreate();
+                spec = default;
+                return false;
+            }
+
+            return true;
+        }
+
         // THE IMAGELESS TARGET, and the ONE way this boundary ever ends up with no generation: a zero-extent
-        // surface, and a creation that failed after the driver had already retired the old swapchain. Both leave
-        // the framebuffer on the orphan, the generation retired and the frame's semaphores forgotten.
+        // surface, a surface that could not be read or described, and a creation that failed after the driver had
+        // already retired the old swapchain. All three leave the framebuffer on the orphan, the generation retired
+        // and the frame's semaphores forgotten.
         void FallToOrphan(VulkanExtent extent)
         {
             // ENSURED BEFORE THE LOCK, because creating a texture takes the SETUP lock and the setup lock is taken
@@ -527,14 +602,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // view of that generation and is therefore alive. Nothing to publish and nothing to destroy.
             if (_orphanBound || _generation is not null) return;
 
-            // IMAGELESS WITH NO GENERATION AT ALL. The extent is the last one the framebuffer carried, clamped to
-            // at least one pixel.
-            VulkanExtent extent = (Framebuffer is null
-                ? _requested
-                : new VulkanExtent(Framebuffer.Width, Framebuffer.Height)).AtLeastOnePixel;
-
+            // IMAGELESS WITH NO GENERATION AT ALL.
+            VulkanExtent extent = LastKnownExtent();
             AdoptOrphan(_orphan.Ensure(extent, _seamFormat), extent);
         }
+
+        // The last size the framebuffer carried, clamped to at least one pixel, or the size the device was created
+        // at while there is no framebuffer yet. What the orphan is sized on when no surface reading says otherwise.
+        VulkanExtent LastKnownExtent()
+            => (Framebuffer is null
+                ? _requested
+                : new VulkanExtent(Framebuffer.Width, Framebuffer.Height)).AtLeastOnePixel;
 
         void Adopt(VulkanSwapchainGeneration generation, int imageIndex)
         {
@@ -627,6 +705,26 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 + "driver left in the image. The swapchain itself, the acquire, the resize and the teardown are "
                 + "real.");
         }
+
+        // BOTH OF THE RECREATE'S DECISION FAILURES ARE PERSISTENT CONDITIONS a boundary re-reads at every present,
+        // so they are said ONCE rather than once per frame. One flag covers the pair because either one leaves the
+        // window on the orphan target and neither is more actionable once the other has been reported.
+        void SayUndecidableOnce(string detail)
+        {
+            if (_saidUndecidable) return;
+            _saidUndecidable = true;
+
+            _log.Error("The native Vulkan backend cannot decide a swapchain for its surface, so the window will "
+                + "not update: " + detail + ". Frames still record, submit and complete into the orphan target, "
+                + "and the boundary re-reads the surface at every present in case what it reports changes.");
+        }
+
+        static InvalidOperationException NoFirstSurface(string reason)
+            => new("The native Vulkan backend could not describe the surface it was asked to present to: "
+                + reason + ". A windowed device whose surface cannot be read has nothing to create a swapchain "
+                + "against, so creation fails here rather than handing back a device that renders into a window "
+                + "that never updates. Select GpuBackendKind.Vulkan, which goes through Veldrid, for a working "
+                + "windowed device on this machine.");
 
         static InvalidOperationException NoFirstSwapchain(in VulkanSwapchainSpec spec, string? failure)
             => new("The native Vulkan backend could not create its FIRST swapchain at "

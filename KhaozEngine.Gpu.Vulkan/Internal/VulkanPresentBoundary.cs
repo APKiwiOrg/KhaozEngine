@@ -268,6 +268,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 _generation?.Dispose();
                 _generation = null;
                 _ring.Dispose();
+
+                // THE SEAM ITSELF CAN OWN A DRIVER OBJECT, and exactly one implementation does: the stall mode's
+                // VkFence, which is the only VkFence in this backend and lives entirely below this line so
+                // nothing above it has to know the completion model has an exception in it. A fence still alive
+                // at vkDestroyDevice is a leaked child object a validation layer reports, so the seam is asked
+                // whether it has anything to release. The fakes do not, and answer by not implementing it.
+                (_swapchains as IDisposable)?.Dispose();
             }
 
             // OUTSIDE THE LOCK, because releasing the orphan disposes an engine texture and a resource destroy is

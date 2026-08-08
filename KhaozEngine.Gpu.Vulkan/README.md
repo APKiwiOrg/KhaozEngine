@@ -928,8 +928,10 @@ and `dstAccessMask` all named. There is no `vkCmdPipelineBarrier` on any path an
 layout's own stages and accesses, the destination masks are the new layout's, and eight layouts are covered. A
 layout outside those eight throws by name. The incumbent instead runs a 25-arm if/else over the PAIR, ends it in
 a debug assertion, and in Release emits `NONE` on both stage masks for a pair it does not handle, which is a
-barrier that synchronises nothing on a path whose only signal compiles away. The shape here makes "no pair
-produces an empty mask on both sides" a single device-free test over the whole cross product.
+barrier that synchronises nothing on a path whose only signal compiles away. The shape here turns "no pair
+produces an empty mask on both sides" into a device-free test PER LAYOUT, eight of them, plus one loop over the
+pair space that the eight already imply. Under a per-pair shape that loop would be the only way to know, and it
+would be 49 separate facts to keep total by hand.
 
 **Tracking is per subresource RANGE and per COMMAND LIST.** Every texture carries a canonical resting layout
 assigned at creation from its usage bits, and the device's setup command buffer puts it there before any list can

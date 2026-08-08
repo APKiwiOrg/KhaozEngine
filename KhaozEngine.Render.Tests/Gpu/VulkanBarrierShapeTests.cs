@@ -14,8 +14,11 @@ namespace KhaozEngine.Tests.Gpu
     /// answers a transition with a 25-arm if/else over the PAIR of layouts, ends it in a debug assertion, and in
     /// Release emits <c>NONE</c> on both stage masks for a pair it does not handle. That barrier orders nothing,
     /// renders correctly most of the time on most drivers, and its only signal is an assertion that compiles away.
-    /// <see cref="NoLayoutPair_ProducesAnEmptyMaskOnBothSides"/> is the whole cross product asserted at once, which
-    /// is possible here precisely because the masks are answered per LAYOUT rather than per pair.</para>
+    /// <see cref="EveryLayout_NamesAPipelineStage"/> is what actually forecloses it, one layout at a time, and
+    /// <see cref="NoLayoutPair_ProducesAnEmptyMaskOnBothSides"/> then walks the whole pair space to show the
+    /// composition does not lose the property. The second is IMPLIED by the first rather than independent of it,
+    /// which is the point rather than a weakness: under a per-PAIR shape the same loop would be the only way to
+    /// know, and it would be 49 separate facts.</para>
     ///
     /// <para><b>AND THE OTHER ONE IS A DISCARD NOBODY MEANT (V-F8).</b> A transition out of
     /// <c>VK_IMAGE_LAYOUT_UNDEFINED</c> is permitted to throw the image's contents away. It is the cheap
@@ -75,9 +78,17 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// THE ASSERTION THE INCUMBENT'S SHAPE CANNOT MAKE: no pair of layouts produces an empty mask on BOTH
-        /// sides. It is one loop here because each side is answered from its own layout, so the pair space is
-        /// covered by construction rather than by an if/else somebody has to keep total.
+        /// NO PAIR OF LAYOUTS PRODUCES AN EMPTY MASK ON BOTH SIDES, over the whole space a barrier can be built
+        /// across. What this can catch is narrow, and saying so is the honest version: since each side is answered
+        /// from its OWN layout, the only way a pair reaches here empty is a layout that answers <c>NONE</c>, which
+        /// <see cref="EveryLayout_NamesAPipelineStage"/> already forecloses one layout at a time. So this loop is
+        /// IMPLIED by that one rather than independent of it.
+        /// <para>
+        /// IT EARNS ITS PLACE AS THE STATEMENT OF WHAT THE PER-LAYOUT MODEL BUYS. Emptiness is impossible here by
+        /// construction, and walking the pair space is how that claim is checked to still hold after composition,
+        /// including on the day somebody adds a ninth layout or a pair-shaped special case. Under the incumbent's
+        /// per-PAIR shape this loop would be the ONLY way to know, and it would be 49 separate facts to keep.
+        /// </para>
         /// </summary>
         [Fact]
         public void NoLayoutPair_ProducesAnEmptyMaskOnBothSides()

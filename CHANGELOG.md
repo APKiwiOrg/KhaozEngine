@@ -21,8 +21,12 @@ emits `NONE` on both stage masks for a pair it does not handle. A barrier with `
 nothing, renders correctly most of the time on most drivers, and its only signal is an assertion that compiles
 away. Here each SIDE is answered from its own layout: the source masks are the old layout's stages and accesses
 and the destination masks are the new layout's, so the pair space is total by construction and a layout outside
-the eight this backend uses throws by name instead of producing an empty mask. That makes the assertion the
-incumbent's shape cannot make into one device-free test over the whole cross product.
+the eight this backend uses throws by name instead of producing an empty mask. What that buys is a device-free
+test PER LAYOUT: every one of the eight names a stage, and only the two that carry no access (`UNDEFINED` and
+`PRESENT_SRC_KHR`) name none. A second test then walks the whole pair space to show the composition does not lose
+the property, which is implied by the per-layout ones rather than independent of them, and that is the point:
+under the incumbent's per-pair shape the same loop would be the only way to know, and it would be 49 separate
+facts to keep total by hand.
 
 **Tracking is LIST-LOCAL against a canonical resting layout, and that ruling is what makes lists composable
 (V-F7).** Every texture is assigned a resting layout at creation from its usage bits, the device's setup command

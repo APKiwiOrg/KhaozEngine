@@ -103,8 +103,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _recorder = recorder;
         }
 
-        /// <summary>How many subresource ranges this recording has moved away from rest and not yet restored.
-        /// The number MV5's bound is stated in: barriers per frame proportional to passes times touched textures.
+        /// <summary>How many subresource ranges this recording has TOUCHED. Not how many are away from rest: a
+        /// range the recording moved and then moved back keeps its entry, because the entry is what says the range
+        /// was touched at all, and only <see cref="RestoreResting"/> and <see cref="Reset"/> empty the map. The
+        /// number MV5's bound is stated in: barriers per frame proportional to passes times touched textures.
         /// </summary>
         internal int TouchedCount => _touched.Count;
 

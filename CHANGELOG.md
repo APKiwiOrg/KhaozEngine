@@ -36,6 +36,22 @@ rather than left to be discovered: `OpenListTrackingGpuDevice` passes TRIVIALLY 
 on the native Direct3D 11 leg, so a reader must not take it as evidence about this backend. It stays the portable
 guard.
 
+**Per-subresource tracking meets the whole-chain sampled bind, and the rule is decided rather than deferred.**
+The standard streaming path produces both shapes in one list: a copy seeds mip 0, `GenerateMipmaps` walks the
+chain a level at a time, and then a draw samples the WHOLE texture, because the seam has no texture-view type and
+the sampled view is full-chain by construction. So a range that CONTAINS narrower tracked ones is answered, with
+one barrier per piece taken from that piece's own layout, which is what makes the levels a blit chain leaves
+disagreeing (`TRANSFER_SRC_OPTIMAL` up to the last, `TRANSFER_DST_OPTIMAL` on it) a defined case rather than an
+ambiguous one: a single whole-range barrier could not name a true old layout for all of them, and N barriers can.
+The pieces then COLLAPSE into one entry, so the restore at `End` owes one barrier rather than one per level, a
+second bind of the same chain owes none, and MV5's bound tightens rather than loosening. Two shapes are refused
+by name: a range that PARTIALLY overlaps a tracked one, which would have to split that entry in two, and a wider
+range whose untouched levels would themselves need a barrier, which cannot arise through a sampled bind because
+`Sampled` wins the resting ladder and a full-chain texture therefore rests exactly where a sampled bind wants it.
+Asking for the LAYOUT of such a wider range is refused too, and that asymmetry is deliberate: transitioning the
+range is defined because it makes the range uniform, and querying it is not, because the pieces may disagree and
+no single layout is the answer.
+
 **The attachment transitions row 12 deferred here land at the deferred begin.** Every colour attachment goes into
 `COLOR_ATTACHMENT_OPTIMAL` and the depth attachment into `DEPTH_STENCIL_ATTACHMENT_OPTIMAL`, as ONE batched
 barrier immediately before `vkCmdBeginRendering` and never inside the instance, which is a different and much

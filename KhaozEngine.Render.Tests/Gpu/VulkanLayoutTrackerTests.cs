@@ -401,10 +401,142 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// AND TWO RANGES THAT OVERLAP WITHOUT BEING EQUAL ARE REFUSED RATHER THAN MISTRACKED. Two entries sharing
-        /// a subresource would disagree about its layout the moment either moved, and the restore at <c>End</c>
-        /// would then name an OLD layout the image is not in, which is a barrier the driver may honour by
-        /// discarding. Refusing names the mistake where it is made.
+        /// THE STANDARD STREAMING PATH, END TO END, which is where per-level tracking has to meet a whole-chain
+        /// bind: a copy seeds mip 0, mip generation walks the chain a level at a time, and then a draw samples the
+        /// WHOLE texture, because the seam has no texture-view type and the sampled view is full-chain by
+        /// construction (V-M11). Prescribed as ONE list in `KhaozEngine.Gpu`'s own README, so a tracker that
+        /// refused the third step would refuse the documented sequence.
+        /// <para>
+        /// EVERY PIECE IS TRANSITIONED FROM ITS OWN LAYOUT, which is why the chain's disagreement (levels 0 to 2
+        /// left in <c>TRANSFER_SRC_OPTIMAL</c>, level 3 in <c>TRANSFER_DST_OPTIMAL</c>) is not an ambiguity: a
+        /// single whole-range barrier could not name a true old layout for all four, and four barriers can.
+        /// </para>
+        /// <para>
+        /// AND THEY COLLAPSE INTO ONE ENTRY, which is the part MV5 cares about: the restore at <c>End</c> owes one
+        /// barrier rather than four, and the SECOND sampled bind of the same texture owes none at all.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void TheStreamingPath_SamplesTheWholeChainOverTheLevelsItGenerated()
+        {
+            var recorder = new FakeVulkanBarrierRecorder();
+            var tracker = new VulkanLayoutTracker(recorder);
+
+            tracker.TransitionTo(Buffer, Level(0), ImageLayout.TransferDstOptimal);
+            for (uint level = 1; level < 4; level++)
+            {
+                tracker.TransitionTo(Buffer, Level(level - 1), ImageLayout.TransferSrcOptimal);
+                tracker.TransitionTo(Buffer, Level(level), ImageLayout.TransferDstOptimal);
+            }
+
+            Assert.Equal(4, tracker.TouchedCount);
+            int beforeBind = recorder.CallCount;
+
+            tracker.TransitionTo(Buffer, Chain(4), ImageLayout.ShaderReadOnlyOptimal);
+
+            Assert.Equal(beforeBind + 1, recorder.CallCount);
+            VulkanRecordedBarrierBatch bind = recorder.Batches[^1];
+            Assert.Equal(4, bind.Barriers.Length);
+
+            Assert.Equal(ImageLayout.TransferSrcOptimal, bind.Barriers[0].OldLayout);
+            Assert.Equal(ImageLayout.TransferSrcOptimal, bind.Barriers[1].OldLayout);
+            Assert.Equal(ImageLayout.TransferSrcOptimal, bind.Barriers[2].OldLayout);
+            Assert.Equal(ImageLayout.TransferDstOptimal, bind.Barriers[3].OldLayout);
+
+            for (int i = 0; i < bind.Barriers.Length; i++)
+            {
+                Assert.Equal(ImageLayout.ShaderReadOnlyOptimal, bind.Barriers[i].NewLayout);
+                Assert.Equal((uint)i, bind.Barriers[i].SubresourceRange.BaseMipLevel);
+                Assert.Equal(1u, bind.Barriers[i].SubresourceRange.LevelCount);
+            }
+
+            Assert.Equal(1, tracker.TouchedCount);
+
+            // A SECOND BIND OF THE SAME CHAIN IS FREE, which is the collapse paying for itself.
+            tracker.TransitionTo(Buffer, Chain(4), ImageLayout.ShaderReadOnlyOptimal);
+            Assert.Equal(beforeBind + 1, recorder.CallCount);
+
+            // AND End OWES NOTHING, because the collapsed entry is already at the resting layout the sampled bind
+            // moved it to. A model that kept four entries would restore four times.
+            tracker.RestoreResting(Buffer);
+
+            Assert.Equal(beforeBind + 1, recorder.CallCount);
+            Assert.Equal(0, tracker.TouchedCount);
+        }
+
+        /// <summary>
+        /// AND THE FINAL SEMANTICS OF LEVELS THAT DISAGREE: the TRANSITION of a range containing them is defined,
+        /// because it makes the range uniform, and the QUERY of that range is not, because no single layout is the
+        /// answer. Reporting one would have to pick a level and call it the answer, and a caller that skipped a
+        /// barrier on that answer is the corruption the whole model exists to make impossible.
+        /// </summary>
+        [Fact]
+        public void AWiderRangeOverLevelsThatDisagree_TransitionsButCannotBeQueried()
+        {
+            var recorder = new FakeVulkanBarrierRecorder();
+            var tracker = new VulkanLayoutTracker(recorder);
+
+            tracker.TransitionTo(Buffer, Level(0), ImageLayout.TransferSrcOptimal);
+            tracker.TransitionTo(Buffer, Level(1), ImageLayout.TransferDstOptimal);
+
+            InvalidOperationException error = Assert.Throws<InvalidOperationException>(
+                () => tracker.LayoutOf(Chain(2)));
+
+            Assert.Contains("no one layout", error.Message, StringComparison.Ordinal);
+
+            tracker.TransitionTo(Buffer, Chain(2), ImageLayout.ShaderReadOnlyOptimal);
+
+            Assert.Equal(2, recorder.Batches[^1].Barriers.Length);
+            Assert.Equal(1, tracker.TouchedCount);
+            Assert.Equal(ImageLayout.ShaderReadOnlyOptimal, tracker.LayoutOf(Chain(2)));
+        }
+
+        /// <summary>
+        /// A WIDER RANGE OVER LEVELS THE RECORDING NEVER TOUCHED IS STILL ANSWERED WHEN THEY NEED NO BARRIER, and
+        /// refused when they do. Everything untracked is at REST (V-F7), so a whole-chain bind to the resting
+        /// layout leaves the gap needing nothing, and only a target that is NOT the resting layout would need a
+        /// barrier over the request MINUS the tracked pieces, which is a range this tracker cannot name without
+        /// subtracting rectangles.
+        /// <para>
+        /// THE REFUSED ARM IS UNREACHABLE ON THE SHIPPED PATHS AND IS WRITTEN DOWN ANYWAY: a whole-chain range
+        /// exists only for a texture with a full-chain sampled view, and <c>Sampled</c> wins the resting ladder
+        /// outright, so the target of a whole-chain sampled bind IS the resting layout by construction. It takes a
+        /// <c>GenerateMipmaps</c> texture that is not also sampled, which rests in <c>GENERAL</c>, to reach it.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void AWiderRangeOverUntouchedLevels_IsAnsweredAtRestAndRefusedAwayFromIt()
+        {
+            var recorder = new FakeVulkanBarrierRecorder();
+            var tracker = new VulkanLayoutTracker(recorder);
+
+            tracker.TransitionTo(Buffer, Level(0), ImageLayout.TransferDstOptimal);
+
+            // THE GAP NEEDS NOTHING: mips 1 to 3 are at rest and the target is the resting layout, so the only
+            // barrier is the one piece that moved.
+            tracker.TransitionTo(Buffer, Chain(4), ImageLayout.ShaderReadOnlyOptimal);
+
+            ImageMemoryBarrier2 moved = Assert.Single(recorder.Batches[^1].Barriers);
+            Assert.Equal(ImageLayout.TransferDstOptimal, moved.OldLayout);
+            Assert.Equal(1, tracker.TouchedCount);
+
+            // AND THE GAP THAT WOULD NEED ONE IS REFUSED BY NAME rather than guessed at.
+            var apart = new VulkanLayoutTracker(new FakeVulkanBarrierRecorder());
+            apart.TransitionTo(Buffer, Level(0, VulkanRestingLayout.General), ImageLayout.TransferDstOptimal);
+
+            InvalidOperationException error = Assert.Throws<InvalidOperationException>(
+                () => apart.TransitionTo(Buffer, Chain(4, VulkanRestingLayout.General),
+                    ImageLayout.TransferSrcOptimal));
+
+            Assert.Contains("WIDER", error.Message, StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// AND TWO RANGES THAT PARTIALLY OVERLAP ARE REFUSED RATHER THAN MISTRACKED. Transitioning the request
+        /// would move PART of the tracked range, so its entry would claim a layout the rest of it no longer has,
+        /// and the restore at <c>End</c> would then name an OLD layout the image is not in, which is a barrier the
+        /// driver may honour by discarding. Refusing names the mistake where it is made. A range that CONTAINS the
+        /// tracked ones is a different case and is answered, which is the test above.
         /// </summary>
         [Fact]
         public void OverlappingRangesOfOneImage_AreRefusedRatherThanMistracked()
@@ -521,6 +653,18 @@ namespace KhaozEngine.Tests.Gpu
             VulkanImageSubrange? range = null)
             => new(image, depthStencil ? GpuPixelFormat.D32FloatS8UInt : GpuPixelFormat.R8G8B8A8UNorm,
                 depthStencil, resting, range ?? VulkanImageSubrange.Attachment);
+
+        // ONE MIP LEVEL of a texture that rests where a Sampled one does, which is what a copy and each step of a
+        // blit chain name.
+        static VulkanTrackedImage Level(uint mip,
+            VulkanRestingLayout resting = VulkanRestingLayout.ShaderReadOnlyOptimal)
+            => Tracked(ColourImage, resting, range: new VulkanImageSubrange(mip, 1, 0, 1));
+
+        // THE WHOLE CHAIN, which is what a sampled bind names: the sampled view is created over every level and
+        // every layer at texture creation, so nothing narrower is expressible through the seam.
+        static VulkanTrackedImage Chain(uint levels,
+            VulkanRestingLayout resting = VulkanRestingLayout.ShaderReadOnlyOptimal)
+            => Tracked(ColourImage, resting, range: VulkanImageSubrange.Whole(levels, arrayLayers: 1));
 
         // A colour target that is ALSO sampled, which is the post chain: it rests in SHADER_READ_ONLY_OPTIMAL and
         // therefore pays a transition at every pass that renders into it. The depth target rests in its own

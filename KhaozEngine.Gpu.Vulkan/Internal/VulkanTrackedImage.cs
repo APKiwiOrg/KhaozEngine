@@ -27,13 +27,28 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             => new(0, mipLevels, 0, arrayLayers);
 
         /// <summary>Whether this range and <paramref name="other"/> share any subresource. Two ranges that overlap
-        /// without being equal cannot both be tracked, because a transition of one would silently leave the other
-        /// entry claiming a layout the image no longer has.</summary>
+        /// without one containing the other cannot both be tracked, because a transition of one would silently
+        /// leave the other entry claiming a layout the image no longer has.</summary>
         internal bool Overlaps(in VulkanImageSubrange other)
             => BaseMipLevel < other.BaseMipLevel + other.LevelCount
                 && other.BaseMipLevel < BaseMipLevel + LevelCount
                 && BaseArrayLayer < other.BaseArrayLayer + other.LayerCount
                 && other.BaseArrayLayer < BaseArrayLayer + LayerCount;
+
+        /// <summary>Whether every subresource of <paramref name="other"/> is also in this range. The relation a
+        /// WIDER transition keys on: a whole-chain sampled bind contains every per-level entry a mip chain left
+        /// behind, and containment is what makes that answerable, because each contained piece can be transitioned
+        /// from its own layout and the pieces cannot be split.</summary>
+        internal bool Contains(in VulkanImageSubrange other)
+            => BaseMipLevel <= other.BaseMipLevel
+                && other.BaseMipLevel + other.LevelCount <= BaseMipLevel + LevelCount
+                && BaseArrayLayer <= other.BaseArrayLayer
+                && other.BaseArrayLayer + other.LayerCount <= BaseArrayLayer + LayerCount;
+
+        /// <summary>How many subresources this range covers, which is levels times layers. Used to tell a set of
+        /// contained pieces that TILES a wider range from one that leaves a gap, without subtracting rectangles:
+        /// the pieces a tracker holds are pairwise non-overlapping, so equal areas mean an exact tiling.</summary>
+        internal ulong SubresourceCount => (ulong)LevelCount * LayerCount;
 
         /// <summary>The range as the barrier names it, with <paramref name="aspect"/> from
         /// <see cref="VulkanFormats.ToBarrierAspect"/>: every aspect the format has, which on a combined

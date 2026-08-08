@@ -51,6 +51,30 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <see cref="VulkanCountingBarrierRecorder"/> in place of the real one, because a budget that froze only the
     /// call count would pass a recorder that put a barrier per draw into one batch.</para>
     ///
+    /// <para><b>THE RANGE RULE, IN FULL, BECAUSE PER-SUBRESOURCE TRACKING HAS TO MEET A WHOLE-CHAIN BIND.</b>
+    /// Tracking is per subresource RANGE (V-F6), and the standard streaming path produces both shapes in one
+    /// recording: a copy seeds mip 0, mip generation walks the chain a level at a time, and then a sampled bind
+    /// names the WHOLE chain, because the seam has no texture-view type and the sampled view is full-chain by
+    /// construction (V-M11). Three cases, and only one of them is refused.
+    /// <list type="bullet">
+    /// <item><description><b>The same range.</b> The entry is updated in place.</description></item>
+    /// <item><description><b>A range that CONTAINS tracked narrower ones.</b> Answered: one barrier per piece,
+    /// each FROM ITS OWN layout, so levels that disagree are not an ambiguity. The pieces then collapse into ONE
+    /// entry for the wider range, which is what keeps the restore at <c>End</c> one barrier instead of one per
+    /// level and makes the second whole-chain bind free. Subresources of the request that no piece covers are
+    /// still at rest, and naming that leftover as a range would mean subtracting rectangles, so the case is
+    /// answered when the leftover needs no barrier (the target IS the resting layout, which every whole-chain
+    /// sampled bind satisfies because Sampled wins the resting ladder outright) and refused
+    /// otherwise.</description></item>
+    /// <item><description><b>A range that PARTIALLY overlaps a tracked one.</b> REFUSED, and this is the case
+    /// worth naming: transitioning it would move part of the tracked range, so that entry would claim a layout
+    /// the rest of it no longer has, and the restore at <c>End</c> would emit a barrier whose old layout is a
+    /// lie.</description></item>
+    /// </list>
+    /// <see cref="LayoutOf"/> is the one place the CONTAINING shape is refused too, and for a different reason: a
+    /// transition of that range is well defined because it MAKES the range uniform, and a query of it is not,
+    /// because the pieces may disagree and no single layout is the answer.</para>
+    ///
     /// <para><b>NOTHING HERE IS SYNCHRONISED</b>, on the same grounds as the list that owns it: one list records on
     /// one thread at a time and this tracker is that list's alone. That is the property this whole design exists
     /// to make true.</para>
@@ -88,12 +112,23 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// The layout <paramref name="image"/> is in as far as this recording is concerned, which is its RESTING
         /// layout until this list transitions it. Never <c>UNDEFINED</c>: a list assumes every texture is at rest
         /// when it starts, so there is no untracked state for it to be in.
+        /// <para>
+        /// A RANGE THAT CONTAINS NARROWER TRACKED ONES HAS NO SINGLE LAYOUT TO REPORT, and this is the one place
+        /// the wider shape is refused rather than answered. Transitioning such a range is well defined because it
+        /// MAKES the range uniform, one barrier per piece. Reporting one layout for it would have to pick a level
+        /// and call it the answer, and a caller that skipped a barrier on that answer is the corruption this whole
+        /// model exists to make impossible.
+        /// </para>
         /// </summary>
+        /// <exception cref="InvalidOperationException">The range contains tracked narrower ranges, or partially
+        /// overlaps one.</exception>
         internal ImageLayout LayoutOf(in VulkanTrackedImage image)
         {
             RequireImage(image);
 
-            int index = IndexOf(image);
+            int index = Classify(image, out int covered);
+            if (covered > 0) throw NoSingleLayout(image, covered);
+
             return index < 0 ? image.RestingLayout : Map[index].Current;
         }
 
@@ -110,9 +145,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             try
             {
-                if (!Stage(image, target, 0)) return;
+                int count = Stage(image, target, 0);
+                if (count == 0) return;
 
-                _recorder.Emit(commandBuffer, _batch.AsSpan(0, 1));
+                _recorder.Emit(commandBuffer, _batch.AsSpan(0, count));
                 Commit();
             }
             finally
@@ -153,14 +189,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 for (int i = 0; i < colour.Length; i++)
                 {
                     var attachment = VulkanTrackedImage.ForAttachment(in colour[i]);
-                    if (Stage(attachment, attachment.AttachmentLayout, count)) count++;
+                    count += Stage(attachment, attachment.AttachmentLayout, count);
                 }
 
                 if (framebuffer.HasDepth)
                 {
                     VulkanAttachment depth = framebuffer.Depth;
                     var attachment = VulkanTrackedImage.ForAttachment(in depth);
-                    if (Stage(attachment, attachment.AttachmentLayout, count)) count++;
+                    count += Stage(attachment, attachment.AttachmentLayout, count);
                 }
 
                 if (count == 0) return;
@@ -239,14 +275,18 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         // reports it and the driver may honour it by discarding. Building the barrier can throw too (an UNDEFINED
         // on either side, a layout outside the eight), so the staging of state happens after the barrier is built
         // rather than beside it.
-        bool Stage(in VulkanTrackedImage image, ImageLayout target, int slot)
+        int Stage(in VulkanTrackedImage image, ImageLayout target, int slot)
         {
-            int index = IndexOf(image);
+            int index = Classify(image, out int covered);
+
+            // A WIDER RANGE OVER NARROWER TRACKED ONES. Its own arithmetic, below.
+            if (covered > 0) return Widen(image, target, slot, covered);
+
             ImageLayout current = index < 0 ? image.RestingLayout : Map[index].Current;
 
             // ALREADY THERE. This is the clause that keeps the barrier count per PASS rather than per draw: a
             // second sampled bind of the same texture in one pass finds it in SHADER_READ_ONLY_OPTIMAL already.
-            if (current == target) return false;
+            if (current == target) return 0;
 
             EnsureCapacity(slot + 1);
 
@@ -258,18 +298,77 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             if (index < 0)
             {
                 _staged.Add(new Entry(image.Image, image.Range, range, target, image.RestingLayout));
-                return true;
+                return 1;
             }
 
             _staged[index] = _staged[index] with { Current = target };
-            return true;
+            return 1;
         }
 
-        // The entry for this image AND this exact range, or -1. It keeps scanning past a hit deliberately, so an
-        // overlapping range recorded under a different shape is caught rather than silently mistracked.
-        int IndexOf(in VulkanTrackedImage image)
+        // A TRANSITION OF A RANGE THAT CONTAINS TRACKED NARROWER ONES: ONE BARRIER PER PIECE, THEN ONE ENTRY.
+        //
+        // This is the standard streaming path arriving at a draw. A copy seeds mip 0, mip generation walks the
+        // chain a level at a time leaving level N-1 in TRANSFER_SRC_OPTIMAL and level N in TRANSFER_DST_OPTIMAL,
+        // and then a sampled bind names the WHOLE chain, because the seam has no texture-view type and the sampled
+        // view is full-chain by construction (V-M11). Every piece is transitioned FROM ITS OWN layout, so levels
+        // that disagree are not an ambiguity here: each barrier names a layout that is true of the subresources it
+        // covers, which is the thing a single whole-range barrier could not do.
+        //
+        // THE PIECES THEN COLLAPSE INTO ONE ENTRY, which is what keeps the restore at End one barrier instead of
+        // one per level, and what makes the SECOND whole-chain bind free rather than another N. So MV5's bound
+        // tightens here rather than loosening: the widening is paid once per texture per recording and the count
+        // stays independent of draw count.
+        int Widen(in VulkanTrackedImage image, ImageLayout target, int slot, int covered)
+        {
+            List<Entry> map = Map;
+            ImageLayout resting = image.RestingLayout;
+
+            // A SUBRESOURCE OF THE REQUEST THAT NO PIECE COVERS IS STILL AT REST (V-F7), and this tracker cannot
+            // name that leftover as a range without subtracting rectangles. So the case is answered when the
+            // leftover needs no barrier, which is every time the target IS the resting layout, and refused
+            // otherwise. That refusal is unreachable on the shipped paths: a whole-chain range exists only for a
+            // texture with a full-chain sampled view, and Sampled wins the resting ladder outright, so the target
+            // of a whole-chain sampled bind is the resting layout by construction.
+            if (target != resting && Covered(map, image) != image.Range.SubresourceCount)
+                throw UntrackedRemainder(image, target);
+
+            EnsureCapacity(slot + covered);
+
+            int count = 0;
+            for (int i = 0; i < map.Count; i++)
+            {
+                Entry entry = map[i];
+                if (entry.Image != image.Image || !image.Range.Contains(entry.Subrange)) continue;
+                if (entry.Current == target) continue;
+
+                _batch[slot + count++] = VulkanImageTransition.For(
+                    entry.Image, entry.Range, entry.Current, target);
+            }
+
+            // NOTHING MOVED, so nothing is staged and the pieces stay as they are. Collapsing without a call would
+            // be a state change this recording did not make, which is the order the whole staging model exists to
+            // keep straight.
+            if (count == 0) return 0;
+
+            BeginStaging();
+
+            for (int i = _staged.Count - 1; i >= 0; i--)
+            {
+                Entry entry = _staged[i];
+                if (entry.Image == image.Image && image.Range.Contains(entry.Subrange)) _staged.RemoveAt(i);
+            }
+
+            _staged.Add(new Entry(image.Image, image.Range, image.SubresourceRange, target, resting));
+            return count;
+        }
+
+        // The entry for this image AND this exact range, or -1, plus how many tracked entries the requested range
+        // CONTAINS. It keeps scanning past a hit deliberately, so a range recorded under a shape this one neither
+        // equals nor contains is caught rather than silently mistracked.
+        int Classify(in VulkanTrackedImage image, out int covered)
         {
             int found = -1;
+            covered = 0;
             List<Entry> map = Map;
 
             for (int i = 0; i < map.Count; i++)
@@ -283,10 +382,39 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     continue;
                 }
 
-                if (entry.Subrange.Overlaps(image.Range)) throw Overlapping(image, entry);
+                if (!entry.Subrange.Overlaps(image.Range)) continue;
+
+                // WIDER IS ANSWERABLE, PARTIAL IS NOT. A contained piece can be transitioned whole from its own
+                // layout. A piece that sticks OUT of the request would have to be split in two, and the tracker
+                // would then hold two entries for one range that disagree about it the moment either moves.
+                if (image.Range.Contains(entry.Subrange))
+                {
+                    covered++;
+                    continue;
+                }
+
+                throw Overlapping(image, entry);
             }
 
             return found;
+        }
+
+        // How many subresources of the request are already covered by tracked pieces. The pieces a tracker holds
+        // are pairwise non-overlapping, so this equalling the request's own count means they tile it exactly.
+        static ulong Covered(List<Entry> map, in VulkanTrackedImage image)
+        {
+            ulong total = 0;
+
+            for (int i = 0; i < map.Count; i++)
+            {
+                Entry entry = map[i];
+                if (entry.Image == image.Image && image.Range.Contains(entry.Subrange))
+                {
+                    total += entry.Subrange.SubresourceCount;
+                }
+            }
+
+            return total;
         }
 
         // The shadow goes live at the first barrier a batch actually stages, so a boundary that emits nothing
@@ -331,20 +459,51 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 nameof(image));
         }
 
-        // TWO RANGES OF ONE IMAGE THAT OVERLAP WITHOUT BEING EQUAL CANNOT BOTH BE TRACKED. Transitioning one would
-        // leave the other entry claiming a layout the image no longer has, and the restore at End would then emit
-        // a barrier whose OLD layout is a lie, which the validation layer reports and which corrupts contents
-        // without it. Disjoint ranges are fine and are how a mip chain is generated a level at a time.
+        // TWO RANGES OF ONE IMAGE THAT PARTIALLY OVERLAP CANNOT BOTH BE TRACKED. Transitioning the request would
+        // move PART of the tracked entry, so that entry would claim a layout half its subresources no longer have,
+        // and the restore at End would then emit a barrier whose OLD layout is a lie, which the validation layer
+        // reports and which corrupts contents without it. Disjoint ranges are fine and are how a mip chain is
+        // generated a level at a time, and a range that CONTAINS the tracked ones is fine too and is how the chain
+        // is then sampled whole.
         static InvalidOperationException Overlapping(in VulkanTrackedImage image, in Entry entry)
             => new(
-                "A native Vulkan command list transitioned one image through two OVERLAPPING subresource ranges "
-                + "that are not the same range. Tracking is per subresource range (V-F6), so two entries that "
-                + "share a subresource would disagree about its layout the moment either of them moved, and the "
-                + "resting-layout restore at End would then name an old layout the image is not in. Use one range "
-                + "shape per image within a recording, or split the wider transition into the disjoint ranges the "
-                + "narrower one uses. The image is 0x"
+                "A native Vulkan command list transitioned one image through two PARTIALLY OVERLAPPING subresource "
+                + "ranges: they share a subresource, and neither contains the other. Tracking is per subresource "
+                + "range (V-F6), so transitioning this one would move part of the tracked range and leave its "
+                + "entry claiming a layout the rest of it no longer has, and the resting-layout restore at End "
+                + "would then name an old layout the image is not in. A range that CONTAINS the tracked ones is "
+                + "answered (one barrier per piece, from each piece's own layout, collapsing to one entry) and so "
+                + "are disjoint ranges. Ask for one of those shapes. The image is 0x"
                 + entry.Image.ToString("X", CultureInfo.InvariantCulture) + ", tracked over mips "
                 + Describe(entry.Subrange) + " and asked for over mips " + Describe(image.Range) + ".");
+
+        // A WIDER RANGE WHOSE UNTRACKED LEFTOVER WOULD NEED A BARRIER OF ITS OWN. Everything the tracker has not
+        // touched is at REST, so the leftover needs nothing whenever the target IS the resting layout, which is
+        // every whole-chain sampled bind. Naming the leftover as a range means subtracting rectangles and then
+        // tracking the pieces of the result, which buys a shape nothing in this backend asks for.
+        static InvalidOperationException UntrackedRemainder(in VulkanTrackedImage image, ImageLayout target)
+            => new(
+                "A native Vulkan command list transitioned a subresource range WIDER than the ranges it has "
+                + "tracked, to a layout that is not the image's resting one, and the parts of that range it never "
+                + "touched are still at rest. Answering it would mean emitting a barrier over the request MINUS "
+                + "the tracked pieces, which is a range this tracker cannot name without subtracting rectangles. "
+                + "Transition the untracked levels explicitly first, or target the resting layout, which is what "
+                + "a whole-chain sampled bind does: Sampled wins the resting ladder, so such a texture rests in "
+                + "SHADER_READ_ONLY_OPTIMAL. The image is 0x"
+                + image.Image.ToString("X", CultureInfo.InvariantCulture) + ", asked for over mips "
+                + Describe(image.Range) + " to " + target + ".");
+
+        // A QUERY WITH NO ANSWER, unlike the transition of the same range. See LayoutOf's remarks: a wider range
+        // over pieces that may disagree has no single layout, and inventing one is how a caller skips a barrier.
+        static InvalidOperationException NoSingleLayout(in VulkanTrackedImage image, int covered)
+            => new(
+                "A native Vulkan command list asked for the layout of a subresource range that CONTAINS "
+                + covered.ToString(CultureInfo.InvariantCulture) + " narrower tracked range(s), which have no one "
+                + "layout between them: a mip chain mid-generation has level N-1 in TRANSFER_SRC_OPTIMAL and level "
+                + "N in TRANSFER_DST_OPTIMAL. Transitioning that range IS defined, because it makes the range "
+                + "uniform, so ask for the transition rather than the layout, or query the pieces. The image is 0x"
+                + image.Image.ToString("X", CultureInfo.InvariantCulture) + ", asked for over mips "
+                + Describe(image.Range) + ".");
 
         static string Describe(in VulkanImageSubrange range)
             => range.BaseMipLevel.ToString(CultureInfo.InvariantCulture) + "+"

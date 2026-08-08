@@ -943,6 +943,19 @@ The incumbent keeps the layout ON the texture as recording-time mutable state. T
 texture read and write the same array, and the loser records either a redundant barrier, which is harmless, or NO
 barrier for a transition it needed, which is a corruption no golden on a software rasterizer will show.
 
+**Per-level tracking has to meet a whole-chain bind, and here is how the two get on.** The standard streaming
+path produces both shapes in one list: a copy seeds mip 0, `GenerateMipmaps` walks the chain a level at a time,
+and then a draw samples the WHOLE texture, because the seam has no texture-view type and the sampled view is
+full-chain by construction. So a wider range that CONTAINS narrower tracked ones is answered rather than refused,
+with ONE barrier per piece, each from its own layout, which is why levels left disagreeing by a blit chain
+(0 to N-2 in `TRANSFER_SRC_OPTIMAL`, N-1 in `TRANSFER_DST_OPTIMAL`) are not an ambiguity. The pieces then COLLAPSE
+into one entry, so the restore at `End` owes one barrier rather than one per level and a second bind of the same
+chain owes none. Two shapes are refused by name. A range that PARTIALLY overlaps a tracked one, because
+transitioning it would move part of that range and leave its entry claiming a layout the rest no longer has. And
+a wider range whose untouched levels would themselves need a barrier, which only happens when the target is not
+the resting layout, since untouched means at rest. That second one is unreachable through a sampled bind, because
+`Sampled` wins the resting ladder, so a full-chain texture rests exactly where a sampled bind wants it.
+
 **What that ruling LOSES is worth knowing before you read a green test as evidence.**
 `OpenListTrackingGpuDevice` passes trivially here, exactly as it does on the native Direct3D 11 backend, because
 this backend genuinely does not need the one-open-recording rule. It is the PORTABLE guard and it says nothing

@@ -251,6 +251,58 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(800u, rig.Boundary.Framebuffer!.Width);
         }
 
+        /// <summary>
+        /// A RECREATE UNDERNEATH A FRAME THAT DREW NOTHING ABANDONS THE HELD IMAGE, and this is the path every
+        /// other minimise test misses because <see cref="Rig.Frame"/> takes the semaphores first. An undrawn frame
+        /// KEEPS its image, so a zero-extent recreate at that same boundary used to retire the generation while
+        /// <c>_heldImage</c> still named one of its images and the frame pair still named a render-finished
+        /// semaphore the retirement had just destroyed. The next submit would have waited on that destroyed
+        /// semaphore.
+        /// </summary>
+        [Fact]
+        public void ARecreateUnderAFrameThatDrewNothingAbandonsTheHeldImage()
+        {
+            using var rig = new Rig();
+
+            // NOT rig.Frame(): the frame opens and closes without a submit, so nothing takes the pair, which is
+            // exactly the state that made the image be kept rather than presented.
+            rig.Surfaces.Report = FakeVulkanSurfaceApi.Minimised();
+            rig.Boundary.QueueResize(800, 600);
+            rig.Boundary.Present();
+
+            Assert.False(rig.Boundary.HasImage);
+            Assert.True(rig.Boundary.IsOrphanBound);
+
+            // THE ASSERTION THAT MATTERS: the next frame's first submit is handed nothing, rather than a pair
+            // naming a VkSemaphore the retirement destroyed.
+            Assert.True(rig.Boundary.TakeFrameSemaphores().IsEmpty);
+        }
+
+        /// <summary>
+        /// AND IT LEAVES A ROUTE BACK. The imageless backstop in the boundary is guarded on the held image, so a
+        /// recreate that left one set produced a boundary with no generation, no pending flag and nothing that
+        /// could ever queue one: the window stayed on the orphan target for the rest of the run with no error
+        /// anywhere.
+        /// </summary>
+        [Fact]
+        public void AFrameThatDrewNothingAcrossAMinimiseStillFindsItsWayBack()
+        {
+            using var rig = new Rig();
+
+            rig.Surfaces.Report = FakeVulkanSurfaceApi.Minimised();
+            rig.Boundary.QueueResize(800, 600);
+            rig.Boundary.Present();
+
+            Assert.True(rig.Boundary.HasPendingRecreate);
+
+            rig.Surfaces.Report = FakeVulkanSurfaceApi.Desktop(800, 600);
+            rig.Boundary.Present();
+
+            Assert.True(rig.Boundary.HasImage);
+            Assert.False(rig.Boundary.IsOrphanBound);
+            Assert.False(rig.Boundary.TakeFrameSemaphores().IsEmpty);
+        }
+
         // ---- resize, present mode, and the retirement hazard -------------------------------------------------
 
         /// <summary>A queued resize is applied at the next boundary and coalesced to the LAST request, which is

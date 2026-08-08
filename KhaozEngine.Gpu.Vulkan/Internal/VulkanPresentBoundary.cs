@@ -305,9 +305,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 outcome = _swapchains.Present(_generation.Handle, (uint)_heldImage, wait);
             }
 
-            _heldImage = NoImage;
-            _frame = default;
-            _waitConsumed = false;
+            ForgetHeldImage();
 
             // CHECKED (V-W7). The incumbent ignores this result entirely, so it can never learn that the surface
             // it presents to has changed underneath it, which is how a window that was resized while occluded
@@ -415,6 +413,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     // unreachable rather than merely unlikely. A minimised window reaches exactly this.
                     AdoptOrphan(orphan, spec.Extent.AtLeastOnePixel);
                     RetireGeneration();
+                    ForgetHeldImage();
                     return;
                 }
 
@@ -438,9 +437,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 Adopt(made, imageIndex: 0);
                 RetireGeneration();
                 _generation = made;
-                _heldImage = NoImage;
-                _frame = default;
-                _waitConsumed = false;
+                ForgetHeldImage();
 
                 if (_mode == VulkanAcquireMode.Semaphore) _ring.Rebuild(made.ImageCount);
             }
@@ -455,6 +452,23 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             VulkanSwapchainGeneration? dying = _generation;
             _generation = null;
             dying?.Dispose();
+        }
+
+        // THE HELD IMAGE AND THE FRAME'S SEMAPHORE PAIR, ABANDONED, and EVERY path that retires a generation goes
+        // through this. The one that did not was reachable and its failure was silent: a frame that opens and
+        // closes without drawing KEEPS its image (nothing rendered into it, so nothing may present it), and a
+        // recreate underneath that frame left _heldImage naming an image of a destroyed generation and
+        // _frame.Signal naming a destroyed VkSemaphore, which the next submit would then wait on. It also STRANDED
+        // the boundary, because the imageless block in Present is guarded on _heldImage and could never run, so
+        // there was no generation, no pending flag and no route back to one.
+        //
+        // ABANDONING THE IMAGE IS SAFE AND PRESENTING IT IS NOT. Its swapchain is being destroyed and the
+        // presentation engine takes every one of its images back with it, so there is nothing left to hand back.
+        void ForgetHeldImage()
+        {
+            _heldImage = NoImage;
+            _frame = default;
+            _waitConsumed = false;
         }
 
         // ---- Publishing ----

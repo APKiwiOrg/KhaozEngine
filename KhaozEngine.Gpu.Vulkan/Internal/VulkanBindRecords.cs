@@ -325,21 +325,30 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 int runStart = slot;
                 int count = 0;
 
-                // THE COUNT IS RESET HERE, at the head of EVERY run rather than once per flush. That single line is
-                // the incumbent's own bug not being inherited: its flush resets the batch count and the first set
-                // but not the accumulated offset count, so a second batch inside one flush passes a too-large count
-                // built from stale entries.
-                _offsets.Reset();
-
                 while (slot < _recorded && IsBindable(slot))
                 {
                     EnsureRun(count + 1);
                     _run[count++] = new DescriptorSet(_slots[slot].Bound.DescriptorSet);
-                    _offsets.Append(in _slots[slot].Bound, _slots[slot].DynamicOffset, (uint)slot);
                     slot++;
                 }
 
+                // THE NO-PIPELINE REFUSAL COMES FIRST, BEFORE ANY OFFSET IS COMPOSED, and the order is the whole
+                // reason the walk above does not compose them as it goes. Both refusals can be true of one flush,
+                // and a draw before a pipeline is the earlier and more actionable mistake: reporting an
+                // out-of-window offset against a recording that has no layout to bind the sets under would send
+                // the reader after the wrong bug entirely.
                 RequireLayout(runStart, count);
+
+                // THE COUNT IS RESET ONCE PER RUN rather than once per flush. That single line is the incumbent's
+                // own bug not being inherited: its flush resets the batch count and the first set but not the
+                // accumulated offset count, so a second batch inside one flush passes a too-large count built from
+                // stale entries.
+                _offsets.Reset();
+                for (int bound = runStart; bound < slot; bound++)
+                {
+                    _offsets.Append(in _slots[bound].Bound, _slots[bound].DynamicOffset, (uint)bound);
+                }
+
                 if (_assertsBoundSetLayouts) AssertBoundSetLayouts(runStart, count);
 
                 sink.BindDescriptorSets(_bindPoint, new PipelineLayout(_pipelineLayout), (uint)runStart,

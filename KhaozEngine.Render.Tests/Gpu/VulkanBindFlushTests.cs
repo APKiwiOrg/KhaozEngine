@@ -362,6 +362,33 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
+        /// AND IT WINS OVER THE OFFSET REFUSALS WHEN BOTH ARE TRUE OF ONE FLUSH. A recording with no pipeline AND
+        /// an out-of-window offset reports the missing pipeline, because that is the earlier and more actionable
+        /// mistake: an offset complaint against a recording that has no layout to bind the sets under would send
+        /// the reader after the wrong bug.
+        /// </summary>
+        [Fact]
+        public void WithNoPipelineAndABadOffset_TheNoPipelineRefusalIsTheOneReported()
+        {
+            using var harness = new VulkanBindHarness();
+            VulkanResourceSet set = harness.WindowedSet(slotBytes: 256, slots: 4);
+
+            var counts = new VulkanCmdCallCounts();
+            var sink = new VulkanCountingCmdSink(counts);
+            var records = new VulkanBindRecords(PipelineBindPoint.Graphics);
+
+            // The offset that leaves its own segment, on a recording that never bound a pipeline.
+            records.Record(0, set, 4 * 256);
+
+            InvalidOperationException refused = Assert.Throws<InvalidOperationException>(
+                () => records.Flush(ref sink));
+
+            Assert.Contains("no pipeline bound", refused.Message, StringComparison.Ordinal);
+            Assert.Equal(0, counts.BindDescriptorSetCalls);
+            Assert.True(records.IsDirty(0));
+        }
+
+        /// <summary>
         /// AND A FLUSH WITH NOTHING DIRTY NEVER ASKS THE QUESTION, which is what makes a draw with no pending bind
         /// free rather than a refusal waiting to happen.
         /// </summary>

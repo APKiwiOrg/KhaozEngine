@@ -30,7 +30,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <para><b>THE COUNT IS RESET AT EVERY RUN AND THAT IS THE INCUMBENT'S OWN BUG, NOT INHERITED.</b> Its
     /// batching flush resets the batch count and the first set but NOT the accumulated dynamic-offset count, so a
     /// second batch inside one flush passes a too-large count built from stale entries. Here
-    /// <see cref="Reset"/> is called by the flush at the head of every run and the count that reaches
+    /// <see cref="Reset"/> is called by the flush once per run and the count that reaches
     /// <c>vkCmdBindDescriptorSets</c> is by construction the sum of that run's sets' dynamic descriptors. The
     /// budget test asserts exactly that equality, which is what pins it against an edit rather than against a
     /// reading.</para>
@@ -69,8 +69,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// counts, and that equality is the invariant the budget test pins.</summary>
         internal int Count => _count;
 
-        /// <summary>Start a fresh array. Called at the head of EVERY run rather than once per flush: see the class
-        /// note for the incumbent bug that distinction is.</summary>
+        /// <summary>Start a fresh array. Called once per RUN rather than once per flush: see the class note for
+        /// the incumbent bug that distinction is.</summary>
         internal void Reset() => _count = 0;
 
         /// <summary>

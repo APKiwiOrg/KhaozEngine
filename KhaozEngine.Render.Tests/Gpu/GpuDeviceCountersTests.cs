@@ -163,6 +163,8 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal("gpuBackpressureStallMs", GpuTelemetryChannels.BackpressureStallMs);
             Assert.Equal("gpuOffTimelineDeferred", GpuTelemetryChannels.OffTimelineDeferred);
             Assert.Equal("gpuOffTimelineOutstanding", GpuTelemetryChannels.OffTimelineOutstanding);
+            Assert.Equal("gpuAcquireWaits", GpuTelemetryChannels.AcquireWaits);
+            Assert.Equal("gpuAcquireWaitMs", GpuTelemetryChannels.AcquireWaitMs);
         }
 
         /// <summary>Every counter reaches a channel, under the spelling the constants name, and the count matches

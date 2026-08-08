@@ -363,6 +363,66 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
+        /// A DISPOSED GRAPHICS PIPELINE IS REFUSED BY NAME, and the FIRST bind of a recording is the case that
+        /// needs it. Dispose zeroes the handle and <c>Begin</c> resets the bound one to zero, so the identity
+        /// guard compares 0 against 0, returns, and records nothing while reading as a redundant rebind. The draw
+        /// after it would then run under whatever the previous recording left bound.
+        /// </summary>
+        [Fact]
+        public void ADisposedGraphicsPipeline_IsRefusedByName()
+        {
+            var fixture = new VulkanResourceFixture();
+            var owned = new List<IDisposable>();
+
+            try
+            {
+                var pipeline = (VulkanGraphicsPipeline)Graphics(fixture, owned, UniformShape("A"));
+                pipeline.Dispose();
+
+                using VulkanCommandList list = fixture.CreateList();
+                list.Begin();
+
+                Assert.Contains("null VkPipeline",
+                    Assert.Throws<ObjectDisposedException>(() => list.SetPipeline(pipeline)).Message,
+                    StringComparison.Ordinal);
+
+                Assert.Empty(fixture.PipelineBinder.Binds);
+            }
+            finally
+            {
+                DisposeAll(owned);
+            }
+        }
+
+        /// <summary>The compute arm of the same hole, which has its own identity guard and therefore its own
+        /// zero-against-zero case.</summary>
+        [Fact]
+        public void ADisposedComputePipeline_IsRefusedByName()
+        {
+            var fixture = new VulkanResourceFixture();
+            var owned = new List<IDisposable>();
+
+            try
+            {
+                IGpuComputePipeline pipeline = Compute(fixture, owned);
+                pipeline.Dispose();
+
+                using VulkanCommandList list = fixture.CreateList();
+                list.Begin();
+
+                Assert.Contains("null VkPipeline",
+                    Assert.Throws<ObjectDisposedException>(() => list.SetComputePipeline(pipeline)).Message,
+                    StringComparison.Ordinal);
+
+                Assert.Empty(fixture.PipelineBinder.Binds);
+            }
+            finally
+            {
+                DisposeAll(owned);
+            }
+        }
+
+        /// <summary>
         /// A BIND OUTSIDE A RECORDING IS REFUSED BY NAME rather than discarded, which is the asymmetry with a
         /// resource-set bind: that one touches only the list's own array, and this one emits a <c>vkCmd*</c>
         /// against a buffer <c>vkBeginCommandBuffer</c> has not seen, which is undefined behaviour rather than a

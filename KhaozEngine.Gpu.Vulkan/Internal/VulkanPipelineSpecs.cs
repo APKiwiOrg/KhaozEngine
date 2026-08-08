@@ -47,12 +47,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// (<see cref="GpuBlendFactor"/> and friends) rather than a second family invented here, because a copy of
     /// eleven blend factors would be eleven more mappings to get wrong for no reader benefit.</para>
     ///
-    /// <para><b>THERE IS NO <c>VkRenderPass</c> IN IT (V-A1).</b> <see cref="ColourFormats"/>,
-    /// <see cref="DepthFormat"/> and <see cref="SampleCount"/> come straight off
-    /// <see cref="GpuPipelineDescription.Outputs"/> and become a <c>VkPipelineRenderingCreateInfo</c> chained onto
-    /// the create info, which under dynamic rendering is the whole of what a render pass would have carried. That
-    /// is why row 12 (https://github.com/APKiwiOrg/KhaozEngine/issues/522) needed no pass cache and why a resize
-    /// invalidates nothing here.</para>
+    /// <para><b>THERE IS NO <c>VkRenderPass</c> IN IT (V-A1).</b> <see cref="ColourFormats"/> and
+    /// <see cref="DepthFormat"/> come straight off <see cref="GpuPipelineDescription.Outputs"/> and become a
+    /// <c>VkPipelineRenderingCreateInfo</c> chained onto the create info, which under dynamic rendering is the
+    /// whole of what a render pass would have carried. That is why row 12
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/522) needed no pass cache and why a resize invalidates
+    /// nothing here. <see cref="SampleCount"/> is off the same description and lands somewhere else:
+    /// <c>VkPipelineMultisampleStateCreateInfo.rasterizationSamples</c>, because the rendering create-info has no
+    /// sample-count field at all.</para>
     /// </summary>
     internal sealed class VulkanGraphicsPipelineSpec
     {

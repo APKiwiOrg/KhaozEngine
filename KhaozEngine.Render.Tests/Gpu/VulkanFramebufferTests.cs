@@ -58,10 +58,11 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// ITS <c>Outputs</c> CARRY THE ATTACHMENT FORMATS AND THE SAMPLE COUNT, which is what row 13 builds
-        /// <c>VkPipelineRenderingCreateInfo</c> from verbatim. A pipeline's sample count must match the
-        /// framebuffer it draws into, so a wrong count here is a pipeline the driver refuses to use with this
-        /// target.
+        /// ITS <c>Outputs</c> CARRY THE ATTACHMENT FORMATS AND THE SAMPLE COUNT, which is what row 13 builds a
+        /// pipeline's state from: the formats become <c>VkPipelineRenderingCreateInfo</c> verbatim and the count
+        /// becomes <c>VkPipelineMultisampleStateCreateInfo.rasterizationSamples</c>. A pipeline's sample count
+        /// must match the framebuffer it draws into, so a wrong count here is a pipeline the driver refuses to
+        /// use with this target.
         /// </summary>
         [Fact]
         public void ItsOutputs_CarryTheAttachmentFormatsAndTheSampleCount()

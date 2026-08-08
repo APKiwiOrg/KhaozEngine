@@ -304,8 +304,8 @@ precisely to pay it. Nobody gains here.
 riskier: a pipeline created against a set of attachment formats is compatible with any rendering carrying the
 same formats, and the classic "pipeline created against render pass A, bound inside render pass B" mismatch
 class stops existing. `IGpuFramebuffer.Outputs` is a `GpuOutputDescription` of attachment formats, a depth
-format and a sample count, which is `VkPipelineRenderingCreateInfo`'s input verbatim. The seam's shape and
-dynamic rendering's shape are the same shape.
+format and a sample count, whose formats are `VkPipelineRenderingCreateInfo`'s input verbatim and whose sample
+count is the multisample state's. The seam's shape and dynamic rendering's shape are the same shape.
 
 **Ground four collapses under its own premise, and this is what decides it.** The thing being ported is not
 known-correct. The incumbent creates THREE `VkRenderPass` objects per `VkFramebuffer` with no cache and no
@@ -988,8 +988,10 @@ deferral needs an explicit flush rather than falling out of the schedule.
 and the goldens require stability on the same rasterizer (V-F8's rule applied to a store). If a measurement ever
 justifies it, it needs its own change with its own determinism argument.
 
-**Pipelines carry `VkPipelineRenderingCreateInfo` built from `GpuOutputDescription`**: the colour format array,
-the depth format, the sample count. Everything except viewport and scissor is baked into the pipeline object,
+**Pipelines carry `VkPipelineRenderingCreateInfo` built from `GpuOutputDescription`**: the colour format array
+and the depth format. The same description's sample count rides
+`VkPipelineMultisampleStateCreateInfo.rasterizationSamples` instead, because the rendering create-info has no
+sample-count field. Everything except viewport and scissor is baked into the pipeline object,
 which is the incumbent's shape and is kept. Dynamic state is exactly viewport and scissor.
 
 ### 7.2 The viewport, and the single most consequential line in the design (V-A5)

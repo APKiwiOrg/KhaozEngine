@@ -434,9 +434,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// pipeline twice emits neither.
         /// </para>
         /// <para>
-        /// THE PIPELINE IS RESOLVED BEFORE THE GUARD, so one from another backend is refused whether or not the
-        /// bind was redundant. Same order <see cref="SetFramebuffer"/> takes, for the same reason: a guard-first
-        /// order lets the same mistake pass silently on the second bind.
+        /// THE PIPELINE IS RESOLVED AND CHECKED FOR LIFE BEFORE THE GUARD, so one from another backend and one
+        /// already disposed are both refused whether or not the bind was redundant. Same order
+        /// <see cref="SetFramebuffer"/> takes, for the same reason: a guard-first order lets a foreign pipeline
+        /// pass silently on the second bind, and would never catch a disposed one at all, since its zero handle
+        /// equals the identity <see cref="Begin"/> resets to.
         /// </para>
         /// </remarks>
         public void SetPipeline(IGpuPipeline p)
@@ -444,6 +446,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             IVulkanPipelineBinder binder = RequireBinder("Binding a graphics pipeline");
             VulkanGraphicsPipeline pipeline = VulkanGraphicsPipeline.Require(
                 p, "a native Vulkan graphics pipeline bind");
+            RequireLivePipeline(pipeline.Handle, "graphics");
 
             if (pipeline.Handle == _boundGraphicsPipeline) return;
 
@@ -494,6 +497,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             IVulkanPipelineBinder binder = RequireBinder("Binding a compute pipeline");
             VulkanComputePipeline pipeline = VulkanComputePipeline.Require(
                 p, "a native Vulkan compute pipeline bind");
+            RequireLivePipeline(pipeline.Handle, "compute");
 
             if (pipeline.Handle == _boundComputePipeline) return;
 
@@ -721,6 +725,20 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             return _pipelineBinder ?? throw new NotSupportedException(
                 "This native Vulkan command list was built with no pipeline seam, so it can bind no pipeline. "
                 + "Every list the device hands out has one: this is a list constructed directly by a test.");
+        }
+
+        // A DISPOSED PIPELINE IS REFUSED BEFORE THE IDENTITY GUARD, because the guard cannot see it. Dispose
+        // zeroes the handle and Begin resets both bound handles to 0, so the FIRST bind of a recording with a
+        // disposed pipeline compares 0 == 0, returns, and records nothing while reading as a redundant rebind.
+        // The draw after it then runs under whatever was bound before, which renders wrong without throwing.
+        static void RequireLivePipeline(ulong handle, string what)
+        {
+            if (handle != 0) return;
+
+            throw new ObjectDisposedException("VkPipeline",
+                "The " + what + " pipeline handed to a native Vulkan bind carries the null VkPipeline, which is "
+                + "what Dispose leaves behind. Binding it would record nothing at all, and the identity guard "
+                + "cannot catch that, because a recording that has just begun has nothing bound either.");
         }
 
         // The buffer the current slot is recording into, which every emitted vkCmd* names. Only meaningful while

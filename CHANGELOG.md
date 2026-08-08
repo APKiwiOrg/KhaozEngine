@@ -15,10 +15,12 @@ entirely: every member of `IGpuResourceFactory` is now built on this backend. Wo
 3 program (#510), device-free throughout, and nothing selects this backend by default so no shipped pixel moves.
 
 **There is no `VkRenderPass` in a pipeline create-info, which is decision V-A1 arriving at its second seat.** The
-colour format array, the depth format and the sample count come straight off the seam's `GpuOutputDescription`
-as a `VkPipelineRenderingCreateInfo` chained onto the create info, which under dynamic rendering is the whole of
+colour format array and the depth format come straight off the seam's `GpuOutputDescription` as a
+`VkPipelineRenderingCreateInfo` chained onto the create info, which under dynamic rendering is the whole of
 what a classic render pass would have carried. That is why row 12 needed no pass cache and why a resize
-invalidates nothing here. The stencil plane is named separately from the depth one, exactly as it is at a begin,
+invalidates nothing here. The same description's sample count rides
+`VkPipelineMultisampleStateCreateInfo.rasterizationSamples` instead, because the rendering create-info has no
+sample-count field. The stencil plane is named separately from the depth one, exactly as it is at a begin,
 because dynamic rendering splits the two and both of the seam's depth formats are combined ones.
 
 **Vertex input comes from the caller's own layouts and no reflection is read off the module.** The Direct3D 11

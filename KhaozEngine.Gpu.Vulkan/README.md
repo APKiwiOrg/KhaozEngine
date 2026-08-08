@@ -47,8 +47,9 @@ and nothing that does not want the Vulkan binding ever carries it.
 > anywhere and the modules shared by SPIR-V hash. And since
 > [#523](https://github.com/APKiwiOrg/KhaozEngine/issues/523) it has PIPELINES, which closes the resource
 > factory's refusal list entirely: graphics and compute pipelines built with no `VkRenderPass` at all (the
-> target's formats and sample count ride a `VkPipelineRenderingCreateInfo` off the seam's own
-> `GpuOutputDescription`), vertex input taken from the caller's layouts with no reflection read off the module,
+> target's formats ride a `VkPipelineRenderingCreateInfo` off the seam's own `GpuOutputDescription`, and its
+> sample count the multisample state), vertex input taken from the caller's layouts with no reflection read off
+> the module,
 > dynamic state held to exactly viewport and scissor, and a `VkPipelineCache` persisted to disk whose header is
 > validated before the driver ever sees it. That device cannot yet
 > RENDER: the rest of the recording content is
@@ -825,12 +826,15 @@ is not here to defend itself. The Metal-only shader validation check is in the s
 ## Pipelines: no render pass, two dynamic states, and a disk cache that validates its own header
 
 **A pipeline create-info here names no `VkRenderPass` and no subpass that means anything.** The target's colour
-format array, depth format and sample count come straight off the seam's `GpuOutputDescription` as a
+format array and depth format come straight off the seam's `GpuOutputDescription` as a
 `VkPipelineRenderingCreateInfo` chained onto the create info, which under dynamic rendering is the whole of what
 a render pass would have carried. That is the same absence the rendering section above is about, seen from the
 other end: no pass to cache, nothing to invalidate on a resize, and no "created against pass A, bound inside pass
 B" mismatch class at all. The stencil plane is named separately from the depth one, because dynamic rendering
-splits them and both of the seam's depth formats are combined ones.
+splits them and both of the seam's depth formats are combined ones. The sample count is off the same
+`GpuOutputDescription` and lands somewhere else, on
+`VkPipelineMultisampleStateCreateInfo.rasterizationSamples`, because the rendering create-info has no
+sample-count field.
 
 **Vertex input comes from the caller's own layouts and nothing is reflected off the module.** The Direct3D 11
 backend has to reflect its compiled vertex signature, because SPIRV-Cross invents a `TEXCOORD<location>` semantic

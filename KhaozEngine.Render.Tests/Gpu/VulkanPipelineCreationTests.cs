@@ -244,12 +244,26 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// A PIPELINE NAMES THE SHADER SET'S OWN MODULES AND THE SHARED PIPELINE LAYOUT, and the blend constant
         /// rides the pipeline rather than being dynamic state.
+        /// <para>
+        /// IT ALSO CARRIES THE VERTEX INPUT DERIVED FROM THE DESCRIPTION'S OWN LAYOUTS, asserted HERE rather than
+        /// only against <see cref="VulkanVertexInput.Build"/> directly. The derivation tests above drive that
+        /// helper themselves, so a factory that handed the spec a null or an empty layout list instead of the
+        /// description's would pass every one of them and produce a pipeline with no vertex input at all.
+        /// </para>
         /// </summary>
         [Fact]
-        public void AGraphicsPipeline_NamesItsModulesItsLayoutAndItsBakedBlendConstant()
+        public void AGraphicsPipeline_NamesItsModulesItsLayoutItsVertexInputAndItsBakedBlendConstant()
         {
             var fixture = new VulkanResourceFixture();
             var owned = new List<IDisposable>();
+
+            var vertexLayouts = new List<GpuVertexLayoutDescription>
+            {
+                new(
+                    new GpuVertexElement("Position", GpuVertexElementFormat.Float3),
+                    new GpuVertexElement("TexCoord", GpuVertexElementFormat.Float2)),
+                new(0, 1, [new GpuVertexElement("InstanceColor", GpuVertexElementFormat.Float4)]),
+            };
 
             try
             {
@@ -261,13 +275,21 @@ namespace KhaozEngine.Tests.Gpu
                 owned.Add(layout);
 
                 IGpuPipeline pipeline = fixture.Factory.CreateGraphicsPipeline(Description(
-                    shaders, [layout], blendFactor: new Vector4(0.25f, 0.5f, 0.75f, 1f)));
+                    shaders, [layout], blendFactor: new Vector4(0.25f, 0.5f, 0.75f, 1f),
+                    vertexLayouts: vertexLayouts));
                 owned.Add(pipeline);
 
                 VulkanGraphicsPipelineSpec spec = Assert.Single(fixture.PipelineApi.Graphics);
                 Assert.Equal(shaders.VertexModule, spec.VertexModule);
                 Assert.Equal(shaders.FragmentModule, spec.FragmentModule);
                 Assert.Equal(new Vector4(0.25f, 0.5f, 0.75f, 1f), spec.BlendFactor);
+
+                Assert.Equal([0u, 1u], spec.VertexBindings.Select(b => b.Binding));
+                Assert.Equal([20u, 16u], spec.VertexBindings.Select(b => b.Stride));
+                Assert.Equal([false, true], spec.VertexBindings.Select(b => b.PerInstance));
+                Assert.Equal([0u, 1u, 2u], spec.VertexAttributes.Select(a => a.Location));
+                Assert.Equal([0u, 0u, 1u], spec.VertexAttributes.Select(a => a.Binding));
+                Assert.Equal([0u, 12u, 0u], spec.VertexAttributes.Select(a => a.Offset));
 
                 var native = Assert.IsType<VulkanGraphicsPipeline>(pipeline);
                 Assert.Equal(spec.PipelineLayout, native.PipelineLayout);
@@ -512,7 +534,7 @@ namespace KhaozEngine.Tests.Gpu
 
         static GpuPipelineDescription Description(IGpuShaderSet shaders, IGpuResourceLayout[] layouts,
             GpuOutputDescription? outputs = null, GpuBlendAttachment[]? blends = null,
-            Vector4 blendFactor = default)
+            Vector4 blendFactor = default, List<GpuVertexLayoutDescription>? vertexLayouts = null)
             => new()
             {
                 BlendFactor = blendFactor,
@@ -523,7 +545,7 @@ namespace KhaozEngine.Tests.Gpu
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = layouts,
                 ShaderSet = shaders,
-                VertexLayouts = [new GpuVertexLayoutDescription(
+                VertexLayouts = vertexLayouts ?? [new GpuVertexLayoutDescription(
                     new GpuVertexElement("Position", GpuVertexElementFormat.Float3))],
                 Outputs = outputs ?? new GpuOutputDescription(null, GpuPixelFormat.R8G8B8A8UNorm),
             };

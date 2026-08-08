@@ -328,7 +328,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         public void SetFramebuffer(IGpuFramebuffer fb)
         {
             VulkanRenderingSchedule rendering = RequireRendering("Binding a framebuffer");
-            VulkanFramebuffer framebuffer = VulkanFramebuffer.Require(fb, "a native Vulkan framebuffer bind");
+
+            // THROUGH THE INTERFACE rather than through VulkanFramebuffer, so the device's own swapchain
+            // framebuffer binds down the identical path. Its identity is stable across every recreate (V-W5) and
+            // its attachment moves to the acquired image at every present boundary, which is invisible from here:
+            // what arrives is the same flattened record of handles, integers and enums either way.
+            IVulkanBoundFramebufferSource framebuffer =
+                VulkanBindableFramebuffer.Require(fb, "a native Vulkan framebuffer bind");
 
             rendering.SetFramebuffer(CurrentBuffer, framebuffer.AsBound);
         }

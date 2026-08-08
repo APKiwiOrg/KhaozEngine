@@ -131,6 +131,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         readonly VulkanStagingMaps _maps = new();
         readonly VulkanSampler _pointSampler;
         readonly VulkanSampler _linearSampler;
+        readonly VulkanAcquireWaits _acquireWaits = new();
+        readonly VulkanPresentBoundary? _present;
         readonly int _framesInFlight;
         readonly Device _device;
         readonly bool _softwareAdapter;
@@ -150,7 +152,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             VulkanDeviceLiveness liveness, VulkanDeviceLossLatch loss, VulkanTimeline timeline,
             IVulkanDeviceMemoryApi memoryApi, VulkanMemoryFacts memoryFacts, IVulkanCommandApi commands,
             IVulkanResourceApi resourceApi, IVulkanSetupSink setupSink, IVulkanDescriptorApi descriptorApi,
-            IVulkanShaderApi shaderApi, uint maxDynamicUniformBuffers, int framesInFlight)
+            IVulkanShaderApi shaderApi, uint maxDynamicUniformBuffers, int framesInFlight,
+            VulkanWindowedParts? windowed)
         {
             _instance = instance;
             _device = device;
@@ -224,7 +227,33 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 _resources, VulkanSharedSamplers.Point, capabilities.SamplerAnisotropy, ownsSampler: false);
             _linearSampler = new VulkanSampler(
                 _resources, VulkanSharedSamplers.Linear, capabilities.SamplerAnisotropy, ownsSampler: false);
+
+            // THE PRESENT BOUNDARY IS BUILT LAST, and it has to be: its orphan target is created through THIS
+            // object's resource factory, and its drain is this object's timeline. It creates the first swapchain
+            // and takes the first acquire inside its own constructor, which is what makes SwapchainFramebuffer
+            // valid from the moment the device exists rather than from the first present.
+            if (windowed is not null)
+            {
+                _syncToVerticalBlank = windowed.SyncToVerticalBlank;
+                _present = new VulkanPresentBoundary(
+                    windowed.Surfaces, windowed.Swapchains, windowed.Surface, windowed.Requested,
+                    windowed.SyncToVerticalBlank, windowed.Acquire, framesInFlight, _submitLock,
+                    // THE TIMELINE DRAIN AND NOTHING ELSE. Not this device's WaitForIdle, which also flushes the
+                    // setup command buffer: that flush takes the SETUP lock, the boundary calls this holding the
+                    // SUBMIT lock, and setup-under-submit is the one lock order V-W8 forbids.
+                    () => _timeline.WaitForIdle(),
+                    new VulkanOrphanTarget(CreateOrphanTarget),
+                    _acquireWaits);
+            }
         }
+
+        // WHAT AN IMAGELESS FRAME RENDERS INTO (V-W4): an ordinary render-target texture at the swapchain's own
+        // format, so a pipeline built against the swapchain framebuffer is validated against the same output
+        // description whether a real image or this is bound. One mip, one layer, one sample, no depth, matching
+        // the swapchain framebuffer's shape exactly.
+        IGpuTexture CreateOrphanTarget(VulkanExtent extent, GpuPixelFormat format)
+            => _factory.CreateTexture(new GpuTextureDescription(
+                extent.Width, extent.Height, format, GpuTextureUsage.RenderTarget));
 
         /// <inheritdoc/>
         public GpuBackendKind Backend => GpuBackendKind.VulkanNative;
@@ -354,32 +383,50 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
                 // Named, because the two longs and the two doubles sit next to each other: a transposed pair here
                 // compiles, passes every test, and reports a stall count as a drain count in the field.
+                VulkanWaitTotals acquires = _acquireWaits.Totals;
+
                 return new GpuDeviceCounters(
-                    framesBegun: 0,
+                    framesBegun: _present?.FramesBegun ?? 0,
                     drainCount: drain.Count,
                     drainMs: drain.TotalMs,
                     backpressureStallCount: stalls.Count,
                     backpressureStallMs: stalls.TotalMs,
                     offTimelineDeferred: patches.Deferred,
-                    offTimelineOutstanding: patches.Outstanding);
+                    offTimelineOutstanding: patches.Outstanding,
+                    acquireWaitCount: acquires.Count,
+                    acquireWaitMs: acquires.TotalMs);
             }
         }
 
         /// <inheritdoc/>
-        /// <remarks>Null, and correct rather than unbuilt: this row creates HEADLESS devices only, and a headless
-        /// device has no swapchain by definition. The windowed path is row 17
-        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/527), and it refuses at creation rather than handing
-        /// back a device that cannot present.</remarks>
-        public IGpuFramebuffer? SwapchainFramebuffer => null;
+        /// <remarks>
+        /// THE SAME OBJECT FOR THE WHOLE LIFE OF A WINDOWED DEVICE (V-W5), so it may be cached by anything: a
+        /// recreate and an acquire both change what it points at and never its identity. NULL on a headless
+        /// device, which is correct rather than unbuilt: the headless path enables no surface extension at all
+        /// (V-N6), which is what lets the golden suite run on a machine with no display server.
+        /// </remarks>
+        public IGpuFramebuffer? SwapchainFramebuffer => _present?.Framebuffer;
 
         /// <inheritdoc/>
-        /// <remarks>A backing value on a headless device, which is what the seam asks for. It reconfigures
-        /// nothing because there is no swapchain to reconfigure, and row 17 is where it starts meaning
-        /// something.</remarks>
+        /// <remarks>
+        /// UNLIKE DIRECT3D 11, THIS RECONFIGURES SOMETHING. There, vsync is an argument of the present call, so a
+        /// setter only changes an interval. Vulkan cannot change a swapchain's present mode in place, so a change
+        /// here QUEUES A RECREATE that the next present boundary applies, exactly as a resize does (V-W6). The
+        /// value is settable from any thread and takes no lock, and the recreate lands on the submit thread where
+        /// it provably owns the queue.
+        /// <para>
+        /// On a HEADLESS device it is a plain backing value, which is what the seam asks for: there is no
+        /// swapchain to reconfigure.
+        /// </para>
+        /// </remarks>
         public bool SyncToVerticalBlank
         {
-            get => _syncToVerticalBlank;
-            set => _syncToVerticalBlank = value;
+            get => _present?.SyncToVerticalBlank ?? _syncToVerticalBlank;
+            set
+            {
+                _syncToVerticalBlank = value;
+                if (_present is not null) _present.SyncToVerticalBlank = value;
+            }
         }
 
         /// <summary>
@@ -450,10 +497,60 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in data), 1)));
 
         /// <inheritdoc/>
-        public void ResizeSwapchain(uint w, uint h) => throw NotBuiltYet("Resizing the swapchain", SwapchainRow);
+        /// <remarks>
+        /// QUEUED AND APPLIED AT THE NEXT PRESENT BOUNDARY (V-W6), never here. This stores a number and returns:
+        /// no lock, no native call, nothing that can block, so a window callback arriving on any thread while the
+        /// submit thread is inside <c>vkQueueSubmit</c> is safe. That makes a foreign-thread resize during
+        /// recording STRUCTURALLY impossible rather than contractually forbidden, and it matters more on this
+        /// backend than on the other one because recreating a swapchain invalidates every attachment a recording
+        /// may already have bound.
+        /// <para>
+        /// A ZERO IN EITHER DIMENSION IS SAFE HERE AND SAFE AT THE APPLY. A minimised window reports (0, 0)
+        /// through its framebuffer-resize event on Windows, and the clamp against the surface's own reported
+        /// bounds produces an extent the boundary then reads as not creatable, so no <c>vkCreateSwapchainKHR</c>
+        /// is ever made at a size the specification forbids
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/81). The frame goes imageless, binds the orphan
+        /// target and skips its present until the window comes back.
+        /// </para>
+        /// <para>
+        /// A no-op on a headless device, which has no swapchain to resize. Silent rather than a throw, matching
+        /// the incumbent, because teardown order is a consumer's business and a window can report a size change
+        /// while it is being destroyed.
+        /// </para>
+        /// </remarks>
+        public void ResizeSwapchain(uint w, uint h) => _present?.QueueResize(w, h);
 
         /// <inheritdoc/>
-        public void Present() => throw NotBuiltYet("Presenting a frame", SwapchainRow);
+        /// <remarks>
+        /// THE FRAME BOUNDARY, IN ONE PLACE (V-W4). It presents the frame just submitted if an image is held,
+        /// applies any pending recreate at that same boundary, and acquires for the NEXT frame, then rotates the
+        /// uniform ring's segment and drains the deferred-disposal list. It never throws and never reports
+        /// failure upward: an <c>OUT_OF_DATE</c> surface, a minimised window and a driver that lost the surface
+        /// are all handled inside <see cref="VulkanPresentBoundary"/> and the frame loop above is unchanged.
+        /// <para>
+        /// THE RING AND THE RETIRE LIST ROTATE AFTER THE BOUNDARY HAS RELEASED THE SUBMIT LOCK, which
+        /// <see cref="VulkanRingAllocator.BeginFrame"/> refuses a caller by name for: its segment gate can block,
+        /// and blocking inside the submit lock would stop every other thread's submit for the length of a GPU
+        /// wait.
+        /// </para>
+        /// <para>
+        /// A HEADLESS DEVICE STILL ROTATES BOTH. It has no swapchain and nothing to present, and it does have a
+        /// uniform ring and a retire list, so a headless consumer that runs frames gets the same recycling a
+        /// windowed one does rather than an ever-growing retire list.
+        /// </para>
+        /// </remarks>
+        public void Present()
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+
+            _present?.Present();
+
+            // OUTSIDE EVERY LOCK, and in this order. The ring's frame boundary is what recycles a segment the GPU
+            // has finished with, and the retire drain is what actually runs the deferred destroys the frame's
+            // disposals recorded.
+            _rings.BeginFrame();
+            DrainRetiredResources();
+        }
 
         /// <summary>
         /// Destroy the device, in the ONE order V-F10 permits: <c>vkDeviceWaitIdle</c> FIRST, then the retire
@@ -544,6 +641,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                         // does not exist, so a later Unmap is a caller error about a resource with nothing under
                         // it, and there is no vkUnmapMemory to make anyway (V-M3).
                         ReportForgottenMaps(_maps.Forget());
+
+                        // THE PRESENT BOUNDARY GOES FIRST AMONG THE DEVICE'S OWN CHILDREN, and its position is
+                        // the one edit here that could look arbitrary. It destroys the swapchain, its image
+                        // views and its binary semaphores, all of which are children of the device and none of
+                        // which the retire list holds, and it must happen while the device is still alive and
+                        // before vkDestroyDevice collects them. It runs its own drain first, which the wait
+                        // above has already made a formality. On the LOST path it is skipped entirely, for the
+                        // same reason every other destroy is: the objects went with the device.
+                        if (!lost) _present?.Dispose();
 
                         if (lost)
                         {
@@ -669,21 +775,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 + "Both went with the device, so this is a report rather than a leak.");
         }
 
-        // The row that owns each unbuilt member, as a full URL, because these messages are read by somebody who
-        // has just hit one and needs to know whether to wait for a row or file a bug.
-        const string SwapchainRow = "the swapchain row (https://github.com/APKiwiOrg/KhaozEngine/issues/527)";
-
-        // Named rather than a bare NotImplementedException, and it names WHAT IS LIVE as well as what is not,
-        // which is the shape D3D11ResourceFactory's equivalent settled on: a reader who hits this needs to know
-        // whether the backend is unfinished or their machine is wrong, and those have different answers.
-        static NotSupportedException NotBuiltYet(string what, string row)
-            => new($"{what} is not built yet on the native Vulkan backend: it lands in {row}. The instance, the "
-                + "device, the queue, the device-loss latch, the validation pump, the completion timeline, the "
-                + "memory allocator, the uniform ring, the command list's lifecycle, the resource factory AND the "
-                + "descriptor subsystem ARE live (work-breakdown rows 4 to 10, "
-                + "https://github.com/APKiwiOrg/KhaozEngine/issues/514 through "
-                + "https://github.com/APKiwiOrg/KhaozEngine/issues/520). This is a statement about the package and "
-                + "not about this machine. Select GpuBackendKind.Vulkan, which goes through Veldrid, for a fully "
-                + "working Vulkan device.");
+        // NOTHING ON THIS TYPE REFUSES BY NAMING A ROW ANY MORE. The swapchain pair was the last pair that did,
+        // and the helper that built those messages went with it rather than being left standing for a future
+        // caller: an unbuilt-member helper on a type with no unbuilt members is an invitation to add one.
+        // VulkanCommandList and VulkanResourceFactory still carry their own, for the rows that really are open.
     }
 }

@@ -158,29 +158,53 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         }
 
         /// <inheritdoc/>
-        public VulkanSubmitStatus Submit(ulong commandBuffer, ulong signalValue, out string? failure)
+        public VulkanSubmitStatus Submit(ulong commandBuffer, ulong signalValue,
+            in VulkanFrameSemaphores frame, out string? failure)
         {
             failure = null;
 
             CommandBuffer buffer = Buffer(commandBuffer);
-            Semaphore timeline = _timeline;
             ulong value = signalValue;
 
-            // The value a vkQueueSubmit signals rides in the pNext chain of VkSubmitInfo, which is the shape the
-            // binding spike proved (section 10.1). The signal semaphore array and the value array are POSITIONAL
-            // against each other, so one entry each.
+            // THE SIGNAL ARRAYS ARE POSITIONAL AGAINST EACH OTHER, which is the whole shape of mixing a timeline
+            // semaphore with a binary one in one submit. The value array has an entry per signal semaphore, and
+            // the entry for a BINARY semaphore is ignored, so the timeline's value goes first and the swapchain's
+            // render-finished semaphore takes a zero it never reads. Getting the two arrays out of step is a
+            // submit that signals the timeline at the wrong value, which is silent until a drain hangs.
+            Semaphore* signals = stackalloc Semaphore[2];
+            ulong* signalValues = stackalloc ulong[2];
+            signals[0] = _timeline;
+            signalValues[0] = value;
+
+            uint signalCount = 1;
+            if (frame.Signal != 0)
+            {
+                signals[1] = new Semaphore(frame.Signal);
+                signalValues[1] = 0;
+                signalCount = 2;
+            }
+
+            // THE WAIT IS THE ACQUIRE SEMAPHORE AT COLOR_ATTACHMENT_OUTPUT (V-W3), and that stage is the decision
+            // rather than a detail: everything before the colour write may run before the image is available, so
+            // waiting at TOP_OF_PIPE would serialise the whole frame behind the presentation engine for no reason.
+            Semaphore wait = new(frame.Wait);
+            PipelineStageFlags waitStage = PipelineStageFlags.ColorAttachmentOutputBit;
+
             var values = new TimelineSemaphoreSubmitInfo(
                 sType: StructureType.TimelineSemaphoreSubmitInfo,
-                signalSemaphoreValueCount: 1,
-                pSignalSemaphoreValues: &value);
+                signalSemaphoreValueCount: signalCount,
+                pSignalSemaphoreValues: signalValues);
 
             var submitInfo = new SubmitInfo(
                 sType: StructureType.SubmitInfo,
                 pNext: &values,
+                waitSemaphoreCount: frame.Wait == 0 ? 0u : 1u,
+                pWaitSemaphores: frame.Wait == 0 ? null : &wait,
+                pWaitDstStageMask: frame.Wait == 0 ? null : &waitStage,
                 commandBufferCount: 1,
                 pCommandBuffers: &buffer,
-                signalSemaphoreCount: 1,
-                pSignalSemaphores: &timeline);
+                signalSemaphoreCount: signalCount,
+                pSignalSemaphores: signals);
 
             // ONE vkQueueSubmit (V-F3), and no VkFence: this backend has no VkFence anywhere, because the one
             // timeline is what every completion question is answered against.

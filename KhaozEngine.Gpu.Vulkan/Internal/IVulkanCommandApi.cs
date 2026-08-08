@@ -93,8 +93,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <summary>
         /// ONE <c>vkQueueSubmit</c> (V-F3) of one command buffer, signalling the device's timeline semaphore at
         /// <paramref name="signalValue"/> through the <c>VkTimelineSemaphoreSubmitInfo</c> chained onto the
-        /// submit info. No fence, because this backend has no <c>VkFence</c> at all, and no wait semaphores on
-        /// the headless path.
+        /// submit info. No fence, because this backend has no <c>VkFence</c> on any path the completion model
+        /// uses, and no wait semaphore at all on the headless path.
+        /// <para>
+        /// A WINDOWED FRAME'S FIRST SUBMIT ALSO WAITS AND ALSO SIGNALS (V-W3): it waits on the acquire's binary
+        /// semaphore at <c>COLOR_ATTACHMENT_OUTPUT</c> and signals the acquired image's render-finished
+        /// semaphore, which the present of that image waits on. That is the whole of what replaces the
+        /// incumbent's per-frame CPU stall.
+        /// </para>
         /// <para>
         /// THE CALLER HOLDS THE SUBMIT LOCK. This member does not take one: the ordering guarantee that a
         /// timeline's signals strictly increase comes from the value being allocated and submitted under one
@@ -103,9 +109,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// </summary>
         /// <param name="commandBuffer">The sealed buffer to execute.</param>
         /// <param name="signalValue">The timeline value this submission signals on completion.</param>
+        /// <param name="frame">The swapchain's binary pair for this frame, or the default for none, which is
+        /// every headless submit, every submit after the first in one frame, and every submit under
+        /// <c>KE_VULKAN_ACQUIRE=stall</c>. See <see cref="VulkanFrameSemaphores"/>.</param>
         /// <param name="failure">On <see cref="VulkanSubmitStatus.Failed"/>, the result's own token for the
         /// message the caller throws. Null otherwise.</param>
-        VulkanSubmitStatus Submit(ulong commandBuffer, ulong signalValue, out string? failure);
+        VulkanSubmitStatus Submit(ulong commandBuffer, ulong signalValue, in VulkanFrameSemaphores frame,
+            out string? failure);
 
         /// <summary>
         /// <c>vkDestroyCommandPool</c>, which also frees every buffer allocated from it. TERMINAL: it retires

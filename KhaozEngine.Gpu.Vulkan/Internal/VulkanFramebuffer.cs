@@ -33,7 +33,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// the framebuffer-change guard compares plain data and has no reference to compare. Creation is
     /// free-threaded on this backend (V-W8), so the counter is interlocked.</para>
     /// </summary>
-    internal sealed class VulkanFramebuffer : IGpuFramebuffer
+    internal sealed class VulkanFramebuffer : IGpuFramebuffer, IVulkanBoundFramebufferSource
     {
         // Starts at 0 and is PRE-incremented, so the first framebuffer is 1 and 0 is free to mean "nothing bound".
         static long _nextId;
@@ -104,6 +104,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// handed to the recorder, which never holds this object. See <see cref="VulkanBoundFramebuffer"/>.
         /// </summary>
         internal VulkanBoundFramebuffer AsBound { get; }
+
+        /// <inheritdoc/>
+        /// <remarks>Explicit, because the interface is internal and this property already exists under the same
+        /// name. The recording path binds through the interface so the swapchain's own framebuffer, whose
+        /// attachment moves on every acquire, goes down the identical path.</remarks>
+        VulkanBoundFramebuffer IVulkanBoundFramebufferSource.AsBound => AsBound;
 
         /// <summary>This framebuffer's process-unique identity, which the framebuffer-change guard
         /// compares.</summary>

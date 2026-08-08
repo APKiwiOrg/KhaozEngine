@@ -20,8 +20,9 @@ namespace KhaozEngine.Gpu
     /// ABSENT IS NOT ZERO, and <see cref="HasValue"/> is the whole reason this is not a bag of nullable longs.
     /// Zero stalls IS the passing result, so a backend that keeps no counters must not report the same numbers as
     /// a backend that kept them and never stalled. The default value answers false and is what Metal and the
-    /// incumbent Veldrid paths all give. The two native backends give a true value instead: D3D11 all seven
-    /// fields, Vulkan the drain pair until its remaining subsystems land.
+    /// incumbent Veldrid paths all give. The two native backends give a true value instead: D3D11 every field
+    /// except the acquire pair, which it passes as zero because a Direct3D 11 present has no acquire to wait on,
+    /// and Vulkan the drain, backpressure, off-timeline and acquire readings until its remaining subsystems land.
     /// </para>
     /// <para>
     /// THE TWO BACKPRESSURE READINGS ARE SEPARATE MEMBERS AND MUST STAY SEPARATE
@@ -50,6 +51,10 @@ namespace KhaozEngine.Gpu
         /// <param name="backpressureStallMs">Milliseconds those stalls spent blocked, summed.</param>
         /// <param name="offTimelineDeferred">Off-timeline buffer writes queued against an in-flight segment.</param>
         /// <param name="offTimelineOutstanding">Those queued writes still waiting for a segment to be reopened.</param>
+        /// <param name="acquireWaitCount">Present boundaries that blocked waiting for the next swapchain image.
+        /// Zero is the honest reading on a backend whose acquire never blocks the CPU, and on a headless device
+        /// with no swapchain at all.</param>
+        /// <param name="acquireWaitMs">Milliseconds those acquire waits spent blocked, summed.</param>
         public GpuDeviceCounters(
             long framesBegun,
             long drainCount,
@@ -57,7 +62,9 @@ namespace KhaozEngine.Gpu
             long backpressureStallCount,
             double backpressureStallMs,
             long offTimelineDeferred,
-            long offTimelineOutstanding)
+            long offTimelineOutstanding,
+            long acquireWaitCount,
+            double acquireWaitMs)
         {
             HasValue = true;
             FramesBegun = framesBegun;
@@ -67,6 +74,8 @@ namespace KhaozEngine.Gpu
             BackpressureStallMs = backpressureStallMs;
             OffTimelineDeferred = offTimelineDeferred;
             OffTimelineOutstanding = offTimelineOutstanding;
+            AcquireWaitCount = acquireWaitCount;
+            AcquireWaitMs = acquireWaitMs;
         }
 
         /// <summary>
@@ -123,5 +132,27 @@ namespace KhaozEngine.Gpu
         /// queue stays internal to it, because this pair is what a soak acts on.
         /// </summary>
         public long OffTimelineOutstanding { get; }
+
+        /// <summary>
+        /// Present boundaries that BLOCKED waiting for the presentation engine to hand back the next swapchain
+        /// image, since device creation. A backend that acquires with a semaphore and lets the GPU do the waiting
+        /// reports zero here and a backend that blocks the CPU on the acquire reports one per frame, which is the
+        /// entire difference the two positions of that choice produce and the reason this pair exists at all.
+        /// <para>
+        /// ZERO IS A READING RATHER THAN A GAP on a backend with no acquire to wait on, and on a headless device
+        /// with no swapchain. Nothing else on this struct can distinguish "the CPU never waited" from "nobody
+        /// looked", which is what <see cref="HasValue"/> answers for the whole set.
+        /// </para>
+        /// </summary>
+        public long AcquireWaitCount { get; }
+
+        /// <summary>
+        /// Milliseconds those acquire waits spent blocked, summed. Carried beside the count for the reason
+        /// <see cref="BackpressureStallMs"/> is: a count with no cost attached cannot be weighed, and a duration
+        /// with no count cannot tell one long wait from many short ones. On a machine running at a pinned refresh
+        /// rate this is the only number that separates a CPU-blocking acquire from a semaphore one, because both
+        /// produce the same mean frame time by construction.
+        /// </summary>
+        public double AcquireWaitMs { get; }
     }
 }

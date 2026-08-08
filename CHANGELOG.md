@@ -72,6 +72,83 @@ its own two paths deliberately, which is why the equality of the two sets is ass
 naming one of them is a time bomb across the change that flips the other. That is a new field, so the key schema
 moves to `v2` and warm DXBC cache entries on developer machines are orphaned once, which costs one cold compile.
 
+### Native Vulkan dynamic rendering: a deferred begin, clears folded into `loadOp`, and the negative-height viewport (#522)
+
+`KhaozEngine.Gpu.Vulkan` can bind a framebuffer, clear it and scissor it. `CreateFramebuffer`,
+`SetFramebuffer`, `ClearColorTarget`, `ClearDepthStencil`, `SetScissorRect` and `SetFullScissorRects` all stop
+refusing. Work-breakdown row 12 of the phase 3 program (#510), device-free throughout, and nothing selects this
+backend by default so no shipped pixel moves.
+
+**There is no `VkRenderPass` and no `VkFramebuffer` anywhere in the backend, which is the largest structural
+decision in the design.** No cache for either, and therefore no invalidation of either on a resize.
+`CreateFramebuffer` makes no driver object at all and its disposal releases nothing: every attachment view
+already exists on the texture, made at texture creation from the declared usage bits, so a framebuffer is an
+aggregate of borrowed handles. The render-pass port would have had to write a render-pass cache, a framebuffer
+cache and the invalidation problem that comes with both, against an incumbent that has neither cache, creates
+three passes per framebuffer, dedups nothing across framebuffers of identical format, and rebuilds all of it on
+every resize. The cost is the Vulkan 1.3 floor, which the CI rasterizer clears and which an older machine answers
+false at the functional probe and routes through the existing reported fallback.
+
+**`vkCmdBeginRendering` is DEFERRED to the first draw, so a clear folds into `loadOp = CLEAR` rather than costing
+a call.** A clear that arrives after the pass has opened still issues a `vkCmdClearAttachments`, which is what the
+incumbent does in the same situation and is the arm the deferral does not remove. `storeOp` is `STORE`
+unconditionally and is not expressible: `DONT_CARE` for depth is rejected because undefined contents are not
+stable across runs and the goldens require stability on the same rasterizer, so the load enum has exactly two
+arms and an optimisation there needs its own change with its own determinism argument.
+
+**The clear-only pass is reproduced deliberately rather than inherited by accident.** `SetFramebuffer` plus a
+clear plus `End` with no draw between them must still clear, because the incumbent forces exactly that at two
+sites and a golden depends on it, and under a deferred begin it is a begin and end pair with no draws. It flushes
+at `End` and at the next framebuffer change, and it needs no "did a draw happen" flag to detect: a begin CONSUMES
+the pending clears, so a clear still pending at the end of a pass is itself the proof that no draw came. Every
+command illegal inside a render pass instance ends it first, through one helper with one device-free test.
+
+**The bulk staged `UpdateBuffer` is that helper's first live caller, and the wiring for it closes a cycle row 9
+left open.** A `vkCmdCopyBuffer` may not appear inside a render pass instance, so the staging path ends the pass
+before it records the copy, which is the split the uniform ring exists so a per-frame uniform write never pays.
+The scope it ends through IS the command list, and the list takes its own staging uploader in its constructor, so
+one of the two edges has to be wired second: the list wires it, from that constructor, because it owns both ends
+(it disposes the uploader and it implements the scope) and no construction path can then leave it half-wired. An
+unwired scope is the silent case, not a loud one, since the upload path asks a nullable scope and a null one is
+indistinguishable from "there is no pass to end". The dispatch, resolve and mip-generation members call the same
+helper as they land in rows 13 and 15.
+
+**The framebuffer-change guard wraps the whole of `SetFramebuffer`, and both halves of it are load-bearing.**
+There is no `SetViewport` on the seam at all: the engine gets a viewport because Veldrid's base
+`CommandList.SetFramebuffer` auto-calls `SetFullViewports` and `SetFullScissorRects` inside an
+`if (_framebuffer != fb)` identity guard. A backend that does not emit rasterises nothing. A backend that emits
+UNCONDITIONALLY diverges on the shipped sequence `SetFramebuffer(fb)`, `SetScissorRect(...)`, draw,
+`SetFramebuffer(fb)`, draw, where the second bind silently restores the full scissor and the second draw renders
+outside the intended rectangle. That is golden-visible, and phase 2's first spec froze the wrong behaviour into
+its tally test. The marked viewport and scissor are VALUES rather than a re-emit-the-full-one flag, which is the
+subtle half of the same rule: emitting the full scissor at the draw would clobber a rectangle the caller set in
+between, reintroducing the divergence from the other direction.
+
+**And the viewport carries the clip-space flip, which is the one line that renders every golden upside down when
+it is wrong.** `VkViewport { y = y + height, height = -height }` is what makes Vulkan's clip space match
+Direct3D's, which is why the incumbent reports `ClipSpaceYInverted = false` and why `GpuClip.Correct` is the
+identity here: every matrix the engine builds assumes the flip already happened in the viewport. Getting it wrong
+does not throw and does not fail to render, so it is asserted three ways, and the device-free one landed with
+this row. Negative height is core in Vulkan 1.1, so at the 1.3 floor it needs no extension and no conditional.
+
+**The rendering class got its own device-free seam rather than widening the budget seam.** `IVkCmdSink` exists to
+be counted and decision V-T2 freezes marginals over it, so the begin, the end, the two dynamic-state setters and
+the two clears live on a separate `IVulkanRenderApi` instead: none of them scales with draw count, no number is
+frozen over any of them, and row 11's pin that the budget seam names no viewport still passes unchanged and now
+says where the two calls went. Exactly one `vkCmdSetViewport` and one `vkCmdSetScissor` per framebuffer CHANGE
+with zero for a redundant rebind is measurement gate MV4's viewport half, and it lands with this row.
+
+**The recorder holds the framebuffer as plain data**, which is the same obligation the bind records discharge for
+resource sets: a `VulkanFramebuffer` field would reach the textures, and through them the resource seam where
+`vkCreateImageView` lives, so a draw-time view would become expressible and the unreachability walk would fail.
+A non-zero scissor index is refused by name rather than silently ignored, matching the native Direct3D 11
+backend: nothing in the engine passes one, and honouring it would mean enabling `multiViewport` and matching
+every pipeline's viewport count to its attachment count for a shape no shipped renderer has.
+
+**What is still owed.** Attachment layout transitions at the begin are the barrier row's (#524), and the
+attachments already carry their `VkImage` for it. `PrepareDraw` is called by nothing yet: the pipelines are #523
+and the draws, dispatches, copies and resolves are #525. That device still cannot render a pixel.
+
 ### Native Vulkan bind flush: two states, contiguous-run binds, and a compatibility prefix with a guard (#521)
 
 `KhaozEngine.Gpu.Vulkan`'s four resource-set binds stop refusing. `SetGraphicsResourceSet` and

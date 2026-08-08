@@ -5,8 +5,8 @@ umbrella: a consumer adds this package explicitly, the same pattern as `Physics.
 and nothing that does not want the Vulkan binding ever carries it.
 
 > **Status: REGISTRATION, PROBE, A HEADLESS DEVICE, ITS COMPLETION TIMELINE, ITS MEMORY ALLOCATOR, THE COMMAND
-> LIST'S LIFECYCLE, THE UNIFORM RING, THE RESOURCE FACTORY, THE DESCRIPTORS, THE BIND FLUSH AND THE SHADER
-> PATH.**
+> LIST'S LIFECYCLE, THE UNIFORM RING, THE RESOURCE FACTORY, THE DESCRIPTORS, THE BIND FLUSH, DYNAMIC
+> RENDERING AND THE SHADER PATH.**
 > `KhaozEngineVulkan.Register()`
 > is real, so is the machine-capability probe behind it, and since
 > [#514](https://github.com/APKiwiOrg/KhaozEngine/issues/514) so is headless device creation:
@@ -36,14 +36,18 @@ and nothing that does not want the Vulkan binding ever carries it.
 > `vkCmdBindDescriptorSets` per contiguous run of dirty slots with a positional `pDynamicOffsets` composed over
 > every dynamic descriptor in the run. The pipeline-layout compatibility prefix and both of decision V-R7's guards
 > landed with it, ahead of the pipeline row that calls them. And since
+> [#522](https://github.com/APKiwiOrg/KhaozEngine/issues/522) it has FRAMEBUFFERS and DYNAMIC RENDERING:
+> `CreateFramebuffer` makes no driver object at all (there is no `VkRenderPass` and no `VkFramebuffer` anywhere
+> in the backend, so no cache for either and no invalidation on resize), `vkCmdBeginRendering` is deferred to the
+> first draw so a clear folds into `loadOp = CLEAR` instead of costing a call, a pass that collected clears and
+> saw no draw is still flushed through a begin and end pair, and the viewport a framebuffer CHANGE emits carries
+> NEGATIVE height so the engine's clip space matches Direct3D's. And since
 > [#526](https://github.com/APKiwiOrg/KhaozEngine/issues/526) it has a SHADER PATH: GLSL 450 through the engine's
 > own front end to SPIR-V, then `vkCreateShaderModule` over the bytes verbatim, with no cross-compilation
-> anywhere and the modules shared by SPIR-V hash. That device cannot yet
+> anywhere and the modules shared by SPIR-V hash.  That device cannot yet
 > RENDER: the rest of the recording content is
-> [#522](https://github.com/APKiwiOrg/KhaozEngine/issues/522),
 > [#524](https://github.com/APKiwiOrg/KhaozEngine/issues/524) and
-> [#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525), framebuffers are
-> [#522](https://github.com/APKiwiOrg/KhaozEngine/issues/522) and pipelines are
+> [#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525) and pipelines are
 > [#523](https://github.com/APKiwiOrg/KhaozEngine/issues/523), and each unbuilt member throws a message naming
 > its own row. Creating a WINDOWED device refuses, naming the swapchain row
 > ([#527](https://github.com/APKiwiOrg/KhaozEngine/issues/527)), rather than handing back a device that cannot
@@ -697,6 +701,63 @@ pipeline row ([#523](https://github.com/APKiwiOrg/KhaozEngine/issues/523)): the 
 its guards are already here, and that row calls `SetPipelineLayout` with the pipeline's own layout handle and
 set-layout sequence. The draw and dispatch members still refuse, naming
 [#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525), which calls the flush hook FIRST and then issues.
+
+## Rendering: no render pass at all, a deferred begin, and a viewport with negative height
+
+**There is no `VkRenderPass` and no `VkFramebuffer` in this package, and that is the largest structural decision
+in the design.** No cache for either, and therefore no invalidation of either on a resize. `CreateFramebuffer`
+creates no driver object: every attachment view already exists on the texture, so a framebuffer is an aggregate
+of borrowed handles and its disposal releases nothing. `IGpuFramebuffer.Outputs` is already
+`VkPipelineRenderingCreateInfo`'s input verbatim. The incumbent's alternative is three render passes per
+framebuffer with no cache, no dedup across framebuffers of identical format, one `VkFramebuffer` per swapchain
+image, and all of it rebuilt on every resize, so porting it properly would have meant writing a render-pass
+cache, a framebuffer cache and an invalidation problem. Dynamic rendering deletes all three. The cost is the
+Vulkan 1.3 floor, which the CI rasterizer clears and which an older machine answers false at the functional probe
+and routes through the existing reported fallback.
+
+**`vkCmdBeginRendering` is DEFERRED to the first draw.** A clear recorded after `SetFramebuffer` therefore folds
+into `loadOp = CLEAR` with its own clear value instead of costing a `vkCmdClearAttachments`. A clear that arrives
+after the pass has already opened still issues one, which is what the incumbent does in the same situation.
+`storeOp` is `STORE` unconditionally and there is no way to ask for anything else: `DONT_CARE` for depth leaves
+contents undefined, undefined is not stable across runs, and the goldens require stability on the same
+rasterizer.
+
+**The clear-only pass is reproduced deliberately.** `SetFramebuffer` plus a clear plus `End` with no draw between
+them still clears, through a begin and end pair with no draws, flushed at `End` and at the next framebuffer
+change. It needs no "did a draw happen" flag: a begin consumes the pending clears, so a clear still pending at
+the end of a pass is the proof that no draw came. Every command illegal inside a render pass instance (a
+dispatch, a resolve, a copy, a mip generation) ends the pending rendering first, through one helper.
+
+**A bulk `UpdateBuffer` is that helper's live caller today.** A staged write records a `vkCmdCopyBuffer`, which
+may not appear inside a render pass instance, so it ends the pass, takes the clear-only flush with it, copies and
+barriers, and the next draw begins the pass again. A ring-backed uniform write reaches none of that: it is a
+memcpy into the current segment and records nothing at all, which is the whole point of the ring. The scope the
+upload path ends through is the command list itself, handed to the list's own staging uploader from the list's
+constructor, because the list owns both ends of that cycle and wiring it anywhere else leaves a path that can
+forget the call. A forgotten call is silent rather than loud: the scope is nullable, and null reads as "there is
+no pass to end".
+
+**`SetFramebuffer` emits a viewport and a scissor ON A CHANGE ONLY, and the viewport's height is NEGATIVE.**
+There is no `SetViewport` on the seam: the engine gets a viewport because Veldrid's base
+`CommandList.SetFramebuffer` auto-calls `SetFullViewports` and `SetFullScissorRects`, wrapped in an identity
+guard, and both halves have to be reproduced. A backend that does not emit rasterises nothing, and one that emits
+unconditionally silently restores the full scissor over a live one, which is golden-visible. The negative height
+(`y = y + height`, `height = -height`) is what makes Vulkan's clip space match Direct3D's, which is why
+`ClipSpaceYInverted` is false here and why `GpuClip.Correct` is the identity: every matrix the engine builds
+assumes the flip already happened in the viewport. Getting it wrong does not throw and does not fail to render.
+It renders every golden upside down.
+
+**A non-zero scissor index is refused by name.** The seam carries an output index because Veldrid models one
+scissor per colour target, nothing in the engine passes a non-zero one, and honouring it would mean enabling
+`multiViewport` and matching every pipeline's viewport count to its attachment count for a shape no shipped
+renderer has. The native Direct3D 11 backend refuses the same index for the same reason.
+
+**What is not built yet, and where it lands.** The attachment layout transitions a begin owes are the barrier
+row's ([#524](https://github.com/APKiwiOrg/KhaozEngine/issues/524)), and the bound framebuffer already carries
+each attachment's `VkImage` for it. The pre-draw hook is called by nothing yet, and the
+end-before-illegal-command helper is called only by the staged upload path above: pipelines are
+[#523](https://github.com/APKiwiOrg/KhaozEngine/issues/523) and the draws, dispatches, copies and resolves are
+[#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525).
 
 ## Shaders: there is no cross-compilation, and that is the headline
 

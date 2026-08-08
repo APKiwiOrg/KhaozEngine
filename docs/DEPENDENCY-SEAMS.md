@@ -572,12 +572,15 @@ functional machine probe, and creates a real HEADLESS device
 ([#519](https://github.com/APKiwiOrg/KhaozEngine/issues/519)) and real descriptors
 ([#520](https://github.com/APKiwiOrg/KhaozEngine/issues/520)). The recording members those lists can serve are
 `UpdateBuffer`, which routes to the uniform ring or the per-list staging arena
-([#518](https://github.com/APKiwiOrg/KhaozEngine/issues/518)), and all four resource-set binds, which record into
+([#518](https://github.com/APKiwiOrg/KhaozEngine/issues/518)), all four resource-set binds, which record into
 a per-slot array and flush as contiguous-run `vkCmdBindDescriptorSets`
-([#521](https://github.com/APKiwiOrg/KhaozEngine/issues/521)). The factory also builds shader sets and compute
+([#521](https://github.com/APKiwiOrg/KhaozEngine/issues/521)), and the whole rendering half: the framebuffer
+bind, both clears and both scissor members, over a `vkCmdBeginRendering` deferred to the first draw with no
+`VkRenderPass` and no `VkFramebuffer` behind it at all
+([#522](https://github.com/APKiwiOrg/KhaozEngine/issues/522)). The factory also builds shader sets and compute
 shaders ([#526](https://github.com/APKiwiOrg/KhaozEngine/issues/526)), which is the row that split the shader
-seam in two (below). Nothing can be DRAWN yet and nothing can be
-presented: the remaining recording members are [#522](https://github.com/APKiwiOrg/KhaozEngine/issues/522),
+seam in two (see the shader-seam section below). Nothing can be DRAWN yet and nothing can be
+presented: the remaining recording members are
 [#524](https://github.com/APKiwiOrg/KhaozEngine/issues/524) and
 [#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525), pipelines are
 [#523](https://github.com/APKiwiOrg/KhaozEngine/issues/523), and the windowed swapchain is

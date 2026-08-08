@@ -428,6 +428,11 @@ namespace KhaozEngine.Tests.Gpu
             nameof(IGpuCommandList.UpdateBuffer),               // row 8, the uniform ring
             nameof(IGpuCommandList.SetGraphicsResourceSet),     // row 11, the bind flush, both overloads
             nameof(IGpuCommandList.SetComputeResourceSet),      // row 11, the bind flush, both overloads
+            nameof(IGpuCommandList.SetFramebuffer),             // row 12, the deferred begin
+            nameof(IGpuCommandList.ClearColorTarget),           // row 12, folded into loadOp
+            nameof(IGpuCommandList.ClearDepthStencil),          // row 12, folded into loadOp
+            nameof(IGpuCommandList.SetScissorRect),             // row 12, the framebuffer-change guard
+            nameof(IGpuCommandList.SetFullScissorRects),        // row 12, the framebuffer-change guard
         };
 
         // ---- Fixtures ----
@@ -437,15 +442,10 @@ namespace KhaozEngine.Tests.Gpu
         static IEnumerable<(string Member, Action<IGpuCommandList> Call)> EveryRecordingCommand()
             => new (string, Action<IGpuCommandList>)[]
             {
-                (nameof(IGpuCommandList.SetFramebuffer), l => l.SetFramebuffer(null!)),
-                (nameof(IGpuCommandList.ClearColorTarget), l => l.ClearColorTarget(0, new Color(1f, 1f, 1f, 1f))),
-                (nameof(IGpuCommandList.ClearDepthStencil), l => l.ClearDepthStencil(1f)),
                 (nameof(IGpuCommandList.SetPipeline), l => l.SetPipeline(null!)),
                 (nameof(IGpuCommandList.SetVertexBuffer), l => l.SetVertexBuffer(0, null!)),
                 (nameof(IGpuCommandList.SetVertexBuffer), l => l.SetVertexBuffer(0, null!, 64)),
                 (nameof(IGpuCommandList.SetIndexBuffer), l => l.SetIndexBuffer(null!, GpuIndexFormat.UInt32)),
-                (nameof(IGpuCommandList.SetScissorRect), l => l.SetScissorRect(0, 0, 0, 16, 16)),
-                (nameof(IGpuCommandList.SetFullScissorRects), l => l.SetFullScissorRects()),
                 (nameof(IGpuCommandList.Draw), l => l.Draw(3)),
                 (nameof(IGpuCommandList.Draw), l => l.Draw(3, 1, 0, 0)),
                 (nameof(IGpuCommandList.DrawIndexed), l => l.DrawIndexed(3, 1, 0, 0, 0)),

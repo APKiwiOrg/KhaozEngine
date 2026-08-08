@@ -22,18 +22,21 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// work-breakdown row 7 (https://github.com/APKiwiOrg/KhaozEngine/issues/517), which owns the list's
     /// LIFECYCLE: the pools, the slot machinery, <see cref="Begin"/>, <see cref="End"/>, disposal, and the
     /// submit path on the device. Row 8 (https://github.com/APKiwiOrg/KhaozEngine/issues/518) added the record-time
-    /// <c>UpdateBuffer</c> on top of it. The rest of the RECORDING CONTENT belongs to four later rows and each
+    /// <c>UpdateBuffer</c> on top of it. The rest of the RECORDING CONTENT belongs to three later rows and each
     /// unbuilt member throws a message naming its own. This paragraph is a ledger and a stale one is worse than
     /// none, which is the same discipline <c>VulkanGpuDevice</c>'s equivalent paragraph is under.</para>
     ///
     /// <para><b>THE MEMBERS THAT ARE LIVE:</b> <see cref="Begin"/>, <see cref="End"/> and <see cref="Dispose"/>,
     /// everything the device's <c>Submit</c> reaches through this type, both <c>UpdateBuffer</c> overloads at
-    /// both ends of their routing, and all four resource-set binds. On a RING-BACKED buffer an update is a memcpy
+    /// both ends of their routing, all four resource-set binds, and the whole RENDERING half: the framebuffer
+    /// bind, both clears and both scissor members. On a RING-BACKED buffer an update is a memcpy
     /// into the current segment which records nothing at all (9.2), and on any other buffer it is a staged copy
     /// through this list's own arena with a barrier narrowed to the destination's real usage, which row 9 wired
     /// (https://github.com/APKiwiOrg/KhaozEngine/issues/519). A resource-set bind RECORDS ONLY into
     /// <see cref="VulkanBindRecords"/> and issues nothing until a draw flushes it, which is row 11
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/521).</para>
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/521), and a framebuffer bind records into
+    /// <see cref="VulkanRenderingSchedule"/> and issues nothing until a draw opens the render pass instance,
+    /// which is row 12 (https://github.com/APKiwiOrg/KhaozEngine/issues/522).</para>
     ///
     /// <para><b>N LISTS RECORD CONCURRENTLY ON THIS BACKEND, AND THE PORTABLE CONTRACT IS UNCHANGED (V-R4).</b>
     /// The seam documents exactly one open recording per device, and that rule is what portable code is written
@@ -57,7 +60,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// external synchronisation over both anyway. Driving ONE list from two threads is a data race here and would
     /// be one inside the driver too.</para>
     /// </summary>
-    internal sealed class VulkanCommandList : IGpuCommandList
+    internal sealed class VulkanCommandList : IGpuCommandList, IVulkanRenderingScope
     {
         readonly VulkanCommandPoolRing _ring;
         readonly VulkanRetireList _retired;
@@ -68,6 +71,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         // reaches the descriptor pool: see VulkanBoundSet for the V-D2 obligation that shapes them.
         readonly VulkanBindRecords _graphicsBinds;
         readonly VulkanBindRecords _computeBinds;
+
+        // ROW 12's WHOLE SCHEDULE, or null on a list built with no rendering seam, which is only a list a test
+        // constructed. It holds the bound framebuffer as PLAIN DATA rather than as a VulkanFramebuffer, which is
+        // the same obligation VulkanBoundSet discharges for the bind records: see VulkanBoundFramebuffer.
+        readonly VulkanRenderingSchedule? _rendering;
 
         bool _recording;
         bool _disposed;
@@ -91,8 +99,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <c>KE_VULKAN_VALIDATION</c> the bind flush additionally asserts that every bound set's layout IS the
         /// current pipeline layout's set layout at that index. The device reads it off the instance it leased, so
         /// the assertion follows the same lever the layer itself does.</param>
+        /// <param name="render">The six native rendering calls row 12's schedule drives, or null while there is
+        /// no device behind this list. Held as a schedule rather than as the seam so the deferred begin, the
+        /// clear folding and the framebuffer-change guard all sit in one device-free type.</param>
         internal VulkanCommandList(VulkanCommandPoolRing ring, VulkanRetireList retired,
-            IVulkanRecordUploads? uploads = null, bool assertBoundSetLayouts = false)
+            IVulkanRecordUploads? uploads = null, bool assertBoundSetLayouts = false,
+            IVulkanRenderApi? render = null)
         {
             ArgumentNullException.ThrowIfNull(ring);
             ArgumentNullException.ThrowIfNull(retired);
@@ -102,6 +114,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _uploads = uploads;
             _graphicsBinds = new VulkanBindRecords(PipelineBindPoint.Graphics, assertBoundSetLayouts);
             _computeBinds = new VulkanBindRecords(PipelineBindPoint.Compute, assertBoundSetLayouts);
+            _rendering = render is null ? null : new VulkanRenderingSchedule(render);
+
+            // THE UPLOADER TAKES THIS LIST AS ITS RENDERING SCOPE, so a bulk staged UpdateBuffer ends the render
+            // pass instance before it records its vkCmdCopyBuffer (V-A4). Wired HERE rather than by the device
+            // because this list owns both ends of it: the uploader is disposed with this list, and the scope IS
+            // this list, so the cycle closes inside one constructor and no construction path can leave it
+            // half-wired. A list with NO rendering seam hands nothing over, because then there is genuinely no
+            // pass to end and the uploader's null scope is the right answer.
+            if (_rendering is not null) _uploads?.UseRenderingScope(this);
         }
 
         /// <summary>The pools, exposed for the submit path and for tests. Every other caller names slots.</summary>
@@ -118,6 +139,21 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <summary>The compute bind schedule. Separate records, separate <c>VkPipelineLayout</c>, separate
         /// flush.</summary>
         internal VulkanBindRecords ComputeBinds => _computeBinds;
+
+        /// <summary>
+        /// THE RENDERING SCHEDULE (V-A1 to V-A6). Exposed because row 15
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/525) drives <see cref="VulkanRenderingSchedule.PrepareDraw"/>
+        /// from every draw and <see cref="VulkanRenderingSchedule.EndRendering"/> from every command illegal
+        /// inside a render pass instance, and because the device-free tests drive the whole deferred begin through
+        /// it before either exists.
+        /// </summary>
+        /// <exception cref="NotSupportedException">This list was built with no rendering seam, which is only a
+        /// list a test constructed.</exception>
+        internal VulkanRenderingSchedule Rendering
+            => _rendering ?? throw new NotSupportedException(
+                "This native Vulkan command list was built with no rendering seam, so it can bind no framebuffer "
+                + "and open no render pass instance. Every list the device hands out has one: this is a list "
+                + "constructed directly by a test.");
 
         /// <summary>True between <see cref="Begin"/> and <see cref="End"/>.</summary>
         internal bool IsRecording => _recording;
@@ -173,8 +209,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// THE RECORDER STATE RESET GOES HERE. Section 6.1 lists what a <c>Begin</c> resets on this backend: the
         /// framebuffer, both pipelines, both dirty arrays, the scissor, and the list-local layout map. Row 11
         /// (https://github.com/APKiwiOrg/KhaozEngine/issues/521) added the two dirty arrays and, with them, the
-        /// pipeline LAYOUT each is bound under. The framebuffer and the scissor are row 12's
-        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/522) and the layout map is row 14's
+        /// pipeline LAYOUT each is bound under, and row 12
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/522) added the framebuffer, the scissor and the open
+        /// render pass instance. The layout map is row 14's
         /// (https://github.com/APKiwiOrg/KhaozEngine/issues/524). Each of those rows adds its reset immediately
         /// after the native calls below and before the recording flag flips, and this paragraph is the hook they
         /// are looking for. A reset added anywhere else is a reset that a re-Begun list can be observed without.
@@ -206,7 +243,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // still reading.
             _uploads?.BeginSlot(slot);
 
-            // ROWS 12 AND 14 RESET THEIR RECORDER STATE HERE TOO, between the native begin and the flag. See the
+            // ROW 14 RESETS ITS LIST-LOCAL LAYOUT MAP HERE TOO, between the native begin and the flag. See the
             // remarks above for the full list and for why this is the only correct place for it.
             //
             // ROW 11's HALF: a fresh VkCommandBuffer has no descriptor set and no pipeline bound, so both records
@@ -215,6 +252,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _graphicsBinds.Reset();
             _computeBinds.Reset();
 
+            // ROW 12's HALF, for the same reason: a fresh buffer has no framebuffer bound, no open render pass
+            // instance and no viewport or scissor, so a retained bound framebuffer would let the next recording's
+            // first SetFramebuffer take the redundant path and draw into a target this buffer never bound.
+            _rendering?.Reset();
+
             _recording = true;
         }
 
@@ -222,7 +264,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <remarks>
         /// <c>vkEndCommandBuffer</c>, and the seal that makes the record submittable.
         /// <para>
-        /// THE RESTING-LAYOUT RESTORE GOES HERE, and today there are no layouts to restore. Under V-F7 every
+        /// THE RENDER PASS INSTANCE CLOSES FIRST (V-A4), and if the pass recorded clears that no draw consumed,
+        /// they are flushed through a begin and end pair on the way out (V-A3). That is the clear-only case, which
+        /// the incumbent forces at two sites and a golden depends on. Sealing a buffer with an instance still open
+        /// is a call the driver refuses.
+        /// </para>
+        /// <para>
+        /// THE RESTING-LAYOUT RESTORE GOES HERE TOO, after that and before the native end, and today there are no
+        /// layouts to restore. Under V-F7 every
         /// texture has a canonical resting layout assigned at creation, a list tracks its transitions LOCALLY, and
         /// <c>End</c> restores every texture it touched to rest before sealing, which is what makes two lists
         /// composable in any submit order. Row 14 (https://github.com/APKiwiOrg/KhaozEngine/issues/524) owns the
@@ -247,8 +296,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                         + "is a call the driver refuses.");
             }
 
-            // ROW 14 RESTORES EVERY TOUCHED TEXTURE TO ITS RESTING LAYOUT HERE, before the native end. See the
-            // remarks above for why the order is fixed.
+            // THE INSTANCE CLOSES BEFORE ANYTHING ELSE, including the clear-only flush a pass with no draw owes.
+            _rendering?.EndRendering(CurrentBuffer);
+
+            // ROW 14 RESTORES EVERY TOUCHED TEXTURE TO ITS RESTING LAYOUT HERE, after that and before the native
+            // end. See the remarks above for why the order is fixed.
 
             int slot = _ring.Slot;
             _ring.EndRecording(slot);
@@ -258,22 +310,90 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         }
 
         /// <inheritdoc/>
-        public void SetFramebuffer(IGpuFramebuffer fb) => throw NotBuiltYet("Binding a framebuffer", RenderingRow);
+        /// <remarks>
+        /// RECORDS ONLY, in the common case, because the begin is DEFERRED to the first draw (V-A2). What it can
+        /// still emit is the outgoing pass: an open instance is closed, and clears the outgoing framebuffer
+        /// collected without a draw are flushed through a begin and end pair (V-A3).
+        /// <para>
+        /// A REBIND OF THE FRAMEBUFFER ALREADY BOUND DOES NOTHING AT ALL, which is Veldrid's own identity guard
+        /// reproduced whole rather than narrowed to the viewport. See <see cref="VulkanRenderingSchedule"/> for
+        /// why both halves of that are load-bearing and what an unconditional emit costs.
+        /// </para>
+        /// <para>
+        /// THE FRAMEBUFFER IS RESOLVED BEFORE THE GUARD, so a framebuffer from another backend is refused whether
+        /// or not the bind was redundant. That is the same order the native Direct3D 11 emitter takes, for the
+        /// same reason: a guard-first order lets the same mistake pass silently on the second bind.
+        /// </para>
+        /// </remarks>
+        public void SetFramebuffer(IGpuFramebuffer fb)
+        {
+            VulkanRenderingSchedule rendering = RequireRendering("Binding a framebuffer");
+            VulkanFramebuffer framebuffer = VulkanFramebuffer.Require(fb, "a native Vulkan framebuffer bind");
+
+            rendering.SetFramebuffer(CurrentBuffer, framebuffer.AsBound);
+        }
 
         /// <inheritdoc/>
+        /// <remarks>Folds into <c>loadOp = CLEAR</c> when the pass has not opened yet, and is a
+        /// <c>vkCmdClearAttachments</c> when it has (V-A2).</remarks>
         public void ClearColorTarget(uint index, Color rgba)
-            => throw NotBuiltYet("Clearing a colour target", RenderingRow);
+            => RequireRendering("Clearing a colour target").ClearColourTarget(CurrentBuffer, index, rgba);
 
         /// <inheritdoc/>
+        /// <remarks>The depth arm of the same rule. The stencil plane clears to zero alongside it on a combined
+        /// format, matching the incumbent, because the seam carries no stencil value to pass instead.</remarks>
         public void ClearDepthStencil(float depth)
-            => throw NotBuiltYet("Clearing the depth attachment", RenderingRow);
+            => RequireRendering("Clearing the depth attachment").ClearDepthStencil(CurrentBuffer, depth);
 
         /// <inheritdoc/>
+        /// <remarks>Records the rectangle, which the next draw emits. A non-zero <paramref name="index"/> is
+        /// refused by name: see <see cref="VulkanRenderingSchedule"/>.</remarks>
         public void SetScissorRect(uint index, uint x, uint y, uint w, uint h)
-            => throw NotBuiltYet("Setting a scissor rect", RenderingRow);
+            => RequireRendering("Setting a scissor rect").SetScissorRect(index, x, y, w, h);
 
         /// <inheritdoc/>
-        public void SetFullScissorRects() => throw NotBuiltYet("Resetting the scissor rects", RenderingRow);
+        /// <remarks>Restores the bound framebuffer's full extent, which is what a framebuffer CHANGE applies
+        /// anyway.</remarks>
+        public void SetFullScissorRects() => RequireRendering("Resetting the scissor rects").SetFullScissorRects();
+
+        /// <summary>
+        /// THE PRE-DRAW HOOK, RENDERING ARM (V-A2, V-A5). Row 15
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/525) calls this FIRST in <c>Draw</c> and
+        /// <c>DrawIndexed</c>, before <see cref="FlushGraphicsBinds{TSink}"/> and before the vertex and index
+        /// binds: it opens the render pass instance if the pass has not opened yet, folding every pending clear
+        /// into a <c>loadOp</c>, and then emits the viewport and the scissor if a framebuffer change marked them.
+        /// </summary>
+        internal void PrepareDraw() => RequireRendering("Drawing").PrepareDraw(CurrentBuffer);
+
+        /// <summary>
+        /// THE END-BEFORE-ANYTHING-ILLEGAL INVARIANT (V-A4), as the ONE helper every such command calls: a
+        /// dispatch, a resolve, a copy and a mip generation are all illegal inside a render pass instance, so each
+        /// ends the pending rendering first.
+        /// <para>
+        /// THE BULK UPLOAD PATH CALLS IT TODAY, through <see cref="IVulkanRenderingScope"/> below: a staged
+        /// <c>UpdateBuffer</c> records a <c>vkCmdCopyBuffer</c>, which is as illegal inside a pass as a dispatch
+        /// is. The dispatch, resolve and mip-generation callers land in rows 13 and 15 and call this rather than
+        /// writing the rule a second time.
+        /// </para>
+        /// <para>
+        /// SAFE TO CALL WHEN NOTHING IS OPEN, so a caller never has to ask first, and it takes the clear-only
+        /// flush with it when a pass collected clears that no draw consumed.
+        /// </para>
+        /// </summary>
+        internal void EndRenderingBeforeIllegalCommand()
+            => RequireRendering("This command").EndRendering(CurrentBuffer);
+
+        /// <summary>
+        /// THE UPLOAD PATH'S ARM OF THAT INVARIANT, as <see cref="IVulkanRenderingScope"/> asks for it, and the
+        /// helper above unchanged rather than a second copy of the rule.
+        /// <para>
+        /// EXPLICIT, because it is not a member a caller inside this backend should reach for: the one call site
+        /// is <see cref="VulkanBufferUpload.Record"/>, through the scope this list hands its own uploader in the
+        /// constructor, and every other illegal command names
+        /// <see cref="EndRenderingBeforeIllegalCommand"/> directly.
+        /// </para>
+        /// </summary>
+        void IVulkanRenderingScope.EndActiveRendering() => EndRenderingBeforeIllegalCommand();
 
         /// <inheritdoc/>
         /// <remarks>
@@ -491,6 +611,34 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 dynamicOffset);
         }
 
+        // THE THREE THINGS EVERY RENDERING MEMBER NEEDS TRUE, in ONE place rather than at each of the seven.
+        //
+        // RECORDING IS REQUIRED HERE AND NOWHERE ELSE IN THIS TYPE, and the asymmetry with the bind records is
+        // deliberate rather than an oversight. A resource-set bind made outside a recording is DISCARDED, because
+        // it touches nothing but this list's own array and Begin resets it. A rendering member can EMIT: a
+        // framebuffer change flushes the outgoing pass, and a clear after the pass opened is a vkCmdClearAttachments
+        // immediately. A vkCmd* against a buffer that vkBeginCommandBuffer has not seen is undefined behaviour
+        // rather than a no-op, so this is refused by name instead.
+        VulkanRenderingSchedule RequireRendering(string what)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+
+            if (!_recording)
+            {
+                throw new InvalidOperationException(
+                    what + " on a native Vulkan command list needs an open recording, and this list is not "
+                    + "recording. Call Begin first. Unlike a resource-set bind, which records into this list's "
+                    + "own array and is discarded, a rendering member can emit a vkCmd* immediately, and a "
+                    + "command recorded into a VkCommandBuffer that was never begun is undefined behaviour.");
+            }
+
+            return Rendering;
+        }
+
+        // The buffer the current slot is recording into, which every emitted vkCmd* names. Only meaningful while
+        // recording, which is exactly what RequireRendering has just established at every call site.
+        ulong CurrentBuffer => _ring.BufferAt(_ring.Slot);
+
         // THE ROUTING ITSELF, in ONE place rather than at each of the two overloads, so a uniform write and a bulk
         // write cannot drift apart by an edit to one of them.
         void Upload(IGpuBuffer buffer, uint offsetBytes, ReadOnlySpan<byte> data)
@@ -518,8 +666,6 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         // The row that owns each unbuilt member, as a full URL, because these messages are read by somebody who
         // has just hit one and needs to know whether to wait for a row or file a bug.
-        const string RenderingRow =
-            "the dynamic-rendering row (https://github.com/APKiwiOrg/KhaozEngine/issues/522)";
         const string PipelineRow = "the pipeline row (https://github.com/APKiwiOrg/KhaozEngine/issues/523)";
         const string DrawRow = "the draw-and-dispatch row (https://github.com/APKiwiOrg/KhaozEngine/issues/525)";
 
@@ -529,8 +675,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         static NotSupportedException NotBuiltYet(string what, string row)
             => new($"{what} is not built yet on the native Vulkan backend: it lands in {row}. The list's "
                 + "LIFECYCLE is live (work-breakdown row 7, "
-                + "https://github.com/APKiwiOrg/KhaozEngine/issues/517): Begin, End, the per-slot command pools "
-                + "and the submit path all work, and what is missing is the recording content. This is a "
+                + "https://github.com/APKiwiOrg/KhaozEngine/issues/517), and so are the resource-set binds and "
+                + "the whole rendering half: Begin, End, the per-slot command pools, the submit path, the "
+                + "framebuffer bind, both clears and both scissor members all work, and what is missing is the "
+                + "pipelines, the draws and the barriers. This is a "
                 + "statement about the package and not about this machine. Select GpuBackendKind.Vulkan, which "
                 + "goes through Veldrid, for a fully working Vulkan device.");
     }

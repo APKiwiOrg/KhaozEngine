@@ -23,12 +23,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// owns buffers, textures, samplers, command lists and fences, row 10
     /// (https://github.com/APKiwiOrg/KhaozEngine/issues/520) added RESOURCE LAYOUTS and RESOURCE SETS (a
     /// content-deduplicated <c>VkDescriptorSetLayout</c> and one <c>VkDescriptorSet</c> allocated and written
-    /// once), and row 16 (https://github.com/APKiwiOrg/KhaozEngine/issues/526) added SHADER SETS and COMPUTE
-    /// SHADERS: GLSL to SPIR-V through the engine's own front end, then <c>vkCreateShaderModule</c> over the bytes
-    /// verbatim, with the modules shared by SPIR-V hash. Framebuffers are row 12's and pipelines are row 13's, and
-    /// each refuses with its own issue in the message rather than returning something that fails later somewhere
-    /// less informative. That is the same discipline <c>D3D11ResourceFactory</c> established between its own row
-    /// and the ones that filled it in, and this paragraph is a ledger: a stale one is worse than none.</para>
+    /// once. Row 12 (https://github.com/APKiwiOrg/KhaozEngine/issues/522) added FRAMEBUFFERS, which are the one
+    /// creation here that makes no native object at all (V-A1), and row 16
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/526) added SHADER SETS and COMPUTE SHADERS: GLSL to
+    /// SPIR-V through the engine's own front end, then <c>vkCreateShaderModule</c> over the bytes verbatim, with
+    /// the modules shared by SPIR-V hash. Pipelines are row 13's, and they refuse with their own issue in the
+    /// message rather than returning something that fails later somewhere less informative. That is the same
+    /// discipline <c>D3D11ResourceFactory</c> established between its own row and the ones that filled it in, and
+    /// this paragraph is a ledger: a stale one is worse than none.</para>
     ///
     /// <para><b>AND THE DESCRIPTOR SUBSYSTEM IS HELD HERE RATHER THAN ON THE RESOURCE OWNER, WHICH IS DECISION
     /// V-D2 (6.3).</b> The recording type's field graph legitimately reaches a <see cref="VulkanResourceOwner"/>
@@ -165,8 +167,31 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         public IGpuFence CreateFence() => _createFence();
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// IT CREATES NOTHING NATIVE, which is decision V-A1 arriving at the seam. There is no
+        /// <c>VkFramebuffer</c> and no <c>VkRenderPass</c> in this backend, so a framebuffer is an aggregate of
+        /// attachment views the textures already own, and its disposal releases nothing. See
+        /// <see cref="VulkanFramebuffer"/>.
+        /// </remarks>
+        /// <exception cref="ArgumentException">There are no attachments at all, an attachment's size or sample
+        /// count differs from the first one's, an attachment was created by another backend, or an attachment's
+        /// texture never declared the usage that would have given it a view.</exception>
         public IGpuFramebuffer CreateFramebuffer(IGpuTexture? depth, params IGpuTexture[] colour)
-            => throw NotBuiltYet("Creating a framebuffer", RenderingRow);
+        {
+            ArgumentNullException.ThrowIfNull(colour);
+
+            var attachments = new VulkanTexture[colour.Length];
+            for (int i = 0; i < colour.Length; i++)
+            {
+                attachments[i] = VulkanTexture.Require(colour[i], "a native Vulkan framebuffer colour attachment");
+            }
+
+            return new VulkanFramebuffer(
+                depth is null
+                    ? null
+                    : VulkanTexture.Require(depth, "a native Vulkan framebuffer depth attachment"),
+                attachments);
+        }
 
         /// <inheritdoc/>
         /// <remarks>
@@ -233,16 +258,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         // The row that owns each unbuilt member, as a full URL, because these messages are read by somebody who has
         // just hit one and needs to know whether to wait for a row or file a bug.
-        const string RenderingRow =
-            "the dynamic-rendering row (https://github.com/APKiwiOrg/KhaozEngine/issues/522)";
         const string PipelineRow = "the pipeline row (https://github.com/APKiwiOrg/KhaozEngine/issues/523)";
 
         static NotSupportedException NotBuiltYet(string what, string row)
             => new($"{what} is not built yet on the native Vulkan backend: it lands in {row}. Buffers, textures, "
-                + "samplers, command lists, fences, resource layouts, resource sets, shader sets and compute "
-                + "shaders ARE live (work-breakdown rows 9, 10 and 16, "
+                + "samplers, command lists, fences, resource layouts, resource sets, framebuffers, shader sets "
+                + "and compute shaders ARE live (work-breakdown rows 9, 10, 12 and 16, "
                 + "https://github.com/APKiwiOrg/KhaozEngine/issues/519, "
-                + "https://github.com/APKiwiOrg/KhaozEngine/issues/520 and "
+                + "https://github.com/APKiwiOrg/KhaozEngine/issues/520, "
+                + "https://github.com/APKiwiOrg/KhaozEngine/issues/522 and "
                 + "https://github.com/APKiwiOrg/KhaozEngine/issues/526). This is a statement about the package and "
                 + "not about this machine. Select GpuBackendKind.Vulkan, which goes through Veldrid, for a fully "
                 + "working Vulkan device.");

@@ -49,6 +49,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // comes out of the same allocator and every block's destroy is deferred behind the same timeline. The
             // arena is PER LIST because its recycling boundary is the list's own slot wait, which is the one proof
             // available that the blocks it hands back are finished with.
+            //
+            // THE RENDERING SCOPE IS DELIBERATELY NOT WIRED HERE. The list below takes this uploader and hands
+            // ITSELF back as the scope from its own constructor, which is what makes a bulk upload's pass-end
+            // (V-A4) reachable on every list rather than on the ones a caller remembered to finish wiring. See
+            // IVulkanRecordUploads.UseRenderingScope.
             var uploads = new VulkanListUploads(
                 _instance.Value.Api, ring, new VulkanStagingArena(_staging, _framesInFlight));
 
@@ -60,7 +65,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // available answer.
             bool assertBoundSetLayouts = _instance.Value.Validation != VulkanValidationMode.Off;
 
-            return new VulkanCommandList(ring, _retired, uploads, assertBoundSetLayouts);
+            // ROW 12's SIX RENDERING CALLS (https://github.com/APKiwiOrg/KhaozEngine/issues/522), which are
+            // stateless: the seam is one Vk reference and the whole deferred-begin schedule sits above it inside
+            // the list. One instance per list rather than one per device only because the list constructs its own
+            // schedule from it, and neither object holds anything a second list could disturb.
+            var render = new VulkanRenderApi(_instance.Value.Api);
+
+            return new VulkanCommandList(ring, _retired, uploads, assertBoundSetLayouts, render);
         }
 
         /// <summary>How many frames this device pipelines at (MV3), resolved once at creation from

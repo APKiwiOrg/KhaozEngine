@@ -493,9 +493,6 @@ namespace KhaozEngine.Tests.Gpu
             var fixture = new VulkanResourceFixture();
             IGpuResourceFactory factory = fixture.Factory;
 
-            Assert.Contains("522",
-                Assert.Throws<NotSupportedException>(() => factory.CreateFramebuffer(null)).Message,
-                StringComparison.Ordinal);
             Assert.Contains("523",
                 Assert.Throws<NotSupportedException>(() => factory.CreateGraphicsPipeline(default)).Message,
                 StringComparison.Ordinal);
@@ -531,6 +528,10 @@ namespace KhaozEngine.Tests.Gpu
                 nameof(IGpuResourceFactory.CreateResourceLayout),
                 nameof(IGpuResourceFactory.CreateResourceSet),
 
+                // And row 12 (https://github.com/APKiwiOrg/KhaozEngine/issues/522) took this one, which is the
+                // creation that makes no native object at all: no VkFramebuffer and no VkRenderPass (V-A1).
+                nameof(IGpuResourceFactory.CreateFramebuffer),
+
                 // And row 16 (https://github.com/APKiwiOrg/KhaozEngine/issues/526) took these two, which is the
                 // shortest move in the program: Vulkan consumes SPIR-V, so the whole path is the engine's own
                 // front end plus vkCreateShaderModule over the bytes verbatim.
@@ -540,7 +541,6 @@ namespace KhaozEngine.Tests.Gpu
 
             string[] refusing =
             [
-                nameof(IGpuResourceFactory.CreateFramebuffer),
                 nameof(IGpuResourceFactory.CreateGraphicsPipeline),
                 nameof(IGpuResourceFactory.CreateComputePipeline),
             ];

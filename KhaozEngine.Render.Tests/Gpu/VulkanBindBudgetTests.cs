@@ -34,11 +34,14 @@ namespace KhaozEngine.Tests.Gpu
     /// <item><description><b>(a) Structural invariants.</b> Zero descriptor allocations and zero descriptor writes
     /// during recording: HERE, against the fake pool, with binds in the middle of the cycle
     /// (<see cref="RecordingAndBindingEveryShippedShape_MakesNoDescriptorCallAtAll"/>). Exactly one
-    /// <c>vkCmdSetViewport</c> and one <c>vkCmdSetScissor</c> per framebuffer CHANGE: ROW 12's
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/522), and not countable here at all, because neither is a
-    /// member of the sink. <see cref="TheSeam_CannotSeeTheViewportHalfOfTheGate"/> pins that so the split is a
-    /// stated fact rather than an omission. Zero barriers between two draws that touch no new texture: the BIND
-    /// half is here (a whole frame's binds emit none), and the meaningful version needs row 14's tracker
+    /// <c>vkCmdSetViewport</c> and one <c>vkCmdSetScissor</c> per framebuffer CHANGE: LANDED, in row 12
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/522) and asserted in
+    /// <c>VulkanRenderingScheduleTests.ViewportAndScissor_FollowFramebufferChangesOnly</c>, not here, because
+    /// neither call is a member of the sink. <see cref="TheSeam_CannotSeeTheViewportHalfOfTheGate"/> pins that so
+    /// the split stays a stated fact rather than an omission, and it still passes unchanged: row 12 gave the
+    /// rendering class its OWN device-free seam rather than widening this one. Zero barriers between two draws
+    /// that touch no new texture: the BIND half is here (a whole frame's binds emit none), and the meaningful
+    /// version needs row 14's tracker
     /// (https://github.com/APKiwiOrg/KhaozEngine/issues/524).</description></item>
     /// <item><description><b>(b) Marginal per-draw deltas.</b> 5 distinct meshes against 1 and 18 draws against 6:
     /// HERE, for the BIND classes, driven through the flush hook exactly as row 15
@@ -132,6 +135,14 @@ namespace KhaozEngine.Tests.Gpu
         /// Pinned as a test rather than left as a comment, so that adding either member to the sink is a decision
         /// somebody makes here deliberately rather than one that quietly widens what the budget gates on.
         /// </para>
+        /// <para>
+        /// ROW 12 HAS LANDED AND THIS STILL PASSES UNCHANGED, which was the decision the pin existed to force. It
+        /// needed a device-free line to assert the emitted viewport's negative height on, and it gave the
+        /// rendering class its own (<see cref="IVulkanRenderApi"/>) rather than widening this one: that seam
+        /// carries the begin, the end, the two dynamic-state setters and the two clears, none of which scale with
+        /// draw count, so no marginal is frozen over any of them and this budget still means exactly what it meant
+        /// before.
+        /// </para>
         /// </summary>
         [Fact]
         public void TheSeam_CannotSeeTheViewportHalfOfTheGate()
@@ -141,6 +152,17 @@ namespace KhaozEngine.Tests.Gpu
             Assert.DoesNotContain("SetViewport", members);
             Assert.DoesNotContain("SetScissor", members);
             Assert.DoesNotContain("BeginRendering", members);
+
+            // AND THE SEAM THAT DOES CARRY THEM IS A DIFFERENT ONE, so "not on the budget seam" is a statement
+            // about where they went rather than about their absence. A row that ever merged the two would fail
+            // both halves of this at once.
+            Assert.False(typeof(IVkCmdSink).IsAssignableFrom(typeof(IVulkanRenderApi)));
+            Assert.False(typeof(IVulkanRenderApi).IsAssignableFrom(typeof(IVkCmdSink)));
+
+            string[] rendering = typeof(IVulkanRenderApi).GetMethods().Select(m => m.Name).ToArray();
+            Assert.Contains("SetViewport", rendering);
+            Assert.Contains("SetScissor", rendering);
+            Assert.Contains("BeginRendering", rendering);
         }
 
         // ---- (b) Marginal per-draw deltas ----

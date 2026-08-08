@@ -69,7 +69,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 attachments[i] = new VulkanAttachment(
                     RequireView(colour[i], "colour attachment " + i.ToString(CultureInfo.InvariantCulture),
                         nameof(GpuTextureUsage.RenderTarget)),
-                    colour[i].Image, colour[i].Format, DepthStencil: false);
+                    colour[i].Image, colour[i].Format, DepthStencil: false, colour[i].Resting);
 
                 formats[i] = colour[i].Format;
             }
@@ -80,7 +80,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 RequireMatching(first, depth, "depth attachment");
                 depthAttachment = new VulkanAttachment(
                     RequireView(depth, "depth attachment", nameof(GpuTextureUsage.DepthStencil)),
-                    depth.Image, depth.Format, DepthStencil: true);
+                    depth.Image, depth.Format, DepthStencil: true, depth.Resting);
             }
 
             Outputs = new GpuOutputDescription(depth?.Format, formats)

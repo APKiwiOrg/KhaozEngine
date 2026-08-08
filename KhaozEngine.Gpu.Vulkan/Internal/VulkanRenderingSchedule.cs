@@ -74,6 +74,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     {
         readonly IVulkanRenderApi _api;
 
+        // THE LIST'S OWN LAYOUT TRACKER (V-F7), or null on a schedule built with no barrier seam, which is only a
+        // schedule a test constructed. It is the LIST's rather than this schedule's, because a dispatch and a copy
+        // transition images too and neither goes near a render pass instance. This type holds it for one reason:
+        // the attachment transitions belong immediately before vkCmdBeginRendering, and the begin is DEFERRED to
+        // the first draw, so the only place that knows when a pass really opens is here.
+        readonly VulkanLayoutTracker? _layouts;
+
         // GROWN TO THE WIDEST FRAMEBUFFER EVER BOUND rather than reallocated per bind, and cleared rather than
         // replaced on a change, so a frame that alternates between two framebuffers allocates nothing.
         PendingClear[] _colourClears = new PendingClear[4];
@@ -91,11 +98,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         /// <param name="api">The six native rendering calls. Real on a device, a recording fake in the device-free
         /// tests.</param>
-        internal VulkanRenderingSchedule(IVulkanRenderApi api)
+        /// <param name="layouts">The owning list's layout tracker (V-F7), which transitions every attachment into
+        /// its attachment layout immediately before a begin. Null only on a schedule with no barrier seam, which
+        /// is only a schedule a test constructed, and then there is nothing to transition.</param>
+        internal VulkanRenderingSchedule(IVulkanRenderApi api, VulkanLayoutTracker? layouts = null)
         {
             ArgumentNullException.ThrowIfNull(api);
 
             _api = api;
+            _layouts = layouts;
         }
 
         /// <summary>Whether a render pass instance is currently open, which is the one piece of state that decides
@@ -256,9 +267,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <c>DrawIndexed</c>, before the bind flush and the vertex binds, then issues.
         /// <para>
         /// THE ORDER INSIDE IS FIXED. The instance opens before the viewport and the scissor go out, which is the
-        /// order section 7.1 states, and it is the order that keeps the attachment transitions row 14
-        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/524) adds at the begin ahead of every command that
-        /// depends on them.
+        /// order section 7.1 states, and it is the order that keeps the attachment transitions (V-F7) ahead of
+        /// every command that depends on them: they are emitted inside the begin, before
+        /// <c>vkCmdBeginRendering</c> itself.
         /// </para>
         /// </summary>
         /// <exception cref="InvalidOperationException">No framebuffer is bound.</exception>
@@ -354,11 +365,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     StencilPlane)
                 : null;
 
-            // ROW 14 (https://github.com/APKiwiOrg/KhaozEngine/issues/524) TRANSITIONS EVERY ATTACHMENT INTO ITS
-            // ATTACHMENT LAYOUT HERE, immediately before the begin below, which is the point section 10.3's table
-            // names. It has to be before: a barrier recorded inside an open render pass instance is a different
-            // and much narrower call than the one that table describes. The attachments carry their VkImage for
-            // exactly that, and nothing in this row reads it.
+            // EVERY ATTACHMENT INTO ITS ATTACHMENT LAYOUT, immediately before the begin below, which is the point
+            // section 10.3's table names (V-F7). It HAS to be before: a barrier recorded inside an open render
+            // pass instance is a different and much narrower call than the one that table describes. One batched
+            // vkCmdPipelineBarrier2 for the whole framebuffer, and none at all for the common case where every
+            // attachment already rests in the layout it is about to be used in.
+            _layouts?.TransitionAttachments(commandBuffer, in _framebuffer);
 
             _api.BeginRendering(commandBuffer, _framebuffer.Width, _framebuffer.Height,
                 _beginColour.AsSpan(0, colour.Length), depth);

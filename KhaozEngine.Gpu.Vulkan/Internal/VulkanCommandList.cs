@@ -22,17 +22,19 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// work-breakdown row 7 (https://github.com/APKiwiOrg/KhaozEngine/issues/517), which owns the list's
     /// LIFECYCLE: the pools, the slot machinery, <see cref="Begin"/>, <see cref="End"/>, disposal, and the
     /// submit path on the device. Row 8 (https://github.com/APKiwiOrg/KhaozEngine/issues/518) added the record-time
-    /// <c>UpdateBuffer</c> on top of it. The rest of the RECORDING CONTENT belongs to three later rows and each
-    /// unbuilt member throws a message naming its own. This paragraph is a ledger and a stale one is worse than
+    /// <c>UpdateBuffer</c> on top of it. What is left of the RECORDING CONTENT is the draw-and-dispatch row, and
+    /// each unbuilt member throws a message naming it. This paragraph is a ledger and a stale one is worse than
     /// none, which is the same discipline <c>VulkanGpuDevice</c>'s equivalent paragraph is under.</para>
     ///
     /// <para><b>THE MEMBERS THAT ARE LIVE:</b> <see cref="Begin"/>, <see cref="End"/> and <see cref="Dispose"/>,
     /// everything the device's <c>Submit</c> reaches through this type, both <c>UpdateBuffer</c> overloads at
     /// both ends of their routing, all four resource-set binds, BOTH PIPELINE BINDS (row 13,
     /// https://github.com/APKiwiOrg/KhaozEngine/issues/523, which emit <c>vkCmdBindPipeline</c> and adopt the
-    /// pipeline's layout in the matching bind records), and the whole RENDERING half: the framebuffer
-    /// bind, both clears and both scissor members. On a RING-BACKED buffer an update is a memcpy
-    /// into the current segment which records nothing at all (9.2), and on any other buffer it is a staged copy
+    /// pipeline's layout in the matching bind records), the whole RENDERING half (the framebuffer bind, both
+    /// clears and both scissor members) and the LAYOUT TRACKER (row 14,
+    /// https://github.com/APKiwiOrg/KhaozEngine/issues/524, which transitions every attachment at the deferred
+    /// begin and restores every touched texture to rest at <see cref="End"/>). On a RING-BACKED buffer an update
+    /// is a memcpy into the current segment which records nothing at all (9.2), and on any other buffer a staged copy
     /// through this list's own arena with a barrier narrowed to the destination's real usage, which row 9 wired
     /// (https://github.com/APKiwiOrg/KhaozEngine/issues/519). A resource-set bind RECORDS ONLY into
     /// <see cref="VulkanBindRecords"/> and issues nothing until a draw flushes it, which is row 11
@@ -84,6 +86,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         // rather than tidy.
         readonly IVulkanPipelineBinder? _pipelineBinder;
 
+        // ROW 14's LIST-LOCAL LAYOUT MAP (V-F6 to V-F8), or null on a list with no barrier seam. Begin forgets it
+        // and End restores every touched texture through it: see VulkanLayoutTracker.
+        readonly VulkanLayoutTracker? _layouts;
+
         // The pipeline currently bound at each bind point, as a bare handle. Section 6.1 lists "both pipelines"
         // among what a Begin resets, and 6.2 clause 4 is what they are for: a rebind of the pipeline already
         // current does nothing at all, which is the fork's pipeline-identity guard kept.
@@ -118,9 +124,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="pipelines">Row 13's one record-time call, <c>vkCmdBindPipeline</c>, or null while there is
         /// no device behind this list. It can bind a pipeline and cannot make one, which is the whole reason it is
         /// a different seam from the one that creates them.</param>
+        /// <param name="layouts">Row 14's list-local layout tracker (V-F7), or null with no device behind this
+        /// list. <see cref="Begin"/> resets it and <see cref="End"/> restores through it.</param>
         internal VulkanCommandList(VulkanCommandPoolRing ring, VulkanRetireList retired,
             IVulkanRecordUploads? uploads = null, bool assertBoundSetLayouts = false,
-            IVulkanRenderApi? render = null, IVulkanPipelineBinder? pipelines = null)
+            IVulkanRenderApi? render = null, IVulkanPipelineBinder? pipelines = null,
+            VulkanLayoutTracker? layouts = null)
         {
             ArgumentNullException.ThrowIfNull(ring);
             ArgumentNullException.ThrowIfNull(retired);
@@ -130,8 +139,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _uploads = uploads;
             _graphicsBinds = new VulkanBindRecords(PipelineBindPoint.Graphics, assertBoundSetLayouts);
             _computeBinds = new VulkanBindRecords(PipelineBindPoint.Compute, assertBoundSetLayouts);
-            _rendering = render is null ? null : new VulkanRenderingSchedule(render);
+            _rendering = render is null ? null : new VulkanRenderingSchedule(render, layouts);
             _pipelineBinder = pipelines;
+            _layouts = layouts;
 
             // THE UPLOADER TAKES THIS LIST AS ITS RENDERING SCOPE, so a bulk staged UpdateBuffer ends the render
             // pass instance before it records its vkCmdCopyBuffer (V-A4). Wired HERE rather than by the device
@@ -228,10 +238,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// (https://github.com/APKiwiOrg/KhaozEngine/issues/521) added the two dirty arrays and, with them, the
         /// pipeline LAYOUT each is bound under, and row 12
         /// (https://github.com/APKiwiOrg/KhaozEngine/issues/522) added the framebuffer, the scissor and the open
-        /// render pass instance. The layout map is row 14's
-        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/524). Each of those rows adds its reset immediately
-        /// after the native calls below and before the recording flag flips, and this paragraph is the hook they
-        /// are looking for. A reset added anywhere else is a reset that a re-Begun list can be observed without.
+        /// render pass instance, and row 14 (https://github.com/APKiwiOrg/KhaozEngine/issues/524) the layout map.
+        /// Every one of those resets sits immediately after the native calls below and before the recording flag
+        /// flips. A reset added anywhere else is a reset that a re-Begun list can be observed without.
         /// </para>
         /// </remarks>
         public void Begin()
@@ -260,9 +269,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // still reading.
             _uploads?.BeginSlot(slot);
 
-            // ROW 14 RESETS ITS LIST-LOCAL LAYOUT MAP HERE TOO, between the native begin and the flag. See the
-            // remarks above for the full list and for why this is the only correct place for it.
-            //
+            // ROW 14's HALF: a fresh VkCommandBuffer has recorded no transition and every list assumes every
+            // texture is at REST (V-F7), so a retained map would skip a barrier against a record nobody submitted.
+            _layouts?.Reset();
+
             // ROW 11's HALF: a fresh VkCommandBuffer has no descriptor set and no pipeline bound, so both records
             // forget their slots AND the pipeline layout they were bound under. Keeping either would let the first
             // flush of the next recording skip a bind as clean against state that lives on another buffer.
@@ -294,13 +304,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// is a call the driver refuses.
         /// </para>
         /// <para>
-        /// THE RESTING-LAYOUT RESTORE GOES HERE TOO, after that and before the native end, and today there are no
-        /// layouts to restore. Under V-F7 every
-        /// texture has a canonical resting layout assigned at creation, a list tracks its transitions LOCALLY, and
-        /// <c>End</c> restores every texture it touched to rest before sealing, which is what makes two lists
-        /// composable in any submit order. Row 14 (https://github.com/APKiwiOrg/KhaozEngine/issues/524) owns the
-        /// tracker and adds that restore immediately BEFORE the native end below. It has to be before: a barrier
-        /// recorded after <c>vkEndCommandBuffer</c> is a call against a sealed buffer.
+        /// THE RESTING-LAYOUT RESTORE GOES NEXT (V-F7), after that and before the native end. Every texture has a
+        /// canonical resting layout assigned at creation, a list tracks its transitions LOCALLY, and <c>End</c>
+        /// restores every texture it touched before sealing, which is what makes two lists composable in any
+        /// submit order. It has to be before the native end: a barrier recorded after <c>vkEndCommandBuffer</c> is
+        /// a call against a sealed buffer.
         /// </para>
         /// <para>
         /// AN <c>End</c> WITHOUT A <c>Begin</c> IS REFUSED, including a second <c>End</c> on an already sealed
@@ -323,8 +331,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // THE INSTANCE CLOSES BEFORE ANYTHING ELSE, including the clear-only flush a pass with no draw owes.
             _rendering?.EndRendering(CurrentBuffer);
 
-            // ROW 14 RESTORES EVERY TOUCHED TEXTURE TO ITS RESTING LAYOUT HERE, after that and before the native
-            // end. See the remarks above for why the order is fixed.
+            // EVERY TOUCHED TEXTURE BACK TO REST (V-F7), as ONE batched barrier, after the instance closed and
+            // before the native end. The remarks above say why that order is fixed rather than incidental.
+            _layouts?.RestoreResting(CurrentBuffer);
 
             int slot = _ring.Slot;
             _ring.EndRecording(slot);
@@ -781,10 +790,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             => new($"{what} is not built yet on the native Vulkan backend: it lands in {row}. The list's "
                 + "LIFECYCLE is live (work-breakdown row 7, "
                 + "https://github.com/APKiwiOrg/KhaozEngine/issues/517), and so are the resource-set binds, both "
-                + "pipeline binds and the whole rendering half: Begin, End, the per-slot command pools, the "
-                + "submit path, the framebuffer bind, both clears and both scissor members all work, and what is "
-                + "missing is the draws, the dispatches, the copies and the barriers. This is a "
-                + "statement about the package and not about this machine. Select GpuBackendKind.Vulkan, which "
+                + "pipeline binds, the layout tracker and the whole rendering half: Begin, End, the per-slot "
+                + "command pools, the submit path, the framebuffer bind, both clears, both scissor members and "
+                + "the attachment transitions all work, and what is missing is the draws, the dispatches and the "
+                + "copies. This is a statement about the package and not about this machine. Select "
+                + "GpuBackendKind.Vulkan, which "
                 + "goes through Veldrid, for a fully working Vulkan device.");
     }
 }

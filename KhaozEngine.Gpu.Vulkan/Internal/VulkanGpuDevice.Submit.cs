@@ -77,7 +77,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // path a recorder can reach.
             var bindPipeline = new VulkanPipelineBinder(_instance.Value.Api);
 
-            return new VulkanCommandList(ring, _retired, uploads, assertBoundSetLayouts, render, bindPipeline);
+            // ROW 14's LIST-LOCAL LAYOUT MAP (https://github.com/APKiwiOrg/KhaozEngine/issues/524). ONE PER LIST
+            // AND THAT IS THE WHOLE DECISION, not an allocation choice: a tracker shared between two lists would
+            // be exactly the record-time layout state on a shared object that V-F7 exists to eliminate, and the
+            // loser of the race would skip a barrier it needed (section 2.5). Its recorder is stateless and could
+            // be shared, and is not, for the reason the two above are not.
+            var layouts = new VulkanLayoutTracker(new VulkanBarrierRecorder(_instance.Value.Api));
+
+            return new VulkanCommandList(
+                ring, _retired, uploads, assertBoundSetLayouts, render, bindPipeline, layouts);
         }
 
         /// <summary>How many frames this device pipelines at (MV3), resolved once at creation from

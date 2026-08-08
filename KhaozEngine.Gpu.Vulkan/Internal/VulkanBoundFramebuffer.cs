@@ -3,20 +3,23 @@ using System;
 namespace KhaozEngine.Gpu.Vulkan.Internal
 {
     /// <summary>
-    /// ONE ATTACHMENT AS PLAIN DATA: the view a begin names, the image a transition names, and the format that
-    /// decides whether the depth arm carries a stencil plane.
+    /// ONE ATTACHMENT AS PLAIN DATA: the view a begin names, the image a transition names, the resting layout that
+    /// transition is undone to, and the format that decides both the barrier's aspect mask and whether the depth
+    /// arm carries a stencil plane.
     /// </summary>
     /// <param name="View">The <c>VkImageView</c> at mip 0 layer 0, created at TEXTURE creation (V-M11) and
     /// borrowed here. Never 0 on a real attachment.</param>
-    /// <param name="Image">The <c>VkImage</c> behind it. Carried for row 14
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/524), whose barrier tracker transitions every attachment
-    /// into its attachment layout at the begin and back to its resting layout at <c>End</c>. Nothing in this row
-    /// reads it, and it is here rather than in row 14's own record so that row adds a transition rather than a
-    /// second copy of the framebuffer's contents.</param>
+    /// <param name="Image">The <c>VkImage</c> behind it, which the barrier tracker transitions into its attachment
+    /// layout at the begin (V-F7). Here rather than in the tracker's own record so a transition reads the
+    /// framebuffer's contents rather than taking a second copy of them.</param>
     /// <param name="Format">The attachment's pixel format.</param>
     /// <param name="DepthStencil">Whether this is the depth attachment rather than a colour one.</param>
+    /// <param name="Resting">The texture's canonical resting layout (V-F7), which is where the list assumes it
+    /// finds this image and where <c>End</c> puts it back. A plain render target rests in its attachment layout
+    /// and therefore costs no barrier at either end, and a target that is also <c>Sampled</c> rests in
+    /// <c>SHADER_READ_ONLY_OPTIMAL</c> and pays one, which is the whole post chain.</param>
     internal readonly record struct VulkanAttachment(
-        ulong View, ulong Image, GpuPixelFormat Format, bool DepthStencil);
+        ulong View, ulong Image, GpuPixelFormat Format, bool DepthStencil, VulkanRestingLayout Resting);
 
     /// <summary>
     /// EVERYTHING A RENDER PASS INSTANCE NEEDS FROM A FRAMEBUFFER, AS PLAIN DATA, and the shape decisions V-M11

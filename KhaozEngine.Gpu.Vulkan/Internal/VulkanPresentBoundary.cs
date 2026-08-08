@@ -37,10 +37,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// per-frame costs on exactly the frames that were unusual.</para>
     ///
     /// <para><b>WHAT HOLDS THE SUBMIT LOCK AND WHAT DOES NOT (V-W8).</b> The present and the recreate hold it,
-    /// because both go through the one queue. The surface query, the policy decision, the orphan creation and
-    /// the acquire hold NOTHING: none of them touches the queue, and the orphan in particular must not, because
-    /// creating a texture takes the SETUP lock and the setup lock is taken before the submit lock and never
-    /// after it. Every one of those is on the submit thread regardless.</para>
+    /// because both go through the one queue. The surface query, the policy decision, the orphan creation and the
+    /// acquire CALL hold NOTHING: none of them touches the queue, and the orphan in particular must not, because
+    /// creating a texture takes the SETUP lock and the setup lock is taken before the submit lock and never after
+    /// it. Every one of those is on the frame's own thread regardless.</para>
+    ///
+    /// <para><b>THE FRAME'S SEMAPHORE PAIR IS THE ONE PIECE OF STATE THAT IS NOT.</b> A submit can arrive on any
+    /// thread (the seam nowhere says otherwise, and V-W8 says recording is lock-free and per-list), so
+    /// <see cref="TakeFrameSemaphores"/> takes the submit lock and every write of the pair is made under it: the
+    /// acquire's publication of it, the present's clearing of it, and every retirement's. A take that was not
+    /// serialised let two first-submits of one frame both carry the same wait semaphore, which is a hang rather
+    /// than an error.</para>
     ///
     /// <para><b>NOT ONE LINE OF THIS RUNS IN CI, ON ANY LEG, EVER (MV9).</b> A headless Vulkan device enables no
     /// surface extension at all, which is what lets the golden suite run on a machine with no display server, and
@@ -202,13 +209,30 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// THE PAIR THE FIRST SUBMIT OF THIS FRAME CARRIES, taken exactly once. Every later submit in the same
         /// frame gets the default, because a binary semaphore may be waited once per signal and a second wait on
         /// the same one is a hang rather than an error.
+        ///
+        /// <para><b>UNDER THE DEVICE'S SUBMIT LOCK, AND THAT IS STRUCTURAL RATHER THAN CAUTIOUS.</b> "Exactly
+        /// once" was enforced by a plain read-modify-write over non-volatile fields, evaluated as an argument
+        /// BEFORE <see cref="VulkanSubmitQueue"/> took the lock, so two threads reaching
+        /// <c>IGpuDevice.Submit</c> for the first submit of one frame could both see <c>_waitConsumed</c> false
+        /// and both take the pair. Two submits waiting on one binary semaphore is a hang rather than an error,
+        /// which is precisely what the once contract exists to prevent. The seam does not say <c>Submit</c> is
+        /// single-threaded anywhere, and V-W8 says the opposite of what would be needed to assume it: recording is
+        /// lock-free and per-list on any number of threads. So the take is serialised against every other take and
+        /// against the boundary's own publication of the pair, which happens under the same lock.</para>
+        ///
+        /// <para>Taking the lock here and again inside the submit queue is not a nesting hazard: it is the same
+        /// monitor on the same thread, sequentially, and the setup lock is already released by then, so the one
+        /// ordering rule V-W8 pins (setup before submit, never the reverse) is untouched.</para>
         /// </summary>
         internal VulkanFrameSemaphores TakeFrameSemaphores()
         {
-            if (_waitConsumed || _frame.IsEmpty) return default;
+            lock (_submitLock)
+            {
+                if (_waitConsumed || _frame.IsEmpty) return default;
 
-            _waitConsumed = true;
-            return _frame;
+                _waitConsumed = true;
+                return _frame;
+            }
         }
 
         /// <summary>
@@ -304,9 +328,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             lock (_submitLock)
             {
                 outcome = _swapchains.Present(_generation.Handle, (uint)_heldImage, wait);
-            }
 
-            ForgetHeldImage();
+                // INSIDE THE LOCK WITH THE PRESENT ITSELF, so the pair a submit on another thread could take is
+                // cleared in the same critical section that consumed it.
+                ForgetHeldImage();
+            }
 
             // CHECKED (V-W7). The incumbent ignores this result entirely, so it can never learn that the surface
             // it presents to has changed underneath it, which is how a window that was resized while occluded
@@ -363,11 +389,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (outcome is VulkanPresentOutcome.Success or VulkanPresentOutcome.Suboptimal)
             {
-                _heldImage = (int)index;
-                _frame = _mode == VulkanAcquireMode.Stall
-                    ? default
-                    : new VulkanFrameSemaphores(semaphore, _generation.RenderFinishedAt(_heldImage));
-                _waitConsumed = false;
+                // THE ACQUIRE CALL HELD NOTHING AND THIS PUBLICATION DOES, which is not a contradiction of V-W8:
+                // what needs the lock is not the driver call, which touches no queue, but the three fields
+                // TakeFrameSemaphores reads under the same lock from whatever thread a submit arrives on.
+                lock (_submitLock)
+                {
+                    _heldImage = (int)index;
+                    _frame = _mode == VulkanAcquireMode.Stall
+                        ? default
+                        : new VulkanFrameSemaphores(semaphore, _generation.RenderFinishedAt(_heldImage));
+                    _waitConsumed = false;
+                }
 
                 // SUBOPTIMAL REALLY DID ACQUIRE, so the image is kept and the recreate is queued for the next
                 // boundary rather than run underneath a frame that is about to be recorded.

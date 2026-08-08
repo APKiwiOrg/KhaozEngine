@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using KhaozEngine.Gpu.Vulkan.Internal;
 using Xunit;
 
@@ -278,6 +279,51 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal(0UL, fixture.Submits.Submit(list, null));
             Assert.Empty(fixture.Api.Submissions);
+        }
+
+        /// <summary>
+        /// THE FRAME'S SEMAPHORE PAIR IS TAKEN UNDER THE DEVICE'S SUBMIT LOCK, which is what makes "exactly once"
+        /// a fact rather than an assumption about how many threads call <c>IGpuDevice.Submit</c>. The seam nowhere
+        /// says that is one thread, and V-W8 says recording is lock-free and per-list on any number of them, so an
+        /// unserialised read-modify-write over the pair let two first-submits of one frame both carry the same
+        /// wait semaphore. Two submits waiting on one binary semaphore is a HANG rather than an error.
+        /// <para>
+        /// Asserted by holding the lock and watching the take BLOCK, which is deterministic in the direction that
+        /// matters: if the take is under the lock this can never pass early, and if it is not, it completes
+        /// immediately and the test fails.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void TheFrameSemaphorePair_IsTakenUnderTheSubmitLock()
+        {
+            var submitLock = new object();
+            using var boundary = new VulkanPresentBoundary(
+                new FakeVulkanSurfaceApi(), new FakeVulkanSwapchainApi(), FakeVulkanSurfaceApi.Handle,
+                new VulkanExtent(1280, 720), true, VulkanAcquireMode.Semaphore, 3, submitLock, () => { },
+                new FakeVulkanOrphanTarget(), new VulkanAcquireWaits());
+
+            using var reached = new ManualResetEventSlim();
+            VulkanFrameSemaphores taken = default;
+
+            // A RAW THREAD RATHER THAN A TASK, because the assertion is that the take BLOCKS and every way of
+            // waiting on a Task for that is a blocking task operation the xUnit analyzers reject outright.
+            var worker = new Thread(() =>
+            {
+                reached.Set();
+                taken = boundary.TakeFrameSemaphores();
+            });
+
+            lock (submitLock)
+            {
+                worker.Start();
+
+                Assert.True(reached.Wait(TimeSpan.FromSeconds(5)));
+                Assert.False(worker.Join(TimeSpan.FromMilliseconds(200)));
+            }
+
+            Assert.True(worker.Join(TimeSpan.FromSeconds(5)));
+            Assert.False(taken.IsEmpty);
+            Assert.True(boundary.TakeFrameSemaphores().IsEmpty);
         }
     }
 }

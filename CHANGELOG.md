@@ -89,7 +89,10 @@ render-finished semaphore, and cannot strand the boundary with no generation and
 recreate reads can throw out of `Present` either: the surface capability query reports its result the way the
 acquire and the present do, which is what gives `VK_ERROR_SURFACE_LOST_KHR` a path at the first place a dead
 window shows up, and a surface with no formats or with a format `GpuPixelFormat` cannot name binds the orphan
-target instead of raising out of the frame loop.
+target instead of raising out of the frame loop. The frame's binary semaphore pair is taken UNDER the device's
+submit lock, so "taken exactly once" is a fact rather than an assumption that `IGpuDevice.Submit` is called from
+one thread, which this seam nowhere says: two concurrent first-submits could both take the pair, and two submits
+waiting on one binary semaphore is a hang rather than an error.
 
 **One seam member pair is ADDED, and calling it "no seam change" would have cost the acquire A/B its result.**
 `GpuDeviceCounters` gains `AcquireWaitCount` and `AcquireWaitMs` with the `gpuAcquireWaits` and `gpuAcquireWaitMs`

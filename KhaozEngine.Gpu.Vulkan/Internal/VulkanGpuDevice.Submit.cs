@@ -109,8 +109,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         //
         // ONCE PER FRAME IS THE CONTRACT AND IT IS A HANG IF IT IS BROKEN. A binary semaphore may be waited once
         // per signal, so a second submit in one frame carrying the same wait semaphore waits for a signal nothing
-        // will ever produce. The boundary is what enforces the once, on the submit thread, which is the same
-        // thread every submit in a frame comes from.
+        // will ever produce. The boundary enforces the once UNDER THE DEVICE'S SUBMIT LOCK rather than by
+        // assuming one submitting thread, because this seam nowhere says Submit is single-threaded and V-W8 says
+        // recording is lock-free and per-list on any number of threads. This call is still made outside the lock
+        // the submit queue takes below, which is harmless now that the take itself is atomic: the pair goes to
+        // whichever submit reaches it first and every other one gets the default.
         VulkanFrameSemaphores TakeFrameSemaphores() => _present?.TakeFrameSemaphores() ?? default;
 
         /// <inheritdoc/>

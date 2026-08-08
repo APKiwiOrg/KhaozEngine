@@ -7,6 +7,70 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.34.0
 
+### Native Vulkan pipelines: no render pass, dynamic state held to two, and a disk cache a corrupt file cannot crash (#523)
+
+`KhaozEngine.Gpu.Vulkan` can build and bind a pipeline. `CreateGraphicsPipeline`, `CreateComputePipeline`,
+`SetPipeline` and `SetComputePipeline` all stop refusing, which empties the resource factory's refusal list
+entirely: every member of `IGpuResourceFactory` is now built on this backend. Work-breakdown row 13 of the phase
+3 program (#510), device-free throughout, and nothing selects this backend by default so no shipped pixel moves.
+
+**There is no `VkRenderPass` in a pipeline create-info, which is decision V-A1 arriving at its second seat.** The
+colour format array, the depth format and the sample count come straight off the seam's `GpuOutputDescription`
+as a `VkPipelineRenderingCreateInfo` chained onto the create info, which under dynamic rendering is the whole of
+what a classic render pass would have carried. That is why row 12 needed no pass cache and why a resize
+invalidates nothing here. The stencil plane is named separately from the depth one, exactly as it is at a begin,
+because dynamic rendering splits the two and both of the seam's depth formats are combined ones.
+
+**Vertex input comes from the caller's own layouts and no reflection is read off the module.** The Direct3D 11
+backend has to reflect the compiled vertex signature, because SPIRV-Cross invents a `TEXCOORD<location>` semantic
+per location and drops any input the shader never reads, which is the holed-signature hazard that corrupted WARP.
+Here the `GpuVertexLayoutDescription` list IS the input state. Locations are one flat sequence across every
+buffer slot, so slot 1's first element continues where slot 0's last one left off, because a GLSL `location`
+knows nothing about which buffer an attribute arrives in and getting it wrong reads the instance stream as vertex
+data. Offsets pack within their own slot and a declared stride wins over the computed one. **An instance step
+rate above 1 is refused by name**, because Vulkan's core vertex input rate is two-valued with no divisor and the
+divisor extension is not enabled here, so flattening a rate of 2 to 1 would draw every instance from the same
+element silently. Every shipped instance stream declares 1.
+
+**Dynamic state is exactly viewport and scissor**, as a two-element value a plain `[Fact]` reads rather than a
+line buried inside a create-info no headless test can see. Everything else is baked into the pipeline object,
+including the constant blend colour, which is the incumbent's shape kept deliberately and also the reason the
+disk cache below is worth having: baking everything means considerably more pipeline permutations to compile on a
+cold start.
+
+**One real divergence lands with it: the blend attachment count is the OUTPUT's rather than the declaration's.**
+Vulkan requires the colour blend state's attachment count to equal the rendering create-info's colour attachment
+count, and the seam lets the two differ with nothing checking. A mismatch would be a validation error at creation
+on a shipped renderer, so a declared state past the last colour output is dropped and an output the caller
+declared no state for gets a disabled blend that writes every channel.
+
+**The `VkPipelineCache` is persisted, and the caution one design draft raised is adopted as a REQUIREMENT rather
+than as a reason to defer it.** The incumbent passes `VkPipelineCache.Null` at both creation sites, so every
+launch recompiles every pipeline from SPIR-V. Here one cache is created with the device, seeded from a file keyed
+on `(pipelineCacheUUID, driverVersion, engine version)` and written back at teardown. A corrupt cache is a crash
+class, so the header is VALIDATED before `pCacheData` is ever passed (header size, header version, vendor and
+device id, and the vendor-supplied `pipelineCacheUUID`, which is the validity key the API already provides), the
+write is a process-unique temp-and-move so a reader sees a whole entry or none, and every failure on the path is
+a colder start rather than a throw. That best-effort construction IS measurement MV8's kill switch, so there is
+nothing to switch off, and the corruption half of MV8 ships with it: truncation at every point, a mutated header
+byte per field, and a header from another device, each asserted to discard cleanly. A driver that refuses a blob
+this backend's own check accepted gets ONE retry with no seed, so a single bad file cannot cost every launch
+after it. `KE_VULKAN_PIPELINE_CACHE` relocates the cache or turns it off.
+
+**A pipeline switch invalidates recorded descriptor slots from the first incompatible set onward, and this is the
+row that wires it.** Row 11 landed the compatibility-prefix computation and both of decision V-R7's guards one
+row early, so `SetPipeline` emits `vkCmdBindPipeline` and then hands the pipeline's own `VkPipelineLayout` and
+set-layout sequence to the matching bind records. A rebind of the pipeline already current does nothing at all,
+which is a stronger skip than the layout guard underneath it: two different programs sharing a layout still each
+emit their bind and still invalidate nothing, and the same pipeline twice emits neither. A `Begin` forgets both
+bound pipelines, because a fresh `VkCommandBuffer` has none. The compute arm ends any pending rendering first.
+
+**Creating a pipeline is unreachable from the recording type**, which is the descriptor subsystem's rule applied
+to the most expensive thing a driver does on demand: a pipeline creation is a shader compile, and one inside a
+frame is the classic hitch. The creation seam and the subsystem that calls it are on the unreachability test's
+forbidden list, and a command list holds a separate one-call `IVulkanPipelineBinder` that can bind a pipeline
+that exists and cannot make one.
+
 ### Native Vulkan shaders: the toolchain splits at its seam, and the SPIR-V parity is measured before the goldens (#526)
 
 `KhaozEngine.Gpu.Vulkan`'s `CreateShadersFromSpirv` and `CreateComputeShaderFromSpirv` stop refusing, and the

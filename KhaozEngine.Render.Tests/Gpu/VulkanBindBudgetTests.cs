@@ -41,7 +41,8 @@ namespace KhaozEngine.Tests.Gpu
     /// the split stays a stated fact rather than an omission, and it still passes unchanged: row 12 gave the
     /// rendering class its OWN device-free seam rather than widening this one. Zero barriers between two draws
     /// that touch no new texture: the BIND half is here (a whole frame's binds emit none), and the meaningful
-    /// version needs row 14's tracker
+    /// version landed with row 14's tracker in
+    /// <c>VulkanLayoutTrackerTests.TheBarrierCount_IsBoundedByTouchedTexturesAndNotByDraws</c>
     /// (https://github.com/APKiwiOrg/KhaozEngine/issues/524).</description></item>
     /// <item><description><b>(b) Marginal per-draw deltas.</b> 5 distinct meshes against 1 and 18 draws against 6:
     /// HERE, for the BIND classes, driven through the flush hook exactly as row 15
@@ -51,8 +52,9 @@ namespace KhaozEngine.Tests.Gpu
     /// <item><description><b>(c) Trace identity for 8 instances of one mesh against 1:</b> HERE, over the bind
     /// trace, which is the whole of what instancing may not change.</description></item>
     /// <item><description><b>(d) Upper bounds on the per-pass barrier count:</b> ROW 14's
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/524). Nothing emits a barrier yet, so a bound asserted here
-    /// would be a bound over zero.</description></item>
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/524), asserted over its own tracker in
+    /// <c>VulkanLayoutTrackerTests</c>, because a bound asserted here would be a bound over the bind path, which
+    /// emits none by construction.</description></item>
     /// </list></para>
     ///
     /// <para><b>ABSOLUTE TOTALS ARE DOCUMENTATION AND MAY BE UPDATED FREELY.</b> A test that is routinely edited to
@@ -111,9 +113,9 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// AND A WHOLE FRAME'S WORTH OF BINDS EMITS NO BARRIER AT ALL, which is the bind half of "zero barriers
-        /// between two draws in one pass that touch no new texture". The meaningful version of that invariant needs
-        /// row 14's tracker (https://github.com/APKiwiOrg/KhaozEngine/issues/524), which is what would emit one.
-        /// What this pins is that the BIND path never will.
+        /// between two draws in one pass that touch no new texture". The meaningful version of that invariant is
+        /// over row 14's tracker (https://github.com/APKiwiOrg/KhaozEngine/issues/524), which is what emits one.
+        /// What this pins is that the BIND path never does.
         /// </summary>
         [Fact]
         public void AFramesWorthOfBinds_EmitsNoBarrier()

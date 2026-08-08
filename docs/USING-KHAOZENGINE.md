@@ -8629,8 +8629,11 @@ use and hands the bytes to `vkCreateShaderModule` verbatim, with no cross-compil
 SPIR-V hash, so disposing an `IGpuShaderSet` releases nothing and the device ends them all at teardown.
 Since https://github.com/APKiwiOrg/KhaozEngine/issues/523 it builds both PIPELINES as well, which is the row
 that empties its refusal list: every member of `IGpuResourceFactory` is live on this backend now.
+Since https://github.com/APKiwiOrg/KhaozEngine/issues/524 its command lists track IMAGE LAYOUTS as well:
+every transition is a `vkCmdPipelineBarrier2`, tracking is per subresource range and local to one list against
+the resting layout each texture was created with, a render pass transitions its attachments as one batched
+barrier before it opens, and `End` puts everything the recording touched back.
 What it cannot do yet is DRAW: the remaining recording members are
-https://github.com/APKiwiOrg/KhaozEngine/issues/524 and
 https://github.com/APKiwiOrg/KhaozEngine/issues/525, and each of those members throws a message naming its own
 row rather than returning something that fails later somewhere less informative. Creating a WINDOWED device
 refuses outright, naming https://github.com/APKiwiOrg/KhaozEngine/issues/527, the row that builds the surface

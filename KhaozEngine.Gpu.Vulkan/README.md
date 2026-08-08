@@ -6,7 +6,7 @@ and nothing that does not want the Vulkan binding ever carries it.
 
 > **Status: REGISTRATION, PROBE, A HEADLESS DEVICE, ITS COMPLETION TIMELINE, ITS MEMORY ALLOCATOR, THE COMMAND
 > LIST'S LIFECYCLE, THE UNIFORM RING, THE RESOURCE FACTORY, THE DESCRIPTORS, THE BIND FLUSH, DYNAMIC
-> RENDERING, THE SHADER PATH AND THE PIPELINES.**
+> RENDERING, THE SHADER PATH, THE PIPELINES AND THE BARRIER TRACKER.**
 > `KhaozEngineVulkan.Register()`
 > is real, so is the machine-capability probe behind it, and since
 > [#514](https://github.com/APKiwiOrg/KhaozEngine/issues/514) so is headless device creation:
@@ -51,9 +51,14 @@ and nothing that does not want the Vulkan binding ever carries it.
 > sample count the multisample state), vertex input taken from the caller's layouts with no reflection read off
 > the module,
 > dynamic state held to exactly viewport and scissor, and a `VkPipelineCache` persisted to disk whose header is
-> validated before the driver ever sees it. That device cannot yet
+> validated before the driver ever sees it. And since
+> [#524](https://github.com/APKiwiOrg/KhaozEngine/issues/524) it has its BARRIER AND LAYOUT TRACKER: every
+> transition is a `vkCmdPipelineBarrier2` whose masks are answered per LAYOUT rather than per layout PAIR,
+> tracking is per subresource range and LIST-LOCAL against the resting layout each texture was created with,
+> every attachment is transitioned as one batched barrier immediately before `vkCmdBeginRendering`, `End`
+> restores everything the recording touched, and a transition out of `UNDEFINED` is refused everywhere except
+> the two sites permitted to discard. That device cannot yet
 > RENDER: the rest of the recording content is
-> [#524](https://github.com/APKiwiOrg/KhaozEngine/issues/524) and
 > [#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525), and each unbuilt member throws a message naming
 > its own row. Creating a WINDOWED device refuses, naming the swapchain row
 > ([#527](https://github.com/APKiwiOrg/KhaozEngine/issues/527)), rather than handing back a device that cannot
@@ -913,6 +918,68 @@ pipeline creation is a shader compile, and one inside a frame is the classic hit
 subsystem that calls it sit where the descriptor pool sits: on the device and on the resource factory, and
 nowhere a recorder's field graph reaches, asserted over the type graph. A list holds a separate one-call binder
 that can bind a pipeline that already exists and can make nothing.
+
+## Barriers: masks per layout, tracked per list, and a resting layout restored at `End`
+
+Every image layout transition is a `vkCmdPipelineBarrier2` with `srcStageMask`, `srcAccessMask`, `dstStageMask`
+and `dstAccessMask` all named. There is no `vkCmdPipelineBarrier` on any path and no table of layout PAIRS.
+
+**The masks are answered per LAYOUT, and that is what makes the pair space total.** The source masks are the old
+layout's own stages and accesses, the destination masks are the new layout's, and eight layouts are covered. A
+layout outside those eight throws by name. The incumbent instead runs a 25-arm if/else over the PAIR, ends it in
+a debug assertion, and in Release emits `NONE` on both stage masks for a pair it does not handle, which is a
+barrier that synchronises nothing on a path whose only signal compiles away. The shape here makes "no pair
+produces an empty mask on both sides" a single device-free test over the whole cross product.
+
+**Tracking is per subresource RANGE and per COMMAND LIST.** Every texture carries a canonical resting layout
+assigned at creation from its usage bits, and the device's setup command buffer puts it there before any list can
+record against it. So a list ASSUMES every texture is at rest when it starts, tracks what it moved locally, and
+restores everything it touched before `End`. Nothing shared is read or written during recording, which is what
+lets N lists record concurrently on this backend and lets their submissions compose in any order. A texture
+written in list 1 and sampled in list 2 pays a restore in list 1 and a re-transition in list 2, which is
+redundant and harmless.
+
+The incumbent keeps the layout ON the texture as recording-time mutable state. Two recordings touching one
+texture read and write the same array, and the loser records either a redundant barrier, which is harmless, or NO
+barrier for a transition it needed, which is a corruption no golden on a software rasterizer will show.
+
+**What that ruling LOSES is worth knowing before you read a green test as evidence.**
+`OpenListTrackingGpuDevice` passes trivially here, exactly as it does on the native Direct3D 11 backend, because
+this backend genuinely does not need the one-open-recording rule. It is the PORTABLE guard and it says nothing
+about this backend either way.
+
+**Where transitions happen:**
+
+| Point | Transition |
+|---|---|
+| Begin rendering | each attachment to `COLOR_ATTACHMENT_OPTIMAL` or `DEPTH_STENCIL_ATTACHMENT_OPTIMAL` |
+| Copy source or destination | to `TRANSFER_SRC_OPTIMAL` or `TRANSFER_DST_OPTIMAL` |
+| `End` | everything touched back to its resting layout |
+| Present | the swapchain image to `PRESENT_SRC_KHR` |
+
+The attachment transitions ride the DEFERRED begin, so they are emitted immediately before
+`vkCmdBeginRendering` and never inside the instance, where the same call would mean something much narrower. The
+sampled, storage and resolve rows of that table arrive with the draw and dispatch row
+([#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525)), and the present row's call site with the swapchain
+([#527](https://github.com/APKiwiOrg/KhaozEngine/issues/527)).
+
+**A transition to the layout an image is already in emits nothing**, and a whole boundary is ONE barrier call
+carrying one barrier per image that actually moved. That is what keeps the barrier count proportional to passes
+times touched textures rather than to draws, and both numbers are counted through the same budget seam the binds
+and draws go through. A plain render target rests in `COLOR_ATTACHMENT_OPTIMAL`, so an ordinary pass pays nothing
+at either end. A post-chain target, which is a render target that is also `Sampled` and therefore rests in
+`SHADER_READ_ONLY_OPTIMAL`, pays one barrier in and one back.
+
+**`VK_IMAGE_LAYOUT_UNDEFINED` as an OLD layout discards the image's contents, so it is refused.** It is the cheap
+transition and the tempting one, and using it on contents that are still wanted produces output that varies by
+driver and by run, which the goldens cannot tolerate and which does not throw when it happens. Two sites in the
+whole backend may do it, each through its own named entry point: a texture's first-ever transition, on the setup
+command buffer, and a swapchain image reacquired for a frame that will fully overwrite it. Every other caller
+goes through an entry point that refuses `UNDEFINED` outright.
+
+**Buffer uploads are not part of this.** A staged `UpdateBuffer` emits a BUFFER memory barrier over the written
+range with its masks narrowed to the destination's real usage, which involves no image and no layout at all, so
+the layout tracker neither subsumes nor duplicates it.
 
 ## `KE_VULKAN_DEVICE`, `KE_VULKAN_VALIDATION`, `KE_VULKAN_FRAMES_IN_FLIGHT` and `KE_VULKAN_PIPELINE_CACHE`
 

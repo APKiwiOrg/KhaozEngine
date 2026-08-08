@@ -186,8 +186,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <para><b>THE RESTING LAYOUT IS A PROPERTY OF THE RESOURCE (V-F7), which is why it is decided here.</b>
     /// Sampled wins outright, then storage, then the attachment reading. A texture that is BOTH a render target and
     /// sampled rests in <c>SHADER_READ_ONLY_OPTIMAL</c>, which is the whole post chain, and a list that renders
-    /// into it transitions and restores. Row 14 (https://github.com/APKiwiOrg/KhaozEngine/issues/524) consumes
-    /// this.</para>
+    /// into it transitions and restores. <see cref="VulkanLayoutTracker"/> consumes this, and
+    /// <see cref="VulkanTrackedImage"/> carries it.</para>
     ///
     /// <para><b>TRANSFER SOURCE AND DESTINATION ARE ON EVERY IMAGE AND EVERY BUFFER</b>, reproduced from the
     /// incumbent (<c>VkFormats.VdToVkTextureUsage</c> opens with both, and <c>VkBuffer</c>'s constructor opens with

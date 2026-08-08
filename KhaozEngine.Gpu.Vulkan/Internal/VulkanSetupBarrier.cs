@@ -9,9 +9,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <para><b>THREE TRANSITIONS AND NOTHING ELSE.</b> A newly created image's FIRST-EVER transition out of
     /// <c>VK_IMAGE_LAYOUT_UNDEFINED</c>, a transition INTO <c>TRANSFER_DST_OPTIMAL</c> so a clear or an upload can
     /// write it, and the transition back OUT to the resting layout afterwards. The general per-list barrier model
-    /// is row 14's (https://github.com/APKiwiOrg/KhaozEngine/issues/524) and nothing here anticipates it: these
-    /// three are the setup buffer's own, they run once per resource, and they are off every hot path by
-    /// construction.</para>
+    /// is <see cref="VulkanImageTransition"/> plus <see cref="VulkanLayoutTracker"/>, and this type is
+    /// deliberately not folded into it: these three are the setup buffer's own, they run once per resource with a
+    /// resource that has no consumer yet, and they are off every hot path by construction.</para>
     ///
     /// <para><b><c>UNDEFINED</c> APPEARS AS AN OLD LAYOUT IN EXACTLY ONE PLACE HERE (V-F8), AND IT IS NAMED SO IT
     /// CANNOT SPREAD.</b> A transition out of <c>UNDEFINED</c> is permitted to DISCARD the image's contents, which
@@ -19,7 +19,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// produces output that varies by driver and by run. The goldens require stability on the same rasterizer. The
     /// one legitimate site is <see cref="FirstUse"/>, where the image was created microseconds ago and has no
     /// contents to lose. The other legitimate site in the whole backend is a swapchain image being reacquired for a
-    /// frame that will fully overwrite it, which is row 17's.</para>
+    /// frame that will fully overwrite it, which is <see cref="VulkanImageTransition.Reacquired"/>.</para>
     ///
     /// <para><b>THE MASKS ARE DELIBERATELY CONSERVATIVE AND THAT IS NOT THE SAME MISTAKE THE INCUMBENT MAKES.</b>
     /// The destination of a resting-layout transition is <c>ALL_COMMANDS</c> with memory read and write, because

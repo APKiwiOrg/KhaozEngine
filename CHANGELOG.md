@@ -7,6 +7,62 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.34.0
 
+### Native Vulkan barriers: masks per layout rather than per layout pair, tracked list-locally against a resting layout (#524)
+
+`KhaozEngine.Gpu.Vulkan` has its barrier and layout tracker. Every image layout transition the backend records is
+a `vkCmdPipelineBarrier2` with both stage masks and both access masks named, tracking is per subresource range and
+LIST-LOCAL, and `End` restores every texture the recording touched to the resting layout it was created with.
+Work-breakdown row 14 of the phase 3 program (#510), device-free throughout, and nothing selects this backend by
+default so no shipped pixel moves.
+
+**The masks are answered per LAYOUT, not per layout PAIR, and that is the whole decision (V-F6).** The incumbent
+answers a transition with a 25-arm if/else over the pair of layouts, ends it in a debug assertion, and in Release
+emits `NONE` on both stage masks for a pair it does not handle. A barrier with `NONE` on both sides synchronises
+nothing, renders correctly most of the time on most drivers, and its only signal is an assertion that compiles
+away. Here each SIDE is answered from its own layout: the source masks are the old layout's stages and accesses
+and the destination masks are the new layout's, so the pair space is total by construction and a layout outside
+the eight this backend uses throws by name instead of producing an empty mask. That makes the assertion the
+incumbent's shape cannot make into one device-free test over the whole cross product.
+
+**Tracking is LIST-LOCAL against a canonical resting layout, and that ruling is what makes lists composable
+(V-F7).** Every texture is assigned a resting layout at creation from its usage bits, the device's setup command
+buffer puts it there, and a command list ASSUMES every texture is at rest when it starts, transitions as it
+needs, and restores before `End`. Nothing shared is read or written during recording, so two lists cannot
+disagree and lists compose in any submit order, which is what the seam already promises. The incumbent tracks the
+layout ON the texture instead, as recording-time mutable state, so two recordings touching one texture read and
+write the same array and the loser records either a redundant barrier or NO barrier for a transition it needed,
+which is a corruption no golden on a software rasterizer will show. **What is LOST under this ruling is recorded
+rather than left to be discovered: `OpenListTrackingGpuDevice` passes TRIVIALLY on this leg**, exactly as it does
+on the native Direct3D 11 leg, so a reader must not take it as evidence about this backend. It stays the portable
+guard.
+
+**The attachment transitions row 12 deferred here land at the deferred begin.** Every colour attachment goes into
+`COLOR_ATTACHMENT_OPTIMAL` and the depth attachment into `DEPTH_STENCIL_ATTACHMENT_OPTIMAL`, as ONE batched
+barrier immediately before `vkCmdBeginRendering` and never inside the instance, which is a different and much
+narrower call. A plain render target rests in its attachment layout and therefore costs nothing at either end,
+which is the common case. What pays is the post-chain shape, a target that is also `Sampled` and so rests in
+`SHADER_READ_ONLY_OPTIMAL`, and paying there is the point.
+
+**A transition out of `VK_IMAGE_LAYOUT_UNDEFINED` DISCARDS the image's contents, so it is refused at the general
+entry point (V-F8).** It is the cheap transition and the tempting one, it does not throw and does not render
+obviously wrong, and it varies by driver and by run while the goldens require stability on the same rasterizer.
+Exactly two sites in the backend may name it and both are named entry points of their own: a texture's
+first-ever transition, on the device's setup command buffer, and a swapchain image reacquired for a frame that
+will fully overwrite it. A third site cannot be written by accident.
+
+**Barriers are batched into one call per boundary, and MV5's bet is asserted rather than assumed.** A begin
+transitioning four attachments is one `vkCmdPipelineBarrier2` carrying four barriers, and so is the restore at
+`End`. A transition to the layout an image is already in emits nothing at all, which is what keeps the count
+proportional to passes times touched textures rather than to draws: a device-free test drives twenty draws into
+one pass and asserts the pass's transitions are emitted once. Both the call count and the barrier count are
+countable through the existing counting sink, because a budget that froze only the call count would pass a
+recorder that put a barrier per draw into one batch.
+
+**The staged upload path's barriers are untouched, deliberately.** Those are BUFFER memory barriers over the
+written range, with no image and no layout in them, so the layout tracker neither subsumes nor duplicates them.
+The setup command buffer's three fixed image transitions stay where they are too: they run once per resource, off
+every hot path, and the setup buffer is not a command list and has no list-local map.
+
 ### Native Vulkan pipelines: no render pass, dynamic state held to two, and a disk cache a corrupt file cannot crash (#523)
 
 `KhaozEngine.Gpu.Vulkan` can build and bind a pipeline. `CreateGraphicsPipeline`, `CreateComputePipeline`,

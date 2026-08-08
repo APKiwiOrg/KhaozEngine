@@ -44,13 +44,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// is also no secondary-command-buffer concept and no <c>vkCmdDrawIndirect</c> here, because the engine seam
     /// has neither and adding one would have no consumer (section 6.4).</para>
     ///
-    /// <para><b>NOTHING CALLS THIS SEAM YET.</b> Row 7 (https://github.com/APKiwiOrg/KhaozEngine/issues/517)
-    /// lands the seam, the real sink and the counting sink. The bind flush that drives the descriptor member and
-    /// the BUDGET TEST itself are row 11 (https://github.com/APKiwiOrg/KhaozEngine/issues/521), the draw and
-    /// dispatch members are row 15 (https://github.com/APKiwiOrg/KhaozEngine/issues/525), and the barrier member
-    /// is row 14 (https://github.com/APKiwiOrg/KhaozEngine/issues/524). The seam is here first on purpose: a
-    /// budget seam retrofitted after the recorder exists is a seam shaped by the recorder rather than by what
-    /// needs counting, and phase 2 records exactly that outcome.</para>
+    /// <para><b>WHAT CALLS IT.</b> Row 7 (https://github.com/APKiwiOrg/KhaozEngine/issues/517) landed the seam,
+    /// the real sink and the counting sink. The bind flush that drives the descriptor member and the BUDGET TEST
+    /// itself are row 11 (https://github.com/APKiwiOrg/KhaozEngine/issues/521). The barrier member has two
+    /// callers: the staged upload's buffer barrier (row 9, https://github.com/APKiwiOrg/KhaozEngine/issues/519)
+    /// and the layout tracker's image barriers (row 14,
+    /// https://github.com/APKiwiOrg/KhaozEngine/issues/524, which reaches it through
+    /// <see cref="IVulkanBarrierRecorder"/>, because the tracker HOLDS its emitter and this one is consumed
+    /// through a struct constraint that a field would box). The draw and dispatch members are row 15
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/525). The seam was here first on purpose: a budget seam
+    /// retrofitted after the recorder exists is a seam shaped by the recorder rather than by what needs counting,
+    /// and phase 2 records exactly that outcome.</para>
     ///
     /// <para><b>SILK.NET TYPES ARE NAMED HERE, unlike every other seam in this package.</b>
     /// <see cref="IVulkanCommandApi"/>, <see cref="IVulkanTimelineSemaphore"/> and

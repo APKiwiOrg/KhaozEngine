@@ -205,8 +205,6 @@ jobs:
         env:
           # Only a dispatch can choose. Every other trigger gets the whole matrix, as before.
           WANT: ${{ github.event_name == 'workflow_dispatch' && inputs.legs || 'all' }}
-          # Drives the pull_request gate below, which keeps the self-hosted Mac off fork-reachable paths.
-          EVENT: ${{ github.event_name }}
         run: |
           set -euo pipefail
 
@@ -231,28 +229,24 @@ jobs:
           # direct3d11-native is the engine's own native D3D11 backend (decision T5). Same OS, same runner
           # and the same suite tier as the incumbent leg, which is the point: two implementations of one API
           # on one rasterizer, checked against a single shared set of goldens (decision I3).
-          # METAL RUNS ON THE DEV MAC, and that machine must never be reachable by anyone outside the org.
-          # It has to be self-hosted: GitHub-hosted macos-14 has NO usable Metal device (Veldrid's
-          # MTLGraphicsDevice ctor calls MTLDevice.get_name(), the runner returns nil, and every [GpuFact]
-          # dies with a NullReferenceException inside GpuDeviceContext.CreateHeadless before rendering a
-          # pixel: 363 failures, all under 1ms, run 31091112757). That is device creation failing, not a
-          # golden mismatch, so no re-bake fixes it. The dev Mac is the only real Metal available (#547).
+          # METAL RUNS ON HOSTED macos-26, which is `macos-latest` and GA. Pinned to the number, not to
+          # `macos-latest`, so a future image promotion cannot silently move the GPU under a golden gate.
+          # macos-14 is DEPRECATED by GitHub and is the one image that does not work at all:
+          # MTLCreateSystemDefaultDevice() returns nil there even though MTLCopyAllDevices() reports an
+          # "Apple Paravirtual device", and that nil is what Veldrid dereferences, which was the whole of the
+          # 363-failure run 31091112757. macos-15 and macos-26 both return the device and both run the full
+          # suite green (4813 passed / 1 skipped; run 31131019941 is the macos-26 one). Every golden passes on
+          # the paravirtual adapter against goldens baked on real Apple silicon, because they are
+          # tolerance-based. The single behavioural skip is [GpuFact(RequiresRealGpu)] (#552).
+          # Do NOT "fix" a future Metal problem by moving this back to macos-14.
           #
-          # The repo is PUBLIC, so reaching that Mac is a security question, not a cost one. Two layers,
-          # and the first is the one that actually holds:
-          #   1. The `metal` leg is DROPPED from the matrix on pull_request, below. What remains are push,
-          #      schedule and workflow_dispatch, and every one of those requires write access to this repo.
-          #      A stranger has no way to select this leg, because they have no way to cause those events.
-          #   2. The org requires approval for ALL external contributors before any fork workflow runs at
-          #      all (approval_policy: all_external_contributors, tightened 2026-08-06 from the far weaker
-          #      first_time_contributors). So an outside PR does not execute anything, on any runner,
-          #      hosted or not, until a maintainer approves it.
-          # Layer 1 is structural and needs nobody to be careful. Layer 2 is the backstop for the case where
-          # someone edits layer 1 out. DO NOT add `metal` to a pull_request path, and DO NOT relax the
-          # approval policy, without re-reading this block: together they are the only thing standing
-          # between a public repo and a personal machine.
+          # This leg used to be self-hosted, and moving it off is a security improvement as much as a convenience:
+          # a self-hosted runner was the only reason this PUBLIC repo needed allows_public_repositories on the org
+          # runner group, and the only reason a personal machine was reachable from CI at all. With Metal hosted,
+          # nothing here touches that machine, so the pull_request exclusion that used to guard it is gone too and
+          # Metal covers PRs again.
           all='[
-            {"os":"macos-14",      "backend":"metal",             "runner":["self-hosted","macOS","ARM64"], "fullSuite":"always",    "d3d11Adapter":""},
+            {"os":"macos-26",      "backend":"metal",             "runner":"macos-26",                      "fullSuite":"always",    "d3d11Adapter":""},
             {"os":"windows-latest","backend":"direct3d11",        "runner":"windows-latest",                "fullSuite":"scheduled", "d3d11Adapter":"warp"},
             {"os":"windows-latest","backend":"direct3d11-native", "runner":"windows-latest",                "fullSuite":"scheduled", "d3d11Adapter":"warp"},
             {"os":"ubuntu-latest", "backend":"vulkan",            "runner":"ubuntu-latest",                 "fullSuite":"scheduled", "d3d11Adapter":""}
@@ -265,23 +259,6 @@ jobs:
             # An empty selection would silently pass the whole workflow with nothing tested, which reads as
             # green. Fail loudly instead: the only way here is a typo in the choice list above.
             [ "$(jq 'length' <<<"$picked")" -gt 0 ] || { echo "::error::no leg matches '$WANT'"; exit 1; }
-          fi
-
-          # SECURITY GATE, see the metal note above. A pull_request can come from a fork, and for
-          # pull_request GitHub builds the workflow from the PR's merge ref, so the PR's own edits to THIS
-          # file are what run. That means nothing written here can be trusted to defend itself on that path.
-          # What CAN be trusted is that the leg is dropped here for every pull_request, so the version of
-          # this file on main never routes a PR to the dev Mac, and that an external PR does not execute at
-          # all without maintainer approval. Metal coverage on a PR is deliberately traded away: it is
-          # re-established the moment the branch lands on main, where push events do carry it.
-          if [ "$EVENT" = pull_request ]; then
-            before=$(jq -r '[.[].backend] | join(", ")' <<<"$picked")
-            picked=$(jq -c '[.[] | select(.backend != "metal")]' <<<"$picked")
-            after=$(jq -r '[.[].backend] | join(", ")' <<<"$picked")
-            [ "$before" = "$after" ] || echo "pull_request: metal dropped (self-hosted runner is not exposed to PRs)"
-            # A metal-only dispatch cannot happen on a pull_request, but if the list above ever changes so
-            # that this empties the matrix, say so rather than reporting a green run that tested nothing.
-            [ "$(jq 'length' <<<"$picked")" -gt 0 ] || { echo "::error::pull_request left no legs to run"; exit 1; }
           fi
 
           echo "selected legs: $(jq -r '[.[].backend] | join(", ")' <<<"$picked")"

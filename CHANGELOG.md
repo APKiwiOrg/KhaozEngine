@@ -198,6 +198,35 @@ https://github.com/APKiwiOrg/Ruinborne/issues/441.
 throwing accessor never being read as empty, the disabled path, the countdown flooring at zero, and both
 `RunAsync` exits.
 
+### Metal moves to hosted macos-26, and no CI leg touches a personal machine any more (#552)
+
+The Metal leg ran on the self-hosted dev Mac because hosted macOS was believed to have no usable Metal device.
+That was wrong, and only true of ONE image. Measured directly on both:
+
+| Runner | `MTLCreateSystemDefaultDevice()` | `MTLCopyAllDevices()` |
+|---|---|---|
+| `macos-14` | nil | 1, `Apple Paravirtual device` |
+| `macos-15` | returns the device | 1, `Apple Paravirtual device` |
+| `macos-26` | returns the device | 1, `Apple Paravirtual device` |
+
+Veldrid's `MTLGraphicsDevice` ctor dereferences the default-device call, so `macos-14` (which GitHub has since
+deprecated) produced 363 failures in under a millisecond each. The leg runs on **`macos-26`**, which is
+`macos-latest` and GA, pinned to the number so an image promotion cannot move the GPU under a golden gate.
+The full suite passes there: **4813 passed, 1 skipped, 0 failed**, every golden green
+against goldens baked on real Apple silicon, because the goldens are tolerance-based.
+
+**This is a security improvement more than a convenience.** A self-hosted runner was the only reason this public
+repo needed `allows_public_repositories` on the org runner group, and the only reason a personal machine was
+reachable from CI. With Metal hosted, nothing here touches that machine, the `pull_request` exclusion that
+guarded it is gone, and **Metal covers pull requests again** for the first time since the repo went public.
+
+New `[GpuFact(RequiresRealGpu = true)]` handles the single behavioural failure. The paravirtual adapter renders
+the distortion apply pass as a no-op, so a test asserting "the ripple moved pixels" measures zero. That is a gap
+in the virtual adapter, not a regression. The attribute skips with a reason naming the adapter, exactly as
+`RequiresCompletionFences` does, and a null device name still RUNS so a broken device stays an error rather than
+going quiet. It is deliberately NOT applied to goldens: those pass on the paravirtual device, and gating them
+would hide real regressions on the leg that runs most often.
+
 ### The repo is public again, and every CI leg moves back to GitHub-hosted runners
 
 `KhaozEngine` is public. It was briefly public before, went private in 2026-07 with the move to the

@@ -27,8 +27,9 @@ namespace KhaozEngine.Tests.Gpu
     /// one shows up here as every program moving at once.
     /// </para>
     /// <para>
-    /// PARITY WITH THE INCUMBENT IS A SEPARATE, HISTORICAL FACT, and it is the one that licenses carrying the
-    /// committed <c>vulkan</c> goldens over to the native backend without a rebake. Measured once, in process, on
+    /// PARITY WITH THE INCUMBENT IS A SEPARATE ASSERTION AND IT LIVES NEXT DOOR, in
+    /// <see cref="VulkanSpirvIncumbentParityTests"/>. It is the one that licenses carrying the committed
+    /// <c>vulkan</c> goldens over to the native backend without a rebake. It was measured once, in process, on
     /// 2026-08-08: all 34 shipped graphics programs (68 stage compiles) and all 8 shipped compute kernels, 76
     /// stage emissions in total, compiled to BYTE-IDENTICAL SPIR-V under this path and under a faithful
     /// replication of the incumbent's own SPIR-V production, which is
@@ -36,8 +37,11 @@ namespace KhaozEngine.Tests.Gpu
     /// call <c>Veldrid.SPIRV</c>'s <c>CreateFromSpirv</c> makes on a Vulkan device. 76 of 76 equal, 0 mismatches.
     /// The one difference between the two call shapes is the diagnostic FILE NAME, which the incumbent leaves null
     /// and this engine sets, and the measurement is what establishes that it never reaches the module while
-    /// <see cref="SpirvFrontEndPin.Debug"/> is false. The result is recorded in section 12.1 of the design and is
-    /// NOT re-run on any leg. This test's job starts where that measurement ended: nothing has moved since.
+    /// <see cref="SpirvFrontEndPin.Debug"/> is false. That measurement is recorded in section 12.1 of the design
+    /// and stands as the historical record of what licensed the goldens carrying over. The same comparison now
+    /// runs on every leg as a standing test, because the equality is not true by construction: the pin governs
+    /// the engine's own front-end seat and the incumbent keeps the library defaults. This test's job starts where
+    /// that measurement ended: nothing has moved since.
     /// </para>
     /// <para>
     /// DEVICE-FREE AND ON EVERY LEG. The front end runs on the CPU through a native that ships per RID and already
@@ -49,8 +53,9 @@ namespace KhaozEngine.Tests.Gpu
     /// BAKING. <c>KE_UPDATE_SPIRV_HASHES=1 dotnet test --filter VulkanSpirvByteEquality</c> rewrites the table and
     /// passes. Do that ONLY when a shader source or the pinned front-end options changed ON PURPOSE, and read the
     /// diff: a one-line GLSL edit moving one program's hash is expected, and the same edit moving every program
-    /// means the OPTIONS moved instead. The second case invalidates the parity measurement above along with the
-    /// goldens it licenses, so it is re-taken rather than re-baked.
+    /// means the OPTIONS moved instead. The second case puts the parity claim above in question along with the
+    /// goldens it licenses, so read <see cref="VulkanSpirvIncumbentParityTests"/>'s result before re-baking: if
+    /// it is red as well, the two paths have diverged and a bake here hides that rather than fixing it.
     /// </para>
     /// <para>
     /// THE SPIR-V IS DUMPED ON FAILURE to <c>Gpu/spirv-evidence/</c> as <c>.spv</c> files, for the same reason the
@@ -232,13 +237,15 @@ namespace KhaozEngine.Tests.Gpu
                 .Append("#\n")
                 .Append("# These are the bytes vkCreateShaderModule receives verbatim on the native Vulkan\n")
                 .Append("# backend, and the bytes the incumbent Veldrid Vulkan path receives too: that equality\n")
-                .Append("# was measured once, on 2026-08-08, 76 of 76 stages byte-identical, and recorded in\n")
-                .Append("# section 12.1 of docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md. This table is\n")
-                .Append("# NOT that measurement: it is a DRIFT detector baked from this path's own emission.\n")
+                .Append("# was measured on 2026-08-08, 76 of 76 stages byte-identical, recorded in section 12.1\n")
+                .Append("# of docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md, and is asserted on every\n")
+                .Append("# leg by VulkanSpirvIncumbentParityTests. This table is NEITHER: it is a DRIFT detector\n")
+                .Append("# baked from this path's own emission.\n")
                 .Append("#\n")
                 .Append("# Re-bake with KE_UPDATE_SPIRV_HASHES=1 and read the diff. One program moving is a\n")
-                .Append("# shader edit. Every program moving at once is the options, which invalidates the parity\n")
-                .Append("# measurement and the vulkan golden family it licenses.\n")
+                .Append("# shader edit. Every program moving at once is the options, which puts the parity claim\n")
+                .Append("# and the vulkan golden family it licenses in question: read the parity test's result\n")
+                .Append("# before baking.\n")
                 .Append("#\n")
                 .Append("# Entries: ")
                 .Append(emitted.Count.ToString(CultureInfo.InvariantCulture))

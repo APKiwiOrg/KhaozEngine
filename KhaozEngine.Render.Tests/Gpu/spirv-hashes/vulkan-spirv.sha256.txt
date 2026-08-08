@@ -4,13 +4,15 @@
 #
 # These are the bytes vkCreateShaderModule receives verbatim on the native Vulkan
 # backend, and the bytes the incumbent Veldrid Vulkan path receives too: that equality
-# was measured once, on 2026-08-08, 76 of 76 stages byte-identical, and recorded in
-# section 12.1 of docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md. This table is
-# NOT that measurement: it is a DRIFT detector baked from this path's own emission.
+# was measured on 2026-08-08, 76 of 76 stages byte-identical, recorded in section 12.1
+# of docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md, and is asserted on every
+# leg by VulkanSpirvIncumbentParityTests. This table is NEITHER: it is a DRIFT detector
+# baked from this path's own emission.
 #
 # Re-bake with KE_UPDATE_SPIRV_HASHES=1 and read the diff. One program moving is a
-# shader edit. Every program moving at once is the options, which invalidates the parity
-# measurement and the vulkan golden family it licenses.
+# shader edit. Every program moving at once is the options, which puts the parity claim
+# and the vulkan golden family it licenses in question: read the parity test's result
+# before baking.
 #
 # Entries: 76
 Beam.fragment ddfdd233fb0210d04bcb8edec825cf9dc0862cb9311a1f25ecadc37bbd0025ca

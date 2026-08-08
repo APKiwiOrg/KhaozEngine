@@ -1530,11 +1530,16 @@ pins over a cross-compiler, no signature workarounds. Phase 2's section 8, which
 an eight-line counterpart here. That is not luck, it is P2 paying out: the edge was confined to one file in
 `KhaozEngine.Gpu` precisely so a later backend could take the half it needs.
 
-Both seats that produce SPIR-V in this engine make the same call with the same options, and there is no debug or
-optimisation knob on that leg anywhere in the repo, which is worth stating because the D3D11 path has one on ITS
-leg and a reader may go looking for the equivalent. **So the native backend hands `vkCreateShaderModule` the
-same bytes the incumbent hands it today**, which makes the 36 goldens test the BACKEND and nothing else, with
-the compiler held constant by construction.
+Every ENGINE-OWNED seat that produces SPIR-V goes through `SpirvFrontEnd` and therefore under the same pinned
+options, and there is no debug or optimisation knob on that leg anywhere in the repo, which is worth stating
+because the D3D11 path has one on ITS leg and a reader may go looking for the equivalent. The incumbent
+`VeldridGpuDevice` is NOT one of those seats and is not meant to be: it hands GLSL to `CreateFromSpirv`, which
+runs the front end internally, and on its compute path it calls `CompileGlslToSpirv` itself with
+`GlslCompileOptions.Default` so it can read the workgroup size back. That wrapper leaves the graph only when
+Veldrid itself does, so it keeps the library's defaults on purpose. **So the native backend hands
+`vkCreateShaderModule` the same bytes the incumbent hands it today**, which makes the 36 goldens test the
+BACKEND and nothing else. That sentence is a MEASURED and ASSERTED fact rather than one held by construction,
+and the difference is the whole subject of the rest of this section.
 
 **And here is the caveat, taken from phase 2's own correction rather than rediscovered.** The D3D11
 byte-equality test carries a warning in its header that must be transplanted with the pattern: its hash table is
@@ -1548,11 +1553,22 @@ So V-S2 is TWO artefacts, not one:
 1. **`SpirvFrontEndPin`**, the analogue of `HlslCrossCompilePin`: the front-end options stated as constants with
    a citation, plus an `Identity` string built FROM those constants so a pin change moves every derived cache
    key by construction.
-2. **A one-off in-process parity measurement**, taken and RECORDED in this document before the first golden run,
-   compiling every shipped program through both the incumbent's path and the native path in one process and
-   asserting byte equality. That is the fact that licenses "no rebake", and V-T5's per-program hash table guards
-   against drift from that point on. Recording the measurement's date and result here is the whole discipline: a
-   reader who mistakes the drift test for the parity test will believe a proof that was never taken.
+2. **A parity check against the incumbent's own path**, compiling every shipped program through both paths in
+   one process and asserting byte equality. It was taken first as a ONE-OFF measurement, RECORDED in this
+   document before the first golden run, and that recording is the fact that licenses "no rebake". V-T5's
+   per-program hash table guards against drift from that point on. Recording the measurement's date and result
+   here is the whole discipline: a reader who mistakes the drift test for the parity test will believe a proof
+   that was never taken.
+
+**The measurement is now also a standing test, added in review.** `VulkanSpirvIncumbentParityTests` makes the
+same comparison over the same 76 stages on every leg, so parity stops being a fact about one afternoon and
+becomes a fact about the current tree. The one-off measurement below is unchanged and stands as the historical
+record of what licensed the goldens carrying over. The reason to have both is that the equality is NOT true by
+construction: the pin governs the engine's own front-end seat and the incumbent wrapper keeps
+`GlslCompileOptions.Default`, so the two sets are maintained independently and a deliberate change to either one
+silently moves one side of an equality nothing else in the net is watching. A red run there means they have
+diverged, which means the committed `vulkan` goldens are baked on one emission and asserted against another, and
+the response is to decide which side moved rather than to re-bake the hash table.
 
 **THE MEASUREMENT, TAKEN 2026-08-08, BEFORE THE FIRST GOLDEN RUN. 76 of 76 stages byte-identical, 0
 mismatches.** Every shipped program was compiled twice in one process and the two SPIR-V modules compared byte
@@ -1569,10 +1585,11 @@ over unmodified.
 Two consequences worth stating rather than leaving to be re-derived. The compile LABEL not reaching the bytes is
 also what makes V-S7's module dedup work across programs: the same measurement pass counted 59 DISTINCT modules
 behind those 76 emissions, so a third of them are shared, and a label that reached the bytes would have made all
-76 distinct while looking identical from the outside. And the measurement is not re-run on any leg, deliberately.
-Re-taking it is the correct response to `VulkanSpirvByteEqualityTests` moving EVERY program at once, which means
-the pinned options moved, and re-baking that table instead would leave a proof nobody has taken standing behind
-36 goldens.
+76 distinct while looking identical from the outside. And the recorded measurement above is a historical
+artefact that is never edited or re-taken by hand: the standing test is what re-checks the claim now, and it is
+also what turns `VulkanSpirvByteEqualityTests` moving EVERY program at once into a two-test failure rather than
+a one-test puzzle. Re-baking that table on its own would leave a proof nobody has taken standing behind 36
+goldens, which is exactly what the standing test refuses to let happen quietly.
 
 Even with the caveat this is materially stronger than phase 2's position, where the pin sat over an
 INTERMEDIATE (emitted HLSL) that then went through FXC. Here there is no intermediate and no cross-compile.

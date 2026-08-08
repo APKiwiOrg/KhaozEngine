@@ -52,7 +52,13 @@ namespace KhaozEngine.Tests.Gpu
         readonly List<VulkanViewportRect> _viewports = new();
         readonly List<VulkanScissorRect> _scissors = new();
         readonly List<VulkanRecordedClear> _clears = new();
-        readonly List<string> _trace = new();
+        readonly List<string> _trace;
+
+        /// <param name="trace">A trace list to APPEND TO rather than own, so a test can interleave this seam's
+        /// calls with another fake's and assert their ORDER. That is the only way to pin that the attachment
+        /// transitions (V-F7) land before <c>vkCmdBeginRendering</c> rather than inside the instance, which is a
+        /// difference two separate call logs cannot see. Its own list when null.</param>
+        internal FakeVulkanRenderApi(List<string>? trace = null) => _trace = trace ?? new List<string>();
 
         /// <summary>Every <c>vkCmdBeginRendering</c>, in order.</summary>
         internal IReadOnlyList<VulkanRecordedBegin> Begins => _begins;

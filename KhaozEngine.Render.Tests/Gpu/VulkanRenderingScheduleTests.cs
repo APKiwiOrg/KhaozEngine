@@ -571,11 +571,15 @@ namespace KhaozEngine.Tests.Gpu
             {
                 attachments[i] = new VulkanAttachment(
                     id * 100 + (ulong)i + 1, id * 200 + (ulong)i + 1, GpuPixelFormat.R8G8B8A8UNorm,
-                    DepthStencil: false);
+                    DepthStencil: false, VulkanRestingLayout.ColorAttachmentOptimal);
             }
 
+            // RESTING IN THEIR ATTACHMENT LAYOUTS, which is what a plain render target and a plain depth target do,
+            // so nothing here owes a transition and these tests measure the begin schedule alone. The barrier half
+            // is VulkanLayoutTrackerTests, which builds targets that rest elsewhere on purpose.
             VulkanAttachment depthAttachment = depth
-                ? new VulkanAttachment(id * 100 + 99, id * 200 + 99, depthFormat, DepthStencil: true)
+                ? new VulkanAttachment(id * 100 + 99, id * 200 + 99, depthFormat, DepthStencil: true,
+                    VulkanRestingLayout.DepthStencilAttachmentOptimal)
                 : default;
 
             return new VulkanBoundFramebuffer(id, width, height, attachments, depthAttachment);

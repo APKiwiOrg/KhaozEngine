@@ -126,6 +126,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         readonly VulkanStagingSource _staging;
         readonly VulkanSetupCommands _setup;
         readonly VulkanDescriptors _descriptors;
+        readonly VulkanShaderModuleCache _modules;
         readonly VulkanResourceFactory _factory;
         readonly VulkanStagingMaps _maps = new();
         readonly VulkanSampler _pointSampler;
@@ -149,7 +150,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             VulkanDeviceLiveness liveness, VulkanDeviceLossLatch loss, VulkanTimeline timeline,
             IVulkanDeviceMemoryApi memoryApi, VulkanMemoryFacts memoryFacts, IVulkanCommandApi commands,
             IVulkanResourceApi resourceApi, IVulkanSetupSink setupSink, IVulkanDescriptorApi descriptorApi,
-            uint maxDynamicUniformBuffers, int framesInFlight)
+            IVulkanShaderApi shaderApi, uint maxDynamicUniformBuffers, int framesInFlight)
         {
             _instance = instance;
             _device = device;
@@ -206,7 +207,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _descriptors = new VulkanDescriptors(
                 new VulkanDescriptorOwner(descriptorApi, timeline, _retired), maxDynamicUniformBuffers);
 
-            _factory = new VulkanResourceFactory(_resources, _rings, _setup, _descriptors,
+            // THE SHADER MODULE CACHE (row 16), on the device rather than on the factory, so the dedup is per
+            // VkDevice: a module handle is a child of one device and sharing one across two would be a use of a
+            // handle the other device never made. It takes no timeline and no retire list, because nothing here
+            // is ever destroyed mid-life. Every handle is shared and they all go at teardown.
+            _modules = new VulkanShaderModuleCache(shaderApi);
+
+            _factory = new VulkanResourceFactory(_resources, _rings, _setup, _descriptors, _modules,
                 () => CreateCommandList(), () => _timeline.CreateFence(), capabilities,
                 memoryFacts.MinUniformBufferOffsetAlignment);
 
@@ -575,6 +582,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                         // as every other destroy.
                         ReportDescriptorTeardown(_descriptors.DestroyAll());
 
+                        // THE SHADER MODULES GO HERE TOO, and their position carries no constraint of its own: a
+                        // VkShaderModule may legally be destroyed while pipelines built from it are still alive,
+                        // because the pipeline consumed the code at creation. They are grouped with the descriptor
+                        // teardown because both are caches of SHARED handles that no wrapper's Dispose can end,
+                        // and both are skipped natively on a dead device by the same liveness token.
+                        ReportShaderTeardown(_modules.DestroyAll());
+
                         // Skips its own native destroy on the lost path, for the same reason, through the same
                         // liveness token.
                         _timeline.Dispose();
@@ -594,6 +608,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                         _setup.Retire(_retired);
                         ReportAbandoned(_retired.Abandon(), _memory.Abandon());
                         ReportDescriptorTeardown(_descriptors.DestroyAll());
+                        ReportShaderTeardown(_modules.DestroyAll());
                         _timeline.Dispose();
                     }
                 }
@@ -628,6 +643,18 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 + $"{destroyed.SetLayouts} shared descriptor set layouts and {destroyed.Pools} descriptor pools "
                 + "at teardown. Both layout kinds are CONTENT-SHARED, so these counts are distinct shapes rather "
                 + "than distinct IGpuResourceLayout objects.");
+        }
+
+        // Says how many VkShaderModules the device destroyed, which is a count of DISTINCT SPIR-V rather than of
+        // IGpuShaderSet objects: the shipped programs share stages heavily, so the two numbers differ on purpose
+        // and the gap is decision V-S7's dedup working. Debug rather than warn, since none of it is a defect.
+        void ReportShaderTeardown(int destroyed)
+        {
+            if (destroyed == 0) return;
+
+            log.Debug($"The native Vulkan device destroyed {destroyed} shared VkShaderModules at teardown: "
+                + _modules.Describe() + ". A module is shared by every program compiled from the same SPIR-V, so "
+                + "this is a count of distinct modules rather than of shader sets.");
         }
 
         // Says how many deferred destroys and how many memory chunks went unfreed on a dead device. A report

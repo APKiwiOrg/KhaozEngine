@@ -20,13 +20,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// flushed lazily. See <see cref="VulkanSetupCommands"/>.</para>
     ///
     /// <para><b>NOT EVERY MEMBER IS BUILT YET, and each one that is not names the row that builds it.</b> Row 9
-    /// owns buffers, textures, samplers, command lists and fences, and row 10
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/520) added RESOURCE LAYOUTS and RESOURCE SETS: a
+    /// owns buffers, textures, samplers, command lists and fences, row 10
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/520) added RESOURCE LAYOUTS and RESOURCE SETS (a
     /// content-deduplicated <c>VkDescriptorSetLayout</c> and one <c>VkDescriptorSet</c> allocated and written
-    /// once. Framebuffers are row 12's, shader sets are row 16's and pipelines are row 13's, and each refuses with
-    /// its own issue in the message rather than returning something that fails later somewhere less informative.
-    /// That is the same discipline <c>D3D11ResourceFactory</c> established between its own row and the ones that
-    /// filled it in, and this paragraph is a ledger: a stale one is worse than none.</para>
+    /// once), and row 16 (https://github.com/APKiwiOrg/KhaozEngine/issues/526) added SHADER SETS and COMPUTE
+    /// SHADERS: GLSL to SPIR-V through the engine's own front end, then <c>vkCreateShaderModule</c> over the bytes
+    /// verbatim, with the modules shared by SPIR-V hash. Framebuffers are row 12's and pipelines are row 13's, and
+    /// each refuses with its own issue in the message rather than returning something that fails later somewhere
+    /// less informative. That is the same discipline <c>D3D11ResourceFactory</c> established between its own row
+    /// and the ones that filled it in, and this paragraph is a ledger: a stale one is worse than none.</para>
     ///
     /// <para><b>AND THE DESCRIPTOR SUBSYSTEM IS HELD HERE RATHER THAN ON THE RESOURCE OWNER, WHICH IS DECISION
     /// V-D2 (6.3).</b> The recording type's field graph legitimately reaches a <see cref="VulkanResourceOwner"/>
@@ -47,6 +49,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         readonly VulkanRingAllocator _rings;
         readonly VulkanSetupCommands _setup;
         readonly VulkanDescriptors _descriptors;
+        readonly VulkanShaderModuleCache _modules;
         readonly Func<IGpuCommandList> _createCommandList;
         readonly Func<IGpuFence> _createFence;
         readonly ulong _minUniformBufferOffsetAlignment;
@@ -59,6 +62,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="descriptors">The device's ONE descriptor subsystem: the two content-dedup caches and the
         /// pools (row 10). It is held HERE and by the device and by nothing a recorder can reach, which is
         /// decision V-D2's structural enforcement rather than a preference.</param>
+        /// <param name="modules">The device's ONE <c>VkShaderModule</c> cache (row 16), which dedups by SPIR-V
+        /// hash. It is the device's rather than this factory's for the reason the descriptor subsystem is: a
+        /// second cache would hand out two handles for one module and destroy neither at the right time.</param>
         /// <param name="createCommandList">The device's own list factory. It comes from the device rather than
         /// being built here for the reason <c>D3D11ResourceFactory</c>'s equivalent does: the depth, the timeline
         /// and the backpressure accumulator a list gates on are all the device's, and threading them through this
@@ -70,14 +76,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// change.</param>
         /// <param name="minUniformBufferOffsetAlignment">The device limit the ring stride is rounded to.</param>
         internal VulkanResourceFactory(VulkanResourceOwner owner, VulkanRingAllocator rings,
-            VulkanSetupCommands setup, VulkanDescriptors descriptors, Func<IGpuCommandList> createCommandList,
-            Func<IGpuFence> createFence, in GpuCapabilities capabilities,
+            VulkanSetupCommands setup, VulkanDescriptors descriptors, VulkanShaderModuleCache modules,
+            Func<IGpuCommandList> createCommandList, Func<IGpuFence> createFence, in GpuCapabilities capabilities,
             ulong minUniformBufferOffsetAlignment = VulkanRingStride.OffsetAlignmentFloor)
         {
             ArgumentNullException.ThrowIfNull(owner);
             ArgumentNullException.ThrowIfNull(rings);
             ArgumentNullException.ThrowIfNull(setup);
             ArgumentNullException.ThrowIfNull(descriptors);
+            ArgumentNullException.ThrowIfNull(modules);
             ArgumentNullException.ThrowIfNull(createCommandList);
             ArgumentNullException.ThrowIfNull(createFence);
 
@@ -85,6 +92,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _rings = rings;
             _setup = setup;
             _descriptors = descriptors;
+            _modules = modules;
             _createCommandList = createCommandList;
             _createFence = createFence;
             _minUniformBufferOffsetAlignment = minUniformBufferOffsetAlignment;
@@ -191,12 +199,29 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             => _descriptors.CreateSet(d);
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// THERE IS NO CROSS-COMPILATION HERE AND THAT IS THE HEADLINE (V-S1). The seam's name says "FromSpirv"
+        /// and on this backend it is literal: the engine's own front end turns each GLSL 450 source into SPIR-V
+        /// and <c>vkCreateShaderModule</c> takes the bytes verbatim. No HLSL, no FXC, no register numbering and no
+        /// reflection read back off the module.
+        /// <para>
+        /// THE MODULES ARE SHARED BY SPIR-V HASH (V-S7), so eleven fullscreen post programs name ONE vertex
+        /// module, and <c>IGpuShaderSet.Dispose</c> destroys nothing. See <see cref="VulkanShaderModuleCache"/>.
+        /// </para>
+        /// </remarks>
+        /// <exception cref="ShaderValidationException">A source failed to compile to SPIR-V.</exception>
         public IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl)
-            => throw NotBuiltYet("Creating a shader set", ShaderRow);
+            => new VulkanShaderSet(_modules, vertGlsl, fragGlsl);
 
         /// <inheritdoc/>
+        /// <remarks>The compute twin, with the workgroup size read out of the module itself rather than taken
+        /// from a caller. There is no capability gate in front of it, because this backend's
+        /// <see cref="GpuCapabilities.SupportsCompute"/> is unconditionally true, for the same reason
+        /// <see cref="CreateFence"/> has none.</remarks>
+        /// <exception cref="ShaderValidationException">The source failed to compile to SPIR-V, or declares no
+        /// resolvable workgroup size.</exception>
         public IGpuComputeShader CreateComputeShaderFromSpirv(string computeGlsl)
-            => throw NotBuiltYet("Creating a compute shader", ShaderRow);
+            => new VulkanComputeShader(_modules, computeGlsl);
 
         /// <inheritdoc/>
         public IGpuPipeline CreateGraphicsPipeline(in GpuPipelineDescription d)
@@ -208,17 +233,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         // The row that owns each unbuilt member, as a full URL, because these messages are read by somebody who has
         // just hit one and needs to know whether to wait for a row or file a bug.
-        const string DescriptorRow = "the descriptor row (https://github.com/APKiwiOrg/KhaozEngine/issues/520)";
         const string RenderingRow =
             "the dynamic-rendering row (https://github.com/APKiwiOrg/KhaozEngine/issues/522)";
         const string PipelineRow = "the pipeline row (https://github.com/APKiwiOrg/KhaozEngine/issues/523)";
-        const string ShaderRow = "the shader-path row (https://github.com/APKiwiOrg/KhaozEngine/issues/526)";
 
         static NotSupportedException NotBuiltYet(string what, string row)
             => new($"{what} is not built yet on the native Vulkan backend: it lands in {row}. Buffers, textures, "
-                + "samplers, command lists, fences, resource layouts and resource sets ARE live (work-breakdown "
-                + "rows 9 and 10, https://github.com/APKiwiOrg/KhaozEngine/issues/519 and "
-                + "https://github.com/APKiwiOrg/KhaozEngine/issues/520). This is a statement about the package and "
+                + "samplers, command lists, fences, resource layouts, resource sets, shader sets and compute "
+                + "shaders ARE live (work-breakdown rows 9, 10 and 16, "
+                + "https://github.com/APKiwiOrg/KhaozEngine/issues/519, "
+                + "https://github.com/APKiwiOrg/KhaozEngine/issues/520 and "
+                + "https://github.com/APKiwiOrg/KhaozEngine/issues/526). This is a statement about the package and "
                 + "not about this machine. Select GpuBackendKind.Vulkan, which goes through Veldrid, for a fully "
                 + "working Vulkan device.");
     }

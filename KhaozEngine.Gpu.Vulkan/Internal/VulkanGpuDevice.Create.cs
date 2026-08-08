@@ -120,6 +120,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     // are: the type mapping, the content dedup, the pool sizing, the per-type accounting and the
                     // bind window all sit above it in device-free types.
                     new VulkanDescriptorApi(vk, device, loss, liveness),
+                    // THE SHADER SEAM (row 16), two driver calls wide, because Vulkan consumes SPIR-V and the
+                    // whole shader path above it is the engine's existing front end plus a hash-keyed dedup.
+                    new VulkanShaderApi(vk, device, loss, liveness),
                     // The device's own maxDescriptorSetUniformBuffersDynamic, read off the SAME physical-device
                     // read the support probe gated on, so 8.3's third and fourth defences measure against one
                     // number rather than two reads that can disagree.

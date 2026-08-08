@@ -36,8 +36,17 @@ clear plus `End` with no draw between them must still clear, because the incumbe
 sites and a golden depends on it, and under a deferred begin it is a begin and end pair with no draws. It flushes
 at `End` and at the next framebuffer change, and it needs no "did a draw happen" flag to detect: a begin CONSUMES
 the pending clears, so a clear still pending at the end of a pass is itself the proof that no draw came. Every
-command illegal inside a render pass instance ends it first, through one helper with one device-free test, which
-the dispatch, resolve, copy and mip-generation members call as they land in later rows.
+command illegal inside a render pass instance ends it first, through one helper with one device-free test.
+
+**The bulk staged `UpdateBuffer` is that helper's first live caller, and the wiring for it closes a cycle row 9
+left open.** A `vkCmdCopyBuffer` may not appear inside a render pass instance, so the staging path ends the pass
+before it records the copy, which is the split the uniform ring exists so a per-frame uniform write never pays.
+The scope it ends through IS the command list, and the list takes its own staging uploader in its constructor, so
+one of the two edges has to be wired second: the list wires it, from that constructor, because it owns both ends
+(it disposes the uploader and it implements the scope) and no construction path can then leave it half-wired. An
+unwired scope is the silent case, not a loud one, since the upload path asks a nullable scope and a null one is
+indistinguishable from "there is no pass to end". The dispatch, resolve and mip-generation members call the same
+helper as they land in rows 13 and 15.
 
 **The framebuffer-change guard wraps the whole of `SetFramebuffer`, and both halves of it are load-bearing.**
 There is no `SetViewport` on the seam at all: the engine gets a viewport because Veldrid's base
@@ -72,9 +81,8 @@ backend: nothing in the engine passes one, and honouring it would mean enabling 
 every pipeline's viewport count to its attachment count for a shape no shipped renderer has.
 
 **What is still owed.** Attachment layout transitions at the begin are the barrier row's (#524), and the
-attachments already carry their `VkImage` for it. `PrepareDraw` and the end-before-illegal-command helper are
-called by nothing yet: the pipelines are #523 and the draws, dispatches, copies and resolves are #525. That
-device still cannot render a pixel.
+attachments already carry their `VkImage` for it. `PrepareDraw` is called by nothing yet: the pipelines are #523
+and the draws, dispatches, copies and resolves are #525. That device still cannot render a pixel.
 
 ### Native Vulkan bind flush: two states, contiguous-run binds, and a compatibility prefix with a guard (#521)
 

@@ -726,6 +726,15 @@ change. It needs no "did a draw happen" flag: a begin consumes the pending clear
 the end of a pass is the proof that no draw came. Every command illegal inside a render pass instance (a
 dispatch, a resolve, a copy, a mip generation) ends the pending rendering first, through one helper.
 
+**A bulk `UpdateBuffer` is that helper's live caller today.** A staged write records a `vkCmdCopyBuffer`, which
+may not appear inside a render pass instance, so it ends the pass, takes the clear-only flush with it, copies and
+barriers, and the next draw begins the pass again. A ring-backed uniform write reaches none of that: it is a
+memcpy into the current segment and records nothing at all, which is the whole point of the ring. The scope the
+upload path ends through is the command list itself, handed to the list's own staging uploader from the list's
+constructor, because the list owns both ends of that cycle and wiring it anywhere else leaves a path that can
+forget the call. A forgotten call is silent rather than loud: the scope is nullable, and null reads as "there is
+no pass to end".
+
 **`SetFramebuffer` emits a viewport and a scissor ON A CHANGE ONLY, and the viewport's height is NEGATIVE.**
 There is no `SetViewport` on the seam: the engine gets a viewport because Veldrid's base
 `CommandList.SetFramebuffer` auto-calls `SetFullViewports` and `SetFullScissorRects`, wrapped in an identity
@@ -743,9 +752,10 @@ renderer has. The native Direct3D 11 backend refuses the same index for the same
 
 **What is not built yet, and where it lands.** The attachment layout transitions a begin owes are the barrier
 row's ([#524](https://github.com/APKiwiOrg/KhaozEngine/issues/524)), and the bound framebuffer already carries
-each attachment's `VkImage` for it. The pre-draw hook and the end-before-illegal-command helper are called by
-nothing yet: pipelines are [#523](https://github.com/APKiwiOrg/KhaozEngine/issues/523) and the draws, dispatches,
-copies and resolves are [#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525).
+each attachment's `VkImage` for it. The pre-draw hook is called by nothing yet, and the
+end-before-illegal-command helper is called only by the staged upload path above: pipelines are
+[#523](https://github.com/APKiwiOrg/KhaozEngine/issues/523) and the draws, dispatches, copies and resolves are
+[#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525).
 
 ## `KE_VULKAN_DEVICE`, `KE_VULKAN_VALIDATION` and `KE_VULKAN_FRAMES_IN_FLIGHT`
 

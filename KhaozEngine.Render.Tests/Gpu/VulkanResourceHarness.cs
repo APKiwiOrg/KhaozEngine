@@ -89,7 +89,10 @@ namespace KhaozEngine.Tests.Gpu
             DescriptorOwner = new VulkanDescriptorOwner(DescriptorApi, Timeline, Retired);
             Descriptors = new VulkanDescriptors(DescriptorOwner, maxDynamicUniformBuffers);
 
-            Factory = new VulkanResourceFactory(Owner, Rings, Setup, Descriptors,
+            ShaderApi = new FakeVulkanShaderApi();
+            Modules = new VulkanShaderModuleCache(ShaderApi);
+
+            Factory = new VulkanResourceFactory(Owner, Rings, Setup, Descriptors, Modules,
                 () => throw new NotSupportedException("This rig has no command list."),
                 () => Timeline.CreateFence(),
                 Capabilities);
@@ -141,6 +144,12 @@ namespace KhaozEngine.Tests.Gpu
         /// on the device's OWN timeline and retire list, so a set's deferred free lands in the same
         /// <see cref="Drain"/> every other deferred destroy does.</summary>
         internal VulkanDescriptors Descriptors { get; }
+
+        internal FakeVulkanShaderApi ShaderApi { get; }
+
+        /// <summary>The device's ONE <c>VkShaderModule</c> cache (row 16), which dedups by SPIR-V hash. Wired on
+        /// the fake seam, so a whole shader set can be built and the dedup asserted with no loader.</summary>
+        internal VulkanShaderModuleCache Modules { get; }
 
         internal VulkanResourceFactory Factory { get; }
 

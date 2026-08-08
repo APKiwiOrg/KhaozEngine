@@ -496,12 +496,6 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Contains("522",
                 Assert.Throws<NotSupportedException>(() => factory.CreateFramebuffer(null)).Message,
                 StringComparison.Ordinal);
-            Assert.Contains("526",
-                Assert.Throws<NotSupportedException>(() => factory.CreateShadersFromSpirv("a", "b")).Message,
-                StringComparison.Ordinal);
-            Assert.Contains("526",
-                Assert.Throws<NotSupportedException>(() => factory.CreateComputeShaderFromSpirv("a")).Message,
-                StringComparison.Ordinal);
             Assert.Contains("523",
                 Assert.Throws<NotSupportedException>(() => factory.CreateGraphicsPipeline(default)).Message,
                 StringComparison.Ordinal);
@@ -536,13 +530,17 @@ namespace KhaozEngine.Tests.Gpu
                 // list below, which is the movement this pair of sets exists to make visible.
                 nameof(IGpuResourceFactory.CreateResourceLayout),
                 nameof(IGpuResourceFactory.CreateResourceSet),
+
+                // And row 16 (https://github.com/APKiwiOrg/KhaozEngine/issues/526) took these two, which is the
+                // shortest move in the program: Vulkan consumes SPIR-V, so the whole path is the engine's own
+                // front end plus vkCreateShaderModule over the bytes verbatim.
+                nameof(IGpuResourceFactory.CreateShadersFromSpirv),
+                nameof(IGpuResourceFactory.CreateComputeShaderFromSpirv),
             ];
 
             string[] refusing =
             [
                 nameof(IGpuResourceFactory.CreateFramebuffer),
-                nameof(IGpuResourceFactory.CreateShadersFromSpirv),
-                nameof(IGpuResourceFactory.CreateComputeShaderFromSpirv),
                 nameof(IGpuResourceFactory.CreateGraphicsPipeline),
                 nameof(IGpuResourceFactory.CreateComputePipeline),
             ];

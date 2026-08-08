@@ -84,8 +84,16 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // be shared, and is not, for the reason the two above are not.
             var layouts = new VulkanLayoutTracker(new VulkanBarrierRecorder(_instance.Value.Api));
 
+            // ROW 15's TWO SEAMS (https://github.com/APKiwiOrg/KhaozEngine/issues/525), stateless and per list for
+            // the reason the three above are. The DRAW emitter carries the descriptor flush and the command as one
+            // monomorphized pair, so it is the line the device-free budget substitutes to see a vkCmdDraw at all;
+            // the TRANSFER sink is the six copy, blit and resolve calls, which no budget counts because none of
+            // them scales with draw count.
+            var draws = new VulkanDrawEmitter(_instance.Value.Api);
+            var transfers = new VulkanTransferSink(_instance.Value.Api);
+
             return new VulkanCommandList(
-                ring, _retired, uploads, assertBoundSetLayouts, render, bindPipeline, layouts);
+                ring, _retired, uploads, assertBoundSetLayouts, render, bindPipeline, layouts, draws, transfers);
         }
 
         /// <summary>How many frames this device pipelines at (MV3), resolved once at creation from

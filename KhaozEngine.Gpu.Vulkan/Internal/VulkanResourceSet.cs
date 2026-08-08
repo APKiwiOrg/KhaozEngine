@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using Silk.NET.Vulkan;
 
 namespace KhaozEngine.Gpu.Vulkan.Internal
 {
@@ -73,6 +74,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         readonly VulkanDescriptorSetToken _token;
         readonly VulkanDynamicUniform[] _dynamicUniforms;
 
+        // ROW 15's HALF, resolved here for the reason the dynamic uniforms are: a set is created once at load time
+        // and bound thousands of times, so anything a draw could have computed is computed once. Null rather than
+        // an empty array for the common set that binds no image at all, so a bind of one allocates and scans
+        // nothing (https://github.com/APKiwiOrg/KhaozEngine/issues/525).
+        readonly VulkanBoundImage[]? _images;
+        readonly ulong[]? _storageBuffers;
+
         bool _disposed;
 
         /// <param name="api">The native descriptor seam, used for the ONE update and NOT held. A set that kept it
@@ -111,12 +119,16 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // constructors take from the other direction.
             var writes = new VulkanDescriptorWrite[layout.ElementCount];
             var dynamics = new List<VulkanDynamicUniform>(layout.DynamicUniformCount);
+            var images = new List<VulkanBoundImage>();
+            var storage = new List<ulong>();
             for (int i = 0; i < layout.ElementCount; i++)
             {
-                writes[i] = Resolve(layout, resources[i], i, dynamics);
+                writes[i] = Resolve(layout, resources[i], i, dynamics, images, storage);
             }
 
             _dynamicUniforms = dynamics.ToArray();
+            _images = images.Count == 0 ? null : images.ToArray();
+            _storageBuffers = storage.Count == 0 ? null : storage.ToArray();
 
             _token = pools.Allocate(layout.SetLayout, _counts);
 
@@ -166,7 +178,25 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// bind reads it.
         /// </para>
         /// </summary>
-        internal VulkanBoundSet AsBound => new(_token.Set, Layout.SetLayout, _dynamicUniforms);
+        internal VulkanBoundSet AsBound
+            => new(_token.Set, Layout.SetLayout, _dynamicUniforms, _images, _storageBuffers);
+
+        /// <summary>
+        /// Every image this set binds, with the layout that binding needs it in (row 15,
+        /// https://github.com/APKiwiOrg/KhaozEngine/issues/525). Empty for a set that binds none.
+        /// <para>
+        /// THE COMPUTE RULE 1 BARRIER IS BUILT OUT OF THIS. A storage texture a dispatch wrote is left in
+        /// <c>GENERAL</c>, and the next draw whose set SAMPLES it transitions it to
+        /// <c>SHADER_READ_ONLY_OPTIMAL</c> through <see cref="VulkanLayoutTracker"/>, which is the real image
+        /// barrier the design asks for at the sampled bind rather than the incumbent's queued layout restore
+        /// armed by a usage flag.
+        /// </para>
+        /// </summary>
+        internal ReadOnlySpan<VulkanBoundImage> Images => _images;
+
+        /// <summary>The <c>VkBuffer</c> of every storage buffer this set binds, which is the buffer half of the
+        /// dependent-dispatch hazard set (V-C2).</summary>
+        internal ReadOnlySpan<ulong> StorageBuffers => _storageBuffers;
 
         /// <summary>What this set spends in its pool, restored in full when it is freed.</summary>
         internal VulkanDescriptorCounts Counts => _counts;
@@ -197,7 +227,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         // ONE BINDING'S WRITE, fully resolved. Every refusal here names the element by its declared name, because
         // a message about "element 4" is unactionable in a seven-element material layout.
         VulkanDescriptorWrite Resolve(VulkanResourceLayout layout, IGpuBindableResource? resource, int index,
-            List<VulkanDynamicUniform> dynamics)
+            List<VulkanDynamicUniform> dynamics, List<VulkanBoundImage> images, List<ulong> storage)
         {
             VulkanDescriptorBinding binding = layout.Bindings[index];
             GpuResourceLayoutElement element = layout.Elements[index];
@@ -212,7 +242,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             }
 
             if (VulkanDescriptorPolicy.IsBuffer(binding.Type))
-                return ResolveBuffer(binding, element, resource, index, dynamics);
+                return ResolveBuffer(binding, element, resource, index, dynamics, storage);
 
             if (binding.Type == VulkanDescriptorType.Sampler)
             {
@@ -221,12 +251,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     BufferRange: 0, ImageView: 0, VulkanDescriptorImageLayout.None, sampler.Handle);
             }
 
-            return ResolveImage(binding, element, resource, index);
+            return ResolveImage(binding, element, resource, index, images);
         }
 
         VulkanDescriptorWrite ResolveBuffer(in VulkanDescriptorBinding binding,
             in GpuResourceLayoutElement element, IGpuBindableResource resource, int index,
-            List<VulkanDynamicUniform> dynamics)
+            List<VulkanDynamicUniform> dynamics, List<ulong> storage)
         {
             ulong rangeOffset;
             ulong range;
@@ -297,13 +327,20 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     nameof(resource));
             }
 
+            // THE DEPENDENT-DISPATCH HAZARD SET'S BUFFER HALF (V-C2). Every storage buffer this set binds is
+            // treated as WRITTEN by any dispatch that binds it, because the seam carries no read-only storage
+            // flag: GpuResourceKind has one structured kind for both directions, so a read-only binding is not
+            // expressible and assuming a write is the only safe reading.
+            storage.Add(buffer.Handle);
+
             // NON-DYNAMIC, so the range offset has nowhere else to go and goes into the descriptor's own offset.
             return new VulkanDescriptorWrite(binding.Binding, binding.Type, buffer.Handle, rangeOffset, range,
                 ImageView: 0, VulkanDescriptorImageLayout.None, Sampler: 0);
         }
 
         VulkanDescriptorWrite ResolveImage(in VulkanDescriptorBinding binding,
-            in GpuResourceLayoutElement element, IGpuBindableResource resource, int index)
+            in GpuResourceLayoutElement element, IGpuBindableResource resource, int index,
+            List<VulkanBoundImage> images)
         {
             VulkanTexture texture = Require<VulkanTexture>(resource, element, index, "a texture");
 
@@ -322,6 +359,20 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     + (sampled ? "Sampled" : "Storage") + " to its description.",
                     nameof(resource));
             }
+
+            // ROW 15's RECORD, WITH THE RANGE THE BINDING'S OWN VIEW COVERS. Full chain and every layer for a
+            // sampled binding, mip 0 and every layer for a storage one, which is exactly what
+            // VulkanTexture.CreateViews created and therefore exactly what the shader addresses. The tracker keys
+            // on the range, so naming a wider one here would make a mip chain mid-generation look like a partial
+            // overlap and be refused.
+            images.Add(new VulkanBoundImage(
+                new VulkanTrackedImage(
+                    texture.Image, texture.Format, texture.Plan.DepthStencil, texture.Resting,
+                    sampled
+                        ? VulkanImageSubrange.Whole(texture.MipLevels, texture.ActualArrayLayers)
+                        : new VulkanImageSubrange(0, 1, 0, texture.ActualArrayLayers)),
+                sampled ? ImageLayout.ShaderReadOnlyOptimal : ImageLayout.General,
+                Storage: !sampled));
 
             return new VulkanDescriptorWrite(binding.Binding, binding.Type, Buffer: 0, BufferOffset: 0,
                 BufferRange: 0, view, VulkanDescriptorPolicy.ImageLayoutFor(binding.Type), Sampler: 0);

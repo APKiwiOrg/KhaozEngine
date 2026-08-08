@@ -25,8 +25,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// compares against the pipeline layout's own at that index (V-R7).</param>
     /// <param name="DynamicUniforms">The set's dynamic uniform descriptors in BINDING ORDER, which is the order
     /// <c>pDynamicOffsets</c> is positional in.</param>
+    /// <param name="Images">Every image this set binds, with the layout that binding needs it in (row 15,
+    /// https://github.com/APKiwiOrg/KhaozEngine/issues/525). Null for a set that binds none, which is most of
+    /// them.</param>
+    /// <param name="StorageBuffers">The <c>VkBuffer</c> of every STORAGE buffer this set binds, which is the
+    /// buffer half of the dependent-dispatch hazard set (V-C2). Null when it binds none.</param>
     internal readonly record struct VulkanBoundSet(
-        ulong DescriptorSet, ulong SetLayout, VulkanDynamicUniform[]? DynamicUniforms)
+        ulong DescriptorSet, ulong SetLayout, VulkanDynamicUniform[]? DynamicUniforms,
+        VulkanBoundImage[]? Images, ulong[]? StorageBuffers)
     {
         /// <summary>Whether this record names a set at all. False for a slot never bound and for one bound to
         /// null, which the flush treats identically because they are.</summary>
@@ -34,7 +40,45 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         /// <summary>How many entries this set contributes to a run's <c>pDynamicOffsets</c>.</summary>
         internal int DynamicUniformCount => DynamicUniforms?.Length ?? 0;
+
+        /// <summary>The images this set binds, empty rather than null when it binds none, so the pre-command
+        /// transition loop has one shape.</summary>
+        internal ReadOnlySpan<VulkanBoundImage> BoundImages => Images;
+
+        /// <summary>The storage buffers this set binds, empty rather than null when it binds none.</summary>
+        internal ReadOnlySpan<ulong> BoundStorageBuffers => StorageBuffers;
     }
+
+    /// <summary>
+    /// ONE IMAGE A RESOURCE SET BINDS, AS PLAIN DATA, resolved at SET CREATION and read at every draw and dispatch
+    /// that binds it. What the compute rule 1 barrier is built out of (V-C1).
+    ///
+    /// <para><b>THE LAYOUT TRAVELS WITH THE BINDING RATHER THAN WITH THE TEXTURE</b>, because it is a property of
+    /// HOW the set binds the image and not of what the image is: one <c>Storage | Sampled</c> texture is
+    /// <c>GENERAL</c> where a compute set binds it as a storage image and <c>SHADER_READ_ONLY_OPTIMAL</c> where a
+    /// graphics set samples it, and rule 1 is exactly the transition between those two.</para>
+    ///
+    /// <para><b>AND THE RANGE DOES TOO, WHICH IS WHAT MAKES THE TRACKER'S CONTAINS-THEN-COLLAPSE RULE FIRE
+    /// CORRECTLY.</b> A sampled binding names the WHOLE mip chain, because the seam has no texture-view type and
+    /// the sampled view is full-chain by construction (V-M11), and a storage binding names mip 0 and every layer,
+    /// because a storage-image binding must cover exactly one level. So a texture written by compute and then
+    /// sampled presents the tracker with a wider range containing a narrower tracked one, which
+    /// <see cref="VulkanLayoutTracker"/> answers with one barrier per piece and then collapses.</para>
+    ///
+    /// <para><b>IT IS PLAIN DATA FOR THE REASON <see cref="VulkanBoundSet"/> IS.</b> A
+    /// <see cref="VulkanTexture"/> field would put <see cref="IVulkanResourceApi"/> into the recorder's graph
+    /// through <see cref="VulkanResourceOwner"/> and
+    /// <c>VulkanRecordingUnreachabilityTests.TheRecordingType_ReachesNoViewFactory</c> would fail. Handles,
+    /// integers and enums, with no route to a factory of any kind.</para>
+    /// </summary>
+    /// <param name="Image">The image and its range, with the resting layout <c>End</c> puts it back to.</param>
+    /// <param name="Layout">The layout this binding needs it in: <c>SHADER_READ_ONLY_OPTIMAL</c> for a sampled
+    /// image, <c>GENERAL</c> for a storage image.</param>
+    /// <param name="Storage">Whether this binding can WRITE it, which is what puts it into the
+    /// dependent-dispatch hazard set (V-C2). The seam carries no read-only storage flag, so every storage binding
+    /// is treated as a write.</param>
+    internal readonly record struct VulkanBoundImage(
+        VulkanTrackedImage Image, ImageLayout Layout, bool Storage);
 
     /// <summary>
     /// THE SCHEDULE OF DECISIONS V-R5, V-R6 AND V-R7 (section 6.2), and nothing else. It decides WHICH
@@ -164,6 +208,19 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         /// <summary>The per-draw offset recorded alongside it.</summary>
         internal uint RecordedOffset(uint slot) => slot < (uint)_recorded ? _slots[slot].DynamicOffset : 0;
+
+        /// <summary>
+        /// The whole plain-data record at a slot, default for one holding no set. Row 15
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/525) walks these before a draw and before a dispatch
+        /// for the images each set binds (the rule 1 transition) and the storage resources it names (the
+        /// dependent-dispatch hazard set).
+        /// <para>
+        /// IT ANSWERS FOR EVERY RECORDED SLOT AND NOT ONLY THE DIRTY ONES, deliberately. A set bound before a
+        /// dispatch that then moved one of its images to <c>GENERAL</c> is still bound at the next draw, and a
+        /// dirty-only walk would miss exactly the case rule 1 exists for.
+        /// </para>
+        /// </summary>
+        internal VulkanBoundSet BoundAt(uint slot) => slot < (uint)_recorded ? _slots[slot].Bound : default;
 
         /// <summary>Whether the next flush owes this slot a bind. The whole of the state a slot has (V-R5).</summary>
         internal bool IsDirty(uint slot) => slot < (uint)_recorded && _slots[slot].Dirty;

@@ -14,11 +14,11 @@ namespace KhaozEngine.Tests.Gpu
     /// Decisions V-R2, V-R3 and V-F9, over <see cref="FakeVulkanCommandApi"/> and
     /// <see cref="FakeVulkanTimelineSemaphore"/>.
     /// <para>
-    /// WHAT IS DELIBERATELY NOT HERE is recording CONTENT: rows 12, 13, 14 and 15 own the clearing, pipeline,
-    /// barrier and drawing members, and every one of them still refuses by naming its own row. The row that pins
-    /// the refusals is here, and the rows that replace them are theirs. Row 11
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/521) has taken the four resource-set binds across, whose
-    /// schedule is pinned by <see cref="VulkanBindFlushTests"/>.
+    /// WHAT IS DELIBERATELY NOT HERE is recording CONTENT: rows 11 to 15 own the binds, the clearing, the
+    /// pipelines, the barriers, the drawing and the transfers, and each has its own test file. What this file
+    /// keeps of them is the LEDGER below, which pins which seam members refuse and which are live, and that ledger
+    /// is now empty on the refusing side: row 15
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/525) took the last seven across.
     /// </para>
     /// </summary>
     public sealed class VulkanCommandListTests
@@ -365,21 +365,38 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(2, fixture.Retired.Count);
         }
 
-        // ---- The unbuilt members ----
+        // ---- The refusal ledger ----
 
         /// <summary>
-        /// EVERY RECORDING MEMBER REFUSES BY NAMING THE ROW THAT BUILDS IT, as a full URL, because the reader of
-        /// that message needs to know whether to wait for a row or file a bug. The list is scanned against the
-        /// interface below, so a seam member added later cannot quietly land here unattributed.
+        /// EVERY RECORDING MEMBER THAT STILL REFUSES REFUSES BY NAMING THE ROW THAT BUILDS IT, as a full URL,
+        /// because the reader of that message needs to know whether to wait for a row or file a bug.
+        ///
+        /// <para><b>THE LIST IS EMPTY, WHICH IS THE STATE ROW 15 PUT IT IN</b>
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/525). Kept rather than deleted, because the SHAPE is
+        /// what a future seam member lands in: a member added to <see cref="IGpuCommandList"/> that nothing on
+        /// this backend implements goes here with its row's URL, and
+        /// <see cref="TheRefusalCoverage_NamesEveryRecordingSeamMember"/> is what forces the choice.</para>
+        ///
+        /// <para><b>AND IT CANNOT PASS VACUOUSLY, which is the whole risk of an emptied ledger.</b> The first
+        /// assertion is that the list is empty AND that every member is therefore accounted for as BUILT, so a
+        /// member quietly dropped from both lists fails here rather than reading as "nothing left to
+        /// check".</para>
         /// </summary>
         [Fact]
         public void EveryUnbuiltRecordingMember_RefusesWithItsOwnRowUrl()
         {
+            (string Member, Action<IGpuCommandList> Call)[] unbuilt = EveryRecordingCommand().ToArray();
+
+            // THE LEDGER IS EMPTY AND EVERY MEMBER IS ON THE OTHER LIST. Asserted together, so this test says
+            // something even with nothing to iterate.
+            Assert.Empty(unbuilt);
+            Assert.Equal(RecordingSeamMembers().Length, BuiltRecordingMembers.Distinct().Count());
+
             using var fixture = new Fixture();
             using VulkanCommandList list = fixture.CreateList();
             list.Begin();
 
-            foreach ((string member, Action<IGpuCommandList> call) in EveryRecordingCommand())
+            foreach ((string member, Action<IGpuCommandList> call) in unbuilt)
             {
                 NotSupportedException refused = Assert.Throws<NotSupportedException>(() => call(list));
                 Assert.Contains("https://github.com/APKiwiOrg/KhaozEngine/issues/", refused.Message,
@@ -410,14 +427,7 @@ namespace KhaozEngine.Tests.Gpu
                 .OrderBy(n => n, StringComparer.Ordinal)
                 .ToArray();
 
-            string[] declared = typeof(IGpuCommandList).GetMethods()
-                .Select(m => m.Name)
-                .Where(n => n is not ("Begin" or "End" or "Dispose"))
-                .Distinct()
-                .OrderBy(n => n, StringComparer.Ordinal)
-                .ToArray();
-
-            Assert.Equal(declared, covered);
+            Assert.Equal(RecordingSeamMembers(), covered);
         }
 
         /// <summary>The members that have LEFT the refusal list, and the row that took each one. Asserted as a set
@@ -435,31 +445,35 @@ namespace KhaozEngine.Tests.Gpu
             nameof(IGpuCommandList.SetFullScissorRects),        // row 12, the framebuffer-change guard
             nameof(IGpuCommandList.SetPipeline),                // row 13, the bind plus the layout adoption
             nameof(IGpuCommandList.SetComputePipeline),         // row 13, the compute arm of the same
+            nameof(IGpuCommandList.SetVertexBuffer),            // row 15, the deferred bind, both overloads
+            nameof(IGpuCommandList.SetIndexBuffer),             // row 15, the same record with the element width
+            nameof(IGpuCommandList.Draw),                       // row 15, both overloads
+            nameof(IGpuCommandList.DrawIndexed),                // row 15
+            nameof(IGpuCommandList.Dispatch),                   // row 15, with the rule 1 and rule 2 barriers
+            nameof(IGpuCommandList.CopyBuffer),                 // row 15, with a memory barrier on either side
+            nameof(IGpuCommandList.CopyTexture),                // row 15, every level and every layer
+            nameof(IGpuCommandList.CopyTextureSubresource),     // row 15, both overloads
+            nameof(IGpuCommandList.GenerateMipmaps),            // row 15, the blit chain
+            nameof(IGpuCommandList.ResolveTexture),             // row 15, vkCmdResolveImage at mip 0 layer 0
         };
 
         // ---- Fixtures ----
 
-        /// <summary>One call per recording member. Arguments are irrelevant: every call is expected to refuse
-        /// before it looks at one.</summary>
+        /// <summary>Every recording member the seam declares, which is every method but the three lifecycle
+        /// ones.</summary>
+        static string[] RecordingSeamMembers()
+            => typeof(IGpuCommandList).GetMethods()
+                .Select(m => m.Name)
+                .Where(n => n is not ("Begin" or "End" or "Dispose"))
+                .Distinct()
+                .OrderBy(n => n, StringComparer.Ordinal)
+                .ToArray();
+
+        /// <summary>One call per recording member that still refuses. EMPTY since row 15
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/525): every member of the seam is built. See
+        /// <see cref="EveryUnbuiltRecordingMember_RefusesWithItsOwnRowUrl"/> for why the shape is kept.</summary>
         static IEnumerable<(string Member, Action<IGpuCommandList> Call)> EveryRecordingCommand()
-            => new (string, Action<IGpuCommandList>)[]
-            {
-                (nameof(IGpuCommandList.SetVertexBuffer), l => l.SetVertexBuffer(0, null!)),
-                (nameof(IGpuCommandList.SetVertexBuffer), l => l.SetVertexBuffer(0, null!, 64)),
-                (nameof(IGpuCommandList.SetIndexBuffer), l => l.SetIndexBuffer(null!, GpuIndexFormat.UInt32)),
-                (nameof(IGpuCommandList.Draw), l => l.Draw(3)),
-                (nameof(IGpuCommandList.Draw), l => l.Draw(3, 1, 0, 0)),
-                (nameof(IGpuCommandList.DrawIndexed), l => l.DrawIndexed(3, 1, 0, 0, 0)),
-                (nameof(IGpuCommandList.CopyBuffer), l => l.CopyBuffer(null!, 0, null!, 0, 16)),
-                (nameof(IGpuCommandList.CopyTexture), l => l.CopyTexture(null!, null!)),
-                (nameof(IGpuCommandList.CopyTextureSubresource),
-                    l => l.CopyTextureSubresource(null!, 0, 0, null!, 16, 16)),
-                (nameof(IGpuCommandList.CopyTextureSubresource),
-                    l => l.CopyTextureSubresource(null!, 0, 0, null!, 0, 0, 16, 16)),
-                (nameof(IGpuCommandList.GenerateMipmaps), l => l.GenerateMipmaps(null!)),
-                (nameof(IGpuCommandList.ResolveTexture), l => l.ResolveTexture(null!, null!)),
-                (nameof(IGpuCommandList.Dispatch), l => l.Dispatch(1, 1, 1)),
-            };
+            => Array.Empty<(string, Action<IGpuCommandList>)>();
 
         /// <summary>A device's worth of command-path machinery with no device: the seam, the timeline, the retire
         /// list, the backpressure accumulator and the submit queue, wired exactly as

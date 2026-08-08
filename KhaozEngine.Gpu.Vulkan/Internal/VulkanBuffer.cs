@@ -192,6 +192,38 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             });
         }
 
+        /// <summary>The buffer as this backend's own, or a named refusal for one another backend made. Row 15's
+        /// vertex, index and copy members bind through this, for the reason
+        /// <see cref="VulkanTexture.Require"/> exists on the other side.</summary>
+        internal static VulkanBuffer Require(IGpuBuffer? buffer, string what)
+            => buffer as VulkanBuffer
+                ?? throw new ArgumentException(
+                    $"The buffer handed to {what} was not created by the native Vulkan backend, so it carries no "
+                    + "VkBuffer. Create it through the same IGpuDevice.Factory.",
+                    nameof(buffer));
+
+        /// <summary>
+        /// The buffer, refused by name when its declared usage does not include <paramref name="required"/>. The
+        /// native <c>VkBuffer</c> carries only the usage bits its description asked for, so binding one the wrong
+        /// way is a validation error on a machine with the layer and undefined behaviour on one without.
+        /// </summary>
+        /// <param name="buffer">The seam's buffer.</param>
+        /// <param name="required">The usage bit the binding needs.</param>
+        /// <param name="what">The call, for the message.</param>
+        internal static VulkanBuffer RequireUsage(IGpuBuffer? buffer, GpuBufferUsage required, string what)
+        {
+            VulkanBuffer resolved = Require(buffer, what);
+            if ((resolved._usage & required) != 0) return resolved;
+
+            throw new ArgumentException(
+                "A " + resolved.Describe() + " was handed to " + what
+                + ", and it was not created with GpuBufferUsage." + required
+                + ". A native Vulkan buffer carries only the VkBufferUsageFlags its description asked for, so this "
+                + "bind names a buffer the driver was never told could be used that way. Add the usage to the "
+                + "buffer's description.",
+                nameof(buffer));
+        }
+
         /// <summary>The diagnostic line a refusal quotes, so a message about the wrong kind of buffer says which
         /// kind it got.</summary>
         internal string Describe()

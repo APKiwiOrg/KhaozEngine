@@ -63,8 +63,14 @@ namespace KhaozEngine.Tests.Gpu
             ResourceApi = new FakeVulkanResourceApi();
             SetupSink = new FakeVulkanSetupSink();
             CommandApi = new FakeVulkanCommandApi();
-            RenderApi = new FakeVulkanRenderApi();
+            RenderApi = new FakeVulkanRenderApi(Trace);
             Backpressure = new VulkanBackpressure();
+
+            // ROWS 14 AND 15's SEAMS, all three on ONE trace, which is what makes an ORDER assertable: the
+            // transitions before the begin, the geometry before the command, the pass ended before a copy.
+            Barriers = new FakeVulkanBarrierRecorder(Trace);
+            DrawEmitter = new FakeVulkanDrawEmitter(Trace);
+            TransferSink = new FakeVulkanTransferSink(Trace);
 
             Submits = new VulkanSubmitQueue(CommandApi, Timeline, SubmitLock);
             Rings = new VulkanRingAllocator(framesInFlight, Timeline, Backpressure, SubmitLock);
@@ -206,11 +212,42 @@ namespace KhaozEngine.Tests.Gpu
         /// takes is a handle or one of this backend's own records, so <see cref="RenderApi"/> records what a
         /// recording asked for and the whole deferred begin is drivable here.
         /// </para>
+        /// <para>
+        /// AND IT GETS ROW 14's AND ROW 15's SEAMS TOO, for the same reason: a barrier recorder, a draw emitter
+        /// and a transfer sink all speak handles and this backend's own records, so the layout tracker's
+        /// transitions, the pre-command order, the vertex run cutting and every copy region are drivable here.
+        /// The tracker is rebuilt per list, because a tracker is LIST-LOCAL by construction (V-F7) and a shared
+        /// one would be exactly the state that decision eliminates. The three FAKES are the fixture's, so a test
+        /// reads one trace covering every list it made.
+        /// </para>
         /// </summary>
         /// <param name="uploads">The list's staging uploader, or null for a list that records no bulk write.</param>
         internal VulkanCommandList CreateList(IVulkanRecordUploads? uploads = null)
-            => new(new VulkanCommandPoolRing(CommandApi, FramesInFlight, Timeline, Backpressure), Retired, uploads,
-                render: RenderApi, pipelines: PipelineBinder);
+        {
+            Layouts = new VulkanLayoutTracker(Barriers);
+
+            return new VulkanCommandList(
+                new VulkanCommandPoolRing(CommandApi, FramesInFlight, Timeline, Backpressure), Retired, uploads,
+                render: RenderApi, pipelines: PipelineBinder, layouts: Layouts, draws: DrawEmitter,
+                transfers: TransferSink);
+        }
+
+        /// <summary>The ONE ordering trace every fake below appends to, so a test can assert that a copy's layout
+        /// transitions precede its region and that a draw's transitions precede the render pass begin.</summary>
+        internal List<string> Trace { get; } = new();
+
+        /// <summary>Row 14's barrier emitter, shared by every list this fixture hands out.</summary>
+        internal FakeVulkanBarrierRecorder Barriers { get; }
+
+        /// <summary>Row 15's draw, dispatch and geometry-bind emitter, shared by every list.</summary>
+        internal FakeVulkanDrawEmitter DrawEmitter { get; }
+
+        /// <summary>Row 15's six transfer calls, shared by every list.</summary>
+        internal FakeVulkanTransferSink TransferSink { get; }
+
+        /// <summary>The layout tracker the LAST <see cref="CreateList"/> built, which is that list's own
+        /// (V-F7).</summary>
+        internal VulkanLayoutTracker? Layouts { get; private set; }
 
         /// <summary>
         /// A resource set over <paramref name="description"/> with a freshly created resource of the right kind

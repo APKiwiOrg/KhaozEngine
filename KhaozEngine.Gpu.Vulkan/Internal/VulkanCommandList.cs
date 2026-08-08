@@ -18,29 +18,30 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// first would encode twice, allocate once more, and move the driver-side encode inside the submit lock, which
     /// is the one serialised point in the frame. The largest unproven bet of phase 2 is simply absent here.</para>
     ///
-    /// <para><b>NOT EVERY MEMBER IS BUILT YET, and each one that is not names the row that builds it.</b> This is
-    /// work-breakdown row 7 (https://github.com/APKiwiOrg/KhaozEngine/issues/517), which owns the list's
-    /// LIFECYCLE: the pools, the slot machinery, <see cref="Begin"/>, <see cref="End"/>, disposal, and the
-    /// submit path on the device. Row 8 (https://github.com/APKiwiOrg/KhaozEngine/issues/518) added the record-time
-    /// <c>UpdateBuffer</c> on top of it. What is left of the RECORDING CONTENT is the draw-and-dispatch row, and
-    /// each unbuilt member throws a message naming it. This paragraph is a ledger and a stale one is worse than
-    /// none, which is the same discipline <c>VulkanGpuDevice</c>'s equivalent paragraph is under.</para>
+    /// <para><b>EVERY SEAM MEMBER IS BUILT, AND ROW 15 IS WHERE THAT BECAME TRUE</b>
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/525). This file is work-breakdown row 7
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/517), which owns the list's LIFECYCLE: the pools, the slot
+    /// machinery, <see cref="Begin"/>, <see cref="End"/>, disposal, and the submit path on the device. Every later
+    /// row filled in the recording content on top of it, and the last of them landed the draws, the dispatches,
+    /// the copies, the mip chain and the resolve. There is no refusing member left in this type: what used to be a
+    /// ledger of unbuilt ones is the list below of where each subsystem's decisions live.</para>
     ///
-    /// <para><b>THE MEMBERS THAT ARE LIVE:</b> <see cref="Begin"/>, <see cref="End"/> and <see cref="Dispose"/>,
-    /// everything the device's <c>Submit</c> reaches through this type, both <c>UpdateBuffer</c> overloads at
-    /// both ends of their routing, all four resource-set binds, BOTH PIPELINE BINDS (row 13,
-    /// https://github.com/APKiwiOrg/KhaozEngine/issues/523, which emit <c>vkCmdBindPipeline</c> and adopt the
-    /// pipeline's layout in the matching bind records), the whole RENDERING half (the framebuffer bind, both
-    /// clears and both scissor members) and the LAYOUT TRACKER (row 14,
-    /// https://github.com/APKiwiOrg/KhaozEngine/issues/524, which transitions every attachment at the deferred
-    /// begin and restores every touched texture to rest at <see cref="End"/>). On a RING-BACKED buffer an update
-    /// is a memcpy into the current segment which records nothing at all (9.2), and on any other buffer a staged copy
-    /// through this list's own arena with a barrier narrowed to the destination's real usage, which row 9 wired
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/519). A resource-set bind RECORDS ONLY into
+    /// <para><b>WHERE EACH MEMBER'S DECISIONS LIVE, because almost none of them are in this file.</b> Both
+    /// <c>UpdateBuffer</c> overloads route through <see cref="IVulkanRecordUploads"/>: on a RING-BACKED buffer an
+    /// update is a memcpy into the current segment which records nothing at all (9.2), and on any other buffer a
+    /// staged copy through this list's own arena with a barrier narrowed to the destination's real usage, which
+    /// row 9 wired (https://github.com/APKiwiOrg/KhaozEngine/issues/519). A resource-set bind RECORDS ONLY into
     /// <see cref="VulkanBindRecords"/> and issues nothing until a draw flushes it, which is row 11
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/521), and a framebuffer bind records into
-    /// <see cref="VulkanRenderingSchedule"/> and issues nothing until a draw opens the render pass instance,
-    /// which is row 12 (https://github.com/APKiwiOrg/KhaozEngine/issues/522).</para>
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/521). A framebuffer bind, both clears and both scissor
+    /// members record into <see cref="VulkanRenderingSchedule"/> and issue nothing until a draw opens the render
+    /// pass instance, which is row 12 (https://github.com/APKiwiOrg/KhaozEngine/issues/522). Both pipeline binds
+    /// emit <c>vkCmdBindPipeline</c> and adopt the pipeline's layout in the matching bind records, which is row 13
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/523). <see cref="VulkanLayoutTracker"/> transitions every
+    /// attachment at the deferred begin and restores every touched texture to rest at <see cref="End"/>, which is
+    /// row 14 (https://github.com/APKiwiOrg/KhaozEngine/issues/524). The vertex and index binds, the draws and the
+    /// dispatch are <see cref="VulkanDrawRecorder"/>'s, in <c>VulkanCommandList.Draws.cs</c>, and the copies, the
+    /// mip chain and the resolve are <see cref="VulkanTransferPlan"/>'s, in
+    /// <c>VulkanCommandList.Transfers.cs</c>.</para>
     ///
     /// <para><b>N LISTS RECORD CONCURRENTLY ON THIS BACKEND, AND THE PORTABLE CONTRACT IS UNCHANGED (V-R4).</b>
     /// The seam documents exactly one open recording per device, and that rule is what portable code is written
@@ -90,6 +91,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         // and End restores every touched texture through it: see VulkanLayoutTracker.
         readonly VulkanLayoutTracker? _layouts;
 
+        // ROW 15's PRE-COMMAND ORDER plus the vertex and index bind state and the dependent-dispatch hazard set,
+        // or null on a list with no draw seam. It is a TYPE rather than seven more members here because the ORDER
+        // is what can be wrong (https://github.com/APKiwiOrg/KhaozEngine/issues/556): see VulkanDrawRecorder.
+        readonly VulkanDrawRecorder? _draws;
+
+        // ROW 15's OTHER HALF, the six transfer members' one seam, or null on a list without it. The DECISIONS
+        // (which layouts, which regions, which blit chain) are VulkanTransferPlan's and are device-free.
+        readonly IVulkanTransferSink? _transfers;
+
         // The pipeline currently bound at each bind point, as a bare handle. Section 6.1 lists "both pipelines"
         // among what a Begin resets, and 6.2 clause 4 is what they are for: a rebind of the pipeline already
         // current does nothing at all, which is the fork's pipeline-identity guard kept.
@@ -126,10 +136,16 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// a different seam from the one that creates them.</param>
         /// <param name="layouts">Row 14's list-local layout tracker (V-F7), or null with no device behind this
         /// list. <see cref="Begin"/> resets it and <see cref="End"/> restores through it.</param>
+        /// <param name="draws">Row 15's record-time draw, dispatch and geometry-bind calls, or null with no device
+        /// behind this list. The ORDER around them is <see cref="VulkanDrawRecorder"/>'s and is built here, so
+        /// every list gets the same one.</param>
+        /// <param name="transfers">Row 15's six transfer calls (the copies, the blit chain and the resolve), or
+        /// null with no device behind this list.</param>
         internal VulkanCommandList(VulkanCommandPoolRing ring, VulkanRetireList retired,
             IVulkanRecordUploads? uploads = null, bool assertBoundSetLayouts = false,
             IVulkanRenderApi? render = null, IVulkanPipelineBinder? pipelines = null,
-            VulkanLayoutTracker? layouts = null)
+            VulkanLayoutTracker? layouts = null, IVulkanDrawEmitter? draws = null,
+            IVulkanTransferSink? transfers = null)
         {
             ArgumentNullException.ThrowIfNull(ring);
             ArgumentNullException.ThrowIfNull(retired);
@@ -142,6 +158,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _rendering = render is null ? null : new VulkanRenderingSchedule(render, layouts);
             _pipelineBinder = pipelines;
             _layouts = layouts;
+            _draws = draws is null ? null : new VulkanDrawRecorder(draws, layouts);
+            _transfers = transfers;
 
             // THE UPLOADER TAKES THIS LIST AS ITS RENDERING SCOPE, so a bulk staged UpdateBuffer ends the render
             // pass instance before it records its vkCmdCopyBuffer (V-A4). Wired HERE rather than by the device
@@ -290,6 +308,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // hold. Both, because the two bind points are tracked separately (V-C1).
             _boundGraphicsPipeline = 0;
             _boundComputePipeline = 0;
+
+            // ROW 15's HALF, and the same argument a fourth time: a fresh VkCommandBuffer has no vertex buffer at
+            // any binding and no index buffer, so a retained record would let the next recording's first bind take
+            // the identity guard's redundant path and draw out of whatever the driver's own state held. It also
+            // drops the dependent-dispatch hazard set, whose writes belonged to a recording nobody submitted.
+            _draws?.Reset();
 
             _recording = true;
         }
@@ -562,33 +586,6 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         }
 
         /// <inheritdoc/>
-        public void SetVertexBuffer(uint slot, IGpuBuffer b) => throw NotBuiltYet("Binding a vertex buffer", DrawRow);
-
-        /// <inheritdoc/>
-        public void SetVertexBuffer(uint slot, IGpuBuffer b, uint offsetBytes)
-            => throw NotBuiltYet("Binding a vertex buffer at an offset", DrawRow);
-
-        /// <inheritdoc/>
-        public void SetIndexBuffer(IGpuBuffer b, GpuIndexFormat fmt)
-            => throw NotBuiltYet("Binding an index buffer", DrawRow);
-
-        /// <inheritdoc/>
-        public void Draw(uint vertexCount, uint instanceCount, uint vertexStart, uint instanceStart)
-            => throw NotBuiltYet("Drawing", DrawRow);
-
-        /// <inheritdoc/>
-        public void Draw(uint vertexCount) => throw NotBuiltYet("Drawing", DrawRow);
-
-        /// <inheritdoc/>
-        public void DrawIndexed(uint indexCount, uint instanceCount, uint indexStart, int vertexOffset,
-            uint instanceStart)
-            => throw NotBuiltYet("Drawing indexed", DrawRow);
-
-        /// <inheritdoc/>
-        public void Dispatch(uint groupCountX, uint groupCountY, uint groupCountZ)
-            => throw NotBuiltYet("Dispatching compute", DrawRow);
-
-        /// <inheritdoc/>
         /// <remarks>The single-value overload, which is what every shipped renderer's per-draw uniform write is.
         /// Same routing as the span overload below.</remarks>
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, in T data) where T : unmanaged
@@ -759,22 +756,5 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _uploads.Upload(destination, offsetBytes, data);
         }
 
-        // The row that owns each unbuilt member, as a full URL, because these messages are read by somebody who
-        // has just hit one and needs to know whether to wait for a row or file a bug.
-        const string DrawRow = "the draw-and-dispatch row (https://github.com/APKiwiOrg/KhaozEngine/issues/525)";
-
-        // Named rather than a bare NotImplementedException, and it names WHAT IS LIVE as well as what is not,
-        // which is the shape VulkanGpuDevice's equivalent settled on: a reader who hits this needs to know whether
-        // the backend is unfinished or their machine is wrong, and those have different answers.
-        static NotSupportedException NotBuiltYet(string what, string row)
-            => new($"{what} is not built yet on the native Vulkan backend: it lands in {row}. The list's "
-                + "LIFECYCLE is live (work-breakdown row 7, "
-                + "https://github.com/APKiwiOrg/KhaozEngine/issues/517), and so are the resource-set binds, both "
-                + "pipeline binds, the layout tracker and the whole rendering half: Begin, End, the per-slot "
-                + "command pools, the submit path, the framebuffer bind, both clears, both scissor members and "
-                + "the attachment transitions all work, and what is missing is the draws, the dispatches and the "
-                + "copies. This is a statement about the package and not about this machine. Select "
-                + "GpuBackendKind.Vulkan, which "
-                + "goes through Veldrid, for a fully working Vulkan device.");
     }
 }

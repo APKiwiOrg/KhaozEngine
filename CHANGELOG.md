@@ -7,6 +7,99 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.34.0
 
+### Native Vulkan swapchain: a windowed device that presents, the OUT_OF_DATE boundary in full, and the acquire-wait counters (#527)
+
+`KhaozEngine.Gpu.Vulkan` creates WINDOWED devices. The provider's windowed refusal is gone, `SwapchainFramebuffer`
+hands back a real framebuffer whose identity never changes, `ResizeSwapchain` and `Present` are real, and
+`GpuDeviceCounters` gains an `AcquireWaitCount` and `AcquireWaitMs` pair with its two `GpuTelemetryChannels`
+names. Work-breakdown row 17 of the phase 3 program (#510). Nothing selects this backend by default, and nothing
+can be DRAWN through it yet: pipelines are #523, the barrier tracker that owns the present transition is #524 and
+the draw path is #525, so a windowed run gets a swapchain that acquires, resizes and presents around a frame that
+records nothing.
+
+**Not one line of the present path runs in CI, on any leg, ever, and that shaped the whole row.** A headless
+Vulkan device enables no surface extension at all, which is what lets the golden suite run on a machine with no
+display server. So the state machine sits above a two-interface seam and the ORDERING is what the tests assert:
+when the recreate runs, how many retries follow it, what an imageless frame binds, what is destroyed after what,
+and when the acquire-wait counter ticks. A green golden leg is not evidence about any of it, and a human at a
+window is the only instrument for the rest.
+
+**The format, the present mode, the image count and the rest are REPRODUCED from the incumbent exactly**, because
+they are visible only to a human eye and changing them buys nothing this phase is measuring: `B8G8R8A8_UNORM` in
+`SRGB_NONLINEAR`, `min(maxImageCount, minImageCount + 1)` images, `COLOR_ATTACHMENT | TRANSFER_DST`, `OPAQUE`
+composite alpha, `clipped`, no MSAA and no depth. `FIFO_RELAXED` under a vsync request permits tearing on a late
+frame and is arguably the wrong answer, and it is reproduced anyway, because the pacing work (#380) is where that
+gets decided with a measurement and this phase must not move the variable underneath it. Two deliberate
+departures, both bugs rather than behaviours: `preTransform` reads the surface's `currentTransform` rather than
+being hardcoded to `IDENTITY`, and the incumbent's sRGB fallback compares an already-`Undefined` format against
+an sRGB one, making its intended throw unreachable, so that shape is not copied and the refusal here is real.
+
+**The one behaviour that changes is FORCED rather than preferred.** The incumbent presents, immediately acquires
+the next image with a fence, and blocks the CPU on `vkWaitForFences` with an infinite timeout, while the following
+submit carries no image-availability wait semaphore and the present carries none either. That last part is a
+specification violation a validation layer flags, and a design that gates on validation cannot deliberately
+reproduce a configuration validation rejects. The acquire TIMING is kept, because acquiring at present time for
+the next frame is what makes the image index known before recording starts. The SYNCHRONISATION is replaced: the
+acquire signals a binary semaphore the frame's first submit waits on at `COLOR_ATTACHMENT_OUTPUT`, the submit
+signals the acquired image's render-finished semaphore, and the present waits on that. `KE_VULKAN_ACQUIRE=stall`
+restores the incumbent's shape exactly for the frame-pacing A/B, is documented as not usable with
+`KE_VULKAN_VALIDATION` for the reason above, and is removed at rollout gate 4 with the blocking path deleted.
+
+**The acquire semaphores are a RING indexed by a monotonic acquire counter, never by image index.** The semaphore
+is handed to `vkAcquireNextImageKHR` before the index is known, so indexing by image index reuses one that may
+still be pending from an acquire that returned a different image. It is the most common Vulkan swapchain bug and
+it manifests as a validation error and an intermittent hang rather than as a clean failure, which is the class
+that survives a five-minute windowed run. The ring is `max(FramesInFlight, imageCount) + 1` entries, sized on the
+maximum because acquires are paced by the presentation engine while recording is paced by the frame loop, and the
+reuse distance is asserted over a simulated sequence including `OUT_OF_DATE` returns.
+
+**The `OUT_OF_DATE` boundary is four questions rather than one, and all four are answered inside one method.**
+The recreate runs at that SAME boundary, so the semaphore handed to the failed acquire is retired by the
+recreate's unconditional drain rather than reused while pending or destroyed while pending. ONE fresh acquire
+follows it before the boundary returns, so an ordinary boundary and a recreating one leave the device in the same
+state and the imageless case exists in exactly one place. The retry is ONE: a second failure returns with the
+pending flag set, so a surface mid-resize cannot spin the boundary. And an imageless frame binds a device-owned
+ORPHAN TARGET at the current extent clamped to a minimum of 1 by 1, then records, submits and completes exactly
+like any other frame with only its present skipped, which is what keeps `SetFramebuffer` legal at every instant
+without a seam change and without a use-after-free. A skipped present is not a skipped frame, so `FramesBegun`
+counts it: the device opened it and the recording really happened.
+
+**A minimised window is survivable BY ARITHMETIC rather than by a special case.** Its surface reports every
+extent as zero, the clamp produces zero, and the resulting spec then reads as not creatable, so
+`vkCreateSwapchainKHR` is never called at a size the specification forbids and the frame goes to the orphan
+target until the window comes back. That closes the native Vulkan half of #81 structurally. The two sites that
+issue names, `AppWindow`'s framebuffer-resize forwarding and `VeldridGpuDevice.ResizeSwapchain`, are untouched
+and it stays open for them.
+
+**Resize, a runtime `SyncToVerticalBlank` change and a checked `vkQueuePresentKHR` result all queue the same
+recreate**, coalesced and applied at the next present boundary on the submit thread where the recreation provably
+owns the queue and no recording is in flight. Vulkan cannot change a swapchain's present mode in place, so vsync
+is a full recreate here rather than the argument of a present call it is on Direct3D 11. The incumbent ignores
+`vkQueuePresentKHR`'s result entirely. Recreation drains the timeline first, unconditionally, which is what makes
+retiring a possibly pending binary semaphore safe, and the new views are published onto the existing framebuffer
+wrapper BEFORE the old ones are destroyed, every time, which is the ordering that makes a use-after-free
+unreachable rather than merely unlikely. A creation that fails at a creatable extent keeps the old generation and
+retries at the next boundary, because that is the only response with no window in which the wrapper names a dead
+view.
+
+**One seam member pair is ADDED, and calling it "no seam change" would have cost the acquire A/B its result.**
+`GpuDeviceCounters` gains `AcquireWaitCount` and `AcquireWaitMs` with the `gpuAcquireWaits` and `gpuAcquireWaitMs`
+channel names, in the count-and-milliseconds shape every other reading on the struct already uses. Without them
+the A/B has only mean frame time to read, and on a machine pinned at its refresh rate both switch positions
+produce the same mean by construction. The pair goes on the populating constructor too, so the native Direct3D 11
+device's single call site passes zero, which is the honest reading on a backend whose present has no acquire to
+wait on. The count is a READING rather than a count of calls: the semaphore path probes with a zero timeout first
+and records only the blocking call that follows, and the stall path records every acquire because the call is a
+CPU block by construction.
+
+**One process still cannot hold a headless device and a windowed one at the same time** (#543). A live
+`VkInstance`'s extension list is fixed at creation and Vulkan offers no way to add one afterwards, so the second
+configuration is refused by name with the ordering rule that resolves it. Serving it would mean either a second
+instance, which abandons the single-instance decision quietly and reopens the loader race that model is being
+measured against, or creating every instance with the surface extensions, which takes the golden leg down on a
+machine with no display server. Doing nothing is the decision, and the reason is now written where a reader of
+either path finds it.
+
 ### Native Vulkan shaders: the toolchain splits at its seam, and the SPIR-V parity is measured before the goldens (#526)
 
 `KhaozEngine.Gpu.Vulkan`'s `CreateShadersFromSpirv` and `CreateComputeShaderFromSpirv` stop refusing, and the

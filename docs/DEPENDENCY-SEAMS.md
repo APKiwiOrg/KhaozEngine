@@ -579,15 +579,20 @@ bind, both clears and both scissor members, over a `vkCmdBeginRendering` deferre
 `VkRenderPass` and no `VkFramebuffer` behind it at all
 ([#522](https://github.com/APKiwiOrg/KhaozEngine/issues/522)). The factory also builds shader sets and compute
 shaders ([#526](https://github.com/APKiwiOrg/KhaozEngine/issues/526)), which is the row that split the shader
-seam in two (see the shader-seam section below). Nothing can be DRAWN yet and nothing can be
-presented: the remaining recording members are
-[#524](https://github.com/APKiwiOrg/KhaozEngine/issues/524) and
-[#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525), pipelines are
-[#523](https://github.com/APKiwiOrg/KhaozEngine/issues/523), and the windowed swapchain is
-[#527](https://github.com/APKiwiOrg/KhaozEngine/issues/527), which is what the windowed entry point still
-refuses by name. It registers under `GpuBackendKind.VulkanNative`, which landed in `17.32.0`, so the
-backend is selectable by name (`KE_GRAPHICS_BACKEND=vulkan-native`) and the windowed refusal arrives through the
-reported fallback. Nothing selects it by default.
+seam in two (see the shader-seam section below). Since
+[#527](https://github.com/APKiwiOrg/KhaozEngine/issues/527) the WINDOWED entry point is real too: a platform
+surface chosen from `GpuWindowKind`, `VK_KHR_swapchain` on the device, and `SwapchainFramebuffer`,
+`ResizeSwapchain` and `Present` all live behind a present boundary that acquires, resizes, recreates and
+presents. **That row also changes what the seam's "a resize reconfigures nothing" wording means here**: on
+Direct3D 11 and Metal vsync is an argument of the present call, and Vulkan cannot change a swapchain's present
+mode in place at all, so a runtime `SyncToVerticalBlank` change on this backend queues a full recreate applied at
+the next present boundary, exactly as a resize does. Nothing can be DRAWN yet: the remaining recording members
+are [#524](https://github.com/APKiwiOrg/KhaozEngine/issues/524) and
+[#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525) and pipelines are
+[#523](https://github.com/APKiwiOrg/KhaozEngine/issues/523), so a windowed run today acquires, resizes and
+presents around a frame that records nothing. It registers under `GpuBackendKind.VulkanNative`, which landed in
+`17.32.0`, so the backend is selectable by name (`KE_GRAPHICS_BACKEND=vulkan-native`) and a machine that cannot
+run it arrives through the reported fallback. Nothing selects it by default.
 
 ```
 KhaozEngine.Gpu.Vulkan -> KhaozEngine.Gpu      (the only direction, again)

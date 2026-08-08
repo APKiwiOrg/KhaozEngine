@@ -926,6 +926,17 @@ dispatches, and barriers. Clears, copies, mip generation, resolves and the rende
 straight to `vkCmd*` with no indirection, because nothing about them scales per draw and freezing numbers over
 them would gate on figures nobody should gate on.
 
+**Corrected in flight by row 12: the rendering class does get a line, and it is a DIFFERENT one.** "No
+indirection" above is a statement about the BUDGET, and taken literally it collides with 7.2's own requirement
+that the negative viewport height be asserted by a device-free test: Silk.NET's bindings are non-virtual, so an
+emission is observable only where there is a line to interpose on, and asserting the pure function instead tests
+the arithmetic rather than the emission, which is exactly the failure mode 7.2 describes (the arithmetic being
+right and the call site being wrong look identical from a green suite). So the begin, the end, the two
+dynamic-state setters and the two clear shapes sit on their own `IVulkanRenderApi`, a plain `ulong`-handle
+interface in the shape of `IVulkanCommandApi` rather than a generic-constrained counting sink. `IVkCmdSink` is
+untouched, no marginal is frozen over anything on the new seam, and row 11's pin that the budget seam names no
+viewport, no scissor and no begin still passes unchanged. The budget means exactly what it meant before.
+
 **Aiming it at D3D11's call classes would have been the mistake.** D3D11's #418 defect was one native call per
 resource per stage, because that API binds resources. Vulkan binds SETS and the resources went into the set at
 creation, so a full activation is one call. The Vulkan fan-out class is a completely different animal: per-draw

@@ -493,9 +493,6 @@ namespace KhaozEngine.Tests.Gpu
             var fixture = new VulkanResourceFixture();
             IGpuResourceFactory factory = fixture.Factory;
 
-            Assert.Contains("522",
-                Assert.Throws<NotSupportedException>(() => factory.CreateFramebuffer(null)).Message,
-                StringComparison.Ordinal);
             Assert.Contains("526",
                 Assert.Throws<NotSupportedException>(() => factory.CreateShadersFromSpirv("a", "b")).Message,
                 StringComparison.Ordinal);
@@ -536,11 +533,14 @@ namespace KhaozEngine.Tests.Gpu
                 // list below, which is the movement this pair of sets exists to make visible.
                 nameof(IGpuResourceFactory.CreateResourceLayout),
                 nameof(IGpuResourceFactory.CreateResourceSet),
+
+                // And row 12 (https://github.com/APKiwiOrg/KhaozEngine/issues/522) took this one, which is the
+                // creation that makes no native object at all: no VkFramebuffer and no VkRenderPass (V-A1).
+                nameof(IGpuResourceFactory.CreateFramebuffer),
             ];
 
             string[] refusing =
             [
-                nameof(IGpuResourceFactory.CreateFramebuffer),
                 nameof(IGpuResourceFactory.CreateShadersFromSpirv),
                 nameof(IGpuResourceFactory.CreateComputeShaderFromSpirv),
                 nameof(IGpuResourceFactory.CreateGraphicsPipeline),

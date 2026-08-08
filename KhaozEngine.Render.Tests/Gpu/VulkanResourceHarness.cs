@@ -58,6 +58,7 @@ namespace KhaozEngine.Tests.Gpu
             ResourceApi = new FakeVulkanResourceApi();
             SetupSink = new FakeVulkanSetupSink();
             CommandApi = new FakeVulkanCommandApi();
+            RenderApi = new FakeVulkanRenderApi();
             Backpressure = new VulkanBackpressure();
 
             Submits = new VulkanSubmitQueue(CommandApi, Timeline, SubmitLock);
@@ -119,6 +120,11 @@ namespace KhaozEngine.Tests.Gpu
 
         internal FakeVulkanCommandApi CommandApi { get; }
 
+        /// <summary>Row 12's six rendering calls, recorded rather than made. Every list <see cref="CreateList"/>
+        /// hands out records into this one, so a test reads the begins, the load ops, the viewport and the scissor
+        /// off it (https://github.com/APKiwiOrg/KhaozEngine/issues/522).</summary>
+        internal FakeVulkanRenderApi RenderApi { get; }
+
         internal VulkanBackpressure Backpressure { get; }
 
         internal VulkanSubmitQueue Submits { get; }
@@ -162,9 +168,15 @@ namespace KhaozEngine.Tests.Gpu
         /// No uploader, deliberately: the record-time write into a ring-backed uniform buffer needs none, and the
         /// staging path needs a real <c>Vk</c> that no device-free rig has.
         /// </para>
+        /// <para>
+        /// IT DOES GET THE RENDERING SEAM, because that one is device-free by construction: every argument it
+        /// takes is a handle or one of this backend's own records, so <see cref="RenderApi"/> records what a
+        /// recording asked for and the whole deferred begin is drivable here.
+        /// </para>
         /// </summary>
         internal VulkanCommandList CreateList()
-            => new(new VulkanCommandPoolRing(CommandApi, FramesInFlight, Timeline, Backpressure), Retired);
+            => new(new VulkanCommandPoolRing(CommandApi, FramesInFlight, Timeline, Backpressure), Retired,
+                render: RenderApi);
 
         /// <summary>
         /// A resource set over <paramref name="description"/> with a freshly created resource of the right kind

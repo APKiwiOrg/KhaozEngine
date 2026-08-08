@@ -8995,8 +8995,9 @@ which is what the liveness token makes safe.
 `GpuDeviceCounters`, also on `GpuDeviceContext.Counters` and `IGpuDevice.Counters`) reports, cumulative since the
 device was created: `FramesBegun`, `DrainCount` / `DrainMs` (time spent waiting for the GPU to go idle),
 `BackpressureStallCount` / `BackpressureStallMs` (frame boundaries that blocked on a uniform ring segment the GPU
-was still reading), and `OffTimelineDeferred` / `OffTimelineOutstanding`. Add them to a session's sample rows in
-one line:
+was still reading), `OffTimelineDeferred` / `OffTimelineOutstanding`, and `AcquireWaitCount` / `AcquireWaitMs`
+(present boundaries that blocked waiting for the presentation engine to hand back the next swapchain image). Add
+them to a session's sample rows in one line:
 
 ```csharp
 var row = new List<TelemetryChannel> { new("fps", _stats.Fps), new("frameMs", _stats.FrameMsAvg) };
@@ -9004,10 +9005,19 @@ GpuTelemetryChannels.AppendTo(row, Window.Counters);    // appends nothing at al
 _recorder.Sample(elapsedSeconds, row);
 ```
 
-**`HasValue` is false on every backend but this one, and that is not the same as zero.** Metal, Vulkan and the
-incumbent Direct3D11 path have neither a fence drain nor a segment ring to count, so they answer the default and
+**`HasValue` is false on the backends that keep no counters, and that is not the same as zero.** The two NATIVE
+backends answer true: Direct3D 11 since 17.32.0, and the native Vulkan backend since 17.34.0. Metal and the
+incumbent Veldrid paths have neither a fence drain nor a segment ring to count, so they answer the default and
 `AppendTo` writes no columns for them. That matters because ZERO STALLS IS THE GOOD RESULT: a capture full of
 zeros from a backend that never looked would read exactly like a clean run.
+
+**The acquire pair is what tells the two acquire models apart, and on a machine at a pinned refresh rate it is
+the ONLY thing that does.** `AcquireWaitCount` counts present boundaries that actually BLOCKED waiting for the
+next swapchain image, and it is a reading rather than a count of calls: the native Vulkan backend probes with a
+zero timeout first and records only the blocking call that follows. A backend that acquires with a semaphore and
+lets the GPU do the waiting reports zero here, and one that blocks the CPU reports one per frame, while both
+produce the same mean frame time by construction. Zero is a real reading rather than a gap on a backend with no
+acquire to wait on and on a headless device with no swapchain, which is exactly what `HasValue` is for.
 
 **The numbers are cumulative on purpose, so your sampling cadence stops mattering.** A row carrying "the frame
 that just ended" describes one frame in however many you skipped between rows. Subtract the first row's

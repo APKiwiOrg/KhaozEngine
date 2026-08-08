@@ -352,8 +352,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         /// <inheritdoc/>
         /// <remarks>
-        /// TWO PAIRS ARE MEASUREMENTS AND THE REST IS ARITHMETIC ABOUT SUBSYSTEMS THAT DO NOT EXIST YET, and the
-        /// difference matters enough to say here. <c>DrainCount</c> and <c>DrainMs</c> come off
+        /// EVERY FIELD IS NOW A MEASUREMENT TAKEN FROM THE SUBSYSTEM THAT OWNS IT, and which subsystem that is
+        /// matters enough to say here. <c>DrainCount</c> and <c>DrainMs</c> come off
         /// <see cref="VulkanTimeline.TotalDrain"/> and are the M2 numbers (V-F4). <c>BackpressureStallCount</c>
         /// and <c>BackpressureStallMs</c> come off <see cref="VulkanBackpressure"/> and are MV3's, counting BOTH
         /// of that accumulator's meanings on one number: a command list's <c>Begin</c> blocking on its own oldest
@@ -363,14 +363,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <c>OffTimelineDeferred</c> and <c>OffTimelineOutstanding</c> come off
         /// <see cref="VulkanRingAllocator.OffTimelinePatches"/> and are deliberately NOT folded into that number:
         /// a deferred patch is not a stall at all (see <see cref="VulkanRingPatchStats"/>).
-        /// <c>FramesBegun</c> is the one field still 0 because the thing that could move it is not built: no frame
-        /// has been OPENED, since <see cref="Present"/> is row 17's. That zero is literally true about this device
-        /// rather than a placeholder, which is the bar the struct's own "absent is not zero" rule sets for
-        /// reporting <c>HasValue</c> at all.
+        /// <c>FramesBegun</c> and the <c>AcquireWait</c> pair come off the present boundary (row 17), so both read
+        /// 0 on a HEADLESS device, which has no swapchain and opens no frame at this seam. That zero is literally
+        /// true about such a device rather than a placeholder, which is the bar the struct's own "absent is not
+        /// zero" rule sets for reporting <c>HasValue</c> at all.
         /// <para>
-        /// WHAT A READER STILL MUST NOT DO is divide by <c>FramesBegun</c> while it is 0, and row 18
-        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/528) is where every field becomes a reading taken from
-        /// the subsystem that owns it.
+        /// WHAT A READER STILL MUST NOT DO is divide by <c>FramesBegun</c> while it is 0, which on a headless
+        /// device it stays.
         /// </para>
         /// </remarks>
         public GpuDeviceCounters Counters

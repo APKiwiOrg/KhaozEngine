@@ -491,7 +491,10 @@ The seam member is `IGpuDevice.Counters`, default-implemented like `IGpuDevice.D
 appended without breaking any implementer and every backend that counts nothing answers honestly
 (`GpuDeviceCounters.HasValue` false, which is a different fact from counting and finding zero). `GpuDeviceContext`
 and `AppWindow` forward it, both reading THROUGH to the device on every access, because unlike everything else the
-header carries these numbers change on every frame. Only `KhaozEngine.Gpu.D3D11` fills it.
+header carries these numbers change on every frame. The two NATIVE backends fill it: `KhaozEngine.Gpu.D3D11` from
+17.32.0, and `KhaozEngine.Gpu.Vulkan` from 17.34.0, which is also where the struct gained its `AcquireWaitCount`
+and `AcquireWaitMs` pair and `GpuTelemetryChannels` gained the matching `gpuAcquireWaits` and `gpuAcquireWaitMs`
+columns.
 
 ### The stored backend preference deliberately adds NO edge (17.23.0)
 

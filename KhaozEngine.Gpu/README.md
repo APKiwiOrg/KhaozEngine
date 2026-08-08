@@ -128,15 +128,23 @@ What it owns today:
     default is the honest one: no answers. Everything on the Veldrid path takes it, which is correct rather than
     a gap, since Veldrid exposes neither the DXGI adapter flag nor a device-removal reason. The native
     Direct3D 11 backend is what fills it.
-- **`GpuDeviceCounters`** (17.32.0) - the soak counters a device keeps about itself, cumulative since creation and
-  read LIVE, on `IGpuDevice.Counters`, `GpuDeviceContext.Counters` and `AppWindow.Counters`. `FramesBegun`,
-  `DrainCount` / `DrainMs`, `BackpressureStallCount` / `BackpressureStallMs`, and `OffTimelineDeferred` /
-  `OffTimelineOutstanding`. Only the native Direct3D 11 backend fills it, because it is the only one with a fence
-  drain and a uniform ring to count.
+- **`GpuDeviceCounters`** (17.32.0, `AcquireWaitCount` / `AcquireWaitMs` added 17.34.0) - the soak counters a
+  device keeps about itself, cumulative since creation and read LIVE, on `IGpuDevice.Counters`,
+  `GpuDeviceContext.Counters` and `AppWindow.Counters`. `FramesBegun`, `DrainCount` / `DrainMs`,
+  `BackpressureStallCount` / `BackpressureStallMs`, `OffTimelineDeferred` / `OffTimelineOutstanding`, and
+  `AcquireWaitCount` / `AcquireWaitMs`. The two NATIVE backends fill it: Direct3D 11 all nine fields, and Vulkan
+  all nine as its subsystems land.
+  - **The acquire pair is the one reading that separates the two acquire models.** `AcquireWaitCount` is present
+    boundaries that BLOCKED waiting for the presentation engine to hand back the next swapchain image, and it is
+    a READING rather than a count of calls: the native Vulkan backend probes with a zero timeout first and records
+    only the blocking call that follows. A backend that acquires with a semaphore and lets the GPU do the waiting
+    reports zero, and one that blocks the CPU reports one per frame. Zero is a reading rather than a gap on a
+    backend with no acquire at all and on a headless device with no swapchain, which is why `HasValue` below is
+    what answers "did anybody look".
   - **`HasValue` is the whole point, because absent is not zero.** Zero stalls is the PASSING result of a field
     soak, so a backend that keeps no counters must not report the same numbers as one that counted and found
-    nothing. The default value answers false and is what Metal, Vulkan and the incumbent Direct3D11 path give.
-    The `IGpuDevice` member is DEFAULT-IMPLEMENTED, so it was appended without breaking any implementer.
+    nothing. The default value answers false and is what Metal and the incumbent Veldrid paths give. The
+    `IGpuDevice` member is DEFAULT-IMPLEMENTED, so it was appended without breaking any implementer.
   - **Cumulative rather than per frame**, which is what makes it usable from a capture. A telemetry session writes
     a row on its own cadence, so a per-frame reading sampled a few times a second reports the frames it happened
     to land on. Subtract the first sampled row from the last and the window's stalls are exact, and the per-frame
@@ -147,11 +155,12 @@ What it owns today:
     in-flight segment and queued its bytes for that segment's next reopen, which blocks nobody and usually
     happens at load time. Non-zero off-timeline beside zero stalls is a specific diagnosis, namely that the
     segment count is fine and a caller is writing off-timeline against work still in flight.
-- **`GpuTelemetryChannels`** (17.32.0) - the projection from `GpuDeviceCounters` onto the named numeric channels a
-  `TelemetryRecorder` SAMPLE row carries, with the channel names as constants (`gpuFramesBegun`, `gpuDrainCount`,
-  `gpuDrainMs`, `gpuBackpressureStalls`, `gpuBackpressureStallMs`, `gpuOffTimelineDeferred`,
-  `gpuOffTimelineOutstanding`) so a reader and a test share one spelling. `AppendTo(channels, window.Counters)`
-  joins a row the game already built, and `For(counters)` is the standalone form.
+- **`GpuTelemetryChannels`** (17.32.0, two channels added 17.34.0) - the projection from `GpuDeviceCounters` onto
+  the named numeric channels a `TelemetryRecorder` SAMPLE row carries, with the channel names as constants
+  (`gpuFramesBegun`, `gpuDrainCount`, `gpuDrainMs`, `gpuBackpressureStalls`, `gpuBackpressureStallMs`,
+  `gpuOffTimelineDeferred`, `gpuOffTimelineOutstanding`, `gpuAcquireWaits`, `gpuAcquireWaitMs`) so a reader and a
+  test share one spelling. `AppendTo(channels, window.Counters)` joins a row the game already built, and
+  `For(counters)` is the standalone form.
   - **Sample rows, not the header.** The header is written once at start and describes what was already true then,
     when every counter is still zero. The row is the session's channel for a number that moves.
   - **A device that counted nothing writes no columns at all.** Emitting zeros would put a clean-looking stall

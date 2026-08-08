@@ -55,11 +55,21 @@ namespace KhaozEngine.Gpu
         public const string OffTimelineOutstanding = "gpuOffTimelineOutstanding";
 
         /// <summary>
+        /// Channel name for <see cref="GpuDeviceCounters.AcquireWaitCount"/>. It is the column an acquire-model
+        /// A/B is read off, because mean frame time on a machine pinned at its refresh rate is the same in both
+        /// positions by construction and this one is not.
+        /// </summary>
+        public const string AcquireWaits = "gpuAcquireWaits";
+
+        /// <summary>Channel name for <see cref="GpuDeviceCounters.AcquireWaitMs"/>.</summary>
+        public const string AcquireWaitMs = "gpuAcquireWaitMs";
+
+        /// <summary>
         /// How many channels <see cref="AppendTo"/> writes for a populated counter set, so a caller can size its
         /// list once instead of discovering the number by growing. Spelled out rather than named
-        /// <c>Count</c>, which among seven channel-name constants reads as an eighth channel.
+        /// <c>Count</c>, which among the channel-name constants reads as one more channel.
         /// </summary>
-        public const int ChannelCount = 7;
+        public const int ChannelCount = 9;
 
         /// <summary>
         /// The channels for <paramref name="counters"/>, or an empty list when the device counted nothing. The
@@ -92,6 +102,8 @@ namespace KhaozEngine.Gpu
             channels.Add(new TelemetryChannel(BackpressureStallMs, counters.BackpressureStallMs));
             channels.Add(new TelemetryChannel(OffTimelineDeferred, counters.OffTimelineDeferred));
             channels.Add(new TelemetryChannel(OffTimelineOutstanding, counters.OffTimelineOutstanding));
+            channels.Add(new TelemetryChannel(AcquireWaits, counters.AcquireWaitCount));
+            channels.Add(new TelemetryChannel(AcquireWaitMs, counters.AcquireWaitMs));
         }
     }
 }

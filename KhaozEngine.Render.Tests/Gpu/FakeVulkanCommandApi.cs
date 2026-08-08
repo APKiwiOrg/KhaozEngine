@@ -38,6 +38,7 @@ namespace KhaozEngine.Tests.Gpu
         readonly Dictionary<ulong, int> _bufferPool = new();
         readonly List<ulong> _destroyed = new();
         readonly List<(ulong Buffer, ulong Value)> _submissions = new();
+        readonly List<VulkanFrameSemaphores> _frames = new();
 
         ulong _nextPool = 0x1000;
         ulong _nextBuffer = 0x2000;
@@ -67,6 +68,13 @@ namespace KhaozEngine.Tests.Gpu
         internal IReadOnlyList<(ulong Buffer, ulong Value)> Submissions
         {
             get { lock (_gate) return _submissions.ToArray(); }
+        }
+
+        /// <summary>The swapchain's binary pair each submit carried, in call order. Default on every headless
+        /// submit, which is every submit these tests make unless they are about the present boundary.</summary>
+        internal IReadOnlyList<VulkanFrameSemaphores> FrameSemaphores
+        {
+            get { lock (_gate) return _frames.ToArray(); }
         }
 
         /// <summary>What every submit returns unless <see cref="FailNextSubmit"/> has armed a one-shot.</summary>
@@ -145,7 +153,8 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <inheritdoc/>
-        public VulkanSubmitStatus Submit(ulong commandBuffer, ulong signalValue, out string? failure)
+        public VulkanSubmitStatus Submit(ulong commandBuffer, ulong signalValue,
+            in VulkanFrameSemaphores frame, out string? failure)
         {
             failure = null;
             OnSubmit?.Invoke();
@@ -154,6 +163,7 @@ namespace KhaozEngine.Tests.Gpu
             {
                 int index = _bufferPool[commandBuffer];
                 _submissions.Add((commandBuffer, signalValue));
+                _frames.Add(frame);
                 Record(index, $"Submit(b{index},{signalValue})");
 
                 VulkanSubmitStatus status = _oneShotStatus ?? SubmitStatus;

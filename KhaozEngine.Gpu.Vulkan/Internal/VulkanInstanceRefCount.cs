@@ -133,9 +133,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// give it. Refusing names what happened. The alternatives are worse in both directions: creating a second
         /// instance abandons V-N1 silently and reopens the loader race MV7 is measuring, and creating every
         /// instance with the surface extensions "just in case" takes down the golden leg, which runs on a machine
-        /// with no display server. The case is not reachable from shipped code today, because the windowed path
-        /// belongs to the swapchain row (https://github.com/APKiwiOrg/KhaozEngine/issues/527), and it is that
-        /// row's to resolve.
+        /// with no display server.
+        /// <para>
+        /// THE CASE BECAME REACHABLE WHEN THE WINDOWED PATH LANDED
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/527), AND THE DECISION IS TO KEEP REFUSING
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/543). The only shape that produces it is a process
+        /// that opens a HEADLESS device for a bake and then asks for a WINDOWED one, which is an editor or a tool
+        /// rather than a game, and nothing in this fleet does it. Both alternatives cost more than the case is
+        /// worth, so what the case gets instead is a message stating the ORDERING RULE that resolves it: create
+        /// the windowed device first, or run them in separate processes. That rule is the answer rather than a
+        /// workaround, and it is in the package README too.
+        /// </para>
         /// </remarks>
         internal VulkanInstanceLease<T> Acquire(in VulkanInstanceKey key)
         {

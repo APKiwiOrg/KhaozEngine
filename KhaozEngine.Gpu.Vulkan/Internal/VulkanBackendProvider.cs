@@ -9,13 +9,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <see cref="KhaozEngineVulkan.Register"/> and consumed only through <see cref="IGpuBackendProvider"/>, so
     /// nothing outside this package ever names a Silk.NET type.
     /// <para>
-    /// THE PROBE AND HEADLESS CREATION ARE BOTH REAL, and the WINDOWED path is not, which is exactly the state
-    /// work-breakdown row 4 of <c>docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md</c> leaves the package
-    /// in. <see cref="IsSupported"/> resolves a loader, creates a throwaway instance and reads every physical
-    /// device against section 5.2's requirements. <see cref="CreateHeadless"/> then builds a real device on the
-    /// shared refcounted instance (row 4, https://github.com/APKiwiOrg/KhaozEngine/issues/514).
-    /// <see cref="CreateForWindow"/> throws until row 17
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/527) builds the surface and the swapchain.
+    /// THE PROBE AND BOTH CREATION PATHS ARE REAL. <see cref="IsSupported"/> resolves a loader, creates a
+    /// throwaway instance and reads every physical device against section 5.2's requirements.
+    /// <see cref="CreateHeadless"/> builds a device with no surface extension at all (V-N6), which is what lets
+    /// the golden suite run on a machine with no display server. <see cref="CreateForWindow"/> builds a surface
+    /// from the window, filters candidates on whether their graphics family can present to it (V-N5), enables
+    /// <c>VK_KHR_swapchain</c>, and creates the swapchain and takes the first acquire before it returns
+    /// (row 17, https://github.com/APKiwiOrg/KhaozEngine/issues/527).
     /// </para>
     /// <para>
     /// That ordering is deliberate rather than an artefact. The probe answers a question about the MACHINE, which
@@ -39,12 +39,18 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// the sentence it makes about the probe is now true.
     /// </para>
     /// <para>
-    /// THE WINDOWED PATH REFUSES RATHER THAN HANDING BACK A DEVICE THAT CANNOT PRESENT, and that is a decision
-    /// rather than an ordering accident. Everything a windowed device needs beyond a headless one (a
-    /// <c>VkSurfaceKHR</c>, the presenting-family check V-N5 makes against it, <c>VK_KHR_swapchain</c>, the
-    /// acquire ring) is row 17's. A device created without them would be adopted by <c>GpuDeviceContext</c>, would
-    /// report a null swapchain framebuffer, and would render a window that never updates, which is a far worse
-    /// answer to a tester than a refusal naming the row.
+    /// A WINDOWED DEVICE STILL CANNOT DRAW ANYTHING, and that refusal moved rather than disappearing. The
+    /// swapchain, the acquire, the resize, the present and the teardown are real, and a pipeline bind or a draw
+    /// refuses on <c>VulkanCommandList</c> naming its own row. That is the right place for it: the device is no
+    /// longer the thing that is missing, and a windowed device that refused at CREATION would hide a swapchain
+    /// path a human at a window is the only instrument for (MV9).
+    /// </para>
+    /// <para>
+    /// ONE PROCESS CANNOT HOLD A HEADLESS DEVICE AND A WINDOWED ONE AT THE SAME TIME, which is decision V-N1's
+    /// single-instance model showing through. A live <c>VkInstance</c>'s extension list is fixed at creation and
+    /// Vulkan offers no way to add one afterwards, so the second configuration is refused by name with the
+    /// ordering rule that resolves it: create the windowed device first, or run them in separate processes. See
+    /// <c>VulkanInstanceRefCount.Acquire</c> for why refusing beats the two silent alternatives.
     /// </para>
     /// <para>
     /// No platform guard, anywhere, and that is decision V-P1 rather than an omission. Vulkan is not a Windows
@@ -85,7 +91,16 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         }
 
         /// <inheritdoc/>
-        public GpuProviderDevice CreateForWindow(in GpuWindowedDeviceRequest request) => throw NotBuiltYet();
+        public GpuProviderDevice CreateForWindow(in GpuWindowedDeviceRequest request)
+        {
+            // THE MACHINE IS ASKED BEFORE ANYTHING NATIVE IS CREATED, for the same reason the headless path asks:
+            // a machine that cannot run this backend must refuse with a NotSupportedException naming what it is
+            // missing, so the creation path can catch it, WARN and fall back.
+            string? missing = _machineAnswer.Value;
+            if (missing is not null) throw ThisMachineCannot(missing);
+
+            return VulkanGpuDevice.CreateForWindow(request);
+        }
 
         /// <inheritdoc/>
         public GpuProviderDevice CreateHeadless()
@@ -121,26 +136,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         // The MACHINE-level refusal, and it quotes the probe's own sentence rather than paraphrasing it, so the
         // three machine states each read as themselves: no loader names the loader, a loader with no driver names
         // the driver and the package that installs one, and a device below the floor names the requirement. It
-        // must be tellable apart from the windowed refusal below, which is about the PACKAGE, and from
-        // GpuBackendProviderMissingException, which is about the WIRING. That three-way split is decision V-I4.
+        // must be tellable apart from a refusal about the PACKAGE (a window kind with no surface extension, or a
+        // command list member whose row has not landed) and from GpuBackendProviderMissingException, which is
+        // about the WIRING. That three-way split is decision V-I4.
         static NotSupportedException ThisMachineCannot(string missing)
             => new("The native Vulkan backend cannot create a device on this machine: " + missing
-                + ". This is a statement about the MACHINE rather than about the package, whose headless path is "
-                + "built and does return a real device wherever the probe answers yes. It is the same question "
-                + "GpuBackendSelector.IsBackendSupported answers without creating anything, asked here so a "
-                + "machine that cannot run the backend refuses instead of failing partway into creation.");
-
-        // The windowed refusal. It says which row builds the swapchain, because the creation path CATCHES this,
-        // WARNs with the message and falls back to the incumbent, so this text is what a tester who named the
-        // native backend actually reads. It must not read as a machine problem: an incapable machine is answered
-        // by IsSupported above, with its own sentence, and decision V-I4 exists to keep the two tellable apart.
-        static NotSupportedException NotBuiltYet()
-            => new("The native Vulkan backend cannot create a windowed device yet. The instance, the device and "
-                + "the queue ARE built (https://github.com/APKiwiOrg/KhaozEngine/issues/514) and the HEADLESS "
-                + "path works, so the golden and snapshot paths reach a real native device. What is missing is "
-                + "the surface, the presenting-family check and the swapchain, which land in "
-                + "https://github.com/APKiwiOrg/KhaozEngine/issues/527. This is a statement about the package, "
-                + "not about this machine: read GpuBackendSelector.IsBackendSupported for that. Until then the "
-                + "Vulkan path through Veldrid is the working windowed one.");
+                + ". This is a statement about the MACHINE rather than about the package, which returns a real "
+                + "device on both its headless and its windowed path wherever the probe answers yes. It is the "
+                + "same question GpuBackendSelector.IsBackendSupported answers without creating anything, asked "
+                + "here so a machine that cannot run the backend refuses instead of failing partway into "
+                + "creation.");
     }
 }

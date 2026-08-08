@@ -70,23 +70,34 @@ namespace KhaozEngine.Tests.Gpu
             => Assert.Equal(TryProbe() is null, new VulkanBackendProvider().IsSupported());
 
         /// <summary>
-        /// The WINDOWED path is not built yet, and the refusal is asserted rather than left implicit because of
-        /// what the creation path does with it: it catches, WARNs with the message and falls back to the
-        /// incumbent, so this text is what a tester who named the native backend actually reads. It must name the
-        /// row that builds the swapchain, it must say the device itself IS built (so the reader does not conclude
-        /// the whole backend is absent), and it must not read as a machine problem, which is a different failure
-        /// with a different answer (<see cref="VulkanBackendProvider.IsSupported"/>) and its own sentence.
+        /// THE WINDOWED PATH IS BUILT NOW, so what this row asserts is that the two refusals it CAN still make
+        /// are the right two, and that neither of them is the pair decision V-I4 exists to keep apart.
+        /// <para>
+        /// On a machine that cannot run the backend at all, the refusal is about the MACHINE, in the same words
+        /// the headless path uses, because the creation path catches it, WARNs and falls back. On a machine that
+        /// can, the default request names a COCOA window, which this backend deliberately does not serve:
+        /// presenting there needs MoltenVK over Metal and phase 4 of the program brings a real Metal backend
+        /// instead. Neither is a wiring fault and neither is a platform guard, and both of those have their own
+        /// exception types.
+        /// </para>
         /// </summary>
         [Fact]
-        public void WindowedCreation_RefusesByNamingTheSwapchainRow()
+        public void WindowedCreation_RefusesForTheMachineOrForTheWindowKind()
         {
             var provider = new VulkanBackendProvider();
 
             NotSupportedException ex = Assert.Throws<NotSupportedException>(
                 () => provider.CreateForWindow(default));
 
-            Assert.Contains("527", ex.Message, StringComparison.Ordinal);
-            Assert.Contains("514", ex.Message, StringComparison.Ordinal);
+            if (TryProbe() is not null)
+            {
+                Assert.Contains("this machine", ex.Message, StringComparison.OrdinalIgnoreCase);
+            }
+            else
+            {
+                Assert.Contains("Cocoa", ex.Message, StringComparison.Ordinal);
+            }
+
             // Not the OTHER failure mode. A missing registration is a wiring fault with its own exception type
             // and its own message, and decision V-I4 exists to keep the two tellable apart.
             Assert.IsNotType<GpuBackendProviderMissingException>(ex);

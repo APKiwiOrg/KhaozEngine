@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Silk.NET.Core.Native;
 using Silk.NET.Vulkan;
 
 namespace KhaozEngine.Gpu.Vulkan.Internal
@@ -20,44 +21,137 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// </summary>
         internal static GpuProviderDevice CreateHeadless()
         {
-            VulkanValidationMode validation = VulkanValidation.FromEnvironment(out string? unrecognized);
-            if (unrecognized != null) log.Warn(VulkanValidation.UnrecognizedWarning(unrecognized));
+            VulkanValidationMode validation = ValidationFromEnvironment();
 
             var key = new VulkanInstanceKey(Windowed: false, Window: default, Validation: validation);
+            return Acquire(key, window: null);
+        }
+
+        /// <summary>
+        /// Create a WINDOWED device: a surface from the window, the presenting-family check V-N5 makes against it,
+        /// <c>VK_KHR_swapchain</c> on the device, and the first swapchain plus the first acquire inside the
+        /// present boundary's own constructor.
+        /// <para>
+        /// THE INSTANCE IS A DIFFERENT ONE FROM THE HEADLESS PATH'S AND THE TWO CANNOT COEXIST, which is the one
+        /// case decision V-N1's single-instance model cannot serve. A live instance's extension list is fixed at
+        /// creation and Vulkan offers no way to add one afterwards, so a process holding a headless device open
+        /// and then asking for a windowed one is refused by name. See <c>VulkanInstanceRefCount.Acquire</c>
+        /// for why refusing beats the two silent alternatives, and the package README for the ordering rule that
+        /// resolves it: create the windowed device first, or run them in separate processes.
+        /// </para>
+        /// </summary>
+        internal static GpuProviderDevice CreateForWindow(in GpuWindowedDeviceRequest request)
+        {
+            VulkanValidationMode validation = ValidationFromEnvironment();
+
+            VulkanAcquireMode acquire = VulkanAcquire.FromEnvironment(out string? unrecognizedAcquire);
+            if (unrecognizedAcquire != null) log.Warn(VulkanAcquire.UnrecognizedWarning(unrecognizedAcquire));
+            log.Info(VulkanAcquire.ActiveDescription(acquire));
+
+            // THE ONE COMBINATION THAT CANNOT WORK, warned rather than refused. The stall mode reproduces a
+            // configuration a validation layer rejects, so a run with both on reports that on every present and
+            // buries whatever else the layer found. Turning a diagnostic session into a startup failure would be
+            // the wrong trade, and saying nothing would waste the session.
+            if (acquire == VulkanAcquireMode.Stall && validation != VulkanValidationMode.Off)
+                log.Warn(VulkanAcquire.ValidationConflictWarning(validation));
+
+            var key = new VulkanInstanceKey(
+                Windowed: true, Window: request.Window.Kind, Validation: validation);
+
+            return Acquire(key, new VulkanWindowRequest(request, acquire));
+        }
+
+        // The lease's lifetime rule, shared by both entry points: it is this method's until the device takes it
+        // over, and a throw anywhere below would otherwise hold the process instance alive for the rest of the
+        // run. Ownership transfers on a SUCCESSFUL construction only, which is the same rule
+        // GpuDeviceContext.Adopt applies one level up.
+        static GpuProviderDevice Acquire(in VulkanInstanceKey key, VulkanWindowRequest? window)
+        {
             VulkanInstanceLease<VulkanInstance> lease = VulkanInstance.Acquire(key);
 
             try
             {
-                return Create(lease);
+                return Create(lease, window);
             }
             catch
             {
-                // The lease is this method's until the device takes it over, and a throw anywhere below would
-                // otherwise hold the process instance alive for the rest of the run. Ownership transfers on a
-                // SUCCESSFUL construction only, which is the same rule GpuDeviceContext.Adopt applies one level
-                // up.
                 lease.Dispose();
                 throw;
             }
         }
 
-        static GpuProviderDevice Create(VulkanInstanceLease<VulkanInstance> lease)
+        static VulkanValidationMode ValidationFromEnvironment()
+        {
+            VulkanValidationMode validation = VulkanValidation.FromEnvironment(out string? unrecognized);
+            if (unrecognized != null) log.Warn(VulkanValidation.UnrecognizedWarning(unrecognized));
+            return validation;
+        }
+
+        static GpuProviderDevice Create(VulkanInstanceLease<VulkanInstance> lease, VulkanWindowRequest? window)
         {
             VulkanInstance instance = lease.Value;
             Vk vk = instance.Api;
+
+            // THE SURFACE IS CREATED BEFORE THE PHYSICAL DEVICE IS CHOSEN, which is the one ordering the windowed
+            // path forces. Decision V-N5 requires the one graphics queue to be the presenting one, and
+            // vkGetPhysicalDeviceSurfaceSupportKHR cannot answer that without a surface, so the surface has to
+            // exist while candidates are still being filtered. It is an INSTANCE-level object and outlives every
+            // swapchain made against it, so creating it early costs nothing.
+            VulkanSurfaceApi? surfaces = window is null ? null : new VulkanSurfaceApi(vk, instance.Handle);
+            ulong surface = window is null
+                ? 0
+                : surfaces!.CreateSurface(
+                    window.Request.Window.Kind, window.Request.Window.Handle, window.Request.Window.Display);
+
+            try
+            {
+                return CreateOn(lease, vk, instance, surfaces, surface, window);
+            }
+            catch
+            {
+                // The surface is this method's until the present boundary takes it over, and it is a child of the
+                // process instance rather than of the device, so a leak here survives every later device.
+                surfaces?.DestroySurface(surface);
+                throw;
+            }
+        }
+
+        static GpuProviderDevice CreateOn(VulkanInstanceLease<VulkanInstance> lease, Vk vk, VulkanInstance instance,
+            VulkanSurfaceApi? surfaces, ulong surface, VulkanWindowRequest? window)
+        {
+            bool windowed = window is not null;
 
             PhysicalDevice[] handles = EnumeratePhysicalDevices(vk, instance.Handle);
             var reads = new VulkanPhysicalDeviceRead[handles.Length];
             var candidates = new VulkanPhysicalDeviceInfo[handles.Length];
             for (int i = 0; i < handles.Length; i++)
             {
-                reads[i] = VulkanPhysicalDeviceReader.Read(vk, handles[i]);
+                VulkanPhysicalDeviceRead candidate = VulkanPhysicalDeviceReader.Read(vk, handles[i]);
 
-                // The SAME requirement method the probe answered through, with the same flag, which is what makes
-                // "checked by the probe and again at device creation" (V-N2) one decision asked twice rather than
-                // two decisions that can disagree.
+                // THE PRESENT ANSWER IS FILLED IN HERE AND NOWHERE ELSE, because here is where a surface exists.
+                // The reader leaves it false, deliberately: it is asked from the probe too, which receives no
+                // window and could not build one without enabling a platform surface extension on the headless
+                // path, which V-N6 forbids outright.
+                if (windowed)
+                {
+                    surfaces!.BindPhysicalDevice(handles[i]);
+                    candidate = candidate with
+                    {
+                        Facts = candidate.Facts with
+                        {
+                            GraphicsFamilyPresents = candidate.Facts.HasGraphicsQueueFamily
+                                && surfaces.SupportsPresent(surface, candidate.GraphicsQueueFamily),
+                        },
+                    };
+                }
+
+                reads[i] = candidate;
+
+                // The SAME requirement method the probe answered through, with the flag this path's own answer
+                // needs, which is what makes "checked by the probe and again at device creation" (V-N2) one
+                // decision asked twice rather than two decisions that can disagree.
                 string? rejection = VulkanDeviceRequirements.MissingRequirement(
-                    reads[i].Facts, presentationRequired: false);
+                    reads[i].Facts, presentationRequired: windowed);
 
                 candidates[i] = new VulkanPhysicalDeviceInfo(
                     reads[i].Facts.DeviceName, reads[i].Class, reads[i].IsLlvmpipe,
@@ -75,7 +169,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             VulkanFeatureSelection features = VulkanFeatureChain.Select(read.Features, read.Facts.DeviceName);
             log.Info(VulkanFeatureChain.Describe(features));
 
-            Device device = CreateDevice(vk, handles[chosen], read.GraphicsQueueFamily, features);
+            // BOUND TO THE CHOSEN DEVICE FOR THE REST OF ITS LIFE. Every capability query the present boundary
+            // makes from here on is about this physical device, and the loop above left it bound to whichever
+            // candidate it last asked about.
+            surfaces?.BindPhysicalDevice(handles[chosen]);
+
+            Device device = CreateDevice(vk, handles[chosen], read.GraphicsQueueFamily, features, windowed);
             var liveness = new VulkanDeviceLiveness();
             var loss = new VulkanDeviceLossLatch(liveness);
 
@@ -134,7 +233,19 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     // read the support probe gated on, so 8.3's third and fourth defences measure against one
                     // number rather than two reads that can disagree.
                     read.Facts.MaxDescriptorSetUniformBuffersDynamic,
-                    framesInFlight);
+                    framesInFlight,
+                    // THE WINDOWED HALF, or null for a headless device, which is a real state rather than an
+                    // unfinished one. The swapchain seam is built here rather than earlier because it resolves
+                    // per-DEVICE entry points and there was no device until three lines ago.
+                    window is null
+                        ? null
+                        : new VulkanWindowedParts(
+                            surfaces!,
+                            new VulkanSwapchainApi(vk, instance.Handle, device, graphicsQueue, loss, liveness),
+                            surface,
+                            new VulkanExtent(window.Request.Width, window.Request.Height),
+                            window.Request.SyncToVerticalBlank,
+                            window.Acquire));
 
                 log.Info(created.Memory.Describe());
 
@@ -166,7 +277,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         // incumbent's cross-family path is not reproduced because its queue-create loop writes the graphics family
         // index for every entry instead of the loop variable, which is a spec violation validation flags.
         static Device CreateDevice(Vk vk, PhysicalDevice physicalDevice, uint queueFamily,
-            in VulkanFeatureSelection features)
+            in VulkanFeatureSelection features, bool windowed)
         {
             float priority = 1.0f;
             var queueInfo = new DeviceQueueCreateInfo(
@@ -199,28 +310,42 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 pNext: &features12,
                 features: core);
 
-            // No device extensions at all on the headless path (V-N6). VK_KHR_swapchain is windowed-only and is
-            // row 17's, and asking for it here would fail creation on a runner with no display server, which is
-            // every runner the golden suite has.
-            var createInfo = new DeviceCreateInfo(
-                sType: StructureType.DeviceCreateInfo,
-                pNext: &features2,
-                queueCreateInfoCount: 1,
-                pQueueCreateInfos: &queueInfo,
-                enabledExtensionCount: 0,
-                ppEnabledExtensionNames: null,
-                // NO LAYERS. Device layers were deprecated in Vulkan 1.0.13 and modern loaders ignore them
-                // entirely, so the incumbent's device-layer list is dead weight that reads as a working
-                // configuration.
-                enabledLayerCount: 0,
-                ppEnabledLayerNames: null,
-                // Null, deliberately: the features travel through the pNext chain above, and passing both is a
-                // spec violation (VUID-VkDeviceCreateInfo-pNext-00373).
-                pEnabledFeatures: null);
+            // ONE DEVICE EXTENSION ON THE WINDOWED PATH AND NONE AT ALL ON THE HEADLESS ONE (V-N6).
+            // VK_KHR_swapchain is windowed-only, and asking for it on a runner with no display server would fail
+            // creation outright, which is every runner the golden suite has.
+            nint extensionNames = windowed
+                ? SilkMarshal.StringArrayToPtr(new[] { VulkanInstanceLayout.SwapchainDeviceExtension })
+                : 0;
 
-            VulkanResultCodes.Require(vk.CreateDevice(physicalDevice, in createInfo, null, out Device device),
-                "vkCreateDevice");
-            return device;
+            try
+            {
+                var createInfo = new DeviceCreateInfo(
+                    sType: StructureType.DeviceCreateInfo,
+                    pNext: &features2,
+                    queueCreateInfoCount: 1,
+                    pQueueCreateInfos: &queueInfo,
+                    enabledExtensionCount: windowed ? 1u : 0u,
+                    ppEnabledExtensionNames: (byte**)extensionNames,
+                    // NO LAYERS. Device layers were deprecated in Vulkan 1.0.13 and modern loaders ignore them
+                    // entirely, so the incumbent's device-layer list is dead weight that reads as a working
+                    // configuration.
+                    enabledLayerCount: 0,
+                    ppEnabledLayerNames: null,
+                    // Null, deliberately: the features travel through the pNext chain above, and passing both is
+                    // a spec violation (VUID-VkDeviceCreateInfo-pNext-00373).
+                    pEnabledFeatures: null);
+
+                VulkanResultCodes.Require(vk.CreateDevice(physicalDevice, in createInfo, null, out Device device),
+                    "vkCreateDevice");
+                return device;
+            }
+            finally
+            {
+                // Freed on every path including the throwing one: a failed creation that leaked its own argument
+                // list would leak once per failed attempt, and the failed-attempt path is the one a fallback
+                // retries.
+                if (extensionNames != 0) SilkMarshal.Free(extensionNames);
+            }
         }
 
         // Section 14's table, filled to the extent a device with no renderer on it can answer honestly. Row 18

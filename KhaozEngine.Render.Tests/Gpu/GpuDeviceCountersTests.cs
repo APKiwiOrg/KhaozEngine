@@ -65,7 +65,8 @@ namespace KhaozEngine.Tests.Gpu
         // gate 4 hopes to see.
         static GpuDeviceCounters CleanSoak()
             => new(framesBegun: 900_000, drainCount: 12, drainMs: 3.5, backpressureStallCount: 0,
-                backpressureStallMs: 0d, offTimelineDeferred: 2, offTimelineOutstanding: 0);
+                backpressureStallMs: 0d, offTimelineDeferred: 2, offTimelineOutstanding: 0,
+                acquireWaitCount: 0, acquireWaitMs: 0d);
 
         // ---- absent is not zero ----------------------------------------------------------------------------
 
@@ -91,7 +92,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void ACountedCleanWindowIsNotTheSameValueAsNoCountersAtAll()
         {
-            var counted = new GpuDeviceCounters(1, 0, 0d, 0, 0d, 0, 0);
+            var counted = new GpuDeviceCounters(1, 0, 0d, 0, 0d, 0, 0, 0, 0d);
 
             Assert.True(counted.HasValue);
             Assert.Equal(0L, counted.BackpressureStallCount);
@@ -121,7 +122,7 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal(0L, ctx.Counters.BackpressureStallCount);
 
-            device.Reported = new GpuDeviceCounters(900_100, 12, 3.5, 4, 1.25, 2, 0);
+            device.Reported = new GpuDeviceCounters(900_100, 12, 3.5, 4, 1.25, 2, 0, 0, 0d);
 
             Assert.Equal(4L, ctx.Counters.BackpressureStallCount);
             Assert.Equal(1.25, ctx.Counters.BackpressureStallMs);
@@ -162,6 +163,8 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal("gpuBackpressureStallMs", GpuTelemetryChannels.BackpressureStallMs);
             Assert.Equal("gpuOffTimelineDeferred", GpuTelemetryChannels.OffTimelineDeferred);
             Assert.Equal("gpuOffTimelineOutstanding", GpuTelemetryChannels.OffTimelineOutstanding);
+            Assert.Equal("gpuAcquireWaits", GpuTelemetryChannels.AcquireWaits);
+            Assert.Equal("gpuAcquireWaitMs", GpuTelemetryChannels.AcquireWaitMs);
         }
 
         /// <summary>Every counter reaches a channel, under the spelling the constants name, and the count matches
@@ -218,7 +221,8 @@ namespace KhaozEngine.Tests.Gpu
         {
             var counters = new GpuDeviceCounters(
                 framesBegun: 750_000, drainCount: 8, drainMs: 2.0, backpressureStallCount: 0,
-                backpressureStallMs: 0d, offTimelineDeferred: 41, offTimelineOutstanding: 3);
+                backpressureStallMs: 0d, offTimelineDeferred: 41, offTimelineOutstanding: 3,
+                acquireWaitCount: 0, acquireWaitMs: 0d);
 
             string path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + ".jsonl");
             try
@@ -245,6 +249,57 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
+        /// THE ACQUIRE-WAIT PAIR IS ITS OWN TWO COLUMNS (V-G6), and without it the acquire-model A/B has only
+        /// mean frame time to read. On a machine pinned at its refresh rate both positions of that switch produce
+        /// the same mean by construction, which is a gate that cannot read its own result, so these two are the
+        /// numbers that actually see the stall.
+        /// </summary>
+        [Fact]
+        public void TheAcquireWaitPairLandsInItsOwnTwoColumns()
+        {
+            var counters = new GpuDeviceCounters(
+                framesBegun: 120_000, drainCount: 0, drainMs: 0d, backpressureStallCount: 0,
+                backpressureStallMs: 0d, offTimelineDeferred: 0, offTimelineOutstanding: 0,
+                acquireWaitCount: 119_998, acquireWaitMs: 780_000d);
+
+            string path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + ".jsonl");
+            try
+            {
+                using (var recorder = new TelemetryRecorder())
+                {
+                    recorder.Start(path);
+                    recorder.Sample(30.0, GpuTelemetryChannels.For(counters));
+                }
+
+                string[] lines = File.ReadAllLines(path);
+                using JsonDocument row = JsonDocument.Parse(lines[1]);
+
+                Assert.Equal(119_998d, row.RootElement.GetProperty(GpuTelemetryChannels.AcquireWaits).GetDouble());
+                Assert.Equal(780_000d, row.RootElement.GetProperty(GpuTelemetryChannels.AcquireWaitMs).GetDouble());
+                Assert.NotEqual(GpuTelemetryChannels.AcquireWaits, GpuTelemetryChannels.BackpressureStalls);
+            }
+            finally
+            {
+                if (File.Exists(path)) File.Delete(path);
+            }
+        }
+
+        /// <summary>A backend with no acquire to wait on passes ZERO rather than leaving the pair out, which is
+        /// the honest reading on Direct3D 11 where a present hands the frame to the runtime and returns. The
+        /// distinction between that and "nobody counted" is still <see cref="GpuDeviceCounters.HasValue"/>'s to
+        /// make, for the whole set at once.</summary>
+        [Fact]
+        public void ABackendWithNoAcquireReportsZeroRatherThanNothing()
+        {
+            GpuDeviceCounters counted = CleanSoak();
+
+            Assert.True(counted.HasValue);
+            Assert.Equal(0L, counted.AcquireWaitCount);
+            Assert.Equal(0d, counted.AcquireWaitMs);
+            Assert.False(default(GpuDeviceCounters).HasValue);
+        }
+
+        /// <summary>
         /// A CUMULATIVE COUNTER SETTLES THE WINDOW BY SUBTRACTION, which is why the seam carries totals rather
         /// than the backend's per-frame rolls. Two rows sampled whenever the consumer felt like it still answer
         /// "how many stalls across this window" exactly, and M2's per-frame drain cost is the same subtraction
@@ -253,8 +308,8 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void TwoSampledRowsBracketTheWindowExactly()
         {
-            var first = new GpuDeviceCounters(100_000, 400, 40d, 0, 0d, 2, 0);
-            var last = new GpuDeviceCounters(200_000, 900, 62d, 0, 0d, 2, 0);
+            var first = new GpuDeviceCounters(100_000, 400, 40d, 0, 0d, 2, 0, 0, 0d);
+            var last = new GpuDeviceCounters(200_000, 900, 62d, 0, 0d, 2, 0, 0, 0d);
 
             long frames = last.FramesBegun - first.FramesBegun;
             double drainMsPerFrame = (last.DrainMs - first.DrainMs) / frames;

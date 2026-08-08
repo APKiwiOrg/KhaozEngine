@@ -114,7 +114,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             lock (_submitLock)
             {
                 ulong value = _timeline.NextSubmitValue();
-                VulkanSubmitStatus status = _api.Submit(commandBuffer, value, out string? failure);
+
+                // THE SETUP BUFFER CARRIES NO SWAPCHAIN SEMAPHORES, ever. It holds creation-time clears and
+                // first-ever layout transitions, it renders into no swapchain image, and handing it the frame's
+                // acquire semaphore would consume a wait the frame's own submit needs.
+                VulkanSubmitStatus status = _api.Submit(commandBuffer, value, default, out string? failure);
 
                 if (status == VulkanSubmitStatus.Success)
                 {
@@ -146,11 +150,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="fence">The fence to arm, or null for a submit with no fence. It must be unarmed, and it is
         /// armed BEFORE the native call so that a caller re-submitting an armed fence is refused without work
         /// having been queued.</param>
+        /// <param name="frame">The swapchain's binary pair for this frame, taken once by the FIRST submit after
+        /// an acquire and default for every other one (V-W3). Default on every headless device, which has no
+        /// swapchain at all.</param>
         /// <returns>The timeline value this submission signals, or 0 when the device was already dead and nothing
         /// was submitted.</returns>
         /// <exception cref="InvalidOperationException">The list is not sealed, the fence is already armed, or the
         /// submit failed with a non-loss result.</exception>
-        internal ulong Submit(VulkanCommandList list, VulkanGpuFence? fence)
+        internal ulong Submit(VulkanCommandList list, VulkanGpuFence? fence,
+            in VulkanFrameSemaphores frame = default)
         {
             ArgumentNullException.ThrowIfNull(list);
 
@@ -174,7 +182,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 // submit succeeds, and the failure path below unarms it again.
                 fence?.Arm(value);
 
-                VulkanSubmitStatus status = _api.Submit(buffer, value, out string? failure);
+                VulkanSubmitStatus status = _api.Submit(buffer, value, frame, out string? failure);
 
                 if (status == VulkanSubmitStatus.Success)
                 {

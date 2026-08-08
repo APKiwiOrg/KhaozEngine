@@ -185,7 +185,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                     backpressureStallCount: stalls.Count,
                     backpressureStallMs: stalls.TotalMs,
                     offTimelineDeferred: patches.Deferred,
-                    offTimelineOutstanding: patches.Outstanding);
+                    offTimelineOutstanding: patches.Outstanding,
+                    // ZERO IS THE READING HERE RATHER THAN A GAP. A Direct3D 11 present hands the frame to the
+                    // runtime and returns: there is no acquire step and therefore no acquire the CPU can wait on,
+                    // so this backend can never move either half of the pair. Leaving them out was not available,
+                    // since the populating constructor takes every field, and passing zero says the honest thing.
+                    acquireWaitCount: 0,
+                    acquireWaitMs: 0d);
             }
         }
 

@@ -491,7 +491,10 @@ The seam member is `IGpuDevice.Counters`, default-implemented like `IGpuDevice.D
 appended without breaking any implementer and every backend that counts nothing answers honestly
 (`GpuDeviceCounters.HasValue` false, which is a different fact from counting and finding zero). `GpuDeviceContext`
 and `AppWindow` forward it, both reading THROUGH to the device on every access, because unlike everything else the
-header carries these numbers change on every frame. Only `KhaozEngine.Gpu.D3D11` fills it.
+header carries these numbers change on every frame. The two NATIVE backends fill it: `KhaozEngine.Gpu.D3D11` from
+17.32.0, and `KhaozEngine.Gpu.Vulkan` from 17.34.0, which is also where the struct gained its `AcquireWaitCount`
+and `AcquireWaitMs` pair and `GpuTelemetryChannels` gained the matching `gpuAcquireWaits` and `gpuAcquireWaitMs`
+columns.
 
 ### The stored backend preference deliberately adds NO edge (17.23.0)
 
@@ -595,13 +598,18 @@ and the tracker needs a held emitter. Both implementations are one call into a b
 command sink as a generic parameter, so every barrier still passes through the budget seam, and the seam is
 where the sink is SUBSTITUTED: the real recorder drives a `VulkanCmdSink` over the command buffer it is handed
 and the device-free one drives the counting sink, which is what makes the per-draw barrier budget an assertion
-that can fail rather than one that cannot see an image barrier at all. Nothing can
-be DRAWN yet and nothing can be presented: the remaining recording members are
-[#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525), and the windowed swapchain is
-[#527](https://github.com/APKiwiOrg/KhaozEngine/issues/527), which is what the windowed entry point still
-refuses by name. It registers under `GpuBackendKind.VulkanNative`, which landed in `17.32.0`, so the
-backend is selectable by name (`KE_GRAPHICS_BACKEND=vulkan-native`) and the windowed refusal arrives through the
-reported fallback. Nothing selects it by default.
+that can fail rather than one that cannot see an image barrier at all. Since
+[#527](https://github.com/APKiwiOrg/KhaozEngine/issues/527) the WINDOWED entry point is real too: a platform
+surface chosen from `GpuWindowKind`, `VK_KHR_swapchain` on the device, and `SwapchainFramebuffer`,
+`ResizeSwapchain` and `Present` all live behind a present boundary that acquires, resizes, recreates and
+presents. **That row also changes what the seam's "a resize reconfigures nothing" wording means here**: on
+Direct3D 11 and Metal vsync is an argument of the present call, and Vulkan cannot change a swapchain's present
+mode in place at all, so a runtime `SyncToVerticalBlank` change on this backend queues a full recreate applied at
+the next present boundary, exactly as a resize does. Nothing can be DRAWN yet: the remaining recording members are the draw and dispatch row
+([#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525)), so a windowed run today acquires, resizes and
+presents around a frame that records nothing. It registers under `GpuBackendKind.VulkanNative`, which landed in
+`17.32.0`, so the backend is selectable by name (`KE_GRAPHICS_BACKEND=vulkan-native`) and a machine that cannot
+run it arrives through the reported fallback. Nothing selects it by default.
 
 ```
 KhaozEngine.Gpu.Vulkan -> KhaozEngine.Gpu      (the only direction, again)

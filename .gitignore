@@ -52,7 +52,7 @@ KhaozEngine.Render.Tests/Gpu/goldens-evidence/
 # Emitted HLSL written by D3D11HlslByteEqualityTests when a pinned hash no longer matches; local-only,
 # uploaded as a CI artifact so an option drift can be read rather than guessed at
 KhaozEngine.Render.Tests/Gpu/hlsl-evidence/
-# Compiled SPIR-V written by VulkanSpirvByteEqualityTests when a pinned hash no longer matches; local-only,
+# Compiled SPIR-V written by VulkanSpirvByteEqualityTests when a pinned hash no longer matches. Local-only,
 # uploaded as a CI artifact so a front-end option drift can be disassembled rather than guessed at
 KhaozEngine.Render.Tests/Gpu/spirv-evidence/
 # CPU-vs-GPU skinning parity PNG dumps (Render3DGpuSkinningGpuTests); local-only diagnostic evidence

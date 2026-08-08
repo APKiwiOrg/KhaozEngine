@@ -1769,7 +1769,7 @@ device.
 |---|---|---|
 | `ClipSpaceYInverted` | **false**, from the negative-height viewport path (7.2) | identical, and it is the one that flips every image |
 | `DepthRangeZeroToOne` | true | identical |
-| `DeviceName` | `VkPhysicalDeviceProperties.deviceName`, trimmed | identical by construction, given V-N3's default selection |
+| `DeviceName` | `VkPhysicalDeviceProperties.deviceName`, NUL cut only, never trimmed | identical by construction, given V-N3's default selection |
 | `SamplerAnisotropy` | `VkPhysicalDeviceFeatures.samplerAnisotropy` | asserted identical |
 | `SamplerLodBias` | true | identical |
 | `MaxMsaaSampleCount` | the incumbent's own computation, reproduced (V-C5) | asserted identical, and satisfiable by construction rather than by luck |
@@ -1798,6 +1798,14 @@ where the incumbent answers true is not a loud failure, it is the shadow path de
 backend only, with nothing red anywhere. The lesson generalises under a zero-difference bar, which is why it is
 written here rather than only in the code: writing down what a member's NAME suggests instead of what the
 incumbent asks is a parity failure by construction.
+
+**CORRECTED IN FLIGHT (row 18): the `DeviceName` cell said "trimmed", and the implementation deliberately does
+not trim.** It cuts at the first NUL and returns everything else verbatim, padding included. Trimming reads like
+the tidier answer and is the wrong one under this bar for the same reason as above: the incumbent does not trim,
+so a trim on the native path alone fails `DeviceName` parity on every machine whose vendor pads its reported
+name, which is an ordinary hardware habit rather than a hypothetical. The parity test pins the padded case on
+purpose. The NUL cut stays because it is free and defensive, and it expects to find nothing, since the
+marshaller on both paths already stops at the first terminator.
 
 **The device's shared point and linear samplers WRAP on all three axes**, built from wrap-addressed
 descriptions and NOT from the identically named `GpuSamplerDescription.Point` and `.Linear` statics, which

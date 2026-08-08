@@ -165,8 +165,10 @@ namespace KhaozEngine.Tests.Gpu
         /// the SAME descriptor seam the sets were built through. That is what makes decision V-D2's zero-count
         /// assertion meaningful: two rigs would prove nothing about the one that recorded.
         /// <para>
-        /// No uploader, deliberately: the record-time write into a ring-backed uniform buffer needs none, and the
-        /// staging path needs a real <c>Vk</c> that no device-free rig has.
+        /// NO UPLOADER BY DEFAULT: the record-time write into a ring-backed uniform buffer needs none, and the
+        /// real <see cref="VulkanListUploads"/> needs a real <c>Vk</c> that no device-free rig has. A test of the
+        /// BULK leg passes its own <paramref name="uploads"/>, which is also how the rendering scope the list
+        /// hands its uploader is observed.
         /// </para>
         /// <para>
         /// IT DOES GET THE RENDERING SEAM, because that one is device-free by construction: every argument it
@@ -174,8 +176,9 @@ namespace KhaozEngine.Tests.Gpu
         /// recording asked for and the whole deferred begin is drivable here.
         /// </para>
         /// </summary>
-        internal VulkanCommandList CreateList()
-            => new(new VulkanCommandPoolRing(CommandApi, FramesInFlight, Timeline, Backpressure), Retired,
+        /// <param name="uploads">The list's staging uploader, or null for a list that records no bulk write.</param>
+        internal VulkanCommandList CreateList(IVulkanRecordUploads? uploads = null)
+            => new(new VulkanCommandPoolRing(CommandApi, FramesInFlight, Timeline, Backpressure), Retired, uploads,
                 render: RenderApi);
 
         /// <summary>

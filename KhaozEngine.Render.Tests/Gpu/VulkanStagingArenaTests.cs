@@ -498,8 +498,9 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(0, arena.BlocksCreated);
         }
 
-        /// <summary>A null rendering scope is legal and means there is no pass to end, which is the state until the
-        /// dynamic-rendering row lands.</summary>
+        /// <summary>A null rendering scope is legal and means there is no pass to end, which is the state on a
+        /// list built with no rendering seam. Only a test constructs one: every list the device hands out gets a
+        /// schedule and hands itself to its uploader as the scope.</summary>
         [Fact]
         public void ANullRenderingScope_IsLegal()
         {

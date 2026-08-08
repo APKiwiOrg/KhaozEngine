@@ -5,6 +5,7 @@ using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Vulkan.Internal;
 using Xunit;
 using Xunit.Abstractions;
+using FormatFeatureFlags = Silk.NET.Vulkan.FormatFeatureFlags;
 
 namespace KhaozEngine.Tests.Gpu
 {
@@ -21,10 +22,12 @@ namespace KhaozEngine.Tests.Gpu
     /// <see cref="VulkanCapabilityRead"/> until proven otherwise, rather than a member to add to an exemption
     /// list.</para>
     ///
-    /// <para><b>THE SPLIT.</b> Everything that DECIDES a capability from a probed input is engine logic in
-    /// <see cref="VulkanCapabilityRead"/>: the five constants, the device-name normalisation and the sample-count
-    /// floor. Those are plain <c>[Fact]</c>s here, on a machine with no Vulkan loader at all, driven off values
-    /// written by hand. So is the COMPARER, plus the reflection check that it covers every member of
+    /// <para><b>THE SPLIT.</b> Everything that DECIDES a capability from a probed input is engine logic:
+    /// <see cref="VulkanCapabilityRead"/>'s five constants, device-name normalisation and sample-count floor, plus
+    /// the format-feature pair behind <see cref="GpuCapabilities.SupportsShadowMaps"/>
+    /// (<see cref="VulkanPhysicalDeviceReader.ShadowMapFormatFeatures"/>, held apart from the driver call for
+    /// exactly this reason). Those are plain <c>[Fact]</c>s here, on a machine with no Vulkan loader at all, driven
+    /// off values written by hand. So is the COMPARER, plus the reflection check that it covers every member of
     /// <see cref="GpuCapabilities"/>, which is the guard that matters most: a member appended to that struct
     /// without a line added to the comparison would make the parity assertion silently weaker while staying
     /// green. The two-device half is a <c>[GpuFact]</c> and needs a real Vulkan device, which nothing on the
@@ -119,6 +122,44 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(expected, VulkanCapabilityRead.ReportedDeviceName(raw));
             Assert.Equal(expected, VulkanCapabilityRead.Assemble(raw, true, true, 1).DeviceName);
         }
+
+        /// <summary>
+        /// THE SHADOW-MAP QUESTION IS A COLOUR-ATTACHMENT ONE, PINNED HERE AS THE EXACT BITS. Reading it as the
+        /// depth-stencil bit the capability's NAME suggests is not a stricter question but a structurally false
+        /// one: <c>R32_SFLOAT</c> is a colour format, no driver reports the depth-stencil bit for it, and the
+        /// capability would answer false on every Vulkan device in existence. What that costs is not a red leg.
+        /// It is the shadow path degrading to blob shadows on this backend alone, silently, which is the failure
+        /// the Direct3D 11 sibling spells out in the same place. The engine's own pass wants this pair too:
+        /// <c>ShadowMapRenderer</c> creates the atlas as <c>R32Float</c> with <c>RenderTarget | Sampled</c> and
+        /// hangs a separate depth-stencil off it, and <c>VeldridMap.SupportsShadowMaps</c> asks
+        /// <c>GetPixelFormatSupport</c> for the same two.
+        /// </summary>
+        [Fact]
+        public void TheShadowMapFormatQuestionIsColourAttachmentAndSampled()
+        {
+            Assert.Equal(
+                FormatFeatureFlags.ColorAttachmentBit | FormatFeatureFlags.SampledImageBit,
+                VulkanPhysicalDeviceReader.ShadowMapFormatFeatures);
+
+            Assert.False(
+                VulkanPhysicalDeviceReader.ShadowMapFormatFeatures.HasFlag(
+                    FormatFeatureFlags.DepthStencilAttachmentBit),
+                "R32_SFLOAT is a colour format, so requiring the depth-stencil bit answers false everywhere.");
+        }
+
+        /// <summary>The decision itself, driven off what a driver would report for <c>R32_SFLOAT</c>'s optimal
+        /// tiling. BOTH bits are required, so either alone is a no, and the depth-stencil row is the one that
+        /// would have passed under the question this backend originally asked.</summary>
+        [Theory]
+        [InlineData(FormatFeatureFlags.ColorAttachmentBit | FormatFeatureFlags.SampledImageBit, true)]
+        [InlineData(FormatFeatureFlags.ColorAttachmentBit | FormatFeatureFlags.SampledImageBit
+            | FormatFeatureFlags.DepthStencilAttachmentBit, true)]
+        [InlineData(FormatFeatureFlags.ColorAttachmentBit, false)]
+        [InlineData(FormatFeatureFlags.SampledImageBit, false)]
+        [InlineData(FormatFeatureFlags.DepthStencilAttachmentBit | FormatFeatureFlags.SampledImageBit, false)]
+        [InlineData((FormatFeatureFlags)0, false)]
+        public void SupportsShadowMapFormat_NeedsBothBits(FormatFeatureFlags reported, bool expected)
+            => Assert.Equal(expected, VulkanPhysicalDeviceReader.SupportsShadowMapFormat(reported));
 
         /// <summary>The floor is one sample, which is how the seam spells "no MSAA", and it is what the capability
         /// carries until row 15 supplies the incumbent's own computation.</summary>

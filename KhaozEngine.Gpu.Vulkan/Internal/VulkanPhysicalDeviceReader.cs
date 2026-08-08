@@ -14,8 +14,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <param name="GraphicsQueueFamily">The first family carrying <c>VK_QUEUE_GRAPHICS_BIT</c>, or
     /// <see cref="VulkanPhysicalDeviceReader.NoQueueFamily"/> when there is none. ONE graphics queue is the whole
     /// queue model (V-N5).</param>
-    /// <param name="SupportsShadowMapFormat">Whether <c>R32_SFLOAT</c> can be both a depth-stencil attachment and
-    /// a sampled image, which is <c>GpuCapabilities.SupportsShadowMaps</c>.</param>
+    /// <param name="SupportsShadowMapFormat">Whether <c>R32_SFLOAT</c> can be both a colour attachment and a
+    /// sampled image, which is <c>GpuCapabilities.SupportsShadowMaps</c>. See
+    /// <see cref="VulkanPhysicalDeviceReader.ShadowMapFormatFeatures"/> for why the pair is that one and not the
+    /// depth-stencil one the name suggests.</param>
     /// <param name="ReportedDeviceName">What the driver actually put in
     /// <c>VkPhysicalDeviceProperties.deviceName</c>, empty when it reported nothing, which is the string
     /// <c>GpuCapabilities.DeviceName</c> carries. Separate from <see cref="VulkanDeviceFacts.DeviceName"/>, which
@@ -269,16 +271,44 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             return NoQueueFamily;
         }
 
-        // GpuCapabilities.SupportsShadowMaps: R32_SFLOAT usable as both a depth-stencil attachment and a sampled
-        // image, which is what the shadow pass renders into and then reads.
+        /// <summary>
+        /// The two format features <c>GpuCapabilities.SupportsShadowMaps</c> asks <c>R32_SFLOAT</c> about, held as
+        /// a constant so the question itself is assertable on a machine with no Vulkan loader.
+        /// <para>
+        /// COLOUR ATTACHMENT, NOT DEPTH-STENCIL, and asking the other one is not a stricter question but a
+        /// structurally false one. <c>R32_SFLOAT</c> is a colour format, so no driver reports
+        /// <c>VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT</c> for it, and the shadow pass never wanted that
+        /// bit: <c>ShadowMapRenderer</c> creates the atlas as <c>R32Float</c> with
+        /// <c>RenderTarget | Sampled</c> and hangs a SEPARATE depth-stencil off it, so the two features the pass
+        /// actually needs are render target and sampled image.
+        /// </para>
+        /// <para>
+        /// THE INCUMBENT ASKS THIS PAIR TOO, which is what makes it the parity answer as well as the correct one:
+        /// <c>VeldridMap.SupportsShadowMaps</c> calls <c>GetPixelFormatSupport</c> with
+        /// <c>RenderTarget | Sampled</c>. The Direct3D 11 sibling
+        /// (<c>D3D11DxgiQueries.SupportsShadowMapsWindows</c>) settled the same question with the warning worth
+        /// repeating here: a capability question stricter than the incumbent's reports false where the incumbent
+        /// reports true, and the visible result is the shadow path degrading to blob shadows on ONE backend only,
+        /// silently, with nothing failing.
+        /// </para>
+        /// </summary>
+        internal const FormatFeatureFlags ShadowMapFormatFeatures =
+            FormatFeatureFlags.ColorAttachmentBit | FormatFeatureFlags.SampledImageBit;
+
+        /// <summary>The DECISION half of the shadow-map question, given what a driver reported for
+        /// <c>R32_SFLOAT</c>'s optimal tiling. Split from the read so the bits are pinnable device-free, the same
+        /// split every other rule in this backend gets.</summary>
+        internal static bool SupportsShadowMapFormat(FormatFeatureFlags optimalTilingFeatures)
+            => (optimalTilingFeatures & ShadowMapFormatFeatures) == ShadowMapFormatFeatures;
+
+        // GpuCapabilities.SupportsShadowMaps: R32_SFLOAT usable as both a colour attachment and a sampled image,
+        // which is what the shadow pass renders into and then reads.
         static bool SupportsShadowMapFormat(Vk vk, PhysicalDevice device)
         {
             FormatProperties properties;
             vk.GetPhysicalDeviceFormatProperties(device, Format.R32Sfloat, &properties);
 
-            const FormatFeatureFlags required =
-                FormatFeatureFlags.DepthStencilAttachmentBit | FormatFeatureFlags.SampledImageBit;
-            return (properties.OptimalTilingFeatures & required) == required;
+            return SupportsShadowMapFormat(properties.OptimalTilingFeatures);
         }
 
         static VulkanPhysicalDeviceClass Classify(PhysicalDeviceType type) => type switch

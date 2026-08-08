@@ -44,6 +44,17 @@ and the log keeps its readable name. No whitespace trim on either path, for the 
 does not trim either: the incumbent does not, and trimming one side alone fails parity on every machine whose
 vendor pads its name.
 
+**A second one was found in review: `SupportsShadowMaps` was asking the wrong format question.** The read asked
+`vkGetPhysicalDeviceFormatProperties(R32_SFLOAT)` for the DEPTH-STENCIL attachment bit plus sampled image, and
+`R32_SFLOAT` is a colour format, so no driver reports that bit for it and the capability was structurally false
+on every Vulkan device. The pair the shadow pass wants is COLOUR attachment plus sampled image:
+`ShadowMapRenderer` creates the atlas as `R32Float` with `RenderTarget | Sampled` and hangs a separate
+depth-stencil off it, and `VeldridMap.SupportsShadowMaps` asks `GetPixelFormatSupport` for exactly those two.
+The bits are now `VulkanPhysicalDeviceReader.ShadowMapFormatFeatures` with the decision split off the driver
+call, so a plain `[Fact]` pins them. Nothing shipped answered the wrong way, since no leg creates this device
+yet, and the failure it would have produced is the quiet kind: the shadow path degrading to blob shadows on one
+backend, with nothing red anywhere.
+
 **`MaxMsaaSampleCount` is the one member still pinned to one sample, and that is a schedule fact rather than a
 gap.** V-C5 rules that the computation is READ OFF the incumbent's own `GetSampleCountLimit` and reproduced with
 its citation pinned, which is row 15 (#525), the row that also needs the number for its resolve. Two drafts of

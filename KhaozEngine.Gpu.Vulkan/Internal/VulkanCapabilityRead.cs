@@ -12,8 +12,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <para>
     /// THE THREE ANSWERS A DEVICE ACTUALLY GIVES are the reported device name, <c>samplerAnisotropy</c> off the
     /// feature chain, and the <c>R32_SFLOAT</c> format-properties read behind
-    /// <see cref="GpuCapabilities.SupportsShadowMaps"/>. <see cref="VulkanPhysicalDeviceReader"/> asks for those
-    /// against a real <c>VkPhysicalDevice</c> and hands them here as plain data, which is the whole split.
+    /// <see cref="GpuCapabilities.SupportsShadowMaps"/> (colour attachment and sampled image, the pair
+    /// <see cref="VulkanPhysicalDeviceReader.ShadowMapFormatFeatures"/> pins).
+    /// <see cref="VulkanPhysicalDeviceReader"/> asks for those against a real <c>VkPhysicalDevice</c> and hands
+    /// them here as plain data, which is the whole split.
     /// </para>
     /// <para>
     /// PARITY WITH THE INCUMBENT IS THE POINT, AND ZERO MEMBERS MAY DIFFER (V-G1), which is a stricter bar than
@@ -107,8 +109,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// loggable substitution.</param>
         /// <param name="samplerAnisotropy">The device's <c>samplerAnisotropy</c> feature bit, which is also
         /// whether this backend asked <c>vkCreateDevice</c> for it.</param>
-        /// <param name="supportsShadowMaps">Whether <c>R32_SFLOAT</c> can be both a depth-stencil attachment and
-        /// a sampled image, off <c>vkGetPhysicalDeviceFormatProperties</c>.</param>
+        /// <param name="supportsShadowMaps">Whether <c>R32_SFLOAT</c> can be both a colour attachment and a
+        /// sampled image, off <c>vkGetPhysicalDeviceFormatProperties</c>. That pair, and not the depth-stencil one
+        /// the capability's name suggests, is what the shadow pass needs and what the incumbent asks
+        /// (<see cref="VulkanPhysicalDeviceReader.ShadowMapFormatFeatures"/>).</param>
         /// <param name="maxMsaaSampleCount">Row 15's reproduction of the incumbent's own computation, or
         /// <see cref="NoMultisampling"/> until it lands.</param>
         internal static GpuCapabilities Assemble(

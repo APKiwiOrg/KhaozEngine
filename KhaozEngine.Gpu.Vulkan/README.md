@@ -1172,6 +1172,14 @@ rejection line naming an empty string is a line nobody can act on. The incumbent
 exactly what the seam's own doc says empty means. There is **no whitespace trim on either path**, because the
 incumbent does not trim and trimming one side alone fails parity on every machine whose vendor pads its name.
 
+**`SupportsShadowMaps` asks `R32_SFLOAT` for COLOUR attachment plus sampled image**, held as
+`VulkanPhysicalDeviceReader.ShadowMapFormatFeatures` with the decision split off the driver call so the bits are
+assertable device-free. Asking for the depth-stencil attachment bit instead, which the capability's name
+suggests, is not a stricter question but a structurally false one: `R32_SFLOAT` is a colour format and no driver
+reports that bit for it. The pass wants this pair anyway, since `ShadowMapRenderer` creates the atlas as
+`R32Float` with `RenderTarget | Sampled` and hangs a separate depth-stencil off it, and it is also the parity
+answer, since `VeldridMap.SupportsShadowMaps` asks `GetPixelFormatSupport` for the same two.
+
 **`MaxMsaaSampleCount` is pinned to one sample until [#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525)
 reproduces the incumbent's own `GetSampleCountLimit`.** That is a ruling rather than an omission: two drafts of
 the design each invented a formula, the two differ, and both then asserted equality with the incumbent as a test,

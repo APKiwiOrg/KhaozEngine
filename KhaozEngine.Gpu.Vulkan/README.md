@@ -893,9 +893,16 @@ it is on Direct3D 11. The incumbent ignores `vkQueuePresentKHR`'s result entirel
 **Recreation drains the timeline first, unconditionally**, which is what makes retiring a possibly pending
 binary semaphore safe: there is no way to ask one whether it is pending, and destroying a pending semaphore is
 undefined behaviour drivers mostly tolerate until they do not. The new views are published onto the existing
-framebuffer wrapper BEFORE the old ones are destroyed, every time, and a creation that fails at a creatable
-extent keeps the old generation and retries next boundary, because that is the only response with no window in
-which the wrapper names a dead view.
+framebuffer wrapper BEFORE the old ones are destroyed, every time, which is the ordering that makes a
+use-after-free unreachable rather than merely unlikely.
+
+**A creation that fails at a creatable extent takes the old generation with it, and keeping it would be the
+bug.** `vkCreateSwapchainKHR` retires the swapchain handed to it as `oldSwapchain` as an effect of the CALL
+rather than of the call succeeding, and a retired swapchain may already have had the images nothing had acquired
+freed underneath it. So a boundary that kept its old generation would not be holding live views, it would be
+naming images the driver may have taken back, and it would hand the same retired handle to the next attempt,
+which the specification forbids outright. The failure retires the old generation, binds the orphan target and
+retries with no old swapchain to pass, exactly as a zero-extent surface does.
 
 **One process cannot hold a headless device and a windowed one at the same time.** A live `VkInstance`'s
 extension list is fixed at creation and Vulkan offers no way to add one afterwards, so the second configuration

@@ -78,9 +78,14 @@ is a full recreate here rather than the argument of a present call it is on Dire
 `vkQueuePresentKHR`'s result entirely. Recreation drains the timeline first, unconditionally, which is what makes
 retiring a possibly pending binary semaphore safe, and the new views are published onto the existing framebuffer
 wrapper BEFORE the old ones are destroyed, every time, which is the ordering that makes a use-after-free
-unreachable rather than merely unlikely. A creation that fails at a creatable extent keeps the old generation and
-retries at the next boundary, because that is the only response with no window in which the wrapper names a dead
-view.
+unreachable rather than merely unlikely. A creation that fails at a creatable extent RETIRES the old generation
+and binds the orphan target, because `vkCreateSwapchainKHR` retires the swapchain handed to it as `oldSwapchain`
+as an effect of the call rather than of the call succeeding: keeping it would leave the framebuffer naming images
+the driver may already have freed, and would hand the same retired handle to the next attempt, which
+`VUID-VkSwapchainCreateInfoKHR-oldSwapchain-01933` forbids. Every retirement path also forgets the held image and
+the frame's semaphore pair, so a frame that opened and closed without drawing (which KEEPS its image, since
+nothing may present an image nothing rendered into) cannot leave a later submit waiting on a destroyed
+render-finished semaphore, and cannot strand the boundary with no generation and no pending recreate.
 
 **One seam member pair is ADDED, and calling it "no seam change" would have cost the acquire A/B its result.**
 `GpuDeviceCounters` gains `AcquireWaitCount` and `AcquireWaitMs` with the `gpuAcquireWaits` and `gpuAcquireWaitMs`

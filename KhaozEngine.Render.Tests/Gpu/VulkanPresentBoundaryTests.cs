@@ -422,13 +422,41 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// A CREATION THAT FAILED AT A CREATABLE EXTENT KEEPS THE OLD GENERATION AND NOTHING IS DESTROYED. The
-        /// framebuffer still points at views that are still alive, the pending flag goes back, and the next
-        /// boundary tries again. That is the only response that leaves no window in which the wrapper names a dead
-        /// view.
+        /// A CREATION THAT FAILED AT A CREATABLE EXTENT RETIRES THE OLD GENERATION AND FALLS TO THE ORPHAN, and
+        /// keeping the old one is exactly what it must not do. <c>vkCreateSwapchainKHR</c> retires the swapchain
+        /// handed to it as <c>oldSwapchain</c> as an effect of the CALL rather than of the call succeeding, and a
+        /// retired swapchain may already have had the images nothing acquired freed underneath it. So keeping it
+        /// does not keep the framebuffer pointing at live views, it keeps it pointing at images the driver may
+        /// have taken back.
         /// </summary>
         [Fact]
-        public void AFailedCreationKeepsTheOldSwapchain()
+        public void AFailedCreationRetiresTheOldSwapchainAndBindsTheOrphan()
+        {
+            using var rig = new Rig();
+            ulong first = rig.Swapchains.LiveSwapchains[0];
+
+            // BOTH the recreate's own creation and the one retry's fail, because a single failure is repaired by
+            // the retry at this same boundary and leaves nothing to look at.
+            rig.Swapchains.FailNextCreate = "VK_ERROR_OUT_OF_DEVICE_MEMORY";
+            rig.Swapchains.FailCreateCount = 2;
+            rig.Boundary.QueueResize(800, 600);
+            rig.Frame();
+
+            Assert.DoesNotContain(first, rig.Swapchains.LiveSwapchains);
+            Assert.Empty(rig.Swapchains.LiveSwapchains);
+            Assert.True(rig.Boundary.IsOrphanBound);
+            Assert.False(rig.Boundary.HasImage);
+            Assert.True(rig.Boundary.HasPendingRecreate);
+        }
+
+        /// <summary>
+        /// AND EVERY ATTEMPT AFTER A FAILED ONE PASSES ZERO AS <c>oldSwapchain</c>. Re-passing the handle a failed
+        /// creation already retired is a specification violation
+        /// (<c>VUID-VkSwapchainCreateInfoKHR-oldSwapchain-01933</c>), and it is the one a boundary that kept its
+        /// old generation walks into at the very next attempt, which here is the retry inside the same boundary.
+        /// </summary>
+        [Fact]
+        public void TheAttemptAfterAFailedCreationPassesNoOldSwapchain()
         {
             using var rig = new Rig();
             ulong first = rig.Swapchains.LiveSwapchains[0];
@@ -437,8 +465,10 @@ namespace KhaozEngine.Tests.Gpu
             rig.Boundary.QueueResize(800, 600);
             rig.Frame();
 
-            Assert.Contains(first, rig.Swapchains.LiveSwapchains);
-            Assert.True(rig.Boundary.HasPendingRecreate);
+            Assert.Equal(0UL, rig.Swapchains.LastOldSwapchain);
+            Assert.DoesNotContain(first, rig.Swapchains.LiveSwapchains);
+            Assert.Single(rig.Swapchains.LiveSwapchains);
+            Assert.True(rig.Boundary.HasImage);
             Assert.False(rig.Boundary.IsOrphanBound);
         }
 

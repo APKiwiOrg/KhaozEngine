@@ -80,7 +80,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="spec">Everything the create-info says, decided by <see cref="VulkanSwapchainPolicy"/>.</param>
         /// <param name="oldSwapchain">The swapchain being replaced, or 0 on the first creation. Passing it lets
         /// the driver reuse presentable images rather than tearing the whole chain down, and the old handle is
-        /// still the caller's to destroy afterwards.</param>
+        /// still the caller's to DESTROY afterwards.
+        /// <para>
+        /// IT IS NOT STILL THE CALLER'S TO USE, AND THAT HOLDS EVEN WHEN THIS CALL FAILS. The specification
+        /// retires <paramref name="oldSwapchain"/> as an effect of the call rather than of the call succeeding, and
+        /// a retired swapchain may already have had the images nothing had acquired freed underneath it. So a
+        /// caller whose creation came back 0 may not carry on acquiring from or presenting to the old one, and may
+        /// not hand the same handle to the next attempt either
+        /// (VUID-VkSwapchainCreateInfoKHR-oldSwapchain-01933). Retire it and pass 0.
+        /// </para></param>
         /// <param name="failure">On a 0 return, the result's own token for the message the caller logs.</param>
         /// <returns>The <c>VkSwapchainKHR</c> handle, or 0 when creation failed.</returns>
         ulong CreateSwapchain(ulong surface, in VulkanSwapchainSpec spec, ulong oldSwapchain, out string? failure);

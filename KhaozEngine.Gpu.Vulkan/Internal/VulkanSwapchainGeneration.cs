@@ -82,15 +82,23 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// CREATE A GENERATION, or answer null when <c>vkCreateSwapchainKHR</c> refused.
         /// <para>
         /// A NULL RETURN IS NOT A THROW, deliberately. The present boundary's answer to a failed creation is to
-        /// KEEP the generation it already has and try again at the next boundary, which is what stops a surface
-        /// mid-resize from taking the frame loop down. A throw here would have to be caught two frames later by
-        /// somebody who could do nothing more useful with it.
+        /// retire the generation it already has, bind the orphan target and try again at the next boundary, which
+        /// is what stops a surface mid-resize from taking the frame loop down. A throw here would have to be
+        /// caught two frames later by somebody who could do nothing more useful with it.
+        /// </para>
+        /// <para>
+        /// IT RETIRES THE OLD GENERATION RATHER THAN KEEPING IT, because <c>vkCreateSwapchainKHR</c> retires
+        /// <paramref name="oldSwapchain"/> as an effect of the CALL and not of the call succeeding. Keeping it
+        /// would leave the framebuffer naming images the driver may already have freed, and would hand the same
+        /// retired handle to the next attempt.
         /// </para>
         /// </summary>
         /// <param name="api">The swapchain seam.</param>
         /// <param name="surface">The surface to present to.</param>
         /// <param name="spec">The create-info, already decided and already known creatable.</param>
-        /// <param name="oldSwapchain">The handle being replaced, or 0. Still the caller's to destroy.</param>
+        /// <param name="oldSwapchain">The handle being replaced, or 0. Still the caller's to DESTROY, and never
+        /// the caller's to use again: <c>vkCreateSwapchainKHR</c> retires it whether or not it succeeds, so a
+        /// caller that got null back retires its old generation and passes 0 next time.</param>
         /// <param name="failure">On a null return, the reason, for the caller to log.</param>
         internal static VulkanSwapchainGeneration? TryCreate(IVulkanSwapchainApi api, ulong surface,
             in VulkanSwapchainSpec spec, ulong oldSwapchain, out string? failure)

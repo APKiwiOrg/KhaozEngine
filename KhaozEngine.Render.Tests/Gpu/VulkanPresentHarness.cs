@@ -122,9 +122,15 @@ namespace KhaozEngine.Tests.Gpu
         /// it rather than assume the count it asked for.</summary>
         internal int ImageCount { get; set; } = 3;
 
-        /// <summary>When set, the next <see cref="CreateSwapchain"/> answers 0 with this reason and then clears
-        /// itself, which is the "creation failed at a creatable extent" path.</summary>
+        /// <summary>When set, the next <see cref="FailCreateCount"/> calls to <see cref="CreateSwapchain"/> answer
+        /// 0 with this reason, and it then clears itself. That is the "creation failed at a creatable extent"
+        /// path.</summary>
         internal string? FailNextCreate { get; set; }
+
+        /// <summary>How many creations <see cref="FailNextCreate"/> covers, 1 by default. TWO is the double
+        /// failure the boundary's ONE retry cannot recover from, which is the only way to observe the state a
+        /// single failure leaves before the retry repairs it at that same boundary.</summary>
+        internal int FailCreateCount { get; set; } = 1;
 
         /// <summary>How many blocking acquires were made, which is what separates a probe that found an image
         /// waiting from one that had to stall the CPU.</summary>
@@ -153,7 +159,13 @@ namespace KhaozEngine.Tests.Gpu
             if (FailNextCreate is not null)
             {
                 failure = FailNextCreate;
-                FailNextCreate = null;
+
+                if (--FailCreateCount <= 0)
+                {
+                    FailNextCreate = null;
+                    FailCreateCount = 1;
+                }
+
                 Events.Add("CreateSwapchain -> failed");
                 return 0;
             }

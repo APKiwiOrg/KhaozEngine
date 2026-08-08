@@ -388,17 +388,20 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (warning != null) _log.Warn(warning);
 
-            // THE ORPHAN IS ENSURED BEFORE THE LOCK, on the one path that needs it, because creating a texture
-            // takes the setup lock and the setup lock is never taken while holding the submit lock (V-W8).
             // RESOLVED BEFORE ANYTHING IS CREATED, so the orphan and the swapchain framebuffer always agree about
             // the format a pipeline is validated against, on every path including the one where no swapchain is
             // ever made.
             _seamFormat = VulkanSwapchainPolicy.SeamFormatFor(spec.Format);
 
-            VulkanAttachment orphan = default;
-            bool orphanNeeded = !spec.IsCreatable;
-            if (orphanNeeded) orphan = _orphan.Ensure(spec.Extent.AtLeastOnePixel, _seamFormat);
+            // A ZERO-EXTENT SURFACE, which is what a minimised window reports and what the extent clamp turns into
+            // a spec that reads as not creatable. There is nothing to call vkCreateSwapchainKHR with.
+            if (!spec.IsCreatable)
+            {
+                FallToOrphan(spec.Extent.AtLeastOnePixel);
+                return;
+            }
 
+            string? failure;
             lock (_submitLock)
             {
                 // UNCONDITIONAL, and that is the whole retirement rule (V-W6). A binary semaphore an acquire or a
@@ -407,43 +410,72 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 // do not. A drained queue is the only state in which the answer is knowable.
                 _drain();
 
-                if (orphanNeeded)
-                {
-                    // PUBLISHED BEFORE THE OLD VIEWS DIE, which is the ordering rule that makes a use-after-free
-                    // unreachable rather than merely unlikely. A minimised window reaches exactly this.
-                    AdoptOrphan(orphan, spec.Extent.AtLeastOnePixel);
-                    RetireGeneration();
-                    ForgetHeldImage();
-                    return;
-                }
-
                 VulkanSwapchainGeneration? made = VulkanSwapchainGeneration.TryCreate(
-                    _swapchains, _surface, spec, _generation?.Handle ?? 0, out string? failure);
+                    _swapchains, _surface, spec, _generation?.Handle ?? 0, out failure);
 
-                if (made is null)
+                if (made is not null)
                 {
-                    // THE OLD GENERATION IS KEPT AND NOTHING IS DESTROYED. The framebuffer still points at views
-                    // that are still alive, the pending flag is put back, and the next boundary tries again. That
-                    // is the only response that leaves no window in which the wrapper names a dead view.
-                    _log.Warn("The native Vulkan backend could not create a swapchain at "
-                        + spec.Extent.Width + "x" + spec.Extent.Height + ": " + (failure ?? "no reason reported")
-                        + ". The previous swapchain is kept and the recreate is retried at the next present "
-                        + "boundary.");
-                    _pending.QueueRecreate();
-                    if (firstGeneration) throw NoFirstSwapchain(spec, failure);
+                    Adopt(made, imageIndex: 0);
+                    RetireGeneration();
+                    _generation = made;
+                    ForgetHeldImage();
+
+                    if (_mode == VulkanAcquireMode.Semaphore) _ring.Rebuild(made.ImageCount);
+
+                    // The orphan is released only once a real image is bound again, which is the next successful
+                    // acquire. Doing it here would destroy the image the framebuffer is pointing at until one
+                    // statement ago.
                     return;
                 }
-
-                Adopt(made, imageIndex: 0);
-                RetireGeneration();
-                _generation = made;
-                ForgetHeldImage();
-
-                if (_mode == VulkanAcquireMode.Semaphore) _ring.Rebuild(made.ImageCount);
             }
 
-            // The orphan is released only once a real image is bound again, which is the next successful acquire.
-            // Doing it here would destroy the image the framebuffer is pointing at on the path that just failed.
+            // A FAILED CREATION TAKES THE OLD GENERATION WITH IT, and that is a specification fact rather than a
+            // policy choice here. vkCreateSwapchainKHR RETIRES the swapchain handed to it as oldSwapchain whether
+            // or not it succeeds, and a retired swapchain may already have had the images nothing acquired freed
+            // underneath it. Keeping the old generation therefore does not keep a framebuffer pointing at views
+            // that are still alive: it keeps one pointing at images the driver may have taken back, and it hands
+            // the same now-retired handle to the next attempt, which the specification forbids
+            // (VUID-VkSwapchainCreateInfoKHR-oldSwapchain-01933). So the old generation is retired here and the
+            // frame binds the orphan target, exactly as a zero-extent surface does.
+            _log.Warn("The native Vulkan backend could not create a swapchain at "
+                + spec.Extent.Width + "x" + spec.Extent.Height + ": " + (failure ?? "no reason reported")
+                + ". vkCreateSwapchainKHR retires the old swapchain even when it fails, so the previous "
+                + "generation is retired here rather than kept, the frame binds the orphan target, and the "
+                + "recreate is retried at the next present boundary with no old swapchain to pass.");
+            _pending.QueueRecreate();
+
+            if (firstGeneration) throw NoFirstSwapchain(spec, failure);
+
+            FallToOrphan(spec.Extent.AtLeastOnePixel);
+        }
+
+        // THE IMAGELESS TARGET, and the ONE way this boundary ever ends up with no generation: a zero-extent
+        // surface, and a creation that failed after the driver had already retired the old swapchain. Both leave
+        // the framebuffer on the orphan, the generation retired and the frame's semaphores forgotten.
+        void FallToOrphan(VulkanExtent extent)
+        {
+            // ENSURED BEFORE THE LOCK, because creating a texture takes the SETUP lock and the setup lock is taken
+            // before the submit lock and never after it (V-W8).
+            VulkanAttachment attachment = _orphan.Ensure(extent, _seamFormat);
+
+            lock (_submitLock)
+            {
+                // UNCONDITIONAL AND BEFORE THE RETIREMENT, for the reason the creating path's is.
+                _drain();
+
+                // PUBLISHED BEFORE THE OLD VIEWS DIE, which is the ordering rule that makes a use-after-free
+                // unreachable rather than merely unlikely. A minimised window reaches exactly this.
+                AdoptOrphan(attachment, extent);
+                RetireGeneration();
+                ForgetHeldImage();
+            }
+
+            // THE ACQUIRE RING IS LEFT EXACTLY AS IT IS, which is what the creatable path does NOT do and is
+            // deliberate rather than an omission. A ring semaphore is only ever handed out by an acquire, an
+            // acquire needs a generation, and there is none now, so nothing can reach a semaphore an earlier
+            // acquire left signalled. The next successful creation rebuilds the whole set inside the lock before
+            // any acquire can run. Rebuilding here instead would destroy the set while the queue has just drained
+            // for no reason, on the one path where the device is already in trouble.
         }
 
         // The old generation's views, semaphores and swapchain, destroyed inside the lock and after the drain.

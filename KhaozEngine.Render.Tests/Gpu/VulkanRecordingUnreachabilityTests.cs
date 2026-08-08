@@ -97,6 +97,16 @@ namespace KhaozEngine.Tests.Gpu
             // And the bundle that reaches all three, so a future field typed as the subsystem is caught by name
             // rather than by whichever of its members the walk happened to descend into first.
             "VulkanDescriptors",
+
+            // Row 13's (https://github.com/APKiwiOrg/KhaozEngine/issues/523), on the same principle applied to the
+            // most expensive on-demand thing a driver does. Creating a VkPipeline is a shader compile, and one
+            // inside a frame is the classic hitch, so the seam that can make one and the subsystem that calls it
+            // are both unreachable from a recorder. A command list gets IVulkanPipelineBinder instead, which is
+            // one vkCmdBindPipeline and no way to create anything: that split is the whole reason there are two
+            // pipeline seams rather than one with a seventh member.
+            "IVulkanPipelineApi",
+            "VulkanPipelineApi",
+            "VulkanPipelines",
         ];
 
         /// <summary>
@@ -215,6 +225,40 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Contains("VulkanDescriptors", reachable);
             Assert.Contains("VulkanDescriptorPoolManager", reachable);
             Assert.Contains("IVulkanDescriptorApi", reachable);
+        }
+
+        /// <summary>
+        /// AND IT FINDS THE PIPELINE FACTORY WHERE IT REALLY IS, which is the same assertion for row 13's half.
+        /// The resource factory holds <see cref="VulkanPipelines"/>, so the walk reaches the subsystem and the
+        /// creation seam through it, and the three names added to the forbidden list are not names nothing has.
+        /// </summary>
+        [Fact]
+        public void TheWalk_FindsThePipelineFactoryWhereItReallyIs()
+        {
+            string[] reachable = ReachableFrom(typeof(VulkanResourceFactory)).Select(t => t.Name).ToArray();
+
+            Assert.Contains("VulkanPipelines", reachable);
+            Assert.Contains("IVulkanPipelineApi", reachable);
+        }
+
+        /// <summary>
+        /// AND THE PIPELINE FACTORY IS NOT BEHIND THE ALLOWED EDGE EITHER, which is the trap row 10's note warned
+        /// about, re-run for this row. A recorder DOES hold <c>IVulkanPipelineBinder</c>, and that is the whole
+        /// point: it can bind a pipeline that already exists and cannot make one, so the record path carries no
+        /// shader compile even with the one allowance crossed.
+        /// </summary>
+        [Fact]
+        public void ThePipelineFactory_IsNotEvenBehindTheAllowedEdge()
+        {
+            string[] reachable = ReachableFrom(typeof(VulkanCommandList), crossLifetimeEdge: true)
+                .Select(t => t.Name)
+                .ToArray();
+
+            Assert.DoesNotContain("IVulkanPipelineApi", reachable);
+            Assert.DoesNotContain("VulkanPipelineApi", reachable);
+            Assert.DoesNotContain("VulkanPipelines", reachable);
+
+            Assert.Contains("IVulkanPipelineBinder", reachable);
         }
 
         /// <summary>

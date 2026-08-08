@@ -582,7 +582,12 @@ bind, both clears and both scissor members, over a `vkCmdBeginRendering` deferre
 `VkRenderPass` and no `VkFramebuffer` behind it at all
 ([#522](https://github.com/APKiwiOrg/KhaozEngine/issues/522)). The factory also builds shader sets and compute
 shaders ([#526](https://github.com/APKiwiOrg/KhaozEngine/issues/526)), which is the row that split the shader
-seam in two (see the shader-seam section below). Since
+seam in two (see the shader-seam section below), and both PIPELINES
+([#523](https://github.com/APKiwiOrg/KhaozEngine/issues/523)), which closes its refusal list entirely: every
+member of `IGpuResourceFactory` is built on this backend now. That row added two seams of its own rather than
+one, and the split is load-bearing: `IVulkanPipelineApi` CREATES pipelines and is unreachable from the recording
+type (a pipeline creation is a shader compile, and one inside a frame is the classic hitch), while
+`IVulkanPipelineBinder` is the single `vkCmdBindPipeline` a command list holds and can make nothing. Since
 [#527](https://github.com/APKiwiOrg/KhaozEngine/issues/527) the WINDOWED entry point is real too: a platform
 surface chosen from `GpuWindowKind`, `VK_KHR_swapchain` on the device, and `SwapchainFramebuffer`,
 `ResizeSwapchain` and `Present` all live behind a present boundary that acquires, resizes, recreates and
@@ -591,8 +596,7 @@ Direct3D 11 and Metal vsync is an argument of the present call, and Vulkan canno
 mode in place at all, so a runtime `SyncToVerticalBlank` change on this backend queues a full recreate applied at
 the next present boundary, exactly as a resize does. Nothing can be DRAWN yet: the remaining recording members
 are [#524](https://github.com/APKiwiOrg/KhaozEngine/issues/524) and
-[#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525) and pipelines are
-[#523](https://github.com/APKiwiOrg/KhaozEngine/issues/523), so a windowed run today acquires, resizes and
+[#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525), so a windowed run today acquires, resizes and
 presents around a frame that records nothing. It registers under `GpuBackendKind.VulkanNative`, which landed in
 `17.32.0`, so the backend is selectable by name (`KE_GRAPHICS_BACKEND=vulkan-native`) and a machine that cannot
 run it arrives through the reported fallback. Nothing selects it by default.

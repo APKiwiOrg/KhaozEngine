@@ -8627,12 +8627,11 @@ Since https://github.com/APKiwiOrg/KhaozEngine/issues/526 it builds SHADER SETS 
 use and hands the bytes to `vkCreateShaderModule` verbatim, with no cross-compilation anywhere on the path, and
 `CreateComputeShaderFromSpirv` reports the workgroup size it read out of the module. Modules are shared by
 SPIR-V hash, so disposing an `IGpuShaderSet` releases nothing and the device ends them all at teardown.
-What it cannot do yet is put anything INTO a list: the drawing, binding, clearing and
-copying members are https://github.com/APKiwiOrg/KhaozEngine/issues/521,
-https://github.com/APKiwiOrg/KhaozEngine/issues/522, https://github.com/APKiwiOrg/KhaozEngine/issues/524 and
-https://github.com/APKiwiOrg/KhaozEngine/issues/525, framebuffers are
-https://github.com/APKiwiOrg/KhaozEngine/issues/522 and pipelines are
-https://github.com/APKiwiOrg/KhaozEngine/issues/523, and each of those members throws a message naming its own
+Since https://github.com/APKiwiOrg/KhaozEngine/issues/523 it builds both PIPELINES as well, which is the row
+that empties its refusal list: every member of `IGpuResourceFactory` is live on this backend now.
+What it cannot do yet is DRAW: the remaining recording members are
+https://github.com/APKiwiOrg/KhaozEngine/issues/524 and
+https://github.com/APKiwiOrg/KhaozEngine/issues/525, and each of those members throws a message naming its own
 row rather than returning something that fails later somewhere less informative. Creating a WINDOWED device
 refuses outright, naming https://github.com/APKiwiOrg/KhaozEngine/issues/527, the row that builds the surface
 and the swapchain, because a device that cannot present is a worse answer than a refusal. That refusal arrives
@@ -8728,6 +8727,18 @@ On this backend they are ONE accumulator covering both meanings: a command list 
 slot, and a frame boundary waiting for a uniform ring segment. A count of zero across a capture window means the
 default is deep enough, and a non-zero count is what the lever answers. Raising it costs one command pool per
 list plus one copy of every uniform buffer, per extra frame.
+
+**`KE_VULKAN_PIPELINE_CACHE` controls the persisted pipeline cache.** Compiled pipelines are cached on disk under
+`<local-app-data>/KhaozEngine/vulkan-pipeline-cache/<engine version>/`, in one blob per device keyed on the
+driver's own `pipelineCacheUUID`, its version and the engine version, so only the first start on a given engine
+version and driver pays for the compiles. Point the variable at a directory to relocate it (a CI workspace, or a
+machine whose local app data is not writable), or set it to any of `off`, `0`, `false`, `no` or `none` to compile
+every pipeline fresh, which is what to do when you are chasing a pipeline miscompile and want to be sure of what
+ran. Any other value is a directory path, which is why the disable words are a set rather than `off` alone. Every
+failure on the path is a colder start and nothing else: a missing file, an unreadable one, a truncated one, one
+whose header names another device and a disk that cannot be written all fall back to compiling, and none of them
+propagate. The blob's header is validated before the driver is ever handed it, so a corrupt file is discarded
+here rather than parsed there.
 
 **A device loss reports why, at the site that noticed.** Every `VkResult` this backend reads is checked in every
 configuration including Release, and on `VK_ERROR_DEVICE_LOST` the call's name and the result are latched

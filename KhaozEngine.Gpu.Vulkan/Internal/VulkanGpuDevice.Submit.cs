@@ -71,7 +71,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // schedule from it, and neither object holds anything a second list could disturb.
             var render = new VulkanRenderApi(_instance.Value.Api);
 
-            return new VulkanCommandList(ring, _retired, uploads, assertBoundSetLayouts, render);
+            // ROW 13's ONE RECORD-TIME CALL (https://github.com/APKiwiOrg/KhaozEngine/issues/523), stateless for
+            // the same reason and built per list for the same reason. It is NOT the device's _pipelines: that one
+            // can create a pipeline and this one can only bind one, which is what keeps a shader compile off every
+            // path a recorder can reach.
+            var bindPipeline = new VulkanPipelineBinder(_instance.Value.Api);
+
+            return new VulkanCommandList(ring, _retired, uploads, assertBoundSetLayouts, render, bindPipeline);
         }
 
         /// <summary>How many frames this device pipelines at (MV3), resolved once at creation from

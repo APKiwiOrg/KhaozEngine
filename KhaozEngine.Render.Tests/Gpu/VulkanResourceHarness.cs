@@ -34,8 +34,13 @@ namespace KhaozEngine.Tests.Gpu
         /// <c>maxDescriptorSetUniformBuffersDynamic</c>, which 8.3's third defence measures against at
         /// pipeline-layout creation. 0 degrades to Vulkan's required minimum of 8, exactly as a device whose
         /// limit was never read does.</param>
+        /// <param name="pipelineCacheFile">Where the persisted <c>VkPipelineCache</c> blob lives, or null for a
+        /// live cache with no disk behind it, which is what almost every test wants: the file half has its own
+        /// suite (<c>VulkanPipelineCacheTests</c>) and nothing else should be writing to a user's cache directory
+        /// during <c>dotnet test</c>.</param>
         internal VulkanResourceFixture(int framesInFlight = 3, bool samplerAnisotropy = true,
-            int maxMsaaSampleCount = 1, object? setupLock = null, uint maxDynamicUniformBuffers = 0)
+            int maxMsaaSampleCount = 1, object? setupLock = null, uint maxDynamicUniformBuffers = 0,
+            VulkanPipelineCacheFile? pipelineCacheFile = null)
         {
             FramesInFlight = framesInFlight;
             SubmitLock = new object();
@@ -93,7 +98,13 @@ namespace KhaozEngine.Tests.Gpu
             ShaderApi = new FakeVulkanShaderApi();
             Modules = new VulkanShaderModuleCache(ShaderApi);
 
-            Factory = new VulkanResourceFactory(Owner, Rings, Setup, Descriptors, Modules,
+            PipelineApi = new FakeVulkanPipelineApi();
+            Pipelines = new VulkanPipelines(
+                new VulkanPipelineOwner(PipelineApi, Timeline, Retired),
+                Descriptors.PipelineLayouts,
+                pipelineCacheFile);
+
+            Factory = new VulkanResourceFactory(Owner, Rings, Setup, Descriptors, Modules, Pipelines,
                 () => throw new NotSupportedException("This rig has no command list."),
                 () => Timeline.CreateFence(),
                 Capabilities);
@@ -157,6 +168,17 @@ namespace KhaozEngine.Tests.Gpu
         /// the fake seam, so a whole shader set can be built and the dedup asserted with no loader.</summary>
         internal VulkanShaderModuleCache Modules { get; }
 
+        internal FakeVulkanPipelineApi PipelineApi { get; }
+
+        /// <summary>Row 13's ONE record-time call, shared by every list <see cref="CreateList"/> hands out, so a
+        /// test reads the binds and their bind points off it.</summary>
+        internal FakeVulkanPipelineBinder PipelineBinder { get; } = new();
+
+        /// <summary>The device's ONE pipeline subsystem (row 13), on the DESCRIPTORS' pipeline-layout cache, so a
+        /// pipeline created here shares its <c>VkPipelineLayout</c> with every other pipeline built from the same
+        /// set layouts exactly as it does on a real device.</summary>
+        internal VulkanPipelines Pipelines { get; }
+
         internal VulkanResourceFactory Factory { get; }
 
         /// <summary>A layout description with the shape most shipped renderers declare: one uniform buffer,
@@ -188,7 +210,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <param name="uploads">The list's staging uploader, or null for a list that records no bulk write.</param>
         internal VulkanCommandList CreateList(IVulkanRecordUploads? uploads = null)
             => new(new VulkanCommandPoolRing(CommandApi, FramesInFlight, Timeline, Backpressure), Retired, uploads,
-                render: RenderApi);
+                render: RenderApi, pipelines: PipelineBinder);
 
         /// <summary>
         /// A resource set over <paramref name="description"/> with a freshly created resource of the right kind

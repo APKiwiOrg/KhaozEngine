@@ -6,7 +6,7 @@ and nothing that does not want the Vulkan binding ever carries it.
 
 > **Status: REGISTRATION, PROBE, A HEADLESS DEVICE, ITS COMPLETION TIMELINE, ITS MEMORY ALLOCATOR, THE COMMAND
 > LIST'S LIFECYCLE, THE UNIFORM RING, THE RESOURCE FACTORY, THE DESCRIPTORS, THE BIND FLUSH, DYNAMIC
-> RENDERING, THE SHADER PATH AND THE WINDOWED SWAPCHAIN.**
+> RENDERING, THE SHADER PATH, THE PIPELINES AND THE WINDOWED SWAPCHAIN.**
 > `KhaozEngineVulkan.Register()`
 > is real, so is the machine-capability probe behind it, and since
 > [#514](https://github.com/APKiwiOrg/KhaozEngine/issues/514) so is headless device creation:
@@ -45,13 +45,19 @@ and nothing that does not want the Vulkan binding ever carries it.
 > [#526](https://github.com/APKiwiOrg/KhaozEngine/issues/526) it has a SHADER PATH: GLSL 450 through the engine's
 > own front end to SPIR-V, then `vkCreateShaderModule` over the bytes verbatim, with no cross-compilation
 > anywhere and the modules shared by SPIR-V hash. And since
+> [#523](https://github.com/APKiwiOrg/KhaozEngine/issues/523) it has PIPELINES, which closes the resource
+> factory's refusal list entirely: graphics and compute pipelines built with no `VkRenderPass` at all (the
+> target's formats ride a `VkPipelineRenderingCreateInfo` off the seam's own `GpuOutputDescription`, and its
+> sample count the multisample state), vertex input taken from the caller's layouts with no reflection read off
+> the module,
+> dynamic state held to exactly viewport and scissor, and a `VkPipelineCache` persisted to disk whose header is
+> validated before the driver ever sees it. And since
 > [#527](https://github.com/APKiwiOrg/KhaozEngine/issues/527) `GpuDeviceContext.CreateForWindow` reaches a real
 > WINDOWED device: a platform surface chosen from `GpuWindowKind`, candidates filtered on whether their graphics
 > family can present to it, `VK_KHR_swapchain` on the device, and a swapchain the boundary acquires from, resizes,
 > recreates and presents. That device cannot yet RENDER: the rest of the recording content is
 > [#524](https://github.com/APKiwiOrg/KhaozEngine/issues/524) and
-> [#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525) and pipelines are
-> [#523](https://github.com/APKiwiOrg/KhaozEngine/issues/523), and each unbuilt member throws a message naming
+> [#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525), and each unbuilt member throws a message naming
 > its own row, so a windowed run today acquires, resizes and presents around a frame that records nothing. The
 > backend IS nameable: `GpuBackendKind.VulkanNative` and the `vulkan-native` / `vk-native` tokens
 > landed with [#513](https://github.com/APKiwiOrg/KhaozEngine/issues/513). Nothing selects it by default.
@@ -698,10 +704,10 @@ handles so the guard is not a restatement of the thing it guards. And under `KE_
 additionally asserts that every bound set's layout IS the current pipeline layout's set layout at that index,
 which is the half that runs where a draw would consume the answer.
 
-**What is not built yet, and where it lands.** `SetPipeline` and `SetComputePipeline` still refuse, naming the
-pipeline row ([#523](https://github.com/APKiwiOrg/KhaozEngine/issues/523)): the prefix computation and both of
-its guards are already here, and that row calls `SetPipelineLayout` with the pipeline's own layout handle and
-set-layout sequence. The draw and dispatch members still refuse, naming
+**Both pipeline binds drive it now** ([#523](https://github.com/APKiwiOrg/KhaozEngine/issues/523)). The prefix
+computation and both of its guards landed here one row early, and `SetPipeline` and `SetComputePipeline` call
+`SetPipelineLayout` with the pipeline's own layout handle and set-layout sequence. See the pipelines section
+below for the identity guard that sits in front of it. The draw and dispatch members still refuse, naming
 [#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525), which calls the flush hook FIRST and then issues.
 
 ## Rendering: no render pass at all, a deferred begin, and a viewport with negative height
@@ -757,8 +763,8 @@ renderer has. The native Direct3D 11 backend refuses the same index for the same
 **What is not built yet, and where it lands.** The attachment layout transitions a begin owes are the barrier
 row's ([#524](https://github.com/APKiwiOrg/KhaozEngine/issues/524)), and the bound framebuffer already carries
 each attachment's `VkImage` for it. The pre-draw hook is called by nothing yet, and the
-end-before-illegal-command helper is called only by the staged upload path above: pipelines are
-[#523](https://github.com/APKiwiOrg/KhaozEngine/issues/523) and the draws, dispatches, copies and resolves are
+end-before-illegal-command helper is called by the staged upload path above and by the compute pipeline bind:
+the draws, dispatches, copies and resolves are
 [#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525).
 
 ## Shaders: there is no cross-compilation, and that is the headline
@@ -818,6 +824,99 @@ removing a sink because Vulkan tolerates it corrupts WARP. And the Metal-driven 
 one uniform buffer per pipeline at set 0 binding 0 with per-mesh textures at set 1 and up: Vulkan has no such
 limit and a Vulkan-only author would naturally spread uniforms across sets, which breaks a phase-4 backend that
 is not here to defend itself. The Metal-only shader validation check is in the same category.
+
+## Pipelines: no render pass, two dynamic states, and a disk cache that validates its own header
+
+**A pipeline create-info here names no `VkRenderPass` and no subpass that means anything.** The target's colour
+format array and depth format come straight off the seam's `GpuOutputDescription` as a
+`VkPipelineRenderingCreateInfo` chained onto the create info, which under dynamic rendering is the whole of what
+a render pass would have carried. That is the same absence the rendering section above is about, seen from the
+other end: no pass to cache, nothing to invalidate on a resize, and no "created against pass A, bound inside pass
+B" mismatch class at all. The stencil plane is named separately from the depth one, because dynamic rendering
+splits them and both of the seam's depth formats are combined ones. The sample count is off the same
+`GpuOutputDescription` and lands somewhere else, on
+`VkPipelineMultisampleStateCreateInfo.rasterizationSamples`, because the rendering create-info has no
+sample-count field.
+
+**Vertex input comes from the caller's own layouts and nothing is reflected off the module.** The Direct3D 11
+backend has to reflect its compiled vertex signature, because SPIRV-Cross invents a `TEXCOORD<location>` semantic
+per location and drops any input the shader never reads. Here the `GpuVertexLayoutDescription` list IS the input
+state, so there is one source of truth. Two rules are worth knowing:
+
+- **Locations count across ALL slots, not within one.** Slot 1's first element continues where slot 0's last one
+  left off, because a GLSL `location` is a flat sequence over every vertex input the shader declares and knows
+  nothing about which buffer an attribute arrives in. Restarting per slot reads the instance stream's first
+  attribute as the vertex buffer's second, which renders plausible garbage rather than throwing.
+- **Offsets pack within their own slot, and a declared stride wins.** The seam has no per-element offset, so an
+  element sits immediately after the one before it in the same slot. A non-zero `Stride` is kept, which is how an
+  interleaved buffer with padding survives, and a zero one is the sum of the slot's element sizes.
+
+**An instance step rate above 1 is refused by name.** Vulkan's core vertex input rate is two-valued with no
+divisor, and `VK_EXT_vertex_attribute_divisor` is not enabled here, so a rate of 2 cannot be honoured. Flattening
+it to 1 would draw every instance from the same element, silently. Every shipped instance stream declares 1.
+
+**Dynamic state is exactly viewport and scissor, and it is a VALUE rather than a line inside the seam.** A
+two-element array a plain `[Fact]` reads, translated verbatim at the driver boundary, because a claim buried in a
+`VkPipelineDynamicStateCreateInfo` built under a real driver is a claim no headless test can check. Everything
+else is baked into the pipeline object, including the constant blend colour, which is the incumbent's shape kept
+deliberately.
+
+**A blend state count that is not the colour output count is refused by name, in both directions.** Vulkan
+requires the colour blend state's attachment count to EQUAL the rendering create-info's colour attachment count,
+and the seam lets the two differ with nothing checking either way, so a mismatch is a validation error at
+creation on a shipped renderer, which is a failure a player sees. Repairing it was the earlier answer and is
+worse: padding an undeclared output with a disabled blend that writes every channel invents a per-backend
+semantic for a state the caller never gave, and the Direct3D 11 native backend answers the same description with
+its own struct defaults, so the two would quietly disagree about the same undeclared attachment. Dropping a
+declared state past the last colour output throws away a state the caller wrote and meant.
+`GpuPipelineDescription.BlendAttachments` is already documented as one per colour output and every shipped call
+site declares exactly that, so enforcing the contract costs nothing and only fires on a description that was
+already wrong.
+
+**The `VkPipelineCache` is persisted, and a corrupt file cannot crash a launch.** The incumbent passes
+`VkPipelineCache.Null` at both of its creation sites, so every launch recompiles every pipeline from SPIR-V,
+across considerably more permutations than programs because everything except viewport and scissor is baked in.
+Here one cache is created with the device, seeded from a file under
+`<local-app-data>/KhaozEngine/vulkan-pipeline-cache/<engine version>` and written back at teardown. The mechanics
+are all defensive:
+
+- **The key is `(pipelineCacheUUID, driverVersion, engine version)`.** The UUID is the vendor's OWN validity key,
+  which is the answer to "a disk cache needs one" being a reason to defer. The driver version rides the file NAME
+  because no header restates it, so a driver update that keeps its UUID never opens the old file at all.
+- **The header is VALIDATED before `pCacheData` is passed**: header size, header version, vendor id, device id
+  and the UUID. Any mismatch is a silent discard. The driver is required to check the same things, and "required
+  to" is not "every driver on every machine does", and the file is one a user, a sync tool or a half-finished
+  write can have mangled.
+- **The write is a process-unique temp-and-move**, so a reader sees a whole entry or no entry. A plain write
+  leaves a truncated file when the process dies mid-write, and a truncated cache is exactly the shape this path
+  exists to keep away from a driver.
+- **Every failure is a colder start and nothing else.** No file, an unreadable one, a full disk, a directory that
+  cannot be created: all of them fall back to compiling. That best-effort construction is the measurement's own
+  kill switch, so there is nothing to turn off.
+- **A driver that refuses an accepted blob gets ONE retry with no seed, and the file it refused is deleted.** The
+  retry rescues the run, because without it a single file a driver dislikes would leave the process with no cache
+  at all for its whole life. The delete rescues the launches after it: the entry is otherwise only replaced by a
+  clean teardown, and a refused seed is exactly where a launch is likely to end without one, so the same blob
+  would be read, seeded and refused once per launch for as long as it survived.
+
+`KE_VULKAN_PIPELINE_CACHE=<directory>` relocates it and `KE_VULKAN_PIPELINE_CACHE=off` turns it off, so a session
+chasing a pipeline miscompile can prove it is compiling fresh rather than believing it.
+
+**Binding a pipeline invalidates descriptor slots from the first INCOMPATIBLE set onward.** `SetPipeline` emits
+`vkCmdBindPipeline` and then hands the pipeline's own `VkPipelineLayout` and set-layout sequence to the matching
+bind records, whose compatibility-prefix computation landed a row early with the bind flush. A rebind of the
+pipeline already current does nothing at all, and that is a stronger skip than the layout guard underneath it:
+two different programs sharing a layout each emit their bind and invalidate nothing, and the same pipeline twice
+emits neither. A `Begin` forgets both bound pipelines, because a fresh `VkCommandBuffer` has neither. The compute
+arm ends any pending render pass instance first.
+
+**Creating a pipeline is UNREACHABLE from a command list, and that is why there are two pipeline seams.** A
+pipeline creation is a shader compile, and one inside a frame is the classic hitch, so the creation seam and the
+subsystem that calls it sit where the descriptor pool sits: on the device and on the resource factory, and
+nowhere a recorder's field graph reaches, asserted over the type graph. A list holds a separate one-call binder
+that can bind a pipeline that already exists and can make nothing.
+
+## `KE_VULKAN_DEVICE`, `KE_VULKAN_VALIDATION`, `KE_VULKAN_FRAMES_IN_FLIGHT` and `KE_VULKAN_PIPELINE_CACHE`
 
 ## The swapchain: reproduced where a human can see it, changed where the specification forces it
 
@@ -920,67 +1019,14 @@ mean either a second instance, which abandons the single-instance decision quiet
 with the surface extensions, which takes the golden leg down on a machine with no display server.
 
 ## `KE_VULKAN_DEVICE`, `KE_VULKAN_VALIDATION`, `KE_VULKAN_FRAMES_IN_FLIGHT` and `KE_VULKAN_ACQUIRE`
-
-**`KE_VULKAN_DEVICE` pins which physical device the backend runs on.** Six forms, case-insensitive and
-whitespace-trimmed:
-
-```
-KE_VULKAN_DEVICE=llvmpipe     # the Mesa software rasterizer, by driver id or name. The value CI pins
-KE_VULKAN_DEVICE=discrete     # the first discrete GPU
-KE_VULKAN_DEVICE=integrated   # the first integrated GPU
-KE_VULKAN_DEVICE=cpu          # the first CPU device
-KE_VULKAN_DEVICE=1            # a zero-based index into the vkEnumeratePhysicalDevices order
-KE_VULKAN_DEVICE=GeForce      # a case-insensitive substring of a device name
-```
-
-Unset takes the first device that meets the requirements, which reproduces the incumbent's
-`physicalDevices[0]` on every machine where device zero qualifies. **A request that cannot be honoured WARNs and
-falls back to that default, and never fails the run**, and the warning lists what was actually enumerated. A
-device that cannot run the backend is never chosen even by an explicit index, because honouring the pin would
-trade a warning now for a crash on frame one. When the default has to skip past an ineligible device zero, the
-INFO line says SUBSTITUTED in as many words, so a soak session can tell a substitution from a selection.
-
-**`KE_VULKAN_VALIDATION` is a four-rung ladder**, `0` (the default) / `1` / `strict` / `sync`:
-
-```
-KE_VULKAN_VALIDATION=1        # VK_LAYER_KHRONOS_validation plus a VK_EXT_debug_utils messenger
-KE_VULKAN_VALIDATION=strict   # 1, and an error-severity message throws at a controlled point
-KE_VULKAN_VALIDATION=sync     # 1, plus synchronisation validation through VkValidationFeaturesEXT
-```
-
-Messages are pumped into the engine log at a rate limit, with warning severity at WARN and error severity at
-ERROR. The limiter has two caps, and a cap that suppresses says so exactly once rather than going quiet: per
-repeated message (the one that does the real work, since validation's characteristic failure is one mistake
-reported once per draw call) and per session (the soak backstop). Objects this backend creates are NAMED, so a
-message names the device or the queue instead of a bare handle. A machine with no layer installed gets a WARN
-naming what to install and a device created without it, rather than an app that refuses to start on somebody who
-is mid-diagnosis. An unrecognized value is off plus a warning listing what works, because a session that
-believes it is running `strict` and is running nothing produces a clean run that proves nothing.
-
-**The callback LOGS and never throws.** The incumbent's throws a managed exception and calls `Debugger.Break()`
-from inside a native driver callback, which is undefined behaviour that destroys the stack the diagnostic was
-about. `strict`'s throw is what that behaviour is for, and it happens at a controlled point after the latch.
-RenderDoc attaches externally and needs nothing from the engine.
-
-**`KE_VULKAN_FRAMES_IN_FLIGHT=<n>` moves the ONE depth this backend pipelines at** (2 to 16, default 3, an
-unparseable or out-of-range value warns and keeps 3). It sizes both rings at once: how many `VkCommandPool`s each
-command list cuts, and how many per-frame segments each uniform ring is cut into. One number, because a deeper
-command-buffer ring behind a shallower uniform gate is dead capacity, and one number to move if the measurement
-says 3 is wrong.
-
-The floor is 2 rather than the Direct3D 11 lever's 1, and that difference is deliberate. There the number sizes
-constant-buffer rings only, so 1 is an honest degenerate case: one frame of latency, and the shape that proves
-the backpressure counter counts something real. Here 1 would give every list ONE pool, so every `Begin` would
-advance onto the slot it just used and wait for that record's own submission to complete: a synchronous round
-trip per RECORD, which on a frame recording several lists is several full GPU drains, and a capture taken there
-measures the drain rather than the pipeline.
-
-The variable exists to settle measurement gate MV3, whose exit criterion is `BackpressureStallCount` reading zero
-across a full capture window AT THE DEFAULT. That counter is ONE accumulator covering both meanings, a command
-list wrapping onto its own oldest pool slot and a frame boundary finding its uniform segment still in flight,
-because they are the same statement about the same lever. Raising the depth is the response to a non-zero count.
-**The knob may outlive its gate only if the exit criterion was met at 3**, which is the condition that stops "it
-is only a knob" from becoming a way to keep a failed default.
+**`KE_VULKAN_PIPELINE_CACHE` controls the persisted `VkPipelineCache`.** Point it at a directory to relocate the
+blob (a CI workspace, or a machine whose local app data is not writable), or set it to any of `off`, `0`,
+`false`, `no` or `none` to compile every pipeline fresh, which is what to do when you are chasing a pipeline
+miscompile and want to be sure of what ran. Any other value is a directory path taken verbatim, which is why the
+disable words are a set rather than `off` alone: `KE_VULKAN_PIPELINE_CACHE=0` naming a cache directory called `0`
+beside the working directory is the failure that set exists to prevent. Turning it off does not turn off the
+in-process cache, which is worth having on its own because several shipped programs differ only in blend or depth
+state and their pipelines share compiled stages within one run.
 
 **`KE_VULKAN_ACQUIRE=stall` restores the incumbent's acquire exactly**, for the frame-pacing A/B and for nothing
 else: a blocking `vkWaitForFences` on the acquire, a submit carrying no image-availability wait semaphore, and a

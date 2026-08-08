@@ -28,7 +28,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     ///
     /// <para><b>THE MEMBERS THAT ARE LIVE:</b> <see cref="Begin"/>, <see cref="End"/> and <see cref="Dispose"/>,
     /// everything the device's <c>Submit</c> reaches through this type, both <c>UpdateBuffer</c> overloads at
-    /// both ends of their routing, all four resource-set binds, and the whole RENDERING half: the framebuffer
+    /// both ends of their routing, all four resource-set binds, BOTH PIPELINE BINDS (row 13,
+    /// https://github.com/APKiwiOrg/KhaozEngine/issues/523, which emit <c>vkCmdBindPipeline</c> and adopt the
+    /// pipeline's layout in the matching bind records), and the whole RENDERING half: the framebuffer
     /// bind, both clears and both scissor members. On a RING-BACKED buffer an update is a memcpy
     /// into the current segment which records nothing at all (9.2), and on any other buffer it is a staged copy
     /// through this list's own arena with a barrier narrowed to the destination's real usage, which row 9 wired
@@ -77,6 +79,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         // the same obligation VulkanBoundSet discharges for the bind records: see VulkanBoundFramebuffer.
         readonly VulkanRenderingSchedule? _rendering;
 
+        // ROW 13's ONE RECORD-TIME CALL, vkCmdBindPipeline, or null on a list built without it. It is
+        // DELIBERATELY NOT the pipeline CREATION seam: see IVulkanPipelineBinder for why the split is load-bearing
+        // rather than tidy.
+        readonly IVulkanPipelineBinder? _pipelineBinder;
+
+        // The pipeline currently bound at each bind point, as a bare handle. Section 6.1 lists "both pipelines"
+        // among what a Begin resets, and 6.2 clause 4 is what they are for: a rebind of the pipeline already
+        // current does nothing at all, which is the fork's pipeline-identity guard kept.
+        ulong _boundGraphicsPipeline;
+        ulong _boundComputePipeline;
+
         bool _recording;
         bool _disposed;
 
@@ -102,9 +115,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="render">The six native rendering calls row 12's schedule drives, or null while there is
         /// no device behind this list. Held as a schedule rather than as the seam so the deferred begin, the
         /// clear folding and the framebuffer-change guard all sit in one device-free type.</param>
+        /// <param name="pipelines">Row 13's one record-time call, <c>vkCmdBindPipeline</c>, or null while there is
+        /// no device behind this list. It can bind a pipeline and cannot make one, which is the whole reason it is
+        /// a different seam from the one that creates them.</param>
         internal VulkanCommandList(VulkanCommandPoolRing ring, VulkanRetireList retired,
             IVulkanRecordUploads? uploads = null, bool assertBoundSetLayouts = false,
-            IVulkanRenderApi? render = null)
+            IVulkanRenderApi? render = null, IVulkanPipelineBinder? pipelines = null)
         {
             ArgumentNullException.ThrowIfNull(ring);
             ArgumentNullException.ThrowIfNull(retired);
@@ -115,6 +131,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _graphicsBinds = new VulkanBindRecords(PipelineBindPoint.Graphics, assertBoundSetLayouts);
             _computeBinds = new VulkanBindRecords(PipelineBindPoint.Compute, assertBoundSetLayouts);
             _rendering = render is null ? null : new VulkanRenderingSchedule(render);
+            _pipelineBinder = pipelines;
 
             // THE UPLOADER TAKES THIS LIST AS ITS RENDERING SCOPE, so a bulk staged UpdateBuffer ends the render
             // pass instance before it records its vkCmdCopyBuffer (V-A4). Wired HERE rather than by the device
@@ -256,6 +273,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // instance and no viewport or scissor, so a retained bound framebuffer would let the next recording's
             // first SetFramebuffer take the redundant path and draw into a target this buffer never bound.
             _rendering?.Reset();
+
+            // ROW 13's HALF, and the same argument a third time: a fresh VkCommandBuffer has no pipeline bound at
+            // either bind point, so a retained handle would let the next recording's first SetPipeline take the
+            // identity guard's redundant path and draw with whatever pipeline the driver's own state happened to
+            // hold. Both, because the two bind points are tracked separately (V-C1).
+            _boundGraphicsPipeline = 0;
+            _boundComputePipeline = 0;
 
             _recording = true;
         }
@@ -403,15 +427,40 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         /// <inheritdoc/>
         /// <remarks>
-        /// STILL REFUSES, AND ROW 13 (https://github.com/APKiwiOrg/KhaozEngine/issues/523) IS WHERE IT LANDS,
-        /// because a pipeline is what carries the <c>VkPipelineLayout</c> this row's compatibility prefix compares.
-        /// The prefix computation and both of its guards are already here: row 13's <c>SetPipeline</c> emits
-        /// <c>vkCmdBindPipeline</c> and then calls
+        /// CLAUSE 4 (V-R6). <c>vkCmdBindPipeline</c> at the graphics bind point, then
         /// <see cref="VulkanBindRecords.SetPipelineLayout"/> on <see cref="GraphicsBinds"/> with the pipeline's own
-        /// layout handle and set-layout sequence, which invalidates the recorded slots from the first incompatible
-        /// set onward. Nothing else about clause 4 is left to write.
+        /// layout handle and set-layout sequence, which invalidates recorded descriptor slots from the first
+        /// INCOMPATIBLE set onward. Row 11 (https://github.com/APKiwiOrg/KhaozEngine/issues/521) landed that
+        /// computation and both of decision V-R7's guards one row early, so this member is the wiring and nothing
+        /// more.
+        /// <para>
+        /// A REBIND OF THE PIPELINE ALREADY CURRENT DOES NOTHING AT ALL, which is the fork's pipeline-identity
+        /// guard kept. It is a stronger skip than the layout guard underneath it: two DIFFERENT pipelines sharing
+        /// a layout still emit their bind (they are different programs) and still invalidate nothing, and the same
+        /// pipeline twice emits neither.
+        /// </para>
+        /// <para>
+        /// THE PIPELINE IS RESOLVED AND CHECKED FOR LIFE BEFORE THE GUARD, so one from another backend and one
+        /// already disposed are both refused whether or not the bind was redundant. Same order
+        /// <see cref="SetFramebuffer"/> takes, for the same reason: a guard-first order lets a foreign pipeline
+        /// pass silently on the second bind, and would never catch a disposed one at all, since its zero handle
+        /// equals the identity <see cref="Begin"/> resets to.
+        /// </para>
         /// </remarks>
-        public void SetPipeline(IGpuPipeline p) => throw NotBuiltYet("Binding a graphics pipeline", PipelineRow);
+        public void SetPipeline(IGpuPipeline p)
+        {
+            IVulkanPipelineBinder binder = RequireBinder("Binding a graphics pipeline");
+            VulkanGraphicsPipeline pipeline = VulkanGraphicsPipeline.Require(
+                p, "a native Vulkan graphics pipeline bind");
+            RequireLivePipeline(pipeline.Handle, "graphics");
+
+            if (pipeline.Handle == _boundGraphicsPipeline) return;
+
+            binder.BindPipeline(CurrentBuffer, compute: false, pipeline.Handle);
+            _boundGraphicsPipeline = pipeline.Handle;
+
+            _graphicsBinds.SetPipelineLayout(pipeline.PipelineLayout, pipeline.SetLayouts);
+        }
 
         /// <inheritdoc/>
         /// <remarks>
@@ -437,11 +486,34 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             => Bind(_graphicsBinds, slot, set, dynamicOffset);
 
         /// <inheritdoc/>
-        /// <remarks>Row 13's (https://github.com/APKiwiOrg/KhaozEngine/issues/523), on the compute arm, and the
-        /// same shape as <see cref="SetPipeline"/>: it calls
-        /// <see cref="VulkanBindRecords.SetPipelineLayout"/> on <see cref="ComputeBinds"/>.</remarks>
+        /// <remarks>
+        /// THE COMPUTE ARM of <see cref="SetPipeline"/>, into <see cref="ComputeBinds"/>, with its own identity
+        /// guard and its own pipeline-layout record: graphics and compute bindings are tracked separately
+        /// (V-C1), so a compute switch never invalidates a graphics slot.
+        /// <para>
+        /// IT ENDS ANY PENDING RENDERING FIRST (V-A4, section 13), which is the one real difference between the
+        /// two arms. <c>vkCmdBindPipeline</c> is itself legal inside a render pass instance at either bind point,
+        /// so this is the design stating the compute arm's rule at the bind rather than only at the dispatch,
+        /// which is where the invariant would otherwise be discovered. It happens AFTER the identity guard, so a
+        /// redundant rebind does not split a pass either.
+        /// </para>
+        /// </remarks>
         public void SetComputePipeline(IGpuComputePipeline p)
-            => throw NotBuiltYet("Binding a compute pipeline", PipelineRow);
+        {
+            IVulkanPipelineBinder binder = RequireBinder("Binding a compute pipeline");
+            VulkanComputePipeline pipeline = VulkanComputePipeline.Require(
+                p, "a native Vulkan compute pipeline bind");
+            RequireLivePipeline(pipeline.Handle, "compute");
+
+            if (pipeline.Handle == _boundComputePipeline) return;
+
+            EndRenderingBeforeIllegalCommand();
+
+            binder.BindPipeline(CurrentBuffer, compute: true, pipeline.Handle);
+            _boundComputePipeline = pipeline.Handle;
+
+            _computeBinds.SetPipelineLayout(pipeline.PipelineLayout, pipeline.SetLayouts);
+        }
 
         /// <inheritdoc/>
         /// <remarks>The compute arm of <see cref="SetGraphicsResourceSet(uint,IGpuResourceSet)"/>, into its own
@@ -641,6 +713,40 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             return Rendering;
         }
 
+        // THE SAME THREE THINGS FOR THE PIPELINE ARM, and recording is required here for the reason it is there: a
+        // pipeline bind EMITS a vkCmdBindPipeline immediately, and a vkCmd* against a buffer that
+        // vkBeginCommandBuffer has not seen is undefined behaviour rather than a no-op.
+        IVulkanPipelineBinder RequireBinder(string what)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+
+            if (!_recording)
+            {
+                throw new InvalidOperationException(
+                    what + " on a native Vulkan command list needs an open recording, and this list is not "
+                    + "recording. Call Begin first. Unlike a resource-set bind, which records into this list's "
+                    + "own array and is discarded, a pipeline bind emits a vkCmdBindPipeline immediately.");
+            }
+
+            return _pipelineBinder ?? throw new NotSupportedException(
+                "This native Vulkan command list was built with no pipeline seam, so it can bind no pipeline. "
+                + "Every list the device hands out has one: this is a list constructed directly by a test.");
+        }
+
+        // A DISPOSED PIPELINE IS REFUSED BEFORE THE IDENTITY GUARD, because the guard cannot see it. Dispose
+        // zeroes the handle and Begin resets both bound handles to 0, so the FIRST bind of a recording with a
+        // disposed pipeline compares 0 == 0, returns, and records nothing while reading as a redundant rebind.
+        // The draw after it then runs under whatever was bound before, which renders wrong without throwing.
+        static void RequireLivePipeline(ulong handle, string what)
+        {
+            if (handle != 0) return;
+
+            throw new ObjectDisposedException("VkPipeline",
+                "The " + what + " pipeline handed to a native Vulkan bind carries the null VkPipeline, which is "
+                + "what Dispose leaves behind. Binding it would record nothing at all, and the identity guard "
+                + "cannot catch that, because a recording that has just begun has nothing bound either.");
+        }
+
         // The buffer the current slot is recording into, which every emitted vkCmd* names. Only meaningful while
         // recording, which is exactly what RequireRendering has just established at every call site.
         ulong CurrentBuffer => _ring.BufferAt(_ring.Slot);
@@ -672,7 +778,6 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         // The row that owns each unbuilt member, as a full URL, because these messages are read by somebody who
         // has just hit one and needs to know whether to wait for a row or file a bug.
-        const string PipelineRow = "the pipeline row (https://github.com/APKiwiOrg/KhaozEngine/issues/523)";
         const string DrawRow = "the draw-and-dispatch row (https://github.com/APKiwiOrg/KhaozEngine/issues/525)";
 
         // Named rather than a bare NotImplementedException, and it names WHAT IS LIVE as well as what is not,
@@ -681,10 +786,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         static NotSupportedException NotBuiltYet(string what, string row)
             => new($"{what} is not built yet on the native Vulkan backend: it lands in {row}. The list's "
                 + "LIFECYCLE is live (work-breakdown row 7, "
-                + "https://github.com/APKiwiOrg/KhaozEngine/issues/517), and so are the resource-set binds and "
-                + "the whole rendering half: Begin, End, the per-slot command pools, the submit path, the "
-                + "framebuffer bind, both clears and both scissor members all work, and what is missing is the "
-                + "pipelines, the draws and the barriers. This is a "
+                + "https://github.com/APKiwiOrg/KhaozEngine/issues/517), and so are the resource-set binds, both "
+                + "pipeline binds and the whole rendering half: Begin, End, the per-slot command pools, the "
+                + "submit path, the framebuffer bind, both clears and both scissor members all work, and what is "
+                + "missing is the draws, the dispatches, the copies and the barriers. This is a "
                 + "statement about the package and not about this machine. Select GpuBackendKind.Vulkan, which "
                 + "goes through Veldrid, for a fully working Vulkan device.");
     }

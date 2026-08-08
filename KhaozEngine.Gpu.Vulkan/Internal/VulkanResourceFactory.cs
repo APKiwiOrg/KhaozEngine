@@ -19,18 +19,19 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// with two hundred textures is two hundred submissions before a frame is drawn. Here they are appended and
     /// flushed lazily. See <see cref="VulkanSetupCommands"/>.</para>
     ///
-    /// <para><b>NOT EVERY MEMBER IS BUILT YET, and each one that is not names the row that builds it.</b> Row 9
-    /// owns buffers, textures, samplers, command lists and fences, row 10
+    /// <para><b>EVERY MEMBER OF THE SEAM IS NOW BUILT, and this paragraph is the ledger of which row built
+    /// which.</b> Row 9 owns buffers, textures, samplers, command lists and fences, row 10
     /// (https://github.com/APKiwiOrg/KhaozEngine/issues/520) added RESOURCE LAYOUTS and RESOURCE SETS (a
     /// content-deduplicated <c>VkDescriptorSetLayout</c> and one <c>VkDescriptorSet</c> allocated and written
-    /// once. Row 12 (https://github.com/APKiwiOrg/KhaozEngine/issues/522) added FRAMEBUFFERS, which are the one
-    /// creation here that makes no native object at all (V-A1), and row 16
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/526) added SHADER SETS and COMPUTE SHADERS: GLSL to
+    /// once). Row 12 (https://github.com/APKiwiOrg/KhaozEngine/issues/522) added FRAMEBUFFERS, which are the one
+    /// creation here that makes no native object at all (V-A1), row 16
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/526) added SHADER SETS and COMPUTE SHADERS (GLSL to
     /// SPIR-V through the engine's own front end, then <c>vkCreateShaderModule</c> over the bytes verbatim, with
-    /// the modules shared by SPIR-V hash. Pipelines are row 13's, and they refuse with their own issue in the
-    /// message rather than returning something that fails later somewhere less informative. That is the same
-    /// discipline <c>D3D11ResourceFactory</c> established between its own row and the ones that filled it in, and
-    /// this paragraph is a ledger: a stale one is worse than none.</para>
+    /// the modules shared by SPIR-V hash), and row 13
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/523) added both PIPELINES, which are the last two and are
+    /// what closes the list. <c>D3D11ResourceFactory</c> established the naming discipline that got this factory
+    /// here, and <c>VulkanResourceCreationTests</c> keeps the pair of sets that tracked it honest: the refusal
+    /// half is empty now, which is the fact worth stating rather than a reason to delete the assertion.</para>
     ///
     /// <para><b>AND THE DESCRIPTOR SUBSYSTEM IS HELD HERE RATHER THAN ON THE RESOURCE OWNER, WHICH IS DECISION
     /// V-D2 (6.3).</b> The recording type's field graph legitimately reaches a <see cref="VulkanResourceOwner"/>
@@ -52,6 +53,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         readonly VulkanSetupCommands _setup;
         readonly VulkanDescriptors _descriptors;
         readonly VulkanShaderModuleCache _modules;
+        readonly VulkanPipelines _pipelines;
         readonly Func<IGpuCommandList> _createCommandList;
         readonly Func<IGpuFence> _createFence;
         readonly ulong _minUniformBufferOffsetAlignment;
@@ -67,6 +69,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="modules">The device's ONE <c>VkShaderModule</c> cache (row 16), which dedups by SPIR-V
         /// hash. It is the device's rather than this factory's for the reason the descriptor subsystem is: a
         /// second cache would hand out two handles for one module and destroy neither at the right time.</param>
+        /// <param name="pipelines">The device's ONE pipeline subsystem (row 13): the pipeline seam and the
+        /// <c>VkPipelineCache</c> every creation compiles through. Held HERE and on the device and nowhere a
+        /// recorder can see, for the reason <paramref name="descriptors"/> is: creating a pipeline is a shader
+        /// compile, and a recorder that could reach one could compile inside a frame.</param>
         /// <param name="createCommandList">The device's own list factory. It comes from the device rather than
         /// being built here for the reason <c>D3D11ResourceFactory</c>'s equivalent does: the depth, the timeline
         /// and the backpressure accumulator a list gates on are all the device's, and threading them through this
@@ -79,7 +85,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="minUniformBufferOffsetAlignment">The device limit the ring stride is rounded to.</param>
         internal VulkanResourceFactory(VulkanResourceOwner owner, VulkanRingAllocator rings,
             VulkanSetupCommands setup, VulkanDescriptors descriptors, VulkanShaderModuleCache modules,
-            Func<IGpuCommandList> createCommandList, Func<IGpuFence> createFence, in GpuCapabilities capabilities,
+            VulkanPipelines pipelines, Func<IGpuCommandList> createCommandList, Func<IGpuFence> createFence,
+            in GpuCapabilities capabilities,
             ulong minUniformBufferOffsetAlignment = VulkanRingStride.OffsetAlignmentFloor)
         {
             ArgumentNullException.ThrowIfNull(owner);
@@ -87,6 +94,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             ArgumentNullException.ThrowIfNull(setup);
             ArgumentNullException.ThrowIfNull(descriptors);
             ArgumentNullException.ThrowIfNull(modules);
+            ArgumentNullException.ThrowIfNull(pipelines);
             ArgumentNullException.ThrowIfNull(createCommandList);
             ArgumentNullException.ThrowIfNull(createFence);
 
@@ -95,6 +103,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _setup = setup;
             _descriptors = descriptors;
             _modules = modules;
+            _pipelines = pipelines;
             _createCommandList = createCommandList;
             _createFence = createFence;
             _minUniformBufferOffsetAlignment = minUniformBufferOffsetAlignment;
@@ -249,26 +258,31 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             => new VulkanComputeShader(_modules, computeGlsl);
 
         /// <inheritdoc/>
-        public IGpuPipeline CreateGraphicsPipeline(in GpuPipelineDescription d)
-            => throw NotBuiltYet("Creating a graphics pipeline", PipelineRow);
+        /// <remarks>
+        /// EVERYTHING EXCEPT VIEWPORT AND SCISSOR IS BAKED INTO THE PIPELINE OBJECT, which is the incumbent's
+        /// shape kept deliberately (7.1), and the target's formats arrive as a
+        /// <c>VkPipelineRenderingCreateInfo</c> built from <see cref="GpuPipelineDescription.Outputs"/> rather
+        /// than as a <c>VkRenderPass</c> (V-A1). Vertex input comes from the caller's own layouts with no
+        /// reflection read off the module, which is what makes the shader path three lines long.
+        /// <para>
+        /// THE <c>VkPipelineLayout</c> IS THE SHARED ONE (V-D5), which is what makes row 11's compatibility
+        /// prefix a pointer compare, and taking it is also where 8.3's third defence counts this pipeline's
+        /// dynamic uniform descriptors against the device's limit.
+        /// </para>
+        /// </remarks>
+        /// <exception cref="ArgumentException">The shader set or a resource layout came from another backend, or
+        /// a vertex layout declares an instance step rate this backend cannot express.</exception>
+        /// <exception cref="NotSupportedException">The layouts spend more dynamic uniform descriptors between
+        /// them than the device allows.</exception>
+        public IGpuPipeline CreateGraphicsPipeline(in GpuPipelineDescription d) => _pipelines.CreateGraphics(d);
 
         /// <inheritdoc/>
+        /// <remarks>The compute twin, which is two handles and no graphics state at all. There is no capability
+        /// gate in front of it, because this backend's <see cref="GpuCapabilities.SupportsCompute"/> is
+        /// unconditionally true.</remarks>
+        /// <exception cref="ArgumentException">The compute shader or a resource layout came from another backend.
+        /// </exception>
         public IGpuComputePipeline CreateComputePipeline(in GpuComputePipelineDescription d)
-            => throw NotBuiltYet("Creating a compute pipeline", PipelineRow);
-
-        // The row that owns each unbuilt member, as a full URL, because these messages are read by somebody who has
-        // just hit one and needs to know whether to wait for a row or file a bug.
-        const string PipelineRow = "the pipeline row (https://github.com/APKiwiOrg/KhaozEngine/issues/523)";
-
-        static NotSupportedException NotBuiltYet(string what, string row)
-            => new($"{what} is not built yet on the native Vulkan backend: it lands in {row}. Buffers, textures, "
-                + "samplers, command lists, fences, resource layouts, resource sets, framebuffers, shader sets "
-                + "and compute shaders ARE live (work-breakdown rows 9, 10, 12 and 16, "
-                + "https://github.com/APKiwiOrg/KhaozEngine/issues/519, "
-                + "https://github.com/APKiwiOrg/KhaozEngine/issues/520, "
-                + "https://github.com/APKiwiOrg/KhaozEngine/issues/522 and "
-                + "https://github.com/APKiwiOrg/KhaozEngine/issues/526). This is a statement about the package and "
-                + "not about this machine. Select GpuBackendKind.Vulkan, which goes through Veldrid, for a fully "
-                + "working Vulkan device.");
+            => _pipelines.CreateCompute(d);
     }
 }

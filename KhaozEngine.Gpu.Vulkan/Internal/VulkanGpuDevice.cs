@@ -10,11 +10,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// The engine's native Vulkan device as the GPU seam sees it: a real <c>VkDevice</c> and a real graphics
     /// queue, on the shared refcounted instance, that creates and destroys cleanly.
     /// <para>
-    /// <b>NOT EVERY MEMBER IS BUILT YET, and each one that is not names the row that builds it.</b> This is
-    /// work-breakdown row 4 of <c>docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md</c>: the instance, the
-    /// device, the queue, the selective feature enable, the device-loss latch, the liveness token and the
-    /// validation pump. The swapchain is row 17, so the two members that row owns throw a message saying so rather
-    /// than returning something that fails later somewhere less informative.
+    /// <b>EVERY MEMBER ON THIS TYPE IS BUILT.</b> The type began as work-breakdown row 4 of
+    /// <c>docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md</c> (the instance, the device, the queue, the
+    /// selective feature enable, the device-loss latch, the liveness token and the validation pump) with each
+    /// unbuilt member naming the row that builds it, and the swapchain pair was the last of those: row 17
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/527) made <see cref="ResizeSwapchain"/> and
+    /// <see cref="Present"/> real, so nothing on this type refuses by naming a row any more. The recording rows
+    /// still open live on <c>VulkanCommandList</c>, not here.
     /// The Direct3D 11 package's <c>D3D11ResourceFactory</c> landed the same way and its doc paragraph was
     /// rewritten at every fill-in, which is the discipline this paragraph is under too: it is a ledger, and a
     /// stale one is worse than none.
@@ -25,8 +27,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// the drain, backpressure and off-timeline halves, see below), both <c>Submit</c> overloads, all three
     /// <c>UpdateBuffer</c> overloads at BOTH levels, <see cref="Factory"/>, <see cref="PointSampler"/>,
     /// <see cref="LinearSampler"/>, both <c>UpdateTexture</c> overloads, both <c>Map</c> and <c>Unmap</c> pairs,
-    /// <see cref="WaitForIdle"/>, and <see cref="Dispose"/>. What remains unbuilt on this type is the swapchain
-    /// pair, <see cref="ResizeSwapchain"/> and <see cref="Present"/>.
+    /// <see cref="WaitForIdle"/>, <see cref="Dispose"/>, and since row 17 the swapchain pair too:
+    /// <see cref="ResizeSwapchain"/> queues into the present boundary and <see cref="Present"/> IS the frame
+    /// boundary.
     /// </para>
     /// <para>
     /// <b>RESOURCES ARE LIVE, AND SO IS THE SETUP COMMAND BUFFER THEY APPEND TO</b> (row 9,
@@ -34,8 +37,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// uniform buffer arrives ring-backed, everything else with device-local memory), real textures (a
     /// <c>VkImage</c> with every image view it will ever need already made and its canonical resting layout
     /// assigned, or a <c>VkBuffer</c> with the incumbent's software subresource layout when it is a staging
-    /// texture), real samplers, real command lists and real fences. Framebuffers, shaders and
-    /// pipelines still refuse by naming their own row. NO CREATION SUBMITS ANYTHING: the clear and the first-ever
+    /// texture), real samplers, real command lists and real fences. Every other member of that seam has since
+    /// landed too, so the factory refuses nothing at all any more.
+    /// NO CREATION SUBMITS ANYTHING: the clear and the first-ever
     /// transition go into ONE device-owned setup command buffer under its own short lock, flushed at the next
     /// submit or at any device-level read. See <c>VulkanGpuDevice.Resources.cs</c> and
     /// <see cref="VulkanSetupCommands"/>.
@@ -48,9 +52,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// dynamic ones (V-D3). <c>CreateResourceLayout</c> and <c>CreateResourceSet</c> hand out real objects: one
     /// <c>VkDescriptorSet</c> allocated and written once at creation with the bind window as its range (V-M6).
     /// The subsystem hangs off THIS object and off the resource factory and off nothing a recorder can reach,
-    /// which is decision V-D2's structural enforcement rather than a preference. Row 13
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/523) is the first caller of the pipeline-layout cache and
-    /// of the dynamic-uniform limit check that lives with it.
+    /// which is decision V-D2's structural enforcement rather than a preference.
+    /// </para>
+    /// <para>
+    /// <b>AND SO ARE PIPELINES</b> (row 13, https://github.com/APKiwiOrg/KhaozEngine/issues/523). The device owns
+    /// one <see cref="VulkanPipelines"/>: the pipeline seam and a <c>VkPipelineCache</c> created WITH the device,
+    /// seeded from a disk blob keyed on <c>(pipelineCacheUUID, driverVersion, engine version)</c> and written back
+    /// in the teardown window below (V-S7). It is the first caller of the descriptors' pipeline-layout cache and
+    /// of the dynamic-uniform limit check that lives with it, and it hangs off this object and the resource
+    /// factory and nothing a recorder can reach, for a reason of its own: creating a pipeline is a shader compile,
+    /// so a recorder able to reach one could compile inside a frame. A command list gets the one-call
+    /// <see cref="IVulkanPipelineBinder"/> instead.
     /// </para>
     /// <para>
     /// <b>THE COMMAND PATH IS LIVE IN ITS LIFECYCLE AND IN ONE RECORDING MEMBER</b> (rows 7 and 8,
@@ -70,8 +82,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <see cref="VulkanRingAllocator"/>: the device-wide frame segment, the completion gate that recycles it into
     /// the same backpressure accumulator the command lists stall into, and the off-timeline write's pending-patch
     /// queue. Row 9's <c>CreateBuffer</c> cuts a ring for every uniform buffer, after
-    /// <see cref="VulkanBufferRingPolicy.ForBuffer"/> has answered. What still has no caller is the FRAME BOUNDARY
-    /// that rotates the segment, which is row 17's <see cref="Present"/>.
+    /// <see cref="VulkanBufferRingPolicy.ForBuffer"/> has answered. The FRAME BOUNDARY that rotates the segment
+    /// is <see cref="Present"/>, live since row 17, and a headless device rotates it there too.
     /// </para>
     /// <para>
     /// <b>THE COMPLETION TIMELINE IS LIVE AND IS NOW REACHABLE THROUGH THE SEAM</b> (row 5,
@@ -127,6 +139,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         readonly VulkanSetupCommands _setup;
         readonly VulkanDescriptors _descriptors;
         readonly VulkanShaderModuleCache _modules;
+        readonly VulkanPipelines _pipelines;
         readonly VulkanResourceFactory _factory;
         readonly VulkanStagingMaps _maps = new();
         readonly VulkanSampler _pointSampler;
@@ -152,7 +165,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             VulkanDeviceLiveness liveness, VulkanDeviceLossLatch loss, VulkanTimeline timeline,
             IVulkanDeviceMemoryApi memoryApi, VulkanMemoryFacts memoryFacts, IVulkanCommandApi commands,
             IVulkanResourceApi resourceApi, IVulkanSetupSink setupSink, IVulkanDescriptorApi descriptorApi,
-            IVulkanShaderApi shaderApi, uint maxDynamicUniformBuffers, int framesInFlight,
+            IVulkanShaderApi shaderApi, IVulkanPipelineApi pipelineApi,
+            VulkanPipelineCacheIdentity pipelineCacheIdentity, uint maxDynamicUniformBuffers, int framesInFlight,
             VulkanWindowedParts? windowed)
         {
             _instance = instance;
@@ -216,7 +230,18 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // is ever destroyed mid-life. Every handle is shared and they all go at teardown.
             _modules = new VulkanShaderModuleCache(shaderApi);
 
-            _factory = new VulkanResourceFactory(_resources, _rings, _setup, _descriptors, _modules,
+            // THE PIPELINE SUBSYSTEM (row 13), on its OWN owner for the reason the descriptors have one: creating
+            // a pipeline is a shader compile, so the seam that can do it must not sit anywhere a recorder's field
+            // graph reaches. It takes the DESCRIPTORS' pipeline-layout cache rather than making one, because a
+            // second cache would hand out two handles for one set-layout array and silently break the pointer
+            // compare row 11's compatibility prefix is. The disk cache is resolved from the environment HERE
+            // rather than inside the subsystem, so a test can hand it a directory it owns.
+            _pipelines = new VulkanPipelines(
+                new VulkanPipelineOwner(pipelineApi, timeline, _retired),
+                _descriptors.PipelineLayouts,
+                VulkanPipelineCacheFile.FromEnvironment(pipelineCacheIdentity));
+
+            _factory = new VulkanResourceFactory(_resources, _rings, _setup, _descriptors, _modules, _pipelines,
                 () => CreateCommandList(), () => _timeline.CreateFence(), capabilities,
                 memoryFacts.MinUniformBufferOffsetAlignment);
 
@@ -694,6 +719,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                         // and both are skipped natively on a dead device by the same liveness token.
                         ReportShaderTeardown(_modules.DestroyAll());
 
+                        // THE PIPELINE CACHE IS WRITTEN BACK HERE, while the device is still ALIVE and before the
+                        // liveness flip below, because vkGetPipelineCacheData is a real call against a real device
+                        // (V-S7). Best effort at every step, so a read or a write that fails is a colder next
+                        // launch and nothing else. On the dead path below the same call persists NOTHING, because
+                        // vkGetPipelineCacheData is gated on the liveness token like every other real call, and a
+                        // lost device has nothing worth writing to disk anyway.
+                        ReportPipelineTeardown();
+
                         // Skips its own native destroy on the lost path, for the same reason, through the same
                         // liveness token.
                         _timeline.Dispose();
@@ -714,6 +747,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                         ReportAbandoned(_retired.Abandon(), _memory.Abandon());
                         ReportDescriptorTeardown(_descriptors.DestroyAll());
                         ReportShaderTeardown(_modules.DestroyAll());
+                        ReportPipelineTeardown();
                         _timeline.Dispose();
                     }
                 }
@@ -748,6 +782,16 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 + $"{destroyed.SetLayouts} shared descriptor set layouts and {destroyed.Pools} descriptor pools "
                 + "at teardown. Both layout kinds are CONTENT-SHARED, so these counts are distinct shapes rather "
                 + "than distinct IGpuResourceLayout objects.");
+        }
+
+        // Persists the VkPipelineCache and destroys it, and says what happened. Debug rather than warn because
+        // none of it is a defect: a cold start with nothing written back is what a run that created no pipeline
+        // looks like, and a run whose disk cache was turned off says so through the same line.
+        void ReportPipelineTeardown()
+        {
+            _pipelines.DestroyAll();
+
+            log.Debug("The native Vulkan device tore down " + _pipelines.Describe() + ".");
         }
 
         // Says how many VkShaderModules the device destroyed, which is a count of DISTINCT SPIR-V rather than of

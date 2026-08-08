@@ -1554,6 +1554,26 @@ So V-S2 is TWO artefacts, not one:
    against drift from that point on. Recording the measurement's date and result here is the whole discipline: a
    reader who mistakes the drift test for the parity test will believe a proof that was never taken.
 
+**THE MEASUREMENT, TAKEN 2026-08-08, BEFORE THE FIRST GOLDEN RUN. 76 of 76 stages byte-identical, 0
+mismatches.** Every shipped program was compiled twice in one process and the two SPIR-V modules compared byte
+for byte: 34 graphics programs at two stages each plus 8 compute kernels, which is 76 stage emissions and the
+whole shipped set. The native side is `SpirvFrontEnd.ToSpirv(source, stage, programName)`. The incumbent side is
+`SpirvCompilation.CompileGlslToSpirv(source, fileName: null, stage, GlslCompileOptions.Default)`, which is the
+call `Veldrid.SPIRV`'s `CreateFromSpirv` makes on a Vulkan device, where it takes the short path and hands the
+compiled SPIR-V straight to `vkCreateShaderModule` with no cross-compilation at all. The two call shapes differ
+in exactly one argument, the diagnostic FILE NAME, and the measurement is what establishes that it never reaches
+the module while `SpirvFrontEndPin.Debug` is false. So the native backend really does hand
+`vkCreateShaderModule` the same bytes the incumbent hands it, and the committed `vulkan` golden family carries
+over unmodified.
+
+Two consequences worth stating rather than leaving to be re-derived. The compile LABEL not reaching the bytes is
+also what makes V-S7's module dedup work across programs: the same measurement pass counted 59 DISTINCT modules
+behind those 76 emissions, so a third of them are shared, and a label that reached the bytes would have made all
+76 distinct while looking identical from the outside. And the measurement is not re-run on any leg, deliberately.
+Re-taking it is the correct response to `VulkanSpirvByteEqualityTests` moving EVERY program at once, which means
+the pinned options moved, and re-baking that table instead would leave a proof nobody has taken standing behind
+36 goldens.
+
 Even with the caveat this is materially stronger than phase 2's position, where the pin sat over an
 INTERMEDIATE (emitted HLSL) that then went through FXC. Here there is no intermediate and no cross-compile.
 

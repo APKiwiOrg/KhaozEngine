@@ -8622,12 +8622,16 @@ work end to end, and since https://github.com/APKiwiOrg/KhaozEngine/issues/519 i
 `IGpuResourceFactory` behind it: buffers, textures, samplers, staging `Map` and `Unmap`, and both
 `UpdateTexture` overloads. Since https://github.com/APKiwiOrg/KhaozEngine/issues/520 that factory also builds
 resource layouts and resource sets, so a set is a real `VkDescriptorSet` allocated and written once at creation.
+Since https://github.com/APKiwiOrg/KhaozEngine/issues/526 it builds SHADER SETS and COMPUTE SHADERS too:
+`CreateShadersFromSpirv` compiles each GLSL 450 source to SPIR-V through the same front end the other backends
+use and hands the bytes to `vkCreateShaderModule` verbatim, with no cross-compilation anywhere on the path, and
+`CreateComputeShaderFromSpirv` reports the workgroup size it read out of the module. Modules are shared by
+SPIR-V hash, so disposing an `IGpuShaderSet` releases nothing and the device ends them all at teardown.
 What it cannot do yet is put anything INTO a list: the drawing, binding, clearing and
 copying members are https://github.com/APKiwiOrg/KhaozEngine/issues/521,
 https://github.com/APKiwiOrg/KhaozEngine/issues/522, https://github.com/APKiwiOrg/KhaozEngine/issues/524 and
 https://github.com/APKiwiOrg/KhaozEngine/issues/525, framebuffers are
-https://github.com/APKiwiOrg/KhaozEngine/issues/522, shaders are
-https://github.com/APKiwiOrg/KhaozEngine/issues/526 and pipelines are
+https://github.com/APKiwiOrg/KhaozEngine/issues/522 and pipelines are
 https://github.com/APKiwiOrg/KhaozEngine/issues/523, and each of those members throws a message naming its own
 row rather than returning something that fails later somewhere less informative. Creating a WINDOWED device
 refuses outright, naming https://github.com/APKiwiOrg/KhaozEngine/issues/527, the row that builds the surface

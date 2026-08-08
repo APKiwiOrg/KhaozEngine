@@ -5,7 +5,8 @@ umbrella: a consumer adds this package explicitly, the same pattern as `Physics.
 and nothing that does not want the Vulkan binding ever carries it.
 
 > **Status: REGISTRATION, PROBE, A HEADLESS DEVICE, ITS COMPLETION TIMELINE, ITS MEMORY ALLOCATOR, THE COMMAND
-> LIST'S LIFECYCLE, THE UNIFORM RING, THE RESOURCE FACTORY, THE DESCRIPTORS AND THE BIND FLUSH.**
+> LIST'S LIFECYCLE, THE UNIFORM RING, THE RESOURCE FACTORY, THE DESCRIPTORS, THE BIND FLUSH AND THE SHADER
+> PATH.**
 > `KhaozEngineVulkan.Register()`
 > is real, so is the machine-capability probe behind it, and since
 > [#514](https://github.com/APKiwiOrg/KhaozEngine/issues/514) so is headless device creation:
@@ -34,13 +35,15 @@ and nothing that does not want the Vulkan binding ever carries it.
 > into a two-state per-slot array and issue nothing, and the flush behind them emits one
 > `vkCmdBindDescriptorSets` per contiguous run of dirty slots with a positional `pDynamicOffsets` composed over
 > every dynamic descriptor in the run. The pipeline-layout compatibility prefix and both of decision V-R7's guards
-> landed with it, ahead of the pipeline row that calls them. That device cannot yet
+> landed with it, ahead of the pipeline row that calls them. And since
+> [#526](https://github.com/APKiwiOrg/KhaozEngine/issues/526) it has a SHADER PATH: GLSL 450 through the engine's
+> own front end to SPIR-V, then `vkCreateShaderModule` over the bytes verbatim, with no cross-compilation
+> anywhere and the modules shared by SPIR-V hash. That device cannot yet
 > RENDER: the rest of the recording content is
 > [#522](https://github.com/APKiwiOrg/KhaozEngine/issues/522),
 > [#524](https://github.com/APKiwiOrg/KhaozEngine/issues/524) and
 > [#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525), framebuffers are
-> [#522](https://github.com/APKiwiOrg/KhaozEngine/issues/522), shaders are
-> [#526](https://github.com/APKiwiOrg/KhaozEngine/issues/526) and pipelines are
+> [#522](https://github.com/APKiwiOrg/KhaozEngine/issues/522) and pipelines are
 > [#523](https://github.com/APKiwiOrg/KhaozEngine/issues/523), and each unbuilt member throws a message naming
 > its own row. Creating a WINDOWED device refuses, naming the swapchain row
 > ([#527](https://github.com/APKiwiOrg/KhaozEngine/issues/527)), rather than handing back a device that cannot
@@ -695,6 +698,64 @@ its guards are already here, and that row calls `SetPipelineLayout` with the pip
 set-layout sequence. The draw and dispatch members still refuse, naming
 [#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525), which calls the flush hook FIRST and then issues.
 
+## Shaders: there is no cross-compilation, and that is the headline
+
+**Vulkan consumes SPIR-V, so the whole shader path is three steps.** The engine's GLSL 450 source goes through
+the same front end every backend already uses, `vkCreateShaderModule` takes the resulting bytes verbatim, and
+the handles are held on the shader set for the pipeline row to name. No HLSL, no FXC, no register numbering to
+invent, no `local_size` hand-parse over a cross-compiler's output, no emitted-intermediate hash pin and no
+signature workarounds. The Direct3D 11 package's shader section is seventy lines of hazard and this one is
+eight, which is not luck: that phase confined the cross-compile edge to one file in `KhaozEngine.Gpu` precisely
+so a later backend could take the half it needs.
+
+**So this backend takes the FRONT END only, and that split is the whole Metal-facing carrying cost of the
+phase.** `SpirvCrossCompile` was split along the seam it already had: `SpirvFrontEnd` is glslang (GLSL to
+SPIR-V) and `SpirvCrossCompile` keeps SPIRV-Cross (SPIR-V to HLSL). This package reaches the front end across
+`InternalsVisibleTo` and names no member of the back end at all, asserted over the built IL rather than over the
+source text, because a `using` alias would walk past a grep. When Metal arrives it changes the BACK end to add
+an MSL target, so the eventual direct-SPIRV-Cross migration
+([#462](https://github.com/APKiwiOrg/KhaozEngine/issues/462)) becomes a change to one half of one file with one
+consumer family, evaluated against Metal's own fresh goldens rather than against Direct3D 11's committed ones.
+**SPIRV-Cross is deliberately not touched in this phase**: swapping it here would put those 36 goldens and both
+documented WARP corruption incidents in play at once, for a backend that consumes none of its output, in the
+phase whose CI leg cannot see any of it.
+
+**The parity claim is TWO artefacts and neither substitutes for the other.** `SpirvFrontEndPin` states the
+front-end options as constants with an identity derived from them, so a pin change moves every derived cache key
+by construction. Separately, a ONE-OFF in-process measurement compiled every shipped program through both this
+path and a faithful replication of the incumbent's own SPIR-V production and compared the modules byte for byte:
+**76 of 76 stages identical, 0 mismatches, taken 2026-08-08 before the first golden run** and recorded in
+section 12.1 of the design. THAT is what licenses the committed `vulkan` goldens carrying over unmodified.
+`VulkanSpirvByteEqualityTests` is a different thing and its header says so: its table is baked from this path's
+own emission, so what it detects is DRIFT, and a wrong emission baked once would pass forever. Reading a green
+run there as parity evidence reads it backwards.
+
+**`VkShaderModule`s are deduplicated by SPIR-V hash within a device.** The shipped set is 76 stage emissions and
+59 distinct modules, because one fullscreen vertex source backs eleven post-processing programs on its own and
+the model, skinned-model, shadow-depth, water and billboard families each share a stage across two. A handle is
+therefore shared, so `IGpuShaderSet.Dispose` releases nothing and the cache ends every module in the device's
+teardown window, the same rule a shared `VkDescriptorSetLayout` already follows. The key is a hash of the bytes
+and nothing else, with no options token in it, because these bytes ARE the emission: two equal SPIR-V modules are
+the same module to the driver whatever produced them.
+
+**The `set` and `binding` numbers are INHERITED rather than invented, and asserted anyway.** The shared GLSL
+already declares `layout(set = N, binding = M)`, and the backend's whole job is to make N the layout's index in
+the pipeline's layout array and M the element's index in that layout. Get it wrong and everything compiles,
+every descriptor writes, every draw issues and every pixel is wrong. So a device-free test parses every
+declaration out of the real shipped sources, pairs each program with its pipeline's layout array, and asserts
+both indices plus the resource KIND at each, plus that no layout element goes undeclared. Names are deliberately
+not compared: they disagree in shipped code and Vulkan binds by number. **`SpriteBatch` declares its uniform
+block at `set = 1` with its texture and sampler at `set = 0`**, so "the UBO set comes first" is false in shipped
+code and this test is the only thing that would catch a layout array reordered by a well-meaning refactor.
+
+**Two things this backend must NOT "fix", both stated because they will be proposed.** The Direct3D 11 backend's
+holed-signature sinks stay: SPIRV-Cross drops an unread vertex input and a holed `TEXCOORD` sequence miscompiles
+under FXC on WARP, both incidents were tolerated by Metal and Vulkan, and that leg ships indefinitely, so
+removing a sink because Vulkan tolerates it corrupts WARP. And the Metal-driven shader-shape invariant stays,
+one uniform buffer per pipeline at set 0 binding 0 with per-mesh textures at set 1 and up: Vulkan has no such
+limit and a Vulkan-only author would naturally spread uniforms across sets, which breaks a phase-4 backend that
+is not here to defend itself. The Metal-only shader validation check is in the same category.
+
 ## `KE_VULKAN_DEVICE`, `KE_VULKAN_VALIDATION` and `KE_VULKAN_FRAMES_IN_FLIGHT`
 
 **`KE_VULKAN_DEVICE` pins which physical device the backend runs on.** Six forms, case-insensitive and
@@ -866,10 +927,11 @@ the symlink step, and both are worth stating before somebody cites this section 
 ## What the package may reference, and the one edge it may not
 
 `KhaozEngine.Gpu.Vulkan` references `KhaozEngine.Gpu` and the three Silk.NET Vulkan packages. It declares NO
-`Veldrid` package, and that is decision V-P3 rather than an accident of ordering: the shader path eventually
-needs SPIRV-Cross, which arrives as `Veldrid.SPIRV`, and referencing it from a backend whose entire premise is
+`Veldrid` package, and that is decision V-P3 rather than an accident of ordering: the shader path needs
+glslang, which arrives as `Veldrid.SPIRV`, and referencing it from a backend whose entire premise is
 being Veldrid-free is a bad signal no guard reading package ids would catch. The edge stays in
-`KhaozEngine.Gpu` behind its internal, Veldrid-free cross-compile helper.
+`KhaozEngine.Gpu` behind its internal, Veldrid-free `SpirvFrontEnd` helper, which this package reaches across
+`InternalsVisibleTo`.
 
 That is asserted TWO ways, and the second one is the load-bearing half:
 
@@ -891,6 +953,13 @@ of the three above can. They ask what the surface exposes and say nothing about 
 new public member that happens to name no forbidden type is invisible to every one of them. That row pins the
 surface member by member at one exported type carrying one method, so widening it is a deliberate edit somebody
 had to read the reasoning to make.
+
+`VulkanShaderFrontEndOnlyTests` is the fifth, and it guards decision V-S3's split. Both halves of the shader
+toolchain live in `KhaozEngine.Gpu`, so every scan above reads identically whether this package calls
+`SpirvFrontEnd` or `SpirvCrossCompile`, and the tempting shortcut is one line that would compile. It reads this
+assembly's `TypeRef` table off disk and asserts it names the front end and no back-end type, plus the mirror
+assertion that the walk really does find the front end, so a metadata read that quietly found nothing cannot
+pass forever.
 
 ## Layering
 

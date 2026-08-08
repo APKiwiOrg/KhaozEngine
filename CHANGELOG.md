@@ -7,6 +7,68 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.34.0
 
+### Native Vulkan shaders: the toolchain splits at its seam, and the SPIR-V parity is measured before the goldens (#526)
+
+`KhaozEngine.Gpu.Vulkan`'s `CreateShadersFromSpirv` and `CreateComputeShaderFromSpirv` stop refusing, and the
+engine's GLSL-to-SPIR-V front end becomes a type of its own, separate from the SPIRV-Cross back end it used to
+share a file with. Work-breakdown row 16 of the phase 3 program (#510), device-free throughout, and nothing
+selects this backend by default so no shipped pixel moves.
+
+**There is no cross-compilation on this backend's shader path, and that is the headline.** Vulkan consumes
+SPIR-V, so `CreateShadersFromSpirv` compiles each GLSL 450 source through the front end and hands the bytes to
+`vkCreateShaderModule` verbatim. No HLSL, no FXC, no register scheme to invent, no `local_size` hand-parse over a
+cross-compiler's output, no emitted-intermediate hash pin and no signature workarounds. The Direct3D 11 backend's
+shader section is seventy lines of hazard and this one is eight, which is phase 2 paying out rather than luck:
+that phase confined the cross-compile edge to one file so a later backend could take the half it needs. No
+reflection is read back off the module either, because the pipeline's vertex input comes from the caller's own
+`GpuVertexLayoutDescription` and its bindings from the layout array, and a reflection read would be a second
+source of truth for facts the seam already carries.
+
+**`SpirvCrossCompile` is SPLIT along the seam it already had.** `SpirvFrontEnd` is glslang (GLSL 450 to SPIR-V)
+and `SpirvCrossCompile` keeps SPIRV-Cross (SPIR-V to HLSL). Direct3D 11 reaches both, because DXBC is a function
+of both halves. Vulkan reaches the front end ONLY, asserted by reading the backend assembly's `TypeRef` table off
+disk rather than by grepping source, because both halves live in `KhaozEngine.Gpu` and every existing
+package-level and assembly-level scan reads identically whichever one gets called. That split is the entire
+Metal-facing carrying cost of this phase and it makes the eventual direct-SPIRV-Cross migration (#462) a change
+to one half of one file with one consumer family, evaluated against Metal's own fresh goldens rather than against
+Direct3D 11's committed ones. SPIRV-Cross itself is deliberately untouched here: swapping it would put 36 goldens
+and both documented WARP corruption incidents in play at once, in the phase whose CI leg cannot see any of it.
+
+**The parity claim is TWO artefacts and neither substitutes for the other.** `SpirvFrontEndPin` states the
+front-end options as Veldrid-free constants with an `Identity` derived from them, so a pin change moves every
+derived cache key by construction. Separately, a ONE-OFF in-process measurement compiled every shipped program
+through this path and through a faithful replication of the incumbent's own SPIR-V production and compared the
+modules byte for byte: **76 of 76 stages identical, 0 mismatches, taken 2026-08-08 before the first golden run**,
+recorded in section 12.1 of the design. That is what licenses the committed `vulkan` golden family carrying over
+without a rebake. The per-program hash table that ships alongside it is a DRIFT detector and its header says so,
+transplanted from the Direct3D 11 test rather than rediscovered, because a wrong emission baked once passes
+forever and reading a green run there as parity evidence reads it backwards.
+
+**`VkShaderModule`s are deduplicated by SPIR-V hash within a device.** The shipped set is 76 stage emissions and
+59 distinct modules: one fullscreen vertex source backs eleven post-processing programs on its own, and the
+model, skinned-model, shadow-depth, water and billboard families each share a stage across two. A shared handle
+means `IGpuShaderSet.Dispose` releases nothing and the cache ends every module in the device's teardown window,
+the same rule a shared `VkDescriptorSetLayout` already follows. The key is a hash of the bytes and nothing else,
+with no options token, because these bytes ARE the emission.
+
+**The `set` and `binding` numbers are inherited from the shared GLSL rather than invented, and asserted anyway.**
+N is the layout's index in the pipeline's layout array and M is the element's index in that layout, and getting
+it wrong compiles, writes every descriptor, issues every draw and renders every pixel wrong. So a device-free
+test parses every `layout(set = N, binding = M)` out of the real shipped sources, pairs each program with its
+pipeline's layout array, and asserts both indices and the resource kind at each, plus that no layout element goes
+undeclared. Names are not compared: they disagree in shipped code and Vulkan binds by number. `SpriteBatch`
+declares its uniform block at `set = 1` with its texture and sampler at `set = 0`, so "the UBO set comes first"
+is false in shipped code and this is the only thing that would catch a layout array reordered by a well-meaning
+refactor.
+
+**Two smaller consequences of the split reach the other backend.** `ShaderValidation` stops making its own
+`CompileGlslToSpirv` call with the library defaults and routes through the same front-end seat, so the pin now
+governs every GLSL-to-SPIR-V compile in the engine rather than most of them, and a validator can no longer
+silently compile under a different set from the shipped path. And `D3D11ShaderKey` hashes BOTH pins, since a DXBC
+entry is a function of both halves of the toolchain and a key naming one of them is a time bomb across the change
+that flips the other. That is a new field, so the key schema moves to `v2` and warm DXBC cache entries on
+developer machines are orphaned once, which costs one cold compile.
+
 ### Native Vulkan bind flush: two states, contiguous-run binds, and a compatibility prefix with a guard (#521)
 
 `KhaozEngine.Gpu.Vulkan`'s four resource-set binds stop refusing. `SetGraphicsResourceSet` and

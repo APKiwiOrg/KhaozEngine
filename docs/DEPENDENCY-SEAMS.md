@@ -574,7 +574,9 @@ functional machine probe, and creates a real HEADLESS device
 `UpdateBuffer`, which routes to the uniform ring or the per-list staging arena
 ([#518](https://github.com/APKiwiOrg/KhaozEngine/issues/518)), and all four resource-set binds, which record into
 a per-slot array and flush as contiguous-run `vkCmdBindDescriptorSets`
-([#521](https://github.com/APKiwiOrg/KhaozEngine/issues/521)). Nothing can be DRAWN yet and nothing can be
+([#521](https://github.com/APKiwiOrg/KhaozEngine/issues/521)). The factory also builds shader sets and compute
+shaders ([#526](https://github.com/APKiwiOrg/KhaozEngine/issues/526)), which is the row that split the shader
+seam in two (below). Nothing can be DRAWN yet and nothing can be
 presented: the remaining recording members are [#522](https://github.com/APKiwiOrg/KhaozEngine/issues/522),
 [#524](https://github.com/APKiwiOrg/KhaozEngine/issues/524) and
 [#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525), pipelines are
@@ -629,12 +631,28 @@ The no-Veldrid rule below applies to BOTH packages, and both assertions are theo
 WHY a machine is unsupported instead of answering a bare false), `Vortice.Direct3D11` and `Vortice.D3DCompiler`.
 It declares NO `Veldrid` package, and that is decision P2 rather than an accident of ordering.
 
-The shader path needs SPIRV-Cross, which arrives as `Veldrid.SPIRV`. Referencing it from the backend would be
-the obvious shortcut and is rejected twice over: blessing a Veldrid package inside a backend whose entire premise
-is being Veldrid-free is a bad signal no guard would catch, and it would scatter the eventual SPIRV-Cross
-replacement across three packages instead of one. The edge stays in `KhaozEngine.Gpu` behind the internal
-`Internal/SpirvCrossCompile` helper plus `InternalsVisibleTo`, which is where it already belongs: this package
-owns `ShaderValidation`, which uses precisely that static API with no device in existence.
+The shader path needs glslang and, for Direct3D 11, SPIRV-Cross. Both arrive as `Veldrid.SPIRV`. Referencing it
+from a backend would be the obvious shortcut and is rejected twice over: blessing a Veldrid package inside a
+backend whose entire premise is being Veldrid-free is a bad signal no guard would catch, and it would scatter
+the eventual SPIRV-Cross replacement across three packages instead of one. The edge stays in `KhaozEngine.Gpu`
+behind internal helpers plus `InternalsVisibleTo`, which is where it already belongs: this package owns
+`ShaderValidation`, which uses precisely that static API with no device in existence.
+
+**AND THAT SEAM IS TWO MEMBERS NOW RATHER THAN ONE, which is decision V-S3** (section 12.3 of
+[design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md](design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md), landed
+by [#526](https://github.com/APKiwiOrg/KhaozEngine/issues/526)). `Internal/SpirvFrontEnd` is the glslang half
+(GLSL 450 to SPIR-V, under `Internal/SpirvFrontEndPin`) and `Internal/SpirvCrossCompile` is the SPIRV-Cross half
+(SPIR-V to HLSL, under `Internal/HlslCrossCompilePin`). `KhaozEngine.Gpu.D3D11` reaches both, because DXBC is a
+function of both. `KhaozEngine.Gpu.Vulkan` reaches the FRONT END ONLY, because Vulkan consumes SPIR-V and
+`vkCreateShaderModule` takes the bytes verbatim, so nothing on that backend's shader path is cross-compiled.
+
+That one-sided edge is asserted rather than intended, and it needs its own assertion because the two scans below
+cannot see it: both halves live in the same assembly, so a Vulkan call into `SpirvCrossCompile` would compile,
+would add no Veldrid reference, and would read identically to every package-level and assembly-level check.
+`VulkanShaderFrontEndOnlyTests` reads the backend's `TypeRef` table off disk instead, and asserts it names
+`SpirvFrontEnd` and no back-end type. What it buys is that the eventual SPIRV-Cross migration
+([#462](https://github.com/APKiwiOrg/KhaozEngine/issues/462)) stays a change to one half of one file with one
+consumer family.
 
 ```
 KhaozEngine.Gpu.D3D11 -> Vortice.Direct3D11, Vortice.D3DCompiler   (its subject matter)

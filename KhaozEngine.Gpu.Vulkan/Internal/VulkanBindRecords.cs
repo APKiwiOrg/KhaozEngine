@@ -389,7 +389,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         }
 
         // V-R7's SECOND GUARD, and the one that runs on a real device. The first is a device-free test asserting
-        // the computed prefix never exceeds the true identical-handle prefix; this one asserts, at the point a draw
+        // the computed prefix never exceeds the true identical-handle prefix. This one asserts, at the point a draw
         // would consume it, that the sets about to be bound really do satisfy the layout they are being bound
         // under. Under KE_VULKAN_VALIDATION only: it is a per-bind loop over the run, and it exists to catch a
         // mistake in the prefix computation, which is exactly the class a validation run is looking for.

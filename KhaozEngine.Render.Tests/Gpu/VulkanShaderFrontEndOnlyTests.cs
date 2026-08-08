@@ -29,6 +29,13 @@ namespace KhaozEngine.Tests.Gpu
     /// <para><b>SO THE CHECK IS OVER THE BUILT IL, not over the source text.</b> A type this assembly names from
     /// another assembly appears in its <c>TypeRef</c> table, whatever alias, <c>using</c> or fully qualified form
     /// the source used. A grep would be one <c>global::</c> away from a false pass.</para>
+    ///
+    /// <para><b>AND WHAT IT CANNOT SEE, stated so the property is not read as closed.</b> A reference table names
+    /// what this assembly names DIRECTLY, so an INDIRECT reach stays invisible: a new helper in
+    /// <c>KhaozEngine.Gpu</c> that calls <c>SpirvCrossCompile</c> itself and hands back primitives would leave
+    /// this backend naming only the helper. That is a deliberate two-file edit by somebody who wanted the back
+    /// end from here, rather than the one-line shortcut across an existing <c>InternalsVisibleTo</c> grant that
+    /// this test exists to catch, and the one-line shortcut is the failure that actually happens.</para>
     /// </summary>
     public sealed class VulkanShaderFrontEndOnlyTests
     {

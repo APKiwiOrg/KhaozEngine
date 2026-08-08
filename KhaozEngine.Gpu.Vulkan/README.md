@@ -983,6 +983,12 @@ whole backend may do it, each through its own named entry point: a texture's fir
 command buffer, and a swapchain image reacquired for a frame that will fully overwrite it. Every other caller
 goes through an entry point that refuses `UNDEFINED` outright.
 
+**As a NEW layout it is refused everywhere, including on the reacquire**, which is a different rule with a
+different reason. `VUID-VkImageMemoryBarrier2-newLayout-01198` forbids it: `UNDEFINED` is the state an image is
+in before anything has happened to it rather than one anything can be moved into, and a barrier naming it leaves
+the image unusable to every later command in the recording. So that refusal sits in the one barrier constructor
+both entry points pass through, and it has no legitimate site at all rather than two.
+
 **Buffer uploads are not part of this.** A staged `UpdateBuffer` emits a BUFFER memory barrier over the written
 range with its masks narrowed to the destination's real usage, which involves no image and no layout at all, so
 the layout tracker neither subsumes nor duplicates it.

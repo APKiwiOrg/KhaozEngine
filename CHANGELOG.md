@@ -48,7 +48,12 @@ entry point (V-F8).** It is the cheap transition and the tempting one, it does n
 obviously wrong, and it varies by driver and by run while the goldens require stability on the same rasterizer.
 Exactly two sites in the backend may name it and both are named entry points of their own: a texture's
 first-ever transition, on the device's setup command buffer, and a swapchain image reacquired for a frame that
-will fully overwrite it. A third site cannot be written by accident.
+will fully overwrite it. A third site cannot be written by accident. **As a NEW layout it is refused everywhere,
+including on the reacquire**, which is a different rule with a different reason:
+`VUID-VkImageMemoryBarrier2-newLayout-01198` forbids it outright, because `UNDEFINED` is the state an image is in
+before anything has happened to it rather than one anything can be moved into, and a barrier naming it leaves the
+image unusable to every later command in the recording. That refusal lives in the one barrier constructor both
+entry points pass through, so it has no legitimate site at all rather than two.
 
 **Barriers are batched into one call per boundary, and MV5's bet is asserted rather than assumed.** A begin
 transitioning four attachments is one `vkCmdPipelineBarrier2` carrying four barriers, and so is the restore at

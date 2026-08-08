@@ -84,8 +84,13 @@ namespace KhaozEngine.Tests.Gpu
         {
             foreach (ImageLayout oldLayout in Layouts)
             {
-                // UNDEFINED as an old layout is refused outright (V-F8), and its own two entry points are tested
-                // below, so the pair space that reaches For starts one layout in.
+                // BOTH ARMS ARE REFUSED RATHER THAN MERELY SKIPPED, and for two different reasons, each pinned by
+                // its own test below. UNDEFINED as an OLD layout discards the image's contents, so it is refused
+                // at the general entry point and reachable only through the two named ones (V-F8). UNDEFINED as a
+                // NEW layout is invalid outright (VUID-VkImageMemoryBarrier2-newLayout-01198) and is refused in
+                // the one constructor every entry point passes through, including the reacquire. So the pair
+                // space that a barrier can be built over at all is the seven-by-seven interior, and this loop
+                // covers it exactly.
                 if (oldLayout == ImageLayout.Undefined) continue;
 
                 foreach (ImageLayout newLayout in Layouts)
@@ -183,6 +188,32 @@ namespace KhaozEngine.Tests.Gpu
                     ImageHandle, Range(), ImageLayout.Undefined, ImageLayout.ColorAttachmentOptimal));
 
             Assert.Contains("DISCARDS", error.Message, StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// AND <c>UNDEFINED</c> AS A NEW LAYOUT IS REFUSED ON EVERY PATH, WHICH IS A DIFFERENT RULE FROM THE OLD
+        /// SIDE'S. It is not a discard and it has no legitimate site at all: VUID-VkImageMemoryBarrier2-newLayout-01198
+        /// forbids it because <c>UNDEFINED</c> is the state an image is in before anything has happened to it
+        /// rather than one anything can be moved into, and a barrier naming it leaves the image unusable to every
+        /// later command in the recording.
+        /// <para>
+        /// THE REACQUIRE IS ASSERTED HERE TOO, because it is the one entry point that legitimately names
+        /// <c>UNDEFINED</c> on the OLD side, which is exactly where a reader would expect the new side to be
+        /// permitted as well. The refusal lives in the one constructor both entry points pass through, so it is
+        /// not.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void AnUndefinedNewLayout_IsRefusedOnEveryPath()
+        {
+            ArgumentException general = Assert.Throws<ArgumentException>(
+                () => VulkanImageTransition.For(
+                    ImageHandle, Range(), ImageLayout.ColorAttachmentOptimal, ImageLayout.Undefined));
+
+            Assert.Contains("newLayout-01198", general.Message, StringComparison.Ordinal);
+
+            Assert.Throws<ArgumentException>(
+                () => VulkanImageTransition.Reacquired(ImageHandle, Range(), ImageLayout.Undefined));
         }
 
         /// <summary>

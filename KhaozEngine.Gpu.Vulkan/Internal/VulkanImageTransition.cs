@@ -32,6 +32,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// being reacquired for a frame that will fully overwrite it, which is <see cref="Reacquired"/> below.
     /// <see cref="For"/> refuses it, so a third site cannot be written by accident.</para>
     ///
+    /// <para><b>AND AS A NEW LAYOUT IT IS REFUSED ON EVERY PATH, WHICH IS A DIFFERENT RULE WITH A DIFFERENT
+    /// REASON.</b> VUID-VkImageMemoryBarrier2-newLayout-01198 forbids <c>UNDEFINED</c> as a destination outright:
+    /// it is the state an image is in before anything has happened to it rather than one anything can be moved
+    /// into, and a barrier naming it leaves the image unusable to every later command in the recording. So that
+    /// refusal sits in the one constructor BOTH entry points pass through rather than in <see cref="For"/> alone,
+    /// because there is no legitimate site for it at all rather than two.</para>
+    ///
     /// <para><b><c>PRESENT_SRC_KHR</c> IS A DESTINATION AND NEVER A SOURCE.</b> An image handed to
     /// <c>vkQueuePresentKHR</c> is next seen through an acquire, and the acquire's transition discards through
     /// <see cref="Reacquired"/> rather than reading the presented contents back, so the presented layout is never
@@ -121,7 +128,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// </summary>
         /// <exception cref="ArgumentException"><paramref name="oldLayout"/> is <c>UNDEFINED</c>, which would
         /// discard the image's contents. See the type remarks for the two sites permitted to do that and for why
-        /// this is a determinism rule rather than a nicety.</exception>
+        /// this is a determinism rule rather than a nicety. Also when <paramref name="newLayout"/> is
+        /// <c>UNDEFINED</c>, which no site may name (VUID-VkImageMemoryBarrier2-newLayout-01198).</exception>
         internal static ImageMemoryBarrier2 For(ulong image, in ImageSubresourceRange range, ImageLayout oldLayout,
             ImageLayout newLayout)
         {
@@ -156,6 +164,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="range">Its whole subresource range, which on a swapchain image is one mip and one
         /// layer.</param>
         /// <param name="newLayout">What the frame will use it as, which is its attachment layout.</param>
+        /// <exception cref="ArgumentException"><paramref name="newLayout"/> is <c>UNDEFINED</c>. The discard this
+        /// entry point exists for is on the OLD side, and a barrier from <c>UNDEFINED</c> to <c>UNDEFINED</c> is
+        /// not a cheap acquire but an invalid barrier (VUID-VkImageMemoryBarrier2-newLayout-01198).</exception>
         internal static ImageMemoryBarrier2 Reacquired(ulong image, in ImageSubresourceRange range,
             ImageLayout newLayout)
             => Barrier(image, range, ImageLayout.Undefined, newLayout,
@@ -167,10 +178,18 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         // IGNORED and an ownership transfer is not expressible. Same shape VulkanSetupBarrier's own constructor
         // takes, and deliberately not shared with it: that type carries the setup buffer's three fixed
         // transitions with their own conservative masks, and this one is the general per-list model.
+        //
+        // THE NEW-LAYOUT REFUSAL LIVES HERE RATHER THAN IN For, because it is a rule about the BARRIER and not
+        // about one entry point: both of the sites permitted to name UNDEFINED as an OLD layout pass through
+        // here too, and neither may name it as the new one.
         static ImageMemoryBarrier2 Barrier(ulong image, in ImageSubresourceRange range, ImageLayout oldLayout,
             ImageLayout newLayout, PipelineStageFlags2 srcStage, AccessFlags2 srcAccess,
             PipelineStageFlags2 dstStage, AccessFlags2 dstAccess)
-            => new(
+        {
+            if (newLayout == ImageLayout.Undefined) throw new ArgumentException(UndefinedDestination,
+                nameof(newLayout));
+
+            return new(
                 sType: StructureType.ImageMemoryBarrier2,
                 srcStageMask: srcStage,
                 srcAccessMask: srcAccess,
@@ -182,6 +201,16 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 dstQueueFamilyIndex: Vk.QueueFamilyIgnored,
                 image: new Image(image),
                 subresourceRange: range);
+        }
+
+        const string UndefinedDestination =
+            "A native Vulkan layout transition INTO VK_IMAGE_LAYOUT_UNDEFINED is invalid: "
+            + "VUID-VkImageMemoryBarrier2-newLayout-01198 forbids it outright, because UNDEFINED is what an image "
+            + "is before anything has happened to it rather than a state anything can be moved into. It is not "
+            + "the mirror of the old-layout rule and it is not a discard: a barrier that names it makes the image "
+            + "unusable to every later command in the recording, and the transition it was meant to be is the "
+            + "resting-layout restore at End (V-F7). The validation layer reports this one, so it is caught on a "
+            + "machine that has the layer and silent on every machine that does not.";
 
         const string UnknownLayout =
             "A native Vulkan image layout outside the eight this backend uses. Every barrier names both stage "

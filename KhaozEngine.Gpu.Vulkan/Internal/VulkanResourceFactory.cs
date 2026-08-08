@@ -233,7 +233,6 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         // The row that owns each unbuilt member, as a full URL, because these messages are read by somebody who has
         // just hit one and needs to know whether to wait for a row or file a bug.
-        const string DescriptorRow = "the descriptor row (https://github.com/APKiwiOrg/KhaozEngine/issues/520)";
         const string PipelineRow = "the pipeline row (https://github.com/APKiwiOrg/KhaozEngine/issues/523)";
         const string ShaderRow = "the shader-path row (https://github.com/APKiwiOrg/KhaozEngine/issues/526)";
 

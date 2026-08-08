@@ -139,7 +139,7 @@ void main()
         public void ABrokenSource_ThrowsNamingTheShaderAndTheStage()
         {
             ShaderValidationException ex = Assert.Throws<ShaderValidationException>(
-                () => SpirvCrossCompile.ToSpirv("#version 450\nvoid main() { this is not glsl }",
+                () => SpirvFrontEnd.ToSpirv("#version 450\nvoid main() { this is not glsl }",
                     GpuShaderStages.Fragment, "broken pass"));
 
             Assert.Contains("broken pass", ex.Message, StringComparison.Ordinal);
@@ -158,8 +158,8 @@ void main()
         {
             Type[] contract =
             {
-                typeof(SpirvCrossCompile), typeof(CrossCompiledPair), typeof(CrossCompiledCompute),
-                typeof(ShaderReflection),
+                typeof(SpirvFrontEnd), typeof(SpirvFrontEndPin), typeof(SpirvCrossCompile),
+                typeof(CrossCompiledPair), typeof(CrossCompiledCompute), typeof(ShaderReflection),
             };
 
             List<string> leaks = contract.SelectMany(NonPrivateVeldridTypes).ToList();

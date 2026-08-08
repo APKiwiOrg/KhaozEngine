@@ -63,8 +63,8 @@ namespace KhaozEngine.Gpu
 
             string tag = label ?? "shader pair";
 
-            byte[] vertSpirv = CompileToSpirv(vertexGlsl, ShaderStages.Vertex, tag);
-            byte[] fragSpirv = CompileToSpirv(fragmentGlsl, ShaderStages.Fragment, tag);
+            byte[] vertSpirv = CompileToSpirv(vertexGlsl, GpuShaderStages.Vertex, tag);
+            byte[] fragSpirv = CompileToSpirv(fragmentGlsl, GpuShaderStages.Fragment, tag);
 
             foreach (CrossCompileTarget target in Targets)
             {
@@ -99,7 +99,7 @@ namespace KhaozEngine.Gpu
             if (computeGlsl is null) throw new ArgumentNullException(nameof(computeGlsl));
 
             string tag = label ?? "compute shader";
-            byte[] spirv = CompileToSpirv(computeGlsl, ShaderStages.Compute, tag);
+            byte[] spirv = CompileToSpirv(computeGlsl, GpuShaderStages.Compute, tag);
 
             foreach (CrossCompileTarget target in Targets)
             {
@@ -218,19 +218,12 @@ namespace KhaozEngine.Gpu
             return kinds;
         }
 
-        static byte[] CompileToSpirv(string glsl, ShaderStages stage, string tag)
-        {
-            try
-            {
-                return SpirvCompilation.CompileGlslToSpirv(
-                    glsl, $"{tag}.{stage}", stage, GlslCompileOptions.Default).SpirvBytes;
-            }
-            catch (Exception ex)
-            {
-                throw new ShaderValidationException(
-                    $"{tag}: {stage} GLSL -> SPIR-V compile failed: {ex.Message}", ex);
-            }
-        }
+        // THE ONE FRONT-END SEAT (decision V-S2). This validator used to make its own CompileGlslToSpirv call with
+        // the library defaults, which meant a change to the pinned options would have moved the shipped shader
+        // path and left the validator compiling under the old set, silently. Routing it through SpirvFrontEnd is
+        // what makes SpirvFrontEndPin govern every GLSL to SPIR-V compile in the engine rather than most of them.
+        static byte[] CompileToSpirv(string glsl, GpuShaderStages stage, string tag)
+            => Internal.SpirvFrontEnd.ToSpirv(glsl, stage, tag);
     }
 
     /// <summary>

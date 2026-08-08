@@ -8,8 +8,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 {
     /// <summary>
     /// THE IDENTITY OF ONE COMPILED SHADER, decision S4's key. A SHA-256 over everything that can change the DXBC
-    /// bytes: the GLSL sources of the whole program, the FXC target profile, the FXC flags, the pinned
-    /// cross-compile options, and the engine version.
+    /// bytes: the GLSL sources of the whole program, the FXC target profile, the FXC flags, BOTH pinned option
+    /// sets of the shader toolchain, and the engine version.
     ///
     /// <para>
     /// THE WHOLE PROGRAM'S SOURCES, not just the stage's own, and that is the part a per-stage key would get
@@ -21,9 +21,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// right.
     /// </para>
     /// <para>
-    /// THE CROSS-COMPILE PIN IS IN THE KEY for the same reason (see <see cref="HlslCrossCompilePin.Identity"/>):
-    /// those options decide the emitted HLSL, so a cache entry belongs to the set it was emitted under or it is a
-    /// silent time bomb across the change that flips one.
+    /// BOTH TOOLCHAIN PINS ARE IN THE KEY for the same reason. <see cref="HlslCrossCompilePin.Identity"/> covers
+    /// the SPIRV-Cross back end, whose options decide the emitted HLSL.
+    /// <see cref="SpirvFrontEndPin.Identity"/> covers the glslang FRONT end, whose options decide the SPIR-V the
+    /// back end reads, so a DXBC entry is a function of both halves and a key naming one of them is a silent time
+    /// bomb across the change that flips the other. The front-end half arrived with decision V-S3's split
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/526), which is what made the front-end options a pinned
+    /// thing with a name rather than an inline library default nobody could point at.
     /// </para>
     /// <para>
     /// THE ENGINE VERSION IS BELT AND BRACES on top of all of that. The five components above should already be
@@ -43,7 +47,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <summary>The key format's own version. Bumped by hand when the FIELDS below change (not their values),
         /// so a reshaped key cannot collide with an old one that happened to hash the same inputs differently.
         /// </summary>
-        internal const string Schema = "khaozengine-d3d11-dxbc-v1";
+        internal const string Schema = "khaozengine-d3d11-dxbc-v2";
 
         /// <summary>
         /// The engine version the key and the cache directory carry, as <c>major.minor.patch</c>. Read off this
@@ -75,6 +79,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             var text = new StringBuilder(4096);
             text.Append(Schema).Append('\n')
                 .Append(EngineVersion).Append('\n')
+                .Append(SpirvFrontEndPin.Identity).Append('\n')
                 .Append(HlslCrossCompilePin.Identity).Append('\n')
                 .Append(D3D11ShaderProfile.For(stage)).Append('\n')
                 .Append(flags.ToString("x8", CultureInfo.InvariantCulture)).Append('\n')

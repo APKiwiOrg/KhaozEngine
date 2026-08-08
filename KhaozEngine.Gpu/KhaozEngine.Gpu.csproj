@@ -32,5 +32,11 @@
          disposal hook a natively created device implements so it gets the same liveness latch the Veldrid
          wrapper has. Both are internal on purpose: neither is API a consumer should see. -->
     <InternalsVisibleTo Include="KhaozEngine.Gpu.D3D11" />
+    <!-- The native Vulkan backend package (decision V-P3). It reads the FRONT END of the shader toolchain
+         (Internal/SpirvFrontEnd plus its pin), SpirvLocalSize, and IGpuDeviceLifecycle. It deliberately does NOT
+         read Internal/SpirvCrossCompile: Vulkan consumes SPIR-V, so nothing on its shader path is cross-compiled,
+         and decision V-S3 split the two halves apart so that stays true. VulkanShaderFrontEndOnlyTests asserts it
+         over the built IL. -->
+    <InternalsVisibleTo Include="KhaozEngine.Gpu.Vulkan" />
   </ItemGroup>
 </Project>

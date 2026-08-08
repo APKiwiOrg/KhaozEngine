@@ -5,12 +5,21 @@ using Veldrid.SPIRV;
 namespace KhaozEngine.Gpu.Internal
 {
     /// <summary>
-    /// The engine's single seat for GLSL 450 to SPIR-V to HLSL cross-compilation, device-free and entirely on the
-    /// CPU. This is the native Direct3D 11 backend's only SPIRV-Cross entry point, and the one place the phase 3
-    /// SPIRV-Cross replacement changes for that path: nothing outside this file in the engine-owned Direct3D 11
-    /// path names a <c>Veldrid.SPIRV</c> type. Two other seats still call <c>SpirvCompilation</c> directly,
-    /// <see cref="ShaderValidation"/> and the Veldrid wrapper <see cref="VeldridGpuDevice"/>, and both remain
-    /// direct callers because they leave the graph only when Veldrid itself does.
+    /// THE BACK END: SPIR-V in, HLSL out, SPIRV-Cross and nothing else. Device-free and entirely on the CPU. This
+    /// is the native Direct3D 11 backend's only SPIRV-Cross entry point, and the one place the SPIRV-Cross
+    /// replacement (#462) changes for that path.
+    /// <para>
+    /// THE FRONT END LIVES IN <see cref="SpirvFrontEnd"/> NOW, and the split is decision V-S3 (section 12.3 of
+    /// <c>docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md</c>). It was carved out of this file because the
+    /// native Vulkan backend needs the front end ONLY: Vulkan consumes SPIR-V, so nothing on its shader path is
+    /// cross-compiled and nothing in this file is reachable from it. An architecture test asserts that, over the
+    /// built IL. The GLSL-source convenience members below still run both halves, because that is the shape every
+    /// Direct3D 11 call site has.
+    /// </para>
+    /// <para>
+    /// The Veldrid wrapper <see cref="VeldridGpuDevice"/> still calls <c>SpirvCompilation</c> directly for its
+    /// cross-compiles, and remains a direct caller because it leaves the graph only when Veldrid itself does.
+    /// </para>
     /// <para>
     /// WHY IT LIVES IN <c>KhaozEngine.Gpu</c> RATHER THAN IN THE BACKEND (decision P2, section 3 of
     /// <c>docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md</c>). The shader path needs SPIRV-Cross, and
@@ -48,32 +57,6 @@ namespace KhaozEngine.Gpu.Internal
             HlslCrossCompilePin.FixClipSpaceZ,
             HlslCrossCompilePin.InvertVertexOutputY,
             HlslCrossCompilePin.NormalizeResourceNames);
-
-        /// <summary>
-        /// Compile one GLSL 450 source to SPIR-V, entry point <c>main</c>, the same convention the runtime SPIR-V
-        /// path uses.
-        /// </summary>
-        /// <param name="glsl">The shader source, GLSL <c>#version 450</c>.</param>
-        /// <param name="stage">Which stage the source is. Exactly one stage flag.</param>
-        /// <param name="label">Optional name for the shader, included in any error message.</param>
-        /// <exception cref="ShaderValidationException">The source failed to compile to SPIR-V. The message names
-        /// the label and the stage.</exception>
-        internal static byte[] ToSpirv(string glsl, GpuShaderStages stage, string? label = null)
-        {
-            if (glsl is null) throw new ArgumentNullException(nameof(glsl));
-
-            string tag = label ?? "shader";
-            ShaderStages veldridStage = VeldridMap.ToVeldrid(stage);
-            try
-            {
-                return SpirvCompilation.CompileGlslToSpirv(glsl, $"{tag}.{stage}", veldridStage,
-                    GlslCompileOptions.Default).SpirvBytes;
-            }
-            catch (Exception ex)
-            {
-                throw new ShaderValidationException($"{tag}: {stage} GLSL to SPIR-V failed: {ex.Message}", ex);
-            }
-        }
 
         /// <summary>
         /// Cross-compile a vertex and fragment SPIR-V pair to HLSL, with the reflection the backend binds
@@ -132,14 +115,15 @@ namespace KhaozEngine.Gpu.Internal
             return new CrossCompiledCompute(result.ComputeShader, Reflect(result.Reflection, tag));
         }
 
-        /// <summary>The GLSL-source convenience over <see cref="ToSpirv"/> plus
+        /// <summary>The GLSL-source convenience over <see cref="SpirvFrontEnd.ToSpirv"/> plus
         /// <see cref="VertexFragmentToHlsl"/>, which is the shape every call site actually has: the engine's
-        /// shaders are GLSL constants, not SPIR-V blobs.</summary>
+        /// shaders are GLSL constants, not SPIR-V blobs. It runs BOTH halves of the toolchain, which is why it
+        /// stays on this side of the split rather than moving with the front end.</summary>
         internal static CrossCompiledPair GlslPairToHlsl(string vertexGlsl, string fragmentGlsl, string? label = null)
         {
             string tag = label ?? "shader pair";
-            byte[] vertexSpirv = ToSpirv(vertexGlsl, GpuShaderStages.Vertex, tag);
-            byte[] fragmentSpirv = ToSpirv(fragmentGlsl, GpuShaderStages.Fragment, tag);
+            byte[] vertexSpirv = SpirvFrontEnd.ToSpirv(vertexGlsl, GpuShaderStages.Vertex, tag);
+            byte[] fragmentSpirv = SpirvFrontEnd.ToSpirv(fragmentGlsl, GpuShaderStages.Fragment, tag);
             return VertexFragmentToHlsl(vertexSpirv, fragmentSpirv, tag);
         }
 
@@ -147,7 +131,7 @@ namespace KhaozEngine.Gpu.Internal
         internal static CrossCompiledCompute GlslComputeToHlsl(string computeGlsl, string? label = null)
         {
             string tag = label ?? "compute shader";
-            return ComputeToHlsl(ToSpirv(computeGlsl, GpuShaderStages.Compute, tag), tag);
+            return ComputeToHlsl(SpirvFrontEnd.ToSpirv(computeGlsl, GpuShaderStages.Compute, tag), tag);
         }
 
         // The Veldrid-to-engine boundary, and the only place it happens. VeldridMap owns the forward direction

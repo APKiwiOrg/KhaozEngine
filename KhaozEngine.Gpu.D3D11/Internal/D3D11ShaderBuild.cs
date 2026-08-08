@@ -19,10 +19,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
     /// <summary>
     /// THE SHADER PATH WITHOUT A DEVICE: GLSL 450 in, DXBC out, decision S1 end to end. The single source stays
-    /// GLSL, the internal Veldrid-free helper in <c>KhaozEngine.Gpu</c> does GLSL to SPIR-V to HLSL under the
-    /// pinned options (decision S3), and <see cref="D3D11Fxc"/> makes the FXC call, through the disk cache when
-    /// there is one (decision S4). The reflected vertex input signature is checked for the holed-<c>TEXCOORD</c>
-    /// hazard on the way out (decision S5).
+    /// GLSL, the internal Veldrid-free helpers in <c>KhaozEngine.Gpu</c> do GLSL to SPIR-V
+    /// (<see cref="SpirvFrontEnd"/>, under <see cref="SpirvFrontEndPin"/>) and then SPIR-V to HLSL
+    /// (<see cref="SpirvCrossCompile"/>, under <see cref="HlslCrossCompilePin"/>, decision S3), and
+    /// <see cref="D3D11Fxc"/> makes the FXC call, through the disk cache when there is one (decision S4). The
+    /// reflected vertex input signature is checked for the holed-<c>TEXCOORD</c> hazard on the way out (decision
+    /// S5). This backend is the one consumer that needs BOTH halves of that toolchain.
     ///
     /// <para>
     /// NO DEVICE IS INVOLVED, which is what makes this type reusable rather than an implementation detail of the
@@ -99,7 +101,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             string key = D3D11ShaderKey.For(D3D11ShaderStage.Compute, flags, computeGlsl);
             string tag = label ?? ("d3d11 compute " + D3D11ShaderKey.ShortTag(key));
 
-            byte[] spirv = SpirvCrossCompile.ToSpirv(computeGlsl, GpuShaderStages.Compute, tag);
+            byte[] spirv = SpirvFrontEnd.ToSpirv(computeGlsl, GpuShaderStages.Compute, tag);
             (uint x, uint y, uint z) = SpirvLocalSize.Parse(spirv, tag);
 
             byte[]? dxbc = cache?.TryRead(key);

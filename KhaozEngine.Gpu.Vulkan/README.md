@@ -652,6 +652,17 @@ stride the ring owns. Those three have to agree or validation fails on the LAST 
 hardest version of this bug to find, so the composition re-asserts the bind-window invariant with the caller's
 real offset rather than the zero set creation had to assume.
 
+**An entry that is not a multiple of the dynamic-offset alignment is refused too, and that one is checked rather
+than assumed.** `VUID-vkCmdBindDescriptorSets-pDynamicOffsets-01971` requires every entry to be a multiple of
+`minUniformBufferOffsetAlignment`, and only the ring base carries that by construction. The `rangeOffset` and
+caller terms hold it because every shipped slot size is itself 256-aligned, which is an invariant the renderers
+obey rather than anything the ring guarantees, so the composition states it instead of relying on it. The check
+is on the COMPOSED entry, which is what the VUID measures: two terms that are each misaligned and sum to an
+aligned entry are legal and are accepted. The alignment it is held to is the engine's portable 256-byte floor
+rather than this device's own limit, so an offset cannot pass on a lax dev device and fail validation on one
+reporting the spec's required maximum. Like the window refusal, it leaves the slot dirty, so it repeats at the
+next draw instead of being spent on the first.
+
 **The array is recomposed at the head of every RUN, which is the incumbent's own bug not inherited.** Its
 batching flush resets the batch count and the first set but NOT the accumulated dynamic-offset count, so a second
 batch inside one flush passes a too-large count built from stale entries. The invariant here is that the count

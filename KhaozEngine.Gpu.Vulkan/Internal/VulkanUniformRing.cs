@@ -88,6 +88,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _mapped = mappedBase;
 
             SizeInBytes = sizeInBytes;
+            OffsetAlignmentBytes = VulkanRingStride.AlignmentFor(minUniformBufferOffsetAlignment);
             SegmentStrideBytes = VulkanRingStride.SegmentStrideFor(sizeInBytes, minUniformBufferOffsetAlignment);
             TotalBytes = VulkanRingStride.TotalBytesFor(
                 sizeInBytes, allocator.FramesInFlight, minUniformBufferOffsetAlignment);
@@ -96,6 +97,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <summary>The LOGICAL size, which is the only size the seam ever sees. A range, a dynamic offset and a
         /// write offset are all inside this, and the segment they land in is added underneath.</summary>
         internal ulong SizeInBytes { get; }
+
+        /// <summary>
+        /// The alignment every <c>pDynamicOffsets</c> entry composed against this ring owes
+        /// (<c>VUID-vkCmdBindDescriptorSets-pDynamicOffsets-01971</c>): <see cref="VulkanRingStride.AlignmentFor"/>
+        /// of the device limit, so it is the 256-byte floor on every conformant device rather than whatever this
+        /// driver happens to report. Every segment base is a multiple of it by construction, which is what leaves
+        /// only the caller's own terms to check at the bind. Row 11 does that check.
+        /// </summary>
+        internal ulong OffsetAlignmentBytes { get; }
 
         /// <summary>The distance between two segments (V-M5). NOT what a descriptor's range is set to: see
         /// <see cref="VulkanRingStride.BindWindowFits"/> for the invariant that separates the two.</summary>

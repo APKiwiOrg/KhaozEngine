@@ -180,6 +180,153 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
+        /// AND AN ENTRY THAT IS NOT A MULTIPLE OF THE DYNAMIC-OFFSET ALIGNMENT IS REFUSED AT THE FLUSH, by name.
+        /// <c>VUID-vkCmdBindDescriptorSets-pDynamicOffsets-01971</c> is the other rule this array answers to, and
+        /// only the ring base satisfies it by construction: the caller's own term holds it because every shipped
+        /// slot size is 256-aligned, which is an invariant the renderers obey rather than one the ring enforces.
+        /// A 128-byte offset is exactly the shape that quietly breaks it.
+        /// </summary>
+        [Fact]
+        public void AnEntryThatIsNotAMultipleOfTheAlignment_IsRefusedAtTheFlush()
+        {
+            using var harness = new VulkanBindHarness();
+            VulkanResourceSet set = harness.WindowedSet(slotBytes: 256, slots: 4);
+            VulkanBoundPipeline pipeline = harness.PipelineFor(set);
+
+            var counts = new VulkanCmdCallCounts();
+            var sink = new VulkanCountingCmdSink(counts);
+            var records = new VulkanBindRecords(PipelineBindPoint.Graphics);
+            records.SetPipelineLayout(pipeline.Layout, pipeline.SetLayouts);
+
+            // Inside its own segment, so the V-M6 window refusal has nothing to say about it. 128 is simply not a
+            // multiple of the 256 the entry owes.
+            records.Record(0, set, 128);
+
+            ArgumentOutOfRangeException refused = Assert.Throws<ArgumentOutOfRangeException>(
+                () => records.Flush(ref sink));
+
+            Assert.Contains("VUID-vkCmdBindDescriptorSets-pDynamicOffsets-01971", refused.Message,
+                StringComparison.Ordinal);
+            Assert.Equal(0, counts.BindDescriptorSetCalls);
+
+            // AND THE SLOT IS STILL DIRTY, so the refusal repeats at the next draw rather than being spent on the
+            // first one and followed by a draw against whatever the descriptor slots hold.
+            Assert.True(records.IsDirty(0));
+            Assert.Throws<ArgumentOutOfRangeException>(() => records.Flush(ref sink));
+            Assert.Equal(0, counts.BindDescriptorSetCalls);
+        }
+
+        /// <summary>
+        /// THE SAME SHAPE WITH AN ALIGNED OFFSET FLUSHES, which is what makes the refusal above a statement about
+        /// the OFFSET rather than about the set. One slot further along the same buffer, and the entry lands on a
+        /// multiple of the alignment because the slot size is one.
+        /// </summary>
+        [Fact]
+        public void TheSameShapeWithAnAlignedOffset_Flushes()
+        {
+            using var harness = new VulkanBindHarness();
+            VulkanResourceSet set = harness.WindowedSet(slotBytes: 256, slots: 4);
+            VulkanBoundPipeline pipeline = harness.PipelineFor(set);
+
+            var binds = new List<VulkanRecordedBind>();
+            var sink = new VulkanCapturingCmdSink(binds);
+            var records = new VulkanBindRecords(PipelineBindPoint.Graphics);
+            records.SetPipelineLayout(pipeline.Layout, pipeline.SetLayouts);
+
+            records.Record(0, set, 256);
+            records.Flush(ref sink);
+
+            VulkanDynamicUniform dynamicUniform = Assert.Single(set.DynamicUniforms.ToArray());
+            uint offset = Assert.Single(Assert.Single(binds).DynamicOffsets);
+
+            Assert.Equal(dynamicUniform.Ring.CurrentFrameBaseBytes + 256, offset);
+            Assert.Equal(0ul, offset % dynamicUniform.Ring.OffsetAlignmentBytes);
+            Assert.False(records.IsDirty(0));
+        }
+
+        /// <summary>
+        /// AND THE CHECK IS ON THE ENTRY, NOT ON ITS TERMS, which is what the VUID actually measures. A range
+        /// offset and a caller offset that are each misaligned but SUM to an aligned entry compose a legal bind,
+        /// and refusing it would refuse something the driver accepts.
+        /// </summary>
+        [Fact]
+        public void TwoMisalignedTermsThatSumToAnAlignedEntry_Compose()
+        {
+            using var harness = new VulkanBindHarness(framesInFlight: 3);
+
+            IGpuBuffer buffer = harness.UniformBuffer(1024);
+            VulkanResourceSet set = harness.CustomSet(
+                VulkanResourceFixture.UniformLayout(dynamic: true), new GpuBufferRange(buffer, 128, 256));
+            VulkanBoundPipeline pipeline = harness.PipelineFor(set);
+
+            // Past segment zero, so the base is a real number rather than the one value every alignment divides.
+            harness.Rings.BeginFrame();
+            harness.Rings.BeginFrame();
+
+            VulkanDynamicUniform dynamicUniform = Assert.Single(set.DynamicUniforms.ToArray());
+            ulong alignment = dynamicUniform.Ring.OffsetAlignmentBytes;
+
+            // Both terms really are misaligned, so the sum below is the only reason this composes at all.
+            Assert.NotEqual(0ul, dynamicUniform.RangeOffset % alignment);
+            Assert.NotEqual(0ul, 128ul % alignment);
+
+            var binds = new List<VulkanRecordedBind>();
+            var sink = new VulkanCapturingCmdSink(binds);
+            var records = new VulkanBindRecords(PipelineBindPoint.Graphics);
+            records.SetPipelineLayout(pipeline.Layout, pipeline.SetLayouts);
+
+            records.Record(0, set, 128);
+            records.Flush(ref sink);
+
+            uint offset = Assert.Single(Assert.Single(binds).DynamicOffsets);
+
+            Assert.Equal(dynamicUniform.Ring.CurrentFrameBaseBytes + 256, offset);
+            Assert.Equal(0ul, offset % alignment);
+        }
+
+        /// <summary>
+        /// AND A RUN WHOSE ENTRIES ARE ALL ALIGNED NEVER MEETS THE REFUSAL AT ALL. The same three-set run the
+        /// positional test uses, at a non-zero frame slot with a real caller offset: one call, and every entry a
+        /// multiple of its own ring's alignment. A check that fired on the shipped shapes would be worse than no
+        /// check, so this is the half that pins it does not.
+        /// </summary>
+        [Fact]
+        public void AcrossARunOfAlignedEntries_TheAlignmentRefusalNeverFires()
+        {
+            using var harness = new VulkanBindHarness(framesInFlight: 3);
+            VulkanResourceSet named = harness.WindowedSet(slotBytes: 256, slots: 4);
+            VulkanResourceSet unnamed = harness.Set("Beam");
+            VulkanResourceSet textureOnly = harness.Set("SpriteBatch.texture");
+            VulkanBoundPipeline pipeline = harness.PipelineFor(named, unnamed, textureOnly);
+
+            harness.Rings.BeginFrame();
+            harness.Rings.BeginFrame();
+
+            var binds = new List<VulkanRecordedBind>();
+            var sink = new VulkanCapturingCmdSink(binds);
+            var records = new VulkanBindRecords(PipelineBindPoint.Graphics);
+            records.SetPipelineLayout(pipeline.Layout, pipeline.SetLayouts);
+
+            records.Record(0, named, 768);
+            records.Record(1, unnamed, 0);
+            records.Record(2, textureOnly, 0);
+            records.Flush(ref sink);
+
+            VulkanRecordedBind bind = Assert.Single(binds);
+            VulkanDynamicUniform[] dynamics =
+            [
+                .. named.DynamicUniforms.ToArray(), .. unnamed.DynamicUniforms.ToArray(),
+                .. textureOnly.DynamicUniforms.ToArray(),
+            ];
+
+            Assert.Equal(dynamics.Length, bind.DynamicOffsets.Length);
+            for (int i = 0; i < dynamics.Length; i++)
+            {
+                Assert.Equal(0ul, bind.DynamicOffsets[i] % dynamics[i].Ring.OffsetAlignmentBytes);
+            }
+        }
+
+        /// <summary>
         /// SET ORDER THEN BINDING ORDER, ACROSS A RUN, INCLUDING RING BASES FOR UNIFORM BUFFERS THE CALLER NEVER
         /// NAMED. This is the whole positional hazard in one assertion: the run's first set carries the caller's
         /// offset, the second carries a uniform the caller said nothing about, and the second entry still has to be

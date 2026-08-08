@@ -44,6 +44,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// of integer operations per dynamic descriptor and is deliberately NOT behind the validation gate: it costs
     /// nothing measurable and the thing it prevents is invisible without it.</para>
     ///
+    /// <para><b>AND EVERY COMPOSED ENTRY IS CHECKED AGAINST THE ALIGNMENT THE ARRAY OWES (01971).</b>
+    /// <c>VUID-vkCmdBindDescriptorSets-pDynamicOffsets-01971</c> requires each entry to be a multiple of
+    /// <c>minUniformBufferOffsetAlignment</c>. Only the ring base carries that alignment by construction: the
+    /// <c>rangeOffset</c> and caller terms hold it because every shipped slot size is itself 256-aligned, which is
+    /// an invariant the renderers obey rather than anything the ring guarantees. So it is CHECKED here, on the
+    /// composed entry, against the engine's portable 256-byte floor. See <see cref="RequireAligned"/> for why the
+    /// floor and not the device's own limit.</para>
+    ///
     /// <para><b>ONE INSTANCE PER BIND RECORD, GROWN ONCE AND REUSED FOREVER.</b> The hot path is thousands of
     /// offsets-only rebinds of one set per frame, so an array allocated per bind would be an allocation per rebind.
     /// Nothing here is synchronised, on the same grounds as the record that owns it: one list records on one thread
@@ -75,7 +83,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="slot">The set number, for the refusal message only.</param>
         /// <exception cref="ArgumentOutOfRangeException">A composed entry would put the descriptor's range outside
         /// its own ring segment, which at the last frame slot is outside the buffer (V-M6), or would not fit the
-        /// 32-bit field <c>pDynamicOffsets</c> is.</exception>
+        /// 32-bit field <c>pDynamicOffsets</c> is, or is not a multiple of the dynamic-offset alignment
+        /// (<c>VUID-vkCmdBindDescriptorSets-pDynamicOffsets-01971</c>).</exception>
         internal void Append(in VulkanBoundSet set, uint callerDynamicOffset, uint slot)
         {
             VulkanDynamicUniform[]? dynamics = set.DynamicUniforms;
@@ -121,7 +130,48 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     + "than something a bind can round.");
             }
 
+            RequireAligned(in dynamicUniform, applied, composed, slot);
+
             return (uint)composed;
+        }
+
+        /// <summary>
+        /// THE ENTRY'S OWN ALIGNMENT, which is the OTHER thing the driver measures this array by.
+        /// <c>VUID-vkCmdBindDescriptorSets-pDynamicOffsets-01971</c> requires each entry to be a multiple of
+        /// <c>minUniformBufferOffsetAlignment</c>, and it is stated on the COMPOSED entry rather than on any term
+        /// of it because that is what the VUID measures: two terms that are each misaligned and sum to an aligned
+        /// entry are legal, and refusing them would refuse a bind the driver accepts.
+        /// </summary>
+        static void RequireAligned(in VulkanDynamicUniform dynamicUniform, ulong applied, ulong composed, uint slot)
+        {
+            // THE ENGINE'S PORTABLE FLOOR, NOT THE RAW DEVICE LIMIT, and that is a deliberate choice rather than a
+            // convenience. VulkanRingStride.AlignmentFor floors at 256, the spec's REQUIRED MAXIMUM for the limit,
+            // so a device reporting 64 is held to 256 here anyway. Enforcing the raw limit would let an offset that
+            // happens to work on a lax dev machine ship and then fail validation on a 256-limit device, which is
+            // the one failure a check on this path exists to make impossible.
+            ulong alignment = dynamicUniform.Ring.OffsetAlignmentBytes;
+
+            if (composed % alignment == 0) return;
+
+            throw new ArgumentOutOfRangeException(nameof(dynamicUniform), composed,
+                "A native Vulkan dynamic offset of "
+                + composed.ToString(CultureInfo.InvariantCulture)
+                + " bytes at binding "
+                + dynamicUniform.Binding.ToString(CultureInfo.InvariantCulture)
+                + " of set "
+                + slot.ToString(CultureInfo.InvariantCulture)
+                + " is not a multiple of the "
+                + alignment.ToString(CultureInfo.InvariantCulture)
+                + "-byte dynamic-offset alignment, which is "
+                + "VUID-vkCmdBindDescriptorSets-pDynamicOffsets-01971. The ring's per-frame base is aligned by "
+                + "construction, so the misalignment is in the caller's own terms: a range offset of "
+                + dynamicUniform.RangeOffset.ToString(CultureInfo.InvariantCulture)
+                + " plus a dynamic offset of "
+                + applied.ToString(CultureInfo.InvariantCulture)
+                + ". Round the slot size that offset indexes up to "
+                + alignment.ToString(CultureInfo.InvariantCulture)
+                + " bytes. That alignment is the engine's portable floor rather than this device's own limit, so a "
+                + "bind refused here would have been refused on a device reporting the spec's required maximum.");
         }
 
         // Doubling from eight, so a run over the engine's widest shipped shapes never reallocates after the first

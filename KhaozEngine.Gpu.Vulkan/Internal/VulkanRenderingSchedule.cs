@@ -222,6 +222,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <summary>
         /// An explicit scissor rectangle, which overwrites whatever the last writer left and is emitted by the
         /// next draw. See the type remarks for why this is a value rather than an immediate call.
+        /// <para>
+        /// AND IT IS THE ONE RENDERING MEMBER THAT DOES NOT CALL <c>RequireFramebuffer</c>, deliberately. It takes
+        /// every value it stores from the caller and reads nothing off the bound framebuffer, where
+        /// <see cref="SetFullScissorRects"/> derives its rectangle FROM that framebuffer's extent and therefore
+        /// cannot answer without one. A rectangle recorded with no target is only ever consumed by a draw, and
+        /// <see cref="PrepareDraw"/> refuses without one, so the missing target is caught where it first matters.
+        /// </para>
         /// </summary>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is not 0.</exception>
         internal void SetScissorRect(uint index, uint x, uint y, uint width, uint height)

@@ -15,12 +15,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// retention cap, the narrowed barrier and the ROUTING DECISION) complete and driven by tests, without
     /// pre-empting the shape of a recorder that does not exist yet.</para>
     ///
-    /// <para><b>NULL ON A LIST TODAY, AND THAT IS NOT A PLACEHOLDER.</b> A non-uniform buffer cannot EXIST until
-    /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/519">row 9</see> builds
-    /// <c>IGpuResourceFactory</c>, so a list with no uploader can never be handed one, and it refuses by naming
-    /// that row. What is live from this row is the decision itself: a ring-backed buffer goes to the ring and
-    /// everything else comes here, made once in <see cref="VulkanCommandList.UpdateBuffer{T}(IGpuBuffer, uint,
-    /// ReadOnlySpan{T})"/> rather than repeated as a convention at each write site.</para>
+    /// <para><b>NULL ONLY ON A LIST A TEST CONSTRUCTED.</b> Every device-created list carries an uploader since
+    /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/519">row 9</see> built
+    /// <c>IGpuResourceFactory</c>, and a list built without one refuses a non-uniform write as an argument error
+    /// that names no row (the routing test asserts the message carries no issue number). What this seam fixes is
+    /// the decision itself: a ring-backed buffer goes to the ring and everything else comes here, made once in
+    /// <see cref="VulkanCommandList.UpdateBuffer{T}(IGpuBuffer, uint, ReadOnlySpan{T})"/> rather than repeated as
+    /// a convention at each write site.</para>
     ///
     /// <para><b><see cref="IDisposable"/> BECAUSE THE ARENA'S LIFETIME NEEDS AN OWNER.</b>
     /// <see cref="VulkanCommandList.Dispose"/> disposes this beside its own pool retirement, so row 9's

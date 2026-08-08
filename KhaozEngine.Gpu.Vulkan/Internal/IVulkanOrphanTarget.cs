@@ -111,8 +111,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         static VulkanAttachment AttachmentOf(IGpuTexture texture)
         {
+            // The orphan is an ordinary factory-created render target, so its resting layout is whatever row 9's
+            // creation policy assigned it, read off the texture rather than restated here.
             var native = (VulkanTexture)texture;
-            return new VulkanAttachment(native.AttachmentView, native.Image, native.Format, DepthStencil: false);
+            return new VulkanAttachment(
+                native.AttachmentView, native.Image, native.Format, DepthStencil: false, native.Resting);
         }
     }
 }

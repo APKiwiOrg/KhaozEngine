@@ -51,7 +51,16 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             _attachments = new VulkanAttachment[images.Length];
             for (int i = 0; i < images.Length; i++)
-                _attachments[i] = new VulkanAttachment(views[i], images[i], seamFormat, DepthStencil: false);
+            {
+                // A swapchain image is a pure colour attachment and rests as one. PRESENT_SRC is deliberately NOT
+                // a resting layout: the present transition and the post-acquire discard are the boundary's own
+                // choreography (https://github.com/APKiwiOrg/KhaozEngine/issues/557, wired with row 15), not the
+                // list-local tracker's, and the tracker's begin transition for a colour attachment resting as one
+                // pays nothing at either end.
+                _attachments[i] = new VulkanAttachment(
+                    views[i], images[i], seamFormat, DepthStencil: false,
+                    VulkanRestingLayout.ColorAttachmentOptimal);
+            }
         }
 
         /// <summary>The <c>VkSwapchainKHR</c> handle.</summary>

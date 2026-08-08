@@ -64,7 +64,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// external synchronisation over both anyway. Driving ONE list from two threads is a data race here and would
     /// be one inside the driver too.</para>
     /// </summary>
-    internal sealed class VulkanCommandList : IGpuCommandList, IVulkanRenderingScope
+    internal sealed partial class VulkanCommandList : IGpuCommandList, IVulkanRenderingScope
     {
         readonly VulkanCommandPoolRing _ring;
         readonly VulkanRetireList _retired;
@@ -618,32 +618,6 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// </remarks>
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged
             => Upload(b, offsetBytes, MemoryMarshal.AsBytes(data));
-
-        /// <inheritdoc/>
-        public void CopyBuffer(IGpuBuffer src, uint srcOffsetBytes, IGpuBuffer dst, uint dstOffsetBytes,
-            uint sizeInBytes)
-            => throw NotBuiltYet("Copying between buffers", DrawRow);
-
-        /// <inheritdoc/>
-        public void CopyTexture(IGpuTexture src, IGpuTexture dst)
-            => throw NotBuiltYet("Copying a texture", DrawRow);
-
-        /// <inheritdoc/>
-        public void CopyTextureSubresource(IGpuTexture src, uint srcMipLevel, uint srcArrayLayer, IGpuTexture dst,
-            uint width, uint height)
-            => throw NotBuiltYet("Copying a texture subresource", DrawRow);
-
-        /// <inheritdoc/>
-        public void CopyTextureSubresource(IGpuTexture src, uint srcMipLevel, uint srcArrayLayer, IGpuTexture dst,
-            uint dstMipLevel, uint dstArrayLayer, uint width, uint height)
-            => throw NotBuiltYet("Copying a texture subresource", DrawRow);
-
-        /// <inheritdoc/>
-        public void GenerateMipmaps(IGpuTexture texture) => throw NotBuiltYet("Generating mipmaps", DrawRow);
-
-        /// <inheritdoc/>
-        public void ResolveTexture(IGpuTexture src, IGpuTexture dst)
-            => throw NotBuiltYet("Resolving a multisampled texture", DrawRow);
 
         /// <summary>
         /// Release this list's pools, deferred behind the timeline (V-F9). A list disposed with submissions

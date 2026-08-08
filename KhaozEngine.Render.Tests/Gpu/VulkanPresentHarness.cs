@@ -348,7 +348,8 @@ namespace KhaozEngine.Tests.Gpu
                 _view = _nextView++;
             }
 
-            return new VulkanAttachment(_view, _view + 1, format, DepthStencil: false);
+            return new VulkanAttachment(_view, _view + 1, format, DepthStencil: false,
+                VulkanRestingLayout.ColorAttachmentOptimal);
         }
 
         /// <inheritdoc/>

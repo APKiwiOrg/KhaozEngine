@@ -17,7 +17,8 @@ namespace KhaozEngine.Tests.Gpu
     public sealed class VulkanSwapchainFramebufferTests
     {
         static VulkanAttachment Attachment(ulong view) =>
-            new(view, view + 1, GpuPixelFormat.B8G8R8A8UNorm, DepthStencil: false);
+            new(view, view + 1, GpuPixelFormat.B8G8R8A8UNorm, DepthStencil: false,
+                VulkanRestingLayout.ColorAttachmentOptimal);
 
         /// <summary>The identity is taken once, at construction, and the generation counter is what actually moves
         /// so a diagnostic can still tell that the chain was rebuilt.</summary>

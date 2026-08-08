@@ -60,6 +60,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         readonly IVulkanBarrierRecorder _recorder;
         readonly List<Entry> _touched = new();
 
+        // THE MAP A BATCH IS BUILDING, which becomes _touched only once the call it describes has been made.
+        // Reused rather than allocated per batch, like _batch below, and live only between the first staged
+        // barrier of a batch and its emit.
+        readonly List<Entry> _staged = new();
+        bool _staging;
+
         // GROWN TO THE WIDEST BOUNDARY EVER EMITTED rather than allocated per batch, so a frame that transitions
         // the same four attachments every pass allocates nothing after the first one.
         ImageMemoryBarrier2[] _batch = new ImageMemoryBarrier2[4];
@@ -88,7 +94,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             RequireImage(image);
 
             int index = IndexOf(image);
-            return index < 0 ? image.RestingLayout : _touched[index].Current;
+            return index < 0 ? image.RestingLayout : Map[index].Current;
         }
 
         /// <summary>
@@ -102,9 +108,19 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             RequireImage(image);
 
-            if (!Stage(image, target, 0)) return;
+            try
+            {
+                if (!Stage(image, target, 0)) return;
 
-            _recorder.Emit(commandBuffer, _batch.AsSpan(0, 1));
+                _recorder.Emit(commandBuffer, _batch.AsSpan(0, 1));
+                Commit();
+            }
+            finally
+            {
+                // COMMITTED OR ABANDONED, THE SHADOW IS DEAD EITHER WAY, and dropping it on the throwing path is
+                // the whole point: a batch that did not reach the driver changed nothing.
+                _staging = false;
+            }
         }
 
         /// <summary>
@@ -131,23 +147,31 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             ReadOnlySpan<VulkanAttachment> colour = framebuffer.ColourAttachments;
             EnsureCapacity(colour.Length + 1);
 
-            int count = 0;
-            for (int i = 0; i < colour.Length; i++)
+            try
             {
-                var attachment = VulkanTrackedImage.ForAttachment(in colour[i]);
-                if (Stage(attachment, attachment.AttachmentLayout, count)) count++;
-            }
+                int count = 0;
+                for (int i = 0; i < colour.Length; i++)
+                {
+                    var attachment = VulkanTrackedImage.ForAttachment(in colour[i]);
+                    if (Stage(attachment, attachment.AttachmentLayout, count)) count++;
+                }
 
-            if (framebuffer.HasDepth)
+                if (framebuffer.HasDepth)
+                {
+                    VulkanAttachment depth = framebuffer.Depth;
+                    var attachment = VulkanTrackedImage.ForAttachment(in depth);
+                    if (Stage(attachment, attachment.AttachmentLayout, count)) count++;
+                }
+
+                if (count == 0) return;
+
+                _recorder.Emit(commandBuffer, _batch.AsSpan(0, count));
+                Commit();
+            }
+            finally
             {
-                VulkanAttachment depth = framebuffer.Depth;
-                var attachment = VulkanTrackedImage.ForAttachment(in depth);
-                if (Stage(attachment, attachment.AttachmentLayout, count)) count++;
+                _staging = false;
             }
-
-            if (count == 0) return;
-
-            _recorder.Emit(commandBuffer, _batch.AsSpan(0, count));
         }
 
         /// <summary>
@@ -177,11 +201,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     entry.Image, entry.Range, entry.Current, entry.Resting);
             }
 
+            if (count > 0) _recorder.Emit(commandBuffer, _batch.AsSpan(0, count));
+
+            // AFTER THE CALL, for the reason Stage defers its own commit: a recorder that threw restored nothing,
+            // and a map emptied anyway would leave the next reader believing every image is back at rest.
             _touched.Clear();
-
-            if (count == 0) return;
-
-            _recorder.Emit(commandBuffer, _batch.AsSpan(0, count));
         }
 
         /// <summary>
@@ -195,15 +219,30 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// a transition that lives on a command buffer nobody submitted.
         /// </para>
         /// </summary>
-        internal void Reset() => _touched.Clear();
+        internal void Reset()
+        {
+            _touched.Clear();
+            _staged.Clear();
+            _staging = false;
+        }
+
+        // THE MAP THIS BATCH IS READING AND WRITING: the committed one until the batch stages its first barrier,
+        // and the shadow after that. Indexes are stable across the switch, because the shadow starts as a copy.
+        List<Entry> Map => _staging ? _staged : _touched;
 
         // ONE STAGED BARRIER INTO THE BATCH AT slot, plus the entry update, returning whether anything was staged.
-        // The state is updated with the barrier rather than after the emit, so a batch of N transitions and the
-        // map cannot disagree about which of the N happened.
+        //
+        // THE ENTRY UPDATE LANDS IN THE SHADOW AND NOT IN _touched, which is the order that survives a throw. A
+        // batch is ONE vkCmdPipelineBarrier2, so either every transition in it happened or none did, and a map
+        // updated before the call would claim the whole batch after a recorder that threw. End would then restore
+        // from a layout the image is not in, which is a barrier whose OLD layout is a lie: the validation layer
+        // reports it and the driver may honour it by discarding. Building the barrier can throw too (an UNDEFINED
+        // on either side, a layout outside the eight), so the staging of state happens after the barrier is built
+        // rather than beside it.
         bool Stage(in VulkanTrackedImage image, ImageLayout target, int slot)
         {
             int index = IndexOf(image);
-            ImageLayout current = index < 0 ? image.RestingLayout : _touched[index].Current;
+            ImageLayout current = index < 0 ? image.RestingLayout : Map[index].Current;
 
             // ALREADY THERE. This is the clause that keeps the barrier count per PASS rather than per draw: a
             // second sampled bind of the same texture in one pass finds it in SHADER_READ_ONLY_OPTIMAL already.
@@ -211,16 +250,18 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             EnsureCapacity(slot + 1);
 
-            ImageSubresourceRange range = index < 0 ? image.SubresourceRange : _touched[index].Range;
+            ImageSubresourceRange range = index < 0 ? image.SubresourceRange : Map[index].Range;
             _batch[slot] = VulkanImageTransition.For(image.Image, range, current, target);
+
+            BeginStaging();
 
             if (index < 0)
             {
-                _touched.Add(new Entry(image.Image, image.Range, range, target, image.RestingLayout));
+                _staged.Add(new Entry(image.Image, image.Range, range, target, image.RestingLayout));
                 return true;
             }
 
-            _touched[index] = _touched[index] with { Current = target };
+            _staged[index] = _staged[index] with { Current = target };
             return true;
         }
 
@@ -229,10 +270,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         int IndexOf(in VulkanTrackedImage image)
         {
             int found = -1;
+            List<Entry> map = Map;
 
-            for (int i = 0; i < _touched.Count; i++)
+            for (int i = 0; i < map.Count; i++)
             {
-                Entry entry = _touched[i];
+                Entry entry = map[i];
                 if (entry.Image != image.Image) continue;
 
                 if (entry.Subrange == image.Range)
@@ -245,6 +287,26 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             }
 
             return found;
+        }
+
+        // The shadow goes live at the first barrier a batch actually stages, so a boundary that emits nothing
+        // (the common case for a plain render target) copies nothing either.
+        void BeginStaging()
+        {
+            if (_staging) return;
+
+            _staged.Clear();
+            _staged.AddRange(_touched);
+            _staging = true;
+        }
+
+        // The call has been made, so what the batch described is now what the recording did.
+        void Commit()
+        {
+            if (!_staging) return;
+
+            _touched.Clear();
+            _touched.AddRange(_staged);
         }
 
         void EnsureCapacity(int required)

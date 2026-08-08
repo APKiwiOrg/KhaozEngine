@@ -66,7 +66,11 @@ tracker's emitter is substitutable, both implementations reach the driver throug
 takes the command sink as a generic parameter, and the device-free one drives the same counting sink the binds
 and the staged upload's buffer barrier already write into. An emitter that built its concrete sink inside its own
 body would have left the barrier tallies unable to see an image barrier at all, which would have made the
-per-draw barrier budget pass vacuously forever.
+per-draw barrier budget pass vacuously forever. **The tracked map is committed AFTER the call, not with the
+barrier**, because a batch is one `vkCmdPipelineBarrier2` and either every transition in it happened or none did.
+A map updated first would claim the whole batch after a recorder that threw, and the restore at `End` would then
+emit a barrier whose OLD layout is a lie, which the validation layer reports and which the driver may honour by
+discarding.
 
 **The staged upload path's barriers are untouched, deliberately.** Those are BUFFER memory barriers over the
 written range, with no image and no layout in them, so the layout tracker neither subsumes nor duplicates them.

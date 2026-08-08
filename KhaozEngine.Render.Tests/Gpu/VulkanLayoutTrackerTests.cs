@@ -323,6 +323,54 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(new[] { "PipelineBarrier2(2)", "PipelineBarrier2(2)" }, counts.Trace);
         }
 
+        /// <summary>
+        /// A BATCH THAT NEVER REACHED THE DRIVER CHANGED NOTHING, which is why the map is committed AFTER the emit
+        /// rather than with the barrier. A batch is ONE <c>vkCmdPipelineBarrier2</c>, so either every transition in
+        /// it happened or none did, and a map updated first would claim the whole batch after a recorder that
+        /// threw. <c>End</c> would then restore from a layout the image is not in, which is a barrier whose OLD
+        /// layout is a lie: the validation layer reports it, and without one the driver may honour it by
+        /// discarding.
+        /// </summary>
+        [Fact]
+        public void ARecorderThatThrows_LeavesTheMapNamingTheLayoutTheImageIsActuallyIn()
+        {
+            var recorder = new ThrowingBarrierRecorder();
+            var tracker = new VulkanLayoutTracker(recorder);
+            VulkanTrackedImage target = Tracked(ColourImage, VulkanRestingLayout.ShaderReadOnlyOptimal);
+
+            Assert.Throws<InvalidOperationException>(
+                () => tracker.TransitionTo(Buffer, target, ImageLayout.ColorAttachmentOptimal));
+
+            Assert.Equal(0, tracker.TouchedCount);
+            Assert.Equal(ImageLayout.ShaderReadOnlyOptimal, tracker.LayoutOf(target));
+
+            // AND THE RESTORE OWES NOTHING EITHER, because nothing moved. A map that had committed the failed
+            // transition would emit a barrier here claiming the image was in COLOR_ATTACHMENT_OPTIMAL.
+            recorder.Throwing = false;
+            tracker.RestoreResting(Buffer);
+
+            Assert.Equal(0, recorder.CallCount);
+        }
+
+        /// <summary>
+        /// AND THE SAME HOLDS FOR THE RESTORE ITSELF. A recorder that threw restored nothing, so a map emptied
+        /// anyway would leave the next reader believing every image is back at rest.
+        /// </summary>
+        [Fact]
+        public void ARestoreThatThrows_KeepsTheTouchedRangesItDidNotRestore()
+        {
+            var recorder = new ThrowingBarrierRecorder { Throwing = false };
+            var tracker = new VulkanLayoutTracker(recorder);
+
+            tracker.TransitionTo(Buffer, Tracked(ColourImage, VulkanRestingLayout.ShaderReadOnlyOptimal),
+                ImageLayout.ColorAttachmentOptimal);
+
+            recorder.Throwing = true;
+            Assert.Throws<InvalidOperationException>(() => tracker.RestoreResting(Buffer));
+
+            Assert.Equal(1, tracker.TouchedCount);
+        }
+
         // ---- Per-subresource tracking (V-F6) ----
 
         /// <summary>
@@ -480,6 +528,23 @@ namespace KhaozEngine.Tests.Gpu
         static VulkanBoundFramebuffer PostChainFramebuffer()
             => Framebuffer(
                 VulkanRestingLayout.ShaderReadOnlyOptimal, VulkanRestingLayout.DepthStencilAttachmentOptimal);
+
+        // A RECORDER THAT FAILS THE NATIVE CALL, which is what a lost device or a sealed buffer looks like from
+        // above the seam. It counts the calls it DID make, so a test can tell "nothing was emitted" from "the
+        // emit was attempted and threw".
+        sealed class ThrowingBarrierRecorder : IVulkanBarrierRecorder
+        {
+            internal bool Throwing { get; set; } = true;
+
+            internal int CallCount { get; private set; }
+
+            public void Emit(ulong commandBuffer, ReadOnlySpan<ImageMemoryBarrier2> barriers)
+            {
+                if (Throwing) throw new InvalidOperationException("the native call failed");
+
+                CallCount++;
+            }
+        }
 
         static VulkanBoundFramebuffer Framebuffer(VulkanRestingLayout colour, VulkanRestingLayout depth)
             => new(

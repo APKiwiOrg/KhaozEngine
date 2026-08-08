@@ -16,6 +16,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// queue model (V-N5).</param>
     /// <param name="SupportsShadowMapFormat">Whether <c>R32_SFLOAT</c> can be both a depth-stencil attachment and
     /// a sampled image, which is <c>GpuCapabilities.SupportsShadowMaps</c>.</param>
+    /// <param name="ReportedDeviceName">What the driver actually put in
+    /// <c>VkPhysicalDeviceProperties.deviceName</c>, empty when it reported nothing, which is the string
+    /// <c>GpuCapabilities.DeviceName</c> carries. Separate from <see cref="VulkanDeviceFacts.DeviceName"/>, which
+    /// is the LOGGABLE name and substitutes a synthetic one so a rejection line is readable: that substitution is
+    /// right for a log and is a capability DIFFERENCE against an incumbent that does not make it, so the two
+    /// answers are kept apart rather than shared (V-G1, and see
+    /// <see cref="VulkanCapabilityRead.ReportedDeviceName"/>).</param>
     /// <param name="Memory">Every memory type plus the three limits the block suballocator's and the uniform
     /// ring's arithmetic need (sections 9.1 and 9.2). Read here rather than at the allocator because it is the
     /// same walk
@@ -34,7 +41,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         uint GraphicsQueueFamily,
         bool SupportsShadowMapFormat,
         VulkanMemoryFacts Memory,
-        VulkanPipelineCacheIdentity PipelineCacheIdentity);
+        VulkanPipelineCacheIdentity PipelineCacheIdentity,
+        string ReportedDeviceName);
 
     /// <summary>
     /// The one place a <c>VkPhysicalDevice</c> is turned into plain data, shared by the support probe and by
@@ -72,6 +80,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 ? ReadFeatures(vk, device)
                 : default;
 
+            // TWO NAMES OFF ONE READ, deliberately. The raw one is what the capability seam carries and the
+            // substituted one is what a log line prints, and collapsing them would either put "unnamed device
+            // 0x…" into a capability the incumbent answers "" for, or put an empty string into a rejection
+            // message nobody could act on.
+            string reportedName = ReadReportedDeviceName(&properties);
             string name = ReadDeviceName(&properties);
             uint graphicsFamily = FirstGraphicsQueueFamily(vk, device);
             VulkanMemoryFacts memory = ReadMemory(vk, device, &properties);
@@ -98,7 +111,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 graphicsFamily,
                 SupportsShadowMapFormat(vk, device),
                 memory,
-                ReadPipelineCacheIdentity(&properties));
+                ReadPipelineCacheIdentity(&properties),
+                reportedName);
         }
 
         /// <summary>
@@ -112,9 +126,21 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             => new(properties->VendorID, properties->DeviceID, properties->DriverVersion,
                 new ReadOnlySpan<byte>(properties->PipelineCacheUuid, VulkanPipelineCacheIdentity.UuidLength));
 
+        /// <summary>
+        /// The driver's name for the device VERBATIM, copied out of the fixed byte buffer into a managed string,
+        /// and empty when the driver reported nothing. This is the capability seam's answer (V-G1), where
+        /// <see cref="ReadDeviceName"/> is the log's: the substitution that makes a rejection line readable is a
+        /// capability difference against an incumbent that performs none, and
+        /// <c>GpuCapabilities.DeviceName</c> is compared string for string by the parity test.
+        /// </summary>
+        internal static string ReadReportedDeviceName(PhysicalDeviceProperties* properties)
+            => VulkanCapabilityRead.ReportedDeviceName(
+                SilkMarshal.PtrToString((nint)properties->DeviceName));
+
         /// <summary>The driver's name for the device, copied out of the fixed byte buffer into a managed string so
         /// it can outlive the instance. A driver that reports nothing readable still has to be nameable in a log
-        /// line, so this never returns null or empty.</summary>
+        /// line, so this never returns null or empty. NOT the capability answer: that is
+        /// <see cref="ReadReportedDeviceName"/>.</summary>
         internal static string ReadDeviceName(PhysicalDeviceProperties* properties)
         {
             string? name = SilkMarshal.PtrToString((nint)properties->DeviceName);

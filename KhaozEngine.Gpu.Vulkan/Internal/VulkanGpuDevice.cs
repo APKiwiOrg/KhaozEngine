@@ -22,9 +22,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// stale one is worse than none.
     /// </para>
     /// <para>
-    /// <b>THE MEMBERS THAT ARE LIVE:</b> <see cref="Backend"/>, <see cref="Capabilities"/> (in the part that can
-    /// be read honestly, see below), <see cref="Diagnostics"/> with both of its fields, <see cref="Counters"/> (in
-    /// the drain, backpressure and off-timeline halves, see below), both <c>Submit</c> overloads, all three
+    /// <b>THE MEMBERS THAT ARE LIVE:</b> <see cref="Backend"/>, <see cref="Capabilities"/> (every member but the
+    /// MSAA limit, see below), <see cref="Diagnostics"/> with both of its fields, <see cref="Counters"/> (every
+    /// field, each off the subsystem that owns it, see below), both <c>Submit</c> overloads, all three
     /// <c>UpdateBuffer</c> overloads at BOTH levels, <see cref="Factory"/>, <see cref="PointSampler"/>,
     /// <see cref="LinearSampler"/>, both <c>UpdateTexture</c> overloads, both <c>Map</c> and <c>Unmap</c> pairs,
     /// <see cref="WaitForIdle"/>, <see cref="Dispose"/>, and since row 17 the swapchain pair too:
@@ -105,13 +105,18 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// empties is returned behind the timeline rather than freed underneath a submission.
     /// </para>
     /// <para>
-    /// <b><see cref="Capabilities"/> IS PARTIAL AND SAYS WHICH PART.</b> Row 18
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/528) owns the capability read and the ZERO-permitted-
-    /// difference parity test against the incumbent. What this row fills is everything readable off a device with
-    /// no renderer on it, and <c>MaxMsaaSampleCount</c> is pinned to 1 rather than guessed, because the incumbent's
-    /// own computation is what row 18 reproduces and a number invented here would be a silent lie that
-    /// <c>AntiAliasing.ResolveFor</c> would act on. Nothing selects this backend, so a conservative 1 costs
-    /// nothing and an invented value would cost the parity test its meaning.
+    /// <b><see cref="Capabilities"/> IS <see cref="VulkanCapabilityRead"/>'s ANSWER, AND EIGHT OF ITS NINE
+    /// MEMBERS ARE FINAL</b> (row 18, https://github.com/APKiwiOrg/KhaozEngine/issues/528). The assembly moved
+    /// off this creation path into a device-free type, so the five constants, the device-name normalisation and
+    /// the sample-count floor are all plain <c>[Fact]</c>s on a machine with no loader, and
+    /// <c>NativeVsVeldridVulkanCapabilityParityTests</c> holds the whole set against the incumbent's with ZERO
+    /// permitted differences (V-G1), which is a stricter bar than the Direct3D 11 backend's because there is no
+    /// incumbent capability defect to correct here.
+    /// <c>MaxMsaaSampleCount</c> is the one member still pinned to 1, and deliberately: V-C5 rules the
+    /// incumbent's own <c>GetSampleCountLimit</c> is read off and reproduced, which is row 15
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/525), the row that needs the number for its resolve. A
+    /// value invented here would be a silent lie <c>AntiAliasing.ResolveFor</c> acts on, and it would make the
+    /// parity assertion pass or fail on luck rather than by construction.
     /// </para>
     /// <para>
     /// <b>TEARDOWN CALLS <c>vkDeviceWaitIdle</c> FIRST</b> (V-F10), unlike the incumbent, which destroys the
@@ -394,7 +399,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// zero" rule sets for reporting <c>HasValue</c> at all.
         /// <para>
         /// WHAT A READER STILL MUST NOT DO is divide by <c>FramesBegun</c> while it is 0, which on a headless
-        /// device it stays.
+        /// device it stays, or compare <c>DrainCount</c> against the Direct3D 11 native backend's. That one
+        /// counts EVERY <c>WaitForIdle</c>, because its drain has to signal and flush to know it is idle, and
+        /// this one counts only the drains with outstanding submissions, because comparing the timeline counter
+        /// against the last submitted value genuinely means idle here. Both are locally right and the two
+        /// numbers are not the same measurement. <c>DrainMs</c> is comparable, because the drains this one skips
+        /// cost about nothing. Scoping the seam doc's own wording to match is
+        /// https://github.com/APKiwiOrg/KhaozEngine/issues/545.
         /// </para>
         /// </remarks>
         public GpuDeviceCounters Counters

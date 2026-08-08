@@ -348,29 +348,24 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             }
         }
 
-        // Section 14's table, filled to the extent a device with no renderer on it can answer honestly. Row 18
-        // (https://github.com/APKiwiOrg/KhaozEngine/issues/528) owns the rest and the zero-difference parity test
-        // that pins all of it.
+        // Section 14's table, assembled in VulkanCapabilityRead so every rule that decides what the engine
+        // believes about the device is a plain [Fact] on a machine with no loader (row 18,
+        // https://github.com/APKiwiOrg/KhaozEngine/issues/528). This method is the three device answers and
+        // nothing else: the reported name, the anisotropy bit the feature chain settled, and the R32_SFLOAT
+        // format-properties read.
         static GpuCapabilities ReadCapabilities(in VulkanPhysicalDeviceRead read,
             in VulkanFeatureSelection features)
-            => new(
-                // FALSE, and it is the one capability that flips every image. It comes from the negative-height
-                // viewport path (7.2), which row 12 emits, so recording it as false here is a promise this row
-                // makes to that row rather than a reading of anything.
-                clipSpaceYInverted: false,
-                depthRangeZeroToOne: true,
-                deviceName: read.Facts.DeviceName,
+            => VulkanCapabilityRead.Assemble(
+                deviceName: read.ReportedDeviceName,
                 samplerAnisotropy: features.SamplerAnisotropy,
-                samplerLodBias: true,
-                // PINNED TO 1 rather than computed. V-C5 says the incumbent's own computation is reproduced, and
-                // row 18 is where that happens: a formula invented here would be a silent lie that
-                // AntiAliasing.ResolveFor acts on, and 1 is the direction that under-promises.
-                maxMsaaSampleCount: 1,
                 supportsShadowMaps: read.SupportsShadowMapFormat,
-                supportsCompute: true,
-                // TRUE, unlike Direct3D 11's, and identical to the incumbent's: VeldridMap already answers true
-                // for Vulkan, so section 14's zero-permitted-difference bar is met here by construction.
-                supportsCompletionFences: true);
+                // NOT COMPUTED HERE, and not invented anywhere. V-C5 rules that the incumbent's own
+                // GetSampleCountLimit is read off and reproduced, which is row 15
+                // (https://github.com/APKiwiOrg/KhaozEngine/issues/525), the row that also needs the number for
+                // its resolve. Until it lands the capability under-promises rather than guessing: a formula
+                // invented here would be a silent lie AntiAliasing.ResolveFor acts on, and it would make row
+                // 18's "asserted identical" pass or fail on luck.
+                maxMsaaSampleCount: VulkanCapabilityRead.NoMultisampling);
 
         static PhysicalDevice[] EnumeratePhysicalDevices(Vk vk, Instance instance)
         {

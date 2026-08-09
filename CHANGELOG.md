@@ -65,10 +65,13 @@ first run that meets a device reporting more than one sample names exactly that 
 **The counter fill is checked as nine READINGS rather than an absence.** Every field already comes off the
 subsystem that owns it (the drain pair off the timeline, the backpressure pair off the accumulator both the
 command lists and the uniform ring stall into, the off-timeline pair off the ring's pending patches, and
-`FramesBegun` with the acquire pair off the present boundary), and what this row adds is the assertion that
-`HasValue` is true and all nine channels are written, which is what makes a capture carry columns rather than
-nothing. The three present-boundary fields read zero on a headless device because that is literally true of a
-device with no swapchain, not a placeholder. No accumulator is asserted to MOVE: a drain that finds the timeline
+`FramesBegun` with the acquire pair off the present boundary), and what this row adds is narrower than the fill
+and worth stating exactly: `HasValue` is true on a real device, which is what makes a capture carry columns
+rather than nothing, the projection carries the nine expected channel NAMES rather than merely nine of
+something, deferred bounds outstanding, and nothing is negative. The names and not the count, because once
+`HasValue` is true the count is a property of `GpuTelemetryChannels.For` rather than of this backend's fill. The
+three present-boundary fields read zero on a headless device because that is literally true of a device with no
+swapchain, not a placeholder. No accumulator is asserted to MOVE: a drain that finds the timeline
 already past the last submitted value is deliberately not counted here, so the obvious version of that assertion
 is racy on a software rasterizer by design. **`DrainCount` is not comparable across the two native backends** for
 the same reason, since the Direct3D 11 drain must signal and flush to know it is idle and therefore counts every

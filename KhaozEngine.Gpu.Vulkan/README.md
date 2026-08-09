@@ -1191,7 +1191,9 @@ accumulator both the command lists and the uniform ring stall into, the off-time
 patches, and `FramesBegun` with the acquire pair off the present boundary. A headless device reports zero for
 those last three because it has no swapchain and opens no frame at this seam, which is literally true of such a
 device rather than a placeholder, and `HasValue` is true throughout so a capture carries columns rather than
-nothing. **`DrainCount` is not comparable against the Direct3D 11 native backend's**: that one counts every
+nothing. The row against a real device asserts the channel NAMES the projection carries and not their count,
+since once `HasValue` is true the count is a property of `GpuTelemetryChannels.For` rather than of this
+backend's fill. **`DrainCount` is not comparable against the Direct3D 11 native backend's**: that one counts every
 `WaitForIdle`, because its drain must signal and flush to know it is idle, and this one counts only the drains
 with outstanding submissions, because comparing the timeline counter against the last submitted value genuinely
 means idle here. `DrainMs` is comparable, since the drains this one skips cost about nothing.

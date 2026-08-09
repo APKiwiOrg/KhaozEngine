@@ -10,7 +10,12 @@ namespace KhaozEngine.Gpu
     /// <remarks>
     /// The environment variable <c>MTL_CAPTURE_ENABLED=1</c> MUST be set before the app launches (before the Metal
     /// device is created), or Metal disables programmatic capture. No-op on non-Metal backends and if the capture
-    /// API is unavailable. Debug-only; do not arm in shipping builds.
+    /// API is unavailable. Debug-only, and do not arm in shipping builds.
+    /// <para>
+    /// WHICH Metal serves an armed capture is <see cref="VeldridPathCaptures"/>, and today the answer is the
+    /// Veldrid Metal path only. An arm taken on <see cref="GpuBackendKind.MetalNative"/> is not consumed by
+    /// anything yet, so it stays armed and writes no trace.
+    /// </para>
     /// </remarks>
     public static class GpuFrameCapture
     {
@@ -37,6 +42,28 @@ namespace KhaozEngine.Gpu
                 return true;
             }
         }
+
+        /// <summary>
+        /// Whether the VELDRID device wrapper is the thing that services an armed capture on
+        /// <paramref name="backend"/>. True for <see cref="GpuBackendKind.Metal"/> and nothing else.
+        /// <para>
+        /// Extracted from the inline check it used to be so the append audit can assert it device-free, the way
+        /// <c>D3D11ThreadingProbe.IsApplicable</c> is the pure half of an impure site. What it pins is that this
+        /// is NOT the family question: widening it to <c>GpuBackendKinds.IsMetal</c> would read as the fix for
+        /// <see cref="GpuBackendKind.MetalNative"/> arming no capture, and it would fix nothing, because a
+        /// provider-built device never becomes the Veldrid wrapper this runs inside. The native backend owns its
+        /// own queue and services its own captures with the pointer in hand, which is also what removes the
+        /// reflection into Veldrid's private <c>_commandQueue</c> field on that path (decision M-G5 of
+        /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>).
+        /// </para>
+        /// <para>
+        /// Until that native path exists, an armed capture on a native Metal session is simply never consumed:
+        /// <see cref="IsArmed"/> stays true and no trace is written. That is the third of the three sites the
+        /// Metal append degrades SILENTLY, and it is recorded here rather than left to be rediscovered from an
+        /// empty output directory.
+        /// </para>
+        /// </summary>
+        internal static bool VeldridPathCaptures(GpuBackendKind backend) => backend == GpuBackendKind.Metal;
 
         /// <summary>What to do at a swapchain present boundary for the one-shot full-frame capture.</summary>
         internal enum CaptureAction { None, StartAfterPresent, StopAfterPresent }

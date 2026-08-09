@@ -137,11 +137,15 @@ namespace KhaozEngine.Gpu.Internal
         {
             // Bracket a WHOLE frame for an armed Metal GPU capture: a frame's GPU work spans several Submits
             // (the offscreen mesh/skinned render-to-texture, then the 2D/composite pass) and ends at this present.
-            // Wrapping a single Submit caught the wrong command buffer; instead start the capture at one present
+            // Wrapping a single Submit caught the wrong command buffer. Instead start the capture at one present
             // and stop at the next, so every command buffer of the intervening frame (incl. the skinned pass) is
-            // recorded. Decision is pure + headless-testable; the Metal interop runs only when it says to.
+            // recorded. Decision is pure + headless-testable, and the Metal interop runs only when it says to.
+            //
+            // The gate is the Veldrid Metal kind ALONE, not the IsMetal family, and GpuFrameCapture.VeldridPathCaptures
+            // carries the reasoning: this code is inside the Veldrid wrapper, which a provider-built native device
+            // never becomes, so widening it here would service nothing. MetalNative gets its own capture path.
             bool consume = false;
-            if (!_capturing && Backend == GpuBackendKind.Metal && GpuFrameCapture.TryConsume(out string p))
+            if (!_capturing && GpuFrameCapture.VeldridPathCaptures(Backend) && GpuFrameCapture.TryConsume(out string p))
             {
                 consume = true;
                 _capturePath = p;

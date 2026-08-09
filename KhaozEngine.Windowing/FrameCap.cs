@@ -14,6 +14,10 @@ namespace KhaozEngine.Windowing
     /// <see cref="Auto"/> on Metal with vsync resolves to a real cap - the display refresh rate when it is known,
     /// else <see cref="DefaultMetalAutoCapHz"/>. With <see cref="PresentMode.Immediate"/> (any backend) the consumer
     /// asked for an uncapped, lowest-latency present, so <see cref="Auto"/> respects that and stays uncapped.</para>
+    /// <para><b>Which Metal.</b> The sentence above measures the VELDRID Metal present, which is the only Metal
+    /// implementation that has ever run a windowed session. Both Metal implementations take the capped arm today
+    /// (see <see cref="Resolve"/>), and whether the engine's own native Metal backend needs the cap at all is an
+    /// open MEASUREMENT rather than a settled fact.</para>
     /// Pure and headless-testable. Only <see cref="AppWindow"/> supplies the (impure) live display refresh rate.
     /// </summary>
     public readonly record struct FrameCap
@@ -63,18 +67,33 @@ namespace KhaozEngine.Windowing
         /// (Metal + <see cref="PresentMode.Vsync"/>) - the <paramref name="displayRefreshHz"/> when positive, else
         /// <see cref="DefaultMetalAutoCapHz"/> - and 0 (uncapped) everywhere else, since vsync throttles there or the
         /// consumer chose an uncapped present. Pure.
+        /// <para>
+        /// <b>The Metal arm covers BOTH Metal implementations, and that is a conservative default awaiting a
+        /// measurement, not a finding.</b> The real question this arm asks is whether the backend's present
+        /// throttles the CPU from vsync alone, which is why it was an equality against the Veldrid Metal kind for
+        /// as long as that was the only Metal there was. It is a family predicate now
+        /// (<c>GpuBackendKinds.IsMetal</c>) because the native Metal backend sets <c>displaySyncEnabled</c>
+        /// unconditionally and bounds <c>maximumDrawableCount</c>, either of which may make the software cap
+        /// redundant there. Defaulting it into the capped arm is safe in both directions: if that present does
+        /// throttle, a cap at the display refresh does not bind and costs nothing, and if it does not, the cap is
+        /// required. Gate 5's windowed pass reads which it is, with a mid-session vsync toggle as the instrument,
+        /// and the answer is recorded here either way (decision M-W3 of
+        /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>). This is also the arm #380's
+        /// present-pacing work will revisit.
+        /// </para>
+        /// <para>
+        /// The other native backends are NOT in this arm and must not be added to it: a
+        /// <see cref="GpuBackendKind.Direct3D11Native"/> or <see cref="GpuBackendKind.VulkanNative"/> present
+        /// throttles the CPU from vsync exactly as its incumbent's does, so each has to behave identically to the
+        /// implementation it is being A/B'd against.
+        /// </para>
         /// </summary>
         public int Resolve(GpuBackendKind backend, PresentMode present, int displayRefreshHz)
             => Kind switch
             {
                 CapKind.Fixed => Value,
                 CapKind.Uncapped => 0,
-                // Equality against Metal, not a family predicate, and deliberately so. An appended backend falls
-                // into the uncapped arm, which is the right answer for Direct3D11Native: its present throttles
-                // the CPU from vsync exactly as the incumbent's does, so it needs no software cap and must behave
-                // identically to the implementation it is being A/B'd against. Recorded rather than left implicit
-                // because this is the arm #380's present-pacing work will revisit.
-                _ => backend == GpuBackendKind.Metal && present == PresentMode.Vsync
+                _ => backend.IsMetal() && present == PresentMode.Vsync
                         ? (displayRefreshHz > 0 ? displayRefreshHz : DefaultMetalAutoCapHz)
                         : 0,
             };

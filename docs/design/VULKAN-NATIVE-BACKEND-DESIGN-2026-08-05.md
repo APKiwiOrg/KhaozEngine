@@ -1375,6 +1375,24 @@ touched textures and independent of draw count, and V-T7 gates exactly that.
 | `End` | everything touched back to its resting layout |
 | Present | the swapchain image to `PRESENT_SRC_KHR` |
 
+**CORRECTED IN FLIGHT (row 15): the present row IS the `End` row, because `PRESENT_SRC_KHR` is the swapchain
+image's resting layout.** The table above reads as though the present were a transition of its own, and row 17
+left a notice in `VulkanPresentBoundary` saying the boundary would record one. It does not. A layout transition
+is a RECORDED command, so a boundary-owned one needs a command pool on the boundary, a second `vkQueueSubmit`
+per frame, and a rearrangement of which submit signals the render-finished semaphore, plus a THIRD submit for
+the post-acquire discard, which has to run after the acquire semaphore and before the frame's first list. All of
+that lands on the one path with zero automated coverage anywhere (MV9). Assigning the swapchain image a resting
+layout of `PRESENT_SRC_KHR` instead costs nothing at all: the frame's own list restores it there at `End` under
+the rule every other texture already follows, inside the submit that already signals the semaphore the present
+already waits on, and the acquire half falls out of V-F8's second permitted `UNDEFINED` site, because a
+transition OUT of `PRESENT_SRC_KHR` discards. That same discard is what covers a freshly created generation,
+whose images really are in `UNDEFINED` and for which no first-use transition is recorded anywhere.
+
+The limitation is named rather than hidden: a SECOND list in one frame that binds the swapchain framebuffer
+after another one has already ended discards what the first drew. Every shipped renderer draws the backbuffer
+from one list and the seam's portable contract is one open recording per device, so no shipped shape reaches it,
+and the boundary-epilogue shape above is the fix if one ever does (https://github.com/APKiwiOrg/KhaozEngine/issues/562).
+
 **The undefined-layout determinism rule (V-F8).** A transition whose `oldLayout` is `VK_IMAGE_LAYOUT_UNDEFINED`
 is permitted to DISCARD the image's contents. It is the cheap transition and the tempting one, and using it on a
 texture whose contents are still wanted produces output that varies by driver and by run. The goldens require

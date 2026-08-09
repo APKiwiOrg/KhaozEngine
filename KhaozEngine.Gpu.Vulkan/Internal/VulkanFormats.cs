@@ -147,6 +147,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             VulkanRestingLayout.General => ImageLayout.General,
             VulkanRestingLayout.ColorAttachmentOptimal => ImageLayout.ColorAttachmentOptimal,
             VulkanRestingLayout.DepthStencilAttachmentOptimal => ImageLayout.DepthStencilAttachmentOptimal,
+            VulkanRestingLayout.PresentSrcKhr => ImageLayout.PresentSrcKhr,
             _ => throw new ArgumentOutOfRangeException(nameof(resting), resting,
                 "A native Vulkan staging texture has no image and therefore no layout: it is a VkBuffer with a "
                 + "software subresource layout (V-C7). Asking for one means a caller lost track of which kind of "

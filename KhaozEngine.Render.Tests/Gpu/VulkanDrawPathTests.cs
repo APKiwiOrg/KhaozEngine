@@ -461,6 +461,47 @@ namespace KhaozEngine.Tests.Gpu
             }
         }
 
+        // ---- The present transition ----
+
+        /// <summary>
+        /// THE SWAPCHAIN IMAGE IS LEFT PRESENTABLE BY THE FRAME'S OWN LIST
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/557), which is where this row ruled the present
+        /// transition belongs. The pass begin DISCARDS it into <c>COLOR_ATTACHMENT_OPTIMAL</c>, which is V-F8's
+        /// second permitted <c>UNDEFINED</c> site and what covers a freshly created generation, and <c>End</c>
+        /// restores it to <c>PRESENT_SRC_KHR</c> inside the submit that already signals the render-finished
+        /// semaphore the present waits on.
+        /// </summary>
+        [Fact]
+        public void ASwapchainImage_IsDiscardedIntoTheAttachmentLayoutAndLeftPresentable()
+        {
+            var fixture = new VulkanResourceFixture();
+
+            var framebuffer = new VulkanSwapchainFramebuffer(
+                GpuPixelFormat.B8G8R8A8UNorm,
+                new VulkanAttachment(0x10, 0x11, GpuPixelFormat.B8G8R8A8UNorm, DepthStencil: false,
+                    VulkanRestingLayout.PresentSrcKhr),
+                new VulkanExtent(64, 64));
+
+            using VulkanCommandList list = fixture.CreateList();
+            list.Begin();
+            list.SetFramebuffer(framebuffer);
+            list.Draw(3);
+            list.End();
+
+            ImageMemoryBarrier2[] barriers = fixture.Barriers.Barriers.ToArray();
+            Assert.Equal(2, barriers.Length);
+
+            // THE ACQUIRE HALF: a discard, so no barrier ever names PRESENT_SRC_KHR as a SOURCE.
+            Assert.Equal(ImageLayout.Undefined, barriers[0].OldLayout);
+            Assert.Equal(ImageLayout.ColorAttachmentOptimal, barriers[0].NewLayout);
+
+            // THE PRESENT HALF, at End, through the ordinary resting-layout restore.
+            Assert.Equal(ImageLayout.ColorAttachmentOptimal, barriers[1].OldLayout);
+            Assert.Equal(ImageLayout.PresentSrcKhr, barriers[1].NewLayout);
+            Assert.Equal(PipelineStageFlags2.BottomOfPipeBit, barriers[1].DstStageMask);
+            Assert.Equal(AccessFlags2.None, barriers[1].DstAccessMask);
+        }
+
         // ---- Fixtures ----
 
         // A recording with a framebuffer bound, which is the state every draw member needs.

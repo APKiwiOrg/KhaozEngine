@@ -235,8 +235,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 Entry entry = _touched[i];
                 if (entry.Current == entry.Resting) continue;
 
-                _batch[count++] = VulkanImageTransition.For(
-                    entry.Image, entry.Range, entry.Current, entry.Resting);
+                _batch[count++] = Transition(entry.Image, entry.Range, entry.Current, entry.Resting);
             }
 
             if (count > 0) _recorder.Emit(commandBuffer, _batch.AsSpan(0, count));
@@ -263,6 +262,33 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _staged.Clear();
             _staging = false;
         }
+
+        // THE ONE BARRIER, WITH THE ONE EXCEPTION THIS TRACKER MAKES (V-F8's second permitted UNDEFINED site).
+        //
+        // PRESENT_SRC_KHR IS A DESTINATION AND NEVER A SOURCE, which VulkanImageTransition says in as many words:
+        // an image handed to vkQueuePresentKHR is next seen through an ACQUIRE, and the specification does not
+        // preserve its contents across one. So a transition out of it discards rather than reading back pixels
+        // the presentation engine already owns, and that discard is also what covers a FRESHLY CREATED
+        // generation, whose images really are in UNDEFINED and which no first-use transition has been recorded
+        // for: naming UNDEFINED as the old layout is valid whatever the image is really in.
+        //
+        // AND IT IS WHY PRESENT_SRC IS A RESTING LAYOUT AT ALL
+        // (https://github.com/APKiwiOrg/KhaozEngine/issues/557). The alternative was for the present boundary to
+        // record and submit the transition itself, which needs a command pool on the boundary, a second
+        // vkQueueSubmit per frame, and a rearrangement of which submit signals the render-finished semaphore -
+        // all on the one path with zero CI coverage (MV9). Resting there instead puts the present transition
+        // inside the submit that already signals that semaphore, with no new machinery at all.
+        //
+        // THE LIMITATION, NAMED: a SECOND list in one frame that binds the swapchain framebuffer after another
+        // one already ended discards what the first drew, because it finds the image at rest in PRESENT_SRC and
+        // a transition out of that discards. Every shipped renderer draws the backbuffer from one list, and the
+        // seam's portable contract is one open recording per device anyway, so no shipped shape reaches it. Filed
+        // rather than hidden: https://github.com/APKiwiOrg/KhaozEngine/issues/562.
+        static ImageMemoryBarrier2 Transition(ulong image, in ImageSubresourceRange range, ImageLayout current,
+            ImageLayout target)
+            => current == ImageLayout.PresentSrcKhr
+                ? VulkanImageTransition.Reacquired(image, range, target)
+                : VulkanImageTransition.For(image, range, current, target);
 
         // THE MAP THIS BATCH IS READING AND WRITING: the committed one until the batch stages its first barrier,
         // and the shadow after that. Indexes are stable across the switch, because the shadow starts as a copy.
@@ -293,7 +319,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             EnsureCapacity(slot + 1);
 
             ImageSubresourceRange range = index < 0 ? image.SubresourceRange : Map[index].Range;
-            _batch[slot] = VulkanImageTransition.For(image.Image, range, current, target);
+            _batch[slot] = Transition(image.Image, range, current, target);
 
             BeginStaging();
 
@@ -343,8 +369,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 if (entry.Image != image.Image || !image.Range.Contains(entry.Subrange)) continue;
                 if (entry.Current == target) continue;
 
-                _batch[slot + count++] = VulkanImageTransition.For(
-                    entry.Image, entry.Range, entry.Current, target);
+                _batch[slot + count++] = Transition(entry.Image, entry.Range, entry.Current, target);
             }
 
             // NOTHING MOVED, so nothing is staged and the pieces stay as they are. Collapsing without a call would

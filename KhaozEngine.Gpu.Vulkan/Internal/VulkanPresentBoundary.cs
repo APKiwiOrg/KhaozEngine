@@ -31,6 +31,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// cannot spin the boundary. And an imageless frame binds the ORPHAN TARGET, records, submits and completes
     /// exactly like any other frame, with only its present skipped.</para>
     ///
+    /// <para><b>THE PRESENT TRANSITION IS NOT HERE, AND THAT IS THIS TYPE'S ONE RULING RATHER THAN AN OMISSION
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/557).</b> A swapchain image has to be in
+    /// <c>PRESENT_SRC_KHR</c> when <c>vkQueuePresentKHR</c> receives it, and a layout transition is a RECORDED
+    /// command, so something has to submit one. The shape this boundary would have needed is a command pool of its
+    /// own, a second <c>vkQueueSubmit</c> per frame, and a rearrangement of which submit signals the
+    /// render-finished semaphore, all on the one path with zero automated coverage anywhere (MV9). So
+    /// <c>PRESENT_SRC_KHR</c> is the swapchain image's canonical RESTING layout instead: the frame's own list
+    /// restores it there at <c>End</c> (V-F7), inside the submit that already signals the semaphore this present
+    /// already waits on. See <see cref="VulkanLayoutTracker"/> for the rule that makes a transition out of it a
+    /// discard and for the one shape that limitation excludes.</para>
+    ///
     /// <para><b>A SKIPPED PRESENT IS NOT A SKIPPED FRAME.</b> <see cref="FramesBegun"/> counts every boundary,
     /// including the imageless ones: the device opened the frame, the recording and the submit really happened,
     /// and this is the denominator every per-frame figure is divided by. Leaving them out would understate
@@ -91,7 +102,6 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         bool _orphanLive;
         bool _disposed;
         bool _saidNothingRendered;
-        bool _saidNoPresentTransition;
         bool _saidUndecidable;
 
         /// <param name="surfaces">The surface seam, for the capability re-read every recreate does.</param>
@@ -322,7 +332,6 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             if (!rendered) return;
 
             ulong wait = _mode == VulkanAcquireMode.Stall ? 0 : _frame.Signal;
-            SayNoPresentTransitionOnce();
 
             VulkanPresentOutcome outcome;
             lock (_submitLock)
@@ -726,20 +735,6 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 + "kept the image and skipped both the present and the next acquire. That is a frame with no "
                 + "submit in it, which is legal and usually means the consumer opened a frame and closed it "
                 + "without drawing.");
-        }
-
-        void SayNoPresentTransitionOnce()
-        {
-            if (_saidNoPresentTransition) return;
-            _saidNoPresentTransition = true;
-
-            _log.Info("The native Vulkan backend is presenting swapchain images that nothing has transitioned to "
-                + "PRESENT_SRC_KHR. The barrier tracker that owns that transition is row 14 "
-                + "(https://github.com/APKiwiOrg/KhaozEngine/issues/524) and the draws that would fill the image "
-                + "are row 15 (https://github.com/APKiwiOrg/KhaozEngine/issues/525), so until both land a "
-                + "validation layer will report the layout on every present and the window will show whatever the "
-                + "driver left in the image. The swapchain itself, the acquire, the resize and the teardown are "
-                + "real.");
         }
 
         // BOTH OF THE RECREATE'S DECISION FAILURES ARE PERSISTENT CONDITIONS a boundary re-reads at every present,

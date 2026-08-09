@@ -94,6 +94,20 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         /// <summary><c>VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL</c>.</summary>
         DepthStencilAttachmentOptimal,
+
+        /// <summary>
+        /// <c>VK_IMAGE_LAYOUT_PRESENT_SRC_KHR</c>, which is NOT reachable from any usage combination and belongs
+        /// to exactly one kind of image: a SWAPCHAIN image (https://github.com/APKiwiOrg/KhaozEngine/issues/557).
+        /// Its resting layout is where the PRESENTATION ENGINE expects to find it, so a list that rendered into it
+        /// leaves it presentable at <c>End</c> and the present needs no submit of its own.
+        /// <para>
+        /// A TRANSITION OUT OF IT DISCARDS, which is V-F8's second permitted <c>UNDEFINED</c> site and the reason
+        /// this is a resting layout at all rather than a barrier the boundary records: an image handed to
+        /// <c>vkQueuePresentKHR</c> is next seen through an acquire, whose contents are undefined by
+        /// specification. See <see cref="VulkanLayoutTracker"/> for the rule and its one limitation.
+        /// </para>
+        /// </summary>
+        PresentSrcKhr,
     }
 
     /// <summary>

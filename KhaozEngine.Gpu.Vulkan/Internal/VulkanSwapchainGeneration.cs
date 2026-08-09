@@ -52,14 +52,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _attachments = new VulkanAttachment[images.Length];
             for (int i = 0; i < images.Length; i++)
             {
-                // A swapchain image is a pure colour attachment and rests as one. PRESENT_SRC is deliberately NOT
-                // a resting layout: the present transition and the post-acquire discard are the boundary's own
-                // choreography (https://github.com/APKiwiOrg/KhaozEngine/issues/557, wired with row 15), not the
-                // list-local tracker's, and the tracker's begin transition for a colour attachment resting as one
-                // pays nothing at either end.
+                // A SWAPCHAIN IMAGE RESTS IN PRESENT_SRC_KHR, which is where the presentation engine expects to
+                // find it (https://github.com/APKiwiOrg/KhaozEngine/issues/557). This row rules the other way
+                // from what row 17 anticipated when it left the notice behind, and the argument is in
+                // VulkanLayoutTracker: making the presentable layout the RESTING one puts the present transition
+                // inside the frame's own submit, which is the submit that already signals the render-finished
+                // semaphore the present already waits on, so nothing is added to a path with zero CI coverage. A
+                // transition OUT of it discards, which is V-F8's second permitted UNDEFINED site and is what
+                // covers a freshly created generation whose images really are in UNDEFINED.
                 _attachments[i] = new VulkanAttachment(
                     views[i], images[i], seamFormat, DepthStencil: false,
-                    VulkanRestingLayout.ColorAttachmentOptimal);
+                    VulkanRestingLayout.PresentSrcKhr);
             }
         }
 

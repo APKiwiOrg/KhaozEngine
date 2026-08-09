@@ -37,15 +37,19 @@ namespace KhaozEngine.Tests.Gpu
         /// nothing. Full reasoning on <see cref="D3D11BackendRegistration"/>.
         /// </para>
         /// <para>
-        /// BOTH native backend packages register here, which is the property the shared home was moved for and
-        /// the first thing to check when a third one arrives. Each call is idempotent and thread-safe on its own
-        /// side, so ordering between them means nothing and neither can be reached twice.
+        /// ALL THREE native backend packages register here, which is the property the shared home was moved for,
+        /// and the third one arriving is what says the move worked: it cost one line. Each call is idempotent
+        /// and thread-safe on its own side, so ordering between them means nothing and none can be reached
+        /// twice. Each is also safe on every operating system, the Metal and Direct3D 11 ones because their
+        /// platform guards keep the OS-specific interop off the load path and the Vulkan one because it has no
+        /// platform boundary to keep.
         /// </para>
         /// </summary>
         static GpuFactAttribute()
         {
             D3D11BackendRegistration.EnsureRegistered();
             VulkanBackendRegistration.EnsureRegistered();
+            MetalBackendRegistration.EnsureRegistered();
         }
 
         // One headless device-creation attempt per process. null = a device was created (and disposed) fine, so

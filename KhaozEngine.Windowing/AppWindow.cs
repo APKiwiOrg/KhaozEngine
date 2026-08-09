@@ -404,15 +404,12 @@ namespace KhaozEngine.Windowing
             }
         }
 
-        /// <summary>Emit a one-time warning when vsync is selected with an effective free-run on a Metal-family
-        /// backend (the resolved base cap is 0). On the incumbent this is a finding: the Veldrid Metal present does
-        /// not throttle the CPU from vsync alone. On <c>MetalNative</c> it is the conservative default while the
-        /// question is OPEN: whether the native present throttles is gate 5's measurement (design M-W3), and until
-        /// it is taken the native arm behaves like the incumbent rather than assuming the nicer answer. With the
-        /// default <see cref="Windowing.FrameCap.Auto"/> the resolved cap on Metal + vsync is always positive, so
-        /// this fires ONLY when a consumer explicitly forces uncapped + vsync. Pure decision via
-        /// <see cref="DisplaySettings.RequiresFrameCapWarning"/> (fed the resolved cap), and written to <c>Console.Error</c>
-        /// so a bare AppWindow host (no logger) still surfaces it. Deduped so it never spams a settings screen.</summary>
+        /// <summary>One-time warning for vsync plus an effective free-run on a Metal-family backend (resolved base
+        /// cap 0). A finding on the incumbent (the Veldrid Metal present does not throttle the CPU from vsync
+        /// alone), the conservative default on <c>MetalNative</c> until gate 5 measures its present (design M-W3).
+        /// Fires only when a consumer forces uncapped + vsync (<see cref="Windowing.FrameCap.Auto"/> always
+        /// resolves positive here). Pure decision via <see cref="DisplaySettings.RequiresFrameCapWarning"/>,
+        /// written to <c>Console.Error</c> for bare hosts, deduped.</summary>
         void WarnIfMetalVsyncUncapped()
         {
             if (_warnedMetalVsync) return;

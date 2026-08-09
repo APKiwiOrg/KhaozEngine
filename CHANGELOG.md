@@ -134,6 +134,57 @@ assertion into a theory over every member against every predicate.
 member rather than argued, and the two sites are asserted to agree with each other over every member and
 present mode.
 
+### `KhaozEngineMetal.Register()`, the provider, and a functional probe that asks the machine (#568)
+
+New public API `KhaozEngineMetal.Register()` in `KhaozEngine.Gpu.Metal`, from row 2 of the same design. The
+package is no longer a skeleton: registering makes the provider reachable, and
+`GpuBackendSelector.IsBackendSupported` then answers for this machine through a real functional probe. Creating
+a DEVICE is still not built and refuses with a message naming the row that builds it
+([#570](https://github.com/APKiwiOrg/KhaozEngine/issues/570)).
+
+**The probe is functional, not an OS test (M-N4).** The incumbent's own support check creates a device inside a
+bare catch, and that is the FLOOR of this rather than the whole of it. On top of it the probe reads four things,
+each cheap here and expensive anywhere later: a device exists and reports a NAME, which is what
+`GpuCapabilities.DeviceName` parity depends on, `supportsFamily:` answers at or above the floor (any
+`MTLGPUFamilyApple` generation or `MTLGPUFamilyMac2`), the device's own buffer-offset alignment divides the
+uniform ring's 256-byte stride, and `supportsTextureSampleCount:` answers for 1. It never throws: a probe that
+blows up and a probe that answers no are the same answer to the settings screen and the fallback that consume
+it. Measured on an Apple M2 Max under macOS 26.6, the four reads come back Apple1 through Apple8 plus Mac2 and
+Common1, a 16-byte alignment, and sample count 1 supported.
+
+**M-N4's third read names a property Metal does not have, and that is now measured rather than reasoned.**
+`MTLDevice` responds to neither `minimumConstantBufferOffsetAlignment` nor `minimumBufferOffsetAlignment`, which
+is why the incumbent hardcodes `MetalFeatures.IsMacOS ? 16u : 256u` instead of asking. The probe asks for the
+real property through `respondsToSelector:` first, so a future macOS that ships one is read with no code change,
+and otherwise falls back to `minimumLinearTextureAlignmentForPixelFormat:`, which IS a device-reported buffer
+offset alignment. It reads 16, agreeing exactly with the number the incumbent hardcodes. The requirement over it
+is stated as divisibility rather than as "at or below 256", which is the same check on every real device and the
+correct one on a device that does not report a power of two.
+
+**The kind is a PINNED ORDINAL until row 3.** `GpuBackendKind.MetalNative = 6` is
+[#569](https://github.com/APKiwiOrg/KhaozEngine/issues/569), which parallelises with this row rather than
+preceding it, so `Register()` keys on the ordinal the design pins and the registry keys by value. Registration
+is correct today and correct by NAME the moment that member lands, and a test fails the instant ordinal 6 gains
+one so the shim cannot outlive its reason. This is phase 3's boundary call applied unchanged.
+
+**Three refusals, kept tellable apart (M-I4), and this backend is the first with all three.** A missing
+REGISTRATION throws `GpuBackendProviderMissingException` from the registry, which is a wiring fault. An
+incapable MACHINE is answered by the probe. A platform with no Metal raises `PlatformNotSupportedException`,
+which is the one the Vulkan package deliberately has no occupant for. On macOS the OS probe already returns
+`GpuBackendKind.Metal`, so a native request that fails falls back to the incumbent and reports
+`FallbackAfterFailure`, which in a log line looks a great deal like a forgotten registration. Telling those two
+apart is what the whole soak measurement rests on.
+
+**The test-side seat lands in `KhaozEngine.TestSupport.Gpu`, not in one test assembly**, so
+`GpuFactAttribute`'s static constructor now registers all three native backends. The third one arriving cost one
+line, which is the property that home was moved for. The regression evidence is the Direct3D 11 one and it is
+not re-earned a third time: registration living only in `Render.Tests` threw in all four `MapEditor.Tests` GPU
+tests on that backend's first native leg.
+
+**No behaviour changed for any consumer.** Nothing selects this backend, `GpuBackendKind` still has no native
+Metal member, and no existing package gained or lost an edge. Calling `Register()` today costs one dictionary
+entry.
+
 ## 17.34.0
 
 ### The `vulkan-native` CI leg, both validation tiers, and the first validation layer this repo has ever installed (#529)

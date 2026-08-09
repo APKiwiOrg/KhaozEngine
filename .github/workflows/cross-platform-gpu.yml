@@ -346,6 +346,23 @@ jobs:
       # The shape is unchanged: one combination per leg, carrying os / backend / runner / fullSuite /
       # d3d11Adapter / vulkanDevice / vulkanValidation / goldenGuest exactly as a static `include` list would.
       matrix: ${{ fromJSON(needs.legs.outputs.matrix) }}
+    env:
+      # WHETHER THIS RUN ACTUALLY ARMS A VALIDATION TIER, as ONE expression with three readers, for the reason
+      # `goldenGuest` is a leg property rather than a name match repeated per site. Two conditions have to hold
+      # together and they come from different places: the leg must HAVE a tier (matrix.vulkanValidation, which
+      # is vulkan-native alone) and this trigger must be one that runs the FULL suite, because the push-path
+      # golden subset deliberately runs with validation off.
+      #
+      # SPLITTING THEM IS THE BUG THIS REPLACES. The layer install used to be gated on the leg column alone, so
+      # a push run installed the package and hard-failed on a manifest problem while validating nothing, which
+      # is a gate that can only ever produce false failures, and the artifact named for the strict tier was
+      # uploaded on the push path too, carrying a log taken with validation off. Empty means no tier is armed
+      # on this run, and every reader below tests for that rather than re-deriving it.
+      #
+      # The one run where this is armed with no suite behind it is a BAKE dispatch, where the guest leg skips
+      # its test step. Keeping the predicate identical to the variable's is worth more than shaving that case:
+      # the install and the thing it exists to serve cannot drift apart if they are the same expression.
+      VULKAN_VALIDATION_ARMED: ${{ (matrix.fullSuite == 'always' || (matrix.fullSuite == 'scheduled' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'))) && matrix.vulkanValidation || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -397,18 +414,23 @@ jobs:
       # EXTENSION, so the messenger the engine pumps through needs no install, but the LAYER cannot be turned on
       # with an environment variable.
       #
-      # ONLY ON A LEG THAT USES IT, which today is vulkan-native alone (matrix.vulkanValidation, leg table). The
-      # incumbent Vulkan leg deliberately does not install it: that leg is the indefinitely-selectable escape
-      # hatch of decision V-RO2, and adding a new apt package to it would let a package rename on a future
-      # runner image redden the very leg the native backend escapes to.
+      # ONLY ON A RUN THAT ARMS A TIER, which is the leg column AND the trigger together (the
+      # VULKAN_VALIDATION_ARMED job env above, and the same value the test step passes as
+      # KE_VULKAN_VALIDATION). Gating on the leg column alone was wrong in both directions on the push path: it
+      # installed an apt package a golden-subset run has no use for, and it ran the hard manifest check below
+      # against a run that would not have validated anything even with the layer present, so the only outcome
+      # it could produce there was a false failure. The incumbent Vulkan leg never installs the layer on any
+      # trigger: that leg is the indefinitely-selectable escape hatch of decision V-RO2, and adding a new apt
+      # package to it would let a package rename on a future runner image redden the very leg the native
+      # backend escapes to.
       #
-      # THE MANIFEST CHECK IS THE POINT OF THE STEP, not a nicety. A missing layer does not fail anything by
-      # itself: the engine WARNs, names what to install, and creates the device without it, which is right on a
-      # developer box and is a silently vacuous gate here. #423 records a push-triggered golden gate degrading
-      # for weeks with nobody noticing, and a validation gate that quietly stops validating is that failure with
-      # no pixels to eventually give it away.
+      # THE MANIFEST CHECK IS THE POINT OF THE STEP, not a nicety, and it stays HARD on the armed runs. A
+      # missing layer does not fail anything by itself: the engine WARNs, names what to install, and creates
+      # the device without it, which is right on a developer box and is a silently vacuous gate here. #423
+      # records a push-triggered golden gate degrading for weeks with nobody noticing, and a validation gate
+      # that quietly stops validating is that failure with no pixels to eventually give it away.
       - name: Install the Khronos validation layer (Linux)
-        if: matrix.os == 'ubuntu-latest' && matrix.vulkanValidation != ''
+        if: matrix.os == 'ubuntu-latest' && env.VULKAN_VALIDATION_ARMED != ''
         run: |
           set -x
           sudo apt-get install -y vulkan-validationlayers
@@ -555,9 +577,12 @@ jobs:
           # schedule-and-dispatch condition KE_TEST_FILTER selects on below: the push path is the fast signal and
           # the layer is expensive, and a broad sweep is worth its cost once a week. Warning and performance
           # severities are logged, never failed, because a performance warning is an opinion. Tier two is `sync`,
-          # in the gpu-vulkan-sync job. Empty on every leg whose vulkanValidation column is empty, which is every
-          # leg that installs no layer.
-          KE_VULKAN_VALIDATION: ${{ (matrix.fullSuite == 'always' || (matrix.fullSuite == 'scheduled' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'))) && matrix.vulkanValidation || '' }}
+          # in the gpu-vulkan-sync job, and it does NOT latch, so that job carries its own log scan instead.
+          #
+          # The predicate lives once, in the VULKAN_VALIDATION_ARMED job env above, because the layer install
+          # and the strict-tier artifact upload have to agree with this variable exactly and a copy per site is
+          # how they stopped agreeing. Empty means no tier is armed on this run.
+          KE_VULKAN_VALIDATION: ${{ env.VULKAN_VALIDATION_ARMED }}
           # EMPTY ON EITHER GUEST LEG for every trigger, bake dispatches included (decisions I3 and V-T1). A guest
           # leg verifies a golden family it does not own, so GoldenCompare.BakeRefusal turns KE_UPDATE_GOLDENS=1
           # under its token into a hard failure BY DESIGN: baking there would overwrite the very references it is

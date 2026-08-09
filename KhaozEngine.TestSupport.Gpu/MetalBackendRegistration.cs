@@ -37,9 +37,9 @@ namespace KhaozEngine.Tests.Gpu
     /// its buffer-offset alignment and its sample-count answer) and refuses creation by naming
     /// https://github.com/APKiwiOrg/KhaozEngine/issues/570. The seat is taken rows before the device exists,
     /// deliberately: the row that builds the device is the row that must NOT also have to discover where the
-    /// registration goes. What it registers under is <c>KhaozEngineMetal.MetalNativeKind</c>, a pinned ordinal
-    /// until row 3 (https://github.com/APKiwiOrg/KhaozEngine/issues/569) gives it the name
-    /// <c>GpuBackendKind.MetalNative</c>, which is the same shape the Vulkan seat was first written in.
+    /// registration goes. What it registers under is <c>KhaozEngineMetal.MetalNativeKind</c>, which was a pinned
+    /// ordinal until row 3 (https://github.com/APKiwiOrg/KhaozEngine/issues/569) landed and is the named
+    /// <c>GpuBackendKind.MetalNative</c> now, the same shape the Vulkan seat went through.
     /// </para>
     /// <para>
     /// It is process-wide state, so a test that needs the native kind UNREGISTERED says so explicitly with

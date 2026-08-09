@@ -18,7 +18,13 @@ namespace KhaozEngine.Tests.MapEditor
     /// block explains why), but nothing stops a caller from disposing the world explicitly afterwards - and that
     /// path used to throw <see cref="ArgumentOutOfRangeException"/> because <see cref="Scene3D.Dispose"/> clears the
     /// backing splat-material list. This is a GpuFact (needs a real headless device, KE_GPU_TESTS=1/probe on the
-    /// dev Mac's Metal) because <see cref="ViewportWorld.Build"/> touches the GPU.</summary>
+    /// dev Mac's Metal) because <see cref="ViewportWorld.Build"/> touches the GPU.
+    /// <para>
+    /// In <c>NativeDeviceLifecycle</c> because it builds a WHOLE DEVICE beside the suite's own. See
+    /// <see cref="NativeDeviceLifecycleCollection"/> for the measured cost of not doing that on a software
+    /// rasterizer.
+    /// </para></summary>
+    [Collection("NativeDeviceLifecycle")]
     public sealed class ViewportWorldDisposeOrderGpuTests
     {
         static (Scene3D scene, GpuDeviceContext gpu, IGpuTexture tex, IGpuFramebuffer fb) NewScene()

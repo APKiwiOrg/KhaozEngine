@@ -15,7 +15,15 @@ namespace KhaozEngine.Tests.MapEditTool
     /// <see cref="GpuFactAttribute"/> (they need a real headless device, KE_GPU_TESTS=1 on the dev Mac's Metal), and
     /// assert structurally only: a decodable PNG of the requested size that is not a uniform fill, and that the
     /// overlay pass actually changes pixels. No goldens (the cross-backend golden bake is out of scope here). The
-    /// error paths (zero look direction, no document open) are plain facts that fire before any GPU work.</summary>
+    /// error paths (zero look direction, no document open) are plain facts that fire before any GPU work.
+    /// <para>
+    /// In <c>NativeDeviceLifecycle</c> because each GPU row here builds a WHOLE DEVICE, which the call sites do
+    /// not show: a render method reaches <c>Render3DSnapshot.Capture</c>, and that creates and disposes a
+    /// headless device per call. See <see cref="NativeDeviceLifecycleCollection"/> for the measured cost of
+    /// letting those race the suite's own device on a software rasterizer. The two device-free error rows are
+    /// serialised along with them, which costs nothing worth splitting the class over.
+    /// </para></summary>
+    [Collection("NativeDeviceLifecycle")]
     public class RenderServiceTests
     {
         static string NewTempDir()

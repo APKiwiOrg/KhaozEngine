@@ -120,9 +120,12 @@ namespace KhaozEngine.Tests.Gpu
     /// <c>D3D11BackendRegistrationTests</c> sibling stays there, correctly, because that one really does read the
     /// registry the append-audit rows empty.</para>
     ///
-    /// <para>Per-assembly, like every xUnit collection definition. Nothing outside
-    /// <c>KhaozEngine.Render.Tests</c> uses this name yet, and a second assembly that needs it carries its own
-    /// identical copy, the way <c>AllocSensitive</c> already does.</para>
+    /// <para>Per-assembly, like every xUnit collection definition, and there are TWO copies now.
+    /// <c>KhaozEngine.MapEditor.Tests</c> carries an identical definition of its own, the way
+    /// <c>AllocSensitive</c> already did, because four of its rows build a whole device across two classes and
+    /// three of those do it invisibly through <c>Render3DSnapshot.Capture</c>. The
+    /// <c>vulkan-native</c> leg (https://github.com/APKiwiOrg/KhaozEngine/issues/529) is what made the second
+    /// copy due: that contention meets a lavapipe suite already serialised at roughly twenty-odd minutes.</para>
     /// </summary>
     [CollectionDefinition("NativeDeviceLifecycle", DisableParallelization = true)]
     public sealed class NativeDeviceLifecycleCollection { }

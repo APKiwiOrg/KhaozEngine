@@ -110,6 +110,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
         [SupportedOSPlatform("macos")]
         internal static partial byte MsgSendBool(IntPtr receiver, IntPtr sel);
 
+        // respondsToSelector: - a SEL argument returning BOOL. The one call that lets a probe ask about a
+        // property an older OS does not have, instead of finding out through an unrecognised-selector crash.
+        [LibraryImport(Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial byte MsgSendBoolPtr(IntPtr receiver, IntPtr sel, IntPtr a);
+
         [LibraryImport(Objc, EntryPoint = "objc_msgSend")]
         [SupportedOSPlatform("macos")]
         internal static partial nuint MsgSendNUInt(IntPtr receiver, IntPtr sel);

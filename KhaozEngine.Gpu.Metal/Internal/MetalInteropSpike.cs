@@ -505,13 +505,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
         }
 
         [SupportedOSPlatform("macos")]
-        static IntPtr Sel(string name)
+        internal static IntPtr Sel(string name)
         {
             fixed (byte* p = Ascii(name)) return SelRegisterName(p);
         }
 
         [SupportedOSPlatform("macos")]
-        static IntPtr Cls(string name)
+        internal static IntPtr Cls(string name)
         {
             fixed (byte* p = Ascii(name)) return ObjcGetClass(p);
         }

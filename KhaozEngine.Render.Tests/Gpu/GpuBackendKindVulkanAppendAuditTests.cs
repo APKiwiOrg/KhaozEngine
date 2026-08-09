@@ -55,20 +55,15 @@ namespace KhaozEngine.Tests.Gpu
             Assert.False(GpuBackendKind.Metal.IsVulkan());
             Assert.False(GpuBackendKind.Direct3D11.IsVulkan());
             Assert.False(GpuBackendKind.Direct3D11Native.IsVulkan());
+            Assert.False(GpuBackendKind.MetalNative.IsVulkan());
             Assert.False(GpuBackendKind.OpenGL.IsVulkan());
         }
 
-        /// <summary>
-        /// The two family predicates never both answer true for one kind. Worth asserting once rather than
-        /// reasoning about, because they are read by different subsystems and a member that satisfied both would
-        /// get a Direct3D 11 driver diagnostic written about a Vulkan session.
-        /// </summary>
-        [Fact]
-        public void TheTwoFamilyPredicates_NeverBothClaimTheSameKind()
-        {
-            foreach (GpuBackendKind kind in Enum.GetValues<GpuBackendKind>())
-                Assert.False(kind.IsDirect3D11() && kind.IsVulkan());
-        }
+        // The predicates never claiming one kind twice was a pairwise assertion here while there were two of
+        // them. A third predicate made it a theory over every member against every predicate, which is the first
+        // file's half of the split, so it moved to
+        // GpuBackendKindAppendAuditTests.TheFamilyPredicates_NeverClaimTheSameKindTwice rather than being copied
+        // into a third file with one term added.
 
         // --- rows 1 and 2: GpuDeviceContext.LogThreadingCaps and D3D11ThreadingProbe.IsApplicable. NO CHANGE,
         // and this is the first of the four rows that answer differently than they did for Direct3D11Native.

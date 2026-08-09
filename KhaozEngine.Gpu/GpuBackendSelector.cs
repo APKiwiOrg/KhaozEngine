@@ -75,7 +75,8 @@ namespace KhaozEngine.Gpu
     /// <summary>
     /// Centralizes graphics-backend selection. <see cref="Select()"/> reads the <c>KE_GRAPHICS_BACKEND</c>
     /// environment variable as an override (case-insensitive, one of
-    /// <c>metal</c>/<c>vulkan</c>/<c>vulkan-native</c>/<c>d3d11</c>/<c>d3d11-native</c>/<c>gl</c>) and otherwise probes the OS
+    /// <c>metal</c>/<c>metal-native</c>/<c>vulkan</c>/<c>vulkan-native</c>/<c>d3d11</c>/<c>d3d11-native</c>/<c>gl</c>)
+    /// and otherwise probes the OS
     /// (macOS -> Metal, Windows -> Direct3D11, Linux -> Vulkan,
     /// with Vulkan as the catch-all default). <see cref="Resolve()"/> answers the same question but also reports
     /// WHERE the answer came from, via <see cref="GpuBackendSelection"/>. The pure overloads
@@ -96,7 +97,8 @@ namespace KhaozEngine.Gpu
         /// <summary>
         /// Pure backend-selection logic. If <paramref name="envOverride"/> is a recognized backend name
         /// (case-insensitive, one of
-        /// <c>metal</c>/<c>vulkan</c>/<c>vulkan-native</c>/<c>d3d11</c>/<c>d3d11-native</c>/<c>gl</c>) it wins,
+        /// <c>metal</c>/<c>metal-native</c>/<c>vulkan</c>/<c>vulkan-native</c>/<c>d3d11</c>/<c>d3d11-native</c>/<c>gl</c>)
+        /// it wins,
         /// otherwise (null, empty, or unrecognized) the choice falls through to the <paramref name="os"/> probe.
         /// </summary>
         public static GpuBackendKind Select(string? envOverride, OSPlatformKind os)
@@ -175,8 +177,8 @@ namespace KhaozEngine.Gpu
         /// variable is the whole ergonomic story of a field soak: <c>d3d11</c> and <c>d3d11-native</c> are two
         /// implementations of the same API and the difference between them is exactly what a soak session is
         /// measuring, so it has to be expressible in the variable a tester already knows. <c>vulkan</c> and
-        /// <c>vulkan-native</c> are the second such pair, and the incumbent token in each pair keeps pointing at
-        /// the incumbent indefinitely.
+        /// <c>vulkan-native</c> are the second such pair, <c>metal</c> and <c>metal-native</c> the third, and the
+        /// incumbent token in each pair keeps pointing at the incumbent indefinitely.
         /// </para>
         /// </summary>
         public static bool TryParseBackend(string? value, out GpuBackendKind backend)
@@ -196,6 +198,11 @@ namespace KhaozEngine.Gpu
                 // Vulkan design leans on: an A/B against the native implementation is one variable away.
                 case "vulkan-native": case "vk-native":
                     backend = GpuBackendKind.VulkanNative; return true;
+                // And the third (decision M-I1). The A/B this pair buys is worth more than either of the others,
+                // because `metal` is the family the fleet's reference images are baked on, so a suspected
+                // difference on a Mac has to be answerable on the same build without a rebuild or a re-bake.
+                case "metal-native": case "mtl-native":
+                    backend = GpuBackendKind.MetalNative; return true;
                 case "gl": case "opengl": backend = GpuBackendKind.OpenGL; return true;
                 default: backend = default; return false;
             }
@@ -210,12 +217,15 @@ namespace KhaozEngine.Gpu
         /// <para>
         /// This list and <see cref="TryParseBackend"/> must agree, and the pair of rows in
         /// <c>GpuBackendKindAppendAuditTests</c> named after the warning is what holds them together: every token
-        /// here has to parse, and every <see cref="GpuBackendKind"/> has to be named by one of them. The aliases
-        /// (<c>direct3d11</c>, <c>vk-native</c>, <c>opengl</c>) are deliberately absent, since this is what a
-        /// reader is asked to type rather than everything the parser tolerates.
+        /// here has to parse, TO A DISTINCT BACKEND, and every <see cref="GpuBackendKind"/> has to be named by one
+        /// of them. The aliases (<c>direct3d11</c>, <c>vk-native</c>, <c>mtl-native</c>, <c>opengl</c>) are
+        /// deliberately absent, since this is what a reader is asked to type rather than everything the parser
+        /// tolerates. The distinctness half is why an append adds ONE token here and not both of its pair: a
+        /// second token for a backend already named would make this list read as offering seven choices when it
+        /// offers six.
         /// </para>
         /// </summary>
-        internal const string RecognizedTokens = "metal/vulkan/vulkan-native/d3d11/d3d11-native/gl";
+        internal const string RecognizedTokens = "metal/metal-native/vulkan/vulkan-native/d3d11/d3d11-native/gl";
 
         /// <summary>
         /// The default backend for an OS family (macOS -> Metal, Windows -> D3D11, else Vulkan).
@@ -232,6 +242,15 @@ namespace KhaozEngine.Gpu
         /// line is where a native Vulkan default would land, so flipping it changes the LINUX default while the
         /// Windows one stays where it is, and the two programs reach their gates independently.
         /// </para>
+        /// <para>
+        /// macOS answers <see cref="GpuBackendKind.Metal"/> on the same terms again, and its flip is the one with
+        /// the largest blast radius of the three despite naming the smallest player population. macOS is the
+        /// fleet's DEVELOPMENT platform, so flipping this arm moves every windowed playtest, every capture, every
+        /// editor session and every local golden bake onto <see cref="GpuBackendKind.MetalNative"/> on the day it
+        /// lands (decision M-RO5). Section 17 of
+        /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c> weighs both halves of that and holds
+        /// gate 5 strictly because of it.
+        /// </para>
         /// </summary>
         public static GpuBackendKind ProbeOS(OSPlatformKind os) => os switch
         {
@@ -245,12 +264,13 @@ namespace KhaozEngine.Gpu
         // deliberately absent: CreateForWindow has no windowed GL path (Silk would have to own the GL context),
         // so offering it to a player would be offering a choice that cannot boot.
         //
-        // Direct3D11Native and VulkanNative are absent for a different reason, and stay absent until their
-        // respective default flips (decisions I4 and V-RO3).
+        // Direct3D11Native, VulkanNative and MetalNative are absent for a different reason, and stay absent until
+        // their respective default flips (decisions I4, V-RO3 and M-RO5).
         // This list is what a game's graphics settings screen OFFERS, and a player picks an API, not an
         // implementation of one: two entries both reading "Direct3D 11" is a choice nobody outside this repo can
-        // make, and two both reading "Vulkan" is the same choice again. The native legs are named explicitly
-        // instead, through KE_GRAPHICS_BACKEND, until each becomes what its API's name means.
+        // make, two both reading "Vulkan" is the same choice again, and two both reading "Metal" is the third.
+        // The native legs are named explicitly instead, through KE_GRAPHICS_BACKEND, until each becomes what its
+        // API's name means.
         static readonly GpuBackendKind[] _windowCandidates =
             { GpuBackendKind.Metal, GpuBackendKind.Vulkan, GpuBackendKind.Direct3D11 };
 
@@ -392,6 +412,7 @@ namespace KhaozEngine.Gpu
             GpuBackendKind.OpenGL => GraphicsBackend.OpenGL,
             GpuBackendKind.Direct3D11Native => throw NotAVeldridBackend(kind),
             GpuBackendKind.VulkanNative => throw NotAVeldridBackend(kind),
+            GpuBackendKind.MetalNative => throw NotAVeldridBackend(kind),
             _ => throw NotAVeldridBackend(kind),
         };
 

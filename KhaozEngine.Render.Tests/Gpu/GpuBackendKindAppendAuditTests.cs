@@ -38,11 +38,13 @@ namespace KhaozEngine.Tests.Gpu
     /// </para>
     /// <para>
     /// THE SECOND APPEND, <see cref="GpuBackendKind.VulkanNative"/>, walks the same thirteen sites in
-    /// <c>GpuBackendKindVulkanAppendAuditTests</c>. Its own rows live in their own file rather than here for the
-    /// file-size ratchet's reason, and the split is legible: this file is the audit that DISCOVERED the sites,
-    /// that one is the audit that answered them a second time and records where the two appends differ (four
-    /// rows do). What stays here is every row where the two appends share ONE assertion rather than having one
-    /// each: the pinned ordinals, the family predicates, and the theories that walk every member.
+    /// <c>GpuBackendKindVulkanAppendAuditTests</c>, and THE THIRD, <see cref="GpuBackendKind.MetalNative"/>, in
+    /// <c>GpuBackendKindMetalAppendAuditTests</c>. Each append's own rows live in their own file rather than here
+    /// for the file-size ratchet's reason, and the split is legible: this file is the audit that DISCOVERED the
+    /// sites, the other two are the audits that answered them again and record where the appends differ (four
+    /// rows do for Vulkan, three for Metal, and Metal's three are the ones that degrade SILENTLY). What stays
+    /// here is every row where the appends share ONE assertion rather than having one each: the pinned ordinals,
+    /// the family predicates, and the theories that walk every member.
     /// </para>
     /// <para>
     /// The enumeration is thirteen rows and the real count is fifteen. Both extras were found by landing the
@@ -69,6 +71,7 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData(GpuBackendKind.OpenGL, 3)]
         [InlineData(GpuBackendKind.Direct3D11Native, 4)]
         [InlineData(GpuBackendKind.VulkanNative, 5)]
+        [InlineData(GpuBackendKind.MetalNative, 6)]
         public void Ordinals_ArePinnedAndAppendOnly(GpuBackendKind kind, int expected)
             => Assert.Equal(expected, (int)kind);
 
@@ -93,6 +96,29 @@ namespace KhaozEngine.Tests.Gpu
             Assert.False(GpuBackendKind.Vulkan.IsDirect3D11());
             Assert.False(GpuBackendKind.OpenGL.IsDirect3D11());
             Assert.False(GpuBackendKind.VulkanNative.IsDirect3D11());
+            Assert.False(GpuBackendKind.MetalNative.IsDirect3D11());
+        }
+
+        /// <summary>
+        /// No kind is claimed by more than one family predicate. Worth asserting once rather than reasoning
+        /// about, because the three are read by different subsystems and a member that satisfied two would get a
+        /// Direct3D 11 driver diagnostic written about a Metal session, or a software frame cap applied to a
+        /// Vulkan one.
+        /// <para>
+        /// Here rather than in either native audit file because it is a theory over EVERY member, which is this
+        /// file's half of the split. It grew from a pair to a trio when
+        /// <see cref="GpuBackendKind.MetalNative"/> landed, and growing is the point: the cost of a fourth
+        /// predicate is one term here, not a new test nobody writes.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void TheFamilyPredicates_NeverClaimTheSameKindTwice()
+        {
+            foreach (GpuBackendKind kind in Enum.GetValues<GpuBackendKind>())
+            {
+                int claims = (kind.IsDirect3D11() ? 1 : 0) + (kind.IsVulkan() ? 1 : 0) + (kind.IsMetal() ? 1 : 0);
+                Assert.True(claims <= 1, $"{kind} is claimed by {claims} family predicates");
+            }
         }
 
         // --- row 1: GpuDeviceContext.LogThreadingCaps, and row 2: D3D11ThreadingProbe.IsApplicable ---
@@ -107,6 +133,7 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData(GpuBackendKind.Metal, true, false)]
         [InlineData(GpuBackendKind.Vulkan, true, false)]
         [InlineData(GpuBackendKind.VulkanNative, true, false)]
+        [InlineData(GpuBackendKind.MetalNative, true, false)]
         [InlineData(GpuBackendKind.OpenGL, true, false)]
         public void ThreadingProbe_AppliesToBothDirect3D11Implementations(
             GpuBackendKind backend, bool isWindows, bool expected)

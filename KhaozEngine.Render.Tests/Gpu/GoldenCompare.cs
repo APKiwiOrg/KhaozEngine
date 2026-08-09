@@ -81,6 +81,16 @@ namespace KhaozEngine.Tests.Gpu
         /// and would check nothing at all.
         /// </para>
         /// <para>
+        /// <see cref="KhaozEngine.Gpu.GpuBackendKind.MetalNative"/> is the shape a third time, into the
+        /// <c>metal</c> family (decision M-I3 of
+        /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>), and this one is NOT symmetric with the
+        /// other two. The other two families are each one leg's own reference. The <c>metal</c> family is the
+        /// FLEET's cross-backend reference, baked on real Apple hardware rather than on a software rasterizer,
+        /// and every other family is read in relation to it. So a guest disagreeing here is a fleet event rather
+        /// than a leg event, which cuts both ways: it makes a green run on this family the strongest evidence
+        /// this program produces, and it makes a bake into it the most expensive mistake available.
+        /// </para>
+        /// <para>
         /// No discard that guesses. An appended kind lands on the throwing arm rather than silently inventing a
         /// family nobody baked, and <c>GpuBackendKindAppendAuditTests</c> walks every member so the failure
         /// arrives from a device-free test rather than from a GPU leg.
@@ -93,6 +103,7 @@ namespace KhaozEngine.Tests.Gpu
             KhaozEngine.Gpu.GpuBackendKind.Direct3D11 => "direct3d11",
             KhaozEngine.Gpu.GpuBackendKind.Direct3D11Native => "direct3d11",
             KhaozEngine.Gpu.GpuBackendKind.VulkanNative => "vulkan",
+            KhaozEngine.Gpu.GpuBackendKind.MetalNative => "metal",
             KhaozEngine.Gpu.GpuBackendKind.OpenGL => "opengl",
             _ => throw new NotSupportedException(
                 $"No golden family is decided for {kind}. Appending a GpuBackendKind member means deciding "

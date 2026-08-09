@@ -3,8 +3,9 @@ namespace KhaozEngine.Gpu
     /// <summary>
     /// The graphics backend the engine runs on. Selection is centralized in <see cref="GpuBackendSelector"/>, and
     /// the active backend is exposed on <see cref="GpuDeviceContext.Backend"/>. Four of the members name a Veldrid
-    /// backend the engine creates itself. <see cref="Direct3D11Native"/> and <see cref="VulkanNative"/> name
-    /// engine-owned implementations that arrive through <see cref="GpuBackendProviders"/> instead.
+    /// backend the engine creates itself. <see cref="Direct3D11Native"/>, <see cref="VulkanNative"/> and
+    /// <see cref="MetalNative"/> name engine-owned implementations that arrive through
+    /// <see cref="GpuBackendProviders"/> instead.
     /// </summary>
     /// <remarks>
     /// Members are APPEND-ONLY and pinned to explicit values, the same contract
@@ -15,16 +16,24 @@ namespace KhaozEngine.Gpu
     /// Appending IS supported, and section 4.3 of
     /// <c>docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md</c> is the audit an append has to pass, walked a
     /// second time for Vulkan in section 4.2 of
-    /// <c>docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md</c>. The enum
+    /// <c>docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md</c> and a third time for Metal in section 4.2 of
+    /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>. The enum
     /// itself is the safe part. What is not safe is every place that switches on it, compares against it, or
     /// derives a string from it: three of those degrade a new backend SILENTLY rather than failing, and the worst
     /// of them does not throw at all (a discard arm that asks Veldrid for a Metal device). Walk the table.
     /// </para>
     /// <para>
     /// The audit is an executable one now, which is what made the second append a diff rather than a
-    /// re-derivation: <c>GpuBackendKindAppendAuditTests</c> and its Vulkan sibling in
-    /// <c>KhaozEngine.Render.Tests</c> carry one device-free test per site, so a third append finds every
+    /// re-derivation: <c>GpuBackendKindAppendAuditTests</c> and its Vulkan and Metal siblings in
+    /// <c>KhaozEngine.Render.Tests</c> carry one device-free test per site, so a fourth append finds every
     /// decision already written down and pinned.
+    /// </para>
+    /// <para>
+    /// WHICH sites degrade silently is not a fixed list, and the third append is where that stopped being a
+    /// formality. <see cref="MetalNative"/> is the first appended member for which the two software frame-cap
+    /// sites are NOT correct by default: they apply a real cap only on Metal, so an append that left them alone
+    /// would take the cap away from the native Mac client and say nothing. Read the append's own section rather
+    /// than assuming the previous one's answers carry.
     /// </para>
     /// </remarks>
     public enum GpuBackendKind
@@ -64,6 +73,30 @@ namespace KhaozEngine.Gpu
         /// </para>
         /// </summary>
         VulkanNative = 5,
+
+        /// <summary>
+        /// Apple Metal through the engine's OWN native backend (<c>KhaozEngine.Gpu.Metal</c>) rather than through
+        /// Veldrid. Selected by name (<c>KE_GRAPHICS_BACKEND=metal-native</c>, or the shorter <c>mtl-native</c>)
+        /// and created by the <see cref="IGpuBackendProvider"/> that package registers, never by this one, for the
+        /// same attribution reason its two siblings are separate members: a session log, a telemetry header and a
+        /// frame time have to name the implementation that actually ran. It renders the SAME images as
+        /// <see cref="Metal"/>, so it is a guest in that backend's golden family rather than owning one.
+        /// <para>
+        /// Two things about this member differ from both siblings, and both are consequences of WHICH backend it
+        /// is a second implementation of. The <c>metal</c> golden family it is a guest in is the FLEET's
+        /// cross-backend reference, the family every other leg's references are read against, so a disagreement
+        /// there is a fleet event rather than a leg event (decision M-I3 of
+        /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>).
+        /// </para>
+        /// <para>
+        /// And a default flip would change the macOS default, which is not a player population but the fleet's
+        /// DEVELOPMENT platform: every windowed playtest, every capture, every editor session and every local
+        /// golden bake on a Mac would run on this backend the day it landed. It stays unflipped until every
+        /// rollout gate is green (section 17 of that document), so until then this member is reached only by
+        /// naming it.
+        /// </para>
+        /// </summary>
+        MetalNative = 6,
     }
 
     /// <summary>
@@ -102,6 +135,30 @@ namespace KhaozEngine.Gpu
         /// </summary>
         public static bool IsVulkan(this GpuBackendKind kind)
             => kind is GpuBackendKind.Vulkan or GpuBackendKind.VulkanNative;
+
+        /// <summary>
+        /// Whether <paramref name="kind"/> is Apple Metal through EITHER implementation. The third of these
+        /// predicates (decision M-I5 of <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>), and the
+        /// one that arrives with readers already waiting for it rather than ahead of them the way
+        /// <see cref="IsVulkan"/> did.
+        /// <para>
+        /// It is the right question for anything that talks to the Metal API or reasons about how a Metal frame
+        /// reaches the display, because the drawable and the display underneath are the same ones whichever
+        /// implementation drove them. It is the WRONG question for anything that maps a kind onto a Veldrid
+        /// backend, creates a device, or reaches into the Veldrid wrapper, since only
+        /// <see cref="GpuBackendKind.Metal"/> is Veldrid's.
+        /// </para>
+        /// <para>
+        /// Its readers are the software frame-cap pair in <c>KhaozEngine.Windowing</c>,
+        /// <c>FrameCap.Resolve</c> and <c>DisplaySettings.RequiresFrameCapWarning</c>. Both are the reason this
+        /// predicate exists: an appended Metal member falling into their uncapped arm would silently take the
+        /// software cap away from a native Mac client, which is the one thing the previous two appends did not
+        /// have to think about. Which arm the native backend BELONGS in is a measurement rather than an
+        /// assumption (decision M-W3), and both sites say so at the site.
+        /// </para>
+        /// </summary>
+        public static bool IsMetal(this GpuBackendKind kind)
+            => kind is GpuBackendKind.Metal or GpuBackendKind.MetalNative;
     }
 
     /// <summary>

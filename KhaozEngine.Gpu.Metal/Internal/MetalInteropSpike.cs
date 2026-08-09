@@ -189,8 +189,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
             if (block != IntPtr.Zero)
                 MsgSendVoidPtr(commandBuffer, Sel("addCompletedHandler:"), block);
 
-            bool structs = RecordPass(commandBuffer, renderTarget, notes);
-            bool arrays = RecordBinds(commandBuffer, bufferA, bufferB, sampled, sampler, notes, out bool offsets);
+            bool structs = RecordPass(commandBuffer, renderTarget, notes, out IntPtr renderEncoder);
+            bool arrays = RecordBinds(commandBuffer, renderEncoder, bufferA, bufferB, sampled, sampler, notes,
+                out bool offsets);
 
             if (sharedEvent != IntPtr.Zero)
                 MsgSendVoidPtrULong(commandBuffer, Sel("encodeSignalEvent:value:"), sharedEvent, 42);
@@ -260,10 +261,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // goes indirectly for the other reason. Two paths, both covered.
         // A layer that gets one right can still get the other wrong, and the debug layer catches neither: what
         // catches them is the command buffer completing without an error, which is what the caller checks.
+        //
+        // The open encoder is handed OUT rather than parked in a static. Row 4 declares this file its template
+        // and row 7 records N encoders concurrently, so a static holding "the" encoder is a shape that has to be
+        // unpicked exactly once someone copies it. It is also the difference between a compile error and a
+        // silent cross-thread overwrite the day that happens.
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static bool RecordPass(IntPtr commandBuffer, IntPtr renderTarget, List<string> notes)
+        static bool RecordPass(IntPtr commandBuffer, IntPtr renderTarget, List<string> notes, out IntPtr encoder)
         {
+            encoder = IntPtr.Zero;
             IntPtr descriptor = MsgSend(Cls("MTLRenderPassDescriptor"), Sel("renderPassDescriptor"));
             IntPtr attachments = MsgSend(descriptor, Sel("colorAttachments"));
             IntPtr attachment = MsgSendPtrNUInt(attachments, Sel("objectAtIndexedSubscript:"), 0);
@@ -279,7 +286,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             MsgSendVoidClearColor(attachment, Sel("setClearColor:"),
                 new MTLClearColor { Red = 0.25, Green = 0.5, Blue = 0.75, Alpha = 1.0 });
 
-            IntPtr encoder = MsgSendPtr(commandBuffer, Sel("renderCommandEncoderWithDescriptor:"), descriptor);
+            encoder = MsgSendPtr(commandBuffer, Sel("renderCommandEncoderWithDescriptor:"), descriptor);
             if (encoder == IntPtr.Zero)
             {
                 notes.Add("renderCommandEncoderWithDescriptor: came back nil.");
@@ -290,14 +297,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 new MTLViewport { OriginX = 0, OriginY = 0, Width = 64, Height = 64, ZNear = 0, ZFar = 1 });
             MsgSendVoidScissor(encoder, Sel("setScissorRect:"),
                 new MTLScissorRect { X = 0, Y = 0, Width = 32, Height = 32 });
-            _renderEncoder = encoder;
             return true;
         }
-
-        // Handed from RecordPass to RecordBinds rather than returned, so the two halves of one encoder's life
-        // read as two paragraphs instead of one long method. Nothing here is concurrent: Run is a single
-        // straight-line measurement on one thread.
-        static IntPtr _renderEncoder;
 
         // The array setters (M-R6) and the offset setters (M-R7). The array form is the whole argument for the
         // bind flush: one native call per (kind, stage) instead of one per resource per stage, which is the
@@ -306,11 +307,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // neither has a reference implementation to copy and both are measured here instead.
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static bool RecordBinds(IntPtr commandBuffer, IntPtr bufferA, IntPtr bufferB, IntPtr sampled,
-            IntPtr sampler, List<string> notes, out bool offsetsRecorded)
+        static bool RecordBinds(IntPtr commandBuffer, IntPtr encoder, IntPtr bufferA, IntPtr bufferB,
+            IntPtr sampled, IntPtr sampler, List<string> notes, out bool offsetsRecorded)
         {
             offsetsRecorded = false;
-            IntPtr encoder = _renderEncoder;
             if (encoder == IntPtr.Zero) { notes.Add("no render encoder, so no binds were recorded."); return false; }
 
             IntPtr* objects = stackalloc IntPtr[2];
@@ -334,7 +334,6 @@ namespace KhaozEngine.Gpu.Metal.Internal
             MsgSendVoidNUInt2(encoder, Sel("setVertexBufferOffset:atIndex:"), 128, 0);
             MsgSendVoidNUInt2(encoder, Sel("setFragmentBufferOffset:atIndex:"), 128, 0);
             MsgSendVoid(encoder, Sel("endEncoding"));
-            _renderEncoder = IntPtr.Zero;
 
             // The compute siblings, on their own encoder because Metal allows exactly one open at a time.
             IntPtr compute = MsgSend(commandBuffer, Sel("computeCommandEncoder"));

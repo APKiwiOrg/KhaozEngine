@@ -4,12 +4,15 @@ The engine's own native Metal backend for the [KhaozEngine.Gpu](../KhaozEngine.G
 umbrella: a consumer adds this package explicitly, the same pattern as `Physics.Bepu` or `WorldStore.Sqlite`,
 and nothing that does not want the Objective-C interop ever carries it.
 
-> **Status: SKELETON.** Row 1 of the work breakdown creates the assembly, its guard rows and the three phase-4
-> verification spikes, and nothing else. `KhaozEngineMetal` has exactly one member, the platform guard.
-> There is no `Register()`, no provider, no probe and no device, `GpuBackendKind` has no native Metal member,
-> and no consumer can reach a Metal device through this package. Registration and the functional probe are row
-> 2 and the `GpuBackendKind.MetalNative` append is row 3. `GpuBackendKind.Metal`, which goes through Veldrid,
-> is the working Metal backend and stays selectable indefinitely.
+> **Status: it REGISTERS and it PROBES, and it cannot yet create a device.** Rows 1 and 2 of the work
+> breakdown are done: the assembly, its guard rows, the three phase-4 verification spikes, then
+> `KhaozEngineMetal.Register()`, the `IGpuBackendProvider` behind it, and a functional probe that answers for
+> this machine. Creating a device refuses with a message naming
+> [row 4](https://github.com/APKiwiOrg/KhaozEngine/issues/570), which builds the `MTLDevice` and the
+> `MTLCommandQueue`. `GpuBackendKind` has no native Metal member yet, so registration keys on a pinned ordinal
+> until [row 3](https://github.com/APKiwiOrg/KhaozEngine/issues/569) appends `MetalNative = 6`, and no
+> `KE_GRAPHICS_BACKEND` token reaches this backend before that. `GpuBackendKind.Metal`, which goes through
+> Veldrid, is the working Metal backend and stays selectable indefinitely.
 
 Spec, decisions and the nineteen-row work breakdown:
 [docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](../docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md).
@@ -21,14 +24,50 @@ This is phase 4 of the staged native GPU backend program
 ```csharp
 using KhaozEngine.Gpu.Metal;
 
-if (KhaozEngineMetal.IsPlatformSupported) { /* macOS */ }
+KhaozEngineMetal.Register();   // unconditionally, on every OS, once at startup
 ```
 
-`IsPlatformSupported` is the whole public surface, and a test pins it member by member so the next row has to
-mean it. Everything else in the assembly is internal and exists to answer a question rather than to run in a
-game: the interop spike, which covers every ABI shape the design names (one representative per distinct
-`objc_msgSend` prototype, rather than every selector row 4 will need) across two files, plus the
-compile-options probe beside it.
+`Register` and `IsPlatformSupported` are the whole public surface, and a test pins it member by member so the
+next row has to mean it. Everything else in the assembly is internal: the provider, the machine probe and its
+device-free decision half, plus the three verification spikes, which exist to answer a question rather than to
+run in a game.
+
+**Call `Register()` unconditionally and on every operating system.** Registering says a provider EXISTS, which
+is a fact about your app's wiring. Whether this machine can run it is the separate question
+`GpuBackendSelector.IsBackendSupported` answers, and the two are kept apart on purpose: a missing registration
+THROWS, while an incapable machine falls back and reports it, and a log line where those two look alike is
+exactly what a soak session cannot afford. Off macOS this costs one dictionary entry and loads no Objective-C
+at all, because every entry point checks the platform guard before any body that names a Metal selector, and
+those bodies are `NoInlining` so the JIT never compiles one.
+
+## What the probe asks (M-N4)
+
+The incumbent Veldrid Metal backend's own support check creates a device inside a bare catch. That is the FLOOR
+of this probe rather than the whole of it. On top of it, four reads, each cheap here and expensive anywhere
+later:
+
+- **a device exists and reports a name**, which is what `GpuCapabilities.DeviceName` parity depends on under a
+  zero-permitted-difference bar.
+- **`supportsFamily:` answers at or above the floor**, meaning any `MTLGPUFamilyApple` generation or
+  `MTLGPUFamilyMac2`. An Apple silicon Mac answers both arms and an Intel Mac on a supported macOS answers the
+  second, so a device answering neither is below anything this engine ships on and is refused rather than
+  crashing on frame one.
+- **the device's own buffer-offset alignment divides the uniform ring's 256-byte stride.** This is the one read
+  that would silently corrupt every ring bind on a future device.
+- **`supportsTextureSampleCount:` answers for 1**, which is where the `MaxMsaaSampleCount` walk starts.
+
+It never throws. A probe that blows up and a probe that answers no are the same answer to the settings screen
+and the fallback that consume them, so anything the interop layer can raise is caught and reported as a no with
+the exception named.
+
+**One of those four asks for a property Metal does not have, and the probe says so.** Measured on an Apple M2
+Max under macOS 26.6: `MTLDevice` responds to neither `minimumConstantBufferOffsetAlignment` nor
+`minimumBufferOffsetAlignment`, which is why the incumbent hardcodes `MetalFeatures.IsMacOS ? 16u : 256u`
+rather than asking. So the probe asks for the real property through `respondsToSelector:` first, and a future
+macOS that ships one is read with no code change, then falls back to
+`minimumLinearTextureAlignmentForPixelFormat:`, which IS a device-reported buffer offset alignment. It reads 16
+on that machine, which is exactly what the incumbent hardcodes for macOS, so two independent statements of the
+number agree.
 
 ## Three decisions worth knowing before reading the code
 

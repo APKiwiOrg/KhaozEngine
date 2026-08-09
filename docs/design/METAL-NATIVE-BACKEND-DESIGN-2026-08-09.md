@@ -6,8 +6,8 @@ not written.** Phase 4 of the staged native GPU backend program
 [#566](https://github.com/APKiwiOrg/KhaozEngine/issues/566), following the shipped phase 2
 (`docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md`) and phase 3
 (`docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md`). This document is the phase 4 deliverable.
-Implementation is a numbered issue list in section 18, and only its first row is done: `KhaozEngine.Gpu.Metal`
-exists as a guarded skeleton that registers nothing and creates no device.
+Implementation is a numbered issue list in section 18, and its first two rows are done: `KhaozEngine.Gpu.Metal`
+registers a provider whose functional probe answers for the machine, and creates no device.
 
 **Three things HAVE now run on a device, and one of them overturned a ruling.** The interop spike is green on
 real hardware (3.1), the `MTLCompileOptions` measurement is taken (12.4), and **the MSL name-join spike REFUTED
@@ -944,6 +944,18 @@ probe reads four things, each cheap here and expensive anywhere later:
 - the device's minimum constant-buffer offset alignment is at or below 256, which M-M3's stride depends on and
   which is the one number that would silently corrupt every ring bind if a future device raised it.
 - `supportsTextureSampleCount:` answers for at least 1, which is what M-C3's limit read walks.
+
+**The third read names a property Metal does not have, and row 2 measured that rather than discovering it in
+row 8.** `MTLDevice` responds to neither `minimumConstantBufferOffsetAlignment` nor
+`minimumBufferOffsetAlignment` on macOS 26.6, which is exactly why the incumbent hardcodes
+`MetalFeatures.IsMacOS ? 16u : 256u` rather than asking: Metal's constant-buffer offset rule is a feature-table
+fact and not a runtime query. So the shipped probe asks for the real property through `respondsToSelector:`
+first, which costs nothing and reads it the day a macOS ships one, and otherwise falls back to
+`minimumLinearTextureAlignmentForPixelFormat:`, which IS a device-reported buffer-offset alignment. It reads 16
+on an Apple M2 Max, agreeing exactly with the number the incumbent hardcodes for macOS, so two independent
+statements of it agree. The requirement over it is also stated as DIVISIBILITY rather than as "at or below
+256": every real device reports a power of two so the two forms agree today, and what M-M3 actually needs is
+that its 256-byte stride is a multiple of the device's minimum.
 
 It must never throw. A machine with no Metal device answers false and routes through `AfterFallback` as
 `FallbackAfterFailure`. Phase 3's corrected-in-flight lesson is inherited without re-deriving it: CREATION

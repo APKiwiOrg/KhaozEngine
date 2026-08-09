@@ -8826,6 +8826,49 @@ against freed memory, and the reason reaches you two ways: an ERROR line in the 
 the `deviceLossReason` field of the telemetry session header. Nothing you write has to catch anything, and there
 is no recovery path: a lost device stays lost, which is what the liveness token makes safe.
 
+### The native Metal package (`KhaozEngine.Gpu.Metal`, 17.35.0)
+
+Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
+
+```xml
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="17.35.0" />
+```
+
+```csharp
+using KhaozEngine.Gpu.Metal;
+
+KhaozEngineMetal.Register();   // unconditionally, on every OS
+```
+
+**It registers and it probes, and it cannot yet create a device, which is the honest state of it.** Registration
+and the machine probe are real. Creating a device refuses with a message naming the row that builds it
+(https://github.com/APKiwiOrg/KhaozEngine/issues/570), and `GpuBackendKind` has no native Metal member yet, so
+there is no `KE_GRAPHICS_BACKEND` token that reaches this backend and nothing in the engine can select it. That
+append is https://github.com/APKiwiOrg/KhaozEngine/issues/569, and until it lands the registration keys on a
+pinned ordinal, which is invisible from outside the package and correct by name the moment the member exists.
+`GpuBackendKind.Metal`, which goes through Veldrid, is the working Metal backend and stays selectable
+indefinitely. Calling `Register()` today costs one dictionary entry and changes nothing about how your game
+boots.
+
+Call it unconditionally and on every OS, exactly as you would the other two, and for the Direct3D 11 package's
+reason rather than the Vulkan package's. Metal IS an OS-specific API, so this package carries a
+`[SupportedOSPlatformGuard("macos")]` predicate, `KhaozEngineMetal.IsPlatformSupported`, that you can read
+yourself. You do not have to: every entry point checks it before any body that names a Metal selector, and
+those bodies are `NoInlining`, so registering off macOS loads no Objective-C and the JIT never compiles one.
+Registering is a fact about your app's WIRING, and whether this machine can run the backend is the separate
+question `IsBackendSupported` answers.
+
+Whether the machine can run it is that separate question, answered through this package's own functional probe:
+the system default `MTLDevice`, then four reads off it. A device that reports a NAME, which is what
+`GpuCapabilities.DeviceName` parity depends on. `supportsFamily:` at or above the floor, meaning any
+`MTLGPUFamilyApple` generation or `MTLGPUFamilyMac2`, so an Apple silicon Mac clears it on both arms and an
+Intel Mac on a supported macOS clears it on the second. A device buffer-offset alignment that divides the
+uniform ring's 256-byte stride, which is the one number that would otherwise corrupt every ring bind on a
+machine with coarser granularity. And `supportsTextureSampleCount:` for 1, which is where the MSAA limit walk
+starts. The device is released before the answer comes back, and the probe never throws, so a machine that
+cannot answer at all is a plain false. Off macOS the answer is false with the PLATFORM named rather than the
+machine, which is not a fault and is the same shape the Direct3D 11 package gives off Windows.
+
 ### How many command lists may be open at once (`IGpuCommandList.Begin` / `End`, 17.30.0)
 
 **The rule to write code against: one open recording per device.** Between a `Begin()` and its `End()`, do not

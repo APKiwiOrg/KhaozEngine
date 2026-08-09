@@ -13,12 +13,16 @@ backend; the GPU golden-snapshot net verifies rendering on each one through a CI
 
 Backend selection is centralized in `KhaozEngine.Gpu.GpuBackendSelector`:
 
-- `Select()` reads the `KE_GRAPHICS_BACKEND` env override (`metal` / `vulkan` / `vulkan-native` / `d3d11` /
-  `d3d11-native` / `gl`, case-insensitive, with `vk-native`, `direct3d11` and `direct3d11-native` as aliases),
+- `Select()` reads the `KE_GRAPHICS_BACKEND` env override (`metal` / `metal-native` / `vulkan` /
+  `vulkan-native` / `d3d11` / `d3d11-native` / `gl`, case-insensitive, with `mtl-native`, `vk-native`,
+  `direct3d11` and `direct3d11-native` as aliases),
   otherwise probes the OS (macOS → Metal, Windows → Direct3D11, Linux/other → Vulkan). **The OS probe still
-  names the two Veldrid backends**: neither native backend is a default anywhere, and on Linux the flip to
+  names the three Veldrid backends**: no native backend is a default anywhere, and on Linux the flip to
   `VulkanNative` is the last step of that backend's rollout rather than a consequence of the token existing
-  ([#529](https://github.com/APKiwiOrg/KhaozEngine/issues/529)).
+  ([#529](https://github.com/APKiwiOrg/KhaozEngine/issues/529)). On macOS the flip to `MetalNative` is the same
+  last step of the phase-4 rollout ([#566](https://github.com/APKiwiOrg/KhaozEngine/issues/566)), and it is the
+  one with the largest blast radius of the three: macOS is the fleet's development platform, so it would move
+  every windowed playtest, capture, editor session and local golden bake on the day it landed.
 - `Resolve()` (17.21.0) answers the same question but also reports WHERE the answer came from, as a
   `GpuBackendSelection` carrying `Source` (`OsProbe` / `EnvironmentOverride` / `UnrecognizedOverride` /
   `UserPreference` / `FallbackAfterFailure`) and the raw override value. `GpuDeviceContext` logs it once per device, and WARNs on an unrecognized override naming
@@ -87,9 +91,12 @@ Per-backend goldens absorb that while still catching real shader / UBO / blend /
 regressions (coarse 32×18 grid, per-channel tolerance).
 
 The token is a mapping rather than the enum name, because two IMPLEMENTATIONS of one API share a family.
-`GpuBackendKind.Direct3D11Native` resolves to `direct3d11` and `GpuBackendKind.VulkanNative` resolves to
-`vulkan`, so each native backend is held to the incumbent's already-committed references, unmodified, on the
-same software rasterizer at the same tolerance. That sharing is the
+`GpuBackendKind.Direct3D11Native` resolves to `direct3d11`, `GpuBackendKind.VulkanNative` to `vulkan` and
+`GpuBackendKind.MetalNative` to `metal`, so each native backend is held to the incumbent's already-committed
+references, unmodified, on the same rasterizer at the same tolerance. The Metal pair is the one that is not
+symmetric with the other two: `metal` is the only family baked on real hardware rather than on a software
+rasterizer, and it is the fleet's cross-backend reference, so a guest disagreeing there is a fleet event
+rather than a leg event. That sharing is the
 strongest free proof a native port has, so it is guarded in the other direction too: `KE_UPDATE_GOLDENS`
 REFUSES to write when the running backend does not OWN its family, unless `KE_GOLDEN_FAMILY_OVERRIDE=1` says the
 shared family is being moved on purpose. Without that guard a bake on the native leg would overwrite both the

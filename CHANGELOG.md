@@ -78,6 +78,60 @@ enter that shape. Re-adjudicating M-B1 remains rows 9, 10 and 13's.
 package gained or lost an edge. All three spikes are committed as tests rather than left as prose, so each is a
 tripwire on its own premise rather than a number in a document nobody re-runs.
 
+### `GpuBackendKind.MetalNative`, and the first append whose frame-cap sites were NOT correct by default (#569)
+
+`GpuBackendKind` gains `MetalNative = 6`, selectable by name as `KE_GRAPHICS_BACKEND=metal-native` (or the
+shorter `mtl-native`), a guest in the committed `metal` golden family, with `GpuBackendKinds.IsMetal()` beside
+its two siblings. Row 3 of the phase-4 native Metal backend program (#566), from section 4.2 and decisions M-I1
+to M-I5 and M-W3 of
+[docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md).
+The kind is reachable only by naming it: `ProbeOS` still answers `Metal` on macOS, `SupportedBackends()` never
+offers it to a player, and creating on it with no provider registered throws rather than falling back.
+
+**Two of the three appends before this one were bookkeeping. This one changed live behaviour on the incumbent
+Metal path, and that is the whole point of walking the audit table instead of diffing the last append.**
+`FrameCap.Resolve` and `DisplaySettings.RequiresFrameCapWarning` apply a real software frame cap only on Metal
+plus vsync, because the Veldrid Metal present does not throttle the CPU from vsync alone. Both compared against
+`GpuBackendKind.Metal` by equality, and both carried a comment saying the equality was deliberate. For
+`Direct3D11Native` and `VulkanNative` that was right, because their presents throttle exactly as their
+incumbents' do. For `MetalNative` it would have taken the cap away from a native Mac client and warned about
+nothing, with no test failing and no log line saying so. Both sites route through `IsMetal()` now, so both Metal
+implementations behave identically.
+
+**Which arm the native backend BELONGS in is deferred to a measurement, and both comments say so at the site.**
+The question those sites really ask is whether the backend's present throttles the CPU, not which API it is. The
+native backend sets `displaySyncEnabled` unconditionally and bounds `maximumDrawableCount`, either of which may
+make the software cap redundant there. Defaulting into the capped arm is conservative in both directions: if
+that present does throttle, a cap at the display refresh does not bind and costs nothing, and if it does not,
+the cap is required. Rollout gate 5's windowed pass reads which, with a mid-session vsync toggle as the
+instrument, and the disposition lands in both doc comments either way.
+
+**The third silent site is the Veldrid wrapper's frame-capture gate, and its answer is that it must NOT be
+widened.** `VeldridGpuDevice.Present` arms a `MTLCaptureManager` capture on `Backend == GpuBackendKind.Metal`, so
+a native session arms nothing and a diagnostic capture produces an empty directory rather than an error.
+Widening it to `IsMetal()` reads like the fix and fixes nothing, because a provider-built device never becomes
+that wrapper. It is a named predicate now (`GpuFrameCapture.VeldridPathCaptures`) so the audit asserts it
+device-free and a later reader does not widen it, and the native backend will service its own captures off the
+queue it owns, which is also what removes the reflection into Veldrid's private `_commandQueue` field on that
+path.
+
+**`RecognizedTokens` gains ONE token of the pair, not both.** That list is what a reader is asked to TYPE, so it
+carries one canonical token per backend and the aliases stay out of it exactly as `vk-native` and `direct3d11`
+already do. It is also mechanically forced: the every-member audit row requires each listed token to parse to a
+DISTINCT backend, so listing `mtl-native` beside `metal-native` would make the unrecognized-override warning
+claim seven choices where six exist.
+
+**The audit is a third file rather than a third copy.** `GpuBackendKindMetalAppendAuditTests` answers the table
+in its order and carries only the rows where this append differs. The rows every append shares (the pinned
+ordinals, the family-predicate disjointness, the theories that walk every member) stay in the first audit file,
+and the predicate-disjointness row moved there from the Vulkan file when a third predicate turned a pairwise
+assertion into a theory over every member against every predicate.
+
+**No consumer behaviour changes on any existing backend.** The frame-cap pair answers identically for
+`Metal`, `Vulkan`, `VulkanNative`, `Direct3D11`, `Direct3D11Native` and `OpenGL`, which is asserted over every
+member rather than argued, and the two sites are asserted to agree with each other over every member and
+present mode.
+
 ## 17.34.0
 
 ### The `vulkan-native` CI leg, both validation tiers, and the first validation layer this repo has ever installed (#529)

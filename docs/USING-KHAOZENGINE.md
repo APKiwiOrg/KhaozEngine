@@ -8348,18 +8348,30 @@ Scene3D render-path GPU tests.
 
 ## Which graphics backend actually ran (`GpuBackendSelection`, 17.21.0)
 
-`KE_GRAPHICS_BACKEND` overrides the OS probe (`metal` / `vulkan` / `vulkan-native` / `d3d11` / `d3d11-native` /
-`gl`, case-insensitive, aliases `vk-native`, `direct3d11`, `direct3d11-native` and `opengl`). `d3d11-native` and
-`vulkan-native` (17.32.0) are the engine's own implementations of those two APIs rather than the Veldrid ones,
+`KE_GRAPHICS_BACKEND` overrides the OS probe (`metal` / `metal-native` / `vulkan` / `vulkan-native` / `d3d11` /
+`d3d11-native` / `gl`, case-insensitive, aliases `mtl-native`, `vk-native`, `direct3d11`, `direct3d11-native`
+and `opengl`). `d3d11-native`, `vulkan-native` (17.32.0) and `metal-native` (17.35.0) name the engine's own
+implementations of those three APIs rather than the Veldrid ones,
 and each is a separate value precisely so a session log, a telemetry header and a frame time say which of the
-two ran. The unsuffixed `d3d11` and `vulkan` keep pointing at the Veldrid implementations indefinitely, which is
-what makes an A/B between the two implementations of either API one environment variable away.
+two ran. The unsuffixed `d3d11`, `vulkan` and `metal` keep pointing at the Veldrid implementations indefinitely,
+which is what makes an A/B between the two implementations of any of the three one environment variable away.
+The Metal one is mid-build ([#566](https://github.com/APKiwiOrg/KhaozEngine/issues/566)) and has no usage
+section here yet, so the kind and its tokens exist ahead of the backend behind them. Naming any of the three
+without referencing its package and calling its `Register()` throws saying so, and never falls back, because a
+run that quietly used a different implementation would report its measurements under the wrong name.
 
 Because each pair is two separate values, code that cares about the API rather than the implementation asks
-`kind.IsDirect3D11()` or `kind.IsVulkan()` (the `GpuBackendKinds` extensions, 17.30.0 and 17.32.0), which are
-true for both implementations of their API. Use them for anything that talks to that API or reports on its
-driver, and plain equality against `GpuBackendKind.Direct3D11` / `GpuBackendKind.Vulkan` for anything that means
-Veldrid's implementation specifically.
+`kind.IsDirect3D11()`, `kind.IsVulkan()` or `kind.IsMetal()` (the `GpuBackendKinds` extensions, 17.30.0, 17.32.0
+and 17.35.0), which are true for both implementations of their API. Use them for anything that talks to that API
+or reports on its driver, and plain equality against `GpuBackendKind.Direct3D11` / `GpuBackendKind.Vulkan` /
+`GpuBackendKind.Metal` for anything that means Veldrid's implementation specifically.
+
+`IsMetal()` is the one with readers in the engine today, and both are in `KhaozEngine.Windowing`:
+`FrameCap.Resolve` and `DisplaySettings.RequiresFrameCapWarning`. Vsync alone does not throttle the CPU on the
+Veldrid Metal present, so those two apply a real software cap on Metal and warn when a consumer has not set one,
+and both cover BOTH Metal implementations. Whether the engine's own Metal backend needs the cap at all is an
+open measurement rather than a settled fact, so the arm it takes today is the conservative one and both sites
+say so where they take it.
 
 The trap is what happens when the override is wrong. A typo, a variable set in the wrong shell,
 or a launcher that drops the environment all fall back to the OS probe, and the run looks completely normal. If
@@ -8375,7 +8387,7 @@ GPU backend: Vulkan (KE_GRAPHICS_BACKEND override)
 GPU backend: Direct3D11 (OS probe)
 GPU backend: Vulkan (stored user preference)
 GPU backend: Direct3D11 (fallback, Vulkan failed)
-KE_GRAPHICS_BACKEND='vulcan' is not a recognized backend (metal/vulkan/vulkan-native/d3d11/d3d11-native/gl). Using Direct3D11 instead.
+KE_GRAPHICS_BACKEND='vulcan' is not a recognized backend (metal/metal-native/vulkan/vulkan-native/d3d11/d3d11-native/gl). Using Direct3D11 instead.
 ```
 
 Read it yourself to put the backend on a game's own debug overlay. `GameApp.Window` is `protected`, so a

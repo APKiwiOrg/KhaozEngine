@@ -2272,9 +2272,17 @@ time.
 
 ### Rollout record
 
-Every gate is PENDING. Nothing in section 18 has been implemented, so no gate can have been attempted. This
-subsection exists so the standing of each gate is recorded here as it moves rather than reconstructed from
-issue comments, in the shape phase 2's and phase 3's rollout records established.
+Every gate is PENDING. No gate has been attempted, because every one of the five reads a running native device
+and no row that builds one has landed. This subsection exists so the standing of each gate is recorded here as
+it moves rather than reconstructed from issue comments, in the shape phase 2's and phase 3's rollout records
+established.
+
+**Gate 5 carries an obligation from row 3 that is worth naming here rather than only in section 2.9**, because
+it is the one gate whose result lands back in shipped code. `FrameCap.Resolve` and
+`DisplaySettings.RequiresFrameCapWarning` now route through `IsMetal()`, so the native backend takes the
+incumbent's capped arm as a conservative default. That arm is NOT a finding. Gate 5's mid-session vsync toggle
+is the instrument that decides it, and whichever way it reads, the disposition is written into both doc
+comments. A gate 5 that passes without recording that answer has not been run.
 
 ---
 

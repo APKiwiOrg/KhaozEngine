@@ -788,6 +788,28 @@ jobs:
           fi
           echo "Khronos validation layer manifest: $layer"
 
+      # The matrix leg's symlink step, copied here for the same reason the rest of this setup is copied. It is
+      # LATENT on this job today and it is cheap insurance rather than dead weight: this job runs
+      # vulkan-native, and Silk.NET resolves through its own native-context search, so nothing on the selected
+      # subset is known to need the unversioned names. What it guards is the Veldrid fallback, where Veldrid
+      # 4.9.0's Vulkan binding P/Invokes the bare "libdl" and "libvulkan" that modern Ubuntu ships versioned
+      # only. Any test that reaches a Veldrid Vulkan device from here (the capability-parity row is the one
+      # that already does it on the matrix legs, and the Compute filter's reach is not frozen) would otherwise
+      # fail at device creation with a DllNotFoundException, which is the least diagnosable shape a failure can
+      # take on a job whose whole output is a validation log. This job's setup is a deliberate copy that fails
+      # LOUDLY rather than silently when it drifts, and a MISSING step is the one drift that fails silently, so
+      # the copy is kept complete. Retires with the Veldrid Vulkan leg itself, in phase 4 and not before:
+      # https://github.com/APKiwiOrg/KhaozEngine/issues/540
+      - name: Symlink libdl / libvulkan for Veldrid
+        run: |
+          set -x
+          libdir=/usr/lib/x86_64-linux-gnu
+          dl=$(ldconfig -p | awk '/libdl\.so\.2/ {print $NF; exit}')
+          vk=$(ldconfig -p | awk '/libvulkan\.so\.1/ {print $NF; exit}')
+          [ -n "$dl" ] && sudo ln -sf "$dl" "$libdir/libdl.so" || echo "WARN: libdl.so.2 not found"
+          [ -n "$vk" ] && sudo ln -sf "$vk" "$libdir/libvulkan.so" || echo "WARN: libvulkan.so.1 not found"
+          ls -l "$libdir/libdl.so" "$libdir/libvulkan.so" 2>/dev/null || true
+
       # THE SUBSET IS THE GOLDEN FAMILY PLUS THE COMPUTE SUITE, and the naming contract is what selects it
       # (design section 15). `FullyQualifiedName~Golden` is the same substring the matrix job's push path uses,
       # so every scene that renders under the barrier model is here. `FullyQualifiedName~Compute` adds the

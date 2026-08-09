@@ -55,6 +55,36 @@ carries no `Veldrid` edge of its own, checked twice: `ArchitectureTests` reads t
 `GpuPublicApiTests` walks the built IL, which is the half that binds, because Veldrid is in the transitive
 closure through `KhaozEngine.Gpu` whatever the project file says.
 
+## What the three spikes answered
+
+Row 1 exists as much to MEASURE as to build, because three of this design's decisions rest on facts nobody had
+checked. All three answers were taken on an Apple M2 Max under macOS 26, and all three are committed as tests
+rather than written down, so each is a tripwire on its own premise rather than a number in a document nobody
+re-runs.
+
+**The interop spike is clean.** Every Objective-C call the design names was compiled and run against a real
+device, in one command buffer that completed with a nil error. `BOOL` is one byte, `CGFloat` is a double, all
+three by-value struct shapes cross correctly, the array setters and the offset setters record on both a render
+and a compute encoder, an `[UnmanagedCallersOnly]` completion handler fires from a global block literal with no
+delegate and no GC handle anywhere on the path, `MTLSharedEvent`'s four members work end to end, and
+`supportsFamily:` and `maximumDrawableCount` both answer. One question came back NO: in-process
+`setenv("MTL_DEBUG_LAYER", "1")` does not reach the validation layer, verified against a control run where the
+same variable set at launch does. So validation is armed at job level in CI and by a documented prefix locally,
+which is the fallback the design already named.
+
+**`MTLCompileOptions` defaults are measured**, so the pin that lands later is a no-op rather than a guess:
+`languageVersion` 3.2, `fastMathEnabled` on, `preserveInvariance` off, and the newer `mathMode` property exists
+on this OS and agrees, reading fast. Those two defaults are what the committed metal goldens were baked under,
+and fast math is the kind of knob that moves every pixel with no other symptom.
+
+**The MSL name-join spike refuted the design's biggest bet, and that is the most valuable thing row 1
+produced.** The plan was to read binding indices out of the emitted MSL and join them to the shader reflection
+by name. Over all 42 shipped programs, zero of 159 emitted arguments join to any of the 141 reflected elements:
+every texture and sampler element reflects with an empty name, and the buffer elements that do carry a name
+carry a different one per stage. The design's own named fallback applies instead, and the numbering fix is
+filed as [#586](https://github.com/APKiwiOrg/KhaozEngine/issues/586). Finding that at a spike rather than at
+the first golden run is the whole reason the spike was scheduled ahead of everything that depends on it.
+
 ## The interop, and where an error shows up
 
 An ABI mistake in hand-rolled Objective-C interop is a memory corruption rather than a compile error, which is

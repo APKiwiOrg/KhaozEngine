@@ -5,6 +5,63 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.35.0
+
+### `KhaozEngine.Gpu.Metal`, phase 4's package skeleton, and the three spikes that ran on real hardware (#567)
+
+New opt-in package `KhaozEngine.Gpu.Metal`, in no umbrella, from row 1 of
+[docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md).
+It is a SKELETON and says so everywhere: it registers no provider, `GpuBackendKind` has no native Metal member,
+no consumer can reach a Metal device through it, and `GpuBackendKind.Metal` (through Veldrid) remains the
+working Metal backend. `KhaozEngineMetal.IsPlatformSupported` is the whole public surface.
+
+**The package shape, and where it differs from both siblings.** It targets `net10.0` with no OS suffix, like
+`KhaozEngine.Gpu.D3D11` and `KhaozEngine.Gpu.Vulkan`, so the assembly compiles and its device-free tests run on
+the Linux and Windows legs. Unlike the Vulkan package it DOES carry the
+`[SupportedOSPlatformGuard("macos")]`-over-`NoInlining` apparatus, which is decision M-P1 rather than a copy
+made by analogy: Vulkan is not an OS-specific API and Metal is, so CA1416 enforces the boundary at compile
+time here and would be inventing one there. And unlike BOTH siblings it carries no third-party package at all
+(M-P3), because no maintained managed Metal binding exists to take and vendoring `Veldrid.MetalBindings` is
+rejected by name, so the Objective-C interop is engine-owned `[LibraryImport]` over `objc_msgSend` with
+blittable-only signatures and no marshalling stub. Its `ArchitectureTests.ThirdPartyHomes` row is empty and the
+emptiness is the assertion.
+
+**Guards.** `OptInBackends` gains `Gpu.Metal`, so the umbrella-reachability test covers it. The no-Veldrid pair
+gains a third row in both forms, the project-file read and the built-IL walk, the walk being the half that
+binds. `GpuPublicApiTests` gains the leak scan plus a one-exported-type pin, which carries more weight here
+than in either sibling: with no third-party assembly to catch by prefix, the single exported type is what keeps
+the whole interop vocabulary out of a consumer's compile.
+
+**The interop spike RAN, on an Apple M2 Max under macOS 26, and it is clean.** This is the difference from
+phase 3's equivalent, which could only be a compile-time inventory because the machine had no Vulkan loader.
+`BOOL` round-trips as one byte and `CGFloat` as a double. All three by-value struct shapes cross correctly, and
+they were chosen because they take three different arm64 paths: `MTLClearColor` and `MTLViewport` are
+homogeneous double aggregates that ride SIMD registers, `MTLScissorRect` is four `NSUInteger`s passed
+indirectly. The array setters and the offset setters record on both a render and a compute encoder, `NSRange`
+by value included. The `[UnmanagedCallersOnly]` completion handler fires from a global block literal, so M-F3
+stands with no delegate and no GC handle on the path. `MTLSharedEvent`'s four members work end to end, so M-F1
+stands. `supportsFamily:` and `maximumDrawableCount` both answer. The one command buffer carrying all of it
+completed with a nil error, which is the load-bearing check.
+
+**`MTLCompileOptions` measured:** `languageVersion` 3.2 (raw 196610), `fastMathEnabled` on,
+`preserveInvariance` off, and the newer `mathMode` property exists and agrees, reading `MTLMathModeFast`. So
+M-S6's pin will be a no-op when row 9 writes it, which is what measuring first was for.
+
+**The MSL name-join spike REFUTED M-B1, the design's largest risk.** Over all 42 shipped programs, under the
+options the backend will use, ZERO of 159 emitted entry-point arguments join by name to any of the 141
+reflected layout elements. It fails three independent ways: every texture and sampler element reflects with an
+empty name (83 of the 141, so there is no key to join on), buffer elements are named for SPIRV-Cross's
+`{blockType}_{instance}` pair while the argument is named for the instance alone, and even that fails per stage
+because each stage renumbers its ids while the reflection is computed once for the pair. The lever section 2.2
+forecloses was measured too: with `normalizeResourceNames` on, 107 of 159 join and 52 do not, which is worse
+than none. So the fallback 2.2 named is the one that applies, filed with its evidence as
+[#586](https://github.com/APKiwiOrg/KhaozEngine/issues/586), and the design records the result in a new section
+2.2a that a reader picking up rows 9, 10 or 13 should read before 2.2's ruling.
+
+**No behaviour changed for any consumer.** Nothing selects this backend, nothing registers it, and no existing
+package gained or lost an edge. All three spikes are committed as tests rather than left as prose, so each is a
+tripwire on its own premise rather than a number in a document nobody re-runs.
+
 ## 17.34.0
 
 ### The `vulkan-native` CI leg, both validation tiers, and the first validation layer this repo has ever installed (#529)

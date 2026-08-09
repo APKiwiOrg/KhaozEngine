@@ -7,6 +7,94 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.34.0
 
+### Native Vulkan draws, dispatches and transfers: the backend renders (#525)
+
+`KhaozEngine.Gpu.Vulkan` draws. Every member of `IGpuCommandList` is built: the vertex and index binds, both
+`Draw` overloads, `DrawIndexed`, `Dispatch`, both texture-copy overloads, the buffer copy, `GenerateMipmaps` and
+`ResolveTexture`. `MaxMsaaSampleCount` stops being a pinned 1 and `PRESENT_SRC_KHR` becomes the swapchain image's
+resting layout, so a windowed run presents a frame the backend actually rendered. Work-breakdown row 15 of the
+phase 3 program (#510), device-free throughout, and nothing selects this backend by default so no shipped pixel
+moves.
+
+**The ORDER is a type rather than a step repeated at five members.** Every draw does four things before its
+`vkCmd*`: it transitions every image its bound sets name into the layout that binding needs, it opens the render
+pass instance through the deferred begin, it flushes the vertex and index binds, and then it flushes the
+descriptor binds and issues, as one pair. A dispatch does the same with the pass ENDED first (V-A4) and the
+dependent-dispatch barrier in the middle. Written five times, that is five places for a step to go missing, and a
+missing step renders plausibly wrong rather than throwing, so it is written once in `VulkanDrawRecorder` and the
+five members are a resolve plus one call (#556). The two new device-free seams under it are the same shape rows
+13 and 14 already took: the DRAW emitter reaches the driver through a batching function that takes the command
+sink as a GENERIC parameter, so the descriptor flush and the command stay one monomorphized pair and the counting
+twin can see a `vkCmdDraw` at all, and the TRANSFER sink is six calls with no decision in any of them.
+
+**The image transitions come BEFORE the pass opens, and that ordering is the compute rule 1 barrier.** A storage
+texture a dispatch wrote is left in `GENERAL`, and the next draw whose set SAMPLES it moves it to
+`SHADER_READ_ONLY_OPTIMAL` where the sampled bind is assembled, which is a REAL image barrier rather than the
+incumbent's queued layout restore armed by a usage flag. It has to be before the begin, because a barrier inside
+a dynamic-rendering instance is a different and much narrower call than the one the design's table describes, and
+the incumbent drains its own queued restores before `EnsureRenderPassActive` for exactly that reason. A resource
+set carries its images as PLAIN DATA resolved at set creation, with the range each binding's own view covers
+(full chain for a sampled bind, mip 0 for a storage one), so the walk allocates nothing, reaches no factory, and
+hands the tracker exactly the contains-then-collapse shape row 14 built for it. The walk covers every RECORDED
+slot rather than the dirty ones, because a set bound before a dispatch is still bound at the draw after it, and
+it costs no native call at all in the common frame: a texture already in the layout it is asked for emits
+nothing, which is what keeps V-T2's gated invariant true.
+
+**Compute rule 2 is honoured AS WRITTEN and the backend additionally orders a chain (V-C2).** A dispatch that
+binds a resource an earlier dispatch in the same list WROTE gets one read-after-write barrier before it, driven
+by a set of written resources rather than by a barrier per dispatch, so a run of independent dispatches is not
+serialised. **That is not a contract change and must not be read as one:** the seam's rule 2 still says a
+portable consumer separates dependent dispatches with `End`, `Submit` and `WaitForIdle`, because the Veldrid legs
+need the drain and a consumer that drops it because this backend tolerates the chain breaks on Metal. It is
+EVIDENCE for the automatic-hazard seam capability (#461), which after this row has two of three backends able to
+answer yes.
+
+**`MaxMsaaSampleCount` is READ OFF the incumbent's own computation rather than invented (V-C5).** Both design
+drafts proposed a formula, the two formulas differ, at most one of them could have equalled the incumbent's, and
+both then asserted equality with the incumbent as a test, which is the failure phase 2 had to correct in flight.
+So it is `VkGraphicsDevice.GetSampleCountLimit` folded by `VeldridMap.MaxMsaaSampleCount` over the engine's three
+MRT targets, reproduced with the citation pinned in a constant, which is what makes the parity row's asserted
+identical satisfiable by construction rather than by luck. Re-reading the incumbent before writing caught the
+design document naming the WRONG CALL: it says `vkGetPhysicalDeviceFormatProperties` and the incumbent uses
+`vkGetPhysicalDeviceImageFormatProperties`, which takes the image type, the tiling and the usage and answers
+differently. Section 13 carries the corrected-in-flight note, and the clause that reads like a bug is pinned too:
+the depth flag reaches the USAGE bits and never the format mapping, so the linear-depth target is queried as
+`R32_SFLOAT` with a colour attachment usage.
+
+**The copies reproduce the incumbent's arithmetic and depart from its barriers deliberately.** A texture copy is
+one of four shapes decided by the two textures' staging flags, because a staging texture is a `VkBuffer` here and
+each side is therefore either an image or a buffer, and the readback direction every golden takes supplies its
+region's buffer offset and row terms from the STAGING side's software subresource layout while the level and
+layer come from the IMAGE side's. A whole-texture copy names every level and every layer at its own offset, and
+the mip chain is one halving blit per level with the two levels transitioned to disjoint ranges each step, which
+is exactly the shape the tracker answers per level and then collapses at the whole-chain sampled bind. What is
+NOT reproduced is the buffer copy's single one-directional barrier: the incumbent emits one after the copy naming
+`VERTEX_INPUT` and `VERTEX_ATTRIBUTE_READ` and nothing else, which orders one consumer and nothing on the source
+side at all, and a `VkBuffer` has no layout so nothing else orders it. Both sides are named here instead, which
+is two extra calls on a path that runs once per readback.
+
+**`PRESENT_SRC_KHR` is the swapchain image's canonical RESTING layout, which is this row's other ruling (#557).**
+A layout transition is a recorded command, so a present transition the boundary owned would have needed a command
+pool on the boundary, a second `vkQueueSubmit` per frame, a third for the post-acquire discard, and a
+rearrangement of which submit signals the render-finished semaphore, all on the one path with zero automated
+coverage anywhere. Resting there instead costs none of it: the frame's own list restores it at `End` under the
+rule every other texture already follows, inside the submit that already signals the semaphore the present
+already waits on, and the acquire half falls out of the second `UNDEFINED` site the design already permits,
+because a transition OUT of `PRESENT_SRC_KHR` discards. That same discard covers a freshly created generation,
+whose images really are in `UNDEFINED`. The one shape it excludes, a second list per frame binding the swapchain
+framebuffer, is filed (#562) rather than hidden.
+
+**MV4 FREEZES here.** The budget's exit criterion was that the first green run's marginals are recorded and then
+frozen, and the last half owed was the draw-call one: until something emitted a `vkCmdDraw`, `DrawCalls` read
+zero BY CONSTRUCTION rather than as a finding, and a marginal over a number that cannot move is not a gate. Every
+budget frame is now recorded through a real command list whose draw emitter and whose layout tracker's emitter
+both tally into one counts object, so the per-mesh delta, the per-draw delta, the shape of an offsets-only rebind
+and eight instances costing the same trace and the same draw count as one are frozen from here. The barrier-free
+frame stops being the bind half alone: twenty draws in one pass ask the tracker to place every bound image and
+still emit not one `vkCmdPipelineBarrier2`. A vertex bind DOES scale with draw count and is the one class where
+widening the budget seam would have looked defensible, so it got its own line and the pin that says so gained a
+clause.
+
 ### Native Vulkan barriers: masks per layout rather than per layout pair, tracked list-locally against a resting layout (#524)
 
 `KhaozEngine.Gpu.Vulkan` has its barrier and layout tracker. Every image layout transition the backend records is

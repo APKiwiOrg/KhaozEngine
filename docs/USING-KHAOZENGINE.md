@@ -8612,7 +8612,7 @@ using KhaozEngine.Gpu.Vulkan;
 KhaozEngineVulkan.Register();   // unconditionally, on every OS
 ```
 
-**The backend produces a HEADLESS device and cannot yet render with it, which is the honest state of it.**
+**The backend produces a device that RENDERS, headless or windowed, which is the honest state of it.**
 Registration and the machine probe are real, `GpuBackendKind.VulkanNative` exists with the tokens
 `KE_GRAPHICS_BACKEND=vulkan-native` and the shorter `vk-native`, and
 `GpuDeviceContext.CreateHeadless(GpuBackendKind.VulkanNative)` builds a real `VkDevice` and a graphics queue on
@@ -8633,12 +8633,18 @@ Since https://github.com/APKiwiOrg/KhaozEngine/issues/524 its command lists trac
 every transition is a `vkCmdPipelineBarrier2`, tracking is per subresource range and local to one list against
 the resting layout each texture was created with, a render pass transitions its attachments as one batched
 barrier before it opens, and `End` puts everything the recording touched back.
-What it cannot do yet is DRAW: the remaining recording members are
-https://github.com/APKiwiOrg/KhaozEngine/issues/525, and each of those members throws a message naming its own
-row rather than returning something that fails later somewhere less informative. Creating a WINDOWED device
-refuses outright, naming https://github.com/APKiwiOrg/KhaozEngine/issues/527, the row that builds the surface
-and the swapchain, because a device that cannot present is a worse answer than a refusal. That refusal arrives
-through the reported fallback (`GpuBackendSource.FallbackAfterFailure`) rather than as a crash. Nothing SELECTS
+Since https://github.com/APKiwiOrg/KhaozEngine/issues/527 `GpuDeviceContext.CreateForWindow` reaches a real
+WINDOWED device too, with a platform surface, a swapchain and a present boundary that acquires, resizes,
+recreates and presents. And since https://github.com/APKiwiOrg/KhaozEngine/issues/525 it DRAWS: the vertex and
+index binds, both `Draw` overloads, `DrawIndexed`, `Dispatch`, both texture copies, the buffer copy,
+`GenerateMipmaps` and `ResolveTexture` are all live, so `IGpuCommandList` has no refusing member left and
+`GpuCapabilities.MaxMsaaSampleCount` is a real reading rather than a conservative 1. Two behaviours are worth
+knowing before you record against it. **Compute rule 1 is satisfied by a real image barrier at the sampled
+bind**, so a storage texture a dispatch wrote and a later draw samples needs no help from you beyond what the
+rule already says (both in one list, the texture created `Storage | Sampled`). **Compute rule 2 is unchanged and
+you must still honour it**: this backend additionally orders a dependent-dispatch chain inside one list, which is
+a backend property and not a contract change, and code that drops the `End` plus `Submit` plus `WaitForIdle`
+because it works here breaks on Metal. Nothing SELECTS
 it for you either: the Linux default is still `GpuBackendKind.Vulkan`, and flipping that is the last step of the
 rollout rather than a side effect of the member existing. `GpuBackendKind.Vulkan`, which goes through Veldrid,
 is the working Vulkan backend and stays selectable indefinitely. Calling `Register()` today costs one dictionary

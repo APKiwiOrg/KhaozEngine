@@ -86,9 +86,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             // ROW 15's TWO SEAMS (https://github.com/APKiwiOrg/KhaozEngine/issues/525), stateless and per list for
             // the reason the three above are. The DRAW emitter carries the descriptor flush and the command as one
-            // monomorphized pair, so it is the line the device-free budget substitutes to see a vkCmdDraw at all;
-            // the TRANSFER sink is the six copy, blit and resolve calls, which no budget counts because none of
-            // them scales with draw count.
+            // monomorphized pair, so it is the line the device-free budget substitutes to see a vkCmdDraw at
+            // all. The TRANSFER sink is the six copy, blit and resolve calls, which no budget counts because none
+            // of them scales with draw count.
             var draws = new VulkanDrawEmitter(_instance.Value.Api);
             var transfers = new VulkanTransferSink(_instance.Value.Api);
 

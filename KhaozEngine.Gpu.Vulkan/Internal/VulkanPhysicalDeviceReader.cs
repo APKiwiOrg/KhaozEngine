@@ -264,8 +264,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         // GpuCapabilities.MaxMsaaSampleCount (V-C5), which is the INCUMBENT'S computation and not one of its
         // two drafts': vkGetPhysicalDeviceImageFormatProperties per format with the usage that format is used
         // under, reduced to the highest supported bit, minimised over the engine's three MRT targets. The fold,
-        // the reduction and the three-format table are VulkanMsaaLimit's and are device-free; this is the one line
-        // that names the driver call.
+        // the reduction and the three-format table are VulkanMsaaLimit's and are device-free. This is the one
+        // line that names the driver call.
         //
         // A FAILED QUERY ANSWERS "NO MSAA" RATHER THAN THROWING, which is the incumbent's answer arrived at
         // explicitly. It ignores the result entirely, so a failure leaves it reading a zeroed structure whose

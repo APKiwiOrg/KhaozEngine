@@ -605,9 +605,22 @@ surface chosen from `GpuWindowKind`, `VK_KHR_swapchain` on the device, and `Swap
 presents. **That row also changes what the seam's "a resize reconfigures nothing" wording means here**: on
 Direct3D 11 and Metal vsync is an argument of the present call, and Vulkan cannot change a swapchain's present
 mode in place at all, so a runtime `SyncToVerticalBlank` change on this backend queues a full recreate applied at
-the next present boundary, exactly as a resize does. Nothing can be DRAWN yet: the remaining recording members are the draw and dispatch row
-([#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525)), so a windowed run today acquires, resizes and
-presents around a frame that records nothing. It registers under `GpuBackendKind.VulkanNative`, which landed in
+the next present boundary, exactly as a resize does. Since [#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525) it DRAWS: every member of
+`IGpuCommandList` is built, so a windowed run presents a frame the backend really rendered. Two more device-free
+seams landed with it, on the same principle as every seam above. The DRAW emitter carries the vertex and index
+binds, the draws, the dispatch and the dependent-dispatch barrier, and its two implementations reach the driver
+through one batching function that takes the command sink as a GENERIC parameter, so the descriptor flush and the
+command stay one monomorphized pair while the counting twin can see a `vkCmdDraw` at all: that is what completed
+MV4, whose draw-call marginals read zero by construction until something emitted one. The TRANSFER sink carries
+the six copy, blit and resolve calls and is deliberately NOT on the budget seam, because none of them scales with
+draw count. **A vertex bind is the one class where widening the budget seam would have looked defensible**, since
+it genuinely does scale with draw count, and it got its own line instead so the frozen marginals still mean what
+they meant. **And the seam's compute rule 1 and rule 2 comment is now false about this backend in a second way**:
+rule 1 is satisfied here by a real image barrier at the sampled bind rather than a queued layout restore, and a
+dependent-dispatch chain inside one list IS ordered here, though rule 2's portable requirement is unchanged and a
+consumer that drops the drain still breaks on Metal. Rewording that comment to name the implementation it
+describes remains the CI and rollout row's owned doc task
+([#529](https://github.com/APKiwiOrg/KhaozEngine/issues/529)). It registers under `GpuBackendKind.VulkanNative`, which landed in
 `17.32.0`, so the backend is selectable by name (`KE_GRAPHICS_BACKEND=vulkan-native`) and a machine that cannot
 run it arrives through the reported fallback. Nothing selects it by default.
 

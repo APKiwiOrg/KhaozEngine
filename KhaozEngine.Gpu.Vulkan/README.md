@@ -61,10 +61,12 @@ and nothing that does not want the Vulkan binding ever carries it.
 > tracking is per subresource range and LIST-LOCAL against the resting layout each texture was created with,
 > every attachment is transitioned as one batched barrier immediately before `vkCmdBeginRendering`, `End`
 > restores everything the recording touched, and a transition out of `UNDEFINED` is refused everywhere except
-> the two sites permitted to discard. That device cannot yet
-> RENDER: the rest of the recording content is
-> [#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525), and each unbuilt member throws a message naming
-> its own row, so a windowed run today acquires, resizes and presents around a frame that records nothing. The
+> the two sites permitted to discard. And since
+> [#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525) IT DRAWS: the vertex and index binds, both `Draw`
+> overloads, `DrawIndexed`, `Dispatch`, both texture copies, the buffer copy, `GenerateMipmaps` and
+> `ResolveTexture` are all live, so `IGpuCommandList` has no refusing member left, `MaxMsaaSampleCount` is the
+> incumbent's own computation reproduced rather than a pinned 1, and a windowed run presents a frame the backend
+> really rendered. The
 > backend IS nameable: `GpuBackendKind.VulkanNative` and the `vulkan-native` / `vk-native` tokens
 > landed with [#513](https://github.com/APKiwiOrg/KhaozEngine/issues/513). Nothing selects it by default.
 > `KhaozEngine.Gpu`'s `Vulkan` backend, which goes through Veldrid, remains the working Vulkan path and stays
@@ -970,16 +972,28 @@ about this backend either way.
 
 | Point | Transition |
 |---|---|
+| Before a draw or a dispatch | each image the bound sets name to `SHADER_READ_ONLY_OPTIMAL` or `GENERAL` |
 | Begin rendering | each attachment to `COLOR_ATTACHMENT_OPTIMAL` or `DEPTH_STENCIL_ATTACHMENT_OPTIMAL` |
 | Copy source or destination | to `TRANSFER_SRC_OPTIMAL` or `TRANSFER_DST_OPTIMAL` |
+| Mip chain, per level | level N-1 to `TRANSFER_SRC_OPTIMAL` and level N to `TRANSFER_DST_OPTIMAL` |
+| Resolve | source to `TRANSFER_SRC_OPTIMAL`, destination to `TRANSFER_DST_OPTIMAL` |
 | `End` | everything touched back to its resting layout |
-| Present | the swapchain image to `PRESENT_SRC_KHR` |
 
 The attachment transitions ride the DEFERRED begin, so they are emitted immediately before
 `vkCmdBeginRendering` and never inside the instance, where the same call would mean something much narrower. The
-sampled, storage and resolve rows of that table arrive with the draw and dispatch row
-([#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525)), and the present row's call site with the swapchain
-([#527](https://github.com/APKiwiOrg/KhaozEngine/issues/527)).
+bound-image row is emitted BEFORE that begin, for the same reason.
+
+**There is no PRESENT row, and its absence is a ruling rather than a gap**
+([#557](https://github.com/APKiwiOrg/KhaozEngine/issues/557)). `PRESENT_SRC_KHR` is the swapchain image's
+canonical RESTING layout, so the `End` row above IS the present transition: the frame's own list puts it there
+under the rule every other texture already follows, inside the submit that already signals the render-finished
+semaphore the present waits on. A present transition the boundary owned would have needed a command pool on the
+boundary, a second `vkQueueSubmit` per frame, a third for the post-acquire discard, and a rearrangement of which
+submit signals that semaphore, all on the one path with zero automated coverage anywhere. The acquire half falls
+out of the discard rule above: a transition OUT of `PRESENT_SRC_KHR` names `UNDEFINED` as its old layout, which
+is the second permitted discard site and which also covers a freshly created generation whose images really are
+in `UNDEFINED`. The one shape it excludes, a second command list per frame binding the swapchain framebuffer, is
+[#562](https://github.com/APKiwiOrg/KhaozEngine/issues/562).
 
 **A transition to the layout an image is already in emits nothing**, and a whole boundary is ONE barrier call
 carrying one barrier per image that actually moved. That is what keeps the barrier count proportional to passes
@@ -1010,6 +1024,85 @@ both entry points pass through, and it has no legitimate site at all rather than
 **Buffer uploads are not part of this.** A staged `UpdateBuffer` emits a BUFFER memory barrier over the written
 range with its masks narrowed to the destination's real usage, which involves no image and no layout at all, so
 the layout tracker neither subsumes nor duplicates it.
+
+## Drawing: one order for five members, and the compute barriers that fall out of it
+
+Every member of `IGpuCommandList` is live. A draw does four things before its `vkCmd*` and they are written ONCE
+rather than at each of the five members, because the order is what can be wrong and a missing step renders
+plausibly wrong rather than throwing:
+
+1. **Every image the bound sets name goes into the layout that binding needs**, through the layout tracker, and
+   this happens BEFORE the render pass instance opens. A barrier recorded inside a dynamic-rendering instance is
+   a different and much narrower call.
+2. **The deferred begin opens the pass**, folding every pending clear into a `loadOp` and emitting the viewport
+   and the scissor if a framebuffer change marked them.
+3. **The vertex and index binds flush**, one `vkCmdBindVertexBuffers` per contiguous run of dirty slots.
+4. **The descriptor binds flush and the command issues**, as one pair with nothing between them.
+
+**The vertex and index binds RECORD and the draw flushes them**, with a rebind of what is already recorded
+emitting nothing at all. The incumbent issues `vkCmdBindVertexBuffers` inside its own `SetVertexBufferCore` with
+no comparison, so a renderer that rebinds one mesh's buffer before each of its draws pays a native call per draw
+for a state change that did not happen. A run is cut by a clean slot and by an unbound one alike, because
+`vkCmdBindVertexBuffers` takes a dense array from `firstBinding` and a binding nothing bound cannot be skipped
+inside one call.
+
+**Compute rule 1 is a REAL image barrier where the sampled bind is assembled.** A storage texture a dispatch
+wrote is left in `GENERAL`, and the next draw whose set samples it moves it to `SHADER_READ_ONLY_OPTIMAL`, which
+is step 1 above rather than the incumbent's queued layout restore armed by a usage flag. A resource set carries
+its images as plain data resolved at CREATION, with the range each binding's own view covers: the full chain for
+a sampled bind, mip 0 for a storage one. That is what hands the tracker its contains-then-collapse shape rather
+than a partial overlap it would refuse. The walk covers every RECORDED slot rather than the dirty ones, because a
+set bound before a dispatch is still bound at the draw after it, and it costs no native call at all in the common
+frame: a texture already in the layout it is asked for emits nothing.
+
+**Compute rule 2 is honoured AS WRITTEN and the backend additionally orders a chain.** A dispatch that binds a
+resource an earlier dispatch in the same list WROTE gets one read-after-write barrier before it, driven by a set
+of written resources rather than by a barrier per dispatch, so a run of independent dispatches is not serialised.
+**That is not a contract change.** The seam's rule 2 still says a portable consumer separates dependent dispatches
+with `End`, `Submit` and `WaitForIdle`, because the Veldrid legs need the drain and a consumer that drops it here
+breaks on Metal. It is evidence for the automatic-hazard seam capability
+([#461](https://github.com/APKiwiOrg/KhaozEngine/issues/461)), which after this row has two of three backends able
+to answer yes.
+
+**A dispatch, a copy, a mip generation and a resolve all end the pending render pass instance first**, through the
+one helper that rule has, because every one of them is illegal inside one.
+
+## Copies, the mip chain and the resolve
+
+A texture copy is one of FOUR shapes decided by the two textures' staging flags and by nothing else, because a
+staging texture is a `VkBuffer` here and each side is therefore either an image or a buffer:
+`vkCmdCopyImage`, `vkCmdCopyImageToBuffer`, `vkCmdCopyBufferToImage` or `vkCmdCopyBuffer`.
+
+**The readback direction is the one every golden takes and it is the highest-risk parity surface in the backend.**
+Its region's buffer offset and row terms come from the STAGING side's software subresource layout, which
+reproduces the incumbent's own arithmetic byte for byte, while the level and layer named in `imageSubresource`
+come from the IMAGE side's, which need not be the same numbers. A whole-texture copy names every mip level and
+every array layer at its own offset, so reading back a chain does not silently return its base level with the
+rest as whatever the staging buffer held.
+
+**The mip chain is one halving blit per level**, floored at one so a 1024 by 1 texture ends at 1 by 1 rather than
+at an extent the driver refuses, with every array layer in one blit. Level N-1 goes to `TRANSFER_SRC_OPTIMAL` and
+level N to `TRANSFER_DST_OPTIMAL` at each step, so the two ranges are DISJOINT every time, which is exactly the
+shape the layout tracker answers per level and then collapses when the whole chain is sampled.
+
+**`ResolveTexture` is `vkCmdResolveImage` at mip 0 layer 0, outside a render pass instance**, with both images
+transitioned to the transfer layouts and left for `End` to restore. An out-of-range sample count is refused at
+TEXTURE CREATION rather than here and rather than clamped, because the engine clamps upstream against
+`MaxMsaaSampleCount` so nothing legitimate reaches the throw, and a silent MSAA downgrade presents as a golden
+mismatch that reads like a rendering bug.
+
+**`MaxMsaaSampleCount` is the incumbent's own computation reproduced**, not a formula invented here: the minimum
+over the engine's three MRT targets of the highest sample count each supports, read through
+`vkGetPhysicalDeviceImageFormatProperties` exactly as `VkGraphicsDevice.GetSampleCountLimit` does, with the
+citation pinned in a constant so the two sources can be diffed. That is what makes the capability parity test's
+asserted identical satisfiable by construction rather than by luck.
+
+**A buffer copy gets a global memory barrier on EITHER side**, which is a deliberate departure. A `VkBuffer` has
+no layout, so nothing the tracker does orders a copy out of a buffer a dispatch just wrote or into one a draw is
+about to read. The incumbent emits one barrier, after the copy, naming `VERTEX_INPUT` and
+`VERTEX_ATTRIBUTE_READ` and nothing else, which orders exactly one consumer and nothing on the source side at
+all. Two calls on a path that runs once per readback is the right price for closing a hazard class a golden on a
+software rasterizer cannot show.
 
 ## `KE_VULKAN_DEVICE`, `KE_VULKAN_VALIDATION`, `KE_VULKAN_FRAMES_IN_FLIGHT` and `KE_VULKAN_PIPELINE_CACHE`
 

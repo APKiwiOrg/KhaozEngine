@@ -1633,3 +1633,497 @@ is a real difference from Vulkan, where a present-mode change forces a whole swa
 
 Multi-threaded recording is STRUCTURALLY SUPPORTED and is not in the shipped contract, which is W5's position
 unchanged for the third time. Nothing in the engine asks for it and no test exercises it.
+
+---
+
+## 12. Shader path
+
+### 12.1 The MSL target lands in the back-end half (M-S1)
+
+Phase 3 split `SpirvCrossCompile` along the seam it already had: `SpirvFrontEnd.ToSpirv` is the front end and
+`VertexFragmentToHlsl` plus `ComputeToHlsl` are the back end. Its own file comment says in as many words that
+this is the one place the SPIRV-Cross replacement changes for the D3D11 path, and phase 3's own text says the
+split was carved out because the native Vulkan backend needs the front end ONLY. **That split was the entire
+Metal-facing carrying cost of phase 3 and it was one file move**, and its payout is that this phase adds
+`VertexFragmentToMsl` and `ComputeToMsl` beside the HLSL pair and touches nothing else.
+
+They call `SpirvCompilation.CompileVertexFragment` and `CompileCompute` with `CrossCompileTarget.MSL` under a
+private options set BUILT FROM a new `MslCrossCompilePin`, exactly as the HLSL pair is built from
+`HlslCrossCompilePin`. The signatures stay Veldrid-free and return the same engine-owned `CrossCompiledPair`
+and `CrossCompiledCompute` mirrors, so the backend reaches them across `InternalsVisibleTo` with no Veldrid
+type crossing the boundary. The front end is untouched, so the SPIR-V byte-equality drift test and
+`VulkanSpirvIncumbentParityTests` both keep meaning what they meant. The architecture test gains its third arm:
+`KhaozEngine.Gpu.Metal` names the front end and the MSL members and never names an HLSL member.
+
+### 12.2 #462 is not taken, and 2.2 is why (M-S2)
+
+#566 banks that the shader back end grows an MSL target via the direct SPIRV-Cross migration, deliberately
+deferred to this phase. **That input does not survive contact with the library.** `libveldrid-spirv` exports
+three non-incidental C entry points, `CompileGlslToSpirv`, `CrossCompile` and `FreeResult`, and none of them
+carries a resource-binding table. `spirv_cross::CompilerMSL::add_msl_resource_binding` is present as a C++
+symbol and is not reachable through any supported ABI, on an object `CrossCompile` constructs internally and
+never returns. So an engine-owned P/Invoke shim over that library gets exactly what the managed wrapper already
+gets, because the managed wrapper is a thin P/Invoke over those same three exports.
+
+Taking #462 in the sense that would matter here means linking SPIRV-Cross directly: a new native dependency
+built per RID, with its own packaging story, inside the phase that is also introducing a hand-written
+Objective-C interop layer. That is a bigger change than #462 was costed as and it is not this phase's.
+
+**So `Veldrid.SPIRV` stays in the graph after this phase, for the front end and for BOTH back-end targets**,
+and `libveldrid-spirv` is still a bundled native per RID, which is the packaging burden #420 partly exists to
+reduce. This design does not reduce it and says so. Moving the whole toolchain onto engine-owned code is the
+program's CLOSING ACT (section 19), and the three instruments that make it checkable already exist:
+`VulkanSpirvByteEqualityTests` and `VulkanSpirvIncumbentParityTests` for the front end, and
+`D3D11HlslByteEqualityTests` for the HLSL back end. Phases 2 and 3 built the regression net for a change
+neither of them made.
+
+### 12.3 Parity is TWO artefacts, not one (M-S3, M-S4)
+
+The D3D11 byte-equality test carries a warning in its header that phase 3 transplanted and this phase
+transplants again: its hash table is baked from that path's own emission, so what it detects is DRIFT, and **a
+wrong emission baked once passes forever**. It compares nothing against the incumbent.
+
+So:
+
+1. **`MslCrossCompilePin`**, the options stated as constants with their citation, plus an `Identity` string
+   built FROM those constants so a pin change moves every derived cache key by construction.
+2. **A one-off in-process parity measurement against the incumbent's own path**, compiling every shipped
+   program to MSL through both and asserting byte equality, TAKEN AND RECORDED in this document before the
+   first golden run. That is the fact that licenses "no rebake" on the fleet's reference golden family.
+
+**And phase 3's own upgrade is inherited: the measurement is ALSO a standing test.**
+`VulkanSpirvIncumbentParityTests` makes the same comparison on every leg, so parity stopped being a fact about
+one afternoon and became a fact about the current tree. `MetalMslIncumbentParityTests` does the same here, and
+the reason to have both is the same: the equality is NOT true by construction, because `VeldridGpuDevice`
+hands GLSL to the three-argument `CreateFromSpirv`, which constructs `new CrossCompileOptions()` and forwards
+it, while this path compiles under `MslCrossCompilePin`. The two sets are maintained independently. A red run
+there means the committed `metal` goldens are baked on one emission and asserted against another, and the
+response is to decide which side moved rather than to re-bake the hash table.
+
+**The pin's values, and why they are the library defaults.** `HlslCrossCompilePin` already records what
+`CreateFromSpirv` does with its options: it forwards them verbatim and derives nothing from
+`ResourceBindingModel`, which is not a member of `CrossCompileOptions` at all. So the incumbent's MSL is
+emitted under the library defaults, and if `MslCrossCompilePin` states anything else the measurement fails and
+the pin is what moves. `FixClipSpaceZ` and `InvertVertexOutputY` stay FALSE for the reason `HlslCrossCompilePin`
+gives: they append a clip-space fixup to the emitted vertex shader and the engine already handles both
+conventions through `GpuCapabilities`, so a fixup here would apply the correction twice, and on Metal that
+would be immediately visible because `ClipSpaceYInverted` is false and `GpuClip.Correct` is the identity.
+`NormalizeResourceNames` stays at its default too, and 2.2 rules that flipping it is not available as a lever
+for M-B1's name join precisely because it would break this equality.
+
+### 12.4 The compile options are pinned (M-S6)
+
+`MTLShader` passes `MTLCompileOptions.New()`, a default-constructed object, so two defaults are currently
+unstated facts about the runner rather than choices.
+
+**`fastMathEnabled` defaults to on**, and fast math changes floating-point results. The committed metal goldens
+were baked with it on. Pinning it to on is a no-op today and a guard forever, and flipping it is the kind of
+change that moves every pixel with no other symptom.
+
+**`languageVersion` defaults to the newest the OS supports**, which DRIFTS with the runner image. The workflow
+already pins `macos-26` by number rather than to `macos-latest` so an image promotion cannot move the GPU under
+a golden gate, and the language version is the same class of hazard one level up. Row 1 MEASURES what
+`macos-26` reports and pins that value, so the pin is a no-op on the day it lands.
+
+`MslCompilePin` holds both as constants with the citation and derives an `Identity` from them for the cache
+key, in the exact shape `HlslCrossCompilePin` and `SpirvFrontEndPin` already use, so a pin change moves every
+cache key by construction rather than by remembering. **`preserveInvariance` is left at its default (off)**,
+matching the incumbent. It forces position computation to be invariant across pipelines, which matters for
+multi-pass depth equality, and turning it on is a follow-up with a trigger (Z-fighting between the depth
+prepass and a later pass) rather than a speculative change to a golden-bearing knob.
+
+### 12.5 The `.metallib` cache (M-S7)
+
+The incumbent compiles MSL from SOURCE through `newLibraryWithSource:` at every `CreateShadersFromSpirv` on
+every launch, for roughly thirty graphics programs and their compute siblings, and caches nothing, exactly as
+the incumbent Vulkan backend compiles every pipeline from SPIR-V at every launch.
+
+A per-program `.metallib` is written to disk and loaded through `newLibraryWithData:`, keyed on the MSL pin
+identity, the SPIR-V hash, the device's registry identity and the engine version. Header-validated before
+trusting, discarded silently on any mismatch, best-effort so a read or write failure is never fatal and never
+crashes a launch. This is S4's disk cache and V-S7's `VkPipelineCache` with a third noun, and M-P4 extracts the
+KEY discipline the three share.
+
+**`MTLBinaryArchive` is DECLINED for v1**, and the decline is argued rather than deferred. It is a compiled
+pipeline-state cache one level further down, which is a second and newer mechanism for the same win, with its
+own serialisation discipline and its own questions (its behaviour across an OS upgrade, and whether it accepts
+a pipeline built from a runtime-compiled library at all). The compile time is in the LIBRARY, which is what the
+`.metallib` cache addresses. Filed as a follow-up gated on a measurement showing where the remaining launch
+cost is, rather than taken on the assumption that lower is better.
+
+### 12.6 Three things this backend must not "fix" (M-B4, M-B5)
+
+All three will be proposed from a Metal seat, which is exactly why each is written down.
+
+**S5's holed-signature sinks stay.** They are FXC-and-WARP specific, Metal has ALWAYS tolerated the holes (the
+memory record says so for both the vertex-input and the interpolant cases), and the D3D11 leg ships until the
+closing act, so removing a sink because Metal tolerates it corrupts WARP. This is the third design that has had
+to write that sentence.
+
+**The "sample all textures up front in binding order" shader discipline stays**, even though M-B1's table
+removes the SPIRV-Cross behaviour that made it necessary for this backend. Same reason: the Veldrid Metal leg
+is still selectable and still numbers by first-sample order. It comes out with that leg, in the closing act,
+not before.
+
+**And the one-uniform-buffer-per-pipeline invariant stays in force until MM6 says otherwise (M-B4).** 2.3 is
+the argument. A shader change on the strength of an untested hypothesis about somebody else's cross-compiler is
+exactly what the memory says cost four separate diagnostic sessions.
+
+**`SpirvLocalSize` is unchanged.** The compute workgroup size is hand-parsed out of the SPIR-V module today
+because the seam's `IGpuComputeShader.ThreadGroupSize*` must report it, and Metal needs the same numbers for
+`dispatchThreadgroups`'s `threadsPerThreadgroup`. The incumbent gets them from
+`ComputePipelineDescription.ThreadGroupSize*`, which is the same source.
+
+---
+
+## 13. Compute, MSAA, staging and readback
+
+**Compute (M-C1, M-C2).** Compute and graphics bindings are tracked separately with separate dirty arrays and
+separate bound-pipeline slots, as the seam requires, so a compute bind never disturbs a graphics one.
+`SetComputePipeline` and `Dispatch` end any open render encoder first (M-A5). The compute encoder is created
+with the default SERIAL dispatch type, which is what makes M-H4 true. `Dispatch` issues
+`dispatchThreadgroups:threadsPerThreadgroup:` with the group counts the seam passes and the pipeline's
+`threadsPerThreadgroup` from `SpirvLocalSize`, reproducing the incumbent. Storage buffers are plain buffers at
+a `[[buffer(n)]]` index with the pipeline's buffer mutability declared at creation the way the incumbent
+declares it. C2's RAW byte-address forcing was an artefact of what SPIRV-Cross emits for HLSL and V-C4 already
+ruled it has no analogue elsewhere, and there is no SRV-versus-UAV auto-unbind either, which is a D3D11
+binding-model artefact whose Metal occupant is automatic tracking.
+
+**MSAA (M-C3).** `MaxMsaaSampleCount` reproduces `MTLGraphicsDevice.GetSampleCountLimit`, which walks
+`_supportedSampleCounts` from the top and returns the first supported count, ignoring both of its parameters,
+and the pin carries the citation. **The pin also carries the note that the argument-ignoring is CORRECT**,
+because `supportsTextureSampleCount:` is Metal's only sample-count query and it takes no format, so
+`MaxMsaaSampleCount` on Metal is format-independent by construction. `VeldridMap.MaxMsaaSampleCount` takes a
+MIN over three formats and on Metal all three answer the same, so the min is a no-op and reproducing it means
+reproducing the same single answer. A native backend that "improved" this by asking per format would be
+inventing a question the API cannot answer, which is precisely the C4 and V-C5 failure in a new costume, and
+this is the third phase to have to write that down. `AntiAliasing.ResolveFor` clamps against the result and
+`scene3d_hdr_msaa` is baked under it. The implementation issue re-reads the incumbent's source before writing
+the reproduction, which is phase 3's row-15 correction inherited as a PROCESS rule rather than as a fact.
+
+**The resolve (M-C4).** `ResolveTexture` opens an empty render encoder with the MSAA source as
+`colorAttachments[0]`, `loadAction = Load`, `storeAction = MultisampleResolve` and the destination as
+`resolveTexture`, then ends it, at mip 0 layer 0, outside any live encoder. That is the incumbent's shape and
+its own TODO says the approach destroys the source texture's contents, which diverges from what
+`ResolveSubresource` and `vkCmdResolveImage` do. It is reproduced anyway: the engine's MSAA sources are
+re-cleared at the start of the next frame's pass, discarding is the bandwidth-correct answer on this
+architecture, and it is what the goldens were baked against. **The divergence goes in the package README** so a
+consumer that ever needs the source preserved finds a documented property rather than a surprise. Folding the
+resolve into the producing pass's store action is the Metal-native answer and 2.5 records why it is deferred.
+
+An out-of-range requested sample count THROWS at texture creation rather than silently falling to 1, which is
+C4's departure inherited for C4's reason: the engine clamps upstream so nothing legitimate reaches the throw,
+and a silent MSAA downgrade presents as a golden mismatch that reads like a rendering bug.
+
+**Staging and readback (M-C5, M-C6). This is the highest-risk parity surface in the design and it earns its own
+paragraph, for the same reason it did in phase 3.** Every golden in the suite reads back through
+`IGpuDevice.Map(staging, ...)` and consumes `MappedData.RowPitch`. The incumbent backs a staging texture with a
+`MTLStorageModeShared` `MTLBuffer` rather than a linear texture, sized by walking every mip level, and computes
+the subresource layout IN SOFTWARE: `MTLTexture.GetSubresourceLayout` returns a row pitch and a depth pitch
+from `FormatHelpers.GetRowPitch` and `GetDepthPitch` over the mip's storage dimensions clamped to the block
+size, and `Util.ComputeSubresourceOffset` gives the offset. **A different arithmetic garbles all 36 goldens at
+once.**
+
+So the buffer backing and the software layout computation are reproduced byte for byte, and a device-free test
+computes the layout for a spread of formats, sizes, mip levels and array layers and asserts it against a
+checked-in table taken from the incumbent's own arithmetic. That converts "should be identical" into a checked
+fact before a single golden is run, which is exactly what S3 did for the emitted HLSL and V-C7 did for the
+Vulkan staging layout. Asserting the rows are tightly packed and moving on may well be right and is the wrong
+posture, because the goldens depend on the arithmetic rather than on the assertion.
+
+`Map(staging, Read)` WAITS on the timeline's last submitted value before returning the pointer (M-C6), counted
+as a drain. The incumbent's `MapCore` returns `contents()` immediately with no wait, which works today only
+because `GpuReadback` submits and drains before mapping, so the seam's guarantee currently rests on a caller
+convention rather than on the backend. Getting it wrong returns a pointer to bytes the blit has not written
+yet, which reads as an intermittently wrong golden, and an intermittently wrong golden on a real device is the
+worst failure shape a five-legged blocking matrix has. `Unmap` is a no-op, as it is in the incumbent, because
+`contents()` needs no unmapping on a `Shared` buffer.
+
+---
+
+## 14. Capabilities and diagnostics
+
+`ReadCapabilities` stays the single source both `GpuDeviceContext.Capabilities` and `IGpuDevice.Capabilities`
+come from, after they drifted before 15.2.0. The native device implements one and the context reads it from the
+device.
+
+| Member | Native source | Parity |
+|---|---|---|
+| `ClipSpaceYInverted` | **false**, with no viewport trick needed (7.3) | identical |
+| `DepthRangeZeroToOne` | true | identical |
+| `DeviceName` | `MTLDevice.name`, verbatim, NOT trimmed | identical by construction, given M-N1's default selection |
+| `SamplerAnisotropy` | **true**, hardcoded, reproducing `GraphicsDeviceFeatures(samplerAnisotropy: true)` | identical |
+| `SamplerLodBias` | **false**, because `MTLSamplerDescriptor` has no LOD bias at all | identical, and it is the one capability that differs from both other native backends |
+| `MaxMsaaSampleCount` | the incumbent's own computation reproduced, format-independent by API (M-C3) | asserted identical, and satisfiable by construction rather than by luck |
+| `SupportsShadowMaps` | the incumbent's own question: is `R32_Float` usable as BOTH render target and sampled | asserted identical |
+| `SupportsCompute` | true | identical |
+| `SupportsCompletionFences` | **true** (M-F4) | identical, and it was already true |
+
+**ZERO permitted differences (M-G1)**, which is phase 3's bar rather than phase 2's, and it is right for the
+same reason: the incumbent Metal backend has no capability defect to correct. The test carries the
+reflection-completeness check phase 2 called the guard that matters most, that the comparison covers every
+member of `GpuCapabilities`, so a member appended later cannot silently weaken the assertion. It runs in one
+process on the Metal leg.
+
+**Two phase-3 lessons are inherited by name rather than rediscovered.** `DeviceName` is NOT trimmed: the
+incumbent takes `_device.name` as it comes, so a trim on the native path alone would fail parity on any device
+whose reported name carries padding. And `SupportsShadowMaps` asks what the incumbent ASKS rather than what the
+member's name suggests, which is the row-18 correction where a first implementation read "attachment" as
+depth-stencil attachment for a colour format and would have answered false on every device in existence, with
+the failure silent (the shadow path degrading to blob shadows on one backend with nothing red). Writing down
+what a member's name suggests instead of what the incumbent asks is a parity failure by construction.
+
+**The shared point and linear samplers WRAP on all three axes**, built from wrap-addressed descriptions and NOT
+from the identically named `GpuSamplerDescription.Point` and `.Linear` statics, which default every axis to
+CLAMP. The seam says so in writing on `IGpuDevice.PointSampler`, and reading the address mode off the statics
+because the names matched cost two goldens on the D3D11 leg. This paragraph exists because the same mistake is
+available a third time. The incumbent's other sampler mappings are reproduced exactly, including the two
+conditionals (the border colour set only on macOS-family devices, and the comparison function set only when the
+description carries one) and `maxAnisotropy` clamped to at least 1. G1's ruling applies: reachable hardcodes are
+reproduced and unreachable degradations are not, and the border-colour conditional is reachable.
+
+**Software rasterizer (M-G2).** Apple ships no software Metal rasterizer, so `softwareAdapter` is FALSE with
+confidence rather than null. That is a genuinely different answer from "nobody asked", which is what
+`GpuDeviceDiagnostics` documents null as meaning, and the Veldrid Metal path keeps the default (null), which is
+correct because it cannot answer. CI pins nothing, and section 5 says why.
+
+**Validation (M-G3, M-T7).** `KE_METAL_VALIDATION=0|1|shaders` maps onto the process-level `MTL_DEBUG_LAYER`
+and `MTL_SHADER_VALIDATION` variables the Metal runtime reads at device creation, plus an engine-side log line
+recording which tier was armed and a WARN when the variable was set after the runtime had already read it.
+**There is no package to install anywhere**, which is a materially cheaper gate than V-T4's net-new CI work.
+**Whether in-process environment mutation actually reaches the framework is a ROW-1 SPIKE rather than an
+assertion**, because Metal API validation is a process-launch mechanism and no phase-3-style "install a layer"
+answer exists. If it does not work, the CI leg sets the variable in the job environment and the local answer is
+a documented prefix on the run command, which is worse ergonomics and no less correct. Section 16 records what
+neither tier buys.
+
+**Command-buffer errors and device loss (M-G4).** Metal reports command-buffer failures ASYNCHRONOUSLY:
+`status` becomes `Error` and `error` carries an `NSError` whose `MTLCommandBufferError` code distinguishes the
+classes that matter here, including the GPU-restart and timeout cases. The incumbent reads `status` in exactly
+one place (`WaitForIdleCore`, to decide whether to wait) and never reads `error` at all, so a Metal device loss
+today is invisible to the engine and to telemetry. The completion handler reads both in EVERY configuration,
+latches the first failure with its code and localized description AT THE FAULT SITE, flips the liveness token
+so all subsequent disposals are no-ops, and surfaces the reason through the existing `deviceLossReason` header
+field. Phase 3's `CheckResult` lesson applies: a latch built on checks that compile away in Release never
+fires, so this one is not `[Conditional("DEBUG")]`. That closes #427 for the Metal leg on the day the backend
+lands, which is the correct time, because retrofitting the reporting after the first field crash wastes the
+crash.
+
+**Frame capture (M-G5).** `MetalFrameCapture` exists in `KhaozEngine.Gpu` today and reaches Veldrid's private
+`_commandQueue` field by reflection, returning zero and skipping the capture if the layout differs. This
+backend owns the queue, so the native path hands the pointer in and the reflection is unnecessary, and the
+capture stops being one Veldrid refactor away from silently not working. The reflection version stays for the
+Veldrid Metal leg for as long as that leg ships. The append audit's third silent site (4.2) is the gate that
+decides which path runs, which is why this is a row rather than a nicety.
+
+**Counters (M-G6).** `FramesBegun`, `DrainCount`, `DrainMs`, `BackpressureStallCount`, `BackpressureStallMs`,
+`OffTimelineDeferred`, `OffTimelineOutstanding`, `AcquireWaitCount` and `AcquireWaitMs` are all populated from
+the struct as it stands, with **NO seam addition**. Phase 3 appended the acquire pair for its own MV2 and this
+phase reads it for M-W4 at no cost, which is a template paying out rather than a coincidence.
+`BackpressureStallCount` counts the ring acquire ALONE here, where on Vulkan it folds in the command-buffer
+slot wait, so its doc comment gains a sentence saying the second meaning is Vulkan's rather than universal.
+They leave through `IGpuDevice.Counters`, are forwarded by `GpuDeviceContext` and `AppWindow`, and reach a
+capture as sample-row channels, which is the path gate 4 reads.
+
+**One counter would be genuinely useful and is deliberately NOT added: encoder boundaries per frame**, which is
+the number MM1 is really about. It is available device-free from M-T2's budget sink, where it is a frozen
+marginal rather than a runtime counter, and appending a member to a shipped seam struct for a number one
+backend can answer is exactly the "no seam change" claim phase 3 warned costs a gate its result.
+
+---
+
+## 15. Test plan
+
+| Layer | What it covers | Runs where |
+|---|---|---|
+| The 36 committed `metal` goldens, shared family (M-T1) | Pixel equivalence against the SHIPPED Metal backend on the SAME REAL DEVICE, at the one global tolerance of 0.06 absolute per channel where zero of the 1728 values in a golden grid may exceed it. No rebake | New `metal-native` leg, full suite on every trigger |
+| `CrossBackendGoldenTests` | Unchanged. Still three families, still the 0.20 ceiling. **It is also the thing that would catch a bad `metal` bake, and the metal family is the reference the other two are read against** | Every `dotnet test` |
+| **The MSL index-table test (M-T3)** | "Everything compiles and every pixel is wrong", arriving through the MSL door. Every emitted entry point across every shipped program, paired against the pipeline's layout array and each layout's element array. **Taken BEFORE the first golden run** | Every `dotnet test` |
+| Vertex-stream collision assertion (M-B2) | That no index M-B1 read out of any vertex function reaches the top-pinned stream range, for every shipped program. The one thing standing between two index spaces | Every `dotnet test` |
+| Native-call budget, device-free `[Fact]` (M-T2) | The Metal fan-out class through `IMetalEncoderSink`: argument-table writes, draws and dispatches, and ENCODER BOUNDARIES | Every `dotnet test`, both cheap legs |
+| MSL byte equality per program (M-S3) | Back-end DRIFT, understood as drift and not as parity (12.3) | Every `dotnet test` |
+| `MetalMslIncumbentParityTests` (M-S3) | That the two independently maintained option sets still emit the same bytes. A red run means the committed goldens are baked on one emission and asserted against another | Every `dotnet test` |
+| The one-off MSL parity measurement (M-S4) | What actually licenses "no rebake". Taken once, in process, RECORDED in this document before the first golden run | Once, before the first golden run |
+| `NativeVsVeldridMetalCapabilityParityTests` (M-T4) | Silent capability drift, ZERO permitted differences, plus the reflection-completeness check | Metal leg |
+| **Metal API validation, two tiers (M-T7)** | `MTL_DEBUG_LAYER=1` on every native-leg run and `MTL_SHADER_VALIDATION=1` on the scheduled run. Encoder-state, argument-range and pipeline-compatibility errors, plus in-shader bounds. NOT a synchronisation validator (section 16) | Every native-leg run, and the schedule |
+| Shared uniform-ring semantic tests, third adapter (M-T5) | Section 9.4's seven shared rows, run against all THREE backends' rings through the one test-only interface in `KhaozEngine.TestSupport.Gpu` | Every `dotnet test` |
+| Ring stride and bind-window invariant, device-free (M-M4) | `frameBase + rangeOffset + callerDynamicOffset + size <= (frame + 1) * stride` for every shipped set shape | Every `dotnet test` |
+| Staging subresource layout table test (M-C5) | A garbled readback on all 36 goldens at once | Every `dotnet test` |
+| **Encoder-scope invalidation test (M-R4)** | Record a draw, force an encoder end through a blit, record a second draw, assert the second re-issued its vertex-stream binds. The corruption the incumbent avoids only through a second defect (2.1). Plus: a redundant pipeline bind re-activates nothing (M-R8) | Every `dotnet test` |
+| Index-table invalidation test, device-free (M-R9) | That a pipeline switch between two programs with identical index tables invalidates nothing, and that one between differing tables invalidates exactly the slots whose indices moved | Every `dotnet test` |
+| Clear-folding test, device-free (M-A2, M-A3) | Per-attachment `loadAction` for a three-target framebuffer, and the clear-only pass still clearing | Every `dotnet test` |
+| Viewport and scissor guard test (M-A6) | Exactly one viewport call and one scissor call per framebuffer CHANGE, zero for a redundant rebind, and zero scissor calls at all when the bound pipeline has scissor test off | Every `dotnet test` |
+| Autorelease-pool architecture test (M-N5) | That every public entry point which can create an autoreleased object wraps its body, over the type graph rather than by review | Every `dotnet test` |
+| Timeline and fence unit tests (M-F1) | Monotonic signal, non-blocking `Signaled`, `Reset` re-arming, and the drain counting into `DrainCount` and `DrainMs` | Every `dotnet test` |
+| Recording-contract test, device-free | N lists open concurrently, interleaved records, submitted out of record order, per-list order asserted and concatenated in SUBMIT order | Every `dotnet test` |
+| Drawable-boundary test, device-free (M-W5) | The nil-drawable frame: orphan target bound, recorded, submitted, present skipped, `FramesBegun` incremented | Every `dotnet test` |
+| `CopyBuffer` alignment assertion (9.3) | That no shipped call site produces an unaligned offset, so the named throw is unreachable | Every `dotnet test` |
+| Uncommitted-command-buffer bound (6.1) | That the backend never holds more uncommitted buffers than `FramesInFlight` plus one | Every `dotnet test` |
+| **MM6's two-uniform-buffer probes (2.3)** | Whether the one-UBO constraint is a property of the incumbent's numbering or of Metal, with a pixel READBACK assertion rather than a no-throw assertion | Metal leg, gate 3 |
+| Full `macos-26` suite | 0 failed, 0 skipped, passed at or above the incumbent's on the same commit | Metal leg, every trigger |
+| `OpenListTrackingGpuDevice` | Nested `Begin`. Stays the PORTABLE guard, passes trivially here, and is NOT evidence about this backend | Every `dotnet test` |
+| `GpuFactSkipReasonTests` extension | That `KE_GPU_TESTS=probe` still answers correctly once a third provider registers | Every `dotnet test` |
+| `GpuDeviceLifecycleTests` | Concurrent create, use and dispose against the native provider | Metal leg |
+| `GpuBackendKindAppendAuditTests` | The audit sites, extended for `MetalNative`, with the three silent ones (4.2) each carrying a row | Every `dotnet test` |
+| `ArchitectureTests`, `VeldridLockdownTests`, `GpuPublicApiTests`, the no-Veldrid pair, the MSL-half-only edge | Zero renderer changes, no Veldrid leakage, opt-in isolation, that the backend names no HLSL cross-compile member, and that no view factory is reachable from the recording type | Every `dotnet test` |
+| Phase 2 and phase 3 frozen marginals, unchanged across M-P4 | That the extraction moved code and changed no behaviour on either existing backend | Every `dotnet test` |
+
+**The budget test's gate, stated the way T2 and V-T2 state it.** The gate is (a) structural invariants: ONE
+array call per (kind, stage) per full activation and never one per element, an offsets-only rebind at exactly
+one call per visible stage, exactly one viewport call and one scissor call per framebuffer CHANGE with zero for
+a redundant rebind, zero encoder boundaries between two draws in one pass, and zero record-time buffer
+allocations. (b) Marginal per-draw deltas: 5 distinct meshes against 1, and 18 draws against 6, must move the
+total by an exact per-draw delta. (c) Trace identity for 8 instances of one mesh against 1. (d) An upper bound
+on encoder boundaries per frame. Absolute totals are documentation and may be updated freely, because a test
+that is routinely edited to match reality stops being a gate.
+
+**One marginal is a REGRESSION target rather than a parity target, and it is worth naming.** The incumbent
+re-binds every vertex stream on every draw (2.1). The native backend binds a stream only when it changed, so
+its per-draw marginal is strictly lower, and the budget test freezes the LOWER number.
+
+**CI (M-T6), and the cost conversation has changed twice in this program's life.** A `metal-native` matrix leg
+on hosted `macos-26` with `KE_GRAPHICS_BACKEND=metal-native`, `KE_GPU_TESTS=1`, `KE_METAL_REQUIRED=1` and
+`MTL_DEBUG_LAYER=1`, running the FULL suite on every trigger, matching the incumbent Metal leg's
+`fullSuite: always` tier exactly. It is a GUEST in the `metal` family, so `KE_UPDATE_GOLDENS` stays empty on it
+for every trigger and it sits a bake dispatch out entirely, and `GoldenCompare.BakeRefusal` already derives
+guest-ness generically so that costs no new code. The repository is PUBLIC, so hosted runners are free and the
+historical macOS billing multiplier is gone. The incumbent Metal leg already runs the full suite on every
+trigger, so matching its tier is the cheap option rather than the expensive one.
+
+**This leg is the strongest regression net in the program and that changes what the design can lean on.** The
+D3D11 native leg runs golden-only on push. The Vulkan native leg runs golden-only on push, on a software
+rasterizer, with no swapchain coverage at all. This one runs everything, on a real GPU, every time. It is why
+2.6's hazard ruling cuts the way it does, and it is what bounds the interop risk in 3.1.
+
+`KE_METAL_REQUIRED=1` is phase 3's row-19 lesson inherited by name: rows that need a native device return early
+when the probe refuses the machine, a dormant row is NOT a skip, and a zero-skipped gate could otherwise be
+satisfied by rows that asserted nothing. On this leg the refusal throws and names what the probe objected to.
+
+**The incumbent Metal leg is deliberately NOT coupled to the native backend's health**, for the reason the
+workflow header already gives about the incumbent Vulkan leg. It arms no validation tier, sets no
+`KE_METAL_REQUIRED`, and its rows that touch a native device stay dormant if the probe ever refuses the runner.
+That leg is M-RO2's escape hatch, and an escape hatch that goes red whenever the thing it escapes from goes red
+is not one.
+
+The `NativeDeviceLifecycle` collection definition is copied into every test assembly carrying `[GpuFact]`,
+because collection definitions are per assembly and phase 2 measured that adding a second live-device backend
+without one took a leg from 17 minutes to 49.
+
+**The naming contract is load-bearing and unchanged.** `cross-platform-gpu.yml` selects golden-only tiers with
+`--filter FullyQualifiedName~Golden`. The Metal legs run the full suite on every trigger so the filter does not
+bind for them, and every device-free test above deliberately does NOT carry the substring so it runs on the
+cheap legs rather than inside the golden filter.
+
+---
+
+## 16. Unproven bets: gates, kill switches, exit criteria, deadlines
+
+Every decision below rests on reasoning rather than measurement. Each names the measurement that settles it,
+the switch that turns it off, the criterion that retires the switch, and **a deadline, which is the gate at
+which a second-implementation switch is REMOVED, or the gate by which a bet carrying no such switch must be
+RESOLVED** (M-RO4, sorted by phase 3's 2.7). A bet without all four is not shipped.
+
+**One switch covers most of them, deliberately.** M-RO2 keeps Veldrid Metal selectable by token until the
+closing act, so every STRUCTURAL decision here (the encoder model, the ring, automatic tracking, the present
+path, the binding table) has a working, shipping, one-environment-variable escape. Per-decision switches are
+spent in exactly one place.
+
+**Two switches ship in this whole design and both are branches inside one implementation.** That is deliberate:
+phase 2's gate 3 is still blocked behind an unresolved A/B with two drivers shipping, and this design does not
+repeat it. The MSL binding question is decided at a row-1 SPIKE rather than carried by a switch, and the
+recording model has nothing to A/B, so **there is no M1 analogue for the second phase running.**
+
+**And this section is the honesty ledger.** Four of its rows are observations rather than bets, because they
+name things no measurement available to this phase can settle. A reader looking for a gate that was never
+possible should find the row saying so.
+
+| # | Bet | Measurement gate | Kill switch | Exit criterion | Deadline |
+|---|---|---|---|---|---|
+| MM1 | The ring removes the encoder-split-per-record-time-write class (2.1), and that class is the dominant per-frame cost the incumbent carries. **The MAGNITUDE is unmeasured**: nobody has counted how many record-time `UpdateBuffer` calls per frame the #410 scene makes on Metal, and two releases of renderer-side engineering have already hoisted most of them out of the frame | Count record-time `UpdateBuffer` calls, encoder boundaries and record-time buffer allocations per frame on the #410 scene ON THE INCUMBENT first, through a throwaway instrumented build. Then the same three on the native backend | None. The ring is not optional (9.2), and M-M7 makes it a correctness change, so there is no in-backend fallback to hold | Native encoder boundaries per frame at or below the framebuffer-change count plus the compute and blit passes the frame genuinely needs, native record-time allocations at zero, and frame time no worse than gate 4's baseline. If the incumbent's counts turn out near zero already, the ring is still taken for M-M7 and this bet is **RECORDED AS NOT PAYING** rather than quietly forgotten | Gate 4 |
+| MM2 | Per-attachment clears (M-A2) either do not move a committed metal golden, or move exactly the ones two unwritten attachments can explain | All 36 goldens with `KE_METAL_CLEAR` in both positions on the same build, on the first green run | `KE_METAL_CLEAR=attachment0` reproduces the incumbent exactly | Both positions green, OR exactly the scenes whose framebuffer has more than one colour target differ and the difference is explained by two attachments going from Load to Clear. **A difference anywhere else means something other than this clause moved.** By M-RO4's sort it is a branch inside one implementation, so it is removed at its gate and the losing branch deleted whichever way it goes | **Gate 1. Removed there** |
+| MM3 | The array-batched flush (M-R6) collapses a full activation to one call per (kind, stage) and an offsets-only rebind to one per visible stage, with zero encoder boundaries between two draws in one pass | The device-free budget test (M-T2), confirmed on the first green run and then frozen as marginals | None needed. A call-count property with no runtime risk | The first green run's measured marginals are recorded in this document and become the frozen numbers, INCLUDING the vertex-stream marginal, which is a regression target rather than a parity target | Gate 3 |
+| MM4 | `FramesInFlight = 3` is enough that ring backpressure never blocks the CPU, and `maximumDrawableCount = 3` is enough that the drawable acquire does not become the frame's pacing | `BackpressureStallCount` and `BackpressureStallMs` for the ring, `AcquireWaitCount` and `AcquireWaitMs` for the drawable. **The second pair is expected to be non-zero under vsync and that is not a failure**: a vsync-paced frame SHOULD wait for a drawable, so the gate reads the UNCAPPED capture | `KE_METAL_FRAMES_IN_FLIGHT=<n>`, owned by row 7 | Ring stall count zero across a full capture window, and acquire wait per frame near zero on the uncapped capture. A non-zero ring stall means 3 is wrong, not that the design is | Gate 4. A TUNING KNOB by M-RO4's sort, so it may survive as a knob, but only if the exit criterion was met at its DEFAULT. A knob is not a way to ship a failed default |
+| MM5 | (observation, not a bet) **Automatic hazard tracking (M-H1) costs conservatism that nothing in this design measures**, and the cost cannot be priced at all because there is no safe untracked build to A/B against. The driver may serialise two encoders that could have overlapped, and there is no counter for lost overlap. Frame time against the incumbent measures the two configurations TOGETHER, since the incumbent is also tracked | None available in v1. A GPU trace in Xcode's frame debugger would show it and is not a CI instrument | n/a. `MTLResourceHazardTrackingModeUntracked` on an individual resource is the escape hatch, and taking it means writing the barriers for that resource | Recorded so a reader does not mistake "no barriers in the code" for "no serialisation on the device", and does not mistake a green gate 4 for evidence that tracking is free. If a measurement ever shows the cost, the heap decision (8.4) is re-argued in the same change | Open past gate 5, deliberately |
+| MM6 | **The one-uniform-buffer-per-pipeline constraint is a property of the incumbent's numbering rather than of Metal**, so a pipeline with a second uniform buffer reads correct bytes under M-B1's table | Two `[GpuFact]` probes in the shape `GpuSkinningReproGpuTests` established: a pipeline whose vertex stage reads two resource buffers, and a pipeline with a fragment-only second UBO at set 1, each with a pixel READBACK assertion rather than a no-throw assertion. **Headless is the right instrument**, because `docs/DEPENDENCY-SEAMS.md` records that the constraint holds offscreen as well as windowed (2.3) | None. This is a measurement, not a shipped behaviour. **M-B4's invariant STAYS in force regardless of the result** | Both probes read correct values. **A pass does NOT authorise a shader change**: it authorises FILING the invariant's removal as its own work with its own gates on all three backends. A fail is recorded here as the constraint being real on Metal rather than on Veldrid, which is worth just as much and closes four sessions' worth of open question | Gate 3 |
+| MM7 | (observation, not a bet) **The swapchain, the drawable and the present path have ZERO CI coverage**, because the Metal golden suite is headless and a headless device builds no `CAMetalLayer`. Every decision in section 11 is validated by a human at a window, or not at all | None available. A native soak that reproduces a presentation defect is consistent with several mechanisms | n/a | Recorded so a reader does not mistake a green full-suite leg, which is the best-covered leg in the matrix, for evidence about presentation. Gate 5's manual pass is the only instrument, **and it is a manual pass alone, because the tool both drafts named for it does not exist (2.10)** | n/a |
+| MM8 | (observation, not a bet) **Metal has no synchronisation validator.** `MTL_DEBUG_LAYER` is API validation and `MTL_SHADER_VALIDATION` is in-shader bounds checking, and neither tracks read-after-write hazards across encoders. This is the fact M-H2 is decided on and the one place this phase's instrument set is WEAKER than phase 3's | None available. If Apple ships one, or if a `MTLCaptureManager` trace-based detector is built, 2.6 reopens with a named instrument | n/a | Recorded because V-M1's precedent is that a decision conditional on an instrument must say which instrument, and because a future reader comparing the two phases' validation gates should find this rather than conclude Metal's is simply cheaper | Open indefinitely |
+| MM9 | The engine-owned interop layer is ABI-correct on arm64 (3.1) | Row 1's spike compiles one file against every call this design names and runs it against a real device, and then the full suite on the leg is the standing answer | None. An ABI error is a crash, not a tunable | The spike runs clean and the full suite is green on the leg. **An interop defect is expected to present as a crash rather than as a wrong pixel**, which is the one comforting property of this risk | Gate 2 |
+| MM10 | The `.metallib` cache key plus header validation is enough that a stale or corrupt cache can never crash a launch (M-S7) | Startup time cold and warm, plus a deliberate corruption test that truncates and mutates the file and asserts a clean discard | The cache path is best-effort by construction: any read or write failure is a silent discard, which IS the fallback | Corruption test green and no launch failure attributable to the cache across the soak | Gate 4 |
+| MM11 | (observation, not a bet) **The CPU-versus-GPU race the ring closes cannot be shown to have closed** (M-M7). The incumbent's ungated device-level write is a race by inspection and it has never produced a reported defect, and a race that does not reproduce cannot be shown to have stopped | None available | n/a | Recorded so the work is attributed honestly: this is a correctness improvement taken on a code reading rather than on a repro | n/a |
+| MM12 | (observation, not a bet) **There is no Metal field baseline anywhere in this program's record.** #410's reporting machine is Windows. Phase 2 held gate 4 against 125 fps and 8.0 ms and phase 3 against 144 fps and 6.9 ms, both measured. **A gate stated against a number nobody has measured cannot be read** | Gate 4's FIRST task is a capture on the incumbent, on the same Mac, the same scene and the same capture window, before the native session | n/a | The baseline is recorded here when taken, and the pass bar is "no worse over a week" against it. This is a step neither predecessor needed | Gate 4's prerequisite |
+| MM13 | (observation, not a bet) **Nothing here is tested on an Intel Mac or on any device below the current Apple Silicon families.** The hosted runner is arm64 and the fleet's machines are arm64. M-N3 replaces the incumbent's deprecated feature-set reads with `supportsFamily:` precisely because the derived answers are fragile, and that replacement is itself untested on the hardware that would exercise the other arm. The same applies to M-M2's `Shared`-everywhere choice, whose discrete-Mac follow-up has no machine to measure it on | None available to this phase | n/a | Recorded so a consumer report from an Intel Mac is read as the first data point rather than as a surprise | n/a |
+
+---
+
+## 17. Rollout
+
+Opt-in first, then the CI leg as the continuous exercise, then a field soak on a Mac through a game's normal
+update flow, then the default. Five gates, all green before any flip.
+
+1. **All 36 goldens green** against the shared `metal` family on hosted `macos-26` at the existing tolerance,
+   with the observed worst-cell delta RECORDED here, and **MM2 resolved with `KE_METAL_CLEAR` removed**. The
+   `golden-deltas.<family>.txt` evidence file phase 2 added already appends on a PASS, and the leg uploads it as
+   `golden-deltas-metal-native` on `always()`, so the number comes off a green run rather than needing one to
+   break first. Note the naming trap the other two pairs have: the ARTIFACT is named for the leg and the FILE
+   inside it for the family, so `golden-deltas-metal-native` contains `golden-deltas.metal.txt`, and downloading
+   both macOS artifacts gives two same-named files that are two implementations measured against one set of
+   references. **This gate is worth more than its siblings and carries more risk**: the `metal` family is the
+   fleet's cross-backend reference, so a green here is the strongest evidence any leg in this program produces
+   and a red here is a fleet event rather than a leg event.
+2. **Full `macos-26` suite at 0 failed and 0 skipped**, with the passed count at or above the incumbent's on the
+   same commit, `MTL_DEBUG_LAYER=1` producing no validation errors, and MM9 met. **The skip criterion is phase
+   3's rather than phase 2's**: Veldrid Metal already signals on completion, so the `RequiresCompletionFences`
+   pair already runs on this leg and the criterion is NO NEW SKIPS rather than two fewer. A skip is a failed
+   implementation of something, whatever else is green.
+3. **Budget test green** with the marginals recorded here, MM3 met, the MSL index-table test green, and
+   **MM6's measurement TAKEN and recorded whichever way it went**. No M1-equivalent hangs over this gate,
+   because there is one recording driver and nothing to A/B, which is the single biggest difference from phase
+   2's rollout.
+4. **A field session on a Mac at or above the incumbent Metal's numbers** across a full capture window, with
+   zero command-buffer errors, the session header naming `MetalNative`, and MM1, MM4 and MM10's exit criteria
+   met. **The baseline has to be TAKEN rather than looked up** (MM12), and that is a real difference from both
+   predecessors. Before the field capture, pin the session log's build line and the capture-window stamps: a
+   number attributed to the wrong build is the expensive failure here, and M-I4's throw-on-missing-provider
+   exists specifically to make it impossible.
+5. **A human windowed pass**: resize by drag, maximise, fullscreen toggle, a display change if the machine has
+   two, alt-tab, and a vsync toggle mid-session. `deviceLossReason` and `softwareAdapter` present in the session
+   header. Two additions this gate carries that its predecessors did not. **The vsync toggle is a MEASUREMENT,
+   not a smoke test**: it is what decides M-W3's frame-cap arm, so the tester records whether the native
+   backend's present throttles the CPU from vsync alone, and the disposition lands in `FrameCap.Resolve`'s and
+   `DisplaySettings`'s doc comments either way. And **the windowed-only defect class is an explicit checklist
+   item** (skinned meshes, and any pipeline reading a second uniform buffer, exercised at a window), because
+   `SlathRepro` was deleted in `9.0.0` and neither draft noticed (M-RO6, 2.10).
+
+**Gate 4 is harder here than it was in either predecessor, and the reason is worth naming.** On D3D11 the
+incumbent WAS the problem and parity was already a win. On Vulkan the incumbent was the engine's best backend
+on the only field evidence there was. On Metal the incumbent is the backend the fleet's REFERENCE IMAGES are
+baked on and the one with no filed performance defect at all. So the pass bar is "no worse over a week" against
+a baseline that has to be measured first, and anyone weighing whether this phase should happen should weigh
+that honestly: **the case for it is #420's endpoint, the ring's correctness argument (M-M7), the MRT clear
+defect (2.4) and the binding-model question (2.2), not a promised speedup.**
+
+**What a flip MEANS here, and it is the biggest blast-radius difference in the program.** `ProbeOS` maps macOS
+to `Metal`, so flipping changes the macOS default. That is not a player population: the fleet's players are
+overwhelmingly on the Windows and Linux heads. It is the DEVELOPMENT platform. Every windowed playtest, every
+capture, every editor session and every local golden bake on a Mac would run on the native backend the day the
+flip lands.
+
+That cuts both ways and both halves are worth stating rather than picking the convenient one. In favour: a
+regression is felt within hours by the person best placed to diagnose it, on a machine with a debugger and a
+`MTLCaptureManager`, which is the fastest feedback loop this program has ever had at a flip. Against: a
+regression that only reproduces in a windowed session blocks development rather than a shipping build, and
+gate 5 is the only instrument that sees it. That is a reason to hold gate 5 strictly rather than to relax
+anything.
+
+The flip itself is one line in `ProbeOS`, plus adding the kind to `_windowCandidates`, plus settling the two
+frame-cap rows (4.2, M-W3), which are the reason `IsMetal()` exists. `Metal` through Veldrid stays selectable
+by token (M-RO2), so a field regression is one environment variable away from an A/B on the same build. The
+headless default stays on Veldrid until gate 4, because an early headless flip would silently reduce the
+incumbent's coverage during exactly the window when both must stay green, which is RO3's ruling for the third
+time.
+
+### Rollout record
+
+Every gate is PENDING. Nothing in section 18 has been implemented, so no gate can have been attempted. This
+subsection exists so the standing of each gate is recorded here as it moves rather than reconstructed from
+issue comments, in the shape phase 2's and phase 3's rollout records established.

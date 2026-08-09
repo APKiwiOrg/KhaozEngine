@@ -76,7 +76,7 @@ adopted after both of its drafts cited stale lines from two different trees.
 | M-F5 | Hazards | **NO barrier tracker, NO layout tracker, NO resting layouts, NO transition table.** Metal tracks hazards automatically for device-allocated resources, so V-F6 and V-F7 do not port, which #531 predicted by name. Stated as a decision so a reader does not go looking for the tracker and conclude it was forgotten |
 | M-F6 | Hazards | Seam rule 1 (compute writes a storage texture, a later graphics pass in the same list samples it) is satisfied by the API: the compute encoder ends when the render encoder begins, and the dependency between them is the driver's. No code |
 | M-F7 | Hazards | Seam rule 2 (a dispatch reading an earlier dispatch's writes) is honoured AS WRITTEN and no seam member is added, but this backend satisfies it natively, because consecutive dispatches in one serial-dispatch compute encoder are ordered and tracked. **That makes three of three engine-owned backends able to answer yes, which is the quorum that makes #461 specifiable.** It is evidence, not a contract change |
-| M-F8 | Lifetimes | NO deferred-disposal retire list. An `MTLCommandBuffer` retains every resource it references until completion, so releasing a resource mid-flight is already safe. V-F9 has no occupant and its absence is a decision |
+| M-F8 | Lifetimes | NO deferred-disposal retire list. An `MTLCommandBuffer` retains every resource it references until completion, so releasing a resource mid-flight is already safe. V-F9 has no occupant and its absence is a decision. **`commandBufferWithUnretainedReferences` is never used**, and that is what the decision rests on, so a future reader reaching for it as an optimisation has to bring a retire list with it |
 | M-F9 | Liveness | The `DeviceLiveness` latch reproduced exactly (X3 and V-F10 precedent), with a full timeline drain BEFORE teardown, which the incumbent already does |
 | M-W1 | Swapchain | `CAMetalLayer` configuration reproduced from the incumbent exactly where it is visible only to a human: pixel format and sRGB pair, `framebufferOnly = true`, `drawableSize`, and the layer attach-or-adopt dance on the host view. W1's lesson applied where it actually binds |
 | M-W2 | Swapchain | `displaySyncEnabled` is set UNCONDITIONALLY. The incumbent applies it only when `MaxFeatureSet` equals one of three values of a deprecated enum, so on any machine outside that set a vsync toggle silently does nothing. Reproducing an equality test on a deprecated enum is reproducing a fragility, and the failure mode is silent |
@@ -121,8 +121,9 @@ adopted after both of its drafts cited stale lines from two different trees.
 
 ## 2. The contested adjudications
 
-Nine things are genuinely contested between the two priors. One correction to the evidence base comes first,
-because it moves three of them.
+Seven things are genuinely contested between the two priors. One correction to the evidence base comes first,
+because it moves three of them, and a closing section pulls out the four places the reuse prior won so a
+reader can see the platform prior being overridden rather than only confirmed.
 
 ### 2.1 The incumbent, established from its own code
 
@@ -520,6 +521,33 @@ pair when a framebuffer is bound and cleared with no draw, and the switch to an 
 has begun. All of that is subtle, a golden depends on the clear-only case, and it is reproduced rather than
 re-derived. What is NOT reproduced is the attachment-0 collapse inside it (M-A2), and separating the two
 halves is the whole content of this ruling.
+
+### 2.10 Claims about Metal this design cannot ground in the incumbent
+
+Everything argued above about how Metal behaves is either read out of the fork's own usage of the API, or it
+is a claim about an API surface the fork never touches. **The second group is where a design like this goes
+wrong**, because a platform-idiomatic prior is exactly the posture that produces confident sentences about
+calls nobody in this repo has ever made. So the second group is enumerated here with the row that checks each
+one, rather than left mixed into the prose.
+
+| Claim | Grounded in | Checked by |
+|---|---|---|
+| Encoders, render pass descriptors, load and store actions, clear folding, encoder-scoped state | The fork's `MTLCommandList` uses all of it | Nothing needed |
+| `StorageModeShared` buffers are CPU-writable through `contents()` with no staging | The fork's `MTLBuffer` and both `UpdateBufferCore` paths | Nothing needed |
+| Automatic hazard tracking across encoders satisfies seam rule 1 | The fork relies on it, and the seam's own comment names it | The compute `[GpuFact]` suite, which already proves rule 1 on this backend |
+| Software subresource layout for staging textures | The fork computes it | M-C5's table test |
+| `supportsTextureSampleCount:` is the only sample-count query | The fork's `GetSampleCountLimit` uses it and nothing else | M-C3's pin plus the parity test |
+| **Serial dispatch type orders consecutive dispatches in one compute encoder** | The fork creates the encoder with `computeCommandEncoder` and never chains dependent dispatches, so this is NOT grounded in its usage | **Row 14 plus the compute `[GpuFact]` suite.** If it is wrong, M-F7 is wrong and rule 2's drain stays needed here, which changes nothing a consumer sees |
+| **`MTLSharedEvent`, `encodeSignalEvent:value:`, `signaledValue`, `waitUntilSignaledValue:timeoutMS:`** | Absent from the fork entirely | **Row 1's interop spike, then row 5.** The fallback is the fork's completion-block shape, which works and which M-F1 replaces for cleanliness rather than for correctness |
+| **The array setters and `setBufferOffset:atIndex:`** | Absent from the fork's bindings entirely | **Row 1's interop spike, then row 13's budget test.** These carry M-R6 and M-R7, which are the whole per-draw cost argument |
+| **`supportsFamily:` and `MTLGPUFamily`** | Absent. The fork uses the deprecated `supportsFeatureSet:` | **Row 1's spike.** Only NEW capability questions use it, and every parity surface reproduces the incumbent's own question |
+| **SPIRV-Cross MSL resource-binding pins** | Absent. The fork takes SPIRV-Cross's default MSL numbering and manages it from the C# side with `ResourceBindingModel` | **Row 1's binding-sufficiency spike (M-S4), then M-T3's index-table test.** This is the design's largest risk and 2.7 argues it at length |
+| **In-process environment mutation reaching Metal's validation layer** | Absent, and there is no phase-3-style layer install to price | **Row 1's spike (M-G3).** If it does not work, the answer is a job-level environment variable in CI and a documented prefix locally |
+| **`maximumDrawableCount`** | Absent. The fork never sets it | **Row 1's spike, then MM4's counters** |
+| **arm64 `objc_msgSend` prototype rules, the absence of `objc_msgSend_stret`, `BOOL` width, `CGFloat` width** | The fork's layer works on arm64 today, so the RULES are grounded, but this design writes a fresh layer against them | **Row 1's interop spike (MM9).** An ABI error is a crash rather than a wrong pixel, which is the one comforting property of this risk |
+
+**Nothing in the work breakdown depends on an unspiked claim.** Row 1 holds every spike, it lands before
+anything reads its answers, and each spike names what happens if it fails rather than assuming it will not.
 
 ---
 
@@ -1114,7 +1142,7 @@ view, `device`, `pixelFormat` from the sRGB request, `framebufferOnly = true`, a
 window's content size.
 
 The Metal golden suite is headless and renders into offscreen textures, so **not one line of the present path
-runs in CI on any leg, ever.** That is MW7, recorded as an observation so nobody reads a green golden leg as
+runs in CI on any leg, ever.** That is MM7, recorded as an observation so nobody reads a green golden leg as
 evidence about presentation.
 
 ### 11.2 What changes (M-W2 to M-W5)

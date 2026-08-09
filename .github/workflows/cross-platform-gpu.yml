@@ -616,12 +616,18 @@ jobs:
           dotnet test -c Release --no-build --filter "$KE_TEST_FILTER" --blame --results-directory TestResults $KE_TEST_EXTRA_ARGS 2>&1 | tee TestResults/suite-output.log
         shell: bash
 
-      # TIER ONE'S EVIDENCE, on always(), and only where a layer was actually armed. A `strict` run that passes
+      # TIER ONE'S EVIDENCE, on always(), and only where a tier was actually ARMED. A `strict` run that passes
       # still logs every warning and performance message the layer emitted, and those are exactly the readings
       # that are never allowed to fail a leg, so a failure-only upload would discard the entire non-fatal half of
       # what the tier produces. Named for the tier rather than the leg so it sits beside the sync job's artifact.
+      #
+      # ARMED, not "the leg has a column", which is the same distinction the layer install now makes and for a
+      # sharper reason here: gated on the column alone this uploaded on the push path too, producing an
+      # artifact called vulkan-validation-strict-vulkan-native whose contents are a golden-subset run taken with
+      # validation OFF. An artifact whose NAME is false is worse than a missing one, because the name is what a
+      # reader trusts when they go looking for a tier's evidence weeks later. It exists only when it is true now.
       - name: Upload validation log (strict tier)
-        if: always() && matrix.vulkanValidation != ''
+        if: always() && env.VULKAN_VALIDATION_ARMED != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: vulkan-validation-strict-${{ matrix.backend }}

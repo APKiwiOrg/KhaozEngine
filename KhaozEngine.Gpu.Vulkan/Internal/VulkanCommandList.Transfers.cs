@@ -73,7 +73,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 {
                     Region(buffer, source, level, layer, destination, level, layer,
                         VulkanStagingLayout.MipDimension(source.Width, level),
-                        VulkanStagingLayout.MipDimension(source.Height, level));
+                        VulkanStagingLayout.MipDimension(source.Height, level), "Copying a texture");
                 }
             }
         }
@@ -109,7 +109,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 "Copying a texture subresource");
 
             Region(buffer, source, srcMipLevel, srcArrayLayer, destination, dstMipLevel, dstArrayLayer,
-                width, height);
+                width, height, "Copying a texture subresource");
         }
 
         /// <inheritdoc/>
@@ -208,9 +208,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         // to get backwards: the row length and image height are the STAGING mip's dimensions in TEXELS and the
         // level and layer in imageSubresource are the IMAGE's, which need not be the same numbers.
         void Region(ulong buffer, VulkanTexture source, uint sourceMip, uint sourceLayer,
-            VulkanTexture destination, uint destinationMip, uint destinationLayer, uint width, uint height)
+            VulkanTexture destination, uint destinationMip, uint destinationLayer, uint width, uint height,
+            string what)
         {
-            IVulkanTransferSink sink = RequireTransfers("Copying a texture");
+            // THE CALLER'S OWN "what", threaded through rather than named again here: this member serves both
+            // copy overloads and a missing-seam refusal that always said "Copying a texture" told a subresource
+            // copy's caller about a member it did not call. PrepareTransfer already carries the right one.
+            IVulkanTransferSink sink = RequireTransfers(what);
 
             switch (VulkanTransferPlan.CaseFor(source.IsStaging, destination.IsStaging))
             {
@@ -264,11 +268,19 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         static void RequireBufferWindow(VulkanBuffer buffer, uint offsetBytes, uint sizeInBytes, string side)
         {
-            if (sizeInBytes != 0 && offsetBytes <= buffer.SizeInBytes
-                && sizeInBytes <= buffer.SizeInBytes - offsetBytes)
+            // ITS OWN REFUSAL, because a zero-size copy is not a window that leaves the buffer and the
+            // out-of-range message describes a mistake the caller did not make. VkBufferCopy::size must be
+            // greater than zero (VUID-VkBufferCopy-size-01988), so there is nothing to narrow this to.
+            if (sizeInBytes == 0)
             {
-                return;
+                throw new ArgumentOutOfRangeException(nameof(sizeInBytes), sizeInBytes,
+                    "A native Vulkan buffer copy was asked for 0 bytes. A VkBufferCopy region's size must be "
+                    + "positive, so there is no such thing as an empty copy at this level: the driver refuses the "
+                    + "region rather than treating it as a no-op. Skip the call at the call site when the length "
+                    + "can legitimately be zero.");
             }
+
+            if (offsetBytes <= buffer.SizeInBytes && sizeInBytes <= buffer.SizeInBytes - offsetBytes) return;
 
             throw new ArgumentOutOfRangeException(nameof(sizeInBytes), sizeInBytes,
                 "A native Vulkan buffer copy names " + sizeInBytes.ToString(CultureInfo.InvariantCulture)

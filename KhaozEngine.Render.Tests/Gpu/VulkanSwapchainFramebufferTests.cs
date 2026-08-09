@@ -16,9 +16,13 @@ namespace KhaozEngine.Tests.Gpu
     /// </summary>
     public sealed class VulkanSwapchainFramebufferTests
     {
+        // PRESENT_SRC_KHR, which is what a swapchain image really rests in (V-F7, #557): the pass begin discards
+        // it into COLOR_ATTACHMENT_OPTIMAL and End restores it, which is where the present transition lives. The
+        // helper used to say ColorAttachmentOptimal, which is the resting layout of a plain offscreen render
+        // target and not of anything this file models.
         static VulkanAttachment Attachment(ulong view) =>
             new(view, view + 1, GpuPixelFormat.B8G8R8A8UNorm, DepthStencil: false,
-                VulkanRestingLayout.ColorAttachmentOptimal);
+                VulkanRestingLayout.PresentSrcKhr);
 
         /// <summary>The identity is taken once, at construction, and the generation counter is what actually moves
         /// so a diagnostic can still tell that the chain was rebuilt.</summary>
@@ -88,6 +92,10 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(1, bound.ColourCount);
             Assert.False(bound.HasDepth);
             Assert.True(bound.IsBound);
+
+            // AND IT SAYS WHICH IT IS, which is the one thing the recording path needs to distinguish: a list
+            // that bound this is the list the frame's semaphore pair rides (#557).
+            Assert.True(source.IsSwapchain);
         }
 
         /// <summary>Disposing what the device handed back releases nothing and the wrapper keeps working, which is

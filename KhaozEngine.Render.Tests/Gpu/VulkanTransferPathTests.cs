@@ -103,6 +103,40 @@ namespace KhaozEngine.Tests.Gpu
             }
         }
 
+        /// <summary>
+        /// AND A ZERO-SIZE COPY IS REFUSED BY ITS OWN NAME rather than through the window message. A
+        /// <c>VkBufferCopy</c> region's size must be positive, so an empty copy is not a no-op at this level and
+        /// not a window that leaves the buffer either. The out-of-range refusal used to answer both, so a caller
+        /// who passed a legitimately empty length was told its region left an allocation it sits comfortably
+        /// inside.
+        /// </summary>
+        [Fact]
+        public void AZeroSizeBufferCopy_IsRefusedByItsOwnName()
+        {
+            var fixture = new VulkanResourceFixture();
+            var owned = new List<IDisposable>();
+
+            try
+            {
+                using VulkanCommandList list = fixture.CreateList();
+                list.Begin();
+
+                IGpuBuffer source = Buffer(fixture, owned, GpuBufferUsage.StructuredBufferReadWrite);
+                IGpuBuffer destination = Buffer(fixture, owned, GpuBufferUsage.Staging);
+
+                ArgumentOutOfRangeException refused = Assert.Throws<ArgumentOutOfRangeException>(
+                    () => list.CopyBuffer(source, 0, destination, 0, 0));
+
+                Assert.Contains("size must be positive", refused.Message, StringComparison.Ordinal);
+                Assert.DoesNotContain("leaves the buffer", refused.Message, StringComparison.Ordinal);
+                Assert.Empty(fixture.TransferSink.BufferCopies);
+            }
+            finally
+            {
+                DisposeAll(owned);
+            }
+        }
+
         // ---- Texture copies ----
 
         /// <summary>
@@ -405,6 +439,119 @@ namespace KhaozEngine.Tests.Gpu
             }
         }
 
+        // ---- The streaming path, end to end ----
+
+        /// <summary>
+        /// THE WHOLE STREAMING PATH THROUGH THE SHIPPED MEMBERS: a copy seeds mip 0, <c>GenerateMipmaps</c> walks
+        /// the chain a level at a time, and a draw samples the WHOLE texture. That composition is asserted
+        /// SYNTHETICALLY in <c>VulkanLayoutTrackerTests</c>, by driving the tracker directly with the ranges the
+        /// path is believed to produce, and this is the same statement made by the members a renderer actually
+        /// calls, which is what proves the believed ranges are the real ones.
+        ///
+        /// <para><b>WHAT IT PINS.</b> The whole-chain sampled bind is ONE
+        /// <c>vkCmdPipelineBarrier2</c> carrying one barrier PER LEVEL, each from that level's own layout
+        /// (<c>TRANSFER_SRC_OPTIMAL</c> up to the last, <c>TRANSFER_DST_OPTIMAL</c> on it), and the pieces then
+        /// COLLAPSE, so the chain is back at rest and <c>End</c> owes it nothing.</para>
+        /// </summary>
+        [Fact]
+        public void SeedThenGenerateThenSample_IsOneBarrierPerLevelThatCollapsesToNothingAtEnd()
+        {
+            var fixture = new VulkanResourceFixture();
+            var owned = new List<IDisposable>();
+
+            try
+            {
+                IGpuTexture seed = fixture.Factory.CreateTexture(
+                    VulkanResourceFixture.Texture(8, 8, GpuTextureUsage.Sampled));
+                owned.Add(seed);
+                IGpuTexture chain = fixture.Factory.CreateTexture(VulkanResourceFixture.Texture(
+                    8, 8, GpuTextureUsage.Sampled | GpuTextureUsage.GenerateMipmaps, mipLevels: 3));
+                owned.Add(chain);
+
+                using VulkanCommandList list = Drawing(fixture, owned);
+
+                list.CopyTextureSubresource(seed, 0, 0, chain, 0, 0, 8, 8);
+                list.GenerateMipmaps(chain);
+
+                IGpuResourceSet material = SampledSet(fixture, owned, chain);
+                AdoptLayout(fixture, list.GraphicsBinds, material);
+                list.SetGraphicsResourceSet(0, material);
+
+                int callsBefore = fixture.Barriers.CallCount;
+                int barriersBefore = fixture.Barriers.BarrierCount;
+                list.Draw(3);
+
+                // ONE CALL, THREE BARRIERS, one per tracked level and each from its own layout.
+                Assert.Equal(callsBefore + 1, fixture.Barriers.CallCount);
+                Assert.Equal(barriersBefore + 3, fixture.Barriers.BarrierCount);
+
+                ImageMemoryBarrier2[] widening = fixture.Barriers.Barriers.Skip(barriersBefore).ToArray();
+                Assert.All(widening, b => Assert.Equal(ImageLayout.ShaderReadOnlyOptimal, b.NewLayout));
+                Assert.Equal(2, widening.Count(b => b.OldLayout == ImageLayout.TransferSrcOptimal));
+                Assert.Single(widening, b => b.OldLayout == ImageLayout.TransferDstOptimal);
+
+                // AND THE PIECES COLLAPSED, so End restores the seed alone and the chain owes nothing: it is
+                // already back in the layout it rests in.
+                int callsAfterDraw = fixture.Barriers.CallCount;
+                list.End();
+
+                Assert.Equal(callsAfterDraw + 1, fixture.Barriers.CallCount);
+                ImageMemoryBarrier2 restored = Assert.Single(
+                    fixture.Barriers.Barriers.Skip(barriersBefore + 3));
+                Assert.Equal(ImageLayout.TransferSrcOptimal, restored.OldLayout);
+                Assert.Equal(ImageLayout.ShaderReadOnlyOptimal, restored.NewLayout);
+            }
+            finally
+            {
+                DisposeAll(owned);
+            }
+        }
+
+        /// <summary>
+        /// AND THE PARTIAL-LAYER VARIANT OF THAT PATH IS THE NAMED REFUSAL, NOT THE COMPOSITION, which is worth
+        /// pinning because it is the case the shipped shape does not produce and the one a reader would guess
+        /// wrong. Seeding ONE array layer and then generating mips over ALL of them asks the tracker to widen a
+        /// per-layer entry to an all-layer range whose target is a TRANSFER layout rather than the resting one,
+        /// so the untouched layers of that range are still at rest and the tracker would have to name a range it
+        /// cannot express without subtracting rectangles.
+        ///
+        /// <para>The whole-chain sampled bind never happens, because <c>GenerateMipmaps</c> throws first. The
+        /// composition above is the shipped shape: <c>Scene3D</c>'s upload seeds every layer it is going to
+        /// generate over.</para>
+        /// </summary>
+        [Fact]
+        public void APartialLayerSeedThenAnAllLayerMipGeneration_IsRefusedByName()
+        {
+            var fixture = new VulkanResourceFixture();
+            var owned = new List<IDisposable>();
+
+            try
+            {
+                IGpuTexture seed = fixture.Factory.CreateTexture(
+                    VulkanResourceFixture.Texture(8, 8, GpuTextureUsage.Sampled));
+                owned.Add(seed);
+                IGpuTexture array = fixture.Factory.CreateTexture(VulkanResourceFixture.Texture(
+                    8, 8, GpuTextureUsage.Sampled | GpuTextureUsage.GenerateMipmaps, mipLevels: 3,
+                    arrayLayers: 2));
+                owned.Add(array);
+
+                using VulkanCommandList list = fixture.CreateList();
+                list.Begin();
+
+                list.CopyTextureSubresource(seed, 0, 0, array, 0, 0, 8, 8);
+
+                InvalidOperationException refused =
+                    Assert.Throws<InvalidOperationException>(() => list.GenerateMipmaps(array));
+
+                Assert.Contains("WIDER than the ranges it has tracked", refused.Message, StringComparison.Ordinal);
+                Assert.Contains("still at rest", refused.Message, StringComparison.Ordinal);
+            }
+            finally
+            {
+                DisposeAll(owned);
+            }
+        }
+
         // ---- The resolve ----
 
         /// <summary>
@@ -515,6 +662,33 @@ namespace KhaozEngine.Tests.Gpu
             IGpuBuffer buffer = fixture.Factory.CreateBuffer(VulkanResourceFixture.Buffer(256, usage));
             owned.Add(buffer);
             return buffer;
+        }
+
+        // A one-element set that SAMPLES a texture, which is the bind the whole-chain widening happens at.
+        static IGpuResourceSet SampledSet(VulkanResourceFixture fixture, List<IDisposable> owned,
+            IGpuTexture texture)
+        {
+            IGpuResourceLayout layout = fixture.Factory.CreateResourceLayout(
+                new GpuResourceLayoutDescription(
+                    new GpuResourceLayoutElement("T", GpuResourceKind.TextureReadOnly,
+                        GpuShaderStages.Fragment)));
+            owned.Add(layout);
+
+            IGpuResourceSet set = fixture.Factory.CreateResourceSet(
+                new GpuResourceSetDescription(layout, texture));
+            owned.Add(set);
+            return set;
+        }
+
+        // THE PIPELINE LAYOUT A FLUSH BINDS UNDER, adopted directly rather than through a whole VkPipeline: a
+        // flush with none is refused by name, so every test that reaches a bind has to supply one.
+        static void AdoptLayout(VulkanResourceFixture fixture, VulkanBindRecords records, IGpuResourceSet set)
+        {
+            VulkanResourceLayout layout = ((VulkanResourceSet)set).Layout;
+            ulong[] handles = [layout.SetLayout];
+
+            records.SetPipelineLayout(
+                fixture.Descriptors.PipelineLayouts.GetOrCreate(handles, layout.DynamicUniformCount), handles);
         }
 
         // A recording with an OPEN render pass instance, which is the state the pass-ending invariant is about.

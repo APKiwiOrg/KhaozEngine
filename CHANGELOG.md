@@ -108,8 +108,11 @@ zero BY CONSTRUCTION rather than as a finding, and a marginal over a number that
 budget frame is now recorded through a real command list whose draw emitter and whose layout tracker's emitter
 both tally into one counts object, so the per-mesh delta, the per-draw delta, the shape of an offsets-only rebind
 and eight instances costing the same trace and the same draw count as one are frozen from here. The barrier-free
-frame stops being the bind half alone: twenty draws in one pass ask the tracker to place every bound image and
-still emit not one `vkCmdPipelineBarrier2`. A vertex bind DOES scale with draw count and is the one class where
+frame stops being the bind half alone: its material set is the shipped `Model` layout, so five meshes carry four
+sampled textures each and twenty draws ask the tracker to place eighty bound images between them, and it still
+emits not one `vkCmdPipelineBarrier2` and opens the pass once. A frame whose sets named no image at all would
+have made that zero true by construction, which is what it was before this row's own review. A vertex bind DOES
+scale with draw count and is the one class where
 widening the budget seam would have looked defensible, so it got its own line and the pin that says so gained a
 clause.
 

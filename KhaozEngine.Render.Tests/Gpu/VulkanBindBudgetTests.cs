@@ -131,6 +131,15 @@ namespace KhaozEngine.Tests.Gpu
         /// draws, the pre-command walk really asks the tracker to put every bound image where its binding needs
         /// it, and the answer is still zero because every one of them is already there.
         /// </para>
+        /// <para>
+        /// AND THE FRAME REALLY BINDS IMAGES, which is the half that made the assertion mean something. Its
+        /// material set is the shipped <c>Model</c> layout, so each of the five meshes carries FOUR sampled
+        /// textures and the twenty draws ask the tracker to place eighty bound images between them. Zero is
+        /// therefore a finding about the resting-layout ruling (a plain sampled texture rests in
+        /// <c>SHADER_READ_ONLY_OPTIMAL</c>, which is where a sampled bind wants it) rather than a statement about
+        /// a frame that bound none. It also pins the pass boundary: a draw that owes no transition does not end
+        /// the render pass instance, so the frame is one begin rather than twenty.
+        /// </para>
         /// </summary>
         [Fact]
         public void AFramesWorthOfBinds_EmitsNoBarrier()
@@ -140,6 +149,26 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(0, counts.BarrierCalls);
             Assert.Equal(0, counts.BarriersEmitted);
             Assert.Equal(20, counts.DrawCalls);
+        }
+
+        /// <summary>
+        /// AND THE FRAME THAT ASSERTION IS TAKEN OVER REALLY BINDS IMAGES, pinned so the swap cannot be undone by
+        /// a later edit that quietly puts a uniform-only set back at slot 1. A budget frame whose sets name no
+        /// image makes the barrier count zero BY CONSTRUCTION, which is what it was before row 15's review.
+        /// </summary>
+        [Fact]
+        public void TheBudgetFrame_BindsSetsThatReallyCarryImages()
+        {
+            using var harness = new VulkanBindHarness();
+
+            VulkanResourceSet material = harness.Set("Model");
+
+            Assert.Equal(4, material.Images.Length);
+            foreach (VulkanBoundImage image in material.Images)
+            {
+                Assert.False(image.Storage);
+                Assert.Equal(ImageLayout.ShaderReadOnlyOptimal, image.Layout);
+            }
         }
 
         /// <summary>
@@ -237,8 +266,9 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// FIVE DISTINCT MESHES AGAINST ONE MOVES THE TOTAL BY AN EXACT PER-MESH DELTA. A mesh is a material set
-        /// bound at slot 1 under a shared frame set at slot 0, which is the shipped model-renderer shape, and each
-        /// distinct mesh costs ONE extra bind carrying ONE set: the frame set stays clean across the whole pass.
+        /// bound at slot 1 under the per-draw vertex block at slot 0, which is the shipped skinned model-renderer
+        /// shape, and each distinct mesh costs ONE extra bind carrying ONE set: at one draw per mesh the slot 0
+        /// offset does not move, so that slot stays clean across the whole pass.
         /// <para>
         /// FROZEN AS A MARGINAL. The absolute totals below are documentation.
         /// </para>
@@ -305,8 +335,9 @@ namespace KhaozEngine.Tests.Gpu
         {
             VulkanCmdCallCounts counts = DrawFrame(meshes: 5, drawsPerMesh: 4);
 
-            // The frame's sets: one frame-uniform set (1 dynamic descriptor) plus one per-mesh windowed set (1
-            // each). Every bind therefore carries exactly one offset per set it names.
+            // The frame's sets: one windowed vertex-block set at slot 0 and one per-mesh Model set at slot 1, and
+            // each declares exactly one uniform buffer, which under V-D4 is one dynamic descriptor whether or not
+            // the engine flagged it dynamic. Every bind therefore carries exactly one offset per set it names.
             Assert.Equal(counts.DescriptorSetsBound, counts.DynamicOffsetsPassed);
         }
 
@@ -338,18 +369,24 @@ namespace KhaozEngine.Tests.Gpu
 
         // ---- Fixtures ----
 
-        // ONE FRAME OF THE SHIPPED MODEL-RENDERER SHAPE, THROUGH THE SHIPPED MEMBERS: a frame-uniform set pinned
-        // at slot 0, a per-mesh material set at slot 1, and every draw past a mesh's first being an offsets-only
-        // rebind of that second set. Recorded into a REAL VulkanCommandList whose draw emitter and whose layout
+        // ONE FRAME OF THE SHIPPED MODEL-RENDERER SHAPE, THROUGH THE SHIPPED MEMBERS: the skinned pipeline's two
+        // layouts in their shipped slot order, a per-draw dynamic vertex block at slot 0 and a per-mesh MATERIAL
+        // set at slot 1, so every draw past a mesh's first is an offsets-only rebind of slot 0 and every new mesh
+        // is a rebind of slot 1. Recorded into a REAL VulkanCommandList whose draw emitter and whose layout
         // tracker's emitter both tally into one VulkanCmdCallCounts, which is what makes the marginals below total
         // over the draw path rather than over the bind path alone (MV4).
+        //
+        // THE MATERIAL SET IS A TEXTURE-CARRYING SHIPPED LAYOUT AND THAT IS LOAD-BEARING. It used to be a second
+        // windowed uniform set, so the frame bound no image at all, the per-draw transition walk had nothing to
+        // walk, and AFramesWorthOfBinds_EmitsNoBarrier passed BY CONSTRUCTION rather than as a finding. "Model"
+        // carries four sampled textures, so the walk really asks the tracker to place four images per draw.
         static VulkanCmdCallCounts DrawFrame(int meshes, int drawsPerMesh)
         {
             using var harness = new VulkanBindHarness();
 
-            VulkanResourceSet frame = harness.Set("Beam");
+            VulkanResourceSet frame = harness.WindowedSet(slotBytes: 256, slots: 8);
             var materials = new VulkanResourceSet[meshes];
-            for (int i = 0; i < meshes; i++) materials[i] = harness.WindowedSet(slotBytes: 256, slots: 8);
+            for (int i = 0; i < meshes; i++) materials[i] = harness.Set("Model");
 
             VulkanBoundPipeline pipeline = harness.PipelineFor(frame, materials[0]);
 
@@ -359,13 +396,14 @@ namespace KhaozEngine.Tests.Gpu
             list.Begin();
             list.SetFramebuffer(harness.Target());
             list.GraphicsBinds.SetPipelineLayout(pipeline.Layout, pipeline.SetLayouts);
-            list.SetGraphicsResourceSet(0, frame);
 
             for (int mesh = 0; mesh < meshes; mesh++)
             {
+                list.SetGraphicsResourceSet(1, materials[mesh]);
+
                 for (int draw = 0; draw < drawsPerMesh; draw++)
                 {
-                    list.SetGraphicsResourceSet(1, materials[mesh], (uint)draw * 256);
+                    list.SetGraphicsResourceSet(0, frame, (uint)draw * 256);
                     list.Draw(3);
                 }
             }

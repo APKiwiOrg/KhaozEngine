@@ -53,7 +53,7 @@ this doc cannot silently drift apart.
 
 | Area | Seam (dependency-free) | Backend(s) | Third-party library |
 |---|---|---|---|
-| GPU / rendering | `KhaozEngine.Gpu` (`GpuDeviceContext` + `GpuInterfaces`, `GpuBackendSelector`, and `GpuBackendProviders` / `IGpuBackendProvider` for a backend that ships outside this package) | (in-package) `Internal/VeldridGpuDevice`, plus `KhaozEngine.Gpu.D3D11` (the engine-owned native Direct3D 11 backend, opt-in and in no umbrella, registered by `KhaozEngineD3D11.Register()`) and any other registered out-of-package provider | Veldrid (+ Veldrid.SPIRV, Vortice.Direct3D11) in the seam. Vortice.Direct3D11 + Vortice.D3DCompiler in the native backend, which declares no Veldrid package of its own |
+| GPU / rendering | `KhaozEngine.Gpu` (`GpuDeviceContext` + `GpuInterfaces`, `GpuBackendSelector`, and `GpuBackendProviders` / `IGpuBackendProvider` for a backend that ships outside this package) | (in-package) `Internal/VeldridGpuDevice`, which is Metal and both Veldrid legs, plus TWO engine-owned native backends that ship outside it, each opt-in and in no umbrella: `KhaozEngine.Gpu.D3D11` (`KhaozEngineD3D11.Register()`) and `KhaozEngine.Gpu.Vulkan` (`KhaozEngineVulkan.Register()`), and any other registered out-of-package provider | Veldrid (+ Veldrid.SPIRV, Vortice.Direct3D11) in the seam. Vortice.Direct3D11 + Vortice.D3DCompiler in the D3D11 backend and Silk.NET.Vulkan (+ its KHR and EXT extension packages) in the Vulkan one, neither of which declares a Veldrid package of its own |
 | 3D physics | `KhaozEngine.Physics` (`IPhysicsWorld`, value-type shapes/poses/queries, and since the floating-origin release also the default-method `Origin` / `CanRebase` / `Rebase(newOrigin)`, so an existing implementer keeps compiling and correctly reports that it cannot rebase - the seam learns a plain `Vector3`, never a frame type, and keeps its zero project references) | `KhaozEngine.Physics.Bepu` (`BepuPhysicsWorld`, which overrides all three: bulk direct pose writes plus broadphase refits over every allocated body set and the statics, so sleeping bodies, contacts and constraints all survive a shift) | BepuPhysics v2 |
 | Netcode transport | `KhaozEngine.Netcode` (`INetTransport` incl. the default-method `Stats` -> `NetTransportStats`, `LoopbackTransport`) + `Netcode.Abstractions` | `KhaozEngine.Netcode.LiteNetLib` (fills `Stats` via `EnableStatistics`) | LiteNetLib |
 | Persistence | `KhaozEngine.WorldStore` (`IWorldStore`, `InMemoryWorldStore`) | `WorldStore.Sqlite`, `WorldStore.SqlServer` | Microsoft.Data.Sqlite / SqlClient |
@@ -496,6 +496,17 @@ header carries these numbers change on every frame. The two NATIVE backends fill
 and `AcquireWaitMs` pair and `GpuTelemetryChannels` gained the matching `gpuAcquireWaits` and `gpuAcquireWaitMs`
 columns.
 
+**Two members mean subtly different things on the two native backends, and the seam scopes both rather than
+pretending otherwise.** `BackpressureStallCount` folds a second wait onto one accumulator on Vulkan, the command
+list meeting its own oldest buffer slot, because one lever sizes both that and the ring segments there.
+`DrainCount` is the one that can mislead a reader COMPARING the two: a backend that can determine caught-up
+without flushing does not count that call, and the native Vulkan drain can, while the native Direct3D 11 drain
+must signal a fresh point and flush because its immediate context holds work no fence value describes
+([#545](https://github.com/APKiwiOrg/KhaozEngine/issues/545)). Both are locally correct, so the same consumer
+call pattern reads higher on Direct3D 11 for a reason that is not a stall, and `DrainMs` is the figure that
+compares across backends. A seam member whose meaning is backend-shaped has to say so where it is defined, or
+the first cross-backend reading is the place it gets discovered.
+
 ### The stored backend preference deliberately adds NO edge (17.23.0)
 
 Letting a player pick the backend in game is naturally read as "`Gpu` needs to load a setting", which would mean
@@ -615,14 +626,18 @@ MV4, whose draw-call marginals read zero by construction until something emitted
 the six copy, blit and resolve calls and is deliberately NOT on the budget seam, because none of them scales with
 draw count. **A vertex bind is the one class where widening the budget seam would have looked defensible**, since
 it genuinely does scale with draw count, and it got its own line instead so the frozen marginals still mean what
-they meant. **And the seam's compute rule 1 and rule 2 comment is now false about this backend in a second way**:
-rule 1 is satisfied here by a real image barrier at the sampled bind rather than a queued layout restore, and a
-dependent-dispatch chain inside one list IS ordered here, though rule 2's portable requirement is unchanged and a
-consumer that drops the drain still breaks on Metal. Rewording that comment to name the implementation it
-describes remains the CI and rollout row's owned doc task
+they meant. **And the seam's compute rule 1 and rule 2 comment named a mechanism where it meant a rule**, which
+is the failure mode a second implementation of one API creates: rule 1 is satisfied here by a real image barrier
+at the sampled bind rather than by the queued layout restore that comment described, and a dependent-dispatch
+chain inside one list IS ordered here. Both sentences were true of Veldrid's Vulkan backend and false of this
+one. The comment now names the implementation each mechanism belongs to, and says outright that the mechanism is
+the part that differs between two backends one environment variable apart, while rule 2's portable requirement is
+unchanged and a consumer that drops the drain still breaks on Metal
 ([#529](https://github.com/APKiwiOrg/KhaozEngine/issues/529)). It registers under `GpuBackendKind.VulkanNative`, which landed in
 `17.32.0`, so the backend is selectable by name (`KE_GRAPHICS_BACKEND=vulkan-native`) and a machine that cannot
-run it arrives through the reported fallback. Nothing selects it by default.
+run it arrives through the reported fallback. Nothing selects it by default, and the `vulkan-native` CI leg
+verifies the incumbent's committed goldens on lavapipe as a guest in that family, which is the continuous
+exercise the rollout is measured against.
 
 ```
 KhaozEngine.Gpu.Vulkan -> KhaozEngine.Gpu      (the only direction, again)

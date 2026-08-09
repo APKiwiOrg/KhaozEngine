@@ -8651,6 +8651,13 @@ rollout rather than a side effect of the member existing. `GpuBackendKind.Vulkan
 is the working Vulkan backend and stays selectable indefinitely. Calling `Register()` today costs one dictionary
 entry and changes nothing about how your game boots.
 
+**The `vulkan-native` CI leg exists now and is blocking**, verifying the shared `vulkan` goldens on lavapipe with
+`KE_VULKAN_DEVICE=llvmpipe` pinned, and its scheduled full suite runs under `KE_VULKAN_VALIDATION=strict` with a
+second job running the golden and compute subset under `sync`. What that leg CANNOT see is the whole of the
+presentation path: a headless Vulkan device enables no surface extension at all, which is what lets the golden
+suite run on a machine with no display server, so every resize, present-mode change and fullscreen toggle is
+validated by a human at a window or not at all. A green Vulkan leg is not evidence about presentation.
+
 Call it unconditionally anyway, and on every OS. Unlike `KhaozEngine.Gpu.D3D11` there is no platform guard to
 read first and none to add: Vulkan is not a Windows API, the same managed code runs everywhere, the loader is
 resolved at runtime, and a machine without one is answered by the probe rather than by a platform predicate. The
@@ -8666,8 +8673,9 @@ Vulkan loader, that is the answer you get and it is the correct one.
 
 ### Diagnostics and levers on the native Vulkan backend (17.32.0)
 
-Three environment variables, all read at device creation and all following the same shape as the `KE_D3D11_*`
-levers above: a request that cannot be honoured WARNs and carries on, and never stops the app starting.
+Five environment variables are read at device creation, all following the same shape as the `KE_D3D11_*` levers
+above: a request that cannot be honoured WARNs and carries on, and never stops the app starting. A sixth,
+`KE_VULKAN_REQUIRED`, is a CI lever rather than a device one and is at the end.
 
 **`KE_VULKAN_DEVICE` pins which physical device the backend runs on.** Six forms, all case-insensitive and
 whitespace-trimmed:
@@ -8716,6 +8724,24 @@ throw happens at a controlled point after the error is latched and logged, never
 saw it, because unwinding a managed exception through native driver frames destroys the stack the diagnostic was
 about. RenderDoc attaches externally and needs nothing from the engine.
 
+**The layer has to be INSTALLED, which is the part that trips people up.** `VK_EXT_debug_utils`, which the
+messenger rides, is an instance extension and needs nothing. `VK_LAYER_KHRONOS_validation` is a layer, and no
+environment variable can conjure one that is not on the machine. On Debian and Ubuntu it is
+`vulkan-validationlayers`, and elsewhere it comes with the Vulkan SDK. Without it you get a WARN naming the fix
+and a device created without validation, which is the right behaviour on a developer box and a silently vacuous
+gate anywhere that was relying on it.
+
+**Both tiers are CI gates in the engine's own matrix**, which is what they were built for. The scheduled full
+suite on the `vulkan-native` leg runs under `strict`, so an error-severity message fails the leg. A separate job
+runs the golden subset plus the compute suite under `sync`, on the schedule and on a manual dispatch. The split
+is costed rather than arbitrary: synchronisation validation tracks every access, and it earns its runtime on the
+subset where the barrier machinery actually lives. **`sync` is the only instrument that sees the characteristic
+failure of a hand-written Vulkan backend**, a missing barrier or a wrong image layout, because a software
+rasterizer executes with far stronger implicit ordering than a real GPU. That class of defect passes every
+golden in CI and corrupts on real hardware, and core validation does not catch it either. Reach for `sync`
+yourself when a render looks right in CI and wrong on a real GPU. See `docs/CROSS-PLATFORM.md` for the leg
+layout.
+
 **`KE_VULKAN_FRAMES_IN_FLIGHT=<n>` sets how far ahead of the GPU the CPU may run** (2 to 16, default 3, an
 unparseable or out-of-range value warns and keeps 3). One number sizes two things at once on this backend: how
 many `VkCommandPool`s each command list cuts, so how many records it can have in flight before a `Begin` has to
@@ -8750,6 +8776,39 @@ whose header names another device and a disk that cannot be written all fall bac
 propagate. The blob's header is validated before the driver is ever handed it, so a corrupt file is discarded
 here rather than parsed there.
 
+**`KE_VULKAN_ACQUIRE` picks how the present boundary gets the next swapchain image**, and it exists to settle a
+measurement rather than to hedge a risk. Two values, unset meaning the first:
+
+```
+KE_VULKAN_ACQUIRE=semaphore   # the default and the shipped path, and settable explicitly so a capture can pin it
+KE_VULKAN_ACQUIRE=stall       # the incumbent's shape, restored exactly, for the frame-pacing A/B
+```
+
+The default acquires with a binary semaphore that the frame's submit waits on, so the GPU does the waiting and
+the CPU does not block. `stall` acquires with a fence and blocks the CPU on it, which is what the Veldrid Vulkan
+backend does. The index comes back synchronously in both, so only the synchronisation moves, not the timing of
+the acquire itself.
+
+Two things to know before using it. **It is not usable with `KE_VULKAN_VALIDATION`**, and that is a documented
+limitation rather than a bug: `stall` deliberately presents with no wait semaphore, which is a spec violation the
+layer flags, so a run with both on reports the thing the mode was asked to reproduce and buries anything else the
+layer found. Setting both WARNs and says which of the two is about to be useless. And **read the result off
+`AcquireWaitCount` and `AcquireWaitMs`, not off mean frame time**: on a machine pinned at its refresh rate the
+two positions produce the same mean by construction, so the A/B capture is taken with the frame cap and vsync
+both off, and the discriminating number is near-zero acquire-wait milliseconds on the semaphore side against a
+substantial fraction of the frame interval on the stall side. An unrecognised value warns and leaves the default,
+deliberately: a typo that silently kept the default would produce a capture that reads as evidence about the
+stall path and was taken on the other one. **This variable is removed at rollout gate 4** with the losing path
+deleted, whichever way the measurement goes, so do not build anything on it.
+
+**`KE_VULKAN_REQUIRED=1` is a CI lever, not a device one**, and it is here because it changes what a green test
+run means. Tests that need a real native Vulkan device ask the backend's own functional probe and go DORMANT when
+it refuses the machine, which is correct on a developer box with no loader and on every CI leg but the one built
+to have a device. A dormant row is not a skip: it reports green having asserted nothing, so a zero-skipped gate
+cannot see it. With the variable set, the same question THROWS instead and the message names what the probe
+objected to. Set it on a machine or a leg that must have a native Vulkan device and leave it unset everywhere
+else.
+
 **A device loss reports why, at the site that noticed.** Every `VkResult` this backend reads is checked in every
 configuration including Release, and on `VK_ERROR_DEVICE_LOST` the call's name and the result are latched
 immediately, the device's liveness token flips so every later resource release is a no-op instead of a call
@@ -8782,8 +8841,18 @@ The fallback driver behind `KE_D3D11_RECORD=immediate` makes its native calls as
 `Begin` clears the device state at record time, the observable order is **record** order, and a second
 concurrent recording wipes the state the first one already emitted. Concurrent recording is not tolerated there
 either. So the permissive shape is a property of one driver rather than of that backend. Neither shape is a
-promise of `IGpuCommandList`, code written against either does not port to the other three backends, and the
+promise of `IGpuCommandList`, code written against either does not port to the other backends, and the
 engine's own invariant test still asserts no nested open list in the capture paths.
+
+**The engine's own native Vulkan backend is permissive too, and the reason it holds is worth knowing**, because
+it is a design property rather than a second happy accident. N lists there record concurrently and genuinely.
+Each list owns its own `VkCommandPool`s, which is the externally-synchronised object Vulkan's threading model
+asks a caller to keep per thread, and image-layout tracking is list-local against a canonical resting layout, so
+nothing shared is read or written during recording at all. That is the same property the Direct3D 11 command
+stream buys by touching no device state, obtained from the API's own threading model plus the barrier design
+instead of from an engine-owned buffer. It is still not a promise of the interface: the same code on Metal, on
+either Veldrid backend or on the immediate Direct3D 11 driver is a half-recorded or corrupted frame, and a
+machine that falls back after a failed device creation swaps the backend under your code without telling it.
 
 `End()` seals the list. Submitting one that was never ended is a half-recorded frame, and a backend is free to
 refuse it rather than replay it.

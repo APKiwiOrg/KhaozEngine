@@ -17,9 +17,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <para>
     /// IT CHANGES WHAT A SHIPPED MEMBER DOCUMENTS, which is why the fold is written down rather than assumed.
     /// <c>BackpressureStallCount</c> was authored on the Direct3D 11 backend, where it means a constant-buffer ring
-    /// segment stall and nothing else. Here it also means a command-buffer slot wait. Row 19
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/529) owns widening that member's own doc comment, so the
-    /// seam says so in its own words rather than being widened in silence (section 14).
+    /// segment stall and nothing else. Here it also means a command-buffer slot wait, and that member's own doc
+    /// comment carries the second meaning as of row 19
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/529), so the seam says it in its own words rather than
+    /// being widened in silence (section 14).
     /// </para>
     /// <para>
     /// A WAIT THAT DID NOT BLOCK IS NOT A STALL, and the caller is what enforces that: this type is a pure

@@ -15,8 +15,8 @@ namespace KhaozEngine.Tests.Gpu
     /// DEVICE-FREE, over the refcount's injected factory, which is what makes the assertion possible at all.
     /// Creating a real <c>VkInstance</c> needs a loader, an ICD and a driver, and the machines this suite runs on
     /// outside the Linux leg have none. The policy is a separate type from the native calls precisely so the
-    /// lifecycle can be driven from nothing, and the real creation path is exercised on the Vulkan CI leg that row
-    /// 19 (https://github.com/APKiwiOrg/KhaozEngine/issues/529) brings up.
+    /// lifecycle can be driven from nothing, and the real creation path is exercised on the <c>vulkan-native</c>
+    /// CI leg (https://github.com/APKiwiOrg/KhaozEngine/issues/529).
     /// </para>
     /// </summary>
     public sealed class VulkanInstanceLifecycleTests

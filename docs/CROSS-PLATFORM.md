@@ -13,8 +13,12 @@ backend; the GPU golden-snapshot net verifies rendering on each one through a CI
 
 Backend selection is centralized in `KhaozEngine.Gpu.GpuBackendSelector`:
 
-- `Select()` reads the `KE_GRAPHICS_BACKEND` env override (`metal` / `vulkan` / `d3d11` / `gl`,
-  case-insensitive), otherwise probes the OS (macOS → Metal, Windows → Direct3D11, Linux/other → Vulkan).
+- `Select()` reads the `KE_GRAPHICS_BACKEND` env override (`metal` / `vulkan` / `vulkan-native` / `d3d11` /
+  `d3d11-native` / `gl`, case-insensitive, with `vk-native`, `direct3d11` and `direct3d11-native` as aliases),
+  otherwise probes the OS (macOS → Metal, Windows → Direct3D11, Linux/other → Vulkan). **The OS probe still
+  names the two Veldrid backends**: neither native backend is a default anywhere, and on Linux the flip to
+  `VulkanNative` is the last step of that backend's rollout rather than a consequence of the token existing
+  ([#529](https://github.com/APKiwiOrg/KhaozEngine/issues/529)).
 - `Resolve()` (17.21.0) answers the same question but also reports WHERE the answer came from, as a
   `GpuBackendSelection` carrying `Source` (`OsProbe` / `EnvironmentOverride` / `UnrecognizedOverride` /
   `UserPreference` / `FallbackAfterFailure`) and the raw override value. `GpuDeviceContext` logs it once per device, and WARNs on an unrecognized override naming
@@ -83,9 +87,10 @@ Per-backend goldens absorb that while still catching real shader / UBO / blend /
 regressions (coarse 32×18 grid, per-channel tolerance).
 
 The token is a mapping rather than the enum name, because two IMPLEMENTATIONS of one API share a family.
-`GpuBackendKind.Direct3D11Native` resolves to `direct3d11`, so the native backend is held to the incumbent's
-already-committed references, unmodified, on the same WARP rasterizer at the same tolerance. That sharing is the
-strongest free proof the native port has, so it is guarded in the other direction too: `KE_UPDATE_GOLDENS`
+`GpuBackendKind.Direct3D11Native` resolves to `direct3d11` and `GpuBackendKind.VulkanNative` resolves to
+`vulkan`, so each native backend is held to the incumbent's already-committed references, unmodified, on the
+same software rasterizer at the same tolerance. That sharing is the
+strongest free proof a native port has, so it is guarded in the other direction too: `KE_UPDATE_GOLDENS`
 REFUSES to write when the running backend does not OWN its family, unless `KE_GOLDEN_FAMILY_OVERRIDE=1` says the
 shared family is being moved on purpose. Without that guard a bake on the native leg would overwrite both the
 reference it is being checked against and the incumbent's, and the file it wrote would be exactly the file it
@@ -144,6 +149,37 @@ The suite each leg runs is split by trigger, from measured hosted-runner cost
   delayed-corruption symptoms (a CoreCLR fatal, deliberately not chased), so the weekly full suite runs
   serialized, measured ~22 min in the validation container versus minutes parallel. Golden-only runs
   keep their months-green parallel configuration.
+- **GitHub-hosted Vulkan native leg (1x)**: the engine's own `KhaozEngine.Gpu.Vulkan` backend
+  (`KE_GRAPHICS_BACKEND=vulkan-native`) on exactly the incumbent Vulkan leg's tier, golden tests only on
+  `push`/`pull_request` and the WHOLE suite on the weekly `schedule` and on `workflow_dispatch`, serialized
+  the same way and for the same reason. It is a GUEST in the incumbent's golden family, verifying the
+  committed `.vulkan.txt` grids on the same lavapipe rasterizer and never baking them, so `KE_UPDATE_GOLDENS`
+  stays empty on it for every trigger and it sits out bake dispatches entirely. Two things are its own. It
+  sets **`KE_VULKAN_REQUIRED=1`**, because the rows that need a real native device go DORMANT when the
+  backend's functional probe refuses the machine, and a dormant row is not a skip, so on the one leg built to
+  run them a loader regression would empty them into passes that assert nothing and the zero-skipped gate
+  could not see it. With the variable set, that refusal throws and names what the probe objected to. And its
+  full suite runs under **`KE_VULKAN_VALIDATION=strict`**, the first tier of the validation gate.
+- **Vulkan sync-validation job (1x, `gpu-vulkan-sync`)**: the second tier. Core validation PLUS
+  synchronisation validation over the golden subset and the compute suite
+  (`FullyQualifiedName~Golden|FullyQualifiedName~Compute`) on the native backend, on the `schedule` and on a
+  non-bake `workflow_dispatch`. It is a separate job rather than a matrix leg because it runs a different
+  suite for a different reason: synchronisation validation tracks every access and is slow, so it buys the
+  subset where the barrier machinery lives instead of the serialized full suite. **It is the only instrument
+  in this net that can see a missing barrier or a wrong image layout.** A software rasterizer executes with
+  far stronger implicit ordering than a real GPU, so that class of defect passes every golden here and
+  corrupts on the field GPU, on the one machine that is not in CI, and core validation does not catch it
+  either.
+
+**The validation layer is an install, not a knob**, which is why the tiers arrived with a workflow step
+rather than a variable. Before them, `VK_LAYER`, `VK_INSTANCE_LAYERS` and `vulkan-validationlayers` had zero
+hits across every workflow, script and source file in this repo, and the Vulkan legs' own layer enumeration
+listed three Mesa and Intel layers with no Khronos validation among them. `VK_EXT_debug_utils` is an instance
+extension, so the messenger the engine pumps messages through needs no install, but the LAYER cannot be
+turned on with an environment variable. The install is scoped to the legs that use it, so a package rename on
+a future runner image cannot redden the incumbent leg, and the layer manifest is then CHECKED: a missing
+layer only WARNs and creates the device anyway, which would leave a validation gate passing while validating
+nothing.
 
 Historically the test step filtered every leg to `FullyQualifiedName~Golden`, so any `[GpuFact]` class
 without "Golden" in its name never ran on ANY backend (`Scene3DTextureUnloadTests`, `WaterQueueTests`,
@@ -181,10 +217,10 @@ not a CI filter contract):
 
 | trigger                          | behaviour                                                                     |
 | -------------------------------- | ----------------------------------------------------------------------------- |
-| `push` / `pull_request` on main  | **verify**: Metal runs the full suite. Both D3D11 legs and Vulkan run the golden tests only |
-| `schedule` (weekly, Sun 18:00 UTC) | **full sweep**: Metal + both D3D11 legs + Vulkan all run the full suite (Vulkan serialized) |
-| `workflow_dispatch` `bake=false` | same as `schedule` (all four legs full suite, Vulkan serialized)              |
-| `workflow_dispatch` `bake=true`  | **re-bake** (`KE_UPDATE_GOLDENS=1`) on Metal, D3D11 and Vulkan, uploaded as per-backend goldens. The native leg skips its test step: it owns no family to bake, and verifying against references being replaced mid-run would only red it |
+| `push` / `pull_request` on main  | **verify**: Metal runs the full suite. Both D3D11 legs and both Vulkan legs run the golden tests only. No validation tier runs |
+| `schedule` (weekly, Sun 18:00 UTC) | **full sweep**: Metal + both D3D11 legs + both Vulkan legs all run the full suite (both Vulkan legs serialized, the native one under `strict` validation), plus the `sync` validation job |
+| `workflow_dispatch` `bake=false` | same as `schedule` (all five legs full suite, both Vulkan legs serialized, plus the `sync` job) |
+| `workflow_dispatch` `bake=true`  | **re-bake** (`KE_UPDATE_GOLDENS=1`) on Metal, D3D11 and Vulkan, uploaded as per-backend goldens. Both guest legs skip their test step and the `sync` job does not run at all: a guest owns no family to bake, and verifying against references being replaced mid-run would only red it |
 
 Software rasterizers on the runners (no real GPU):
 
@@ -192,19 +228,31 @@ Software rasterizers on the runners (no real GPU):
   Ubuntu runner images (it is now `lvp_icd.json`, was `lvp_icd.x86_64.json`), so the workflow **discovers it at
   runtime** and points `VK_ICD_FILENAMES` + `VK_DRIVER_FILES` at it rather than hardcoding. Veldrid 4.9.0's Vulkan
   binding P/Invokes the bare names `libdl` / `libvulkan`, which modern Ubuntu only ships versioned, so the workflow
-  also symlinks `libdl.so` → `libdl.so.2` and `libvulkan.so` → `libvulkan.so.1`.
+  also symlinks `libdl.so` → `libdl.so.2` and `libvulkan.so` → `libvulkan.so.1`. That symlink step is the
+  INCUMBENT's, and it stays until the Veldrid Vulkan leg retires
+  ([#540](https://github.com/APKiwiOrg/KhaozEngine/issues/540)): Silk.NET resolves through its own native-context
+  search, so the native leg never needed it, which makes the step look dead the moment that leg is green.
+  Both Linux legs additionally pin `KE_VULKAN_DEVICE=llvmpipe`, the device-level belt to the loader-level brace,
+  and the incumbent leg needs it because it creates native devices too, through the capability-parity test. The
+  variable has exactly one reader, the native backend's physical-device selection, so no Veldrid device sees it.
 - Windows D3D11 → **WARP** software adapter (automatic fallback when no hardware adapter is present) for the
   incumbent's Veldrid device. Verified. Neither Windows leg rides that fallback for the NATIVE devices it
   creates: both pin `KE_D3D11_ADAPTER=warp`, so the rasterizer under the shared goldens is stated rather than
   inherited from the runner image.
 
-Net result: **all four legs are blocking, none of them informational** - Metal (macOS), Direct3D11
-(Windows/WARP), Direct3D11 native (Windows/WARP), and Vulkan (Linux/lavapipe). Three of them are long
-validated. The native leg blocks by design rather than by record: it is the native backend's continuous
-exercise, so it gates from its first run, and its first recorded evidence is rollout gate 1 on
-[#460](https://github.com/APKiwiOrg/KhaozEngine/issues/460). The overall workflow is green only when all four
-verify, with the one exception in the table above: on a `bake=true` dispatch the native leg skips its test step,
-so that run is green on the three baking legs alone.
+Net result: **all five legs are blocking, none of them informational** - Metal (macOS), Direct3D11
+(Windows/WARP), Direct3D11 native (Windows/WARP), Vulkan (Linux/lavapipe) and Vulkan native
+(Linux/lavapipe). Three of them are long validated. The two guest legs block by design rather than by record:
+a native backend's CI leg is its continuous exercise, so it gates from its first run, and their first recorded
+evidence is rollout gate 1 on [#460](https://github.com/APKiwiOrg/KhaozEngine/issues/460) and
+[#529](https://github.com/APKiwiOrg/KhaozEngine/issues/529). The overall workflow is green only when all five
+verify, with the one exception in the table above: on a `bake=true` dispatch both guest legs skip their test
+step, so that run is green on the three baking legs alone.
+
+**The incumbent Vulkan leg is deliberately not coupled to the native backend's health.** It installs no
+validation layer, sets no `KE_VULKAN_REQUIRED`, and the rows on it that touch a native device stay dormant if
+the probe ever refuses the runner. That leg is the escape hatch the rollout keeps selectable indefinitely, and
+an escape hatch that goes red whenever the thing it escapes from goes red is not one.
 
 ### Per-backend golden flow
 
@@ -241,7 +289,23 @@ broken. The two `<backend>` slots are not the same token, which matters when you
 numbers: the ARTIFACT is named for the leg (`golden-deltas-direct3d11-native`) and the FILE inside it is named
 for the golden family the leg verified (`golden-deltas.direct3d11.txt`). So the guest leg's deltas arrive under
 its own artifact carrying the shared family's filename, and downloading both Windows artifacts gives you two
-same-named files that are two implementations measured against one set of references.
+same-named files that are two implementations measured against one set of references. The Linux pair works the
+same way: `golden-deltas-vulkan-native` contains `golden-deltas.vulkan.txt`.
+
+Three artifacts carry no pixels at all and upload on `always()`, because each of them is read off a run that
+PASSED:
+
+- **`vulkan-validation-strict-vulkan-native`** and **`vulkan-validation-sync`** are the two validation tiers'
+  test output, teed to a file as the suite runs. Warning and performance severities never fail a run, so a
+  failure-only upload would discard the entire non-fatal half of what the layer produces, and a hazard the
+  layer reports as a warning is still the thing the tier was installed to find. The interleaving with test
+  names is the diagnostic: a validation message is only actionable next to the test that provoked it.
+- **`vulkan-device-limits-<leg>`** is the `vulkaninfo` dump, which runs without `--summary` on purpose so the
+  whole `VkPhysicalDeviceLimits` block lands rather than the driver and API version alone. No Vulkan device
+  limit had ever been observable anywhere in this repo before that, so the native backend's descriptor model
+  and allocator rest on spec minimums until the observed lavapipe values are recorded
+  ([#541](https://github.com/APKiwiOrg/KhaozEngine/issues/541)). The artifact exists because those numbers have
+  to be quotable verbatim into a design doc, and a job log is thousands of lines long and expires sooner.
 
 The fast inner-loop CI (`.github/workflows/ci.yml`: build/test/pack/publish, GPU tests skipped) is separate and
 untouched.

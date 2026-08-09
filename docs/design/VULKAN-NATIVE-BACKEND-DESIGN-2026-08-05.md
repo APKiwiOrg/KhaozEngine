@@ -2015,7 +2015,7 @@ implementation row.
 | MV7 | The single-instance model (V-N1) does not make the residual lavapipe parallel instability worse, and may improve it | Four consecutive green weekly full-suite runs on the native leg with serialisation ON, then ONE dispatch with `KE_TEST_EXTRA_ARGS` empty | Serialisation stays on by default, so this bet costs nothing if it loses | The unserialised dispatch is green twice, after which serialisation is removed from the NATIVE leg only. The incumbent leg keeps it, because this bet says nothing about the incumbent. Failing changes nothing | Open past gate 5, deliberately. An OBSERVATION FLAG by 2.7's sort, keeping no second path alive and gating no rollout gate, and its cost is one dispatch |
 | MV8 | The `pipelineCacheUUID` key plus header validation is enough that a stale or corrupt `VkPipelineCache` file can never crash a launch (V-S7) | Startup time with a cold and a warm cache, plus a deliberate corruption test that truncates and mutates the file and asserts a clean discard | The cache path is best-effort by construction: any read or write failure is a silent discard, which IS the fallback | Corruption test green and no launch failure attributable to the cache across the soak | Gate 4 |
 | MV9 | (observation, not a bet) **The swapchain has ZERO CI coverage on this backend**, because a headless Vulkan device enables no surface extension at all. Every present-path decision in section 11 is validated by a human at a window, or not at all | None available. A native soak that reproduces a presentation defect is consistent with several mechanisms | n/a | Recorded so a reader does not mistake a green golden leg for evidence about presentation. Rollout gate 5's manual pass is the only instrument | n/a |
-| MV10 | (observation, not a bet) **No Vulkan device limit is observable in CI today** (2.1), so `maxDescriptorSetUniformBuffersDynamic` and every other limit this design touches currently rest on spec minimums plus assumption. Both drafts asserted vendor-specific values and neither is checkable | V-D7 makes it measurable, which is the entire remedy. Until that lands, no claim about a real device's value appears in this document | n/a | Once V-D7 ships, the observed lavapipe values are recorded here and the spec floor stops being the only fact | Row 1 of the work breakdown |
+| MV10 | (observation, not a bet) **No Vulkan device limit is observable in CI today** (2.1), so `maxDescriptorSetUniformBuffersDynamic` and every other limit this design touches currently rest on spec minimums plus assumption. Both drafts asserted vendor-specific values and neither is checkable | V-D7 makes it measurable, which is the entire remedy. Until that lands, no claim about a real device's value appears in this document | n/a | Once V-D7 ships, the observed lavapipe values are recorded here and the spec floor stops being the only fact. **V-D7 has shipped and the recording has not**: the CI `vulkaninfo` step dropped `--summary` in row 1 and row 19 additionally uploads the dump as `vulkan-device-limits-<leg>` on `always()`, so the numbers are quotable verbatim off the first green run instead of scraped out of an expiring job log. Recording them into 2.1 is [#541](https://github.com/APKiwiOrg/KhaozEngine/issues/541), still open | Row 1 of the work breakdown |
 
 ---
 
@@ -2079,6 +2079,61 @@ coexist for at least one more phase.
 Before the field capture, pin the session log's build line and the capture-window stamps. A number attributed to
 the wrong build is the expensive failure here, and V-I4's throw-on-missing-provider exists specifically to make
 it impossible.
+
+### Rollout record (2026-08-09)
+
+Where the five gates stand as row 19 lands the CI leg, both validation tiers and the doc sweep. **Every gate is
+PENDING, and that is the honest reading rather than a hedge**: the leg is committed but has never run, because a
+workflow leg cannot be exercised from a developer machine. What this record establishes is that each gate now
+has an instrument pointed at it and a place its answer goes, which is the part that was missing.
+
+**Gate 1 is pending its first green run, and its instrument is wired.** The `golden-deltas.<family>.txt`
+evidence file appends every compare's worst-cell delta on a PASS as well as a fail, and the leg uploads it as
+`golden-deltas-vulkan-native` on `always()`, so the observed number comes off a green run rather than needing
+one to break first. Note the naming, which is the same trap the Windows pair has: the ARTIFACT is named for the
+leg and the FILE inside it for the family, so `golden-deltas-vulkan-native` contains `golden-deltas.vulkan.txt`,
+and downloading both Linux artifacts gives two same-named files that are two implementations measured against
+one set of references. Record the worst-cell delta here when the first green run has one.
+
+**Gate 2 is pending, and its skip criterion has a new mechanism behind it.** The full lavapipe suite runs on the
+schedule and on a dispatch, serialized, under `KE_VULKAN_VALIDATION=strict`. The criterion is NO NEW SKIPS
+rather than phase 2's two-fewer, because Veldrid Vulkan can already signal on completion so the
+`RequiresCompletionFences` pair already runs on this leg. What row 19 added for it is
+`KE_VULKAN_REQUIRED=1`: the rows that need a native device return early when the probe refuses the machine, and
+a dormant row is NOT a skip, so a zero-skipped gate could have been satisfied by rows that asserted nothing. On
+this leg that refusal now throws and names what the probe objected to.
+
+**Gate 3 is pending the two halves it does not already have.** MV4's marginals were frozen device-free by row
+15 and are asserted on every `dotnet test`, so that half needs no leg. MV5's second half is
+`KE_VULKAN_VALIDATION=sync` clean on the golden-and-compute job, which is what row 19 built and which has never
+run. **The `sync` job is also the condition MV6's VMA decline was written against**, so a job that does not
+exist would have retroactively unpicked a decision, and that is the load-bearing reason it is a gate rather
+than a nice-to-have.
+
+**Gate 4 is pending the field soak, and nothing in row 19 moves it.** It needs a session on the reporting
+machine at or above 144 fps and 6.9 ms with the header naming `VulkanNative`, plus MV1, MV2, MV3, MV6 and MV8's
+exit criteria. The counters it reads all reach a capture already. `KE_VULKAN_ACQUIRE` is NOT removed here:
+V-RO4 removes it AT gate 4, after MV2's uncapped A/B has been taken with the switch in both positions, and
+removing it now would delete the second implementation the measurement compares against. The soak build is
+gate 4's, not this row's, for the same reason.
+
+**Gate 5 is pending a human at a window**, on both Windows and Linux, and it is the one gate no amount of CI
+can move (MV9). `deviceLossReason` and `softwareAdapter` both ship in the telemetry session header from row 18,
+so the header half of gate 5 is met and the windowed pass is the whole of what remains.
+
+**The `ProbeOS` flip is NOT in this row's commits, and that is deliberate.** Section 17 makes the flip
+conditional on all five gates, three of which cannot be green before the leg has ever run and two of which need
+a human. The flip is one line plus a `_windowCandidates` entry when the gates allow it.
+
+**Two departures from the sections above, corrected in place.** First, the `sync` job runs on
+`workflow_dispatch` as well as on the schedule, where 2.8 and section 15 say schedule only. The cost argument
+for the subset is unchanged, and this is about aiming the instrument: a job reachable only by the weekly cron
+takes its first run unattended on a Sunday and cannot be re-run against a fix inside a week, which for the job
+MV5 and MV6 are both read off is a real cost against a saved Linux minute. A bake dispatch is excluded, for the
+guest-family reason. Second, 2.8 describes installing the validation layer without saying where, and the
+install is scoped to the legs that USE it rather than to the OS. The incumbent Vulkan leg is V-RO2's
+indefinitely-selectable escape hatch, and giving it a new apt package would let a package rename on a future
+runner image redden the leg the native backend escapes to.
 
 ---
 

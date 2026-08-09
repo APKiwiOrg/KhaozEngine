@@ -123,7 +123,7 @@ namespace KhaozEngine.Tests.Gpu
         /// images move.
         /// </para>
         /// <para>
-        /// THE REAL-DEVICE PATH IS CI-DEFERRED to the <c>vulkan-native</c> Linux leg row 19 brings up
+        /// THE REAL-DEVICE PATH IS CI-DEFERRED to the <c>vulkan-native</c> Linux leg
         /// (https://github.com/APKiwiOrg/KhaozEngine/issues/529), which is the only machine in the net with a
         /// driver. Everything about the device that CAN be asserted without one is asserted device-free in
         /// <see cref="VulkanInstanceLifecycleTests"/>, <see cref="VulkanFeatureChainTests"/>,

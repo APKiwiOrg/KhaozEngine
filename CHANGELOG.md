@@ -7,6 +7,99 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.34.0
 
+### The `vulkan-native` CI leg, both validation tiers, and the first validation layer this repo has ever installed (#529)
+
+The engine's native Vulkan backend gets a blocking CI leg, so everything the previous eighteen rows built stops
+being a claim and becomes a continuous exercise. Work-breakdown row 19 of the phase 3 program (#510), the last
+of the nineteen. No engine code behaviour changes and no package ships anything new: this is CI, test
+parallelisation, seam documentation and the doc sweep. **What it does NOT do is flip any default.** `ProbeOS`
+still maps Linux to the Veldrid `Vulkan` backend, the headless default is unchanged, and the five rollout gates
+are all recorded as PENDING in the design's new rollout record, three of them waiting on a leg that has been
+committed and has never run and two on a human.
+
+**The leg.** A fifth matrix leg on `ubuntu-latest` runs `KE_GRAPHICS_BACKEND=vulkan-native` against lavapipe on
+exactly the incumbent Vulkan leg's tier: the golden subset on push and pull request, the serialized full suite
+on the weekly schedule and on a dispatch. It is a GUEST in the committed `vulkan` golden family, verifying the
+incumbent's grids unmodified on the incumbent's own rasterizer and never baking them. That guest property is
+now a leg PROPERTY (`goldenGuest`) rather than a backend name matched at three separate sites, which is what
+stops a second guest arriving half-wired: `KE_UPDATE_GOLDENS` is held empty, the test step sits a bake dispatch
+out, and the baked-goldens upload is skipped, all off one column. Both Linux legs pin
+`KE_VULKAN_DEVICE=llvmpipe` for the reason both Windows legs pin their adapter, since the capability-parity test
+creates a native device on the incumbent leg too.
+
+**Validation is an INSTALL, not a knob, and that is why it is net-new work.** Before this row, `VK_LAYER`,
+`VK_INSTANCE_LAYERS` and `vulkan-validationlayers` had zero hits across every workflow, script and source file
+in the repo, and the Vulkan legs' own layer enumeration listed three Mesa and Intel layers with no Khronos
+validation among them. `VK_EXT_debug_utils` is an instance extension so the messenger needed nothing, but the
+LAYER cannot be turned on with an environment variable. The install is scoped to the legs that use it, so a
+package rename on a future runner image cannot redden the incumbent leg, and the layer manifest is then CHECKED
+with a hard failure: a missing layer only WARNs and creates the device anyway, which would leave the gate
+passing while validating nothing, and #423 already records a golden gate degrading for weeks unnoticed.
+
+**Two tiers, where the design puts them.** `KE_VULKAN_VALIDATION=strict` on the native leg's full suite, so an
+error-severity message fails the leg. A separate `gpu-vulkan-sync` job runs the golden subset plus the compute
+suite under `sync`, which is core plus synchronisation validation. That second job is the only instrument in
+this net that can see the characteristic failure of a hand-written Vulkan backend, a missing barrier or a wrong
+image layout: a software rasterizer executes with far stronger implicit ordering than a real GPU, so that class
+of defect passes every golden here and corrupts on the field GPU, on the one machine that is not in CI, and
+core validation does not catch it either. Two earlier decisions were written as CONDITIONAL on that job
+existing, MV6's decline of VMA and MV5's barrier model, so it is load-bearing rather than diagnostic. It takes
+`workflow_dispatch` as well as the schedule the design named, deliberately and recorded as a departure: a job
+reachable only by the weekly cron takes its first run unattended on a Sunday and cannot be re-run against a fix
+inside a week.
+
+**`KE_VULKAN_REQUIRED=1` closes a hole the zero-skipped gate cannot see.** Rows that need a real native device
+go dormant when the backend's functional probe refuses the machine, which is correct on a developer box and on
+every leg but the one built to have a device. A dormant row is NOT a skip: on that leg a loader regression would
+empty those rows into passes that assert nothing while the suite reports zero skipped. With the variable set,
+the same question throws and names what the probe objected to. It rides the native leg only. The incumbent leg
+stays uncoupled from the native backend's health on purpose, because it is the indefinitely-selectable escape
+hatch of V-RO2 and an escape hatch that reds whenever the thing it escapes from reds is not one.
+
+**MV10's evidence becomes downloadable.** The `vulkaninfo` step, which row 1 stopped passing `--summary` so the
+whole `VkPhysicalDeviceLimits` block lands, is now teed to an uploaded artifact as well as to the log. No Vulkan
+device limit has ever been observable anywhere in this repo, so the descriptor model and the allocator rest on
+spec minimums until the observed lavapipe values are recorded (#541, still open), and those numbers have to be
+quotable verbatim rather than scraped out of a job log that expires. Both validation tiers upload their test
+output the same way and for a related reason: warning and performance severities never fail a run, so a
+failure-only artifact would discard the entire non-fatal half of what the layer produces.
+
+**The device-lifecycle collection reaches the second test assembly.** xUnit collection definitions are per
+assembly, so the one `KhaozEngine.Render.Tests` has carried since the D3D11 leg did nothing for
+`KhaozEngine.MapEditor.Tests`, which builds four whole GPU devices across two classes and lets them race each
+other and the suite's primary device. Three of the four are invisible at the call site: only one names
+`CreateHeadless`, and the other three reach `Render3DSnapshot.Capture`, which creates and disposes a device per
+call. The cost of not doing this is measured rather than suspected, since the first WARP run of the
+`direct3d11-native` leg took 49 minutes against that leg's usual 17.
+
+**Two seam doc corrections that would have become falsehoods on this backend's first shipped day.**
+`IGpuCommandList`'s compute ordering contract described Veldrid's Vulkan behaviour BY NAME as though it were
+Vulkan's, and both of its sentences stop being true here: rule 1 is satisfied by a real image barrier at the
+sampled bind rather than a queued layout restore, and a dependent-dispatch chain inside one list IS ordered.
+The rules are unchanged and the permissiveness is a backend property in both directions, so the comment now
+names the implementation each mechanism belongs to and says outright that the mechanism is the part that
+differs between two backends one environment variable apart. `Begin`'s XML doc gains this backend's own
+concurrent-recording permissiveness and, more usefully, the reason it holds, which a reader cannot see from the
+call site: per-list command pools plus list-local layout tracking mean nothing shared is touched during
+recording.
+
+**Three counter members now say what they mean across backends.** `BackpressureStallCount` documents the second
+meaning it acquires here, the command list meeting its own oldest buffer slot, folded onto one accumulator
+because one lever sizes both that and the ring segments. `DrainCount`'s already-caught-up exemption is scoped to
+the backends that can honour it (#545): the native Vulkan drain compares against the last submitted timeline
+value and can skip, while the native Direct3D 11 drain must signal a fresh point and flush because its immediate
+context holds work no fence value describes, so the same consumer call pattern reads higher there for a reason
+that is not a stall. `DrainMs` is the figure that compares. That trap sits directly in the path of a gate-4
+reader comparing the two native backends.
+
+**And the package's own capability ledger stops lying (#560).** `KhaozEngineVulkan`'s class doc, the first thing
+a consumer reads, still said a windowed device is not built and throws and that a headless one cannot record,
+submit or create a resource, nine work-breakdown rows after all of that went live. The replacement separates
+"what this package can DO", which is finished, from "what is not done", which is the rollout, because reading
+the first as the second is exactly how the paragraph went stale. `docs/CROSS-PLATFORM.md`, `AGENTS.md`'s CI
+section, `docs/DEPENDENCY-SEAMS.md`, `docs/USING-KHAOZENGINE.md` (which gains `KE_VULKAN_ACQUIRE`,
+`KE_VULKAN_REQUIRED` and the validation tiers) and `docs/INDEX.md` all follow.
+
 ### Native Vulkan draws, dispatches and transfers: the backend renders (#525)
 
 `KhaozEngine.Gpu.Vulkan` draws. Every member of `IGpuCommandList` is built: the vertex and index binds, both

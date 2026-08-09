@@ -4,10 +4,12 @@ The engine's own native Vulkan backend for the [KhaozEngine.Gpu](../KhaozEngine.
 umbrella: a consumer adds this package explicitly, the same pattern as `Physics.Bepu` or `WorldStore.Sqlite`,
 and nothing that does not want the Vulkan binding ever carries it.
 
-> **Status: REGISTRATION, PROBE, A HEADLESS DEVICE, ITS COMPLETION TIMELINE, ITS MEMORY ALLOCATOR, THE COMMAND
-> LIST'S LIFECYCLE, THE UNIFORM RING, THE RESOURCE FACTORY, THE DESCRIPTORS, THE BIND FLUSH, DYNAMIC
-> RENDERING, THE SHADER PATH, THE PIPELINES, THE WINDOWED SWAPCHAIN, THE BARRIER TRACKER AND THE CAPABILITY,
-> COUNTER AND DIAGNOSTICS READS.**
+> **Status: BUILT AND CONTINUOUSLY EXERCISED, NOT YET DEFAULT ANYWHERE. Registration, probe, headless and
+> windowed devices, the completion timeline, the memory allocator, the command list's lifecycle, the uniform
+> ring, the resource factory, the descriptors, the bind flush, dynamic rendering, the shader path, the
+> pipelines, the swapchain, the barrier tracker, the capability, counter and diagnostics reads, the draw,
+> dispatch and transfer paths, and a blocking CI leg carrying both validation tiers. What remains is the
+> rollout.**
 > `KhaozEngineVulkan.Register()`
 > is real, so is the machine-capability probe behind it, and since
 > [#514](https://github.com/APKiwiOrg/KhaozEngine/issues/514) so is headless device creation:
@@ -73,9 +75,16 @@ and nothing that does not want the Vulkan binding ever carries it.
 > incumbent's own computation reproduced rather than a pinned 1, and a windowed run presents a frame the backend
 > really rendered. The
 > backend IS nameable: `GpuBackendKind.VulkanNative` and the `vulkan-native` / `vk-native` tokens
-> landed with [#513](https://github.com/APKiwiOrg/KhaozEngine/issues/513). Nothing selects it by default.
+> landed with [#513](https://github.com/APKiwiOrg/KhaozEngine/issues/513). And since
+> [#529](https://github.com/APKiwiOrg/KhaozEngine/issues/529) it has a BLOCKING CI LEG, which is what turns all
+> of the above from a claim into a continuous exercise: the `vulkan-native` leg verifies the committed `vulkan`
+> goldens on lavapipe as a guest in that family, with `KE_VULKAN_REQUIRED=1` so a row that needs a native device
+> cannot go quietly dormant, and both tiers of the validation gate ride it, `strict` on the scheduled full suite
+> and `sync` on a separate golden-and-compute job.
+> Nothing selects it by default.
 > `KhaozEngine.Gpu`'s `Vulkan` backend, which goes through Veldrid, remains the working Vulkan path and stays
-> selectable indefinitely.
+> selectable indefinitely, and the FLIP of the Linux default waits on five rollout gates, two of which are a
+> field session and a human windowed pass that no CI leg can stand in for.
 
 ## The spec
 
@@ -156,10 +165,21 @@ creation path catches, WARNs with the message and boots on the incumbent, report
 screen offers an API rather than an implementation of one.
 
 `VulkanNative` renders the same images as `Vulkan`, so it is a GUEST in the committed `vulkan` golden family
-rather than owning one (decision V-I3). That is what will hold it to the incumbent's already-committed
+rather than owning one (decision V-I3). That is what holds it to the incumbent's already-committed
 reference grids, unmodified, on the same rasterizer at the same tolerance. `KE_UPDATE_GOLDENS` is REFUSED on it
 for the same reason: a bake would overwrite the very references it is being checked against, and the file it
 wrote would be exactly the file it would then have compared against.
+
+**The `vulkan-native` CI leg is where that guest sits, and it is blocking from its first run**
+([#529](https://github.com/APKiwiOrg/KhaozEngine/issues/529)). It runs the golden subset on every push and the
+serialized full suite on the weekly schedule and on a dispatch, on lavapipe, with `KE_VULKAN_DEVICE=llvmpipe`
+pinned at the device level as the belt to the loader-level ICD pin. Two of its settings are its own rather than
+the Direct3D 11 leg's. `KE_VULKAN_REQUIRED=1`, because a row that needs a real native device goes DORMANT when
+the probe refuses the machine, and a dormant row is not a skip: on the one leg built to run those rows a loader
+regression would empty them into passes that assert nothing, which the zero-skipped rollout criterion cannot
+see. And `KE_VULKAN_VALIDATION=strict` on the full suite, with a second job running the golden subset plus the
+compute suite under `sync`. That layer is an INSTALL rather than a knob, and before this leg no validation layer
+was present on any leg in this repo at all.
 
 Code that cares about the API rather than the implementation asks `kind.IsVulkan()`, true for both members.
 Plain equality against `GpuBackendKind.Vulkan` is the right question only when Veldrid's implementation
@@ -1296,10 +1316,12 @@ means idle here. `DrainMs` is comparable, since the drains this one skips cost a
 and `deviceLossReason` carries the latch the device-loss row sets at the fault site. Live rather than
 creation-time arguments because a loss happens at an arbitrary moment long after creation.
 
-**The two-device rows need a Vulkan device and no leg has one yet.** They are `[GpuFact]`s that first RUN on the
-`vulkan-native` leg [#529](https://github.com/APKiwiOrg/KhaozEngine/issues/529) installs, against lavapipe, so a
-green run today is not evidence about this backend. Their early returns read the backend's own functional probe
-rather than an operating system, since Vulkan is not a Windows API.
+**The two-device rows RUN on the `vulkan-native` leg** ([#529](https://github.com/APKiwiOrg/KhaozEngine/issues/529)),
+against lavapipe, and a green run anywhere else is still not evidence about this backend. Their early returns
+read the backend's own functional probe rather than an operating system, since Vulkan is not a Windows API, and
+that early return is exactly what `KE_VULKAN_REQUIRED=1` turns into a hard failure on the leg that declares a
+native device mandatory. Without it, a loader regression there would empty those rows into passing tests with no
+assertions in them, and a dormant row does not skip, so nothing downstream could notice.
 
 ## Why there are no platform guards, and why nobody should add them
 
@@ -1394,8 +1416,12 @@ physical devices: 1
 vkDestroyInstance: OK
 ```
 
-So the native Vulkan CI leg needs no symlink step of its own. The existing one stays where it is, because the
-Veldrid leg it was written for still needs it.
+So the native Vulkan CI leg needs no symlink step of its own. The existing one stays where it is, and it stays
+scoped to the OS rather than to the incumbent leg, which is a distinction worth stating because the step now
+looks dead on the native leg and is not: the capability-parity test creates a VELDRID Vulkan device beside the
+native one on whichever leg it runs, so a native leg without the symlink fails that test at device creation.
+The step retires with the Veldrid Vulkan leg itself, in phase 4 and not before
+([#540](https://github.com/APKiwiOrg/KhaozEngine/issues/540)).
 
 Two caveats on how far that carries, because the run above did NOT happen in CI. It was one local container,
 not a workflow leg, so what it establishes is that Silk.NET's native-context search finds a versioned soname

@@ -97,15 +97,20 @@ exception is the trivial-change case below.
   affected by the diff, skips entirely on a docs-only diff, and forces full on a
   workflow/scripts/props/slnx/tool-manifest change or a missing base sha. See
   `docs/design/CI-SELECTIVE-TESTS-DESIGN-2026-07-18.md` for the full design.
-- **Private repo, one self-hosted leg.** Private-repo minutes bill, and macOS is the only rate that
-  hurts, so the macOS Metal golden leg is the ONE self-hosted leg, on the native `mac-native-arm64`
-  runner (real Metal, where the metal golden is baked). Everything else stays GitHub-hosted:
-  `ci.yml` build/test/pack/publish on **x64** `ubuntu-latest` (x64 is load-bearing, the test suite
-  needs x64-only natives like `libveldrid-spirv`, which ships linux-x64 but not linux-arm64, so it
-  cannot run on the arm64 self-hosted container), plus the path-gated `cross-platform-gpu.yml` D3D11
-  golden legs (Windows/WARP, the Veldrid incumbent plus the engine's own native backend) and Vulkan
-  (Linux/lavapipe). The games' fleet-wide CI model (org, both
-  runners, secretless OIDC, macOS arm64-only) is in `GameTemplate/docs/CI-AND-RUNNERS.md`.
+- **Public repo, every leg GitHub-hosted.** The engine went public on 2026-08-06, after its private CI
+  became the largest line on the org's GitHub bill, so standard hosted runners are free and no leg
+  touches a personal machine any more. `ci.yml` builds, tests, packs and publishes on **x64**
+  `ubuntu-latest` (x64 is load-bearing, the test suite needs x64-only natives like `libveldrid-spirv`,
+  which ships linux-x64 but not linux-arm64), and the path-gated `cross-platform-gpu.yml` matrix runs
+  FIVE blocking golden legs: Metal on hosted `macos-26` (pinned to the number, not to `macos-latest`,
+  so an image promotion cannot move the GPU under a golden gate), two Windows/WARP D3D11 legs and two
+  Linux/lavapipe Vulkan legs, each pair being the Veldrid incumbent plus the engine's own native
+  backend as a GUEST in the incumbent's golden family. That matrix also carries the engine's only
+  Vulkan validation gate, in two tiers: `strict` on the native leg's scheduled full suite, and `sync`
+  in a separate golden-and-compute job, which is the one instrument in CI that can see a missing
+  barrier a software rasterizer orders correctly anyway. `docs/CROSS-PLATFORM.md` is the living doc for
+  the matrix, and the games' fleet-wide CI model (org, both runners, secretless OIDC, macOS arm64-only)
+  is in `GameTemplate/docs/CI-AND-RUNNERS.md`.
 - **Warnings are errors.** `<TreatWarningsAsErrors>true</TreatWarningsAsErrors>` in `Directory.Build.props`
   (every config), so any compiler/analyzer warning fails the build, the tests, and CI. Keep the engine at zero
   warnings and fix them at the source, not with `<NoWarn>` / `#pragma warning disable` / `TreatWarningsAsErrors=false`

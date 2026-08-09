@@ -37,8 +37,10 @@ phase 3's equivalent, which could only be a compile-time inventory because the m
 `BOOL` round-trips as one byte and `CGFloat` as a double. All three by-value struct shapes cross correctly, and
 between them they cover both arm64 paths for a composite argument. An HFA is at most FOUR members, so
 `MTLClearColor` (four doubles) rides `d0` to `d3` while `MTLViewport` (six doubles, one too many to be an HFA)
-and `MTLScissorRect` (four `NSUInteger`s) both go indirectly. The array setters and the offset setters record
-on both a render and a compute encoder, `NSRange`
+and `MTLScissorRect` (four `NSUInteger`s) both go indirectly. `MTLClearColor` is also checked by VALUE and not
+only by acceptance, which is the one that needed it since it is the register path: the pass clears the target to
+`(0.25, 0.5, 0.75, 1.0)`, the spike blits it to a Shared buffer, and the bytes read back `(191, 128, 64, 255)`.
+The array setters and the offset setters record on both a render and a compute encoder, `NSRange`
 by value included. The `[UnmanagedCallersOnly]` completion handler fires from a global block literal, so M-F3
 stands with no delegate and no GC handle on the path. `MTLSharedEvent`'s four members work end to end, so M-F1
 stands. `supportsFamily:` and `maximumDrawableCount` both answer. The one command buffer carrying all of it

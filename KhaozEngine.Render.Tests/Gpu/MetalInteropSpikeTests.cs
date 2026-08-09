@@ -1,3 +1,4 @@
+using System;
 using KhaozEngine.Gpu.Metal;
 using KhaozEngine.Gpu.Metal.Internal;
 using Xunit;
@@ -69,6 +70,28 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(result.OffsetSettersRecorded, "the offset setters (M-R7) did not record:\n" + report);
             Assert.True(result.ByValueStructsRecorded,
                 "the by-value struct setters (viewport, scissor, clear colour) did not record:\n" + report);
+
+            // THE ONE BY-VALUE ANSWER THAT IS A VALUE RATHER THAN AN ACCEPTANCE. Everything above says the device
+            // did not reject a call, which cannot separate a correctly passed struct from one whose members
+            // landed in the wrong registers and happened not to fault. MTLClearColor is the only HFA of the
+            // three, so it is the only one that rides d0 to d3, and this closes the round-trip on exactly that
+            // path: the pass clears a 64x64 BGRA8Unorm target to (0.25, 0.5, 0.75, 1.0) with Store, and the blit
+            // copies it into a Shared buffer.
+            //
+            // Measured (191, 128, 64, 255) on an Apple M2 Max, which is round-to-nearest of each component times
+            // 255 in BGRA order. The tolerance is one least-significant bit, for a GPU that rounds a clear
+            // differently, and it cannot hide the failure this is here to catch: the three colour components are
+            // 63 apart, so a swapped channel or a shifted register moves a byte by far more than one.
+            Assert.Equal(4, result.ClearedPixelBgra.Count);
+            var expected = new byte[] { 191, 128, 64, 255 };
+            for (int i = 0; i < expected.Length; i++)
+            {
+                Assert.True(Math.Abs(result.ClearedPixelBgra[i] - expected[i]) <= 1,
+                    $"the cleared pixel read back component {i} as {result.ClearedPixelBgra[i]}, expected "
+                    + $"{expected[i]}. MTLClearColor is the by-value struct that rides SIMD registers, so this "
+                    + "is where a wrong argument class on that path shows up as a value rather than as a "
+                    + "crash:\n" + report);
+            }
 
             // M-F3. No delegate, no GetFunctionPointerForDelegate and no GC handle on the completion path, which
             // is what keeps it AOT-clean. The named fallback is the incumbent's delegate-and-dictionary shape.

@@ -213,7 +213,39 @@ namespace KhaozEngine.Gpu.Metal.Internal
         [SupportedOSPlatform("macos")]
         internal static partial void MsgSendVoidClearColor(IntPtr receiver, IntPtr sel, MTLClearColor color);
 
+        // copyFromTexture:sourceSlice:sourceLevel:sourceOrigin:sourceSize:toBuffer:destinationOffset:
+        // destinationBytesPerRow:destinationBytesPerImage: - the blit that closes the by-value struct
+        // round-trip. Two MORE indirect composites (MTLOrigin and MTLSize are three NSUIntegers each, 24 bytes),
+        // interleaved with scalars on both sides of them, which is the shape that punishes a wrong argument
+        // class hardest: get either struct wrong and every argument after it shifts.
+        [LibraryImport(Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial void MsgSendVoidBlitToBuffer(
+            IntPtr receiver, IntPtr sel, IntPtr texture, nuint slice, nuint level, MTLOrigin origin, MTLSize size,
+            IntPtr buffer, nuint offset, nuint bytesPerRow, nuint bytesPerImage);
+
+        // MTLBuffer.contents - the shared-storage pointer the readback reads through.
+        [LibraryImport(Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial byte* MsgSendBytePtr(IntPtr receiver, IntPtr sel);
+
         // ---- By-value structs -------------------------------------------------------------------------------
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct MTLOrigin
+        {
+            internal nuint X;
+            internal nuint Y;
+            internal nuint Z;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct MTLSize
+        {
+            internal nuint Width;
+            internal nuint Height;
+            internal nuint Depth;
+        }
 
         [StructLayout(LayoutKind.Sequential)]
         internal struct NSRange

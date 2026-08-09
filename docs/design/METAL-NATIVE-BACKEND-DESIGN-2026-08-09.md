@@ -823,7 +823,12 @@ paths the arm64 ABI has for a composite argument. The rule is that a homogeneous
 most FOUR members: `MTLClearColor` is four doubles, so it is an HFA and rides `d0` to `d3`. `MTLViewport` is SIX
 doubles, one too many to be an HFA however homogeneous it looks, so it is an ordinary composite over 16 bytes
 and is passed indirectly. `MTLScissorRect` is four `NSUInteger`s, not floating point at all, so it is passed
-indirectly for the other reason. Two paths, not three, and coverage is still complete. The array setters
+indirectly for the other reason. Two paths, not three, and coverage is still complete. `MTLClearColor` is also
+the only one whose VALUE is checked rather than only its acceptance, which matters because it is the one on the
+register path: the pass clears a 64x64 target to `(0.25, 0.5, 0.75, 1.0)` with `Store`, the spike blits the
+result into a Shared buffer, and the four bytes read back `(191, 128, 64, 255)` in BGRA order. Every other
+by-value answer in the spike is "the device did not reject the call", which cannot separate a correctly passed
+struct from one whose members landed in the wrong registers and did not happen to fault. The array setters
 and the offset setters
 record on both a render and a compute encoder, `NSRange` by value included. The `[UnmanagedCallersOnly]`
 completion handler fires, so M-F3 stands with no delegate and no GC handle anywhere on the path, carried by a

@@ -24,6 +24,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         internal bool ArraySettersRecorded { get; init; }
         internal bool OffsetSettersRecorded { get; init; }
         internal bool ByValueStructsRecorded { get; init; }
+        internal IReadOnlyList<byte> ClearedPixelBgra { get; init; } = Array.Empty<byte>();
         internal bool CompletionHandlerFired { get; init; }
         internal nint CommandBufferStatus { get; init; }
         internal bool CommandBufferErrorWasNil { get; init; }
@@ -51,6 +52,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
             sb.AppendLine("array setters recorded: " + ArraySettersRecorded);
             sb.AppendLine("offset setters recorded: " + OffsetSettersRecorded);
             sb.AppendLine("by-value structs recorded: " + ByValueStructsRecorded);
+            sb.AppendLine("cleared pixel read back (B,G,R,A): " + (ClearedPixelBgra.Count == 0
+                ? "(not read)"
+                : string.Join(", ", ClearedPixelBgra)));
             sb.AppendLine("UnmanagedCallersOnly completion handler fired: " + CompletionHandlerFired);
             sb.AppendLine("command buffer status: " + CommandBufferStatus + " (4 = Completed)");
             sb.AppendLine("command buffer error was nil: " + CommandBufferErrorWasNil);
@@ -111,6 +115,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
         const nuint StorageModePrivate = 2;
         const nuint LoadActionClear = 2;
         const nuint StoreActionStore = 1;
+
+        // The render target's edge, and the clear colour the pass writes into it. Both are read back through the
+        // blit below, so they are named once rather than repeated at the two ends of the round-trip.
+        const nuint TargetSize = 64;
+        const double ClearRed = 0.25, ClearGreen = 0.5, ClearBlue = 0.75, ClearAlpha = 1.0;
 
         // BLOCK_IS_GLOBAL. A block with no captures needs no copy helper and no dispose helper, so it can live
         // in static native memory for the life of the process and Block_copy on it is a no-op.
@@ -177,7 +186,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
             IntPtr queue = MsgSend(device, Sel("newCommandQueue"));
             IntPtr bufferA = MsgSendPtrNUInt2(device, Sel("newBufferWithLength:options:"), 256, 0);
             IntPtr bufferB = MsgSendPtrNUInt2(device, Sel("newBufferWithLength:options:"), 256, 0);
-            IntPtr renderTarget = NewTexture(device, 64, TextureUsageRenderTarget);
+            IntPtr renderTarget = NewTexture(device, TargetSize, TextureUsageRenderTarget);
+            IntPtr readback = MsgSendPtrNUInt2(device, Sel("newBufferWithLength:options:"),
+                TargetSize * TargetSize * 4, 0);
             IntPtr sampled = NewTexture(device, 8, TextureUsageShaderRead);
             IntPtr samplerDesc = MsgSend(MsgSend(Cls("MTLSamplerDescriptor"), Sel("alloc")), Sel("init"));
             IntPtr sampler = MsgSendPtr(device, Sel("newSamplerStateWithDescriptor:"), samplerDesc);
@@ -192,6 +203,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             bool structs = RecordPass(commandBuffer, renderTarget, notes, out IntPtr renderEncoder);
             bool arrays = RecordBinds(commandBuffer, renderEncoder, bufferA, bufferB, sampled, sampler, notes,
                 out bool offsets);
+            bool blitted = BlitTargetToBuffer(commandBuffer, renderTarget, readback, notes);
 
             if (sharedEvent != IntPtr.Zero)
                 MsgSendVoidPtrULong(commandBuffer, Sel("encodeSignalEvent:value:"), sharedEvent, 42);
@@ -205,6 +217,19 @@ namespace KhaozEngine.Gpu.Metal.Internal
             {
                 notes.Add("command buffer error code " + MsgSendNInt(error, Sel("code")) + ": "
                     + NSStringToManaged(MsgSend(error, Sel("localizedDescription"))));
+            }
+
+            // The clear colour, read back as bytes. Every OTHER by-value struct answer in this spike is "the
+            // device did not reject the call", which cannot tell a correctly passed struct from one whose
+            // members landed in the wrong registers and happened not to crash. This one is a VALUE, and it is
+            // the register path (MTLClearColor is the only HFA here), so it closes the round-trip on the shape
+            // the other two cannot check.
+            byte[] cleared = Array.Empty<byte>();
+            if (blitted)
+            {
+                byte* contents = MsgSendBytePtr(readback, Sel("contents"));
+                if (contents == null) notes.Add("MTLBuffer.contents came back null, so no pixel was read back.");
+                else cleared = new[] { contents[0], contents[1], contents[2], contents[3] };
             }
 
             bool waited = false;
@@ -222,6 +247,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             ObjcRelease(samplerDesc);
             ObjcRelease(sampled);
             ObjcRelease(renderTarget);
+            ObjcRelease(readback);
             ObjcRelease(bufferB);
             ObjcRelease(bufferA);
             ObjcRelease(queue);
@@ -238,6 +264,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 ArraySettersRecorded = arrays,
                 OffsetSettersRecorded = offsets,
                 ByValueStructsRecorded = structs,
+                ClearedPixelBgra = cleared,
                 CompletionHandlerFired = Volatile.Read(ref _completionCount) > 0,
                 CommandBufferStatus = status,
                 CommandBufferErrorWasNil = error == IntPtr.Zero,
@@ -284,7 +311,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             MsgSendVoidNUInt(attachment, Sel("setLoadAction:"), LoadActionClear);
             MsgSendVoidNUInt(attachment, Sel("setStoreAction:"), StoreActionStore);
             MsgSendVoidClearColor(attachment, Sel("setClearColor:"),
-                new MTLClearColor { Red = 0.25, Green = 0.5, Blue = 0.75, Alpha = 1.0 });
+                new MTLClearColor { Red = ClearRed, Green = ClearGreen, Blue = ClearBlue, Alpha = ClearAlpha });
 
             encoder = MsgSendPtr(commandBuffer, Sel("renderCommandEncoderWithDescriptor:"), descriptor);
             if (encoder == IntPtr.Zero)
@@ -294,7 +321,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             }
 
             MsgSendVoidViewport(encoder, Sel("setViewport:"),
-                new MTLViewport { OriginX = 0, OriginY = 0, Width = 64, Height = 64, ZNear = 0, ZFar = 1 });
+                new MTLViewport { OriginX = 0, OriginY = 0, Width = TargetSize, Height = TargetSize, ZNear = 0, ZFar = 1 });
             MsgSendVoidScissor(encoder, Sel("setScissorRect:"),
                 new MTLScissorRect { X = 0, Y = 0, Width = 32, Height = 32 });
             return true;
@@ -345,6 +372,36 @@ namespace KhaozEngine.Gpu.Metal.Internal
             MsgSendVoid(compute, Sel("endEncoding"));
 
             offsetsRecorded = true;
+            return true;
+        }
+
+        // The blit that turns the clear colour from a call that was accepted into a value that was measured.
+        // MTLClearColor rides d0 to d3 as an HFA, so nothing on the indirect path can stand in for it: this is
+        // the one shape whose members could land in the wrong registers, produce a plausible pass, and be
+        // invisible until a golden run. Copying the stored attachment into a Shared buffer and reading four
+        // bytes is what makes it visible here instead.
+        //
+        // The blit selector is also the harshest ABI exercise in the file in its own right: two 24-byte
+        // composites (MTLOrigin and MTLSize) passed indirectly with scalars on both sides of them, so getting
+        // either one wrong shifts every argument after it.
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static bool BlitTargetToBuffer(IntPtr commandBuffer, IntPtr renderTarget, IntPtr readback,
+            List<string> notes)
+        {
+            if (readback == IntPtr.Zero) { notes.Add("the readback buffer could not be created."); return false; }
+
+            IntPtr blit = MsgSend(commandBuffer, Sel("blitCommandEncoder"));
+            if (blit == IntPtr.Zero) { notes.Add("blitCommandEncoder came back nil."); return false; }
+
+            MsgSendVoidBlitToBuffer(blit,
+                Sel("copyFromTexture:sourceSlice:sourceLevel:sourceOrigin:sourceSize:toBuffer:"
+                    + "destinationOffset:destinationBytesPerRow:destinationBytesPerImage:"),
+                renderTarget, 0, 0,
+                new MTLOrigin { X = 0, Y = 0, Z = 0 },
+                new MTLSize { Width = TargetSize, Height = TargetSize, Depth = 1 },
+                readback, 0, TargetSize * 4, TargetSize * TargetSize * 4);
+            MsgSendVoid(blit, Sel("endEncoding"));
             return true;
         }
 

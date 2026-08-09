@@ -1,7 +1,7 @@
 # KhaozEngine.Gpu.Metal: native Metal backend design (2026-08-09)
 
-**Status: ROW 1 LANDED IN `17.35.0`, the package skeleton and the three verification spikes. Rows 2 to 19 are
-not written.** Phase 4 of the staged native GPU backend program
+**Status: ROWS 1 AND 2 LANDED IN `17.35.0`, the package skeleton, the three verification spikes, the provider
+and its machine probe. Rows 3 to 19 are not written.** Phase 4 of the staged native GPU backend program
 ([#420](https://github.com/APKiwiOrg/KhaozEngine/issues/420)), specified by
 [#566](https://github.com/APKiwiOrg/KhaozEngine/issues/566), following the shipped phase 2
 (`docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md`) and phase 3
@@ -2284,7 +2284,8 @@ time.
 
 ### Rollout record
 
-Every gate is PENDING. Nothing in section 18 has been implemented, so no gate can have been attempted. This
+Every gate is PENDING. The section 18 rows landed so far build no device and run no golden, so no gate can
+have been attempted. This
 subsection exists so the standing of each gate is recorded here as it moves rather than reconstructed from
 issue comments, in the shape phase 2's and phase 3's rollout records established.
 

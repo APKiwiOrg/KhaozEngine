@@ -14,9 +14,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// THIS IS NOT ROW 4'S INTEROP LAYER, and it is deliberately shaped so it cannot quietly become one. That
     /// layer is <c>Internal/ObjC/</c>, one file per Objective-C class, and it lands with the device and the queue
     /// (https://github.com/APKiwiOrg/KhaozEngine/issues/570). Row 2 needs a device handle, four reads and a
-    /// release, before any of that exists, and the phase-3 precedent for exactly this collision is written into
-    /// both issue bodies: whichever of the two lands second SHARES rather than copies. So when row 4 lands, this
-    /// file goes away and <see cref="MetalSupportProbe"/> reads through the real layer. Nothing here is public,
+    /// release, before any of that exists, and the handoff is recorded on #570 itself the way phase 3's #514
+    /// recorded sharing #512's enumeration: row 4 absorbs these declarations into the real layer and deletes
+    /// this file, and it re-points the probe at the KE_METAL_DEVICE-selected device when M-N1 lands. So when
+    /// row 4 lands, <see cref="MetalSupportProbe"/> reads through the real layer. Nothing here is public,
     /// nothing here is reachable from another type, and the whole set is small enough to delete rather than
     /// migrate.
     /// </para>

@@ -4,10 +4,12 @@ The engine's own native Metal backend for the [KhaozEngine.Gpu](../KhaozEngine.G
 umbrella: a consumer adds this package explicitly, the same pattern as `Physics.Bepu` or `WorldStore.Sqlite`,
 and nothing that does not want the Objective-C interop ever carries it.
 
-> **Status: it REGISTERS and it PROBES, and it cannot yet create a device.** Rows 1 to 3 of the work
-> breakdown are done: the assembly, its guard rows, the three phase-4 verification spikes, then
-> `KhaozEngineMetal.Register()`, the `IGpuBackendProvider` behind it, and a functional probe that answers for
-> this machine. Creating a device refuses with a message naming
+> **Status: it REGISTERS, it PROBES and it has a TIMELINE, and it cannot yet create a device.** Rows 1 to 3
+> and row 5 of the work breakdown are done: the assembly, its guard rows, the three phase-4 verification
+> spikes, then `KhaozEngineMetal.Register()`, the `IGpuBackendProvider` behind it, a functional probe that
+> answers for this machine, and the device's completion timeline with the seam fence on it (row 5 is pulled
+> ahead because the uniform ring recycles segments against a completion value). Creating a device refuses with
+> a message naming
 > [row 4](https://github.com/APKiwiOrg/KhaozEngine/issues/570), which builds the `MTLDevice` and the
 > `MTLCommandQueue`. `GpuBackendKind.MetalNative = 6` and its `metal-native` token exist as of `17.35.0`
 > ([row 3](https://github.com/APKiwiOrg/KhaozEngine/issues/569)), so the kind is nameable ahead of the device
@@ -30,8 +32,8 @@ KhaozEngineMetal.Register();   // unconditionally, on every OS, once at startup
 
 `Register` and `IsPlatformSupported` are the whole public surface, and a test pins it member by member so the
 next row has to mean it. Everything else in the assembly is internal: the provider, the machine probe and its
-device-free decision half, plus the three verification spikes, which exist to answer a question rather than to
-run in a game.
+device-free decision half, the completion timeline and the fence on it, plus the three verification spikes,
+which exist to answer a question rather than to run in a game.
 
 **Call `Register()` unconditionally and on every operating system.** Registering says a provider EXISTS, which
 is a fact about your app's wiring. Whether this machine can run it is the separate question
@@ -69,6 +71,31 @@ macOS that ships one is read with no code change, then falls back to
 `minimumLinearTextureAlignmentForPixelFormat:`, which IS a device-reported buffer offset alignment. It reads 16
 on that machine, which is exactly what the incumbent hardcodes for macOS, so two independent statements of the
 number agree.
+
+## The timeline, and why a fence here is two fields (M-F1 to M-F5)
+
+One device-wide `MTLSharedEvent` is the whole synchronisation story. Every submission encodes
+`encodeSignalEvent:value:` with the next value before committing, a fence is a remembered value on that
+counter, and `IGpuFence.Signaled` is one non-blocking `signaledValue` read. There is no Metal object behind a
+fence at all.
+
+**That turns the seam's fence ordering into a theorem.** The seam promises that a fence handed to a submission
+made after some earlier work signals only once the queue has drained through it. With a completion callback per
+submission that is a convention, because callback B firing says nothing about submission A, and Metal delivers
+handlers on an arbitrary internal thread in no guaranteed order. A queue's signals on one event execute in
+submission order with monotonic values, so the counter reaching 6 requires the signal at 5 to have happened.
+Polling a later fence therefore covers every earlier submission, which is what `RetiredResourcePool` relies on.
+
+**The completion handler is not deleted along with the fence dictionary.** It survives with reporting as its
+only job: reading `status` and `error` at completion, which the incumbent never does for `error` at all, so a
+Metal command-buffer failure is invisible to the engine and to telemetry today. The shared event owns ordering
+and the handler owns reporting, and the handler takes no lock, touches no dictionary and advances no counter.
+
+**`WaitForIdle` waits on the last submitted value in slices.** It blocks for as long as the GPU takes, and the
+slice exists for the failure shape rather than for the timeout: a Metal command-buffer failure is asynchronous,
+so a failed buffer's signal never arrives and the only notification is the error latch flipping the device's
+liveness token from Metal's own completion thread. A single unbounded wait cannot observe that flip. The drain
+counts one entry into `GpuDeviceCounters.DrainCount` and `DrainMs` per call that actually blocked.
 
 ## Three decisions worth knowing before reading the code
 

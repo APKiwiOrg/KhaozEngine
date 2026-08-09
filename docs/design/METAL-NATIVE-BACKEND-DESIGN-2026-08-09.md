@@ -1747,6 +1747,14 @@ One `MTLSharedEvent` created at device creation, initial value 0, owned by the d
 target, `Signaled` is `signaledValue >= target` (a non-blocking property read, which is exactly what the seam
 demands), and `Reset()` clears the target so the fence can be handed to a later submit.
 
+**The event's own release is NOT gated on liveness**, which is the one place the timeline diverges from the
+Vulkan sibling and is worth a sentence because a reader who knows that backend will look for the gate.
+`vkDestroyDevice` destroys every object made from the device, so a destroy afterwards aborts the process
+through the loader and that backend has to skip it. An `MTLSharedEvent` is an ordinary reference-counted
+Objective-C object that outlives its device perfectly well, so skipping the release here would leak it on
+exactly the teardown path that matters. It is the same fact M-H3 rests on when it declines a retire list,
+arriving one layer down.
+
 **What this deletes is most of the point.** The incumbent's fence path is a hand-built `BlockLiteral` and
 `BlockDescriptor` allocated with `Marshal.AllocHGlobal`, an invoke pointer from
 `Marshal.GetFunctionPointerForDelegate`, a `_NSConcreteGlobalBlock` isa loaded out of `libSystem.dylib` by
@@ -1786,6 +1794,31 @@ criterion is NO NEW SKIPS rather than two fewer.
 `waitUntilCompleted` on it, which needs the buffer kept alive to be read and gives nothing to count without
 extra bookkeeping. There is no C6-style bet here: the incumbent's drain is already real, and phase 2's win was
 in making an empty method body exist.
+
+**The drain waits in SLICES, decided at row 5 and recorded here because M-F5's sentence does not say what to
+pass for the timeout.** The obvious reading is a number nobody expects to reach, which reduces to the Vulkan
+sibling's infinite `vkWaitSemaphores` and inherits V-F4's honesty argument that blocking forever on a hung GPU
+is the correct behaviour. That argument is kept and the slice does not weaken it: a slice expiring is not
+forward progress, and this drain still blocks for as long as the GPU takes. What the slice buys is the case
+that is Metal's rather than a preference. **A command-buffer failure here is ASYNCHRONOUS**, so a failed
+buffer's encoded signal simply never arrives, and the only notification is M-G4's latch flipping the liveness
+token from Metal's own completion thread. A single unbounded wait cannot observe that flip, so it would block
+until the process was killed, on exactly the teardown path M-F6 exists to keep clear. So the wait is re-issued
+at 250ms until the value arrives or liveness says there is nothing left to wait for. `DrainCount` still counts
+ONE drain, because the loop is inside it, and the whole cost of the choice is one extra native call per 250ms
+of a genuinely long drain. Metal's call takes a timeout where Vulkan's does not, which is why this costs
+nothing to spell.
+
+**The completion handler finds its latch by asking the buffer for its device, which is M-F2's mechanics and is
+also a row-5 decision rather than a doc one.** The block is global and carries no captures, which is the shape
+row 1's spike proved, so it cannot hold a device pointer of its own without becoming a heap block with copy and
+dispose helpers that would then have to outlive every command buffer referencing it. The invoke therefore reads
+`[commandBuffer device]` and scans a four-slot table of registered latches. **That is not the dictionary M-F1
+removes.** The thing rejected there is a lock plus a hash lookup inside the driver's callback, once per FENCE,
+and this is a lock-free pointer comparison over at most four slots, once per command buffer. It exists because
+a process can hold more than one live native Metal device at a time (a test assembly creating and disposing
+headless devices is the ordinary case, which is why row 19 adds a lifecycle collection rather than asserting
+one device exists), and delivering device A's failure to device B's latch would flip the wrong liveness token.
 
 ### 10.2 Hazards, and the machinery that is absent (M-H1 to M-H4)
 

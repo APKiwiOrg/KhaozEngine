@@ -185,6 +185,69 @@ tests on that backend's first native leg.
 Metal member, and no existing package gained or lost an edge. Calling `Register()` today costs one dictionary
 entry.
 
+### One `MTLSharedEvent` as the native Metal timeline, and a completion handler that only reports (#571)
+
+The native Metal backend gets its completion timeline, from row 5 of the same design: one device-wide
+`MTLSharedEvent`, the seam's `IGpuFence` as a remembered value on it, `WaitForIdle` as a counted drain, and the
+`[UnmanagedCallersOnly]` completion handler whose only job is row 4's error latch. All internal, nothing
+public, and no consumer behaviour changes, because nothing can create a Metal device yet
+([#570](https://github.com/APKiwiOrg/KhaozEngine/issues/570) builds one). It is pulled ahead of the rows it
+looks like it should follow because row 8's uniform ring recycles segments against a completion value, and a
+ring built before the timeline exists is a silent corruption.
+
+**One monotonic event makes the seam's fence ordering a THEOREM rather than a convention (M-F1, M-F4).** The
+seam promises that a fence handed to a submission made after some earlier work signals only once the queue has
+drained through it. With a completion callback per submission that is a convention: callback B firing says
+nothing about submission A, and Metal delivers handlers on an arbitrary internal thread in no guaranteed order.
+A queue's signal operations on one shared event execute in submission order with monotonic values, so the
+counter reaching 6 requires the signal at 5 to have happened, so polling a later fence transitively covers
+every earlier submission. That is what `RetiredResourcePool` relies on. `SupportsCompletionFences` is PARITY
+here rather than the upgrade it was on Direct3D 11, because `VeldridMap` already answers true for Metal, so the
+gate criterion is NO NEW SKIPS rather than two fewer.
+
+**What it replaces is most of the point.** The incumbent's fence path is a hand-built block literal and
+descriptor allocated with `Marshal.AllocHGlobal`, an invoke pointer from
+`Marshal.GetFunctionPointerForDelegate`, a lock plus a dictionary lookup INSIDE the driver's completion
+callback, a second process-global dictionary and static callback for AOT targets, and a `ManualResetEvent` per
+fence with a pooled array of them. One shared event and a non-blocking property read replace all of it, and a
+fence becomes two fields and a comparison with no Metal object of its own.
+
+**The handler survives the rewrite, with reporting as its only job (M-F2).** M-G4 requires reading
+`MTLCommandBuffer.status` and `.error` at completion in every configuration, which the incumbent does not do at
+all: it reads `status` in exactly one place and never reads `error`, so a Metal command-buffer failure is
+invisible to the engine and to telemetry today. So the responsibilities split, and the split is the ruling: the
+shared event owns ORDERING and the handler owns REPORTING. The handler takes no lock, touches no dictionary,
+sets no event and advances no counter, which is the answer to the arbitrary delivery thread. It is one global
+block with an `[UnmanagedCallersOnly]` invoke, the shape row 1's spike ran on real hardware, so there is no
+delegate and no GC handle anywhere on the completion path.
+
+**The drain waits in slices, which is this backend's one addition to M-F5's sentence.** It still blocks for as
+long as the GPU takes, exactly as the native Vulkan drain does, and a slice expiring is not forward progress.
+What the slice buys is Metal's own failure shape: a command-buffer failure is ASYNCHRONOUS, so the encoded
+signal never arrives and the only notification is the error latch flipping the device's liveness token from
+Metal's completion thread. One unbounded wait cannot observe that flip and would block until the process was
+killed, on exactly the teardown path that has to stay clear. `DrainCount` still counts one drain per
+`WaitForIdle` that blocked, because the loop is inside it.
+
+**Everything that can be WRONG is device-free and runs on every leg.** The value allocation, the fence
+lifecycle, the two high-waters and why they differ, the dead-device answers, the drain's three no-count cases
+and the slice loop are 43 `[Fact]`s over a fake shared event, on machines with no Metal at all. What no fake can
+prove is a value signalled because real GPU work finished, so that half is a `[GpuFact]` against a real device.
+**Measured on an Apple M2 Max under macOS 26:** the first submission takes value 1 and the second 2,
+`signaledValue` reads both back, the seam fence armed with each reads signaled after its drain and unsignaled
+after `Reset`, both completion handlers were delivered with status 4 and a nil error, and a drain targeting a
+value nothing would ever signal recorded one counted wait of 251ms released by the liveness flip rather than by
+the value arriving.
+
+**Two smaller things are decided here and worth naming.** The event's release is NOT gated on device liveness,
+which is the one place this diverges from the Vulkan sibling: `vkDestroyDevice` destroys every child object so
+that backend must skip its destroy, while an `MTLSharedEvent` is an ordinary reference-counted object and
+skipping the release would leak it on exactly the teardown path that matters. And the handler finds its latch by
+asking the buffer for its device and scanning a four-slot lock-free table, because a global block carries no
+captures. That table is not the dictionary this row removes: that one was a lock plus a hash lookup per fence,
+this is a pointer comparison per command buffer, and it exists so one device's failure cannot flip another
+device's liveness token.
+
 ## 17.34.0
 
 ### The `vulkan-native` CI leg, both validation tiers, and the first validation layer this repo has ever installed (#529)

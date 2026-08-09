@@ -250,12 +250,12 @@ public class GpuPublicApiTests
     /// exported type IS the containment: every Objective-C handle struct, every <c>objc_msgSend</c> overload and
     /// the interop spike are internal, so a consumer's compile never sees a Metal vocabulary at all.
     /// <para>
-    /// The list is one entry today and it is <c>IsPlatformSupported</c>, not <c>Register</c>, which is the
-    /// opposite way round from the Vulkan sibling and is decision M-P1 rather than an accident. Metal is an
-    /// OS-specific API, so this package needs the Direct3D 11 package's <c>[SupportedOSPlatformGuard]</c>
-    /// apparatus, and the guard is what every Objective-C body will sit behind. <c>Register</c> is absent
-    /// because the provider it would register does not exist yet (row 2), and a registration call that shipped
-    /// ahead of its provider would be a public method that lies about what the package can do.
+    /// The list is TWO entries, which is one more than either sibling has, and that is decision M-P1 rather
+    /// than an accident. <c>Register</c> is the member every backend package has, and
+    /// <c>IsPlatformSupported</c> is the Direct3D 11 package's guard arriving for the same reason it exists
+    /// there: Metal is an OS-specific API, so the <c>[SupportedOSPlatformGuard]</c> apparatus applies and every
+    /// Objective-C body sits behind it. The Vulkan sibling has <c>Register</c> alone and must not grow a guard
+    /// by analogy (V-P1), which is why the two lists differ on purpose.
     /// </para>
     /// <para>
     /// So widening the surface is a deliberate edit to the array below, made by someone who had to read this.
@@ -265,7 +265,7 @@ public class GpuPublicApiTests
     [Fact]
     public void GpuMetalPublicSurface_IsExactlyTheApprovedMembers()
     {
-        string[] approvedMembers = { "IsPlatformSupported" };
+        string[] approvedMembers = { "IsPlatformSupported", "Register" };
 
         Type entryPoint = typeof(KhaozEngine.Gpu.Metal.KhaozEngineMetal);
 

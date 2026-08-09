@@ -236,10 +236,13 @@ Software rasterizers on the runners (no real GPU):
   Ubuntu runner images (it is now `lvp_icd.json`, was `lvp_icd.x86_64.json`), so the workflow **discovers it at
   runtime** and points `VK_ICD_FILENAMES` + `VK_DRIVER_FILES` at it rather than hardcoding. Veldrid 4.9.0's Vulkan
   binding P/Invokes the bare names `libdl` / `libvulkan`, which modern Ubuntu only ships versioned, so the workflow
-  also symlinks `libdl.so` → `libdl.so.2` and `libvulkan.so` → `libvulkan.so.1`. That symlink step is the
-  INCUMBENT's, and it stays until the Veldrid Vulkan leg retires
-  ([#540](https://github.com/APKiwiOrg/KhaozEngine/issues/540)): Silk.NET resolves through its own native-context
-  search, so the native leg never needed it, which makes the step look dead the moment that leg is green.
+  also symlinks `libdl.so` → `libdl.so.2` and `libvulkan.so` → `libvulkan.so.1`. That symlink step runs on BOTH
+  Linux legs, and it is not dead on the native one. Silk.NET resolves through its own native-context search and
+  needs no symlink, which is what makes the step LOOK like the incumbent's alone, but the capability-parity test
+  creates a Veldrid Vulkan device beside the native one on whichever leg it runs, so dropping the step from the
+  native leg breaks that test at device creation with a `DllNotFoundException` that reads as a mystery rather
+  than as a deleted workaround. The step retires with the Veldrid Vulkan leg itself
+  ([#540](https://github.com/APKiwiOrg/KhaozEngine/issues/540)) and not before.
   Both Linux legs additionally pin `KE_VULKAN_DEVICE=llvmpipe`, the device-level belt to the loader-level brace,
   and the incumbent leg needs it because it creates native devices too, through the capability-parity test. The
   variable has exactly one reader, the native backend's physical-device selection, so no Veldrid device sees it.

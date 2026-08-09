@@ -9,14 +9,15 @@ not written.** Phase 4 of the staged native GPU backend program
 Implementation is a numbered issue list in section 18, and only its first row is done: `KhaozEngine.Gpu.Metal`
 exists as a guarded skeleton that registers nothing and creates no device.
 
-**Three things HAVE now run on a device, and one of them overturned a ruling.** The interop spike is green on
-real hardware (3.1), the `MTLCompileOptions` measurement is taken (12.4), and **the MSL name-join spike REFUTED
-M-B1's join outright** (2.2a), so the fallback section 2.2 named is the one that applies and the numbering fix
-is filed as [#586](https://github.com/APKiwiOrg/KhaozEngine/issues/586). A join keyed on the SPIR-V ID rather
-than on names was measured afterwards and reaches 159 of 159, which does not reinstate M-B1 but does mean the
-fallback is a choice between two working options rather than the only one left. A reader picking up rows 9, 10
-or 13 should read 2.2a before 2.2's ruling, and both halves of 2.2a before deciding. Section 16 lists every decision that still rests on reasoning rather than
-measurement, each with the measurement that settles it, the switch that turns it off, the criterion that
+**Three things HAVE now run on a device, one of them overturned a ruling, and the ruling has since been
+re-taken.** The interop spike is green on real hardware (3.1), the `MTLCompileOptions` measurement is taken
+(12.4), and **the MSL name-join spike REFUTED M-B1's join outright** (2.2a). A join keyed on the SPIR-V ID
+rather than on names was measured afterwards and reaches 159 of 159, and **2.2b rules that this is what rows 9,
+10 and 13 build**: the table is still read off the emission, the key moved from the name to the id, the
+fallback section 2.2 named is NOT taken, and [#586](https://github.com/APKiwiOrg/KhaozEngine/issues/586) is
+closed with that reasoning. A reader picking up rows 9, 10 or 13 should read 2.2, then both halves of 2.2a,
+then 2.2b, which is the operative ruling. Section 16 lists every decision that still rests on reasoning rather
+than measurement, each with the measurement that settles it, the switch that turns it off, the criterion that
 retires the switch, and a deadline.
 
 Written against engine `17.34.0` (`Directory.Build.props`). The incumbent this design replaces and must reach
@@ -77,8 +78,8 @@ went stale inside one release and `GpuBackendKindAppendAuditTests` records it.
 | M-A5 | Passes | Any command illegal inside a render encoder (dispatch, blit, copy, mip generation, resolve) ENDS the encoder first. One invariant, one helper, one device-free test. On Vulkan that was a chosen discipline and here it is the API's rule | Both, converged |
 | M-A6 | Viewport | `SetFramebuffer` emits the full viewport and the full scissor ON A FRAMEBUFFER CHANGE ONLY, reproducing W6's identity guard exactly, and the scissor flush stays gated on the bound pipeline's `ScissorTestEnabled` the way the incumbent gates it, because that is the seam's own rasterizer state and D3D11 honours it too. `ClipSpaceYInverted` is false with no viewport trick at all | Both, converged |
 | M-A7 | Viewport | The plural `setViewports:count:` and `setScissorRects:count:` forms are used unconditionally rather than behind the incumbent's `macOS_GPUFamily1_v3` feature-set test, at a count of 1, because the seam has no multi-viewport concept. One code path and no deprecated-enum read on the hot path | B |
-| M-B1 | Binding | **THE BINDING TABLE IS READ OFF THE EMITTED MSL, per program and per stage, and NOT counted on the CPU.** At shader-set creation the backend parses each stage's entry-point signature for its `[[buffer(n)]]`, `[[texture(n)]]` and `[[sampler(n)]]` attributes and its entry-point NAME. Resource-set activation binds through that table. Owning the numbering by pinning it into the emission is the better design and is NOT AVAILABLE: section 2.2 establishes that `libveldrid-spirv` exports no entry point that can pin a resource index. **ROW 1's SPIKE REFUTED THE NAME JOIN THIS RULING RESTS ON**, so the ruling as written is not what ships: the result and the fallback taken are recorded at the end of 2.2 and handed to rows 9, 10 and 13 as [#586](https://github.com/APKiwiOrg/KhaozEngine/issues/586) | A, B's route refuted on a fact, then A's mechanism refuted by measurement |
-| M-B2 | Binding | **Vertex STREAM buffers are pinned at the TOP of the buffer space (30 downward), not at `NonVertexBufferCount + i`.** `ResourceBindingModel.Improved`'s arithmetic assumes the CPU knows where the resource buffers landed, which is exactly the assumption M-B1 removes, so reproducing it would be unsound. Top-pinning cannot collide with any MSL index growing from 0, is invisible to the emitted MSL and therefore to every golden, and a pipeline declaring more than 31 combined bindings on one stage throws at creation with a named exception | Judge, B's scheme forced by A's M-B1 |
+| M-B1 | Binding | **THE BINDING TABLE IS READ OFF THE EMITTED MSL, per program and per stage, and NOT counted on the CPU.** At shader-set creation the backend parses each stage's entry-point signature for its `[[buffer(n)]]`, `[[texture(n)]]` and `[[sampler(n)]]` attributes and its entry-point NAME. Resource-set activation binds through that table. Owning the numbering by pinning it into the emission is the better design and is NOT AVAILABLE: section 2.2 establishes that `libveldrid-spirv` exports no entry point that can pin a resource index. **ROW 1's SPIKE REFUTED THE NAME JOIN THIS RULING RESTS ON** (2.2a), and **2.2b RE-ADJUDICATES THE ROW ON THE SPIKE'S SECOND MEASUREMENT: the join is keyed on the SPIR-V ID, not on the name**, read out of each stage's own module through its `DescriptorSet` and `Binding` decorations, which survive the debug-info stripping that removes the names. 159 of 159 arguments resolve, with zero disagreements against the incumbent's arithmetic over the shipped set. The ruling's SHAPE is unchanged (the table is read off the emission, per program and per stage) and its KEY is what moved. #586's fallback is not taken and that issue is closed | A, B's route refuted on a fact, A's key refuted by measurement, then the ruling restored on a second key by measurement (2.2b) |
+| M-B2 | Binding | **Vertex STREAM buffers are pinned at the TOP of the buffer space (30 downward), not at `NonVertexBufferCount + i`.** `ResourceBindingModel.Improved`'s arithmetic assumes the CPU knows where the resource buffers landed, which is exactly the assumption M-B1 removes, so reproducing it would be unsound. Top-pinning cannot collide with any MSL index growing from 0, is invisible to the emitted MSL and therefore to every golden, and a pipeline declaring more than 31 combined bindings on one stage throws at creation with a named exception. **This row's argument depends on M-B1's table being the authority, so the fallback would have voided it and nobody re-adjudicated it at the time. 2.2b restores the row rather than changing it**, and its no-collision assertion is checkable in the form 8.3 states it | Judge, B's scheme forced by A's M-B1, restored by 2.2b |
 | M-B3 | Binding | `ResourceBindingModel` leaves the engine's vocabulary entirely. Its only reader in the vendored fork is the Metal backend, it exists to manage a collision M-B2 removes, and nothing in `KhaozEngine.Gpu.Metal` names the concept | Both, converged |
 | M-B4 | Binding | The one-uniform-buffer-per-pipeline shader invariant **STAYS IN FORCE**, and this phase does not lift it, weaken it, or ship a shader change on the strength of a hypothesis about it. What this phase adds is a MEASUREMENT (MM6) whose result is recorded either way, and a named seat from which a later change could lift it. Section 2.3 | Judge, B's discipline, A's over-claim rejected |
 | M-B5 | Binding | The "sample all textures up front in binding order" shader discipline STAYS, and so do S5's holed-signature sinks, because the Veldrid Metal and Veldrid D3D11 legs ship alongside until the closing act. Both are written down because a Metal seat is exactly where each looks pointless | Both, converged |
@@ -132,7 +133,7 @@ went stale inside one release and `GpuBackendKindAppendAuditTests` records it.
 | M-F6 | Liveness | The `DeviceLiveness` latch reproduced exactly (X3, V-F10), with a full timeline drain BEFORE teardown, which the incumbent already does. That is about the ENGINE's teardown order rather than about Objective-C refcounting, so M-H3's absence of a retire list does not touch it | Both, converged |
 | M-T1 | Tests | The 36 committed `metal` goldens run unmodified against the native backend on the same hosted `macos-26` device at the existing 0.06 absolute per-channel tolerance. No rebake | Both, converged |
 | M-T2 | Tests | A device-free native-call budget test through a narrow `IMetalEncoderSink`, generic-constrained to a struct, covering the call classes that scale with draw count on THIS API: argument-table writes (the array setters and the offset setters), draws and dispatches, and **ENCODER BOUNDARIES**. The third is the Metal-specific class and neither predecessor has it | Both, converged |
-| M-T3 | Tests | The MSL index-table test is device-free, runs on every `dotnet test`, and is taken BEFORE the first golden run: parse every emitted entry point across every shipped program, pair it against the pipeline's layout array and each layout's element array, and assert every element resolves to exactly one index in exactly the spaces its declared stages need. Plus M-B2's no-collision assertion. This is S2's and V-S8's test arriving through a third door | Both, converged |
+| M-T3 | Tests | The MSL index-table test is device-free, runs on every `dotnet test`, and is taken BEFORE the first golden run: parse every emitted entry point across every shipped program, pair it against the pipeline's layout array and each layout's element array, and assert every element resolves to exactly one index in exactly the spaces its declared stages need. Plus M-B2's no-collision assertion. This is S2's and V-S8's test arriving through a third door. **#586 demoted it to a DETECTOR and 2.2b restores it as an assertion, in a stronger form than this row specifies**: resolution, bijection per stage, kind agreement with the index space, and no decorated `(set, binding)` outside the declared layout array, plus a standing comparison against the incumbent's arithmetic for the rollout window | Both, converged, demoted by 2.2a's fallback and restored by 2.2b |
 | M-T4 | Tests | `NativeVsVeldridMetalCapabilityParityTests`, both structs in one process on the Metal leg, zero permitted differences | Both, converged |
 | M-T5 | Tests | The shared uniform-ring semantic tests gain a THIRD adapter in `KhaozEngine.TestSupport.Gpu`, covering section 9.4's seven shared rows, and the Metal ring must pass them before it renders a golden | Both, converged |
 | M-T6 | Tests | A `metal-native` matrix leg on hosted `macos-26`, running the FULL suite on every trigger, matching the incumbent Metal leg's `fullSuite: always` tier exactly, guest in the `metal` family, sitting bake dispatches out, with `KE_METAL_REQUIRED=1` so a row that needs a native device fails rather than going dormant. **This is the strongest regression net in the program** and it changes what the design can lean on | Both, A's required flag |
@@ -464,7 +465,164 @@ per-set count, and the partial-stage case is exercised 95 times.
 
 **Re-adjudicating M-B1 is still rows 9, 10 and 13's, and this section does not do it.** Row 1 measured and
 recorded, which is what 2.2 asked the spike for. What has changed is that whoever takes that decision now has a
-second option with a number on it.
+second option with a number on it. **That decision is taken in 2.2b, which is the ruling this section hands
+forward to.**
+
+### 2.2b The re-adjudication: the id join is taken, and the fallback is not
+
+**Ruled 2026-08-10, before row 9 dispatches. This is the re-adjudication 2.2a hands forward.** 2.2 ruled that the
+binding table is READ off the emission and named a NAME join as the mechanism. Row 1 refuted that join outright
+and then measured a second one, keyed on the SPIR-V id, at 159 of 159 (2.2a). This section decides which
+mechanism rows 9, 10 and 13 build. It decides nothing else: the table is still read rather than authored,
+because the route that would author it still does not exist (2.2, 12.2).
+
+**Candidate (a), #586's fallback as filed, at its strongest.** Reproduce `MTLResourceLayout`'s and
+`GetBufferBase`'s per-kind declaration-order arithmetic over the pipeline's declared layout array, known
+breaking shape included, and demote M-T3 to a detector. It puts NOTHING new on the shipped load path, in the
+one phase that is also introducing a hand-written Objective-C interop layer, a ring and a swapchain. Every
+input it reads is an object the engine itself authors, so it rests on no convention of somebody else's
+cross-compiler. It is behaviourally identical to the incumbent on every shipped program, which is exactly what
+a guest golden family is for. And it is the smallest thing to write, to review and to keep.
+
+**Candidate (b), the id-keyed join, at its strongest.** Walk each STAGE'S OWN SPIR-V module for every
+`(id, set, binding)` triple, read the id back out of the emitted argument's `_<id>` name, and resolve
+`(set, binding)` against the pipeline's layout array, so the table records where that stage's compiler actually
+put each element. Correct by construction per stage, complete over the shipped set with no failure class of any
+size, and it agrees with (a) on all 159 arguments today, so it is behaviourally identical to the incumbent as
+well.
+
+**The ruling is (b). Three things decide it.**
+
+**First, (a) makes MM6 unreadable, and that consequence went unnoticed when the fallback was taken.** MM6 bets
+that the one-uniform-buffer constraint is a property of the INCUMBENT'S NUMBERING rather than of Metal, and 2.3
+licenses the measurement on the ground that a fail is worth as much as a pass because it closes four sessions'
+worth of open question. That holds only for a backend that does not use the incumbent's numbering. Under (a) it
+does, so both hypotheses predict the same fail, the probe cannot separate them, and gate 3 carries a row that
+cannot resolve. 2.3's lifting seat has the same problem one level up: it exists, in its own words, because
+M-B1 makes the binding side correct, and under (a) the binding side is not correct, so the seat is empty. Under
+(b) both are the instruments 2.3 designed. **This does NOT lift the constraint**: M-B4 keeps the invariant in
+force, MM6 still has to run, and what changes is only that its answer will mean something.
+
+**Second, both candidates bind identically today, so (a)'s isolation argument buys nothing (b) does not also
+buy, and (a) pays for it with the silent failure mode.** Zero disagreements over 159 arguments is a measured
+fact rather than an expectation, and this ruling KEEPS that comparison as a standing device-free test rather
+than spending it, so the guest golden family still sees exactly one variable move on the day the backend lands.
+What separates the two is the day a shader changes. (a) then binds the wrong resource and renders a wrong pixel
+with no validation error, which is precisely the class that produced `7.25.0`, `7.51.2` and the splat terrain.
+(b)'s failure is an argument name the parse does not recognise, thrown at shader-set creation, device-free, on
+the free Linux leg, before any device runs.
+
+**And 2.2a's account of WHEN (a) goes wrong is incomplete, which sharpens that.** That paragraph names one
+condition, a stage skipping a same-kind element ahead of a referenced one, and `MetalMslIdJoinSpikeTests`
+counts it as `SameKindGapAhead`. The load-bearing counter is the other one, `IndexDiffersFromIncumbent`, which
+also catches an emission ORDERING an element differently from its declaration position with nothing skipped at
+all. The gap condition is a strict subset of it. That second shape is what all three recorded incidents
+actually were, and it is held off today only by the shader discipline M-B5 keeps in force, sampling every
+texture up front in binding order. So (a) is safe on a shader-authoring convention rather than on a structural
+property, and M-B5 says that convention outlives this phase.
+
+**Third, (b) costs less than its shape suggests, because the seat already holds both artefacts.** The shipped
+path compiles each stage's GLSL to SPIR-V itself and hands the pair to the cross-compiler
+(`SpirvCrossCompile.GlslPairToHlsl` is the shape row 9's MSL half copies), so at the moment the MSL text exists
+each stage's module is sitting in a local. The decoration walk is one linear pass over words already in hand,
+in the same shape and roughly the same size as `KhaozEngine.Gpu/Internal/SpirvLocalSize.cs`, which already
+hand-walks that stream for the workgroup size. The argument parse is the depth-matched walk
+`ShaderValidation.BufferKindsFromEntryPoint` already ships, which 2.2 already counted as an asset. And the
+positional assumption underneath `layouts[set].Elements[binding]` is not a new one:
+`VulkanDescriptorPolicy.BindingsFor` assigns `binding = (uint)i` and the shipped Vulkan native backend renders
+its golden leg on it.
+
+**What (b) costs, named rather than waved at.** Three things, and the last is the one most likely to be assumed
+wrong.
+
+The shipped load path gains two parses it does not have today. Both are device-free, both read text and bytes
+the path has already produced, and both exist as written code in row 1's spikes, so this is a promotion rather
+than an authoring.
+
+The `_<id>` name is a SPIRV-Cross emission convention and nothing promises it. A resource that reaches the
+emission carrying a real name, or a name mangled to dodge a collision, does not parse. That is the mechanism's
+genuine fragility, and it is why the parse must fail LOUDLY rather than fall back to a count.
+
+**And the pin cannot freeze it.** `MslCrossCompilePin` freezes the `CrossCompileOptions` the emission is
+REQUESTED under and `MslCompilePin` freezes the `MTLCompileOptions` Metal compiles the result under (12.3,
+12.4). Neither freezes SPIRV-Cross's naming or its numbering, and no option in either set reaches them. What
+actually freezes the emission is the exact `Veldrid.SPIRV` version pinned in `Directory.Packages.props`, whose
+bundled `libveldrid-spirv` carries the SPIRV-Cross this engine emits through. So the drift this mechanism is
+exposed to arrives on a deliberate package bump rather than on a runner image or an OS update, and M-T3 plus
+`MetalMslIncumbentParityTests` are what turn that bump into a red device-free leg instead of a wrong pixel.
+
+**What this does to #586, in its three parts.** Part one, reproduce the incumbent's arithmetic as the binding
+path, is REVERSED. The arithmetic still gets written, as the comparison inside a device-free test, and it never
+binds anything. Part two, ship M-T3 as a detector, is REVERSED: it is an assertion again, and a stronger one
+than 2.2 specified. Part three, the numbering fix taken behind a real SPIRV-Cross binding, SPLITS. The
+correctness half lands in this phase with no new native dependency. What survives is MF2, and its value
+changes: authoring the numbering through `add_msl_resource_binding` would DELETE both parses rather than
+correct a wrong binding, which makes it a simplification with a trigger rather than a fix with a deadline.
+**#586 is closed as not planned with that reasoning**, its census intact and still cited by 2.2a.
+
+**M-T3 is an assertion again**, over every shipped program, device-free, on every `dotnet test`, taken before
+the first golden run. Per program and per stage it asserts that every emitted argument resolves to exactly one
+layout element through its decorations, that the join is a bijection within the stage, that the resolved
+element's KIND matches the index space the argument landed in, and that no decorated `(set, binding)` lands
+outside the declared layout array. Row 1's spike already asserts those four, so M-T3 is that test moved from
+measuring a question to guarding an answer. M-B2's no-collision property is the fifth and arrives with the
+vertex descriptor rather than with the table. The incumbent-agreement comparison stays beside them as a SIXTH
+assertion through the rollout window, because it is what makes "this backend changes no binding" a checked fact
+rather than a claim. It is the one assertion a legitimate future divergence retires, and retiring it is a
+deliberate act with a recorded reason rather than a number to update.
+
+**And `ShaderValidation.CheckMslBufferSlots` STAYS, for M-B5's reason rather than for its own.** Under (b) the
+native backend binds at whatever index the emission chose, so a kind-order disagreement stops being a defect
+FOR THIS BACKEND. It remains one for the Veldrid Metal leg, which is still selectable until the closing act, so
+the validator that rejects it stays and comes out with that leg. Someone will propose deleting it, which is why
+this is written down. What it can see is also worth knowing: it is compute-only and compares KIND order, so it
+cannot tell two same-kind buffers apart, which is exactly the class (a) would have been silently wrong about.
+
+**M-B2 is restored rather than changed, and it needed restoring.** Its argument is that reproducing
+`ResourceBindingModel.Improved` would be unsound because `NonVertexBufferCount + i` assumes the resource
+buffers occupy `0..NonVertexBufferCount-1`, which is exactly the CPU-side count M-B1 removes as the authority
+(8.3). Under (a) that count IS the authority again, so the argument evaporated, and nobody re-adjudicated M-B2
+when the fallback was taken. Under (b) it reads exactly as written, top-pinning stays, and 8.3's no-collision
+assertion is checkable in the form it is stated in, against indices read out of the vertex function rather than
+against an arithmetic that produced them.
+
+**What row 9 must pin so the mechanism cannot drift silently.** Seven things, and the first is what makes the
+rest safe.
+
+1. **The parse fails LOUDLY and never falls back.** An argument name that is not `_<id>`, an id carrying no
+   decorations in that stage's module, a `(set, binding)` outside the declared layout array, a kind that does
+   not match its index space, or two arguments resolving to one element: each throws a named exception at
+   shader-set creation naming the program, the stage and the offending argument text. There is no path from any
+   of them to a counted index. A silent fallback would reintroduce (a)'s failure mode inside (b)'s mechanism,
+   which is the worst of the three outcomes available here.
+2. **The decorations are read from each STAGE'S OWN module.** Per-stage id renumbering is the mechanism here
+   rather than the hazard, and reading the pair's reflection instead is the mistake that killed the name join.
+3. **The positional assumption is asserted, not assumed.** Set N is the layout bound at slot N, binding M is
+   that layout's element M. Row 1's spike controls for both and the shipped Vulkan backend already depends on
+   both, so this is a cheap assertion on a load-bearing belief.
+4. **The declared layout array is shape-checked against the reflection the table was built from** (set count,
+   per-set element count, per-element kind) at pipeline creation, because the table is keyed on
+   `(set, binding, stage)` and the binder resolves an ENGINE-declared element through it.
+5. **`SpirvResourceDecorations` moves into `KhaozEngine.Gpu/Internal/` beside `SpirvLocalSize`**, which is what
+   its own header already names as the move if the re-adjudication went this way. It stops being a measurement
+   and becomes a mechanism.
+6. **The `.metallib` cache must carry the table.** A cache hit skips the emission and the table is derived from
+   it. This is not a requirement (b) invents: M-S5 already forces the cache to carry the entry-point NAME for
+   the same reason, so (b) widens a payload that has to exist either way. Consulting the cache before the table
+   exists is invalid.
+7. **Each pin's header says what it does not freeze.** `MslCrossCompilePin` and `MslCompilePin` both carry the
+   sentence that they pin options rather than the emission, and that the emission is pinned by the
+   `Veldrid.SPIRV` package version, because the pins' names invite the opposite belief.
+
+**What would reopen this.** The trigger 2.2 named is unchanged and is now cheaper to act on: a direct
+SPIRV-Cross binding, through MF2 or through the closing act, at which point the table is authored, both parses
+are deleted and the `_<id>` convention stops being load-bearing. Three things would reopen it earlier, and each
+has a test in front of it rather than a reader. `MetalMslIdJoinSpikeTests` going red on the join means the
+emission moved and the mechanism needs re-reading rather than the number updating. The same test going red on
+incumbent agreement means a shipped shader entered the shape the old fallback would have got wrong, which is
+this ruling being vindicated rather than a regression. And `MetalMslNameJoinSpikeTests` going red would mean a
+SPIRV-Cross that names its resources, which reinstates the option 2.2 originally wanted and this section did
+not take.
 
 ### 2.3 The one-UBO constraint: its fate, its measurement, and its lifting seat
 
@@ -1311,6 +1469,10 @@ At `CreateShadersFromSpirv` the backend holds the MSL text for both stages, beca
    failure `ShaderValidation.BufferKindsFromEntryPoint` already documents and already solves.
 3. records, per argument, its index and its space, keyed by the resource NAME the argument carries.
 
+**Step 3's key is the one 2.2a refuted and 2.2b replaced.** The key is the SPIR-V ID the argument name spells,
+resolved to `(set, binding)` through that stage's own `DescriptorSet` and `Binding` decorations, and the rest
+of this section stands as written. Read 2.2b before implementing any of it.
+
 Resource-set activation then looks a layout element up by name in the table and binds at the index it finds. An
 element with no entry in the table for a given stage is NOT bound for that stage, which is correct by
 construction: SPIRV-Cross omits an argument a stage does not reference, and binding one anyway is what an
@@ -1322,6 +1484,7 @@ SPIRV-Cross emits argument names derived from the GLSL block or variable name, a
 `GpuResourceLayoutElement`. The spike compiles every shipped program to MSL in process and checks the join for
 every element. If it does not hold, the fallback is to reproduce the incumbent's arithmetic exactly, ship M-T3
 as a DETECTOR rather than as an assertion, and file the numbering fix behind a real SPIRV-Cross binding.
+**Superseded: the spike said it does not hold (2.2a), and 2.2b takes the id join instead of that fallback.**
 
 **The index-table test (M-T3).** Device-free, on every `dotnet test`, over every shipped program: build the
 table, pair it against the pipeline's layout array and each layout's element array, and assert every element
@@ -1346,7 +1509,8 @@ step binds a vertex buffer where a uniform should be.
 **Reproducing `Improved` would be unsound under M-B1, which is why 2.7's companion ruling lands here.**
 `NonVertexBufferCount + i` assumes the resource buffers occupy `0..NonVertexBufferCount-1`, which is exactly
 the CPU-side count M-B1 removes as the authority. The count is the engine's belief about where the resource
-buffers went, and the table is where they actually went.
+buffers went, and the table is where they actually went. **That reasoning would have gone with the fallback and
+2.2b keeps it**, so this section is unchanged by the re-adjudication.
 
 So vertex streams are pinned at the TOP: buffer index 30 for stream 0, 29 for stream 1, and so on downward.
 Resource buffers grow from 0 upward wherever the emission put them. Neither depends on the other's count, the
@@ -2192,7 +2356,7 @@ possible should find the row saying so.
 | MM3 | The array-batched flush (M-R6) collapses a full activation to one call per (kind, stage) and an offsets-only rebind to one per visible stage, with zero encoder boundaries between two draws in one pass | The device-free budget test (M-T2), confirmed on the first green run and then frozen as marginals | None needed. A call-count property with no runtime risk | The first green run's measured marginals are recorded in this document and become the frozen numbers, INCLUDING the vertex-stream marginal, which is a regression target rather than a parity target | Gate 3 |
 | MM4 | `FramesInFlight = 3` is enough that ring backpressure never blocks the CPU, and `maximumDrawableCount = 3` is enough that the drawable acquire does not become the frame's pacing | `BackpressureStallCount` and `BackpressureStallMs` for the ring, `AcquireWaitCount` and `AcquireWaitMs` for the drawable. **The second pair is expected to be non-zero under vsync and that is not a failure**: a vsync-paced frame SHOULD wait for a drawable, so the gate reads the UNCAPPED capture | `KE_METAL_FRAMES_IN_FLIGHT=<n>`, owned by row 7 | Ring stall count zero across a full capture window, and acquire wait per frame near zero on the uncapped capture. A non-zero ring stall means 3 is wrong, not that the design is | Gate 4. A TUNING KNOB by M-RO4's sort, so it may survive as a knob, but only if the exit criterion was met at its DEFAULT. A knob is not a way to ship a failed default |
 | MM5 | (observation, not a bet) **Automatic hazard tracking (M-H1) costs conservatism that nothing in this design measures**, and the cost cannot be priced at all because there is no safe untracked build to A/B against. The driver may serialise two encoders that could have overlapped, and there is no counter for lost overlap. Frame time against the incumbent measures the two configurations TOGETHER, since the incumbent is also tracked | None available in v1. A GPU trace in Xcode's frame debugger would show it and is not a CI instrument | n/a. `MTLResourceHazardTrackingModeUntracked` on an individual resource is the escape hatch, and taking it means writing the barriers for that resource | Recorded so a reader does not mistake "no barriers in the code" for "no serialisation on the device", and does not mistake a green gate 4 for evidence that tracking is free. If a measurement ever shows the cost, the heap decision (8.4) is re-argued in the same change | Open past gate 5, deliberately |
-| MM6 | **The one-uniform-buffer-per-pipeline constraint is a property of the incumbent's numbering rather than of Metal**, so a pipeline with a second uniform buffer reads correct bytes under M-B1's table | Two `[GpuFact]` probes in the shape `GpuSkinningReproGpuTests` established: a pipeline whose vertex stage reads two resource buffers, and a pipeline with a fragment-only second UBO at set 1, each with a pixel READBACK assertion rather than a no-throw assertion. **Headless is the right instrument**, because `docs/DEPENDENCY-SEAMS.md` records that the constraint holds offscreen as well as windowed (2.3) | None. This is a measurement, not a shipped behaviour. **M-B4's invariant STAYS in force regardless of the result** | Both probes read correct values. **A pass does NOT authorise a shader change**: it authorises FILING the invariant's removal as its own work with its own gates on all three backends. A fail is recorded here as the constraint being real on Metal rather than on Veldrid, which is worth just as much and closes four sessions' worth of open question | Gate 3 |
+| MM6 | **The one-uniform-buffer-per-pipeline constraint is a property of the incumbent's numbering rather than of Metal**, so a pipeline with a second uniform buffer reads correct bytes under M-B1's table. **This bet is only READABLE because 2.2b took the id join**: under #586's fallback the backend under test would have used the incumbent's numbering, so both hypotheses would predict the same fail and the probe could not separate them | Two `[GpuFact]` probes in the shape `GpuSkinningReproGpuTests` established: a pipeline whose vertex stage reads two resource buffers, and a pipeline with a fragment-only second UBO at set 1, each with a pixel READBACK assertion rather than a no-throw assertion. **Headless is the right instrument**, because `docs/DEPENDENCY-SEAMS.md` records that the constraint holds offscreen as well as windowed (2.3) | None. This is a measurement, not a shipped behaviour. **M-B4's invariant STAYS in force regardless of the result** | Both probes read correct values. **A pass does NOT authorise a shader change**: it authorises FILING the invariant's removal as its own work with its own gates on all three backends. A fail is recorded here as the constraint being real on Metal rather than on Veldrid, which is worth just as much and closes four sessions' worth of open question | Gate 3 |
 | MM7 | (observation, not a bet) **The swapchain, the drawable and the present path have ZERO CI coverage**, because the Metal golden suite is headless and a headless device builds no `CAMetalLayer`. Every decision in section 11 is validated by a human at a window, or not at all | None available. A native soak that reproduces a presentation defect is consistent with several mechanisms | n/a | Recorded so a reader does not mistake a green full-suite leg, which is the best-covered leg in the matrix, for evidence about presentation. Gate 5's manual pass is the only instrument, **and it is a manual pass alone, because the tool both drafts named for it does not exist (2.10)** | n/a |
 | MM8 | (observation, not a bet) **Metal has no synchronisation validator.** `MTL_DEBUG_LAYER` is API validation and `MTL_SHADER_VALIDATION` is in-shader bounds checking, and neither tracks read-after-write hazards across encoders. This is the fact M-H2 is decided on and the one place this phase's instrument set is WEAKER than phase 3's | None available. If Apple ships one, or if a `MTLCaptureManager` trace-based detector is built, 2.6 reopens with a named instrument | n/a | Recorded because V-M1's precedent is that a decision conditional on an instrument must say which instrument, and because a future reader comparing the two phases' validation gates should find this rather than conclude Metal's is simply cheaper | Open indefinitely |
 | MM9 | The engine-owned interop layer is ABI-correct on arm64 (3.1) | Row 1's spike compiles one file against every call this design names and runs it against a real device, and then the full suite on the leg is the standing answer. **TAKEN 2026-08-10 and CLEAN**, on an Apple M2 Max under macOS 26, every call accepted by one command buffer that completed with a nil error (3.1) | None. An ABI error is a crash, not a tunable | The spike runs clean and the full suite is green on the leg. **An interop defect is expected to present as a crash rather than as a wrong pixel**, which is the one comforting property of this risk | Gate 2 |
@@ -2292,11 +2456,11 @@ Each row becomes one implementation issue, `kind/backlog` unless noted, `confide
 | 6 | Resources: formats, buffers (Shared, size rounding reproduced), textures (`Private`), samplers with the WRAP shared pair and both reachable conditionals, **eager view creation with NO view factory reachable from the recording type**, staging as a Shared `MTLBuffer` with the incumbent's SOFTWARE subresource layout reproduced plus its device-free table test, `Map` and `Unmap` with the read drain, and the device-owned setup command buffer under its own short lock with its read-path flush | Every golden reads back through `Map` and `RowPitch`, so a different arithmetic garbles all 36 at once. Reading the shared samplers' address mode off the engine statics cost two goldens on the D3D11 leg. All 25 `DEVICE_REMOVED` stacks in #423 surfaced inside the lazy view constructor on the draw path. Device-level `UpdateTexture` currently issues a whole queue submit per call |
 | 7 | Command list: a fresh `MTLCommandBuffer` per `Begin`, the three encoder helpers and every transition, the one-encoder-at-a-time invariant, `End`, submit under `_submitLock`, the narrow `IMetalEncoderSink` over argument-table writes, draws and **encoder boundaries** plus the plain-handle `IMetalRenderApi`, the device-free recording-contract test, **the encoder-scope invalidation test written behaviourally (M-R4)**, the uncommitted-buffer bound assertion, AND the `FramesInFlight` constant with its `KE_METAL_FRAMES_IN_FLIGHT` override (MM4's knob), which row 8's ring READS | Vertex-buffer bindings are encoder state and do not survive an encoder change. The incumbent forgets to invalidate them and is saved only by a second defect that makes its cache permanently cold, so porting the tracking without the invalidation ships a corruption no golden reaches. A blocked `commandBuffer` would present as a frame-loop stall with no counter attached. `commit` enqueues, so submit order is only the observable order if commits are serialised |
 | 8 | Uniform ring on Shared persistently mapped memory: segments, bind-time base, the 256 stride with the device's own minimum asserted, the ring-backed-view invariant, the per-list staging arenas for bulk payloads pooled by size, `UpdateBuffer` routing at both levels including #484's every-segment rule and its pending-patch queue, the backpressure counters, the device-free stride invariant test over every shipped set shape, AND the **third shared ring adapter** in `KhaozEngine.TestSupport.Gpu` against section 9.4's seven shared rows. **Depends on 5** | 2.1's encoder-split-per-write class. #484's silent two-frames-in-three-read-nothing defect, which this ring must not reintroduce. A ring built against submit receipts recycles a segment the GPU is still reading. The incumbent's device-level write is an ungated memcpy into memory a queued buffer may be reading (M-M7). "Share the tests" with no adapter on the third side quietly becomes two backends' tests |
-| 9 | **Shader path, a prerequisite of 11 rather than a parallel row**: `VertexFragmentToMsl` and `ComputeToMsl` in `SpirvCrossCompile`'s back-end half, `MslCrossCompilePin` and `MslCompilePin`, the entry-point and index-table parse with the name-join decision row 1 produced, **the one-off in-process MSL parity measurement against the incumbent, taken and RECORDED in this document**, the per-program byte-equality drift test, `MetalMslIncumbentParityTests`, the `.metallib` cache with header validation and its corruption test, `SpirvLocalSize` unchanged, the architecture test that the backend names no HLSL member, and the index-table test over every shipped program **taken before the first golden run** | Byte-identical MSL is the parity claim the whole golden gate rests on, and the drift test alone does not establish it: phase 2's own test header records that a wrong emission baked once passes forever. The index table is what turns three recorded production incidents (7.25.0, 7.51.2 and the splat terrain) into a checked fact. A pipeline cannot be created without a library and a function, so scheduling this outside the renderable path would block row 11 on a row nothing said row 11 needed |
-| 10 | Resource layouts with per-kind declaration-order bookkeeping, resource sets, **the per-program INDEX TABLE as an object, content-deduplicated so M-R9's comparison is a handle compare**, and the pipeline's reference to its table. **Depends on 9** | `GetBufferBase` and its siblings re-walk the layout array on every single bind today. Without content dedup, M-R9's comparison is never equal and every pipeline switch invalidates everything, which is the incumbent's behaviour this row exists to beat |
+| 9 | **Shader path, a prerequisite of 11 rather than a parallel row**: `VertexFragmentToMsl` and `ComputeToMsl` in `SpirvCrossCompile`'s back-end half, `MslCrossCompilePin` and `MslCompilePin`, **the entry-point and index-table parse built on 2.2b's ID JOIN, with the seven pins that section names (the loud parse, the per-stage module read, the asserted positional assumption, the layout shape check, `SpirvResourceDecorations` promoted into `KhaozEngine.Gpu/Internal/`, the table in the `.metallib` cache payload, and each pin's header saying what it does not freeze)**, **the one-off in-process MSL parity measurement against the incumbent, taken and RECORDED in this document**, the per-program byte-equality drift test, `MetalMslIncumbentParityTests`, the `.metallib` cache with header validation and its corruption test, `SpirvLocalSize` unchanged, the architecture test that the backend names no HLSL member, and the index-table test over every shipped program **taken before the first golden run** | Byte-identical MSL is the parity claim the whole golden gate rests on, and the drift test alone does not establish it: phase 2's own test header records that a wrong emission baked once passes forever. The index table is what turns three recorded production incidents (7.25.0, 7.51.2 and the splat terrain) into a checked fact. A pipeline cannot be created without a library and a function, so scheduling this outside the renderable path would block row 11 on a row nothing said row 11 needed |
+| 10 | Resource layouts with per-kind declaration-order bookkeeping, resource sets, **the per-program INDEX TABLE as an object keyed on `(set, binding, stage)` per 2.2b, content-deduplicated so M-R9's comparison is a handle compare**, and the pipeline's reference to its table. The per-kind arithmetic is written HERE as the comparison inside M-T3's standing test and never as the binding path (2.2b). **Depends on 9** | `GetBufferBase` and its siblings re-walk the layout array on every single bind today. Without content dedup, M-R9's comparison is never equal and every pipeline switch invalidates everything, which is the incumbent's behaviour this row exists to beat |
 | 11 | Pipelines: graphics and compute, the render pipeline descriptor from `GpuOutputDescription`, the `MTLVertexDescriptor` with **vertex streams pinned at the TOP of the buffer space (M-B2)** and its no-collision assertion against the index table, the over-31-bindings throw, depth-stencil state with its depth-target guard, blend state, and **the `SetPipeline` identity guard the incumbent lacks (M-R8)**. **Depends on 9 and 10** | `ResourceBindingModel` exists to manage a collision this row's numbering removes, and getting the vertex descriptor's layout index and the command list's bind index out of step binds a vertex buffer where a uniform should be. `setDepthStencilState` on a pass with no depth attachment is a validation error under the debug layer M-T7 arms on every run. A redundant pipeline bind costs a full re-activation today |
 | 12 | Render passes: deferred begin, **per-attachment clear folding into `loadAction` with `KE_METAL_CLEAR` (M-A2)**, explicit `storeAction`, the clear-only-pass flush at both forcing sites, the end-before-illegal-command invariant, and the framebuffer-change-guarded viewport and scissor with the `ScissorTestEnabled` gate and the unconditional plural setters | The incumbent writes every clear into `colorAttachments[0]`, so `ModelFB`'s normal and linear-depth attachments are never cleared, and `ModelRenderer.BeginModelPass` carries a shipped comment working around it incompletely. An unguarded viewport emit silently resets a live scissor, which is golden-visible and which phase 2's first spec froze the wrong way. The clear-only case is forced by the incumbent at two sites and a golden depends on it |
-| 13 | Bind flush: two-state per-slot records, **per-(kind, stage) ARRAY calls (M-R6)**, the offsets-only `setBufferOffset:` path per visible stage, the vertex-stream cache that is actually maintained, index-table invalidation on a pipeline switch, the composed `frameBase + rangeOffset + callerDynamicOffset` offset, and the device-free budget test | One native call per resource per stage is the #418 fan-out defect arriving on a second API, and the fork's binding layer does not declare a single array setter. An offsets-only rebind is the shadow pass's shape thousands of times a frame. An unaligned buffer offset is a validation error under the debug layer and undefined behaviour without it |
+| 13 | Bind flush: two-state per-slot records, **per-(kind, stage) ARRAY calls (M-R6)**, the offsets-only `setBufferOffset:` path per visible stage, the vertex-stream cache that is actually maintained, index-table invalidation on a pipeline switch, the composed `frameBase + rangeOffset + callerDynamicOffset` offset, and the device-free budget test. **Binds through 2.2b's table**, so an element with no entry for a stage is not bound for that stage | One native call per resource per stage is the #418 fan-out defect arriving on a second API, and the fork's binding layer does not declare a single array setter. An offsets-only rebind is the shadow pass's shape thousands of times a frame. An unaligned buffer offset is a validation error under the debug layer and undefined behaviour without it |
 | 14 | Draw and dispatch paths, vertex and index binding with its offset arithmetic, compute pipelines and dispatch with the SERIAL dispatch type, rule 1 and rule 2 behaviour, MSAA resolve with `MaxMsaaSampleCount` **READ OFF the incumbent's own computation and pinned with the note that the argument-ignoring is correct**, mip generation, and copies with the alignment throw and its unreachability assertion | The 36 goldens, and the compute `[GpuFact]` suite that proves rules 1 and 2 on every backend. Both prior phases had drafts that invented an MSAA formula and then asserted equality with the incumbent, which is the C4 failure phase 2 corrected in flight and the V-C5 ruling phase 3 made against both of its drafts. The serial dispatch type is what makes M-H4 true and the fork never chains dependent dispatches, so it is not grounded in its usage |
 | 15 | Swapchain: `CAMetalLayer` acquisition and configuration reproduced field for field, **unconditional `displaySyncEnabled` (M-W2)**, the drawable acquired at the present boundary and counted into the acquire-wait pair, `maximumDrawableCount`, **the nil-drawable orphan target and the skipped present that still counts into `FramesBegun`**, the separate present command buffer, queued resize and vsync change applied at the boundary after a drain, and stable framebuffer identity | The incumbent silently discards every draw of a frame whose drawable is nil, recreates the depth texture inline with no drain while in-flight frames may be reading it, throttles the CPU on `nextDrawable` with nothing counting it, and applies a vsync toggle only inside three values of a deprecated enum. Zero automated coverage anywhere in the net (MM7) |
 | 16 | Capability read and the ZERO-difference parity test with its reflection-completeness check, the `GpuDeviceCounters` fill, `GpuDeviceDiagnostics` with `softwareAdapter` and `deviceLossReason`, and **`MetalFrameCapture` taking the native queue pointer instead of reflecting into Veldrid's private field** | Capability drift is silent and golden-visible through `AntiAliasing.ResolveFor`. Phase 3's row-18 pair are both inherited by name: `DeviceName` is not trimmed, and `SupportsShadowMaps` asks what the incumbent asks rather than what the member's name suggests. The frame-capture reflection is one Veldrid refactor away from silently not working, and it is one of 4.2's three silent sites |
@@ -2307,7 +2471,9 @@ Each row becomes one implementation issue, `kind/backlog` unless noted, `confide
 **Order.**
 
 - **1 to 4 are prerequisites** and land first. Row 1's three verification tasks land before anything depends on
-  their answers, and **row 1's MSL name-join spike is the gate on M-B1**, which is the design's largest risk.
+  their answers, and **row 1's MSL join spikes were the gate on M-B1**, which is the design's largest risk.
+  Both have run, and **2.2b is the ruling they produced. Rows 9, 10 and 13 build what 2.2b says, not what 2.2
+  or #586 says.**
 - **5 (the timeline) is pulled early**, because 8 reads it, for the same reason 13a was pulled early in phase 2
   and row 5 in phase 3.
 - **6 follows 4** and parallelises with 7.
@@ -2400,7 +2566,8 @@ engine-owned implementation, so the only thing keeping Veldrid is the incumbent 
   checkable already exist**: `VulkanSpirvByteEqualityTests` plus `VulkanSpirvIncumbentParityTests` for the
   front end, and `D3D11HlslByteEqualityTests` for the HLSL back end. That is phases 2 and 3 having built the
   regression net for a change neither of them made. **And it is the seat that reopens M-B1**, because a direct
-  binding makes `add_msl_resource_binding` reachable and turns the read table into an authored one.
+  binding makes `add_msl_resource_binding` reachable and turns the read table into an authored one, deleting
+  both the MSL argument parse and the SPIR-V decoration walk 2.2b ships (MF2).
 - Drop `Veldrid` and `Veldrid.SPIRV` from `Directory.Packages.props`, and with them the `Newtonsoft.Json` 9.0.1
   CVE override, which arrives through `Veldrid -> NativeLibraryLoader -> Microsoft.Extensions.DependencyModel`
   and NOT through `Veldrid.SPIRV`, a fact phase 2 had to correct at three comment sites. The CI `libvulkan`
@@ -2450,12 +2617,12 @@ to a named exception rather than members that disappear.
 | **An engine-owned CPU op stream in front of `MTLCommandBuffer`** | A second deferral on top of the driver's own, doubling the encode, adding an allocation, and moving driver-side encode inside the submit lock. Phase 2's section 16 said so before either phase-3 draft existed and phase 3 confirmed it (6.1) |
 | **Vendoring `Veldrid.MetalBindings`** | Veldrid-derived code inside the backend built to remove Veldrid, invisible to every guard that reads package ids, in a repository whose architecture tests assert no Veldrid edge. It also brings an arm64-dead stret path, block machinery M-F1 replaces, a deprecated feature-set enumeration M-N3 stops asking, and not one of the array setters M-R6 needs (3.1) |
 | **A `FramesInFlight` ring of command buffers (V-R2's shape)** | An `MTLCommandBuffer` is single-use. There is no reset, no pool object and no allocator to choose between, so the ported shape has nothing to hold. The depth moves entirely to the ring (M-R2) |
-| **The incumbent's CPU-side flattened index count** | It is the mechanism behind three recorded production incidents (7.25.0's albedo swap, 7.51.2's `EdgeFrag` normal-and-depth swap, and the splat terrain's second UBO) and behind the `ShaderValidation` check the engine already ships. Reading the index the compiler actually emitted strictly dominates it (2.2) |
+| **The incumbent's CPU-side flattened index count** | It is the mechanism behind three recorded production incidents (7.25.0's albedo swap, 7.51.2's `EdgeFrag` normal-and-depth swap, and the splat terrain's second UBO) and behind the `ShaderValidation` check the engine already ships. Reading the index the compiler actually emitted strictly dominates it. #586's fallback would have reproduced it after all, and 2.2b does not take that fallback, so this rejection stands as originally written (2.2, 2.2b) |
 | **Pinning the MSL numbering through a shim over `libveldrid-spirv`** | The library exports `CompileGlslToSpirv`, `CrossCompile` and `FreeResult`, and none of them carries a binding table. `add_msl_resource_binding` is a C++ symbol on an object `CrossCompile` never hands back. The route does not exist at the seat named, and reaching it means linking SPIRV-Cross directly, which is the closing act's work (2.2, 12.2) |
-| **A per-space ORDINAL fallback for the index join** | Within a space, ordinal position IS the index, so falling back to it asserts that the emitted order matches declaration order for that kind, which is exactly the assumption that produced three incidents. It reproduces the incumbent's defect per space instead of across spaces. The honest fallback is the incumbent's arithmetic plus a detector, decided at row 1's spike (2.2) |
+| **A per-space ORDINAL fallback for the index join** | Within a space, ordinal position IS the index, so falling back to it asserts that the emitted order matches declaration order for that kind, which is exactly the assumption that produced three incidents. It reproduces the incumbent's defect per space instead of across spaces. The honest fallback was the incumbent's arithmetic plus a detector, and 2.2b does not take it either: the id join reaches every argument (2.2a, 2.2b) |
 | **Reproducing `ResourceBindingModel`, in either value** | It exists to manage a collision between vertex buffers and resource buffers in one index space, and `Improved`'s arithmetic assumes the CPU knows where the resource buffers landed, which is the assumption M-B1 removes. Pinning vertex streams at the top of the space removes the collision instead (8.3) |
 | **Reproducing the `colorAttachments[0]` clear collapse** | A shipped renderer reaches it with a three-target framebuffer and carries a comment working around it incompletely, and the current behaviour reads two attachments nobody has written, which is the "undefined is not stable" case both prior designs legislate against. Kill switch for the A/B, deadline gate 1 (2.4) |
-| **Calling the one-UBO constraint a convention on the strength of M-B1** | The table is read out of an emission this design does not control, and until row 1's spike says the join holds, that is a prediction stated as a fact about a mechanism that has cost four diagnostic sessions. MM6 measures it and M-B4 keeps the invariant in force either way (2.3) |
+| **Calling the one-UBO constraint a convention on the strength of M-B1** | The table is read out of an emission this design does not control, and a join that holds is still not a readback, so that is a prediction stated as a fact about a mechanism that has cost four diagnostic sessions. Unchanged by 2.2b, which takes a join that DOES hold and says so explicitly: MM6 measures it and M-B4 keeps the invariant in force either way (2.3, 2.2b) |
 | **Shipping a shader change on MM6's strength** | A pass authorises FILING the invariant's removal with its own gates on all three backends, and nothing more (M-B4) |
 | **Reproducing the incumbent's identity-guard-free `SetPipelineCore`** | It clears the whole active-set array and sets the changed flag on every bind including a redundant one, costing a five-call state re-emit plus a full re-activation. One draft asserted the guard already existed. It does not (2.1, M-R8) |
 | **Reproducing `EndCurrentRenderPass` without vertex-stream invalidation** | It is safe in the incumbent only because a second defect makes the vertex cache permanently cold. Porting the tracking without the invalidation ships a corruption no golden reaches (2.1, M-R4) |
@@ -2507,9 +2674,11 @@ Filed as issues when this spec lands, not discovered later.
   mean once each has one implementation behind it (19). Triggered by all three native backends passing gate 4.
   Subsumes phase 3's VF11 and phase 2's F8.
 - **MF2.** Own the MSL numbering by pinning it into the emission, which becomes possible the moment MF1's
-  direct SPIRV-Cross binding exists and `add_msl_resource_binding` is reachable. M-B1's parse is deleted and
-  the table is authored rather than read (2.2). This is the seat #566 banked as "#462 in this phase", corrected
-  for where the pin actually lives.
+  direct SPIRV-Cross binding exists and `add_msl_resource_binding` is reachable. M-B1's MSL parse and its
+  SPIR-V decoration walk are both deleted and the table is authored rather than read (2.2). This is the seat
+  #566 banked as "#462 in this phase", corrected for where the pin actually lives. **2.2b changes what this is
+  worth**: with the id join binding correctly, this stops being the fix for a wrong binding and becomes a
+  simplification that removes the one convention of somebody else's cross-compiler the backend depends on.
 - **MF3.** The one-uniform-buffer-per-pipeline invariant's removal, IF MM6 passes. Its own work with its own
   gates on all three backends, never a side effect of this phase (M-B4, row 17). The terrain splat pass is the
   named consumer that folded a second UBO into the frame UBO to work around it.

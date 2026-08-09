@@ -44,6 +44,13 @@ public class ArchitectureTests
         // premise of this phase is Veldrid leaving rather than dependency count falling, so a consumer that
         // never names Vulkan must never load it.
         "Gpu.Vulkan",
+        // The engine-owned native Metal backend, opt-in for the first of those two reasons (decision M-P1 of
+        // docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md). The second one reads differently here and is
+        // worth stating: this package drags in no third-party assembly at all, so the cost of carrying it is
+        // its own IL rather than a binding. It stays opt-in anyway, because a backend every consumer carries is
+        // a backend every consumer is choosing between, and the whole rollout model is that naming it is what
+        // reaches it.
+        "Gpu.Metal",
     };
 
     // The GPU / runtime stack. None of these may appear in the Foundation or Server umbrella closures (both
@@ -85,6 +92,13 @@ public class ArchitectureTests
         ["Silk.NET.Vulkan"] = new[] { "Gpu.Vulkan" },
         ["Silk.NET.Vulkan.Extensions.KHR"] = new[] { "Gpu.Vulkan" },
         ["Silk.NET.Vulkan.Extensions.EXT"] = new[] { "Gpu.Vulkan" },
+        // KhaozEngine.Gpu.Metal has NO ROW HERE, and its absence is the assertion (decision M-P3). It is the
+        // only backend in the native-GPU program with no third-party package at all: there is no maintained
+        // managed Metal binding to take (Silk.NET ships none, Vortice ships none, Apple ships none), and
+        // vendoring Veldrid.MetalBindings is rejected by name, so the Objective-C interop is engine-owned
+        // [LibraryImport] over objc_msgSend. Do not add a row here for symmetry with the two above: a row would
+        // bless an edge that is supposed to stay impossible, and EveryThirdPartyPackage_IsDeliberatelyMapped
+        // already fails the moment that package declares one.
         // Audio backend: OpenAL plus the ogg / mp3 decoders, all contained in KhaozEngine.Audio.
         ["Silk.NET.OpenAL"] = new[] { "Audio" },
         ["Silk.NET.OpenAL.Soft.Native"] = new[] { "Audio" },
@@ -331,7 +345,7 @@ public class ArchitectureTests
     }
 
     /// <summary>
-    /// Decisions P2 (Direct3D 11) and V-P3 (Vulkan): an engine-owned native backend declares NO Veldrid package
+    /// Decisions P2 (Direct3D 11), V-P3 (Vulkan) and M-P3 (Metal): an engine-owned native backend declares NO Veldrid package
     /// of its own. Both shader paths need SPIRV-Cross, which ships as <c>Veldrid.SPIRV</c>, and the tempting
     /// shortcut is to reference it straight from the backend and bless the edge above. That is rejected:
     /// blessing a Veldrid package inside a backend whose entire premise is being Veldrid-free is a bad signal
@@ -349,6 +363,7 @@ public class ArchitectureTests
     [Theory]
     [InlineData("KhaozEngine.Gpu.D3D11")]
     [InlineData("KhaozEngine.Gpu.Vulkan")]
+    [InlineData("KhaozEngine.Gpu.Metal")]
     public void NativeGpuBackend_DeclaresNoVeldridPackage(string backendProject)
     {
         IReadOnlyDictionary<string, Project> graph = LoadGraph();

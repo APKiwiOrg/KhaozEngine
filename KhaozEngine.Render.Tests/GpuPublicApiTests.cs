@@ -86,7 +86,37 @@ public class GpuPublicApiTests
     }
 
     /// <summary>
-    /// The IL half of the no-Veldrid-edge guard (decisions P2 and V-P3), and the half that actually binds.
+    /// The same no-leak property for the native Metal backend (decision M-P3 of
+    /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>), whose forbidden set is ONE entry where its
+    /// two siblings have two, and the missing second entry is the interesting part.
+    /// <para>
+    /// <c>Veldrid</c> for the reason every native backend carries it: the premise of the program is Veldrid
+    /// leaving the graph, and vendoring <c>Veldrid.MetalBindings</c> was the rejected alternative to the
+    /// hand-rolled interop, so a Veldrid type surfacing here is the exact shape of that decision being reversed.
+    /// There is no second row because there is no binding assembly to contain: this package references no
+    /// third-party package at all, so the Metal vocabulary it does own is its own internal types rather than a
+    /// vendor's, and no assembly-prefix scan can see those. What holds THAT line is
+    /// <see cref="GpuMetalPublicSurface_IsExactlyTheApprovedMembers"/>, which asserts the assembly exports one
+    /// type, so an interop handle struct cannot become public without moving a list somebody had to read.
+    /// </para>
+    /// </summary>
+    [Theory]
+    [InlineData("Veldrid")]
+    public void GpuMetalPublicApi_DoesNotLeakBackendTypes(string forbidden)
+    {
+        Assembly backend = typeof(KhaozEngine.Gpu.Metal.KhaozEngineMetal).Assembly;
+        List<string> leaks = FindLeakedTypes(backend, forbidden);
+
+        bool clean = leaks.Count == 0;
+        Assert.True(clean,
+            $"KhaozEngine.Gpu.Metal exposes {forbidden} types on its externally visible surface. This package " +
+            "is the one whose whole premise is owning the Objective-C interop rather than vendoring a " +
+            "Veldrid-derived one, so a Veldrid type reaching this surface is that premise being given up:\n" +
+            string.Join("\n", leaks));
+    }
+
+    /// <summary>
+    /// The IL half of the no-Veldrid-edge guard (decisions P2, V-P3 and M-P3), and the half that actually binds.
     /// <c>ArchitectureTests</c> asserts each backend declares no Veldrid <c>PackageReference</c>, which catches
     /// a deliberate edit to the project file. It cannot catch the subtler failure: a backend reaches Veldrid
     /// through <c>KhaozEngine.Gpu</c>'s transitive closure whatever the project file says, so an INTERNAL helper
@@ -97,11 +127,15 @@ public class GpuPublicApiTests
     [Theory]
     [InlineData("KhaozEngine.Gpu.D3D11")]
     [InlineData("KhaozEngine.Gpu.Vulkan")]
+    [InlineData("KhaozEngine.Gpu.Metal")]
     public void NativeGpuBackend_ReferencesNoVeldridAssembly(string backendAssemblyName)
     {
-        Assembly backend = backendAssemblyName == "KhaozEngine.Gpu.D3D11"
-            ? typeof(KhaozEngine.Gpu.D3D11.KhaozEngineD3D11).Assembly
-            : typeof(KhaozEngine.Gpu.Vulkan.KhaozEngineVulkan).Assembly;
+        Assembly backend = backendAssemblyName switch
+        {
+            "KhaozEngine.Gpu.D3D11" => typeof(KhaozEngine.Gpu.D3D11.KhaozEngineD3D11).Assembly,
+            "KhaozEngine.Gpu.Vulkan" => typeof(KhaozEngine.Gpu.Vulkan.KhaozEngineVulkan).Assembly,
+            _ => typeof(KhaozEngine.Gpu.Metal.KhaozEngineMetal).Assembly,
+        };
 
         // Asserted rather than assumed: the ternary above is the one place the theory rows and the assemblies
         // they name could drift apart, and a silent mismatch would run one row twice and the other never.
@@ -208,6 +242,49 @@ public class GpuPublicApiTests
             .ToArray();
 
         Assert.Equal(new[] { "KhaozEngine.Gpu.Vulkan.KhaozEngineVulkan" }, exported);
+    }
+
+    /// <summary>
+    /// The same member-by-member pin for the native Metal backend, and here it carries more weight than in
+    /// either sibling, because this package has no third-party assembly for a prefix scan to catch. The one
+    /// exported type IS the containment: every Objective-C handle struct, every <c>objc_msgSend</c> overload and
+    /// the interop spike are internal, so a consumer's compile never sees a Metal vocabulary at all.
+    /// <para>
+    /// The list is one entry today and it is <c>IsPlatformSupported</c>, not <c>Register</c>, which is the
+    /// opposite way round from the Vulkan sibling and is decision M-P1 rather than an accident. Metal is an
+    /// OS-specific API, so this package needs the Direct3D 11 package's <c>[SupportedOSPlatformGuard]</c>
+    /// apparatus, and the guard is what every Objective-C body will sit behind. <c>Register</c> is absent
+    /// because the provider it would register does not exist yet (row 2), and a registration call that shipped
+    /// ahead of its provider would be a public method that lies about what the package can do.
+    /// </para>
+    /// <para>
+    /// So widening the surface is a deliberate edit to the array below, made by someone who had to read this.
+    /// Adding a member and updating it is the whole cost. Not noticing is what this removes.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void GpuMetalPublicSurface_IsExactlyTheApprovedMembers()
+    {
+        string[] approvedMembers = { "IsPlatformSupported" };
+
+        Type entryPoint = typeof(KhaozEngine.Gpu.Metal.KhaozEngineMetal);
+
+        string[] members = entryPoint
+            .GetMembers(BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            .Where(m => m is not MethodBase { IsSpecialName: true })
+            .Select(m => m.Name)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(n => n, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(approvedMembers, members);
+
+        string[] exported = entryPoint.Assembly.GetExportedTypes()
+            .Select(t => t.FullName ?? t.Name)
+            .OrderBy(n => n, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(new[] { "KhaozEngine.Gpu.Metal.KhaozEngineMetal" }, exported);
     }
 
     // Walks the externally visible (public + protected) surface of every exported type in <paramref name="assembly"/>

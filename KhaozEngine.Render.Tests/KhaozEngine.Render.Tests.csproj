@@ -56,6 +56,12 @@
          walk and the no-Silk public-surface walk, both of which need the real assembly rather than its
          project file. -->
     <ProjectReference Include="../KhaozEngine.Gpu.Vulkan/KhaozEngine.Gpu.Vulkan.csproj" />
+    <!-- The opt-in native Metal backend, referenced unconditionally for the same reason as the two above:
+         decision M-P1 gives it net10.0 with no OS suffix, so it compiles on every leg and the macOS boundary is
+         a [SupportedOSPlatformGuard] rather than a target framework. GpuPublicApiTests reflects over the built
+         assembly here for the no-Veldrid IL walk and the one-exported-type pin, and the interop spike's
+         [GpuFact] calls into the package across InternalsVisibleTo. -->
+    <ProjectReference Include="../KhaozEngine.Gpu.Metal/KhaozEngine.Gpu.Metal.csproj" />
     <!-- 7 Gpu-folder golden tests render Gui widgets (BootScreen, PatchNotesView, PopupPanel, SlotGrid, TabBar). -->
     <ProjectReference Include="../KhaozEngine.Gui/KhaozEngine.Gui.csproj" />
     <ProjectReference Include="../KhaozEngine.Imaging/KhaozEngine.Imaging.csproj" />

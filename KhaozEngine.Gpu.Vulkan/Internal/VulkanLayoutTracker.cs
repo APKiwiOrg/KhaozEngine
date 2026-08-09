@@ -135,6 +135,47 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         }
 
         /// <summary>
+        /// WHETHER <see cref="TransitionTo"/> WOULD EMIT ANYTHING, answered without emitting or recording
+        /// anything at all. The same three cases <see cref="Stage"/> decides, read rather than acted on.
+        /// <para>
+        /// IT EXISTS FOR ONE CALLER AND ONE INVARIANT. A barrier may not be recorded inside an open render pass
+        /// instance, and the draw path's bound-image walk runs while one may already be open, so
+        /// <see cref="VulkanDrawRecorder"/> has to END the pass before the walk emits. Ending it unconditionally
+        /// would cost an end and a begin on every draw of every pass, which is exactly the per-draw cost V-T2's
+        /// gated invariant is about, so the pass is ended only when a transition is really owed and this is what
+        /// answers that.
+        /// </para>
+        /// </summary>
+        /// <param name="image">The image and the range, exactly as the transition would name them.</param>
+        /// <param name="target">The layout the next command needs it in.</param>
+        /// <exception cref="InvalidOperationException">The range partially overlaps a tracked one, which is the
+        /// refusal <see cref="Classify"/> makes for a transition of the same shape.</exception>
+        internal bool WouldTransition(in VulkanTrackedImage image, ImageLayout target)
+        {
+            RequireImage(image);
+
+            int index = Classify(image, out int covered);
+
+            // A WIDER RANGE MOVES WHATEVER PIECES ARE NOT ALREADY THERE. The untracked-remainder refusal is
+            // deliberately NOT reproduced here: it is raised by the transition itself, and raising it from a
+            // question would refuse a draw before the call that owns the rule had been reached.
+            if (covered > 0)
+            {
+                List<Entry> map = Map;
+                for (int i = 0; i < map.Count; i++)
+                {
+                    Entry entry = map[i];
+                    if (entry.Image != image.Image || !image.Range.Contains(entry.Subrange)) continue;
+                    if (entry.Current != target) return true;
+                }
+
+                return false;
+            }
+
+            return (index < 0 ? image.RestingLayout : Map[index].Current) != target;
+        }
+
+        /// <summary>
         /// Move <paramref name="image"/> into <paramref name="target"/>, emitting ONE barrier, or emitting nothing
         /// at all when it is already there.
         /// </summary>
@@ -169,6 +210,16 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// CALLED IMMEDIATELY BEFORE <c>vkCmdBeginRendering</c> AND NEVER INSIDE THE INSTANCE, which is
         /// <see cref="VulkanRenderingSchedule"/>'s obligation rather than this type's: a barrier recorded inside an
         /// open render pass instance is a different and much narrower call than the one that table describes.
+        /// </para>
+        /// <para>
+        /// NOTHING IN THIS TYPE ENFORCES THAT, AND SAYING SO IS THE POINT. Every caller is obliged to have closed
+        /// any open instance before it asks for a barrier, and there are two of them: this one, reached from the
+        /// begin itself where no instance can be open yet, and <see cref="VulkanDrawRecorder"/>'s bound-image walk,
+        /// which runs where one may well be. That second caller ends the pass first, and only when
+        /// <see cref="WouldTransition"/> says a barrier is really owed, so the common draw pays neither the end nor
+        /// the begin. The obligation used to be stated here as though the schedule discharged it for everybody, and
+        /// it did not: the first draw of a pass opened the instance and every later draw walked its bound sets with
+        /// that instance still open.
         /// </para>
         /// <para>
         /// AN ATTACHMENT ALREADY IN ITS ATTACHMENT LAYOUT COSTS NOTHING, which is the common case for a plain

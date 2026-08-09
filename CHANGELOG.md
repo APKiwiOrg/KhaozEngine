@@ -27,12 +27,18 @@ five members are a resolve plus one call (#556). The two new device-free seams u
 sink as a GENERIC parameter, so the descriptor flush and the command stay one monomorphized pair and the counting
 twin can see a `vkCmdDraw` at all, and the TRANSFER sink is six calls with no decision in any of them.
 
-**The image transitions come BEFORE the pass opens, and that ordering is the compute rule 1 barrier.** A storage
-texture a dispatch wrote is left in `GENERAL`, and the next draw whose set SAMPLES it moves it to
+**The image transitions come OUTSIDE the render pass instance, and that ordering is the compute rule 1 barrier.**
+A storage texture a dispatch wrote is left in `GENERAL`, and the next draw whose set SAMPLES it moves it to
 `SHADER_READ_ONLY_OPTIMAL` where the sampled bind is assembled, which is a REAL image barrier rather than the
-incumbent's queued layout restore armed by a usage flag. It has to be before the begin, because a barrier inside
-a dynamic-rendering instance is a different and much narrower call than the one the design's table describes, and
-the incumbent drains its own queued restores before `EnsureRenderPassActive` for exactly that reason. A resource
+incumbent's queued layout restore armed by a usage flag. It has to be outside, because a barrier inside a
+dynamic-rendering instance is a different and much narrower call than the one the design's table describes (inside
+one, `oldLayout` must equal `newLayout`), and the incumbent drains its own queued restores before
+`EnsureRenderPassActive` for exactly that reason. Being before the BEGIN covers only the first draw of a pass, so
+a later draw whose newly bound set needs a layout change ENDS the open pass first, and only when a transition is
+really owed: the walk is asked before it is run, so a draw that touches no new texture pays neither a barrier nor
+a pass boundary. The shape that reaches it is the ocean chain, where a mip generation leaves levels in the
+transfer layouts, the sky pass opens the instance on the shared framebuffer, and the water pass binds the same
+framebuffer (so nothing ends the pass) and then the ocean map. A resource
 set carries its images as PLAIN DATA resolved at set creation, with the range each binding's own view covers
 (full chain for a sampled bind, mip 0 for a storage one), so the walk allocates nothing, reaches no factory, and
 hands the tracker exactly the contains-then-collapse shape row 14 built for it. The walk covers every RECORDED

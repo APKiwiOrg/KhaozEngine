@@ -15,13 +15,24 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     ///
     /// <para><b>THE DRAW ORDER, AND WHY EACH STEP IS WHERE IT IS.</b>
     /// <list type="number">
-    /// <item><description><b>The bound sets' images are transitioned FIRST, BEFORE the render pass instance
-    /// opens.</b> This is the compute rule 1 barrier (V-C1): a storage texture a dispatch left in <c>GENERAL</c>
-    /// goes to <c>SHADER_READ_ONLY_OPTIMAL</c> where the sampled bind is assembled, and so does a render target
-    /// the previous pass wrote and this one samples. It has to be before, because a barrier inside an open render
+    /// <item><description><b>The bound sets' images are transitioned FIRST, OUTSIDE any render pass instance.</b>
+    /// This is the compute rule 1 barrier (V-C1): a storage texture a dispatch left in <c>GENERAL</c> goes to
+    /// <c>SHADER_READ_ONLY_OPTIMAL</c> where the sampled bind is assembled, and so does a render target the
+    /// previous pass wrote and this one samples. It has to be outside, because a barrier inside an open render
     /// pass instance is a different and much narrower call than the one section 10.3's table describes, and the
-    /// incumbent drains its own queued restores before <c>EnsureRenderPassActive</c> for the same
-    /// reason.</description></item>
+    /// incumbent drains its own queued restores before <c>EnsureRenderPassActive</c> for the same reason. So a
+    /// pass that is ALREADY OPEN is ended here, and only when a transition is really owed: the FIRST draw of a
+    /// pass finds nothing open and the invariant costs it nothing, and a LATER draw whose newly bound set needs a
+    /// layout change would otherwise emit its barrier inside the instance, where <c>oldLayout</c> must equal
+    /// <c>newLayout</c> and this one does not. That is not a hypothetical shape: the ocean chain reaches it, where
+    /// a mip generation leaves levels in the transfer layouts, a sky pass opens the instance on the shared colour
+    /// and depth framebuffer, and the water pass that follows binds the SAME framebuffer (so no framebuffer change
+    /// ends anything) and then binds the ocean map. The pass is ended through
+    /// <see cref="VulkanRenderingSchedule.EndRendering"/> rather than by hand, so the clear-only flush travels with
+    /// it, and the begin that step 2 then makes carries <c>loadOp = LOAD</c> because the clears were consumed by
+    /// the begin this ended. Reopening costs nothing beyond the pair: descriptor binds, geometry binds and dynamic
+    /// state are COMMAND BUFFER state rather than render pass state, so they survive the boundary and the reopened
+    /// pass re-emits none of them.</description></item>
     /// <item><description><b>Then <c>PrepareDraw</c></b>, which opens the instance if it is not open, folding
     /// every pending clear into a <c>loadOp</c>, transitions the ATTACHMENTS inside that begin, and emits the
     /// viewport and the scissor if a framebuffer change marked them (V-A2, V-A5).</description></item>
@@ -44,8 +55,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// a dispatch is still bound at the draw after it, and a dirty-only walk would skip the rule 1 transition on
     /// exactly the sequence rule 1 names. It costs a scan of a handful of images per command with NO native call
     /// in the common case, because <see cref="VulkanLayoutTracker"/> emits nothing for an image already in the
-    /// layout it is being asked for, which every plain sampled texture is. That is what keeps V-T2's gated
-    /// invariant true: no pipeline barrier is emitted between two draws that touch no new texture.</para>
+    /// layout it is being asked for, which every plain sampled texture is. The graphics arm scans TWICE, once to
+    /// ask whether the pass has to close and once to transition, and that is the cheaper half of the trade: a
+    /// second scan makes no call at all, where closing every pass unconditionally would cost a
+    /// <c>vkCmdEndRendering</c> and a <c>vkCmdBeginRendering</c> per draw. That is what keeps V-T2's gated
+    /// invariant true: no pipeline barrier, and no pass boundary either, between two draws that touch no new
+    /// texture.</para>
     ///
     /// <para><b>NOTHING HERE IS SYNCHRONISED</b>, on the same grounds as the list that owns it.</para>
     /// </summary>
@@ -151,6 +166,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             ArgumentNullException.ThrowIfNull(rendering);
             ArgumentNullException.ThrowIfNull(binds);
 
+            // THE PASS IS CLOSED FIRST, AND ONLY WHEN A TRANSITION IS REALLY OWED. See the class note's step 1:
+            // an open instance has to be ended before the walk emits, and asking first is what keeps the common
+            // draw free of an end and a begin it does not need.
+            if (rendering.IsRendering && NeedsTransition(binds)) rendering.EndRendering(commandBuffer);
+
             TransitionBoundImages(commandBuffer, binds);
             rendering.PrepareDraw(commandBuffer);
             _geometry.Flush(_emitter, commandBuffer);
@@ -173,6 +193,28 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     _layouts.TransitionTo(commandBuffer, image.Image, image.Layout);
                 }
             }
+        }
+
+        // THE SAME WALK, ASKED RATHER THAN ACTED ON: would the walk above emit anything at all? It is a second
+        // pass over the same handful of images and it makes no call, which is the trade this shape takes: a scan
+        // the common draw pays twice, against an end and a begin the common draw would pay once. The scan costs
+        // nothing native and the pair costs two commands and a loadOp reset.
+        bool NeedsTransition(VulkanBindRecords binds)
+        {
+            if (_layouts is null) return false;
+
+            for (uint slot = 0; slot < (uint)binds.RecordedSlotCount; slot++)
+            {
+                VulkanBoundSet bound = binds.BoundAt(slot);
+                if (!bound.IsBound) continue;
+
+                foreach (VulkanBoundImage image in bound.BoundImages)
+                {
+                    if (_layouts.WouldTransition(image.Image, image.Layout)) return true;
+                }
+            }
+
+            return false;
         }
     }
 }

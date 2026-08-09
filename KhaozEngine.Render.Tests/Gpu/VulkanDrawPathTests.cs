@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Vulkan.Internal;
+using KhaozEngine.Primitives;
 using Silk.NET.Vulkan;
 using Xunit;
 
@@ -352,6 +353,109 @@ namespace KhaozEngine.Tests.Gpu
                 list.Draw(3);
 
                 Assert.Equal(after, fixture.Barriers.CallCount);
+            }
+            finally
+            {
+                DisposeAll(owned);
+            }
+        }
+
+        /// <summary>
+        /// AND A LATER DRAW IN AN ALREADY OPEN PASS ENDS IT BEFORE ITS BARRIER, which is the half "the transitions
+        /// come before the begin" does NOT cover on its own. The first draw of a pass finds nothing open, so the
+        /// ordering held by construction. A LATER one does not, and its barrier would have been recorded inside the
+        /// instance, where <c>oldLayout</c> must equal <c>newLayout</c> and a layout CHANGE is therefore invalid.
+        ///
+        /// <para><b>THIS IS THE SHIPPED SHAPE, NOT A CONSTRUCTED ONE.</b> The ocean chain reaches it: a producer
+        /// leaves the map away from its resting layout, one renderer opens the instance on a framebuffer, and the
+        /// next renderer binds the SAME framebuffer (so the framebuffer-change guard ends nothing) before binding
+        /// the map. The clear the first renderer folded is asserted NOT to be re-applied by the reopened pass,
+        /// because a begin CONSUMES the pending array and the second begin therefore carries
+        /// <c>loadOp = LOAD</c>.</para>
+        /// </summary>
+        [Fact]
+        public void ADrawInAnOpenPassThatOwesATransition_EndsThePassSoTheBarrierLandsOutsideIt()
+        {
+            var fixture = new VulkanResourceFixture();
+            var owned = new List<IDisposable>();
+
+            try
+            {
+                IGpuTexture map = fixture.Factory.CreateTexture(VulkanResourceFixture.Texture(
+                    16, 16, GpuTextureUsage.Storage | GpuTextureUsage.Sampled));
+                owned.Add(map);
+
+                using VulkanCommandList list = Recording(fixture, owned, out IGpuFramebuffer framebuffer);
+
+                // THE PRODUCER: a dispatch leaves the map in GENERAL, which is what the ocean's FFT pass does.
+                IGpuResourceSet storage = StorageSet(fixture, owned, map);
+                Adopt(fixture, list.ComputeBinds, storage);
+                list.SetComputeResourceSet(0, storage);
+                list.Dispatch(1, 1, 1);
+
+                // THE FIRST RENDERER: a clear folded into its begin, then a draw that opens the instance.
+                list.ClearColorTarget(0, new Color(0f, 0f, 0f, 1f));
+                list.Draw(3);
+                Assert.True(list.Rendering.IsRendering);
+
+                // THE SECOND RENDERER, ON THE SAME FRAMEBUFFER, so nothing ends the pass on its behalf.
+                fixture.Trace.Clear();
+                list.SetFramebuffer(framebuffer);
+                IGpuResourceSet sampled = SampledSet(fixture, owned, map);
+                Adopt(fixture, list.GraphicsBinds, sampled);
+                list.SetGraphicsResourceSet(0, sampled);
+                list.Draw(3);
+
+                string[] trace = fixture.Trace.ToArray();
+                Assert.Equal(4, trace.Length);
+                Assert.Equal("EndRendering", trace[0]);
+                Assert.Contains("General->ShaderReadOnlyOptimal", trace[1], StringComparison.Ordinal);
+                Assert.Equal("BeginRendering(64x64,colour=1,depth=none)", trace[2]);
+                Assert.Equal("Draw(3,1)", trace[3]);
+
+                // AND THE CLEAR IS NOT APPLIED TWICE. The first begin consumed it, so the reopened pass LOADS.
+                Assert.Equal(2, fixture.RenderApi.Begins.Count);
+                Assert.Equal(VulkanLoadOp.Clear, fixture.RenderApi.Begins[0].Colour[0].LoadOp);
+                Assert.Equal(VulkanLoadOp.Load, fixture.RenderApi.Begins[1].Colour[0].LoadOp);
+            }
+            finally
+            {
+                DisposeAll(owned);
+            }
+        }
+
+        /// <summary>
+        /// AND A DRAW THAT OWES NO TRANSITION LEAVES THE PASS ALONE, which is the other half of the same rule and
+        /// the one that keeps it affordable. Ending every pass unconditionally would buy the invariant with a
+        /// <c>vkCmdEndRendering</c> and a <c>vkCmdBeginRendering</c> per draw, which is exactly the per-draw cost
+        /// V-T2's gated invariant is about, so the walk is ASKED before it is run.
+        /// </summary>
+        [Fact]
+        public void ADrawInAnOpenPassThatOwesNoTransition_LeavesThePassOpen()
+        {
+            var fixture = new VulkanResourceFixture();
+            var owned = new List<IDisposable>();
+
+            try
+            {
+                IGpuTexture albedo = fixture.Factory.CreateTexture(
+                    VulkanResourceFixture.Texture(16, 16, GpuTextureUsage.Sampled));
+                owned.Add(albedo);
+
+                using VulkanCommandList list = Recording(fixture, owned, out _);
+                IGpuResourceSet material = SampledSet(fixture, owned, albedo);
+                Adopt(fixture, list.GraphicsBinds, material);
+                list.SetGraphicsResourceSet(0, material);
+                list.Draw(3);
+
+                fixture.Trace.Clear();
+                list.Draw(3);
+                list.Draw(3);
+
+                Assert.Equal(["Draw(3,1)", "Draw(3,1)"], fixture.Trace.ToArray());
+                Assert.True(list.Rendering.IsRendering);
+                Assert.Equal(0, fixture.RenderApi.EndCount);
+                Assert.Single(fixture.RenderApi.Begins);
             }
             finally
             {

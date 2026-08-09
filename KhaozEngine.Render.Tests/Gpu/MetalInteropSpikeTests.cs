@@ -8,8 +8,9 @@ namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
     /// VERIFICATION TASK ONE of row 1 of <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>, run
-    /// against a real device. <see cref="MetalInteropSpike"/> touches every Objective-C call the design names
-    /// and this is what makes it RUN, which is the difference between this spike and phase 3's: that one could
+    /// against a real device. <see cref="MetalInteropSpike"/> covers every ABI SHAPE the design names, one
+    /// representative per distinct <c>objc_msgSend</c> prototype rather than every selector row 4 will need, and
+    /// this is what makes it RUN, which is the difference between this spike and phase 3's: that one could
     /// only be a compile-time inventory, because the machine that wrote it had no Vulkan loader.
     /// <para>
     /// WHAT A RED RUN MEANS. Bet MM9 is "the engine-owned interop layer is ABI-correct on arm64", and section 16

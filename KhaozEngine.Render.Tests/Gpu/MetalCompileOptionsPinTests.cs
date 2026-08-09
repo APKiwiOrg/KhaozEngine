@@ -20,6 +20,23 @@ namespace KhaozEngine.Tests.Gpu
     /// default, or the compile options stop being defaults and start being stated values.
     /// </para>
     /// <para>
+    /// WHICH RED RUN ARE YOU LOOKING AT, and they want opposite responses. These values are pinned to what
+    /// <c>macos-26</c> reports, and that is the only run that gates anything: the golden leg is pinned to
+    /// <c>macos-26</c> by number, so a failure THERE means the runner image moved the defaults out from under
+    /// the committed metal goldens and M-S6 has to be re-decided. A failure on a DEVELOPER'S Mac running an
+    /// OLDER macOS is expected and is not a regression. An older OS caps <c>languageVersion</c> lower and may
+    /// not carry <c>mathMode</c> at all, so it fails here while the build it produces is fine. If that is you,
+    /// read the reported values, confirm they are the older OS's ceiling rather than a moved default, and carry
+    /// on. Do not "fix" the pin to match your machine, because the pin's whole job is to describe the image the
+    /// goldens were baked on.
+    /// </para>
+    /// <para>
+    /// It is prose rather than an OS-version gate on purpose. Gating would need a version predicate, this repo
+    /// has no precedent for one (every platform check in it is a plain <c>OperatingSystem.IsMacOS()</c>), and a
+    /// gate that silently passes on an older OS would remove the signal on the one machine that matters the day
+    /// the pinned image is bumped and someone reads a green run as agreement.
+    /// </para>
+    /// <para>
     /// No device is created, so this is a plain fact rather than a <c>[GpuFact]</c>: <c>MTLCompileOptions</c> is
     /// an ordinary object and what is being measured is the operating system. It goes dormant off macOS rather
     /// than skipping, for the same reason every row in this phase does.

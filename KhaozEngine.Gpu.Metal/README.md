@@ -26,7 +26,9 @@ if (KhaozEngineMetal.IsPlatformSupported) { /* macOS */ }
 
 `IsPlatformSupported` is the whole public surface, and a test pins it member by member so the next row has to
 mean it. Everything else in the assembly is internal and exists to answer a question rather than to run in a
-game: the interop spike, which is the one file that touches every Objective-C call the design names.
+game: the interop spike, which covers every ABI shape the design names (one representative per distinct
+`objc_msgSend` prototype, rather than every selector row 4 will need) across two files, plus the
+compile-options probe beside it.
 
 ## Three decisions worth knowing before reading the code
 

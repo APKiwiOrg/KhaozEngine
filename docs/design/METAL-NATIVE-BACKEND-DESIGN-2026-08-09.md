@@ -805,8 +805,9 @@ so no stret path is written rather than one being written and disabled. `BOOL` i
 double on 64-bit. Every one of these is a row-1 spike item rather than an assertion in this document, because a
 wrong ABI assumption in interop is a memory corruption rather than a compile error.
 
-**Row 1's spike, and what fails if each answer is no.** It compiles ONE file touching every Objective-C call
-this design names and runs it against a real device: the `objc_msgSend` return classes, an
+**Row 1's spike, and what fails if each answer is no.** It compiles a spike covering every ABI SHAPE this
+design names, which is one representative per distinct `objc_msgSend` prototype rather than every selector row
+4 will need, and runs it against a real device: the `objc_msgSend` return classes, an
 `[UnmanagedCallersOnly]` completion handler firing on a real command buffer, `MTLSharedEvent`'s four members,
 the array setters and the offset setters, `supportsFamily:`, and whether in-process environment mutation
 reaches the validation layer (M-G3). The named fallbacks are the incumbent's delegate-and-dictionary block

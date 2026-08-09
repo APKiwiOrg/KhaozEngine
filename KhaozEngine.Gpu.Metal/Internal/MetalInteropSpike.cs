@@ -73,8 +73,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
     /// <summary>
     /// VERIFICATION TASK ONE of work-breakdown row 1 in
-    /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>: one file touching every Objective-C call the
-    /// design names, compiled and RUN against a real Metal device.
+    /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>, compiled and RUN against a real Metal
+    /// device. What it covers is every ABI SHAPE the design names, which is not the same as every selector: the
+    /// point is that each distinct <c>objc_msgSend</c> prototype crosses correctly, so one representative of a
+    /// shape stands for the rest of that shape and row 4's full selector list is row 4's. It is also two files
+    /// rather than one, this half and <c>MetalInteropSpike.Native.cs</c>, with the compile-options probe beside
+    /// them as its own verification task.
     /// <para>
     /// It is not the interop layer. Row 4 builds that, as a file family under <c>Internal/ObjC/</c> with one file
     /// per Objective-C class. This is the measurement that has to come first, because section 3.1 refuses to

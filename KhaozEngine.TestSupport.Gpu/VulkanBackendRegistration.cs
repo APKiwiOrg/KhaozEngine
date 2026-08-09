@@ -25,13 +25,14 @@ namespace KhaozEngine.Tests.Gpu
     /// library, is on <see cref="D3D11BackendRegistration"/> and is not repeated here.
     /// </para>
     /// <para>
-    /// REGISTERING IS ALL THIS DOES, and on this backend that is currently more than it sounds and less than it
-    /// looks. The provider it registers answers a real functional probe (a Vulkan loader, a throwaway instance at
-    /// the 1.3 floor, every physical device read against the design's requirements) and refuses device creation
-    /// with a message naming the row that builds it. So no GPU test runs on this backend yet, and the seat exists
-    /// now anyway: the row that builds the device is the row that must NOT also have to discover where the
-    /// registration goes. What it registers under is <c>GpuBackendKind.VulkanNative</c>, which arrived a row
-    /// later than this seat did and replaced the pinned ordinal the seat was first written against.
+    /// REGISTERING IS ALL THIS DOES, and it now decides whether a whole CI leg has a backend at all. The provider
+    /// it registers answers a real functional probe (a Vulkan loader, a throwaway instance at the 1.3 floor,
+    /// every physical device read against the design's requirements) and builds a real device behind it, so the
+    /// <c>vulkan-native</c> leg (https://github.com/APKiwiOrg/KhaozEngine/issues/529) runs the whole GPU suite
+    /// through this line. The seat was taken a row before the device existed, deliberately: the row that builds
+    /// the device is the row that must NOT also have to discover where the registration goes. What it registers
+    /// under is <c>GpuBackendKind.VulkanNative</c>, which arrived a row later than this seat did and replaced the
+    /// pinned ordinal the seat was first written against.
     /// </para>
     /// <para>
     /// It is process-wide state, so a test that needs the native kind UNREGISTERED says so explicitly with

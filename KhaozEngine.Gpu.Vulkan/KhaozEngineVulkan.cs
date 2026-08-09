@@ -6,16 +6,35 @@ namespace KhaozEngine.Gpu.Vulkan
     /// The public surface of the engine-owned native Vulkan backend, and for now the whole of it: one call that
     /// registers the backend with <see cref="GpuBackendProviders"/>.
     /// <para>
-    /// WHAT THIS PACKAGE CAN DO TODAY. Registration, the machine-capability probe and HEADLESS device creation
-    /// are all real. Registering makes the provider reachable, and <see cref="GpuBackendSelector.IsBackendSupported"/>
-    /// then answers for this machine by resolving a Vulkan loader, creating a throwaway instance at the 1.3 floor
-    /// and reading every physical device against section 5.2's requirements.
-    /// <c>GpuDeviceContext.CreateHeadless(GpuBackendKind.VulkanNative)</c> then builds a real <c>VkDevice</c> on
-    /// the one refcounted process instance, with its features enabled by name and its device-loss latch armed
-    /// (work-breakdown row 4, https://github.com/APKiwiOrg/KhaozEngine/issues/514). Creating a WINDOWED device is
-    /// not built yet and throws a message naming the row that builds the swapchain
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/527), and a headless device cannot yet record, submit or
-    /// create a resource: each of those members throws a message naming its own row.
+    /// WHAT THIS PACKAGE CAN DO TODAY: RENDER, HEADLESS OR WINDOWED, WITH NOTHING LEFT REFUSING. Registering makes
+    /// the provider reachable, and <see cref="GpuBackendSelector.IsBackendSupported"/> answers for this machine by
+    /// resolving a Vulkan loader, creating a throwaway instance at the 1.3 floor and reading every physical device
+    /// against section 5.2's requirements.
+    /// <c>GpuDeviceContext.CreateHeadless(GpuBackendKind.VulkanNative)</c> builds a real <c>VkDevice</c> on the one
+    /// refcounted process instance, with its features enabled by name and its device-loss latch armed, and
+    /// <c>CreateForWindow</c> reaches a real windowed device with a platform surface, a swapchain and a present
+    /// boundary that acquires, resizes, recreates and presents. Between those, every member of
+    /// <c>IGpuResourceFactory</c> and every member of <c>IGpuCommandList</c> is built: the timeline and its fences,
+    /// the block suballocator, the uniform ring, buffers, textures, samplers and staging, descriptors and the bind
+    /// flush, dynamic rendering, the shader path, both pipelines, the layout tracker, and the draw, dispatch and
+    /// transfer paths.
+    /// </para>
+    /// <para>
+    /// WHAT IS NOT DONE IS THE ROLLOUT, WHICH IS A DIFFERENT SENTENCE FROM "NOT BUILT". Nothing selects this
+    /// backend for anyone: <c>ProbeOS</c> still maps Linux to <see cref="GpuBackendKind.Vulkan"/>, the headless
+    /// default is unchanged, and this backend is reached only by an explicit kind or the
+    /// <c>KE_GRAPHICS_BACKEND=vulkan-native</c> token. The default flip waits on the five rollout gates of
+    /// section 17 (https://github.com/APKiwiOrg/KhaozEngine/issues/529), two of which are a field session and a
+    /// human windowed pass that no CI leg can stand in for. The Veldrid Vulkan backend stays selectable
+    /// indefinitely either way (decision V-RO2), so a regression here is one environment variable away from an
+    /// A/B on the same build.
+    /// </para>
+    /// <para>
+    /// THIS PARAGRAPH IS A LEDGER, AND A STALE ONE IS WORSE THAN NONE, because it is the first thing a consumer
+    /// reads about the package. It went nine work-breakdown rows out of date once already
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/560), still promising that a windowed device throws and
+    /// that a headless one cannot record, submit or make a resource, long after all of that was live. Anything
+    /// that changes what this package can DO changes this paragraph in the same commit.
     /// </para>
     /// <para>
     /// This type is safe to touch on ANY operating system, and unlike the Direct3D 11 package it needs no

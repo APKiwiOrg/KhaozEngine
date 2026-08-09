@@ -1083,7 +1083,531 @@ material variety beyond one dynamic offset, which today means a texture-array at
 express. That is the SAME trigger phase 3 named for descriptor indexing, deliberately, because the two would be
 reopened by the same consumer and should be reopened together.
 
+---
+
+## 9. Memory and the uniform ring
+
+### 9.1 There is no allocator, and that is the whole of it (M-M6)
+
+Metal allocates through `newBufferWithLength:options:` and `newTextureWithDescriptor:` and picks the memory
+itself. There is no memory-type enumeration, no `bufferImageGranularity`, no suballocation and no flush or
+invalidate. V-M1 through V-M4 have no analogue and their absence is a simplification rather than an omission, so
+this section is four paragraphs where phase 3's was a page.
+
+What replaces the memory-type choice is the STORAGE MODE, and there are three answers rather than a search:
+
+- Buffers the CPU writes every frame (the uniform rings, the staging arenas, staging buffers) are
+  `MTLStorageModeShared`, whose `contents()` pointer is stable for the buffer's life and visible to both sides.
+  That is the incumbent's choice for every buffer it creates and it is the right one on unified memory.
+- Buffers the CPU writes once at load (vertex, index, static structured) are ALSO `Shared` in v1, reproducing
+  the incumbent exactly. `Private` plus a blit would be faster on a discrete Mac GPU and identical on Apple
+  Silicon, and choosing differently here would change what a load-time upload costs inside the gate that must
+  isolate the backend swap. Filed as a follow-up with the discrete-Mac case named as its consumer, and section
+  22 records that the fleet has no discrete Mac to measure it on.
+- Textures are `Private` and staging textures are a `Shared` buffer, reproducing the incumbent (M-M8, M-M9).
+
+**Hazard tracking mode is left at the default on every allocation**, which is tracked, per M-H1. No `MTLHeap` is
+created anywhere, which matters here rather than only in section 8.4: heap-suballocated resources default to
+UNTRACKED, so a heap would import 2.5's hazard class without anyone deciding to.
+
+### 9.2 The ring (M-M1 to M-M5)
+
+Every `UniformBuffer`-usage buffer is ONE `MTLBuffer` of `stride * FramesInFlight` in `MTLStorageModeShared`,
+where `stride = align(size, 256)` and `FramesInFlight = 3`. Its `contents()` pointer is taken once at creation
+and kept.
+
+- A record-time `UpdateBuffer(buffer, offset, data)` is `memcpy(contents + frameBase + offset, data, n)`. No
+  staging buffer, no blit encoder, **no encoder restart**, no allocation, no free.
+- Every bind of a ring-backed uniform supplies `frameBase + rangeOffset + callerDynamicOffset` as the `offset`
+  argument of its `setBuffer` call (8.3).
+- Frame N uses segment `N % FramesInFlight`. Before handing out a segment the allocator checks the completion
+  value the frame that last owned it recorded and blocks if it has not been reached, counting the stall into
+  `BackpressureStallCount` and `BackpressureStallMs`.
+- U3's two creation-time invariants are adopted verbatim (M-M4). Only `UniformBuffer` usage is ring-backed, so a
+  structured buffer's own binding stays correct. And a ring-backed buffer never receives a non-uniform binding:
+  a buffer created `UniformBuffer | StructuredBufferReadOnly` or with either read-write structured bit throws at
+  creation. That combination is vacuous in the engine today, but it is legal on the seam and both Veldrid
+  backends accept it, so this is a **backend-divergent creation failure** and is documented as one rather than
+  discovered by a consumer.
+- #484's correction is adopted WHOLESALE (M-M5): an off-timeline write reaches EVERY segment, the added segments
+  gated on the same completion read, a segment failing the gate queued as a PENDING PATCH applied at its next
+  acquire rather than waited on, and the current segment always written ungated. Record-time writes stay
+  current-segment only. It cost a consumer defect to learn once and it is not re-derived here.
+
+**Why the stride is 256 and not the device's 16 (M-M2).** The incumbent's
+`GetUniformBufferMinOffsetAlignmentCore` answers 16 on macOS, so a device-derived stride would pack tighter.
+Three reasons not to. The seam already documents 256 as the safe alignment across Metal, Direct3D 11 and Vulkan,
+on `SetGraphicsResourceSet`'s dynamic-offset overload and on its compute twin, and every shipped renderer
+already writes 256-aligned slots. 256 is the spec-required maximum for the equivalent Vulkan limit, so flooring
+there is what makes one number govern all three rings and one shared policy test assert it. And a device-derived
+stride makes the ring's arithmetic a function of the machine, which puts a device-shaped number under a
+golden-bearing path for a memory saving the fleet does not need. The device's own minimum is READ and asserted
+at or below 256 by the probe (4.1), so a future device that raised it fails loudly instead of corrupting quietly.
+
+**Why the ring is worth more here than on either neighbour.** 2.1 establishes the mechanism. On the shipped
+incumbent a record-time uniform write allocates an `MTLBuffer`, ends the render command encoder, encodes a blit,
+and destroys the buffer, and the next draw pays a full tile store and reload plus a complete re-activation of
+pipeline state, every bound resource set, the viewport and the scissor. Under M-M1 through M-M5 all of it becomes
+a `memcpy` into a persistently mapped segment: zero encoder transitions, zero allocations, zero blits, and the
+bind picks the segment up as an argument the flush was already passing.
+
+**And the CPU-versus-GPU race closes with it (M-H3).** Automatic hazard tracking orders GPU work against GPU
+work. The incumbent's device-level `UpdateBufferCore` writes `contents()` with no gate of any kind, into memory a
+queued command buffer may be reading. The ring's per-frame segments plus the completion gate are what make that
+write safe, and that is the reason M-H1's decision to keep automatic tracking does not make the gate redundant.
+
+### 9.3 Bulk uploads, textures and views (M-M7 to M-M10)
+
+Record-time `UpdateBuffer` on a NON-uniform buffer, and record-time `UpdateTexture`, write into a per-list
+`MTLStorageModeShared` STAGING ARENA (persistently mapped, sub-allocated, recycled when the list's completion
+value is reached) and encode `copy` or `copyFromBuffer:` on a blit encoder, with the render-encoder end those
+copies unavoidably cause. They are bulk and rare relative to the uniform sites and they are exactly the traffic
+the ring is not for.
+
+The incumbent creates and destroys a whole `MTLBuffer` per record-time write and its own TODO says the buffers
+should be pooled from the completion callback. Arenas pooled by size with a real retention cap are that TODO,
+done.
+
+**`CopyBuffer` alignment (M-M7's edge).** The incumbent routes a copy whose source offset, destination offset or
+size is not a multiple of 4 through an embedded compute shader (`MTL_UnalignedBufferCopy_macOS`, a metallib
+resource loaded from the assembly) driven by a dedicated compute pipeline. This design reproduces the
+size-rounding half, which is a `(4 - size % 4) % 4` pad the incumbent already applies on the aligned path, and
+THROWS with a named exception on a genuinely unaligned OFFSET. A device-free test over every `CopyBuffer` call
+site asserts none produces one, so nothing legitimate reaches the throw. Shipping a second embedded shader and a
+second compute pipeline for a case no consumer produces is the kind of unreachable-code reproduction G1 already
+declined once, and the follow-up is filed with the throw as its trigger.
+
+**No command buffer at texture creation (M-M9).** `newTextureWithDescriptor:` allocates and returns, and the
+incumbent issues nothing. V-M10's device-owned setup command buffer and V-W8's setup lock have no analogue and
+neither is built. The undefined-initial-contents question phase 3 answered with a deliberate clear is answered
+here by parity: the incumbent does not clear, the 36 `metal` goldens are green under that, and adding a clear
+would change what a render target reads before anything writes it.
+
+**Every view is created at RESOURCE creation (M-M10).** From the declared usage bits, following the incumbent's
+`MTLTextureView` rule that a view object is created only when the description actually narrows the target (a
+non-zero base mip or layer, a partial range, or a different format) and the target's own texture is used
+otherwise. The enforcement is structural rather than a counter, in the shape V-D2 and V-M11 used: no view
+factory is reachable from the recording type, asserted by an architecture test over the type graph, so a
+draw-time view is a compile error. X1's evidence is why, and it is worth restating in a Metal seat where
+`newTextureView` looks cheap enough to do at a bind: all 25 `DEVICE_REMOVED` stacks in #423 surfaced inside the
+lazy view constructor on the draw path.
+
+### 9.4 The ring policy inventory, third column
+
+Phase 3's section 9.4 wrote the policy out as a ten-row checklist with an Owner column, because a decision not
+to share code is not a decision to re-derive the policy from memory. M-P4 now extracts the seven shared rows
+into real shared code, so the inventory becomes the SPECIFICATION that extraction is written against rather than
+an interim carrier. The three backend-owned rows stay backend-owned and the reasons are unchanged.
+
+| Policy | What it means here | Owner after M-P4 |
+|---|---|---|
+| Segment selection | Frame N uses segment `N % FramesInFlight`. The base is applied at BIND and never baked into a resource set | Shared code |
+| Fence gating | A segment is acquired only after the completion value the frame that last owned it recorded has been reached. Here that read is M-F1's counter | Shared code |
+| Backpressure | A blocked acquire increments the stall count and accumulates stall time | Shared code |
+| Off-timeline reach (#484) | A device-level write reaches EVERY segment | Shared code |
+| Off-timeline gating | The added segments are gated on the same completion read. The CURRENT segment is ungated and always written | Shared code |
+| Off-timeline never blocks | A segment failing the gate is queued as a PENDING PATCH applied at its next acquire, never waited for. A retry loop that waits for every non-current segment at once NEVER TERMINATES in the GPU-bound steady state | Shared code |
+| Record-time writes | Stay current-segment only | Shared code |
+| Ordering | The ring cannot recycle safely before the completion primitive exists | Backend's own. It is a BUILD-ORDER fact, not a runtime semantic, enforced by the work breakdown's row order |
+| Lock legality | Because it never waits, a caller already holding the submit lock is legal | Backend's own. Each backend has its own lock and its own deadlock to not have |
+| Stride | The stride is the SPACING of the segments. Here it is `align(size, 256)` and the offset is a plain argument, so there is no bind window and no VUID to satisfy (8.3) | Backend's own. The arithmetic differs where the invariant does not |
+
+---
+
+## 10. Synchronisation, fences and hazards
+
+### 10.1 The completion counter (M-F1 to M-F4)
+
+One `ulong` on the device, starting at zero. Every `Submit` takes the next value, adds a completion handler
+carrying it, commits, and records the value. The handler advances a published counter. `IGpuFence` holds a
+target, `Signaled` is a non-blocking read of the published counter against the target, and `Reset()` clears the
+target so the fence can be handed to a later submit.
+
+**The advance is an `Interlocked` MAXIMUM, not an increment (M-F3), and this is the one place a ported design
+would be wrong from habit.** Metal executes a queue's command buffers in commit order, which the seam already
+states in writing on `IGpuDevice.Submit(cl, fence)`. It does not follow that the completion CALLBACKS are
+delivered in that order on the same thread, and they are delivered on an arbitrary internal thread. A design
+that advances with `++` is depending on an unstated ordering fact. A maximum is correct under any delivery order
+and costs one atomic. A device-free test drives the handler out of order and asserts the counter is monotone.
+
+**The monotonicity makes the seam's fence guarantee a theorem (M-F2).** The seam promises that a fence handed to
+a submission made after some earlier work signals only once the queue has drained through it. With per-submission
+events that is a convention. With one monotone counter over a commit-ordered queue it follows: the counter
+reaching 6 requires the buffer signalling 5 to have completed, which requires its commands to have completed. So
+polling a later fence transitively covers every earlier submission, which is what `RetiredResourcePool` relies
+on and what M-M1's segment gate reads.
+
+`WaitForIdle` waits for the counter to reach the last committed value, counted into `DrainCount` and `DrainMs`
+(M-F4). The incumbent's `WaitForIdleCore` already does the equivalent through `waitUntilCompleted` on the latest
+submitted buffer, so this is real from day one and there is no C6-style bet. Phase 2's win was making an empty
+method exist. Nobody should look for it a third time.
+
+**The incumbent's shape, and what is dropped.** It keeps a `Dictionary<MTLCommandBuffer, MTLFence>` plus a
+`_latestSubmittedCB` field under a lock, and the completion handler looks the buffer up, sets a
+`ManualResetEvent`, removes the entry, and clears the latest field when it matches. That is three mechanisms
+(user fences, latest-buffer tracking, and the dictionary's lifetime) where one counter does the work of all
+three, which is V-F3's argument arriving with a different noun. The dictionary and the per-fence
+`ManualResetEvent` both go.
+
+### 10.2 No retire list (M-F5)
+
+An `MTLCommandBuffer` retains every resource its encoders reference until it completes. So a resource disposed
+while a submitted buffer still references it stays alive, and `release` at `Dispose` drops only the engine's own
+reference. V-F9's deferred-disposal machinery, which converts "mid-life resource disposal racing queued async
+work" from convention-safe to structurally safe, is UNNECESSARY here because Objective-C reference counting
+already does it.
+
+That is worth naming as a decision rather than an omission, because it is one of the four defects the CI
+workflow header records as fixed engine-side, and a reader who finds no retire list in this backend should find
+this paragraph. The one thing that does NOT follow is that `WaitForIdle` before disposal becomes pointless: the
+seam's callers keep it, because it is the seam's contract and the Veldrid legs and both other native backends
+still need it.
+
+`commandBufferWithUnretainedReferences` would remove exactly the retain this rests on, in exchange for skipping a
+retain-release pair per referenced resource, and it is declined by name in 6.4.
+
+### 10.3 Hazards (M-H1 to M-H3)
+
+Every resource is allocated tracked, which is the default and the incumbent's configuration. The driver inserts
+the synchronisation between encoders that read and write the same resource within a command buffer, and command
+buffers execute in commit order. 2.5 is the argument for keeping it and section 22 records what it costs to not
+be able to measure the alternative.
+
+What the engine's two ordering rules become:
+
+| Rule | Metal mechanism | Change |
+|---|---|---|
+| Rule 1: compute writes a storage texture, a graphics pass in the same list samples it | The compute encoder ends when the render encoder begins, and automatic tracking orders the write against the read | None. The seam's rule 1 comment already names this mechanism for Metal and stays true |
+| Rule 2: a dispatch reads what an earlier dispatch wrote | Automatic tracking orders them inside one command buffer, so the drain is not needed HERE | **No seam change (M-C2).** The rule is honoured as written, the extra ordering is a BACKEND PROPERTY, and a consumer that drops the drain because this backend tolerates it breaks on the Veldrid legs |
+
+**And #461's quorum arrives.** After this phase the engine's own D3D11 backend pays a drain it does not need on
+a hazard-tracked API, its own Vulkan backend emits a real read-after-write barrier and does not need it either,
+and this backend gets the ordering from the driver. Three of the four engine-owned or engine-adjacent
+implementations can answer yes to an automatic-hazard seam capability and the Veldrid legs cannot, which is what
+makes the capability specifiable rather than a per-backend note. Phase 3 filed VF10 saying two of three made it
+specifiable. Three of three makes it overdue, and the ocean is still paying the drain.
+
+---
+
+## 11. Swapchain, present, resize and threading
+
+### 11.1 What is reproduced (M-W1, M-W2, M-W5)
+
+Everything a human eye can see, because nothing here runs in CI on any leg (2.7, MM7). Reproduced field for
+field from `MTLSwapchain` and `MTLSwapchainFramebuffer`:
+
+- the `CAMetalLayer` acquired from the `NSWindow`'s content view or created and attached when the view has no
+  Metal layer, with `wantsLayer = true`.
+- `device`, `pixelFormat` from `B8_G8_R8_A8_UNorm` or its sRGB sibling, `framebufferOnly = true`, and
+  `drawableSize` from the window's content size.
+- `displaySyncEnabled` for vsync, including the fact that the incumbent sets it only under a feature-set
+  condition (5.1 says why that condition is replaced with a `supportsFamily:` read rather than reproduced, and
+  section 22 says why it is untested off current Apple Silicon).
+- the colour attachment fetched from the LIVE drawable at descriptor-creation time, and the depth attachment
+  owned by the framebuffer.
+- the separate command buffer that carries `presentDrawable:`, and `nextDrawable` for the NEXT frame taken
+  immediately after it (M-W2).
+
+`IGpuFramebuffer` wrapper identity is stable across resize BY CONSTRUCTION (M-W5), because the colour attachment
+is not an object the wrapper holds. W2 asked D3D11 to behave like Metal here and V-W5 had to build it for
+Vulkan. Here there is nothing to build, and the DEPTH texture is the only part that is recreated.
+
+### 11.2 The two behaviours that change
+
+**A frame with no drawable (M-W4).** `nextDrawable` returns nil when the layer cannot give one, and the
+incumbent's `IsRenderable` then makes every draw a silent no-op for that whole frame. This design binds a
+device-owned ORPHAN TARGET instead: one colour texture at the current drawable size clamped to a minimum of one
+by one, matching the swapchain framebuffer's format and carrying its depth attachment, created lazily the first
+time this path is reached and destroyed at the next successful `nextDrawable`. The frame records, submits and
+completes exactly like any other frame, and only its present is skipped. `FramesBegun` counts it, because a
+skipped present is not a skipped frame and it is the denominator every per-frame figure is divided by.
+
+Two rules make the wrapper safe to bind at every instant, and they are V-W4's rules with Metal nouns. The
+wrapper's colour attachment is repointed only on the submit thread at the present boundary, with no recording in
+flight. And the orphan target's lifetime is owned by the device rather than by the framebuffer, so a recording
+that bound it while it was the target is not left naming a destroyed texture.
+
+**Resize (M-W6).** `ResizeSwapchain(w, h)` stores the pending size coalesced to the last requested and returns.
+A runtime `SyncToVerticalBlank` change sets a pending flag too. Both apply at the next present boundary on the
+submit thread, after draining the completion counter, where the boundary provably owns the queue and no
+recording is in flight. Recreation sets `drawableSize`, recreates the depth texture, and takes one fresh
+drawable, so an ordinary boundary and a resizing boundary leave the device in the same state.
+
+The incumbent instead applies the resize inline on the calling thread: `MTLSwapchain.Resize` recreates the depth
+texture (releasing the one in-flight frames may still be reading) and takes a new drawable, with no drain
+anywhere. The Silk `FramebufferResize` callback fires on the render thread today, so nothing observable changes
+in the shipped loop and the contract hardens against a consumer that does otherwise. That is W3's argument
+verbatim.
+
+**And `SyncToVerticalBlank` is a set on the live layer rather than a recreate**, unlike Vulkan, where it forces a
+whole swapchain recreation. `docs/DEPENDENCY-SEAMS.md` already records that difference in the sentence phase 3
+added about what "a resize reconfigures nothing" means per backend, so the doc is already correct for this
+backend and needs no edit on that point.
+
+### 11.3 Threading (M-W7)
+
+- Recording is lock-free and per list. Any number of lists may record concurrently on any threads, because each
+  owns its command buffer and its encoders.
+- One `_submitLock` covers `commit`, the present buffer, and the resize apply. Held for microseconds, not a
+  frame.
+- `Map` and `Unmap` on staging take it for the map call only, and `Map(staging, Read)` additionally waits on the
+  completion counter before returning the pointer (M-C6).
+- Device-level `UpdateBuffer` and `UpdateTexture` are callable from any thread behind the same short lock scoped
+  to the write, and legal from a caller already holding it, because the ring policy never waits (9.4).
+- Resource creation is free-threaded. `MTLDevice` is documented thread-safe for resource creation, there is no
+  `DriverConcurrentCreates` analogue to ask about, and V-M10's setup-buffer lock has nothing to guard because
+  M-M9 issues no commands at creation.
+- Submit order is the observable order, with the caveat the seam already documents in rule 2.
+- The process-wide `GpuDeviceContext._lifecycleGate` is unchanged. It was built for the Vulkan loader race and
+  it also covers disposal, and it is not this backend's to remove.
+
+Multi-threaded recording is STRUCTURALLY SUPPORTED and is not in the shipped contract (W5's position,
+unchanged). Nothing in the engine asks for it and no test exercises it.
+
+---
+
+## 12. Shader path
+
+### 12.1 The MSL target lands in the back-end half (M-S1)
+
+Phase 3 split `SpirvCrossCompile` along the seam it already had: `SpirvFrontEnd.ToSpirv` is the front end and
+`VertexFragmentToHlsl` plus `ComputeToHlsl` are the back end. Its own file comment says in as many words that
+"Metal, when it arrives, changes the BACK end to add an MSL target and leaves this file alone". That is what
+happens.
+
+`SpirvCrossCompile` gains `VertexFragmentToMsl` and `ComputeToMsl`, calling
+`SpirvCompilation.CompileVertexFragment` and `CompileCompute` with `CrossCompileTarget.MSL` under a private
+options set BUILT FROM a new `MslCrossCompilePin`, exactly as the HLSL pair is built from
+`HlslCrossCompilePin`. The signatures stay Veldrid-free and return the same engine-owned
+`CrossCompiledPair` / `CrossCompiledCompute` mirrors, so the backend reaches them across `InternalsVisibleTo`
+with no Veldrid type crossing the boundary. The architecture test gains its third arm: `KhaozEngine.Gpu.Metal`
+names the front end and the MSL members and never names an HLSL member.
+
+**The pin's values, and why they are the same three.** `FixClipSpaceZ` and `InvertVertexOutputY` stay FALSE for
+the reason `HlslCrossCompilePin` gives: they append a clip-space fixup to the emitted vertex shader and the
+engine already handles both conventions itself through `GpuCapabilities`, so a fixup here would apply the
+correction twice. On Metal that would be immediately visible, since `ClipSpaceYInverted` is false and
+`GpuClip.Correct` is the identity, so an inverted Y would flip every image. `NormalizeResourceNames` matters
+here in a way it does not on HLSL, because M-B1 joins on the emitted argument NAME, and 8.2 makes the ordinal
+fallback the answer if the join does not hold rather than flipping this pin to force it. Row 1's spike decides,
+and whichever way it goes the pin states the value with its reason and `Identity` derives from it.
+
+**Two things this backend must NOT "fix", both stated because they WILL be proposed.** S5's holed-signature
+sinks stay (M-S4). They are FXC-and-WARP specific, Metal has ALWAYS tolerated the holes (the memory record says
+so for both the vertex-input and the interpolant cases), and the D3D11 leg ships indefinitely, so removing a
+sink because Metal tolerates it corrupts WARP. And the one-uniform-buffer-per-pipeline shader invariant stays
+(M-B3), for the reason 2.3 gives: M-B1 makes it a convention rather than a constraint, and lifting a convention
+is a shader change with its own goldens.
+
+### 12.2 Parity is TWO artefacts, not one (M-S2)
+
+The D3D11 byte-equality test carries a warning in its header that phase 3 transplanted and this phase
+transplants again: its hash table is baked from that path's own emission, so what it detects is DRIFT, and **a
+wrong emission baked once passes forever**. It compares nothing against the incumbent.
+
+So:
+
+1. **`MslCrossCompilePin`**, the options stated as constants with their citation, plus an `Identity` string
+   built FROM those constants so a pin change moves every derived cache key by construction.
+2. **A one-off in-process parity measurement against the incumbent's own path**, compiling every shipped program
+   to MSL through both and asserting byte equality, TAKEN AND RECORDED in the adjudicated document before the
+   first golden run. That is the fact that licenses "no rebake". The per-program hash table guards against drift
+   from that point on.
+
+**And phase 3's own upgrade is inherited: the measurement is ALSO a standing test.**
+`VulkanSpirvIncumbentParityTests` makes the same comparison on every leg, so parity stopped being a fact about
+one afternoon and became a fact about the current tree. `MetalMslIncumbentParityTests` does the same here, and
+the reason to have both is the same: the equality is NOT true by construction, because the incumbent's
+`VeldridGpuDevice` hands GLSL to `CreateFromSpirv` with `new CrossCompileOptions()` while this path compiles
+under `MslCrossCompilePin`, so the two sets are maintained independently. A red run there means the committed
+`metal` goldens are baked on one emission and asserted against another, and the response is to decide which side
+moved rather than to re-bake the hash table.
+
+**The incumbent side of that comparison is worth pinning precisely.** `VeldridGpuDevice.CreateShadersFromSpirv`
+calls the three-argument `CreateFromSpirv`, which constructs `new CrossCompileOptions()` and forwards it, and
+`ResourceFactoryExtensions` selects `CrossCompileTarget.MSL` from the device's backend type.
+`HlslCrossCompilePin` records that the options are forwarded verbatim and that `ResourceBindingModel` is not a
+member of `CrossCompileOptions` at all. So the incumbent's MSL is emitted under the library defaults, and if
+`MslCrossCompilePin` states anything else the measurement fails and the pin is what moves.
+
+### 12.3 The entry point and the binding table (M-S3, M-S6)
+
+Both are read out of the emitted MSL, and 8.2 specifies the parse. Two notes belong here rather than there.
+
+**The entry-point name is not assumed.** `MTLShader` looks a function up by `description.EntryPoint`, which
+Veldrid supplies from a layer this backend does not have, and SPIRV-Cross renames the GLSL `main` because `main`
+is reserved in MSL. Reading the name off the qualifier line is the same parse the binding table already does and
+costs nothing extra. It also removes a class of failure the incumbent turns into a runtime exception with a good
+message and a bad time to get it (`MTLShader`'s constructor throws when the entry point is not found, at
+pipeline creation).
+
+**`SpirvLocalSize` is unchanged.** The compute workgroup size is hand-parsed out of the SPIR-V module today
+because the seam's `IGpuComputeShader.ThreadGroupSize*` must report it, and Metal needs the same numbers for
+`dispatchThreadgroups`'s `threadsPerThreadgroup`. The incumbent gets them from
+`ComputePipelineDescription.ThreadGroupSize*`, which is the same source. Nothing changes.
+
+### 12.4 The pipeline cache (M-S5)
+
+The incumbent compiles MSL source through `newLibraryWithSource:` at every `CreateShadersFromSpirv` on every
+launch, for roughly thirty graphics programs and their compute siblings, and caches nothing. `MTLBinaryArchive`
+serialises compiled pipeline state to a file the driver validates itself.
+
+The design is S4's and V-S7's with a Metal noun: an archive created at device creation, seeded from a file keyed
+on `(device registryID, OS build, engine version)` and written back at disposal, best-effort so any read or write
+failure is a silent discard, and never fatal. The caution V-S7 adopted as a requirement is adopted here for
+free, because the validity key is the API's own: an archive whose device or driver does not match is rejected by
+`newBinaryArchiveWithDescriptor:` rather than by engine code, and the corruption test (MM6) asserts a truncated
+or mutated file produces a clean discard rather than a crash.
+
+**This is the one row that depends on a spike rather than on a citation.** `MTLBinaryArchive`'s exact behaviour
+across an OS upgrade, and whether serialising a pipeline built from a runtime-compiled `MTLLibrary` is supported
+at all, are the two things row 1's spike checks. If either answers no, the fallback is named: cache nothing,
+record that the incumbent caches nothing either, and file the work with the spike's finding attached. Losing this
+row costs launch time and costs no correctness, which is why it is the row that is allowed to depend on a spike.
+
+---
+
+## 13. Compute, MSAA, staging and readback
+
+**Compute (M-C1 to M-C3).** Compute and graphics bindings are tracked separately with separate dirty arrays and
+separate bound-pipeline slots, as the seam requires, so a compute bind never disturbs a graphics one.
+`SetComputePipeline` and `Dispatch` end any live render encoder first (M-A3). `Dispatch` issues
+`dispatchThreadgroups:threadsPerThreadgroup:` with the group counts the seam passes and the pipeline's
+`threadsPerThreadgroup` from `SpirvLocalSize`, reproducing the incumbent.
+
+Rule 1 and rule 2 are 10.3's table. Storage buffers are plain `device T&` in MSL with no RAW forcing, because
+C2's byte-address treatment was an artefact of what SPIRV-Cross emits for HLSL and V-C4 already ruled it has no
+analogue elsewhere. There is no SRV-versus-UAV auto-unbind either, which is a D3D11 binding-model artefact whose
+Metal occupant is automatic tracking.
+
+**MSAA (M-C4, M-C5).** `MaxMsaaSampleCount` is READ OFF `MTLGraphicsDevice.GetSampleCountLimit` and reproduced,
+with the citation pinned in a constant, and the implementation issue re-reads the source before writing. 2.1
+establishes that the incumbent's version ignores both its arguments and returns the highest count
+`supportsTextureSampleCount:` accepts for anything. Reproducing that is what parity means, `AntiAliasing.ResolveFor`
+clamps against the result, and `scene3d_hdr_msaa` is baked under it. The format-blind read is filed as a
+follow-up with its own change note, because fixing it changes what the menu offers and what the golden renders,
+and both belong to a change that is about MSAA rather than to one that is about swapping a backend.
+
+Phase 3's row-15 correction is inherited as a PROCESS rule rather than as a fact: re-reading the incumbent's
+source before writing the reproduction is what caught a design paragraph naming the wrong call, and it is on
+this row for that reason.
+
+`ResolveTexture` reproduces the incumbent's standalone render encoder with `loadAction = Load` and
+`storeAction = MultisampleResolve` and no draws, at mip 0 layer 0, outside any live encoder (M-C5). 2.6 records
+why the Metal-native fold into the producing pass is deferred. An out-of-range requested sample count THROWS at
+texture creation rather than silently falling to 1, which is C4's departure inherited for the same reason: the
+engine clamps upstream so nothing legitimate reaches the throw, and a silent MSAA downgrade presents as a golden
+mismatch that reads like a rendering bug.
+
+**Staging and readback (M-M8, M-C6). This is the highest-risk parity surface in the design and it earns its own
+paragraph.** Every golden in the suite reads back through `IGpuDevice.Map(staging, ...)` and consumes
+`MappedData.RowPitch`. The incumbent backs a staging texture with a `MTLStorageModeShared` buffer sized by
+walking every mip level, and computes the subresource layout IN SOFTWARE: `MTLTexture.GetSubresourceLayout`
+returns a row pitch and a depth pitch from `FormatHelpers.GetRowPitch` and `GetDepthPitch` over the mip's
+storage dimensions clamped to the block size, and `Util.ComputeSubresourceOffset` gives the offset. A different
+arithmetic produces a garbled grid on every scene at once.
+
+So the buffer backing and the software layout computation are reproduced byte for byte, and a device-free test
+computes the layout for a spread of formats, sizes, mip levels and array layers and asserts it against a
+checked-in table taken from the incumbent's own arithmetic. That converts "should be identical" into a checked
+fact before a single golden is run, which is exactly what S3 did for the emitted HLSL and V-C7 did for the
+Vulkan staging layout.
+
+`Map(staging, Read)` WAITS on the completion counter before returning the pointer (M-C6), counted as a drain.
+The incumbent's `MapCore` returns `contents()` immediately with no wait, which is correct today only because
+every engine caller drains first. Getting it wrong returns a pointer to bytes the blit has not written yet,
+which reads as an intermittently wrong golden, and "intermittently wrong golden on a real device" is the worst
+failure shape a five-legged blocking matrix has.
+
+`Unmap` is a no-op, as it is in the incumbent, because `contents()` needs no unmapping on a `Shared` buffer.
+
+---
+
+## 14. Capabilities and diagnostics
+
+`ReadCapabilities` stays the single source both `GpuDeviceContext.Capabilities` and `IGpuDevice.Capabilities`
+come from, after they drifted before 15.2.0. The native device implements one and the context reads it from the
+device.
+
+| Member | Native source | Parity |
+|---|---|---|
+| `ClipSpaceYInverted` | **false**, with no viewport trick needed (7.2) | identical |
+| `DepthRangeZeroToOne` | true | identical |
+| `DeviceName` | `MTLDevice.name`, verbatim, NOT trimmed | identical by construction, given M-N1's default selection |
+| `SamplerAnisotropy` | **true**, hardcoded, reproducing `GraphicsDeviceFeatures(samplerAnisotropy: true)` | identical |
+| `SamplerLodBias` | **false**, hardcoded, reproducing the incumbent's `samplerLodBias: false` | identical |
+| `MaxMsaaSampleCount` | the incumbent's own format-blind computation, reproduced (M-C4) | asserted identical, and satisfiable by construction rather than by luck |
+| `SupportsShadowMaps` | `MTLFormats.IsFormatSupported(R32_Float, RenderTarget \| Sampled)`'s equivalent, asking exactly what `VeldridMap.SupportsShadowMaps` asks | asserted identical |
+| `SupportsCompute` | true | identical |
+| `SupportsCompletionFences` | true | **identical**, as it already is for Veldrid Metal |
+
+**ZERO permitted differences (M-G1)**, which is phase 3's bar and the correct one, because the incumbent Metal
+backend has no capability defect to correct. The test carries the reflection-completeness check phase 2 called
+the guard that matters most, that the comparison covers every member of `GpuCapabilities`, so a member appended
+later cannot silently weaken the assertion. It runs in one process on the Metal leg.
+
+**Two phase-3 lessons are inherited by name rather than rediscovered.** `DeviceName` is NOT trimmed: the
+incumbent takes `_device.name` as it comes, so a trim on the native path alone would fail parity on any device
+whose reported name carries padding. And `SupportsShadowMaps` asks what the incumbent ASKS rather than what the
+member's name suggests, which is the row-18 correction where a first implementation read "attachment" as
+depth-stencil attachment for a colour format and would have answered false on every device in existence. Writing
+down what a member's name suggests instead of what the incumbent asks is a parity failure by construction.
+
+**The shared point and linear samplers WRAP on all three axes**, built from wrap-addressed descriptions and NOT
+from the identically named `GpuSamplerDescription.Point` and `.Linear` statics, which default every axis to
+CLAMP. The seam says so in writing on `IGpuDevice.PointSampler`, and reading the address mode off the statics
+because the names matched cost two goldens on the D3D11 leg. This paragraph exists because the same mistake is
+available here.
+
+**The incumbent's other sampler mappings are reproduced exactly**, including the two conditionals: the border
+colour is set only on macOS-family devices, and the comparison function is set only when the description carries
+one. `lodMinClamp`, `lodMaxClamp` and `maxAnisotropy` come from the description, with `maxAnisotropy` clamped to
+at least 1 exactly as `MTLSampler` does. G1's ruling applies: reachable hardcodes are reproduced and unreachable
+degradations are not, and here the border-colour conditional is reachable (an iOS-family-only device would skip
+it) so it stays.
+
+**Software rasterizer (M-G2).** Apple ships no software Metal rasterizer, so `SoftwareRasterizer` is FALSE with
+confidence rather than null. That is a genuinely different answer from "nobody asked", which is what
+`GpuDeviceDiagnostics` documents null as meaning, and it lands in the existing `softwareAdapter` telemetry
+field. The Veldrid Metal path keeps the default (null), which is correct: it cannot answer.
+
+**Device loss (M-G4).** Metal reports command-buffer failures ASYNCHRONOUSLY: `MTLCommandBuffer.status` becomes
+`Error` and `.error` carries an `NSError` whose code distinguishes the classes that matter here, including the
+GPU-restart and timeout cases. The incumbent reads neither, so a Metal device loss today is invisible to the
+engine and to telemetry. The completion handler reads both in EVERY configuration, latches the first failure with
+its code and localised description AT THE FAULT SITE, flips the liveness token so all subsequent disposals are
+no-ops, and surfaces the reason through the existing `deviceLossReason` header field. That closes #427 for the
+Metal leg on the day the backend lands, which is the correct time, because retrofitting the reporting after the
+first field crash wastes the crash.
+
+**Validation (M-G3, M-T4).** `KE_METAL_VALIDATION=0|1|shaders` maps onto the process-level `MTL_DEBUG_LAYER` and
+`MTL_SHADER_VALIDATION` environment variables the Metal runtime reads at device creation, plus an engine-side log
+line recording which tier was armed and a WARN when the variable was set after the runtime had already read it.
+**There is no package to install anywhere**, which is a materially cheaper gate than V-T4's, and section 22
+records the thing it does not buy.
+
+**Frame capture (M-G5).** `MetalFrameCapture` exists in `KhaozEngine.Gpu` today and reaches Veldrid's private
+`_commandQueue` field by reflection, with a comment saying it returns zero and skips the capture if the layout
+differs. This backend owns the queue, so the native path hands the pointer in and the reflection is unnecessary.
+The reflection version stays for the Veldrid Metal leg for as long as that leg ships. The append audit's third
+silent site (4.2) is the gate that decides which path runs, and it is the reason this is a row rather than a
+nicety.
+
+**Counters (M-G6).** `FramesBegun`, `DrainCount`, `DrainMs`, `BackpressureStallCount`, `BackpressureStallMs`,
+`OffTimelineDeferred`, `OffTimelineOutstanding`, `AcquireWaitCount` and `AcquireWaitMs` are all populated from
+the struct as it stands, with NO seam addition. Phase 3 appended the acquire pair for its own MV2 and this phase
+reads it for M-W3 at no cost, which is a template paying out rather than a coincidence. They leave through
+`IGpuDevice.Counters`, are forwarded by `GpuDeviceContext` and `AppWindow`, and reach a capture as sample-row
+channels, which is the path gate 4 reads.
+
+One new counter would be genuinely useful and is deliberately NOT added: encoder creations per frame, which is
+the number MM1 is really about. It is available device-free from M-T2's budget sink, where it is a frozen
+marginal rather than a runtime counter, and adding a ninth member to a shipped seam struct for a number one
+backend can answer is exactly the "no seam change" claim phase 3 warned costs a gate its result. The budget test
+is where it lives and gate 3 is where it is read.
+
 <!--NEXT-->
+
 
 
 

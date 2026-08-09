@@ -6,7 +6,8 @@ and nothing that does not want the Vulkan binding ever carries it.
 
 > **Status: REGISTRATION, PROBE, A HEADLESS DEVICE, ITS COMPLETION TIMELINE, ITS MEMORY ALLOCATOR, THE COMMAND
 > LIST'S LIFECYCLE, THE UNIFORM RING, THE RESOURCE FACTORY, THE DESCRIPTORS, THE BIND FLUSH, DYNAMIC
-> RENDERING, THE SHADER PATH, THE PIPELINES, THE WINDOWED SWAPCHAIN AND THE BARRIER TRACKER.**
+> RENDERING, THE SHADER PATH, THE PIPELINES, THE WINDOWED SWAPCHAIN, THE BARRIER TRACKER AND THE CAPABILITY,
+> COUNTER AND DIAGNOSTICS READS.**
 > `KhaozEngineVulkan.Register()`
 > is real, so is the machine-capability probe behind it, and since
 > [#514](https://github.com/APKiwiOrg/KhaozEngine/issues/514) so is headless device creation:
@@ -62,6 +63,10 @@ and nothing that does not want the Vulkan binding ever carries it.
 > every attachment is transitioned as one batched barrier immediately before `vkCmdBeginRendering`, `End`
 > restores everything the recording touched, and a transition out of `UNDEFINED` is refused everywhere except
 > the two sites permitted to discard. And since
+> [#528](https://github.com/APKiwiOrg/KhaozEngine/issues/528) its CAPABILITY READ is a device-free type held
+> against the incumbent's answers with ZERO permitted differences, its `GpuDeviceCounters` fill is checked as
+> nine readings rather than an absence, and both `GpuDeviceDiagnostics` fields are asserted all the way into the
+> telemetry session header. And since
 > [#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525) IT DRAWS: the vertex and index binds, both `Draw`
 > overloads, `DrawIndexed`, `Dispatch`, both texture copies, the buffer copy, `GenerateMipmaps` and
 > `ResolveTexture` are all live, so `IGpuCommandList` has no refusing member left, `MaxMsaaSampleCount` is the
@@ -1232,6 +1237,69 @@ Unlike the frames-in-flight knob this one keeps a SECOND IMPLEMENTATION alive, s
 phase 2 ended up with a gate blocked behind an unresolved A/B and two drivers still shipping. The measurement is
 read off `AcquireWaitCount` and `AcquireWaitMs` rather than off mean frame time, with the frame cap and vsync
 both OFF, because a machine pinned at its refresh rate produces the same mean in both positions by construction.
+
+## Capabilities: zero permitted differences, the counter fill, and the two header fields
+
+`VulkanCapabilityRead` assembles `GpuCapabilities` with **no device in it**. Five of the nine members are
+constants of the configuration this backend creates rather than answers a device gives: `ClipSpaceYInverted` is
+false because the viewport carries negative height, `DepthRangeZeroToOne` and `SamplerLodBias` and
+`SupportsCompute` are core Vulkan, and `SupportsCompletionFences` is true because a fence here is a value on the
+device timeline that `vkQueueSubmit` itself signals. Three arrive as plain data off the physical-device read: the
+reported name, the `samplerAnisotropy` bit the feature chain settled, and the `R32_SFLOAT` format-properties read
+behind `SupportsShadowMaps`. So every rule that decides what the engine believes about the device is a plain
+`[Fact]` on a machine with no Vulkan loader.
+
+**The parity bar is ZERO permitted differences, and it is stricter than the Direct3D 11 backend's for a reason
+rather than by preference.** That backend exempts `SupportsCompletionFences`, because Veldrid's Direct3D 11 fence
+is a CPU-side submit receipt and the native one is real, so the incumbent's answer is a defect the native backend
+corrects. Nothing here is in that position: `VeldridMap.SupportsCompletionFences` already answers true for
+`GraphicsBackend.Vulkan`. A difference `NativeVsVeldridVulkanCapabilityParityTests` finds is therefore a bug in
+this backend until proven otherwise, and that test carries the reflection check that holds its comparer against
+every public member of `GpuCapabilities`, so a member appended later cannot make the assertion quietly weaker.
+
+**The device name the seam carries is the driver's own, and it is not the one the log prints.**
+`VulkanDeviceFacts.DeviceName` substitutes `unnamed device 0x…` when a driver reports nothing readable, because a
+rejection line naming an empty string is a line nobody can act on. The incumbent makes no such substitution and
+`GpuCapabilities.DeviceName` is compared string for string, so the capability read takes
+`VulkanPhysicalDeviceRead.ReportedDeviceName` instead: verbatim, empty when the driver reported nothing, which is
+exactly what the seam's own doc says empty means. There is **no whitespace trim on either path**, because the
+incumbent does not trim and trimming one side alone fails parity on every machine whose vendor pads its name.
+
+**`SupportsShadowMaps` asks `R32_SFLOAT` for COLOUR attachment plus sampled image**, held as
+`VulkanPhysicalDeviceReader.ShadowMapFormatFeatures` with the decision split off the driver call so the bits are
+assertable device-free. Asking for the depth-stencil attachment bit instead, which the capability's name
+suggests, is not a stricter question but a structurally false one: `R32_SFLOAT` is a colour format and no driver
+reports that bit for it. The pass wants this pair anyway, since `ShadowMapRenderer` creates the atlas as
+`R32Float` with `RenderTarget | Sampled` and hangs a separate depth-stencil off it, and it is also the parity
+answer, since `VeldridMap.SupportsShadowMaps` asks `GetPixelFormatSupport` for the same two.
+
+**`MaxMsaaSampleCount` is pinned to one sample until [#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525)
+reproduces the incumbent's own `GetSampleCountLimit`.** That is a ruling rather than an omission: two drafts of
+the design each invented a formula, the two differ, and both then asserted equality with the incumbent as a test,
+so at most one of them could have been measuring anything. Pinning under-promises, and `AntiAliasing.ResolveFor`
+clamps a request rather than throwing on one.
+
+**The counter fill is nine READINGS.** The drain pair comes off the timeline, the backpressure pair off the one
+accumulator both the command lists and the uniform ring stall into, the off-timeline pair off the ring's pending
+patches, and `FramesBegun` with the acquire pair off the present boundary. A headless device reports zero for
+those last three because it has no swapchain and opens no frame at this seam, which is literally true of such a
+device rather than a placeholder, and `HasValue` is true throughout so a capture carries columns rather than
+nothing. The row against a real device asserts the channel NAMES the projection carries and not their count,
+since once `HasValue` is true the count is a property of `GpuTelemetryChannels.For` rather than of this
+backend's fill. **`DrainCount` is not comparable against the Direct3D 11 native backend's**: that one counts every
+`WaitForIdle`, because its drain must signal and flush to know it is idle, and this one counts only the drains
+with outstanding submissions, because comparing the timeline counter against the last submitted value genuinely
+means idle here. `DrainMs` is comparable, since the drains this one skips cost about nothing.
+
+**Both `GpuDeviceDiagnostics` fields are live members and both reach the session header.** `softwareAdapter` is
+`deviceType == Cpu || driverID == MesaLlvmpipe`, landing in the EXISTING telemetry field rather than a new one,
+and `deviceLossReason` carries the latch the device-loss row sets at the fault site. Live rather than
+creation-time arguments because a loss happens at an arbitrary moment long after creation.
+
+**The two-device rows need a Vulkan device and no leg has one yet.** They are `[GpuFact]`s that first RUN on the
+`vulkan-native` leg [#529](https://github.com/APKiwiOrg/KhaozEngine/issues/529) installs, against lavapipe, so a
+green run today is not evidence about this backend. Their early returns read the backend's own functional probe
+rather than an operating system, since Vulkan is not a Windows API.
 
 ## Why there are no platform guards, and why nobody should add them
 

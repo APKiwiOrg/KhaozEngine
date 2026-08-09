@@ -116,6 +116,88 @@ scale with draw count and is the one class where
 widening the budget seam would have looked defensible, so it got its own line and the pin that says so gained a
 clause.
 
+### Native Vulkan capabilities: the read leaves the creation path, and the parity bar is ZERO differences (#528)
+
+`KhaozEngine.Gpu.Vulkan` has its capability read as a device-free type, its `GpuDeviceCounters` fill checked
+against a real device, and both `GpuDeviceDiagnostics` fields asserted into the telemetry session header.
+Work-breakdown row 18 of the phase 3 program (#510). No public API moves and nothing selects this backend by
+default, so no shipped pixel and no shipped capability answer changes.
+
+**Section 14's table moved into `VulkanCapabilityRead`, which has no device in it.** Five of the nine members
+are constants of the configuration this backend creates rather than answers a device gives (`ClipSpaceYInverted`
+false because the viewport carries negative height, `DepthRangeZeroToOne`, `SamplerLodBias`, `SupportsCompute`
+and `SupportsCompletionFences` all true), and the three a device does answer arrive as plain data: the reported
+name, the `samplerAnisotropy` bit the feature chain settled, and the `R32_SFLOAT` format-properties read behind
+`SupportsShadowMaps`. So every rule that decides what the engine believes about the device is now a plain
+`[Fact]` on a machine with no Vulkan loader at all, which is every machine the engine currently builds on except
+the leg #529 adds.
+
+**The parity bar is ZERO permitted differences, where the Direct3D 11 backend had to permit one (V-G1).** That
+backend exempts `SupportsCompletionFences` because Veldrid's Direct3D 11 fence is a CPU-side submit receipt and
+the native one is real, so the incumbent's answer there is a defect the native backend corrects. There is no such
+defect here: `VeldridMap.SupportsCompletionFences` already answers true for `GraphicsBackend.Vulkan`. So
+`NativeVsVeldridVulkanCapabilityParityTests` asserts the two sets are identical with nothing exempted, and a
+difference it finds is a bug in the native read until proven otherwise. It carries the reflection-completeness
+check that matters most: the comparer is held against every public member of `GpuCapabilities`, so a member
+appended later cannot make the assertion silently weaker while staying green. Its own comparer rather than the
+Direct3D 11 file's, deliberately, because the two do not have to agree with each other, they each have to agree
+with the struct.
+
+**One real capability difference was found and fixed while writing it: the DEVICE NAME.** The read was carrying
+`VulkanDeviceFacts.DeviceName`, which substitutes `unnamed device 0x…` for a driver that reports nothing so that
+a rejection log line is readable. The incumbent performs no substitution at all, and `GpuCapabilities.DeviceName`
+is compared string for string, so on a driver that reports no name that substitute was a capability difference
+under a bar that permits none. The capability seam now carries `VulkanPhysicalDeviceRead.ReportedDeviceName`, the
+driver's own string with the empty case left empty, which is what the seam's own doc already says empty means,
+and the log keeps its readable name. No whitespace trim on either path, for the reason the Direct3D 11 backend
+does not trim either: the incumbent does not, and trimming one side alone fails parity on every machine whose
+vendor pads its name.
+
+**A second one was found in review: `SupportsShadowMaps` was asking the wrong format question.** The read asked
+`vkGetPhysicalDeviceFormatProperties(R32_SFLOAT)` for the DEPTH-STENCIL attachment bit plus sampled image, and
+`R32_SFLOAT` is a colour format, so no driver reports that bit for it and the capability was structurally false
+on every Vulkan device. The pair the shadow pass wants is COLOUR attachment plus sampled image:
+`ShadowMapRenderer` creates the atlas as `R32Float` with `RenderTarget | Sampled` and hangs a separate
+depth-stencil off it, and `VeldridMap.SupportsShadowMaps` asks `GetPixelFormatSupport` for exactly those two.
+The bits are now `VulkanPhysicalDeviceReader.ShadowMapFormatFeatures` with the decision split off the driver
+call, so a plain `[Fact]` pins them. Nothing shipped answered the wrong way, since no leg creates this device
+yet, and the failure it would have produced is the quiet kind: the shadow path degrading to blob shadows on one
+backend, with nothing red anywhere.
+
+**`MaxMsaaSampleCount` is the one member still pinned to one sample, and that is a schedule fact rather than a
+gap.** V-C5 rules that the computation is READ OFF the incumbent's own `GetSampleCountLimit` and reproduced with
+its citation pinned, which is row 15 (#525), the row that also needs the number for its resolve. Two drafts of
+the design each invented a formula, the two differ, and both then asserted equality with the incumbent as a test,
+which is the failure the ruling exists to prevent. The member is in the comparison from today regardless, so the
+first run that meets a device reporting more than one sample names exactly that member.
+
+**The counter fill is checked as nine READINGS rather than an absence.** Every field already comes off the
+subsystem that owns it (the drain pair off the timeline, the backpressure pair off the accumulator both the
+command lists and the uniform ring stall into, the off-timeline pair off the ring's pending patches, and
+`FramesBegun` with the acquire pair off the present boundary), and what this row adds is narrower than the fill
+and worth stating exactly: `HasValue` is true on a real device, which is what makes a capture carry columns
+rather than nothing, the projection carries the nine expected channel NAMES rather than merely nine of
+something, deferred bounds outstanding, and nothing is negative. The names and not the count, because once
+`HasValue` is true the count is a property of `GpuTelemetryChannels.For` rather than of this backend's fill. The
+three present-boundary fields read zero on a headless device because that is literally true of a device with no
+swapchain, not a placeholder. No accumulator is asserted to MOVE: a drain that finds the timeline
+already past the last submitted value is deliberately not counted here, so the obvious version of that assertion
+is racy on a software rasterizer by design. **`DrainCount` is not comparable across the two native backends** for
+the same reason, since the Direct3D 11 drain must signal and flush to know it is idle and therefore counts every
+call. `DrainMs` is comparable. Scoping the seam doc's own wording to match is #545.
+
+**Both diagnostics fields reach the session header, which is rollout gate 5's fifth clause.** `softwareAdapter`
+is asserted NON-NULL rather than true, since a developer running the suite on a discrete card answers the same
+question correctly with false and only null would mean this backend never looked, and `deviceLossReason` is null
+on a healthy device with `IsDeviceLost` false. The assertion runs the whole path gate 5 reads, from the device
+through `WithGpu` into the header JSON.
+
+**The two-device rows are `[GpuFact]`s with no leg to run on yet, and the row says so rather than letting a green
+run look like evidence.** Nothing in CI can create a native Vulkan device today, so they first RUN on the
+`vulkan-native` leg row 19 (#529) installs, against lavapipe. Their early returns are machine facts read off the
+backend's own functional probe, the shape #504 settled, with no operating-system check anywhere because Vulkan is
+not a Windows API and V-P1 leaves that question entirely to the probe.
+
 ### Native Vulkan barriers: masks per layout rather than per layout pair, tracked list-locally against a resting layout (#524)
 
 `KhaozEngine.Gpu.Vulkan` has its barrier and layout tracker. Every image layout transition the backend records is

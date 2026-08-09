@@ -14,8 +14,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <param name="GraphicsQueueFamily">The first family carrying <c>VK_QUEUE_GRAPHICS_BIT</c>, or
     /// <see cref="VulkanPhysicalDeviceReader.NoQueueFamily"/> when there is none. ONE graphics queue is the whole
     /// queue model (V-N5).</param>
-    /// <param name="SupportsShadowMapFormat">Whether <c>R32_SFLOAT</c> can be both a depth-stencil attachment and
-    /// a sampled image, which is <c>GpuCapabilities.SupportsShadowMaps</c>.</param>
+    /// <param name="SupportsShadowMapFormat">Whether <c>R32_SFLOAT</c> can be both a colour attachment and a
+    /// sampled image, which is <c>GpuCapabilities.SupportsShadowMaps</c>. See
+    /// <see cref="VulkanPhysicalDeviceReader.ShadowMapFormatFeatures"/> for why the pair is that one and not the
+    /// depth-stencil one the name suggests.</param>
+    /// <param name="ReportedDeviceName">What the driver actually put in
+    /// <c>VkPhysicalDeviceProperties.deviceName</c>, empty when it reported nothing, which is the string
+    /// <c>GpuCapabilities.DeviceName</c> carries. Separate from <see cref="VulkanDeviceFacts.DeviceName"/>, which
+    /// is the LOGGABLE name and substitutes a synthetic one so a rejection line is readable: that substitution is
+    /// right for a log and is a capability DIFFERENCE against an incumbent that does not make it, so the two
+    /// answers are kept apart rather than shared (V-G1, and see
+    /// <see cref="VulkanCapabilityRead.ReportedDeviceName"/>).</param>
     /// <param name="MaxMsaaSampleCount">The incumbent's own computation reproduced (V-C5): the minimum, over the
     /// three formats the 3D scene's MRT renders into, of the highest sample count each supports. See
     /// <see cref="VulkanMsaaLimit"/> for the citation and for why neither draft's invented formula is
@@ -39,7 +48,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         bool SupportsShadowMapFormat,
         int MaxMsaaSampleCount,
         VulkanMemoryFacts Memory,
-        VulkanPipelineCacheIdentity PipelineCacheIdentity);
+        VulkanPipelineCacheIdentity PipelineCacheIdentity,
+        string ReportedDeviceName);
 
     /// <summary>
     /// The one place a <c>VkPhysicalDevice</c> is turned into plain data, shared by the support probe and by
@@ -77,6 +87,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 ? ReadFeatures(vk, device)
                 : default;
 
+            // TWO NAMES OFF ONE READ, deliberately. The raw one is what the capability seam carries and the
+            // substituted one is what a log line prints, and collapsing them would either put "unnamed device
+            // 0x…" into a capability the incumbent answers "" for, or put an empty string into a rejection
+            // message nobody could act on.
+            string reportedName = ReadReportedDeviceName(&properties);
             string name = ReadDeviceName(&properties);
             uint graphicsFamily = FirstGraphicsQueueFamily(vk, device);
             VulkanMemoryFacts memory = ReadMemory(vk, device, &properties);
@@ -104,7 +119,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 SupportsShadowMapFormat(vk, device),
                 MaxMsaaSampleCount(vk, device),
                 memory,
-                ReadPipelineCacheIdentity(&properties));
+                ReadPipelineCacheIdentity(&properties),
+                reportedName);
         }
 
         /// <summary>
@@ -118,9 +134,21 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             => new(properties->VendorID, properties->DeviceID, properties->DriverVersion,
                 new ReadOnlySpan<byte>(properties->PipelineCacheUuid, VulkanPipelineCacheIdentity.UuidLength));
 
+        /// <summary>
+        /// The driver's name for the device VERBATIM, copied out of the fixed byte buffer into a managed string,
+        /// and empty when the driver reported nothing. This is the capability seam's answer (V-G1), where
+        /// <see cref="ReadDeviceName"/> is the log's: the substitution that makes a rejection line readable is a
+        /// capability difference against an incumbent that performs none, and
+        /// <c>GpuCapabilities.DeviceName</c> is compared string for string by the parity test.
+        /// </summary>
+        internal static string ReadReportedDeviceName(PhysicalDeviceProperties* properties)
+            => VulkanCapabilityRead.ReportedDeviceName(
+                SilkMarshal.PtrToString((nint)properties->DeviceName));
+
         /// <summary>The driver's name for the device, copied out of the fixed byte buffer into a managed string so
         /// it can outlive the instance. A driver that reports nothing readable still has to be nameable in a log
-        /// line, so this never returns null or empty.</summary>
+        /// line, so this never returns null or empty. NOT the capability answer: that is
+        /// <see cref="ReadReportedDeviceName"/>.</summary>
         internal static string ReadDeviceName(PhysicalDeviceProperties* properties)
         {
             string? name = SilkMarshal.PtrToString((nint)properties->DeviceName);
@@ -249,16 +277,44 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             return NoQueueFamily;
         }
 
-        // GpuCapabilities.SupportsShadowMaps: R32_SFLOAT usable as both a depth-stencil attachment and a sampled
-        // image, which is what the shadow pass renders into and then reads.
+        /// <summary>
+        /// The two format features <c>GpuCapabilities.SupportsShadowMaps</c> asks <c>R32_SFLOAT</c> about, held as
+        /// a constant so the question itself is assertable on a machine with no Vulkan loader.
+        /// <para>
+        /// COLOUR ATTACHMENT, NOT DEPTH-STENCIL, and asking the other one is not a stricter question but a
+        /// structurally false one. <c>R32_SFLOAT</c> is a colour format, so no driver reports
+        /// <c>VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT</c> for it, and the shadow pass never wanted that
+        /// bit: <c>ShadowMapRenderer</c> creates the atlas as <c>R32Float</c> with
+        /// <c>RenderTarget | Sampled</c> and hangs a SEPARATE depth-stencil off it, so the two features the pass
+        /// actually needs are render target and sampled image.
+        /// </para>
+        /// <para>
+        /// THE INCUMBENT ASKS THIS PAIR TOO, which is what makes it the parity answer as well as the correct one:
+        /// <c>VeldridMap.SupportsShadowMaps</c> calls <c>GetPixelFormatSupport</c> with
+        /// <c>RenderTarget | Sampled</c>. The Direct3D 11 sibling
+        /// (<c>D3D11DxgiQueries.SupportsShadowMapsWindows</c>) settled the same question with the warning worth
+        /// repeating here: a capability question stricter than the incumbent's reports false where the incumbent
+        /// reports true, and the visible result is the shadow path degrading to blob shadows on ONE backend only,
+        /// silently, with nothing failing.
+        /// </para>
+        /// </summary>
+        internal const FormatFeatureFlags ShadowMapFormatFeatures =
+            FormatFeatureFlags.ColorAttachmentBit | FormatFeatureFlags.SampledImageBit;
+
+        /// <summary>The DECISION half of the shadow-map question, given what a driver reported for
+        /// <c>R32_SFLOAT</c>'s optimal tiling. Split from the read so the bits are pinnable device-free, the same
+        /// split every other rule in this backend gets.</summary>
+        internal static bool SupportsShadowMapFormat(FormatFeatureFlags optimalTilingFeatures)
+            => (optimalTilingFeatures & ShadowMapFormatFeatures) == ShadowMapFormatFeatures;
+
+        // GpuCapabilities.SupportsShadowMaps: R32_SFLOAT usable as both a colour attachment and a sampled image,
+        // which is what the shadow pass renders into and then reads.
         static bool SupportsShadowMapFormat(Vk vk, PhysicalDevice device)
         {
             FormatProperties properties;
             vk.GetPhysicalDeviceFormatProperties(device, Format.R32Sfloat, &properties);
 
-            const FormatFeatureFlags required =
-                FormatFeatureFlags.DepthStencilAttachmentBit | FormatFeatureFlags.SampledImageBit;
-            return (properties.OptimalTilingFeatures & required) == required;
+            return SupportsShadowMapFormat(properties.OptimalTilingFeatures);
         }
 
         // GpuCapabilities.MaxMsaaSampleCount (V-C5), which is the INCUMBENT'S computation and not one of its

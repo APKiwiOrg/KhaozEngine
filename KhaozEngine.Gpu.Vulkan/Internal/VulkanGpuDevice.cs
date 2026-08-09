@@ -22,9 +22,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// stale one is worse than none.
     /// </para>
     /// <para>
-    /// <b>THE MEMBERS THAT ARE LIVE:</b> <see cref="Backend"/>, <see cref="Capabilities"/> (in the part that can
-    /// be read honestly, see below), <see cref="Diagnostics"/> with both of its fields, <see cref="Counters"/> (in
-    /// the drain, backpressure and off-timeline halves, see below), both <c>Submit</c> overloads, all three
+    /// <b>THE MEMBERS THAT ARE LIVE:</b> <see cref="Backend"/>, <see cref="Capabilities"/> (every member but the
+    /// MSAA limit, see below), <see cref="Diagnostics"/> with both of its fields, <see cref="Counters"/> (every
+    /// field, each off the subsystem that owns it, see below), both <c>Submit</c> overloads, all three
     /// <c>UpdateBuffer</c> overloads at BOTH levels, <see cref="Factory"/>, <see cref="PointSampler"/>,
     /// <see cref="LinearSampler"/>, both <c>UpdateTexture</c> overloads, both <c>Map</c> and <c>Unmap</c> pairs,
     /// <see cref="WaitForIdle"/>, <see cref="Dispose"/>, and since row 17 the swapchain pair too:
@@ -105,12 +105,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// empties is returned behind the timeline rather than freed underneath a submission.
     /// </para>
     /// <para>
-    /// <b><see cref="Capabilities"/> IS FILLED AND ROW 18 PINS IT.</b> That row
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/528) owns the ZERO-permitted-difference parity test
-    /// against the incumbent. <c>MaxMsaaSampleCount</c> was pinned to 1 until row 15
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/525) reproduced the incumbent's OWN computation rather
-    /// than inventing a formula (V-C5), which is what makes "asserted identical" satisfiable by construction
-    /// rather than by luck: see <see cref="VulkanMsaaLimit"/>.
+    /// <b><see cref="Capabilities"/> IS <see cref="VulkanCapabilityRead"/>'s ANSWER, AND ALL NINE MEMBERS ARE
+    /// FINAL</b> (row 18, https://github.com/APKiwiOrg/KhaozEngine/issues/528). The assembly moved off this
+    /// creation path into a device-free type, so the five constants, the device-name normalisation and the
+    /// sample-count floor are all plain <c>[Fact]</c>s on a machine with no loader, and
+    /// <c>NativeVsVeldridVulkanCapabilityParityTests</c> holds the whole set against the incumbent's with ZERO
+    /// permitted differences (V-G1), which is a stricter bar than the Direct3D 11 backend's because there is no
+    /// incumbent capability defect to correct here.
+    /// <c>MaxMsaaSampleCount</c>, the last member pinned to 1, landed with row 15
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/525) as the incumbent's OWN computation reproduced
+    /// rather than a formula invented here (V-C5), which is what keeps the parity assertion satisfiable by
+    /// construction rather than by luck: see <see cref="VulkanMsaaLimit"/>.
     /// </para>
     /// <para>
     /// <b>TEARDOWN CALLS <c>vkDeviceWaitIdle</c> FIRST</b> (V-F10), unlike the incumbent, which destroys the
@@ -393,7 +398,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// zero" rule sets for reporting <c>HasValue</c> at all.
         /// <para>
         /// WHAT A READER STILL MUST NOT DO is divide by <c>FramesBegun</c> while it is 0, which on a headless
-        /// device it stays.
+        /// device it stays, or compare <c>DrainCount</c> against the Direct3D 11 native backend's. That one
+        /// counts EVERY <c>WaitForIdle</c>, because its drain has to signal and flush to know it is idle, and
+        /// this one counts only the drains with outstanding submissions, because comparing the timeline counter
+        /// against the last submitted value genuinely means idle here. Both are locally right and the two
+        /// numbers are not the same measurement. <c>DrainMs</c> is comparable, because the drains this one skips
+        /// cost about nothing. Scoping the seam doc's own wording to match is
+        /// https://github.com/APKiwiOrg/KhaozEngine/issues/545.
         /// </para>
         /// </remarks>
         public GpuDeviceCounters Counters

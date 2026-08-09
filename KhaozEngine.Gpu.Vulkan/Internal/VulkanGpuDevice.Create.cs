@@ -348,31 +348,23 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             }
         }
 
-        // Section 14's table. Row 18 (https://github.com/APKiwiOrg/KhaozEngine/issues/528) owns the
-        // zero-difference parity test that pins all of it against the incumbent, and every member below is now a
-        // real reading rather than a placeholder.
+        // Section 14's table, assembled in VulkanCapabilityRead so every rule that decides what the engine
+        // believes about the device is a plain [Fact] on a machine with no loader (row 18,
+        // https://github.com/APKiwiOrg/KhaozEngine/issues/528). This method is the four device answers and
+        // nothing else: the reported name, the anisotropy bit the feature chain settled, the R32_SFLOAT
+        // format-properties read, and row 15's MSAA fold.
         static GpuCapabilities ReadCapabilities(in VulkanPhysicalDeviceRead read,
             in VulkanFeatureSelection features)
-            => new(
-                // FALSE, and it is the one capability that flips every image. It comes from the negative-height
-                // viewport path (7.2), which row 12 emits, so recording it as false here is a promise this row
-                // makes to that row rather than a reading of anything.
-                clipSpaceYInverted: false,
-                depthRangeZeroToOne: true,
-                deviceName: read.Facts.DeviceName,
+            => VulkanCapabilityRead.Assemble(
+                deviceName: read.ReportedDeviceName,
                 samplerAnisotropy: features.SamplerAnisotropy,
-                samplerLodBias: true,
+                supportsShadowMaps: read.SupportsShadowMapFormat,
                 // THE INCUMBENT'S OWN COMPUTATION, REPRODUCED (V-C5), rather than either draft's invented
                 // formula: the minimum over the engine's three MRT targets of the highest sample count each
                 // supports, read through vkGetPhysicalDeviceImageFormatProperties exactly as
                 // VkGraphicsDevice.GetSampleCountLimit does. See VulkanMsaaLimit for the citation and for what
                 // the design document says about this that turned out to be wrong.
-                maxMsaaSampleCount: read.MaxMsaaSampleCount,
-                supportsShadowMaps: read.SupportsShadowMapFormat,
-                supportsCompute: true,
-                // TRUE, unlike Direct3D 11's, and identical to the incumbent's: VeldridMap already answers true
-                // for Vulkan, so section 14's zero-permitted-difference bar is met here by construction.
-                supportsCompletionFences: true);
+                maxMsaaSampleCount: read.MaxMsaaSampleCount);
 
         static PhysicalDevice[] EnumeratePhysicalDevices(Vk vk, Instance instance)
         {

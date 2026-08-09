@@ -1807,11 +1807,11 @@ device.
 |---|---|---|
 | `ClipSpaceYInverted` | **false**, from the negative-height viewport path (7.2) | identical, and it is the one that flips every image |
 | `DepthRangeZeroToOne` | true | identical |
-| `DeviceName` | `VkPhysicalDeviceProperties.deviceName`, trimmed | identical by construction, given V-N3's default selection |
+| `DeviceName` | `VkPhysicalDeviceProperties.deviceName`, NUL cut only, never trimmed | identical by construction, given V-N3's default selection |
 | `SamplerAnisotropy` | `VkPhysicalDeviceFeatures.samplerAnisotropy` | asserted identical |
 | `SamplerLodBias` | true | identical |
 | `MaxMsaaSampleCount` | the incumbent's own computation, reproduced (V-C5) | asserted identical, and satisfiable by construction rather than by luck |
-| `SupportsShadowMaps` | `vkGetPhysicalDeviceFormatProperties(R32_SFLOAT)` for attachment and sampled | asserted identical |
+| `SupportsShadowMaps` | `vkGetPhysicalDeviceFormatProperties(R32_SFLOAT)` for COLOUR attachment and sampled | asserted identical |
 | `SupportsCompute` | true | identical |
 | `SupportsCompletionFences` | true | **identical**, unlike D3D11 |
 
@@ -1822,6 +1822,28 @@ until proven otherwise. The test carries the reflection-completeness check phase
 most, that the comparison covers every member of `GpuCapabilities`, so a member appended later cannot silently
 weaken the assertion. It runs in one process on the Linux leg at 1x billing, which makes it the cheapest strong
 test in the program.
+
+**CORRECTED IN FLIGHT (row 18): the `SupportsShadowMaps` cell above said "attachment" and the first
+implementation read that as `VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT`.** That question is not stricter,
+it is structurally false: `R32_SFLOAT` is a colour format, no driver reports the depth-stencil bit for it, so
+the capability would have answered false on every Vulkan device in existence. The shadow pass never wanted that
+bit either, since `ShadowMapRenderer` creates the atlas as `R32Float` with `RenderTarget | Sampled` and hangs a
+separate depth-stencil off it. `VeldridMap.SupportsShadowMaps` asks `GetPixelFormatSupport` for
+`RenderTarget | Sampled`, so the correct pair is COLOUR attachment plus sampled image, which is what
+`VulkanPhysicalDeviceReader.ShadowMapFormatFeatures` now holds, with the decision split off the driver call so
+the bits are pinnable device-free. Carry the D3D11 sibling's warning with it: this capability answering false
+where the incumbent answers true is not a loud failure, it is the shadow path degrading to blob shadows on one
+backend only, with nothing red anywhere. The lesson generalises under a zero-difference bar, which is why it is
+written here rather than only in the code: writing down what a member's NAME suggests instead of what the
+incumbent asks is a parity failure by construction.
+
+**CORRECTED IN FLIGHT (row 18): the `DeviceName` cell said "trimmed", and the implementation deliberately does
+not trim.** It cuts at the first NUL and returns everything else verbatim, padding included. Trimming reads like
+the tidier answer and is the wrong one under this bar for the same reason as above: the incumbent does not trim,
+so a trim on the native path alone fails `DeviceName` parity on every machine whose vendor pads its reported
+name, which is an ordinary hardware habit rather than a hypothetical. The parity test pins the padded case on
+purpose. The NUL cut stays because it is free and defensive, and it expects to find nothing, since the
+marshaller on both paths already stops at the first terminator.
 
 **The device's shared point and linear samplers WRAP on all three axes**, built from wrap-addressed
 descriptions and NOT from the identically named `GpuSamplerDescription.Point` and `.Linear` statics, which

@@ -606,6 +606,50 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(AccessFlags2.None, barriers[1].DstAccessMask);
         }
 
+        /// <summary>
+        /// AND THE LIST REMEMBERS THAT IT BOUND IT, which is what routes the frame's semaphore pair to the submit
+        /// that rendered the image rather than to whichever one arrived first
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/557). The answer is STICKY across the recording,
+        /// because a later bind of some other target does not undo the fact that this submission orders the
+        /// swapchain image's rendering, and a <c>Begin</c> forgets it, because the bind belonged to a recording
+        /// that was discarded.
+        /// </summary>
+        [Fact]
+        public void AListThatBoundTheSwapchainFramebuffer_SaysSoUntilTheNextBegin()
+        {
+            var fixture = new VulkanResourceFixture();
+            var owned = new List<IDisposable>();
+
+            try
+            {
+                var swapchain = new VulkanSwapchainFramebuffer(
+                    GpuPixelFormat.B8G8R8A8UNorm,
+                    new VulkanAttachment(0x10, 0x11, GpuPixelFormat.B8G8R8A8UNorm, DepthStencil: false,
+                        VulkanRestingLayout.PresentSrcKhr),
+                    new VulkanExtent(64, 64));
+
+                using VulkanCommandList list = Recording(fixture, owned, out IGpuFramebuffer offscreen);
+
+                // AN OFFSCREEN TARGET ALONE ANSWERS NO, which is the ocean priming list's whole shape.
+                Assert.False(list.BoundSwapchainFramebuffer);
+
+                list.SetFramebuffer(swapchain);
+                Assert.True(list.BoundSwapchainFramebuffer);
+
+                // AND A REBIND ELSEWHERE DOES NOT TAKE IT BACK.
+                list.SetFramebuffer(offscreen);
+                Assert.True(list.BoundSwapchainFramebuffer);
+
+                list.End();
+                list.Begin();
+                Assert.False(list.BoundSwapchainFramebuffer);
+            }
+            finally
+            {
+                DisposeAll(owned);
+            }
+        }
+
         // ---- Fixtures ----
 
         // A recording with a framebuffer bound, which is the state every draw member needs.

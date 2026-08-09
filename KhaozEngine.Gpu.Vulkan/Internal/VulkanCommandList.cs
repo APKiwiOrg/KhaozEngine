@@ -106,6 +106,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         ulong _boundGraphicsPipeline;
         ulong _boundComputePipeline;
 
+        // WHETHER THIS RECORDING EVER BOUND THE DEVICE'S SWAPCHAIN FRAMEBUFFER. Sticky across the whole recording
+        // rather than a reading of what is bound now, because what it answers is "did this submission order the
+        // swapchain image's rendering", and a rebind to some other target later does not undo that.
+        bool _boundSwapchain;
+
         bool _recording;
         bool _disposed;
 
@@ -199,6 +204,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 "This native Vulkan command list was built with no rendering seam, so it can bind no framebuffer "
                 + "and open no render pass instance. Every list the device hands out has one: this is a list "
                 + "constructed directly by a test.");
+
+        /// <summary>
+        /// Whether this recording bound the device's swapchain framebuffer, which is what decides whether the
+        /// frame's semaphore pair rides THIS submit (https://github.com/APKiwiOrg/KhaozEngine/issues/557). See
+        /// <see cref="IVulkanBoundFramebufferSource.IsSwapchain"/> for why the question is asked of the list.
+        /// </summary>
+        internal bool BoundSwapchainFramebuffer => _boundSwapchain;
 
         /// <summary>True between <see cref="Begin"/> and <see cref="End"/>.</summary>
         internal bool IsRecording => _recording;
@@ -302,6 +314,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // first SetFramebuffer take the redundant path and draw into a target this buffer never bound.
             _rendering?.Reset();
 
+            // AND THE SWAPCHAIN ANSWER WITH IT, for the same reason: the bind belonged to a recording that was
+            // discarded, and a submission of THIS one orders nothing that recording did.
+            _boundSwapchain = false;
+
             // ROW 13's HALF, and the same argument a third time: a fresh VkCommandBuffer has no pipeline bound at
             // either bind point, so a retained handle would let the next recording's first SetPipeline take the
             // identity guard's redundant path and draw with whatever pipeline the driver's own state happened to
@@ -392,6 +408,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // what arrives is the same flattened record of handles, integers and enums either way.
             IVulkanBoundFramebufferSource framebuffer =
                 VulkanBindableFramebuffer.Require(fb, "a native Vulkan framebuffer bind");
+
+            // BEFORE THE IDENTITY GUARD INSIDE THE SCHEDULE, and sticky, so a redundant rebind cannot clear it and
+            // a later bind of some other target cannot either.
+            _boundSwapchain |= framebuffer.IsSwapchain;
 
             rendering.SetFramebuffer(CurrentBuffer, framebuffer.AsBound);
         }

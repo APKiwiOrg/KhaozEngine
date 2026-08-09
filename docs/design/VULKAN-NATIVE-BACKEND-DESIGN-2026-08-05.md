@@ -1383,10 +1383,19 @@ per frame, and a rearrangement of which submit signals the render-finished semap
 the post-acquire discard, which has to run after the acquire semaphore and before the frame's first list. All of
 that lands on the one path with zero automated coverage anywhere (MV9). Assigning the swapchain image a resting
 layout of `PRESENT_SRC_KHR` instead costs nothing at all: the frame's own list restores it there at `End` under
-the rule every other texture already follows, inside the submit that already signals the semaphore the present
-already waits on, and the acquire half falls out of V-F8's second permitted `UNDEFINED` site, because a
-transition OUT of `PRESENT_SRC_KHR` discards. That same discard is what covers a freshly created generation,
-whose images really are in `UNDEFINED` and for which no first-use transition is recorded anywhere.
+the rule every other texture already follows, inside the submit that signals the semaphore the present waits on,
+and the acquire half falls out of V-F8's second permitted `UNDEFINED` site, because a transition OUT of
+`PRESENT_SRC_KHR` discards. That same discard is what covers a freshly created generation, whose images really
+are in `UNDEFINED` and for which no first-use transition is recorded anywhere.
+
+**BOTH HALVES REQUIRE THE FRAME'S LIST TO BIND THE SWAPCHAIN FRAMEBUFFER, and neither is a property of the frame
+merely having submitted something.** The discard and the restore are both recorded by the recording that bound
+it, so a frame whose submits never bound it transitions the image not at all: it presents an image nothing wrote,
+which on a freshly created generation is an image in `UNDEFINED` that no barrier has taken to `PRESENT_SRC_KHR`.
+That is why the semaphore pair is routed by the same question rather than by arrival order (#563): the boundary
+asks each submit whether its list bound the framebuffer, hands the pair to the first that did, and presents
+nothing at all when none did. Before that routing, an ocean priming frame's own list took the pair by arriving
+first and the scene list that rendered the image submitted with no semaphores.
 
 The limitation is named rather than hidden: a SECOND list in one frame that binds the swapchain framebuffer
 after another one has already ended discards what the first drew. Every shipped renderer draws the backbuffer

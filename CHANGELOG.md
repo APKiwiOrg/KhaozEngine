@@ -84,11 +84,23 @@ A layout transition is a recorded command, so a present transition the boundary 
 pool on the boundary, a second `vkQueueSubmit` per frame, a third for the post-acquire discard, and a
 rearrangement of which submit signals the render-finished semaphore, all on the one path with zero automated
 coverage anywhere. Resting there instead costs none of it: the frame's own list restores it at `End` under the
-rule every other texture already follows, inside the submit that already signals the semaphore the present
-already waits on, and the acquire half falls out of the second `UNDEFINED` site the design already permits,
-because a transition OUT of `PRESENT_SRC_KHR` discards. That same discard covers a freshly created generation,
-whose images really are in `UNDEFINED`. The one shape it excludes, a second list per frame binding the swapchain
-framebuffer, is filed (#562) rather than hidden.
+rule every other texture already follows, inside the submit that signals the semaphore the present waits on, and
+the acquire half falls out of the second `UNDEFINED` site the design already permits, because a transition OUT of
+`PRESENT_SRC_KHR` discards. That same discard covers a freshly created generation, whose images really are in
+`UNDEFINED`. The one shape it excludes, a second list per frame binding the swapchain framebuffer, is filed
+(#562) rather than hidden.
+
+**Both halves of that ruling belong to the list that BINDS the swapchain framebuffer, so the frame's semaphore
+pair is routed by that question rather than by arrival order (#563).** "Inside the submit that signals the
+semaphore" holds only when the submit taking the pair is the one that rendered the image, and the pair used to go
+to whichever submit reached the boundary first after the acquire. An ocean priming frame submits and drains a
+producer list of its own before the scene renders, so that list took the pair and the scene list that actually
+drew the backbuffer and restored it submitted with no semaphores at all, leaving the present waiting on a
+semaphore signalled by a submission that never touched the image. A recording now remembers whether it bound the
+swapchain framebuffer, stickily and reset by `Begin`, the device asks the list on the way to `vkQueueSubmit`, and
+the boundary hands the pair to the first submit that answers yes. The same flag closes the other half: a frame
+that submits lists but never binds the framebuffer transitions the image not at all, so it now presents nothing
+rather than presenting an image that on a freshly created generation is still `UNDEFINED`.
 
 **MV4 FREEZES here.** The budget's exit criterion was that the first green run's marginals are recorded and then
 frozen, and the last half owed was the draw-call one: until something emitted a `vkCmdDraw`, `DrawCalls` read

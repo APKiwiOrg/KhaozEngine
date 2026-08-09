@@ -44,7 +44,7 @@ namespace KhaozEngine.Tests.Gpu
             /// present an image nothing rendered into.</summary>
             internal VulkanFrameSemaphores Frame()
             {
-                VulkanFrameSemaphores pair = Boundary.TakeFrameSemaphores();
+                VulkanFrameSemaphores pair = Boundary.TakeFrameSemaphores(boundSwapchainFramebuffer: true);
                 Boundary.Present();
                 return pair;
             }
@@ -109,8 +109,8 @@ namespace KhaozEngine.Tests.Gpu
         {
             using var rig = new Rig();
 
-            VulkanFrameSemaphores first = rig.Boundary.TakeFrameSemaphores();
-            VulkanFrameSemaphores second = rig.Boundary.TakeFrameSemaphores();
+            VulkanFrameSemaphores first = rig.Boundary.TakeFrameSemaphores(boundSwapchainFramebuffer: true);
+            VulkanFrameSemaphores second = rig.Boundary.TakeFrameSemaphores(boundSwapchainFramebuffer: true);
 
             Assert.False(first.IsEmpty);
             Assert.True(second.IsEmpty);
@@ -275,7 +275,7 @@ namespace KhaozEngine.Tests.Gpu
 
             // THE ASSERTION THAT MATTERS: the next frame's first submit is handed nothing, rather than a pair
             // naming a VkSemaphore the retirement destroyed.
-            Assert.True(rig.Boundary.TakeFrameSemaphores().IsEmpty);
+            Assert.True(rig.Boundary.TakeFrameSemaphores(boundSwapchainFramebuffer: true).IsEmpty);
         }
 
         /// <summary>
@@ -300,7 +300,7 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.True(rig.Boundary.HasImage);
             Assert.False(rig.Boundary.IsOrphanBound);
-            Assert.False(rig.Boundary.TakeFrameSemaphores().IsEmpty);
+            Assert.False(rig.Boundary.TakeFrameSemaphores(boundSwapchainFramebuffer: true).IsEmpty);
         }
 
         // ---- resize, present mode, and the retirement hazard -------------------------------------------------

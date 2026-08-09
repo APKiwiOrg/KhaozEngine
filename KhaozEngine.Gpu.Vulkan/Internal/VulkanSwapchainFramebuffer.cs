@@ -89,6 +89,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <inheritdoc/>
         VulkanBoundFramebuffer IVulkanBoundFramebufferSource.AsBound => _bound;
 
+        /// <inheritdoc/>
+        bool IVulkanBoundFramebufferSource.IsSwapchain => true;
+
         /// <summary>
         /// PUBLISH A NEW ATTACHMENT UNDER THE SAME IDENTITY, which is the one mutation this type has. Called on
         /// the submit thread at the present boundary: once per successful acquire with the acquired image's view,

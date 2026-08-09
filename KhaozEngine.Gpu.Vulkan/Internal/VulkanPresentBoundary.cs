@@ -38,9 +38,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// own, a second <c>vkQueueSubmit</c> per frame, and a rearrangement of which submit signals the
     /// render-finished semaphore, all on the one path with zero automated coverage anywhere (MV9). So
     /// <c>PRESENT_SRC_KHR</c> is the swapchain image's canonical RESTING layout instead: the frame's own list
-    /// restores it there at <c>End</c> (V-F7), inside the submit that already signals the semaphore this present
-    /// already waits on. See <see cref="VulkanLayoutTracker"/> for the rule that makes a transition out of it a
-    /// discard and for the one shape that limitation excludes.</para>
+    /// restores it there at <c>End</c> (V-F7), inside the submit this present's wait semaphore is signalled by.
+    /// See <see cref="VulkanLayoutTracker"/> for the rule that makes a transition out of it a discard and for the
+    /// one shape that limitation excludes.</para>
+    ///
+    /// <para><b>THAT "INSIDE THE SUBMIT" CLAUSE IS TRUE BECAUSE THE PAIR IS ROUTED TO MAKE IT TRUE, and it was
+    /// not always.</b> It went to whichever submit arrived first after the acquire, so a frame with a producer
+    /// pass of its own (the ocean's priming submit) put it on a submission that never touched the image.
+    /// <see cref="TakeFrameSemaphores"/> asks the caller whether its recording bound the framebuffer instead, so
+    /// the pair and the restore ride one submission by construction rather than by arrival order.</para>
     ///
     /// <para><b>A SKIPPED PRESENT IS NOT A SKIPPED FRAME.</b> <see cref="FramesBegun"/> counts every boundary,
     /// including the imageless ones: the device opened the frame, the recording and the submit really happened,
@@ -90,7 +96,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         VulkanFrameSemaphores _frame;
         long _framesBegun;
         int _heldImage = NoImage;
-        bool _waitConsumed;
+
+        // WHETHER A SUBMIT THAT BOUND THE SWAPCHAIN FRAMEBUFFER HAS ARRIVED FOR THE HELD IMAGE. It is the "did
+        // anything render this" flag AND the once-guard on the pair, because after #557 they are one event: the
+        // pair is offered to exactly the submissions that rendered the image, and the first of those takes it.
+        bool _swapchainSubmitted;
         bool _syncToVerticalBlank;
         bool _surfaceLost;
         bool _orphanBound;
@@ -216,16 +226,24 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         }
 
         /// <summary>
-        /// THE PAIR THE FIRST SUBMIT OF THIS FRAME CARRIES, taken exactly once. Every later submit in the same
-        /// frame gets the default, because a binary semaphore may be waited once per signal and a second wait on
-        /// the same one is a hang rather than an error.
+        /// THE PAIR THE FIRST SUBMIT THAT RENDERED THE SWAPCHAIN IMAGE CARRIES, taken exactly once. Every later
+        /// submit in the same frame gets the default, because a binary semaphore may be waited once per signal and
+        /// a second wait on the same one is a hang rather than an error.
+        ///
+        /// <para><b>WHICH SUBMIT IS NOT "THE FIRST ONE TO ARRIVE", AND THAT CORRECTION IS THE POINT
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/557).</b> The pair used to go to whichever submit
+        /// reached here first after the acquire, which is the swapchain-rendering list only when that list happens
+        /// to submit first. The ocean's priming pass submits and drains a list of its own before the scene
+        /// renders, so that list took the pair, the scene list that drew the backbuffer and restored it to
+        /// <c>PRESENT_SRC_KHR</c> submitted with no semaphores, and the present waited on a semaphore signalled by
+        /// a submission that never touched the image.</para>
         ///
         /// <para><b>UNDER THE DEVICE'S SUBMIT LOCK, AND THAT IS STRUCTURAL RATHER THAN CAUTIOUS.</b> "Exactly
         /// once" was enforced by a plain read-modify-write over non-volatile fields, evaluated as an argument
         /// BEFORE <see cref="VulkanSubmitQueue"/> took the lock, so two threads reaching
-        /// <c>IGpuDevice.Submit</c> for the first submit of one frame could both see <c>_waitConsumed</c> false
-        /// and both take the pair. Two submits waiting on one binary semaphore is a hang rather than an error,
-        /// which is precisely what the once contract exists to prevent. The seam does not say <c>Submit</c> is
+        /// <c>IGpuDevice.Submit</c> for the first submit of one frame could both see the flag false and both take
+        /// the pair. Two submits waiting on one binary semaphore is a hang rather than an error, which is
+        /// precisely what the once contract exists to prevent. The seam does not say <c>Submit</c> is
         /// single-threaded anywhere, and V-W8 says the opposite of what would be needed to assume it: recording is
         /// lock-free and per-list on any number of threads. So the take is serialised against every other take and
         /// against the boundary's own publication of the pair, which happens under the same lock.</para>
@@ -234,14 +252,24 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// monitor on the same thread, sequentially, and the setup lock is already released by then, so the one
         /// ordering rule V-W8 pins (setup before submit, never the reverse) is untouched.</para>
         /// </summary>
-        internal VulkanFrameSemaphores TakeFrameSemaphores()
+        /// <param name="boundSwapchainFramebuffer">Whether the submitting list's recording bound the device's
+        /// swapchain framebuffer. False means this submission ordered nothing about the held image, so it carries
+        /// no semaphores and does not count as having rendered the frame.</param>
+        internal VulkanFrameSemaphores TakeFrameSemaphores(bool boundSwapchainFramebuffer)
         {
+            // OUTSIDE THE LOCK, because it reads nothing this type owns: it is the submitting list's answer about
+            // its own recording, and a submission that never bound the framebuffer touches no frame state at all.
+            if (!boundSwapchainFramebuffer) return default;
+
             lock (_submitLock)
             {
-                if (_waitConsumed || _frame.IsEmpty) return default;
+                // SET WHETHER OR NOT A PAIR COMES BACK, which is what makes it mean "a submit rendered this image"
+                // rather than "a pair was consumed". Under KE_VULKAN_ACQUIRE=stall there is no pair to consume at
+                // all and the present still has to know the difference between a rendered frame and an idle one.
+                bool first = !_swapchainSubmitted;
+                _swapchainSubmitted = true;
 
-                _waitConsumed = true;
-                return _frame;
+                return first && !_frame.IsEmpty ? _frame : default;
             }
         }
 
@@ -325,12 +353,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             if (_heldImage == NoImage || _generation is null) return;
 
-            // THE STALL MODE PRESENTS WITH NO WAIT SEMAPHORE, which is the incumbent's shape exactly and is the
-            // specification violation the mode exists to reproduce. On the shipped path the wait is the image's
-            // own render-finished semaphore, and it is only there when a submit actually took the pair.
-            bool rendered = _mode == VulkanAcquireMode.Stall || _waitConsumed;
-            if (!rendered) return;
+            // RENDERED MEANS A SUBMIT BOUND THIS IMAGE'S FRAMEBUFFER, a stronger reading than "the pair was
+            // consumed, or the mode has no pair" (https://github.com/APKiwiOrg/KhaozEngine/issues/563): a frame
+            // whose lists never bound it presented an image nothing drew into, which on a FRESHLY CREATED
+            // generation is UNDEFINED with no transition to PRESENT_SRC_KHR recorded anywhere.
+            if (!_swapchainSubmitted) return;
 
+            // THE STALL MODE PRESENTS WITH NO WAIT SEMAPHORE, which is the incumbent's shape exactly and is the
+            // specification violation the mode exists to reproduce.
             ulong wait = _mode == VulkanAcquireMode.Stall ? 0 : _frame.Signal;
 
             VulkanPresentOutcome outcome;
@@ -407,7 +437,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     _frame = _mode == VulkanAcquireMode.Stall
                         ? default
                         : new VulkanFrameSemaphores(semaphore, _generation.RenderFinishedAt(_heldImage));
-                    _waitConsumed = false;
+                    _swapchainSubmitted = false;
                 }
 
                 // SUBOPTIMAL REALLY DID ACQUIRE, so the image is kept and the recreate is queued for the next
@@ -620,7 +650,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             _heldImage = NoImage;
             _frame = default;
-            _waitConsumed = false;
+            _swapchainSubmitted = false;
         }
 
         // ---- Publishing ----

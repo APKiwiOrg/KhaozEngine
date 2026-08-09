@@ -122,21 +122,29 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // the submit lock, which is what keeps the two locks a strict order rather than a cycle.
             FlushSetup();
 
-            _submits.Submit(list, null, TakeFrameSemaphores());
+            _submits.Submit(list, null, TakeFrameSemaphores(list));
         }
 
-        // THE SWAPCHAIN'S BINARY PAIR FOR THIS FRAME, taken by the FIRST submit after an acquire and default for
-        // every other one (V-W3). Default on every headless device, which has no swapchain at all, and default
-        // under KE_VULKAN_ACQUIRE=stall, which reproduces the incumbent's semaphore-free submit exactly.
+        // THE SWAPCHAIN'S BINARY PAIR FOR THIS FRAME, taken by the first submit after an acquire WHOSE RECORDING
+        // BOUND THE SWAPCHAIN FRAMEBUFFER, and default for every other one (V-W3). Default on every headless
+        // device, which has no swapchain at all, and default under KE_VULKAN_ACQUIRE=stall, which reproduces the
+        // incumbent's semaphore-free submit exactly.
+        //
+        // "WHICHEVER SUBMIT ARRIVES FIRST" WAS THE WRONG ROUTE AND THE LIST IS WHAT KNOWS THE RIGHT ONE
+        // (https://github.com/APKiwiOrg/KhaozEngine/issues/557). The present waits on a semaphore the frame's
+        // submit signals, and it is only the right semaphore if that submit is the one that rendered the image
+        // and restored it to PRESENT_SRC_KHR at End. A frame whose producer pass submits and drains a list of its
+        // own first (the ocean priming frame) handed the pair to that list instead, and the scene list that
+        // actually drew the backbuffer then submitted with no semaphores at all.
         //
         // ONCE PER FRAME IS THE CONTRACT AND IT IS A HANG IF IT IS BROKEN. A binary semaphore may be waited once
         // per signal, so a second submit in one frame carrying the same wait semaphore waits for a signal nothing
         // will ever produce. The boundary enforces the once UNDER THE DEVICE'S SUBMIT LOCK rather than by
         // assuming one submitting thread, because this seam nowhere says Submit is single-threaded and V-W8 says
         // recording is lock-free and per-list on any number of threads. This call is still made outside the lock
-        // the submit queue takes below, which is harmless now that the take itself is atomic: the pair goes to
-        // whichever submit reaches it first and every other one gets the default.
-        VulkanFrameSemaphores TakeFrameSemaphores() => _present?.TakeFrameSemaphores() ?? default;
+        // the submit queue takes below, which is harmless now that the take itself is atomic.
+        VulkanFrameSemaphores TakeFrameSemaphores(VulkanCommandList list)
+            => _present?.TakeFrameSemaphores(list.BoundSwapchainFramebuffer) ?? default;
 
         /// <inheritdoc/>
         /// <remarks>
@@ -162,7 +170,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // Same order and same reason as the fenceless overload.
             FlushSetup();
 
-            _submits.Submit(list, armed, TakeFrameSemaphores());
+            _submits.Submit(list, armed, TakeFrameSemaphores(list));
         }
 
         // The list check, shared by both overloads. A foreign list is refused by NAME rather than by a cast

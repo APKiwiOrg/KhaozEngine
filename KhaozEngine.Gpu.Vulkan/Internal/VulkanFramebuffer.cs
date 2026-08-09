@@ -111,6 +111,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// attachment moves on every acquire, goes down the identical path.</remarks>
         VulkanBoundFramebuffer IVulkanBoundFramebufferSource.AsBound => AsBound;
 
+        /// <inheritdoc/>
+        /// <remarks>An aggregate over engine textures is never the swapchain's, whatever those textures are: the
+        /// backbuffer is reachable only through the device's own <see cref="VulkanSwapchainFramebuffer"/>.</remarks>
+        bool IVulkanBoundFramebufferSource.IsSwapchain => false;
+
         /// <summary>This framebuffer's process-unique identity, which the framebuffer-change guard
         /// compares.</summary>
         internal ulong Id => AsBound.Id;

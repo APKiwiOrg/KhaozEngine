@@ -328,7 +328,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         // record and submit the transition itself, which needs a command pool on the boundary, a second
         // vkQueueSubmit per frame, and a rearrangement of which submit signals the render-finished semaphore -
         // all on the one path with zero CI coverage (MV9). Resting there instead puts the present transition
-        // inside the submit that already signals that semaphore, with no new machinery at all.
+        // inside the submit that signals that semaphore, which is a fact about ROUTING rather than a coincidence
+        // of arrival order: VulkanPresentBoundary.TakeFrameSemaphores hands the pair only to a submit whose
+        // recording bound the swapchain framebuffer, which is the same submit whose End records this restore.
         //
         // THE LIMITATION, NAMED: a SECOND list in one frame that binds the swapchain framebuffer after another
         // one already ended discards what the first drew, because it finds the image at rest in PRESENT_SRC and

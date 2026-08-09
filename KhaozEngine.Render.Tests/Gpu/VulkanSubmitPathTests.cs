@@ -310,7 +310,7 @@ namespace KhaozEngine.Tests.Gpu
             var worker = new Thread(() =>
             {
                 reached.Set();
-                taken = boundary.TakeFrameSemaphores();
+                taken = boundary.TakeFrameSemaphores(boundSwapchainFramebuffer: true);
             });
 
             lock (submitLock)
@@ -323,7 +323,71 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.True(worker.Join(TimeSpan.FromSeconds(5)));
             Assert.False(taken.IsEmpty);
-            Assert.True(boundary.TakeFrameSemaphores().IsEmpty);
+            Assert.True(boundary.TakeFrameSemaphores(boundSwapchainFramebuffer: true).IsEmpty);
+        }
+
+        /// <summary>
+        /// AND THE PAIR RIDES THE SUBMIT THAT RENDERED THE SWAPCHAIN IMAGE, NOT THE ONE THAT ARRIVED FIRST
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/557). The present waits on a semaphore the frame's
+        /// submit signals, and that is only the right semaphore if the submit signalling it is the one that drew
+        /// the backbuffer and restored it to <c>PRESENT_SRC_KHR</c> at <c>End</c>.
+        ///
+        /// <para><b>THE SHIPPED FRAME THAT BREAKS ARRIVAL ORDER IS THE OCEAN'S.</b> Its FFT producer submits and
+        /// drains a list of its own before the scene renders, so under the old rule that list took the pair and
+        /// the scene list submitted with none at all, leaving the present waiting on a semaphore signalled by a
+        /// submission that never touched the image.</para>
+        /// </summary>
+        [Fact]
+        public void ThePair_RidesTheFirstSubmitThatBoundTheSwapchainFramebuffer()
+        {
+            using VulkanPresentBoundary boundary = Boundary(out FakeVulkanSwapchainApi swapchains);
+
+            // THE PRIMING SUBMIT: a list that never bound the swapchain framebuffer.
+            Assert.True(boundary.TakeFrameSemaphores(boundSwapchainFramebuffer: false).IsEmpty);
+
+            // THE SCENE SUBMIT, which is the one that rendered the image.
+            VulkanFrameSemaphores scene = boundary.TakeFrameSemaphores(boundSwapchainFramebuffer: true);
+            Assert.False(scene.IsEmpty);
+
+            boundary.Present();
+
+            (ulong Swapchain, uint Image, ulong Wait) presented = Assert.Single(swapchains.Presents);
+            Assert.Equal(scene.Signal, presented.Wait);
+        }
+
+        /// <summary>
+        /// AND A FRAME WHOSE SUBMITS NEVER BOUND IT PRESENTS NOTHING
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/563). A frame that submitted work is not the same
+        /// thing as a frame that rendered the backbuffer: both halves of the resting-layout ruling (the pass
+        /// begin's discard and <c>End</c>'s restore) are recorded by the list that BINDS the framebuffer, so a
+        /// frame with no such list leaves the image exactly as the acquire found it, which on a freshly created
+        /// generation is <c>UNDEFINED</c> rather than <c>PRESENT_SRC_KHR</c>.
+        /// </summary>
+        [Fact]
+        public void AFrameThatSubmittedWithoutBindingTheFramebuffer_PresentsNothingAndKeepsItsImage()
+        {
+            using VulkanPresentBoundary boundary = Boundary(out FakeVulkanSwapchainApi swapchains);
+
+            boundary.TakeFrameSemaphores(boundSwapchainFramebuffer: false);
+            boundary.TakeFrameSemaphores(boundSwapchainFramebuffer: false);
+            boundary.Present();
+
+            Assert.Empty(swapchains.Presents);
+            Assert.True(boundary.HasImage);
+            Assert.Equal(1L, boundary.FramesBegun);
+        }
+
+        // A boundary on the present harness's fakes, in the shipped semaphore mode. The whole present state
+        // machine is VulkanPresentBoundaryTests'; what is here is the ROUTING of the frame's pair, which is a
+        // submit-path question and is asserted where the other submit-path facts are.
+        static VulkanPresentBoundary Boundary(out FakeVulkanSwapchainApi swapchains)
+        {
+            swapchains = new FakeVulkanSwapchainApi();
+
+            return new VulkanPresentBoundary(
+                new FakeVulkanSurfaceApi(), swapchains, FakeVulkanSurfaceApi.Handle,
+                new VulkanExtent(1280, 720), true, VulkanAcquireMode.Semaphore, 3, new object(), () => { },
+                new FakeVulkanOrphanTarget(), new VulkanAcquireWaits());
         }
     }
 }

@@ -1,4 +1,5 @@
-# cross-platform-gpu: desktop GPU test matrix (Win D3D11 incumbent + Win D3D11 native / Linux Vulkan / macOS Metal).
+# cross-platform-gpu: desktop GPU test matrix (Win D3D11 incumbent + Win D3D11 native / Linux Vulkan incumbent
+# + Linux Vulkan native / macOS Metal), plus one Vulkan synchronisation-validation job.
 #
 # BILLING: this repo is PUBLIC, so GitHub-hosted standard runners are free. Three legs run hosted and cost
 # nothing; Metal runs on the self-hosted dev Mac and always did.
@@ -32,6 +33,25 @@
 #     push tier was chosen when this repo was private and Windows billed at 2x, where the leg doubled the
 #     D3D11 spend on the gated paths. The repo is public and those minutes are free now, so the tier is
 #     kept for feedback speed rather than money.
+#   * The GitHub-hosted Vulkan NATIVE leg (1x) runs the engine's own KhaozEngine.Gpu.Vulkan backend
+#     (KE_GRAPHICS_BACKEND=vulkan-native) on the incumbent Vulkan leg's tier: golden tests only on
+#     push / pull_request, the FULL suite on the weekly schedule and on workflow_dispatch (decision
+#     V-T8). It is a GUEST in the incumbent's vulkan golden family exactly as direct3d11-native is a
+#     guest in direct3d11's (decision V-T1): it VERIFIES the committed vulkan goldens on the same
+#     lavapipe rasterizer and never bakes them, so KE_UPDATE_GOLDENS stays empty on it for every
+#     trigger and it sits a bake dispatch out entirely. Two things are its own rather than the D3D11
+#     leg's: it sets KE_VULKAN_REQUIRED=1, because the rows that need a native device go DORMANT
+#     without one and a dormant row on the one leg built to run them is a pass that asserted nothing,
+#     and its scheduled full suite runs under KE_VULKAN_VALIDATION=strict, which is the first
+#     validation layer this repo has ever installed anywhere (decision V-T4).
+#   * The Vulkan SYNC-VALIDATION job (1x, gpu-vulkan-sync below) is the second validation tier, and it
+#     is a separate job rather than a matrix leg because it runs a different suite for a different
+#     reason: the golden subset plus the compute suite under KE_VULKAN_VALIDATION=sync, on the
+#     schedule and on a non-bake dispatch only. Synchronisation validation tracks every access and is
+#     slow, so it buys a subset rather than the serialised full suite. It is the ONE instrument in this
+#     net that can see a missing barrier or a wrong image layout, which a software rasterizer executes
+#     correctly anyway and which no golden and no core-validation run can catch (decision V-T4, and
+#     MV5 and MV6 in the design's section 16 are both read off it).
 #   * The GitHub-hosted Vulkan leg (1x) runs only the golden tests on push/pull_request, and the
 #     FULL suite on the weekly schedule and on workflow_dispatch, same tier as D3D11. Chasing this
 #     leg's full-suite crashes surfaced four real engine defects, all fixed: concurrent device
@@ -46,27 +66,41 @@
 #   * Committed per-backend goldens live at KhaozEngine.Render.Tests/Gpu/goldens/<name>.<backend>.txt.
 #     The family in that filename is the GoldenBackendToken, not the leg name, which is how
 #     direct3d11-native reads and checks the direct3d11 files instead of owning a family of its own.
-#   * All four legs are committed and blocking, and they do not carry the same history. macOS Metal,
+#   * All five legs are committed and blocking, and they do not carry the same history. macOS Metal,
 #     Windows D3D11 (WARP) and Linux Vulkan (Mesa lavapipe) are long validated, with months of green
 #     runs behind them. Windows D3D11 native (WARP, pinned) blocks BY DESIGN rather than by record: it
 #     is the native backend's continuous exercise (decision RO3), so it gates from its first run, and
-#     its first recorded evidence is rollout gate 1 on issue #460.
+#     its first recorded evidence is rollout gate 1 on issue #460. Linux Vulkan native (lavapipe,
+#     pinned) blocks on the same grounds and for the same reason (decision V-RO1), and its first
+#     recorded evidence is rollout gate 1 on issue #529.
+#   * THE INCUMBENT VULKAN LEG IS DELIBERATELY NOT COUPLED TO THE NATIVE BACKEND'S HEALTH. It installs
+#     no validation layer, sets no KE_VULKAN_REQUIRED, and its rows that touch a native device stay
+#     dormant if the probe ever refuses the runner. That leg is the escape hatch decision V-RO2 keeps
+#     selectable indefinitely, and an escape hatch that goes red whenever the thing it escapes from
+#     goes red is not one.
 #
 # Generating goldens for a NEW scene or backend:
 #   1. Run this workflow manually (Actions -> cross-platform-gpu -> Run workflow) with bake = true.
 #   2. The bake legs render with KE_UPDATE_GOLDENS=1 and upload the per-backend grids as artifacts
-#      named goldens-<backend> (e.g. scene2d.<backend>.txt). direct3d11-native is NOT a bake leg: it
-#      shares the incumbent's family, so a bake there would overwrite the very references it is being
-#      checked against, and GoldenCompare.BakeRefusal makes that a hard test failure by design. On a bake
-#      dispatch it skips the test step outright rather than verifying against references being replaced
-#      mid-run.
+#      named goldens-<backend> (e.g. scene2d.<backend>.txt). NEITHER GUEST LEG IS A BAKE LEG
+#      (goldenGuest in the leg table below): direct3d11-native and vulkan-native each share an
+#      incumbent's family, so a bake there would overwrite the very references it is being checked
+#      against, and GoldenCompare.BakeRefusal makes that a hard test failure by design. On a bake
+#      dispatch they skip the test step outright rather than verifying against references being replaced
+#      mid-run, and the sync-validation job sits the dispatch out for the same reason.
 #   3. Download the artifacts, drop the files into KhaozEngine.Render.Tests/Gpu/goldens/, and commit them.
-#   4. After that, the push/PR legs VERIFY those backends, direct3d11-native included, which checks the
-#      freshly baked direct3d11 family against a second implementation on the same rasterizer.
+#   4. After that, the push/PR legs VERIFY those backends, both guest legs included, which checks each
+#      freshly baked family against a second implementation on the same rasterizer.
 #
 # Software rasterizers (these runners have no real GPU):
 #   * Linux uses Mesa lavapipe (software Vulkan); the workflow discovers the lavapipe ICD manifest at runtime
-#     (its name/path drifts across Ubuntu images) and points VK_ICD_FILENAMES/VK_DRIVER_FILES at it.
+#     (its name/path drifts across Ubuntu images) and points VK_ICD_FILENAMES/VK_DRIVER_FILES at it. Both
+#     Linux legs additionally pin KE_VULKAN_DEVICE=llvmpipe (decision V-G2), for the reason both Windows
+#     legs pin their adapter: the loader-level ICD pin has needed repairing before when a runner image
+#     moved the manifest, and the incumbent leg creates NATIVE devices too through the capability-parity
+#     test, so an unpinned native device there could pick a different physical device from the one the
+#     native leg measures. The variable has exactly one reader, the native backend's own physical-device
+#     selection, so the Veldrid device is unaffected. Empty on Windows and macOS.
 #   * Windows D3D11 falls back to WARP (software) automatically when no hardware adapter is present. Neither
 #     Windows leg rides that accident: both pin KE_D3D11_ADAPTER=warp (decision G2), so a runner image that
 #     grows a paravirtual adapter cannot silently change the rasterizer under the golden gate. The incumbent
@@ -175,7 +209,7 @@ on:
         description: 'Which legs to run. Pick one backend when debugging it, "all" for the full matrix.'
         type: choice
         default: all
-        options: [all, metal, direct3d11, direct3d11-native, vulkan]
+        options: [all, metal, direct3d11, direct3d11-native, vulkan, vulkan-native]
 
 # Least privilege: this workflow only checks out, builds, tests, and uploads run artifacts. No step
 # writes back to the repo or publishes a package, so contents: read covers everything it does.
@@ -199,6 +233,11 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.pick.outputs.matrix }}
+      # Whether this run's selection includes the native Vulkan leg. The sync-validation job below is a
+      # SEPARATE job, so it cannot read the matrix the way a matrix leg does, and gating it on the raw
+      # JSON with a substring test would tie a job's existence to jq's output formatting. This is the
+      # same "selection arrives as data" argument the matrix output is built on.
+      vulkan_native: ${{ steps.pick.outputs.vulkan_native }}
     steps:
       - id: pick
         shell: bash
@@ -245,11 +284,27 @@ jobs:
           # runner group, and the only reason a personal machine was reachable from CI at all. With Metal hosted,
           # nothing here touches that machine, so the pull_request exclusion that used to guard it is gone too and
           # Metal covers PRs again.
+          # `goldenGuest` says this leg VERIFIES a golden family it does not OWN (decisions I3 and V-T1).
+          # Both native legs are guests: direct3d11-native reads the direct3d11 grids and vulkan-native
+          # reads the vulkan ones, on the same rasterizer as the incumbent that baked them. It is a leg
+          # PROPERTY rather than a name match repeated at each site, because three separate places act on
+          # it (KE_UPDATE_GOLDENS is held empty, the test step sits a bake dispatch out, and the baked-
+          # goldens upload is skipped) and a fourth would otherwise be easy to forget.
+          #
+          # `vulkanDevice` is the leg's KE_VULKAN_DEVICE value, pinned on BOTH Linux legs for the reason
+          # d3d11Adapter is pinned on both Windows legs, and reaching only the native backend's selection.
+          #
+          # `vulkanValidation` is the tier this leg's FULL suite gates at, and only the full suite: the
+          # push-path golden subset runs with validation off, because that path is the fast signal and
+          # the layer is expensive. Empty means the leg installs no layer at all, which is every leg but
+          # vulkan-native. `sync`, the second tier, is not a value here: it runs a different SUITE on a
+          # different trigger, so it is the separate gpu-vulkan-sync job rather than a third Linux leg.
           all='[
-            {"os":"macos-26",      "backend":"metal",             "runner":"macos-26",                      "fullSuite":"always",    "d3d11Adapter":""},
-            {"os":"windows-latest","backend":"direct3d11",        "runner":"windows-latest",                "fullSuite":"scheduled", "d3d11Adapter":"warp"},
-            {"os":"windows-latest","backend":"direct3d11-native", "runner":"windows-latest",                "fullSuite":"scheduled", "d3d11Adapter":"warp"},
-            {"os":"ubuntu-latest", "backend":"vulkan",            "runner":"ubuntu-latest",                 "fullSuite":"scheduled", "d3d11Adapter":""}
+            {"os":"macos-26",      "backend":"metal",             "runner":"macos-26",                      "fullSuite":"always",    "d3d11Adapter":"",     "vulkanDevice":"",         "vulkanValidation":"",       "goldenGuest":""},
+            {"os":"windows-latest","backend":"direct3d11",        "runner":"windows-latest",                "fullSuite":"scheduled", "d3d11Adapter":"warp", "vulkanDevice":"",         "vulkanValidation":"",       "goldenGuest":""},
+            {"os":"windows-latest","backend":"direct3d11-native", "runner":"windows-latest",                "fullSuite":"scheduled", "d3d11Adapter":"warp", "vulkanDevice":"",         "vulkanValidation":"",       "goldenGuest":"true"},
+            {"os":"ubuntu-latest", "backend":"vulkan",            "runner":"ubuntu-latest",                 "fullSuite":"scheduled", "d3d11Adapter":"",     "vulkanDevice":"llvmpipe", "vulkanValidation":"",       "goldenGuest":""},
+            {"os":"ubuntu-latest", "backend":"vulkan-native",     "runner":"ubuntu-latest",                 "fullSuite":"scheduled", "d3d11Adapter":"",     "vulkanDevice":"llvmpipe", "vulkanValidation":"strict", "goldenGuest":"true"}
           ]'
 
           if [ "$WANT" = all ]; then
@@ -263,17 +318,19 @@ jobs:
 
           echo "selected legs: $(jq -r '[.[].backend] | join(", ")' <<<"$picked")"
           echo "matrix={\"include\":$picked}" >> "$GITHUB_OUTPUT"
+          echo "vulkan_native=$(jq -r 'any(.[]; .backend == "vulkan-native")' <<<"$picked")" >> "$GITHUB_OUTPUT"
 
   gpu-golden:
     needs: legs
     name: ${{ matrix.os }} / ${{ matrix.backend }}
     runs-on: ${{ matrix.runner }}
-    # All four legs are blocking, with no continue-on-error on any of them. Three are long validated: Metal
-    # (macOS), Direct3D11 (Windows/WARP) and Vulkan (Linux/Mesa lavapipe). The fourth, Direct3D11Native
-    # (Windows/WARP, the engine's own backend, verifying the shared direct3d11 goldens as a guest and never
-    # baking them), blocks by design rather than by record: it is the native backend's continuous exercise
-    # (decision RO3), so it gates from its first run, and its first recorded evidence is rollout gate 1 on
-    # issue #460. Goldens are tolerance-based (32x18 averaged grid), robust to software-rasterizer noise. If
+    # All five legs are blocking, with no continue-on-error on any of them. Three are long validated: Metal
+    # (macOS), Direct3D11 (Windows/WARP) and Vulkan (Linux/Mesa lavapipe). The two guest legs, Direct3D11Native
+    # (Windows/WARP) and VulkanNative (Linux/lavapipe), each verify the incumbent's committed goldens on the
+    # incumbent's own rasterizer and never bake them, and each blocks by design rather than by record: a native
+    # backend's CI leg is its continuous exercise (decisions RO3 and V-RO1), so it gates from its first run.
+    # Their first recorded evidence is rollout gate 1 on issues #460 and #529 respectively.
+    # Goldens are tolerance-based (32x18 averaged grid), robust to software-rasterizer noise. If
     # the lavapipe leg ever flakes on a runner-image change, re-add
     # `continue-on-error: ${{ matrix.backend == 'vulkan' }}` here to drop it back to informational.
     #
@@ -287,7 +344,7 @@ jobs:
       fail-fast: false
       # Built by the `legs` job above, which is also where the leg table and its per-leg rationale live.
       # The shape is unchanged: one combination per leg, carrying os / backend / runner / fullSuite /
-      # d3d11Adapter exactly as the static `include` list did.
+      # d3d11Adapter / vulkanDevice / vulkanValidation / goldenGuest exactly as a static `include` list would.
       matrix: ${{ fromJSON(needs.legs.outputs.matrix) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -333,6 +390,37 @@ jobs:
           # VK_ICD_FILENAMES (loader < 1.3.207) + VK_DRIVER_FILES (newer loaders); set both for safety.
           { echo "VK_ICD_FILENAMES=$icd"; echo "VK_DRIVER_FILES=$icd"; } >> "$GITHUB_ENV"
 
+      # THE VALIDATION LAYER IS AN INSTALL, NOT A KNOB, and this step is the first one this repo has ever had
+      # (decision V-T4). Before it, `VK_LAYER`, `VK_INSTANCE_LAYERS` and `vulkan-validationlayers` had zero hits
+      # across every workflow, script and source file, and the Vulkan legs' own layer enumeration listed three
+      # Mesa and Intel layers with no Khronos validation among them. `VK_EXT_debug_utils` is an instance
+      # EXTENSION, so the messenger the engine pumps through needs no install, but the LAYER cannot be turned on
+      # with an environment variable.
+      #
+      # ONLY ON A LEG THAT USES IT, which today is vulkan-native alone (matrix.vulkanValidation, leg table). The
+      # incumbent Vulkan leg deliberately does not install it: that leg is the indefinitely-selectable escape
+      # hatch of decision V-RO2, and adding a new apt package to it would let a package rename on a future
+      # runner image redden the very leg the native backend escapes to.
+      #
+      # THE MANIFEST CHECK IS THE POINT OF THE STEP, not a nicety. A missing layer does not fail anything by
+      # itself: the engine WARNs, names what to install, and creates the device without it, which is right on a
+      # developer box and is a silently vacuous gate here. #423 records a push-triggered golden gate degrading
+      # for weeks with nobody noticing, and a validation gate that quietly stops validating is that failure with
+      # no pixels to eventually give it away.
+      - name: Install the Khronos validation layer (Linux)
+        if: matrix.os == 'ubuntu-latest' && matrix.vulkanValidation != ''
+        run: |
+          set -x
+          sudo apt-get install -y vulkan-validationlayers
+          echo "--- layer manifests on disk ---"
+          ls -la /usr/share/vulkan/explicit_layer.d/ /etc/vulkan/explicit_layer.d/ 2>/dev/null || true
+          layer=$(grep -rl VK_LAYER_KHRONOS_validation /usr/share/vulkan /etc/vulkan 2>/dev/null | head -1)
+          if [ -z "$layer" ]; then
+            echo "::error::VK_LAYER_KHRONOS_validation is not on this runner after installing vulkan-validationlayers, so KE_VULKAN_VALIDATION would warn and run without it, and this leg's validation gate would pass while validating nothing"
+            exit 1
+          fi
+          echo "Khronos validation layer manifest: $layer"
+
       # Veldrid 4.9.0's Vulkan binding P/Invokes the bare names "libdl" and "libvulkan"; modern Ubuntu only
       # ships the versioned libdl.so.2 / libvulkan.so.1 (no -dev unversioned symlink), so the device init
       # throws DllNotFoundException before any rendering. Provide the unversioned symlinks the loader expects.
@@ -353,10 +441,30 @@ jobs:
       # minimum plus an assumption (MV10). The full dump lands the whole VkPhysicalDeviceLimits block in every
       # Vulkan leg log instead. The step is already continue-on-error, so the cost is log volume. The observed
       # lavapipe values get recorded once a run has them: https://github.com/APKiwiOrg/KhaozEngine/issues/541
+      #
+      # It is teed to a FILE as well as to the log, and uploaded below, because the recording is the whole point
+      # of the change and a job log is not a workable source for it: the limits block is thousands of lines deep
+      # in a run that also holds a full test suite, log retention is shorter than artifact retention, and the
+      # numbers have to be quotable verbatim into section 2.1 of the design. `continue-on-error` stays, so a
+      # runner without vulkaninfo costs an empty file rather than a red leg.
       - name: Vulkan diagnostics
         if: matrix.os == 'ubuntu-latest'
         continue-on-error: true
-        run: vulkaninfo || true
+        shell: bash
+        run: |
+          mkdir -p vulkan-diagnostics
+          vulkaninfo 2>&1 | tee vulkan-diagnostics/vulkaninfo.${{ matrix.backend }}.txt || true
+
+      # MV10's evidence, uploaded on always() for the reason the golden deltas are: a limit this design spends
+      # is read off a GREEN run, and a failure-only artifact could only ever show it after something broke.
+      # Kilobytes of text. ignore = no spurious failure on a leg that never ran the step.
+      - name: Upload Vulkan device limits
+        if: always() && matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: vulkan-device-limits-${{ matrix.backend }}
+          path: vulkan-diagnostics/vulkaninfo.*.txt
+          if-no-files-found: ignore
 
       # DECISION S5's CI leg, one Windows leg only and on EVERY trigger. These are plain [Fact]s with no device: they
       # cross-compile every shipped shader program to HLSL and run FXC over the result, then assert the reflected
@@ -401,17 +509,20 @@ jobs:
       #     Windows measured +19 billed 2x minutes per run vs golden-only (17m14s vs 7m44s, runs
       #     29542939552 / 29545657401), so per-push hosted coverage stays golden-only and the weekly cron
       #     carries the full sweep. The native leg takes that same tier for the same reason, at the same 2x
-      #     rate (decision T5). Vulkan: the same tier again, and its full-suite runs serialize xUnit test
-      #     collections (KE_TEST_EXTRA_ARGS below) because lavapipe under full parallel load still shows
-      #     residual driver-side instability after the four engine-defect fixes (see the header).
+      #     rate (decision T5). Both Vulkan legs: the same tier again, and their full-suite runs serialize xUnit
+      #     test collections (KE_TEST_EXTRA_ARGS below) because lavapipe under full parallel load still shows
+      #     residual driver-side instability after the four engine-defect fixes (see the header). The native
+      #     Vulkan leg inherits that serialisation on day one rather than claiming to have fixed it, and MV7 is
+      #     the experiment that takes it off that leg alone if four green weeks plus one unserialized dispatch
+      #     ever earn it.
       #
-      # SKIPPED on direct3d11-native for a bake dispatch. A bake dispatch is a bake operation: the other three
-      # legs rewrite their goldens on that run, and the guest leg can contribute nothing to it. Running would
+      # SKIPPED ON EITHER GUEST LEG for a bake dispatch. A bake dispatch is a bake operation: the three owning
+      # legs rewrite their goldens on that run, and a guest can contribute nothing to it. Running would
       # verify the full suite against references that are being replaced mid-run, so a bake that adds a scene or
-      # moves a grid reds the native leg on a missing-golden or changed-golden Assert.Fail that says nothing
+      # moves a grid reds the guest leg on a missing-golden or changed-golden Assert.Fail that says nothing
       # about the native backend. It sits the dispatch out and verifies the new goldens on the next push.
       - name: Run test suite
-        if: ${{ !(matrix.backend == 'direct3d11-native' && github.event_name == 'workflow_dispatch' && inputs.bake) }}
+        if: ${{ !(matrix.goldenGuest == 'true' && github.event_name == 'workflow_dispatch' && inputs.bake) }}
         env:
           KE_GPU_TESTS: '1'
           KE_GRAPHICS_BACKEND: ${{ matrix.backend }}
@@ -419,26 +530,71 @@ jobs:
           # devices: the incumbent leg does it through the parity tests. Empty on macOS and Linux, and blank is
           # parsed as "let DXGI pick". Read only by the native backend, so no Veldrid device sees it.
           KE_D3D11_ADAPTER: ${{ matrix.d3d11Adapter }}
-          # EMPTY on direct3d11-native for every trigger, bake dispatches included (decision I3). That leg is a
-          # guest in the direct3d11 golden family, so GoldenCompare.BakeRefusal turns KE_UPDATE_GOLDENS=1 under
-          # its token into a hard failure BY DESIGN: baking there would overwrite the very references it is
+          # Both Linux legs pin the physical device (decision V-G2, matrix comment above), because both create
+          # native Vulkan devices: the incumbent leg does it through the capability-parity test. Empty on Windows
+          # and macOS. Read only by the native backend's selection, so no Veldrid device sees it.
+          KE_VULKAN_DEVICE: ${{ matrix.vulkanDevice }}
+          # ONLY THE LEG BUILT TO HAVE A NATIVE VULKAN DEVICE DECLARES ONE MANDATORY. Every row that needs one
+          # asks VulkanDormancy.NativeDeviceAvailable and returns early when the functional probe refuses the
+          # machine, which is right on a developer box and on every leg but this one. On THIS leg that early
+          # return is a test that asserted nothing and reported green, and the zero-skipped criterion of rollout
+          # gate 2 cannot see it, because a dormant row does not skip. With the variable set the helper THROWS
+          # instead, naming what VulkanSupportProbe.MissingRequirement objected to, so a loader or driver
+          # regression reds the leg. Unset everywhere else, which is what keeps the incumbent leg and every
+          # developer box dormant exactly as before.
+          KE_VULKAN_REQUIRED: ${{ (matrix.backend == 'vulkan-native') && '1' || '' }}
+          # TIER ONE OF THE VALIDATION GATE (decision V-T4): core validation, error severity fails the leg at a
+          # controlled point rather than inside the driver callback. On the FULL suite only, which is the same
+          # schedule-and-dispatch condition KE_TEST_FILTER selects on below: the push path is the fast signal and
+          # the layer is expensive, and a broad sweep is worth its cost once a week. Warning and performance
+          # severities are logged, never failed, because a performance warning is an opinion. Tier two is `sync`,
+          # in the gpu-vulkan-sync job. Empty on every leg whose vulkanValidation column is empty, which is every
+          # leg that installs no layer.
+          KE_VULKAN_VALIDATION: ${{ (matrix.fullSuite == 'always' || (matrix.fullSuite == 'scheduled' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'))) && matrix.vulkanValidation || '' }}
+          # EMPTY ON EITHER GUEST LEG for every trigger, bake dispatches included (decisions I3 and V-T1). A guest
+          # leg verifies a golden family it does not own, so GoldenCompare.BakeRefusal turns KE_UPDATE_GOLDENS=1
+          # under its token into a hard failure BY DESIGN: baking there would overwrite the very references it is
           # checked against, and the owning backend's with them. Without this guard a routine bake dispatch for
-          # some unrelated new scene would turn the native leg red with 36 refusals. Bake on the incumbent leg,
-          # the native leg then verifies what it wrote. With the step condition above the native leg no longer
+          # some unrelated new scene would turn a guest leg red with 36 refusals. Bake on the incumbent leg,
+          # the guest then verifies what it wrote. With the step condition above a guest leg no longer
           # reaches a bake dispatch at all, so this stays as belt and braces: it keeps the guarantee true for any
           # future trigger that does reach the run with bake set.
-          KE_UPDATE_GOLDENS: ${{ (matrix.backend != 'direct3d11-native' && github.event_name == 'workflow_dispatch' && inputs.bake) && '1' || '' }}
+          KE_UPDATE_GOLDENS: ${{ (matrix.goldenGuest != 'true' && github.event_name == 'workflow_dispatch' && inputs.bake) && '1' || '' }}
           KE_TEST_FILTER: ${{ (matrix.fullSuite == 'always' || (matrix.fullSuite == 'scheduled' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'))) && 'Category!=LiveSocket' || 'FullyQualifiedName~Golden' }}
-          # Vulkan full-suite runs only: serialize xUnit collections, one live device at a time
+          # BOTH Vulkan legs' full-suite runs: serialize xUnit collections, one live device at a time
           # (~22 min serialized vs minutes parallel, header). Empty for every other leg and for
-          # golden-only runs (months of parallel green history).
-          KE_TEST_EXTRA_ARGS: ${{ (matrix.backend == 'vulkan' && matrix.fullSuite == 'scheduled' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')) && '-- xUnit.ParallelizeTestCollections=false' || '' }}
+          # golden-only runs (months of parallel green history). The two legs are named separately rather
+          # than matched on a prefix because MV7 takes serialisation off the NATIVE leg alone if it wins,
+          # and the incumbent keeps it either way: that bet says nothing about the incumbent.
+          KE_TEST_EXTRA_ARGS: ${{ ((matrix.backend == 'vulkan' || matrix.backend == 'vulkan-native') && matrix.fullSuite == 'scheduled' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')) && '-- xUnit.ParallelizeTestCollections=false' || '' }}
         # Plain --blame (no --blame-crash) is kept permanently: it only writes a tiny Sequence.xml naming the
         # last-started test if the host dies (no dump utility attached, no measurable overhead), and a lavapipe
         # native crash without it is unattributable - an unnamed crash on the unattended weekly cron would cost
         # a full diagnostic re-run. The 200MB dump collection (--blame-crash) stays off.
-        run: dotnet test -c Release --no-build --filter "$KE_TEST_FILTER" --blame --results-directory TestResults $KE_TEST_EXTRA_ARGS
+        #
+        # TEED TO A FILE because validation messages arrive as ordinary log lines interleaved with test names,
+        # and that interleaving IS the diagnostic: a warning is only actionable next to the test that provoked
+        # it. The job log holds the same bytes, but it expires sooner than an artifact and cannot be diffed
+        # against last week's run. pipefail is set explicitly rather than relied on: it IS the default for
+        # `shell: bash` here, and a gating command whose exit code depends on an implicit shell option is one
+        # runner-image change away from a suite that fails green.
+        run: |
+          set -o pipefail
+          mkdir -p TestResults
+          dotnet test -c Release --no-build --filter "$KE_TEST_FILTER" --blame --results-directory TestResults $KE_TEST_EXTRA_ARGS 2>&1 | tee TestResults/suite-output.log
         shell: bash
+
+      # TIER ONE'S EVIDENCE, on always(), and only where a layer was actually armed. A `strict` run that passes
+      # still logs every warning and performance message the layer emitted, and those are exactly the readings
+      # that are never allowed to fail a leg, so a failure-only upload would discard the entire non-fatal half of
+      # what the tier produces. Named for the tier rather than the leg so it sits beside the sync job's artifact.
+      - name: Upload validation log (strict tier)
+        if: always() && matrix.vulkanValidation != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: vulkan-validation-strict-${{ matrix.backend }}
+          path: TestResults/suite-output.log
+          if-no-files-found: ignore
 
       # On a host crash: surface the --blame Sequence.xml (names the last-started test on the dead host).
       # Kilobytes, failure-only, no dumps.
@@ -491,14 +647,146 @@ jobs:
       # wrote some goldens before erroring still surfaces them; ignore = no spurious failure on a leg that wrote
       # none.
       - name: Upload baked goldens
-        # Never on direct3d11-native: it can never legitimately produce bake output (guest family, so
+        # Never on a guest leg: neither can legitimately produce bake output (guest family, so
         # KE_UPDATE_GOLDENS is held empty above and GoldenCompare would refuse the write anyway), and skipping
         # the step says that outright where relying on if-no-files-found leaves an empty artifact to explain.
-        if: always() && github.event_name == 'workflow_dispatch' && inputs.bake && matrix.backend != 'direct3d11-native'
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.bake && matrix.goldenGuest != 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: goldens-${{ matrix.backend }}
           path: |
             KhaozEngine.Render.Tests/Gpu/goldens/*.${{ matrix.backend }}.txt
             KhaozEngine.Render.Tests/Gpu/goldens-evidence/*.${{ matrix.backend }}.bake.png
+          if-no-files-found: ignore
+
+  # TIER TWO OF THE VALIDATION GATE (decision V-T4): core validation PLUS synchronisation validation, over the
+  # golden subset plus the compute suite, on the native Vulkan backend and lavapipe.
+  #
+  # WHY THIS EXISTS AT ALL, because it is the load-bearing instrument in this program's net and nothing else in
+  # CI can do its job. A hand-written Vulkan backend's characteristic failure is a missing barrier or a wrong
+  # image layout, and both are INVISIBLE on lavapipe: a software rasterizer executes with far stronger implicit
+  # ordering than a real GPU, so the golden passes here and the same command stream corrupts on the field GPU,
+  # on the one machine that is not in CI. Core validation does not catch it either. Two other decisions are
+  # written as CONDITIONAL on this job existing: MV6 declines VMA for an engine-owned allocator, and MV5's
+  # resting-layout barrier model has this as half its exit criterion.
+  #
+  # WHY A SEPARATE JOB rather than a sixth matrix leg. It runs a different SUITE for a different reason.
+  # Synchronisation validation tracks every access and is slow, so it buys a subset where the barrier machinery
+  # actually lives instead of the serialised full suite, and it wants its own name in the checks list so a red
+  # here reads as "a hazard was found" rather than as "a golden moved". The cost of the split is that the setup
+  # steps below are a copy of the matrix job's. That copy is deliberate and it fails LOUDLY rather than
+  # silently if it ever drifts: the ICD discovery and the layer check both exit 1 with a message when the
+  # runner does not look the way they expect.
+  #
+  # WHEN IT RUNS, and one deliberate departure from the design's wording. The design says "on the schedule
+  # only". This adds workflow_dispatch, because a job that can only ever be started by the cron would take its
+  # first run unattended at 18:00 on a Sunday and could not be re-run against a fix without waiting a week.
+  # MV5 and MV6 are both read off this job, so an instrument nobody can aim is not one. A bake dispatch is
+  # excluded for the guest-leg reason the matrix job's test step carries.
+  gpu-vulkan-sync:
+    needs: legs
+    name: ubuntu-latest / vulkan-native (sync validation)
+    runs-on: ubuntu-latest
+    if: |
+      needs.legs.outputs.vulkan_native == 'true'
+      && (github.event_name == 'schedule'
+          || (github.event_name == 'workflow_dispatch' && !inputs.bake))
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+
+      # local-feed is git-ignored (dev inner-loop), so create it for the nuget.config 'local' source to resolve.
+      - run: mkdir -p local-feed
+        shell: bash
+
+      - run: dotnet restore
+
+      - run: dotnet build -c Release --no-restore
+
+      # The same lavapipe install and the same runtime ICD discovery as the matrix job, for the same reasons.
+      - name: Install software Vulkan (lavapipe)
+        run: |
+          set -x
+          sudo apt-get update
+          sudo apt-get install -y mesa-vulkan-drivers vulkan-tools libvulkan1
+          echo "--- ICD manifests on disk ---"
+          ls -la /usr/share/vulkan/icd.d/ /etc/vulkan/icd.d/ 2>/dev/null || true
+
+      - name: Point Vulkan loader at lavapipe
+        run: |
+          set -x
+          icd=$(find /usr /etc -name 'lvp_icd*.json' 2>/dev/null | head -1)
+          if [ -z "$icd" ]; then
+            echo "::error::lavapipe ICD manifest not found after installing mesa-vulkan-drivers"
+            find /usr /etc -name '*_icd*.json' 2>/dev/null || true
+            exit 1
+          fi
+          echo "lavapipe ICD: $icd"
+          { echo "VK_ICD_FILENAMES=$icd"; echo "VK_DRIVER_FILES=$icd"; } >> "$GITHUB_ENV"
+
+      # The layer check matters more here than anywhere: this whole job IS the layer. Without it the run would
+      # be a second, slower copy of the golden subset, passing and proving nothing.
+      - name: Install the Khronos validation layer
+        run: |
+          set -x
+          sudo apt-get install -y vulkan-validationlayers
+          layer=$(grep -rl VK_LAYER_KHRONOS_validation /usr/share/vulkan /etc/vulkan 2>/dev/null | head -1)
+          if [ -z "$layer" ]; then
+            echo "::error::VK_LAYER_KHRONOS_validation is not on this runner after installing vulkan-validationlayers, so this job would run the golden subset a second time and validate nothing"
+            exit 1
+          fi
+          echo "Khronos validation layer manifest: $layer"
+
+      # THE SUBSET IS THE GOLDEN FAMILY PLUS THE COMPUTE SUITE, and the naming contract is what selects it
+      # (design section 15). `FullyQualifiedName~Golden` is the same substring the matrix job's push path uses,
+      # so every scene that renders under the barrier model is here. `FullyQualifiedName~Compute` adds the
+      # dispatch paths, which is where the compute rule 1 image transition and the dependent-dispatch barrier
+      # live, and those two are the exact shapes synchronisation validation was installed to judge.
+      #
+      # NO KE_UPDATE_GOLDENS on any trigger: this job runs the native backend, which is a guest in the vulkan
+      # golden family, so a bake here would refuse by design. It is not set at all rather than set empty,
+      # because there is no trigger on which this job wants it.
+      - name: Run the golden and compute suite under synchronisation validation
+        env:
+          KE_GPU_TESTS: '1'
+          KE_GRAPHICS_BACKEND: vulkan-native
+          KE_VULKAN_DEVICE: llvmpipe
+          KE_VULKAN_REQUIRED: '1'
+          KE_VULKAN_VALIDATION: sync
+        # pipefail explicitly, for the reason the matrix job's test step states: this is a gating command and
+        # its exit code must not depend on an implicit shell option.
+        run: |
+          set -o pipefail
+          mkdir -p TestResults
+          dotnet test -c Release --no-build --filter "FullyQualifiedName~Golden|FullyQualifiedName~Compute" --blame --results-directory TestResults 2>&1 | tee TestResults/sync-validation.log
+        shell: bash
+
+      # always(), because the non-fatal half of what this job produces is the half worth keeping: warning and
+      # performance severities never fail a run, and a hazard the layer reports as a warning is still the thing
+      # this job was installed to find.
+      - name: Upload validation log (sync tier)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: vulkan-validation-sync
+          path: TestResults/sync-validation.log
+          if-no-files-found: ignore
+
+      - name: Upload crash-sequence evidence
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: crash-sequence-vulkan-native-sync
+          path: TestResults/**/Sequence_*.xml
+          if-no-files-found: ignore
+
+      - name: Upload golden failure evidence
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: golden-evidence-vulkan-native-sync
+          path: KhaozEngine.Render.Tests/Gpu/goldens-evidence/
           if-no-files-found: ignore

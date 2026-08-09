@@ -1,8 +1,8 @@
 # cross-platform-gpu: desktop GPU test matrix (Win D3D11 incumbent + Win D3D11 native / Linux Vulkan incumbent
 # + Linux Vulkan native / macOS Metal), plus one Vulkan synchronisation-validation job.
 #
-# BILLING: this repo is PUBLIC, so GitHub-hosted standard runners are free. Three legs run hosted and cost
-# nothing; Metal runs on the self-hosted dev Mac and always did.
+# BILLING: this repo is PUBLIC, so GitHub-hosted standard runners are free. ALL FIVE legs run hosted and cost
+# nothing, Metal included: it moved to hosted macos-26 (#552), and no leg touches a personal machine any more.
 # The suite split that follows was decided when the repo was private and hosted minutes billed
 # (Linux 1x, Windows 2x, macOS 10x). It is KEPT on its merits rather than its cost: the golden subset is
 # the fast signal a push wants, and the full suite is a slower sweep that belongs on the cron. Read the
@@ -13,10 +13,12 @@
 #
 # What this does (suite split by leg + trigger, decided from measured cost + lavapipe stability):
 #   * The Metal leg runs the FULL test suite (every [GpuFact], golden and behavioral, plus the headless
-#     suite) on the self-hosted dev Mac, which is the only real Metal device available: hosted macos-14 has
-#     none (#547). Because the repo is public, that leg is dropped on pull_request so a fork can never
-#     route work onto that machine, and the org requires approval for all external contributors on top.
-#     The full security rationale is on the leg table below, and it is load-bearing.
+#     suite) on GitHub-hosted macos-26, pinned to the number rather than to macos-latest so an image
+#     promotion cannot move the GPU under a golden gate. It used to run on the self-hosted dev Mac, because
+#     hosted macos-14 has no usable Metal device at all (#547), and macos-15 and macos-26 both do (#552). It
+#     covers pull_request like every other leg now: the exclusion that used to sit here existed only to keep
+#     a fork from routing work onto a personal machine, and there is no personal machine in this workflow
+#     any more.
 #   * The GitHub-hosted D3D11 leg (2x billing) runs only the golden tests
 #     (FullyQualifiedName~Golden) on push / pull_request, and the FULL suite on the weekly
 #     schedule and on workflow_dispatch. Rationale: the full suite on hosted Windows measured
@@ -187,8 +189,9 @@ on:
   # superset of the push list above, so it already "agrees" with push and needs no separate #198 fix.
   pull_request:
     branches: [ main ]
-  # Weekly full-suite pass on the three hosted legs, both D3D11 legs and Vulkan (Metal runs the full suite on every
-  # trigger anyway). Sunday 18:00 UTC: a quiet slot, and any breakage surfaces before the working week.
+  # Weekly full-suite pass on the four scheduled-tier legs, both D3D11 legs and both Vulkan legs (Metal runs the
+  # full suite on every trigger anyway). Sunday 18:00 UTC: a quiet slot, and any breakage surfaces before the
+  # working week. It is also the trigger that arms both validation tiers.
   schedule:
     - cron: '0 18 * * 0'
   workflow_dispatch:
@@ -197,14 +200,13 @@ on:
         description: 'Re-bake the per-backend goldens (KE_UPDATE_GOLDENS=1) and upload them as artifacts'
         type: boolean
         default: false
-      # A dispatch runs the FULL suite on every leg, which is the most expensive thing this workflow does:
       # A dispatch runs the FULL suite on every leg, which was the most expensive thing this workflow did
       # while the repo was private: about 87 Windows minutes and 65 Linux minutes per dispatch, roughly
       # $1.26. Most dispatches chase ONE backend and the others buy nothing. The repo is public now so the
       # minutes are free, but the selector stays: a targeted dispatch also finishes far sooner, which is
       # the reason that outlives the billing. Default is 'all' so an unattended dispatch is unchanged.
-      # `metal` is here, but a metal dispatch runs on the dev Mac, so only someone with write access to
-      # this repo can start one. That is the same gate as every other trigger that carries the leg.
+      # `metal` is just another hosted leg here now that it runs on macos-26, so a metal dispatch carries no
+      # machine access with it, and starting any dispatch already needs write access to this repo.
       legs:
         description: 'Which legs to run. Pick one backend when debugging it, "all" for the full matrix.'
         type: choice
@@ -249,10 +251,12 @@ jobs:
 
           # `fullSuite` picks when a leg runs the whole suite vs the golden subset (see the test step's
           # filter expression, plus the cost + lavapipe-stability rationale in the header):
-          #   always    - every trigger (self-hosted Metal, free)
-          #   scheduled - weekly schedule + workflow_dispatch only (both hosted D3D11 legs bill 2x, hosted
-          #               Vulkan bills 1x, golden subset only on push/pull_request). Vulkan full-suite
-          #               runs additionally serialize xUnit collections (KE_TEST_EXTRA_ARGS, header).
+          #   always    - every trigger (Metal alone, on hosted macos-26)
+          #   scheduled - weekly schedule + workflow_dispatch only, which is the other four legs (both D3D11
+          #               legs billed 2x and both Vulkan legs 1x while the repo was private, golden subset
+          #               only on push/pull_request). Both Vulkan legs' full-suite runs additionally
+          #               serialize xUnit collections (KE_TEST_EXTRA_ARGS, header). Every leg is hosted and
+          #               free now, so these tiers are kept for feedback speed rather than for money.
           #
           # `d3d11Adapter` is the leg's KE_D3D11_ADAPTER value, and BOTH Windows legs pin it to warp
           # (decision G2). The native leg pins it because it is new and should STATE its rasterizer rather

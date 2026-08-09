@@ -59,7 +59,20 @@ because each stage renumbers its ids while the reflection is computed once for t
 forecloses was measured too: with `normalizeResourceNames` on, 107 of 159 join and 52 do not, which is worse
 than none. So the fallback 2.2 named is the one that applies, filed with its evidence as
 [#586](https://github.com/APKiwiOrg/KhaozEngine/issues/586), and the design records the result in a new section
-2.2a that a reader picking up rows 9, 10 or 13 should read before 2.2's ruling.
+2.2a that a reader picking up rows 9, 10 or 13 should read before 2.2's ruling. Every row of that census is a
+counter in the test, the `normalizeResourceNames` case included, and the suffix-rule count doubles as a
+positive control so the two negative assertions cannot pass vacuously.
+
+**And the join was only ever tried on one key.** A join keyed on the SPIR-V ID rather than on names reaches
+**159 of 159**, with no failure class of any size, because a `DescriptorSet` and `Binding` decoration survives
+the debug-info stripping that removes the names and needs no naming convention. It does not reinstate M-B1: the
+id join and the incumbent's arithmetic agree on all 159 arguments, so adopting it would change no binding today.
+The reason is measured rather than assumed. The incumbent's per-kind counters only go wrong when a stage skips a
+SAME-KIND element ahead of a referenced one, and there are zero such arguments even though 95 of 254
+stage/element slots are unreferenced, which says the shipped shaders have already been bent to avoid the shape
+that breaks the arithmetic rather than that the arithmetic is sound. So the fallback in #586 now rests on a
+measurement instead of on the absence of an alternative, and the test is the tripwire on the first shader to
+enter that shape. Re-adjudicating M-B1 remains rows 9, 10 and 13's.
 
 **No behaviour changed for any consumer.** Nothing selects this backend, nothing registers it, and no existing
 package gained or lost an edge. All three spikes are committed as tests rather than left as prose, so each is a

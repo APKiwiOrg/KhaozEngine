@@ -12,8 +12,10 @@ exists as a guarded skeleton that registers nothing and creates no device.
 **Three things HAVE now run on a device, and one of them overturned a ruling.** The interop spike is green on
 real hardware (3.1), the `MTLCompileOptions` measurement is taken (12.4), and **the MSL name-join spike REFUTED
 M-B1's join outright** (2.2a), so the fallback section 2.2 named is the one that applies and the numbering fix
-is filed as [#586](https://github.com/APKiwiOrg/KhaozEngine/issues/586). A reader picking up rows 9, 10 or 13
-should read 2.2a before 2.2's ruling. Section 16 lists every decision that still rests on reasoning rather than
+is filed as [#586](https://github.com/APKiwiOrg/KhaozEngine/issues/586). A join keyed on the SPIR-V ID rather
+than on names was measured afterwards and reaches 159 of 159, which does not reinstate M-B1 but does mean the
+fallback is a choice between two working options rather than the only one left. A reader picking up rows 9, 10
+or 13 should read 2.2a before 2.2's ruling, and both halves of 2.2a before deciding. Section 16 lists every decision that still rests on reasoning rather than
 measurement, each with the measurement that settles it, the switch that turns it off, the criterion that
 retires the switch, and a deadline.
 
@@ -410,9 +412,59 @@ the only route to the right answer.
 
 **The measurement is committed as a tripwire rather than left as prose.**
 `KhaozEngine.Render.Tests/Gpu/MetalMslNameJoinSpikeTests.cs` re-measures on every `dotnet test`, device-free, on
-every leg. It asserts the PROPERTY rather than the census (zero exact joins, and no texture or sampler element
-carrying a name), so adding a shader does not make it red while a SPIRV-Cross that starts naming resources
-does, which is precisely when this ruling should be reopened.
+every leg. It asserts the PROPERTY rather than the census (zero exact joins, no texture or sampler element
+carrying a name, and the `normalizeResourceNames` join strictly between zero and complete), so adding a shader
+does not make it red while a SPIRV-Cross that starts naming resources does, which is precisely when this ruling
+should be reopened. Every row of the table above is a counter in that test, including the ON case, rather than a
+number in this document beside a test that checked two of them.
+
+**Added 2026-08-10, after the above. THE JOIN WAS ONLY EVER TRIED ON ONE KEY, and the other one reaches
+everything.** The refutation above stands exactly as written: names do not join, and no rule can invent a key
+for the 83 elements that have none. But an argument name of `_70` is not an opaque token. It is SPIRV-Cross's
+spelling of SPIR-V id 70, and the `DescriptorSet` and `Binding` decorations that give that id its meaning are
+not debug information, so they survive the `SpirvFrontEndPin.Debug=false` stripping that removes the names. The
+engine already hand-walks SPIR-V for exactly this kind of fact (`KhaozEngine.Gpu/Internal/SpirvLocalSize.cs`).
+
+Measured over the same 42 programs and the same 159 arguments, under the same options:
+
+| | |
+|---|---|
+| emitted entry-point arguments | 159 |
+| **arguments joined by id through their decorations** | **159** |
+| failure classes | none, of any size |
+| arguments whose metal index differs from their binding number | 80 |
+| stage/element slots, and how many the stage does not reference | 254, of which 95 |
+| **arguments whose metal index differs from the INCUMBENT'S arithmetic** | **0** |
+| arguments with an unreferenced SAME-KIND element ahead of them | 0 |
+
+Each of the three failures above is absent by construction rather than by luck. A decoration is present whether
+or not a name is, so the empty-name problem does not arise. An id needs no `{blockType}_{instance}` convention.
+And the per-stage renumbering that killed the suffix rule is the MECHANISM here rather than the hazard, because
+each stage's ids are read out of that stage's own module.
+
+**The last two rows are the ones this section turns on, and they are the reason M-B1's re-adjudication is not
+simply "take the id join".** The id join and the incumbent's arithmetic agree on all 159, so adopting it would
+change no binding today. The reason is measured rather than assumed: the incumbent's per-kind counters only go
+wrong when a stage skips an element of the SAME kind that precedes a referenced one, and there are zero such
+arguments, even though 95 of the 254 stage/element slots are unreferenced. All 95 are cross-kind, which the
+per-kind counters absorb. **That is not evidence the incumbent's arithmetic is sound. It is evidence the shipped
+shaders have already been bent to avoid the shape that breaks it**, which is the same shape section 2.3 carries
+as the one-UBO constraint, and which the two incidents in 2.2 were fixed by working around inside the shader.
+
+So what this changes about the fallback is its standing, not its choice. #586 keeps the incumbent's arithmetic,
+and it now rests on a measurement (zero disagreements over the shipped set, with the condition for a
+disagreement counted directly and also zero) instead of on the absence of an alternative. The alternative
+exists, it is complete, and the thing that makes it unnecessary today is a property of the shader set rather
+than of the mechanism. `KhaozEngine.Render.Tests/Gpu/MetalMslIdJoinSpikeTests.cs` asserts both halves, so the
+first shipped shader to enter that shape turns the leg red naming the program, which is the moment the fallback
+stops being safe and this measurement stops being a footnote. Four controls guard against the vacuity a
+100 per cent result invites: the positional `layouts[set].Elements[binding]` assumption is checked rather than
+assumed, the join is a bijection per stage, 80 of 159 indices differ from their binding so it is not trivially a
+per-set count, and the partial-stage case is exercised 95 times.
+
+**Re-adjudicating M-B1 is still rows 9, 10 and 13's, and this section does not do it.** Row 1 measured and
+recorded, which is what 2.2 asked the spike for. What has changed is that whoever takes that decision now has a
+second option with a number on it.
 
 ### 2.3 The one-UBO constraint: its fate, its measurement, and its lifting seat
 

@@ -87,6 +87,14 @@ carry a different one per stage. The design's own named fallback applies instead
 filed as [#586](https://github.com/APKiwiOrg/KhaozEngine/issues/586). Finding that at a spike rather than at
 the first golden run is the whole reason the spike was scheduled ahead of everything that depends on it.
 
+**Then the same join was tried on the other key, and it reaches everything.** Argument names are SPIRV-Cross's
+spelling of the SPIR-V id, and the descriptor decorations behind that id survive the debug-info stripping that
+removes the names, so a join keyed on the id rather than on the name matches 159 of 159 with no failure class.
+It changes no binding today, because the id join and the incumbent's arithmetic agree on every argument in the
+shipped set, and the test records WHY: the condition that makes them disagree (a stage skipping a same-kind
+element ahead of a referenced one) does not occur once, so the fallback is safe on evidence rather than on the
+absence of an alternative. That test is the tripwire on the first shader to change it.
+
 ## The interop, and where an error shows up
 
 An ABI mistake in hand-rolled Objective-C interop is a memory corruption rather than a compile error, which is

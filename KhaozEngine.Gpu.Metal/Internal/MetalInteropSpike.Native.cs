@@ -78,6 +78,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
         [SupportedOSPlatform("macos")]
         internal static partial int SetEnv(byte* name, byte* value, int overwrite);
 
+        // The other half of the pair. The probe's mutation is undone as soon as it has been read, so one
+        // measurement cannot leave the rest of the process under API validation.
+        [LibraryImport(SystemLib, EntryPoint = "unsetenv")]
+        [SupportedOSPlatform("macos")]
+        internal static partial int UnsetEnv(byte* name);
+
         // ---- The typed objc_msgSend overload set ------------------------------------------------------------
 
         [LibraryImport(Objc, EntryPoint = "objc_msgSend")]

@@ -415,7 +415,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         static (bool Reaches, string ClassName, bool AlreadySet) ProbeValidationLayer(List<string> notes)
         {
-            bool alreadySet = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("MTL_DEBUG_LAYER"));
+            string? inherited = Environment.GetEnvironmentVariable("MTL_DEBUG_LAYER");
+            bool alreadySet = !string.IsNullOrEmpty(inherited);
             fixed (byte* name = Ascii("MTL_DEBUG_LAYER"))
             fixed (byte* value = Ascii("1"))
             {
@@ -423,9 +424,41 @@ namespace KhaozEngine.Gpu.Metal.Internal
             }
 
             IntPtr probe = MTLCreateSystemDefaultDevice();
-            if (probe == IntPtr.Zero) { notes.Add("the validation probe could not create a device."); return (false, "", alreadySet); }
-            string className = CString(ObjectGetClassName(probe));
-            ObjcRelease(probe);
+            string className = probe == IntPtr.Zero ? "" : CString(ObjectGetClassName(probe));
+            if (probe != IntPtr.Zero) ObjcRelease(probe);
+
+            // PUT THE ENVIRONMENT BACK THE MOMENT THE PROBE HAS BEEN CLASSIFIED, before anything else in this
+            // process creates a device. The reading above depends on MTL_DEBUG_LAYER being consulted once, when
+            // Metal first comes up, and that is true of this OS. It is not a guarantee: an OS that read it per
+            // device creation would leave this one probe having quietly put the WHOLE test assembly under API
+            // validation, which changes timing, allocation and error reporting for every row after it. That is
+            // an expensive, hard-to-attribute failure to inherit, so the variable does not outlive its probe.
+            //
+            // RESTORED rather than blanket-unset, which is the stronger form of the same rule. The native CI leg
+            // arms validation at job level, so unsetting an INHERITED value would silently disarm the gate this
+            // spike's own fallback depends on. Restoring puts back exactly what the launcher chose, and unsets
+            // only the value this process invented.
+            if (alreadySet)
+            {
+                fixed (byte* name = Ascii("MTL_DEBUG_LAYER"))
+                fixed (byte* value = Ascii(inherited!))
+                {
+                    if (SetEnv(name, value, 1) != 0) notes.Add("restoring the inherited MTL_DEBUG_LAYER failed.");
+                }
+            }
+            else
+            {
+                fixed (byte* name = Ascii("MTL_DEBUG_LAYER"))
+                {
+                    if (UnsetEnv(name) != 0) notes.Add("unsetenv(MTL_DEBUG_LAYER) failed.");
+                }
+            }
+
+            if (probe == IntPtr.Zero)
+            {
+                notes.Add("the validation probe could not create a device.");
+                return (false, "", alreadySet);
+            }
 
             // Attribution, not just observation. A debug device when the variable was ALREADY in the environment
             // says the launcher turned the layer on, which is the fallback working rather than the mechanism

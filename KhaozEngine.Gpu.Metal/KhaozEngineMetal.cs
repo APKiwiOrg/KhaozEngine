@@ -11,8 +11,10 @@ namespace KhaozEngine.Gpu.Metal
     /// three verification spikes, and nothing else. There is deliberately no <c>Register()</c> here yet:
     /// registration, the <c>IGpuBackendProvider</c> and the functional probe are row 2, and a registration call
     /// that existed before the provider it registers would be a public method that lies about what the package
-    /// can do. Until then no consumer can reach a Metal device through this package, and
-    /// <see cref="GpuBackendKind"/> has no native Metal member at all (that append is row 3).
+    /// can do. Until then no consumer can reach a Metal device through this package.
+    /// <see cref="GpuBackendKind.MetalNative"/> itself DOES exist (row 3 appended it in <c>17.35.0</c>), so the
+    /// kind is nameable ahead of the backend behind it and naming it throws the provider-missing exception
+    /// rather than falling back to anything.
     /// </para>
     /// <para>
     /// UNLIKE THE VULKAN PACKAGE, THIS ONE CARRIES THE PLATFORM GUARD, and that is decision M-P1 rather than a

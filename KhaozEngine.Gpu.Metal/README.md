@@ -6,10 +6,11 @@ and nothing that does not want the Objective-C interop ever carries it.
 
 > **Status: SKELETON.** Row 1 of the work breakdown creates the assembly, its guard rows and the three phase-4
 > verification spikes, and nothing else. `KhaozEngineMetal` has exactly one member, the platform guard.
-> There is no `Register()`, no provider, no probe and no device, `GpuBackendKind` has no native Metal member,
-> and no consumer can reach a Metal device through this package. Registration and the functional probe are row
-> 2 and the `GpuBackendKind.MetalNative` append is row 3. `GpuBackendKind.Metal`, which goes through Veldrid,
-> is the working Metal backend and stays selectable indefinitely.
+> There is no `Register()`, no provider, no probe and no device, and no consumer can reach a Metal device
+> through this package. Registration and the functional probe are row 2. `GpuBackendKind.MetalNative` and its
+> `metal-native` token DO exist as of `17.35.0` (row 3), so the kind is nameable ahead of the backend behind it,
+> and naming it with no provider registered throws rather than falling back. `GpuBackendKind.Metal`, which goes
+> through Veldrid, is the working Metal backend and stays selectable indefinitely.
 
 Spec, decisions and the nineteen-row work breakdown:
 [docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](../docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md).

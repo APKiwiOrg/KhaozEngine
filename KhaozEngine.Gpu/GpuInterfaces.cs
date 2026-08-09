@@ -192,6 +192,18 @@ namespace KhaozEngine.Gpu
         /// there either. Neither shape is a promise of this interface, code written against either does not
         /// port, and the one-open-recording rule above is the only thing to rely on.
         /// </para>
+        /// <para>
+        /// THE ENGINE'S OWN NATIVE VULKAN BACKEND IS PERMISSIVE FOR A REASON WORTH KNOWING, because it is the
+        /// reason it holds rather than a second happy accident. N lists there record concurrently and genuinely:
+        /// each list owns its own <c>VkCommandPool</c>s, which is the externally-synchronised object Vulkan's own
+        /// threading model asks a caller to keep per thread, and image-layout tracking is LIST-LOCAL against a
+        /// canonical resting layout, so nothing shared is read or written during recording at all. That is the
+        /// same property the Direct3D 11 stream buys by touching no device state, obtained here from the API plus
+        /// the barrier design instead. It is still a backend property and still not a promise of this interface:
+        /// the same code on Metal, on either Veldrid backend, or on the immediate Direct3D 11 driver is a
+        /// half-recorded frame or a corrupted one, and a machine that falls back after a failed device creation
+        /// swaps the backend under the code without telling it.
+        /// </para>
         /// </summary>
         void Begin();
         /// <summary>Finish recording, sealing the list for submission. A list submitted without this is a
@@ -271,25 +283,45 @@ namespace KhaozEngine.Gpu
         // ---- Compute ----
         //
         // ORDERING CONTRACT. There is no explicit barrier call on this seam, because the backend layer has none:
-        // what ordering exists comes from each backend's implicit handling, and the three do not agree. Two rules
-        // fall out of that, and both are proved by the compute [GpuFact] suite on all three backends:
+        // what ordering exists comes from each backend's implicit handling, and no two backends agree. Two rules
+        // fall out of that, and both are proved by the compute [GpuFact] suite on every backend.
+        //
+        // THE MECHANISMS BELOW ARE NAMED PER IMPLEMENTATION RATHER THAN PER API, and that is not pedantry. There
+        // are two Vulkan backends now (Veldrid's and the engine's own KhaozEngine.Gpu.Vulkan) and two Direct3D 11
+        // backends, and the pairs do NOT handle either rule the same way. A sentence that says "on Vulkan" was
+        // true of the one implementation that existed when it was written and is false of the other. What does
+        // NOT vary is the rule: write to the rule, never to the mechanism, because the mechanism is the part that
+        // differs between two backends a consumer can swap with one environment variable.
         //
         //   1. Compute writes a storage texture, then a GRAPHICS pass samples it: record BOTH in the SAME command
-        //      list, and create the texture with Storage | Sampled (see GpuTextureUsage.Storage). All three
-        //      backends then handle the handoff - Vulkan queues a layout restore at dispatch time and drains it
-        //      before the next draw (per command list, and armed by the Sampled flag), Metal ends the compute
-        //      encoder when the render encoder begins, and Direct3D11 unbinds the UAV as the SRV is bound. Split
-        //      across two command lists, the Vulkan restore is silently skipped, so that split is NOT safe.
+        //      list, and create the texture with Storage | Sampled (see GpuTextureUsage.Storage). Every backend
+        //      then handles the handoff. Veldrid's Vulkan backend queues a layout restore at dispatch time and
+        //      drains it before the next draw (per command list, and armed by the Sampled flag). The native
+        //      Vulkan backend tracks image layouts list-locally instead and transitions at the DRAW, from what
+        //      the bound sets name, so the restore is not something it can skip. Metal ends the compute encoder
+        //      when the render encoder begins, and both Direct3D 11 backends unbind the UAV as the SRV is bound.
+        //      Split across two command lists, the Veldrid Vulkan restore is silently skipped, so that split is
+        //      NOT safe on this seam.
         //
         //   2. A dispatch that READS what an earlier dispatch WROTE (the classic ping-pong: an FFT stage, a
         //      multi-pass reduction) must be separated by End + IGpuDevice.Submit + IGpuDevice.WaitForIdle.
-        //      Chaining dependent dispatches inside one command list is NOT safe: on Vulkan no memory barrier is
-        //      emitted between them at all (storage buffers are not tracked, and a storage image stays in the same
-        //      layout so the transition is a no-op), and dispatches inside a command buffer may overlap. A submit
-        //      boundary plus a device drain is the only ordering this seam can guarantee.
+        //      Chaining dependent dispatches inside one command list is NOT safe on this seam: on Veldrid's
+        //      Vulkan backend no memory barrier is emitted between them at all (storage buffers are not tracked,
+        //      and a storage image stays in the same layout so the transition is a no-op), and dispatches inside
+        //      a command buffer may overlap. A submit boundary plus a device drain is the only ordering this seam
+        //      can guarantee.
+        //
+        //      THE NATIVE VULKAN BACKEND IS MORE PERMISSIVE, AND THAT CHANGES NOTHING ABOVE. It emits a global
+        //      memory barrier before a dispatch that binds a resource an earlier dispatch in the same recording
+        //      wrote, so the chain is ordered there without the drain. That is a BACKEND PROPERTY, exactly like
+        //      the nested-Begin permissiveness on IGpuCommandList.Begin, and dropping the End plus Submit plus
+        //      WaitForIdle because it works on that backend breaks on Metal and on the backend the same machine
+        //      falls back to. It is evidence for an automatic-hazard seam capability
+        //      (https://github.com/APKiwiOrg/KhaozEngine/issues/461), which is where a consumer-visible version
+        //      of this would have to live.
         //
         // Rule 2 costs a GPU stall per dependent stage, which is real: it is the current ceiling on any multi-pass
-        // compute chain built here.
+        // compute chain built against this seam.
 
         /// <summary>Bind a compute pipeline. Compute and graphics pipeline bindings are tracked separately, so
         /// this does not disturb a bound graphics pipeline (and vice versa).</summary>

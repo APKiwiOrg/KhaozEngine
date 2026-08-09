@@ -22,13 +22,15 @@ namespace KhaozEngine.Gpu
     /// a backend that kept them and never stalled. The default value answers false and is what Metal and the
     /// incumbent Veldrid paths all give. The two native backends give a true value instead: D3D11 every field
     /// except the acquire pair, which it passes as zero because a Direct3D 11 present has no acquire to wait on,
-    /// and Vulkan the drain, backpressure, off-timeline and acquire readings until its remaining subsystems land.
+    /// and Vulkan every field including that pair, which is the one backend here that really does wait on an
+    /// acquire.
     /// </para>
     /// <para>
     /// THE TWO BACKPRESSURE READINGS ARE SEPARATE MEMBERS AND MUST STAY SEPARATE
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/499). <see cref="BackpressureStallCount"/> is the
-    /// frame-boundary stall: the CPU reached a ring segment the GPU was still reading, which is a statement about
-    /// pipeline depth and the lever for it is the frames-in-flight count.
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/499). <see cref="BackpressureStallCount"/> is the wait
+    /// that BLOCKED: the CPU reached a ring segment the GPU was still reading, or on the native Vulkan backend a
+    /// command list's own oldest buffer slot still executing, which is one statement about pipeline depth whose
+    /// lever either way is the frames-in-flight count.
     /// <see cref="OffTimelineDeferred"/> is a device-level buffer write that met a segment an earlier frame was
     /// still reading and queued its bytes for that segment's next acquire, which blocks nobody and usually happens
     /// at load time before any frame exists. A non-zero off-timeline count beside a zero stall count is a specific
@@ -93,10 +95,23 @@ namespace KhaozEngine.Gpu
         public long FramesBegun { get; }
 
         /// <summary>
-        /// Waits for the GPU to go idle that ACTUALLY BLOCKED, since device creation. A wait that found the GPU
-        /// already caught up is not counted, and neither is one a kill switch or a dead device turned into an
-        /// immediate return, because counting those would report a run that never drained as having drained
-        /// constantly for no time at all.
+        /// Waits for the GPU to go idle that ACTUALLY BLOCKED, since device creation. A wait that a kill switch
+        /// or a dead device turned into an immediate return is never counted, because counting those would report
+        /// a run that never drained as having drained constantly for no time at all.
+        /// <para>
+        /// THE ALREADY-CAUGHT-UP EXEMPTION IS SCOPED TO THE BACKENDS THAT CAN HONOUR IT, and this member is not
+        /// comparable across the two native backends without knowing which shape a backend has
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/545). A backend that can determine caught-up WITHOUT
+        /// flushing does not count that call: the native Vulkan drain compares the timeline counter to the last
+        /// SUBMITTED value, and on Vulkan that comparison genuinely means idle, because every GPU operation rides
+        /// a <c>vkQueueSubmit</c> that took a timeline value. A backend whose drain must SIGNAL A FRESH POINT AND
+        /// FLUSH counts every call instead, and the native Direct3D 11 one must: its immediate context can hold
+        /// unflushed device-level work, from an <c>UpdateBuffer</c> or a map and unmap, that no fence value
+        /// describes, so an early return there would report idle with work still buffered. Both are locally
+        /// correct, and the consequence is that the same consumer call pattern reads higher on Direct3D 11 for a
+        /// reason that is not a stall. <see cref="DrainMs"/> is barely affected, since a skipped drain costs about
+        /// nothing, which is why the ms figure is the one to compare across backends and this count is not.
+        /// </para>
         /// </summary>
         public long DrainCount { get; }
 
@@ -104,10 +119,20 @@ namespace KhaozEngine.Gpu
         public double DrainMs { get; }
 
         /// <summary>
-        /// Frame boundaries that BLOCKED waiting for a uniform ring segment the GPU had not finished reading,
-        /// since device creation. The M3 number, and its exit criterion is that this does not move across a whole
-        /// capture window. A non-zero reading says the pipeline is deeper than the segment count allows on that
-        /// machine, which is a tuning fact rather than a fault.
+        /// Waits that BLOCKED because the CPU ran further ahead of the GPU than this device's pipeline depth
+        /// allows, since device creation. The M3 and MV3 number, and its exit criterion on both is that this does
+        /// not move across a whole capture window. A non-zero reading says the pipeline is deeper than the
+        /// frames-in-flight count allows on that machine, which is a tuning fact rather than a fault.
+        /// <para>
+        /// TWO KINDS OF WAIT LAND ON THIS ONE ACCUMULATOR, and the fold is deliberate rather than a widening
+        /// nobody wrote down. The first is the FRAME BOUNDARY meeting a uniform ring segment the GPU had not
+        /// finished reading, which is every backend that keeps a ring. The second is a COMMAND LIST'S <c>Begin</c>
+        /// meeting its own oldest command-buffer slot still executing, which is the native Vulkan backend, where
+        /// one number sizes both the ring segments and each list's pool ring. They are the same statement about
+        /// the same lever, so a consumer reading a non-zero count reaches for the same knob either way and does
+        /// not have to know which half moved. What the fold costs is the ability to tell them apart from here, and
+        /// the backend keeps that breakdown internally for its own tests.
+        /// </para>
         /// </summary>
         public long BackpressureStallCount { get; }
 

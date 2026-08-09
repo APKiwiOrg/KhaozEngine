@@ -669,6 +669,16 @@ jobs:
   # TIER TWO OF THE VALIDATION GATE (decision V-T4): core validation PLUS synchronisation validation, over the
   # golden subset plus the compute suite, on the native Vulkan backend and lavapipe.
   #
+  # THE GATE IS THIS JOB'S, NOT THE ENGINE'S, and the split is deliberate rather than an oversight.
+  # VulkanValidationMode.Sync does NOT latch: VulkanValidation.ThrowsOnError is true for the strict rung alone,
+  # so a sync run logs an error-severity hazard and still exits 0. Engine-side latching stays strict-only BY
+  # DESIGN, because the two rungs want opposite things from an error. strict exists to stop at the first one,
+  # and sync exists to finish the sweep and report every hazard it found, which is what makes its log the
+  # triage artifact. What that combination leaves behind is a tier that cannot go red, while rollout gate 3
+  # and MV6's VMA decline are both read off this job being green. So the JOB gates instead: the scan step
+  # below reads the log this job already tees and uploads, and exits 1 when it holds an error-severity
+  # validation line. The engine is untouched, and the tier can fail.
+  #
   # WHY THIS EXISTS AT ALL, because it is the load-bearing instrument in this program's net and nothing else in
   # CI can do its job. A hand-written Vulkan backend's characteristic failure is a missing barrier or a wrong
   # image layout, and both are INVISIBLE on lavapipe: a software rasterizer executes with far stronger implicit
@@ -757,6 +767,9 @@ jobs:
       # golden family, so a bake here would refuse by design. It is not set at all rather than set empty,
       # because there is no trigger on which this job wants it.
       - name: Run the golden and compute suite under synchronisation validation
+        # Named, because the gate step below runs exactly when THIS step ran, pass or fail, and not when an
+        # earlier step took the job down before any log existed.
+        id: suite
         env:
           KE_GPU_TESTS: '1'
           KE_GRAPHICS_BACKEND: vulkan-native
@@ -770,6 +783,58 @@ jobs:
           mkdir -p TestResults
           dotnet test -c Release --no-build --filter "FullyQualifiedName~Golden|FullyQualifiedName~Compute" --blame --results-directory TestResults 2>&1 | tee TestResults/sync-validation.log
         shell: bash
+
+      # WHAT MAKES TIER TWO A GATE. The engine does not fail a sync run on an error (the job header says why,
+      # and it is deliberate), so without this step an error-severity hazard lands in the artifact and the job
+      # reports green, which is the reading rollout gate 3 and MV6's VMA decline would then be taken from.
+      #
+      # TWO SHAPES ARE MATCHED, because two producers can put an error-severity line in this log and neither is
+      # guaranteed to be the one that speaks first.
+      #   * `Vulkan validation [Error]` is the ENGINE's, exactly. VulkanValidationPump.Format writes every
+      #     message it logs as `Vulkan validation [<Severity>] <VUID>: <text>`, with the severity spelled by
+      #     VulkanValidationSeverity, so the Error rung is that literal and the Warning rung cannot collide
+      #     with it.
+      #   * `Validation Error:` is the LAYER's own, and it is the more important of the two here. The Khronos
+      #     layer reports on its own account as well as through the application messenger, and its message body
+      #     opens with `Validation Error:` at error severity and `Validation Warning:` at warning severity. The
+      #     same prefix also sits INSIDE the engine's formatted line, because the text the pump formats IS the
+      #     layer's pMessage, so this arm covers both producers and the first arm covers the case where the
+      #     engine's own formatting is all that reached the log.
+      #
+      # A SCAN THAT SEES NOTHING SAYS SO OUT LOUD, which is the property #423 is about. A gate whose pattern
+      # quietly stops matching looks identical to a clean run, so the total number of validation lines at ANY
+      # severity is printed on every run and a total of zero prints a notice naming both shapes. Zero is not
+      # evidence of a clean sweep on its own: it is equally what this scan looks like after it loses its
+      # producer, and the two have to be tellable apart from the log alone.
+      #
+      # The artifact upload below stays on always(), so a run this step reds still keeps the log that explains
+      # why. That ordering is the whole point: the gate goes red and the triage evidence survives it.
+      - name: Gate on error-severity validation messages
+        if: always() && steps.suite.conclusion != 'skipped'
+        shell: bash
+        run: |
+          set -euo pipefail
+          log=TestResults/sync-validation.log
+          if [ ! -f "$log" ]; then
+            echo "::error::$log does not exist, so tier two scanned nothing at all. The suite step tees it, so a missing file means the run never reached the tee and this job's validation gate proved nothing."
+            exit 1
+          fi
+
+          # grep -c exits 1 on zero matches, which set -e would take as a failure, so each count absorbs it and
+          # keeps the printed 0.
+          errors=$(grep -cE 'Vulkan validation \[Error\]|Validation Error:' "$log" || true)
+          total=$(grep -cE 'Vulkan validation \[(Error|Warning)\]|Validation (Error|Warning):' "$log" || true)
+          echo "validation lines in $log: $total at any severity, $errors at error severity"
+
+          if [ "$total" -eq 0 ]; then
+            echo "::notice::No validation line of any severity was found in $log. On a genuinely clean sweep that is the right answer, but it is also exactly what this scan looks like if it lost its producer, so treat it as a reading to confirm rather than as a pass. The shapes it looks for are 'Vulkan validation [<Severity>]' (the engine pump's format) and 'Validation Error:' or 'Validation Warning:' (the Khronos layer's own message body)."
+          fi
+
+          if [ "$errors" -gt 0 ]; then
+            echo "::error::Synchronisation validation reported $errors error-severity line(s). KE_VULKAN_VALIDATION=sync does not latch or throw by design, so the suite passed and this gate is what fails the job. The full interleaving with test names is in the vulkan-validation-sync artifact, which uploads on always() and is where each hazard reads next to the test that provoked it."
+            grep -nE 'Vulkan validation \[Error\]|Validation Error:' "$log" | head -20
+            exit 1
+          fi
 
       # always(), because the non-fatal half of what this job produces is the half worth keeping: warning and
       # performance severities never fail a run, and a hazard the layer reports as a warning is still the thing

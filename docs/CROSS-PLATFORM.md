@@ -169,7 +169,15 @@ The suite each leg runs is split by trigger, from measured hosted-runner cost
   in this net that can see a missing barrier or a wrong image layout.** A software rasterizer executes with
   far stronger implicit ordering than a real GPU, so that class of defect passes every golden here and
   corrupts on the field GPU, on the one machine that is not in CI, and core validation does not catch it
-  either.
+  either. **The job gates on error severity itself, through a scan of the log it tees**, and the engine is not
+  what fails it. `KE_VULKAN_VALIDATION=sync` deliberately does not latch or throw the way `strict` does, since
+  the two rungs want opposite things from an error: `strict` stops at the first one, and `sync` finishes the
+  sweep so one run reports every hazard rather than costing a run per finding. That leaves a tier with nothing
+  to fail it, which matters because rollout gate 3 and MV6's VMA decline are both read off this job being
+  green, so the scan step supplies the teeth at the CI level and engine-side latching stays strict-only by
+  design. The scan matches the engine pump's own `Vulkan validation [Error]` format and the Khronos layer's
+  `Validation Error:` message prefix, and it prints the count of validation lines at any severity on every run,
+  so a scan that has quietly stopped matching anything is visible instead of reading as a clean sweep.
 
 **The validation layer is an install, not a knob**, which is why the tiers arrived with a workflow step
 rather than a variable. Before them, `VK_LAYER`, `VK_INSTANCE_LAYERS` and `vulkan-validationlayers` had zero
@@ -299,7 +307,9 @@ PASSED:
   test output, teed to a file as the suite runs. Warning and performance severities never fail a run, so a
   failure-only upload would discard the entire non-fatal half of what the layer produces, and a hazard the
   layer reports as a warning is still the thing the tier was installed to find. The interleaving with test
-  names is the diagnostic: a validation message is only actionable next to the test that provoked it.
+  names is the diagnostic: a validation message is only actionable next to the test that provoked it. The sync
+  artifact keeps uploading on `always()` for a second reason too, now that the sync job's own scan step fails
+  the job on an error-severity line: the gate goes red and the log that explains it survives the red.
 - **`vulkan-device-limits-<leg>`** is the `vulkaninfo` dump, which runs without `--summary` on purpose so the
   whole `VkPhysicalDeviceLimits` block lands rather than the driver and API version alone. No Vulkan device
   limit had ever been observable anywhere in this repo before that, so the native backend's descriptor model

@@ -2110,6 +2110,18 @@ run. **The `sync` job is also the condition MV6's VMA decline was written agains
 exist would have retroactively unpicked a decision, and that is the load-bearing reason it is a gate rather
 than a nice-to-have.
 
+**What "clean" MEANS on that job is the job's own scan, not the engine's latch, and the distinction is
+load-bearing for this gate.** `VulkanValidationMode.Sync` does not latch and does not throw:
+`VulkanValidation.ThrowsOnError` is true for the `strict` rung alone, deliberately, because `strict` exists to
+stop at the first error while `sync` exists to finish the sweep and report every hazard in one run. Taken
+alone that would make tier two a job that cannot fail, and gate 3 plus MV6's decline would then both be read
+off a green that error-severity hazards sail straight through. So the job's last step scans the suite log it
+tees and exits non-zero on any error-severity validation line, matching the engine pump's
+`Vulkan validation [Error]` format and the Khronos layer's `Validation Error:` prefix, and printing the count
+of validation lines at any severity so a scan that has stopped seeing its producer cannot pass as a clean
+sweep. Engine-side latching stays strict-only. Gate 3's `sync` half is satisfied by that job going green with
+the scan armed, and by nothing weaker.
+
 **Gate 4 is pending the field soak, and nothing in row 19 moves it.** It needs a session on the reporting
 machine at or above 144 fps and 6.9 ms with the header naming `VulkanNative`, plus MV1, MV2, MV3, MV6 and MV8's
 exit criteria. The counters it reads all reach a capture already. `KE_VULKAN_ACQUIRE` is NOT removed here:

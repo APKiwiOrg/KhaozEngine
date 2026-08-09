@@ -8724,6 +8724,16 @@ throw happens at a controlled point after the error is latched and logged, never
 saw it, because unwinding a managed exception through native driver frames destroys the stack the diagnostic was
 about. RenderDoc attaches externally and needs nothing from the engine.
 
+**`sync` is NOT `strict` plus synchronisation validation, and the difference is the one thing to know about the
+ladder.** The rungs are ordered by cost, not by containment: `sync` is `1` plus `VkValidationFeaturesEXT`, and it
+does not latch or throw on an error at all. That is deliberate, because the two rungs want opposite things from
+an error. `strict` stops at the first one, while the run that produced it is still the run in front of you.
+`sync` finishes the sweep and reports every hazard it found, since a hazard hunt that halts on hazard one hides
+the rest and costs a full run per finding. So a `sync` session logs an error-severity message and carries on. If
+you want a `sync` run to FAIL on an error, read its log afterwards: that is what the engine's own
+`gpu-vulkan-sync` CI job does, scanning the teed suite log and exiting non-zero on any error-severity line
+rather than asking the engine to latch.
+
 **The layer has to be INSTALLED, which is the part that trips people up.** `VK_EXT_debug_utils`, which the
 messenger rides, is an instance extension and needs nothing. `VK_LAYER_KHRONOS_validation` is a layer, and no
 environment variable can conjure one that is not on the machine. On Debian and Ubuntu it is

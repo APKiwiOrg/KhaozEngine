@@ -181,6 +181,15 @@ see. And `KE_VULKAN_VALIDATION=strict` on the full suite, with a second job runn
 compute suite under `sync`. That layer is an INSTALL rather than a knob, and before this leg no validation layer
 was present on any leg in this repo at all.
 
+**The two tiers fail in two different places, and only the first one fails in the engine.** On `strict` the pump
+latches an error-severity message and throws at the next controlled point, so the leg reds by itself. On `sync`
+it does not: the rungs are ordered by cost rather than by containment, and `sync` deliberately reports every
+hazard and carries on instead of stopping at the first, which is what makes one run's log a complete triage
+artifact. So the `sync` JOB gates instead, scanning the suite log it tees for error-severity validation lines
+and failing on any, with the log still uploaded on `always()` so the evidence outlives the red. That keeps
+engine-side latching strict-only by design while leaving the tier something that can actually go red, which
+matters because rollout gate 3 and the VMA decline above are both read off that job being green.
+
 Code that cares about the API rather than the implementation asks `kind.IsVulkan()`, true for both members.
 Plain equality against `GpuBackendKind.Vulkan` is the right question only when Veldrid's implementation
 specifically is meant.

@@ -2,9 +2,21 @@ using System;
 
 namespace KhaozEngine.Gpu.Vulkan.Internal
 {
-    /// <summary>What <c>KE_VULKAN_VALIDATION</c> was understood to be asking for (decision V-G3). A LADDER rather
-    /// than a flag set: each rung is everything below it plus one more thing, so a session picks a level rather
-    /// than composing options that can disagree.</summary>
+    /// <summary>What <c>KE_VULKAN_VALIDATION</c> was understood to be asking for (decision V-G3). A LADDER of
+    /// increasing cost rather than a flag set, so a session picks a level rather than composing options that can
+    /// disagree. Every rung above <see cref="Off"/> carries the whole of <see cref="On"/>.
+    /// <para>
+    /// THE ORDER IS COST, NOT CONTAINMENT, and the one place that distinction matters is the top of the ladder.
+    /// <see cref="Sync"/> sits above <see cref="Strict"/> because synchronisation validation is the more
+    /// expensive instrument, and it deliberately does NOT inherit strict's latch:
+    /// <see cref="VulkanValidation.ThrowsOnError"/> is true for the strict rung alone. The two want opposite
+    /// things from an error. <see cref="Strict"/> exists to STOP at the first one, while the run that produced
+    /// it is still the run being looked at. <see cref="Sync"/> exists to finish the sweep and report every
+    /// hazard it found, because a hazard hunt that halts on the first hazard hides the rest and costs one full
+    /// run per finding. So a <see cref="Sync"/> session logs an error-severity message and carries on, and what
+    /// fails on it is the CI job that reads the log afterwards rather than the engine (the gate step of the
+    /// <c>gpu-vulkan-sync</c> job in <c>.github/workflows/cross-platform-gpu.yml</c>).
+    /// </para></summary>
     internal enum VulkanValidationMode
     {
         /// <summary>Unset, blank or an off value. No layer, no messenger, no object names. The default, and the
@@ -22,7 +34,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         /// <summary><see cref="On"/> plus the synchronisation-validation feature, requested by chaining
         /// <c>VkValidationFeaturesEXT</c> into <c>VkInstanceCreateInfo.pNext</c>. The rung that finds a memory
-        /// aliasing hazard lavapipe would otherwise render straight through.</summary>
+        /// aliasing hazard lavapipe would otherwise render straight through. <see cref="On"/> and not
+        /// <see cref="Strict"/>: this rung reports every hazard and never latches, for the reason on the enum
+        /// above.</summary>
         Sync = 3,
     }
 

@@ -206,11 +206,101 @@ namespace KhaozEngine.Tests.Gpu
                 Fixture.Descriptors.PipelineLayouts.GetOrCreate(handles, dynamicUniforms), handles);
         }
 
+        /// <summary>
+        /// A colour target and a framebuffer over it, which every draw needs bound and which no assertion here is
+        /// about. Created once and reused, so a frame of twenty draws does not create twenty targets.
+        /// </summary>
+        internal IGpuFramebuffer Target()
+        {
+            if (_target is not null) return _target;
+
+            IGpuTexture colour = Fixture.Factory.CreateTexture(
+                VulkanResourceFixture.Texture(64, 64, GpuTextureUsage.RenderTarget));
+            _owned.Add(colour);
+
+            _target = Fixture.Factory.CreateFramebuffer(null, colour);
+            _owned.Add(_target);
+            return _target;
+        }
+
+        /// <summary>
+        /// A real <see cref="VulkanCommandList"/> whose DRAW emitter and whose layout tracker's emitter both tally
+        /// into <paramref name="counts"/>, which is what decision V-T2's budget is taken over (MV4). Row 15
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/525) is what made this worth having: before it, a
+        /// frame recorded through the shipped members emitted no <c>vkCmdDraw</c> at all, so the draw half of
+        /// every marginal read zero by construction.
+        /// </summary>
+        /// <param name="counts">The one tally a whole recording writes into.</param>
+        /// <param name="binds">A list to capture every <c>vkCmdBindDescriptorSets</c>'s ARGUMENTS into as well,
+        /// for the trace-identity assertion, or null when only the counts are read.</param>
+        internal VulkanCommandList CountingList(VulkanCmdCallCounts counts,
+            List<VulkanRecordedBind>? binds = null)
+            => Fixture.CreateList(
+                draws: binds is null
+                    ? new VulkanCountingDrawEmitter(counts)
+                    : new CountingAndCapturingDrawEmitter(counts, binds),
+                barriers: new VulkanCountingBarrierRecorder(counts));
+
         public void Dispose()
         {
             for (int i = _owned.Count - 1; i >= 0; i--) _owned[i].Dispose();
             _owned.Clear();
             Fixture.Descriptors.DestroyAll();
+        }
+
+        IGpuFramebuffer? _target;
+
+        /// <summary>
+        /// THE COUNTING EMITTER PLUS THE ARGUMENTS, for the ONE assertion that needs both: the instancing trace
+        /// identity compares every composed dynamic offset call for call, which a tally cannot express, while the
+        /// draw COUNT beside it is a tally. Driving one recording twice would compare two recordings rather than
+        /// two readings of one.
+        /// </summary>
+        sealed class CountingAndCapturingDrawEmitter : IVulkanDrawEmitter
+        {
+            readonly VulkanCountingDrawEmitter _counting;
+            readonly List<VulkanRecordedBind> _binds;
+
+            internal CountingAndCapturingDrawEmitter(VulkanCmdCallCounts counts, List<VulkanRecordedBind> binds)
+            {
+                _counting = new VulkanCountingDrawEmitter(counts);
+                _binds = binds;
+            }
+
+            public void BindVertexBuffers(ulong commandBuffer, uint firstBinding, ReadOnlySpan<ulong> buffers,
+                ReadOnlySpan<ulong> offsets)
+                => _counting.BindVertexBuffers(commandBuffer, firstBinding, buffers, offsets);
+
+            public void BindIndexBuffer(ulong commandBuffer, ulong buffer, ulong offsetBytes, bool sixteenBit)
+                => _counting.BindIndexBuffer(commandBuffer, buffer, offsetBytes, sixteenBit);
+
+            public void Draw(ulong commandBuffer, VulkanBindRecords binds, in VulkanDrawCall call)
+            {
+                // THE ARGUMENTS FIRST, THEN THE TALLY. The capturing flush CONSUMES the dirty slots, so the
+                // counting one that follows sees a clean schedule and adds only the draw. That is deliberate and
+                // it is why only DrawCalls is read out of this mode: the bind marginals are frozen over
+                // VulkanCountingDrawEmitter alone, on its own frames, where nothing has consumed the schedule
+                // first.
+                var capturing = new VulkanCapturingCmdSink(_binds);
+                VulkanDrawBatch.Draw(ref capturing, binds, in call);
+
+                _counting.Draw(commandBuffer, binds, in call);
+            }
+
+            public void DrawIndexed(ulong commandBuffer, VulkanBindRecords binds,
+                in VulkanIndexedDrawCall call)
+            {
+                var capturing = new VulkanCapturingCmdSink(_binds);
+                VulkanDrawBatch.DrawIndexed(ref capturing, binds, in call);
+
+                _counting.DrawIndexed(commandBuffer, binds, in call);
+            }
+
+            public void Dispatch(ulong commandBuffer, VulkanBindRecords binds, uint groupCountX,
+                uint groupCountY, uint groupCountZ)
+                => _counting.Dispatch(commandBuffer, binds, groupCountX, groupCountY, groupCountZ);
+
+            public void DependencyBarrier(ulong commandBuffer) => _counting.DependencyBarrier(commandBuffer);
         }
     }
 }

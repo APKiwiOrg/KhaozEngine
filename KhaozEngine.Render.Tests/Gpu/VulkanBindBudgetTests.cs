@@ -45,17 +45,27 @@ namespace KhaozEngine.Tests.Gpu
     /// <c>VulkanLayoutTrackerTests.TheBarrierCount_IsBoundedByTouchedTexturesAndNotByDraws</c>
     /// (https://github.com/APKiwiOrg/KhaozEngine/issues/524).</description></item>
     /// <item><description><b>(b) Marginal per-draw deltas.</b> 5 distinct meshes against 1 and 18 draws against 6:
-    /// HERE, for the BIND classes, driven through the flush hook exactly as row 15
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/525) will drive it from <c>Draw</c>. The DRAW-call half of
-    /// the same deltas is row 15's, because <c>vkCmdDraw</c> is not emitted by anything yet. An offsets-only rebind
-    /// being exactly ONE <c>vkCmdBindDescriptorSets</c>: HERE, and it is MV4's headline.</description></item>
+    /// HERE, for the bind classes AND the draw class, driven through the SHIPPED <c>Draw</c> member since row 15
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/525). An offsets-only rebind being exactly ONE
+    /// <c>vkCmdBindDescriptorSets</c>: HERE, and it is MV4's headline.</description></item>
     /// <item><description><b>(c) Trace identity for 8 instances of one mesh against 1:</b> HERE, over the bind
-    /// trace, which is the whole of what instancing may not change.</description></item>
+    /// trace and over the draw count, which together are the whole of what instancing may not
+    /// change.</description></item>
     /// <item><description><b>(d) Upper bounds on the per-pass barrier count:</b> ROW 14's
     /// (https://github.com/APKiwiOrg/KhaozEngine/issues/524), asserted over its own tracker in
     /// <c>VulkanLayoutTrackerTests</c>, because a bound asserted here would be a bound over the bind path, which
     /// emits none by construction.</description></item>
     /// </list></para>
+    ///
+    /// <para><b>MV4 IS FROZEN, AND ROW 15 IS WHERE THAT HAPPENED.</b> The exit criterion was that the first green
+    /// run's marginals are recorded and then frozen, and the last half that was owed is the draw-call one: until
+    /// <c>vkCmdDraw</c> was emitted by something, <see cref="VulkanCmdCallCounts.DrawCalls"/> read zero BY
+    /// CONSTRUCTION rather than as a finding, and a marginal over a number that cannot move is not a gate. Every
+    /// frame below is now recorded through a real <see cref="VulkanCommandList"/> whose draw emitter is
+    /// <see cref="VulkanCountingDrawEmitter"/> and whose layout tracker's emitter is
+    /// <see cref="VulkanCountingBarrierRecorder"/>, so ONE tally covers the binds, the draws and the barriers of a
+    /// whole recording. The per-mesh delta, the per-draw delta, the shape of an offsets-only rebind and the
+    /// instancing identity are FROZEN from here: moving any of them needs an argument, not an edit.</para>
     ///
     /// <para><b>ABSOLUTE TOTALS ARE DOCUMENTATION AND MAY BE UPDATED FREELY.</b> A test that is routinely edited to
     /// match reality stops being a gate, so what is FROZEN is the marginals: the per-mesh and per-draw deltas and
@@ -112,10 +122,15 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// AND A WHOLE FRAME'S WORTH OF BINDS EMITS NO BARRIER AT ALL, which is the bind half of "zero barriers
-        /// between two draws in one pass that touch no new texture". The meaningful version of that invariant is
-        /// over row 14's tracker (https://github.com/APKiwiOrg/KhaozEngine/issues/524), which is what emits one.
-        /// What this pins is that the BIND path never does.
+        /// AND A WHOLE FRAME EMITS NO BARRIER AT ALL, which is V-T2's gated invariant in its shipped form: twenty
+        /// draws over five meshes in one pass, recorded through the real <c>Draw</c> member with the layout
+        /// tracker's own emitter tallying into the same counts, and not one <c>vkCmdPipelineBarrier2</c>.
+        /// <para>
+        /// THIS USED TO BE THE BIND HALF ALONE and could not fail: the bind path emits no barrier by
+        /// construction. Since row 15 (https://github.com/APKiwiOrg/KhaozEngine/issues/525) the frame really
+        /// draws, the pre-command walk really asks the tracker to put every bound image where its binding needs
+        /// it, and the answer is still zero because every one of them is already there.
+        /// </para>
         /// </summary>
         [Fact]
         public void AFramesWorthOfBinds_EmitsNoBarrier()
@@ -124,6 +139,7 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal(0, counts.BarrierCalls);
             Assert.Equal(0, counts.BarriersEmitted);
+            Assert.Equal(20, counts.DrawCalls);
         }
 
         /// <summary>
@@ -165,6 +181,18 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Contains("SetViewport", rendering);
             Assert.Contains("SetScissor", rendering);
             Assert.Contains("BeginRendering", rendering);
+
+            // AND ROW 15 MADE THE SAME CHOICE FOR THE GEOMETRY CLASS
+            // (https://github.com/APKiwiOrg/KhaozEngine/issues/525). A vertex bind DOES scale with draw count, so
+            // it is the one class where widening the budget seam would have looked defensible, and V-T2 names
+            // exactly three classes. It got its own line instead, on the seam that also carries the draws, so the
+            // frozen marginals below still mean what they meant.
+            Assert.DoesNotContain("BindVertexBuffers", members);
+            Assert.DoesNotContain("BindIndexBuffer", members);
+
+            string[] draws = typeof(IVulkanDrawEmitter).GetMethods().Select(m => m.Name).ToArray();
+            Assert.Contains("BindVertexBuffers", draws);
+            Assert.Contains("BindIndexBuffer", draws);
         }
 
         // ---- (b) Marginal per-draw deltas ----
@@ -224,12 +252,18 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(4, five.BindDescriptorSetCalls - one.BindDescriptorSetCalls);
             Assert.Equal(4, five.DescriptorSetsBound - one.DescriptorSetsBound);
 
+            // AND THE DRAW-CALL HALF, which is row 15's and which completes MV4: one mesh drawn once is one
+            // vkCmdDraw and each further mesh is exactly one more.
+            Assert.Equal(4, five.DrawCalls - one.DrawCalls);
+
             // Documentation: what the two frames cost today. One mesh is ONE call carrying both sets, and each
             // further mesh is one more call carrying its own set alone.
             Assert.Equal(1, one.BindDescriptorSetCalls);
             Assert.Equal(2, one.DescriptorSetsBound);
+            Assert.Equal(1, one.DrawCalls);
             Assert.Equal(5, five.BindDescriptorSetCalls);
             Assert.Equal(6, five.DescriptorSetsBound);
+            Assert.Equal(5, five.DrawCalls);
         }
 
         /// <summary>
@@ -237,10 +271,9 @@ namespace KhaozEngine.Tests.Gpu
         /// mesh is an offsets-only rebind of one set, so twelve extra draws are twelve extra binds and not one
         /// more.
         /// <para>
-        /// THE DRAW-CALL HALF OF THIS DELTA IS ROW 15's (https://github.com/APKiwiOrg/KhaozEngine/issues/525):
-        /// <c>vkCmdDraw</c> is emitted by nothing yet, so <see cref="VulkanCmdCallCounts.DrawCalls"/> reads zero
-        /// here by construction rather than as a finding, and that row completes this assertion by driving the same
-        /// frames through the real draw members.
+        /// AND THE DRAW-CALL HALF IS HERE SINCE ROW 15 (https://github.com/APKiwiOrg/KhaozEngine/issues/525),
+        /// which is the half MV4's freeze was waiting on: twelve extra draws are twelve extra
+        /// <c>vkCmdDraw</c> calls and twelve extra binds, one each, flat.
         /// </para>
         /// </summary>
         [Fact]
@@ -252,13 +285,13 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(12, eighteen.BindDescriptorSetCalls - six.BindDescriptorSetCalls);
             Assert.Equal(12, eighteen.DescriptorSetsBound - six.DescriptorSetsBound);
 
-            // Row 15 owns these two, and they are zero until it lands.
-            Assert.Equal(0, six.DrawCalls);
-            Assert.Equal(0, eighteen.DrawCalls);
+            Assert.Equal(12, eighteen.DrawCalls - six.DrawCalls);
 
             // Documentation: one bind per draw, flat, because every draw past a mesh's first rebinds one set.
             Assert.Equal(6, six.BindDescriptorSetCalls);
             Assert.Equal(18, eighteen.BindDescriptorSetCalls);
+            Assert.Equal(6, six.DrawCalls);
+            Assert.Equal(18, eighteen.DrawCalls);
         }
 
         /// <summary>
@@ -284,25 +317,32 @@ namespace KhaozEngine.Tests.Gpu
         /// argument. Instancing changes the instance count of a draw and nothing else, so a backend whose bind
         /// trace moved with it would be doing per-instance work nobody asked for.
         /// <para>
-        /// The DRAW half of this identity (eight instances is still ONE <c>vkCmdDraw</c>) is row 15's
-        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/525), for the same reason as above.
+        /// The DRAW half of this identity (eight instances is still ONE <c>vkCmdDraw</c>) landed with row 15
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/525) and is asserted alongside it.
         /// </para>
         /// </summary>
         [Fact]
         public void EightInstancesOfOneMesh_ProduceTheSameBindTraceAsOne()
         {
-            List<VulkanRecordedBind> one = Instanced(instances: 1);
-            List<VulkanRecordedBind> eight = Instanced(instances: 8);
+            (List<VulkanRecordedBind> binds, int draws) one = Instanced(instances: 1);
+            (List<VulkanRecordedBind> binds, int draws) eight = Instanced(instances: 8);
 
-            Assert.Equal(Describe(one), Describe(eight));
-            Assert.Equal(2, one.Count);
+            Assert.Equal(Describe(one.binds), Describe(eight.binds));
+            Assert.Equal(2, one.binds.Count);
+
+            // AND THE DRAW HALF, which is row 15's: eight instances is still ONE vkCmdDraw per draw call, so the
+            // whole recording costs the same two either way.
+            Assert.Equal(2, one.draws);
+            Assert.Equal(one.draws, eight.draws);
         }
 
         // ---- Fixtures ----
 
-        // ONE FRAME OF THE SHIPPED MODEL-RENDERER SHAPE, driven through the flush hook exactly as row 15 will
-        // drive it from Draw: a frame-uniform set pinned at slot 0, a per-mesh material set at slot 1, and every
-        // draw past a mesh's first being an offsets-only rebind of that second set.
+        // ONE FRAME OF THE SHIPPED MODEL-RENDERER SHAPE, THROUGH THE SHIPPED MEMBERS: a frame-uniform set pinned
+        // at slot 0, a per-mesh material set at slot 1, and every draw past a mesh's first being an offsets-only
+        // rebind of that second set. Recorded into a REAL VulkanCommandList whose draw emitter and whose layout
+        // tracker's emitter both tally into one VulkanCmdCallCounts, which is what makes the marginals below total
+        // over the draw path rather than over the bind path alone (MV4).
         static VulkanCmdCallCounts DrawFrame(int meshes, int drawsPerMesh)
         {
             using var harness = new VulkanBindHarness();
@@ -314,26 +354,28 @@ namespace KhaozEngine.Tests.Gpu
             VulkanBoundPipeline pipeline = harness.PipelineFor(frame, materials[0]);
 
             var counts = new VulkanCmdCallCounts();
-            var sink = new VulkanCountingCmdSink(counts);
-            var records = new VulkanBindRecords(PipelineBindPoint.Graphics);
-            records.SetPipelineLayout(pipeline.Layout, pipeline.SetLayouts);
+            using VulkanCommandList list = harness.CountingList(counts);
 
-            records.Record(0, frame, 0);
+            list.Begin();
+            list.SetFramebuffer(harness.Target());
+            list.GraphicsBinds.SetPipelineLayout(pipeline.Layout, pipeline.SetLayouts);
+            list.SetGraphicsResourceSet(0, frame);
 
             for (int mesh = 0; mesh < meshes; mesh++)
             {
                 for (int draw = 0; draw < drawsPerMesh; draw++)
                 {
-                    records.Record(1, materials[mesh], (uint)draw * 256);
-                    records.Flush(ref sink);
+                    list.SetGraphicsResourceSet(1, materials[mesh], (uint)draw * 256);
+                    list.Draw(3);
                 }
             }
 
+            list.End();
             return counts;
         }
 
         // ONE MESH DRAWN ONCE, with an instance count that the bind schedule must be blind to.
-        static List<VulkanRecordedBind> Instanced(uint instances)
+        static (List<VulkanRecordedBind> Binds, int DrawCalls) Instanced(uint instances)
         {
             using var harness = new VulkanBindHarness();
 
@@ -342,22 +384,25 @@ namespace KhaozEngine.Tests.Gpu
             VulkanBoundPipeline pipeline = harness.PipelineFor(frame, material);
 
             var binds = new List<VulkanRecordedBind>();
-            var sink = new VulkanCapturingCmdSink(binds);
-            var records = new VulkanBindRecords(PipelineBindPoint.Graphics);
-            records.SetPipelineLayout(pipeline.Layout, pipeline.SetLayouts);
+            var counts = new VulkanCmdCallCounts();
+            using VulkanCommandList list = harness.CountingList(counts, binds);
 
-            records.Record(0, frame, 0);
-            records.Record(1, material, 0);
-            records.Flush(ref sink);
+            list.Begin();
+            list.SetFramebuffer(harness.Target());
+            list.GraphicsBinds.SetPipelineLayout(pipeline.Layout, pipeline.SetLayouts);
 
-            // Row 15's Draw(vertexCount, instances, ...) goes here. The bind flush above is everything the
-            // instance count could have influenced, and it is called identically either way.
-            sink.Draw(3, instances, 0, 0);
+            list.SetGraphicsResourceSet(0, frame);
+            list.SetGraphicsResourceSet(1, material, 0);
 
-            records.Record(1, material, 256);
-            records.Flush(ref sink);
+            // THE ONE ARGUMENT INSTANCING MAY MOVE. Everything above and below it is called identically either
+            // way, which is what the trace comparison proves.
+            list.Draw(3, instances, 0, 0);
 
-            return binds;
+            list.SetGraphicsResourceSet(1, material, 256);
+            list.Draw(3, instances, 0, 0);
+
+            list.End();
+            return (binds, counts.DrawCalls);
         }
 
         // A bind trace as comparable text: everything a bind carries EXCEPT the descriptor set handles, which

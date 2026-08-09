@@ -222,13 +222,21 @@ namespace KhaozEngine.Tests.Gpu
         /// </para>
         /// </summary>
         /// <param name="uploads">The list's staging uploader, or null for a list that records no bulk write.</param>
-        internal VulkanCommandList CreateList(IVulkanRecordUploads? uploads = null)
+        /// <param name="draws">A draw emitter to use in place of <see cref="DrawEmitter"/>, which is what the
+        /// BUDGET test passes: it drives the shipped draw members through
+        /// <see cref="VulkanCountingDrawEmitter"/> so a whole frame's descriptor binds, draws and barriers land in
+        /// one <see cref="VulkanCmdCallCounts"/> (MV4).</param>
+        /// <param name="barriers">A barrier recorder to use in place of <see cref="Barriers"/>, for the same
+        /// reason: the budget's "no pipeline barriers on the per-draw path" is a statement about what the LAYOUT
+        /// TRACKER emits as well as what the binds do.</param>
+        internal VulkanCommandList CreateList(IVulkanRecordUploads? uploads = null,
+            IVulkanDrawEmitter? draws = null, IVulkanBarrierRecorder? barriers = null)
         {
-            Layouts = new VulkanLayoutTracker(Barriers);
+            Layouts = new VulkanLayoutTracker(barriers ?? Barriers);
 
             return new VulkanCommandList(
                 new VulkanCommandPoolRing(CommandApi, FramesInFlight, Timeline, Backpressure), Retired, uploads,
-                render: RenderApi, pipelines: PipelineBinder, layouts: Layouts, draws: DrawEmitter,
+                render: RenderApi, pipelines: PipelineBinder, layouts: Layouts, draws: draws ?? DrawEmitter,
                 transfers: TransferSink);
         }
 

@@ -11,8 +11,9 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 New opt-in package `KhaozEngine.Gpu.Metal`, in no umbrella, from row 1 of
 [docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md).
-It is a SKELETON and says so everywhere: it registers no provider, `GpuBackendKind` has no native Metal member,
-no consumer can reach a Metal device through it, and `GpuBackendKind.Metal` (through Veldrid) remains the
+It landed as a SKELETON and said so everywhere at the time (the provider arrived with row 2 below and the
+`GpuBackendKind` member with row 3 above, both in this same version), no consumer can reach a Metal device
+through it, and `GpuBackendKind.Metal` (through Veldrid) remains the
 working Metal backend. `KhaozEngineMetal.IsPlatformSupported` is the whole public surface.
 
 **The package shape, and where it differs from both siblings.** It targets `net10.0` with no OS suffix, like
@@ -88,8 +89,9 @@ to M-I5 and M-W3 of
 The kind is reachable only by naming it: `ProbeOS` still answers `Metal` on macOS, `SupportedBackends()` never
 offers it to a player, and creating on it with no provider registered throws rather than falling back.
 
-**Two of the three appends before this one were bookkeeping. This one changed live behaviour on the incumbent
-Metal path, and that is the whole point of walking the audit table instead of diffing the last append.**
+**Both appends before this one were bookkeeping on the incumbent paths, and so is this one: no consumer
+behaviour changes on any existing backend. What the audit walk bought instead is the NATIVE arm answering at
+every site the moment the kind exists, rather than falling silently into whichever arm a switch defaulted to.**
 `FrameCap.Resolve` and `DisplaySettings.RequiresFrameCapWarning` apply a real software frame cap only on Metal
 plus vsync, because the Veldrid Metal present does not throttle the CPU from vsync alone. Both compared against
 `GpuBackendKind.Metal` by equality, and both carried a comment saying the equality was deliberate. For

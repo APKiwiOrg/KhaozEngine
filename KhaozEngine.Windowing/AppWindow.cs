@@ -404,10 +404,13 @@ namespace KhaozEngine.Windowing
             }
         }
 
-        /// <summary>Emit a one-time warning when vsync is selected with an effective free-run on Metal (the resolved
-        /// base cap is 0), where the Veldrid Metal present does not throttle the CPU from vsync alone. With the default
-        /// <see cref="Windowing.FrameCap.Auto"/> the resolved cap on Metal + vsync is always positive, so this fires
-        /// ONLY when a consumer explicitly forces uncapped + vsync on Metal. Pure decision via
+        /// <summary>Emit a one-time warning when vsync is selected with an effective free-run on a Metal-family
+        /// backend (the resolved base cap is 0). On the incumbent this is a finding: the Veldrid Metal present does
+        /// not throttle the CPU from vsync alone. On <c>MetalNative</c> it is the conservative default while the
+        /// question is OPEN: whether the native present throttles is gate 5's measurement (design M-W3), and until
+        /// it is taken the native arm behaves like the incumbent rather than assuming the nicer answer. With the
+        /// default <see cref="Windowing.FrameCap.Auto"/> the resolved cap on Metal + vsync is always positive, so
+        /// this fires ONLY when a consumer explicitly forces uncapped + vsync. Pure decision via
         /// <see cref="DisplaySettings.RequiresFrameCapWarning"/> (fed the resolved cap), and written to <c>Console.Error</c>
         /// so a bare AppWindow host (no logger) still surfaces it. Deduped so it never spams a settings screen.</summary>
         void WarnIfMetalVsyncUncapped()
@@ -416,9 +419,9 @@ namespace KhaozEngine.Windowing
             if (!DisplaySettings.RequiresFrameCapWarning(Backend, _presentMode, _effectiveBaseCapHz)) return;
             _warnedMetalVsync = true;
             Console.Error.WriteLine(
-                "[KhaozEngine] PresentMode.Vsync with an explicit uncapped frame rate does not throttle the CPU on " +
-                "Metal (the Veldrid Metal present does not sync the CPU). Use FrameCap.Auto (the default) or set " +
-                "FrameCapHz (e.g. your tick rate x2, like 60 or 120) for a deterministic cap on macOS.");
+                "[KhaozEngine] PresentMode.Vsync with an explicit uncapped frame rate is not known to throttle the " +
+                "CPU on this Metal backend. Use FrameCap.Auto (the default) or set FrameCapHz (e.g. your tick " +
+                "rate x2, like 60 or 120) for a deterministic cap on macOS.");
         }
 
         /// <summary>Create a window with vsync present and the backend-aware <see cref="Windowing.FrameCap.Auto"/>

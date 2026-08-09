@@ -238,11 +238,24 @@ namespace KhaozEngine.Tests.Gpu
         /// Returns early, having asserted nothing, in TWO cases, and both are facts about the MACHINE rather than
         /// about the code: a machine the native backend's own functional probe refuses, or an incumbent that did
         /// not come up on Vulkan, so there is nothing to be at parity WITH. The first reads
-        /// <see cref="GpuBackendSelector.IsBackendSupported"/>, which resolves a loader, creates a throwaway
-        /// instance at the 1.3 floor and reads every physical device against the design's requirements. That is
-        /// the shape #504 settled on the Direct3D 11 side, where a feature-deficient box used to go red for a
-        /// machine fact, and it matters more here: this developer machine has no Vulkan loader at all, and every
-        /// leg but the one row 19 builds is in the same position.
+        /// <see cref="GpuBackendSelector.IsBackendSupported"/> through <see cref="VulkanDormancy"/>, which
+        /// resolves a loader, creates a throwaway instance at the 1.3 floor and reads every physical device
+        /// against the design's requirements. That is the shape #504 settled on the Direct3D 11 side, where a
+        /// feature-deficient box used to go red for a machine fact, and it matters more here: this developer
+        /// machine has no Vulkan loader at all, and every leg but the one row 19 builds is in the same position.
+        /// </para>
+        /// <para>
+        /// <b>THE LEG ROW 19 BUILDS MUST SET <c>KE_VULKAN_REQUIRED=1</c>,</b> which turns that first early return
+        /// into a THROW naming what the probe objected to. A dormant row does not skip, so on the one leg built
+        /// to run this it would report green having asserted nothing and the zero-skipped gate would not see it.
+        /// Unset, everywhere else, the row goes dormant as before.
+        /// </para>
+        /// <para>
+        /// WHEN <see cref="GpuCapabilities.DeviceName"/> IS THE ONLY MEMBER THAT DIFFERS, check
+        /// <c>KE_VULKAN_DEVICE</c> first. CI pins <c>llvmpipe</c> while the incumbent takes
+        /// <c>physicalDevices[0]</c> unconditionally, so a runner image that enumerates anything before lavapipe
+        /// puts the two backends on DIFFERENT devices, and the parity failure that produces is a machine fact
+        /// wearing the shape of a bug in the read.
         /// </para>
         /// <para>
         /// THERE IS NO PLATFORM EARLY RETURN, unlike the Direct3D 11 sibling's first one. Vulkan is not a Windows
@@ -255,8 +268,9 @@ namespace KhaozEngine.Tests.Gpu
         public void NativeAndVeldridVulkanCapabilitiesDoNotDifferAtAll()
         {
             // The probe first, because it is the cheap machine fact and answering it second would build a whole
-            // incumbent device on every leg that was never going to have a second one to compare it against.
-            if (!GpuBackendSelector.IsBackendSupported(GpuBackendKind.VulkanNative))
+            // incumbent device on every leg that was never going to have a second one to compare it against. It
+            // THROWS rather than answering false where KE_VULKAN_REQUIRED=1 says this leg has a device.
+            if (!VulkanDormancy.NativeDeviceAvailable())
             {
                 _out.WriteLine("dormant: this machine cannot run the native Vulkan backend, so there is no "
                     + "second device to compare.");

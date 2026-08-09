@@ -1,3 +1,4 @@
+using System;
 using KhaozEngine.Tests.Gpu;
 using Xunit;
 
@@ -88,6 +89,31 @@ namespace KhaozEngine.Tests.Gpu
             string? reason = GpuFactAttribute.VirtualGpuSkipReason(deviceName);
             Assert.Equal(expectSkip, reason != null);
             if (expectSkip) Assert.Contains(deviceName!, reason!);
+        }
+
+        // The dormancy escape (VulkanDormancy). Its whole value is what the message SAYS, since a leg that set
+        // KE_VULKAN_REQUIRED=1 and then went red learns nothing from "the probe said no". The decision half is
+        // pure so it is assertable here, on a machine with no Vulkan loader, which is the only kind of machine
+        // that will ever review this file.
+        [Fact]
+        public void A_required_vulkan_leg_is_told_what_the_probe_objected_to()
+        {
+            string message = VulkanDormancy.RefusalMessage(
+                "no physical device clears the Vulkan 1.3 floor: llvmpipe reports 1.2.0");
+
+            Assert.Contains(VulkanDormancy.RequiredVariable, message, StringComparison.Ordinal);
+            Assert.Contains("llvmpipe reports 1.2.0", message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void A_refusal_with_no_named_requirement_still_says_where_to_look()
+        {
+            // Null means the requirement walk found nothing missing, so the refusal came from somewhere else. The
+            // message has to say so rather than printing an empty reason, which would read as a broken test.
+            string message = VulkanDormancy.RefusalMessage(null);
+
+            Assert.Contains(VulkanDormancy.RequiredVariable, message, StringComparison.Ordinal);
+            Assert.Contains("KE_VULKAN_DEVICE", message, StringComparison.Ordinal);
         }
     }
 }

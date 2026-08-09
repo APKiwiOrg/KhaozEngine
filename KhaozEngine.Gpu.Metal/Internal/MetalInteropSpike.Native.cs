@@ -184,20 +184,25 @@ namespace KhaozEngine.Gpu.Metal.Internal
         [SupportedOSPlatform("macos")]
         internal static partial void MsgSendVoidNUInt2(IntPtr receiver, IntPtr sel, nuint a, nuint b);
 
-        // setViewport: - six doubles. A homogeneous float aggregate of six members, so the whole struct rides
-        // SIMD registers on arm64 and never touches the stack.
+        // setViewport: - six doubles, and it is passed INDIRECTLY. An HFA is at most FOUR members, so six
+        // doubles is not one however homogeneous it looks, which makes it an ordinary composite larger than
+        // 16 bytes: the caller builds it in memory and passes its address. Verified against clang codegen on
+        // arm64 rather than reasoned about, because "homogeneous therefore in registers" is exactly the
+        // plausible-sounding wrong rule this comment used to state.
         [LibraryImport(Objc, EntryPoint = "objc_msgSend")]
         [SupportedOSPlatform("macos")]
         internal static partial void MsgSendVoidViewport(IntPtr receiver, IntPtr sel, MTLViewport viewport);
 
-        // setScissorRect: - four NSUIntegers. NOT a homogeneous float aggregate and larger than 16 bytes, so the
-        // platform ABI passes it indirectly. It is here precisely because it takes the OTHER path from the
-        // viewport above, and a hand-rolled layer that gets one right can still get the other wrong.
+        // setScissorRect: - four NSUIntegers, 32 bytes and not floating point at all, so it is passed
+        // indirectly too. Same path as the viewport above, reached for a different reason (not an HFA because
+        // the members are integers, rather than because there are too many of them).
         [LibraryImport(Objc, EntryPoint = "objc_msgSend")]
         [SupportedOSPlatform("macos")]
         internal static partial void MsgSendVoidScissor(IntPtr receiver, IntPtr sel, MTLScissorRect rect);
 
-        // setClearColor: - four doubles, the third by-value shape (M-A2 folds every clear into one of these).
+        // setClearColor: - four doubles, and the ONE shape here that rides registers: four is the HFA limit, so
+        // this one lands in d0 to d3 and never touches the stack (M-A2 folds every clear into one of these). It
+        // is the other of the two arm64 paths, which is why all three structs are exercised rather than one.
         [LibraryImport(Objc, EntryPoint = "objc_msgSend")]
         [SupportedOSPlatform("macos")]
         internal static partial void MsgSendVoidClearColor(IntPtr receiver, IntPtr sel, MTLClearColor color);

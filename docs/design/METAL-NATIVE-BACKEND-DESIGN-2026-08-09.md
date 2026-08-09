@@ -818,10 +818,13 @@ a documented local prefix for validation.
 **The spike's answer, measured 2026-08-10 on an Apple M2 Max under macOS 26 (device `AGXG14CDevice`), is YES
 to everything except M-G3.** It ran, which is the difference from phase 3's equivalent: that one could only be a
 compile-time inventory, because the machine that wrote it had no Vulkan loader. `BOOL` round-trips as one byte
-and `CGFloat` as a double. All three by-value struct shapes cross correctly, and the three were chosen because
-they take three DIFFERENT paths through the arm64 ABI: `MTLClearColor` and `MTLViewport` are homogeneous
-aggregates of four and six doubles and ride SIMD registers, `MTLScissorRect` is four `NSUInteger`s, is larger
-than 16 bytes and is not homogeneous, so it is passed indirectly. The array setters and the offset setters
+and `CGFloat` as a double. All three by-value struct shapes cross correctly, and between them they cover BOTH
+paths the arm64 ABI has for a composite argument. The rule is that a homogeneous floating-point aggregate is at
+most FOUR members: `MTLClearColor` is four doubles, so it is an HFA and rides `d0` to `d3`. `MTLViewport` is SIX
+doubles, one too many to be an HFA however homogeneous it looks, so it is an ordinary composite over 16 bytes
+and is passed indirectly. `MTLScissorRect` is four `NSUInteger`s, not floating point at all, so it is passed
+indirectly for the other reason. Two paths, not three, and coverage is still complete. The array setters
+and the offset setters
 record on both a render and a compute encoder, `NSRange` by value included. The `[UnmanagedCallersOnly]`
 completion handler fires, so M-F3 stands with no delegate and no GC handle anywhere on the path, carried by a
 global block literal in static native memory whose `Block_copy` is a no-op. `MTLSharedEvent`'s four members work

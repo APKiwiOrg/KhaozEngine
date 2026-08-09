@@ -35,9 +35,10 @@ the whole interop vocabulary out of a consumer's compile.
 **The interop spike RAN, on an Apple M2 Max under macOS 26, and it is clean.** This is the difference from
 phase 3's equivalent, which could only be a compile-time inventory because the machine had no Vulkan loader.
 `BOOL` round-trips as one byte and `CGFloat` as a double. All three by-value struct shapes cross correctly, and
-they were chosen because they take three different arm64 paths: `MTLClearColor` and `MTLViewport` are
-homogeneous double aggregates that ride SIMD registers, `MTLScissorRect` is four `NSUInteger`s passed
-indirectly. The array setters and the offset setters record on both a render and a compute encoder, `NSRange`
+between them they cover both arm64 paths for a composite argument. An HFA is at most FOUR members, so
+`MTLClearColor` (four doubles) rides `d0` to `d3` while `MTLViewport` (six doubles, one too many to be an HFA)
+and `MTLScissorRect` (four `NSUInteger`s) both go indirectly. The array setters and the offset setters record
+on both a render and a compute encoder, `NSRange`
 by value included. The `[UnmanagedCallersOnly]` completion handler fires from a global block literal, so M-F3
 stands with no delegate and no GC handle on the path. `MTLSharedEvent`'s four members work end to end, so M-F1
 stands. `supportsFamily:` and `maximumDrawableCount` both answer. The one command buffer carrying all of it

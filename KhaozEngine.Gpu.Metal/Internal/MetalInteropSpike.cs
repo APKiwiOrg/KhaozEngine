@@ -81,8 +81,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// </para>
     /// <para>
     /// WHAT IT ANSWERS, each with the fallback section 3.1 names if the answer is no. The <c>objc_msgSend</c>
-    /// return and argument classes, including the three by-value struct shapes that take three different paths
-    /// through the arm64 ABI. An <c>[UnmanagedCallersOnly]</c> completion handler firing on a real command buffer
+    /// return and argument classes, including three by-value struct shapes chosen to cover BOTH paths the arm64
+    /// ABI has for a composite argument (registers for an HFA, which is at most four members, and indirect for
+    /// everything else). An <c>[UnmanagedCallersOnly]</c> completion handler firing on a real command buffer
     /// (M-F3, fallback: the incumbent's delegate-and-dictionary block shape, losing AOT-cleanliness).
     /// <c>MTLSharedEvent</c>'s four members (M-F1, fallback: a completion-counter timeline, which also removes
     /// M-P4's fifth extraction). The array setters and the offset setters (M-R6 and M-R7, fallback: per-element
@@ -251,10 +252,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
             };
         }
 
-        // The three by-value struct shapes, each of which takes a DIFFERENT path through the arm64 ABI, which is
-        // the whole reason all three are here rather than one standing in for the others. MTLClearColor and
-        // MTLViewport are homogeneous aggregates of four and six doubles, so they ride SIMD registers.
-        // MTLScissorRect is four NSUIntegers, 32 bytes and not homogeneous, so the caller passes it indirectly.
+        // The three by-value struct shapes, covering BOTH paths the arm64 ABI has for them, which is the whole
+        // reason more than one is here. The rule is that a homogeneous floating-point aggregate is at most FOUR
+        // members: MTLClearColor is four doubles, so it is an HFA and rides d0 to d3. MTLViewport is SIX doubles,
+        // which is one too many to be an HFA however homogeneous it looks, so it is an ordinary composite over
+        // 16 bytes and goes indirectly. MTLScissorRect is four NSUIntegers, not floating point at all, so it
+        // goes indirectly for the other reason. Two paths, both covered.
         // A layer that gets one right can still get the other wrong, and the debug layer catches neither: what
         // catches them is the command buffer completing without an error, which is what the caller checks.
         [SupportedOSPlatform("macos")]

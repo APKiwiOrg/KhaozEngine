@@ -378,8 +378,8 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         // A boundary on the present harness's fakes, in the shipped semaphore mode. The whole present state
-        // machine is VulkanPresentBoundaryTests'; what is here is the ROUTING of the frame's pair, which is a
-        // submit-path question and is asserted where the other submit-path facts are.
+        // machine belongs to VulkanPresentBoundaryTests. What is here is the ROUTING of the frame's pair, which
+        // is a submit-path question and is asserted where the other submit-path facts are.
         static VulkanPresentBoundary Boundary(out FakeVulkanSwapchainApi swapchains)
         {
             swapchains = new FakeVulkanSwapchainApi();

@@ -280,20 +280,39 @@ namespace KhaozEngine.Gpu.Metal.Internal
             timeline.RegisterSubmitted(UnreachableValue);
             fence.Arm(UnreachableValue);
 
+            // THE FLIPPER IS GATED ON THE DRAIN HAVING STARTED, not on a wall-clock sleep. A 20ms sleep is a bet
+            // that this thread reaches WaitForIdle within 20ms, which a loaded runner loses: the flip would land
+            // BEFORE the drain, the drain would return at its liveness check without ever blocking, and the
+            // counted-drain assertions below would be measuring nothing while still reading plausible. The gate
+            // is set immediately before the call, so the flip cannot precede the drain's own liveness check by
+            // more than the instructions between them.
+            using var draining = new ManualResetEventSlim(false);
             var flipper = new Thread(() =>
             {
-                Thread.Sleep(20);
+                draining.Wait();
                 liveness.MarkDead();
             })
             { IsBackground = true, Name = "metal-timeline-probe-liveness" };
             flipper.Start();
 
+            draining.Set();
             timeline.WaitForIdle();
-            bool released = flipper.Join(DeadlineMs);
-            if (!released) notes.Add("the liveness flipper thread did not finish, so the drain's release is unmeasured.");
+
+            // RELEASED-BY-DEATH IS DERIVED FROM THE DRAIN, NOT FROM THE FLIPPER'S Join. Join measures the
+            // flipper thread finishing, which says nothing at all about what the drain did, and it is reached
+            // only because WaitForIdle already returned. The drain's own answer is the two facts on this line:
+            // execution got past WaitForIdle, so the drain RETURNED, and the timeline never reached the value it
+            // was waiting for. The slice loop has exactly two exits, the value arriving and the liveness flip,
+            // so a drain that returned without the value can only have been released by the flip.
+            bool releasedByDeath = timeline.CompletedValue < UnreachableValue;
+
+            // Hygiene only, and it is separate on purpose: a flipper still running would mean the gate above did
+            // not do what it says, which is worth a note even though the drain is already measured.
+            if (!flipper.Join(DeadlineMs))
+                notes.Add("the liveness flipper thread had not finished after the drain returned.");
 
             MetalWaitTotals totals = timeline.TotalDrain;
-            return (totals.Count, totals.TotalMs, released, fence.Signaled);
+            return (totals.Count, totals.TotalMs, releasedByDeath, fence.Signaled);
         }
 
         /// <summary>The latch's seat for the duration of the probe: it records rather than decides, because what

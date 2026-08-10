@@ -80,8 +80,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// carries.</summary>
         internal double CountedDrainMs { get; init; }
 
-        /// <summary>That the sliced drain returned at all once liveness flipped underneath it. A false here is a
-        /// hang rather than a failure, so it is recorded for the transcript and asserted by the test.</summary>
+        /// <summary>That the sliced drain returned once liveness flipped underneath it, derived from the DRAIN
+        /// rather than from the flipper thread: <c>WaitForIdle</c> returned, and the timeline never reached the
+        /// value it was waiting for, and the slice loop has no third exit. A false here is a hang rather than a
+        /// failure, so it is recorded for the transcript and asserted by the test.</summary>
         internal bool DrainReleasedByDeviceDeath { get; init; }
 
         /// <summary>The fence's answer once the device is dead, which must be true whatever it was armed with

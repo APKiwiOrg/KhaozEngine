@@ -200,9 +200,21 @@ because the caller is the producer.
 
 **A device-level `UpdateTexture` records into a device-owned setup command buffer rather than issuing its own
 queue submit.** The incumbent creates a staging texture, a command list and a whole `SubmitCommands` per call.
-Here they accumulate into one buffer, flushed at the next device-level read. The `MipLodBias` a sampler
-description carries is dropped, because `MTLSamplerDescriptor` has no LOD bias field at all, which is why
-`GpuCapabilities.SamplerLodBias` is false on this backend and on the incumbent alike.
+Here they accumulate into one buffer, flushed at the next device-level read. That trades the incumbent's one
+live staging allocation for holding every payload since the last flush, so the open batch carries a **64 MB
+staging budget**: an upload that would cross it commits the batch first. A five-layer 1024-square splat set
+(ten uploads, 40 MB, no drain between them) still shares one batch, and a 2048-square one splits rather than
+holding 160 MB.
+
+**An upload region is checked against the destination subresource, and a resource is checked against the device
+that created it.** Both refusals are `ArgumentException` shaped and both close a hole a caller could not
+otherwise see: a payload of exactly the right length aimed one texel past the mip's edge, and a resource from
+another `IGpuDevice`. The second matters more here than it reads: Apple silicon reports one `MTLDevice` for the
+process, so two devices share a handle and a cross-device use SUCCEEDS, leaving their teardowns to disagree
+about who releases what.
+
+The `MipLodBias` a sampler description carries is dropped, because `MTLSamplerDescriptor` has no LOD bias field
+at all, which is why `GpuCapabilities.SamplerLodBias` is false on this backend and on the incumbent alike.
 
 ## Three decisions worth knowing before reading the code
 

@@ -654,10 +654,18 @@ would end the wait.
 
 **A device-level write reaches EVERY segment**, which is
 [#484](https://github.com/APKiwiOrg/KhaozEngine/issues/484)'s rule adopted wholesale for the third time, with
-its pending-patch queue and its never-wait property intact. A segment an earlier frame is still reading takes
-the write as a queued patch applied at its next acquire rather than being waited for, so the call returns
-immediately from any thread at any pipeline depth, and a retry loop waiting for every non-current segment at
+its pending-patch queue and its never-wait property intact. A segment an earlier recording is still reading takes
+the write as a queued patch applied at its next claim rather than being waited for, so the call returns
+immediately from any thread, and a retry loop waiting for every non-current segment at
 once (the shape that gets drafted first) never terminates in the GPU-bound steady state.
+
+**Except at `KE_METAL_FRAMES_IN_FLIGHT=1`, where that call blocks, deliberately.** The never-wait property comes
+from copying the CURRENT segment ungated and deferring the rest, which is safe at three because that segment's
+next claim is a whole wrap away. At one there is no other segment: the ungated copy is the whole write and it
+goes into the one segment the GPU may be reading, which is the race the ring exists to close, reachable through
+a documented setting. So at the floor the write waits for the submission that last read the segment before
+copying. Correct but slow is the right trade at a depth that exists for measuring, and the floor paragraph, the
+package README and the usage doc all say so now.
 
 **Every OTHER record-time `UpdateBuffer` stages through a per-list arena and pays one blit.** Bulk payloads
 genuinely need the copy command, so what the arena removes is the incumbent's allocate-and-release of a whole

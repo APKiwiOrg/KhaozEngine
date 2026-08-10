@@ -251,11 +251,18 @@ removes it. Automatic hazard tracking does not help: it orders GPU work against 
 a CPU write racing a GPU read.
 
 **A device-level `UpdateBuffer` on a uniform buffer reaches EVERY segment**, gated on the same completion read,
-with a segment an earlier frame is still reading queued as a pending patch applied at its next acquire rather
-than waited for. So the call never blocks, from any thread, at any pipeline depth, and a value written once
+with a segment an earlier recording is still reading queued as a pending patch applied at its next claim rather
+than waited for. So the call never blocks, from any thread, and a value written once
 persists for the buffer's life exactly as it does on a backend where the buffer has one copy. Writing only the
 current segment was a shipped defect elsewhere for one release: a load-time write reached one segment in three,
 so two frames in three bound memory nothing had ever written, with nothing thrown and nothing logged.
+
+**At `KE_METAL_FRAMES_IN_FLIGHT=1`, and only there, that call BLOCKS.** The never-blocks property comes from
+copying the current segment ungated and deferring the others, and at a depth of one there are no others: the
+ungated copy would be a CPU write into the one segment the GPU may be reading, which is the exact race the ring
+exists to close. So at the floor it waits for the submission that last read the segment before copying.
+Correct but slow is the right trade at a depth that exists for measuring, and it is worth knowing before reading
+a capture taken there.
 
 **Every OTHER record-time `UpdateBuffer` stages through a per-list arena and pays one blit.** Bulk payloads
 genuinely need the copy command, so what the arena removes is the incumbent's allocate-and-release of a whole

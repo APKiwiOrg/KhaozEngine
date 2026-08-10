@@ -8932,6 +8932,12 @@ something real. Ship 3. A value that is set and understood as nothing WARNS and 
 session log names the depth this run actually got, because a capture is only evidence about the number it was
 taken at.
 
+**One thing behaves differently at 1**, and it is worth knowing before reading a capture taken there: a
+device-level `UpdateBuffer` on a uniform buffer BLOCKS at that depth. It never blocks at any other, because it
+copies the current segment and defers the segments still in flight, and at a depth of one there are no others,
+so an ungated copy would be a CPU write into the one segment the GPU may be reading. Correct but slow is the
+right trade at a depth that exists for measuring.
+
 **A Metal command-buffer failure is reported now, which it was not before.** Every command buffer's status and
 error are read when it finishes, in every configuration, and the first failure latches its
 `MTLCommandBufferError` code and the driver's own description, makes every later release a no-op, and lands in

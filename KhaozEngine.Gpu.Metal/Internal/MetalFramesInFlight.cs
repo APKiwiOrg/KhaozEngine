@@ -38,7 +38,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// per-list pool ring to be true and this backend has none, so what is left at 1 is the shape the Direct3D 11
     /// backend already calls its honest degenerate case: one recording of latency, one stall per recording, and a
     /// configuration that proves the backpressure counter counts something real. It is a legal setting to
-    /// MEASURE at and a terrible one to ship, which is what a floor is for.</para>
+    /// MEASURE at and a terrible one to ship, which is what a floor is for.
+    /// <b>ONE THING BEHAVES DIFFERENTLY THERE AND IT IS DELIBERATE:</b> the device-level every-segment write
+    /// (<see cref="MetalRingAllocator.UpdateBuffer"/>) BLOCKS at this depth. It never blocks at any other, because
+    /// it copies the current segment ungated and defers the rest, and at a depth of one the current segment is the
+    /// only one there is, so an ungated copy would be M-M7's race with nothing between it and the GPU. Correct but
+    /// slow is the right direction at a debugging depth, and it is the reason a capture taken at 1 is evidence
+    /// about backpressure rather than about the cost of a device-level uniform write.</para>
     ///
     /// <para><b>THE BET THIS TURNS OFF.</b> MM4 says 3 is enough that ring backpressure never blocks the CPU and
     /// that a drawable acquire does not become the frame's pacing, and its exit criterion is

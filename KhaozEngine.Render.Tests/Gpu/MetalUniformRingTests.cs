@@ -204,6 +204,61 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Contains("held the submit lock", thrown.Message, StringComparison.Ordinal);
         }
 
+        /// <summary>
+        /// AT THE FLOOR THE DEVICE-LEVEL WRITE GATES ITS ONE SEGMENT, which is the one place this backend trades
+        /// the never-blocks property for correctness. At a depth of one the loop's other-segment branch never runs
+        /// and the current-segment copy is the whole write, so an ungated one would be M-M7's race with nothing
+        /// between it and the GPU.
+        /// <para>
+        /// THE ORDERING IS THE ASSERTION, not merely the stall count: the segment is read from INSIDE the wait,
+        /// through the fake event's hook, and it still holds the old bytes there. A gate that ran after the copy
+        /// would count a stall and still have raced.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void AtDepthOneTheDeviceLevelWriteWaitsForTheSegmentBeforeCopying()
+        {
+            using var harness = new MetalRingHarness(framesInFlight: 1);
+            MetalUniformRing ring = harness.NewRing(256, out _);
+            byte[] payload = { 7, 7, 7, 7 };
+
+            // One submission that read the only segment, and a GPU that has reached nothing.
+            harness.Timeline.EncodeSignalForSubmit(IntPtr.Zero);
+            harness.Timeline.RegisterSubmitted(1);
+            harness.Rings.RecordSegmentOwner(0, 1);
+
+            byte[]? duringTheWait = null;
+            harness.Event.OnWait = () => duringTheWait ??= ring.ReadSegment(0, 0, payload.Length);
+
+            harness.Rings.UpdateBuffer(ring, 0, payload);
+
+            Assert.Equal(new byte[payload.Length], duringTheWait);
+            Assert.Equal(payload, ring.ReadSegment(0, 0, payload.Length));
+            Assert.Equal(1ul, harness.Event.LastWaitValue);
+            Assert.Equal(1, harness.Rings.StallCount);
+            Assert.Equal(0, ring.PendingPatchCount);
+        }
+
+        /// <summary>
+        /// AND IT IS THE FLOOR ALONE. At any other depth the current-segment copy stays ungated, because the next
+        /// claim of that segment is a whole wrap away and gating it would change the documented semantic that the
+        /// write lands when it is called. The control matters: a gate applied at every depth would be a wait on
+        /// the one path #484 exists to keep non-blocking.
+        /// </summary>
+        [Fact]
+        public void AboveTheFloorTheDeviceLevelWriteStillNeverWaits()
+        {
+            MetalUniformRing ring = _harness.NewRing(256, out _);
+
+            SubmitWork(4);
+
+            _harness.Rings.UpdateBuffer(ring, 0, new byte[] { 3, 3, 3, 3 });
+
+            Assert.Equal(0, _harness.Rings.StallCount);
+            Assert.Null(_harness.Event.LastWaitValue);
+            Assert.False(_harness.Rings.CurrentSegmentIsGatedAtDepthOne);
+        }
+
         /// <summary>The allocator refuses a depth outside the knob's own range, so a caller that read the
         /// environment itself cannot build a ring the env var would have clamped.</summary>
         [Theory]

@@ -71,11 +71,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// flipped, so a segment wait during teardown finds its target already reached and returns. The sliced wait
     /// underneath it observes the same flip between slices, which is why that slice exists at all (M-F5).</para>
     ///
-    /// <para><b>THE OFF-TIMELINE WRITE NEVER WAITS FOR ANYTHING</b>, which is what keeps
-    /// <see cref="BeginRecording"/> the only member here that can block, and what makes a caller who already holds
-    /// the submit lock LEGAL: the lock is a <see cref="Monitor"/>, so the acquisition inside is a free re-entry,
-    /// and there is nothing inside that could wait for work only another thread could do. That is section 9.4's
-    /// Lock legality row, which is this backend's own.</para>
+    /// <para><b>THE OFF-TIMELINE WRITE NEVER WAITS FOR ANYTHING, AT EVERY DEPTH BUT THE FLOOR</b>, which is what
+    /// keeps <see cref="BeginRecording"/> the only member here that can block, and what makes a caller who
+    /// already holds the submit lock LEGAL: the lock is a <see cref="Monitor"/>, so the acquisition inside is a
+    /// free re-entry, and there is nothing inside that could wait for work only another thread could do. That is
+    /// section 9.4's Lock legality row, which is this backend's own. AT A DEPTH OF ONE it does wait, because
+    /// there its current-segment copy is the whole write and there is no other segment to defer to
+    /// (<see cref="CurrentSegmentIsGatedAtDepthOne"/>). The lock legality survives that: what it waits for is a
+    /// submission already made, so the completion that ends the wait comes from the GPU rather than from a thread
+    /// that would need this lock.</para>
     ///
     /// <para><b>EVERYTHING HERE IS DEVICE-FREE.</b> The timeline is behind <see cref="IMetalSharedEvent"/> and
     /// there is no other native surface at all: the writes are memcpys into a pointer <c>MetalBuffer</c> took
@@ -382,10 +386,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// patch still queued would let the next claim replay the OLDER bytes over the newer ones.
         /// </para>
         /// <para>
-        /// THE CURRENT SEGMENT IS ALWAYS COPIED, deliberately, and it is the only ungated one. Gating it would
-        /// change the documented semantic that the write lands when it is called and the next recording submitted
-        /// reads it, and deferring it would be worse still, since the current segment is the one the recording in
-        /// progress is writing and its next claim is a whole wrap away.
+        /// THE CURRENT SEGMENT IS COPIED, and above a depth of one it is the only ungated copy. Gating it there
+        /// would change the documented semantic that the write lands when it is called and the next recording
+        /// submitted reads it, and deferring it would be worse still, since the current segment is the one the
+        /// recording in progress is writing and its next claim is a whole wrap away. AT A DEPTH OF ONE there is
+        /// no other segment at all, so that copy is the whole write and there would be nothing at all between it
+        /// and the GPU: see <see cref="CurrentSegmentIsGatedAtDepthOne"/>.
         /// </para>
         /// </summary>
         internal void UpdateBuffer(MetalUniformRing ring, uint offsetBytes, ReadOnlySpan<byte> data)
@@ -412,6 +418,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
                         _patchesDeferred++;
                         continue;
                     }
+
+                    // AND THE CURRENT SEGMENT IS GATED AT THE FLOOR, where it is the only segment there is.
+                    if (CurrentSegmentIsGatedAtDepthOne) WaitForCurrentSegmentUnderLock();
 
                     ring.CopyIntoSegmentUnderLock(segment, offsetBytes, data);
                 }
@@ -446,6 +455,52 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 _patchesDropped += ring.DropPendingPatchesUnderLock();
                 _patchedRings.Remove(ring);
             }
+        }
+
+        /// <summary>
+        /// WHETHER THE EVERY-SEGMENT WRITE HAS TO GATE ITS CURRENT-SEGMENT COPY, which is true at a depth of ONE
+        /// and false at every other depth.
+        /// <para>
+        /// AT DEPTH ONE THE LOOP'S OTHER-SEGMENT BRANCH NEVER RUNS. There is exactly one segment, it is always the
+        /// current one, so the ungated copy that is correct at depth three (because the next claim of that segment
+        /// is a whole wrap away) becomes a CPU write into the one segment the GPU may be reading right now. That
+        /// is M-M7 exactly, in the backend built to close it, reachable through a documented setting:
+        /// <c>KE_METAL_FRAMES_IN_FLIGHT=1</c> is what the floor paragraph offers as a measuring depth.
+        /// </para>
+        /// <para>
+        /// SO AT DEPTH ONE, AND ONLY THERE, THE WRITE WAITS for the submission that last read the segment to
+        /// complete before copying: the same completion read the claim gate uses, a poll and then the same sliced
+        /// wait. That breaks this type's never-blocks property for the device-level write, deliberately and only
+        /// at the floor. Correct but slow is the right trade there, because depth one is a MEASURING depth (one
+        /// recording of headroom, one stall per recording, the configuration that proves the backpressure counter
+        /// counts something real) rather than one anything ships on. The two alternatives are both worse:
+        /// deferring the write leaves the value unreachable until that segment is claimed again, which at depth
+        /// one is the next recording rather than a wrap, so the write would not be visible to the recording that
+        /// asked for it, and skipping the gate is the race.
+        /// </para>
+        /// </summary>
+        internal bool CurrentSegmentIsGatedAtDepthOne => FramesInFlight == 1;
+
+        // The depth-one gate itself. Called under the submit lock, which is where it has to be: the owner it reads
+        // is written under that lock. It CAN block, which is the one exception to this type's never-waits property
+        // for the off-timeline write, and is why the property above is spelled out rather than inlined.
+        //
+        // The lock is HELD across this wait, unlike the claim gate's, and the claim gate's deadlock argument does
+        // not apply: the value being waited for was registered by a submission that has already been made, so
+        // nothing that could end this wait is being shut out. What a caller pays is that no other submit proceeds
+        // while it waits, at a depth nothing ships on.
+        void WaitForCurrentSegmentUnderLock()
+        {
+            ulong target = _segmentOwner[_segment];
+            if (target == 0) return;
+            if (_timeline.CompletedValue >= target) return;
+
+            long start = Stopwatch.GetTimestamp();
+            _timeline.WaitForValue(target);
+            long elapsed = Stopwatch.GetTimestamp() - start;
+
+            Interlocked.Increment(ref _stallCount);
+            _backpressure.Record(elapsed);
         }
 
         // Whether one non-current segment has to take this write as a patch rather than as a copy. Called under

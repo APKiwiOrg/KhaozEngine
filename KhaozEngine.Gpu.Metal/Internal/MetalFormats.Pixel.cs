@@ -55,6 +55,25 @@ namespace KhaozEngine.Gpu.Metal.Internal
         };
 
         /// <summary>
+        /// <c>FormatHelpers.IsStencilFormat</c>: whether a depth format carries a STENCIL PLANE as well as a
+        /// depth one.
+        /// <para>
+        /// <b>IT DECIDES WHETHER A RENDER PIPELINE DESCRIPTOR NAMES A STENCIL ATTACHMENT AT ALL.</b> Metal splits
+        /// the two planes across <c>depthAttachmentPixelFormat</c> and <c>stencilAttachmentPixelFormat</c>, and
+        /// the incumbent writes the second only for a combined format, which is the question asked here. Naming a
+        /// stencil format the framebuffer's texture does not have makes the pipeline incompatible with it, which
+        /// Metal rejects at creation.
+        /// </para>
+        /// <para>
+        /// THE TWO COMBINED FORMATS ARE THE WHOLE ANSWER, and a colour format reaching here answers false rather
+        /// than throwing: the question is asked of a DEPTH attachment's format, and a pipeline with no depth
+        /// output never asks it.
+        /// </para>
+        /// </summary>
+        internal static bool IsStencilFormat(GpuPixelFormat format)
+            => format is GpuPixelFormat.D24UNormS8UInt or GpuPixelFormat.D32FloatS8UInt;
+
+        /// <summary>
         /// <c>MTLFormats.VdToMTLTextureType</c>, for the one texture type the seam can express.
         /// <para>
         /// THE ORDER OF THE TESTS IS THE INCUMBENT'S AND IT MATTERS: cube wins over multisample, and multisample

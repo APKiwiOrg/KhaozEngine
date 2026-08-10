@@ -158,10 +158,15 @@ namespace KhaozEngine.Gpu.Internal
             switch (action)
             {
                 case GpuFrameCapture.CaptureAction.StartAfterPresent:
-                    _capturing = MetalFrameCapture.Start(GraphicsDevice, _capturePath);
+                    // THE QUEUE COMES OUT OF VELDRID BY REFLECTION, and only on this path (M-G5). The native
+                    // Metal backend owns its queue and hands the pointer in directly, which is why the read is
+                    // its own named type rather than a step inside the capture.
+                    _capturing = MetalFrameCapture.Start(
+                        VeldridMetalCommandQueue.TryRead(GraphicsDevice), _capturePath);
                     break;
                 case GpuFrameCapture.CaptureAction.StopAfterPresent:
-                    MetalFrameCapture.Stop(GraphicsDevice);
+                    // The drain travels in, because the capture no longer holds anything it could drain itself.
+                    MetalFrameCapture.Stop(GraphicsDevice.WaitForIdle);
                     _capturing = false;
                     break;
             }

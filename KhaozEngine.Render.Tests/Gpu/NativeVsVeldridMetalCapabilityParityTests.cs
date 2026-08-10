@@ -351,7 +351,15 @@ namespace KhaozEngine.Tests.Gpu
     static class MetalDormancy
     {
         /// <summary>True when a native Metal device can be created here. Writes the reason it cannot to
-        /// <paramref name="output"/>, so a dormant run says which of the two machine facts it hit.</summary>
+        /// <paramref name="output"/>, so a dormant run says which of the two machine facts it hit.
+        /// <para>
+        /// A <c>[SupportedOSPlatformGuard]</c> rather than a plain bool, and it is honest: the first thing this
+        /// asks is <c>KhaozEngineMetal.IsPlatformSupported</c>, so a true answer really does imply macOS. That is
+        /// what lets a caller read a macOS-only member after it without CA1416 firing, which the lifecycle rows
+        /// already do through their own inline copy of this pair.
+        /// </para>
+        /// </summary>
+        [System.Runtime.Versioning.SupportedOSPlatformGuard("macos")]
         internal static bool NativeDeviceAvailable(ITestOutputHelper output)
         {
             if (!KhaozEngineMetal.IsPlatformSupported)

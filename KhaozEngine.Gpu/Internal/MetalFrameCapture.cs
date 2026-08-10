@@ -1,24 +1,51 @@
 using System;
-using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
-using Veldrid;
 
 namespace KhaozEngine.Gpu.Internal
 {
-    /// <summary>Drives an Xcode Metal GPU frame capture (<c>MTLCaptureManager</c>) around a single Submit, via the
-    /// Objective-C runtime. Used only when a capture is armed (see <see cref="GpuFrameCapture"/>). Captures the
-    /// Veldrid command queue (obtained by reflection - Veldrid does not expose it). Every step is best-effort and
-    /// swallows errors: a failed capture must never break rendering. Requires <c>MTL_CAPTURE_ENABLED=1</c> in the
-    /// environment before the device was created.</summary>
+    /// <summary>
+    /// Drives an Xcode Metal GPU frame capture (<c>MTLCaptureManager</c>) around a whole frame, via the
+    /// Objective-C runtime. Used only when a capture is armed (see <see cref="GpuFrameCapture"/>). Every step is
+    /// best-effort and swallows errors, because a failed capture must never break rendering.
+    ///
+    /// <para><b>IT TAKES THE COMMAND QUEUE AS A POINTER, WHICH IS DECISION M-G5.</b> This used to reach into
+    /// Veldrid's private <c>_commandQueue</c> field by reflection and return zero if the layout differed, which
+    /// meant the whole feature was one Veldrid refactor away from silently producing no trace. The native Metal
+    /// backend OWNS its queue, so it hands the pointer in and no reflection happens on that path at all. The
+    /// Veldrid Metal path still has to find its queue somehow and the reflection survives for it, isolated in
+    /// <see cref="VeldridMetalCommandQueue"/> so it is one named thing that can be tested rather than a step
+    /// buried in the middle of a capture.</para>
+    ///
+    /// <para><b><c>MTL_CAPTURE_ENABLED=1</c> MUST BE IN THE ENVIRONMENT BEFORE THE PROCESS LAUNCHES</b>, which is
+    /// the same process-launch rule M-G3 measured for the validation variables: setting it in-process does not
+    /// reach the framework. Without it Metal refuses programmatic capture, and <see cref="Start"/> answers false
+    /// having done nothing.</para>
+    ///
+    /// <para><b>THE DESTINATION IS ASKED ABOUT BEFORE THE CAPTURE IS STARTED, AND THAT GUARD IS LOAD-BEARING
+    /// RATHER THAN DEFENSIVE.</b> <c>-startCaptureWithDescriptor:error:</c> on a process where capture was never
+    /// enabled is documented to raise an Objective-C exception rather than to answer false through its error
+    /// parameter, and an Objective-C exception crossing a managed frame is a process abort that no
+    /// <c>try</c> here can catch. <c>-supportsDestination:</c> is the documented way to ask first, and it was
+    /// MEASURED on an Apple M2 Max under macOS 26 to answer NO for both destinations in a process without the
+    /// variable. So the guard is what makes the whole path safe to execute on an ordinary run, which is in turn
+    /// what makes it testable at all.</para>
+    /// </summary>
     internal static class MetalFrameCapture
     {
         const string Objc = "/usr/lib/libobjc.A.dylib";
+
+        /// <summary><c>MTLCaptureDestinationGPUTraceDocument</c>, the destination that writes a
+        /// <c>.gputrace</c> bundle to a file rather than handing the capture to an attached Xcode.</summary>
+        internal const nint GpuTraceDocument = 2;
 
         [DllImport(Objc, EntryPoint = "objc_getClass")] static extern IntPtr GetClass(string name);
         [DllImport(Objc, EntryPoint = "sel_registerName")] static extern IntPtr Sel(string name);
         [DllImport(Objc, EntryPoint = "objc_msgSend")] static extern IntPtr Send(IntPtr receiver, IntPtr sel);
         [DllImport(Objc, EntryPoint = "objc_msgSend")] static extern IntPtr Send(IntPtr receiver, IntPtr sel, IntPtr arg0);
+        [DllImport(Objc, EntryPoint = "objc_msgSend")]
+        [return: MarshalAs(UnmanagedType.I1)]
+        static extern bool SendBoolNInt(IntPtr receiver, IntPtr sel, nint arg0);
         [DllImport(Objc, EntryPoint = "objc_msgSend")]
         [return: MarshalAs(UnmanagedType.I1)]
         static extern bool SendStartCapture(IntPtr receiver, IntPtr sel, IntPtr descriptor, ref IntPtr error);
@@ -33,27 +60,48 @@ namespace KhaozEngine.Gpu.Internal
             finally { Marshal.FreeHGlobal(p); }
         }
 
-        // Veldrid's MTLGraphicsDevice keeps the command queue in a private field; reach it (and its native
-        // id<MTLCommandQueue> pointer) by reflection. Returns IntPtr.Zero if the layout differs (then capture is skipped).
-        static IntPtr TryGetNativeCommandQueue(GraphicsDevice gd)
+        /// <summary>
+        /// Whether this process can write a <c>.gputrace</c> at all, which is <c>MTL_CAPTURE_ENABLED=1</c> having
+        /// been set before launch. False everywhere else, including on a non-Metal platform where the class does
+        /// not exist. Split out from <see cref="Start"/> so a caller can report the reason nothing was captured,
+        /// and so the guard itself is assertable.
+        /// </summary>
+        internal static bool CaptureIsEnabledForThisProcess()
         {
-            var f = gd.GetType().GetField("_commandQueue", BindingFlags.NonPublic | BindingFlags.Instance);
-            object? cq = f?.GetValue(gd);
-            if (cq == null) return IntPtr.Zero;
-            // Veldrid MTLCommandQueue is a struct wrapping `public readonly IntPtr NativePtr;`.
-            var np = cq.GetType().GetField("NativePtr");
-            if (np == null) return IntPtr.Zero;
-            object? v = np.GetValue(cq);
-            return v is IntPtr ptr ? ptr : IntPtr.Zero;
+            try
+            {
+                IntPtr cls = GetClass("MTLCaptureManager");
+                if (cls == IntPtr.Zero) return false;
+
+                IntPtr manager = Send(cls, Sel("sharedCaptureManager"));
+                if (manager == IntPtr.Zero) return false;
+
+                return SendBoolNInt(manager, Sel("supportsDestination:"), GpuTraceDocument);
+            }
+            catch { return false; }
         }
 
-        public static bool Start(GraphicsDevice gd, string outputPath)
+        /// <summary>
+        /// Begin capturing everything committed to <paramref name="commandQueue"/> into a <c>.gputrace</c> at
+        /// <paramref name="outputPath"/>. False when nothing was started, which is the ordinary answer on a
+        /// process without <c>MTL_CAPTURE_ENABLED=1</c> and on every non-macOS platform.
+        /// </summary>
+        /// <param name="commandQueue">The <c>id&lt;MTLCommandQueue&gt;</c> to capture. The native backend passes
+        /// its own, the Veldrid path passes whatever <see cref="VeldridMetalCommandQueue.TryRead"/> found.
+        /// <see cref="IntPtr.Zero"/> answers false, which is how a Veldrid layout change presents.</param>
+        /// <param name="outputPath">A fresh, non-existent path. Metal creates the <c>.gputrace</c> bundle.</param>
+        internal static bool Start(IntPtr commandQueue, string outputPath)
         {
             _capturing = false;
             try
             {
-                IntPtr queue = TryGetNativeCommandQueue(gd);
-                if (queue == IntPtr.Zero) return false;
+                if (commandQueue == IntPtr.Zero) return false;
+
+                // BEFORE ANY OTHER CALL. See the class remarks: starting a capture in a process where capture was
+                // never enabled raises an Objective-C exception, which is a process abort rather than something
+                // the catch below could turn into a false.
+                if (!CaptureIsEnabledForThisProcess()) return false;
+
                 IntPtr mgrCls = GetClass("MTLCaptureManager");
                 IntPtr descCls = GetClass("MTLCaptureDescriptor");
                 IntPtr nsUrlCls = GetClass("NSURL");
@@ -61,8 +109,8 @@ namespace KhaozEngine.Gpu.Internal
 
                 IntPtr mgr = Send(mgrCls, Sel("sharedCaptureManager"));
                 IntPtr desc = Send(Send(descCls, Sel("alloc")), Sel("init"));
-                Send(desc, Sel("setCaptureObject:"), queue);             // capture this command queue
-                Send(desc, Sel("setDestination:"), (IntPtr)2);           // MTLCaptureDestinationGPUTraceDocument = 2
+                Send(desc, Sel("setCaptureObject:"), commandQueue);      // capture this command queue
+                Send(desc, Sel("setDestination:"), (IntPtr)GpuTraceDocument);
                 IntPtr url = Send(nsUrlCls, Sel("fileURLWithPath:"), NSString(outputPath));
                 Send(desc, Sel("setOutputURL:"), url);
 
@@ -73,12 +121,19 @@ namespace KhaozEngine.Gpu.Internal
             catch { return false; }
         }
 
-        public static void Stop(GraphicsDevice gd)
+        /// <summary>
+        /// End the capture started by <see cref="Start"/>, after letting the captured frame's GPU work finish. A
+        /// no-op when nothing is capturing, which is what makes an unconditional call at a present boundary safe.
+        /// </summary>
+        /// <param name="waitForIdle">The owning device's own drain. Called only when a capture is actually in
+        /// progress, so an ordinary frame pays nothing for it. Closing the trace without it would end the
+        /// document with the frame's work still running.</param>
+        internal static void Stop(Action waitForIdle)
         {
             if (!_capturing) return;
             try
             {
-                gd.WaitForIdle();   // let the captured frame's GPU work finish before closing the trace
+                waitForIdle();
                 IntPtr mgr = Send(GetClass("MTLCaptureManager"), Sel("sharedCaptureManager"));
                 Send(mgr, Sel("stopCapture"));
             }

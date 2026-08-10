@@ -12,9 +12,12 @@ namespace KhaozEngine.Gpu
     /// device is created), or Metal disables programmatic capture. No-op on non-Metal backends and if the capture
     /// API is unavailable. Debug-only, and do not arm in shipping builds.
     /// <para>
-    /// WHICH Metal serves an armed capture is <see cref="VeldridPathCaptures"/>, and today the answer is the
-    /// Veldrid Metal path only. An arm taken on <see cref="GpuBackendKind.MetalNative"/> is not consumed by
-    /// anything yet, so it stays armed and writes no trace.
+    /// WHICH Metal serves an armed capture is <see cref="VeldridPathCaptures"/> for the Veldrid path, and the
+    /// native Metal device itself for its own. The two are separate code paths rather than one widened gate, and
+    /// decision M-G5 of <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c> is why: the native backend
+    /// owns its command queue, so it captures with the pointer in hand while the Veldrid path has to find the
+    /// queue by reflection. Both consume an arm at a PRESENT boundary, so a headless device of either kind never
+    /// consumes one.
     /// </para>
     /// </remarks>
     public static class GpuFrameCapture
@@ -57,10 +60,13 @@ namespace KhaozEngine.Gpu
         /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>).
         /// </para>
         /// <para>
-        /// Until that native path exists, an armed capture on a native Metal session is simply never consumed:
-        /// <see cref="IsArmed"/> stays true and no trace is written. That is the third of the three sites the
-        /// Metal append degrades SILENTLY, and it is recorded here rather than left to be rediscovered from an
-        /// empty output directory.
+        /// THAT NATIVE PATH NOW EXISTS: <c>MetalGpuDevice.ServiceFrameCaptureAtPresentBoundary</c> is the native
+        /// device's own consumption site and takes the same <see cref="TryConsume"/> and
+        /// <see cref="NextAction"/> this one does. So this member stays FALSE for
+        /// <see cref="GpuBackendKind.MetalNative"/> permanently rather than pending a fix, which is what the
+        /// append audit asserts. The third of the three sites the Metal append degraded SILENTLY is closed by a
+        /// second implementation rather than by a wider predicate, and the arm it consumes is consumed at a
+        /// PRESENT, so a headless device of either kind still consumes nothing.
         /// </para>
         /// </summary>
         internal static bool VeldridPathCaptures(GpuBackendKind backend) => backend == GpuBackendKind.Metal;

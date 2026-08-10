@@ -6,7 +6,16 @@ namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>Headless coverage of the Metal frame-capture arm/consume API and the pure present-boundary state
     /// machine that brackets exactly one full frame (all its Submits, between two presents). The Metal interop
-    /// itself (MTLCaptureManager) is exercised only on-device.</summary>
+    /// itself (MTLCaptureManager) is exercised on-device by <see cref="MetalFrameCaptureTests"/>.
+    /// <para>
+    /// IN <c>NativeDeviceLifecycle</c> BECAUSE THE ARM IS PROCESS-GLOBAL. <see cref="GpuFrameCapture"/> holds one
+    /// armed path for the whole process, and since the native Metal backend gained its own consumption site
+    /// (M-G5) there are two suites that arm it. Two classes arming in parallel consume each other's path, which
+    /// is a flake in whichever one loses. That collection is the non-parallel one, and its definition names this
+    /// arm as its third piece of shared state.
+    /// </para>
+    /// </summary>
+    [Collection("NativeDeviceLifecycle")]
     public class GpuFrameCaptureTests
     {
         [Fact]

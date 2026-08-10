@@ -1809,6 +1809,15 @@ ONE drain, because the loop is inside it, and the whole cost of the choice is on
 of a genuinely long drain. Metal's call takes a timeout where Vulkan's does not, which is why this costs
 nothing to spell.
 
+**The slice's one observable consequence, recorded because a reader will ask what 250ms buys and what it
+costs.** The liveness flip is not delivered to a waiter already blocked inside the native call, so a drain in
+flight when the device dies keeps blocking until its CURRENT slice expires: **up to 250ms of extra teardown
+latency after a device loss**, and nothing else. A healthy drain is unaffected and returns the moment the value
+arrives. A shorter slice would trade that latency for more native calls on every genuinely long drain, and a
+longer one would trade it back, so the number is a straight pick on that axis rather than a measured
+optimum. Teardown after a device loss is the only path that pays it, which is the path that would otherwise
+block until the process was killed.
+
 **The completion handler finds its latch by asking the buffer for its QUEUE, which is M-F2's mechanics and is
 also a row-5 decision rather than a doc one.** The block is global and carries no captures, which is the shape
 row 1's spike proved, so it cannot hold a pointer of its own without becoming a heap block with copy and

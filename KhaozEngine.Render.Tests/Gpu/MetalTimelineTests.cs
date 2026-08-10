@@ -339,6 +339,48 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [Fact]
+        public void CompletedValue_AfterDispose_NeverTouchesTheReleasedEvent()
+        {
+            (MetalTimeline timeline, FakeMetalSharedEvent sharedEvent, _) = NewTimeline();
+            sharedEvent.Completed = 3;
+            ulong allocated = timeline.EncodeSignalForSubmit(Buffer(1));
+            timeline.RegisterSubmitted(allocated);
+
+            timeline.Dispose();
+            int readsBefore = sharedEvent.ReadCount;
+
+            // DEFENCE IN DEPTH, NOT THE ONLY DEFENCE. M-F6's teardown flips liveness before disposal, so a
+            // correctly ordered teardown never reaches this guard. What it stops is the order NOT being
+            // honoured: Dispose releases the MTLSharedEvent unconditionally, so a poll after it without the flip
+            // would send signaledValue to a released Objective-C object, which is a use-after-free rather than a
+            // wrong number. The answer is the dead answer, because a timeline that is gone has nothing left to
+            // finish.
+            Assert.Equal(timeline.LastAllocated, timeline.CompletedValue);
+            Assert.Equal(readsBefore, sharedEvent.ReadCount);
+        }
+
+        [Fact]
+        public void WaitForIdle_AfterDispose_NeverTouchesTheReleasedEvent()
+        {
+            (MetalTimeline timeline, FakeMetalSharedEvent sharedEvent, _) = NewTimeline();
+            ulong allocated = timeline.EncodeSignalForSubmit(Buffer(1));
+            timeline.RegisterSubmitted(allocated);
+            sharedEvent.WaitReachesTheValue = false;
+
+            timeline.Dispose();
+            int waitsBefore = sharedEvent.WaitCount;
+
+            // The disposal guard covers the drain for free rather than by a second check: the target is
+            // LastSubmitted, which can never exceed LastAllocated, so the caught-up early return fires before
+            // the slice loop can wait on a released event. Without it this would spin forever on a fake whose
+            // wait never reaches the value.
+            timeline.WaitForIdle();
+
+            Assert.Equal(waitsBefore, sharedEvent.WaitCount);
+            Assert.Equal(0, timeline.TotalDrain.Count);
+        }
+
+        [Fact]
         public void ATimelineWithNoLivenessToken_TreatsTheDeviceAsAlive()
         {
             var sharedEvent = new FakeMetalSharedEvent { Completed = 4 };

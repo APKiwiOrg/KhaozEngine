@@ -96,7 +96,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         long _totalDrainCount;
         long _totalDrainTicks;
 
-        bool _disposed;
+        // Volatile because CompletedValue reads it from whatever thread is polling a fence, which is not the
+        // teardown thread that writes it.
+        volatile bool _disposed;
 
         /// <param name="sharedEvent">The device's shared event. Disposed with this timeline.</param>
         /// <param name="liveness">The device's liveness token, or null while a caller does not have one, in
@@ -179,6 +181,17 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// that is already gone. Asking again afterwards is what stops that number reaching a fence, and it
         /// costs one volatile read on a path that just crossed the Objective-C boundary.
         /// </para>
+        /// <para>
+        /// DISPOSAL IS CHECKED FIRST, AS DEFENCE IN DEPTH RATHER THAN AS THE ONLY DEFENCE. M-F6's teardown order
+        /// flips liveness BEFORE this timeline is disposed, so the liveness check below already covers every
+        /// poll a correctly ordered teardown can produce, and this guard is unreachable on that path. What it
+        /// covers is the path where the order was not honoured: <see cref="Dispose"/> releases the
+        /// <c>MTLSharedEvent</c> unconditionally, so a fence polled after disposal without the flip would send
+        /// <c>signaledValue</c> to a released Objective-C object, which is a use-after-free rather than a wrong
+        /// number. The documented order stays the contract and this stops a violation of it from being
+        /// unsurvivable. The disposed answer is the dead answer, for M-F6's reason: a timeline that is gone has
+        /// nothing left to finish.
+        /// </para>
         /// </summary>
         internal ulong CompletedValue
         {
@@ -188,7 +201,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 // done" has to release every waiter, and the allocation high-water can sit above the registered
                 // one. Answering with the smaller of the two would leave exactly the fences armed in that window
                 // unreleased at exactly the moment nothing can ever advance the counter again.
-                if (_liveness.IsDead) return LastAllocated;
+                if (_disposed || _liveness.IsDead) return LastAllocated;
 
                 ulong read = _event.Read();
                 return _liveness.IsDead ? LastAllocated : read;
@@ -274,6 +287,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// until it reaches the value or liveness says there is nothing left to wait for. Metal's call takes a
         /// timeout where Vulkan's does not, which is why this costs nothing to spell.</para>
         ///
+        /// <para><b>THE SLICE HAS ONE OBSERVABLE COST, AND IT IS <see cref="DrainSliceMs"/> OF TEARDOWN
+        /// LATENCY.</b> The liveness flip is not delivered to a blocked waiter, so a drain in flight when the
+        /// device dies keeps blocking until its CURRENT slice expires, up to 250ms after the flip. Nothing else
+        /// changes: a healthy drain returns the moment the value arrives, and a shorter slice would only trade
+        /// that latency for more native calls on every long drain. Teardown after a device loss is the one path
+        /// that pays it, and 250ms there is the price of the flip being observable at all.</para>
+        ///
         /// <para><b>THREE CASES RETURN WITHOUT COUNTING, and each is a case where nothing blocked.</b> The
         /// device is dead (M-F6, a dead device has nothing to wait for). Nothing has ever been submitted, so
         /// there is no point on the timeline to wait for at all, which is also the state a device that has only
@@ -344,7 +364,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </para>
         /// <para>
         /// OUTSTANDING FENCES HOLD NO OBJECT OF THEIR OWN, so they simply stop being able to observe anything
-        /// new. A poll after this point reads through the liveness token, which teardown flipped first.
+        /// new. A poll after this point reads through the liveness token, which teardown flipped first, and
+        /// through <see cref="CompletedValue"/>'s disposal guard if it did not. That guard also covers
+        /// <see cref="WaitForIdle"/> for free: its target is <see cref="LastSubmitted"/>, which can never exceed
+        /// <see cref="LastAllocated"/>, so the caught-up early return fires before the slice loop can touch a
+        /// released event.
         /// </para>
         /// </summary>
         public void Dispose()

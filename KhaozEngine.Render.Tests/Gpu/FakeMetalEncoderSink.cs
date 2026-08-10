@@ -34,18 +34,18 @@ namespace KhaozEngine.Tests.Gpu
 
         public void SetBuffers(MetalShaderStage stage, IntPtr encoder, ReadOnlySpan<IntPtr> buffers,
             ReadOnlySpan<nuint> offsets, uint firstIndex)
-            => Calls.ArgumentTableWrite($"buffers[{stage}] x{buffers.Length} @{firstIndex}");
+            => Calls.ArrayWrite(stage, MetalIndexSpace.Buffer, encoder, firstIndex, buffers, offsets);
 
         public void SetTextures(MetalShaderStage stage, IntPtr encoder, ReadOnlySpan<IntPtr> textures,
             uint firstIndex)
-            => Calls.ArgumentTableWrite($"textures[{stage}] x{textures.Length} @{firstIndex}");
+            => Calls.ArrayWrite(stage, MetalIndexSpace.Texture, encoder, firstIndex, textures, default);
 
         public void SetSamplerStates(MetalShaderStage stage, IntPtr encoder, ReadOnlySpan<IntPtr> samplers,
             uint firstIndex)
-            => Calls.ArgumentTableWrite($"samplers[{stage}] x{samplers.Length} @{firstIndex}");
+            => Calls.ArrayWrite(stage, MetalIndexSpace.Sampler, encoder, firstIndex, samplers, default);
 
         public void SetBufferOffset(MetalShaderStage stage, IntPtr encoder, nuint offset, uint index)
-            => Calls.ArgumentTableWrite($"bufferOffset[{stage}] {offset} @{index}");
+            => Calls.OffsetWrite(stage, encoder, offset, index);
 
         public void Draw(IntPtr encoder, uint vertexStart, uint vertexCount, uint instanceCount,
             uint baseInstance)
@@ -77,6 +77,8 @@ namespace KhaozEngine.Tests.Gpu
         readonly List<IntPtr> _retainedEncoders = new();
         readonly List<IntPtr> _releasedEncoders = new();
         readonly HashSet<IntPtr> _live = new();
+        readonly List<FakeMetalArrayWrite> _arrayWrites = new();
+        readonly List<FakeMetalOffsetWrite> _offsetWrites = new();
 
         int _nextEncoder = 0x1000;
 
@@ -161,6 +163,39 @@ namespace KhaozEngine.Tests.Gpu
             if (!_live.Remove(encoder)) UnbalancedEncoderReleases++;
         }
 
+        /// <summary>
+        /// EVERY ARRAY CALL, WITH ITS CONTENTS, in the order it was emitted. The counts alone answer M-T2's
+        /// budget and nothing else: which INDICES a run covered, which handles went into them and what offset
+        /// each buffer got are the things the bind flush can be wrong about while emitting exactly the right
+        /// number of calls, and 2.2b's whole point is that being wrong about an index is a silent wrong pixel.
+        /// </summary>
+        internal IReadOnlyList<FakeMetalArrayWrite> ArrayWrites => _arrayWrites;
+
+        /// <summary>Every offsets-only rebind (M-R7), in order.</summary>
+        internal IReadOnlyList<FakeMetalOffsetWrite> OffsetWrites => _offsetWrites;
+
+        internal void ArrayWrite(MetalShaderStage stage, MetalIndexSpace space, IntPtr encoder, uint firstIndex,
+            ReadOnlySpan<IntPtr> objects, ReadOnlySpan<nuint> offsets)
+        {
+            // COPIED OUT DURING THE CALL, exactly as Metal copies them, because the real setters are handed
+            // pooled scratch arrays the flush reuses on the very next run. A fake that stored the spans by
+            // reference could not, and one that stored the arrays behind them would report the last run's
+            // contents for every row.
+            _arrayWrites.Add(new FakeMetalArrayWrite(
+                stage, space, encoder, firstIndex, objects.ToArray(), offsets.ToArray()));
+
+            _log.Add($"{space.Word()}s[{stage}] x{objects.Length} @{firstIndex}");
+            ArgumentTableWrites++;
+        }
+
+        internal void OffsetWrite(MetalShaderStage stage, IntPtr encoder, nuint offset, uint index)
+        {
+            _offsetWrites.Add(new FakeMetalOffsetWrite(stage, encoder, offset, index));
+
+            _log.Add($"bufferOffset[{stage}] {offset} @{index}");
+            ArgumentTableWrites++;
+        }
+
         internal void ArgumentTableWrite(string what)
         {
             _log.Add(what);
@@ -173,6 +208,31 @@ namespace KhaozEngine.Tests.Gpu
             DrawsAndDispatches++;
         }
     }
+
+    /// <summary>ONE ARRAY CALL AS IT WAS EMITTED (M-R6): which stage's table, which of the three index spaces,
+    /// the run's first index, and the contents.</summary>
+    /// <param name="Stage">Which stage's argument table.</param>
+    /// <param name="Space">Which of the three tables.</param>
+    /// <param name="Encoder">The encoder it went into, so a test can tell two passes apart.</param>
+    /// <param name="FirstIndex">The <c>NSRange</c>'s location.</param>
+    /// <param name="Objects">The handles, one per index in the run. Its length is the range's length.</param>
+    /// <param name="Offsets">The composed byte offsets, empty for the texture and sampler spaces, which carry
+    /// no window.</param>
+    internal readonly record struct FakeMetalArrayWrite(
+        MetalShaderStage Stage, MetalIndexSpace Space, IntPtr Encoder, uint FirstIndex, IntPtr[] Objects,
+        nuint[] Offsets)
+    {
+        /// <summary>One past the last index this run wrote.</summary>
+        internal uint EndIndex => FirstIndex + (uint)Objects.Length;
+    }
+
+    /// <summary>ONE OFFSETS-ONLY REBIND (M-R7).</summary>
+    /// <param name="Stage">Which stage's table.</param>
+    /// <param name="Encoder">The encoder it went into.</param>
+    /// <param name="Offset">The composed byte offset.</param>
+    /// <param name="Index">The buffer-table index whose existing binding it moves.</param>
+    internal readonly record struct FakeMetalOffsetWrite(
+        MetalShaderStage Stage, IntPtr Encoder, nuint Offset, uint Index);
 
     /// <summary>
     /// A command-buffer source that hands out opaque numbers and remembers what it lent and what came back, so

@@ -393,8 +393,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _device.Release();
         }
 
-        // The one place a command-buffer reading reaches the latch in this row. The site name travels in rather
-        // than being inferred downstream, which is what "latched at the fault site" means.
+        // The SYNCHRONOUS way a command-buffer reading reaches the latch. The other is the completion handler on
+        // every submitted buffer, through MetalCompletionErrorRoute, and the two are kept apart because they read
+        // different snapshots on different threads. The site name travels in rather than being inferred
+        // downstream, which is what "latched at the fault site" means.
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         MetalCommandBufferFault Drain(string site)

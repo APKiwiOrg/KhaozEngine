@@ -16,13 +16,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// correct on Vulkan and which the incumbent Metal backend already gets right. This is how the requirement is
     /// met with the timeline row still in flight.</para>
     ///
-    /// <para><b>AND IT IS THE SEAM ROW 5 REPLACES, LEFT DELIBERATELY WHERE ITS SIBLING LEFT ONE.</b> The timeline
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/571) makes <c>WaitForIdle</c> a
-    /// <c>waitUntilSignaledValue:timeoutMS:</c> on an <c>MTLSharedEvent</c>, with <c>DrainCount</c> and
-    /// <c>DrainMs</c> counted, and it adds its own entries to the teardown order the same way phase 3's row 5 added
-    /// two to its device's. What that row supersedes is this call site and not this reasoning: a blocking wait on
-    /// a committed buffer stays correct, it is simply neither counted nor bounded by a timeout, so it is the
-    /// weaker of the two and the one that goes.</para>
+    /// <para><b>THE TIMELINE TOOK <c>WaitForIdle</c> AND THIS KEPT THE TEARDOWN, WHICH IS NOT THE SPLIT ROW 5
+    /// PREDICTED.</b> That row (https://github.com/APKiwiOrg/KhaozEngine/issues/571) expected to supersede this
+    /// call site outright, on the reasoning that a blocking wait on a committed buffer is correct but neither
+    /// counted nor bounded, so it is the weaker of the two. It is the weaker one for <c>WaitForIdle</c>, which
+    /// row 7 duly moved to <c>waitUntilSignaledValue:timeoutMS:</c> with <c>DrainCount</c> and <c>DrainMs</c>
+    /// counted. It is the STRONGER one for teardown, and that is what row 7 found when it built the submit path:
+    /// a completed buffer proves everything committed to the queue before it has completed, INCLUDING work the
+    /// timeline allocated no value for, and M-W6's present command buffer is exactly that. A teardown that
+    /// waited only on the timeline would release the device with a present in flight.</para>
     ///
     /// <para><b>IT DOES NOT COUNT ITSELF, ON PURPOSE.</b> <c>GpuDeviceCounters.DrainCount</c> and
     /// <c>DrainMs</c> are the timeline row's to fill (M-G6), and a number written here from a different mechanism

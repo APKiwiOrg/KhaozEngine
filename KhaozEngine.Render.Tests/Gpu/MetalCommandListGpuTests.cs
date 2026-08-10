@@ -27,6 +27,19 @@ namespace KhaozEngine.Tests.Gpu
     /// <para><b>IT SITS IN <c>NativeDeviceLifecycle</c></b> because it builds a whole <c>MTLDevice</c> and queue
     /// beside the suite's own and registers that queue into the same four-slot process-static completion table,
     /// which is what the collection serialises.</para>
+    ///
+    /// <para><b>WHAT <c>Assert.Null(DeviceLossReason)</c> MEANS IN EVERY ROW BELOW, ONCE.</b> It is not the
+    /// channel a state-machine defect arrives on. Metal enforces its own rules (a second encoder while one is
+    /// open, an encoder on a committed buffer, a buffer committed twice) with DRIVER-SIDE FAILED ASSERTIONS that
+    /// abort the process, so those defects are observed as a CRASHED RUN and no assertion in this file is reached
+    /// at all. What this reads is the latch M-G4 fills from a command-buffer error reported asynchronously, and
+    /// it reads it BEST EFFORT: <c>WaitForIdle</c> returns on the shared event reaching the submitted value, and
+    /// Metal delivers completion handlers on its own thread in no order relative to that, so a failure latched
+    /// just after the drain reads null here. That is a FALSE NEGATIVE only, never a false alarm, and closing it
+    /// would mean the completion path counting or signalling something, which is exactly the ordering
+    /// responsibility M-F2 keeps off it and which no test is worth putting back. The routing from a completion to
+    /// the right device's latch is pinned exactly and deterministically by <c>MetalCompletionHandlerTests</c>
+    /// over a fake sink, which is where that claim belongs.</para>
     /// </summary>
     [Collection("NativeDeviceLifecycle")]
     public sealed class MetalCommandListGpuTests
@@ -155,9 +168,17 @@ namespace KhaozEngine.Tests.Gpu
             device.Submit(list);
             device.WaitForIdle();
 
-            // THE LOAD-BEARING ASSERTION. A missing endEncoding is not a wrong number here: the commit itself
-            // fails, and the failure arrives asynchronously through the completion handler into the latch, which
-            // is exactly the channel this row wired.
+            // WHAT THIS LINE ACTUALLY CLAIMS, because the mechanism is not the one it is easy to write down. A
+            // missing endEncoding never reaches the latch at all: Metal enforces the one-encoder rule with a
+            // DRIVER-SIDE FAILED ASSERTION that aborts the process, so that defect is observed as a crashed run
+            // and this line is never reached. What DeviceLossReason catches is the other kind, a command-buffer
+            // error reported asynchronously through the completion handler, and it catches it BEST EFFORT: the
+            // drain above returns when the shared event reaches the submitted value, while Metal runs completion
+            // handlers on its own thread in no order relative to that, so a failure latched a moment later reads
+            // null here. The window can only HIDE a failure, never invent one, and closing it would mean the
+            // completion path counting or signalling something, which is the ordering responsibility M-F2
+            // deliberately keeps off it. The routing itself is pinned exactly, and deterministically, by
+            // MetalCompletionHandlerTests over the fake sink. See the class summary.
             Assert.Null(device.Diagnostics.DeviceLossReason);
         }
 
@@ -165,7 +186,8 @@ namespace KhaozEngine.Tests.Gpu
         /// The submit path releases the buffer AFTER the commit rather than before it, and the queue retains a
         /// committed buffer until it completes, so a list disposed immediately after a submit cannot free one the
         /// GPU is running. Asserted by draining afterwards on a device that reports no loss: a premature release
-        /// shows up as a command-buffer failure or a crash rather than as a wrong number.
+        /// shows up as a crash or as a command-buffer failure rather than as a wrong number, and the class
+        /// summary says which half of that this row can actually see.
         /// </summary>
         [GpuFact]
         public void DisposingAListRightAfterSubmittingDoesNotDisturbTheWorkInFlight()

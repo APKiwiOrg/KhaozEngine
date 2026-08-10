@@ -413,11 +413,25 @@ exists only in the buffer space, so declaring one anywhere else would be dropped
 
 **A set resolves everything at creation and nothing at a bind.** A set is created once at load time and bound
 thousands of times a frame, so each binding comes out already carrying which argument table it goes in, the
-Objective-C object a bind writes, and the numbers a buffer bind composes its offset from: the ring the buffer was
-cut into, the window's own offset, and whether the caller's per-draw offset is added. The window is the range's
-size, or the buffer's own LOGICAL size for a bare buffer, which on a ring-backed uniform buffer is emphatically
-not its allocation. A staging texture is refused: it is a Shared `MTLBuffer` on this backend rather than an
-`MTLTexture`, so there is nothing to write into the texture table.
+resolved resource whose Objective-C object a bind writes, and the numbers a buffer bind composes its offset
+from: the window's own offset and whether the caller's per-draw offset is added. The window is the range's size,
+or the buffer's own LOGICAL size for a bare buffer, which on a ring-backed uniform buffer is emphatically not
+its allocation.
+
+**The two things a bind reads live are the handle and the uniform ring**, through the resource's own disposal
+guard rather than a copy taken at creation, because those two are exactly what disposal changes: a disposed
+buffer answers a nil handle and a null ring, and the ring's null is what stops a write reaching the
+`contents()` pointer of an `MTLBuffer` that has been released. So disposing a resource a set still names
+degrades that binding to an unbound slot rather than putting a released pointer in the argument table.
+
+**What a set refuses at creation.** A staging texture, because it is a Shared `MTLBuffer` on this backend rather
+than an `MTLTexture`, so there is nothing to write into the texture table. A resource that is already disposed,
+because a binding that starts out nil has no later point at which it could come right. A texture bound for a
+direction it was not created for, so a `TextureReadWrite` element needs `GpuTextureUsage.Storage` and a
+`TextureReadOnly` element needs `Sampled` (or `GenerateMipmaps`): a texture's Metal usage bits are fixed at
+creation and no view narrows or widens one here, so binding one without the bit it is read or written through is
+a validation abort rather than something the bind could arrange. And a layout or a set that has been DISPOSED is
+refused where it is handed out, since neither releases anything and the call would otherwise work.
 
 **Which stages a set binds for is decided by the binding table and NOT by the declared visibility flags.** The
 seam's `GpuShaderStages` is what the engine declared, the table is what the compiler did, and an element with no

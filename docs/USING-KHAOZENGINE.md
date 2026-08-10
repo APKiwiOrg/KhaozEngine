@@ -8890,9 +8890,16 @@ siblings are NARROWER than that: the native Vulkan and Direct3D 11 backends refu
 at layout creation, each for a reason that is real on its own API. So a dynamic structured element works on
 `MetalNative` alone today, and reconciling the seam's documented width with those two refusals is
 [#597](https://github.com/APKiwiOrg/KhaozEngine/issues/597): treat it as Metal-only until that lands.
-A set is resolved once when you create it, so a resource you dispose while a set still names it is a mistake with
-no later point at which it could come right, and a staging texture cannot be bound at all: it is a mappable
-buffer on this backend rather than a texture.
+
+**A set is resolved once when you create it, and what it refuses it refuses there.** A resource that is already
+disposed, a staging texture (it is a mappable buffer on this backend rather than a texture), and a texture bound
+for a direction it was not created for: a `GpuResourceKind.TextureReadWrite` element needs
+`GpuTextureUsage.Storage` on the texture and a `TextureReadOnly` element needs `Sampled`, exactly as the native
+Vulkan backend requires, because a Metal texture's usage bits are fixed at creation and binding one without the
+bit it is read or written through is a validation failure. Disposing a resource AFTER the set is built is not a
+refusal and not a dangling pointer either: the binding reads the resource's handle live, so it degrades to an
+unbound slot. Disposing the LAYOUT or the SET and then using it throws `ObjectDisposedException`, since neither
+owns anything native and the call would otherwise quietly work.
 
 **One creation the other backends accept is refused here, deliberately.** A buffer declaring both
 `GpuBufferUsage.UniformBuffer` and either structured usage throws at creation on `MetalNative`. Both Veldrid

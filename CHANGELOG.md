@@ -848,11 +848,30 @@ refusals is [#597](https://github.com/APKiwiOrg/KhaozEngine/issues/597).
 
 **A set resolves everything at creation and nothing at a bind**, because a set is created once at load time
 across 68 shipped call sites and bound thousands of times a frame. Each binding comes out as the argument table
-it belongs in, the Objective-C object the array setter writes, and the three numbers a buffer bind composes
-`frameBase + rangeOffset + callerDynamicOffset` from. The window is the range's size, or the buffer's own
-LOGICAL size for a bare buffer, which on a ring-backed uniform buffer is emphatically not its allocation. The
-declared `GpuShaderStages` is NOT what decides which stages get a bind: the index table is, and an element with
-no entry for a stage is not referenced by that stage's emitted function.
+it belongs in, the resolved resource whose Objective-C object the array setter writes, and the numbers a buffer
+bind composes `frameBase + rangeOffset + callerDynamicOffset` from. The window is the range's size, or the
+buffer's own LOGICAL size for a bare buffer, which on a ring-backed uniform buffer is emphatically not its
+allocation. The declared `GpuShaderStages` is NOT what decides which stages get a bind: the index table is, and
+an element with no entry for a stage is not referenced by that stage's emitted function.
+
+**The two values a bind reads live are the handle and the ring, and they are read through the resource's own
+disposal guard.** A binding holds the wrapper rather than a copy of what that wrapper answered at creation,
+because those two are exactly the values whose job is to change on disposal: a disposed buffer answers a nil
+handle AND a null ring, the second because the ring holds the `contents()` pointer of an `MTLBuffer` that has
+been released. Copying them at creation would have put that guard behind the set, so a set over a disposed
+ring-backed buffer would compose a frame base off a forgotten ring and write a released pointer into the
+argument table with nothing said. A resource disposed after the set is built now degrades to the nil-handle and
+unringed behaviour instead, and a resource that is ALREADY disposed is still refused at creation. Everything
+expensive stays resolved once: the kind, the type and device checks, the table position, the window arithmetic
+and whether the per-draw offset applies.
+
+**Three refusals a set or a layout adds, all at creation.** A texture bound for a direction it was not created
+for is refused by name (`TextureReadWrite` needs `GpuTextureUsage.Storage`, `TextureReadOnly` needs `Sampled`
+or `GenerateMipmaps`), which is `VulkanResourceSet`'s missing-view refusal reached through this backend's own
+route: there are no views here, so what stands in for one is the `MTLTextureUsage` the texture carries, and
+binding a texture with no `ShaderWrite` into a read-write slot is a validation abort under the debug layer. And
+a DISPOSED layout or set is refused with `ObjectDisposedException` where either is handed out, since neither
+type releases anything and the call would otherwise simply work while the caller believes it let the thing go.
 
 **Deduplicating the table is what makes M-R9's pipeline-switch comparison a handle compare.** Metal's argument
 tables are absolute and per encoder, so a bound resource survives a pipeline switch and what a switch can

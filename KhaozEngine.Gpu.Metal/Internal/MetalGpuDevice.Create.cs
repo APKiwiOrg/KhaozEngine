@@ -67,15 +67,21 @@ namespace KhaozEngine.Gpu.Metal.Internal
             var liveness = new MetalDeviceLiveness();
             var loss = new MetalDeviceLossLatch(liveness);
 
-            // THE DEVICE'S ONE COMPLETION TIMELINE (M-F1), created here because every fence sits on it and
-            // IGpuResourceFactory.CreateFence is row 6's. Row 5 built the subsystem and named this as the row
-            // that gives the device one (MetalTimeline.CreateFence's own doc says so). The command-list row
-            // (https://github.com/APKiwiOrg/KhaozEngine/issues/573) is what starts encoding signals into it at
-            // submit, so until that lands a fence is real and simply never armed.
-            var timeline = new MetalTimeline(new MetalSharedEvent(device.Handle), liveness);
+            // INSIDE THE TRY, and that is not tidiness. MetalSharedEvent's constructor throws when -newSharedEvent
+            // answers nil, and built above the try it would throw with the +1 queue held by nobody: the catch that
+            // releases the queue would never run and the queue would leak for the life of the process. The whole
+            // window between -newCommandQueue and the constructor taking over belongs to this try.
+            MetalTimeline? timeline = null;
 
             try
             {
+                // THE DEVICE'S ONE COMPLETION TIMELINE (M-F1), created here because every fence sits on it and
+                // IGpuResourceFactory.CreateFence is row 6's. Row 5 built the subsystem and named this as the row
+                // that gives the device one (MetalTimeline.CreateFence's own doc says so). The command-list row
+                // (https://github.com/APKiwiOrg/KhaozEngine/issues/573) is what starts encoding signals into it at
+                // submit, so until that lands a fence is real and simply never armed.
+                timeline = new MetalTimeline(new MetalSharedEvent(device.Handle), liveness);
+
                 MetalGpuDevice created = new(device, queue, ReadCapabilities(selected.Facts), liveness, loss,
                     timeline);
 
@@ -100,7 +106,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
             {
                 // Between -newCommandQueue and the constructor taking over, this method holds a +1 queue and a
                 // +1 shared event nothing else knows about. The device is the caller's to release on this path.
-                timeline.Dispose();
+                // The timeline is null when the shared event itself is what threw, which is the ordering above.
+                timeline?.Dispose();
                 queue.Release();
                 throw;
             }

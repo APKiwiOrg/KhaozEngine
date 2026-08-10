@@ -105,7 +105,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 MetalCompletionHandler.Register(queue.Handle, new MetalCompletionErrorRoute(loss));
                 registered = true;
 
-                MetalGpuDevice created = new(device, queue, ReadCapabilities(selected.Facts), liveness, loss,
+                MetalGpuDevice created = new(device, queue, ReadCapabilities(selected.Facts, device), liveness, loss,
                     timeline, new MetalUncommittedBuffers(framesInFlight), new MetalSetupNative(device, queue),
                     framesInFlight, new MetalStagingSource(device),
                     // M-N4's BUFFER-OFFSET ALIGNMENT, carried rather than re-read. The selection already refused
@@ -164,37 +164,23 @@ namespace KhaozEngine.Gpu.Metal.Internal
             }
         }
 
-        // Section 14's table, filled to the extent a device with no renderer on it can answer honestly. Row 16
-        // (https://github.com/APKiwiOrg/KhaozEngine/issues/582) owns the rest and the ZERO-permitted-difference
-        // parity test that pins all of it.
-        static GpuCapabilities ReadCapabilities(in MetalDeviceFacts facts)
-            => new(
-                // FALSE, and with no viewport trick needed, unlike the Vulkan sibling: Metal's clip space matches
-                // the engine's already (7.3).
-                clipSpaceYInverted: false,
-                depthRangeZeroToOne: true,
-                // VERBATIM and never trimmed. Section 14 inherits that from phase 3 by name: the incumbent takes
-                // -name as it comes, so a trim on the native path alone would fail parity on any device whose
-                // reported name carries padding.
-                deviceName: facts.DeviceName,
-                // TRUE, hardcoded, reproducing the incumbent's GraphicsDeviceFeatures(samplerAnisotropy: true).
-                samplerAnisotropy: true,
-                // FALSE, and it is the one capability that differs from BOTH other native backends, because
-                // MTLSamplerDescriptor has no LOD bias at all. Identical to the incumbent, which is the bar.
-                samplerLodBias: false,
-                // PINNED TO 1 rather than computed. M-C3 says the incumbent's own computation is what row 16
-                // reproduces, and a formula invented here would be a silent lie AntiAliasing.ResolveFor acts on.
-                maxMsaaSampleCount: 1,
-                // The incumbent's own QUESTION is "is R32_Float usable as both render target and sampled", and
-                // row 16 asks exactly that. Until then this reports the seam's own default rather than an answer
-                // derived from what the member's NAME suggests, which is the phase-3 correction section 14
-                // inherits by name.
-                supportsShadowMaps: true,
-                supportsCompute: true,
-                // TRUE, and it was already true: VeldridMap answers true for GraphicsBackend.Metal, so M-F4 is
-                // parity here rather than the upgrade it was on Direct3D 11. The mechanism behind it is the
-                // timeline row's (https://github.com/APKiwiOrg/KhaozEngine/issues/571).
-                supportsCompletionFences: true);
+        // Section 14's table, and the whole of it as of row 16
+        // (https://github.com/APKiwiOrg/KhaozEngine/issues/582). Every DECISION is in MetalCapabilityRead, which
+        // has no device in it and is driven device-free on every leg. What is left here is the two reads a device
+        // actually answers: its own -name, already in the probe's snapshot, and M-C3's sample-count walk.
+        //
+        // THE WALK IS TAKEN OFF THE DEVICE RATHER THAN OUT OF THE FACTS SNAPSHOT, deliberately. The snapshot is
+        // read for EVERY device on the machine by the KE_METAL_DEVICE enumeration, and a capability nothing in
+        // the selection decides on has no business costing six selector sends per candidate. The facts already
+        // carry the one sample-count answer the SELECTION needs (supportsTextureSampleCount:1, the floor this
+        // walk would otherwise fall through to).
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static GpuCapabilities ReadCapabilities(in MetalDeviceFacts facts, MTLDevice device)
+            => MetalCapabilityRead.Assemble(
+                facts.DeviceName,
+                MetalCapabilityRead.HighestSupportedSampleCount(
+                    count => device.SupportsTextureSampleCount((nuint)count)));
 
         // M-G3's report, taken before any device exists so it describes the PROCESS rather than the moment.
         [SupportedOSPlatform("macos")]

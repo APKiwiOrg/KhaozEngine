@@ -31,10 +31,17 @@ namespace KhaozEngine.Tests.Gpu
     /// <see cref="TheSpilledBaseVertexAndBaseInstanceLandWhereTheDriverReadsThem"/> issues ONE indexed draw whose
     /// <c>indexBufferOffset</c>, <c>baseVertex</c> and <c>baseInstance</c> each select a different piece of the
     /// same two buffers, and the vertex buffer is sized so that even the wrong index range lands on a real vertex
-    /// group rather than off the end. Dropping the offset paints yellow, dropping the base vertex paints magenta,
-    /// dropping the base instance paints green, and only all three landing correctly paints cyan. Undefined
-    /// behaviour is deliberately not part of the answer, because "it did not crash" is the evidence this file
-    /// exists to replace.</para>
+    /// group rather than off the end. Dropping the offset paints white, dropping the base vertex paints magenta,
+    /// dropping the base instance paints green, TRANSPOSING the two spilled arguments paints blue, and only all
+    /// three landing correctly paints cyan. Undefined behaviour is deliberately not part of the answer, because
+    /// "it did not crash" is the evidence this file exists to replace.</para>
+    ///
+    /// <para><b>THE TWO SPILLED ARGUMENTS CARRY DIFFERENT VALUES, WHICH IS THE WHOLE POINT OF THE ONE THEY BOTH
+    /// USED TO CARRY.</b> The first version of this row passed 3 for both, so swapping the two stack slots painted
+    /// cyan and the probe was blind to the one failure mode a stack-spilled pair has that a register pair does not.
+    /// They are 3 and 6 now. Both are multiples of THREE deliberately, because a base vertex that is not lands the
+    /// draw on a triangle straddling two groups, which interpolates two tints across the target and answers with a
+    /// fraction rather than with a colour.</para>
     ///
     /// <para><b>WHAT A RED RUN MEANS.</b> Every DECISION in the draw path is covered device-free by
     /// <c>MetalDrawPathTests</c> and <c>MetalIndexBindingTests</c>, which run on the free Linux leg on every
@@ -68,14 +75,14 @@ namespace KhaozEngine.Tests.Gpu
         /// <para><b>THE ARITHMETIC, SPELLED OUT, because the whole value of this row is that a reader can check
         /// it.</b> The vertex buffer holds FOUR groups of three vertices, each group a full-screen triangle
         /// carrying its own tint in <c>r</c> and <c>g</c>: group 0 red, group 1 green, group 2 neither, group 3
-        /// yellow. The per-instance buffer holds four tints whose only interesting channel is <c>b</c>, and only
-        /// instance 3 has it set. The index buffer holds <c>[6, 7, 8, 0, 1, 2]</c> as 16-bit elements. The draw
-        /// asks for 3 indices starting at element 3, with a base vertex of 3 and a base instance of 3.</para>
+        /// yellow. The per-instance buffer holds SEVEN tints whose only interesting channel is <c>b</c>, and only
+        /// instances 3 and 6 have it set. The index buffer holds <c>[6, 7, 8, 0, 1, 2]</c> as 16-bit elements. The
+        /// draw asks for 3 indices starting at element 3, with a base vertex of 3 and a base instance of 6.</para>
         ///
         /// <list type="bullet">
         /// <item><description><b>Correct:</b> the offset is <c>2 * 3 = 6</c> bytes, so the indices read are
         /// <c>0, 1, 2</c>. Base vertex 3 makes them vertices 3, 4 and 5, which is the GREEN group, and base
-        /// instance 3 makes the instance tint the one with blue set. The fragment writes
+        /// instance 6 makes the instance tint one with blue set. The fragment writes
         /// <c>(r, g, b) = (0, 1, 1)</c>: CYAN.</description></item>
         /// <item><description><b>Index offset dropped:</b> the indices read are <c>6, 7, 8</c>, which base vertex
         /// 3 turns into vertices 9, 10 and 11, the YELLOW group. The result is <c>(1, 1, 1)</c>, white, and NOT
@@ -84,9 +91,13 @@ namespace KhaozEngine.Tests.Gpu
         /// <c>(1, 0, 1)</c>: magenta.</description></item>
         /// <item><description><b>Base instance dropped:</b> instance 0's tint, whose blue channel is 0, giving
         /// <c>(0, 1, 0)</c>: green.</description></item>
+        /// <item><description><b>The two TRANSPOSED:</b> base vertex 6 and base instance 3, which is vertices 6, 7
+        /// and 8, the group carrying NEITHER r nor g, with instance 3's blue, giving <c>(0, 0, 1)</c>: blue. That
+        /// is the failure mode a spilled pair has and a register pair does not, and it is the reason instance 3
+        /// carries blue at all.</description></item>
         /// </list>
         ///
-        /// <para><b>AND THE FOUR OUTCOMES ARE FOUR DIFFERENT COLOURS, which is the property that makes this a
+        /// <para><b>AND THE FIVE OUTCOMES ARE FIVE DIFFERENT COLOURS, which is the property that makes this a
         /// measurement rather than an assertion.</b> A test whose only failure mode was "black" could not tell a
         /// misplaced argument from a pipeline that never bound, and the design's own row-17 note records that a
         /// <c>[GpuFact]</c> asserting no-throw is how the all-black splat terrain shipped.</para>
@@ -109,8 +120,10 @@ namespace KhaozEngine.Tests.Gpu
                 list.SetVertexBuffer(1, fixture.Instances);
                 list.SetIndexBuffer(fixture.Indices, GpuIndexFormat.UInt16);
 
+                // THE TWO SPILLED ARGUMENTS ARE DIFFERENT NUMBERS, so a transposition of the two stack slots is a
+                // different colour rather than the same one.
                 list.DrawIndexed(indexCount: 3, instanceCount: 1, indexStart: 3, vertexOffset: 3,
-                    instanceStart: 3);
+                    instanceStart: 6);
 
                 list.End();
                 device.Submit(list);
@@ -123,7 +136,8 @@ namespace KhaozEngine.Tests.Gpu
             Color texel = ReadFirstTexel(device, fixture.Target);
             _output.WriteLine($"indexed draw read back {texel}, wanted cyan (0,1,1). "
                 + "White means the index-buffer offset did not land, magenta means the base vertex did not, "
-                + "green means the base instance did not.");
+                + "green means the base instance did not, and blue means the two spilled arguments are "
+                + "transposed.");
 
             Assert.Equal(new Color(0f, 1f, 1f, 1f), texel);
         }
@@ -502,6 +516,12 @@ void main() { Values[gl_GlobalInvocationID.x] = Values[gl_GlobalInvocationID.x] 
             /// <summary>Four floats of tint.</summary>
             internal const uint InstanceStride = 4 * sizeof(float);
 
+            /// <summary>How many per-instance tints there are. SEVEN rather than four, because the ABI probe's
+            /// base instance is 6: the two spilled arguments have to be different numbers for a transposition to
+            /// be visible, and both have to be multiples of three for the transposed base VERTEX to land on a
+            /// whole group.</summary>
+            internal const uint InstanceTints = 7;
+
             readonly List<IGpuResourceLayout> _layouts = new();
 
             internal DrawFixture(MetalGpuDevice device)
@@ -542,7 +562,7 @@ void main() { Values[gl_GlobalInvocationID.x] = Values[gl_GlobalInvocationID.x] 
                 Vertices = factory.CreateBuffer(
                     new GpuBufferDescription(12 * VertexStride, GpuBufferUsage.VertexBuffer));
                 Instances = factory.CreateBuffer(
-                    new GpuBufferDescription(4 * InstanceStride, GpuBufferUsage.VertexBuffer));
+                    new GpuBufferDescription(InstanceTints * InstanceStride, GpuBufferUsage.VertexBuffer));
                 Indices = factory.CreateBuffer(
                     new GpuBufferDescription(6 * sizeof(ushort), GpuBufferUsage.IndexBuffer));
 
@@ -608,11 +628,18 @@ void main() { Values[gl_GlobalInvocationID.x] = Values[gl_GlobalInvocationID.x] 
                 return data.ToArray();
             }
 
-            // FOUR INSTANCE TINTS whose only interesting channel is blue, and only the LAST has it set.
+            // SEVEN INSTANCE TINTS whose only interesting channel is blue, and only entries 3 and 6 have it set.
+            // Entry 6 is the ABI probe's base instance and entry 3 is what a TRANSPOSITION of the two spilled
+            // arguments reads instead, so both carry blue: with entry 3 dark the transposed case would paint
+            // black, which is also what a pipeline that never bound paints. Entry 3 is what the two stream-offset
+            // rows above bind at.
             static ReadOnlySpan<float> InstanceData()
                 =>
                 [
                     0f, 0f, 0f, 1f,
+                    0f, 0f, 0f, 1f,
+                    0f, 0f, 0f, 1f,
+                    0f, 0f, 1f, 1f,
                     0f, 0f, 0f, 1f,
                     0f, 0f, 0f, 1f,
                     0f, 0f, 1f, 1f,

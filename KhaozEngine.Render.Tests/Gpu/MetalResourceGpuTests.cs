@@ -593,19 +593,27 @@ namespace KhaozEngine.Tests.Gpu
             // about the member having really started working rather than having changed its message.
             factory.CreateResourceLayout(default).Dispose();
 
-            Assert.Contains("577", Refusal(() => factory.CreateGraphicsPipeline(default)),
+            // AND BOTH PIPELINES ARE LIVE AS OF ROW 11, so the probe moves off them too. What replaces the
+            // refusal is the one an empty description actually has, which is a NAMED refusal about the missing
+            // shader set rather than an unbuilt path: a pipeline is created FROM a compiled program, so there is
+            // no default that could succeed. Asserting the new message is what keeps this row honest about the
+            // member having started working rather than having changed its wording.
+            Assert.Contains("was given no shader set", Refusal(() => factory.CreateGraphicsPipeline(default)),
                 StringComparison.Ordinal);
-            Assert.Contains("578", Refusal(() => factory.CreateFramebuffer(null)), StringComparison.Ordinal);
+            Assert.Contains("was given no compute shader",
+                Refusal(() => factory.CreateComputePipeline(default)), StringComparison.Ordinal);
 
-            // The pipeline row is now the first one on this factory that still refuses, so it is what carries the
-            // message naming every landed row as live.
-            string pipelines = Refusal(() => factory.CreateGraphicsPipeline(default));
-            _output.WriteLine(pipelines);
-            Assert.Contains("Buffers, textures, samplers and fences ARE live", pipelines,
+            // The framebuffer row is now the only member on this factory that still refuses, so it is what
+            // carries the message naming every landed row as live.
+            string framebuffer = Refusal(() => factory.CreateFramebuffer(null));
+            _output.WriteLine(framebuffer);
+            Assert.Contains("578", framebuffer, StringComparison.Ordinal);
+            Assert.Contains("Buffers, textures, samplers and fences ARE live", framebuffer,
                 StringComparison.Ordinal);
-            Assert.Contains("573", pipelines, StringComparison.Ordinal);
-            Assert.Contains("575", pipelines, StringComparison.Ordinal);
-            Assert.Contains("576", pipelines, StringComparison.Ordinal);
+            Assert.Contains("573", framebuffer, StringComparison.Ordinal);
+            Assert.Contains("575", framebuffer, StringComparison.Ordinal);
+            Assert.Contains("576", framebuffer, StringComparison.Ordinal);
+            Assert.Contains("577", framebuffer, StringComparison.Ordinal);
         }
 
         static IGpuDevice CreateHeadless() => new MetalBackendProvider().CreateHeadless().Device;

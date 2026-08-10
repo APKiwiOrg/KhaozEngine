@@ -61,6 +61,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// surface: the seam sees only <see cref="Signaled"/>.</summary>
         internal ulong Target => _target;
 
+        /// <summary>
+        /// THE TIMELINE THIS FENCE'S VALUE IS A POINT ON, which the submit path compares by REFERENCE against its
+        /// own. Each device has exactly one timeline (M-F1), so timeline identity is device identity, and a fence
+        /// from another native Metal device would otherwise be armed with a value on the wrong counter and report
+        /// <see cref="Signaled"/> about work this device never ran.
+        /// </summary>
+        internal MetalTimeline Timeline => _owner;
+
         /// <inheritdoc/>
         public bool Signaled
         {

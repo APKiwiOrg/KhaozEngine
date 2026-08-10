@@ -50,6 +50,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         readonly IMetalCommandBufferSource _buffers;
         readonly MetalUncommittedBuffers _uncommitted;
         readonly MetalEncoderScope _encoders;
+        readonly object _owner;
 
         // The RETAINED buffer this list holds, or Zero when it holds none. One field for both states a held
         // buffer can be in (recording, and sealed but not yet submitted) because the ownership question is the
@@ -66,17 +67,35 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// asserted over.</param>
         /// <param name="sink">The budget seam every encoder boundary emits through
         /// (<see cref="IMetalEncoderSink"/>).</param>
+        /// <param name="owner">The device that created this list, held as an opaque token and compared by
+        /// REFERENCE at the submit. See <see cref="Owner"/>.</param>
         internal MetalCommandList(IMetalCommandBufferSource buffers, MetalUncommittedBuffers uncommitted,
-            IMetalEncoderSink sink)
+            IMetalEncoderSink sink, object owner)
         {
             ArgumentNullException.ThrowIfNull(buffers);
             ArgumentNullException.ThrowIfNull(uncommitted);
             ArgumentNullException.ThrowIfNull(sink);
+            ArgumentNullException.ThrowIfNull(owner);
 
             _buffers = buffers;
             _uncommitted = uncommitted;
             _encoders = new MetalEncoderScope(sink);
+            _owner = owner;
         }
+
+        /// <summary>
+        /// THE DEVICE THIS LIST WAS CREATED BY, which is what makes the submit path's refusal a statement about
+        /// identity rather than about type. A process can hold up to
+        /// <see cref="MetalCompletionHandler.MaxRegisteredQueues"/> live native Metal devices, so "is a
+        /// <see cref="MetalCommandList"/>" and "is THIS device's command list" are genuinely different questions
+        /// and only the second one is the one worth asking.
+        /// <para>
+        /// AN OPAQUE TOKEN RATHER THAN A TYPED DEVICE, so this type stays constructible with no <c>MTLDevice</c>
+        /// anywhere and the recording contract keeps running on the Linux and Windows legs. Reference identity is
+        /// all the submit path compares, and the device passes <c>this</c>.
+        /// </para>
+        /// </summary>
+        internal object Owner => _owner;
 
         /// <summary>
         /// THE ENCODER LIFECYCLE (M-R1, M-R4). Exposed because rows 12, 13 and 14 drive every one of their

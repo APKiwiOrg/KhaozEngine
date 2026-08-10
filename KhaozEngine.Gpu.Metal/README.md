@@ -178,6 +178,13 @@ all under one lock. There is no engine-owned op stream: an `MTLCommandBuffer` be
 `commit` IS a driver-encoded command stream, so recording into a managed array first would encode twice and
 move the driver-side encode inside the submit lock.
 
+**A list and a fence are refused by IDENTITY rather than by type**, because a process can hold up to four live
+native Metal devices and a type check passes another one's. A cross-device submit would commit another queue's
+buffer while holding this device's lock, with this device's shared event encoded into it, and a cross-device
+fence is worse for being silent: it polls the wrong counter and reads signalled for work this device never ran.
+So a list carries the device that created it, a fence carries the timeline it names a value on, and both are
+compared by reference at the submit.
+
 **There is no command-buffer pool either, and that is where this backend diverges from the Vulkan one.** A
 Vulkan list owns `FramesInFlight` command pools because a pool cannot be reset while its buffers are in flight.
 A Metal command buffer is single-use, the queue owns its memory, and there is no reset, no pool object and no

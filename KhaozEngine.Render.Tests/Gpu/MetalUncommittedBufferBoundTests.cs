@@ -25,7 +25,7 @@ namespace KhaozEngine.Tests.Gpu
     public sealed class MetalUncommittedBufferBoundTests
     {
         static MetalCommandList NewList(FakeMetalCommandBufferSource buffers, MetalUncommittedBuffers uncommitted)
-            => new(buffers, uncommitted, new FakeMetalEncoderSink(new FakeMetalEncoderCalls()));
+            => new(buffers, uncommitted, new FakeMetalEncoderSink(new FakeMetalEncoderCalls()), new object());
 
         [Fact]
         public void TheBoundIsTheFrameDepthPlusThePresentBuffer()

@@ -22,7 +22,10 @@ namespace KhaozEngine.Tests.Gpu
             FakeMetalCommandBufferSource buffers = new();
             FakeMetalEncoderCalls calls = new();
             MetalUncommittedBuffers uncommitted = new(framesInFlight, new RecordingLogger());
-            MetalCommandList list = new(buffers, uncommitted, new FakeMetalEncoderSink(calls));
+
+            // The owner is an opaque token here, which is all the submit path compares it as. Whose it is, and
+            // what a list from ANOTHER device's token gets, is MetalSubmitTargetIdentityTests.
+            MetalCommandList list = new(buffers, uncommitted, new FakeMetalEncoderSink(calls), new object());
             return (list, buffers, calls, uncommitted);
         }
 
@@ -359,12 +362,15 @@ namespace KhaozEngine.Tests.Gpu
         {
             MetalUncommittedBuffers uncommitted = new(MetalFramesInFlight.Default, new RecordingLogger());
             FakeMetalEncoderSink sink = new(new FakeMetalEncoderCalls());
+            object owner = new();
 
-            Assert.Throws<ArgumentNullException>(() => new MetalCommandList(null!, uncommitted, sink));
+            Assert.Throws<ArgumentNullException>(() => new MetalCommandList(null!, uncommitted, sink, owner));
             Assert.Throws<ArgumentNullException>(
-                () => new MetalCommandList(new FakeMetalCommandBufferSource(), null!, sink));
+                () => new MetalCommandList(new FakeMetalCommandBufferSource(), null!, sink, owner));
             Assert.Throws<ArgumentNullException>(
-                () => new MetalCommandList(new FakeMetalCommandBufferSource(), uncommitted, null!));
+                () => new MetalCommandList(new FakeMetalCommandBufferSource(), uncommitted, null!, owner));
+            Assert.Throws<ArgumentNullException>(
+                () => new MetalCommandList(new FakeMetalCommandBufferSource(), uncommitted, sink, null!));
         }
 
         /// <summary>

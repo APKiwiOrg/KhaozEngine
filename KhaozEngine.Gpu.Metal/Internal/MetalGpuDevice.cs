@@ -126,7 +126,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal MetalCommandList CreateCommandList()
-            => new(_commandBuffers, _uncommitted, new MetalEncoderSink());
+            => new(_commandBuffers, _uncommitted, new MetalEncoderSink(), this);
 
         /// <inheritdoc/>
         /// <remarks>M-G2's <c>softwareAdapter</c> is ALWAYS false with confidence rather than null, because Apple
@@ -206,15 +206,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             ArgumentNullException.ThrowIfNull(cl);
 
-            if (cl is not MetalCommandList list)
-            {
-                throw new ArgumentException(
-                    "That command list was not created by this native Metal device, so it holds no "
-                    + "MTLCommandBuffer to commit. Create command lists through the device you submit them to.",
-                    nameof(cl));
-            }
-
-            MetalGpuFence? armed = fence is null ? null : RequireFence(fence);
+            MetalCommandList list = RequireList(cl, this);
+            MetalGpuFence? armed = fence is null ? null : RequireFence(fence, _timeline);
 
             // READ BEFORE THE LOCK so a list with no sealed recording is refused by name rather than inside the
             // one serialised point in the frame.
@@ -257,10 +250,61 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _commandBuffers.Release(buffer);
         }
 
-        static MetalGpuFence RequireFence(IGpuFence fence)
-            => fence as MetalGpuFence ?? throw new ArgumentException(
+        /// <summary>
+        /// The list <paramref name="cl"/> is, or a refusal naming <paramref name="device"/> as the one that had to
+        /// have created it.
+        /// <para>
+        /// IDENTITY, NOT TYPE, AND THE DIFFERENCE IS NOT THEORETICAL. A process can hold up to
+        /// <see cref="MetalCompletionHandler.MaxRegisteredQueues"/> live native Metal devices at once, and a type
+        /// check passes a list belonging to ANOTHER one of them. Committing that list here would take this
+        /// device's submit lock and then commit a buffer on the other device's queue, encoding this timeline's
+        /// shared event into it: two devices would be committing to that queue in an order neither lock orders, so
+        /// <see cref="MetalTimeline.LastSubmitted"/> would stop meaning what it says on both of them. Reference
+        /// identity is what makes the message that was always written here true.
+        /// </para>
+        /// <para>
+        /// STATIC AND TAKING THE OWNER, so the whole decision is device-free and a plain <c>[Fact]</c> drives it
+        /// with two owners on a machine with no Metal. That is the same split the completion path takes with
+        /// <see cref="MetalCompletionHandler.Deliver"/>.
+        /// </para>
+        /// </summary>
+        internal static MetalCommandList RequireList(IGpuCommandList cl, object device)
+        {
+            if (cl is MetalCommandList list && ReferenceEquals(list.Owner, device)) return list;
+
+            throw new ArgumentException(
+                "That command list was not created by this native Metal device, so it holds no MTLCommandBuffer "
+                + "this device's queue can commit. Create command lists through the device you submit them to. A "
+                + "list from a DIFFERENT native Metal device is refused here too, by reference rather than by "
+                + "type: committing it would encode this device's shared event into a buffer belonging to another "
+                + "queue, outside the lock that orders that queue's commits, and submit order is the observable "
+                + "order only while every commit to a queue goes through one lock.",
+                nameof(cl));
+        }
+
+        /// <summary>
+        /// The fence <paramref name="fence"/> is, or a refusal naming <paramref name="timeline"/> as the one it had
+        /// to have been created on. Identity for the same reason as <see cref="RequireList"/>, and each device has
+        /// exactly one timeline (M-F1), so timeline identity is device identity.
+        /// <para>
+        /// THE FAILURE THIS PREVENTS IS SILENT. A fence armed against another device's counter is not a crash and
+        /// not an exception: it reports <see cref="IGpuFence.Signaled"/> as soon as THAT device happens to reach
+        /// the value, which is work this device never ran, and a consumer polling it frees resources the GPU here
+        /// is still reading.
+        /// </para>
+        /// </summary>
+        internal static MetalGpuFence RequireFence(IGpuFence fence, MetalTimeline timeline)
+        {
+            if (fence is MetalGpuFence mine && ReferenceEquals(mine.Timeline, timeline)) return mine;
+
+            throw new ArgumentException(
                 "That fence was not created by this native Metal device, so it names no value on this device's "
-                + "timeline. Create fences through the device you submit against.", nameof(fence));
+                + "timeline. Create fences through the device you submit against. A fence from a DIFFERENT native "
+                + "Metal device is refused here too, by reference rather than by type: arming it would point it at "
+                + "a value on the other device's counter, and it would then read signalled for work this device "
+                + "never ran.",
+                nameof(fence));
+        }
 
         /// <summary>
         /// Block until the GPU is idle. A SAFE NO-OP after the device is dead (M-F6): a torn-down or lost device

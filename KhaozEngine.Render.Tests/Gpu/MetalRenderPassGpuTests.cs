@@ -258,6 +258,13 @@ namespace KhaozEngine.Tests.Gpu
             ArgumentException emptyRefusal = Assert.Throws<ArgumentException>(
                 () => device.Factory.CreateFramebuffer(null));
             Assert.Contains("at least one attachment", emptyRefusal.Message, StringComparison.Ordinal);
+
+            // A NULL ELEMENT INSIDE THE ARRAY, which the array's own null check does not see. It is refused by
+            // the attachment's parameter name rather than reaching the ownership cast, whose wrong-backend
+            // message dereferences the resource to build itself.
+            ArgumentNullException nullRefusal = Assert.Throws<ArgumentNullException>(
+                () => device.Factory.CreateFramebuffer(null, colour, null!));
+            Assert.Equal("colour", nullRefusal.ParamName);
         }
 
         /// <summary>The framebuffer reports the attachment formats a matching pipeline is created from, which is

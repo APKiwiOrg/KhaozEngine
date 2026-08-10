@@ -48,9 +48,18 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <param name="resource">The seam resource the caller passed.</param>
         /// <param name="owner">The calling device's liveness token, which is its identity.</param>
         /// <param name="parameterName">The entry point's own parameter name, for the exception.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="resource"/> is null.</exception>
         internal static T Require<T>(object resource, IMetalDeviceLiveness owner, string parameterName)
             where T : class, IMetalOwnedResource
         {
+            // NULL IS ASKED FIRST, because the wrong-backend arm below cannot answer it: `resource is not T`
+            // passes for null and the message it builds reads resource.GetType(), so a null argument came back as
+            // a NullReferenceException from inside the refusal that exists to name the problem. An entry point
+            // taking a params array of seam resources makes that trivially reachable from a caller, and the
+            // caller's own parameter name is what the exception carries, because "resource" is this helper's word
+            // and not theirs.
+            ArgumentNullException.ThrowIfNull(resource, parameterName);
+
             if (resource is not T typed)
             {
                 throw new ArgumentException(

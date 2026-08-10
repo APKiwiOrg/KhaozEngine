@@ -125,6 +125,17 @@ namespace KhaozEngine.Tests.Gpu
                         + "the state the guard exists to make impossible.");
                     Assert.False(File.Exists(path));
                 }
+                else
+                {
+                    // THE ARM THAT WOULD OTHERWISE ASSERT NOTHING. Without this, a run launched with
+                    // MTL_CAPTURE_ENABLED=1 where Start had broken would skip the block above (enabled is true)
+                    // and the block below (started is false), so the one leg that can prove the capture path
+                    // works would pass having checked nothing at all.
+                    Assert.True(started,
+                        "Metal supports the GPU-trace destination in this process, so the capture had to start. A "
+                        + "false here is the queue pointer, the descriptor or the start call itself being wrong, "
+                        + "and it is the regression this row exists to catch.");
+                }
 
                 MetalFrameCapture.Stop(device.WaitForIdle);
 

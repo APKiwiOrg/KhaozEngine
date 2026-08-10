@@ -335,13 +335,18 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
                 _timeline.RegisterSubmitted(value);
                 fence?.Arm(value);
+
+                // INSIDE THE LOCK, which is what this member's own doc has always said and what the ring's gate
+                // needs to be true. The value travels with it because two subsystems gate on exactly the value
+                // the submission that read them signals: the list's staging arena for its blocks (M-M8), and the
+                // uniform ring for the segment this recording captured (M-M3). Doing it after the release of the
+                // lock would leave a window in which a concurrent Begin could rotate onto that segment before it
+                // had an owner, and at a depth of one that window is a single Begin wide.
+                list.MarkSubmitted(value);
             }
 
             // AFTER the commit and outside the lock: the queue retains a committed buffer until it completes, so
             // this cannot free one the GPU is running, and the release is not something the ordering depends on.
-            // The value travels with it, because the list's staging arena gates its own recycling on exactly the
-            // value the submission that read those blocks signals (M-M8).
-            list.MarkSubmitted(value);
             _commandBuffers.Release(buffer);
         }
 

@@ -1660,7 +1660,9 @@ and kept. The `IGpuBuffer` identity NEVER changes and the frame base is applied 
   `offset` slot of its array call, or through `setBufferOffset:` on an offsets-only rebind (M-R7).
 - Frame N uses segment `N % FramesInFlight`. Before handing out a segment the ring reads the timeline value the
   frame that last owned it recorded and blocks if it has not been reached, counting the stall into
-  `BackpressureStallCount` and `BackpressureStallMs`.
+  `BackpressureStallCount` and `BackpressureStallMs`. (**The unit in this bullet is wrong and the mechanism is
+  right**: rotation happens per RECORDING, not per frame, and the owner is recorded at the submit. See the
+  second row-8 addendum below, which is the operative text.)
 
 **Why the stride is 256 and not the device's 16 (M-M3).** The incumbent's
 `GetUniformBufferMinOffsetAlignmentCore` answers `MetalFeatures.IsMacOS ? 16u : 256u`, so a device-derived
@@ -1710,7 +1712,7 @@ That combination is vacuous in the engine today and legal on the seam, and both 
 it is a **backend-divergent creation failure** documented as one in the package README rather than discovered
 by a consumer.
 
-**Addendum, at row 8: the frame boundary is `MetalCommandList.Begin`, and this section never said where it
+**Addendum, at row 8: the rotation boundary is `MetalCommandList.Begin`, and this section never said where it
 was.** Everything above describes what happens when a segment is acquired and nothing says who acquires it. On
 both siblings the answer is `Present`, and copying that by analogy would have been wrong here for a reason
 neither of them has. Each of those backends carries a SECOND per-frame index that advances at the list's own
@@ -1724,6 +1726,46 @@ drive. So `Begin` closes the outgoing segment, advances, and waits, which also m
 recording that can block and makes `BackpressureStallCount` single-sourced by construction rather than by
 convention. **The consequence for M-W6 is that row 15 adds NO second call at the present boundary**, and a
 windowed frame reaches the acquire through `Begin` exactly as a headless one does.
+
+**Second addendum, at row 8's review: the reasoning above stands and its VOCABULARY does not, so the model is
+per RECORDING and this is the operative text for everything above it.** The addendum reasoned about where the
+boundary goes and then kept calling what rotates a frame. It is not one. `Begin` rotates, and shipped engine
+paths open several lists per frame: `Render3DPreview.Capture` (one per capture), `OceanFftProducer`'s prime pass
+(one per producer run), and `RetireBarrier.Submit` (one per barrier, and the barrier exists whenever the backend
+reports completion fences, which this one unconditionally does). So a segment is not a frame's uniforms. It is
+**one recording's version of them**, written by that recording and read by its submission, and that is the
+invariant M-M7's race closure actually needs. It is also frame-shape independent, which is why this is a
+vocabulary correction rather than a redesign. Five things follow and all five are implemented:
+
+1. **Each recording CAPTURES its segment at `Begin`** and every record-time write, plus row 13's bind-offset
+   composition when it lands, is composed against the capture rather than against the allocator's live index. A
+   second list's `Begin` moves that index, so a recording that re-read it could write two versions and bind a
+   third. This is not a second per-list index in M-R2's sense: nothing advances per list, and the list merely
+   remembers which version it targets. The allocator's live index survives for the two DEVICE-level callers that
+   genuinely have no recording, the every-segment write and `Map`.
+2. **Segment ownership is recorded at the SUBMIT**, with the value that submission encodes, through
+   `MetalCommandList.MarkSubmitted`. Reading `LastSubmitted` when a segment stopped being current under-records
+   an ordinary interleaving: a list that ends, lets another list's `Begin` rotate past it and only then submits
+   takes a value ABOVE the one its segment was closed at, so the wrap back would wait for the earlier value and
+   write into a segment a live submission was still reading. A recording abandoned without a submit leaves the
+   owner untouched, so the gate can never wait on a value nothing will signal.
+3. **The rotation is one atomic step under the submit lock.** The index advance was a plain `++` while
+   `MetalBackpressure` documents concurrent `Begin` as supported, and the old four-step sequence spanned three
+   synchronisation regimes. Advance, owner read, claim, patch replay and publish now happen in one hold. The hold
+   is DROPPED across the wait and the owner is re-read afterwards, for two reasons that both bite: the wait is up
+   to a submission long on the one serialised point in the frame, and point 2 above puts the value being waited
+   for under that same lock, so holding it would deadlock against the only submission that could end the wait.
+   The re-read is what catches a recording that captured this segment earlier and submits DURING the wait.
+4. **`KE_METAL_FRAMES_IN_FLIGHT` keeps its name and stops meaning frames.** The depth buys N recordings of
+   headroom, and frames of headroom is N divided by the recordings a frame makes, which is a property of the
+   consumer rather than of this backend. The name is kept because a consumer tuning it has met it on both sibling
+   backends. The package README, `docs/USING-KHAOZENGINE.md` and the session-log line all say recordings now, and
+   a test pins the log line's wording, because that line is what a capture's depth is read out of.
+5. **MM4's exit criterion has to be evaluated against the real recordings-per-frame count** of the scene it is
+   measured on. Three segments against a frame that opens four lists is under one frame of headroom, so a zero
+   there is a much stronger result than a zero against a frame that opens one, and a non-zero may be saying the
+   frame opens more lists than anyone counted rather than that the depth is wrong. That row of the bets table
+   carries the same sentence.
 
 ### 9.3 Bulk uploads, textures and views (M-M8 to M-M10)
 
@@ -2578,7 +2620,7 @@ possible should find the row saying so.
 | MM1 | The ring removes the encoder-split-per-record-time-write class (2.1), and that class is the dominant per-frame cost the incumbent carries. **The MAGNITUDE is unmeasured**: nobody has counted how many record-time `UpdateBuffer` calls per frame the #410 scene makes on Metal, and two releases of renderer-side engineering have already hoisted most of them out of the frame | Count record-time `UpdateBuffer` calls, encoder boundaries and record-time buffer allocations per frame on the #410 scene ON THE INCUMBENT first, through a throwaway instrumented build. Then the same three on the native backend | None. The ring is not optional (9.2), and M-M7 makes it a correctness change, so there is no in-backend fallback to hold | Native encoder boundaries per frame at or below the framebuffer-change count plus the compute and blit passes the frame genuinely needs, native record-time allocations at zero, and frame time no worse than gate 4's baseline. If the incumbent's counts turn out near zero already, the ring is still taken for M-M7 and this bet is **RECORDED AS NOT PAYING** rather than quietly forgotten | Gate 4 |
 | MM2 | Per-attachment clears (M-A2) either do not move a committed metal golden, or move exactly the ones two unwritten attachments can explain | All 36 goldens with `KE_METAL_CLEAR` in both positions on the same build, on the first green run | `KE_METAL_CLEAR=attachment0` reproduces the incumbent exactly | Both positions green, OR exactly the scenes whose framebuffer has more than one colour target differ and the difference is explained by two attachments going from Load to Clear. **A difference anywhere else means something other than this clause moved.** By M-RO4's sort it is a branch inside one implementation, so it is removed at its gate and the losing branch deleted whichever way it goes | **Gate 1. Removed there** |
 | MM3 | The array-batched flush (M-R6) collapses a full activation to one call per (kind, stage) and an offsets-only rebind to one per visible stage, with zero encoder boundaries between two draws in one pass | The device-free budget test (M-T2), confirmed on the first green run and then frozen as marginals | None needed. A call-count property with no runtime risk | The first green run's measured marginals are recorded in this document and become the frozen numbers, INCLUDING the vertex-stream marginal, which is a regression target rather than a parity target | Gate 3 |
-| MM4 | `FramesInFlight = 3` is enough that ring backpressure never blocks the CPU, and `maximumDrawableCount = 3` is enough that the drawable acquire does not become the frame's pacing | `BackpressureStallCount` and `BackpressureStallMs` for the ring, `AcquireWaitCount` and `AcquireWaitMs` for the drawable. **The second pair is expected to be non-zero under vsync and that is not a failure**: a vsync-paced frame SHOULD wait for a drawable, so the gate reads the UNCAPPED capture | `KE_METAL_FRAMES_IN_FLIGHT=<n>`, owned by row 7 | Ring stall count zero across a full capture window, and acquire wait per frame near zero on the uncapped capture. A non-zero ring stall means 3 is wrong, not that the design is | Gate 4. A TUNING KNOB by M-RO4's sort, so it may survive as a knob, but only if the exit criterion was met at its DEFAULT. A knob is not a way to ship a failed default |
+| MM4 | `FramesInFlight = 3` is enough that ring backpressure never blocks the CPU, and `maximumDrawableCount = 3` is enough that the drawable acquire does not become the frame's pacing | `BackpressureStallCount` and `BackpressureStallMs` for the ring, `AcquireWaitCount` and `AcquireWaitMs` for the drawable. **The second pair is expected to be non-zero under vsync and that is not a failure**: a vsync-paced frame SHOULD wait for a drawable, so the gate reads the UNCAPPED capture | `KE_METAL_FRAMES_IN_FLIGHT=<n>`, owned by row 7 | Ring stall count zero across a full capture window, and acquire wait per frame near zero on the uncapped capture. A non-zero ring stall means 3 is wrong, not that the design is. **Read the ring half against the capture's RECORDINGS-PER-FRAME count** (row 8's second addendum in 9.2): the depth buys 3 recordings of headroom, not 3 frames, and a frame that opens four command lists has under one frame of headroom at the default, so the count of lists the measured scene opens is part of the reading and goes in the record beside it | Gate 4. A TUNING KNOB by M-RO4's sort, so it may survive as a knob, but only if the exit criterion was met at its DEFAULT. A knob is not a way to ship a failed default |
 | MM5 | (observation, not a bet) **Automatic hazard tracking (M-H1) costs conservatism that nothing in this design measures**, and the cost cannot be priced at all because there is no safe untracked build to A/B against. The driver may serialise two encoders that could have overlapped, and there is no counter for lost overlap. Frame time against the incumbent measures the two configurations TOGETHER, since the incumbent is also tracked | None available in v1. A GPU trace in Xcode's frame debugger would show it and is not a CI instrument | n/a. `MTLResourceHazardTrackingModeUntracked` on an individual resource is the escape hatch, and taking it means writing the barriers for that resource | Recorded so a reader does not mistake "no barriers in the code" for "no serialisation on the device", and does not mistake a green gate 4 for evidence that tracking is free. If a measurement ever shows the cost, the heap decision (8.4) is re-argued in the same change | Open past gate 5, deliberately |
 | MM6 | **The one-uniform-buffer-per-pipeline constraint is a property of the incumbent's numbering rather than of Metal**, so a pipeline with a second uniform buffer reads correct bytes under M-B1's table. **This bet is only READABLE because 2.2b took the id join**: under #586's fallback the backend under test would have used the incumbent's numbering, so both hypotheses would predict the same fail and the probe could not separate them | Two `[GpuFact]` probes in the shape `GpuSkinningReproGpuTests` established: a pipeline whose vertex stage reads two resource buffers, and a pipeline with a fragment-only second UBO at set 1, each with a pixel READBACK assertion rather than a no-throw assertion. **Headless is the right instrument**, because `docs/DEPENDENCY-SEAMS.md` records that the constraint holds offscreen as well as windowed (2.3) | None. This is a measurement, not a shipped behaviour. **M-B4's invariant STAYS in force regardless of the result** | Both probes read correct values. **A pass does NOT authorise a shader change**: it authorises FILING the invariant's removal as its own work with its own gates on all three backends. A fail is recorded here as the constraint being real on Metal rather than on Veldrid, which is worth just as much and closes four sessions' worth of open question | Gate 3 |
 | MM7 | (observation, not a bet) **The swapchain, the drawable and the present path have ZERO CI coverage**, because the Metal golden suite is headless and a headless device builds no `CAMetalLayer`. Every decision in section 11 is validated by a human at a window, or not at all | None available. A native soak that reproduces a presentation defect is consistent with several mechanisms | n/a | Recorded so a reader does not mistake a green full-suite leg, which is the best-covered leg in the matrix, for evidence about presentation. Gate 5's manual pass is the only instrument, **and it is a manual pass alone, because the tool both drafts named for it does not exist (2.10)** | n/a |

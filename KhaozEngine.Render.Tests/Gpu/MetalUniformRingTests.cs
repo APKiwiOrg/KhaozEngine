@@ -42,9 +42,9 @@ namespace KhaozEngine.Tests.Gpu
         {
             MetalUniformRing ring = _harness.NewRing(256, out _);
 
-            Assert.Equal(0ul, ring.FrameBaseBytes(0));
-            Assert.Equal(256ul, ring.FrameBaseBytes(1));
-            Assert.Equal(512ul, ring.FrameBaseBytes(2));
+            Assert.Equal(0ul, ring.SegmentBaseBytes(0));
+            Assert.Equal(256ul, ring.SegmentBaseBytes(1));
+            Assert.Equal(512ul, ring.SegmentBaseBytes(2));
         }
 
         [Fact]
@@ -52,8 +52,8 @@ namespace KhaozEngine.Tests.Gpu
         {
             MetalUniformRing ring = _harness.NewRing(256, out _);
 
-            Assert.Throws<ArgumentOutOfRangeException>(() => ring.FrameBaseBytes(-1));
-            Assert.Throws<ArgumentOutOfRangeException>(() => ring.FrameBaseBytes(MetalFramesInFlight.Default));
+            Assert.Throws<ArgumentOutOfRangeException>(() => ring.SegmentBaseBytes(-1));
+            Assert.Throws<ArgumentOutOfRangeException>(() => ring.SegmentBaseBytes(MetalFramesInFlight.Default));
         }
 
         /// <summary>
@@ -83,12 +83,12 @@ namespace KhaozEngine.Tests.Gpu
             MetalUniformRing ring = _harness.NewRing(200, out _);
 
             ArgumentOutOfRangeException thrown =
-                Assert.Throws<ArgumentOutOfRangeException>(() => ring.Write(192, new byte[16]));
+                Assert.Throws<ArgumentOutOfRangeException>(() => ring.Write(0, 192, new byte[16]));
 
             Assert.Contains("next frame's segment", thrown.Message, StringComparison.Ordinal);
 
             // The last byte the caller owns is still writable, so the refusal is exact rather than conservative.
-            ring.Write(192, new byte[8]);
+            ring.Write(0, 192, new byte[8]);
         }
 
         /// <summary>
@@ -102,7 +102,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             MetalUniformRing ring = _harness.NewRing(200, out _);
 
-            Assert.Throws<ArgumentOutOfRangeException>(() => ring.Write(200, new byte[1]));
+            Assert.Throws<ArgumentOutOfRangeException>(() => ring.Write(0, 200, new byte[1]));
         }
 
         /// <summary>
@@ -125,9 +125,9 @@ namespace KhaozEngine.Tests.Gpu
             // Two frames closed against work the GPU has not reached, so the gate would have something to wait
             // for if it ever waited.
             SubmitWork(5);
-            _harness.Rings.BeginFrame();
+            _harness.Rings.BeginRecording();
             SubmitWork(6);
-            _harness.Rings.BeginFrame();
+            _harness.Rings.BeginRecording();
 
             lock (_harness.SubmitLock)
             {
@@ -153,10 +153,10 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(7ul, _harness.Timeline.LastSubmitted);
             Assert.Equal(0ul, _harness.Timeline.CompletedValue);
 
-            for (int frame = 0; frame < MetalFramesInFlight.Default - 1; frame++) _harness.Rings.BeginFrame();
+            for (int frame = 0; frame < MetalFramesInFlight.Default - 1; frame++) _harness.Rings.BeginRecording();
             Assert.Equal(0, _harness.Rings.StallCount);
 
-            _harness.Rings.BeginFrame();
+            _harness.Rings.BeginRecording();
 
             Assert.Equal(1, _harness.Rings.StallCount);
             Assert.Equal(1, _harness.Backpressure.Totals.Count);
@@ -173,9 +173,9 @@ namespace KhaozEngine.Tests.Gpu
             MetalUniformRing ring = _harness.NewRing(256, out _);
 
             SubmitWork(5);
-            _harness.Rings.BeginFrame();
+            _harness.Rings.BeginRecording();
             SubmitWork(6);
-            _harness.Rings.BeginFrame();
+            _harness.Rings.BeginRecording();
 
             _harness.Rings.UpdateBuffer(ring, 0, new byte[] { 9, 9, 9, 9 });
             Assert.Equal(MetalFramesInFlight.Default - 1, ring.PendingPatchCount);
@@ -194,11 +194,11 @@ namespace KhaozEngine.Tests.Gpu
         /// that blocks: it would hold the frame's one serialised point for up to a frame and shut out the
         /// submission that would end the wait.</summary>
         [Fact]
-        public void BeginFrameFromInsideTheSubmitLockIsRefusedByName()
+        public void BeginRecordingFromInsideTheSubmitLockIsRefusedByName()
         {
             InvalidOperationException thrown = Assert.Throws<InvalidOperationException>(() =>
             {
-                lock (_harness.SubmitLock) _harness.Rings.BeginFrame();
+                lock (_harness.SubmitLock) _harness.Rings.BeginRecording();
             });
 
             Assert.Contains("held the submit lock", thrown.Message, StringComparison.Ordinal);
@@ -218,8 +218,10 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Contains(MetalFramesInFlight.EnvVarName, thrown.Message, StringComparison.Ordinal);
         }
 
-        // The submit path's whole observable effect on the timeline, in the order MetalGpuDevice.SubmitOnMacOs
-        // takes it: allocate and encode inside the lock, then register the value the commit accepted.
+        // The submit path's whole observable effect, in the order MetalGpuDevice.SubmitOnMacOs takes it inside its
+        // lock: allocate and encode, register the value the commit accepted, and tell the ring which segment that
+        // submission reads. The last step is MetalCommandList.MarkSubmitted's, and the segment is the one the
+        // recording captured, which for a test with no list open is the allocator's current.
         void SubmitWork(ulong value)
         {
             while (_harness.Timeline.LastAllocated < value)
@@ -228,6 +230,7 @@ namespace KhaozEngine.Tests.Gpu
             }
 
             _harness.Timeline.RegisterSubmitted(value);
+            _harness.Rings.RecordSegmentOwner(_harness.Rings.CurrentSegment, value);
         }
     }
 }

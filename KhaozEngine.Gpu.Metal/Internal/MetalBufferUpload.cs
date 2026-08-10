@@ -30,6 +30,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </summary>
         /// <param name="ring">The destination's uniform ring, or null for every buffer that is not
         /// <c>UniformBuffer</c> usage (M-M6).</param>
+        /// <param name="segment">The ring segment the CALLING RECORDING captured at its <c>Begin</c>, which the
+        /// ring path writes into. It travels down from the list rather than being read off the allocator here,
+        /// because the allocator's current segment moves whenever any other list begins, and a recording's writes
+        /// all belong to one version. Ignored by the staging path, which has no version.</param>
         /// <param name="destination">The destination's <c>MTLBuffer</c> handle, used only by the staging path.
         /// <see cref="IntPtr.Zero"/> for a buffer that has been disposed, which records nothing.</param>
         /// <param name="destinationSizeBytes">Its LOGICAL size, which is what the write is bounded against.
@@ -40,9 +44,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// assertion.</param>
         /// <param name="arena">The list's staging arena, for the other path.</param>
         /// <param name="blit">Where the one copy is emitted.</param>
-        internal static void Record(MetalUniformRing? ring, IntPtr destination, uint destinationSizeBytes,
-            uint offsetBytes, ReadOnlySpan<byte> data, MetalEncoderScope encoders, MetalStagingArena arena,
-            IMetalBlitApi blit)
+        internal static void Record(MetalUniformRing? ring, int segment, IntPtr destination,
+            uint destinationSizeBytes, uint offsetBytes, ReadOnlySpan<byte> data, MetalEncoderScope encoders,
+            MetalStagingArena arena, IMetalBlitApi blit)
         {
             ArgumentNullException.ThrowIfNull(encoders);
             ArgumentNullException.ThrowIfNull(arena);
@@ -54,7 +58,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // every binding, because nothing here asks the scope for anything.
             if (ring is not null)
             {
-                ring.Write(offsetBytes, data);
+                ring.Write(segment, offsetBytes, data);
                 return;
             }
 

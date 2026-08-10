@@ -25,6 +25,11 @@ namespace KhaozEngine.Tests.Gpu
     public sealed class MetalBufferUploadTests : IDisposable
     {
         const uint DestinationSize = 1024;
+
+        // The segment a recording would have captured at its Begin. Nothing here opens one, so it is the segment
+        // a first recording gets, and the routing this file asserts does not depend on which one it is.
+        const int Segment = 0;
+
         static readonly IntPtr Destination = new(0xDEAD);
 
         readonly MetalRingHarness _harness = new();
@@ -195,7 +200,7 @@ namespace KhaozEngine.Tests.Gpu
 
             Record(ring, 3, payload);
 
-            Assert.Equal(payload, ring.ReadSegment(_harness.Rings.CurrentSegment, 3, payload.Length));
+            Assert.Equal(payload, ring.ReadSegment(Segment, 3, payload.Length));
         }
 
         /// <summary>A write past the destination's logical size is refused before anything is staged, on the
@@ -254,8 +259,8 @@ namespace KhaozEngine.Tests.Gpu
         {
             byte[] payload = Payload(64, seed: 10);
 
-            MetalBufferUpload.Record(ring: null, IntPtr.Zero, DestinationSize, 0, payload, _encoders, _arena,
-                _harness.Blit);
+            MetalBufferUpload.Record(ring: null, Segment, IntPtr.Zero, DestinationSize, 0, payload, _encoders,
+                _arena, _harness.Blit);
 
             Assert.Equal(0, _calls.EncoderBoundaries);
             Assert.Equal(MetalEncoderKind.None, _encoders.Open);
@@ -270,13 +275,13 @@ namespace KhaozEngine.Tests.Gpu
         public void ANilHandleStillRefusesAWritePastTheEnd()
         {
             Assert.Throws<ArgumentOutOfRangeException>(() => MetalBufferUpload.Record(
-                ring: null, IntPtr.Zero, DestinationSize, DestinationSize - 8, Payload(16, seed: 11), _encoders,
-                _arena, _harness.Blit));
+                ring: null, Segment, IntPtr.Zero, DestinationSize, DestinationSize - 8, Payload(16, seed: 11),
+                _encoders, _arena, _harness.Blit));
         }
 
         void Record(MetalUniformRing? ring, uint offsetBytes, ReadOnlySpan<byte> data)
-            => MetalBufferUpload.Record(ring, Destination, DestinationSize, offsetBytes, data, _encoders, _arena,
-                _harness.Blit);
+            => MetalBufferUpload.Record(ring, Segment, Destination, DestinationSize, offsetBytes, data, _encoders,
+                _arena, _harness.Blit);
 
         static byte[] Payload(int length, byte seed)
         {

@@ -594,7 +594,7 @@ bound, and the pre-lock submit phase where the setup flush sits.
 
 A `UniformBuffer`-usage buffer on `KhaozEngine.Gpu.Metal` is now ONE `MTLBuffer` of
 `align(size, 256) * KE_METAL_FRAMES_IN_FLIGHT` in Shared memory, and a record-time `UpdateBuffer` into it is a
-`memcpy` into the current segment that opens NO ENCODER AT ALL. Row 8 of
+`memcpy` into the recording's own segment that opens NO ENCODER AT ALL. Row 8 of
 [docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md).
 Nothing of it is visible through the seam: `IGpuBuffer.SizeInBytes` still reports the size the caller asked
 for, the buffer identity never changes, and the per-frame base is applied at BIND.
@@ -613,7 +613,7 @@ Metal renames nothing, so that is a plain data race with a submitted command buf
 the segment gate is what removes it. Automatic hazard tracking does not help, because it orders GPU work
 against GPU work and says nothing about a CPU write racing a GPU read.
 
-**The frame boundary is `IGpuCommandList.Begin` here, where both sibling backends put theirs at `Present`.**
+**The rotation boundary is `IGpuCommandList.Begin` here, where both sibling backends put theirs at `Present`.**
 Each of those carries a SECOND per-list index that advances at `Begin` (a map scope on one, a command-pool slot
 on the other) and this backend has none, because an `MTLCommandBuffer` is single-use and the queue owns its
 memory. Hanging the acquire off a present would leave the ring rotating never on the HEADLESS path, which is
@@ -622,6 +622,35 @@ only path CI can drive. The swapchain row therefore adds no second call at the p
 consequence for the seam is that `Begin` is the only call in a recording that can block, and
 `GpuDeviceCounters.BackpressureStallCount` counts exactly those blocks and nothing else, where on Vulkan it
 folds two sources.
+
+**So a segment is one RECORDING's version of the uniforms, and `KE_METAL_FRAMES_IN_FLIGHT` does not mean
+frames.** Rotating at `Begin` is what makes it so, and shipped engine paths open several lists per frame:
+`Render3DPreview.Capture`, every `OceanFftProducer` prime pass, and one per `RetireBarrier.Submit`, which exists
+whenever the backend reports completion fences and this one always does. The depth therefore buys N RECORDINGS
+of headroom and frames of headroom is N divided by the lists a frame opens, which is a property of the consumer
+rather than of the backend. The variable keeps its name, because a consumer tuning it has met the same name on
+both siblings, and the package README, the usage doc and the session-log line all say recordings now, the log
+line with a test pinning the wording because that is what a capture's depth is read out of. MM4's zero-stall
+exit criterion is read against the recordings-per-frame count of the scene it was measured on: three segments
+against a frame that opens four lists is under one frame of headroom.
+
+**Each recording CAPTURES its segment at `Begin`**, and every record-time write is composed against the capture
+rather than against the allocator's live index, which another list's `Begin` moves. Two lists recording at once
+therefore write two different versions, where re-reading the live index would have sent one list's later writes
+into the other's segment. It is not a second per-list index of the kind `MTLCommandBuffer` makes unnecessary:
+nothing advances per list, the list just remembers which version it targets. The device-level every-segment
+write and `Map` keep reading the live index, because neither belongs to a recording.
+
+**A segment's owner is recorded at the SUBMIT, with the value that submission signals**, rather than read off
+the timeline's high-water when the segment stopped being current. The second shape under-records an ordinary
+interleaving: a list that ends, lets another list's `Begin` rotate past it, and only then submits takes a value
+ABOVE the one its segment was closed at, so the wrap back to that segment would wait for the earlier value and
+start writing while a live submission was still reading it. A recording abandoned without a submit leaves the
+owner untouched, so the gate can never wait on a value nothing will signal. The rotation itself is now one
+atomic step under the submit lock (the index advance was a plain increment while concurrent `Begin` is
+documented as supported), released only across the wait and revalidating the owner afterwards, because the value
+being waited for is registered under that same lock and holding it would deadlock against the submission that
+would end the wait.
 
 **A device-level write reaches EVERY segment**, which is
 [#484](https://github.com/APKiwiOrg/KhaozEngine/issues/484)'s rule adopted wholesale for the third time, with

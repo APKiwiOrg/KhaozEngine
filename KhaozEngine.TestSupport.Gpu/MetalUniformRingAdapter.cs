@@ -14,19 +14,26 @@ namespace KhaozEngine.Tests.Gpu
     /// and "share the tests" with no adapter on the third side quietly becomes two backends' tests plus a third
     /// implementation nobody checked. Seven of those ten rows run here.</para>
     ///
-    /// <para><b>WHAT EACH MEMBER MAPS ONTO, AND THE ONE THAT DIFFERS IN MECHANISM.</b> <c>SubmitWork</c> has no
-    /// callback to make: this backend's segment owner is <see cref="MetalTimeline.LastSubmitted"/> read at the
-    /// frame boundary under the submit lock, so the adapter expresses "the current frame submitted work
-    /// signalling V" the way a real submit does, by allocating and encoding values up to V and then REGISTERING
-    /// V. That is exactly what <c>MetalGpuDevice.SubmitOnMacOs</c> does inside its lock and nothing else.
-    /// <c>CompleteWork</c> advances the fake shared event's counter, which is what <c>signaledValue</c> answers
-    /// and what the gate reads. Everything else is the shipped member of the same name.</para>
+    /// <para><b>WHAT EACH MEMBER MAPS ONTO, AND THE ONE THAT DIFFERS IN MECHANISM.</b> <c>SubmitWork</c> does
+    /// what <c>MetalGpuDevice.SubmitOnMacOs</c> does inside its lock and nothing else: allocate and encode values
+    /// up to V, REGISTER V as accepted, and hand the segment this recording captured to
+    /// <see cref="MetalRingAllocator.RecordSegmentOwner"/> with that value, which is the step
+    /// <c>MetalCommandList.MarkSubmitted</c> makes on the shipped path. <c>CompleteWork</c> advances the fake
+    /// shared event's counter, which is what <c>signaledValue</c> answers and what the gate reads. Everything else
+    /// is the shipped member of the same name.</para>
     ///
-    /// <para><b>WHY <see cref="MetalTimeline.LastSubmitted"/> AND NOT <see cref="MetalTimeline.LastAllocated"/>,
-    /// since the adapter has to choose.</b> A submit that threw between the allocation and the commit took a
-    /// value nothing will ever signal, so a segment gated on the allocation high-water would block forever.
-    /// Registering here is what makes the adapter model an ACCEPTED submission rather than an attempted
-    /// one.</para>
+    /// <para><b>WHY THE VALUE IS REGISTERED AND NOT MERELY ALLOCATED, since the adapter has to choose.</b> A
+    /// submit that threw between the allocation and the commit took a value nothing will ever signal, so a
+    /// segment gated on the allocation high-water would block forever. Registering here is what makes the adapter
+    /// model an ACCEPTED submission rather than an attempted one.</para>
+    ///
+    /// <para><b>ONE IMPLICIT RECORDING, WHICH IS WHAT THE SHARED INTERFACE DESCRIBES.</b> The shipped model is
+    /// segment-per-RECORDING: a command list captures its segment at <c>Begin</c> and every record-time write and
+    /// every submit of that recording names the capture. This adapter has no command list, so it holds the
+    /// capture itself, and with exactly one recording open at a time the captured segment and the allocator's
+    /// current segment are the same number. The rows that need two concurrent recordings are this backend's own
+    /// and live in <c>MetalRecordingSegmentTests</c>, because the shared interface cannot express a second
+    /// list.</para>
     ///
     /// <para><b>THERE IS NO MAPPING TO MODEL AND NO MEMORY TYPE TO CHOOSE.</b> Every buffer this backend creates
     /// is <c>MTLStorageModeShared</c> and its <c>contents()</c> pointer is stable for the buffer's life (M-M2),
@@ -34,10 +41,11 @@ namespace KhaozEngine.Tests.Gpu
     /// this one has to keep a map lifecycle out of the way and the Vulkan one has to map a host-visible chunk
     /// first. Here there is neither, which is the asymmetry section 9.2 predicts.</para>
     ///
-    /// <para><b>AND THE FRAME BOUNDARY IS A COMMAND LIST'S <c>Begin</c> ON THIS BACKEND rather than a present
+    /// <para><b>AND THE ROTATION BOUNDARY IS A COMMAND LIST'S <c>Begin</c> ON THIS BACKEND rather than a present
     /// (M-R2), which the shared rows do not and should not see.</b> <see cref="BeginFrame"/> is the allocator's
-    /// own member either way. Where it is CALLED from is a backend fact, and putting it in the interface would
-    /// make a shared row assert about a call site rather than about the policy.</para>
+    /// own member either way, named <c>BeginRecording</c> there because that is what it opens. Where it is CALLED
+    /// from is a backend fact, and putting it in the interface would make a shared row assert about a call site
+    /// rather than about the policy.</para>
     /// </summary>
     internal sealed class MetalUniformRingAdapter : IGpuUniformRingUnderTest
     {
@@ -47,6 +55,10 @@ namespace KhaozEngine.Tests.Gpu
         readonly MetalTimeline _timeline;
         readonly MetalRingAllocator _allocator;
         readonly MetalUniformRing _ring;
+
+        // The segment the one implicit recording captured, which is what a command list holds on the shipped
+        // path. Segment 0 before the first BeginFrame, exactly as a device's first recording finds it.
+        int _segment;
 
         internal MetalUniformRingAdapter(uint sizeInBytes, int framesInFlight)
         {
@@ -80,7 +92,7 @@ namespace KhaozEngine.Tests.Gpu
         public int PendingPatchCount => _ring.PendingPatchCount;
 
         /// <inheritdoc/>
-        public ulong SegmentBaseBytes(int segment) => _ring.FrameBaseBytes(segment);
+        public ulong SegmentBaseBytes(int segment) => _ring.SegmentBaseBytes(segment);
 
         /// <inheritdoc/>
         public void SubmitWork(ulong completionValue)
@@ -94,16 +106,21 @@ namespace KhaozEngine.Tests.Gpu
             }
 
             _timeline.RegisterSubmitted(completionValue);
+
+            // And the segment this recording captured is what the submission READS, which is the gate's input.
+            // MetalCommandList.MarkSubmitted makes this call on the shipped path, inside the submit lock.
+            _allocator.RecordSegmentOwner(_segment, completionValue);
         }
 
         /// <inheritdoc/>
         public void CompleteWork(ulong completionValue) => _event.Completed = completionValue;
 
         /// <inheritdoc/>
-        public void BeginFrame() => _allocator.BeginFrame();
+        public void BeginFrame() => _segment = _allocator.BeginRecording();
 
         /// <inheritdoc/>
-        public void WriteAtRecordTime(uint offsetBytes, ReadOnlySpan<byte> data) => _ring.Write(offsetBytes, data);
+        public void WriteAtRecordTime(uint offsetBytes, ReadOnlySpan<byte> data)
+            => _ring.Write(_segment, offsetBytes, data);
 
         /// <inheritdoc/>
         public void WriteOffTimeline(uint offsetBytes, ReadOnlySpan<byte> data)

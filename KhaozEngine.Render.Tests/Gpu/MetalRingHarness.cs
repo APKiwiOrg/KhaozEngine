@@ -100,6 +100,28 @@ namespace KhaozEngine.Tests.Gpu
                 new FakeMetalEncoderSink(calls ?? new FakeMetalEncoderCalls()),
                 owner, Rings, arena ?? NewArena(), Blit, Liveness);
 
+        /// <summary>
+        /// SUBMIT A SEALED RECORDING, which is <c>MetalGpuDevice.SubmitOnMacOs</c>'s lock body with the one native
+        /// call taken out: allocate and encode a value, register it as accepted, and hand it to the list, which is
+        /// what tells the arena which value its blocks wait for and the ring which submission read its segment.
+        /// Returns the value, because the segment owner a test asserts on is exactly that number.
+        /// <para>
+        /// THE ORDER AND THE LOCK ARE THE POINT. A test that called <c>MarkSubmitted</c> outside the lock would
+        /// be asserting about a shape the device does not have, and the ring's owner is registered under this lock
+        /// precisely so a concurrent <c>Begin</c> cannot rotate onto a segment before its owner exists.
+        /// </para>
+        /// </summary>
+        internal ulong Submit(MetalCommandList list)
+        {
+            lock (SubmitLock)
+            {
+                ulong value = Timeline.EncodeSignalForSubmit(IntPtr.Zero);
+                Timeline.RegisterSubmitted(value);
+                list.MarkSubmitted(value);
+                return value;
+            }
+        }
+
         public void Dispose()
         {
             Timeline.Dispose();

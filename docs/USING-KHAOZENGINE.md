@@ -8902,26 +8902,35 @@ The engine's knob then logs which tier is really armed, checks that against the 
 when a tier was asked for and this process cannot have it. Neither tier is a synchronisation validator.
 
 **`KE_METAL_FRAMES_IN_FLIGHT=<n>` sets how far ahead of the GPU the CPU may run** (1 to 16, default 3). It
-sizes the uniform ring's per-frame segments, each command list's staging arena slots, and through the same
+sizes the uniform ring's segments, each command list's staging arena slots, and through the same
 number the swapchain's `maximumDrawableCount`. The first two are live and the third lands with the swapchain
 row (https://github.com/APKiwiOrg/KhaozEngine/issues/581), so raising it today costs a 256-aligned segment per
-uniform buffer per extra frame and nothing else. Nothing here is a command-buffer pool: a Metal command buffer
+uniform buffer per extra step and nothing else. Nothing here is a command-buffer pool: a Metal command buffer
 is single-use, the queue owns its memory and hands out a fresh one per `Begin`, so this number never
 multiplies command buffers the way the Vulkan variable does, and `GpuDeviceCounters.BackpressureStallCount`
 therefore has exactly one source on this backend where it has two on Vulkan.
 
+**It counts RECORDINGS, not frames, and the name is kept for familiarity with the other two backends.** Both
+things it sizes rotate at `IGpuCommandList.Begin` rather than at `Present`, so the depth is how many recordings
+may be open or in flight before one waits. An engine frame usually opens several command lists (the scene list,
+a `Render3DPreview` capture, an ocean prime pass, one per retire barrier), so frames of headroom is this number
+divided by the lists your frame opens, and a backpressure reading is only meaningful next to that count. If a
+frame opens four lists at the default, it has under one frame of headroom and a stall is telling you about the
+list count rather than about the depth.
+
 ```bash
 KE_METAL_FRAMES_IN_FLIGHT=4   # deeper, if a soak reports backpressure stalls at the default
-KE_METAL_FRAMES_IN_FLIGHT=1   # one frame of latency and one stall per frame, for measuring
+KE_METAL_FRAMES_IN_FLIGHT=1   # one recording of latency and one stall per recording, for measuring
 ```
 
 **The floor is 1 here and 2 on Vulkan, and that is not a typo in either place.** The Vulkan floor is 2 because
 at 1 every command list there owns one command pool and every `Begin` waits for its own previous record to
 finish on the GPU, which is a synchronous round trip per RECORD rather than a frame of latency. That argument
-needs a per-list pool ring and this backend has none, so 1 is simply the shallowest honest setting: one frame
-of latency, one stall per frame, and a configuration that proves the backpressure counter counts something
-real. Ship 3. A value that is set and understood as nothing WARNS and leaves the default, and the session log
-names the depth this run actually got, because a capture is only evidence about the number it was taken at.
+needs a per-list pool ring and this backend has none, so 1 is simply the shallowest honest setting: one
+recording of latency, one stall per recording, and a configuration that proves the backpressure counter counts
+something real. Ship 3. A value that is set and understood as nothing WARNS and leaves the default, and the
+session log names the depth this run actually got, because a capture is only evidence about the number it was
+taken at.
 
 **A Metal command-buffer failure is reported now, which it was not before.** Every command buffer's status and
 error are read when it finishes, in every configuration, and the first failure latches its

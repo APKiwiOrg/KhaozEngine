@@ -6,11 +6,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <summary>
     /// ONE DEFERRED OFF-TIMELINE WRITE: the byte range it covers and a private copy of what it wrote. Recorded by
     /// <see cref="MetalRingAllocator.UpdateBuffer"/> for a segment the GPU has not finished with, and applied by
-    /// the <see cref="MetalRingAllocator.BeginFrame"/> that next opens that segment.
+    /// the <see cref="MetalRingAllocator.BeginRecording"/> that next claims that segment.
     /// <para>
     /// THE DATA IS COPIED RATHER THAN REFERENCED, and there is no way around it. The caller hands in a
     /// <c>ReadOnlySpan&lt;byte&gt;</c>, which may be a <c>stackalloc</c> or a pooled array the caller reuses the
-    /// instant the write returns, and the patch outlives the call by up to <c>FramesInFlight</c> frames.
+    /// instant the write returns, and the patch outlives the call by up to <c>FramesInFlight</c> recordings.
     /// </para>
     /// </summary>
     internal readonly struct MetalRingPatch
@@ -68,7 +68,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <para>
     /// NOT THREAD-SAFE, and it does not need to be. Every mutation and every read happens under the device's
     /// submit lock, on both the recording side (<see cref="MetalRingAllocator.UpdateBuffer"/>) and the applying
-    /// side (<see cref="MetalRingAllocator.BeginFrame"/>).
+    /// side (<see cref="MetalRingAllocator.BeginRecording"/>).
     /// </para>
     /// </summary>
     internal sealed class MetalRingPendingPatches

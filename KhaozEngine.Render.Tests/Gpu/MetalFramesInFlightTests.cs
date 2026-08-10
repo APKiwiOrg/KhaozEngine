@@ -119,6 +119,12 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Contains("ring", line, System.StringComparison.Ordinal);
             Assert.Contains("staging arena", line, System.StringComparison.Ordinal);
             Assert.Contains("row 15", line, System.StringComparison.Ordinal);
+
+            // AND IT SAYS RECORDINGS. Both things the depth sizes rotate at a command list's Begin and a frame
+            // opens several lists, so a session log that offered the number as frames of headroom would be
+            // overstating it by exactly the number of lists the frame opens. This is the line MM4's exit criterion
+            // is read out of, which is why the vocabulary is pinned rather than left to prose.
+            Assert.Contains("RECORDING", line, System.StringComparison.Ordinal);
         }
 
         /// <summary>

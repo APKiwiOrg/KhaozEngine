@@ -113,7 +113,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Null(device.Diagnostics.DeviceLossReason);
 
             _output.WriteLine($"segment {device.Rings.CurrentSegment} of a 256-byte ring carried the payload "
-                + $"after {device.Rings.FrameIndex} frames, with {device.Rings.StallCount} stalls");
+                + $"after {device.Rings.RecordingIndex} frames, with {device.Rings.StallCount} stalls");
         }
 
         /// <summary>
@@ -304,7 +304,7 @@ namespace KhaozEngine.Tests.Gpu
                 Assert.Equal((frame + 1) % MetalFramesInFlight.Default, device.Rings.CurrentSegment);
             }
 
-            Assert.Equal(12ul, device.Rings.FrameIndex);
+            Assert.Equal(12ul, device.Rings.RecordingIndex);
             Assert.Equal(0, device.Rings.StallCount);
             Assert.Equal(0, device.BackpressureTotals.Count);
             Assert.Null(device.Diagnostics.DeviceLossReason);

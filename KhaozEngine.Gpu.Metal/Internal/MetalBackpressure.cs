@@ -11,7 +11,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// number folds a command-list pool-slot wait and a uniform-ring segment stall, because that backend has a
     /// per-list <c>VkCommandPool</c> ring that cannot be reset while its buffers are in flight. An
     /// <c>MTLCommandBuffer</c> is single-use and the queue owns its memory, so there is no pool, no slot and no
-    /// second wait: the ONLY thing that ever records here is <see cref="MetalRingAllocator.BeginFrame"/> finding
+    /// second wait: the ONLY thing that ever records here is <see cref="MetalRingAllocator.BeginRecording"/> finding
     /// its segment still in flight. That makes a non-zero reading on this backend unambiguous, and it is why
     /// <c>BackpressureStallCount</c> means one thing here where it means two there.
     /// </para>

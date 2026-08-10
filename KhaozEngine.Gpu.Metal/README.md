@@ -225,9 +225,16 @@ at all, which is why `GpuCapabilities.SamplerLodBias` is false on this backend a
 
 **A `UniformBuffer`-usage buffer is ONE `MTLBuffer` of `align(size, 256) * KE_METAL_FRAMES_IN_FLIGHT`**, and
 none of that is visible through the seam. `IGpuBuffer.SizeInBytes` still reports what you asked for, the buffer
-identity never changes, and the per-frame base is applied at BIND. Frame N writes segment `N % framesInFlight`,
-and a segment is handed out again only after the `MTLSharedEvent` has reached the value the frame that last
-owned it recorded.
+identity never changes, and the segment base is applied at BIND.
+
+**A segment is one RECORDING's version of the uniforms, not one frame's.** The rotation happens at
+`IGpuCommandList.Begin`, so the recording that claims index N writes segment `N % framesInFlight`, captures that
+segment for as long as it is recording, and its submission reads it. A segment is handed out again only after the
+`MTLSharedEvent` has reached the value that submission signals. The depth therefore buys N RECORDINGS of
+headroom, and a typical frame opens several command lists (the scene list, a preview capture, an ocean prime
+pass, one per retire barrier), so frames of headroom is that number divided by the lists your frame opens. The
+variable keeps the name it has on the other two backends, and nothing that reasons about depth should read
+"frames" literally.
 
 **The point is the ENCODER rather than the copy.** On the incumbent a record-time `UpdateBuffer` allocates an
 `MTLBuffer`, copies, ENDS THE RENDER ENCODER to open a blit encoder, copies again and releases, and then the
@@ -257,11 +264,17 @@ class, sub-allocated by bumping, and handed back only once the timeline has reac
 that read them signalled. The arena never waits: a slot still in flight keeps its blocks and gets them back at
 a later visit. It retains up to 8 MiB of idle blocks and releases the largest first past that.
 
-**The frame boundary is `IGpuCommandList.Begin` on this backend**, where both sibling backends put theirs at
+**The rotation boundary is `IGpuCommandList.Begin` on this backend**, where both sibling backends put theirs at
 `Present`. Each of those has a second per-list index that advances at `Begin` and this one has none, and
 hanging the acquire off a present would leave the ring rotating never on the headless path. `Begin` is
 therefore the only call in a recording that can block, and `GpuDeviceCounters.BackpressureStallCount` counts
 exactly those blocks and nothing else.
+
+**Two lists recording at once each write their own segment**, which follows from the same boundary: each
+captures its segment at its own `Begin`, so a second list beginning mid-recording does not move where the first
+one's writes land. What the depth bounds is how many recordings may be open or in flight at once, so a program
+that keeps more than `KE_METAL_FRAMES_IN_FLIGHT` recordings open without submitting them has two of them sharing
+a segment. Raise the depth if you build one.
 
 **One creation-time refusal follows from all of it**, and it is the divergence named above: a buffer declaring
 both `UniformBuffer` and a structured usage throws, because the ring rebases every bind of it and a structured

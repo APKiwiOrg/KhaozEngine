@@ -58,8 +58,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     + "and there is no stream to record it into yet.");
             }
 
-            MetalBufferUpload.Record(metal.Ring, metal.Handle.Handle, metal.SizeInBytes, offsetBytes, data,
-                _encoders, _arena, _blit);
+            // THE SEGMENT IS THIS RECORDING'S OWN, captured at Begin (see MetalCommandList.RingSegment). Reading
+            // the allocator's current segment here instead would let another list's Begin move it mid-recording.
+            MetalBufferUpload.Record(metal.Ring, _segment, metal.Handle.Handle, metal.SizeInBytes, offsetBytes,
+                data, _encoders, _arena, _blit);
         }
     }
 }

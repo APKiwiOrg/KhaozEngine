@@ -61,6 +61,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // same in both: this list released it or it did not.
         IntPtr _commandBuffer;
 
+        // THE UNIFORM VERSION THIS RECORDING TARGETS (M-M3): the ring segment Begin claimed, captured ONCE and
+        // read by every record-time ring write and by the submit that tells the allocator which segment its
+        // submission reads. Negative before the first Begin, which is a state neither reader can reach: a write
+        // needs _recording and a submit needs a seal, and both come from a Begin that sets this.
+        int _segment = -1;
+
         bool _recording;
         bool _sealed;
         bool _disposed;
@@ -132,6 +138,19 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <summary>True between <see cref="Begin"/> and <see cref="End"/>.</summary>
         internal bool IsRecording => _recording;
 
+        /// <summary>
+        /// THE RING SEGMENT THIS RECORDING CAPTURED at its <see cref="Begin"/>, or -1 before the first one. Every
+        /// record-time uniform write goes into it, row 13's bind offsets will be composed against it, and
+        /// <see cref="MarkSubmitted"/> hands it to the allocator as the segment this submission reads.
+        /// <para>
+        /// CAPTURED RATHER THAN RE-READ, which is the whole of the segment-per-recording model: a concurrent
+        /// list's <c>Begin</c> rotates <see cref="MetalRingAllocator.CurrentSegment"/> under this recording
+        /// (M-R3 permits N of them), so a write that asked the allocator each time could land in a version this
+        /// recording never binds.
+        /// </para>
+        /// </summary>
+        internal int RingSegment => _segment;
+
         /// <summary>True once <see cref="End"/> has sealed a record that has not been superseded by a later
         /// <see cref="Begin"/> or consumed by a submit. What the submit path requires before it will commit
         /// anything.</summary>
@@ -179,11 +198,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// never be committed is a buffer the queue is still counting against its own maximum.
         /// </para>
         /// <para>
-        /// THE RING'S FRAME SLOT IS WAITED ON HERE, and it is the ONE thing this backend's Begin gates on
-        /// (M-R2). This IS the frame boundary on this backend, where both siblings put theirs at <c>Present</c>:
-        /// they each have a second per-list index that advances at <c>Begin</c> and this backend has none, and
-        /// hanging the acquire off a present that the headless golden path never calls would leave the ring
-        /// rotating never. <see cref="MetalRingAllocator.BeginFrame"/> carries the whole argument.
+        /// THE RING'S SEGMENT IS CLAIMED AND CAPTURED HERE, and it is the ONE thing this backend's Begin gates on
+        /// (M-R2). This IS the rotation boundary on this backend, where both siblings put theirs at
+        /// <c>Present</c>: they each have a second per-list index that advances at <c>Begin</c> and this backend
+        /// has none, and hanging the acquire off a present that the headless golden path never calls would leave
+        /// the ring rotating never. The segment it returns is this recording's uniform VERSION for as long as the
+        /// recording lasts, which is why it is stored rather than re-read.
+        /// <see cref="MetalRingAllocator.BeginRecording"/> carries the whole argument.
         /// </para>
         /// </remarks>
         public void Begin()
@@ -217,18 +238,19 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _commandBuffer = buffer;
             _uncommitted.Acquired();
 
-            // THE RING'S FRAME SLOT, and the ONLY place in a recording that can block (M-M3, M-R2). It closes the
-            // outgoing segment against the last accepted timeline value, advances, and waits there until the GPU
-            // has finished with the segment it is opening. AFTER the acquisition rather than before it, so the
-            // uncommitted-buffer count during the wait is the one MetalFramesInFlight.UncommittedBufferBound is
-            // stated over, and BEFORE the recording flag flips, so nothing can be recorded into a segment the GPU
-            // is still reading.
-            int segment = _rings.BeginFrame();
+            // THE RING'S SEGMENT, and the ONLY place in a recording that can block (M-M3, M-R2). It advances the
+            // rotation and waits there until the submission that last read the segment it claims has completed.
+            // AFTER the acquisition rather than before it, so the uncommitted-buffer count during the wait is the
+            // one MetalFramesInFlight.UncommittedBufferBound is stated over, and BEFORE the recording flag flips,
+            // so nothing can be recorded into a segment the GPU is still reading. CAPTURED, because this
+            // recording's writes and binds all belong to the version claimed here and another list beginning
+            // meanwhile moves the allocator's own current segment.
+            _segment = _rings.BeginRecording();
 
             // AND THE ARENA ROTATES ONTO THE SAME SLOT, taking the completion value the gate above just read
             // rather than polling the timeline a second time. It gives back the blocks that slot filled last time
             // round when, and only when, the submission that read them has completed, and it never waits.
-            _arena.BeginSlot(segment, _rings.CompletedValue);
+            _arena.BeginSlot(_segment, _rings.CompletedValue);
 
             // THE RECORDER STATE RESET GOES HERE, immediately after the acquisition and before the recording flag
             // flips. A reset added anywhere else is a reset that a re-Begun list can be observed without. Today
@@ -309,12 +331,25 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// gets that proof for free from its command-pool ring and this backend has no pool at all (M-R2), so the
         /// arena carries it per slot instead.
         /// </para>
+        /// <para>
+        /// AND THE UNIFORM RING LEARNS IT THROUGH THE SAME PLUMBING, for the same kind of reason: this submission
+        /// reads the ring segment this recording captured, so that segment may not be claimed again until the
+        /// timeline reaches this value. Recording it HERE, with the submission's own value, is what the ring's
+        /// gate rests on. The rejected shape read the last submitted value when the segment stopped being
+        /// current, which under-records the perfectly ordinary End, other list's Begin, then Submit interleaving.
+        /// </para>
+        /// <para>
+        /// A LIST THAT NEVER BEGAN HAS NO SEGMENT TO OWN, which is the -1 guard rather than a live case: a submit
+        /// requires a seal and a seal requires a Begin. It costs one comparison and stops a future caller that
+        /// reaches here another way from recording an owner for segment 0 that nothing reads.
+        /// </para>
         /// </summary>
         /// <param name="signalledValue">The timeline value the committed buffer signals, from
         /// <see cref="MetalTimeline.EncodeSignalForSubmit"/>.</param>
         internal void MarkSubmitted(ulong signalledValue)
         {
             _arena.RecordSubmitted(signalledValue);
+            if (_segment >= 0) _rings.RecordSegmentOwner(_segment, signalledValue);
 
             _sealed = false;
             _commandBuffer = IntPtr.Zero;

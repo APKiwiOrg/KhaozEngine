@@ -8,6 +8,18 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// constant (https://github.com/APKiwiOrg/KhaozEngine/issues/573) and
     /// <see cref="MetalRingAllocator"/> and <see cref="MetalStagingArena"/> read it.
     ///
+    /// <para><b>IT BUYS RECORDINGS OF HEADROOM RATHER THAN FRAMES, AND THE NAME IS KEPT ANYWAY.</b> Both things
+    /// this number sizes rotate at <c>MetalCommandList.Begin</c>, so the depth is how many RECORDINGS may be open
+    /// or in flight before one has to wait, and a typical engine frame opens SEVERAL: the scene list, plus
+    /// <c>Render3DPreview.Capture</c>, plus one per <c>OceanFftProducer</c> prime pass, plus one per
+    /// <c>RetireBarrier.Submit</c> (which exists whenever completion fences are supported, and on this backend
+    /// that is always). Frames of headroom is therefore this number DIVIDED BY the recordings a frame makes, which
+    /// is a property of the consumer's frame rather than of this backend, so no number here can state it. The
+    /// variable keeps the name <c>KE_METAL_FRAMES_IN_FLIGHT</c> because a consumer tuning it has met the same name
+    /// on both sibling backends and renaming a field lever costs more than the vocabulary does, but nothing that
+    /// reasons about depth may read "frames" literally. See <see cref="MetalRingAllocator"/> for the
+    /// segment-per-recording model itself.</para>
+    ///
     /// <para><b>ONE NUMBER, ONE WAIT, AND THAT IS THE DIFFERENCE FROM THE VULKAN SIBLING (M-R2).</b> There the
     /// same number governs two things that each BLOCK, a per-list command-pool slot and a per-frame ring segment,
     /// and conflating them is the mistake available. Here there is no command-buffer pool at all. An
@@ -24,7 +36,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <c>Begin</c> would advance onto the slot it had just used and wait for its own previous record to finish
     /// on the GPU: a synchronous round trip per RECORD rather than a frame of latency. That argument needs a
     /// per-list pool ring to be true and this backend has none, so what is left at 1 is the shape the Direct3D 11
-    /// backend already calls its honest degenerate case: one frame of latency, one stall per frame, and a
+    /// backend already calls its honest degenerate case: one recording of latency, one stall per recording, and a
     /// configuration that proves the backpressure counter counts something real. It is a legal setting to
     /// MEASURE at and a terrible one to ship, which is what a floor is for.</para>
     ///
@@ -34,7 +46,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// number and not that the design is wrong, so the lever raises it rather than disabling anything. The
     /// deadline is rollout gate 4, and the tuning-knob survival rule applies: a knob may outlive its gate, but
     /// only if the exit criterion was met AT ITS DEFAULT, which is what stops "it is only a knob" from becoming a
-    /// way to keep a failed default.</para>
+    /// way to keep a failed default.
+    /// <b>THE CRITERION HAS TO BE READ AGAINST THE RECORDINGS-PER-FRAME COUNT</b> of the scene it was measured on,
+    /// for the reason above: three segments against a frame that opens four recordings is under one frame of
+    /// headroom, so a zero there says something much stronger than a zero against a frame that opens one, and a
+    /// non-zero may say the frame opens more lists than anyone counted rather than that the depth is wrong.</para>
     ///
     /// <para><b>COST OF RAISING IT</b>, so a field session knows what it is trading. Every uniform buffer in the
     /// process is allocated at its 256-aligned size times this number, each command list's staging arena keeps
@@ -101,9 +117,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 + "flight except uniform ring segments: this backend has no command-buffer pool to advance onto.";
 
         /// <summary>
-        /// The INFO line naming how many frames this run got, so a capture proves the number its backpressure
-        /// counter was measured against rather than resting on the tester believing they set the variable. MM4's
-        /// exit criterion is a count taken at a specific depth, so the two belong in one session log.
+        /// The INFO line naming what depth this run got, so a capture proves the number its backpressure counter
+        /// was measured against rather than resting on the tester believing they set the variable. MM4's exit
+        /// criterion is a count taken at a specific depth, so the two belong in one session log.
         /// <para>
         /// IT SAYS WHAT IS TRUE TODAY AND NAMES THE ROW THAT WILL MAKE THE REST TRUE. The number's consumers are
         /// the uniform ring's segments and each list's staging arena slots, both LIVE, and row 15's
@@ -111,18 +127,26 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// split matters more here than anywhere else this row logs: this is the line MM4's measurement rests on,
         /// and a session log a measurement is read out of cannot be the place a claim runs ahead of the code.
         /// </para>
+        /// <para>
+        /// AND IT SAYS RECORDINGS, not frames, for the reason the class note gives: both things this number sizes
+        /// rotate at a command list's <c>Begin</c>, and a frame opens several of those. A reader taking the line
+        /// as frames of headroom would read a depth of three as three frames on a frame loop where it is one.
+        /// </para>
         /// </summary>
         internal static string ActiveDescription(int framesInFlight)
             => framesInFlight == Default
-                ? $"The native Metal backend resolved {Default} frames in flight, the default. It sizes every "
-                    + "uniform buffer's ring segments and each command list's staging arena slots, and row 15's "
-                    + "maximumDrawableCount when the swapchain lands, and nothing else ever, because there is no "
-                    + $"command-buffer pool on this backend. Set {EnvVarName}=<n> to change it, which is the MM4 "
-                    + "lever."
+                ? $"The native Metal backend resolved {Default} frames in flight, the default, which is "
+                    + $"{Default} RECORDINGS of headroom rather than {Default} frames: it sizes every uniform "
+                    + "buffer's ring segments and each command list's staging arena slots, both of which rotate "
+                    + "at a command list's Begin, and row 15's maximumDrawableCount when the swapchain lands, and "
+                    + "nothing else ever, because there is no command-buffer pool on this backend. A frame that "
+                    + "opens several command lists spends several of these. Set "
+                    + $"{EnvVarName}=<n> to change it, which is the MM4 lever."
                 : $"The native Metal backend resolved {framesInFlight} frames in flight (from "
                     + $"{EnvVarName}={framesInFlight}) rather than the default {Default}. Every uniform buffer's "
                     + "ring and every command list's staging arena were built at that depth, so a backpressure "
-                    + $"reading from this run describes {framesInFlight} frames rather than the default. The "
+                    + $"reading from this run describes {framesInFlight} RECORDINGS of headroom rather than the "
+                    + "default, and a frame that opens several command lists spends several of them. The "
                     + "drawable queue is not sized yet, which is row 15's.";
 
         /// <summary>

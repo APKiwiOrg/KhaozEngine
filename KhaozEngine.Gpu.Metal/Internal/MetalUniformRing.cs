@@ -103,14 +103,20 @@ namespace KhaozEngine.Gpu.Metal.Internal
         internal int FramesInFlight => _allocator.FramesInFlight;
 
         /// <summary>
-        /// The byte offset of the segment the NEXT submit will bind, which is the one any recording in progress
-        /// is writing and the one a bind's offset is composed against. Deliberately not the segment the GPU is
-        /// executing.
+        /// The byte offset of the DEVICE's current segment, which is the one the most recent
+        /// <see cref="MetalRingAllocator.BeginRecording"/> claimed.
+        /// <para>
+        /// FOR THE TWO DEVICE-LEVEL CALLERS ONLY, and a recording must not read it. <c>Map</c> on a ring-backed
+        /// buffer answers this segment, and the every-segment write treats it as the one it copies ungated.
+        /// Everything inside a recording composes against the segment that recording CAPTURED at its
+        /// <c>Begin</c>, because a second list beginning meanwhile moves this one.
+        /// </para>
         /// </summary>
-        internal ulong CurrentFrameBaseBytes => FrameBaseBytes(_allocator.CurrentSegment);
+        internal ulong CurrentSegmentBaseBytes => SegmentBaseBytes(_allocator.CurrentSegment);
 
-        /// <summary>The byte offset of any segment. Frame N uses segment <c>N % FramesInFlight</c>.</summary>
-        internal ulong FrameBaseBytes(int segment)
+        /// <summary>The byte offset of any segment. The recording that claimed index N writes segment
+        /// <c>N % FramesInFlight</c>.</summary>
+        internal ulong SegmentBaseBytes(int segment)
         {
             if (segment < 0 || segment >= FramesInFlight)
             {
@@ -131,8 +137,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
             => MetalRingStride.BindWindowFits(rangeOffset, callerDynamicOffset, range, SegmentStrideBytes);
 
         /// <summary>
-        /// WRITE INTO THE CURRENT SEGMENT, which is what a record-time <c>UpdateBuffer</c> on a uniform buffer
-        /// becomes: <c>memcpy(contents + frameBase + offsetBytes, data, n)</c> and nothing else.
+        /// WRITE INTO THE RECORDING'S OWN SEGMENT, which is what a record-time <c>UpdateBuffer</c> on a uniform
+        /// buffer becomes: <c>memcpy(contents + segmentBase + offsetBytes, data, n)</c> and nothing else.
+        /// <para>
+        /// THE SEGMENT IS THE CALLER'S, CAPTURED AT ITS <c>Begin</c>, and that is the whole of the
+        /// segment-per-recording model as this type sees it. Reading
+        /// <see cref="MetalRingAllocator.CurrentSegment"/> here instead would let a second list's <c>Begin</c>
+        /// move the target under a recording in progress, so two writes in one recording could land in two
+        /// different versions and the binds composed for that recording would name a third.
+        /// </para>
         /// <para>
         /// LOCK-FREE ON THE HOT PATH, unqualified. There is no mapping to acquire and no encoder to open, so this
         /// path takes no lock and makes no native call at all, ever. Two writes into one segment are two writes
@@ -154,13 +167,20 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// design exists to make cheap.
         /// </para>
         /// </summary>
-        internal void Write(uint offsetBytes, ReadOnlySpan<byte> data)
+        /// <param name="segment">The segment the calling recording captured at its <c>Begin</c>.</param>
+        /// <param name="offsetBytes">Where in the LOGICAL buffer the write lands.</param>
+        /// <param name="data">The payload.</param>
+        internal void Write(int segment, uint offsetBytes, ReadOnlySpan<byte> data)
         {
             ValidateWriteRange(offsetBytes, data.Length);
 
+            // Before the empty-payload return, so a recording carrying a segment this ring does not have is named
+            // at the write that made it rather than only on the payloads that happen to be non-empty.
+            ulong segmentBase = SegmentBaseBytes(segment);
+
             if (data.Length == 0) return;
 
-            CopyInto(_contents, CurrentFrameBaseBytes + offsetBytes, data);
+            CopyInto(_contents, segmentBase + offsetBytes, data);
         }
 
         /// <summary>
@@ -184,7 +204,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <see cref="MetalRingAllocator"/>, under the submit lock and with the target segment already known to
         /// be free of the GPU. Bounds are the caller's.</summary>
         internal void CopyIntoSegmentUnderLock(int segment, uint offsetBytes, ReadOnlySpan<byte> data)
-            => CopyInto(_contents, FrameBaseBytes(segment) + offsetBytes, data);
+            => CopyInto(_contents, SegmentBaseBytes(segment) + offsetBytes, data);
 
         /// <summary>Read a segment's bytes back. Present for a diagnostic, for <c>Map</c> on a ring-backed
         /// buffer, and for the tests that assert WHERE a write landed, which is the only way a segment policy is
@@ -194,7 +214,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             ValidateWriteRange(offsetBytes, length);
 
             var copy = new byte[length];
-            CopyOut(_contents, FrameBaseBytes(segment) + offsetBytes, copy);
+            CopyOut(_contents, SegmentBaseBytes(segment) + offsetBytes, copy);
             return copy;
         }
 
@@ -244,7 +264,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             if (patches.Count == 0) return 0;
 
             int applied = patches.Count;
-            ulong segmentBase = FrameBaseBytes(segment);
+            ulong segmentBase = SegmentBaseBytes(segment);
             for (int i = 0; i < patches.Count; i++)
             {
                 CopyInto(_contents, segmentBase + patches[i].OffsetBytes, patches[i].Data);

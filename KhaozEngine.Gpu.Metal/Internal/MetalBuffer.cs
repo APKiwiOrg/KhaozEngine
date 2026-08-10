@@ -247,7 +247,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             IntPtr contents = Contents;
             IntPtr segment = contents == IntPtr.Zero
                 ? IntPtr.Zero
-                : contents + (nint)_ring.CurrentFrameBaseBytes;
+                : contents + (nint)_ring.CurrentSegmentBaseBytes;
 
             return new MappedData(segment, SizeInBytes, SizeInBytes);
         }

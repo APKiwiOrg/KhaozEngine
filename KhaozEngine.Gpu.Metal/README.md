@@ -4,12 +4,13 @@ The engine's own native Metal backend for the [KhaozEngine.Gpu](../KhaozEngine.G
 umbrella: a consumer adds this package explicitly, the same pattern as `Physics.Bepu` or `WorldStore.Sqlite`,
 and nothing that does not want the Objective-C interop ever carries it.
 
-> **Status: it creates a HEADLESS device with a TIMELINE, and it cannot present.** Rows 1 to 5 of the work breakdown are done:
+> **Status: it creates a HEADLESS device that RECORDS AND SUBMITS, and it cannot present or make a resource.**
+> Rows 1 to 5 and 7 of the work breakdown are done:
 > the assembly and its guard rows, the three phase-4 verification spikes, `KhaozEngineMetal.Register()` with the
 > `IGpuBackendProvider` and the functional machine probe behind it, `GpuBackendKind.MetalNative = 6` with its
 > `metal-native` token, and now the Objective-C interop layer, a real `MTLDevice`, one `MTLCommandQueue`,
 > `KE_METAL_DEVICE` selection, `KE_METAL_VALIDATION` reporting, the command-buffer error latch and the liveness
-> token. Resources, command lists, pipelines and the swapchain are not built, and every member that needs one
+> token. Resources, pipelines and the swapchain are not built, and every member that needs one
 > throws a message naming the row that builds it. WINDOWED creation refuses by naming
 > [row 15](https://github.com/APKiwiOrg/KhaozEngine/issues/581), because a windowed device that cannot present
 > is worse than one that says so at creation. `GpuBackendKind.Metal`, which goes through Veldrid, is the
@@ -17,6 +18,10 @@ and nothing that does not want the Objective-C interop ever carries it.
 > Row 5 added the timeline beside it: one `MTLSharedEvent` per device, a real `IGpuFence`, a counted
 > `WaitForIdle` in 250 ms slices so a device loss can release it, and a completion handler that reads every
 > command buffer's outcome and latches only failures, keyed on the command queue.
+> Row 7 added the command list and wired the timeline to it: a fresh `MTLCommandBuffer` per `Begin`, the
+> one-encoder-at-a-time lifecycle, and a submit that signals, attaches the handler and commits under one lock.
+> The list can be begun, recorded against and submitted today, and every member that records CONTENT into it
+> still names the row that builds it.
 
 Spec, decisions and the nineteen-row work breakdown:
 [docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](../docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md).
@@ -34,8 +39,8 @@ KhaozEngineMetal.Register();   // unconditionally, on every OS, once at startup
 `Register` and `IsPlatformSupported` are the whole public surface, and a test pins it member by member so the
 next row has to mean it. Everything else in the assembly is internal: the Objective-C interop layer, the
 device and its queue, the provider, the machine probe and its device-free decision half, the completion
-timeline and the fence on it, plus the three verification spikes, which exist to answer a question rather
-than to run in a game.
+timeline and the fence on it, the command list with its encoder lifecycle and the submit path, plus the three
+verification spikes, which exist to answer a question rather than to run in a game.
 
 **Call `Register()` unconditionally and on every operating system.** Registering says a provider EXISTS, which
 is a fact about your app's wiring. Whether this machine can run it is the separate question
@@ -164,6 +169,39 @@ liveness token from Metal's own completion thread. A single unbounded wait canno
 counts one entry into `GpuDeviceCounters.DrainCount` and `DrainMs` per call that actually blocked. The slice has
 one observable cost, which is up to 250ms of extra teardown latency after a device loss, since a waiter already
 blocked inside the native call keeps blocking until its current slice expires.
+
+## The command list: a buffer per `Begin`, and no pool at all (M-R1 to M-R4)
+
+`Begin` takes a fresh `MTLCommandBuffer` from the queue and retains it, `End` closes any open encoder and seals
+the record, and the device's `Submit` encodes the timeline signal, attaches the completion handler and commits,
+all under one lock. There is no engine-owned op stream: an `MTLCommandBuffer` between `commandBuffer` and
+`commit` IS a driver-encoded command stream, so recording into a managed array first would encode twice and
+move the driver-side encode inside the submit lock.
+
+**There is no command-buffer pool either, and that is where this backend diverges from the Vulkan one.** A
+Vulkan list owns `FramesInFlight` command pools because a pool cannot be reset while its buffers are in flight.
+A Metal command buffer is single-use, the queue owns its memory, and there is no reset, no pool object and no
+allocator to choose between. So `KE_METAL_FRAMES_IN_FLIGHT` sizes the uniform ring and the drawable queue and
+nothing else, and `GpuDeviceCounters.BackpressureStallCount` means ONE thing here where it means two on Vulkan.
+What the queue does have is its own maximum number of UNCOMMITTED buffers, past which `commandBuffer` blocks,
+so the backend counts what it holds against that depth plus one (the separate present buffer) and warns once
+rather than discovering it as a frame-loop stall with nothing attached.
+
+**Exactly one encoder is open at a time, which is Metal's rule rather than a policy this backend invents.**
+Three helpers own every transition and each ends the outgoing encoder before opening the incoming one.
+
+**Ending an encoder discards EVERYTHING it held**, and this backend acts on all of it: the bound pipeline, the
+whole argument table, the viewport, the scissor, every vertex stream and the index buffer. The incumbent
+forgets the vertex streams there and is saved only by a second defect that makes its stream cache permanently
+cold, so it re-binds every stream on every draw. This backend keeps the cache, which means it has to keep the
+invalidation, and the test for it is written behaviourally (bind, force an encoder end through a blit, bind
+again, assert the second bind was re-issued) because that shape fails on the corruption rather than on the
+bookkeeping.
+
+**N lists record concurrently here, and that is still not a promise of the seam.** Each list holds its own
+command buffer and its own encoders, and this backend has no shared record-time state at all: no layout
+tracker, no barrier batch, no device state cache. The portable contract remains one open recording per device,
+and code that relies on more does not port.
 
 ## Three decisions worth knowing before reading the code
 

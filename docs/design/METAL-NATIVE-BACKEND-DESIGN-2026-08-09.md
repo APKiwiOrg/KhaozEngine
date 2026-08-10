@@ -1254,6 +1254,15 @@ backend never holds more uncommitted buffers than `FramesInFlight` plus one, the
 M-W6 keeps. A blocked `commandBuffer` would present as a frame-loop stall with no counter attached, which is
 the shape section 16 exists to keep off the list.
 
+**Row 7's floor for `KE_METAL_FRAMES_IN_FLIGHT` is 1, not the Vulkan variable's 2, and the difference is
+derived from the paragraph above rather than a constant drifting.** V-M3's floor is 2 because at 1 every Vulkan
+list would own ONE command pool, so every `Begin` would advance onto the slot it had just used and wait for its
+own previous record to finish on the GPU: a synchronous round trip per RECORD rather than a frame of latency,
+and a capture taken there would measure the drain rather than the pipeline. That argument needs a per-list pool
+ring and M-R2 removes it, so what is left at 1 here is the shape phase 2 already calls its honest degenerate
+case: one frame of latency, one stall per frame, and a configuration that proves the backpressure counter
+counts something real. The ceiling stays 16 and the default stays 3.
+
 **Concurrent recording (M-R3).** N lists record concurrently and genuinely, because each holds its own command
 buffer and its own encoders, and **this design has no shared record-time state at all**: no layout tracker
 (M-H3), no barrier batch, no device state cache. That is V-R4's property obtained from Metal's own object model
@@ -1342,6 +1351,29 @@ pipeline-state block. Phase 3's row-12 correction is inherited rather than redis
 assertion about an EMISSION needs a line to interpose on, so the render-encoder begin and end pair and the
 viewport and scissor setters sit on their own plain-handle `IMetalRenderApi`, and nothing on that seam is
 frozen as a marginal.
+
+**Corrected at row 7: the ENCODER BOUNDARY emits through `IMetalEncoderSink`, and only the setters stay on
+`IMetalRenderApi`.** The paragraph above places the render-encoder begin and end pair on the plain-handle seam
+by analogy with phase 3, where `vkCmdBeginRendering` is deliberately NOT on the counted seam because nothing
+about it scales with draw count. That analogy does not carry, and the reason it does not is M-T2 itself: on
+this API the boundary IS a counted class, named in M-T2 and bolded in row 7 of the breakdown, precisely because
+it is the thing a record-time upload multiplies. A class that is counted has to be EMITTED through the seam the
+budget is frozen over, or the budget counts what a recorder reports rather than what it emits, which is the
+exact weakness this paragraph's own sentence about interposition warns against. So all three encoder kinds'
+begin and end sit on `IMetalEncoderSink`, and `IMetalRenderApi` keeps the viewport and scissor setters, which
+is the half of this paragraph whose reason does carry (7.3 owes three device-free assertions about those
+emissions and none of them is a marginal).
+
+One consequence is worth stating, because it is the one place this backend uses a sink both ways. The
+per-draw classes are consumed through `where TSink : struct, IMetalEncoderSink` so the JIT monomorphizes them,
+exactly as M-T2 asks. The boundary is reached by the encoder lifecycle through a plain interface field, because
+the seam members that cause a transition (`SetFramebuffer` among them) are `IGpuCommandList` members that
+cannot be generic, and making the command list generic over its sink would put the sink type in the signature
+of every type that holds a list. One virtual call per PASS is not the cost the struct constraint exists to
+avoid. It does mean every sink implementation must be a readonly struct whose mutable state sits behind a class
+reference, which is already the emitter rule both siblings enforce, and which is load-bearing here for a reason
+they do not have: a sink with a mutable field would count boundaries into the boxed copy and draws into the
+by-ref one.
 
 **Aiming this at either neighbour's call classes would have been the mistake, twice over.** D3D11's fan-out
 class is one call per resource per stage through an array setter. Vulkan's is per-draw descriptor set

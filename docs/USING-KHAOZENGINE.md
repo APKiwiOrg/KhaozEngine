@@ -8865,7 +8865,7 @@ falling back, and nothing selects it by default (`ProbeOS` still answers `Metal`
 indefinitely. Calling `Register()` today costs one dictionary entry and changes nothing about how your game
 boots.
 
-**Two environment variables steer it, and neither is on by default.** `KE_METAL_DEVICE` picks which GPU: a
+**Three environment variables steer it, and none is on by default.** `KE_METAL_DEVICE` picks which GPU: a
 zero-based index into `MTLCopyAllDevices()`, a case-insensitive substring of a device name, or `discrete`,
 `integrated` or `low-power`. Unset, it takes `MTLCreateSystemDefaultDevice()`, which is the same device the
 incumbent Metal backend uses, so a capability comparison between the two is meaningful by construction and an
@@ -8888,6 +8888,25 @@ MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 dotnet run --project <your game>
 The engine's knob then logs which tier is really armed, checks that against the device's own Objective-C class
 (a validated device is an `MTLDebugDevice` rather than the driver's own), and WARNS with the exact prefix above
 when a tier was asked for and this process cannot have it. Neither tier is a synchronisation validator.
+
+**`KE_METAL_FRAMES_IN_FLIGHT=<n>` sets how far ahead of the GPU the CPU may run** (1 to 16, default 3). It
+sizes ONE thing on this backend, the uniform ring's per-frame segments, and through them the swapchain's
+`maximumDrawableCount`. Nothing here is a command-buffer pool: a Metal command buffer is single-use, the queue
+owns its memory and hands out a fresh one per `Begin`, so this number never multiplies command buffers the way
+the Vulkan variable does.
+
+```bash
+KE_METAL_FRAMES_IN_FLIGHT=4   # deeper, if a soak reports backpressure stalls at the default
+KE_METAL_FRAMES_IN_FLIGHT=1   # one frame of latency and one stall per frame, for measuring
+```
+
+**The floor is 1 here and 2 on Vulkan, and that is not a typo in either place.** The Vulkan floor is 2 because
+at 1 every command list there owns one command pool and every `Begin` waits for its own previous record to
+finish on the GPU, which is a synchronous round trip per RECORD rather than a frame of latency. That argument
+needs a per-list pool ring and this backend has none, so 1 is simply the shallowest honest setting: one frame
+of latency, one stall per frame, and a configuration that proves the backpressure counter counts something
+real. Ship 3. A value that is set and understood as nothing WARNS and leaves the default, and the session log
+names the depth this run actually got, because a capture is only evidence about the number it was taken at.
 
 **A Metal command-buffer failure is reported now, which it was not before.** Every command buffer's status and
 error are read when it finishes, in every configuration, and the first failure latches its

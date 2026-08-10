@@ -896,6 +896,84 @@ refusal fires by name including the staging texture that is a Shared `MTLBuffer`
 and two shader sets compiled from one program come back sharing one table through the device's cache.
 Everything else in the row is device-free and runs on every leg.
 
+### Native Metal pipelines: vertex streams pinned at the top of the buffer space, and a redundant bind that costs one comparison (#577)
+
+`IGpuResourceFactory.CreateGraphicsPipeline` and `CreateComputePipeline` are live on
+`GpuBackendKind.MetalNative`, and so are `IGpuCommandList.SetPipeline` and `SetComputePipeline`. Row 11 of
+[docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md).
+Framebuffers still refuse, so nothing renders yet.
+
+**Vertex streams take the TOP of the `[[buffer(n)]]` space and nothing counts to get there (M-B2).** Stream 0 is
+buffer 30, stream 1 is 29, downward, and resource buffers grow from 0 wherever the emission put them. The fork's
+answer is `ResourceBindingModel`, which makes one numbering depend on the other's COUNT: under `Improved`, which
+is the model this engine configures its Veldrid device with, a stream lands at `NonVertexBufferCount + i` summed
+over every resource layout, in two places that have to stay in step (the vertex descriptor's layout index and
+the command list's bind index), and getting them out of step binds a vertex buffer where a uniform should be.
+That count is the CPU's belief about where the resource buffers went, which is exactly the quantity section
+2.2b's ruling removes as an authority, so reproducing it would have rested the stream numbering on it. Top
+pinning depends on nothing, and `ResourceBindingModel` stops being a concept the engine has (M-B3). **It moves
+no pixel**, because a stream's buffer index is invisible to the emitted MSL, which reaches vertex attributes
+through `[[stage_in]]`: the index only has to agree between the two places this backend owns.
+
+**The no-collision property is measured rather than argued.** Over the 34 shipped graphics programs, the highest
+`[[buffer(n)]]` index any VERTEX function's emission chose is **0**, leaving 30 of the 31 entries free, and the
+largest shipped pipeline declares two streams. The assertion is taken against the indices the emission actually
+chose, read out of the binding table's vertex-stage entries rather than derived from what a layout declares
+visible, because SPIRV-Cross omits an argument a stage never references. A pipeline whose combined vertex-stage
+bindings would collide throws at creation naming both sides, and more streams than the table has entries is a
+separate refusal.
+
+**`RequireLayoutShape` gets its only call site, which is pin 4 of 2.2b landing.** Row 9 wrote the check and left
+it with no caller, because pipeline creation is the first moment the ENGINE-declared layout array and the
+reflection the table was built from exist together. Without it, a pipeline whose layouts disagree with its
+shader resolves every element through a key that means something else, which is the wrong-pixel-no-error class
+the whole binding mechanism exists to close, arriving through the one door the id join leaves open. The compute
+half calls it too, where the same failure is worse rather than milder: a dispatch writing through a storage
+buffer resolved from another declaration corrupts memory the next pass reads.
+
+**`SetPipeline` on the pipeline already bound does nothing (M-R8).** `MTLCommandList.SetPipelineCore` stores the
+pipeline, clears the whole active-set array and sets its changed flag on every call with no comparison, so a
+redundant bind costs a five-call state re-emit plus a full re-activation of every resource set. Two things are
+tracked here and they die to different events: WHICH pipeline is bound is recorder state and survives an encoder
+boundary, and WHETHER its state block has reached the current encoder is encoder state and does not, because
+Metal's bound pipeline state is a property of the encoder (M-R4). The second is a `MetalEncoderMark`, so the
+invalidation falls out of the epoch the scope already counts instead of being something a boundary has to
+remember, which is what the incumbent's single flag forces it to do by hand.
+
+**A pipeline is two Objective-C objects, and the second exists only for a depth output.** The render pipeline
+state carries the functions, the vertex layout, the attachment formats and the per-attachment blend state. The
+depth-stencil state is its own object with its own setter, created only when the pipeline declares a depth
+attachment, which is the creation half of the depth-target guard: `-setDepthStencilState:` on a pass with no
+depth attachment is a validation error under the debug layer M-T7 arms on every native-leg run. Everything else
+the seam calls pipeline state (cull mode, winding, fill mode, depth clip, the blend colour, the stencil
+reference) is encoder state a pipeline CHANGE emits, resolved once here and emitted by the draw row.
+
+**A compute pipeline is created from the FUNCTION, with no descriptor at all.** The descriptor exists to carry
+per-buffer mutability, and the incumbent fills it by walking the resource layouts with a per-kind counter, which
+is the declaration-order arithmetic 2.2b forbids on a shipped path: it would mark the mutability of whichever
+buffer sat at the counted index. `MTLMutabilityDefault` infers the same answer from the function's own
+`const device` and `constant` qualifiers, so the function route drops the descriptor, the buffer-descriptor
+array and the counter together.
+
+**Two things the device taught that the design did not predict.** Metal accepts a vertex buffer layout at index
+30, which the whole top-pinning scheme rests on and which the header only implies. And a shader referencing no
+resources at all still reflects ONE empty set, so a pipeline declaring no layouts against it is refused by the
+shape check: no shipped program is in that shape (all 34 reference at least one resource), and the question is
+filed as [#599](https://github.com/APKiwiOrg/KhaozEngine/issues/599).
+
+**And one seam question this row surfaced rather than created.** `GpuRasterizerState.DepthClipEnabled` is read
+by the Direct3D 11 and Vulkan backends and by NEITHER Metal one: `Veldrid.MTL` never reads it and derives
+`MTLDepthClipMode` from the depth TEST instead. Four shipped renderers ask for depth clamping with the test on
+and get clipping on macOS and clamping everywhere else, and goldens are baked per backend family so nothing
+compares the two. This row reproduces the incumbent deliberately, because the committed `metal` goldens were
+baked through it, and [#598](https://github.com/APKiwiOrg/KhaozEngine/issues/598) carries the decision.
+
+**On an Apple M2 Max under macOS 26**, a pipeline with two top-pinned streams and a vertex-stage uniform buffer
+builds, a colour-only pipeline builds with no depth-stencil state, a multisampled one builds, a compute pipeline
+builds from its function, and a descriptor missing an attribute the vertex function declares comes back with
+Metal's own message (`Vertex attribute m_17(2) is missing from the vertex descriptor`). Every decision in front
+of those calls is device-free and runs on all five legs.
+
 ## 17.34.0
 
 ### The `vulkan-native` CI leg, both validation tiers, and the first validation layer this repo has ever installed (#529)

@@ -1331,6 +1331,19 @@ target `setDepthStencilState`, `setDepthClipMode`, `setStencilReferenceValue`), 
 null state on a pass with no depth attachment is a validation error under `MTL_DEBUG_LAYER`, which M-T7 arms on
 every run.
 
+**Corrected at row 11: that block is EMITTED by row 14 and DECIDED by row 11, and the split is forced by the
+deferred begin rather than chosen.** Row 11's cell in section 18 names the depth-stencil state and its guard,
+and row 12's `MTLRenderCommandEncoder` header predicts that row 11 adds the setters. It does not, for a reason
+that only appears once M-A1 is in place: the block goes into a RENDER ENCODER, and under the deferred begin no
+encoder exists until the pass begins at the first draw, so at the moment `SetPipeline` is called there is
+nothing to write to. The guard's own condition makes the same point from the other side, since it asks about the
+BOUND FRAMEBUFFER, which the pre-draw flush knows and `SetPipeline` does not. So row 11 ships every DECISION the
+block makes, in a form a device-free test reads (`MetalPipelineState` carries the resolved values,
+`MetalGraphicsPipeline.DepthStencilState` is nil exactly when the pipeline declares no depth output, and
+`MetalPipelineBinding.NeedsGraphicsStateBlock` answers whether the block has reached the current encoder), and
+the eight selectors land with their caller. A prototype added a row early is an Objective-C declaration nobody
+has ever executed, which is the rule that file's own header states.
+
 **Vertex streams get a cache that is actually maintained.** `SetVertexBuffer(slot, buffer, offset)` marks the
 stream dirty when the buffer or the offset differs, and the flush issues one `setVertexBuffer` per dirty
 stream, invalidated wholesale by M-R4. The incumbent pays one per stream per draw unconditionally (2.1), so the
@@ -1641,6 +1654,33 @@ emitted MSL, which reaches vertex attributes through `[[stage_in]]`. The index o
 `MTLVertexDescriptor`'s layout index and the `setVertexBuffer` index, both of which this backend owns. A
 device-free test asserts that no index M-B1 read out of any vertex function reaches 30 downward for that
 program, so the no-collision property is a checked fact rather than an inherited assumption.
+
+**Addendum, row 11: the measurement that assertion produced, and the one thing about the scheme a device had to
+answer.**
+
+**The headroom is 30 of 31, which turns "cannot collide" from an argument into a number.** Over the 34 shipped
+graphics programs, the highest `[[buffer(n)]]` index any VERTEX function's emission chose is **0**. Every
+shipped vertex stage reads at most one resource buffer, so the top-pinned range could hold thirty streams before
+anything collided, against a shipped maximum of two (the model pass's vertex plus instance buffers). The corpus
+row reports that headroom rather than only asserting the property, because a corpus creeping upward should be
+visible here before it is visible as a pipeline that suddenly will not create. Read those as the measurement
+they were and take them again before quoting them: they are a property of the shipped renderers rather than of
+this scheme.
+
+**And METAL ACCEPTS A VERTEX BUFFER LAYOUT AT INDEX 30, which nothing device-free could establish.** The whole
+scheme rests on the top of the buffer table being usable for a stream, and the API's documented floor of 31
+entries per stage IMPLIES it rather than stating it. If a device had refused, every graphics pipeline in this
+backend would have failed to create and M-B2 would have had no answer at all, so
+`MetalPipelineGpuTests.TopPinnedVertexStreams_AreAcceptedByTheDevice` builds a pipeline with streams at 30 and
+29 plus a vertex-stage uniform buffer at 0, and its creation IS the assertion. Measured on an Apple M2 Max under
+macOS 26.
+
+**The over-31 case is TWO refusals rather than one**, which the sentence above states as a single condition.
+More streams than the buffer table has entries is a caller asking for something the API cannot express whatever
+shader it uses, and it is refused on the count alone. A vertex-stage resource buffer landing inside the range
+the streams occupy is the combined-bindings case, and it is refused against the INDEX the emission chose, which
+is strictly stronger than a count comparison: it fires on the actual collision rather than on the pigeonhole
+that implies one.
 
 ### 8.4 Declining argument buffers, heaps, bindless and `setBytes` (M-B6)
 
@@ -2511,6 +2551,27 @@ declares it. C2's RAW byte-address forcing was an artefact of what SPIRV-Cross e
 ruled it has no analogue elsewhere, and there is no SRV-versus-UAV auto-unbind either, which is a D3D11
 binding-model artefact whose Metal occupant is automatic tracking.
 
+**Corrected at row 11: the buffer MUTABILITY is NOT declared at creation, and there is no
+`MTLComputePipelineDescriptor` in this backend at all.** The sentence above says the pipeline declares it "the
+way the incumbent declares it", and reproducing that is unsound for the reason 2.2b rules on everywhere else.
+`Veldrid.MTL.MTLPipeline`'s compute constructor walks the resource layouts in declaration order and increments
+its own `bufferIndex` per buffer-kind element, writing `MTLMutabilityImmutable` for a uniform or a read-only
+structured buffer and `MTLMutabilityMutable` for a read-write one. That counter is the per-kind
+declaration-order arithmetic the whole binding ruling removes as an authority: it marks the mutability of
+whichever buffer sat at the counted index, which is wrong exactly when the emission's order and the
+declaration's order differ, and it would be a shipped path carrying the arithmetic.
+
+**The hint is redundant rather than merely unsafe, which is why the answer is to drop it rather than to
+re-derive it through the table.** `MTLMutabilityDefault` means "infer from the function's own declaration", and
+SPIRV-Cross emits a uniform as `constant`, a read-only storage buffer as `const device` and a read-write one as
+plain `device`. So the inference produces the incumbent's intended answer wherever the incumbent's counter is
+right, and still produces it where the counter is not. Taking
+`-newComputePipelineStateWithFunction:error:` instead of the descriptor route drops the descriptor, the
+`MTLPipelineBufferDescriptorArray` and the counter in one move, and leaves the interop layer three classes
+smaller. What would reopen it is a reason to set something the function cannot imply
+(`maxTotalThreadsPerThreadgroup`, or `threadGroupSizeIsMultipleOfThreadExecutionWidth`), neither of which has a
+seam member behind it, which is section 8.4's standing test for a Metal-native capability.
+
 **MSAA (M-C3).** `MaxMsaaSampleCount` reproduces `MTLGraphicsDevice.GetSampleCountLimit`, which walks
 `_supportedSampleCounts` from the top and returns the first supported count, ignoring both of its parameters,
 and the pin carries the citation. **The pin also carries the note that the argument-ignoring is CORRECT**,
@@ -2875,7 +2936,7 @@ Each row becomes one implementation issue, `kind/backlog` unless noted, `confide
 | 8 | Uniform ring on Shared persistently mapped memory: segments, bind-time base, the 256 stride with the device's own minimum asserted, the ring-backed-view invariant, the per-list staging arenas for bulk payloads pooled by size, `UpdateBuffer` routing at both levels including #484's every-segment rule and its pending-patch queue, the backpressure counters, the device-free stride invariant test over every shipped set shape, AND the **third shared ring adapter** in `KhaozEngine.TestSupport.Gpu` against section 9.4's seven shared rows. **Depends on 5** | 2.1's encoder-split-per-write class. #484's silent two-frames-in-three-read-nothing defect, which this ring must not reintroduce. A ring built against submit receipts recycles a segment the GPU is still reading. The incumbent's device-level write is an ungated memcpy into memory a queued buffer may be reading (M-M7). "Share the tests" with no adapter on the third side quietly becomes two backends' tests |
 | 9 | **Shader path, a prerequisite of 11 rather than a parallel row**: `VertexFragmentToMsl` and `ComputeToMsl` in `SpirvCrossCompile`'s back-end half, `MslCrossCompilePin` and `MslCompilePin`, **the entry-point and index-table parse built on 2.2b's ID JOIN, with the seven pins that section names (the loud parse, the per-stage module read, the asserted positional assumption, the layout shape check, `SpirvResourceDecorations` promoted into `KhaozEngine.Gpu/Internal/`, the table in the `.metallib` cache payload, and each pin's header saying what it does not freeze)**, **the one-off in-process MSL parity measurement against the incumbent, taken and RECORDED in this document**, the per-program byte-equality drift test, `MetalMslIncumbentParityTests`, the `.metallib` cache with header validation and its corruption test, `SpirvLocalSize` unchanged, the architecture test that the backend names no HLSL member, and the index-table test over every shipped program **taken before the first golden run** | Byte-identical MSL is the parity claim the whole golden gate rests on, and the drift test alone does not establish it: phase 2's own test header records that a wrong emission baked once passes forever. The index table is what turns three recorded production incidents (7.25.0, 7.51.2 and the splat terrain) into a checked fact. A pipeline cannot be created without a library and a function, so scheduling this outside the renderable path would block row 11 on a row nothing said row 11 needed |
 | 10 | Resource layouts carrying declaration ORDER and counting NOTHING (**corrected in place: this cell opened "Resource layouts with per-kind declaration-order bookkeeping", which 2.2b forbids on a shipped path and which the row deliberately did not build. See the row 10 addendum in 8.2**), resource sets, **the per-program INDEX TABLE as an object keyed on `(set, binding, stage)` per 2.2b, content-deduplicated so M-R9's comparison is a handle compare**, and the pipeline's reference to its table. The per-kind arithmetic is written HERE as the comparison inside M-T3's standing test and never as the binding path (2.2b). **Depends on 9** | `GetBufferBase` and its siblings re-walk the layout array on every single bind today. Without content dedup, M-R9's comparison is never equal and every pipeline switch invalidates everything, which is the incumbent's behaviour this row exists to beat |
-| 11 | Pipelines: graphics and compute, the render pipeline descriptor from `GpuOutputDescription`, the `MTLVertexDescriptor` with **vertex streams pinned at the TOP of the buffer space (M-B2)** and its no-collision assertion against the index table, the over-31-bindings throw, depth-stencil state with its depth-target guard, blend state, and **the `SetPipeline` identity guard the incumbent lacks (M-R8)**. **Depends on 9 and 10** | `ResourceBindingModel` exists to manage a collision this row's numbering removes, and getting the vertex descriptor's layout index and the command list's bind index out of step binds a vertex buffer where a uniform should be. `setDepthStencilState` on a pass with no depth attachment is a validation error under the debug layer M-T7 arms on every run. A redundant pipeline bind costs a full re-activation today |
+| 11 | Pipelines: graphics and compute, the render pipeline descriptor from `GpuOutputDescription`, the `MTLVertexDescriptor` with **vertex streams pinned at the TOP of the buffer space (M-B2)** and its no-collision assertion against the index table, the over-31-bindings throw, depth-stencil state with its depth-target guard, blend state, and **the `SetPipeline` identity guard the incumbent lacks (M-R8)**. **Depends on 9 and 10**. (**Corrected in place: the state block's EMISSION is row 14's and only its DECISIONS are here**, because the deferred begin means no encoder exists at `SetPipeline` and the depth-target guard asks about the bound framebuffer. See the row 11 addendum in 6.3. The compute pipeline takes the FUNCTION route with no descriptor, per the addendum in section 13, and M-B2's addendum in 8.3 carries the corpus measurement and the device answer.) | `ResourceBindingModel` exists to manage a collision this row's numbering removes, and getting the vertex descriptor's layout index and the command list's bind index out of step binds a vertex buffer where a uniform should be. `setDepthStencilState` on a pass with no depth attachment is a validation error under the debug layer M-T7 arms on every run. A redundant pipeline bind costs a full re-activation today |
 | 12 | Render passes: deferred begin, **per-attachment clear folding into `loadAction` with `KE_METAL_CLEAR` (M-A2)**, explicit `storeAction`, the clear-only-pass flush at both forcing sites, the end-before-illegal-command invariant, and the framebuffer-change-guarded viewport and scissor with the `ScissorTestEnabled` gate and the unconditional plural setters | The incumbent writes every clear into `colorAttachments[0]`, so `ModelFB`'s normal and linear-depth attachments are never cleared, and `ModelRenderer.BeginModelPass` carries a shipped comment working around it incompletely. An unguarded viewport emit silently resets a live scissor, which is golden-visible and which phase 2's first spec froze the wrong way. The clear-only case is forced by the incumbent at two sites and a golden depends on it |
 | 13 | Bind flush: two-state per-slot records, **per-(kind, stage) ARRAY calls (M-R6)**, the offsets-only `setBufferOffset:` path per visible stage, the vertex-stream cache that is actually maintained, index-table invalidation on a pipeline switch, the composed `frameBase + rangeOffset + callerDynamicOffset` offset, and the device-free budget test. **Binds through 2.2b's table**, so an element with no entry for a stage is not bound for that stage | One native call per resource per stage is the #418 fan-out defect arriving on a second API, and the fork's binding layer does not declare a single array setter. An offsets-only rebind is the shadow pass's shape thousands of times a frame. An unaligned buffer offset is a validation error under the debug layer and undefined behaviour without it |
 | 14 | Draw and dispatch paths, vertex and index binding with its offset arithmetic, compute pipelines and dispatch with the SERIAL dispatch type, rule 1 and rule 2 behaviour, MSAA resolve with `MaxMsaaSampleCount` **READ OFF the incumbent's own computation and pinned with the note that the argument-ignoring is correct**, mip generation, and copies with the alignment throw and its unreachability assertion | The 36 goldens, and the compute `[GpuFact]` suite that proves rules 1 and 2 on every backend. Both prior phases had drafts that invented an MSAA formula and then asserted equality with the incumbent, which is the C4 failure phase 2 corrected in flight and the V-C5 ruling phase 3 made against both of its drafts. The serial dispatch type is what makes M-H4 true and the fork never chains dependent dispatches, so it is not grounded in its usage |
@@ -3151,3 +3212,15 @@ Filed as issues when this spec lands, not discovered later.
 - **MF22.** #534 (a transfer queue and async compute) gains a Metal-side NOTE rather than a Metal-side issue:
   the argument is the same on both APIs and the consumer that would justify it is the same FFT ocean, so the
   Vulkan issue carries it and this design records that it was considered and declined for the same reasons (5).
+- **MF23.** Row 11 surfaced two questions that belong to the SEAM rather than to this backend, and both are
+  filed rather than answered here.
+  [#598](https://github.com/APKiwiOrg/KhaozEngine/issues/598) records that
+  `GpuRasterizerState.DepthClipEnabled` is read by the Direct3D 11 and Vulkan backends and by neither Metal one
+  (`Veldrid.MTL` never reads it and derives `MTLDepthClipMode` from the depth TEST instead), so four shipped
+  renderers ask for clamping and get clipping on macOS alone, invisibly, because goldens are baked per backend
+  family. This row reproduces the incumbent deliberately, since the committed `metal` goldens were baked through
+  it, and honouring the flag would need a rebake.
+  [#599](https://github.com/APKiwiOrg/KhaozEngine/issues/599) records that a shader referencing no resources at
+  all still reflects one EMPTY set, so a pipeline declaring no layouts against it is refused by 2.2b's shape
+  check. No shipped program is in that shape (all 34 reference at least one resource), so nothing depends on it
+  today, and the reflection is `SpirvCrossCompile`'s rather than this backend's.

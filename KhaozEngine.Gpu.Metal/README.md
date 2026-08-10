@@ -31,6 +31,9 @@ and nothing that does not want the Objective-C interop ever carries it.
 > Row 10 added resource layouts and resource sets, neither of which touches Metal at all, and deduplicated the
 > binding table so two programs that map every element the same way share one. See
 > [Layouts, sets, and the table two pipelines can share](#layouts-sets-and-the-table-two-pipelines-can-share).
+> Row 11 added both pipelines: `CreateGraphicsPipeline` and `CreateComputePipeline` build real Metal state
+> objects, and `SetPipeline` and `SetComputePipeline` record one with an identity guard. See
+> [Pipelines, and the top of the buffer space](#pipelines-and-the-top-of-the-buffer-space).
 
 Spec, decisions and the nineteen-row work breakdown:
 [docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](../docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md).
@@ -49,8 +52,9 @@ KhaozEngineMetal.Register();   // unconditionally, on every OS, once at startup
 next row has to mean it. Everything else in the assembly is internal: the Objective-C interop layer, the
 device and its queue, the provider, the machine probe and its device-free decision half, the completion
 timeline and the fence on it, the command list with its encoder lifecycle and the submit path, the shader path
-with its emission parse and binding table, the resource layouts and sets a pipeline will bind through, plus the
-three verification spikes, which exist to answer a question rather than to run in a game.
+with its emission parse and binding table, the resource layouts and sets a pipeline binds through, the two
+pipeline types and the vertex-stream numbering behind them, plus the three verification spikes, which exist to
+answer a question rather than to run in a game.
 
 **Call `Register()` unconditionally and on every operating system.** Registering says a provider EXISTS, which
 is a fact about your app's wiring. Whether this machine can run it is the separate question
@@ -183,9 +187,9 @@ blocked inside the native call keeps blocking until its current slice expires.
 ## Resources, and the one creation this backend refuses
 
 `IGpuDevice.Factory` creates buffers, textures, samplers and fences, and the device's `PointSampler` and
-`LinearSampler` pair exists. Nothing can BIND any of it yet, because the members that record a pipeline or a
-resource set belong to later rows, so what is usable today is creation, the device-level uploads, the
-record-time `UpdateBuffer` described below, and readback through `Map`.
+`LinearSampler` pair exists. Nothing can BIND any of it yet, because the member that records a resource set
+belongs to a later row, so what is usable today is creation, the device-level uploads, the record-time
+`UpdateBuffer` described below, and readback through `Map`.
 
 **Every buffer is `MTLStorageModeShared` and every texture is `MTLStorageModePrivate`**, reproducing the
 incumbent. On unified memory a Shared buffer's `contents()` pointer is stable for its life and visible to both
@@ -447,6 +451,48 @@ shader-set creation because a table is a property of the emission, and never evi
 would silently start invalidating again. Measured over the shipped catalog at row 10, on 2026-08-10, **42
 programs produced 17 distinct tables and 25 programs shared one with an earlier program**. That is a measurement
 of the renderers as they stood rather than a property of this package, so it moves as the catalog does.
+
+## Pipelines, and the top of the buffer space
+
+`CreateGraphicsPipeline` and `CreateComputePipeline` build real Metal state objects, and a command list can
+record one. Nothing draws yet, because a framebuffer is the next row.
+
+**Vertex streams are pinned at the TOP of the `[[buffer(n)]]` space, 30 downward, and resource buffers grow from
+0 wherever the emission put them.** The one real collision in Metal's binding model is that both share one space
+on the vertex stage, and the fork's answer makes each numbering depend on the other's count: a stream lands at
+`NonVertexBufferCount + i`, computed in two places that have to agree. That count is the CPU's belief about
+where the resource buffers went, which is the quantity this backend's binding table replaces as the authority,
+so it is not reproduced. Top pinning depends on nothing, and it moves no pixel: a stream's index is invisible to
+the emitted MSL, which reaches attributes through `[[stage_in]]`, so it only has to agree between the vertex
+descriptor and the bind, both of which this backend owns. Over the 34 shipped graphics programs the highest
+buffer index any vertex function's emission chose is **0**, so 30 of the 31 entries are free and the largest
+shipped pipeline declares two streams. A pipeline whose combined vertex-stage bindings would collide throws at
+creation naming both sides, and the assertion is read out of the table's vertex-stage entries rather than out of
+declared stage visibility, because a stage that never references an element has no index for it.
+
+**A pipeline is where the declared layouts are checked against the shader's reflection.** The binding table is
+keyed on `(set, binding, stage)` read out of the shader's own decorations, so a layout array of a different
+shape resolves every element through a key that means something else, silently. Pipeline creation is the first
+moment both arrays exist together, so that is where the check runs, for graphics and for compute.
+
+**A graphics pipeline is two Objective-C objects and the second exists only for a depth output.** The render
+pipeline state carries the functions, the vertex layout, the attachment formats and the per-attachment blend
+state, which is what lets the multiple-render-target passes blend one attachment while preserving another's
+destination. The depth-stencil state is its own object, created only when the pipeline declares a depth
+attachment, because setting one on a pass with no depth attachment is a validation error. Everything else the
+seam calls pipeline state (cull mode, winding, fill mode, depth clip, the blend colour) is ENCODER state, so it
+is resolved once at creation and emitted when the pipeline changes.
+
+**A compute pipeline is created from the function alone**, with no `MTLComputePipelineDescriptor`. The
+descriptor exists to carry per-buffer mutability, the incumbent fills it by counting buffer-kind elements in
+declaration order, and that counter is the arithmetic this backend removes. Metal's default infers the same
+mutability from the function's own `const device` and `constant` qualifiers.
+
+**Binding the pipeline that is already bound does nothing.** The incumbent clears its whole active-set array and
+sets a changed flag on every call including a redundant one, so a repeat bind costs a state re-emit plus a full
+re-activation of every resource set. Here it costs one reference comparison. Which pipeline is bound survives an
+encoder boundary, because the recorder still intends it, and whether its state has reached the current encoder
+does not, because that is encoder state: the two are tracked separately rather than collapsed into one flag.
 
 ## Three decisions worth knowing before reading the code
 

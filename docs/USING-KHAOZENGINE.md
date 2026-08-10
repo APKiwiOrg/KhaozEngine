@@ -8859,9 +8859,9 @@ holds an `MTLDevice` and one `MTLCommandQueue`, answers `Backend`, part of `Capa
 through `Factory` (buffers, textures, samplers and fences), exposes the shared `PointSampler` and
 `LinearSampler` pair, takes the device-level `UpdateBuffer` and `UpdateTexture`, answers `Map` and `Unmap`
 for staging resources, COMPILES SHADERS through `CreateShadersFromSpirv` and
-`CreateComputeShaderFromSpirv`, and creates the RESOURCE LAYOUTS and RESOURCE SETS a pipeline will bind through.
-It throws from every member whose row has not landed with a message naming that row, so there are no pipelines
-yet and nothing can be drawn.
+`CreateComputeShaderFromSpirv`, creates the RESOURCE LAYOUTS and RESOURCE SETS a pipeline binds through, and
+builds GRAPHICS AND COMPUTE PIPELINES that a command list can bind. It throws from every member whose row has
+not landed with a message naming that row, so there is no framebuffer yet and nothing can be drawn.
 
 **The shader path takes the same GLSL 450 every other backend takes**, so there is nothing to write differently
 for it: sources go in, an `MTLLibrary` and an `MTLFunction` per stage come out, and a compute shader reports the
@@ -8900,6 +8900,24 @@ bit it is read or written through is a validation failure. Disposing a resource 
 refusal and not a dangling pointer either: the binding reads the resource's handle live, so it degrades to an
 unbound slot. Disposing the LAYOUT or the SET and then using it throws `ObjectDisposedException`, since neither
 owns anything native and the call would otherwise quietly work.
+
+**A pipeline is where this backend checks your layouts against your shader**, and it is the one refusal that can
+surprise you. The binding table is keyed on `(set, binding, stage)` read out of the shader's own decorations, so
+`GpuPipelineDescription.ResourceLayouts` has to be the same SHAPE as what the shader reflects: the same number
+of sets, the same number of elements in each, and the same `GpuResourceKind` at each position. A disagreement
+throws at `CreateGraphicsPipeline` naming the counts, which is the same declaration every other backend already
+expects and the first place anything checks it. Two consequences worth knowing. `ResourceLayouts` cannot be
+left empty for a shader that references nothing, because such a shader still reflects one empty set
+([#599](https://github.com/APKiwiOrg/KhaozEngine/issues/599)), and no shipped engine program is in that shape.
+And your vertex layouts have to cover every attribute the vertex function declares, because Metal validates the
+pipeline against the compiled function and says which attribute is missing.
+
+**Vertex buffer SLOT numbers are unchanged and the indices behind them are not.** You still call
+`SetVertexBuffer(slot, ...)` with the slot the pipeline declared. Underneath, this backend pins streams to the
+top of Metal's buffer space (slot 0 is `[[buffer(30)]]`, slot 1 is 29) so they cannot collide with the resource
+buffers the emission numbers from 0 upward. Nothing about that is visible from the seam, it moves no pixel, and
+it is mentioned only because a Metal frame capture shows those indices and they will look wrong if you expect
+0 and 1.
 
 **One creation the other backends accept is refused here, deliberately.** A buffer declaring both
 `GpuBufferUsage.UniformBuffer` and either structured usage throws at creation on `MetalNative`. Both Veldrid

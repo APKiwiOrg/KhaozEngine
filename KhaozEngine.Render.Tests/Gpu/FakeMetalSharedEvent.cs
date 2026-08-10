@@ -46,8 +46,13 @@ namespace KhaozEngine.Tests.Gpu
         internal bool WaitReachesTheValue { get; set; } = true;
 
         /// <summary>Every signal encoded, in order, with the buffer it was encoded into. The submit path's whole
-        /// observable effect on the event.</summary>
+        /// observable effect on the event. Appends take a lock because the concurrency test drives
+        /// <see cref="EncodeSignal"/> from eight threads at once, and an unsynchronized List.Add corrupts its
+        /// backing array mid-grow, which is exactly how this fake turned the allocation test red on the CI box
+        /// while passing locally.</summary>
         internal List<(IntPtr CommandBuffer, ulong Value)> Encoded { get; } = new();
+
+        readonly object _encodedLock = new();
 
         /// <summary>Run at the top of every <see cref="Read"/>, before the value is produced. A test that needs
         /// a device death discovered BY the read (which flips liveness underneath the caller) hangs it
@@ -89,7 +94,10 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <inheritdoc/>
-        public void EncodeSignal(IntPtr commandBuffer, ulong value) => Encoded.Add((commandBuffer, value));
+        public void EncodeSignal(IntPtr commandBuffer, ulong value)
+        {
+            lock (_encodedLock) Encoded.Add((commandBuffer, value));
+        }
 
         /// <inheritdoc/>
         public void Dispose()

@@ -91,6 +91,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
         readonly MetalRingAllocator _rings;
         readonly IMetalStagingSource _staging;
 
+        // M-N4's FOURTH READ, KEPT rather than only checked. MetalDeviceRequirements refuses a device whose
+        // reported buffer-offset alignment is 0 or is something M-M3's 256-byte stride is not a multiple of, so
+        // what survives here is a power of two that divides the stride, and it is what every bind's composed
+        // offset is checked against. 256 would refuse offsets the device accepts (macOS reports 16 or 32).
+        readonly uint _bufferOffsetAlignment;
+
         MetalSampler _pointSampler = null!;
         MetalSampler _linearSampler = null!;
 
@@ -101,7 +107,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         MetalGpuDevice(MTLDevice device, MTLCommandQueue queue, GpuCapabilities capabilities,
             MetalDeviceLiveness liveness, MetalDeviceLossLatch loss, MetalTimeline timeline,
             MetalUncommittedBuffers uncommitted, IMetalSetupNative setupNative, int framesInFlight,
-            IMetalStagingSource staging)
+            IMetalStagingSource staging, uint bufferOffsetAlignment)
         {
             _device = device;
             Queue = queue;
@@ -115,6 +121,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _framesInFlight = framesInFlight;
             _staging = staging;
             _renderApi = new MetalRenderApi();
+            _bufferOffsetAlignment = bufferOffsetAlignment;
 
             // THE ONE RING ALLOCATOR (M-M3), sharing the submit lock rather than owning one. It has to read
             // MetalTimeline.LastSubmitted under exactly the lock that orders the commit which registers it, or
@@ -200,6 +207,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 // liveness token because its block creation is a native allocation on this device (M-F6).
                 new MetalStagingArena(_staging, _framesInFlight, liveness: _liveness), new MetalBlitApi(),
                 _liveness, _renderApi,
+                // THE DEVICE'S OWN ALIGNMENT, read once at creation by M-N4's probe. Every composed bind offset
+                // is checked against it, which is section 18's third named risk for this row.
+                _bufferOffsetAlignment,
                 // M-A2's POSITION, READ ONCE PER PROCESS AND COPIED PER LIST. Reading the environment per pass
                 // would let a mid-run change split one frame's clears between two policies, which is a shape the
                 // gate-1 A/B could not interpret. See MetalClearPolicy.

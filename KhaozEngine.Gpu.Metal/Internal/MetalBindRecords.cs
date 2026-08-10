@@ -81,6 +81,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         readonly MetalShaderStage[] _stages;
         readonly MetalArgumentBatch _batch = new();
 
+        // THE DEVICE'S OWN REPORTED BUFFER-OFFSET ALIGNMENT, which every composed offset has to be a multiple of.
+        // See RequireOffsetAligned for why it is the device's number rather than M-M3's 256.
+        readonly uint _offsetAlignment;
+
         SlotRecord[] _slots = new SlotRecord[4];
 
         // One past the highest slot ever recorded, which bounds every walk. Follows the highest SLOT and never
@@ -89,16 +93,39 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         MetalShaderIndexTable? _table;
 
-        MetalBindRecords(MetalShaderStage[] stages) => _stages = stages;
+        MetalBindRecords(MetalShaderStage[] stages, uint offsetAlignment)
+        {
+            if (offsetAlignment == 0 || (offsetAlignment & (offsetAlignment - 1)) != 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(offsetAlignment), offsetAlignment,
+                    "A native Metal bind record needs the device's buffer-offset alignment as a power of two. "
+                    + "MetalDeviceRequirements reads it at creation through minimumConstantBufferOffsetAlignment "
+                    + "and refuses a device reporting 0 or a value M-M3's "
+                    + MetalRingStride.SegmentAlignment.ToString(CultureInfo.InvariantCulture)
+                    + "-byte ring stride is not a multiple of, so anything else here is a value invented on the "
+                    + "way down rather than one a device answered.");
+            }
+
+            _stages = stages;
+            _offsetAlignment = offsetAlignment;
+        }
 
         /// <summary>The records a <c>Draw</c> flushes: the vertex and fragment stages of a render encoder.</summary>
-        internal static MetalBindRecords ForGraphics()
-            => new([MetalShaderStage.Vertex, MetalShaderStage.Fragment]);
+        /// <param name="offsetAlignment">The device's reported buffer-offset alignment, from
+        /// <c>MetalDeviceFacts.BufferOffsetAlignment</c> by way of the command list.</param>
+        internal static MetalBindRecords ForGraphics(uint offsetAlignment)
+            => new([MetalShaderStage.Vertex, MetalShaderStage.Fragment], offsetAlignment);
 
         /// <summary>The records a <c>Dispatch</c> flushes: a compute encoder's single stage. Separate records
         /// because a graphics bind does not feed a dispatch and this does not feed a draw, which is the seam's own
         /// split.</summary>
-        internal static MetalBindRecords ForCompute() => new([MetalShaderStage.Compute]);
+        /// <param name="offsetAlignment">The device's reported buffer-offset alignment.</param>
+        internal static MetalBindRecords ForCompute(uint offsetAlignment)
+            => new([MetalShaderStage.Compute], offsetAlignment);
+
+        /// <summary>The device alignment every composed buffer offset is checked against. For a test and a
+        /// diagnostic.</summary>
+        internal uint OffsetAlignment => _offsetAlignment;
 
         /// <summary>Which stages a flush of these records writes into.</summary>
         internal ReadOnlySpan<MetalShaderStage> Stages => _stages;
@@ -452,7 +479,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
                     RequireSpaceAgrees(entry, bindings[binding], slot, binding, stage);
                     _batch.Add(entry.Space, entry.Index, bindings[binding].Handle,
-                        ComposedOffset(bindings[binding], segment, record.DynamicOffset));
+                        ComposedOffset(bindings[binding], segment, record.DynamicOffset, _offsetAlignment));
                 }
             }
 
@@ -479,7 +506,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
                     RequireSpaceAgrees(entry, bindings[binding], slot, binding, stage);
                     sink.SetBufferOffset(stage, encoder,
-                        ComposedOffset(bindings[binding], segment, record.DynamicOffset), (uint)entry.Index);
+                        ComposedOffset(bindings[binding], segment, record.DynamicOffset, _offsetAlignment),
+                        (uint)entry.Index);
                 }
             }
         }
@@ -501,17 +529,56 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // composed here travels in the same array entry as a NIL handle and Metal reads the index as unbound, so
         // nothing reads it. What must not happen is the offsets-only arm reaching it, which would move a real
         // offset on an index still holding the released buffer.
-        static nuint ComposedOffset(in MetalBoundResource bound, int segment, uint callerDynamicOffset)
+        static nuint ComposedOffset(in MetalBoundResource bound, int segment, uint callerDynamicOffset,
+            uint alignment)
         {
             uint caller = bound.AppliesCallerOffset ? callerDynamicOffset : 0;
+            ulong frameBase = 0;
 
             MetalUniformRing? ring = bound.Ring;
-            if (ring is null) return (nuint)((ulong)bound.RangeOffset + caller);
+            if (ring is not null)
+            {
+                MetalRingStride.RequireBindWindowFits(
+                    bound.RangeOffset, caller, bound.Range, ring.SegmentStrideBytes);
 
-            MetalRingStride.RequireBindWindowFits(
-                bound.RangeOffset, caller, bound.Range, ring.SegmentStrideBytes);
+                frameBase = ring.SegmentBaseBytes(segment);
+            }
 
-            return (nuint)(ring.SegmentBaseBytes(segment) + bound.RangeOffset + caller);
+            ulong composed = frameBase + bound.RangeOffset + caller;
+            RequireOffsetAligned(composed, frameBase, bound.RangeOffset, caller, alignment);
+
+            return (nuint)composed;
+        }
+
+        // THE THIRD OF THE ROW'S THREE NAMED RISKS, AND THE ONE NOTHING ENFORCED. An unaligned buffer offset is a
+        // validation error under the debug layer M-T7 arms on every run and undefined behaviour without it, and
+        // only ONE of the three terms is aligned by construction: the frame base is a multiple of M-M3's 256-byte
+        // stride, while the set's own range offset and the caller's per-draw offset are raw values that arrive
+        // through the seam.
+        //
+        // AND IT IS THE DEVICE'S OWN NUMBER RATHER THAN 256 OR A CONSTANT PICKED HERE. M-M3 floors the ring
+        // STRIDE at 256 deliberately, but that is the spacing of the segments and not what the driver requires of
+        // an offset: macOS reports 16 or 32 through minimumConstantBufferOffsetAlignment, so checking against 256
+        // would refuse binds the device accepts, and hardcoding 4 would pass binds it does not. The value comes
+        // from MetalDeviceFacts.BufferOffsetAlignment, which the creation-time probe has already refused a device
+        // for reporting as 0 or as something 256 is not a multiple of, so by the time it reaches here it is a
+        // power of two that divides the stride.
+        static void RequireOffsetAligned(ulong composed, ulong frameBase, uint rangeOffset, uint dynamicOffset,
+            uint alignment)
+        {
+            if ((composed & (alignment - 1UL)) == 0) return;
+
+            throw new ArgumentOutOfRangeException(nameof(dynamicOffset), dynamicOffset,
+                "A native Metal buffer bind composed the offset "
+                + composed.ToString(CultureInfo.InvariantCulture) + " (ring segment base "
+                + frameBase.ToString(CultureInfo.InvariantCulture) + " plus the set's range offset "
+                + rangeOffset.ToString(CultureInfo.InvariantCulture) + " plus the caller's per-draw offset "
+                + dynamicOffset.ToString(CultureInfo.InvariantCulture) + "), which is not a multiple of the "
+                + alignment.ToString(CultureInfo.InvariantCulture)
+                + "-byte buffer-offset alignment this device reports. The segment base is aligned by "
+                + "construction, so one of the other two is the misaligned one. Metal's debug layer calls an "
+                + "unaligned offset a validation error and the driver calls it undefined behaviour, and neither "
+                + "says which bind did it.");
         }
 
         // WHAT SEPARATES THE THREE ARMS, IN ONE PLACE. Read the order: an invalid stamp beats a clean flag,

@@ -379,25 +379,41 @@ namespace KhaozEngine.Tests.Gpu
             FakeMetalRenderApi render = new(new FakeMetalRenderCalls());
             object owner = new();
 
+            const uint Alignment = MetalBindProgram.DeviceOffsetAlignment;
+
             Assert.Throws<ArgumentNullException>(
-                () => new MetalCommandList(null!, uncommitted, sink, owner, rings, arena, blit, liveness, render));
+                () => new MetalCommandList(null!, uncommitted, sink, owner, rings, arena, blit, liveness, render,
+                    Alignment));
             Assert.Throws<ArgumentNullException>(
-                () => new MetalCommandList(buffers, null!, sink, owner, rings, arena, blit, liveness, render));
+                () => new MetalCommandList(buffers, null!, sink, owner, rings, arena, blit, liveness, render,
+                    Alignment));
             Assert.Throws<ArgumentNullException>(
-                () => new MetalCommandList(buffers, uncommitted, null!, owner, rings, arena, blit, liveness, render));
+                () => new MetalCommandList(buffers, uncommitted, null!, owner, rings, arena, blit, liveness,
+                    render, Alignment));
             Assert.Throws<ArgumentNullException>(
-                () => new MetalCommandList(buffers, uncommitted, sink, null!, rings, arena, blit, liveness, render));
+                () => new MetalCommandList(buffers, uncommitted, sink, null!, rings, arena, blit, liveness,
+                    render, Alignment));
             Assert.Throws<ArgumentNullException>(
-                () => new MetalCommandList(buffers, uncommitted, sink, owner, null!, arena, blit, liveness, render));
+                () => new MetalCommandList(buffers, uncommitted, sink, owner, null!, arena, blit, liveness,
+                    render, Alignment));
             Assert.Throws<ArgumentNullException>(
-                () => new MetalCommandList(buffers, uncommitted, sink, owner, rings, null!, blit, liveness, render));
+                () => new MetalCommandList(buffers, uncommitted, sink, owner, rings, null!, blit, liveness,
+                    render, Alignment));
             Assert.Throws<ArgumentNullException>(
                 () => new MetalCommandList(buffers, uncommitted, sink, owner, rings, arena, null!, liveness,
-                    render));
+                    render, Alignment));
             Assert.Throws<ArgumentNullException>(
-                () => new MetalCommandList(buffers, uncommitted, sink, owner, rings, arena, blit, null!, render));
+                () => new MetalCommandList(buffers, uncommitted, sink, owner, rings, arena, blit, null!, render,
+                    Alignment));
             Assert.Throws<ArgumentNullException>(
-                () => new MetalCommandList(buffers, uncommitted, sink, owner, rings, arena, blit, liveness, null!));
+                () => new MetalCommandList(buffers, uncommitted, sink, owner, rings, arena, blit, liveness, null!,
+                    Alignment));
+
+            // AND THE DEVICE'S ALIGNMENT IS REFUSED THE SAME WAY when it is not a power of two, because the
+            // creation-time probe has already refused a device that could report one.
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => new MetalCommandList(buffers, uncommitted, sink, owner, rings, arena, blit, liveness,
+                    render, 0));
         }
 
         /// <summary>

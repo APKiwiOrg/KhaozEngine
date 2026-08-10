@@ -1899,6 +1899,20 @@ call passes a caller offset of zero and is a tautology, and `setBufferOffset:` c
 reports it either. What surfaced it was row 13's own `[GpuFact]` fixture binding a whole buffer and passing an
 offset, which is the shape a consumer would reach for first. Both package READMEs carry the rule now.
 
+**And row 13 enforces the ALIGNMENT of the composed offset, against the DEVICE's own reported number.** Section
+18 names an unaligned offset as one of this row's three risks and nothing was checking it: the frame base is a
+multiple of M-M3's 256-byte stride by construction, but the set's `GpuBufferRange.Offset` and the caller's
+per-draw offset are raw values arriving through the seam, and an unaligned result is a validation error under
+the debug layer M-T7 arms on every run and undefined behaviour without it. The number checked against is
+`MetalDeviceFacts.BufferOffsetAlignment`, read off the `MTLDevice` by M-N4's probe at creation and threaded to
+both `MetalBindRecords` arms through the command list. **It is deliberately not M-M3's 256 and not a constant
+picked here.** 256 is the SPACING of the ring segments rather than what the driver requires of an offset, and
+macOS reports 16 or 32 through `minimumConstantBufferOffsetAlignment`, so checking against the stride would
+refuse binds every shipped device accepts, while hardcoding a small number would pass binds a device does not.
+The probe has already refused any device reporting 0 or a value 256 is not a multiple of, so what arrives is a
+power of two dividing the stride. The refusal names all three components, because the composed number alone
+does not say which one to go and look at. Device-free throughout: a test stands the device up at a fixed 16.
+
 **Why the ring is worth more here than on either predecessor (2.1).** On the incumbent a record-time uniform
 write costs an `MTLBuffer` allocation, a `memcpy`, an ENCODER SPLIT, a blit, a release, and then a full
 graphics state re-activation at the next draw. Under the ring it costs a `memcpy`. **The saved work is not the

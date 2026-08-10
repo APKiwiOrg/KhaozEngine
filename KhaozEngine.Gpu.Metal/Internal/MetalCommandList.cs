@@ -97,10 +97,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// created, in row 6's shape rather than a third mechanism. It is deliberately NOT what
         /// <see cref="Owner"/> is: a list is refused at the submit by the device INSTANCE, because that is the
         /// object whose submit lock orders the queue, and the two questions are different.</param>
+        /// <param name="bufferOffsetAlignment">The DEVICE's own reported buffer-offset alignment
+        /// (<c>MetalDeviceFacts.BufferOffsetAlignment</c>), which every composed bind offset has to be a multiple
+        /// of. Carried down to both <see cref="MetalBindRecords"/> arms rather than read from a constant, because
+        /// M-M3's 256-byte ring stride is the SPACING of the segments and not what the driver requires of an
+        /// offset. A test passes a fixed value, which is what keeps the check device-free.</param>
         internal MetalCommandList(IMetalCommandBufferSource buffers, MetalUncommittedBuffers uncommitted,
             IMetalEncoderSink sink, object owner, MetalRingAllocator rings, MetalStagingArena arena,
             IMetalBlitApi blit, IMetalDeviceLiveness liveness, IMetalRenderApi render,
-            MetalClearMode clearMode = MetalClearMode.PerAttachment)
+            uint bufferOffsetAlignment, MetalClearMode clearMode = MetalClearMode.PerAttachment)
         {
             ArgumentNullException.ThrowIfNull(buffers);
             ArgumentNullException.ThrowIfNull(uncommitted);
@@ -121,6 +126,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _arena = arena;
             _blit = blit;
             _liveness = liveness;
+
+            // The two bind arms, which cannot be field initialisers because they need the device's alignment.
+            // MetalCommandList.Binds.cs declares them.
+            _graphicsBinds = MetalBindRecords.ForGraphics(bufferOffsetAlignment);
+            _computeBinds = MetalBindRecords.ForCompute(bufferOffsetAlignment);
         }
 
         /// <summary>

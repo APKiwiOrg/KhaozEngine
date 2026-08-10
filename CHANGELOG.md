@@ -1050,6 +1050,15 @@ this path's: the same shared check at set creation passes a caller offset of zer
 bounded by the buffer's logical size and the stride is that size rounded up, so it cannot fire there. Nothing
 downstream would report it either, because `setBufferOffset:` carries an offset and no length at all.
 
+**The composed offset is also checked for ALIGNMENT, against the number the device itself reports.** The segment
+base is a multiple of the 256-byte ring stride by construction, and the other two terms are raw caller values, so
+an unaligned composition is reachable and it is a validation error under the debug layer and undefined behaviour
+without it. What it is checked against is `MetalDeviceFacts.BufferOffsetAlignment`, read off the `MTLDevice` by
+the creation-time probe and threaded to the bind records through the command list, rather than the ring stride:
+macOS reports 16 or 32 through `minimumConstantBufferOffsetAlignment`, so checking against 256 would refuse binds
+every Mac accepts. The refusal names the segment base, the set's range offset and the caller's per-draw offset
+separately, because the composed number alone does not say which one moved.
+
 **A refused flush is refused WHOLE, which is what makes that refusal loud and repeatable rather than one throw
 followed by a wrong frame.** Any exception out of a flush drops the staged batch and invalidates every slot's
 emitted state and epoch stamp, because a partial flush leaves two separate wrecks. A throw inside the slot walk

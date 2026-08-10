@@ -41,6 +41,16 @@ namespace KhaozEngine.Tests.Gpu
     /// </summary>
     internal static class MetalBindProgram
     {
+        /// <summary>
+        /// THE BUFFER-OFFSET ALIGNMENT THE DEVICE-FREE BIND TESTS STAND A DEVICE UP WITH. On a real run this is
+        /// <c>MetalDeviceFacts.BufferOffsetAlignment</c>, read off the <c>MTLDevice</c> at creation and refused
+        /// unless M-M3's 256-byte ring stride is a multiple of it. 16 is what macOS actually reports through
+        /// <c>minimumConstantBufferOffsetAlignment</c>, so a fixed 16 here is a realistic number rather than a
+        /// permissive one, and it is deliberately NOT 256: a check against the stride would refuse offsets every
+        /// shipped device accepts.
+        /// </summary>
+        internal const uint DeviceOffsetAlignment = 16;
+
         /// <summary>Set 0, binding 0: a uniform buffer BOTH stages read, and the one element declared
         /// dynamic.</summary>
         internal const int FrameBinding = 0;

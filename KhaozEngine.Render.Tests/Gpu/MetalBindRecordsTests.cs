@@ -29,7 +29,7 @@ namespace KhaozEngine.Tests.Gpu
         public void ARecordEmitsNothingAtAll()
         {
             using var harness = new MetalRingHarness();
-            var records = MetalBindRecords.ForGraphics();
+            var records = MetalBindRecords.ForGraphics(MetalBindProgram.DeviceOffsetAlignment);
             var calls = new FakeMetalEncoderCalls();
 
             records.SetIndexTable(MetalBindProgram.Table());
@@ -50,7 +50,7 @@ namespace KhaozEngine.Tests.Gpu
         public void RepeatedRecordsBetweenTwoDrawsCollapseToOneFlush()
         {
             using var harness = new MetalRingHarness();
-            var records = MetalBindRecords.ForGraphics();
+            var records = MetalBindRecords.ForGraphics(MetalBindProgram.DeviceOffsetAlignment);
             MetalBoundSet set = MetalBindProgram.Set(harness);
             records.SetIndexTable(MetalBindProgram.Table());
 
@@ -86,7 +86,7 @@ namespace KhaozEngine.Tests.Gpu
         public void ASlotWhoseSetWentNullIsSkippedAndForgetsWhatItEmitted()
         {
             using var harness = new MetalRingHarness();
-            var records = MetalBindRecords.ForGraphics();
+            var records = MetalBindRecords.ForGraphics(MetalBindProgram.DeviceOffsetAlignment);
             MetalBoundSet set = MetalBindProgram.Set(harness);
             records.SetIndexTable(MetalBindProgram.Table());
 
@@ -124,7 +124,7 @@ namespace KhaozEngine.Tests.Gpu
         public void APipelineSwitchToATableWithTheSameIndicesInvalidatesNothing()
         {
             using var harness = new MetalRingHarness();
-            var records = MetalBindRecords.ForGraphics();
+            var records = MetalBindRecords.ForGraphics(MetalBindProgram.DeviceOffsetAlignment);
             var cache = new MetalIndexTableCache();
 
             MetalShaderIndexTable first = cache.Canonical(MetalBindProgram.Table());
@@ -161,7 +161,7 @@ namespace KhaozEngine.Tests.Gpu
         public void APipelineSwitchToADifferentTableForcesAFullRebindAndNotAnOffsetsOnlyCall()
         {
             using var harness = new MetalRingHarness();
-            var records = MetalBindRecords.ForGraphics();
+            var records = MetalBindRecords.ForGraphics(MetalBindProgram.DeviceOffsetAlignment);
             MetalBoundSet set = MetalBindProgram.Set(harness);
 
             var calls = new FakeMetalEncoderCalls();
@@ -195,7 +195,7 @@ namespace KhaozEngine.Tests.Gpu
         public void ANonZeroOffsetAgainstASetWithNoDynamicElementIsRefused()
         {
             using var harness = new MetalRingHarness();
-            var records = MetalBindRecords.ForGraphics();
+            var records = MetalBindRecords.ForGraphics(MetalBindProgram.DeviceOffsetAlignment);
             MetalBuffer buffer = harness.NewBuffer(64, KhaozEngine.Gpu.GpuBufferUsage.UniformBuffer);
 
             MetalBoundSet nothingDynamic = MetalBindProgram.Set(
@@ -220,7 +220,7 @@ namespace KhaozEngine.Tests.Gpu
         public void AFlushWithWorkOwedAndNoPipelineIsRefusedAndAnEmptyOneIsNot()
         {
             using var harness = new MetalRingHarness();
-            var records = MetalBindRecords.ForGraphics();
+            var records = MetalBindRecords.ForGraphics(MetalBindProgram.DeviceOffsetAlignment);
             var sink = new FakeMetalEncoderSink(new FakeMetalEncoderCalls());
 
             records.Flush(ref sink, Encoder, Epoch, segment: 0);
@@ -243,7 +243,7 @@ namespace KhaozEngine.Tests.Gpu
         public void ANilEncoderIsRefusedAndTheMarksSurvive()
         {
             using var harness = new MetalRingHarness();
-            var records = MetalBindRecords.ForGraphics();
+            var records = MetalBindRecords.ForGraphics(MetalBindProgram.DeviceOffsetAlignment);
             var sink = new FakeMetalEncoderSink(new FakeMetalEncoderCalls());
 
             records.SetIndexTable(MetalBindProgram.Table());
@@ -262,7 +262,7 @@ namespace KhaozEngine.Tests.Gpu
         public void AWildSlotIsRefusedAndAResetForgetsEverything()
         {
             using var harness = new MetalRingHarness();
-            var records = MetalBindRecords.ForGraphics();
+            var records = MetalBindRecords.ForGraphics(MetalBindProgram.DeviceOffsetAlignment);
             MetalBoundSet set = MetalBindProgram.Set(harness);
 
             Assert.Throws<ArgumentOutOfRangeException>(
@@ -288,9 +288,9 @@ namespace KhaozEngine.Tests.Gpu
         {
             Assert.Equal(
                 new[] { MetalShaderStage.Vertex, MetalShaderStage.Fragment },
-                MetalBindRecords.ForGraphics().Stages.ToArray());
+                MetalBindRecords.ForGraphics(MetalBindProgram.DeviceOffsetAlignment).Stages.ToArray());
 
-            Assert.Equal(new[] { MetalShaderStage.Compute }, MetalBindRecords.ForCompute().Stages.ToArray());
+            Assert.Equal(new[] { MetalShaderStage.Compute }, MetalBindRecords.ForCompute(MetalBindProgram.DeviceOffsetAlignment).Stages.ToArray());
         }
 
         /// <summary>

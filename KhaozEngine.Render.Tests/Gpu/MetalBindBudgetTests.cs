@@ -47,7 +47,7 @@ namespace KhaozEngine.Tests.Gpu
         public void AFullActivationOfTheModelShapedSetIsFourNativeCalls()
         {
             using var harness = new MetalRingHarness();
-            var records = MetalBindRecords.ForGraphics();
+            var records = MetalBindRecords.ForGraphics(MetalBindProgram.DeviceOffsetAlignment);
             var calls = new FakeMetalEncoderCalls();
             var sink = new FakeMetalEncoderSink(calls);
 
@@ -67,7 +67,7 @@ namespace KhaozEngine.Tests.Gpu
         public void ADrawThatChangesNothingIsZeroNativeCalls()
         {
             using var harness = new MetalRingHarness();
-            var records = MetalBindRecords.ForGraphics();
+            var records = MetalBindRecords.ForGraphics(MetalBindProgram.DeviceOffsetAlignment);
             MetalBoundSet set = MetalBindProgram.Set(harness);
             var calls = new FakeMetalEncoderCalls();
             var sink = new FakeMetalEncoderSink(calls);
@@ -96,7 +96,7 @@ namespace KhaozEngine.Tests.Gpu
         public void AThousandOffsetsOnlyRebindsAreTwoCallsEach()
         {
             using var harness = new MetalRingHarness();
-            var records = MetalBindRecords.ForGraphics();
+            var records = MetalBindRecords.ForGraphics(MetalBindProgram.DeviceOffsetAlignment);
             MetalBoundSet set = MetalBindProgram.Set(harness, frameBytes: 4);
             var calls = new FakeMetalEncoderCalls();
             var sink = new FakeMetalEncoderSink(calls);
@@ -109,10 +109,11 @@ namespace KhaozEngine.Tests.Gpu
 
             // THE OFFSET ALTERNATES RATHER THAN CLIMBING, so every draw really does move it and none of the
             // thousand walks out of the 256-byte segment M-M4 bounds it by. A climbing offset would leave the
-            // segment at draw 64 and this measurement would be about the refusal instead.
+            // segment at draw 64 and this measurement would be about the refusal instead. Both values are
+            // multiples of the device alignment, because an unaligned composed offset is refused now.
             for (uint draw = 1; draw <= 1000; draw++)
             {
-                records.Record(0, set, 4 + (draw % 2 * 4));
+                records.Record(0, set, MetalBindProgram.DeviceOffsetAlignment * (1 + (draw % 2)));
                 records.Flush(ref sink, Encoder, Epoch, segment: 0);
             }
 
@@ -188,7 +189,7 @@ namespace KhaozEngine.Tests.Gpu
                 MetalShaderIndexTable table = MetalShaderBuild.Pair(
                     program.VertexGlsl, program.FragmentGlsl, program.Name).Table;
 
-                var records = MetalBindRecords.ForGraphics();
+                var records = MetalBindRecords.ForGraphics(MetalBindProgram.DeviceOffsetAlignment);
                 var calls = new FakeMetalEncoderCalls();
                 var sink = new FakeMetalEncoderSink(calls);
 

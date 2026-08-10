@@ -43,7 +43,7 @@ namespace KhaozEngine.Tests.Gpu
         public void AFullActivationIsOneArrayCallPerKindPerStage()
         {
             using var harness = new MetalRingHarness();
-            var records = MetalBindRecords.ForGraphics();
+            var records = MetalBindRecords.ForGraphics(MetalBindProgram.DeviceOffsetAlignment);
             var calls = new FakeMetalEncoderCalls();
             var sink = new FakeMetalEncoderSink(calls);
 
@@ -95,7 +95,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.False(table.TryGetIndex(0, MetalBindProgram.SamplerBinding, MetalShaderStage.Vertex, out _));
             Assert.True(table.TryGetIndex(0, MetalBindProgram.TextureBinding, MetalShaderStage.Fragment, out _));
 
-            var records = MetalBindRecords.ForGraphics();
+            var records = MetalBindRecords.ForGraphics(MetalBindProgram.DeviceOffsetAlignment);
             var calls = new FakeMetalEncoderCalls();
             var sink = new FakeMetalEncoderSink(calls);
 
@@ -130,7 +130,7 @@ namespace KhaozEngine.Tests.Gpu
         public void OnlyTheDynamicOffsetMovingIsOneOffsetCallPerVisibleStage()
         {
             using var harness = new MetalRingHarness();
-            var records = MetalBindRecords.ForGraphics();
+            var records = MetalBindRecords.ForGraphics(MetalBindProgram.DeviceOffsetAlignment);
             MetalBoundSet set = MetalBindProgram.Set(harness);
             MetalShaderIndexTable table = MetalBindProgram.Table();
 
@@ -176,7 +176,7 @@ namespace KhaozEngine.Tests.Gpu
         public void AnEncoderBoundaryForcesAFullRebindAndNotAnOffsetsOnlyCall()
         {
             using var harness = new MetalRingHarness();
-            var records = MetalBindRecords.ForGraphics();
+            var records = MetalBindRecords.ForGraphics(MetalBindProgram.DeviceOffsetAlignment);
             MetalBoundSet set = MetalBindProgram.Set(harness);
 
             var calls = new FakeMetalEncoderCalls();
@@ -216,6 +216,12 @@ namespace KhaozEngine.Tests.Gpu
         /// AND THE CALLER'S OFFSET REACHES ONLY THE DECLARED-DYNAMIC ELEMENT, which is the one thing
         /// <c>GpuResourceLayoutElement.Dynamic</c> decides on this backend.
         /// </para>
+        /// <para>
+        /// THIS IS ALSO THE ALIGNMENT CHECK'S POSITIVE CONTROL. <c>base + 16 + 128</c> is a multiple of the
+        /// 16-byte alignment the fixture stands the device up with, so it composes and emits, and
+        /// <see cref="AComposedOffsetThatIsNotAMultipleOfTheDeviceAlignmentIsRefused"/> is the same shape with
+        /// the caller's offset moved off a multiple.
+        /// </para>
         /// </summary>
         [Fact]
         public void TheComposedOffsetIsTheRecordingsSegmentBasePlusTheRangeAndTheCallerOffset()
@@ -232,7 +238,7 @@ namespace KhaozEngine.Tests.Gpu
                 new MetalBoundResource(MetalIndexSpace.Texture, new FakeMetalBindable(0x7E11), 0, 0, false),
                 new MetalBoundResource(MetalIndexSpace.Sampler, new FakeMetalBindable(0x5A11), 0, 0, false));
 
-            var records = MetalBindRecords.ForGraphics();
+            var records = MetalBindRecords.ForGraphics(MetalBindProgram.DeviceOffsetAlignment);
             MetalShaderIndexTable table = MetalBindProgram.Table();
             var calls = new FakeMetalEncoderCalls();
             var sink = new FakeMetalEncoderSink(calls);
@@ -282,7 +288,7 @@ namespace KhaozEngine.Tests.Gpu
             MetalBoundSet set = MetalBindProgram.Set(
                 new MetalBoundResource(MetalIndexSpace.Buffer, buffer, 0, 256, AppliesCallerOffset: true));
 
-            var records = MetalBindRecords.ForGraphics();
+            var records = MetalBindRecords.ForGraphics(MetalBindProgram.DeviceOffsetAlignment);
             var calls = new FakeMetalEncoderCalls();
             var sink = new FakeMetalEncoderSink(calls);
 
@@ -318,7 +324,7 @@ namespace KhaozEngine.Tests.Gpu
             MetalBoundSet set = MetalBindProgram.Set(
                 new MetalBoundResource(MetalIndexSpace.Buffer, frame, 0, 64, AppliesCallerOffset: true));
 
-            var records = MetalBindRecords.ForGraphics();
+            var records = MetalBindRecords.ForGraphics(MetalBindProgram.DeviceOffsetAlignment);
             MetalShaderIndexTable table = MetalBindProgram.Table();
             var calls = new FakeMetalEncoderCalls();
             var sink = new FakeMetalEncoderSink(calls);
@@ -336,6 +342,60 @@ namespace KhaozEngine.Tests.Gpu
             // AND THE UNRINGED ARM COMPOSES WITHOUT A FRAME BASE, which is the row 8 predicate live at the bind:
             // no ring means no segment to add, so what is left is the range offset and the caller's.
             Assert.Equal((nuint)128, vertex.Offsets[0]);
+        }
+
+        /// <summary>
+        /// SECTION 18's THIRD NAMED RISK FOR THIS ROW, WHICH NOTHING ENFORCED: an unaligned buffer offset is a
+        /// validation error under the debug layer and undefined behaviour without it, and only ONE of the three
+        /// terms is aligned by construction. The ring segment base is a multiple of M-M3's 256-byte stride, while
+        /// the set's own range offset and the caller's per-draw offset are raw values arriving through the seam.
+        /// <para>
+        /// AND THE NUMBER IS THE DEVICE'S, WHICH IS THE WHOLE POINT OF THREADING IT DOWN. macOS reports 16 or 32
+        /// through <c>minimumConstantBufferOffsetAlignment</c>, so checking against the 256-byte stride would
+        /// refuse binds every shipped device accepts, and picking a small constant here would pass binds a device
+        /// does not. The value reaches the records from <c>MetalDeviceFacts</c> by way of the command list, and a
+        /// device-free test stands it up at a fixed 16.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void AComposedOffsetThatIsNotAMultipleOfTheDeviceAlignmentIsRefused()
+        {
+            using var harness = new MetalRingHarness();
+            MetalBuffer frame = harness.NewBuffer(64, GpuBufferUsage.UniformBuffer);
+
+            MetalBoundSet set = MetalBindProgram.Set(
+                new MetalBoundResource(MetalIndexSpace.Buffer, frame, 0, 64, AppliesCallerOffset: true));
+
+            var records = MetalBindRecords.ForGraphics(MetalBindProgram.DeviceOffsetAlignment);
+            var calls = new FakeMetalEncoderCalls();
+            var sink = new FakeMetalEncoderSink(calls);
+
+            Assert.Equal(MetalBindProgram.DeviceOffsetAlignment, records.OffsetAlignment);
+
+            records.SetIndexTable(MetalBindProgram.Table());
+
+            // THE POSITIVE CONTROL FIRST, in the same shape: an offset ON a multiple composes and emits.
+            records.Record(0, set, MetalBindProgram.DeviceOffsetAlignment);
+            records.Flush(ref sink, Encoder, Epoch, segment: 1);
+            Assert.NotEmpty(calls.ArrayWrites);
+
+            // HALF THE ALIGNMENT, which is inside the window M-M4 bounds (0 + 8 + 64 against a 256-byte segment)
+            // and therefore reaches the alignment check rather than the window one.
+            records.Record(0, set, MetalBindProgram.DeviceOffsetAlignment / 2);
+
+            ArgumentOutOfRangeException thrown = Assert.Throws<ArgumentOutOfRangeException>(
+                () => records.Flush(ref sink, Encoder, Epoch, segment: 1));
+
+            // ALL THREE COMPONENTS ARE NAMED, because the composed number on its own does not say which of them
+            // to go and look at.
+            Assert.Contains("ring segment base", thrown.Message, StringComparison.Ordinal);
+            Assert.Contains("range offset", thrown.Message, StringComparison.Ordinal);
+            Assert.Contains("per-draw offset", thrown.Message, StringComparison.Ordinal);
+            Assert.Contains("16-byte buffer-offset alignment", thrown.Message, StringComparison.Ordinal);
+
+            // AND THE REFUSAL IS A WHOLE-FLUSH REFUSAL like every other one on this path.
+            Assert.True(records.IsDirty(0));
+            Assert.Equal(0, records.StagedEntries);
         }
 
         /// <summary>
@@ -365,7 +425,7 @@ namespace KhaozEngine.Tests.Gpu
                 new MetalBoundResource(MetalIndexSpace.Texture, new FakeMetalBindable(0x7E11), 0, 0, false),
                 new MetalBoundResource(MetalIndexSpace.Sampler, new FakeMetalBindable(0x5A11), 0, 0, false));
 
-            var records = MetalBindRecords.ForGraphics();
+            var records = MetalBindRecords.ForGraphics(MetalBindProgram.DeviceOffsetAlignment);
             MetalShaderIndexTable table = MetalBindProgram.Table();
             var calls = new FakeMetalEncoderCalls();
             var sink = new FakeMetalEncoderSink(calls);
@@ -449,7 +509,7 @@ namespace KhaozEngine.Tests.Gpu
                 new[] { middle.Index - 1, middle.Index, middle.Index + 1 },
                 new[] { materialEntry.Index, middle.Index, frameEntry.Index });
 
-            var records = MetalBindRecords.ForGraphics();
+            var records = MetalBindRecords.ForGraphics(MetalBindProgram.DeviceOffsetAlignment);
             var calls = new FakeMetalEncoderCalls();
             var sink = new FakeMetalEncoderSink(calls);
 
@@ -505,7 +565,7 @@ namespace KhaozEngine.Tests.Gpu
             MetalBoundSet slotOneRefused = MetalBindProgram.Set(
                 new MetalBoundResource(MetalIndexSpace.Buffer, model, 0, 512, AppliesCallerOffset: false));
 
-            var records = MetalBindRecords.ForGraphics();
+            var records = MetalBindRecords.ForGraphics(MetalBindProgram.DeviceOffsetAlignment);
             var calls = new FakeMetalEncoderCalls();
             var sink = new FakeMetalEncoderSink(calls);
 
@@ -562,7 +622,7 @@ namespace KhaozEngine.Tests.Gpu
                 new MetalBoundResource(MetalIndexSpace.Texture, new FakeMetalBindable(0x7E11), 0, 0, false),
                 new MetalBoundResource(MetalIndexSpace.Sampler, new FakeMetalBindable(0x5A11), 0, 0, false));
 
-            var records = MetalBindRecords.ForGraphics();
+            var records = MetalBindRecords.ForGraphics(MetalBindProgram.DeviceOffsetAlignment);
             var calls = new FakeMetalEncoderCalls();
             var sink = new FakeMetalEncoderSink(calls);
 

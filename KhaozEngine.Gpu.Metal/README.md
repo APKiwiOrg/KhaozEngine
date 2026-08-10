@@ -518,6 +518,13 @@ composed window that would leave its own segment is refused by name, and that re
 the same check at set creation passes a zero caller offset and cannot fire. Nothing else would report it, since
 `setBufferOffset:` carries an offset and no length at all.
 
+**And the composed offset has to be aligned the way the DEVICE says.** The segment base is a multiple of the
+256-byte ring stride by construction, but the set's own range offset and the caller's per-draw offset are raw
+values, and an unaligned result is a validation error under the debug layer and undefined behaviour without it.
+The number checked against is the device's own reported buffer-offset alignment, read at creation and carried
+down to the bind records, not the ring stride: macOS reports 16 or 32, so checking against 256 would refuse
+binds every Mac accepts. The refusal names all three components.
+
 **A refused flush is refused whole.** Any exception out of a flush drops the staged writes and invalidates every
 slot's emitted state, so the next draw re-derives every arm and re-binds in full. Without that, a throw part way
 through leaves staged writes for the next flush to emit into the wrong stage's table, and a throw after an

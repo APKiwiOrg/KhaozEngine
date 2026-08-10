@@ -30,8 +30,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// </summary>
     internal sealed partial class MetalCommandList
     {
-        readonly MetalBindRecords _graphicsBinds = MetalBindRecords.ForGraphics();
-        readonly MetalBindRecords _computeBinds = MetalBindRecords.ForCompute();
+        // BOTH ARMS ARE BUILT IN THE CONSTRUCTOR rather than initialised here, because they need the DEVICE's
+        // reported buffer-offset alignment and a field initialiser cannot see a constructor parameter. See
+        // MetalBindRecords.RequireOffsetAligned for why it is the device's number rather than M-M3's 256.
+        readonly MetalBindRecords _graphicsBinds;
+        readonly MetalBindRecords _computeBinds;
         readonly MetalVertexStreamRecords _streams = new();
 
         /// <summary>

@@ -107,7 +107,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
                 MetalGpuDevice created = new(device, queue, ReadCapabilities(selected.Facts), liveness, loss,
                     timeline, new MetalUncommittedBuffers(framesInFlight), new MetalSetupNative(device, queue),
-                    framesInFlight, new MetalStagingSource(device));
+                    framesInFlight, new MetalStagingSource(device),
+                    // M-N4's BUFFER-OFFSET ALIGNMENT, carried rather than re-read. The selection already refused
+                    // a device reporting 0 or a value M-M3's 256-byte stride is not a multiple of, so this is a
+                    // power of two no wider than the stride and the cast cannot lose anything.
+                    (uint)selected.Facts.BufferOffsetAlignment);
 
                 // THE SHARED SAMPLER PAIR, from MetalSharedSamplers and not from the engine's same-named
                 // GpuSamplerDescription statics. Both are WRAP on all three axes, and reading the engine statics

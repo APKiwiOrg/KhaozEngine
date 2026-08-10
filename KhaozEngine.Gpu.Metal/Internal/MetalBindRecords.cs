@@ -133,6 +133,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
             => slot < (uint)_recorded && _slots[slot].Emitted.IsValidIn(epoch);
 
         /// <summary>
+        /// How many argument-table writes are staged in the batch RIGHT NOW, across the three spaces. It is 0
+        /// between flushes and 0 after a refused one, which is the thing <see cref="Flush"/>'s atomicity is
+        /// about: entries staged by the slots before the one that threw would otherwise be emitted by the NEXT
+        /// flush, into whichever stage that flush reached first. For a test and a diagnostic.
+        /// </summary>
+        internal int StagedEntries
+            => _batch.CountIn(MetalIndexSpace.Buffer) + _batch.CountIn(MetalIndexSpace.Texture)
+                + _batch.CountIn(MetalIndexSpace.Sampler);
+
+        /// <summary>
         /// CLAUSE 1, RECORD ONLY. No native call, no device contact and no table lookup: store the set's plain
         /// data and the caller's offset, and leave the slot dirty if either moved.
         /// <para>
@@ -277,7 +287,20 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// that would leave its own segment (M-M4), and a flush's marks must survive that throw: clearing first
         /// would mean the exception escapes the draw, the slots read clean, and the SECOND draw issues nothing for
         /// them and renders against whatever the argument tables still hold. That turns a loud, repeatable
-        /// refusal into one throw followed by silence.</para>
+        /// refusal into one throw followed by silence.
+        ///
+        /// <b>WHICH TAKES A CATCH AROUND THE WHOLE BODY, BECAUSE A PARTIAL FLUSH LEAVES TWO DIFFERENT WRECKS AND
+        /// SURVIVING MARKS FIX NEITHER.</b> A throw inside the slot walk (M-M4's window check or the space
+        /// disagreement) happens with entries already STAGED, before <see cref="MetalArgumentBatch.Emit"/> and
+        /// therefore before its own clearing <c>finally</c> is reached: those entries are still in the batch when
+        /// the next draw emits, so they go into whichever stage that flush reaches first, at indices belonging to
+        /// another stage's table. And a throw AFTER an earlier stage emitted leaves the trailing record-update
+        /// loop unrun, so <c>EmittedBindings</c> still names the OLD array while the encoder's table holds the
+        /// NEW resources: the next bind of the old set derives the offsets-only arm and moves an offset on a
+        /// table entry holding a different buffer, which renders wrong with nothing reported. So ANY exception
+        /// out of the body drops the batch and invalidates every slot's emitted state and stamp, which makes a
+        /// refused flush exactly the loud, repeatable thing the paragraph above claims: the next flush re-derives
+        /// every arm from scratch and re-emits in full.</para>
         ///
         /// <para><b>A FLUSH WITH NOTHING OWED TOUCHES NO TABLE AND MAKES NO CALL</b>, which is what makes a draw
         /// after a draw free. It is also why the no-pipeline refusal is inside the work check rather than in
@@ -296,6 +319,27 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <exception cref="ArgumentOutOfRangeException">A composed bind window leaves its own ring segment
         /// (M-M4).</exception>
         internal void Flush<TSink>(ref TSink sink, IntPtr encoder, ulong epoch, int segment)
+            where TSink : struct, IMetalEncoderSink
+        {
+            try
+            {
+                FlushOrThrow(ref sink, encoder, epoch, segment);
+            }
+            catch
+            {
+                // THE WHOLE FLUSH IS REFUSED, NOT THE CALL THAT THREW. See the class note above: the batch holds
+                // whatever the slots before the failing one staged, and the records still describe a table that
+                // an earlier stage has already been written into. Dropping both is what makes the next flush
+                // re-derive every arm and re-emit in full, which is the only state that is right whatever the
+                // partial emission got as far as.
+                RefuseWholeFlush();
+                throw;
+            }
+        }
+
+        // Everything Flush does, with no recovery of its own, so the one catch above covers every throw out of
+        // the composition, the space check, the batch and the sink alike.
+        void FlushOrThrow<TSink>(ref TSink sink, IntPtr encoder, ulong epoch, int segment)
             where TSink : struct, IMetalEncoderSink
         {
             bool any = false;
@@ -332,6 +376,18 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 record.Dirty = false;
                 record.Work = SlotWork.None;
             }
+        }
+
+        // WHAT A REFUSED FLUSH LEAVES BEHIND: nothing staged, nothing believed about any argument table, and
+        // every slot owing a FULL rebind. Deliberately more than the slots this flush touched, because a throw
+        // out of a sink says nothing about how far the driver got and the conservative direction is the one that
+        // cannot render wrong.
+        void RefuseWholeFlush()
+        {
+            _batch.Clear();
+            InvalidateAll();
+
+            for (int slot = 0; slot < _recorded; slot++) _slots[slot].Work = SlotWork.None;
         }
 
         void EmitFullRebinds<TSink>(ref TSink sink, MetalShaderIndexTable table, MetalShaderStage stage,

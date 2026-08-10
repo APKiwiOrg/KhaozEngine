@@ -1044,6 +1044,15 @@ this path's: the same shared check at set creation passes a caller offset of zer
 bounded by the buffer's logical size and the stride is that size rounded up, so it cannot fire there. Nothing
 downstream would report it either, because `setBufferOffset:` carries an offset and no length at all.
 
+**A refused flush is refused WHOLE, which is what makes that refusal loud and repeatable rather than one throw
+followed by a wrong frame.** Any exception out of a flush drops the staged batch and invalidates every slot's
+emitted state and epoch stamp, because a partial flush leaves two separate wrecks. A throw inside the slot walk
+happens with entries already staged and not yet emitted, so they would ride into the next draw's flush and land
+in whichever stage it reached first, at indices belonging to another stage's table. And a throw after an earlier
+stage emitted skips the record update, so the slot still names the OLD bindings array while the encoder's table
+holds the new one's resources, and the next bind of the old set would derive the offsets-only arm and move an
+offset on a table entry holding a different buffer. Both are device-free rows.
+
 **Binds go through the binding table, so an element with no entry for a stage is not bound for that stage.**
 That is the same rule row 9's table states and row 10's sets defer to, arriving at the place it actually binds:
 over the shipped corpus 95 of 254 stage/element slots are unreferenced, so the partial-stage path runs

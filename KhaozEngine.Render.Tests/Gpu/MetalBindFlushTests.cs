@@ -338,6 +338,123 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal((nuint)128, vertex.Offsets[0]);
         }
 
+        /// <summary>
+        /// DOOR ONE OF THE PARTIAL FLUSH: a throw inside the slot walk happens with entries already STAGED, and
+        /// they are staged in the batch rather than emitted, so <see cref="MetalArgumentBatch.Emit"/>'s own
+        /// clearing <c>finally</c> is never reached. Left there, they belong to the NEXT flush, which emits them
+        /// into whichever stage it reaches first: a bind of one stage's resources into another stage's table when
+        /// the indices do not collide, and a duplicate-index refusal blaming a table disagreement that never
+        /// happened when they do.
+        /// <para>
+        /// SLOT 1 IS THE ONE THAT THROWS, so slot 0's entries are in the batch when it does. That ordering is the
+        /// whole point of the row: a single-slot flush cannot tell "the batch was dropped" from "nothing was ever
+        /// staged".
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void AFlushRefusedPartWayThroughStagesNothingIntoTheNextOne()
+        {
+            using var harness = new MetalRingHarness();
+            MetalShaderIndexTable table = MetalTwoSetProgram.Table();
+
+            MetalBuffer frame = harness.NewBuffer(64, GpuBufferUsage.UniformBuffer);
+            MetalBuffer material = harness.NewBuffer(32, GpuBufferUsage.UniformBuffer);
+            MetalBuffer model = harness.NewBuffer(32, GpuBufferUsage.UniformBuffer);
+
+            // Set() here is just the MetalBoundSet factory, and these are the TWO-SET program's sets.
+            MetalBoundSet slotZero = MetalBindProgram.Set(
+                new MetalBoundResource(MetalIndexSpace.Buffer, frame, 0, 64, AppliesCallerOffset: true),
+                new MetalBoundResource(MetalIndexSpace.Buffer, material, 0, 32, AppliesCallerOffset: false));
+
+            // 512 BYTES OUT OF A 256-BYTE SEGMENT, which M-M4 refuses, and it is slot 1 so the refusal lands
+            // after slot 0's two entries are staged.
+            MetalBoundSet slotOneRefused = MetalBindProgram.Set(
+                new MetalBoundResource(MetalIndexSpace.Buffer, model, 0, 512, AppliesCallerOffset: false));
+
+            var records = MetalBindRecords.ForGraphics();
+            var calls = new FakeMetalEncoderCalls();
+            var sink = new FakeMetalEncoderSink(calls);
+
+            records.SetIndexTable(table);
+            records.Record(0, slotZero, 0);
+            records.Record(1, slotOneRefused, 0);
+
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => records.Flush(ref sink, Encoder, Epoch, segment: 0));
+
+            Assert.Equal(0, records.StagedEntries);
+
+            int afterRefusal = calls.ArrayWrites.Count;
+
+            MetalBoundSet slotOneFits = MetalBindProgram.Set(
+                new MetalBoundResource(MetalIndexSpace.Buffer, model, 0, 32, AppliesCallerOffset: false));
+
+            records.Record(1, slotOneFits, 0);
+            records.Flush(ref sink, Encoder, Epoch, segment: 0);
+
+            // AND THE NEXT FLUSH EMITS ONLY WHAT IT STAGED: three buffers per stage and nothing else. Counted as
+            // objects rather than as calls, because how the three indices cut into runs is the emission's
+            // business and this row is about the leftovers.
+            Assert.Equal(6, calls.ArrayWrites.Skip(afterRefusal).Sum(w => w.Objects.Length));
+        }
+
+        /// <summary>
+        /// DOOR TWO: a throw AFTER an earlier stage emitted never reaches the trailing record-update loop, so
+        /// <c>EmittedBindings</c> still names the OLD set while the encoder's table holds the NEW one's
+        /// resources. The next bind of the old set then derives the offsets-only arm and moves an offset on a
+        /// table entry holding a different buffer, which renders wrong with nothing reported: Metal's
+        /// <c>setBufferOffset:</c> takes an index and an offset and asks no questions about what is at that
+        /// index.
+        /// <para>
+        /// THE SEQUENCE IS BIND A, DRAW, BIND B, DRAW-THAT-THROWS, BIND A, DRAW. B's vertex stage emits cleanly
+        /// because the fixture's vertex function reads only the frame UBO, and its fragment stage is where the
+        /// refused window is, so the throw genuinely lands with one stage already written.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void ASetReboundAfterAFlushThrewMidWayTakesTheFullArmAndNotTheOffsetsOnlyOne()
+        {
+            using var harness = new MetalRingHarness();
+            MetalBoundSet setA = MetalBindProgram.Set(harness);
+
+            MetalBuffer frame = harness.NewBuffer(64, GpuBufferUsage.UniformBuffer);
+            MetalBuffer material = harness.NewBuffer(32, GpuBufferUsage.UniformBuffer);
+
+            // B's MATERIAL BINDING IS THE REFUSED ONE, and the fixture's material is read by the FRAGMENT stage
+            // alone, so the vertex stage lands its array call before the fragment stage throws.
+            MetalBoundSet setB = MetalBindProgram.Set(
+                new MetalBoundResource(MetalIndexSpace.Buffer, frame, 0, 64, AppliesCallerOffset: true),
+                new MetalBoundResource(MetalIndexSpace.Buffer, material, 0, 512, AppliesCallerOffset: false),
+                new MetalBoundResource(MetalIndexSpace.Texture, new FakeMetalBindable(0x7E11), 0, 0, false),
+                new MetalBoundResource(MetalIndexSpace.Sampler, new FakeMetalBindable(0x5A11), 0, 0, false));
+
+            var records = MetalBindRecords.ForGraphics();
+            var calls = new FakeMetalEncoderCalls();
+            var sink = new FakeMetalEncoderSink(calls);
+
+            records.SetIndexTable(MetalBindProgram.Table());
+            records.Record(0, setA, 0);
+            records.Flush(ref sink, Encoder, Epoch, segment: 0);
+
+            records.Record(0, setB, 0);
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => records.Flush(ref sink, Encoder, Epoch, segment: 0));
+
+            // THE VERTEX STAGE REALLY DID LAND, which is what makes this row about a stale record rather than
+            // about a flush that changed nothing.
+            Assert.Equal(2, Writes(calls, MetalShaderStage.Vertex, MetalIndexSpace.Buffer));
+            Assert.False(records.IsEmittedIn(0, Epoch));
+
+            int arraysBefore = calls.ArrayWrites.Count;
+
+            records.Record(0, setA, 128);
+            records.Flush(ref sink, Encoder, Epoch, segment: 0);
+
+            // A FULL REBIND, and emphatically not two setBufferOffset: calls against a table holding B.
+            Assert.Empty(calls.OffsetWrites);
+            Assert.Equal(arraysBefore + 4, calls.ArrayWrites.Count);
+        }
+
         static int Writes(FakeMetalEncoderCalls calls, MetalShaderStage stage, MetalIndexSpace space)
             => calls.ArrayWrites.Count(w => w.Stage == stage && w.Space == space);
 

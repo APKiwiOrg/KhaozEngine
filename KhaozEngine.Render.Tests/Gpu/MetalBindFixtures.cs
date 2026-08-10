@@ -103,4 +103,49 @@ void main() { oColor = texture(sampler2D(Albedo, Samp), vec2(0.5)) * Tint * View
             return new MetalBoundSet(bindings, dynamic);
         }
     }
+
+    /// <summary>
+    /// TWO SETS, THREE BUFFERS, BOTH STAGES READING ALL OF THEM, and a real index table again rather than a
+    /// hand-built one. <see cref="MetalBindProgram"/> is the PARTIAL-STAGE fixture and deliberately has one set,
+    /// which leaves two shapes it cannot produce.
+    ///
+    /// <para><b>A SECOND SLOT, so a flush can throw on slot 1 with slot 0's entries already staged.</b> That is
+    /// the door the whole-flush refusal closes: entries staged before the throw are still in the batch when the
+    /// next draw emits, and the next draw emits into whichever stage it reaches first.</para>
+    ///
+    /// <para><b>AND THREE BUFFERS IN ONE STAGE'S TABLE, so a nil can sit BETWEEN two live handles</b> in a run
+    /// long enough for the middle to be a middle. A two-element run's nil is always at an end, where "the run
+    /// does not split" and "the run stopped early" look identical.</para>
+    /// </summary>
+    internal static class MetalTwoSetProgram
+    {
+        /// <summary>Set 0, binding 0: a uniform buffer both stages read, declared dynamic.</summary>
+        internal const int FrameBinding = 0;
+
+        /// <summary>Set 0, binding 1: the buffer that sits in the MIDDLE of the buffer run.</summary>
+        internal const int MaterialBinding = 1;
+
+        /// <summary>Set 1, binding 0: the third buffer, on its own slot.</summary>
+        internal const int ObjectBinding = 0;
+
+        internal const string VertexGlsl = @"#version 450
+layout(set=0, binding=0) uniform Frame { mat4 ViewProj; };
+layout(set=0, binding=1) uniform Material { vec4 Tint; };
+layout(set=1, binding=0) uniform Object { vec4 Model; };
+layout(location=0) in vec3 Pos;
+void main() { gl_Position = ViewProj * vec4(Pos + Model.xyz + Tint.xyz, 1.0); }
+";
+
+        internal const string FragmentGlsl = @"#version 450
+layout(set=0, binding=0) uniform Frame { mat4 ViewProj; };
+layout(set=0, binding=1) uniform Material { vec4 Tint; };
+layout(set=1, binding=0) uniform Object { vec4 Model; };
+layout(location=0) out vec4 oColor;
+void main() { oColor = Tint * Model * ViewProj[0]; }
+";
+
+        /// <summary>The real table for the pair above, built by the shipped path.</summary>
+        internal static MetalShaderIndexTable Table()
+            => MetalShaderBuild.Pair(VertexGlsl, FragmentGlsl, "MetalTwoSetProgram").Table;
+    }
 }

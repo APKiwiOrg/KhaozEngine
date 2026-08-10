@@ -508,6 +508,12 @@ composed window that would leave its own segment is refused by name, and that re
 the same check at set creation passes a zero caller offset and cannot fire. Nothing else would report it, since
 `setBufferOffset:` carries an offset and no length at all.
 
+**A refused flush is refused whole.** Any exception out of a flush drops the staged writes and invalidates every
+slot's emitted state, so the next draw re-derives every arm and re-binds in full. Without that, a throw part way
+through leaves staged writes for the next flush to emit into the wrong stage's table, and a throw after an
+earlier stage emitted leaves the record naming the previous set while the encoder holds the new one, which is
+the exact state in which an offsets-only rebind moves an offset on somebody else's buffer.
+
 **Which has one consequence worth stating as a usage rule, because the device run found it in this package's own
 test fixture.** A dynamic element bound as a BARE BUFFER takes the buffer's logical size as its window, and the
 ring stride is that size rounded up to 256, so the window already fills the segment and there is no room for a

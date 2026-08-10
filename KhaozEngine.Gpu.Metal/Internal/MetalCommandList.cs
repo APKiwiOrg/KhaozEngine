@@ -56,6 +56,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         readonly IMetalDeviceLiveness _liveness;
         readonly object _owner;
 
+        // THE BOUND-PIPELINE RECORD (M-R8, M-R4). Allocated with the list rather than per recording, because it
+        // is reset at every Begin and a per-recording allocation would buy nothing.
+        readonly MetalPipelineBinding _pipelines = new();
+
         // The RETAINED buffer this list holds, or Zero when it holds none. One field for both states a held
         // buffer can be in (recording, and sealed but not yet submitted) because the ownership question is the
         // same in both: this list released it or it did not.
@@ -253,12 +257,17 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _arena.BeginSlot(_segment, _rings.CompletedValue);
 
             // THE RECORDER STATE RESET GOES HERE, immediately after the acquisition and before the recording flag
-            // flips. A reset added anywhere else is a reset that a re-Begun list can be observed without. Today
-            // that is the encoder scope, which bumps its epoch so no record from the discarded recording can read
-            // as valid (M-R4). Rows 11 to 14 add theirs to this ONE place: the bound framebuffer, both pipelines,
-            // both dirty arrays, the pending-clear array, the vertex-stream records, the index-buffer record, and
-            // the viewport and scissor marks.
+            // flips. A reset added anywhere else is a reset that a re-Begun list can be observed without. That is
+            // the encoder scope, which bumps its epoch so no record from the discarded recording can read as
+            // valid (M-R4), and the bound-pipeline record, which row 11 added here. Rows 12 to 14 add theirs to
+            // this ONE place: the bound framebuffer, both dirty arrays, the pending-clear array, the
+            // vertex-stream records, the index-buffer record, and the viewport and scissor marks.
             _encoders.BeginRecording(buffer);
+
+            // BOTH PIPELINES FORGOTTEN. The epoch bump above already invalidates the STATE BLOCK's stamp, so this
+            // is specifically about which pipeline is bound: that is recorder state and survives an encoder
+            // boundary on purpose, so only a new recording clears it.
+            _pipelines.Reset();
 
             _recording = true;
             _sealed = false;

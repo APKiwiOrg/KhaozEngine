@@ -21,8 +21,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
     ///
     /// <para><b>LAYOUTS AND SETS ARE LIVE AS OF ROW 10</b> (https://github.com/APKiwiOrg/KhaozEngine/issues/576),
     /// and they are the two members here that touch NOTHING native at all: Metal has no layout object and this
-    /// backend declines argument buffers (M-B6), so both are resolved managed data and both bodies are plain. What
-    /// still refuses is the pipeline that binds through them and the framebuffer it draws into.</para>
+    /// backend declines argument buffers (M-B6), so both are resolved managed data and both bodies are plain.</para>
+    ///
+    /// <para><b>AND BOTH PIPELINES ARE LIVE AS OF ROW 11</b> (https://github.com/APKiwiOrg/KhaozEngine/issues/577),
+    /// the row that consumes rows 9 and 10 together: a pipeline is created from the shader set's functions and
+    /// checked against the declared layouts, and it is the only caller of
+    /// <c>MetalShaderIndexTable.RequireLayoutShape</c>. What still refuses is the framebuffer they draw into.</para>
     ///
     /// <para><b>CREATION IS FREE-THREADED AND TAKES NO LOCK AT ALL (M-W8).</b> An <c>MTLDevice</c> is documented
     /// thread-safe and none of these calls touches shared state: the setup command buffer is the only thing in
@@ -132,12 +136,28 @@ namespace KhaozEngine.Gpu.Metal.Internal
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// An <c>MTLRenderPipelineState</c> plus, for a pipeline with a depth output, an
+        /// <c>MTLDepthStencilState</c>. Everything the pipeline DECIDES is resolved and refused on device-free
+        /// first (<see cref="MetalGraphicsPipelinePlan"/>), including 2.2b's layout-shape check and M-B2's
+        /// vertex-stream collision assertion, so the two native calls are handed a description that has already
+        /// been checked. See <see cref="MetalGraphicsPipeline"/>.
+        /// </remarks>
         public IGpuPipeline CreateGraphicsPipeline(in GpuPipelineDescription d)
-            => throw NotBuiltYet("A graphics pipeline", PipelinesRow);
+        {
+            if (!KhaozEngineMetal.IsPlatformSupported) throw OffMacOs("A graphics pipeline");
+            return CreateGraphicsPipelineOnMacOs(d);
+        }
 
         /// <inheritdoc/>
+        /// <remarks>One <c>MTLComputePipelineState</c>, created from the kernel FUNCTION rather than from a
+        /// descriptor (<see cref="MTLComputePipelineState"/> carries that argument). See
+        /// <see cref="MetalComputePipeline"/>.</remarks>
         public IGpuComputePipeline CreateComputePipeline(in GpuComputePipelineDescription d)
-            => throw NotBuiltYet("A compute pipeline", PipelinesRow);
+        {
+            if (!KhaozEngineMetal.IsPlatformSupported) throw OffMacOs("A compute pipeline");
+            return CreateComputePipelineOnMacOs(d);
+        }
 
         /// <inheritdoc/>
         /// <remarks>
@@ -195,6 +215,19 @@ namespace KhaozEngine.Gpu.Metal.Internal
         IGpuComputeShader CreateComputeShaderOnMacOs(string computeGlsl)
             => Shaders.CreateComputeShader(computeGlsl);
 
+        // NO POOL AT EITHER OF THESE TWO, for the same reason the shader pair above has none: the pipeline opens
+        // one around its own native half, and the device-free resolution in front of it (the ownership checks,
+        // the layout-shape check, the vertex plan and every format map) reaches no Objective-C at all.
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        IGpuPipeline CreateGraphicsPipelineOnMacOs(in GpuPipelineDescription d)
+            => MetalGraphicsPipeline.Create(_device.Handle, _device.Liveness, d);
+
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        IGpuComputePipeline CreateComputePipelineOnMacOs(in GpuComputePipelineDescription d)
+            => MetalComputePipeline.Create(_device.Handle, _device.Liveness, d);
+
         // Created on first use rather than in the constructor, so a device that never compiles a shader never
         // builds one, and so the factory's constructor stays free of anything that could throw.
         //
@@ -220,7 +253,6 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 + "MetalGpuDevice exists on a machine that has no Metal at all, which the provider's functional "
                 + "probe refuses before creation.");
 
-        const string PipelinesRow = "the pipeline row (https://github.com/APKiwiOrg/KhaozEngine/issues/577)";
         const string PassesRow = "the render-pass row (https://github.com/APKiwiOrg/KhaozEngine/issues/578)";
 
         // Named rather than a bare NotImplementedException, and it names WHAT IS LIVE as well as what is not, in
@@ -231,9 +263,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 + "Buffers, textures, samplers and fences ARE live (work-breakdown row 6, "
                 + "https://github.com/APKiwiOrg/KhaozEngine/issues/572), so are command lists (row 7, "
                 + "https://github.com/APKiwiOrg/KhaozEngine/issues/573), shader sets and compute shaders (row 9, "
-                + "https://github.com/APKiwiOrg/KhaozEngine/issues/575), and resource layouts and resource sets "
-                + "(row 10, https://github.com/APKiwiOrg/KhaozEngine/issues/576). This is a statement about the "
-                + "package and not about this machine. Select GpuBackendKind.Metal, which goes through Veldrid, "
-                + "for a fully working Metal device.");
+                + "https://github.com/APKiwiOrg/KhaozEngine/issues/575), resource layouts and resource sets "
+                + "(row 10, https://github.com/APKiwiOrg/KhaozEngine/issues/576), and graphics and compute "
+                + "pipelines (row 11, https://github.com/APKiwiOrg/KhaozEngine/issues/577). This is a statement "
+                + "about the package and not about this machine. Select GpuBackendKind.Metal, which goes through "
+                + "Veldrid, for a fully working Metal device.");
     }
 }

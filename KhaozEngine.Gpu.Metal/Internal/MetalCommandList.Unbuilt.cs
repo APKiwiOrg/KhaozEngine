@@ -43,15 +43,6 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <inheritdoc/>
         public void SetFullScissorRects() => throw NotBuiltYet("Resetting the scissor rects", PassesRow);
 
-        // ---- Row 11: pipelines -------------------------------------------------------------------------------
-
-        /// <inheritdoc/>
-        public void SetPipeline(IGpuPipeline p) => throw NotBuiltYet("Binding a graphics pipeline", PipelinesRow);
-
-        /// <inheritdoc/>
-        public void SetComputePipeline(IGpuComputePipeline p)
-            => throw NotBuiltYet("Binding a compute pipeline", PipelinesRow);
-
         // ---- Row 13: the bind flush --------------------------------------------------------------------------
 
         /// <inheritdoc/>
@@ -127,7 +118,6 @@ namespace KhaozEngine.Gpu.Metal.Internal
         public void ResolveTexture(IGpuTexture src, IGpuTexture dst)
             => throw NotBuiltYet("Resolving a multisampled texture", DrawsRow);
 
-        const string PipelinesRow = "the pipelines row (https://github.com/APKiwiOrg/KhaozEngine/issues/577)";
         const string PassesRow = "the render-passes row (https://github.com/APKiwiOrg/KhaozEngine/issues/578)";
         const string BindsRow = "the bind-flush row (https://github.com/APKiwiOrg/KhaozEngine/issues/579)";
         const string DrawsRow = "the draw-and-dispatch row (https://github.com/APKiwiOrg/KhaozEngine/issues/580)";
@@ -138,8 +128,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 + "invalidation, End, disposal and the submit path ARE live (work-breakdown row 7, "
                 + "https://github.com/APKiwiOrg/KhaozEngine/issues/573), and so is UpdateBuffer with the uniform "
                 + "ring behind it and the staging arena behind everything else (row 8, "
-                + "https://github.com/APKiwiOrg/KhaozEngine/issues/574). This is a statement about the package "
-                + "and not about this machine. Select GpuBackendKind.Metal, which goes through Veldrid, for a "
-                + "fully working Metal device.");
+                + "https://github.com/APKiwiOrg/KhaozEngine/issues/574), and binding a graphics or a compute "
+                + "pipeline (row 11, https://github.com/APKiwiOrg/KhaozEngine/issues/577). This is a statement "
+                + "about the package and not about this machine. Select GpuBackendKind.Metal, which goes through "
+                + "Veldrid, for a fully working Metal device.");
     }
 }

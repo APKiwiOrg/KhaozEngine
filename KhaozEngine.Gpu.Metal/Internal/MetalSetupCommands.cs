@@ -57,9 +57,40 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// belt and braces: an <c>MTLCommandBuffer</c> retains everything its encoders reference from the moment they
     /// reference it (M-H3), so either point is safe, and releasing after the commit does not depend on that
     /// reading being exactly right.</para>
+    ///
+    /// <para><b>AND THE OPEN BATCH CARRIES A BYTE BUDGET, WHICH IS A SAFETY VALVE RATHER THAN THAT ARENA</b>
+    /// (<see cref="DefaultStagingCapBytes"/>). The incumbent holds ONE staging allocation at a time, because it
+    /// commits and releases per call. Batching trades that for holding every payload since the last flush, and
+    /// the flush sites are all device-level READS, so a caller that only ever uploads never reaches one: peak
+    /// footprint becomes the sum of every upload in the load rather than the largest of them.
+    /// <c>Scene3D.LoadSplatMaterial</c> is the named case, ten mip-0 uploads with nothing between them, which is
+    /// 40 MB of staging for a 1024-square layer set and 160 MB for a 2048-square one, and
+    /// <c>Scene3D.LoadTexture</c> on a one-level policy is the unbounded one, since it drains only when it has
+    /// mips to generate. So an append that would carry the open batch past the cap commits it first and starts a
+    /// new one. That bounds residency and changes nothing about the allocation RATE, which is what the arena is
+    /// for and what https://github.com/APKiwiOrg/KhaozEngine/issues/589 still tracks.</para>
     /// </summary>
     internal sealed class MetalSetupCommands : IDisposable
     {
+        /// <summary>
+        /// How many bytes of staging one open batch may hold before an append commits it and starts another.
+        ///
+        /// <para><b>64 MB, CHOSEN AGAINST THE CALL SITES RATHER THAN ROUND.</b> The engine's device-level uploads
+        /// are <c>Render2DCore</c>'s texture create-and-upload, <c>SpriteFont.Build</c>'s atlas,
+        /// <c>Scene3D.LoadTexture</c>, <c>Scene3D.LoadSplatMaterial</c>'s ten layer uploads and
+        /// <c>WaterBathymetryMap</c>'s per-revision map. The largest burst with no drain in it is the splat set:
+        /// five albedo plus five normal layers at mip 0, which is 40 MB at 1024 square and 160 MB at 2048 square.
+        /// A cap has to sit above the first (a common material set should still be ONE batch, which is the whole
+        /// of M-M9's claim) and below the second (160 MB of live staging for one material is the residency this
+        /// bound exists to refuse). 64 MB is the only order of magnitude that does both, and it costs one extra
+        /// commit on the 2048 case.</para>
+        ///
+        /// <para>It is a CEILING on an open batch and not a budget for the device: a single upload larger than
+        /// this still goes through, in a batch of its own, because refusing it would refuse a texture the seam
+        /// can legally describe.</para>
+        /// </summary>
+        internal const ulong DefaultStagingCapBytes = 64UL * 1024 * 1024;
+
         // The short lock (M-W8). Held for an append or a flush, and never across anything that blocks: the flush
         // COMMITS and does not wait, because the wait belongs to whichever drain the caller was going to do
         // anyway.
@@ -68,9 +99,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
         readonly List<MTLBuffer> _staging = [];
         readonly IMetalSetupNative _native;
         readonly IMetalDeviceLiveness _liveness;
+        readonly ulong _stagingCap;
 
         MTLCommandBuffer _buffer;
         MTLCommandBuffer _lastCommitted;
+        ulong _stagedBytes;
         bool _open;
         bool _disposed;
 
@@ -79,12 +112,21 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <param name="liveness">The device's liveness token: after death nothing is recorded and nothing is
         /// committed, which is the posture every path in this package takes.</param>
         internal MetalSetupCommands(IMetalSetupNative native, IMetalDeviceLiveness liveness)
+            : this(native, liveness, DefaultStagingCapBytes) { }
+
+        /// <param name="native">See the other constructor.</param>
+        /// <param name="liveness">See the other constructor.</param>
+        /// <param name="stagingCap">The open batch's staging ceiling. Only a test passes this, so the auto-flush
+        /// can be driven with a handful of bytes instead of by allocating the real cap.</param>
+        internal MetalSetupCommands(IMetalSetupNative native, IMetalDeviceLiveness liveness, ulong stagingCap)
         {
             ArgumentNullException.ThrowIfNull(native);
             ArgumentNullException.ThrowIfNull(liveness);
+            ArgumentOutOfRangeException.ThrowIfZero(stagingCap);
 
             _native = native;
             _liveness = liveness;
+            _stagingCap = stagingCap;
         }
 
         /// <summary>Whether a batch is open and uncommitted. What the flush sites test before paying for a
@@ -102,6 +144,21 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <summary>How many uploads have been appended since construction, across every batch. Paired with
         /// <see cref="FlushCount"/> it is the ratio M-M9 is about.</summary>
         internal int AppendCount { get; private set; }
+
+        /// <summary>How many staging bytes the OPEN batch is holding. Never above
+        /// <see cref="DefaultStagingCapBytes"/> once an append has returned, which is what the budget
+        /// means.</summary>
+        internal ulong StagedBytes
+        {
+            get { lock (_gate) return _stagedBytes; }
+        }
+
+        /// <summary>How many staging buffers the open batch is holding. The residency <see cref="StagedBytes"/>
+        /// bounds, counted rather than summed.</summary>
+        internal int StagingCount
+        {
+            get { lock (_gate) return _staging.Count; }
+        }
 
         /// <summary>
         /// The last committed batch's <c>-status</c> and <c>-error</c>, or null when nothing has been committed
@@ -176,11 +233,18 @@ namespace KhaozEngine.Gpu.Metal.Internal
             {
                 if (_liveness.IsDead) return;
 
+                // THE BUDGET, BEFORE THE BATCH IS CHOSEN. An append that would carry the open batch past the cap
+                // commits it first, so the staging this type holds at once is bounded by the cap plus the one
+                // payload that crossed it. See DefaultStagingCapBytes for the number and the call sites it was
+                // chosen against.
+                if (_open && _stagedBytes + required > _stagingCap) CommitOpenBatch();
+
                 EnsureOpen();
                 if (!_open) return;
 
                 MTLBuffer staged = _native.Stage(data[..(int)required]);
                 _staging.Add(staged);
+                _stagedBytes += required;
 
                 _native.Encode(_buffer, staged, destination,
                     MetalStagingLayout.RowPitch(upload.Width, shape.Format), upload);
@@ -248,6 +312,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 else
                 {
                     _staging.Clear();
+                    _stagedBytes = 0;
                 }
 
                 _buffer = default;
@@ -306,6 +371,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             foreach (MTLBuffer staged in _staging) _native.ReleaseStaging(staged);
             _staging.Clear();
+            _stagedBytes = 0;
         }
     }
 }

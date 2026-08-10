@@ -1,0 +1,190 @@
+using System;
+using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Metal.Internal;
+using KhaozEngine.Gpu.Metal.Internal.ObjC;
+using Xunit;
+using Xunit.Abstractions;
+
+namespace KhaozEngine.Tests.Gpu
+{
+    /// <summary>
+    /// THE DEVICE-OWNED SETUP BATCH'S BOOKKEEPING (M-M9), driven with no Metal in the room: which uploads share a
+    /// batch, when the staging budget commits one early, and what the batch holds while it does.
+    ///
+    /// <para><b>THIS IS THE HALF THE GPU TEST CANNOT REACH, and it used to be the half nothing reached.</b> Before
+    /// <see cref="IMetalSetupNative"/> the type held an <c>MTLCommandQueue</c> and made its own Objective-C calls,
+    /// so off a device every append returned early on a nil command buffer and none of this ran anywhere except
+    /// on a Mac under <c>KE_GPU_TESTS</c>. <c>MetalResourceGpuTests</c> still owns the questions only a driver can
+    /// answer: whether Metal accepts the eleven-argument copy, and whether the batch carrying it completes.</para>
+    /// </summary>
+    public sealed class MetalSetupBatchTests
+    {
+        readonly ITestOutputHelper _output;
+
+        public MetalSetupBatchTests(ITestOutputHelper output) => _output = output;
+
+        /// <summary>
+        /// M-M9's CLAIM, device-free: many uploads, one batch, one commit. The incumbent's equivalent is one whole
+        /// queue submit per upload.
+        /// </summary>
+        [Fact]
+        public void EightUploadsUnderTheBudget_ShareOneBatchAndOneCommit()
+        {
+            var native = new FakeMetalSetupNative();
+            using var setup = new MetalSetupCommands(native, new FakeMetalDeviceLiveness(), Budget);
+
+            for (uint i = 0; i < 8; i++) Upload(setup, 8, 8);
+
+            Assert.Single(native.Batches);
+            Assert.Empty(native.Committed);
+            Assert.Equal(8, native.Encoded.Count);
+            Assert.Equal(8, setup.AppendCount);
+            Assert.True(setup.HasPendingWork);
+
+            setup.Flush();
+
+            Assert.Single(native.Committed);
+            Assert.Equal(1, setup.FlushCount);
+            Assert.False(setup.HasPendingWork);
+
+            // And the batch's staging goes with the commit rather than living until teardown.
+            Assert.Equal(0, native.LiveStagingBytes);
+            Assert.Equal(0u, setup.StagedBytes);
+        }
+
+        /// <summary>
+        /// THE BUDGET. An append that would carry the open batch past the cap commits it first, so the residency
+        /// stays bounded across a run of uploads with no device-level read between them.
+        /// </summary>
+        [Fact]
+        public void AnUploadThatWouldCrossTheBudget_CommitsTheOpenBatchFirst()
+        {
+            var native = new FakeMetalSetupNative();
+            using var setup = new MetalSetupCommands(native, new FakeMetalDeviceLiveness(), Budget);
+
+            // Four 16x16 RGBA8 uploads are 1024 bytes each, so they reach the budget EXACTLY and do not cross it.
+            for (uint i = 0; i < 4; i++) Upload(setup, 16, 16);
+
+            Assert.Single(native.Batches);
+            Assert.Empty(native.Committed);
+            Assert.Equal(Budget, setup.StagedBytes);
+
+            // The fifth crosses.
+            Upload(setup, 16, 16);
+
+            Assert.Equal(2, native.Batches.Count);
+            Assert.Single(native.Committed);
+            Assert.Equal(native.Batches[0], native.Committed[0]);
+            Assert.Equal(1024u, setup.StagedBytes);
+            Assert.Equal(1, setup.StagingCount);
+
+            // The uploads all landed: the split is where they were committed, not whether they were recorded.
+            Assert.Equal(5, native.Encoded.Count);
+            Assert.Equal(5, setup.AppendCount);
+        }
+
+        /// <summary>
+        /// The residency claim itself, checked after every single append rather than at the end, because a budget
+        /// that only holds at the boundaries is a budget a burst walks straight through.
+        /// </summary>
+        [Fact]
+        public void TheOpenBatch_NeverHoldsMoreThanTheBudget()
+        {
+            var native = new FakeMetalSetupNative();
+            using var setup = new MetalSetupCommands(native, new FakeMetalDeviceLiveness(), Budget);
+
+            for (uint i = 0; i < 32; i++)
+            {
+                Upload(setup, 16, 16);
+
+                Assert.True(setup.StagedBytes <= Budget, "the open batch holds " + setup.StagedBytes + " bytes");
+                Assert.True(native.LiveStagingBytes <= (long)Budget,
+                    "the staging buffers alive at once total " + native.LiveStagingBytes + " bytes");
+            }
+
+            _output.WriteLine($"32 uploads in {native.Committed.Count} committed batches, "
+                + $"peak residency {Budget} bytes");
+        }
+
+        /// <summary>
+        /// A single upload LARGER than the budget still goes through, in a batch of its own. The cap is a ceiling
+        /// on what a batch accumulates and not a limit on what the seam can describe, and refusing here would
+        /// refuse a texture that is perfectly legal.
+        /// </summary>
+        [Fact]
+        public void AnUploadLargerThanTheBudget_GetsABatchOfItsOwn()
+        {
+            var native = new FakeMetalSetupNative();
+            using var setup = new MetalSetupCommands(native, new FakeMetalDeviceLiveness(), Budget);
+
+            Upload(setup, 16, 16);
+            Upload(setup, 64, 64);
+
+            Assert.Equal(2, native.Batches.Count);
+            Assert.Single(native.Committed);
+            Assert.Equal(16384u, setup.StagedBytes);
+            Assert.Equal(1, setup.StagingCount);
+        }
+
+        /// <summary>
+        /// THE DEFAULT CAP AGAINST THE CALL SITE IT WAS CHOSEN FOR. <c>Scene3D.LoadSplatMaterial</c> uploads five
+        /// albedo and five normal layers at mip 0 with nothing between them, so it is the engine's largest burst
+        /// with no drain in it. A 1024-square layer set is 40 MB and must stay ONE batch, which is what M-M9
+        /// claims. A 2048-square set is 160 MB, which is the residency the cap exists to refuse, and it splits.
+        /// </summary>
+        [Fact]
+        public void TheDefaultBudget_HoldsAOneKSplatSet_AndSplitsATwoKOne()
+        {
+            var payload = new byte[2048 * 2048 * 4];
+
+            var oneK = new FakeMetalSetupNative();
+            using (var setup = new MetalSetupCommands(oneK, new FakeMetalDeviceLiveness()))
+            {
+                for (int i = 0; i < 10; i++) Upload(setup, 1024, 1024, payload);
+
+                Assert.Single(oneK.Batches);
+                Assert.Empty(oneK.Committed);
+                Assert.Equal(40UL * 1024 * 1024, setup.StagedBytes);
+            }
+
+            var twoK = new FakeMetalSetupNative();
+            using (var setup = new MetalSetupCommands(twoK, new FakeMetalDeviceLiveness()))
+            {
+                for (int i = 0; i < 10; i++) Upload(setup, 2048, 2048, payload);
+
+                // Four 16 MB uploads reach the 64 MB cap exactly, so the split is after every fourth.
+                Assert.Equal(3, twoK.Batches.Count);
+                Assert.Equal(2, twoK.Committed.Count);
+                Assert.True(setup.StagedBytes <= MetalSetupCommands.DefaultStagingCapBytes);
+            }
+        }
+
+        /// <summary>A queue that will not make a command buffer is a device already in trouble, and an append
+        /// then records nothing rather than encoding into a nil handle.</summary>
+        [Fact]
+        public void AnAppendAgainstAQueueThatAnswersNil_RecordsNothing()
+        {
+            var native = new FakeMetalSetupNative { BeginAnswersNil = true };
+            using var setup = new MetalSetupCommands(native, new FakeMetalDeviceLiveness(), Budget);
+
+            Upload(setup, 8, 8);
+
+            Assert.Empty(native.Encoded);
+            Assert.Empty(native.Staged);
+            Assert.Equal(0, setup.AppendCount);
+            Assert.False(setup.HasPendingWork);
+        }
+
+        // 4096 bytes, which is four 16x16 RGBA8 uploads. Small enough to drive the budget with no allocation
+        // worth naming, and the arithmetic stays legible in the assertions.
+        const ulong Budget = 4096;
+
+        static void Upload(MetalSetupCommands setup, uint width, uint height, byte[]? payload = null)
+        {
+            var shape = new MetalStagingShape(width, height, 1, 1, GpuPixelFormat.R8G8B8A8UNorm);
+            var upload = new MetalTextureUpload(0, 0, 0, 0, width, height);
+
+            setup.Upload(default, shape, upload, payload ?? new byte[width * height * 4]);
+        }
+    }
+}

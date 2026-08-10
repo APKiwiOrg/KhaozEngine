@@ -402,6 +402,21 @@ Eight uploads share one committed batch, measured on a real device rather than d
 is what makes the claim hole-free: `Map` and `WaitForIdle` both commit the pending batch BEFORE draining, so a
 texture uploaded and immediately read back sees the uploaded bytes rather than memory nothing wrote.
 
+**The open batch carries a 64 MB staging budget, which is a safety valve and not M-M8's arena.** Batching
+trades the incumbent's one-live-staging-allocation for holding every payload since the last flush, and every
+flush site is a device-level READ, so a caller that only uploads never reaches one. `Scene3D.LoadSplatMaterial`
+is the named case: ten mip-0 layer uploads with nothing between them, 40 MB of staging at 1024 square and
+160 MB at 2048 square. So an append that would carry the open batch past the cap commits it first. A 1024 set
+still shares one batch and a 2048 set splits, both pinned device-free. The cap bounds RESIDENCY and changes
+nothing about the allocation rate, which is what the pooled arena is for and what
+[#589](https://github.com/APKiwiOrg/KhaozEngine/issues/589) still tracks for the ring row.
+
+**And the setup batch's whole native half moved behind `IMetalSetupNative`.** It used to hold the
+`MTLCommandQueue` and make its own Objective-C calls, which meant none of the bookkeeping ran off a Mac: a nil
+queue answers a nil command buffer, so every append returned early and the batching, the budget, the dead-device
+posture and the disposal ordering had no device-free test at all. That is the split `IMetalSharedEvent` already
+took for the timeline, and the autorelease pools moved with the calls they cover.
+
 **No texture view is created for any usage, and that is M-M10 in its strongest form.** The design asks that no
 view factory be reachable from the recording type so a draw-time view is a compile error. On this seam nothing
 can NARROW a texture at all: there is no texture-view type, a resource set binds an `IGpuTexture` whole,

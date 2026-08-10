@@ -417,6 +417,16 @@ queue answers a nil command buffer, so every append returned early and the batch
 posture and the disposal ordering had no device-free test at all. That is the split `IMetalSharedEvent` already
 took for the timeline, and the autorelease pools moved with the calls they cover.
 
+**Every device entry point that takes a resource checks which device made it.** The casts were type-only, so
+device A's texture blitted on device B's queue with nothing said. Each wrapper records its creating device and
+`MetalResourceOwnership.Require` is the one cast every entry point makes. The identity is the per-device
+liveness token and NOT the `MTLDevice` handle, because Apple silicon reports one `MTLDevice` for the whole
+process (the same fact that makes `MetalCompletionHandler` key on the queue), so a handle comparison would
+answer "same device" for two devices that share nothing else. Where the devices really are different the copy
+was illegal, and where they share a handle it succeeded and left the two teardowns disagreeing about who
+releases what, which is the shape nothing surfaces until an ordering changes. A wrong-backend resource is
+refused by name too, instead of by `InvalidCastException`.
+
 **An upload region is checked against the destination subresource, on both paths.** Both checked only that the
 source array was long enough, which says nothing about where the bytes land: a payload of exactly the right
 length aimed one texel past the right edge passed. On a staging texture that is a software strided copy writing

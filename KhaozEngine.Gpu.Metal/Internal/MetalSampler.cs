@@ -9,7 +9,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// The seam's <see cref="IGpuSampler"/> over one <c>MTLSamplerState</c>. Every decision the descriptor carries
     /// is <see cref="MetalSamplerPolicy"/>'s, so this type is the object lifetime and nothing else.
     /// </summary>
-    internal sealed class MetalSampler : IGpuSampler
+    internal sealed class MetalSampler : IGpuSampler, IMetalOwnedResource
     {
         readonly IMetalDeviceLiveness _liveness;
         readonly MTLSamplerState _sampler;
@@ -24,6 +24,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         /// <summary>The native sampler state, for the bind path. Nil after disposal.</summary>
         internal MTLSamplerState Handle => _disposed ? default : _sampler;
+
+        /// <inheritdoc/>
+        /// <remarks>Nothing on this row takes a sampler as a device entry point's parameter, so nothing checks it
+        /// yet. It is recorded now because a resource that learns its owner LATER learns it in the row that has
+        /// already written the bind path, and the resource-set row is the one that will ask.</remarks>
+        public IMetalDeviceLiveness Owner => _liveness;
 
         /// <summary>Create one from the seam's description, through the policy.</summary>
         [SupportedOSPlatform("macos")]

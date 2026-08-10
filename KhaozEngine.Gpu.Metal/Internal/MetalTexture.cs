@@ -26,7 +26,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// parity instead. The incumbent does not clear, the 36 committed <c>metal</c> goldens are green under that,
     /// and adding a clear would change what a render target reads before anything writes it.</para>
     /// </summary>
-    internal sealed class MetalTexture : IGpuTexture
+    internal sealed class MetalTexture : IGpuTexture, IMetalOwnedResource
     {
         readonly IMetalDeviceLiveness _liveness;
         readonly MTLTexture _texture;
@@ -74,6 +74,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         /// <summary>The usage the texture was created with.</summary>
         internal GpuTextureUsage Usage { get; }
+
+        /// <inheritdoc/>
+        public IMetalDeviceLiveness Owner => _liveness;
 
         /// <summary>The creation plan, decided once (M-M10).</summary>
         internal MetalTextureViewPlan Plan { get; }

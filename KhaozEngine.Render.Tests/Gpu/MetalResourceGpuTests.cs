@@ -523,6 +523,48 @@ namespace KhaozEngine.Tests.Gpu
             sampler.Dispose();
         }
 
+        /// <summary>
+        /// EVERY DEVICE ENTRY POINT THAT TAKES A RESOURCE REFUSES ANOTHER DEVICE'S, which needs two real devices
+        /// and is therefore here rather than in the policy tests.
+        ///
+        /// <para><b>ON THIS MACHINE THE TWO DEVICES SHARE ONE <c>MTLDevice</c>, and that is the point.</b> Apple
+        /// silicon reports a single <c>MTLDevice</c> for the process, so a check that compared handles would
+        /// accept every line below. The identity is the per-device liveness token, so it refuses here as it would
+        /// on a Mac with two GPUs, where the same mistake is an illegal cross-device copy instead of a teardown
+        /// that releases what the other device is still using.</para>
+        /// </summary>
+        [GpuFact]
+        public void EveryEntryPointTakingAResource_RefusesAnotherDevices()
+        {
+            if (!Available()) return;
+
+            using IGpuDevice first = CreateHeadless();
+            using IGpuDevice second = CreateHeadless();
+
+            using IGpuTexture texture = first.Factory.CreateTexture(
+                GpuTextureDescription.Texture2D(8, 8, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled));
+            using IGpuTexture staging = first.Factory.CreateTexture(
+                GpuTextureDescription.Texture2D(8, 8, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Staging));
+            using IGpuBuffer buffer = first.Factory.CreateBuffer(
+                new GpuBufferDescription(64, GpuBufferUsage.Staging));
+
+            var payload = new byte[8 * 8 * 4];
+
+            Assert.Throws<ArgumentException>(() => second.UpdateTexture(texture, payload, 0, 0, 8, 8));
+            Assert.Throws<ArgumentException>(() => second.UpdateBuffer(buffer, 0, new byte[16]));
+            Assert.Throws<ArgumentException>(() => second.Map(staging, GpuMapMode.Read));
+            Assert.Throws<ArgumentException>(() => second.Map(buffer, GpuMapMode.Read));
+
+            // And the same calls on the device that created them still work, so the rule is about identity rather
+            // than about having broken the entry points.
+            first.UpdateTexture(texture, payload, 0, 0, 8, 8);
+            first.UpdateBuffer(buffer, 0, new byte[16]);
+
+            MappedData mapped = first.Map(staging, GpuMapMode.Read);
+            Assert.NotEqual(IntPtr.Zero, mapped.Data);
+            first.Unmap(staging);
+        }
+
         /// <summary>The members other rows own still name their row, now that the factory itself is live: a
         /// reader who hits one needs to know whether the backend is unfinished or their machine is wrong.</summary>
         [GpuFact]

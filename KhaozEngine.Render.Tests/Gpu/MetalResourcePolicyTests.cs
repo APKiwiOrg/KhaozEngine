@@ -324,6 +324,58 @@ namespace KhaozEngine.Tests.Gpu
                 new GpuSamplerDescription(GpuSamplerFilter.Anisotropic, maximumAnisotropy: 0)).MaxAnisotropy);
         }
 
+        // ---- Resource ownership -------------------------------------------------------------------------------
+
+        /// <summary>A resource created by the asking device passes through, which is the positive control the two
+        /// refusals below need in order to mean anything.</summary>
+        [Fact]
+        public void AResourceFromTheAskingDevice_IsAccepted()
+        {
+            var device = new FakeMetalDeviceLiveness();
+            var owned = new OwnedResource(device);
+
+            Assert.Same(owned, MetalResourceOwnership.Require<OwnedResource>(owned, device, "resource"));
+        }
+
+        /// <summary>
+        /// A RESOURCE FROM ANOTHER DEVICE IS REFUSED, which a type-only cast cannot do. The identity is the
+        /// liveness token rather than the <c>MTLDevice</c> handle, because Apple silicon reports one
+        /// <c>MTLDevice</c> for the whole process and two devices there would compare equal on the handle.
+        /// </summary>
+        [Fact]
+        public void AResourceFromAnotherDevice_IsRefused()
+        {
+            var owned = new OwnedResource(new FakeMetalDeviceLiveness());
+
+            ArgumentException thrown = Assert.Throws<ArgumentException>(
+                () => MetalResourceOwnership.Require<OwnedResource>(owned, new FakeMetalDeviceLiveness(),
+                    "resource"));
+
+            Assert.Contains("DIFFERENT native Metal device", thrown.Message, StringComparison.Ordinal);
+            Assert.Equal("resource", thrown.ParamName);
+        }
+
+        /// <summary>And a resource from another BACKEND is refused by name rather than by
+        /// <see cref="InvalidCastException"/>, which is what a plain cast produced and which says nothing a
+        /// caller can act on.</summary>
+        [Fact]
+        public void AResourceFromAnotherBackend_IsRefusedByName()
+        {
+            ArgumentException thrown = Assert.Throws<ArgumentException>(
+                () => MetalResourceOwnership.Require<OwnedResource>("not a resource",
+                    new FakeMetalDeviceLiveness(), "resource"));
+
+            Assert.Contains("was not created by the native Metal backend", thrown.Message,
+                StringComparison.Ordinal);
+        }
+
+        // A resource that knows its owner and nothing else. The real wrappers cannot be built without a device,
+        // and what is under test here is the ownership rule rather than any of them.
+        sealed class OwnedResource(IMetalDeviceLiveness owner) : IMetalOwnedResource
+        {
+            public IMetalDeviceLiveness Owner { get; } = owner;
+        }
+
         // ---- Upload regions -----------------------------------------------------------------------------------
 
         /// <summary>

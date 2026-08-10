@@ -74,10 +74,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
             ArgumentNullException.ThrowIfNull(texture);
             ArgumentNullException.ThrowIfNull(data);
 
+            // THE OWNER CHECK IS ARGUMENT VALIDATION, so it comes before the liveness return: a caller passing
+            // another device's texture has made the same mistake whether or not this device is still alive.
+            MetalTexture metal = MetalResourceOwnership.Require<MetalTexture>(texture, _liveness, nameof(texture));
+
             if (!KhaozEngineMetal.IsPlatformSupported || _liveness.IsDead) return;
             if (width == 0 || height == 0) return;
 
-            var metal = (MetalTexture)texture;
             var upload = new MetalTextureUpload(mipLevel, arrayLayer, x, y, width, height);
 
             if (metal.IsStaging) WriteStagingTexture(metal, upload, data);
@@ -94,7 +97,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             ArgumentNullException.ThrowIfNull(staging);
 
-            var metal = (MetalTexture)staging;
+            MetalTexture metal = MetalResourceOwnership.Require<MetalTexture>(staging, _liveness, nameof(staging));
             if (!metal.IsStaging)
             {
                 throw new ArgumentException(
@@ -118,8 +121,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             ArgumentNullException.ThrowIfNull(staging);
 
+            MetalBuffer metal = MetalResourceOwnership.Require<MetalBuffer>(staging, _liveness, nameof(staging));
+
             DrainForRead(mode);
-            return ((MetalBuffer)staging).Mapped();
+            return metal.Mapped();
         }
 
         /// <inheritdoc/>
@@ -164,6 +169,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             ArgumentNullException.ThrowIfNull(buffer);
 
+            MetalBuffer metal = MetalResourceOwnership.Require<MetalBuffer>(buffer, _liveness, nameof(buffer));
+
             if (!KhaozEngineMetal.IsPlatformSupported || _liveness.IsDead) return;
 
             // A ring-backed buffer's device-level write is #484's every-segment rule and belongs to the ring row
@@ -171,7 +178,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // Shared buffer of the requested size, so one write reaches the only bytes there are, which is the
             // incumbent's behaviour exactly. The predicate is read here rather than assumed away so that row has
             // a named place to branch.
-            ((MetalBuffer)buffer).Write(offsetBytes, data);
+            metal.Write(offsetBytes, data);
         }
 
         // The batch takes the destination's HANDLE and its SHAPE rather than the wrapper, because everything it

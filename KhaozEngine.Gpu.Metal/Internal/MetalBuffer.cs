@@ -33,7 +33,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// That is what removes the retire list the Vulkan sibling needs, and it is why this type has no deferred
     /// disposal of any kind.</para>
     /// </summary>
-    internal sealed class MetalBuffer : IGpuBuffer
+    internal sealed class MetalBuffer : IGpuBuffer, IMetalOwnedResource
     {
         readonly IMetalDeviceLiveness _liveness;
         readonly MTLBuffer _buffer;
@@ -58,6 +58,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         /// <summary>The usage the buffer was created with, which is what a bind and the ring row read.</summary>
         internal GpuBufferUsage Usage { get; }
+
+        /// <inheritdoc/>
+        public IMetalDeviceLiveness Owner => _liveness;
 
         /// <summary>The native buffer, for the rows that bind and copy. Null after disposal, deliberately: a
         /// caller reaching a disposed buffer gets a nil handle Metal rejects rather than a released pointer it

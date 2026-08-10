@@ -24,10 +24,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// emission (M-A6).</description></item>
     /// <item><description><b><see cref="ClearColourTarget"/> and <see cref="ClearDepthStencil"/>.</b> Before the
     /// pass opens, the value is stored as pending and becomes <c>loadAction = Clear</c> on the attachment the
-    /// caller NAMED (M-A2). After it has opened, the pass is ENDED and the value stored as pending anyway, which
-    /// is what the incumbent forces through <c>EnsureNoRenderPass</c> in its own
+    /// caller NAMED (M-A2). After it has opened, the RENDER pass is ended and the value stored as pending anyway,
+    /// which is what the incumbent forces through <c>EnsureNoRenderPass</c> in its own
     /// <c>ClearColorTargetCore</c>: Metal has no clear COMMAND, so a clear arriving mid-pass costs a whole
-    /// encoder boundary and there is no cheaper shape available.</description></item>
+    /// encoder boundary and there is no cheaper shape available. A blit or compute encoder open at the time is
+    /// left alone, which is that same helper's semantics and not <c>EnsureNoEncoder</c>'s.</description></item>
     /// <item><description><b><see cref="PrepareDraw"/>, which the first draw of a pass calls.</b> Open the
     /// encoder with <c>loadAction = Clear</c> and the pending value per attachment that has one, <c>Load</c> for
     /// the rest and <c>storeAction = Store</c> always (M-A4), then emit whatever dynamic state is
@@ -240,11 +241,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     + "writing to a location its own pipeline cannot declare.");
             }
 
-            // METAL HAS NO CLEAR COMMAND, so a clear that arrives after the pass opened cannot be folded into a
-            // load action any more and cannot be issued either. The pass ends and the value goes back on the
-            // pending array, which is exactly what the incumbent's ClearColorTargetCore forces through
-            // EnsureNoRenderPass, and it is a boundary M-T2's budget counts.
-            _encoders.EnsureNoEncoder();
+            EndOpenPass();
 
             _colourClears[MetalClearPolicy.TargetIndex(_clearMode, index)] = new PendingClear(Pending: true, rgba);
         }
@@ -267,7 +264,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     + "wrong target rather than a depth attachment that failed to arrive.");
             }
 
-            _encoders.EnsureNoEncoder();
+            EndOpenPass();
 
             _depthClear = depth;
             _depthClearPending = true;
@@ -367,7 +364,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if (!IsRendering && HasPendingClears && _framebuffer.IsBound) BeginPass();
 
-            if (IsRendering) _encoders.EnsureNoEncoder();
+            EndOpenPass();
         }
 
         /// <summary>
@@ -394,6 +391,17 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _viewportEmitted.Clear();
             _scissorEmitted.Clear();
             Array.Clear(_colourClears, 0, _colourClears.Length);
+        }
+
+        // END A RENDER ENCODER AND NOTHING ELSE, which is EnsureNoRenderPass's semantics rather than
+        // EnsureNoEncoder's. The difference shows up on the clear path: a clear arriving while a record-time
+        // upload's BLIT encoder is open must not close that encoder, because the clear does not need it closed
+        // (it only needs to not be inside a render pass) and closing it costs a boundary M-T2's budget counts
+        // plus a reopen on the next upload. The clear still lands correctly either way: it goes on the pending
+        // array, and the BeginPass that consumes it ends whatever is open on its way in.
+        void EndOpenPass()
+        {
+            if (IsRendering) _encoders.EnsureNoEncoder();
         }
 
         /// <summary>

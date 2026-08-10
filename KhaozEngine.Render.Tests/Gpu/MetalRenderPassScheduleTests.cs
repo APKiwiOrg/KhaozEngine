@@ -181,6 +181,30 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(MetalLoadAction.Clear, h.Render.Passes[1].Colour[0].LoadAction);
         }
 
+        /// <summary>
+        /// AND A CLEAR LEAVES A BLIT ENCODER ALONE, which is the incumbent's <c>EnsureNoRenderPass</c> semantics
+        /// rather than <c>EnsureNoEncoder</c>'s. A clear only needs to not be inside a render pass, and closing
+        /// the encoder a record-time upload is using costs a boundary M-T2's budget counts plus a reopen on the
+        /// next upload. The clear still lands, because the begin that consumes it ends whatever is open on its
+        /// way in.
+        /// </summary>
+        [Fact]
+        public void AClearDoesNotCloseABlitEncoderARecordTimeUploadIsUsing()
+        {
+            Harness h = Harness.New();
+            h.Schedule.SetFramebuffer(Framebuffer(1, colourCount: 1));
+            h.Scope.EnsureBlitEncoder();
+
+            h.Schedule.ClearColourTarget(0, Red);
+
+            Assert.Equal(MetalEncoderKind.Blit, h.Scope.Open);
+            Assert.Equal(1, h.Encoders.EncoderBoundaries);
+
+            h.Schedule.PrepareDraw();
+
+            Assert.Equal(MetalLoadAction.Clear, Assert.Single(h.Render.Passes).Colour[0].LoadAction);
+        }
+
         // ---- The store action (M-A4) -------------------------------------------------------------------------
 
         /// <summary>

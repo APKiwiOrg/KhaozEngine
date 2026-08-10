@@ -220,11 +220,15 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// <c>MTLResourceLayout</c>'s and <c>GetBufferBase</c>'s arithmetic, reproduced HERE and only here, which
-        /// is what 2.2b means by "the per-kind arithmetic is written as the comparison inside M-T3's standing test
-        /// and never as the binding path". Per-kind counters, with uniform and both structured kinds sharing a
-        /// buffer counter and both texture kinds sharing a texture counter, accumulated across the preceding
-        /// layouts in declaration order.
+        /// <c>MTLResourceLayout</c>'s and <c>GetBufferBase</c>'s arithmetic, reproduced here as the STANDING
+        /// GUARD, over the engine's own mirror types. It is reproduced a second time in
+        /// <see cref="MetalMslIdJoinSpikeTests"/>, over Veldrid's types, as the ruling's EVIDENCE, and both
+        /// copies are deliberate: the spike measures the incumbent as the incumbent actually spells it, and this
+        /// one keeps that comparison running against the shipped mechanism. What 2.2b requires is the part both
+        /// of them keep, which is that the per-kind arithmetic is written as the COMPARISON and never as the
+        /// binding path. Per-kind counters, with uniform and both structured kinds sharing a buffer counter and
+        /// both texture kinds sharing a texture counter, accumulated across the preceding layouts in declaration
+        /// order.
         /// </summary>
         static Dictionary<(int Set, int Binding), (int Buffer, int Texture, int Sampler)> IncumbentIndices(
             IReadOnlyList<GpuResourceLayoutDescription> layouts)

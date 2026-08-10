@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using KhaozEngine.Gpu.Metal.Internal;
 using Xunit;
 
@@ -14,8 +15,9 @@ namespace KhaozEngine.Tests.Gpu
     /// selected the incumbent would make that measurement report the same position twice.
     /// </para>
     /// <para>
-    /// EVERY ROW HERE IS PURE, so none of them touches the process environment and none of them races the
-    /// memoized reading a real device takes.
+    /// NOTHING HERE MUTATES THE PROCESS ENVIRONMENT, so no row races the memoized reading a real device takes.
+    /// Every parse row drives an explicit value, and the one row that touches the memo READS it and compares the
+    /// two entry points against each other rather than against a value it planted.
     /// </para>
     /// </summary>
     public sealed class MetalClearPolicyTests
@@ -99,6 +101,60 @@ namespace KhaozEngine.Tests.Gpu
         {
             Assert.Equal("KE_METAL_CLEAR", MetalClearPolicy.EnvVarName);
             Assert.Equal("attachment0", MetalClearPolicy.Attachment0Value);
+        }
+
+        /// <summary>
+        /// THE TYPO REACHES A LOG LINE, which is the half a parse alone cannot promise. The first implementation
+        /// named the unrecognized value to a caller that discarded it, so the whole protection was unreachable
+        /// code and a mistyped run was indistinguishable from a default one.
+        /// </summary>
+        [Theory]
+        [InlineData("attachment1")]
+        [InlineData("'attachment0'")]
+        public void AnUnrecognizedValueIsWARNED(string value)
+        {
+            List<string> warnings = new();
+
+            MetalClearPolicy.Report(value, warnings.Add);
+
+            string warning = Assert.Single(warnings);
+            Assert.Equal(MetalClearPolicy.UnrecognizedDescription(value), warning);
+            Assert.Contains(value, warning, StringComparison.Ordinal);
+        }
+
+        /// <summary>And a value that parsed says NOTHING, including the default, because a line on every session
+        /// is a line nobody reads and this one has to be noticed.</summary>
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData("attachment0")]
+        [InlineData("per-attachment")]
+        public void ARecognizedValueIsSilent(string? value)
+        {
+            List<string> warnings = new();
+
+            MetalClearPolicy.Report(value, warnings.Add);
+
+            Assert.Empty(warnings);
+        }
+
+        /// <summary>
+        /// AND THE PRODUCTION ENTRY POINT IS THE SAME DECISION over the memoized reading, which is what pins the
+        /// wiring rather than the parse. <c>MetalGpuDevice</c> calls this overload at creation, and it cannot be
+        /// driven against a mutated environment (the memo is per process and every list in the collection shares
+        /// it), so what a device-free row can assert is that it agrees with the pure one for whatever this
+        /// process's own value is. A refactor that dropped the name on the memoized path would fail here.
+        /// </summary>
+        [Fact]
+        public void TheMemoizedEntryPointReportsWhatThePureOneDoes()
+        {
+            List<string> memoized = new();
+            List<string> pure = new();
+
+            MetalClearPolicy.Report(memoized.Add);
+            MetalClearPolicy.Report(Environment.GetEnvironmentVariable(MetalClearPolicy.EnvVarName), pure.Add);
+
+            Assert.Equal(pure, memoized);
         }
     }
 }

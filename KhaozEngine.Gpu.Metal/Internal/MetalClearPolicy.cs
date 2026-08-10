@@ -52,11 +52,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <para><b>AN UNRECOGNIZED VALUE IS THE DEFAULT PLUS A NAME, not a throw and not a silent nothing.</b> The
     /// knob has one non-default value, so a fourth spelling is a typo, and a typo that silently selected the fix
     /// while the tester believed they had selected the incumbent would make the A/B report the same position
-    /// twice.</para>
+    /// twice. THE NAME IS EMITTED RATHER THAN RETURNED AND DROPPED: <see cref="Report(Action{string})"/> is the
+    /// production entry point and <c>MetalGpuDevice</c> calls it at creation, which is where
+    /// <see cref="MetalValidation"/>'s own unrecognized-value WARN goes out. A parse that names the typo to a
+    /// caller nothing logs is the same silence with more code.</para>
     /// </summary>
     internal static class MetalClearPolicy
     {
         static MetalClearMode? _current;
+        static string? _unrecognized;
         static readonly object _gate = new();
 
         /// <summary>The engine knob. Removed at gate 1 along with the losing branch.</summary>
@@ -69,24 +73,52 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// The mode for this process, read once. Every command list takes its copy from here at construction, so
         /// a recording cannot straddle two policies.
         /// </summary>
-        internal static MetalClearMode Current
+        internal static MetalClearMode Current => Resolve(out _);
+
+        /// <summary>
+        /// The mode for this process AND the value nothing understood, out of the SAME reading. One memo holds
+        /// both, so the WARN a device emits describes the value the recordings under it actually ran on. Two
+        /// readings could not promise that: a variable changed in between would report one position and clear
+        /// under the other, which is the one shape the gate-1 A/B cannot interpret.
+        /// </summary>
+        internal static MetalClearMode Resolve(out string? unrecognizedValue)
         {
-            get
+            lock (_gate)
             {
-                lock (_gate)
-                {
-                    _current ??= Parse(Environment.GetEnvironmentVariable(EnvVarName), out _);
-                    return _current.Value;
-                }
+                _current ??= Parse(Environment.GetEnvironmentVariable(EnvVarName), out _unrecognized);
+
+                unrecognizedValue = _unrecognized;
+                return _current.Value;
             }
         }
 
         /// <summary>
-        /// Take the reading fresh, ignoring the memo. For tests, which drive this against an environment they
-        /// mutate, and never on a real path for <see cref="Current"/>'s reason.
+        /// SAY SO WHEN THIS PROCESS'S VALUE WAS A TYPO, and say nothing otherwise. The production entry point,
+        /// called once at device creation, and the reason the parse's second output is not dropped on the floor.
         /// </summary>
-        internal static MetalClearMode Capture(out string? unrecognizedValue)
-            => Parse(Environment.GetEnvironmentVariable(EnvVarName), out unrecognizedValue);
+        /// <param name="warn">The WARN sink, <c>log.Warn</c> on the real path.</param>
+        internal static void Report(Action<string> warn)
+        {
+            ArgumentNullException.ThrowIfNull(warn);
+
+            _ = Resolve(out string? unrecognizedValue);
+            Emit(unrecognizedValue, warn);
+        }
+
+        /// <summary>
+        /// The same decision over an EXPLICIT value rather than the memo, which is what makes the wiring above
+        /// assertable on a machine with no Metal and no environment to mutate. Both overloads share one body, so
+        /// a device-free row about this one is a row about the production one.
+        /// </summary>
+        /// <param name="envValue">What <c>KE_METAL_CLEAR</c> was set to.</param>
+        /// <param name="warn">The WARN sink.</param>
+        internal static void Report(string? envValue, Action<string> warn)
+        {
+            ArgumentNullException.ThrowIfNull(warn);
+
+            _ = Parse(envValue, out string? unrecognizedValue);
+            Emit(unrecognizedValue, warn);
+        }
 
         /// <summary>
         /// What <paramref name="envValue"/> asks for, with <paramref name="unrecognizedValue"/> set verbatim
@@ -125,6 +157,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// against the bound framebuffer.</param>
         internal static uint TargetIndex(MetalClearMode mode, uint requestedIndex)
             => mode == MetalClearMode.Attachment0 ? 0u : requestedIndex;
+
+        // The one body both Report overloads run, so the emit-or-stay-quiet rule lives in one place and neither
+        // entry point can drift into naming a typo the other swallows.
+        static void Emit(string? unrecognizedValue, Action<string> warn)
+        {
+            if (unrecognizedValue is not null) warn(UnrecognizedDescription(unrecognizedValue));
+        }
 
         /// <summary>The WARN line for a value nothing understood, naming both spellings so the reader does not
         /// have to find this file.</summary>

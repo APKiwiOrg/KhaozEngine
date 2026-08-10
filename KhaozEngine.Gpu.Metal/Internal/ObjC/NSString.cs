@@ -64,11 +64,26 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         /// </summary>
         /// <param name="value">The managed string. A null is not accepted: a nil source or a nil function name is
         /// a caller bug that would surface as a Metal error message about something unrelated.</param>
+        /// <exception cref="InvalidOperationException">The runtime has no <c>NSString</c> class, which is
+        /// <c>MTLCompileOptions.New</c>'s case rather than a new one: a message to a nil class answers nil, so
+        /// without this the caller would compile a nil source and read the failure as a broken shader.</exception>
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static unsafe NSString FromManaged(string value)
         {
             ArgumentNullException.ThrowIfNull(value);
+
+            // The nil-class check MTLCompileOptions.New's caller makes, made here instead of at the two call
+            // sites, because there is nothing either of them could do differently. objc_msgSend to a nil class
+            // answers nil, so skipping it would hand newLibraryWithSource: a nil source and hand the caller back
+            // a nil library with no NSError, which reads as "this shader failed to compile" and is not.
+            IntPtr cls = ObjCRuntime.ClassNamed("NSString");
+            if (cls == IntPtr.Zero)
+            {
+                throw new InvalidOperationException(
+                    "The Objective-C runtime has no NSString class, which means Foundation did not load. Nothing "
+                    + "about this string or this shader caused it.");
+            }
 
             int byteCount = Encoding.UTF8.GetByteCount(value);
             var utf8 = new byte[byteCount + 1];
@@ -78,7 +93,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
             fixed (byte* p = utf8)
             {
                 return new NSString(ObjCMsgSend.SendPtrBytes(
-                    ObjCRuntime.ClassNamed("NSString"), ObjCRuntime.Sel("stringWithUTF8String:"), p));
+                    cls, ObjCRuntime.Sel("stringWithUTF8String:"), p));
             }
         }
     }

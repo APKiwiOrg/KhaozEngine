@@ -55,11 +55,17 @@ namespace KhaozEngine.Gpu.Metal.Internal
     {
         /// <summary>The MSL qualifier that opens the entry point for a stage. A trailing space is part of the
         /// token: it is what keeps <c>vertex</c> from matching inside an identifier.</summary>
+        /// <exception cref="ArgumentOutOfRangeException">A stage this has no keyword for. All three are listed,
+        /// so this is a new <see cref="MetalShaderStage"/> member, and defaulting it to <c>kernel</c> would send
+        /// the parse looking for the wrong qualifier and report the entry point as missing.</exception>
         internal static string KeywordFor(MetalShaderStage stage) => stage switch
         {
             MetalShaderStage.Vertex => "vertex ",
             MetalShaderStage.Fragment => "fragment ",
-            _ => "kernel ",
+            MetalShaderStage.Compute => "kernel ",
+            _ => throw new ArgumentOutOfRangeException(nameof(stage), stage,
+                "this MetalShaderStage has no MSL entry-point keyword. A new stage is an engine change, and this "
+                + "is one of the sites it has to visit."),
         };
 
         /// <summary>

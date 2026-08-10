@@ -180,6 +180,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         // Created on first use rather than in the constructor, so a device that never compiles a shader never
         // builds one, and so the factory's constructor stays free of anything that could throw.
+        //
+        // AND THE LAZY IS UNSYNCHRONIZED ON A PATH THIS TYPE'S HEADER CALLS FREE-THREADED, which is a benign race
+        // rather than a hole in that claim. Two threads reaching this at once both construct, both assign, and
+        // the loser's instance is dropped for the GC: the reference assignment is atomic so no caller can see a
+        // half-built one, the constructor allocates nothing native and holds no handle it would have to release,
+        // and the compiler itself is stateless (a device and a liveness latch, both already shared). A lock here
+        // would buy one avoided allocation, once, at the cost of putting a lock on the path M-W8 says has none.
         [SupportedOSPlatform("macos")]
         MetalShaderCompiler Shaders =>
             _shaders ??= new MetalShaderCompiler(_device.Handle, _device.Liveness);

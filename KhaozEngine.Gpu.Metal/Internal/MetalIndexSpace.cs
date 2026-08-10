@@ -1,3 +1,4 @@
+using System;
 using KhaozEngine.Gpu;
 
 namespace KhaozEngine.Gpu.Metal.Internal
@@ -33,6 +34,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
     internal static class MetalIndexSpaces
     {
         /// <summary>The space a declared resource of <paramref name="kind"/> is bound in.</summary>
+        /// <exception cref="ArgumentOutOfRangeException">A kind this rule has no answer for. Every declared kind
+        /// is listed, so this is a new <see cref="GpuResourceKind"/> member: absorbing one into the sampler space
+        /// would bind it in the wrong argument table AND make <see cref="MatchesKind"/> agree that it belongs
+        /// there, so the new member is sent here to be decided rather than defaulted.</exception>
         internal static MetalIndexSpace For(GpuResourceKind kind) => kind switch
         {
             GpuResourceKind.UniformBuffer => MetalIndexSpace.Buffer,
@@ -40,7 +45,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
             GpuResourceKind.StructuredBufferReadWrite => MetalIndexSpace.Buffer,
             GpuResourceKind.TextureReadOnly => MetalIndexSpace.Texture,
             GpuResourceKind.TextureReadWrite => MetalIndexSpace.Texture,
-            _ => MetalIndexSpace.Sampler,
+            GpuResourceKind.Sampler => MetalIndexSpace.Sampler,
+            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind,
+                "this GpuResourceKind has no Metal index space. A new kind is an engine change, and this is one "
+                + "of the sites it has to visit: Metal's three argument tables are independent, so a kind put in "
+                + "the wrong one binds a resource where another was expected and the kind check passes while it "
+                + "happens."),
         };
 
         /// <summary>Whether a resource of <paramref name="kind"/> belongs in <paramref name="space"/>.</summary>

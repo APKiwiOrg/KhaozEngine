@@ -65,7 +65,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
         bool _syncToVerticalBlank;
 
         MetalGpuDevice(MTLDevice device, MTLCommandQueue queue, GpuCapabilities capabilities,
-            MetalDeviceLiveness liveness, MetalDeviceLossLatch loss, MetalTimeline timeline)
+            MetalDeviceLiveness liveness, MetalDeviceLossLatch loss, MetalTimeline timeline,
+            IMetalSetupNative setupNative)
         {
             _device = device;
             Queue = queue;
@@ -73,7 +74,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _loss = loss;
             _timeline = timeline;
             Capabilities = capabilities;
-            _setup = new MetalSetupCommands(queue, liveness);
+            _setup = new MetalSetupCommands(setupNative, liveness);
             _factory = new MetalResourceFactory(this);
         }
 

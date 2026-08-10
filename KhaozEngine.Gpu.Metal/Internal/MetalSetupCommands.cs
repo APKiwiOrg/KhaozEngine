@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Runtime.CompilerServices;
-using System.Runtime.Versioning;
 using KhaozEngine.Gpu.Metal.Internal.ObjC;
 
 namespace KhaozEngine.Gpu.Metal.Internal
@@ -25,6 +23,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// whole <c>CommandList</c>, records one copy, calls <c>SubmitCommands</c> and then disposes both. Every
     /// device-level texture upload is therefore its own queue submission. Here they accumulate into ONE command
     /// buffer that is committed once.</para>
+    ///
+    /// <para><b>EVERY NATIVE CALL IS BEHIND <see cref="IMetalSetupNative"/> AND EVERY DECISION IS HERE.</b> This
+    /// type holds no Objective-C handle it messages and opens no autorelease pool: what is left in it is which
+    /// uploads share a batch, when a batch is committed, what the staging budget does, and what a dead device
+    /// releases. All of that runs under a plain <c>[Fact]</c> on a machine with no Metal at all, which is the
+    /// split the timeline row already took for <c>MTLSharedEvent</c>.</para>
     ///
     /// <para><b>TEXTURE CREATION IS NOT ON THIS PATH AT ALL, which is where Metal differs from the Vulkan
     /// sibling.</b> V-M10 exists mostly because <c>VkTexture</c>'s constructor clears and transitions, each with
@@ -62,21 +66,23 @@ namespace KhaozEngine.Gpu.Metal.Internal
         readonly object _gate = new();
 
         readonly List<MTLBuffer> _staging = [];
-        readonly MTLCommandQueue _queue;
+        readonly IMetalSetupNative _native;
         readonly IMetalDeviceLiveness _liveness;
 
         MTLCommandBuffer _buffer;
         bool _open;
         bool _disposed;
 
-        /// <param name="queue">The device's one queue (M-N2), which every setup batch is committed to.</param>
+        /// <param name="native">The batch's native half: the queue's command buffers, the staging allocations,
+        /// the blit encode and the commit.</param>
         /// <param name="liveness">The device's liveness token: after death nothing is recorded and nothing is
         /// committed, which is the posture every path in this package takes.</param>
-        internal MetalSetupCommands(MTLCommandQueue queue, IMetalDeviceLiveness liveness)
+        internal MetalSetupCommands(IMetalSetupNative native, IMetalDeviceLiveness liveness)
         {
+            ArgumentNullException.ThrowIfNull(native);
             ArgumentNullException.ThrowIfNull(liveness);
 
-            _queue = queue;
+            _native = native;
             _liveness = liveness;
         }
 
@@ -105,25 +111,17 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// (<c>FormatHelpers.GetRowPitch(width, format)</c>) and copies through a staging TEXTURE whose mip 0
         /// happens to have exactly that pitch, so the number is the same one arrived at by a shorter road.
         /// </para>
-        /// <para>
-        /// THE POOL IS OPENED HERE (M-N5) and it is not decoration: this body reaches <c>-commandBuffer</c>,
-        /// <c>-blitCommandEncoder</c> and <c>-newBufferWithLength:options:</c>, and the first two are
-        /// AUTORELEASED. A device-level upload happens on whatever thread a consumer loads content on, which is
-        /// exactly the thread whose implicit pool drains next never.
-        /// </para>
         /// </summary>
-        [SupportedOSPlatform("macos")]
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        internal void Upload(MTLDevice device, MetalTexture destination, in MetalTextureUpload upload,
+        /// <param name="destination">The Private texture being written.</param>
+        /// <param name="shape">Its shape, which is what the source row pitch is computed from.</param>
+        /// <param name="upload">Where in the destination the payload lands.</param>
+        /// <param name="data">The tightly packed payload.</param>
+        internal void Upload(MTLTexture destination, in MetalStagingShape shape, in MetalTextureUpload upload,
             ReadOnlySpan<byte> data)
         {
-            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
-
-            ArgumentNullException.ThrowIfNull(destination);
             ObjectDisposedException.ThrowIf(_disposed, this);
 
-            ulong required = MetalStagingLayout.RequiredUploadBytes(upload.Width, upload.Height,
-                destination.Format);
+            ulong required = MetalStagingLayout.RequiredUploadBytes(upload.Width, upload.Height, shape.Format);
             if (required == 0) return;
 
             if ((ulong)data.Length < required)
@@ -134,7 +132,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     + " by "
                     + upload.Height.ToString(CultureInfo.InvariantCulture)
                     + " texels in "
-                    + destination.Format
+                    + shape.Format
                     + " needs "
                     + required.ToString(CultureInfo.InvariantCulture)
                     + " tightly packed bytes and was given "
@@ -150,23 +148,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 EnsureOpen();
                 if (!_open) return;
 
-                MTLBuffer staged = Stage(device, data[..(int)required]);
+                MTLBuffer staged = _native.Stage(data[..(int)required]);
                 _staging.Add(staged);
 
-                MTLBlitCommandEncoder encoder = _buffer.BlitCommandEncoder();
-                encoder.CopyFromBufferToTexture(
-                    staged,
-                    0,
-                    (nuint)MetalStagingLayout.RowPitch(upload.Width, destination.Format),
-                    // ZERO for a 2D texture, which is what MTLCommandList.CopyTextureCore passes for anything
-                    // that is not a 3D texture, and this seam has no 3D texture.
-                    0,
-                    new MTLSize(upload.Width, upload.Height, 1),
-                    destination.Handle,
-                    upload.ArrayLayer,
-                    upload.MipLevel,
-                    new MTLOrigin(upload.X, upload.Y, 0));
-                encoder.EndEncoding();
+                _native.Encode(_buffer, staged, destination,
+                    MetalStagingLayout.RowPitch(upload.Width, shape.Format), upload);
 
                 AppendCount++;
             }
@@ -191,9 +177,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // NO ObjectDisposedException. A flush after disposal is a teardown-order straggler rather than a
             // defect, which is the posture every Dispose on this backend takes.
             if (_disposed) return;
-            if (!KhaozEngineMetal.IsPlatformSupported) return;
 
-            FlushOnMacOs();
+            lock (_gate)
+            {
+                CommitOpenBatch();
+            }
         }
 
         /// <summary>
@@ -209,46 +197,6 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if (_disposed) return;
 
-            if (KhaozEngineMetal.IsPlatformSupported) DisposeOnMacOs();
-
-            _disposed = true;
-            _open = false;
-        }
-
-        [SupportedOSPlatform("macos")]
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        void FlushOnMacOs()
-        {
-            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
-
-            lock (_gate)
-            {
-                if (!_open) return;
-
-                _open = false;
-
-                // A dead device abandons the batch: committing to a queue whose device has gone is a call into
-                // an object the driver has already given up on.
-                if (!_liveness.IsDead)
-                {
-                    _buffer.Commit();
-                    FlushCount++;
-                }
-
-                // The +1 EnsureOpen took. The driver holds its own reference to a committed buffer until it
-                // completes, so this releases the holder's claim rather than the buffer.
-                _buffer.Release();
-                _buffer = default;
-                ReleaseStaging();
-            }
-        }
-
-        [SupportedOSPlatform("macos")]
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        void DisposeOnMacOs()
-        {
-            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
-
             lock (_gate)
             {
                 if (_disposed) return;
@@ -259,7 +207,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 // release is a call into an object it may already have torn down.
                 if (!_liveness.IsDead)
                 {
-                    if (_open) _buffer.Release();
+                    if (_open) _native.ReleaseBatch(_buffer);
                     ReleaseStaging();
                 }
                 else
@@ -268,65 +216,51 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 }
 
                 _buffer = default;
+                _disposed = true;
                 _open = false;
             }
         }
 
-        // Called with the gate held and inside a pool. Opens a batch on a fresh command buffer, because an
-        // MTLCommandBuffer is single-use and there is no reset, no pool object and no allocator to choose between
-        // (M-R2).
-        [SupportedOSPlatform("macos")]
-        [MethodImpl(MethodImplOptions.NoInlining)]
+        // Called with the gate held. Commits the open batch, releases the +1 EnsureOpen took, and releases the
+        // staging buffers it accumulated.
+        void CommitOpenBatch()
+        {
+            if (!_open) return;
+
+            _open = false;
+
+            // A dead device abandons the batch: committing to a queue whose device has gone is a call into
+            // an object the driver has already given up on.
+            if (!_liveness.IsDead)
+            {
+                _native.Commit(_buffer);
+                FlushCount++;
+            }
+
+            // The +1 EnsureOpen took. The driver holds its own reference to a committed buffer until it
+            // completes, so this releases the holder's claim rather than the buffer.
+            _native.ReleaseBatch(_buffer);
+            _buffer = default;
+            ReleaseStaging();
+        }
+
+        // Called with the gate held. Opens a batch on a fresh command buffer, or leaves the batch closed when the
+        // queue would not make one, which is a device already in trouble.
         void EnsureOpen()
         {
             if (_open) return;
 
-            _buffer = _queue.CommandBuffer();
+            _buffer = _native.BeginBatch();
             if (_buffer.IsNull) return;
 
-            // RETAINED, because this buffer outlives the pool the queue handed it out in: the whole point of
-            // M-M9 is that uploads from separate calls share one batch, and the pop at the end of THIS call
-            // would otherwise free it under the next append. Released once at the commit or at teardown.
-            _buffer.Retain();
-
-            // The completion handler's only job is M-G4's error latch (M-F2), and a setup batch can fail exactly
-            // as a frame can. It is inert until the device registers its queue with the handler, which is the
-            // command-list row's wiring.
-            _ = MetalCompletionHandler.AttachTo(_buffer.Handle);
             _open = true;
         }
 
-        [SupportedOSPlatform("macos")]
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        MTLBuffer Stage(MTLDevice device, ReadOnlySpan<byte> data)
-        {
-            MTLBuffer staged = device.NewBuffer((nuint)data.Length, MTLResourceOptions.SharedDefaultCache);
-            if (staged.IsNull)
-            {
-                throw new InvalidOperationException(
-                    "The native Metal device would not allocate a " + data.Length
-                    + "-byte Shared staging buffer for a device-level texture upload.");
-            }
-
-            IntPtr contents = staged.Contents();
-            if (contents == IntPtr.Zero)
-            {
-                staged.Release();
-                throw new InvalidOperationException(
-                    "A Shared MTLBuffer staging a texture upload answered a null -contents pointer.");
-            }
-
-            unsafe { data.CopyTo(new Span<byte>((byte*)contents, data.Length)); }
-            return staged;
-        }
-
-        // Called with the gate held and inside a pool. After the commit, so the command buffer has certainly
-        // retained everything it references.
-        [SupportedOSPlatform("macos")]
-        [MethodImpl(MethodImplOptions.NoInlining)]
+        // Called with the gate held. After the commit, so the command buffer has certainly retained everything it
+        // references.
         void ReleaseStaging()
         {
-            foreach (MTLBuffer staged in _staging) staged.Release();
+            foreach (MTLBuffer staged in _staging) _native.ReleaseStaging(staged);
             _staging.Clear();
         }
     }

@@ -174,10 +174,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
             ((MetalBuffer)buffer).Write(offsetBytes, data);
         }
 
-        [SupportedOSPlatform("macos")]
-        [MethodImpl(MethodImplOptions.NoInlining)]
+        // The batch takes the destination's HANDLE and its SHAPE rather than the wrapper, because everything it
+        // needs from a MetalTexture is those two and taking them here is what keeps MetalSetupCommands free of a
+        // type that can only be built on a real device.
         void UploadThroughSetup(MetalTexture destination, in MetalTextureUpload upload, byte[] data)
-            => _setup.Upload(_device, destination, upload, data);
+            => _setup.Upload(destination.Handle, destination.Shape, upload, data);
 
         // A staging texture is a Shared buffer, so the upload is a strided copy into it and nothing is recorded.
         // Reproduces MTLGraphicsDevice.UpdateTextureCore's else branch, which walks rows with the SOURCE pitch

@@ -83,7 +83,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 timeline = new MetalTimeline(new MetalSharedEvent(device.Handle), liveness);
 
                 MetalGpuDevice created = new(device, queue, ReadCapabilities(selected.Facts), liveness, loss,
-                    timeline);
+                    timeline, new MetalSetupNative(device, queue));
 
                 // THE SHARED SAMPLER PAIR, from MetalSharedSamplers and not from the engine's same-named
                 // GpuSamplerDescription statics. Both are WRAP on all three axes, and reading the engine statics

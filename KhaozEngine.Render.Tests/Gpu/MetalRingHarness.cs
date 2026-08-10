@@ -1,7 +1,9 @@
 using System;
 using System.Runtime.InteropServices;
 using KhaozEngine.Diagnostics;
+using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Metal.Internal;
+using KhaozEngine.Gpu.Metal.Internal.ObjC;
 
 namespace KhaozEngine.Tests.Gpu
 {
@@ -25,6 +27,11 @@ namespace KhaozEngine.Tests.Gpu
     /// </summary>
     internal sealed class MetalRingHarness : IDisposable
     {
+        // A NON-NIL POINTER THAT IS NEVER DEREFERENCED. A resource set refuses a nil MTLBuffer at creation, so a
+        // buffer built here needs a handle that reads as a real object, and the only thing anything does with it
+        // is compare it against zero.
+        static readonly IntPtr FabricatedBufferHandle = new(0x4D544C42);
+
         readonly System.Collections.Generic.List<GCHandle> _pins = new();
 
         internal MetalRingHarness(int framesInFlight = MetalFramesInFlight.Default)
@@ -81,6 +88,40 @@ namespace KhaozEngine.Tests.Gpu
             _pins.Add(pin);
 
             return new MetalUniformRing(Rings, pin.AddrOfPinnedObject(), sizeInBytes);
+        }
+
+        /// <summary>
+        /// A REAL <see cref="MetalBuffer"/> WITH NO DEVICE UNDER IT, over a pinned array standing in for
+        /// <c>contents()</c> exactly as <see cref="NewRing"/>'s does, and carrying this harness's allocator, so a
+        /// uniform usage really is ring-backed. The <c>MTLBuffer</c> is a FABRICATED non-nil handle: nothing here
+        /// sends it a message, and <see cref="DisposeWithoutRelease"/> is how it is let go.
+        /// </summary>
+        /// <param name="sizeInBytes">The LOGICAL size, which is the only size the seam sees.</param>
+        /// <param name="usage">The declared usage, which is what decides whether the buffer is ring-backed.</param>
+        internal MetalBuffer NewBuffer(uint sizeInBytes, GpuBufferUsage usage)
+        {
+            byte[] backing = new byte[MetalBufferPolicy.IsRingBacked(usage)
+                ? (int)MetalRingStride.TotalBytesFor(sizeInBytes, FramesInFlight)
+                : (int)MetalBufferPolicy.AllocationBytes(sizeInBytes)];
+
+            GCHandle pin = GCHandle.Alloc(backing, GCHandleType.Pinned);
+            _pins.Add(pin);
+
+            return new MetalBuffer(
+                Liveness, new MTLBuffer(FabricatedBufferHandle), pin.AddrOfPinnedObject(), sizeInBytes, usage,
+                Rings);
+        }
+
+        /// <summary>
+        /// DISPOSE A HARNESS BUFFER THE WAY A DEAD DEVICE DOES, which is the only safe way to dispose one: the
+        /// liveness is marked dead FIRST, so M-F6's no-op path is what runs and the fabricated handle is never
+        /// released. Everything the disposal is asked about still happens, because the guard fields and the
+        /// allocator's <c>Forget</c> are managed state that flips whether or not there is a device.
+        /// </summary>
+        internal void DisposeWithoutRelease(MetalBuffer buffer)
+        {
+            Liveness.MarkDead();
+            buffer.Dispose();
         }
 
         /// <summary>A real arena on this harness's fake source, cut to the same depth and carrying this harness's

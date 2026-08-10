@@ -5,12 +5,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
 {
     /// <summary>
     /// ONE RESOLVED BINDING OF A SET, as row 13 (https://github.com/APKiwiOrg/KhaozEngine/issues/579) needs it at
-    /// flush time: which argument table it goes in, the Objective-C object the array setter writes, and the three
-    /// numbers a buffer bind composes its offset from.
+    /// flush time: which argument table it goes in, the resource whose Objective-C object the array setter writes,
+    /// and the numbers a buffer bind composes its offset from.
     /// <para>
     /// THE OFFSET ROW 13 COMPOSES IS <c>frameBase + RangeOffset + callerDynamicOffset</c> (M-M4), where
-    /// <c>frameBase</c> comes from <see cref="Ring"/> and the caller's per-draw offset is added only when
-    /// <see cref="AppliesCallerOffset"/> is set. That last flag is the one thing
+    /// <c>frameBase</c> is <see cref="Ring"/>'s <see cref="MetalUniformRing.SegmentBaseBytes"/> FOR THE SEGMENT
+    /// THAT RECORDING CAPTURED AT ITS <c>Begin</c>, and never
+    /// <see cref="MetalUniformRing.CurrentSegmentBaseBytes"/>, which is the device's live segment and is
+    /// documented for the two device-level callers only: a second list beginning meanwhile moves it, so a
+    /// recording that read it could bind a base no write in that recording used. The caller's per-draw offset is
+    /// added only when <see cref="AppliesCallerOffset"/> is set, which is the one thing
     /// <see cref="GpuResourceLayoutElement.Dynamic"/> decides on this backend.
     /// </para>
     /// <para>
@@ -19,20 +23,33 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// whatever its kind, so unlike the Vulkan sibling there is no descriptor type deciding whether the base is
     /// applied, and a ring-backed buffer bound to a structured element is not a refusal here.
     /// </para>
+    /// <para>
+    /// <b>THE TWO GUARDED VALUES ARE READ THROUGH <see cref="Resource"/> AND NOT STORED</b>, which is what keeps
+    /// <see cref="MetalBuffer.Ring"/>'s null-after-dispose the bind's predicate rather than a guard the set has
+    /// already stepped past. See <see cref="IMetalBindable"/> and the class note on
+    /// <see cref="MetalResourceSet"/>.
+    /// </para>
     /// </summary>
     /// <param name="Space">Which of Metal's three argument tables this binding is written into.</param>
-    /// <param name="Handle">The <c>MTLBuffer</c>, <c>MTLTexture</c> or <c>MTLSamplerState</c>, as the raw
-    /// Objective-C object the array setters take a C array of.</param>
-    /// <param name="Ring">The bound buffer's uniform ring, whose current segment base is the first term of the
-    /// composed offset, or null.</param>
+    /// <param name="Resource">The resolved wrapper: a <see cref="MetalBuffer"/>, a <see cref="MetalTexture"/> or
+    /// a <see cref="MetalSampler"/>, held so the bind reads its handle and its ring through the wrapper's own
+    /// disposal guard.</param>
     /// <param name="RangeOffset">The set's own <see cref="GpuBufferRange.Offset"/>, 0 at every shipped site.</param>
     /// <param name="Range">The window this binding reads, which is the range's size or the buffer's own logical
     /// size. Carried for the M-M4 arithmetic and never handed to Metal, which takes no length.</param>
     /// <param name="AppliesCallerOffset">Whether the element was declared dynamic, so the caller's per-draw
     /// offset is added on top.</param>
     internal readonly record struct MetalBoundResource(
-        MetalIndexSpace Space, IntPtr Handle, MetalUniformRing? Ring, uint RangeOffset, uint Range,
-        bool AppliesCallerOffset);
+        MetalIndexSpace Space, IMetalBindable Resource, uint RangeOffset, uint Range, bool AppliesCallerOffset)
+    {
+        /// <summary>The <c>MTLBuffer</c>, <c>MTLTexture</c> or <c>MTLSamplerState</c> the array setters take a C
+        /// array of, as it stands NOW: <see cref="IntPtr.Zero"/> once the resource is disposed.</summary>
+        internal IntPtr Handle => Resource.BindHandle;
+
+        /// <summary>The bound buffer's uniform ring as it stands NOW, or null for a non-buffer binding, a buffer
+        /// that is not ring-backed, and a ring-backed buffer that has been disposed.</summary>
+        internal MetalUniformRing? Ring => Resource.BindRing;
+    }
 
     /// <summary>
     /// <see cref="IGpuResourceSet"/> ON THE NATIVE METAL BACKEND: the declared elements RESOLVED ONCE, at
@@ -50,14 +67,21 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// lookup done at a bind is done for nothing. This is the same rule the Vulkan sibling states as V-M11 and
     /// reaches through a written descriptor set: the mechanism differs and the shape is identical.</para>
     ///
-    /// <para><b>THE HANDLES ARE A SNAPSHOT, WHICH IS WHAT A DESCRIPTOR SET IS TOO.</b> Each binding records the
-    /// Objective-C object its resource had at creation, so disposing a buffer or a texture while a set that names
-    /// it is still bound is a caller error rather than something this type can absorb. The alternative considered
-    /// was holding the WRAPPERS and re-reading <c>Handle</c> at every bind, which would answer nil instead of a
-    /// released pointer after a disposal. It is declined because it puts a field read and a branch on the array
-    /// setter's hot path to improve the failure mode of a caller error the sibling backends have identically, and
-    /// because a nil texture in an argument table is not a better outcome than a loud one: what this does instead
-    /// is refuse a resource that is ALREADY disposed at creation, so the snapshot can never start out nil.</para>
+    /// <para><b>EACH BINDING HOLDS THE WRAPPER, AND THE HANDLE AND THE RING ARE READ THROUGH IT AT THE BIND.</b>
+    /// An earlier shape of this type snapshotted both values at creation, which is what a descriptor set does and
+    /// which reads as resolve-once taken one step further. It is wrong here, because those two are precisely the
+    /// values whose job is to CHANGE on disposal. <see cref="MetalBuffer.Ring"/> answers null once the buffer is
+    /// disposed, and the whole reason it does is that the ring holds the <c>contents()</c> pointer of an
+    /// <c>MTLBuffer</c> that has since been released, so a write reaching it lands in memory the driver has taken
+    /// back. A snapshot puts that guard behind the set: the ringed arm would compose a base off a forgotten ring
+    /// and write the released pointer into the argument table, silently. Holding
+    /// <see cref="IMetalBindable"/> instead means a resource disposed after creation degrades to the nil-handle
+    /// and unringed behaviour BY CONSTRUCTION, which is the posture every other row here converged on. What it
+    /// costs is one null check inside each of two property reads at bind time. Everything genuinely expensive
+    /// stays at creation: the kind resolution, the type and device checks, the argument-table position, the
+    /// window arithmetic and whether the per-draw offset applies. Creation still refuses a resource that is
+    /// ALREADY disposed, because a set that starts out nil is a caller error with no later point at which it
+    /// could come right.</para>
     ///
     /// <para><b>THE DECLARED <see cref="GpuResourceLayoutElement.Stages"/> IS NOT WHAT DECIDES WHICH STAGES GET A
     /// BIND, and reading it that way is the off-by-one this backend exists to close.</b> The authority is the
@@ -239,7 +263,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             }
 
             return new MetalBoundResource(
-                MetalIndexSpace.Buffer, buffer.Handle.Handle, ring, rangeOffset, range, element.Dynamic);
+                MetalIndexSpace.Buffer, buffer, rangeOffset, range, element.Dynamic);
         }
 
         MetalBoundResource ResolveTexture(in GpuResourceLayoutElement element, IGpuBindableResource resource,
@@ -263,8 +287,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             RequireHandle(texture.Handle.Handle, element, where, "MTLTexture");
 
             return new MetalBoundResource(
-                MetalIndexSpace.Texture, texture.Handle.Handle, Ring: null, RangeOffset: 0, Range: 0,
-                AppliesCallerOffset: false);
+                MetalIndexSpace.Texture, texture, RangeOffset: 0, Range: 0, AppliesCallerOffset: false);
         }
 
         MetalBoundResource ResolveSampler(in GpuResourceLayoutElement element, IGpuBindableResource resource,
@@ -274,8 +297,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             RequireHandle(sampler.Handle.Handle, element, where, "MTLSamplerState");
 
             return new MetalBoundResource(
-                MetalIndexSpace.Sampler, sampler.Handle.Handle, Ring: null, RangeOffset: 0, Range: 0,
-                AppliesCallerOffset: false);
+                MetalIndexSpace.Sampler, sampler, RangeOffset: 0, Range: 0, AppliesCallerOffset: false);
         }
 
         // THE WRONG-THING REFUSAL IS THIS TYPE'S AND THE WRONG-DEVICE ONE IS SHARED. The kind mismatch is what a
@@ -297,8 +319,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
             return MetalResourceOwnership.Require<T>(typed, _liveness, nameof(resource));
         }
 
-        // A DISPOSED RESOURCE ANSWERS A NIL HANDLE, and a set is a snapshot, so this is the one moment the
-        // difference between "not created yet" and "already released" is still visible. Binding nil is legal
+        // A DISPOSED RESOURCE ANSWERS A NIL HANDLE, and this is the moment a set that would be born useless is
+        // still in front of the caller. A resource disposed LATER degrades to the same nil at the bind on its
+        // own, because the binding holds the wrapper rather than a copy of what it answered here, so what this
+        // refusal adds is the case where there was never anything to bind at all. Binding nil is legal
         // Objective-C and reads as an unbound slot at the draw, which is exactly the silent-wrong-pixel shape
         // this backend spends the whole of section 2.2b avoiding on the index side.
         static void RequireHandle(IntPtr handle, in GpuResourceLayoutElement element, string where,
@@ -308,8 +332,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             throw new ArgumentException(
                 $"{where} declares a {element.Kind} bound to a resource with no {objectType} handle, which means "
-                + "it has already been disposed. A resource set records the Objective-C object each resource has "
-                + "AT CREATION, so a disposed one would be bound as nil for the set's whole life.",
+                + "it has already been disposed. A set resolves its resources once at creation, so a resource "
+                + "that is nil here is nil for the set's whole life with nothing later to fix it.",
                 nameof(element));
         }
 

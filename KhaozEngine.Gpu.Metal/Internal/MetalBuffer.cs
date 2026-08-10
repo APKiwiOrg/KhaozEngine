@@ -33,7 +33,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// That is what removes the retire list the Vulkan sibling needs, and it is why this type has no deferred
     /// disposal of any kind.</para>
     /// </summary>
-    internal sealed class MetalBuffer : IGpuBuffer, IMetalOwnedResource
+    internal sealed class MetalBuffer : IGpuBuffer, IMetalOwnedResource, IMetalBindable
     {
         readonly IMetalDeviceLiveness _liveness;
         readonly MTLBuffer _buffer;
@@ -43,7 +43,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         bool _disposed;
 
-        MetalBuffer(IMetalDeviceLiveness liveness, MTLBuffer buffer, IntPtr contents, uint sizeInBytes,
+        /// <summary>
+        /// INTERNAL RATHER THAN PRIVATE SO THE RING HARNESS CAN BUILD ONE OVER PINNED MEMORY, which is the same
+        /// seam <see cref="MetalUniformRing"/>, <see cref="MetalStagingArena"/> and <c>MetalCommandList</c>
+        /// already take. Everything the seam reaches still goes through <see cref="Create"/>, which is where the
+        /// allocation, the rounding and the <c>contents()</c> checks live: a caller here is stating it has those
+        /// answers already.
+        /// </summary>
+        internal MetalBuffer(IMetalDeviceLiveness liveness, MTLBuffer buffer, IntPtr contents, uint sizeInBytes,
             GpuBufferUsage usage, MetalRingAllocator? rings)
         {
             _liveness = liveness;
@@ -98,6 +105,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </para>
         /// </summary>
         internal MetalUniformRing? Ring => _disposed ? null : _ring;
+
+        /// <inheritdoc/>
+        /// <remarks>The guarded <see cref="Handle"/>, read at the bind rather than copied into a resource set at
+        /// its creation. See <see cref="IMetalBindable"/>.</remarks>
+        IntPtr IMetalBindable.BindHandle => Handle.Handle;
+
+        /// <inheritdoc/>
+        /// <remarks>The guarded <see cref="Ring"/>, which is the one of the three disposal answers that would
+        /// corrupt rather than fail. See the property note above.</remarks>
+        MetalUniformRing? IMetalBindable.BindRing => Ring;
 
         /// <summary>
         /// Create one, or throw by name. Refuses M-M6's illegal combination FIRST, so a caller that asked for the

@@ -8,16 +8,18 @@ namespace KhaozEngine.Gpu.Metal
     /// The public surface of the engine-owned native Metal backend, and for now the whole of it: the platform
     /// guard, and one call that registers the backend with <see cref="GpuBackendProviders"/>.
     /// <para>
-    /// WHAT THIS PACKAGE CAN DO TODAY. Registration and the machine-capability probe are real: registering makes
-    /// the provider reachable, and <see cref="GpuBackendSelector.IsBackendSupported"/> then answers for this
-    /// machine by creating the system default <c>MTLDevice</c> and reading M-N4's four answers off it (a name,
-    /// the <c>supportsFamily:</c> floor, a buffer-offset alignment the uniform ring's stride is a multiple of,
-    /// and <c>supportsTextureSampleCount:</c> for 1). Creating a DEVICE is not built yet and refuses with a
-    /// message naming the row that builds it (https://github.com/APKiwiOrg/KhaozEngine/issues/570). Since row 3
-    /// <see cref="GpuBackendKind.MetalNative"/> exists as well, so the kind is nameable ahead of the device
-    /// behind it, and selecting it without <c>Register()</c> throws the provider-missing exception rather than
-    /// falling back to anything.
-    /// Work-breakdown row 2 of <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>.
+    /// WHAT THIS PACKAGE CAN DO TODAY. Registration, the machine-capability probe and HEADLESS device creation
+    /// are real. Registering makes the provider reachable, and
+    /// <see cref="GpuBackendSelector.IsBackendSupported"/> then answers for this machine by acquiring the device
+    /// <c>KE_METAL_DEVICE</c> names and reading M-N4's four answers off it (a name, the <c>supportsFamily:</c>
+    /// floor, a buffer-offset alignment the uniform ring's stride is a multiple of, and
+    /// <c>supportsTextureSampleCount:</c> for 1). A headless device holds a real <c>MTLDevice</c> and one
+    /// <c>MTLCommandQueue</c>, reports through the command-buffer error latch, drains before teardown, and
+    /// throws from every member whose row has not landed with a message naming that row. WINDOWED creation
+    /// refuses, naming the swapchain row (https://github.com/APKiwiOrg/KhaozEngine/issues/581).
+    /// <see cref="GpuBackendKind.MetalNative"/> exists, so selecting it without <c>Register()</c> throws the
+    /// provider-missing exception rather than falling back to anything.
+    /// Work-breakdown rows 1 to 4 of <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>.
     /// </para>
     /// <para>
     /// THIS PARAGRAPH IS A LEDGER, AND A STALE ONE IS WORSE THAN NONE, because it is the first thing a consumer

@@ -8852,15 +8852,49 @@ using KhaozEngine.Gpu.Metal;
 KhaozEngineMetal.Register();   // unconditionally, on every OS
 ```
 
-**It registers and it probes, and it cannot yet create a device, which is the honest state of it.** Registration
-and the machine probe are real. Creating a device refuses with a message naming the row that builds it
-(https://github.com/APKiwiOrg/KhaozEngine/issues/570). `GpuBackendKind.MetalNative` and its `metal-native` and
-`mtl-native` tokens exist (https://github.com/APKiwiOrg/KhaozEngine/issues/569), so the kind is nameable via
-`KE_GRAPHICS_BACKEND=metal-native`: a registered process answers the machine probe for it, an unregistered one
-throws the provider-missing exception rather than falling back, and nothing selects it by default (`ProbeOS`
-still answers `Metal` on macOS). `GpuBackendKind.Metal`, which goes through Veldrid, is the working Metal
-backend and stays selectable indefinitely. Calling `Register()` today costs one dictionary entry and changes
-nothing about how your game boots.
+**It creates a HEADLESS device and it cannot present, which is the honest state of it.** Registration, the
+machine probe and headless creation are real: a `MetalNative` device holds an `MTLDevice` and one
+`MTLCommandQueue`, answers `Backend`, part of `Capabilities`, `Diagnostics`, `WaitForIdle` and `Dispose`, and
+throws from every member whose row has not landed with a message naming that row. WINDOWED creation refuses,
+naming the swapchain row (https://github.com/APKiwiOrg/KhaozEngine/issues/581), because a windowed device that
+cannot present is worse than one that says so at creation. `GpuBackendKind.MetalNative` and its `metal-native`
+and `mtl-native` tokens exist, so the kind is nameable via `KE_GRAPHICS_BACKEND=metal-native`: a registered
+process answers the machine probe for it, an unregistered one throws the provider-missing exception rather than
+falling back, and nothing selects it by default (`ProbeOS` still answers `Metal` on macOS).
+`GpuBackendKind.Metal`, which goes through Veldrid, is the working Metal backend and stays selectable
+indefinitely. Calling `Register()` today costs one dictionary entry and changes nothing about how your game
+boots.
+
+**Two environment variables steer it, and neither is on by default.** `KE_METAL_DEVICE` picks which GPU: a
+zero-based index into `MTLCopyAllDevices()`, a case-insensitive substring of a device name, or `discrete`,
+`integrated` or `low-power`. Unset, it takes `MTLCreateSystemDefaultDevice()`, which is the same device the
+incumbent Metal backend uses, so a capability comparison between the two is meaningful by construction and an
+ordinary run never enumerates at all. Metal has exactly one classification flag (`-isLowPower`) and no discrete
+flag, so `discrete` means "not low-power" and `integrated` and `low-power` are the same predicate under two
+names. A request nothing matches WARNS with the full enumeration and falls back rather than failing, and the
+session log says SELECTION or SUBSTITUTED so a measurement taken under a pin is not mistaken for one taken on
+the default.
+
+`KE_METAL_VALIDATION` takes `0`, `1` or `shaders`, and it REPORTS rather than arms. Metal reads
+`MTL_DEBUG_LAYER` and `MTL_SHADER_VALIDATION` from the environment before the first device exists and offers no
+way to arm validation afterwards, which was measured with a control rather than assumed, so validation goes on
+the command line:
+
+```bash
+MTL_DEBUG_LAYER=1 dotnet run --project <your game>
+MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 dotnet run --project <your game>
+```
+
+The engine's knob then logs which tier is really armed, checks that against the device's own Objective-C class
+(a validated device is an `MTLDebugDevice` rather than the driver's own), and WARNS with the exact prefix above
+when a tier was asked for and this process cannot have it. Neither tier is a synchronisation validator.
+
+**A Metal command-buffer failure is reported now, which it was not before.** Every command buffer's status and
+error are read when it finishes, in every configuration, and the first failure latches its
+`MTLCommandBufferError` code and the driver's own description, makes every later release a no-op, and lands in
+the telemetry session header's `deviceLossReason` field. The Veldrid Metal path cannot do this: it reads
+`status` in one place and never reads `error`, so a device loss there is invisible to the engine and to
+telemetry.
 
 Call it unconditionally and on every OS, exactly as you would the other two, and for the Direct3D 11 package's
 reason rather than the Vulkan package's. Metal IS an OS-specific API, so this package carries a
@@ -8871,7 +8905,9 @@ Registering is a fact about your app's WIRING, and whether this machine can run 
 question `IsBackendSupported` answers.
 
 Whether the machine can run it is that separate question, answered through this package's own functional probe:
-the system default `MTLDevice`, then four reads off it. A device that reports a NAME, which is what
+the device `KE_METAL_DEVICE` names (the system default when it names none), then four reads off it. It asks
+about the device the backend would actually USE, so on a dual-GPU Mac with that variable set the probe and the
+created device are the same device rather than two that happen to agree. A device that reports a NAME, which is what
 `GpuCapabilities.DeviceName` parity depends on. `supportsFamily:` at or above the floor, meaning any
 `MTLGPUFamilyApple` generation or `MTLGPUFamilyMac2`, so an Apple silicon Mac clears it on both arms and an
 Intel Mac on a supported macOS clears it on the second. A device buffer-offset alignment that divides the

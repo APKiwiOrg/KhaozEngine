@@ -4,18 +4,19 @@ The engine's own native Metal backend for the [KhaozEngine.Gpu](../KhaozEngine.G
 umbrella: a consumer adds this package explicitly, the same pattern as `Physics.Bepu` or `WorldStore.Sqlite`,
 and nothing that does not want the Objective-C interop ever carries it.
 
-> **Status: it REGISTERS, it PROBES and it has a TIMELINE, and it cannot yet create a device.** Rows 1 to 3
-> and row 5 of the work breakdown are done: the assembly, its guard rows, the three phase-4 verification
-> spikes, then `KhaozEngineMetal.Register()`, the `IGpuBackendProvider` behind it, a functional probe that
-> answers for this machine, and the device's completion timeline with the seam fence on it (row 5 is pulled
-> ahead because the uniform ring recycles segments against a completion value). Creating a device refuses with
-> a message naming
-> [row 4](https://github.com/APKiwiOrg/KhaozEngine/issues/570), which builds the `MTLDevice` and the
-> `MTLCommandQueue`. `GpuBackendKind.MetalNative = 6` and its `metal-native` token exist as of `17.35.0`
-> ([row 3](https://github.com/APKiwiOrg/KhaozEngine/issues/569)), so the kind is nameable ahead of the device
-> behind it, and naming it with no provider registered throws rather than falling back.
-> `GpuBackendKind.Metal`, which goes through Veldrid, is the working Metal backend and stays selectable
-> indefinitely.
+> **Status: it creates a HEADLESS device with a TIMELINE, and it cannot present.** Rows 1 to 5 of the work breakdown are done:
+> the assembly and its guard rows, the three phase-4 verification spikes, `KhaozEngineMetal.Register()` with the
+> `IGpuBackendProvider` and the functional machine probe behind it, `GpuBackendKind.MetalNative = 6` with its
+> `metal-native` token, and now the Objective-C interop layer, a real `MTLDevice`, one `MTLCommandQueue`,
+> `KE_METAL_DEVICE` selection, `KE_METAL_VALIDATION` reporting, the command-buffer error latch and the liveness
+> token. Resources, command lists, pipelines and the swapchain are not built, and every member that needs one
+> throws a message naming the row that builds it. WINDOWED creation refuses by naming
+> [row 15](https://github.com/APKiwiOrg/KhaozEngine/issues/581), because a windowed device that cannot present
+> is worse than one that says so at creation. `GpuBackendKind.Metal`, which goes through Veldrid, is the
+> working Metal backend and stays selectable indefinitely.
+> Row 5 added the timeline beside it: one `MTLSharedEvent` per device, a real `IGpuFence`, a counted
+> `WaitForIdle` in 250 ms slices so a device loss can release it, and a completion handler that reads every
+> command buffer's outcome and latches only failures, keyed on the command queue.
 
 Spec, decisions and the nineteen-row work breakdown:
 [docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](../docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md).
@@ -31,9 +32,10 @@ KhaozEngineMetal.Register();   // unconditionally, on every OS, once at startup
 ```
 
 `Register` and `IsPlatformSupported` are the whole public surface, and a test pins it member by member so the
-next row has to mean it. Everything else in the assembly is internal: the provider, the machine probe and its
-device-free decision half, the completion timeline and the fence on it, plus the three verification spikes,
-which exist to answer a question rather than to run in a game.
+next row has to mean it. Everything else in the assembly is internal: the Objective-C interop layer, the
+device and its queue, the provider, the machine probe and its device-free decision half, the completion
+timeline and the fence on it, plus the three verification spikes, which exist to answer a question rather
+than to run in a game.
 
 **Call `Register()` unconditionally and on every operating system.** Registering says a provider EXISTS, which
 is a fact about your app's wiring. Whether this machine can run it is the separate question
@@ -71,6 +73,63 @@ macOS that ships one is read with no code change, then falls back to
 `minimumLinearTextureAlignmentForPixelFormat:`, which IS a device-reported buffer offset alignment. It reads 16
 on that machine, which is exactly what the incumbent hardcodes for macOS, so two independent statements of the
 number agree.
+
+## The device, the queue, and the two variables that steer them
+
+`MTLCreateSystemDefaultDevice()` and one `MTLCommandQueue`, created under the seam's existing lifecycle gate.
+There is no process-wide instance object on Metal, so the Vulkan package's refcounted-instance machinery has no
+analogue here and none was invented, and there is no second queue and no async compute: a queue is documented
+thread-safe, command buffers execute in ENQUEUE order, and `commit` enqueues, so committing under one lock makes
+submit order the observable order by construction.
+
+**`KE_METAL_DEVICE`** picks a different one. It takes a zero-based index into `MTLCopyAllDevices()`, a
+case-insensitive substring of a device name, or `discrete`, `integrated` or `low-power`. Unset, the DEFAULT is
+`MTLCreateSystemDefaultDevice()` rather than element zero of the enumeration, and that is a decision rather than
+a shortcut: the incumbent Veldrid Metal backend calls that function, `GpuCapabilities.DeviceName` is compared
+against it under a zero-permitted-difference bar, and taking the array's first element instead would swap the
+GPU underneath the one gate that has to isolate the backend swap. An ordinary run therefore never enumerates at
+all.
+
+Metal has exactly one classification flag, `-isLowPower`, and no `isDiscrete` and no device-type enumeration of
+the kind Vulkan has. So `discrete` means "not low-power", and `integrated` and `low-power` are the same
+predicate under two names. A request that cannot be honoured WARNS with the full enumeration and falls back
+rather than failing, because a name substring is machine-specific by nature and turning a stale value into a
+refusal to start would make a diagnostic lever into a way of bricking a session. An ineligible device is never
+chosen on any path, including an explicit index: honouring that pin would trade a warning now for a crash on
+frame one. And the log line says SELECTION or SUBSTITUTED in as many words, because a soak session comparing
+this backend against the incumbent has to tell those apart.
+
+**`KE_METAL_VALIDATION`** takes `0`, `1` or `shaders`, and it REPORTS rather than arms. Metal API validation is
+a process-launch mechanism: the runtime reads `MTL_DEBUG_LAYER` and `MTL_SHADER_VALIDATION` before the first
+device exists and offers no way to arm validation afterwards. That was measured with a control rather than
+assumed. So set the real variables on the command line:
+
+```bash
+MTL_DEBUG_LAYER=1 dotnet run --project <your game>
+MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 dotnet run --project <your game>
+```
+
+and the engine's knob then says which tier is really armed, checks that answer against the device's own
+Objective-C class (a validated device is an `MTLDebugDevice`), and WARNS with the exact prefix above when a tier
+was asked for and the process cannot have it. It also catches the case that looks like it should work and
+cannot, a variable set from managed code after launch, because on Unix that never reaches the native
+environment the Metal runtime read.
+
+## Where a Metal failure shows up now
+
+Every command buffer's `status` and `error` are read when it finishes, in every configuration, and the first
+failure latches its `MTLCommandBufferError` code and the driver's own description at the site that saw it, flips
+the device's liveness token so every later release is a no-op, and lands in the telemetry session header's
+`deviceLossReason` field. The incumbent reads `status` in exactly one place and never reads `error` at all, so
+this is reporting that did not exist rather than reporting that was moved.
+
+Every failure latches, not only the codes that sound device-level. The GPU seam has no way to resubmit a
+command buffer whose work Metal discarded, so a frame that failed would otherwise be followed by one reading its
+results, and stopping is the conservative direction.
+
+Teardown drains first, then flips liveness, then releases the queue and the device, in that order. Metal has no
+device-level wait, so the drain is an empty command buffer committed and waited on, which covers the whole queue
+because a queue executes in enqueue order.
 
 ## The timeline, and why a fence here is two fields (M-F1 to M-F5)
 

@@ -5,6 +5,8 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
 using System.Threading;
 
+using KhaozEngine.Gpu.Metal.Internal.ObjC;
+
 namespace KhaozEngine.Gpu.Metal.Internal
 {
     /// <summary>
@@ -52,7 +54,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         internal static MetalTimelineProbeResult Run()
         {
             var notes = new List<string>();
-            IntPtr pool = MetalTimelineNative.AutoreleasePoolPush();
+            IntPtr pool = ObjCRuntime.AutoreleasePoolPush();
             try
             {
                 return RunInsidePool(notes);
@@ -64,7 +66,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             }
             finally
             {
-                MetalTimelineNative.AutoreleasePoolPop(pool);
+                ObjCRuntime.AutoreleasePoolPop(pool);
             }
         }
 
@@ -72,7 +74,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         static MetalTimelineProbeResult RunInsidePool(List<string> notes)
         {
-            IntPtr device = MetalTimelineNative.MTLCreateSystemDefaultDevice();
+            IntPtr device = MTLDevice.CreateSystemDefault();
             if (device == IntPtr.Zero)
             {
                 notes.Add("MTLCreateSystemDefaultDevice returned nil, so nothing below could be measured.");
@@ -81,11 +83,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             bool singleton = MeasureDeviceIdentity(device, notes);
 
-            IntPtr queue = MetalTimelineNative.MsgSend(device, MetalTimelineNative.Sel("newCommandQueue"));
+            IntPtr queue = ObjCMsgSend.Send(device, ObjCRuntime.Sel("newCommandQueue"));
             if (queue == IntPtr.Zero)
             {
                 notes.Add("newCommandQueue returned nil, so no command buffer could carry a signal.");
-                MetalTimelineNative.ObjcRelease(device);
+                ObjCRuntime.ObjcRelease(device);
                 return new MetalTimelineProbeResult { DeviceCreated = true, Notes = notes };
             }
 
@@ -100,8 +102,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
             finally
             {
                 MetalCompletionHandler.Unregister(queue);
-                MetalTimelineNative.ObjcRelease(queue);
-                MetalTimelineNative.ObjcRelease(device);
+                ObjCRuntime.ObjcRelease(queue);
+                ObjCRuntime.ObjcRelease(device);
             }
         }
 
@@ -116,14 +118,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         static bool MeasureTwoQueuesOnOneDevice(IntPtr device, List<string> notes)
         {
-            IntPtr first = MetalTimelineNative.MsgSend(device, MetalTimelineNative.Sel("newCommandQueue"));
-            IntPtr second = MetalTimelineNative.MsgSend(device, MetalTimelineNative.Sel("newCommandQueue"));
+            IntPtr first = ObjCMsgSend.Send(device, ObjCRuntime.Sel("newCommandQueue"));
+            IntPtr second = ObjCMsgSend.Send(device, ObjCRuntime.Sel("newCommandQueue"));
             if (first == IntPtr.Zero || second == IntPtr.Zero || first == second)
             {
                 notes.Add("two newCommandQueue calls on one device did not hand back two distinct queues, so "
                     + "the routing key's uniqueness is unmeasured on this run.");
-                if (first != IntPtr.Zero) MetalTimelineNative.ObjcRelease(first);
-                if (second != IntPtr.Zero) MetalTimelineNative.ObjcRelease(second);
+                if (first != IntPtr.Zero) ObjCRuntime.ObjcRelease(first);
+                if (second != IntPtr.Zero) ObjCRuntime.ObjcRelease(second);
                 return false;
             }
 
@@ -142,8 +144,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
             {
                 MetalCompletionHandler.Unregister(first);
                 MetalCompletionHandler.Unregister(second);
-                MetalTimelineNative.ObjcRelease(first);
-                MetalTimelineNative.ObjcRelease(second);
+                ObjCRuntime.ObjcRelease(first);
+                ObjCRuntime.ObjcRelease(second);
             }
         }
 
@@ -162,7 +164,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         static bool MeasureDeviceIdentity(IntPtr device, List<string> notes)
         {
-            IntPtr second = MetalTimelineNative.MTLCreateSystemDefaultDevice();
+            IntPtr second = MTLDevice.CreateSystemDefault();
             if (second == IntPtr.Zero)
             {
                 notes.Add("the second MTLCreateSystemDefaultDevice returned nil, so the process-singleton "
@@ -171,7 +173,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             }
 
             bool same = second == device;
-            MetalTimelineNative.ObjcRelease(second);
+            ObjCRuntime.ObjcRelease(second);
             return same;
         }
 
@@ -240,14 +242,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         static ulong Submit(MetalTimeline timeline, MetalGpuFence fence, IntPtr queue, List<string> notes)
         {
-            IntPtr commandBuffer = MetalTimelineNative.MsgSend(queue, MetalTimelineNative.Sel("commandBuffer"));
+            IntPtr commandBuffer = ObjCMsgSend.Send(queue, ObjCRuntime.Sel("commandBuffer"));
             if (!MetalCompletionHandler.AttachTo(commandBuffer))
                 notes.Add("addCompletedHandler: was not attached, so no completion was reported for a buffer.");
 
             ulong value = timeline.EncodeSignalForSubmit(commandBuffer);
             fence.Arm(value);
 
-            MetalTimelineNative.MsgSendVoid(commandBuffer, MetalTimelineNative.Sel("commit"));
+            ObjCMsgSend.SendVoid(commandBuffer, ObjCRuntime.Sel("commit"));
             timeline.RegisterSubmitted(value);
             return value;
         }

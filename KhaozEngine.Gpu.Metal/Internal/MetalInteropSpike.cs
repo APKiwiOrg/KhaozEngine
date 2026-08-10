@@ -76,12 +76,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>, compiled and RUN against a real Metal
     /// device. What it covers is every ABI SHAPE the design names, which is not the same as every selector: the
     /// point is that each distinct <c>objc_msgSend</c> prototype crosses correctly, so one representative of a
-    /// shape stands for the rest of that shape and row 4's full selector list is row 4's. It is also two files
+    /// shape stands for the rest of that shape and the full selector list belongs to the real layer, which row 4
+    /// landed as <c>Internal/ObjC/</c>. It is also two files
     /// rather than one, this half and <c>MetalInteropSpike.Native.cs</c>, with the compile-options probe beside
     /// them as its own verification task.
     /// <para>
-    /// It is not the interop layer. Row 4 builds that, as a file family under <c>Internal/ObjC/</c> with one file
-    /// per Objective-C class. This is the measurement that has to come first, because section 3.1 refuses to
+    /// It is not the interop layer. Row 4 built that, as the file family under <c>Internal/ObjC/</c> with one
+    /// file per Objective-C class, and this KEEPS its own declarations rather than being folded into it: a
+    /// measurement is worth having self-contained, so it re-runs exactly what row 1 asked rather than whatever
+    /// the backend has since grown. This is the measurement that has to come first, because section 3.1 refuses to
     /// assert any of it: a hand-rolled <c>objc_msgSend</c> layer that gets an argument class wrong does not fail
     /// to compile, it corrupts memory, and the failure surfaces somewhere else entirely. Phase 3's equivalent
     /// spike could only be a COMPILE-time inventory, because the machine that wrote it had no Vulkan loader.
@@ -111,8 +114,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// </summary>
     internal static unsafe partial class MetalInteropSpike
     {
-        // Metal enum values the spike needs, by number rather than through an enum type, because the enums
-        // themselves are row 4's and declaring half of one here would be the start of a second copy.
+        // Metal enum values the spike needs, by number rather than through an enum type. The enum types live in
+        // the real layer (Internal/ObjC/) and this deliberately does not reach for them: a measurement that
+        // depended on the backend's own vocabulary would stop being a measurement of the ABI and start being a
+        // test of the backend.
         const nuint PixelFormatBgra8Unorm = 80;
         const nuint TextureUsageShaderRead = 1;
         const nuint TextureUsageRenderTarget = 4;
@@ -411,7 +416,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         // supportsFamily: (M-N3), which replaces the deprecated MTLFeatureSet reads two shipped behaviours hang
         // off today. The families are probed by number for the same reason the enum values above are: the enum
-        // is row 4's to declare.
+        // belongs to the real layer, which this deliberately does not reach for.
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         static string ProbeFamilies(IntPtr device)

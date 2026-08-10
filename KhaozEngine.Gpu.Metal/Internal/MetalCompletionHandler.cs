@@ -5,6 +5,8 @@ using System.Runtime.Versioning;
 using System.Threading;
 using KhaozEngine.Diagnostics;
 
+using KhaozEngine.Gpu.Metal.Internal.ObjC;
+
 namespace KhaozEngine.Gpu.Metal.Internal
 {
     /// <summary>
@@ -217,7 +219,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             IntPtr block = GlobalBlock();
             if (block == IntPtr.Zero) return false;
 
-            MetalTimelineNative.MsgSendVoidPtr(commandBuffer, Selectors.AddCompletedHandler, block);
+            ObjCMsgSend.SendVoidPtr(commandBuffer, Selectors.AddCompletedHandler, block);
             return true;
         }
 
@@ -238,9 +240,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
             IntPtr pool = IntPtr.Zero;
             try
             {
-                pool = MetalTimelineNative.AutoreleasePoolPush();
+                pool = ObjCRuntime.AutoreleasePoolPush();
                 Deliver(
-                    MetalTimelineNative.MsgSend(commandBuffer, Selectors.CommandQueue),
+                    ObjCMsgSend.Send(commandBuffer, Selectors.CommandQueue),
                     ReadOutcome(commandBuffer));
             }
             catch (Exception ex)
@@ -249,7 +251,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             }
             finally
             {
-                if (pool != IntPtr.Zero) MetalTimelineNative.AutoreleasePoolPop(pool);
+                if (pool != IntPtr.Zero) ObjCRuntime.AutoreleasePoolPop(pool);
             }
         }
 
@@ -262,13 +264,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static MetalCommandBufferOutcome ReadOutcome(IntPtr commandBuffer)
         {
-            nint status = MetalTimelineNative.MsgSendNInt(commandBuffer, Selectors.Status);
-            IntPtr error = MetalTimelineNative.MsgSend(commandBuffer, Selectors.Error);
+            nint status = ObjCMsgSend.SendNInt(commandBuffer, Selectors.Status);
+            IntPtr error = ObjCMsgSend.Send(commandBuffer, Selectors.Error);
             if (error == IntPtr.Zero) return new MetalCommandBufferOutcome(status, 0, "");
 
-            nint code = MetalTimelineNative.MsgSendNInt(error, Selectors.Code);
+            nint code = ObjCMsgSend.SendNInt(error, Selectors.Code);
             string description = MetalTimelineNative.NSStringToManaged(
-                MetalTimelineNative.MsgSend(error, Selectors.LocalizedDescription));
+                ObjCMsgSend.Send(error, Selectors.LocalizedDescription));
 
             return new MetalCommandBufferOutcome(status, code, description);
         }
@@ -355,14 +357,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             // Readonly on MTLCommandBuffer, and the routing key. See the type summary for why it is this and
             // not -device.
-            internal static readonly IntPtr CommandQueue = MetalTimelineNative.Sel("commandQueue");
-            internal static readonly IntPtr Status = MetalTimelineNative.Sel("status");
-            internal static readonly IntPtr Error = MetalTimelineNative.Sel("error");
-            internal static readonly IntPtr Code = MetalTimelineNative.Sel("code");
+            internal static readonly IntPtr CommandQueue = ObjCRuntime.Sel("commandQueue");
+            internal static readonly IntPtr Status = ObjCRuntime.Sel("status");
+            internal static readonly IntPtr Error = ObjCRuntime.Sel("error");
+            internal static readonly IntPtr Code = ObjCRuntime.Sel("code");
             internal static readonly IntPtr LocalizedDescription =
-                MetalTimelineNative.Sel("localizedDescription");
+                ObjCRuntime.Sel("localizedDescription");
             internal static readonly IntPtr AddCompletedHandler =
-                MetalTimelineNative.Sel("addCompletedHandler:");
+                ObjCRuntime.Sel("addCompletedHandler:");
         }
     }
 }

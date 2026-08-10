@@ -2,6 +2,8 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
 
+using KhaozEngine.Gpu.Metal.Internal.ObjC;
+
 namespace KhaozEngine.Gpu.Metal.Internal
 {
     /// <summary>
@@ -53,7 +55,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if (device == IntPtr.Zero) throw new ArgumentNullException(nameof(device));
 
-            _handle = MetalTimelineNative.MsgSend(device, MetalTimelineNative.Sel("newSharedEvent"));
+            _handle = ObjCMsgSend.Send(device, ObjCRuntime.Sel("newSharedEvent"));
             if (_handle == IntPtr.Zero)
             {
                 throw new InvalidOperationException(
@@ -63,9 +65,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     + "handed back.");
             }
 
-            _signaledValue = MetalTimelineNative.Sel("signaledValue");
-            _waitUntilSignaledValue = MetalTimelineNative.Sel("waitUntilSignaledValue:timeoutMS:");
-            _encodeSignalEvent = MetalTimelineNative.Sel("encodeSignalEvent:value:");
+            _signaledValue = ObjCRuntime.Sel("signaledValue");
+            _waitUntilSignaledValue = ObjCRuntime.Sel("waitUntilSignaledValue:timeoutMS:");
+            _encodeSignalEvent = ObjCRuntime.Sel("encodeSignalEvent:value:");
         }
 
         /// <summary>The raw handle, for row 7's submit path and row 8's ring. Exposed by the CONCRETE type
@@ -75,12 +77,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         /// <inheritdoc/>
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public ulong Read() => MetalTimelineNative.MsgSendULong(_handle, _signaledValue);
+        public ulong Read() => ObjCMsgSend.SendULong(_handle, _signaledValue);
 
         /// <inheritdoc/>
         [MethodImpl(MethodImplOptions.NoInlining)]
         public bool WaitUntil(ulong value, ulong timeoutMs)
-            => MetalTimelineNative.MsgSendBoolULongULong(_handle, _waitUntilSignaledValue, value, timeoutMs) != 0;
+            => ObjCMsgSend.SendBoolULongULong(_handle, _waitUntilSignaledValue, value, timeoutMs) != 0;
 
         /// <inheritdoc/>
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -88,7 +90,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if (commandBuffer == IntPtr.Zero) throw new ArgumentNullException(nameof(commandBuffer));
 
-            MetalTimelineNative.MsgSendVoidPtrULong(commandBuffer, _encodeSignalEvent, _handle, value);
+            ObjCMsgSend.SendVoidPtrULong(commandBuffer, _encodeSignalEvent, _handle, value);
         }
 
         /// <summary>
@@ -108,7 +110,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             if (_disposed) return;
             _disposed = true;
 
-            MetalTimelineNative.ObjcRelease(_handle);
+            ObjCRuntime.ObjcRelease(_handle);
         }
     }
 }

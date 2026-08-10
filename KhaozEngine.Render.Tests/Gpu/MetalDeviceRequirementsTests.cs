@@ -141,7 +141,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// An unreadable alignment refuses in the CONSERVATIVE direction, and that is a deliberate choice rather
         /// than an oversight. Metal exposes no constant-buffer-specific query at all (measured, see
-        /// <see cref="MetalSupportProbe.ReadBufferOffsetAlignment"/>), so the probe reads the closest thing the
+        /// <see cref="MetalDeviceFactsReader.ReadBufferOffsetAlignment"/>), so the probe reads the closest thing the
         /// API does answer, and a device answering none of them leaves the ring's one load-bearing number
         /// unchecked. Refusing there costs a Mac a fallback to the incumbent, and accepting there costs every
         /// ring bind.

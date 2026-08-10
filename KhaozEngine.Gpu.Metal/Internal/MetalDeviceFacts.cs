@@ -31,7 +31,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// nothing at all is distinguishable in a log line from one that simply sits below the floor.</param>
     /// <param name="BufferOffsetAlignment">The device's own minimum buffer-offset alignment in bytes, which
     /// M-M3's 256 stride has to be a multiple of. See
-    /// <see cref="MetalSupportProbe.ReadBufferOffsetAlignment"/> for which selector produced it and why Metal
+    /// <see cref="MetalDeviceFactsReader.ReadBufferOffsetAlignment"/> for which selector produced it and why Metal
     /// exposes no constant-buffer-specific query to ask instead. Zero means nothing answered.</param>
     /// <param name="BufferOffsetAlignmentSource">The selector the value above came from, carried into the
     /// refusal message so a rejected machine names the read rather than only the number.</param>

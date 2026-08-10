@@ -9,12 +9,18 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <see cref="KhaozEngineMetal.Register"/> and consumed only through <see cref="IGpuBackendProvider"/>, so
     /// nothing outside this package ever names an Objective-C handle.
     /// <para>
-    /// THE PROBE IS REAL AND CREATION IS NOT YET. <see cref="IsSupported"/> creates the system default
-    /// <c>MTLDevice</c> and takes M-N4's four reads off it. Both creation paths refuse by naming the row that
-    /// builds the device (https://github.com/APKiwiOrg/KhaozEngine/issues/570), and that ordering is deliberate
-    /// rather than an artefact of scheduling: the probe is the row that makes a SILENT FALLBACK impossible.
-    /// Without it a soak session could measure the incumbent Veldrid Metal backend and file the numbers under
-    /// the native one, which is the exact failure the whole gate-4 capture exists to avoid.
+    /// HEADLESS CREATION IS REAL AND WINDOWED IS NOT YET. <see cref="IsSupported"/> acquires the device
+    /// <c>KE_METAL_DEVICE</c> names and takes M-N4's four reads off it, and <see cref="CreateHeadless"/> hands
+    /// back a device holding a real <c>MTLDevice</c> and a real <c>MTLCommandQueue</c>, whose unbuilt members
+    /// each name the row that builds them. <see cref="CreateForWindow"/> refuses by naming the swapchain row
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/581), which is the honest refusal: a windowed device
+    /// that cannot present is worse than one that says so at creation.
+    /// </para>
+    /// <para>
+    /// THE PROBE LANDING A ROW BEFORE CREATION WAS DELIBERATE rather than an artefact of scheduling: it is what
+    /// makes a SILENT FALLBACK impossible. Without it a soak session could measure the incumbent Veldrid Metal
+    /// backend and file the numbers under the native one, which is the exact failure the whole gate-4 capture
+    /// exists to avoid.
     /// </para>
     /// <para>
     /// THE PLATFORM GUARD IS THE FIRST THING EVERY ENTRY POINT DOES, and that is decision M-P1 rather than a copy
@@ -80,7 +86,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             string? missing = _machineAnswer.Value;
             if (missing is not null) throw ThisMachineCannot(missing);
 
-            throw NotBuiltYet("windowed");
+            throw NotBuiltYet();
         }
 
         /// <inheritdoc/>
@@ -91,7 +97,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             string? missing = _machineAnswer.Value;
             if (missing is not null) throw ThisMachineCannot(missing);
 
-            throw NotBuiltYet("headless");
+            return MetalGpuDevice.CreateHeadless();
         }
 
         // The probe with the swallow the provider contract demands, in ONE place now that two members need it.
@@ -125,13 +131,18 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // The PACKAGE-level refusal, which is a different fact from the two above and names the row that ends
         // it. The creation path catches this, WARNs with the message and falls back to the incumbent Veldrid
         // Metal backend, so this text is what a tester who named the native backend actually reads.
-        static NotSupportedException NotBuiltYet(string path)
-            => new($"The native Metal backend cannot create a {path} device yet. The probe above answered YES "
-                + "for this machine, so this is a statement about the PACKAGE: work-breakdown row 2 of "
-                + "docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md builds the registration and the "
-                + "functional probe, and the MTLDevice and MTLCommandQueue arrive with row 4 "
-                + "(https://github.com/APKiwiOrg/KhaozEngine/issues/570). Use GpuBackendKind.Metal, which goes "
-                + "through Veldrid, for a Metal device today.");
+        //
+        // WINDOWED ONLY NOW. Headless creation is live as of row 4, and the windowed path refuses rather than
+        // handing back a device that cannot present: a swapchain is not an optional extra on a windowed device,
+        // it is the whole of what makes it windowed.
+        static NotSupportedException NotBuiltYet()
+            => new("The native Metal backend cannot create a WINDOWED device yet. The probe above answered YES "
+                + "for this machine, so this is a statement about the PACKAGE: the MTLDevice, the "
+                + "MTLCommandQueue, KE_METAL_DEVICE selection and HEADLESS creation are live (work-breakdown "
+                + "row 4, https://github.com/APKiwiOrg/KhaozEngine/issues/570), and the CAMetalLayer, the "
+                + "drawable and the present arrive with row 15 "
+                + "(https://github.com/APKiwiOrg/KhaozEngine/issues/581). Use GpuBackendKind.Metal, which goes "
+                + "through Veldrid, for a windowed Metal device today.");
 
         // The off-macOS refusal, and it is a PLATFORM answer rather than either of the other two. Registration
         // is safe on every OS on purpose (M-I4), so this is what a consumer that registered unconditionally and

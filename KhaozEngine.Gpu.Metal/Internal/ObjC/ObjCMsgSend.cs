@@ -265,5 +265,31 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         [SupportedOSPlatform("macos")]
         internal static partial void SendVoidBufferToBufferCopy(IntPtr receiver, IntPtr sel, IntPtr sourceBuffer,
             nuint sourceOffset, IntPtr destinationBuffer, nuint destinationOffset, nuint size);
+
+        // ---- The pipeline row's one shape ---------------------------------------------------------------------
+
+        /// <summary>
+        /// An object-returning message taking ONE object and an <c>NSError**</c>, which is
+        /// <c>-[MTLDevice newRenderPipelineStateWithDescriptor:error:]</c> and
+        /// <c>-[MTLDevice newComputePipelineStateWithFunction:error:]</c>.
+        /// <para>
+        /// THE ONE-OBJECT SIBLING OF <see cref="SendPtrPtrPtrOutPtr"/>, and it is here rather than that one being
+        /// reused with a nil filler because the argument COUNT is part of the prototype: a caller that passed an
+        /// extra register would be placing this callee's <c>NSError**</c> one slot along from where it reads it,
+        /// which is the classic corruption this file's header names. Every argument class is the integer class
+        /// row 1's spike measured, and an out-parameter is an object pointer's address, so nothing here needs a
+        /// new spike answer.
+        /// </para>
+        /// <para>
+        /// AND THE ERROR IS THE WHOLE DIAGNOSTIC VALUE OF A REJECTED PIPELINE, exactly as it is for a rejected
+        /// shader. Metal answers nil and writes an autoreleased <c>NSError</c> naming the incompatibility (a
+        /// vertex attribute the function does not declare, an attachment format the function does not write), and
+        /// without it a mismatched pipeline is an unexplained nil. The pointer is valid only until the enclosing
+        /// pool drains, so every caller reads it into a managed string inside the pool.
+        /// </para>
+        /// </summary>
+        [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial IntPtr SendPtrPtrOutPtr(IntPtr receiver, IntPtr sel, IntPtr a, out IntPtr error);
     }
 }

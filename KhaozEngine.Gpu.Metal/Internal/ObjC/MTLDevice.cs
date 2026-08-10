@@ -173,6 +173,60 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
             => new(ObjCMsgSend.SendPtr(Handle, ObjCRuntime.Sel("newSamplerStateWithDescriptor:"),
                 descriptor.Handle));
 
+        /// <summary>
+        /// <c>-newRenderPipelineStateWithDescriptor:error:</c>: a +1 pipeline state the caller releases, or nil
+        /// with <paramref name="error"/> describing why.
+        /// <para>
+        /// THIS IS THE COMPILE THAT VALIDATES THE SHADER AGAINST THE PIPELINE. Metal rejects a descriptor whose
+        /// vertex layout, attachment formats or sample count disagree with the compiled functions, and the
+        /// <c>NSError</c> names which. A caller that ignored it would turn "the fragment function writes two
+        /// colour outputs and the pipeline declares three" into an unexplained nil at load time. The error is
+        /// autoreleased, so it is read into a managed string inside the enclosing pool.
+        /// </para>
+        /// </summary>
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal MTLRenderPipelineState NewRenderPipelineState(MTLRenderPipelineDescriptor descriptor,
+            out NSError error)
+        {
+            IntPtr state = ObjCMsgSend.SendPtrPtrOutPtr(Handle,
+                ObjCRuntime.Sel("newRenderPipelineStateWithDescriptor:error:"), descriptor.Handle,
+                out IntPtr raw);
+
+            error = new NSError(raw);
+            return new MTLRenderPipelineState(state);
+        }
+
+        /// <summary>
+        /// <c>-newComputePipelineStateWithFunction:error:</c>: a +1 pipeline state the caller releases, or nil
+        /// with <paramref name="error"/> describing why. The function route rather than the descriptor one, for
+        /// the reason <see cref="MTLComputePipelineState"/> carries.
+        /// </summary>
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal MTLComputePipelineState NewComputePipelineState(MTLFunction function, out NSError error)
+        {
+            IntPtr state = ObjCMsgSend.SendPtrPtrOutPtr(Handle,
+                ObjCRuntime.Sel("newComputePipelineStateWithFunction:error:"), function.Handle, out IntPtr raw);
+
+            error = new NSError(raw);
+            return new MTLComputePipelineState(state);
+        }
+
+        /// <summary>
+        /// <c>-newDepthStencilStateWithDescriptor:</c>: a +1 state the caller releases, or nil.
+        /// <para>
+        /// NO ERROR OUT-PARAMETER, unlike its two neighbours above, and that is the SDK's shape rather than a
+        /// simplification: a depth-stencil state is validated against nothing, so there is no compatibility to
+        /// report on. A nil here is a device that has run out of something.
+        /// </para>
+        /// </summary>
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal MTLDepthStencilState NewDepthStencilState(MTLDepthStencilDescriptor descriptor)
+            => new(ObjCMsgSend.SendPtr(Handle, ObjCRuntime.Sel("newDepthStencilStateWithDescriptor:"),
+                descriptor.Handle));
+
         /// <summary><c>-supportsFamily:</c> (M-N3).</summary>
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]

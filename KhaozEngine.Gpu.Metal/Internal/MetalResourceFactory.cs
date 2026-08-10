@@ -14,6 +14,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// around this row so it can parallelise with the command list. <see cref="CreateCommandList"/> is live too,
     /// and it is the one member here the resource row does not own: row 7 built the list and this hands it out.</para>
     ///
+    /// <para><b>AND SHADERS ARE LIVE AS OF ROW 9</b> (https://github.com/APKiwiOrg/KhaozEngine/issues/575), which
+    /// is the row that had to land before pipelines because a pipeline is created from a library and a function.
+    /// Both shader members run the whole device-free path (GLSL to SPIR-V, SPIR-V to MSL under the pin, the
+    /// entry-point read, the id-keyed binding join) and then make two native calls. What still refuses is
+    /// everything a pipeline needs AROUND a shader: the layouts and sets it binds through, the pipeline itself,
+    /// and the framebuffer it draws into.</para>
+    ///
     /// <para><b>CREATION IS FREE-THREADED AND TAKES NO LOCK AT ALL (M-W8).</b> An <c>MTLDevice</c> is documented
     /// thread-safe and none of these calls touches shared state: the setup command buffer is the only thing in
     /// this row with a lock, and creation never appends to it because texture creation issues no command buffer
@@ -27,6 +34,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
     internal sealed class MetalResourceFactory : IGpuResourceFactory
     {
         readonly MetalGpuDevice _device;
+
+        MetalShaderCompiler? _shaders;
 
         internal MetalResourceFactory(MetalGpuDevice device)
         {
@@ -84,12 +93,26 @@ namespace KhaozEngine.Gpu.Metal.Internal
             => throw NotBuiltYet("A resource set", LayoutsRow);
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// GLSL in, an <c>MTLLibrary</c> and an <c>MTLFunction</c> per stage out, plus the binding table read off
+        /// the emission (M-B1, section 2.2b). Everything except the two native calls is device-free and asserted
+        /// over every shipped program on every leg. See <see cref="MetalShaderBuild"/> and
+        /// <see cref="MetalShaderIndexTable"/>.
+        /// </remarks>
         public IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl)
-            => throw NotBuiltYet("A shader set", ShaderRow);
+        {
+            if (!KhaozEngineMetal.IsPlatformSupported) throw OffMacOs("A GPU shader set");
+            return CreateShaderSetOnMacOs(vertGlsl, fragGlsl);
+        }
 
         /// <inheritdoc/>
+        /// <remarks>The compute sibling, with the workgroup size read out of the SPIR-V module rather than taken
+        /// from a description nothing validates.</remarks>
         public IGpuComputeShader CreateComputeShaderFromSpirv(string computeGlsl)
-            => throw NotBuiltYet("A compute shader", ShaderRow);
+        {
+            if (!KhaozEngineMetal.IsPlatformSupported) throw OffMacOs("A GPU compute shader");
+            return CreateComputeShaderOnMacOs(computeGlsl);
+        }
 
         /// <inheritdoc/>
         public IGpuPipeline CreateGraphicsPipeline(in GpuPipelineDescription d)
@@ -142,6 +165,25 @@ namespace KhaozEngine.Gpu.Metal.Internal
             return MetalSampler.Create(_device.Handle, _device.Liveness, d);
         }
 
+        // No pool at these two, unlike every other body here, and that is not an oversight: the compiler opens
+        // one around the native half itself, because the device-free emission in front of it is the expensive
+        // part and holding a pool across four seconds of glslang and SPIRV-Cross would be holding it for nothing.
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        IGpuShaderSet CreateShaderSetOnMacOs(string vertGlsl, string fragGlsl)
+            => Shaders.CreateShaderSet(vertGlsl, fragGlsl);
+
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        IGpuComputeShader CreateComputeShaderOnMacOs(string computeGlsl)
+            => Shaders.CreateComputeShader(computeGlsl);
+
+        // Created on first use rather than in the constructor, so a device that never compiles a shader never
+        // builds one, and so the factory's constructor stays free of anything that could throw.
+        [SupportedOSPlatform("macos")]
+        MetalShaderCompiler Shaders =>
+            _shaders ??= new MetalShaderCompiler(_device.Handle, _device.Liveness);
+
         // The off-macOS refusal, as one sentence rather than as a silent null. A factory reached off macOS means
         // a consumer got hold of a device that cannot exist there, so the message says which of the two
         // impossible things happened rather than throwing with no context.
@@ -150,7 +192,6 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 + "MetalGpuDevice exists on a machine that has no Metal at all, which the provider's functional "
                 + "probe refuses before creation.");
 
-        const string ShaderRow = "the shader-path row (https://github.com/APKiwiOrg/KhaozEngine/issues/575)";
         const string LayoutsRow = "the resource-layout row (https://github.com/APKiwiOrg/KhaozEngine/issues/576)";
         const string PipelinesRow = "the pipeline row (https://github.com/APKiwiOrg/KhaozEngine/issues/577)";
         const string PassesRow = "the render-pass row (https://github.com/APKiwiOrg/KhaozEngine/issues/578)";
@@ -161,9 +202,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         static NotSupportedException NotBuiltYet(string what, string row)
             => new($"{what} is not built yet on the native Metal backend's resource factory: it lands in {row}. "
                 + "Buffers, textures, samplers and fences ARE live (work-breakdown row 6, "
-                + "https://github.com/APKiwiOrg/KhaozEngine/issues/572), and so are command lists (row 7, "
-                + "https://github.com/APKiwiOrg/KhaozEngine/issues/573). This is a statement about the package "
-                + "and not about this machine. Select GpuBackendKind.Metal, which goes through Veldrid, for a "
-                + "fully working Metal device.");
+                + "https://github.com/APKiwiOrg/KhaozEngine/issues/572), so are command lists (row 7, "
+                + "https://github.com/APKiwiOrg/KhaozEngine/issues/573), and so are shader sets and compute "
+                + "shaders (row 9, https://github.com/APKiwiOrg/KhaozEngine/issues/575). This is a statement "
+                + "about the package and not about this machine. Select GpuBackendKind.Metal, which goes through "
+                + "Veldrid, for a fully working Metal device.");
     }
 }

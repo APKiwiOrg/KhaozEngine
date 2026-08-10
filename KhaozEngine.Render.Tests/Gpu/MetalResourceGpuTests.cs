@@ -578,19 +578,26 @@ namespace KhaozEngine.Tests.Gpu
             // gives: a member silently dropped from the list is a member nothing checks in either direction.
             using (IGpuCommandList list = factory.CreateCommandList()) Assert.NotNull(list);
 
-            Assert.Contains("575", Refusal(() => factory.CreateShadersFromSpirv("", "")),
+            // AND SHADERS ARE LIVE AS OF ROW 9, so what replaces their refusal is the one they actually have: an
+            // empty source now fails in the FRONT END, where an empty string is not GLSL, rather than at an
+            // unbuilt path. The two read very differently, which is the point of asserting the new one.
+            Assert.Contains("GLSL to SPIR-V failed", Refusal(() => factory.CreateShadersFromSpirv("", "")),
                 StringComparison.Ordinal);
+
             Assert.Contains("576", Refusal(() => factory.CreateResourceLayout(default)),
                 StringComparison.Ordinal);
             Assert.Contains("577", Refusal(() => factory.CreateGraphicsPipeline(default)),
                 StringComparison.Ordinal);
             Assert.Contains("578", Refusal(() => factory.CreateFramebuffer(null)), StringComparison.Ordinal);
 
-            string shaders = Refusal(() => factory.CreateShadersFromSpirv("", ""));
-            _output.WriteLine(shaders);
-            Assert.Contains("Buffers, textures, samplers and fences ARE live", shaders,
+            // The layout row is the first one on this factory that still refuses, so it is what carries the
+            // message naming every landed row as live.
+            string layouts = Refusal(() => factory.CreateResourceLayout(default));
+            _output.WriteLine(layouts);
+            Assert.Contains("Buffers, textures, samplers and fences ARE live", layouts,
                 StringComparison.Ordinal);
-            Assert.Contains("573", shaders, StringComparison.Ordinal);
+            Assert.Contains("573", layouts, StringComparison.Ordinal);
+            Assert.Contains("575", layouts, StringComparison.Ordinal);
         }
 
         static IGpuDevice CreateHeadless() => new MetalBackendProvider().CreateHeadless().Device;

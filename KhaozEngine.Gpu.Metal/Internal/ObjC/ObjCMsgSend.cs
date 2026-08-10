@@ -195,5 +195,57 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
             nuint sourceOffset, nuint sourceBytesPerRow, nuint sourceBytesPerImage, MTLSize sourceSize,
             IntPtr destinationTexture, nuint destinationSlice, nuint destinationLevel,
             MTLOrigin destinationOrigin);
+
+        // ---- The shader row's shapes -------------------------------------------------------------------------
+        //
+        // Both are existing argument CLASSES in a new arrangement. An object pointer and a BOOL byte are what row
+        // 1's spike measured throughout, and an out-parameter is an object pointer's address, which is the same
+        // integer class in a register.
+
+        /// <summary>
+        /// A void message taking one <c>BOOL</c>: <c>-[MTLCompileOptions setFastMathEnabled:]</c> and
+        /// <c>-setPreserveInvariance:</c>.
+        /// <para>
+        /// THE ARGUMENT IS A <see cref="byte"/> FOR THE REASON THIS FILE'S HEADER GIVES, and it matters more on
+        /// the way IN than on the way out. <c>BOOL</c> is a signed char on arm64, so a caller that declared it as
+        /// a four-byte value would leave the upper bytes of the register undefined, and a callee reading one byte
+        /// would be right by luck. Declaring the real width is what makes it right by construction.
+        /// </para>
+        /// </summary>
+        [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial void SendVoidBool(IntPtr receiver, IntPtr sel, byte a);
+
+        /// <summary>
+        /// An object-returning message taking two objects and an <c>NSError**</c>, which is
+        /// <c>-[MTLDevice newLibraryWithSource:options:error:]</c>.
+        /// <para>
+        /// THE ERROR IS AN <c>out</c> OBJECT POINTER, and it is the reason this shape is here rather than
+        /// <see cref="SendPtr"/> being reused with a hand-pinned address. Metal reports a shader compile failure
+        /// by returning nil AND writing an autoreleased <c>NSError</c> through this parameter, and the message
+        /// inside it is the entire diagnostic value of a failed compile: without it a broken shader is "nil" with
+        /// no line number. The pointer is only valid until the enclosing autorelease pool drains, which is why
+        /// every caller reads it into a managed string inside the pool.
+        /// </para>
+        /// </summary>
+        [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial IntPtr SendPtrPtrPtrOutPtr(IntPtr receiver, IntPtr sel, IntPtr a, IntPtr b,
+            out IntPtr error);
+
+        /// <summary>
+        /// An object-returning message taking one C string, which is
+        /// <c>+[NSString stringWithUTF8String:]</c> and the only <c>byte*</c> argument this backend sends.
+        /// <para>
+        /// A <c>const char*</c> IS AN ORDINARY POINTER ARGUMENT and rides the same register class as an object
+        /// pointer, so this needs no spike answer of its own beyond the one <see cref="SendPtr"/> already has.
+        /// It is spelled <c>byte*</c> rather than <c>string</c> deliberately: a <c>string</c> parameter would
+        /// generate the marshalling stub SYSLIB1054 rejects, and it would also hide WHERE the UTF-8 conversion
+        /// happens, which is the one thing a caller has to get right.
+        /// </para>
+        /// </summary>
+        [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial IntPtr SendPtrBytes(IntPtr receiver, IntPtr sel, byte* utf8);
     }
 }

@@ -8858,10 +8858,11 @@ holds an `MTLDevice` and one `MTLCommandQueue`, answers `Backend`, part of `Capa
 `Submit` overloads, `WaitForIdle` and `Dispose`, records and submits a command list, creates real resources
 through `Factory` (buffers, textures, samplers, fences and framebuffers), exposes the shared `PointSampler` and
 `LinearSampler` pair, takes the device-level `UpdateBuffer` and `UpdateTexture`, answers `Map` and `Unmap`
-for staging resources, and COMPILES SHADERS through `CreateShadersFromSpirv` and
-`CreateComputeShaderFromSpirv`. A recording can BIND a framebuffer and clear it, and the clear lands on the
-attachment it names. It throws from every member whose row has not landed with a message naming that
-row, so there are no pipelines yet and nothing can be drawn.
+for staging resources, COMPILES SHADERS through `CreateShadersFromSpirv` and
+`CreateComputeShaderFromSpirv`, and creates the RESOURCE LAYOUTS and RESOURCE SETS a pipeline will bind
+through. A recording can BIND a framebuffer and clear it, and the clear lands on the attachment it
+names. It throws from every member whose row has not landed with a message naming that row, so there
+are no pipelines yet and nothing can be drawn.
 
 **The shader path takes the same GLSL 450 every other backend takes**, so there is nothing to write differently
 for it: sources go in, an `MTLLibrary` and an `MTLFunction` per stage come out, and a compute shader reports the
@@ -8879,6 +8880,27 @@ A shader whose emission cannot be read fails at `CreateShadersFromSpirv` with a 
 stage and the offending argument, and it fails with no device involved, so it surfaces in a headless test run
 rather than as a wrong pixel. There is deliberately no compiled-shader disk cache: macOS already caches the
 MSL-to-library compile across processes.
+
+**Layouts and sets are the same code you already write**, with one declaration this backend refuses that the
+others take: `GpuResourceLayoutElement`'s `dynamic: true` on a texture or a sampler element. The per-draw offset
+is applied with Metal's `setBufferOffset:`, which exists only for buffers, so a dynamic offset declared anywhere
+else would be silently dropped at every bind and is refused at layout creation instead. On a buffer element of
+any kind it is accepted, including both structured kinds, which is the width
+`GpuResourceLayoutElement.Dynamic` documents ("a dynamic-offset uniform/structured buffer"). Both native
+siblings are NARROWER than that: the native Vulkan and Direct3D 11 backends refuse a dynamic structured element
+at layout creation, each for a reason that is real on its own API. So a dynamic structured element works on
+`MetalNative` alone today, and reconciling the seam's documented width with those two refusals is
+[#597](https://github.com/APKiwiOrg/KhaozEngine/issues/597): treat it as Metal-only until that lands.
+
+**A set is resolved once when you create it, and what it refuses it refuses there.** A resource that is already
+disposed, a staging texture (it is a mappable buffer on this backend rather than a texture), and a texture bound
+for a direction it was not created for: a `GpuResourceKind.TextureReadWrite` element needs
+`GpuTextureUsage.Storage` on the texture and a `TextureReadOnly` element needs `Sampled`, exactly as the native
+Vulkan backend requires, because a Metal texture's usage bits are fixed at creation and binding one without the
+bit it is read or written through is a validation failure. Disposing a resource AFTER the set is built is not a
+refusal and not a dangling pointer either: the binding reads the resource's handle live, so it degrades to an
+unbound slot. Disposing the LAYOUT or the SET and then using it throws `ObjectDisposedException`, since neither
+owns anything native and the call would otherwise quietly work.
 
 **One creation the other backends accept is refused here, deliberately.** A buffer declaring both
 `GpuBufferUsage.UniformBuffer` and either structured usage throws at creation on `MetalNative`. Both Veldrid

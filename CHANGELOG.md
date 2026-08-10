@@ -811,6 +811,90 @@ can pass at zero. Everything else the ring and the arena DECIDE is device-free t
 golden could ever see: that a ring-backed write opens no encoder, emits no copy and takes no staging block,
 counted through the same budget seam the encoder boundaries are frozen over.
 
+### Native Metal resource layouts and sets, and the binding table deduplicated so a pipeline switch can keep its binds (#576)
+
+`IGpuResourceFactory.CreateResourceLayout` and `CreateResourceSet` are live on `GpuBackendKind.MetalNative`, and
+the per-program binding table is content-deduplicated per device. Row 10 of
+[docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md).
+Pipelines still refuse, so nothing renders yet.
+
+**Neither type touches Metal at all, and both facts are the API rather than a choice.** Metal has no
+`MTLResourceLayout` and no descriptor-set layout: an argument table is addressed by integer per stage, so a
+layout is purely the engine's own bookkeeping. And Metal's answer to a descriptor set is an argument buffer,
+which section 8.4 declines by name because this engine's per-frame traffic is dominated by offsets-only rebinds
+of one set, which argument buffers do not improve, and because every route to them changes the emission for
+every program at once and puts the 36 committed `metal` goldens in play. So both are resolved managed data,
+creation makes no native call and takes no lock, and disposing either releases nothing.
+
+**The layout counts NOTHING, which is the whole of what this row had to get right.** The incumbent's
+`MTLResourceLayout` is this class plus per-kind counters, and `GetBufferBase` and its siblings re-walk the
+layout array on every single bind to sum them. That arithmetic is right only where the emission's
+first-reference order happens to equal declaration order, which is the mechanism behind the three production
+incidents row 9's entry lists. Section 2.2b rules the arithmetic is written once, as the comparison inside
+`MetalShaderIndexTableTests`, and never on a shipped path. What declaration order is still for is that an
+element's POSITION is its binding number, which is the key the table is read through.
+
+**The one refusal a layout adds is the seam's own width, which no other backend implements.** A per-draw dynamic
+offset on a texture or a sampler element is refused at creation, because on Metal the offset is applied with
+`-setVertexBufferOffset:atIndex:` or its stage sibling, which exists only in the `[[buffer(n)]]` space, so
+declaring one anywhere else would be silently dropped at every bind. On any BUFFER kind it is accepted, which is
+what `GpuResourceLayoutElement.Dynamic` documents ("a dynamic-offset uniform/structured buffer"), and Metal's
+`setBufferOffset:` works at any buffer index whatever the kind. Both siblings are narrower than that contract:
+`VulkanDescriptorPolicy` refuses a dynamic element that is not a UNIFORM buffer, because a storage descriptor
+there has no dynamic offset at all, and `D3D11ResourceLayout` refuses the same combination, because a structured
+buffer binds through a view created once over the whole buffer with no per-bind window. So a consumer using a
+dynamic structured element is `MetalNative`-only today, and reconciling the seam's documented width with the two
+refusals is [#597](https://github.com/APKiwiOrg/KhaozEngine/issues/597).
+
+**A set resolves everything at creation and nothing at a bind**, because a set is created once at load time
+across 68 shipped call sites and bound thousands of times a frame. Each binding comes out as the argument table
+it belongs in, the resolved resource whose Objective-C object the array setter writes, and the numbers a buffer
+bind composes `frameBase + rangeOffset + callerDynamicOffset` from. The window is the range's size, or the
+buffer's own LOGICAL size for a bare buffer, which on a ring-backed uniform buffer is emphatically not its
+allocation. The declared `GpuShaderStages` is NOT what decides which stages get a bind: the index table is, and
+an element with no entry for a stage is not referenced by that stage's emitted function.
+
+**The two values a bind reads live are the handle and the ring, and they are read through the resource's own
+disposal guard.** A binding holds the wrapper rather than a copy of what that wrapper answered at creation,
+because those two are exactly the values whose job is to change on disposal: a disposed buffer answers a nil
+handle AND a null ring, the second because the ring holds the `contents()` pointer of an `MTLBuffer` that has
+been released. Copying them at creation would have put that guard behind the set, so a set over a disposed
+ring-backed buffer would compose a frame base off a forgotten ring and write a released pointer into the
+argument table with nothing said. A resource disposed after the set is built now degrades to the nil-handle and
+unringed behaviour instead, and a resource that is ALREADY disposed is still refused at creation. Everything
+expensive stays resolved once: the kind, the type and device checks, the table position, the window arithmetic
+and whether the per-draw offset applies.
+
+**Three refusals a set or a layout adds, all at creation.** A texture bound for a direction it was not created
+for is refused by name (`TextureReadWrite` needs `GpuTextureUsage.Storage`, `TextureReadOnly` needs `Sampled`
+or `GenerateMipmaps`), which is `VulkanResourceSet`'s missing-view refusal reached through this backend's own
+route: there are no views here, so what stands in for one is the `MTLTextureUsage` the texture carries, and
+binding a texture with no `ShaderWrite` into a read-write slot is a validation abort under the debug layer. And
+a DISPOSED layout or set is refused with `ObjectDisposedException` where either is handed out, since neither
+type releases anything and the call would otherwise simply work while the caller believes it let the thing go.
+
+**Deduplicating the table is what makes M-R9's pipeline-switch comparison a handle compare.** Metal's argument
+tables are absolute and per encoder, so a bound resource survives a pipeline switch and what a switch can
+invalidate is only the mapping from an element to an index. Every table built is a fresh object, so without
+deduplication that comparison is a reference test which is never equal, every switch invalidates everything, and
+the backend reproduces exactly what `MTLCommandList.SetPipelineCore` already does by clearing its whole
+active-set array. `MetalIndexTableCache` keys on the `ContentKey` row 9 named as the seat, canonicalises at
+shader-set creation because the table is a property of the emission, and never evicts: a table retired and
+rebuilt would be a different instance, so two pipelines that should invalidate nothing would silently start
+invalidating everything.
+
+**Measured over the shipped catalog: 42 programs produce 17 distinct tables, and 25 programs merge onto an
+earlier one.** So this is not a repeat-compile optimisation, it is 25 of 42 programs whose pipelines can now
+switch to a neighbour and keep every bind. The device-free suite asserts the EQUIVALENCE rather than the rate:
+for every pair the cache merged, the entries agree and the layout shape `RequireLayoutShape` compares agrees,
+driven both ways. **16 of those 25 merges disagree on at least one element NAME**, which is why `ContentKey`
+rendering the layout shape and no names is load-bearing rather than tidy: the day a member starts reading a name
+off a table's layouts it will be reading another program's name in the majority of merges, not in a corner case.
+
+**On an Apple M2 Max under macOS 26**, sets resolve against real buffers, textures, samplers and rings, every
+refusal fires by name including the staging texture that is a Shared `MTLBuffer` rather than an `MTLTexture`,
+and two shader sets compiled from one program come back sharing one table through the device's cache.
+Everything else in the row is device-free and runs on every leg.
 ### Native Metal render passes: the clear stops collapsing onto attachment 0, and the pass has no flag to go stale (#578)
 
 The native Metal backend gets framebuffers and the deferred render pass: `IGpuResourceFactory.CreateFramebuffer`

@@ -1633,6 +1633,69 @@ nothing on a switch, and the comparison is a handle compare once the tables are 
 the fine comparison 2.7 rules for, and it is only computable because the table exists as an object rather than
 as arithmetic re-derived per bind.
 
+**Addendum, row 10: what the dedup landed as, and the number that turns it from a nicety into the row's point.**
+`MetalIndexTableCache` is one `ConcurrentDictionary` per DEVICE keyed on `ContentKey`, consulted at shader-set
+creation and nowhere else, and `MetalShaderIndexTable.SameIndicesAs` is the reference compare row 13 calls. Two
+things the design did not say, both measured rather than reasoned.
+
+**The dedup is not a repeat-compile optimisation, which is how this row reads if you only look at the
+mechanism.** Over the shipped catalog 42 programs produce **17 distinct tables**, and **25 of the 42 share a
+table with an earlier program**: `Model` with `ModelDissolve`, the eight programs behind `ShadowDepth`, the
+seven behind `PostPalette`, both ocean FFT pass families. So the property M-R9 buys is not "compiling the same
+shader twice is cheap", it is that a switch between two of those 25 pipelines keeps every bind, which is the
+common case in a shadow pass and a post chain rather than the corner.
+
+**And the name divergence is the majority of merges, which sharpens `ContentKey`'s exclusion from a tidiness
+note into a real constraint.** 16 of those 25 merges disagree on at least one element NAME. The key renders the
+layout shape and the entries and deliberately no names, because nothing the table answers reads one, and that
+remains correct. What changes is the cost of getting it wrong later: a member that starts reading a name off
+`Layouts` would be reading ANOTHER PROGRAM'S name in 16 of 25 merges, not in a rare collision.
+`MetalIndexTableDedupTests` asserts the equivalence directly, walking every merged pair and checking the entries
+and the shape `RequireLayoutShape` compares, driven both ways, and pins the name invariance behaviourally beside
+it. What that pin cannot see is a NEW member reading a name, so making it mechanical is filed as
+https://github.com/APKiwiOrg/KhaozEngine/issues/594.
+
+**The pipeline's reference needed nothing new at the pipeline, which is the row's scope line resolving into
+less code than it sounds like.** Because the canonicalisation happens where the table is BUILT, every
+`MetalShaderSet.Table` and `MetalComputeShader.Table` is already the canonical instance, so row 11's pipeline
+holds the table its shader set carries and the handle compare is sound with no pipeline-side machinery at all.
+The alternative, deduplicating at pipeline creation, is unavailable rather than merely worse: two shader sets
+would already have handed out two instances of one content before any pipeline existed.
+
+**Addendum, row 10, on the two seam types: neither touches Metal, and the layout's one refusal is the only one of
+three backends that matches the seam's stated width.** `MetalResourceLayout` is a copied element array (M-B6
+leaves nothing to create, since Metal has no layout object) and `MetalResourceSet` is the declared elements
+resolved once into `MetalBoundResource` records, which carry the space, the resolved wrapper whose Objective-C
+object an array setter writes, the window and whether the caller's per-draw offset applies. The refusal worth
+recording is that a per-draw dynamic offset is refused on a texture or a sampler element and ACCEPTED on any
+buffer kind.
+
+**And the framing that first went in here was wrong.** It read as "narrower than the Vulkan sibling's", which
+says one backend is being generous. `GpuResourceLayoutElement.Dynamic` documents a dynamic-offset
+"uniform/structured buffer", so the seam's contract includes both structured kinds, and Metal is the backend
+that IMPLEMENTS that contract: `setBufferOffset:` works at any buffer index whatever the kind. Both siblings are
+narrower than the contract, for reasons that are real on their own APIs. `VulkanDescriptorPolicy` refuses a
+dynamic element that is not a UNIFORM buffer, because a storage descriptor there has no dynamic offset at all.
+`D3D11ResourceLayout` refuses the same combination, because a structured buffer binds through a view created
+once over the whole buffer and neither `*SetShaderResources` nor `*SetUnorderedAccessViews` has a per-bind
+window. So a consumer declaring a dynamic structured element is Metal-only today, and the seam says otherwise:
+resolving that, by narrowing the seam doc or widening the siblings, is
+https://github.com/APKiwiOrg/KhaozEngine/issues/597. What all three share is the direction, which is that the
+offset has to have somewhere to go.
+
+**One more thing the first draft of this addendum got wrong, corrected at the review:** the bound record does
+not carry the raw handle and the ring as snapshots. It holds the WRAPPER and reads both through the wrapper's
+own disposal guard at the bind, because those two are exactly the values whose job is to change on disposal.
+Snapshotting them put `MetalBuffer.Ring`'s null-after-dispose out of the bind's reach, which is a silent write
+through a released `contents()` pointer rather than a loud failure.
+
+**One M-M4 detail the design's wording invites getting wrong.** The set asserts
+`MetalRingStride.RequireBindWindowFits` at creation with a caller offset of 0, and that assertion CANNOT FIRE
+today: the window is already bounded by the buffer's logical size and the segment stride is that size rounded
+up. It is kept because the invariant is then stated by one shared helper both where the window is resolved and
+where row 13 composes the offset, so the two cannot drift, and the real failure lives at row 13 on the last
+frame slot only. Reading the creation-time call as the live guard would be reading a tautology as a check.
+
 ### 8.3 Vertex streams take the top of the space (M-B2)
 
 The one real collision in Metal's model is that vertex STREAM buffers and resource buffers share the
@@ -2891,7 +2954,7 @@ Each row becomes one implementation issue, `kind/backlog` unless noted, `confide
 | 7 | Command list: a fresh `MTLCommandBuffer` per `Begin`, the three encoder helpers and every transition, the one-encoder-at-a-time invariant, `End`, submit under `_submitLock`, the narrow `IMetalEncoderSink` over argument-table writes, draws and **encoder boundaries** plus the plain-handle `IMetalRenderApi`, the device-free recording-contract test, **the encoder-scope invalidation test written behaviourally (M-R4)**, the uncommitted-buffer bound assertion, AND the `FramesInFlight` constant with its `KE_METAL_FRAMES_IN_FLIGHT` override (MM4's knob), which row 8's ring READS | Vertex-buffer bindings are encoder state and do not survive an encoder change. The incumbent forgets to invalidate them and is saved only by a second defect that makes its cache permanently cold, so porting the tracking without the invalidation ships a corruption no golden reaches. A blocked `commandBuffer` would present as a frame-loop stall with no counter attached. `commit` enqueues, so submit order is only the observable order if commits are serialised |
 | 8 | Uniform ring on Shared persistently mapped memory: segments, bind-time base, the 256 stride with the device's own minimum asserted, the ring-backed-view invariant, the per-list staging arenas for bulk payloads pooled by size, `UpdateBuffer` routing at both levels including #484's every-segment rule and its pending-patch queue, the backpressure counters, the device-free stride invariant test over every shipped set shape, AND the **third shared ring adapter** in `KhaozEngine.TestSupport.Gpu` against section 9.4's seven shared rows. **Depends on 5** | 2.1's encoder-split-per-write class. #484's silent two-frames-in-three-read-nothing defect, which this ring must not reintroduce. A ring built against submit receipts recycles a segment the GPU is still reading. The incumbent's device-level write is an ungated memcpy into memory a queued buffer may be reading (M-M7). "Share the tests" with no adapter on the third side quietly becomes two backends' tests |
 | 9 | **Shader path, a prerequisite of 11 rather than a parallel row**: `VertexFragmentToMsl` and `ComputeToMsl` in `SpirvCrossCompile`'s back-end half, `MslCrossCompilePin` and `MslCompilePin`, **the entry-point and index-table parse built on 2.2b's ID JOIN, with the seven pins that section names (the loud parse, the per-stage module read, the asserted positional assumption, the layout shape check, `SpirvResourceDecorations` promoted into `KhaozEngine.Gpu/Internal/`, the table in the `.metallib` cache payload, and each pin's header saying what it does not freeze)**, **the one-off in-process MSL parity measurement against the incumbent, taken and RECORDED in this document**, the per-program byte-equality drift test, `MetalMslIncumbentParityTests`, the `.metallib` cache with header validation and its corruption test, `SpirvLocalSize` unchanged, the architecture test that the backend names no HLSL member, and the index-table test over every shipped program **taken before the first golden run** | Byte-identical MSL is the parity claim the whole golden gate rests on, and the drift test alone does not establish it: phase 2's own test header records that a wrong emission baked once passes forever. The index table is what turns three recorded production incidents (7.25.0, 7.51.2 and the splat terrain) into a checked fact. A pipeline cannot be created without a library and a function, so scheduling this outside the renderable path would block row 11 on a row nothing said row 11 needed |
-| 10 | Resource layouts with per-kind declaration-order bookkeeping, resource sets, **the per-program INDEX TABLE as an object keyed on `(set, binding, stage)` per 2.2b, content-deduplicated so M-R9's comparison is a handle compare**, and the pipeline's reference to its table. The per-kind arithmetic is written HERE as the comparison inside M-T3's standing test and never as the binding path (2.2b). **Depends on 9** | `GetBufferBase` and its siblings re-walk the layout array on every single bind today. Without content dedup, M-R9's comparison is never equal and every pipeline switch invalidates everything, which is the incumbent's behaviour this row exists to beat |
+| 10 | Resource layouts carrying declaration ORDER and counting NOTHING (**corrected in place: this cell opened "Resource layouts with per-kind declaration-order bookkeeping", which 2.2b forbids on a shipped path and which the row deliberately did not build. See the row 10 addendum in 8.2**), resource sets, **the per-program INDEX TABLE as an object keyed on `(set, binding, stage)` per 2.2b, content-deduplicated so M-R9's comparison is a handle compare**, and the pipeline's reference to its table. The per-kind arithmetic is written HERE as the comparison inside M-T3's standing test and never as the binding path (2.2b). **Depends on 9** | `GetBufferBase` and its siblings re-walk the layout array on every single bind today. Without content dedup, M-R9's comparison is never equal and every pipeline switch invalidates everything, which is the incumbent's behaviour this row exists to beat |
 | 11 | Pipelines: graphics and compute, the render pipeline descriptor from `GpuOutputDescription`, the `MTLVertexDescriptor` with **vertex streams pinned at the TOP of the buffer space (M-B2)** and its no-collision assertion against the index table, the over-31-bindings throw, depth-stencil state with its depth-target guard, blend state, and **the `SetPipeline` identity guard the incumbent lacks (M-R8)**. **Depends on 9 and 10** | `ResourceBindingModel` exists to manage a collision this row's numbering removes, and getting the vertex descriptor's layout index and the command list's bind index out of step binds a vertex buffer where a uniform should be. `setDepthStencilState` on a pass with no depth attachment is a validation error under the debug layer M-T7 arms on every run. A redundant pipeline bind costs a full re-activation today |
 | 12 | Render passes: deferred begin, **per-attachment clear folding into `loadAction` with `KE_METAL_CLEAR` (M-A2)**, explicit `storeAction`, the clear-only-pass flush at both forcing sites, the end-before-illegal-command invariant, and the framebuffer-change-guarded viewport and scissor with the `ScissorTestEnabled` gate and the unconditional plural setters | The incumbent writes every clear into `colorAttachments[0]`, so `ModelFB`'s normal and linear-depth attachments are never cleared, and `ModelRenderer.BeginModelPass` carries a shipped comment working around it incompletely. An unguarded viewport emit silently resets a live scissor, which is golden-visible and which phase 2's first spec froze the wrong way. The clear-only case is forced by the incumbent at two sites and a golden depends on it |
 | 13 | Bind flush: two-state per-slot records, **per-(kind, stage) ARRAY calls (M-R6)**, the offsets-only `setBufferOffset:` path per visible stage, the vertex-stream cache that is actually maintained, index-table invalidation on a pipeline switch, the composed `frameBase + rangeOffset + callerDynamicOffset` offset, and the device-free budget test. **Binds through 2.2b's table**, so an element with no entry for a stage is not bound for that stage | One native call per resource per stage is the #418 fan-out defect arriving on a second API, and the fork's binding layer does not declare a single array setter. An offsets-only rebind is the shadow pass's shape thousands of times a frame. An unaligned buffer offset is a validation error under the debug layer and undefined behaviour without it |

@@ -26,7 +26,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// parity instead. The incumbent does not clear, the 36 committed <c>metal</c> goldens are green under that,
     /// and adding a clear would change what a render target reads before anything writes it.</para>
     /// </summary>
-    internal sealed class MetalTexture : IGpuTexture, IMetalOwnedResource
+    internal sealed class MetalTexture : IGpuTexture, IMetalOwnedResource, IMetalBindable
     {
         readonly IMetalDeviceLiveness _liveness;
         readonly MTLTexture _texture;
@@ -93,6 +93,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         /// <summary>The staging buffer's persistently mapped base pointer, taken once at creation.</summary>
         internal IntPtr StagingContents => _disposed ? IntPtr.Zero : _stagingContents;
+
+        /// <inheritdoc/>
+        /// <remarks>The guarded <see cref="Handle"/>, read at the bind rather than copied into a resource set at
+        /// its creation. See <see cref="IMetalBindable"/>.</remarks>
+        IntPtr IMetalBindable.BindHandle => Handle.Handle;
+
+        /// <inheritdoc/>
+        /// <remarks>Null always: a texture has no uniform ring, and a resource set binds one whole.</remarks>
+        MetalUniformRing? IMetalBindable.BindRing => null;
 
         /// <summary>The shape <see cref="MetalStagingLayout"/> computes against. Meaningful on a staging texture
         /// only, and correct on any texture, because the arithmetic is a function of the description.</summary>

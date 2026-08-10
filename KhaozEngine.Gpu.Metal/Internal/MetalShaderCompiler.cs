@@ -41,13 +41,21 @@ namespace KhaozEngine.Gpu.Metal.Internal
     {
         readonly MTLDevice _device;
         readonly IMetalDeviceLiveness _liveness;
+        readonly MetalIndexTableCache _tables;
 
-        internal MetalShaderCompiler(MTLDevice device, IMetalDeviceLiveness liveness)
+        /// <param name="device">The device to compile on.</param>
+        /// <param name="liveness">The device's identity token, handed to every shader set this makes.</param>
+        /// <param name="tables">The device's index-table cache. THIS is the one site that deduplicates
+        /// (row 10), because the table is a property of the emission and this is where an emission becomes a
+        /// shader set: a table canonicalised any later would already have been handed out twice.</param>
+        internal MetalShaderCompiler(MTLDevice device, IMetalDeviceLiveness liveness, MetalIndexTableCache tables)
         {
             ArgumentNullException.ThrowIfNull(liveness);
+            ArgumentNullException.ThrowIfNull(tables);
 
             _device = device;
             _liveness = liveness;
+            _tables = tables;
         }
 
         /// <summary>Emit a GLSL 450 vertex and fragment pair to MSL and compile both stages.</summary>
@@ -57,7 +65,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
         internal MetalShaderSet CreateShaderSet(string vertexGlsl, string fragmentGlsl)
         {
             MetalMslProgram program = MetalShaderBuild.Pair(vertexGlsl, fragmentGlsl);
-            return new MetalShaderSet(_liveness, CompileOnMacOs(program), program.Table);
+
+            // THE TABLE IS CANONICALISED AFTER THE COMPILE RATHER THAN BEFORE IT, so a program Metal rejects
+            // leaves nothing in the cache. The cache is never evicted, so an entry made for a shader set that was
+            // never handed out would sit there for the device's life.
+            return new MetalShaderSet(_liveness, CompileOnMacOs(program), _tables.Canonical(program.Table));
         }
 
         /// <summary>Emit a GLSL 450 compute source to MSL and compile it.</summary>
@@ -69,7 +81,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             (MetalMslProgram program, uint x, uint y, uint z) = MetalShaderBuild.Compute(computeGlsl);
             MetalCompiledStage[] stages = CompileOnMacOs(program);
-            return new MetalComputeShader(_liveness, stages[0], program.Table, x, y, z);
+            return new MetalComputeShader(_liveness, stages[0], _tables.Canonical(program.Table), x, y, z);
         }
 
         /// <summary>

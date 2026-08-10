@@ -9,7 +9,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// The seam's <see cref="IGpuSampler"/> over one <c>MTLSamplerState</c>. Every decision the descriptor carries
     /// is <see cref="MetalSamplerPolicy"/>'s, so this type is the object lifetime and nothing else.
     /// </summary>
-    internal sealed class MetalSampler : IGpuSampler, IMetalOwnedResource
+    internal sealed class MetalSampler : IGpuSampler, IMetalOwnedResource, IMetalBindable
     {
         readonly IMetalDeviceLiveness _liveness;
         readonly MTLSamplerState _sampler;
@@ -24,6 +24,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         /// <summary>The native sampler state, for the bind path. Nil after disposal.</summary>
         internal MTLSamplerState Handle => _disposed ? default : _sampler;
+
+        /// <inheritdoc/>
+        /// <remarks>The guarded <see cref="Handle"/>, read at the bind rather than copied into a resource set at
+        /// its creation. See <see cref="IMetalBindable"/>.</remarks>
+        IntPtr IMetalBindable.BindHandle => Handle.Handle;
+
+        /// <inheritdoc/>
+        /// <remarks>Null always: a sampler has no uniform ring and no offset of any kind.</remarks>
+        MetalUniformRing? IMetalBindable.BindRing => null;
 
         /// <inheritdoc/>
         /// <remarks>Nothing on this row takes a sampler as a device entry point's parameter, so nothing checks it

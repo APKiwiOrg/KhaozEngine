@@ -565,7 +565,10 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>The members other rows own still name their row, now that the factory itself is live: a
-        /// reader who hits one needs to know whether the backend is unfinished or their machine is wrong.</summary>
+        /// reader who hits one needs to know whether the backend is unfinished or their machine is wrong. The
+        /// probe walks forward one row at a time as each lands, which is what stops the ledger from rotting: rows
+        /// 7, 9 and 10 each moved it, and it fails the day a member starts working and nobody updated the
+        /// message.</summary>
         [GpuFact]
         public void TheFactorysUnbuiltMembers_NameTheirRows()
         {
@@ -584,8 +587,12 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Contains("GLSL to SPIR-V failed", Refusal(() => factory.CreateShadersFromSpirv("", "")),
                 StringComparison.Ordinal);
 
-            Assert.Contains("576", Refusal(() => factory.CreateResourceLayout(default)),
-                StringComparison.Ordinal);
+            // AND LAYOUTS AND SETS ARE LIVE AS OF ROW 10, so the probe moves off them onto a member that still
+            // refuses. What replaces the refusal is the one an empty layout description actually has, which is
+            // none at all: a layout with no elements is legal, and asserting that is what keeps this row honest
+            // about the member having really started working rather than having changed its message.
+            factory.CreateResourceLayout(default).Dispose();
+
             Assert.Contains("577", Refusal(() => factory.CreateGraphicsPipeline(default)),
                 StringComparison.Ordinal);
 
@@ -595,15 +602,16 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Contains("at least one attachment", Refusal(() => factory.CreateFramebuffer(null)),
                 StringComparison.Ordinal);
 
-            // The layout row is the first one on this factory that still refuses, so it is what carries the
+            // The pipeline row is now the first one on this factory that still refuses, so it is what carries the
             // message naming every landed row as live.
-            string layouts = Refusal(() => factory.CreateResourceLayout(default));
-            _output.WriteLine(layouts);
-            Assert.Contains("Buffers, textures, samplers and fences ARE live", layouts,
+            string pipelines = Refusal(() => factory.CreateGraphicsPipeline(default));
+            _output.WriteLine(pipelines);
+            Assert.Contains("Buffers, textures, samplers and fences ARE live", pipelines,
                 StringComparison.Ordinal);
-            Assert.Contains("573", layouts, StringComparison.Ordinal);
-            Assert.Contains("575", layouts, StringComparison.Ordinal);
-            Assert.Contains("578", layouts, StringComparison.Ordinal);
+            Assert.Contains("573", pipelines, StringComparison.Ordinal);
+            Assert.Contains("575", pipelines, StringComparison.Ordinal);
+            Assert.Contains("576", pipelines, StringComparison.Ordinal);
+            Assert.Contains("578", pipelines, StringComparison.Ordinal);
         }
 
         static IGpuDevice CreateHeadless() => new MetalBackendProvider().CreateHeadless().Device;

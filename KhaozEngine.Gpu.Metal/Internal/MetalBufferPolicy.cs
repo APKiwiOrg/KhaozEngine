@@ -7,8 +7,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// WHAT A BUFFER IS AT CREATION: its real allocation size, and the one usage combination this backend refuses.
     ///
     /// <para><b>THERE IS NO USAGE MAP HERE, AND THAT IS THE WHOLE OF M-M1 AND M-M2 IN ONE SENTENCE.</b> The Vulkan
-    /// sibling derives seven <c>VkBufferUsageFlags</c> bits and a memory ladder from the seam's usage; Direct3D 11
-    /// derives bind flags and a CPU access mode. Metal's <c>-newBufferWithLength:options:</c> takes a length and a
+    /// sibling derives seven <c>VkBufferUsageFlags</c> bits and a memory ladder from the seam's usage, and
+    /// Direct3D 11 derives bind flags and a CPU access mode.
+    /// Metal's <c>-newBufferWithLength:options:</c> takes a length and a
     /// storage mode and nothing else, so a buffer here has no declared use at all: what it is used for is decided
     /// entirely by where it gets bound. The incumbent passes a literal <c>0</c> for the options of every buffer it
     /// creates, which is Shared storage with the default cache mode, and this backend passes the same value

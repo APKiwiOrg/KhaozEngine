@@ -22,9 +22,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// incumbent uses the target's own texture, and the package declares no view factory at all.</para>
     ///
     /// <para><b>CREATION ISSUES NO COMMAND BUFFER (M-M9), and there is no creation-time clear either.</b> Phase
-    /// 3 answered the undefined-initial-contents question with a deliberate clear; here it is answered by parity.
-    /// The incumbent does not clear, the 36 committed <c>metal</c> goldens are green under that, and adding a
-    /// clear would change what a render target reads before anything writes it.</para>
+    /// 3 answered the undefined-initial-contents question with a deliberate clear, and here it is answered by
+    /// parity instead. The incumbent does not clear, the 36 committed <c>metal</c> goldens are green under that,
+    /// and adding a clear would change what a render target reads before anything writes it.</para>
     /// </summary>
     internal sealed class MetalTexture : IGpuTexture
     {

@@ -69,7 +69,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             // THE DEVICE'S ONE COMPLETION TIMELINE (M-F1), created here because every fence sits on it and
             // IGpuResourceFactory.CreateFence is row 6's. Row 5 built the subsystem and named this as the row
-            // that gives the device one (MetalTimeline.CreateFence's own doc says so); the command-list row
+            // that gives the device one (MetalTimeline.CreateFence's own doc says so). The command-list row
             // (https://github.com/APKiwiOrg/KhaozEngine/issues/573) is what starts encoding signals into it at
             // submit, so until that lands a fence is real and simply never armed.
             var timeline = new MetalTimeline(new MetalSharedEvent(device.Handle), liveness);

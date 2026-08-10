@@ -15,9 +15,9 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
     /// THE FOLDER'S RULE IS ONE FILE PER OBJECTIVE-C CLASS, which is what section 3.1 decides and what the
     /// vendored fork this design reads as its reference already does. A file carries its class's handle type,
     /// that class's selectors, and the enums those selectors take, because an enum with no class to belong to is
-    /// how a second copy of one starts. THREE files are exceptions, and each is a file with no class to be about:
-    /// this one, which is the C runtime; <see cref="ObjCMsgSend"/>, which is one dispatch function every class
-    /// goes through; and <c>MTLTypes.cs</c>, which carries the plain C value structs (<see cref="MTLSize"/> and
+    /// how a second copy of one starts. THREE files are exceptions, and each is a file with no class to be about.
+    /// This one is the C runtime. <see cref="ObjCMsgSend"/> is the one dispatch function every class goes
+    /// through. And <c>MTLTypes.cs</c> carries the plain C value structs (<see cref="MTLSize"/> and
     /// <see cref="MTLOrigin"/>) that a class takes by value and no class owns.
     /// </para>
     /// <para>

@@ -50,6 +50,9 @@ namespace KhaozEngine.Gpu.Internal
         [return: MarshalAs(UnmanagedType.I1)]
         static extern bool SendStartCapture(IntPtr receiver, IntPtr sel, IntPtr descriptor, ref IntPtr error);
 
+        [DllImport(Objc, EntryPoint = "objc_autoreleasePoolPush")] static extern IntPtr PoolPush();
+        [DllImport(Objc, EntryPoint = "objc_autoreleasePoolPop")] static extern void PoolPop(IntPtr pool);
+
         static bool _capturing;
 
         static IntPtr NSString(string s)
@@ -65,6 +68,12 @@ namespace KhaozEngine.Gpu.Internal
         /// been set before launch. False everywhere else, including on a non-Metal platform where the class does
         /// not exist. Split out from <see cref="Start"/> so a caller can report the reason nothing was captured,
         /// and so the guard itself is assertable.
+        /// <para>
+        /// IT PUSHES NO POOL OF ITS OWN, and that is a statement rather than an omission: it creates no
+        /// Objective-C object at all. <c>objc_getClass</c> and <c>sel_registerName</c> allocate nothing, and
+        /// <c>+sharedCaptureManager</c> is a retained singleton rather than an autoreleased instance. The two
+        /// members that DO create objects push one.
+        /// </para>
         /// </summary>
         internal static bool CaptureIsEnabledForThisProcess()
         {
@@ -93,6 +102,13 @@ namespace KhaozEngine.Gpu.Internal
         internal static bool Start(IntPtr commandQueue, string outputPath)
         {
             _capturing = false;
+
+            // THE POOL IS PUSHED HERE RATHER THAN LEFT TO THE CALLER'S, which is M-N5's rule honoured on the one
+            // path the package's own architecture walk cannot see: this type lives in KhaozEngine.Gpu and keeps
+            // its own objc_msgSend declarations, so the walk over KhaozEngine.Gpu.Metal never reaches it. The
+            // NSString, the NSURL and the shared manager are all autoreleased, and a present boundary on a thread
+            // with no pool would leak them for the life of the process.
+            IntPtr pool = PoolPush();
             try
             {
                 if (commandQueue == IntPtr.Zero) return false;
@@ -109,16 +125,28 @@ namespace KhaozEngine.Gpu.Internal
 
                 IntPtr mgr = Send(mgrCls, Sel("sharedCaptureManager"));
                 IntPtr desc = Send(Send(descCls, Sel("alloc")), Sel("init"));
-                Send(desc, Sel("setCaptureObject:"), commandQueue);      // capture this command queue
-                Send(desc, Sel("setDestination:"), (IntPtr)GpuTraceDocument);
-                IntPtr url = Send(nsUrlCls, Sel("fileURLWithPath:"), NSString(outputPath));
-                Send(desc, Sel("setOutputURL:"), url);
 
-                IntPtr error = IntPtr.Zero;
-                _capturing = SendStartCapture(mgr, Sel("startCaptureWithDescriptor:error:"), desc, ref error);
-                return _capturing;
+                try
+                {
+                    Send(desc, Sel("setCaptureObject:"), commandQueue);      // capture this command queue
+                    Send(desc, Sel("setDestination:"), (IntPtr)GpuTraceDocument);
+                    IntPtr url = Send(nsUrlCls, Sel("fileURLWithPath:"), NSString(outputPath));
+                    Send(desc, Sel("setOutputURL:"), url);
+
+                    IntPtr error = IntPtr.Zero;
+                    _capturing = SendStartCapture(mgr, Sel("startCaptureWithDescriptor:error:"), desc, ref error);
+                    return _capturing;
+                }
+                finally
+                {
+                    // -alloc/-init is +1 and the pool above does not cover it, so the descriptor is released
+                    // explicitly. The capture manager takes what it needs out of it at the start call, so this is
+                    // safe on both the started and the refused path.
+                    Send(desc, Sel("release"));
+                }
             }
             catch { return false; }
+            finally { PoolPop(pool); }
         }
 
         /// <summary>
@@ -131,6 +159,8 @@ namespace KhaozEngine.Gpu.Internal
         internal static void Stop(Action waitForIdle)
         {
             if (!_capturing) return;
+
+            IntPtr pool = PoolPush();
             try
             {
                 waitForIdle();
@@ -138,7 +168,11 @@ namespace KhaozEngine.Gpu.Internal
                 Send(mgr, Sel("stopCapture"));
             }
             catch { /* best-effort */ }
-            finally { _capturing = false; }
+            finally
+            {
+                PoolPop(pool);
+                _capturing = false;
+            }
         }
     }
 }

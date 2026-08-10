@@ -48,6 +48,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// Metal device, so the question "is this the backend that services captures" has one answer by
         /// construction, and a second check of it would be a way for the two answers to disagree.
         /// </para>
+        /// <para>
+        /// AND NO <c>ObjCAutoreleasePool</c> SCOPE HERE EITHER, which is the one place in this package a body
+        /// that reaches Objective-C does not open one. <see cref="MetalFrameCapture"/> lives in
+        /// <c>KhaozEngine.Gpu</c> and keeps its own <c>objc_msgSend</c> declarations, so it cannot reach this
+        /// package's pool type across the inverted dependency edge and pushes a pool ITSELF instead, on both
+        /// members that create an object. M-N5's architecture walk never sees this path for the same reason it
+        /// never sees the interop spike's: the calls do not go through <c>ObjCMsgSend</c>. The rule is honoured
+        /// where the calls actually are rather than where the walk would look.
+        /// </para>
         /// </summary>
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]

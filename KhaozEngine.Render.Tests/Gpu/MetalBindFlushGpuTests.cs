@@ -94,14 +94,21 @@ namespace KhaozEngine.Tests.Gpu
             table.RequireLayoutShape([((MetalResourceLayout)layout).Description], "MetalBindProgram");
 
             using IGpuBuffer frame = factory.CreateBuffer(
-                new GpuBufferDescription(512, GpuBufferUsage.UniformBuffer));
+                new GpuBufferDescription(1024, GpuBufferUsage.UniformBuffer));
             using IGpuBuffer material = factory.CreateBuffer(
                 new GpuBufferDescription(256, GpuBufferUsage.UniformBuffer));
             using IGpuTexture albedo = factory.CreateTexture(GpuTextureDescription.Texture2D(
                 16, 16, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled));
             using IGpuSampler sampler = factory.CreateSampler(GpuSamplerDescription.Linear);
-            using IGpuResourceSet set = factory.CreateResourceSet(
-                new GpuResourceSetDescription(layout, frame, material, albedo, sampler));
+
+            // THE DYNAMIC ELEMENT IS BOUND AS A WINDOW AND NOT AS THE WHOLE BUFFER, and that is a REQUIREMENT
+            // rather than a preference. A bare-buffer binding takes the buffer's logical size as its range, and
+            // the ring stride is that size rounded up, so range == stride and M-M4 leaves no room for a caller
+            // offset of any size at all. The device run caught this file asking for exactly that, which is the
+            // refusal firing on the live path with the caller's real offset in hand, where the same shared check
+            // at set creation passes a zero and cannot fire.
+            using IGpuResourceSet set = factory.CreateResourceSet(new GpuResourceSetDescription(
+                layout, new GpuBufferRange(frame, 0, 256), material, albedo, sampler));
 
             using IGpuTexture colour = Target(device);
             using IGpuFramebuffer fb = factory.CreateFramebuffer(null, colour);
@@ -173,14 +180,16 @@ namespace KhaozEngine.Tests.Gpu
             table.RequireLayoutShape([((MetalResourceLayout)layout).Description], "MetalBindCompute");
 
             using IGpuBuffer parameters = factory.CreateBuffer(
-                new GpuBufferDescription(512, GpuBufferUsage.UniformBuffer));
+                new GpuBufferDescription(1024, GpuBufferUsage.UniformBuffer));
             using IGpuTexture target = factory.CreateTexture(GpuTextureDescription.Texture2D(
                 16, 16, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Storage));
             using IGpuTexture source = factory.CreateTexture(GpuTextureDescription.Texture2D(
                 16, 16, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled));
             using IGpuSampler sampler = factory.CreateSampler(GpuSamplerDescription.Linear);
-            using IGpuResourceSet set = factory.CreateResourceSet(
-                new GpuResourceSetDescription(layout, parameters, target, source, sampler));
+
+            // A WINDOW rather than the whole buffer, for the render row's reason above.
+            using IGpuResourceSet set = factory.CreateResourceSet(new GpuResourceSetDescription(
+                layout, new GpuBufferRange(parameters, 0, 256), target, source, sampler));
 
             var sink = new MetalEncoderSink();
 

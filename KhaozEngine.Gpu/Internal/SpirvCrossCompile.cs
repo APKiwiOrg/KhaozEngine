@@ -5,9 +5,26 @@ using Veldrid.SPIRV;
 namespace KhaozEngine.Gpu.Internal
 {
     /// <summary>
-    /// THE BACK END: SPIR-V in, HLSL out, SPIRV-Cross and nothing else. Device-free and entirely on the CPU. This
-    /// is the native Direct3D 11 backend's only SPIRV-Cross entry point, and the one place the SPIRV-Cross
-    /// replacement (#462) changes for that path.
+    /// THE BACK END: SPIR-V in, HLSL or MSL out, SPIRV-Cross and nothing else. Device-free and entirely on the
+    /// CPU. This is the native Direct3D 11 and native Metal backends' only SPIRV-Cross entry point, and the one
+    /// place the SPIRV-Cross replacement (#462) changes for both paths.
+    /// <para>
+    /// THE MSL HALF IS DECISION M-S1 (section 12.1 of
+    /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>), and it is what phase 3's front-end split
+    /// was paying for. <see cref="VertexFragmentToMsl"/> and <see cref="ComputeToMsl"/> sit beside the HLSL pair
+    /// under their own <see cref="MslCrossCompilePin"/> and touch nothing else: the front end is untouched, so the
+    /// SPIR-V byte-equality drift test and <c>VulkanSpirvIncumbentParityTests</c> both keep meaning what they
+    /// meant. #462 is NOT taken here and section 12.2 is why: <c>libveldrid-spirv</c> exports three non-incidental
+    /// C entry points, none of which carries a resource-binding table, so an engine-owned shim over that library
+    /// would get exactly what the managed wrapper already gets.
+    /// </para>
+    /// <para>
+    /// AND THE MSL HALF HAS NO GLSL-SOURCE CONVENIENCE, WHICH IS A DECISION RATHER THAN AN OMISSION. The
+    /// <see cref="GlslPairToHlsl"/> shape exists because the Direct3D path never needs the SPIR-V again once the
+    /// HLSL is out. The Metal path does: its binding table is keyed on SPIR-V ids resolved through each stage's
+    /// own <c>DescriptorSet</c> and <c>Binding</c> decorations, so it must hold each module. A convenience that
+    /// swallowed them would force the backend to compile the same GLSL twice to get them back.
+    /// </para>
     /// <para>
     /// THE FRONT END LIVES IN <see cref="SpirvFrontEnd"/> NOW, and the split is decision V-S3 (section 12.3 of
     /// <c>docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md</c>). It was carved out of this file because the
@@ -136,6 +153,86 @@ namespace KhaozEngine.Gpu.Internal
         {
             string tag = label ?? "compute shader";
             return ComputeToHlsl(SpirvFrontEnd.ToSpirv(computeGlsl, GpuShaderStages.Compute, tag), tag);
+        }
+
+        /// <summary>
+        /// The cross-compile options every MSL emission uses, built from <see cref="MslCrossCompilePin"/> exactly
+        /// as the HLSL set is built from <see cref="HlslCrossCompilePin"/>, and private for the same reason: it is
+        /// a Veldrid type, and every non-private member of this class is part of the Veldrid-free contract the
+        /// backends consume across <c>InternalsVisibleTo</c>.
+        /// <para>
+        /// A SEPARATE OBJECT FROM THE HLSL SET EVEN THOUGH THE VALUES MATCH TODAY, deliberately. The two pins are
+        /// maintained independently and answer to different parity measurements, so sharing one options instance
+        /// would silently couple a future Direct3D flag to the Metal goldens.
+        /// </para>
+        /// </summary>
+        static readonly CrossCompileOptions _mslOptions = new(
+            MslCrossCompilePin.FixClipSpaceZ,
+            MslCrossCompilePin.InvertVertexOutputY,
+            MslCrossCompilePin.NormalizeResourceNames);
+
+        /// <summary>
+        /// Cross-compile a vertex and fragment SPIR-V pair to MSL, with the reflection the backend binds against.
+        /// The MSL sibling of <see cref="VertexFragmentToHlsl"/>, and the pair is compiled TOGETHER for the same
+        /// reason: the resource layouts are a property of the program, and a per-stage compile would produce two
+        /// disagreeing views of them.
+        /// <para>
+        /// THE EMITTED TEXT IS PER STAGE AND SO ARE ITS INDICES. Each stage's entry point carries only the
+        /// resources that stage references, at indices SPIRV-Cross chose for that stage, which is why the native
+        /// Metal backend reads a table per stage rather than one per program (2.2b). Nothing here interprets the
+        /// emission: this member's whole job is to produce it under the pin.
+        /// </para>
+        /// </summary>
+        /// <param name="vertexSpirv">The vertex stage's SPIR-V module.</param>
+        /// <param name="fragmentSpirv">The fragment stage's SPIR-V module.</param>
+        /// <param name="label">Optional name for the pair, included in any error message.</param>
+        /// <exception cref="ShaderValidationException">The pair failed to cross-compile, or the module declares
+        /// something the engine's own description mirrors do not model.</exception>
+        internal static CrossCompiledPair VertexFragmentToMsl(byte[] vertexSpirv, byte[] fragmentSpirv,
+            string? label = null)
+        {
+            if (vertexSpirv is null) throw new ArgumentNullException(nameof(vertexSpirv));
+            if (fragmentSpirv is null) throw new ArgumentNullException(nameof(fragmentSpirv));
+
+            string tag = label ?? "shader pair";
+            VertexFragmentCompilationResult result;
+            try
+            {
+                result = SpirvCompilation.CompileVertexFragment(
+                    vertexSpirv, fragmentSpirv, CrossCompileTarget.MSL, _mslOptions);
+            }
+            catch (Exception ex)
+            {
+                throw new ShaderValidationException($"{tag}: cross-compile to MSL failed: {ex.Message}", ex);
+            }
+
+            return new CrossCompiledPair(result.VertexShader, result.FragmentShader, Reflect(result.Reflection, tag));
+        }
+
+        /// <summary>
+        /// Cross-compile a compute SPIR-V module to MSL, with its reflection. The compute sibling of
+        /// <see cref="VertexFragmentToMsl"/>.
+        /// </summary>
+        /// <param name="computeSpirv">The compute stage's SPIR-V module.</param>
+        /// <param name="label">Optional name for the shader, included in any error message.</param>
+        /// <exception cref="ShaderValidationException">The module failed to cross-compile, or declares something
+        /// the engine's own description mirrors do not model.</exception>
+        internal static CrossCompiledCompute ComputeToMsl(byte[] computeSpirv, string? label = null)
+        {
+            if (computeSpirv is null) throw new ArgumentNullException(nameof(computeSpirv));
+
+            string tag = label ?? "compute shader";
+            ComputeCompilationResult result;
+            try
+            {
+                result = SpirvCompilation.CompileCompute(computeSpirv, CrossCompileTarget.MSL, _mslOptions);
+            }
+            catch (Exception ex)
+            {
+                throw new ShaderValidationException($"{tag}: compute cross-compile to MSL failed: {ex.Message}", ex);
+            }
+
+            return new CrossCompiledCompute(result.ComputeShader, Reflect(result.Reflection, tag));
         }
 
         // The Veldrid-to-engine boundary, and the only place it happens. VeldridMap owns the forward direction

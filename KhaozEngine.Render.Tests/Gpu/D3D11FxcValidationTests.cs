@@ -145,7 +145,7 @@ void main() { Data[gl_GlobalInvocationID.x] = 1.0; }";
             CrossCompiledPair pair = SpirvCrossCompile.GlslPairToHlsl(
                 program.VertexGlsl, program.FragmentGlsl, programName);
 
-            uint[] inputs = Semantics(pair.VertexHlsl, "SPIRV_Cross_Input");
+            uint[] inputs = Semantics(pair.VertexSource, "SPIRV_Cross_Input");
 
             Assert.NotEmpty(inputs);
             AssertContiguousFromZero(inputs, programName + " vertex inputs",
@@ -174,8 +174,8 @@ void main() { Data[gl_GlobalInvocationID.x] = 1.0; }";
             CrossCompiledPair pair = SpirvCrossCompile.GlslPairToHlsl(
                 ShaderSources.SplatVert, ShaderSources.SplatFrag, "Splat");
 
-            uint[] vertexOutputs = Semantics(pair.VertexHlsl, "SPIRV_Cross_Output");
-            uint[] fragmentInputs = Semantics(pair.FragmentHlsl, "SPIRV_Cross_Input");
+            uint[] vertexOutputs = Semantics(pair.VertexSource, "SPIRV_Cross_Output");
+            uint[] fragmentInputs = Semantics(pair.FragmentSource, "SPIRV_Cross_Input");
 
             Assert.NotEmpty(fragmentInputs);
             AssertContiguousFromZero(fragmentInputs, "Splat fragment inputs",
@@ -200,7 +200,7 @@ void main() { Data[gl_GlobalInvocationID.x] = 1.0; }";
             CrossCompiledPair pair = SpirvCrossCompile.GlslPairToHlsl(
                 program.VertexGlsl, program.FragmentGlsl, program.Name);
 
-            uint[] inputs = Semantics(pair.VertexHlsl, "SPIRV_Cross_Input");
+            uint[] inputs = Semantics(pair.VertexSource, "SPIRV_Cross_Input");
 
             Assert.NotEmpty(inputs);
             AssertContiguousFromZero(inputs, "OverlayMesh vertex inputs",
@@ -226,7 +226,7 @@ void main() { Data[gl_GlobalInvocationID.x] = 1.0; }";
                 CrossCompiledPair pair = SpirvCrossCompile.GlslPairToHlsl(
                     program.VertexGlsl, program.FragmentGlsl, program.Name);
 
-                uint[] inputs = Semantics(pair.VertexHlsl, "SPIRV_Cross_Input");
+                uint[] inputs = Semantics(pair.VertexSource, "SPIRV_Cross_Input");
                 var want = Enumerable.Range(0, inputs.Length).Select(i => (uint)i).ToArray();
                 if (!inputs.SequenceEqual(want))
                 {
@@ -262,9 +262,9 @@ void main() { oColor = vec4(vUv, 0, 1); }";
 
             CrossCompiledPair pair = SpirvCrossCompile.GlslPairToHlsl(vert, frag, "parse probe");
 
-            Assert.Equal(new uint[] { 0, 1 }, Semantics(pair.VertexHlsl, "SPIRV_Cross_Input"));
-            Assert.Equal(new uint[] { 0 }, Semantics(pair.VertexHlsl, "SPIRV_Cross_Output"));
-            Assert.Equal(new uint[] { 0 }, Semantics(pair.FragmentHlsl, "SPIRV_Cross_Input"));
+            Assert.Equal(new uint[] { 0, 1 }, Semantics(pair.VertexSource, "SPIRV_Cross_Input"));
+            Assert.Equal(new uint[] { 0 }, Semantics(pair.VertexSource, "SPIRV_Cross_Output"));
+            Assert.Equal(new uint[] { 0 }, Semantics(pair.FragmentSource, "SPIRV_Cross_Input"));
         }
 
         // ---- helpers -------------------------------------------------------------------------------------

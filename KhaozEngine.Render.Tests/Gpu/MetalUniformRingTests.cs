@@ -142,6 +142,14 @@ namespace KhaozEngine.Tests.Gpu
         /// SECTION 9.4's ORDERING ROW, as far as anything can assert it: the ring reads a COMPLETION value rather
         /// than a submit receipt. The two differ by exactly the window between a commit returning and the GPU
         /// finishing, and a ring gated on the receipt hands a segment back inside that window.
+        /// <para>
+        /// AND THIS IS THE WIRING PROOF FOR THE STALL COUNTER, which is worth saying here because the obvious
+        /// candidate is not. <c>MetalRingGpuTests.TheStallCounterCountsARealSegmentWait</c> runs a real frame loop
+        /// ahead of a real GPU and asserts only that the two readings agree, so it passes at zero and cannot tell
+        /// "never blocked" from "never wired". This row can: the submission is registered, the completion counter
+        /// is left behind it, and the wrap has to block, so the count is asserted at exactly one. Deterministic,
+        /// and it runs on every leg.
+        /// </para>
         /// </summary>
         [Fact]
         public void TheGateReadsCompletionAndNotTheSubmitReceipt()

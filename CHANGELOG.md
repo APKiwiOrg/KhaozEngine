@@ -701,16 +701,24 @@ strongest thing that can be said about an abstraction derived from one implement
 still deliberately share no production code: the policy is identical and the mechanism is a map lifecycle, a
 persistently mapped chunk and a Shared buffer's `contents()`.
 
-**Measured on an Apple M2 Max under macOS 26**, over seven `[GpuFact]`s. A 200-byte uniform buffer allocates
+**Measured on an Apple M2 Max under macOS 26**, over eight `[GpuFact]`s. A 200-byte uniform buffer allocates
 768 bytes across three segments, checked against the driver's own `-length` rather than against the engine's
 arithmetic repeated back, while a 200-byte vertex buffer allocates 200. One device-level write reaches all
-three segments of the real allocation. Twenty-four frames of record-time uploads create THREE staging blocks
-rather than twenty-four. Twelve drained frames rotate the ring with zero stalls, and sixty-four UNDRAINED
-frames stall twenty-two times for 0.3 ms in total, which is what says the gate blocks and the counter counts
-something rather than reading zero because it was never wired. Everything the ring and the arena DECIDE is
-device-free and runs on every leg, including the one claim no golden could ever see: that a ring-backed write
-opens no encoder, emits no copy and takes no staging block, counted through the same budget seam the encoder
-boundaries are frozen over.
+three segments of the real allocation. A disposed ring-backed buffer refuses the device write by name and
+records nothing. Twenty-four frames of record-time uploads create THREE staging blocks rather than twenty-four.
+Twelve drained frames rotate the ring with zero stalls. Sixty-four UNDRAINED frames stall some number of times,
+observed at twenty-two on one run and eleven on another of the same machine, which is a NONDETERMINISTIC
+observation rather than a measurement: how many wraps actually block depends on how fast the GPU retires an
+empty command buffer, so that row asserts only that the stall count and the accumulated time agree, and its own
+comment says it is a smoke observation.
+
+**What says the gate blocks and the counter counts something rather than reading zero because it was never
+wired is a DEVICE-FREE test**, `MetalUniformRingTests.TheGateReadsCompletionAndNotTheSubmitReceipt`. It
+registers a submission, leaves the completion counter behind it, wraps the ring, and asserts a stall count of
+exactly one against a fake shared event. That is a deterministic assertion on every leg, where the hardware row
+can pass at zero. Everything else the ring and the arena DECIDE is device-free too, including the one claim no
+golden could ever see: that a ring-backed write opens no encoder, emits no copy and takes no staging block,
+counted through the same budget seam the encoder boundaries are frozen over.
 
 ## 17.34.0
 

@@ -314,9 +314,23 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// AND THE STALL COUNTER COUNTS SOMETHING REAL, driven by getting AHEAD of the GPU rather than by
-        /// contriving a value. A counter that only ever reads zero cannot distinguish "never blocked" from
-        /// "never wired", and MM4's exit criterion is exactly a zero.
+        /// A SMOKE OBSERVATION AND NOT THE WIRING PROOF, which is what this row can honestly be. It runs the
+        /// frame loop ahead of the GPU and asserts that the two readings AGREE, and it passes at zero stalls,
+        /// so it cannot tell "never blocked" from "never wired" and must not be cited as though it could.
+        /// <para>
+        /// THE WIRING PROOF IS DEVICE-FREE and it is
+        /// <see cref="MetalUniformRingTests.TheGateReadsCompletionAndNotTheSubmitReceipt"/>, which registers a
+        /// submission, leaves the completion counter behind it, wraps the ring and asserts a stall count of
+        /// exactly one. That is deterministic and it runs on every leg. What THIS row adds is that the same
+        /// mechanism survives a real driver: a real completion value, a real wait, and a real elapsed time, none
+        /// of which a fake shared event can produce.
+        /// </para>
+        /// <para>
+        /// AND THE COUNT IT PRINTS IS NONDETERMINISTIC. How many wraps actually block depends on how fast the GPU
+        /// retires an empty command buffer, and the same machine has produced twenty-two stalls on one run and
+        /// eleven on another. So the assertion is on the PAIR being consistent, and the number in the output is
+        /// one observation rather than a measurement anything should be compared against.
+        /// </para>
         /// </summary>
         [GpuFact]
         public void TheStallCounterCountsARealSegmentWait()
@@ -348,8 +362,9 @@ namespace KhaozEngine.Tests.Gpu
                 "a stall was counted with no time against it, so the wait was recorded without having blocked");
             Assert.Null(device.Diagnostics.DeviceLossReason);
 
-            _output.WriteLine($"64 undrained frames stalled {device.Rings.StallCount} times for "
-                + $"{totals.TotalMs:F3} ms in total");
+            _output.WriteLine($"64 undrained recordings stalled {device.Rings.StallCount} times for "
+                + $"{totals.TotalMs:F3} ms in total, which is ONE observation of a nondeterministic number and "
+                + "not a measurement to compare against");
         }
 
         // The driver's own -length, which is the reading the engine's arithmetic is checked AGAINST rather than

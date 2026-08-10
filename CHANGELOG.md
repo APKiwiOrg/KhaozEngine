@@ -1286,7 +1286,11 @@ sent outside M-T2's counted classes and `IMetalBlitApi` what a blit encoder is s
 names a different protocol. The blit seam widens from one member to five, which is the same line drawn further
 rather than a different line: a texture copy's arithmetic is the highest-risk parity surface in the backend,
 since a wrong pitch garbles every golden readback at once with no error anywhere, and behind that interface all
-of it runs under a plain `[Fact]` on a machine with no Metal at all.
+of it runs under a plain `[Fact]` on a machine with no Metal at all. `MetalTransferPlan` is where that
+arithmetic lives, over `MetalStagingLayout`'s reproduction of the incumbent's software layout, and the split it
+is most careful about is the one its own header calls easy to get backwards: the pitches belong to the STAGING
+side's mip and the level and slice passed to the selector belong to the TEXTURE's, and those need not be the
+same numbers.
 
 **The counted seam gains one Objective-C enum, and the rule it bends is narrower than it read.**
 `IMetalEncoderSink`'s header said nothing on it names an Objective-C type, which the draws cannot honour: the

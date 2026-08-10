@@ -79,19 +79,32 @@ namespace KhaozEngine.Gpu.Metal.Internal
         }
 
         /// <inheritdoc/>
-        /// <remarks>No pool: <c>setViewports:count:</c> creates no object and returns none, so a pool here would
-        /// be a push and a pop around nothing.</remarks>
+        /// <remarks>
+        /// THE POOL IS HERE EVEN THOUGH <c>setViewports:count:</c> CREATES NO OBJECT, and the uniformity is the
+        /// point rather than an oversight. M-N5's rule is enforced by an IL walk with no allowlist
+        /// (<c>MetalAutoreleaseArchitectureTests</c>), so an entry point that reaches the interop layer opens a
+        /// pool, full stop. The alternative is a rule with exceptions, which means every reader of every new
+        /// selector has to decide whether THAT one autoreleases, and the incumbent's four-wrapped-sites-out-of-N
+        /// shape is exactly what that decision-per-call-site produces. A push and a pop is two C calls on a path
+        /// that runs once per framebuffer change.
+        /// </remarks>
         [MethodImpl(MethodImplOptions.NoInlining)]
         public void SetViewport(IntPtr encoder, float x, float y, float width, float height,
             float minDepth, float maxDepth)
-            => new MTLRenderCommandEncoder(encoder).SetViewport(
+        {
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+            new MTLRenderCommandEncoder(encoder).SetViewport(
                 new MTLViewport(x, y, width, height, minDepth, maxDepth));
+        }
 
         /// <inheritdoc/>
-        /// <remarks>No pool, for <see cref="SetViewport"/>'s reason.</remarks>
+        /// <remarks>Pooled for <see cref="SetViewport"/>'s reason.</remarks>
         [MethodImpl(MethodImplOptions.NoInlining)]
         public void SetScissorRect(IntPtr encoder, uint x, uint y, uint width, uint height)
-            => new MTLRenderCommandEncoder(encoder).SetScissorRect(new MTLScissorRect(x, y, width, height));
+        {
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+            new MTLRenderCommandEncoder(encoder).SetScissorRect(new MTLScissorRect(x, y, width, height));
+        }
 
         // THE DEPTH AND STENCIL PLANES, which Metal splits across two attachment slots over ONE texture where
         // the seam has one ClearDepthStencil carrying one float. The stencil slot is named only when the format

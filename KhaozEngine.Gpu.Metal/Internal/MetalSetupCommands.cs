@@ -207,8 +207,6 @@ namespace KhaozEngine.Gpu.Metal.Internal
         internal void Upload(MTLTexture destination, in MetalStagingShape shape, in MetalTextureUpload upload,
             ReadOnlySpan<byte> data)
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-
             ulong required = MetalStagingLayout.RequiredUploadBytes(upload.Width, upload.Height, shape.Format);
             if (required == 0) return;
 
@@ -237,6 +235,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             lock (_gate)
             {
+                // THE DISPOSAL CHECK IS INSIDE THE GATE, and that is a race rather than a tidiness. Read outside
+                // it, an Upload could pass the check, be overtaken by a teardown that releases everything, and
+                // then open and RETAIN a fresh command buffer against a queue the device is in the middle of
+                // releasing. That buffer is then held by an object nobody will dispose again. Checking and
+                // opening under one acquisition is what closes it.
+                ObjectDisposedException.ThrowIf(_disposed, this);
+
                 if (_liveness.IsDead) return;
 
                 // THE BUDGET, BEFORE THE BATCH IS CHOSEN. An append that would carry the open batch past the cap
@@ -275,12 +280,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </summary>
         internal void Flush()
         {
-            // NO ObjectDisposedException. A flush after disposal is a teardown-order straggler rather than a
-            // defect, which is the posture every Dispose on this backend takes.
-            if (_disposed) return;
-
             lock (_gate)
             {
+                // NO ObjectDisposedException. A flush after disposal is a teardown-order straggler rather than a
+                // defect, which is the posture every Dispose on this backend takes. Read under the gate for the
+                // same reason Upload's is: outside it, this and the teardown can interleave.
+                if (_disposed) return;
+
                 CommitOpenBatch();
             }
         }
@@ -304,8 +310,6 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </summary>
         public void Dispose()
         {
-            if (_disposed) return;
-
             lock (_gate)
             {
                 if (_disposed) return;

@@ -160,6 +160,34 @@ namespace KhaozEngine.Tests.Gpu
             }
         }
 
+        /// <summary>
+        /// AFTER DISPOSAL AN UPLOAD REFUSES AND OPENS NOTHING, which is the observable half of the check that
+        /// moved inside the gate. The race it closes is not reachable from a test: it needs a teardown to
+        /// complete between an unsynchronised read of the disposal flag and the lock acquisition that follows it,
+        /// and both now happen under one acquisition. What is checkable is that no batch is opened or retained
+        /// once the type is disposed, which is the state that race produced.
+        /// </summary>
+        [Fact]
+        public void AnUploadAfterDisposal_RefusesAndOpensNoBatch()
+        {
+            var native = new FakeMetalSetupNative();
+            var setup = new MetalSetupCommands(native, new FakeMetalDeviceLiveness(), Budget);
+
+            setup.Dispose();
+
+            Assert.Throws<ObjectDisposedException>(() => Upload(setup, 8, 8));
+            Assert.Empty(native.Batches);
+            Assert.Empty(native.Staged);
+
+            // A flush after disposal stays a straggler rather than a defect, and commits nothing.
+            setup.Flush();
+            Assert.Empty(native.Committed);
+
+            // And disposal is idempotent, which matters because the device's own Dispose can be reached twice.
+            setup.Dispose();
+            Assert.Empty(native.ReleasedBatches);
+        }
+
         /// <summary>A queue that will not make a command buffer is a device already in trouble, and an append
         /// then records nothing rather than encoding into a nil handle.</summary>
         [Fact]

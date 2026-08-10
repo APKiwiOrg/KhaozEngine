@@ -360,5 +360,74 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
             nuint sourceSlice, nuint sourceLevel, MTLOrigin sourceOrigin, MTLSize sourceSize,
             IntPtr destinationBuffer, nuint destinationOffset, nuint destinationBytesPerRow,
             nuint destinationBytesPerImage);
+
+        // ---- The bind flush's three shapes -------------------------------------------------------------------
+        //
+        // Two of the three carry an NSRange BY VALUE, which is a third arm64 argument class this file did not
+        // have: sixteen bytes of integers is exactly the boundary, so it rides TWO general-purpose registers
+        // rather than going indirectly the way MTLSize and MTLScissorRect do. Row 1's spike sent all three
+        // against a real device rather than reasoning about them, which is the standard this file holds a new
+        // class to. The third is two plain NSUIntegers and needs no answer of its own.
+
+        /// <summary>
+        /// The ARRAY BUFFER SETTER shape, which is <c>-setVertexBuffers:offsets:withRange:</c>,
+        /// <c>-setFragmentBuffers:offsets:withRange:</c> and the compute encoder's <c>-setBuffers:offsets:withRange:</c>.
+        /// ONE prototype for all three, because this file is one prototype per SIGNATURE SHAPE and the stage
+        /// lives in the selector rather than in the argument list.
+        /// <para>
+        /// M-R6's WHOLE POINT IS THIS PROTOTYPE. One call writes a contiguous run of the stage's buffer table,
+        /// where the incumbent emits one call per element per stage: that fan-out is the #418 defect arriving on
+        /// a second API, and the vendored fork does not declare a single array setter, so this is the shape the
+        /// design says had to be written by hand rather than copied.
+        /// </para>
+        /// <para>
+        /// BOTH ARRAYS ARE CALLER-OWNED AND ARE NOT READ AFTER THE CALL RETURNS. Metal copies
+        /// <paramref name="range"/><c>.Length</c> entries out of each during the call and the encoder holds the
+        /// bindings as its own state afterwards, which is what makes a <c>stackalloc</c> legal here for the same
+        /// reason it is on <see cref="SendVoidPtrNUInt"/>'s viewport array.
+        /// </para>
+        /// <para>
+        /// A NIL ENTRY IN <paramref name="objects"/> IS LEGAL AND UNBINDS THAT INDEX, which is what a disposed
+        /// resource degrades to rather than a dereference of a released pointer.
+        /// </para>
+        /// </summary>
+        [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial void SendVoidBuffersRange(IntPtr receiver, IntPtr sel, IntPtr* objects,
+            nuint* offsets, NSRange range);
+
+        /// <summary>
+        /// The ARRAY OBJECT SETTER shape with NO offsets array, which is
+        /// <c>-setVertexTextures:withRange:</c>, <c>-setFragmentTextures:withRange:</c>,
+        /// <c>-setVertexSamplerStates:withRange:</c>, <c>-setFragmentSamplerStates:withRange:</c> and the two
+        /// compute siblings. Textures and samplers carry no offset because neither index space has one: only the
+        /// buffer table binds a window into an allocation.
+        /// </summary>
+        [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial void SendVoidObjectsRange(IntPtr receiver, IntPtr sel, IntPtr* objects,
+            NSRange range);
+
+        /// <summary>
+        /// THE OFFSETS-ONLY REBIND (M-R7): a void message taking two <c>NSUInteger</c>s, which is
+        /// <c>-setVertexBufferOffset:atIndex:</c>, <c>-setFragmentBufferOffset:atIndex:</c> and the compute
+        /// encoder's <c>-setBufferOffset:atIndex:</c>.
+        /// <para>
+        /// NOTHING NEW ABOUT THE ABI and everything new about the cost. Two integer arguments are the class row
+        /// 1's spike used throughout, so this needs no answer of its own. What earns it a prototype rather than
+        /// a reuse of the array setter is that it writes an INTEGER into the encoder's command stream where
+        /// <c>setBuffers:</c> writes a whole argument-table entry, and the engine's hot path is the shadow pass
+        /// doing thousands of offsets-only rebinds of one slot per frame.
+        /// </para>
+        /// <para>
+        /// IT REQUIRES A BUFFER ALREADY BOUND AT THAT INDEX, which is a precondition rather than a hint: the
+        /// call adjusts an existing binding and has no buffer to adjust otherwise. The flush only reaches it for
+        /// a slot whose set is the one it already wrote into the table in this encoder epoch, which is that
+        /// precondition expressed as the arm's own guard.
+        /// </para>
+        /// </summary>
+        [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial void SendVoidNUIntNUInt(IntPtr receiver, IntPtr sel, nuint a, nuint b);
     }
 }

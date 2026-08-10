@@ -99,4 +99,32 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
     /// <param name="Height">Height in pixels.</param>
     [StructLayout(LayoutKind.Sequential)]
     internal readonly record struct MTLScissorRect(nuint X, nuint Y, nuint Width, nuint Height);
+
+    /// <summary>
+    /// <c>NSRange</c>: two <c>NSUInteger</c>s, the CONTIGUOUS run of argument-table indices an array setter
+    /// writes (M-R6). Every one of the six array setters ends <c>withRange:</c> and takes one of these BY VALUE,
+    /// so this is the type the whole bind flush is expressed through.
+    /// <para>
+    /// SIXTEEN BYTES OF INTEGERS, WHICH IS THE ONE SIZE THAT DOES NOT GO INDIRECTLY. The arm64 rule the other
+    /// composites in this file are governed by is that anything over sixteen bytes and not a homogeneous
+    /// floating-point aggregate is passed as a pointer the caller supplies. This is exactly sixteen, so it rides
+    /// TWO general-purpose registers instead, which is a third class from either
+    /// <see cref="MTLClearColor"/>'s register file or <see cref="MTLSize"/>'s indirect path. Getting it wrong
+    /// does not fault: it shifts every argument after it, and on
+    /// <c>setVertexBuffers:offsets:withRange:</c> there is nothing after it to notice.
+    /// </para>
+    /// <para>
+    /// MEASURED RATHER THAN REASONED. Row 1's interop spike sent
+    /// <c>setVertexBuffers:offsets:withRange:</c>, <c>setFragmentBuffers:offsets:withRange:</c>,
+    /// <c>setFragmentTextures:withRange:</c>, <c>setFragmentSamplerStates:withRange:</c> and the compute
+    /// <c>setBuffers:offsets:withRange:</c> against a real device with this layout, in one command buffer that
+    /// completed with a nil error (section 3.1). <c>MetalInteropSpike.Native.cs</c> keeps its own copy of the
+    /// declaration deliberately, as the measurement, and this is the shipped one.
+    /// </para>
+    /// </summary>
+    /// <param name="Location">The first index the setter writes.</param>
+    /// <param name="Length">How many consecutive indices it writes, which is the length of the arrays handed
+    /// alongside it. Metal reads exactly this many entries through those pointers.</param>
+    [StructLayout(LayoutKind.Sequential)]
+    internal readonly record struct NSRange(nuint Location, nuint Length);
 }

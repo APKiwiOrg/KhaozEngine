@@ -8,16 +8,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <summary>
     /// THE REAL <see cref="IMetalEncoderSink"/>: the emitting half of M-T2's budget seam, over the interop layer.
     ///
-    /// <para><b>WHAT THIS ROW EMITS IS THE ENCODER BOUNDARY, AND THE OTHER TWO CLASSES LAND WITH THEIR
-    /// CALLERS.</b> The SEAM covers all three call classes and is complete here, because a budget seam
-    /// retrofitted after the recorder exists is a seam shaped by the recorder rather than by what needs counting,
-    /// and phase 2 records exactly that outcome. The EMISSIONS are a different question: a native prototype added
-    /// by a row that has no caller for it and no test that runs it is an Objective-C declaration nobody has ever
-    /// executed, and row 1's own regression evidence is that a wrong ABI assumption in interop is a memory
-    /// corruption rather than a compile error. So the argument-table setters emit when row 13 flushes through
-    /// them (https://github.com/APKiwiOrg/KhaozEngine/issues/579) and the draws when row 14 issues them
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/580), each with the test that runs the prototype it
-    /// adds. Until then they refuse by name, in the same shape the command list's unbuilt members take.</para>
+    /// <para><b>EACH CALL CLASS EMITS WHEN THE ROW THAT CALLS IT LANDS, AND TWO OF THE THREE ARE LIVE.</b> The
+    /// SEAM covers all three classes and was complete from row 7, because a budget seam retrofitted after the
+    /// recorder exists is a seam shaped by the recorder rather than by what needs counting, and phase 2 records
+    /// exactly that outcome. The EMISSIONS are a different question: a native prototype added by a row that has
+    /// no caller for it and no test that runs it is an Objective-C declaration nobody has ever executed, and row
+    /// 1's own regression evidence is that a wrong ABI assumption in interop is a memory corruption rather than a
+    /// compile error. The encoder boundary emitted from row 7
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/573), the four argument-table setters emit now that row
+    /// 13's flush drives them (https://github.com/APKiwiOrg/KhaozEngine/issues/579), and the draws refuse until
+    /// row 14 issues them (https://github.com/APKiwiOrg/KhaozEngine/issues/580).</para>
     ///
     /// <para><b>A READONLY STRUCT WITH NO STATE AT ALL</b>, which is the emitter rule
     /// <see cref="IMetalEncoderSink"/> states. It matters more here than in either sibling because this seam is
@@ -93,23 +93,74 @@ namespace KhaozEngine.Gpu.Metal.Internal
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// THE STAGE PICKS THE ENCODER KIND AS WELL AS THE SELECTOR, which is why the fork is here rather than
+        /// one level down. Compute's setters are unprefixed selectors on a DIFFERENT protocol
+        /// (<see cref="MTLComputeCommandEncoder"/>), so this is not two spellings of one call: sending a
+        /// <c>setVertexBuffers:</c> to a compute encoder is an unrecognised selector, and the flush that produced
+        /// the bind already knows which encoder it is writing into.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public void SetBuffers(MetalShaderStage stage, IntPtr encoder, ReadOnlySpan<IntPtr> buffers,
             ReadOnlySpan<nuint> offsets, uint firstIndex)
-            => throw NotBuiltYet("The array buffer setter", BindsRow);
+        {
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+
+            if (stage == MetalShaderStage.Compute)
+                new MTLComputeCommandEncoder(encoder).SetBuffers(buffers, offsets, firstIndex);
+            else
+                new MTLRenderCommandEncoder(encoder).SetBuffers(stage, buffers, offsets, firstIndex);
+        }
 
         /// <inheritdoc/>
+        /// <remarks>Same fork and same reason as <see cref="SetBuffers"/>.</remarks>
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public void SetTextures(MetalShaderStage stage, IntPtr encoder, ReadOnlySpan<IntPtr> textures,
             uint firstIndex)
-            => throw NotBuiltYet("The array texture setter", BindsRow);
+        {
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+
+            if (stage == MetalShaderStage.Compute)
+                new MTLComputeCommandEncoder(encoder).SetTextures(textures, firstIndex);
+            else
+                new MTLRenderCommandEncoder(encoder).SetTextures(stage, textures, firstIndex);
+        }
 
         /// <inheritdoc/>
+        /// <remarks>Same fork and same reason as <see cref="SetBuffers"/>.</remarks>
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public void SetSamplerStates(MetalShaderStage stage, IntPtr encoder, ReadOnlySpan<IntPtr> samplers,
             uint firstIndex)
-            => throw NotBuiltYet("The array sampler setter", BindsRow);
+        {
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+
+            if (stage == MetalShaderStage.Compute)
+                new MTLComputeCommandEncoder(encoder).SetSamplerStates(samplers, firstIndex);
+            else
+                new MTLRenderCommandEncoder(encoder).SetSamplerStates(stage, samplers, firstIndex);
+        }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// THE HOTTEST MEMBER IN THIS TYPE, and it still opens a pool, because M-N5 is a rule without exceptions
+        /// and <see cref="MetalRenderApi"/>'s two setters already pay the same for the same reason. None of the
+        /// four setters here returns an autoreleased object, so the pool has nothing to drain: what it buys is
+        /// that <c>MetalAutoreleaseArchitectureTests</c> can state the rule as "no path reaches a message send
+        /// unpooled" with no exception list, and an exception list is the thing that rots. The cost is a push and
+        /// a pop around one C call on the shadow pass's per-draw path, which is the one number in this backend
+        /// worth measuring before anyone argues about it
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/595).
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public void SetBufferOffset(MetalShaderStage stage, IntPtr encoder, nuint offset, uint index)
-            => throw NotBuiltYet("The offsets-only rebind", BindsRow);
+        {
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+
+            if (stage == MetalShaderStage.Compute)
+                new MTLComputeCommandEncoder(encoder).SetBufferOffset(offset, index);
+            else
+                new MTLRenderCommandEncoder(encoder).SetBufferOffset(stage, offset, index);
+        }
 
         /// <inheritdoc/>
         public void Draw(IntPtr encoder, uint vertexStart, uint vertexCount, uint instanceCount,
@@ -132,15 +183,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
         static IntPtr Retained(IntPtr encoder)
             => encoder == IntPtr.Zero ? IntPtr.Zero : ObjCRuntime.ObjcRetain(encoder);
 
-        const string BindsRow = "the bind-flush row (https://github.com/APKiwiOrg/KhaozEngine/issues/579)";
         const string DrawsRow = "the draw-and-dispatch row (https://github.com/APKiwiOrg/KhaozEngine/issues/580)";
 
         static NotSupportedException NotBuiltYet(string what, string row)
             => new($"{what} is not built yet on the native Metal backend: it lands in {row}, which is the row "
                 + "that has a caller for it and the test that runs the Objective-C prototype it adds. The seam "
-                + "itself covers all three of decision M-T2's call classes already, and the ENCODER BOUNDARY "
-                + "half of it is live (work-breakdown row 7, "
-                + "https://github.com/APKiwiOrg/KhaozEngine/issues/573). This is a statement about the package "
-                + "and not about this machine.");
+                + "itself covers all three of decision M-T2's call classes already, and TWO of the three emit: "
+                + "the ENCODER BOUNDARY from work-breakdown row 7 "
+                + "(https://github.com/APKiwiOrg/KhaozEngine/issues/573) and every ARGUMENT-TABLE write from row "
+                + "13 (https://github.com/APKiwiOrg/KhaozEngine/issues/579). This is a statement about the "
+                + "package and not about this machine.");
     }
 }

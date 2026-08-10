@@ -65,11 +65,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// slots are unreferenced, so this is the common case rather than the corner.
     /// </para>
     /// <para>
-    /// WHAT LATER ROWS ADD. Row 10 (https://github.com/APKiwiOrg/KhaozEngine/issues/576) content-deduplicates
-    /// these tables so M-R9's pipeline-switch comparison is a handle compare, and hangs one off each pipeline.
-    /// <see cref="ContentKey"/> is the seam for that and is not consumed here. Row 13
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/579) binds through <see cref="TryGetIndex"/>, one array
-    /// call per (kind, stage). Neither changes what this reads.
+    /// WHAT LATER ROWS ADD. Row 10 (https://github.com/APKiwiOrg/KhaozEngine/issues/576) landed the content
+    /// deduplication: <see cref="MetalIndexTableCache"/> keys on <see cref="ContentKey"/>, every table handed out
+    /// goes through it at shader-set creation, and <see cref="SameIndicesAs"/> is the handle compare that buys.
+    /// Row 13 (https://github.com/APKiwiOrg/KhaozEngine/issues/579) binds through <see cref="TryGetIndex"/>, one
+    /// array call per (kind, stage), and invalidates a pipeline switch through <see cref="SameIndicesAs"/>.
+    /// Neither changes what this reads.
     /// </para>
     /// </summary>
     internal sealed class MetalShaderIndexTable
@@ -193,8 +194,28 @@ namespace KhaozEngine.Gpu.Metal.Internal
         internal bool TryGetIndex(int set, int binding, MetalShaderStage stage, out MetalIndexTableEntry entry)
             => _entries.TryGetValue(new MetalIndexTableKey(set, binding, stage), out entry);
 
-        /// <summary>Every entry, for the index-table test and for row 10's content dedup. Ordered by key, so two
-        /// tables with the same content enumerate identically and <see cref="ContentKey"/> is stable.</summary>
+        /// <summary>
+        /// M-R9's PIPELINE-SWITCH COMPARISON, AND IT IS REFERENCE IDENTITY ON PURPOSE. Two pipelines whose
+        /// programs map every element to the same index invalidate nothing on a switch, and Metal's argument
+        /// tables are absolute and per encoder, so the bound resources are still there to keep.
+        /// <para>
+        /// A STRUCTURAL WALK WOULD BE THE SAME ANSWER AT A PER-SWITCH COST, and a per-switch cost is what this
+        /// whole row exists to remove. What makes the cheap form correct is that every table handed out is
+        /// canonical: <see cref="MetalIndexTableCache"/> deduplicates on <see cref="ContentKey"/> at shader-set
+        /// creation, so equal content IS one instance. A table built outside that cache compares unequal to its
+        /// own twin, which is the safe direction (invalidate too much rather than too little) and is still a bug
+        /// in whoever built it.
+        /// </para>
+        /// <para>
+        /// ROW 13 (https://github.com/APKiwiOrg/KhaozEngine/issues/579) IS THE CALLER. Written here so the
+        /// comparison's reasoning lives with the object it compares rather than inside a recorder.
+        /// </para>
+        /// </summary>
+        internal bool SameIndicesAs(MetalShaderIndexTable? other) => ReferenceEquals(this, other);
+
+        /// <summary>Every entry, for the index-table test and for the content dedup's equivalence check. Ordered
+        /// by key, so two tables with the same content enumerate identically and <see cref="ContentKey"/> is
+        /// stable.</summary>
         internal IEnumerable<KeyValuePair<MetalIndexTableKey, MetalIndexTableEntry>> Entries()
         {
             var keys = new List<MetalIndexTableKey>(_entries.Keys);
@@ -233,8 +254,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// observable and belongs in here too.
         /// </para>
         /// <para>
-        /// NOT CONSUMED IN THIS ROW, and named rather than left implicit so row 10 does not invent a second
-        /// notion of table identity beside this one.
+        /// CONSUMED BY <see cref="MetalIndexTableCache"/> AND BY NOTHING ELSE, which is what keeps it the one
+        /// notion of table identity this backend has. It is read once per shader-set creation and never on a
+        /// bind path.
         /// </para>
         /// </summary>
         internal string ContentKey

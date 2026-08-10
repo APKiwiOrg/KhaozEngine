@@ -17,9 +17,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <para><b>AND SHADERS ARE LIVE AS OF ROW 9</b> (https://github.com/APKiwiOrg/KhaozEngine/issues/575), which
     /// is the row that had to land before pipelines because a pipeline is created from a library and a function.
     /// Both shader members run the whole device-free path (GLSL to SPIR-V, SPIR-V to MSL under the pin, the
-    /// entry-point read, the id-keyed binding join) and then make two native calls. What still refuses is
-    /// everything a pipeline needs AROUND a shader: the layouts and sets it binds through, the pipeline itself,
-    /// and the framebuffer it draws into.</para>
+    /// entry-point read, the id-keyed binding join) and then make two native calls.</para>
+    ///
+    /// <para><b>LAYOUTS AND SETS ARE LIVE AS OF ROW 10</b> (https://github.com/APKiwiOrg/KhaozEngine/issues/576),
+    /// and they are the two members here that touch NOTHING native at all: Metal has no layout object and this
+    /// backend declines argument buffers (M-B6), so both are resolved managed data and both bodies are plain. What
+    /// still refuses is the pipeline that binds through them and the framebuffer it draws into.</para>
     ///
     /// <para><b>CREATION IS FREE-THREADED AND TAKES NO LOCK AT ALL (M-W8).</b> An <c>MTLDevice</c> is documented
     /// thread-safe and none of these calls touches shared state: the setup command buffer is the only thing in
@@ -87,12 +90,24 @@ namespace KhaozEngine.Gpu.Metal.Internal
             => throw NotBuiltYet("A framebuffer", PassesRow);
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// A COPIED ELEMENT ARRAY AND NOTHING ELSE. Metal has no layout object to create, and the per-kind
+        /// declaration-order arithmetic the incumbent's <c>MTLResourceLayout</c> carries is deliberately absent
+        /// (2.2b): the authority for where a resource landed is <see cref="MetalShaderIndexTable"/>. See
+        /// <see cref="MetalResourceLayout"/>.
+        /// <para>
+        /// NO PLATFORM GUARD, unlike every member above it, because there is no native call to guard. The guards
+        /// exist so CA1416 can see the macOS boundary at an <c>objc_msgSend</c> site, and a layout reaches none.
+        /// </para>
+        /// </remarks>
         public IGpuResourceLayout CreateResourceLayout(in GpuResourceLayoutDescription d)
-            => throw NotBuiltYet("A resource layout", LayoutsRow);
+            => new MetalResourceLayout(_device.Liveness, d);
 
         /// <inheritdoc/>
+        /// <remarks>Every element resolved ONCE, here, into the handle and the three numbers a bind writes. No
+        /// native call and no argument buffer (M-B6). See <see cref="MetalResourceSet"/>.</remarks>
         public IGpuResourceSet CreateResourceSet(in GpuResourceSetDescription d)
-            => throw NotBuiltYet("A resource set", LayoutsRow);
+            => new MetalResourceSet(_device.Liveness, d);
 
         /// <inheritdoc/>
         /// <remarks>
@@ -187,11 +202,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // rather than a hole in that claim. Two threads reaching this at once both construct, both assign, and
         // the loser's instance is dropped for the GC: the reference assignment is atomic so no caller can see a
         // half-built one, the constructor allocates nothing native and holds no handle it would have to release,
-        // and the compiler itself is stateless (a device and a liveness latch, both already shared). A lock here
-        // would buy one avoided allocation, once, at the cost of putting a lock on the path M-W8 says has none.
+        // and the compiler itself is stateless (a device, a liveness latch and the DEVICE's index-table cache,
+        // all three already shared). The cache being the device's is what keeps that true now that a compiler
+        // carries one: a per-compiler cache would let this race split the dedup in two, and two instances of one
+        // table would make M-R9's handle compare answer "different" for two pipelines that map every element
+        // identically. A lock here would buy one avoided allocation, once, at the cost of putting a lock on the
+        // path M-W8 says has none.
         [SupportedOSPlatform("macos")]
         MetalShaderCompiler Shaders =>
-            _shaders ??= new MetalShaderCompiler(_device.Handle, _device.Liveness);
+            _shaders ??= new MetalShaderCompiler(_device.Handle, _device.Liveness, _device.IndexTables);
 
         // The off-macOS refusal, as one sentence rather than as a silent null. A factory reached off macOS means
         // a consumer got hold of a device that cannot exist there, so the message says which of the two
@@ -201,7 +220,6 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 + "MetalGpuDevice exists on a machine that has no Metal at all, which the provider's functional "
                 + "probe refuses before creation.");
 
-        const string LayoutsRow = "the resource-layout row (https://github.com/APKiwiOrg/KhaozEngine/issues/576)";
         const string PipelinesRow = "the pipeline row (https://github.com/APKiwiOrg/KhaozEngine/issues/577)";
         const string PassesRow = "the render-pass row (https://github.com/APKiwiOrg/KhaozEngine/issues/578)";
 
@@ -212,9 +230,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
             => new($"{what} is not built yet on the native Metal backend's resource factory: it lands in {row}. "
                 + "Buffers, textures, samplers and fences ARE live (work-breakdown row 6, "
                 + "https://github.com/APKiwiOrg/KhaozEngine/issues/572), so are command lists (row 7, "
-                + "https://github.com/APKiwiOrg/KhaozEngine/issues/573), and so are shader sets and compute "
-                + "shaders (row 9, https://github.com/APKiwiOrg/KhaozEngine/issues/575). This is a statement "
-                + "about the package and not about this machine. Select GpuBackendKind.Metal, which goes through "
-                + "Veldrid, for a fully working Metal device.");
+                + "https://github.com/APKiwiOrg/KhaozEngine/issues/573), shader sets and compute shaders (row 9, "
+                + "https://github.com/APKiwiOrg/KhaozEngine/issues/575), and resource layouts and resource sets "
+                + "(row 10, https://github.com/APKiwiOrg/KhaozEngine/issues/576). This is a statement about the "
+                + "package and not about this machine. Select GpuBackendKind.Metal, which goes through Veldrid, "
+                + "for a fully working Metal device.");
     }
 }

@@ -71,6 +71,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
         readonly MetalCommandBufferSource _commandBuffers;
         readonly MetalUncommittedBuffers _uncommitted;
 
+        // THE ONE INDEX-TABLE CACHE (row 10), inline rather than in the constructor because the factory built
+        // below reads it lazily and a field initialiser cannot be out of order with that. Deduplicating the
+        // per-program binding tables is what makes M-R9's pipeline-switch comparison a handle compare instead of
+        // a comparison that is never equal.
+        readonly MetalIndexTableCache _indexTables = new();
+
         // MM4's depth, and the two subsystems that are the only things in this backend sized by it: the uniform
         // ring's segments (M-M3) and each list's staging arena slots (M-M8). No command buffer anywhere is
         // allocated per frame in flight, which is the whole of M-R2.
@@ -131,6 +137,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         /// <summary>The liveness token every wrapper this device creates will be handed (M-F6).</summary>
         internal MetalDeviceLiveness Liveness => _liveness;
+
+        /// <summary>The device's ONE index-table cache (M-R9, row 10). Read by the shader compiler, which is the
+        /// only site that puts a table in it, because a table is a property of the emission and shader-set
+        /// creation is where an emission exists.</summary>
+        internal MetalIndexTableCache IndexTables => _indexTables;
 
         /// <summary>The latch every site that can see a command-buffer failure reports through (M-G4). The
         /// completion handler on every submitted buffer is the one that calls it on every frame, through

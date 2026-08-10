@@ -18,7 +18,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// without a Metal device can run.</para>
     ///
     /// <para><b>A READONLY STRUCT WITH NO STATE, the emitter rule both sibling backends enforce.</b> It carries
-    /// nothing per pass and nothing per list, so one instance serves every command list a device makes.</para>
+    /// nothing per pass and nothing per list, so one instance serves every command list a device makes, and
+    /// <c>MetalGpuDevice</c> holds exactly that one and hands it to each list it creates. A list takes it as
+    /// <see cref="IMetalRenderApi"/>, so constructing one per list would box one per list to describe a value
+    /// that cannot differ.</para>
     ///
     /// <para><b>EVERY BODY OPENS AN AUTORELEASE POOL (M-N5).</b> <c>+renderPassDescriptor</c> and every
     /// attachment slot it vends are autoreleased objects, and a pass built inside a frame loop with no pool

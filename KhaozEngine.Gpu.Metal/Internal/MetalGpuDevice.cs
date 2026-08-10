@@ -71,6 +71,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
         readonly MetalCommandBufferSource _commandBuffers;
         readonly MetalUncommittedBuffers _uncommitted;
 
+        // THE RENDER SEAM, ONE PER DEVICE RATHER THAN ONE PER LIST, which is what MetalRenderApi's own header
+        // says of itself: it is a readonly struct carrying nothing per pass and nothing per list, so a second
+        // instance could differ from the first in nothing at all. It is held here as the INTERFACE, which is the
+        // form a list takes it in, so this is also one box for the device instead of one per CreateCommandList.
+        readonly IMetalRenderApi _renderApi;
+
         // MM4's depth, and the two subsystems that are the only things in this backend sized by it: the uniform
         // ring's segments (M-M3) and each list's staging arena slots (M-M8). No command buffer anywhere is
         // allocated per frame in flight, which is the whole of M-R2.
@@ -102,6 +108,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _setup = new MetalSetupCommands(setupNative, liveness);
             _framesInFlight = framesInFlight;
             _staging = staging;
+            _renderApi = new MetalRenderApi();
 
             // THE ONE RING ALLOCATOR (M-M3), sharing the submit lock rather than owning one. It has to read
             // MetalTimeline.LastSubmitted under exactly the lock that orders the commit which registers it, or
@@ -181,7 +188,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 // remembers the timeline value THAT list's submission took. The list disposes it. It takes the
                 // liveness token because its block creation is a native allocation on this device (M-F6).
                 new MetalStagingArena(_staging, _framesInFlight, liveness: _liveness), new MetalBlitApi(),
-                _liveness, new MetalRenderApi(),
+                _liveness, _renderApi,
                 // M-A2's POSITION, READ ONCE PER PROCESS AND COPIED PER LIST. Reading the environment per pass
                 // would let a mid-run change split one frame's clears between two policies, which is a shape the
                 // gate-1 A/B could not interpret. See MetalClearPolicy.

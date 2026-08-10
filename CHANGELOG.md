@@ -366,6 +366,81 @@ And `waitUntilSignaledValue:timeoutMS:` is declared with both parameters as `uin
 prototype had the second as `uint32_t`, which is the exact class of mistake the typed-overload-per-selector rule
 exists to prevent, since arguments are placed by the caller according to the callee's declared types.
 
+### Native Metal resources: buffers, textures, samplers, a staging layout pinned to a table, and a `Map` that waits (#572)
+
+Row 6 of the same design. The native Metal backend can now create every resource the GPU seam has an object
+for: buffers, textures, samplers and fences, plus the device-level uploads and `IGpuDevice.Map`. Still no
+consumer behaviour change, because nothing can record or submit yet (the command list is
+[#573](https://github.com/APKiwiOrg/KhaozEngine/issues/573)), and `GpuBackendKind.Metal` through Veldrid
+remains the working Metal backend. `MetalGpuDevice.Factory`, `PointSampler` and `LinearSampler` stop throwing.
+
+**The staging subresource layout is the highest-risk parity surface in the backend and it is now a checked
+fact rather than a claim (M-C5).** Every golden in the suite reads back through `Map` and
+`MappedData.RowPitch`, so an arithmetic that disagrees with the incumbent's garbles all 36 at once and does it
+silently: the readback succeeds, the pointer is valid, and the pixels are simply in the wrong places. The
+incumbent backs a staging texture with a Shared `MTLBuffer` and computes the row pitch, the depth pitch, the
+subresource size and the subresource offset IN SOFTWARE, so reproducing it is reproducing arithmetic rather
+than agreeing with a driver, which is the one reason it can be pinned with no device in the room.
+`MetalStagingLayoutTableTests` carries 232 rows of LITERALS, produced by transcribing Veldrid `4.9.103`'s own
+nine functions into a throwaway generator and running it, never by re-deriving them from the implementation
+under test, which is the shared-mistake failure a self-baked golden has. It covers all eight seam formats
+including the five-byte `D32FloatS8UInt` that is the one value a reader doubts, a 1x1, an odd
+non-power-of-two, a full mip chain down to 1x1, a chain whose halving truncates, a layered texture, and one
+that is both at once. It runs device-free on every leg.
+
+**`Map` WAITS on the read path, which the incumbent does not do at all (M-C6).** `MTLGraphicsDevice.MapCore`
+hands back `contents()` immediately, and that works today only because `GpuReadback` submits and drains before
+mapping, so the seam's guarantee rests on a caller convention rather than on the backend. Getting it wrong
+returns a pointer to bytes the blit has not written yet, which reads as an intermittently wrong golden, and an
+intermittently wrong golden on a real device is the worst failure shape a five-legged blocking matrix has. A
+`Write` mapping still does not wait, because the caller is the producer.
+
+**A device-level `UpdateTexture` no longer issues its own queue submit (M-M9).** The incumbent creates a
+staging texture, a whole command list and a `SubmitCommands` per call, then disposes both. Those now accumulate
+into one device-owned setup command buffer under a short lock, flushed lazily at the next device-level read.
+Eight uploads share one committed batch, measured on a real device rather than described. The read-path half
+is what makes the claim hole-free: `Map` and `WaitForIdle` both commit the pending batch BEFORE draining, so a
+texture uploaded and immediately read back sees the uploaded bytes rather than memory nothing wrote.
+
+**No texture view is created for any usage, and that is M-M10 in its strongest form.** The design asks that no
+view factory be reachable from the recording type so a draw-time view is a compile error. On this seam nothing
+can NARROW a texture at all: there is no texture-view type, a resource set binds an `IGpuTexture` whole,
+`CreateFramebuffer` carries no mip or layer parameter, and per-face cubemap rendering is not expressible. So
+every case is the branch where `Veldrid.MTL.MTLTextureView` reuses the target's own texture and creates no
+native object, and this package declares no view factory at all, asserted by
+`MetalEagerViewArchitectureTests`. What the incumbent still pays is a MANAGED wrapper, allocated lazily per
+texture on the DRAW path, which is where all 25 `DEVICE_REMOVED` stacks in
+[#423](https://github.com/APKiwiOrg/KhaozEngine/issues/423) surfaced.
+
+**The shared sampler pair is WRAP on all three axes, from `MetalSharedSamplers` and not from the engine's
+same-named statics.** `GpuSamplerDescription.Point` and `.Linear` carry the same names and CLAMP, and reading
+the wrong one of that pair cost two goldens on the Direct3D 11 leg (`scene3d_texbillboard` at 0.393 and
+`scene3d_particles_flipbook` at 0.359). The test asserts against both, because the engine statics are
+documented public API and are not changed. The incumbent's two sampler conditionals are RESOLVED rather than
+reproduced: the border colour is written unconditionally because its condition is `IsMacOS`, and no compare
+function is written because the engine's one call site passes null. A branch whose condition is constant is a
+branch no test can reach either way.
+
+**One backend-divergent creation failure, documented rather than discovered (M-M6).** A buffer created with
+both `UniformBuffer` and a structured bit throws at creation on the native Metal backend. Both Veldrid backends
+accept the combination and nothing in this engine creates it. A uniform buffer here will be rebased per frame
+by the ring ([#574](https://github.com/APKiwiOrg/KhaozEngine/issues/574)), and a structured binding of the same
+buffer would read whichever segment that frame landed on.
+
+**Two things only a real device could teach, both recorded because the next reader will meet the same
+shapes.** The setup batch holds its command buffer across separate calls, so it outlives the autorelease pool
+the queue handed it out in, and the pop of that pool freed it under the next append. It presented as a test-host
+crash rather than a leak, and the fix is the retain-and-release pair `MTLCommandBuffer` now carries with the
+rule written on it, since the surrounding rule for an autoreleased object is the opposite. And the
+autorelease-rule architecture walk from row 4 caught the upload path reaching `-commandBuffer` with no pool on
+it, on the first new entry point the package gained.
+
+**One new `objc_msgSend` ABI shape, named as such.** `copyFromBuffer:...toTexture:destinationSlice:
+destinationLevel:destinationOrigin:` takes eleven arguments counting the receiver and the selector, against
+eight general-purpose argument registers, so three cross on the STACK. Every argument class in it is covered by
+row 1's spike and only the spill is new, which the prototype's own header records, and a real device accepting
+the call under a completed command buffer is what answers it.
+
 ## 17.34.0
 
 ### The `vulkan-native` CI leg, both validation tiers, and the first validation layer this repo has ever installed (#529)

@@ -1,13 +1,15 @@
 # KhaozEngine.Gpu.Metal: native Metal backend design (2026-08-09)
 
-**Status: ROWS 1 AND 2 LANDED IN `17.35.0`, the package skeleton, the three verification spikes, the provider
-and its machine probe. Rows 3 to 19 are not written.** Phase 4 of the staged native GPU backend program
+**Status: ROWS 1 TO 6 LANDED IN `17.35.0`**, the package skeleton, the three verification spikes, the provider
+and its machine probe, the `GpuBackendKind.MetalNative` append with its three silent sites, the Objective-C
+interop layer with a real device and queue, the shared-event timeline, and now the resources: buffers,
+textures, samplers, fences, the device-level uploads on a setup command buffer, and `Map` with its read drain.
+**Rows 7 to 19 are not written**, so nothing can record or submit yet. Phase 4 of the staged native GPU backend program
 ([#420](https://github.com/APKiwiOrg/KhaozEngine/issues/420)), specified by
 [#566](https://github.com/APKiwiOrg/KhaozEngine/issues/566), following the shipped phase 2
 (`docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md`) and phase 3
 (`docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md`). This document is the phase 4 deliverable.
-Implementation is a numbered issue list in section 18, and its first two rows are done: `KhaozEngine.Gpu.Metal`
-registers a provider whose functional probe answers for the machine, and creates no device.
+Implementation is a numbered issue list in section 18.
 
 **Three things HAVE now run on a device, one of them overturned a ruling, and the ruling has since been
 re-taken.** The interop spike is green on real hardware (3.1), the `MTLCompileOptions` measurement is taken
@@ -1712,6 +1714,27 @@ from the recording type, asserted by an architecture test over the type graph, s
 error. X1's evidence is why, and it is worth restating in a Metal seat where `newTextureView` looks cheap
 enough to do at a bind: all 25 `DEVICE_REMOVED` stacks in #423 surfaced inside the lazy view constructor on the
 draw path.
+
+**Row 6 landed that as an EMPTY set, and the reason is worth recording because it is stronger than the rule
+asked for.** The condition above is "the description actually narrows the target", and NOTHING this seam can
+express narrows one: there is no texture-view type at all, a resource set binds an `IGpuTexture` whole,
+`CreateFramebuffer` carries no mip or layer parameter, and per-face cubemap rendering is not expressible. So
+every case falls in `MTLTextureView`'s `else` branch, which creates no native object. The package therefore
+declares NO view factory anywhere, which implies the design's own condition rather than restating it, and
+`MetalEagerViewArchitectureTests` asserts the absence directly. The day a row genuinely needs a view, that test
+is what fails, and it should be narrowed to the design's wording rather than deleted. What the incumbent
+actually pays on the draw path is the MANAGED wrapper `Util.GetTextureView` allocates per texture under a lock,
+which is the allocation #423's stacks are inside, and that is what disappears here.
+
+**Two things row 6 learned on the device, kept because the next row meets the same shapes.** First, an
+`MTLCommandBuffer` held across autorelease-pool scopes must be RETAINED: the setup buffer accumulates uploads
+from separate calls, so the pop of the pool the queue handed it out in freed it under the next append, and it
+presented as a process crash rather than as a leak. The rule is the ordinary Objective-C one and it is written
+on `MTLCommandBuffer` precisely because the surrounding rule (never release an autoreleased object) is its
+opposite. Second, `copyFromBuffer:...toTexture:destinationSlice:destinationLevel:destinationOrigin:` is the one
+ABI shape row 1's spike does not cover: eleven arguments against eight argument registers, so three cross on
+the stack. Every argument CLASS in it is measured and only the spill is new. Row 14's copies use the same
+family and inherit both answers.
 
 ### 9.4 The ring policy inventory, third column
 

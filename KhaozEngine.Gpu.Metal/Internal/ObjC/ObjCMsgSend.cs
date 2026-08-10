@@ -265,5 +265,80 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         [SupportedOSPlatform("macos")]
         internal static partial void SendVoidBufferToBufferCopy(IntPtr receiver, IntPtr sel, IntPtr sourceBuffer,
             nuint sourceOffset, IntPtr destinationBuffer, nuint destinationOffset, nuint size);
+
+        // ---- The render-pass row's shapes -------------------------------------------------------------------
+        //
+        // One of the four is genuinely new (the four-double HFA), and it is the ONE shape in this whole file
+        // whose VALUE row 1's spike checked rather than only its acceptance. The other three are existing
+        // argument classes in new arrangements.
+
+        /// <summary>
+        /// A void message taking one <c>MTLClearColor</c>, which is
+        /// <c>-[MTLRenderPassColorAttachmentDescriptor setClearColor:]</c> and the one call M-A2's whole
+        /// per-attachment fix is expressed through.
+        /// <para>
+        /// FOUR DOUBLES IS EXACTLY THE arm64 HFA LIMIT, so this rides <c>d0</c> to <c>d3</c> and is the only
+        /// by-value composite in this backend that does. Row 1's spike measured it by clearing a target to
+        /// <c>(0.25, 0.5, 0.75, 1.0)</c> and reading <c>(191, 128, 64, 255)</c> back through a blit, which is the
+        /// only answer in the spike that can separate a correctly passed struct from one whose members landed in
+        /// the wrong registers and did not happen to fault (section 3.1).
+        /// </para>
+        /// </summary>
+        [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial void SendVoidClearColor(IntPtr receiver, IntPtr sel, MTLClearColor color);
+
+        /// <summary>
+        /// A void message taking one <c>double</c>, which is
+        /// <c>-[MTLRenderPassDepthAttachmentDescriptor setClearDepth:]</c>. Metal's depth clear is a
+        /// <c>double</c> where the seam's is a <c>float</c>, so the widening happens at the call site and is
+        /// exact.
+        /// <para>
+        /// THE SAME REGISTER FILE <see cref="SendVoidFloat"/> AND <see cref="SendVoidClearColor"/> USE, with one
+        /// member instead of one or four, so it needs no spike answer of its own beyond the value-checked one
+        /// those two already have.
+        /// </para>
+        /// </summary>
+        [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial void SendVoidDouble(IntPtr receiver, IntPtr sel, double a);
+
+        /// <summary>
+        /// A void message taking one <c>uint32_t</c>, which is
+        /// <c>-[MTLRenderPassStencilAttachmentDescriptor setClearStencil:]</c> and the only 32-bit integer
+        /// argument this backend sends.
+        /// <para>
+        /// DECLARED AT ITS REAL WIDTH FOR <see cref="SendVoidBool"/>'s REASON, not because 32 bits is awkward: a
+        /// caller that widened it would leave the upper half of the register undefined and a callee reading four
+        /// bytes would be right by luck. <c>clearStencil</c> is documented <c>uint32_t</c> and not
+        /// <c>NSUInteger</c>, so it is the one place in this file where those two differ.
+        /// </para>
+        /// </summary>
+        [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial void SendVoidUInt(IntPtr receiver, IntPtr sel, uint a);
+
+        /// <summary>
+        /// A void message taking a POINTER and an <c>NSUInteger</c>, which is
+        /// <c>-[MTLRenderCommandEncoder setViewports:count:]</c> and
+        /// <c>-[MTLRenderCommandEncoder setScissorRects:count:]</c> (M-A7). One prototype for both, because this
+        /// file is one prototype per SIGNATURE SHAPE and those two share theirs exactly.
+        /// <para>
+        /// <b>IT REMOVES AN ABI QUESTION RATHER THAN ADDING ONE, which is worth saying because the plural form
+        /// looks like the more exotic of the two.</b> The singular <c>setViewport:</c> passes six doubles BY
+        /// VALUE, which is one member past the HFA limit and therefore an indirect composite, and
+        /// <c>setScissorRect:</c> passes four <c>NSUInteger</c>s indirectly for the other reason. Through this
+        /// prototype both structs cross as an ARRAY ADDRESS: two plain register arguments, the class row 1's
+        /// spike used throughout, with the layout still exact because the driver reads through the pointer.
+        /// </para>
+        /// <para>
+        /// THE COUNT IS ALWAYS 1 (M-A7). The seam has no multi-viewport concept, so the plural form is taken to
+        /// retire the incumbent's <c>macOS_GPUFamily1_v3</c> feature-set read on the hot path rather than to
+        /// enable anything, and one code path is the whole of the decision.
+        /// </para>
+        /// </summary>
+        [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial void SendVoidPtrNUInt(IntPtr receiver, IntPtr sel, void* values, nuint count);
     }
 }

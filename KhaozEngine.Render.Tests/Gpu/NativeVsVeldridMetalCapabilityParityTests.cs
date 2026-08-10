@@ -281,6 +281,14 @@ namespace KhaozEngine.Tests.Gpu
             }
 
             using GpuDeviceContext native = GpuDeviceContext.CreateHeadless(GpuBackendKind.MetalNative);
+
+            // THE NATIVE SIDE IS THE NATIVE BACKEND, asserted rather than assumed from the kind that was asked
+            // for. A selection that quietly fell back to the incumbent would compare Veldrid against Veldrid and
+            // report zero differences for the one reason that means nothing, which is the failure a parity row
+            // cannot see from its own output.
+            Assert.Equal(GpuBackendKind.MetalNative, native.Backend);
+            Assert.IsType<MetalGpuDevice>(native.GpuDevice);
+
             GpuCapabilities fromVeldrid = incumbent.Capabilities;
             GpuCapabilities fromNative = native.Capabilities;
 
@@ -300,9 +308,14 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(fromNative.SupportsCompletionFences);
 
             // And the MSAA member is asserted as more than a match, because two devices both answering 1 would
-            // compare equal while meaning the walk had found nothing. Every Metal device the engine supports
-            // answers at least 4, and the golden that depends on it is baked at 4.
-            Assert.True(fromNative.MaxMsaaSampleCount >= 1);
+            // compare equal while meaning the walk had found nothing. FOUR rather than one, because one is the
+            // walk's own floor and asserting it is asserting nothing: the scene3d_hdr_msaa golden is baked at 4
+            // samples, so a Metal leg that answered less would clamp AntiAliasing.ResolveFor below the number the
+            // golden was baked under and change the image on both backends at once.
+            Assert.True(fromNative.MaxMsaaSampleCount >= 4,
+                $"the native Metal device reported {fromNative.MaxMsaaSampleCount} as its highest sample count, "
+                + "and every Metal device the engine supports answers at least 4. Below that the sample-count "
+                + "walk found nothing rather than the machine being unusual.");
             Assert.Equal(fromVeldrid.MaxMsaaSampleCount, fromNative.MaxMsaaSampleCount);
         }
 

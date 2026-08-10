@@ -74,8 +74,10 @@ namespace KhaozEngine.Tests.Gpu
         /// The capability read as the seam sees it, which row 16
         /// (https://github.com/APKiwiOrg/KhaozEngine/issues/582) completed. The constants are asserted here
         /// because this is the row that owns "a real device came up and answered", and
-        /// <c>MaxMsaaSampleCount</c> is asserted only as a POSITIVE POWER OF TWO, because its exact value is a
-        /// property of the machine. What pins it against the incumbent's own number is
+        /// <c>MaxMsaaSampleCount</c> is asserted as a POWER OF TWO OF AT LEAST FOUR, because its exact value above
+        /// that is a property of the machine. Four is the floor rather than the walk's own 1: an Apple M2 Max
+        /// reports 4, every Metal device the engine supports answers at least 4, and a 1 here means the walk found
+        /// nothing rather than that the machine is unusual. What pins the number against the incumbent's own is
         /// <c>NativeVsVeldridMetalCapabilityParityTests</c>, which reads both devices in one process.
         /// </summary>
         [GpuFact]
@@ -98,8 +100,12 @@ namespace KhaozEngine.Tests.Gpu
 
             int msaa = capabilities.MaxMsaaSampleCount;
             _output.WriteLine($"MaxMsaaSampleCount {msaa}");
-            Assert.True(msaa >= 1 && (msaa & (msaa - 1)) == 0,
+            Assert.True((msaa & (msaa - 1)) == 0,
                 $"the sample-count walk asks only powers of two, so {msaa} could not have come out of it.");
+            Assert.True(msaa >= 4,
+                $"this device reported {msaa} as its highest sample count. An Apple M2 Max reports 4 and every "
+                + "Metal device the engine supports answers at least 4, so a lower number is the walk having "
+                + "found nothing rather than a machine fact, and the scene3d_hdr_msaa golden is baked at 4.");
         }
 
         /// <summary>

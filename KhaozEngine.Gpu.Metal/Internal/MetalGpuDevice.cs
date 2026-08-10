@@ -174,8 +174,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
             => new(_commandBuffers, _uncommitted, new MetalEncoderSink(), this, _rings,
                 // A FRESH ARENA PER LIST (M-M8), not one shared by the device. Two lists recording on two threads
                 // must not sub-allocate from the same blocks, and the recycling proof is per list too: each slot
-                // remembers the timeline value THAT list's submission took. The list disposes it.
-                new MetalStagingArena(_staging, _framesInFlight), new MetalBlitApi(), _liveness);
+                // remembers the timeline value THAT list's submission took. The list disposes it. It takes the
+                // liveness token because its block creation is a native allocation on this device (M-F6).
+                new MetalStagingArena(_staging, _framesInFlight, liveness: _liveness), new MetalBlitApi(),
+                _liveness);
 
         /// <inheritdoc/>
         /// <remarks>M-G2's <c>softwareAdapter</c> is ALWAYS false with confidence rather than null, because Apple

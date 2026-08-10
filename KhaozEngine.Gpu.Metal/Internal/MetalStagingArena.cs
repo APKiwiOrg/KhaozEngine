@@ -89,6 +89,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         internal const ulong CopyAlignment = 4;
 
         readonly IMetalStagingSource _source;
+        readonly IMetalDeviceLiveness _liveness;
         readonly ulong _blockBytes;
         readonly ulong _retentionBytes;
 
@@ -117,8 +118,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <param name="retentionBytes">How many bytes of free blocks to keep across a recycle. Defaults to
         /// <see cref="DefaultRetentionBytes"/>. Zero means keep nothing, which is the incumbent's shape and is
         /// constructible so a test can pin the difference.</param>
+        /// <param name="liveness">The creating device's liveness token (M-F6), or null while a caller does not
+        /// have one, in which case the device is treated as alive forever. Defaulting to ALIVE is the safe
+        /// direction for the same reason <see cref="MetalLiveDevice"/> gives: defaulting to dead would make every
+        /// lease a silent no-op and an upload would simply not happen.</param>
         internal MetalStagingArena(IMetalStagingSource source, int framesInFlight,
-            ulong blockBytes = DefaultBlockBytes, ulong retentionBytes = DefaultRetentionBytes)
+            ulong blockBytes = DefaultBlockBytes, ulong retentionBytes = DefaultRetentionBytes,
+            IMetalDeviceLiveness? liveness = null)
         {
             ArgumentNullException.ThrowIfNull(source);
             ArgumentOutOfRangeException.ThrowIfZero(blockBytes);
@@ -132,6 +138,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             }
 
             _source = source;
+            _liveness = liveness ?? MetalLiveDevice.Instance;
             _blockBytes = blockBytes;
             _retentionBytes = retentionBytes;
 
@@ -183,6 +190,17 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// small uploads costs no native call at all after the first. A request that fits in no open block takes
         /// the smallest pooled block that fits, and only a request that fits in neither creates one.
         /// </para>
+        /// <para>
+        /// A DEAD DEVICE LEASES NOTHING AND THE CALLER RECORDS NOTHING (M-F6), which is the liveness guard this
+        /// path owes. The creation branch below ends in <c>-newBufferWithLength:options:</c> on the device that
+        /// owns this arena, and it was the one native-resource path in the backend with no liveness check in front
+        /// of it while every wrapper's own native call carries one. What comes back is an invalid
+        /// <see cref="MetalStagingLease"/> rather than an exception, so a record-time staged upload on a device
+        /// that has gone becomes the same silent no-op every other write on a dead device already is: the seam has
+        /// no recovery path, and the frame loop above it is not written to handle one. The refusals above still
+        /// run first, because a zero or misaligned size is the caller's mistake whether or not the device is
+        /// alive.
+        /// </para>
         /// </summary>
         /// <param name="sizeBytes">The payload size, ALREADY rounded up to <see cref="CopyAlignment"/> by the
         /// caller (<see cref="AlignedCopyBytes"/>). Zero is refused, because a copy of nothing is a command
@@ -205,6 +223,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     + " bytes, which is what the copy selector requires of its size on macOS. Round the payload "
                     + "with MetalStagingArena.AlignedCopyBytes before asking for it.");
             }
+
+            if (_liveness.IsDead) return default;
 
             List<OpenBlock> open = _open[_slot];
 
@@ -292,6 +312,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// teardown (M-H3). An <c>MTLCommandBuffer</c> retains every resource its encoders reference until it
         /// completes, so releasing a block a submitted blit still names drops this arena's reference and nothing
         /// else. That is the same reason there is no retire list anywhere in this backend.
+        /// </para>
+        /// <para>
+        /// AND IT DESTROYS UNCONDITIONALLY, WHERE EVERY WRAPPER IN THIS BACKEND SKIPS ITS RELEASE ON A DEAD
+        /// DEVICE (M-F6). The divergence is deliberate and it is <see cref="MetalTimeline.Dispose"/>'s argument
+        /// applied to blocks. That rule exists because <c>vkDestroyDevice</c> destroys every object made from the
+        /// device, so a destroy after it aborts the process through the loader, and the Metal wrappers inherit the
+        /// SHAPE of it. A staging block is an ordinary reference-counted Objective-C object with no such rule in
+        /// front of it, so skipping the release here would simply leak every block this arena ever opened, on
+        /// exactly the teardown path that matters. The liveness token is read where it prevents a CALL INTO a
+        /// device that has gone (<see cref="Take"/>), and not here, where it would only prevent a release.
         /// </para>
         /// </summary>
         public void Dispose()

@@ -83,10 +83,11 @@ namespace KhaozEngine.Tests.Gpu
             return new MetalUniformRing(Rings, pin.AddrOfPinnedObject(), sizeInBytes);
         }
 
-        /// <summary>A real arena on this harness's fake source, cut to the same depth.</summary>
+        /// <summary>A real arena on this harness's fake source, cut to the same depth and carrying this harness's
+        /// liveness token, which is what the device hands its own arenas so a dead device leases nothing.</summary>
         internal MetalStagingArena NewArena(ulong blockBytes = MetalStagingArena.DefaultBlockBytes,
             ulong retentionBytes = MetalStagingArena.DefaultRetentionBytes)
-            => new(Staging, FramesInFlight, blockBytes, retentionBytes);
+            => new(Staging, FramesInFlight, blockBytes, retentionBytes, Liveness);
 
         /// <summary>
         /// A real command list wired to this harness. <paramref name="owner"/> is the opaque token the submit

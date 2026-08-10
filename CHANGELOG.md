@@ -676,6 +676,17 @@ inherited proof: there the list's command-pool ring has already waited for the s
 there is no pool to inherit from. The arena never waits, so a slot still in flight keeps its blocks and gets
 them back at a later visit, which keeps the stall count single-sourced.
 
+**The arena's dead-device posture, at both ends, because the two ends differ and only one of them is
+obvious.** Its block creation ends in `-newBufferWithLength:options:` on the device that owns it, so it takes
+the liveness token and a lease on a dead device leases nothing, creates nothing and makes the record-time staged
+write the same silent no-op every other write on a dead device already is. Its DISPOSAL, by contrast, destroys
+unconditionally where every wrapper in this backend skips its release on a dead device: that rule is inherited
+from a Vulkan one about `vkDestroyDevice` destroying every object made from the device, and a staging block is
+an ordinary reference-counted Objective-C object with no such rule in front of it, so skipping the release would
+simply leak every block the arena ever opened on exactly the teardown path that matters. The divergence now
+reads as chosen at the site, which is the same argument `MetalTimeline.Dispose` already carries for the shared
+event.
+
 **Two refusals a consumer can reach.** A buffer declaring both `UniformBuffer` and a structured usage already
 threw at creation, and this is the row that makes the reason real: the ring rebases every bind of it. And a
 record-time upload to a NON-uniform buffer needs a four-byte-aligned destination offset, because macOS requires

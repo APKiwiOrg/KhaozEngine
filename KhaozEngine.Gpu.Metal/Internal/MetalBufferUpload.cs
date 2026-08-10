@@ -98,6 +98,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
             if (destination == IntPtr.Zero) return;
 
             MetalStagingLease lease = arena.Take(copyBytes);
+
+            // AN INVALID LEASE IS A DEAD DEVICE, in the same shape the nil encoder below is handled: the arena
+            // refuses to reach -newBufferWithLength:options: on a device that has gone, and the record-time write
+            // becomes the no-op every other write on a dead device already is rather than a throw from inside a
+            // frame that is already failing.
+            if (!lease.IsValid) return;
+
             Span<byte> staged = lease.Span;
             data.CopyTo(staged);
 

@@ -40,7 +40,22 @@ namespace KhaozEngine.Gpu.Metal.Internal
     internal readonly record struct MetalStagingLease(
         IntPtr Buffer, ulong OffsetBytes, IntPtr Mapped, ulong SizeBytes)
     {
-        /// <summary>The lease's bytes, for the caller to copy its payload into.</summary>
+        /// <summary>
+        /// Whether this lease names memory. False for the one lease the arena hands back without leasing
+        /// anything, which is what a request on a DEAD device answers (<see cref="MetalStagingArena.Take"/>).
+        /// <para>
+        /// A CALLER MUST ASK BEFORE TOUCHING <see cref="Span"/>, because that span is built over
+        /// <see cref="Mapped"/> and an invalid lease's is null. This is the same question
+        /// <see cref="MetalStagingBlock.IsValid"/> asks one level down, and it is a question rather than a throw
+        /// for the reason the whole dead-device posture is: a device that has gone makes every later call a
+        /// no-op rather than an exception, because the seam has no recovery path and the frame loop above it is
+        /// not written to handle one.
+        /// </para>
+        /// </summary>
+        internal bool IsValid => Buffer != IntPtr.Zero && Mapped != IntPtr.Zero && SizeBytes > 0;
+
+        /// <summary>The lease's bytes, for the caller to copy its payload into. Only on a lease that
+        /// <see cref="IsValid"/>.</summary>
         internal unsafe Span<byte> Span => new((byte*)Mapped, (int)SizeBytes);
     }
 }

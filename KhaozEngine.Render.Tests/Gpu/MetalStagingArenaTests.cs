@@ -22,6 +22,68 @@ namespace KhaozEngine.Tests.Gpu
         /// <inheritdoc/>
         public void Dispose() => _harness.Dispose();
 
+        /// <summary>
+        /// A DEAD DEVICE LEASES NOTHING AND ALLOCATES NOTHING (M-F6). Block creation ends in
+        /// <c>-newBufferWithLength:options:</c> on the device that owns this arena, and it was the one
+        /// native-resource path in this backend with no liveness check in front of it. What comes back is an
+        /// invalid lease rather than an exception, because every other write on a dead device is a silent no-op:
+        /// the seam has no recovery path and the frame loop above it is not written to handle one.
+        /// </summary>
+        [Fact]
+        public void ADeadDeviceLeasesNothingAndCreatesNoBlock()
+        {
+            using MetalStagingArena arena = _harness.NewArena();
+
+            // One live lease first, so the assertion below is about the flip rather than about an arena that
+            // never worked, and so there is an OPEN block a dead request could still have bumped into.
+            Assert.True(arena.Take(128).IsValid);
+
+            _harness.Liveness.MarkDead();
+
+            MetalStagingLease afterDeath = arena.Take(128);
+
+            Assert.False(afterDeath.IsValid);
+            Assert.Equal(IntPtr.Zero, afterDeath.Mapped);
+            Assert.Equal(1, arena.BlocksCreated);
+            Assert.Single(_harness.Staging.Created);
+        }
+
+        /// <summary>AND THE REFUSALS STILL RUN FIRST on a dead device, because a zero or misaligned size is the
+        /// caller's mistake either way and a no-op there would hide it.</summary>
+        [Fact]
+        public void ADeadDeviceStillRefusesAMisalignedOrZeroLease()
+        {
+            using MetalStagingArena arena = _harness.NewArena();
+            _harness.Liveness.MarkDead();
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => arena.Take(0));
+            Assert.Throws<ArgumentOutOfRangeException>(() => arena.Take(6));
+        }
+
+        /// <summary>
+        /// AND THE RECORD-TIME STAGED WRITE BECOMES A NO-OP THROUGH IT, which is the caller's half of the same
+        /// guard: no encoder opened, no copy emitted, nothing thrown. The ring path is not affected, because a
+        /// uniform write is a memcpy into memory the device already handed out and takes no arena at all.
+        /// </summary>
+        [Fact]
+        public void ARecordTimeStagedWriteOnADeadDeviceRecordsNothing()
+        {
+            using MetalStagingArena arena = _harness.NewArena();
+            var calls = new FakeMetalEncoderCalls();
+            var encoders = new MetalEncoderScope(new FakeMetalEncoderSink(calls));
+            encoders.BeginRecording(new IntPtr(0x100));
+
+            _harness.Liveness.MarkDead();
+
+            MetalBufferUpload.Record(ring: null, 0, new IntPtr(0xDEAD), 1024, 0, new byte[64], encoders, arena,
+                _harness.Blit);
+
+            Assert.Equal(0, calls.EncoderBoundaries);
+            Assert.Equal(MetalEncoderKind.None, encoders.Open);
+            Assert.Empty(_harness.Blit.Copies);
+            Assert.Equal(0, arena.BlocksCreated);
+        }
+
         [Fact]
         public void ARunOfSmallUploadsSharesOneBlock()
         {

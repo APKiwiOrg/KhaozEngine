@@ -564,56 +564,83 @@ namespace KhaozEngine.Tests.Gpu
             first.Unmap(staging);
         }
 
-        /// <summary>The members other rows own still name their row, now that the factory itself is live: a
-        /// reader who hits one needs to know whether the backend is unfinished or their machine is wrong. The
-        /// probe walks forward one row at a time as each lands, which is what stops the ledger from rotting: rows
-        /// 7, 9 and 10 each moved it, and it fails the day a member starts working and nobody updated the
-        /// message.</summary>
+        /// <summary>
+        /// EVERY MEMBER OF THIS FACTORY IS LIVE, which is what rows 11 and 12 landing together made true and
+        /// what this row asserts in place of the ledger it used to walk.
+        ///
+        /// <para><b>IT WAS A not-yet PROBE AND IT IS NOW A liveness PROBE, because the thing it probed stopped
+        /// existing.</b> Through rows 7, 9, 10, 11 and 12 this test walked forward one member at a time,
+        /// asserting that whatever still refused named its row and named every landed row as live. Row 12 filled
+        /// the last refusing member, so <c>MetalResourceFactory.NotBuiltYet</c> and both of its row constants
+        /// were retired with it: there is no refusal message left on this factory to assert the shape of.</para>
+        ///
+        /// <para><b>SO IT DISCRIMINATES ON THE REGRESSION INSTEAD, and that is the whole point of keeping it.</b>
+        /// Each of the twelve members is either CREATED or driven into the named refusal its live implementation
+        /// really has, and every message this row collects is checked for the not-yet wording. A member that
+        /// regressed to a not-built throw would still throw, would still be an exception this row could catch,
+        /// and a test that only asserted "it threw something" would pass. This one fails.</para>
+        /// </summary>
         [GpuFact]
-        public void TheFactorysUnbuiltMembers_NameTheirRows()
+        public void EveryFactoryMember_IsLive()
         {
             if (!Available()) return;
 
             using IGpuDevice device = CreateHeadless();
             IGpuResourceFactory factory = device.Factory;
 
-            // LIVE as of row 7, and named here rather than deleted for the reason the device's own ledger row
-            // gives: a member silently dropped from the list is a member nothing checks in either direction.
+            // ROW 6's FOUR PLAIN RESOURCES, created rather than probed. There is no refusal to read off a member
+            // that works on a valid description, so the creation IS the assertion.
+            using (IGpuBuffer buffer = factory.CreateBuffer(
+                new GpuBufferDescription(64, GpuBufferUsage.VertexBuffer))) Assert.NotNull(buffer);
+
+            using IGpuTexture colour = factory.CreateTexture(GpuTextureDescription.Texture2D(
+                16, 16, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget));
+
+            using (IGpuSampler sampler = factory.CreateSampler(GpuSamplerDescription.Linear))
+                Assert.NotNull(sampler);
+
+            using (IGpuFence fence = factory.CreateFence()) Assert.NotNull(fence);
+
+            // ROW 7's LIST, named here rather than dropped for the reason the device's own ledger row gives: a
+            // member silently removed from the list is a member nothing checks in either direction.
             using (IGpuCommandList list = factory.CreateCommandList()) Assert.NotNull(list);
 
-            // AND SHADERS ARE LIVE AS OF ROW 9, so what replaces their refusal is the one they actually have: an
-            // empty source now fails in the FRONT END, where an empty string is not GLSL, rather than at an
-            // unbuilt path. The two read very differently, which is the point of asserting the new one.
-            Assert.Contains("GLSL to SPIR-V failed", Refusal(() => factory.CreateShadersFromSpirv("", "")),
-                StringComparison.Ordinal);
+            // ROW 10's LAYOUT AND SET, both of which touch nothing native. A layout with no elements is legal and
+            // so is a set built over it, so both are creations too.
+            using IGpuResourceLayout layout = factory.CreateResourceLayout(default);
+            using (IGpuResourceSet set = factory.CreateResourceSet(new GpuResourceSetDescription(layout)))
+                Assert.NotNull(set);
 
-            // AND LAYOUTS AND SETS ARE LIVE AS OF ROW 10, so the probe moves off them onto a member that still
-            // refuses. What replaces the refusal is the one an empty layout description actually has, which is
-            // none at all: a layout with no elements is legal, and asserting that is what keeps this row honest
-            // about the member having really started working rather than having changed its message.
-            factory.CreateResourceLayout(default).Dispose();
+            // ROW 12's FRAMEBUFFER, created over the colour texture above and then driven into its own refusal.
+            using (IGpuFramebuffer fb = factory.CreateFramebuffer(null, colour)) Assert.NotNull(fb);
 
-            // AND BOTH PIPELINES ARE LIVE AS OF ROW 11, so the probe moves off them too. What replaces the
-            // refusal is the one an empty description actually has, which is a NAMED refusal about the missing
-            // shader set rather than an unbuilt path: a pipeline is created FROM a compiled program, so there is
-            // no default that could succeed. Asserting the new message is what keeps this row honest about the
-            // member having started working rather than having changed its wording.
-            Assert.Contains("was given no shader set", Refusal(() => factory.CreateGraphicsPipeline(default)),
-                StringComparison.Ordinal);
-            Assert.Contains("was given no compute shader",
-                Refusal(() => factory.CreateComputePipeline(default)), StringComparison.Ordinal);
+            // The four members whose refusals are worth NAMING, because each one reads nothing like an unbuilt
+            // path: an empty GLSL source fails in the front end, a pipeline with no program says so, and a
+            // framebuffer with no attachment at all has no render area to derive.
+            string[] refusals =
+            [
+                Refusal(() => factory.CreateShadersFromSpirv("", "")),
+                Refusal(() => factory.CreateComputeShaderFromSpirv("")),
+                Refusal(() => factory.CreateGraphicsPipeline(default)),
+                Refusal(() => factory.CreateComputePipeline(default)),
+                Refusal(() => factory.CreateFramebuffer(null)),
+            ];
 
-            // The framebuffer row is now the only member on this factory that still refuses, so it is what
-            // carries the message naming every landed row as live.
-            string framebuffer = Refusal(() => factory.CreateFramebuffer(null));
-            _output.WriteLine(framebuffer);
-            Assert.Contains("578", framebuffer, StringComparison.Ordinal);
-            Assert.Contains("Buffers, textures, samplers and fences ARE live", framebuffer,
-                StringComparison.Ordinal);
-            Assert.Contains("573", framebuffer, StringComparison.Ordinal);
-            Assert.Contains("575", framebuffer, StringComparison.Ordinal);
-            Assert.Contains("576", framebuffer, StringComparison.Ordinal);
-            Assert.Contains("577", framebuffer, StringComparison.Ordinal);
+            foreach (string refusal in refusals) _output.WriteLine(refusal);
+
+            Assert.Contains("GLSL to SPIR-V failed", refusals[0], StringComparison.Ordinal);
+            Assert.Contains("GLSL to SPIR-V failed", refusals[1], StringComparison.Ordinal);
+            Assert.Contains("was given no shader set", refusals[2], StringComparison.Ordinal);
+            Assert.Contains("was given no compute shader", refusals[3], StringComparison.Ordinal);
+            Assert.Contains("at least one attachment", refusals[4], StringComparison.Ordinal);
+
+            // AND THE DISCRIMINATING HALF. Every one of those is a LIVE refusal, so none of them may carry the
+            // not-yet wording, and neither may a member that regressed into one.
+            foreach (string refusal in refusals)
+            {
+                Assert.DoesNotContain("is not built yet", refusal, StringComparison.Ordinal);
+                Assert.DoesNotContain("goes through Veldrid", refusal, StringComparison.Ordinal);
+            }
         }
 
         static IGpuDevice CreateHeadless() => new MetalBackendProvider().CreateHeadless().Device;

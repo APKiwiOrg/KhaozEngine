@@ -128,10 +128,35 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// is a genuine framebuffer failure rather than a state error, which is why this returns rather than
         /// throwing.
         /// </para>
+        /// <para>
+        /// A NIL DESCRIPTOR IS A CALLER BUG AND IS REFUSED BY NAME, which is a different failure from the one
+        /// above and the reason the two do not share an arm. <c>renderCommandEncoderWithDescriptor:</c> takes a
+        /// NONNULL argument, so handing it nil is undefined behaviour rather than a refusal Metal reports: the
+        /// driver is entitled to anything, and the fake underneath a device-free test will obligingly hand back a
+        /// perfectly good encoder. The one legitimate handler of a descriptor Metal would not build is
+        /// <see cref="MetalRenderPassSchedule"/>, which returns instead of calling this at all, so a nil arriving
+        /// here means a NEW caller took the schedule's job without taking its nil arm. Checked in the ONE owner
+        /// of every transition rather than in each caller, for the reason the type remarks give.
+        /// </para>
         /// </summary>
-        /// <param name="descriptor">The <c>MTLRenderPassDescriptor</c> row 12 builds.</param>
+        /// <param name="descriptor">The <c>MTLRenderPassDescriptor</c> row 12 builds. Never
+        /// <see cref="IntPtr.Zero"/>.</param>
+        /// <exception cref="ArgumentException"><paramref name="descriptor"/> is <see cref="IntPtr.Zero"/>.
+        /// </exception>
         internal IntPtr EnsureRenderEncoder(IntPtr descriptor)
         {
+            if (descriptor == IntPtr.Zero)
+            {
+                throw new ArgumentException(
+                    "A native Metal render encoder was asked for with a nil MTLRenderPassDescriptor. "
+                    + "renderCommandEncoderWithDescriptor: takes a nonnull argument, so this is undefined "
+                    + "behaviour on a device rather than an error it reports, and a test fake will hand back a "
+                    + "perfectly good encoder for it. A descriptor Metal refused to build is handled by the pass "
+                    + "schedule, which returns without opening anything and leaves the pending clears owed: a "
+                    + "caller that builds its own descriptor owes that same arm before it gets here.",
+                    nameof(descriptor));
+            }
+
             if (_kind == MetalEncoderKind.Render) return _encoder;
 
             EnsureNoEncoder();

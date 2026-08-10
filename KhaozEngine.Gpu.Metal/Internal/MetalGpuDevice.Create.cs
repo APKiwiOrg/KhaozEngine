@@ -85,6 +85,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     log.Warn(MetalFramesInFlight.UnrecognizedWarning(unrecognizedFrames));
                 log.Info(MetalFramesInFlight.ActiveDescription(framesInFlight));
 
+                // M-A2's KNOB, RESOLVED HERE so the one reading every list under this device copies is taken
+                // before any list exists, and so a typo is NAMED. A misspelled KE_METAL_CLEAR silently selects
+                // the per-attachment fix, which is the one failure the gate-1 A/B cannot survive: the tester
+                // believes they captured the incumbent and captured the fix twice. Nothing is logged on a
+                // recognized value, including the default, for the reason MetalValidation gives.
+                MetalClearPolicy.Report(warning => log.Warn(warning));
+
                 // THE DEVICE'S ONE COMPLETION TIMELINE (M-F1), created before anything can submit. Row 5 built
                 // it and left the wiring to the first row with a submit path, which is row 7.
                 timeline = new MetalTimeline(new MetalSharedEvent(device.Handle), liveness);
@@ -100,7 +107,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
                 MetalGpuDevice created = new(device, queue, ReadCapabilities(selected.Facts), liveness, loss,
                     timeline, new MetalUncommittedBuffers(framesInFlight), new MetalSetupNative(device, queue),
-                    framesInFlight, new MetalStagingSource(device));
+                    framesInFlight, new MetalStagingSource(device),
+                    // M-N4's BUFFER-OFFSET ALIGNMENT, carried rather than re-read. The selection already refused
+                    // a device reporting 0 or a value M-M3's 256-byte stride is not a multiple of, so this is a
+                    // power of two no wider than the stride and the cast cannot lose anything.
+                    (uint)selected.Facts.BufferOffsetAlignment);
 
                 // THE SHARED SAMPLER PAIR, from MetalSharedSamplers and not from the engine's same-named
                 // GpuSamplerDescription statics. Both are WRAP on all three axes, and reading the engine statics

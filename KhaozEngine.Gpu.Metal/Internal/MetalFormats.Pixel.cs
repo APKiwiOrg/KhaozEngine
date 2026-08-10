@@ -58,16 +58,20 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <c>FormatHelpers.IsStencilFormat</c>: whether a depth format carries a STENCIL PLANE as well as a
         /// depth one.
         /// <para>
-        /// <b>IT DECIDES WHETHER A RENDER PIPELINE DESCRIPTOR NAMES A STENCIL ATTACHMENT AT ALL.</b> Metal splits
-        /// the two planes across <c>depthAttachmentPixelFormat</c> and <c>stencilAttachmentPixelFormat</c>, and
-        /// the incumbent writes the second only for a combined format, which is the question asked here. Naming a
-        /// stencil format the framebuffer's texture does not have makes the pipeline incompatible with it, which
-        /// Metal rejects at creation.
+        /// <b>IT DECIDES WHETHER A STENCIL ATTACHMENT IS NAMED AT ALL, and TWO descriptors ask it.</b> Metal
+        /// splits the two planes in both places, so both call sites write the second member only for a combined
+        /// format. The RENDER PASS descriptor (section 7.1) splits them across <c>depthAttachment</c> and
+        /// <c>stencilAttachment</c>, where naming the second over a depth-only texture is a validation error
+        /// under the debug layer M-T7 arms on every run. The RENDER PIPELINE descriptor splits them across
+        /// <c>depthAttachmentPixelFormat</c> and <c>stencilAttachmentPixelFormat</c>, where naming a stencil
+        /// format the framebuffer's texture does not have makes the pipeline incompatible with it, which Metal
+        /// rejects at creation. The incumbent asks this same question at both points, so this is reproduction
+        /// rather than a rule this backend invents.
         /// </para>
         /// <para>
         /// THE TWO COMBINED FORMATS ARE THE WHOLE ANSWER, and a colour format reaching here answers false rather
-        /// than throwing: the question is asked of a DEPTH attachment's format, and a pipeline with no depth
-        /// output never asks it.
+        /// than throwing: the question is asked of the DEPTH attachment's format, and neither a framebuffer with
+        /// no depth attachment nor a pipeline with no depth output ever asks it.
         /// </para>
         /// </summary>
         internal static bool IsStencilFormat(GpuPixelFormat format)

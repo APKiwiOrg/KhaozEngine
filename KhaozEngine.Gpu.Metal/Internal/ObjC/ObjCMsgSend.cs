@@ -291,5 +291,169 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
         [SupportedOSPlatform("macos")]
         internal static partial IntPtr SendPtrPtrOutPtr(IntPtr receiver, IntPtr sel, IntPtr a, out IntPtr error);
+
+        // ---- The render-pass row's shapes -------------------------------------------------------------------
+        //
+        // One of the four is genuinely new (the four-double HFA), and it is the ONE shape in this whole file
+        // whose VALUE row 1's spike checked rather than only its acceptance. The other three are existing
+        // argument classes in new arrangements.
+
+        /// <summary>
+        /// A void message taking one <c>MTLClearColor</c>, which is
+        /// <c>-[MTLRenderPassColorAttachmentDescriptor setClearColor:]</c> and the one call M-A2's whole
+        /// per-attachment fix is expressed through.
+        /// <para>
+        /// FOUR DOUBLES IS EXACTLY THE arm64 HFA LIMIT, so this rides <c>d0</c> to <c>d3</c> and is the only
+        /// by-value composite in this backend that does. Row 1's spike measured it by clearing a target to
+        /// <c>(0.25, 0.5, 0.75, 1.0)</c> and reading <c>(191, 128, 64, 255)</c> back through a blit, which is the
+        /// only answer in the spike that can separate a correctly passed struct from one whose members landed in
+        /// the wrong registers and did not happen to fault (section 3.1).
+        /// </para>
+        /// </summary>
+        [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial void SendVoidClearColor(IntPtr receiver, IntPtr sel, MTLClearColor color);
+
+        /// <summary>
+        /// A void message taking one <c>double</c>, which is
+        /// <c>-[MTLRenderPassDepthAttachmentDescriptor setClearDepth:]</c>. Metal's depth clear is a
+        /// <c>double</c> where the seam's is a <c>float</c>, so the widening happens at the call site and is
+        /// exact.
+        /// <para>
+        /// THE SAME REGISTER FILE <see cref="SendVoidFloat"/> AND <see cref="SendVoidClearColor"/> USE, with one
+        /// member instead of one or four, so it needs no spike answer of its own beyond the value-checked one
+        /// those two already have.
+        /// </para>
+        /// </summary>
+        [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial void SendVoidDouble(IntPtr receiver, IntPtr sel, double a);
+
+        /// <summary>
+        /// A void message taking one <c>uint32_t</c>, which is
+        /// <c>-[MTLRenderPassStencilAttachmentDescriptor setClearStencil:]</c> and the only 32-bit integer
+        /// argument this backend sends.
+        /// <para>
+        /// DECLARED AT ITS REAL WIDTH FOR <see cref="SendVoidBool"/>'s REASON, not because 32 bits is awkward: a
+        /// caller that widened it would leave the upper half of the register undefined and a callee reading four
+        /// bytes would be right by luck. <c>clearStencil</c> is documented <c>uint32_t</c> and not
+        /// <c>NSUInteger</c>, so it is the one place in this file where those two differ.
+        /// </para>
+        /// </summary>
+        [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial void SendVoidUInt(IntPtr receiver, IntPtr sel, uint a);
+
+        /// <summary>
+        /// A void message taking a POINTER and an <c>NSUInteger</c>, which is
+        /// <c>-[MTLRenderCommandEncoder setViewports:count:]</c> and
+        /// <c>-[MTLRenderCommandEncoder setScissorRects:count:]</c> (M-A7). One prototype for both, because this
+        /// file is one prototype per SIGNATURE SHAPE and those two share theirs exactly.
+        /// <para>
+        /// <b>IT REMOVES AN ABI QUESTION RATHER THAN ADDING ONE, which is worth saying because the plural form
+        /// looks like the more exotic of the two.</b> The singular <c>setViewport:</c> passes six doubles BY
+        /// VALUE, which is one member past the HFA limit and therefore an indirect composite, and
+        /// <c>setScissorRect:</c> passes four <c>NSUInteger</c>s indirectly for the other reason. Through this
+        /// prototype both structs cross as an ARRAY ADDRESS: two plain register arguments, the class row 1's
+        /// spike used throughout, with the layout still exact because the driver reads through the pointer.
+        /// </para>
+        /// <para>
+        /// THE COUNT IS ALWAYS 1 (M-A7). The seam has no multi-viewport concept, so the plural form is taken to
+        /// retire the incumbent's <c>macOS_GPUFamily1_v3</c> feature-set read on the hot path rather than to
+        /// enable anything, and one code path is the whole of the decision.
+        /// </para>
+        /// </summary>
+        [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial void SendVoidPtrNUInt(IntPtr receiver, IntPtr sel, void* values, nuint count);
+
+        /// <summary>
+        /// <c>-[MTLBlitCommandEncoder copyFromTexture:sourceSlice:sourceLevel:sourceOrigin:sourceSize:toBuffer:destinationOffset:destinationBytesPerRow:destinationBytesPerImage:]</c>,
+        /// the READBACK mirror of <see cref="SendVoidBufferToTextureCopy"/> and what turns row 12's clear claims
+        /// into a pixel read rather than a completed command buffer.
+        /// <para>
+        /// THIS IS THE ONE PROTOTYPE ROW 1's SPIKE RAN VERBATIM. It is the exact declaration
+        /// <c>MetalInteropSpike.Native.cs</c> named <c>MsgSendVoidBlitToBuffer</c> and used to close the by-value
+        /// struct round trip: two 24-byte integer composites interleaved with scalars on both sides, eleven
+        /// arguments against eight registers so the last three spill, and the value that came back was the
+        /// <c>(191, 128, 64, 255)</c> readback section 3.1 records. So its argument placement is measured to a
+        /// stronger standard than any other shape in this file.
+        /// </para>
+        /// </summary>
+        [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial void SendVoidTextureToBufferCopy(IntPtr receiver, IntPtr sel, IntPtr sourceTexture,
+            nuint sourceSlice, nuint sourceLevel, MTLOrigin sourceOrigin, MTLSize sourceSize,
+            IntPtr destinationBuffer, nuint destinationOffset, nuint destinationBytesPerRow,
+            nuint destinationBytesPerImage);
+
+        // ---- The bind flush's three shapes -------------------------------------------------------------------
+        //
+        // Two of the three carry an NSRange BY VALUE, which is a third arm64 argument class this file did not
+        // have: sixteen bytes of integers is exactly the boundary, so it rides TWO general-purpose registers
+        // rather than going indirectly the way MTLSize and MTLScissorRect do. Row 1's spike sent all three
+        // against a real device rather than reasoning about them, which is the standard this file holds a new
+        // class to. The third is two plain NSUIntegers and needs no answer of its own.
+
+        /// <summary>
+        /// The ARRAY BUFFER SETTER shape, which is <c>-setVertexBuffers:offsets:withRange:</c>,
+        /// <c>-setFragmentBuffers:offsets:withRange:</c> and the compute encoder's <c>-setBuffers:offsets:withRange:</c>.
+        /// ONE prototype for all three, because this file is one prototype per SIGNATURE SHAPE and the stage
+        /// lives in the selector rather than in the argument list.
+        /// <para>
+        /// M-R6's WHOLE POINT IS THIS PROTOTYPE. One call writes a contiguous run of the stage's buffer table,
+        /// where the incumbent emits one call per element per stage: that fan-out is the #418 defect arriving on
+        /// a second API, and the vendored fork does not declare a single array setter, so this is the shape the
+        /// design says had to be written by hand rather than copied.
+        /// </para>
+        /// <para>
+        /// BOTH ARRAYS ARE CALLER-OWNED AND ARE NOT READ AFTER THE CALL RETURNS. Metal copies
+        /// <paramref name="range"/><c>.Length</c> entries out of each during the call and the encoder holds the
+        /// bindings as its own state afterwards, which is what makes a <c>stackalloc</c> legal here for the same
+        /// reason it is on <see cref="SendVoidPtrNUInt"/>'s viewport array.
+        /// </para>
+        /// <para>
+        /// A NIL ENTRY IN <paramref name="objects"/> IS LEGAL AND UNBINDS THAT INDEX, which is what a disposed
+        /// resource degrades to rather than a dereference of a released pointer.
+        /// </para>
+        /// </summary>
+        [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial void SendVoidBuffersRange(IntPtr receiver, IntPtr sel, IntPtr* objects,
+            nuint* offsets, NSRange range);
+
+        /// <summary>
+        /// The ARRAY OBJECT SETTER shape with NO offsets array, which is
+        /// <c>-setVertexTextures:withRange:</c>, <c>-setFragmentTextures:withRange:</c>,
+        /// <c>-setVertexSamplerStates:withRange:</c>, <c>-setFragmentSamplerStates:withRange:</c> and the two
+        /// compute siblings. Textures and samplers carry no offset because neither index space has one: only the
+        /// buffer table binds a window into an allocation.
+        /// </summary>
+        [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial void SendVoidObjectsRange(IntPtr receiver, IntPtr sel, IntPtr* objects,
+            NSRange range);
+
+        /// <summary>
+        /// THE OFFSETS-ONLY REBIND (M-R7): a void message taking two <c>NSUInteger</c>s, which is
+        /// <c>-setVertexBufferOffset:atIndex:</c>, <c>-setFragmentBufferOffset:atIndex:</c> and the compute
+        /// encoder's <c>-setBufferOffset:atIndex:</c>.
+        /// <para>
+        /// NOTHING NEW ABOUT THE ABI and everything new about the cost. Two integer arguments are the class row
+        /// 1's spike used throughout, so this needs no answer of its own. What earns it a prototype rather than
+        /// a reuse of the array setter is that it writes an INTEGER into the encoder's command stream where
+        /// <c>setBuffers:</c> writes a whole argument-table entry, and the engine's hot path is the shadow pass
+        /// doing thousands of offsets-only rebinds of one slot per frame.
+        /// </para>
+        /// <para>
+        /// IT REQUIRES A BUFFER ALREADY BOUND AT THAT INDEX, which is a precondition rather than a hint: the
+        /// call adjusts an existing binding and has no buffer to adjust otherwise. The flush only reaches it for
+        /// a slot whose set is the one it already wrote into the table in this encoder epoch, which is that
+        /// precondition expressed as the arm's own guard.
+        /// </para>
+        /// </summary>
+        [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial void SendVoidNUIntNUInt(IntPtr receiver, IntPtr sel, nuint a, nuint b);
     }
 }

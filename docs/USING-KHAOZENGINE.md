@@ -8856,12 +8856,24 @@ KhaozEngineMetal.Register();   // unconditionally, on every OS
 honest state of it.** Registration, the machine probe and headless creation are real: a `MetalNative` device
 holds an `MTLDevice` and one `MTLCommandQueue`, answers `Backend`, part of `Capabilities`, `Diagnostics`, both
 `Submit` overloads, `WaitForIdle` and `Dispose`, records and submits a command list, creates real resources
-through `Factory` (buffers, textures, samplers and fences), exposes the shared `PointSampler` and
+through `Factory` (buffers, textures, samplers, fences and framebuffers), exposes the shared `PointSampler` and
 `LinearSampler` pair, takes the device-level `UpdateBuffer` and `UpdateTexture`, answers `Map` and `Unmap`
 for staging resources, COMPILES SHADERS through `CreateShadersFromSpirv` and
 `CreateComputeShaderFromSpirv`, creates the RESOURCE LAYOUTS and RESOURCE SETS a pipeline binds through, and
-builds GRAPHICS AND COMPUTE PIPELINES that a command list can bind. It throws from every member whose row has
-not landed with a message naming that row, so there is no framebuffer yet and nothing can be drawn.
+builds GRAPHICS AND COMPUTE PIPELINES. A recording can BIND either pipeline, BIND a framebuffer and clear it,
+with the clear landing on the attachment it names, and BIND RESOURCE SETS through all four `Set*ResourceSet`
+overloads. Every member of the resource FACTORY is now live. What still throws is the command list's draws,
+dispatches and transfers, and the swapchain, each with a message naming the row that builds it, so nothing can
+be drawn yet.
+
+**A resource-set bind RECORDS and the next draw emits it**, which is worth knowing only because of what it
+means for a per-draw dynamic offset. Re-binding the same set with the same offset costs nothing at all, so a
+renderer that binds its sets on every draw pays for the first one and nothing after it. Moving only the offset
+costs one `setBufferOffset:` per stage that actually reads the buffer, which is the cheapest rebind Metal has.
+And an element the emitted shader does not reference in a stage is NOT bound for that stage, which is the same
+"where the resource actually went" rule the shader section above describes, applied to visibility instead of to
+indices: `GpuResourceLayoutElement`'s `Stages` is what you declared and the emission is what the compiler did,
+and this backend binds on the second.
 
 **The shader path takes the same GLSL 450 every other backend takes**, so there is nothing to write differently
 for it: sources go in, an `MTLLibrary` and an `MTLFunction` per stage come out, and a compute shader reports the
@@ -8935,7 +8947,7 @@ falling back, and nothing selects it by default (`ProbeOS` still answers `Metal`
 indefinitely. Calling `Register()` today costs one dictionary entry and changes nothing about how your game
 boots.
 
-**Three environment variables steer it, and none is on by default.** `KE_METAL_DEVICE` picks which GPU: a
+**Four environment variables steer it, and none is on by default.** `KE_METAL_DEVICE` picks which GPU: a
 zero-based index into `MTLCopyAllDevices()`, a case-insensitive substring of a device name, or `discrete`,
 `integrated` or `low-power`. Unset, it takes `MTLCreateSystemDefaultDevice()`, which is the same device the
 incumbent Metal backend uses, so a capability comparison between the two is meaningful by construction and an
@@ -8995,6 +9007,18 @@ device-level `UpdateBuffer` on a uniform buffer BLOCKS at that depth. It never b
 copies the current segment and defers the segments still in flight, and at a depth of one there are no others,
 so an ungated copy would be a CPU write into the one segment the GPU may be reading. Correct but slow is the
 right trade at a depth that exists for measuring.
+
+**`KE_METAL_CLEAR=attachment0` puts a run back on the incumbent's clear behaviour, for one measurement.** This
+backend clears the colour attachment the caller NAMED. The Veldrid Metal backend writes every clear into
+`colorAttachments[0]`, so a framebuffer with more than one colour target clears only its first, and
+`ModelRenderer.BeginModelPass` reaches exactly that with `ModelFB`'s three attachments. That is the one
+deliberate rendering change this backend makes, so the old behaviour stays selectable for an A/B against the
+committed `metal` goldens. `attachment0`, `attachment-0` and `incumbent` all select it, case-insensitively.
+Anything else that is set and not understood WARNS at device creation, names the value verbatim and leaves the
+per-attachment clear, because a typo that silently selected the fix while you believed you had selected the
+incumbent would make the comparison report the same position twice. The reading is taken ONCE per process, so
+changing the variable mid-run does nothing. **This variable is removed at rollout gate 1** along with whichever
+branch loses, so do not build anything on it.
 
 **A Metal command-buffer failure is reported now, which it was not before.** Every command buffer's status and
 error are read when it finishes, in every configuration, and the first failure latches its

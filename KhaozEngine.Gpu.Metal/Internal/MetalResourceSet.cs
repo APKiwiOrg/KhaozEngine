@@ -52,6 +52,46 @@ namespace KhaozEngine.Gpu.Metal.Internal
     }
 
     /// <summary>
+    /// EVERYTHING A BIND NEEDS FROM A SET, AS PLAIN DATA, which is what a per-slot record in
+    /// <see cref="MetalBindRecords"/> holds instead of the set itself.
+    ///
+    /// <para><b>IDENTITY IS THE BINDINGS ARRAY, BY REFERENCE.</b> One <see cref="MetalResourceSet"/> builds
+    /// exactly one array at creation and never replaces it, so comparing arrays compares sets, exactly as the
+    /// Vulkan sibling compares <c>VkDescriptorSet</c> handles for the same reason. That is also what makes the
+    /// offsets-only arm safe: a slot whose recorded array IS the one already written into this encoder's
+    /// argument table needs its offsets moved and nothing else.</para>
+    ///
+    /// <para><b>IT IS A PROJECTION RATHER THAN THE OBJECT SO THE FLUSH IS DEVICE-FREE TESTABLE.</b> A
+    /// <see cref="MetalResourceSet"/> can only be built by resolving real <see cref="MetalBuffer"/>,
+    /// <see cref="MetalTexture"/> and <see cref="MetalSampler"/> wrappers, which need an <c>MTLDevice</c>. A
+    /// record holding this instead is driven by an ordinary <c>[Fact]</c> over
+    /// <see cref="MetalBoundResource"/>s built on any <see cref="IMetalBindable"/>, which is where the whole
+    /// schedule, the run cutting and the offset composition are actually checked.</para>
+    ///
+    /// <para><b>THE ARRAY IS HELD AND NEVER COPIED</b>, so a bind allocates nothing. Neither side mutates it: the
+    /// set writes it once at creation and a bind reads it.</para>
+    /// </summary>
+    /// <param name="Bindings">Every binding in DECLARATION order, which is binding order. Null means the slot
+    /// holds no set, which is the state clause 6's skip is about.</param>
+    /// <param name="HasDynamicElement">Whether any binding applies the caller's per-draw offset, computed once at
+    /// creation. What a non-zero dynamic offset is refused against: with no element to attach to, the offset
+    /// would be silently dropped and the draw would read the buffer's first slot.</param>
+    internal readonly record struct MetalBoundSet(MetalBoundResource[]? Bindings, bool HasDynamicElement)
+    {
+        /// <summary>Whether this record names a set at all. False for a slot never bound and for one bound to
+        /// null, which the flush treats identically because they are.</summary>
+        internal bool IsBound => Bindings is not null;
+
+        /// <summary>The bindings, empty rather than null when the slot holds no set, so a walk has one
+        /// shape.</summary>
+        internal ReadOnlySpan<MetalBoundResource> Resources => Bindings;
+
+        /// <summary>Whether two records name the same set, which is an array reference compare. See the class
+        /// note for why that is the right question.</summary>
+        internal bool SameSetAs(in MetalBoundSet other) => ReferenceEquals(Bindings, other.Bindings);
+    }
+
+    /// <summary>
     /// <see cref="IGpuResourceSet"/> ON THE NATIVE METAL BACKEND: the declared elements RESOLVED ONCE, at
     /// creation, into the handles and numbers a bind writes. Work-breakdown row 10
     /// (https://github.com/APKiwiOrg/KhaozEngine/issues/576).
@@ -134,8 +174,17 @@ namespace KhaozEngine.Gpu.Metal.Internal
             Layout = layout;
 
             _bindings = new MetalBoundResource[layout.ElementCount];
+            bool dynamic = false;
             for (int i = 0; i < _bindings.Length; i++)
+            {
                 _bindings[i] = Resolve(layout.ElementAt(i), resources[i], i);
+                dynamic |= _bindings[i].AppliesCallerOffset;
+            }
+
+            // COMPUTED ONCE, because a bind asks it and a bind happens thousands of times a frame against a set
+            // built once at load time across 68 shipped call sites. It is the only thing about this set a record
+            // needs that is not in the bindings array itself.
+            AsBound = new MetalBoundSet(_bindings, dynamic);
         }
 
         /// <inheritdoc/>
@@ -152,6 +201,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// this object knows.
         /// </summary>
         internal ReadOnlySpan<MetalBoundResource> Bindings => _bindings;
+
+        /// <summary>
+        /// THIS SET AS THE PLAIN DATA A PER-SLOT RECORD HOLDS (<see cref="MetalBoundSet"/>). What
+        /// <c>MetalCommandList.SetGraphicsResourceSet</c> hands <see cref="MetalBindRecords"/>, so nothing in the
+        /// recorder's field graph reaches a layout, a liveness token or this object at all.
+        /// </summary>
+        internal MetalBoundSet AsBound { get; }
 
         /// <summary>True once disposed. Nothing native is released, and the flag is what <see cref="Require"/>
         /// refuses on. See the class note.</summary>

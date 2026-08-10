@@ -98,6 +98,12 @@ namespace KhaozEngine.Tests.Gpu
             Assert.False(MetalRingStride.BindWindowFits(0, 256, 1024, 1024));
         }
 
+        /// <summary>
+        /// THE REFUSAL NAMES A LEVER THAT WORKS, which is pinned here because the first version named one that
+        /// cannot. "Widen the buffer" leaves <c>align(size, 256) - size</c> bytes of headroom, which is 0 to 255
+        /// and exactly 0 whenever the size is already aligned, so a caller who followed it would grow the buffer
+        /// and hit the same refusal. The window is the lever.
+        /// </summary>
         [Fact]
         public void AWindowThatLeavesItsSegmentIsRefusedByName()
         {
@@ -105,6 +111,9 @@ namespace KhaozEngine.Tests.Gpu
                 () => MetalRingStride.RequireBindWindowFits(0, 256, 1024, 1024));
 
             Assert.Contains("setBufferOffset: carries no length", thrown.Message, StringComparison.Ordinal);
+            Assert.Contains("GpuBufferRange window narrower than the buffer", thrown.Message,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain("Widen the buffer", thrown.Message, StringComparison.Ordinal);
         }
 
         /// <summary>

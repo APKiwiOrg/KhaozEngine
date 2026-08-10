@@ -369,6 +369,23 @@ namespace KhaozEngine.Tests.Gpu
                 StringComparison.Ordinal);
         }
 
+        /// <summary>
+        /// AND A NULL RESOURCE IS REFUSED BY THE CALLER'S OWN PARAMETER NAME. The wrong-backend arm cannot
+        /// answer this one: <c>resource is not T</c> passes for null and the message it builds reads
+        /// <c>resource.GetType()</c>, so a null argument used to come back as a <see cref="NullReferenceException"/>
+        /// thrown from inside the refusal whose whole job is to name the problem. An entry point taking a params
+        /// array of seam resources puts a null one call away.
+        /// </summary>
+        [Fact]
+        public void ANullResource_IsRefusedByTheCallersParameterName()
+        {
+            ArgumentNullException thrown = Assert.Throws<ArgumentNullException>(
+                () => MetalResourceOwnership.Require<OwnedResource>(null!, new FakeMetalDeviceLiveness(),
+                    "colour"));
+
+            Assert.Equal("colour", thrown.ParamName);
+        }
+
         // A resource that knows its owner and nothing else. The real wrappers cannot be built without a device,
         // and what is under test here is the ownership rule rather than any of them.
         sealed class OwnedResource(IMetalDeviceLiveness owner) : IMetalOwnedResource

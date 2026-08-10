@@ -50,6 +50,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         readonly IMetalCommandBufferSource _buffers;
         readonly MetalUncommittedBuffers _uncommitted;
         readonly MetalEncoderScope _encoders;
+        readonly MetalRenderPassSchedule _passes;
         readonly MetalRingAllocator _rings;
         readonly MetalStagingArena _arena;
         readonly IMetalBlitApi _blit;
@@ -81,6 +82,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// asserted over.</param>
         /// <param name="sink">The budget seam every encoder boundary emits through
         /// (<see cref="IMetalEncoderSink"/>).</param>
+        /// <param name="render">The UNCOUNTED render seam: the pass descriptor and the two encoder-scoped
+        /// setters (<see cref="IMetalRenderApi"/>). Separate from <paramref name="sink"/> because nothing on it
+        /// scales with draw count, which is the line M-T2's budget is drawn along.</param>
+        /// <param name="clearMode">M-A2's position, captured once per list so a recording cannot straddle two
+        /// policies. The device passes <see cref="MetalClearPolicy.Current"/> and a test passes a literal.</param>
         /// <param name="owner">The device that created this list, held as an opaque token and compared by
         /// REFERENCE at the submit. See <see cref="Owner"/>.</param>
         /// <param name="rings">The device's ONE ring allocator (M-M3). <see cref="Begin"/> is this backend's
@@ -95,9 +101,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// created, in row 6's shape rather than a third mechanism. It is deliberately NOT what
         /// <see cref="Owner"/> is: a list is refused at the submit by the device INSTANCE, because that is the
         /// object whose submit lock orders the queue, and the two questions are different.</param>
+        /// <param name="bufferOffsetAlignment">The DEVICE's own reported buffer-offset alignment
+        /// (<c>MetalDeviceFacts.BufferOffsetAlignment</c>), which every composed bind offset has to be a multiple
+        /// of. Carried down to both <see cref="MetalBindRecords"/> arms rather than read from a constant, because
+        /// M-M3's 256-byte ring stride is the SPACING of the segments and not what the driver requires of an
+        /// offset. A test passes a fixed value, which is what keeps the check device-free.</param>
         internal MetalCommandList(IMetalCommandBufferSource buffers, MetalUncommittedBuffers uncommitted,
             IMetalEncoderSink sink, object owner, MetalRingAllocator rings, MetalStagingArena arena,
-            IMetalBlitApi blit, IMetalDeviceLiveness liveness)
+            IMetalBlitApi blit, IMetalDeviceLiveness liveness, IMetalRenderApi render,
+            uint bufferOffsetAlignment, MetalClearMode clearMode = MetalClearMode.PerAttachment)
         {
             ArgumentNullException.ThrowIfNull(buffers);
             ArgumentNullException.ThrowIfNull(uncommitted);
@@ -107,15 +119,22 @@ namespace KhaozEngine.Gpu.Metal.Internal
             ArgumentNullException.ThrowIfNull(arena);
             ArgumentNullException.ThrowIfNull(blit);
             ArgumentNullException.ThrowIfNull(liveness);
+            ArgumentNullException.ThrowIfNull(render);
 
             _buffers = buffers;
             _uncommitted = uncommitted;
             _encoders = new MetalEncoderScope(sink);
+            _passes = new MetalRenderPassSchedule(_encoders, render, clearMode);
             _owner = owner;
             _rings = rings;
             _arena = arena;
             _blit = blit;
             _liveness = liveness;
+
+            // The two bind arms, which cannot be field initialisers because they need the device's alignment.
+            // MetalCommandList.Binds.cs declares them.
+            _graphicsBinds = MetalBindRecords.ForGraphics(bufferOffsetAlignment);
+            _computeBinds = MetalBindRecords.ForCompute(bufferOffsetAlignment);
         }
 
         /// <summary>
@@ -257,12 +276,22 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _arena.BeginSlot(_segment, _rings.CompletedValue);
 
             // THE RECORDER STATE RESET GOES HERE, immediately after the acquisition and before the recording flag
-            // flips. A reset added anywhere else is a reset that a re-Begun list can be observed without. That is
-            // the encoder scope, which bumps its epoch so no record from the discarded recording can read as
-            // valid (M-R4), and the bound-pipeline record, which row 11 added here. Rows 12 to 14 add theirs to
-            // this ONE place: the bound framebuffer, both dirty arrays, the pending-clear array, the
-            // vertex-stream records, the index-buffer record, and the viewport and scissor marks.
+            // flips. A reset added anywhere else is a reset that a re-Begun list can be observed without. Today
+            // that is the encoder scope, which bumps its epoch so no record from the discarded recording can read
+            // as valid (M-R4), the pass schedule, which drops the bound framebuffer, the pending clears, the
+            // scissor-test gate and the viewport and scissor stamps, row 13's three record sets, which drop every
+            // recorded slot, the adopted index table and every vertex stream, and row 11's bound-pipeline record,
+            // which forgets both pipelines. Row 14 adds its index-buffer record to this ONE place.
+            //
+            // THE SCOPE GOES FIRST, because the schedule's stamps are compared against the scope's epoch and the
+            // BeginRecording bump is what makes every one of them stale. Clearing them after that bump is belt
+            // and braces rather than the mechanism, which is deliberate: the stamps carry the answer for the
+            // ordinary encoder boundary as well, and only one of the two paths can be tested through a Begin.
             _encoders.BeginRecording(buffer);
+            _passes.Reset();
+            _graphicsBinds.Reset();
+            _computeBinds.Reset();
+            _streams.Reset();
 
             // BOTH PIPELINES FORGOTTEN. The epoch bump above already invalidates the STATE BLOCK's stamp, so this
             // is specifically about which pipeline is bound: that is recorder state and survives an encoder
@@ -283,12 +312,17 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <c>-endEncoding</c> and no more.
         /// </para>
         /// <para>
-        /// THE CLEAR-ONLY FLUSH IS ROW 12's HALF OF THIS (M-A3): a framebuffer plus clears plus an <c>End</c>
-        /// with no draw must still CLEAR, which the incumbent forces at two sites and which a golden depends on.
-        /// It cannot be written here yet because there is no pending-clear array until row 12
-        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/578) builds one, and
-        /// <see cref="MetalEncoderScope.EnsureNoEncoder"/> already returns which kind it ended, which is what
-        /// that row reads instead of adding a second flag.
+        /// AND THE CLEAR-ONLY FLUSH COMES FIRST (M-A3), which is the SECOND of the incumbent's two forcing sites
+        /// (the other is a framebuffer change). A framebuffer plus clears plus an <c>End</c> with no draw must
+        /// still CLEAR, and a golden depends on it. <see cref="MetalRenderPassSchedule.EndPass"/> is the one
+        /// helper that decides it: a begin CONSUMES the pending array, so a pending clear still sitting there is
+        /// itself the proof that no draw came, and no second flag has to be kept in step.
+        /// </para>
+        /// <para>
+        /// THE UNCONDITIONAL <c>EnsureNoEncoder</c> STAYS BEHIND IT rather than being replaced by it, because the
+        /// two answer different questions. The flush closes a RENDER pass. What must not survive an <c>End</c> is
+        /// an encoder of ANY kind, including the blit encoder a record-time upload left open, and that is the
+        /// native obligation a committable command buffer has.
         /// </para>
         /// <para>
         /// AN <c>End</c> WITHOUT A <c>Begin</c> IS REFUSED, including a second <c>End</c> on an already sealed
@@ -307,6 +341,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     : "End was called on a native Metal command list that is not recording. Call Begin first.");
             }
 
+            _passes.EndPass();
             _encoders.EnsureNoEncoder();
 
             _recording = false;

@@ -1,5 +1,6 @@
 using System;
 using KhaozEngine.Gpu.Metal.Internal;
+using KhaozEngine.Primitives;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
@@ -375,30 +376,59 @@ namespace KhaozEngine.Tests.Gpu
             using MetalStagingArena arena = _harness.NewArena();
             FakeMetalBlitApi blit = _harness.Blit;
             FakeMetalDeviceLiveness liveness = _harness.Liveness;
+            FakeMetalRenderApi render = new(new FakeMetalRenderCalls());
             object owner = new();
 
+            const uint Alignment = MetalBindProgram.DeviceOffsetAlignment;
+
             Assert.Throws<ArgumentNullException>(
-                () => new MetalCommandList(null!, uncommitted, sink, owner, rings, arena, blit, liveness));
+                () => new MetalCommandList(null!, uncommitted, sink, owner, rings, arena, blit, liveness, render,
+                    Alignment));
             Assert.Throws<ArgumentNullException>(
-                () => new MetalCommandList(buffers, null!, sink, owner, rings, arena, blit, liveness));
+                () => new MetalCommandList(buffers, null!, sink, owner, rings, arena, blit, liveness, render,
+                    Alignment));
             Assert.Throws<ArgumentNullException>(
-                () => new MetalCommandList(buffers, uncommitted, null!, owner, rings, arena, blit, liveness));
+                () => new MetalCommandList(buffers, uncommitted, null!, owner, rings, arena, blit, liveness,
+                    render, Alignment));
             Assert.Throws<ArgumentNullException>(
-                () => new MetalCommandList(buffers, uncommitted, sink, null!, rings, arena, blit, liveness));
+                () => new MetalCommandList(buffers, uncommitted, sink, null!, rings, arena, blit, liveness,
+                    render, Alignment));
             Assert.Throws<ArgumentNullException>(
-                () => new MetalCommandList(buffers, uncommitted, sink, owner, null!, arena, blit, liveness));
+                () => new MetalCommandList(buffers, uncommitted, sink, owner, null!, arena, blit, liveness,
+                    render, Alignment));
             Assert.Throws<ArgumentNullException>(
-                () => new MetalCommandList(buffers, uncommitted, sink, owner, rings, null!, blit, liveness));
+                () => new MetalCommandList(buffers, uncommitted, sink, owner, rings, null!, blit, liveness,
+                    render, Alignment));
             Assert.Throws<ArgumentNullException>(
-                () => new MetalCommandList(buffers, uncommitted, sink, owner, rings, arena, null!, liveness));
+                () => new MetalCommandList(buffers, uncommitted, sink, owner, rings, arena, null!, liveness,
+                    render, Alignment));
             Assert.Throws<ArgumentNullException>(
-                () => new MetalCommandList(buffers, uncommitted, sink, owner, rings, arena, blit, null!));
+                () => new MetalCommandList(buffers, uncommitted, sink, owner, rings, arena, blit, null!, render,
+                    Alignment));
+            Assert.Throws<ArgumentNullException>(
+                () => new MetalCommandList(buffers, uncommitted, sink, owner, rings, arena, blit, liveness, null!,
+                    Alignment));
+
+            // AND THE DEVICE'S ALIGNMENT IS REFUSED THE SAME WAY when it is not a power of two, because the
+            // creation-time probe has already refused a device that could report one.
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => new MetalCommandList(buffers, uncommitted, sink, owner, rings, arena, blit, liveness,
+                    render, 0));
         }
 
         /// <summary>
         /// THE LEDGER OF UNBUILT MEMBERS names the row that builds each one, so a reader who hits it knows
         /// whether to wait for a row or file a bug. Asserted rather than left as prose, because a message that
         /// says "not built" without saying by whom is what sends the next reader to the issue tracker.
+        /// <para>
+        /// IT MOVED FROM <c>SetFramebuffer</c> TO <c>SetPipeline</c> WHEN ROW 12 LANDED
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/578), which is the ledger discipline working: a row
+        /// that fills a member takes it off the list, and this row keeps testing whatever is still on it. The
+        /// live rows it names grow with each one, because a reader who hits the message needs to know whether
+        /// the backend is unfinished or their machine is wrong. Row 13
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/579) took the four resource-set members off the list
+        /// and added itself to the live half, and <c>SetPipeline</c> is still on it.
+        /// </para>
         /// </summary>
         [Fact]
         public void AnUnbuiltMemberNamesItsRowAndSaysWhatIsLive()
@@ -407,11 +437,86 @@ namespace KhaozEngine.Tests.Gpu
             list.Begin();
 
             NotSupportedException thrown =
-                Assert.Throws<NotSupportedException>(() => list.SetFramebuffer(null!));
+                Assert.Throws<NotSupportedException>(() => list.SetPipeline(null!));
 
-            Assert.Contains("issues/578", thrown.Message, StringComparison.Ordinal);
+            Assert.Contains("issues/577", thrown.Message, StringComparison.Ordinal);
             Assert.Contains("issues/573", thrown.Message, StringComparison.Ordinal);
+            Assert.Contains("issues/578", thrown.Message, StringComparison.Ordinal);
+            Assert.Contains("issues/579", thrown.Message, StringComparison.Ordinal);
             Assert.Contains("GpuBackendKind.Metal", thrown.Message, StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// AND THE FOUR RESOURCE-SET MEMBERS ARE LIVE, so what a caller gets from one is its own refusal rather
+        /// than the ledger's. A recording guard rather than an unbuilt row is the difference between "wait for a
+        /// row" and "call Begin", and those need different answers. This is the probe walking forward one row at
+        /// a time, which is what stops the ledger rotting: it fails the day a member starts working and nobody
+        /// moved it.
+        /// </summary>
+        [Fact]
+        public void TheFourResourceSetMembersAreLiveAndRefuseALisThatIsNotRecording()
+        {
+            (MetalCommandList list, _, _, _) = NewList();
+
+            InvalidOperationException thrown = Assert.Throws<InvalidOperationException>(
+                () => list.SetGraphicsResourceSet(0, null!));
+
+            Assert.Contains("Call Begin first", thrown.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain("not built", thrown.Message, StringComparison.Ordinal);
+
+            // AND A NULL SET IS RECORDED RATHER THAN REFUSED once the list is recording, which is clause 6: the
+            // seam has no unbind, so a caller clearing a slot is saying this draw does not use it.
+            list.Begin();
+            list.SetGraphicsResourceSet(0, null!);
+            list.SetComputeResourceSet(0, null!, 0);
+
+            Assert.Equal(1, list.GraphicsBinds.RecordedSlotCount);
+            Assert.Equal(1, list.ComputeBinds.RecordedSlotCount);
+        }
+
+        /// <summary>
+        /// A <c>Begin</c> RESETS THE BIND RECORDS ALONG WITH EVERYTHING ELSE, in the ONE reset block the command
+        /// list keeps. A reset added anywhere else is a reset a re-Begun list can be observed without, and the
+        /// records belong to a recording a Begin discards by contract.
+        /// </summary>
+        [Fact]
+        public void ABeginForgetsEveryRecordedSlotAndTheAdoptedIndexTable()
+        {
+            (MetalCommandList list, _, _, _) = NewList();
+
+            list.Begin();
+            list.SetGraphicsResourceSet(2, null!);
+            list.GraphicsBinds.SetIndexTable(MetalBindProgram.Table());
+            list.VertexStreams.Record(1, new IntPtr(0xA), 0);
+            list.End();
+
+            Assert.Equal(3, list.GraphicsBinds.RecordedSlotCount);
+            Assert.NotNull(list.GraphicsBinds.IndexTable);
+            Assert.Equal(2, list.VertexStreams.RecordedSlotCount);
+
+            list.Begin();
+
+            Assert.Equal(0, list.GraphicsBinds.RecordedSlotCount);
+            Assert.Null(list.GraphicsBinds.IndexTable);
+            Assert.Equal(0, list.ComputeBinds.RecordedSlotCount);
+            Assert.Equal(0, list.VertexStreams.RecordedSlotCount);
+        }
+
+        /// <summary>
+        /// AND THE FIVE PASS MEMBERS ARE LIVE, so what a caller gets from one is its own refusal rather than the
+        /// ledger's. A recording guard rather than an unbuilt row is the difference between "wait for a row" and
+        /// "call Begin", and those need different answers.
+        /// </summary>
+        [Fact]
+        public void ThePassMembersRefuseALisThatIsNotRecording()
+        {
+            (MetalCommandList list, _, _, _) = NewList();
+
+            InvalidOperationException thrown = Assert.Throws<InvalidOperationException>(
+                () => list.ClearColorTarget(0, new Color(1f, 1f, 1f, 1f)));
+
+            Assert.Contains("Call Begin first", thrown.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain("not built", thrown.Message, StringComparison.Ordinal);
         }
     }
 }

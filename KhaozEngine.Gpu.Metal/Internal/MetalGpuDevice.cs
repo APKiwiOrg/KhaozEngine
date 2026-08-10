@@ -71,6 +71,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
         readonly MetalCommandBufferSource _commandBuffers;
         readonly MetalUncommittedBuffers _uncommitted;
 
+        // THE RENDER SEAM, ONE PER DEVICE RATHER THAN ONE PER LIST, which is what MetalRenderApi's own header
+        // says of itself: it is a readonly struct carrying nothing per pass and nothing per list, so a second
+        // instance could differ from the first in nothing at all. It is held here as the INTERFACE, which is the
+        // form a list takes it in, so this is also one box for the device instead of one per CreateCommandList.
+        readonly IMetalRenderApi _renderApi;
+
         // THE ONE INDEX-TABLE CACHE (row 10), inline rather than in the constructor because the factory built
         // below reads it lazily and a field initialiser cannot be out of order with that. Deduplicating the
         // per-program binding tables is what makes M-R9's pipeline-switch comparison a handle compare instead of
@@ -85,6 +91,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
         readonly MetalRingAllocator _rings;
         readonly IMetalStagingSource _staging;
 
+        // M-N4's FOURTH READ, KEPT rather than only checked. MetalDeviceRequirements refuses a device whose
+        // reported buffer-offset alignment is 0 or is something M-M3's 256-byte stride is not a multiple of, so
+        // what survives here is a power of two that divides the stride, and it is what every bind's composed
+        // offset is checked against. 256 would refuse offsets the device accepts (macOS reports 16 or 32).
+        readonly uint _bufferOffsetAlignment;
+
         MetalSampler _pointSampler = null!;
         MetalSampler _linearSampler = null!;
 
@@ -95,7 +107,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         MetalGpuDevice(MTLDevice device, MTLCommandQueue queue, GpuCapabilities capabilities,
             MetalDeviceLiveness liveness, MetalDeviceLossLatch loss, MetalTimeline timeline,
             MetalUncommittedBuffers uncommitted, IMetalSetupNative setupNative, int framesInFlight,
-            IMetalStagingSource staging)
+            IMetalStagingSource staging, uint bufferOffsetAlignment)
         {
             _device = device;
             Queue = queue;
@@ -108,6 +120,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _setup = new MetalSetupCommands(setupNative, liveness);
             _framesInFlight = framesInFlight;
             _staging = staging;
+            _renderApi = new MetalRenderApi();
+            _bufferOffsetAlignment = bufferOffsetAlignment;
 
             // THE ONE RING ALLOCATOR (M-M3), sharing the submit lock rather than owning one. It has to read
             // MetalTimeline.LastSubmitted under exactly the lock that orders the commit which registers it, or
@@ -179,16 +193,27 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// (https://github.com/APKiwiOrg/KhaozEngine/issues/572): that factory calls this, and so does the
         /// <c>[GpuFact]</c> submit path.
         /// </summary>
+        /// <param name="clearMode">M-A2's position for this list. Defaults to the ONE reading of
+        /// <c>KE_METAL_CLEAR</c> this process took, which is what every real caller gets. A test passes a literal
+        /// instead, because reading the environment once per process means a test that mutated it would be racing
+        /// every other list in the same collection.</param>
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal MetalCommandList CreateCommandList()
+        internal MetalCommandList CreateCommandList(MetalClearMode? clearMode = null)
             => new(_commandBuffers, _uncommitted, new MetalEncoderSink(), this, _rings,
                 // A FRESH ARENA PER LIST (M-M8), not one shared by the device. Two lists recording on two threads
                 // must not sub-allocate from the same blocks, and the recycling proof is per list too: each slot
                 // remembers the timeline value THAT list's submission took. The list disposes it. It takes the
                 // liveness token because its block creation is a native allocation on this device (M-F6).
                 new MetalStagingArena(_staging, _framesInFlight, liveness: _liveness), new MetalBlitApi(),
-                _liveness);
+                _liveness, _renderApi,
+                // THE DEVICE'S OWN ALIGNMENT, read once at creation by M-N4's probe. Every composed bind offset
+                // is checked against it, which is section 18's third named risk for this row.
+                _bufferOffsetAlignment,
+                // M-A2's POSITION, READ ONCE PER PROCESS AND COPIED PER LIST. Reading the environment per pass
+                // would let a mid-run change split one frame's clears between two policies, which is a shape the
+                // gate-1 A/B could not interpret. See MetalClearPolicy.
+                clearMode ?? MetalClearPolicy.Current);
 
         /// <inheritdoc/>
         /// <remarks>M-G2's <c>softwareAdapter</c> is ALWAYS false with confidence rather than null, because Apple

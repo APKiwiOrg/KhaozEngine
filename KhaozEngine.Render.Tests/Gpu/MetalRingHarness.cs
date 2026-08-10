@@ -136,11 +136,16 @@ namespace KhaozEngine.Tests.Gpu
         /// </summary>
         internal MetalCommandList NewList(object owner, FakeMetalCommandBufferSource? buffers = null,
             FakeMetalEncoderCalls? calls = null, MetalUncommittedBuffers? uncommitted = null,
-            MetalStagingArena? arena = null)
+            MetalStagingArena? arena = null, FakeMetalRenderCalls? render = null,
+            MetalClearMode clearMode = MetalClearMode.PerAttachment)
             => new(buffers ?? new FakeMetalCommandBufferSource(),
                 uncommitted ?? new MetalUncommittedBuffers(FramesInFlight, new RecordingLogger()),
                 new FakeMetalEncoderSink(calls ?? new FakeMetalEncoderCalls()),
-                owner, Rings, arena ?? NewArena(), Blit, Liveness);
+                owner, Rings, arena ?? NewArena(), Blit, Liveness,
+                new FakeMetalRenderApi(render ?? new FakeMetalRenderCalls()),
+                // The device's reported buffer-offset alignment, which a device-free list stands up at the value
+                // macOS actually reports. See MetalBindProgram.DeviceOffsetAlignment.
+                MetalBindProgram.DeviceOffsetAlignment, clearMode);
 
         /// <summary>
         /// SUBMIT A SEALED RECORDING, which is <c>MetalGpuDevice.SubmitOnMacOs</c>'s lock body with the one native

@@ -35,14 +35,66 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// plain numbers and nothing above this line names an Objective-C type. <c>MTLViewport</c> is six doubles and
     /// <c>MTLScissorRect</c> four <c>NSUInteger</c>s in the interop layer, and neither shape is legible as a test
     /// expectation, which is the same split the Vulkan sibling's render API takes for the same reason.</para>
+    ///
+    /// <para><b>THE DESCRIPTOR PAIR IS A ROW-12 ADDITION, AND IT IS A CORRECTION TO ONE SENTENCE OF THE
+    /// <see cref="IMetalEncoderSink"/> SUMMARY WITH ITS OWN REASON.</b> That summary lists clears among the
+    /// things that go "straight to the interop layer with no indirection", and the reason it gives is about the
+    /// BUDGET: a clear is a descriptor FIELD rather than a call, nothing about it scales with draw count, and
+    /// freezing a marginal over it would gate on a figure nobody should gate on. All of that is right and none
+    /// of it is a reason to put the call anywhere a test cannot see it. Section 18's row 12 requires the clear
+    /// FOLDING, the load and store action selection and the deferred-begin state machine to run device-free, and
+    /// the begin is what CONSUMES the pending clears, so a schedule that reached a static P/Invoke to build its
+    /// descriptor could not open a pass at all on the Linux and Windows legs. So the descriptor crosses the
+    /// UNCOUNTED seam, which keeps both properties: it is not in M-T2's budget, and it is observable. The pair
+    /// is here rather than on the counted seam for exactly the reason the viewport and the scissor are.</para>
+    ///
+    /// <para><b>AND THE DESCRIPTOR IS RETAINED ON THE WAY OUT, WHICH IS WHY THERE ARE TWO MEMBERS AND NOT
+    /// ONE.</b> <c>+renderPassDescriptor</c> is a convenience constructor, so the object it hands back dies with
+    /// whatever autorelease pool was in scope when it was made, and the pass is built in one managed call and
+    /// opened in another. One retain per <see cref="CreateRenderPassDescriptor"/> and exactly one
+    /// <see cref="ReleaseRenderPassDescriptor"/> at every exit, including the exit where the encoder came back
+    /// nil, which is the same ownership rule the encoder itself is under.</para>
     /// </summary>
     internal interface IMetalRenderApi
     {
         /// <summary>
-        /// <c>-[MTLRenderCommandEncoder setViewport:]</c>, the PLURAL-free form. M-A7 retires the incumbent's
-        /// choice between <c>setViewports:count:</c> and the singular setter, which is a deprecated-feature-set
-        /// read on the hot path to pick between two calls that do the same thing at count 1: the seam has no
-        /// multi-viewport concept, so the count is always 1 and one code path is the answer.
+        /// BUILD THE <c>MTLRenderPassDescriptor</c> FOR ONE PASS, and take a retain on it (see the type remarks).
+        /// <para>
+        /// EVERY DECISION IS ALREADY MADE BY THE TIME IT ARRIVES HERE. Which attachment clears and to what
+        /// (M-A2), what each load action is, and that every store action is <c>Store</c> rather than the
+        /// descriptor's discarding default (M-A4), are all fields of the plan
+        /// <see cref="MetalRenderPassSchedule"/> computed. This member translates and makes native calls, so a
+        /// fake can record the plan verbatim and every rule in section 7.1 and 7.2 is asserted with no Metal
+        /// anywhere.
+        /// </para>
+        /// </summary>
+        /// <param name="colour">The colour attachments in order, possibly empty for a depth-only shadow
+        /// pass.</param>
+        /// <param name="depth">The depth attachment, or one whose texture is <see cref="IntPtr.Zero"/> when the
+        /// framebuffer declares none.</param>
+        /// <returns>The retained descriptor, or <see cref="IntPtr.Zero"/> when Metal would not make one.</returns>
+        IntPtr CreateRenderPassDescriptor(ReadOnlySpan<MetalColourAttachment> colour,
+            in MetalDepthAttachment depth);
+
+        /// <summary>Give back the retain <see cref="CreateRenderPassDescriptor"/> took. Safe on
+        /// <see cref="IntPtr.Zero"/>, so the caller's <c>finally</c> needs no test of its own.</summary>
+        void ReleaseRenderPassDescriptor(IntPtr descriptor);
+
+        /// <summary>
+        /// <c>-[MTLRenderCommandEncoder setViewports:count:]</c> WITH A COUNT OF 1, which is M-A7 taken
+        /// literally. It retires the incumbent's choice between that selector and the singular
+        /// <c>setViewport:</c> on <c>IsSupported(macOS_GPUFamily1_v3)</c>, a deprecated-feature-set read on the
+        /// hot path to pick between two calls that do the same thing at count 1: the seam has no multi-viewport
+        /// concept, so the count is always 1 and one code path is the answer.
+        /// <para>
+        /// ROW 7 DECLARED THIS MEMBER AS THE SINGULAR SELECTOR AND ROW 12 CORRECTED IT IN PLACE, because M-A7
+        /// names the plural forms in as many words and both rows agree on the part that matters (no conditional
+        /// and one code path). The plural also happens to REMOVE an ABI question: the singular setters pass their
+        /// structs by value, which is arm64's indirect-composite path, and the plural ones pass an array address
+        /// and a count, which is the plain register class row 1's spike used throughout. The seam's own signature
+        /// is unchanged and stays scalar, because a count of 1 is not something a caller should be able to say
+        /// otherwise.
+        /// </para>
         /// </summary>
         /// <param name="encoder">The open render encoder.</param>
         /// <param name="x">Origin x in pixels.</param>
@@ -56,7 +108,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
             float minDepth, float maxDepth);
 
         /// <summary>
-        /// <c>-[MTLRenderCommandEncoder setScissorRect:]</c>. Emitted only when the bound pipeline's
+        /// <c>-[MTLRenderCommandEncoder setScissorRects:count:]</c> with a count of 1, the scissor half of M-A7
+        /// and corrected in place for the same reason. Emitted only when the bound pipeline's
         /// <c>ScissorTestEnabled</c> says so, which is the backend honouring the SEAM's rasterizer state rather
         /// than the API's: Metal's rect is always live and defaults to the whole attachment, so not reproducing
         /// the gate would make a scissor set before a pipeline with the test off apply here and not on

@@ -895,13 +895,204 @@ off a table's layouts it will be reading another program's name in the majority 
 refusal fires by name including the staging texture that is a Shared `MTLBuffer` rather than an `MTLTexture`,
 and two shader sets compiled from one program come back sharing one table through the device's cache.
 Everything else in the row is device-free and runs on every leg.
+### Native Metal render passes: the clear stops collapsing onto attachment 0, and the pass has no flag to go stale (#578)
+
+The native Metal backend gets framebuffers and the deferred render pass: `IGpuResourceFactory.CreateFramebuffer`
+plus `SetFramebuffer`, `ClearColorTarget`, `ClearDepthStencil`, `SetScissorRect` and `SetFullScissorRects` on the
+command list, from row 12 of
+[docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md).
+Nothing selects this backend and pipelines and draws are still other rows', so the visible effect is that a
+recording can now bind a target and clear it. `GpuBackendKind.Metal`, through Veldrid, remains the working Metal
+backend.
+
+**The one behaviour change this phase spends on the reference golden family is one index (M-A2).** The Veldrid
+Metal backend writes every clear into `colorAttachments[0]`, so a framebuffer with more than one colour target
+clears only its first. `KhaozEngine.Render3D/Rendering/ModelRenderer.BeginModelPass` clears attachments 0, 1 and
+2 of `ModelFB` and ships a comment describing the collapse, whose workaround (make the three clear values equal)
+does nothing about two attachments that are never cleared at all. This backend clears the attachment the caller
+named. The consequence is that `ModelFB`'s normal and linear-depth attachments start being CLEARED where today
+they LOAD, and what they load today is a freshly created `StorageModePrivate` texture nothing has written, which
+means the current behaviour is the unstable one and the committed `metal` goldens were baked reading it.
+`KE_METAL_CLEAR=attachment0` reproduces the collapse exactly, for the A/B on the first golden run, and both the
+switch and the losing branch are removed at gate 1.
+
+**A pass is a descriptor per pass, so most of what phase 3 had to build has no occupant here.** No render pass
+object to cache, no framebuffer object to rebuild on a resize, and no invalidation of either.
+`MetalFramebuffer` creates nothing native at all and its disposal releases nothing: it is an aggregate of
+borrowed texture handles, flattened to plain data at construction, and `CreateFramebuffer` is the one factory
+member with no `OnMacOs` half because there is nothing for the platform guard to protect. Attachments are mip 0
+slice 0 because the seam carries no mip or layer parameter, which is what makes M-M10's no-view-factory rule
+reach all the way to the attachment.
+
+**The pass schedule keeps NO "is a pass open" flag, and that is the one structural difference from the Vulkan
+sibling.** There a render pass instance can only be opened or closed by one call, so a flag cannot drift. Here a
+record-time `UpdateBuffer` large enough to take the staging path opens a BLIT encoder and ends the render
+encoder without the schedule being told, which is section 2.1's whole subject. A duplicate flag would then claim
+a pass was open while its encoder had gone, and every draw after it would record into a dead handle. So the
+question is asked of `MetalEncoderScope`, the one owner of every transition, and cannot be stale by
+construction. The same fact makes the viewport and the scissor `MetalEncoderMark` epoch stamps rather than dirty
+bools: both are encoder state, so a pass split by a blit and reopened owes both again with nothing about the
+framebuffer having changed (M-R4).
+
+**The clear-only pass is reproduced deliberately at both of the incumbent's forcing sites (M-A3).** A
+framebuffer plus a clear plus an `End` with no draw must still clear, and so must a framebuffer CHANGE that
+leaves clears behind. Under a deferred begin that is a begin and end pair with no draws, and it needs no "did a
+draw happen" flag to detect: a begin CONSUMES the pending array, so a pending clear still sitting there is
+itself the proof. A clear arriving AFTER the pass opened costs an encoder boundary and goes back on the pending
+array, because Metal has no clear command and the incumbent forces the same thing through its own
+`EnsureNoRenderPass`.
+
+**The viewport and the scissor reproduce all three halves of Veldrid's behaviour (M-A6).** Both are emitted on a
+framebuffer CHANGE and neither on a rebind of the same one, because the shipped sequence `SetFramebuffer(fb)`,
+`SetScissorRect(...)`, draw, `SetFramebuffer(fb)`, draw would otherwise silently restore the full scissor and
+render the second draw outside the intended rectangle. The scissor stays gated on the bound pipeline's
+`ScissorTestEnabled`, which is the backend honouring the SEAM's rasterizer state rather than the API's: Metal
+has no scissor-test enable and its rectangle is always live, so not reproducing the gate would make a scissor
+set before a pipeline with the test off apply here and not on Direct3D 11. A gated-out rectangle stays OWED, so
+the next pipeline with the test on receives it. `setViewports:count:` and `setScissorRects:count:` are used
+unconditionally at a count of 1 (M-A7), which retires the incumbent's deprecated-feature-set read on the hot
+path and, as a side effect, removes an ABI question rather than adding one: the singular setters pass their
+structs by value on arm64's indirect-composite path, and the plural ones pass an array address and a count.
+
+**Every clear claim is read back as a texel, because a completed command buffer cannot tell three defects
+apart.** A pass that cleared the wrong attachment, a pass that discarded its result at the descriptor's default
+store action, and a clear-only pass whose flush never ran all complete with a nil error. So the hardware rows
+blit each render target into a Shared staging buffer and read texel (0, 0): three attachments, three colours, no
+draw at all. The `attachment0` position is read back too, and its uncleared attachments are asserted only to be
+NOT the colour asked for, because asserting a specific value would be asserting the instability M-A2 exists to
+end. Everything the schedule DECIDES is device-free and runs on the Linux and Windows legs.
+
+**Four guards this row's own review added, each closing a gap that produced no error anywhere.** A mistyped
+`KE_METAL_CLEAR` now WARNS at device creation naming the value: the parse always reported the typo and nothing
+logged it, so a mistyped A/B run would have measured the fix twice while the tester believed they had captured
+the incumbent. `MetalEncoderScope.EnsureRenderEncoder` refuses a nil `MTLRenderPassDescriptor` by name, because
+`renderCommandEncoderWithDescriptor:` takes a nonnull argument and the pass schedule's own nil arm protects only
+callers that go through the schedule, and the device-free fake asserts the same contract instead of obligingly
+handing back an encoder for it. `EndPass` refuses a render pass that is open AND owed a clear, which is the
+invariant its clear-only flush is built on and which anything opening a render encoder outside the schedule can
+break, silently unclearing an attachment. And the ownership cast asks about null before it dereferences, so a
+null colour attachment in `CreateFramebuffer` is refused by the caller's own parameter name rather than
+producing a `NullReferenceException` from inside the refusal that exists to name the problem. The two
+attachment-action maps also list every enum member with a throwing default, since a new member absorbed into
+`Store` would emit a store where the plan asked for something else and complete with no error.
+
+### The native Metal bind flush: one array call per kind per stage, and the offsets-only rebind (#579)
+
+The native Metal backend gets all four `IGpuCommandList.Set*ResourceSet` overloads and the argument-table flush
+behind them, from row 13 of
+[docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md).
+Nothing selects this backend and pipelines and draws are still other rows', so the visible effect is that a
+recording can now bind resource sets. `GpuBackendKind.Metal`, through Veldrid, remains the working Metal
+backend.
+
+**One ARRAY call per (kind, stage), which is the row's whole point.**
+`setVertexBuffers:offsets:withRange:` and its five siblings take an `NSRange`, so one call writes a contiguous
+run of a stage's argument table. A full activation of a model-shaped set is one buffer call, one texture call
+and one sampler call on the fragment stage plus one buffer call on the vertex stage. The Veldrid Metal backend
+emits one call per element per stage, which is the same fan-out defect [#418](https://github.com/APKiwiOrg/KhaozEngine/issues/418)
+records on Direct3D 11 and which this program already paid to fix once, and the vendored fork's binding layer
+cannot express the alternative at all because it declares no array setter. So twelve selectors and the three
+`objc_msgSend` shapes behind them are engine-owned and hand-written: eight on `MTLRenderCommandEncoder` (a
+buffer, a texture and a sampler array setter plus an offset setter, each spelled once per stage) and four on
+`MTLComputeCommandEncoder`, which is a different protocol whose selectors carry no stage word at all. One shape
+passes an `NSRange` BY VALUE: sixteen bytes of integers is exactly the arm64 boundary where a composite stops
+being passed indirectly and rides two general registers instead, and getting that wrong shifts every argument
+after it with nothing after it to notice. Row 1's interop spike measured that shape against real hardware and
+`MetalBindFlushGpuTests` sends **all twelve** to a real encoder, asserting the executed set off the sink's own
+call log rather than from a run that did not throw. That last part is load-bearing: the first draft of those
+rows had no fixture whose VERTEX stage sampled anything, so `setVertexTextures:withRange:` and
+`setVertexSamplerStates:withRange:` had never been executed at all, and an unrecognised selector aborts the
+process rather than producing a wrong pixel.
+
+**Measured over the shipped catalog, and neither number was predicted.** Across the 34 shipped graphics
+programs the worst full activation is **6 array calls** (`Water`, the only shape whose two stages between them
+read all three argument tables), and **no shipped program produces a non-contiguous index run**, so the extra
+call a hole costs is never paid on anything the engine ships today. A hole CUTS the run rather than being padded
+with nil, because Metal's argument tables are absolute: a nil written into a gap would unbind whatever another
+slot legitimately put there. The budget test freezes that as an EQUALITY against each program's own binding
+table (group the referenced indices by (stage, space), count the contiguous runs, require exactly that many
+array calls) rather than as a per-(space, stage) ceiling, which is a tautology on a two-stage program: six pairs
+is the most any emission can touch, so a flush emitting one call per argument would satisfy it. Over the whole
+catalog 92 array calls carry 131 arguments.
+
+**The offsets-only rebind is a different selector rather than a cheaper variant, and what selects it is what
+was EMITTED.** A slot whose only change is its per-draw dynamic offset emits one `setVertexBufferOffset:` or
+`setFragmentBufferOffset:` per stage that actually reads the buffer, writing an integer into the encoder's
+command stream where the array setter writes whole table entries. That is the shadow pass's shape thousands of
+times a frame. `setBufferOffset:atIndex:` adjusts an EXISTING binding, so its precondition is that this set's
+resources are in this encoder's table right now, and the record answers that question by comparing against the
+bindings array it last wrote plus the encoder epoch it wrote them in, rather than by carrying a third state the
+recorder would have to classify correctly. A slot bound to another set and back again with no draw between
+therefore takes the offsets-only arm correctly, because the first set never left the table. What each slot
+remembers includes the per-binding LIVENESS as well as the array, because the two values a binding reads
+through its wrapper (the handle and the ring) are exactly the ones whose job is to change on disposal: the
+array does not move when a buffer is released, so without that a set rebound after a disposal would take the
+derived arm, compose off the unringed branch and move an offset on a table index holding the released buffer.
+Any movement in the liveness falls back to the full rebind, whose nil handle is the degradation the set's own
+wrapper-holding design promised.
+
+**Every bind record carries its own encoder-epoch stamp, and the vertex-stream cache arrives WITH its
+invalidation.** A record-time `UpdateBuffer` big enough to take the staging path opens a blit encoder mid-pass,
+and the reopened pass is a new encoder whose argument table is empty. The Veldrid Metal backend tracks
+vertex-stream binds and does not clear that tracking at a pass end, and what stops it being a corruption is a
+second defect that makes the cache permanently cold. Porting the tracking without the invalidation would ship a
+corruption no golden reaches, since the goldens do not restart a render pass mid-scene, so both land together:
+two vertex streams cost one array call on the draw that binds them, zero on every draw after, and one again
+after any boundary. The sharp device-free assertion is that a boundary forces a FULL rebind even when the only
+thing that moved was the dynamic offset, because `setBufferOffset:` against an index holding no buffer is
+undefined.
+
+**A pipeline switch invalidates recorded slots only where the incoming program's binding TABLE differs**, which
+row 10's content deduplication is what makes possible. A switch that does invalidate CLEARS the epoch stamps
+rather than only marking slots dirty, because the incoming program expects each element at a different index
+and an offsets-only rebind would move an offset on a binding it never reads. The seam a pipeline calls is
+`MetalBindRecords.SetIndexTable`, which composes with the identity guard rather than duplicating it.
+
+**A buffer bind's offset is `frameBase + rangeOffset + callerDynamicOffset`**, where the frame base is the ring
+segment THAT RECORDING captured at its `Begin` and never the allocator's live one: shipped paths open several
+command lists per frame, so a bind composed against the live segment would name a version the recording never
+wrote. A composed window that would leave its own segment is refused by name, and that refusal is genuinely
+this path's: the same shared check at set creation passes a caller offset of zero, where the window is already
+bounded by the buffer's logical size and the stride is that size rounded up, so it cannot fire there. Nothing
+downstream would report it either, because `setBufferOffset:` carries an offset and no length at all.
+
+**The composed offset is also checked for ALIGNMENT, against the number the device itself reports.** The segment
+base is a multiple of the 256-byte ring stride by construction, and the other two terms are raw caller values, so
+an unaligned composition is reachable and it is a validation error under the debug layer and undefined behaviour
+without it. What it is checked against is `MetalDeviceFacts.BufferOffsetAlignment`, read off the `MTLDevice` by
+the creation-time probe and threaded to the bind records through the command list, rather than the ring stride:
+macOS reports 16 or 32 through `minimumConstantBufferOffsetAlignment`, so checking against 256 would refuse binds
+every Mac accepts. The refusal names the segment base, the set's range offset and the caller's per-draw offset
+separately, because the composed number alone does not say which one moved.
+
+**A refused flush is refused WHOLE, which is what makes that refusal loud and repeatable rather than one throw
+followed by a wrong frame.** Any exception out of a flush drops the staged batch and invalidates every slot's
+emitted state and epoch stamp, because a partial flush leaves two separate wrecks. A throw inside the slot walk
+happens with entries already staged and not yet emitted, so they would ride into the next draw's flush and land
+in whichever stage it reached first, at indices belonging to another stage's table. And a throw after an earlier
+stage emitted skips the record update, so the slot still names the OLD bindings array while the encoder's table
+holds the new one's resources, and the next bind of the old set would derive the offsets-only arm and move an
+offset on a table entry holding a different buffer. Both are device-free rows.
+
+**Binds go through the binding table, so an element with no entry for a stage is not bound for that stage.**
+That is the same rule row 9's table states and row 10's sets defer to, arriving at the place it actually binds:
+over the shipped corpus 95 of 254 stage/element slots are unreferenced, so the partial-stage path runs
+constantly rather than rarely. A non-zero dynamic offset against a set whose layout declares no dynamic element
+is refused by name, because it would otherwise be dropped and the draw would read the buffer's first slot.
+
+The whole schedule is device-free and runs on every leg, including the two assertions that fail on a corruption
+rather than on bookkeeping (the encoder boundary and the pipeline switch each beating the offsets-only
+comparison), the composed offset against a real uniform ring, and the field walk asserting the records reach no
+factory, no device and no layout. What needs a device is that the twelve new Objective-C prototypes are accepted
+by a real encoder, which is three `[GpuFact]` rows.
 
 ### Native Metal pipelines: vertex streams pinned at the top of the buffer space, and a redundant bind that costs one comparison (#577)
 
 `IGpuResourceFactory.CreateGraphicsPipeline` and `CreateComputePipeline` are live on
 `GpuBackendKind.MetalNative`, and so are `IGpuCommandList.SetPipeline` and `SetComputePipeline`. Row 11 of
 [docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md).
-Framebuffers still refuse, so nothing renders yet.
+This row landed after rows 12 and 13, so a recording can now bind a framebuffer, clear it, bind resource sets
+and bind a pipeline. The draw itself is row 14 (#580), so nothing renders yet.
 
 **Vertex streams take the TOP of the `[[buffer(n)]]` space and nothing counts to get there (M-B2).** Stream 0 is
 buffer 30, stream 1 is 29, downward, and resource buffers grow from 0 wherever the emission put them. The fork's

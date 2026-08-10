@@ -797,6 +797,38 @@ the authority is the per-program INDEX TABLE read out of the MSL, so M-R9 compar
 so two programs with identical tables invalidate nothing. That is the fine comparison the reuse-first draft
 said did not exist, computed off the source the Metal-idiomatic draft did not use.
 
+**Corrected in place at row 13: "two states" is right about the RECORD and the offsets-only arm is still chosen,
+and this section reads as though those two sentences were in tension.** They are not, and the resolution is
+worth stating because it is the one thing an implementer of this row is most likely to get wrong in the other
+direction, by adding a third state. `setBufferOffset:atIndex:` adjusts an EXISTING binding, so its precondition
+is that this set's resources are in THIS ENCODER'S table right now, and that is a question about what the flush
+last EMITTED rather than about what a caller last recorded. A third record state would have to be right about
+the encoder epoch as well as about which fields moved, which is exactly the half a recorder gets wrong: it would
+say "offsets only" for a slot whose set is unchanged across an encoder boundary, and `setBufferOffset:` against
+an index holding no buffer is undefined. So the record keeps two states and each slot additionally remembers the
+bindings array it last wrote plus the epoch it wrote it in, and the arm is DERIVED at flush time from that pair.
+It also comes out strictly better than a third state would: a slot bound to another set and back again with no
+draw between takes the offsets-only arm correctly, because the first set never left the table.
+
+**And the run-cutting cost this section assumes is zero on everything the engine ships, measured at row 13.**
+The array setters take an `NSRange`, so a non-contiguous set of indices within one (space, stage) costs one
+extra call per hole rather than one call with nil padding, which is deliberate: Metal's argument tables are
+absolute, so a nil written into a gap would unbind whatever another slot legitimately put there. Over the 34
+shipped graphics programs, activated in full through the shipped flush, **no program produces a non-contiguous
+run at all**, and the worst full activation is **6 array calls** (`Water`, the only shape whose two stages
+between them read all three argument tables). `MetalBindBudgetTests` reports both numbers. Read them as a
+measurement of the renderers as they stood rather than as a property of the mechanism: a shader change can
+introduce a hole.
+
+**What the budget test asserts is an EQUALITY against the table, and the ceiling it first asserted was a
+tautology.** The first version read the hole count back off the call log (`holes = calls - distinctPairs`) and
+asserted `calls <= 6 + holes`, which substitutes down to `distinctPairs <= 6` and is therefore true for every
+emission that can exist: two stages times three argument tables is six pairs and no flush can produce a
+seventh. A one-call-per-argument emission satisfied it. The assertion now walks the program's own binding table,
+groups the referenced indices by (stage, space), counts the contiguous runs, and requires the flush to have
+emitted exactly that many array calls, with a corpus-level row requiring the run cutter to collapse something:
+over the 34 programs, 92 array calls carry 131 arguments.
+
 ### 2.8 The #531 extraction: scope, list and trigger
 
 **#531 is explicit that this phase decides it**, and equally explicit about how: re-assess each candidate
@@ -1351,6 +1383,25 @@ native per-draw marginal is strictly LOWER and the budget test freezes the lower
 REGRESSION target rather than a parity target**, and it is worth naming: a future change reintroducing the
 unconditional bind is a red test rather than an invisible cost.
 
+**Corrected in place at row 13, on two points about the streams.** First, the flush issues one
+`setVertexBuffers:offsets:withRange:` per contiguous RUN of dirty streams rather than one `setVertexBuffer` per
+stream, and it does so through the same array setter the resource buffers use, which is why `IMetalEncoderSink`
+has no vertex-stream member of its own. A vertex stream IS a `[[buffer(n)]]` binding of the vertex stage, pinned
+at the top of that space by M-B2 while the resource buffers grow from 0 upward, so the two runs come from
+opposite ends and cannot overlap. Two dirty streams are therefore ONE native call, which is lower again than
+this paragraph's own number. Second, the row split: the CACHE and its invalidation are row 13's, because 6.2 is
+explicit that porting the tracking without the invalidation ships a corruption no golden reaches, so the two
+cannot land in different rows. The seam member `SetVertexBuffer` that feeds it is row 14's. `MetalEncoderMark`'s
+own header put the whole thing on row 14 and is corrected to match. There is no index-buffer record on this
+backend at all, because Metal takes the index buffer in the draw call rather than binding it beforehand.
+
+**And M-B2's numbering is a shared TYPE rather than a subtraction written twice**, which is 8.3's own
+requirement made mechanical: `MetalVertexStreamIndex` carries the top index, the per-slot mapping the flush's
+`setVertexBuffers:` index reads, and the floor row 11's no-collision assertion compares an emitted index
+against. 8.3 says the index only has to agree between the `MTLVertexDescriptor`'s layout index and the
+`setVertexBuffer` index, both of which this backend owns, and a device reports nothing at all when they
+disagree, so the one place they can be spelled is the place they are both read from.
+
 ### 6.4 The budget seam (M-T2)
 
 The device-free budget test needs a seam, and the interop layer's calls are static P/Invoke. The seam is a
@@ -1439,6 +1490,51 @@ load and store actions since Metal 1. `MTLRenderPassDescriptor`'s per-attachment
 `clearValue` and `storeOp` almost member for member, so V-A1 through V-A6 port with Metal nouns and no
 argument. That is #531's prediction about Metal and Vulkan mapping onto each other holding up.
 
+**Addendum, at row 12: the schedule keeps NO "is a pass open" flag, and the state list above is one item
+shorter for it.** The state this section names is the framebuffer, the pending clears, and "whether a render
+encoder is open". The Vulkan sibling can hold the third as a bool because `vkCmdBeginRendering` and
+`vkCmdEndRendering` are the only two things that can change it. Here they are not: a record-time `UpdateBuffer`
+large enough to take the staging path opens a BLIT encoder (M-M8), which ends the render encoder without the
+schedule being told, and 2.1 is the whole section about how ordinary and how expensive that is. A duplicate flag
+would then claim a pass was open while the encoder underneath it had gone, and every draw after it would record
+into a dead handle, which is a corruption no golden reaches because the goldens do not upload mid-pass. So the
+question is asked of `MetalEncoderScope.Open`, the one owner of every transition, and the answer cannot be stale
+by construction. The same fact makes the viewport and the scissor `MetalEncoderMark` EPOCH STAMPS rather than
+dirty bools: both are encoder state (M-R4), so a pass split by a blit and reopened owes both again with nothing
+about the framebuffer having changed, and a stamp answers that for free where a bool would need every path that
+ends an encoder to remember to set it.
+
+**Second addendum, at row 12: the flush stays at the incumbent's TWO forcing sites, not at every illegal
+command.** The fourth bullet above puts the clear-only flush on `End` "or any command illegal inside a render
+encoder", which is the Vulkan sibling's shape read across. 2.1's evidence says the incumbent forces it at
+exactly two sites, `SetFramebufferCore` and `End`, and M-A3 says the case is reproduced because a golden
+depends on it, so those two are what row 12 takes. Flushing on a dispatch or a copy as well is a SUPERSET: it
+costs an encoder pair that M-T2's budget counts, and the only observable difference it buys is for a dispatch
+that samples the attachment between a clear and the next draw, where the incumbent would read the uncleared
+contents. Parity is the bar, so the superset is not taken. M-A5's own invariant is untouched and needs no member
+on the schedule at all, which is the third thing this section did not predict: every command illegal inside a
+render encoder opens a DIFFERENT encoder kind, each of those goes through `MetalEncoderScope`, and that type
+ends whatever is open as its first act. The invariant is therefore already enforced for callers rows 13 and 14
+have not written yet, and what row 12 owes is that the schedule OBSERVES the result rather than contradicting
+it, which is the first addendum.
+
+**Third addendum, at row 12: a nil DESCRIPTOR and a nil ENCODER are the same outcome by two different paths.**
+M-W5's orphan case is about `renderCommandEncoderWithDescriptor:` answering nil, and the first implementation
+ran both through it. That is wrong in one direction: the selector's argument is nonnull, so handing it a
+descriptor Metal refused is undefined rather than a refusal it reports back. The device-free row that found it
+had a fake obligingly returning a perfectly good encoder for a nil descriptor, which is exactly how this would
+have reached the leg. Both now answer the same thing to the caller (a draw that goes nowhere, with the pending
+clears still owed and the frame still counting) through two separate arms.
+
+**And row 12's review moved the guard down and closed the fake, because the arm above protects only the caller
+that has it.** The schedule's nil-descriptor return was the whole of the protection, and it lives one level
+above `MetalEncoderScope`, which is the one owner of every transition and the type row 15 and every later row
+inherit. So `EnsureRenderEncoder` now REFUSES a nil descriptor by name (an `ArgumentException`, because it is a
+caller bug rather than a framebuffer failure, and the schedule's return is the one legitimate handling of a
+descriptor Metal would not build), and `FakeMetalEncoderSink` asserts the same contract, so the obliging fake
+this addendum describes is gone rather than merely routed around. Both have device-free rows. The two nil cases
+still answer the caller the same thing through separate arms, which is unchanged.
+
 ### 7.2 The per-attachment clear (M-A2)
 
 This is the one place this design deliberately renders differently from the incumbent, so it gets its own gate,
@@ -1492,6 +1588,41 @@ No `SetViewport` member is added to the seam. Phase 2 counted 48 `SetFramebuffer
 sites, phase 3 confirmed it, and it has not changed. It remains a reasonable addition when the seam is being
 revisited for its own reasons, and this is the last backend, so "when the seam is being revisited anyway" no
 longer has a scheduled occasion.
+
+**Addendum, at row 12: M-A7 is taken LITERALLY (the plural setters), which corrects row 7's declaration of
+`IMetalRenderApi` in place.** That row declared `SetViewport` as `-[MTLRenderCommandEncoder setViewport:]`, the
+singular, reading M-A7's point as "one code path, no feature-set read" and taking the simpler-looking selector
+to get there. M-A7 names `setViewports:count:` and `setScissorRects:count:` in as many words and both readings
+agree on the part that matters, so this is a correction rather than a reversal. It also happens to be the
+cheaper of the two on the one axis this program takes seriously: the SINGULAR setters pass their structs BY
+VALUE, which is arm64's indirect-composite path (`MTLViewport` is six doubles, one past the HFA limit, and
+`MTLScissorRect` is four integers), and the PLURAL ones pass an array address and a count, two plain register
+arguments. The seam's own signature stays scalar, because a count of 1 is not something a caller should be able
+to say otherwise.
+
+**Second addendum, at row 12: the render pass DESCRIPTOR crosses the uncounted seam, which corrects one sentence
+of 6.4's split.** `IMetalEncoderSink`'s summary lists clears among the things that go "straight to the interop
+layer with no indirection", and the reason it gives is entirely about the BUDGET: a clear is a descriptor field
+rather than a call, nothing about it scales with draw count, and freezing a marginal over it would gate on a
+figure nobody should gate on. All of that is right and none of it is a reason to put the call where no test can
+see it. Section 18's row 12 requires the clear folding, the load and store action selection and the
+deferred-begin state machine to run device-free, and the BEGIN is what consumes the pending clears, so a
+schedule reaching a static P/Invoke for its descriptor could not open a pass at all on the Linux and Windows
+legs. So the descriptor and its release pair live on `IMetalRenderApi`, which keeps both properties: outside
+M-T2's budget, and observable. The pair is two members rather than one because `+renderPassDescriptor` is a
+convenience constructor whose object dies with the pool that was in scope, and the pass is built in one managed
+call and opened in another.
+
+**Third addendum, at row 12: the STORE ACTION travels in the plan, where the Vulkan sibling leaves it
+implicit.** V-A6's attachment record deliberately has no store field, on the rule that a field which only ever
+holds one value is a field somebody eventually sets to the other one. That rule is right where nothing is
+queued to change it, and here two things are: 2.5 files depth `DontCare` and the folded resolve as measured
+follow-ups with named consumers, each blocked by a stated argument rather than by being a bad idea. Carrying the
+choice means a device-free row reads it and a future change lands at a seam something can see. M-A4 is
+unaffected either way, because M-A4 is about the native CALL being made rather than about where the value is
+held: the descriptor's own default DISCARDS, so a plan saying `Store` and an implementation that never sent it
+would render a whole frame and throw it away, which is why the claim also has a `[GpuFact]` texel readback
+behind it.
 
 ---
 
@@ -1797,6 +1928,30 @@ nothing to violate it except arithmetic. It is asserted device-free over every s
 because it is the Stride row of section 9.4's inventory and this backend owns its own. **That is the simplest
 of the three rings and the asymmetry is worth naming**: D3D11 pays a map window plus a 16-constant count,
 Vulkan pays a positional `pDynamicOffsets` array plus a bind-window range, Metal pays neither.
+
+**Row 13 sharpened this into a usage rule, and the device run is what found it.** The invariant reads as a
+caution about large offsets and it is not: a dynamic element bound as a BARE BUFFER has a range equal to its
+stride by construction, because the range IS the buffer's logical size and the stride is that size rounded up to
+256. Such a binding therefore leaves room for NO caller offset at all rather than for a small one, so a dynamic
+element has to be bound as a `GpuBufferRange` window. Every shipped resource-set shape already is one, which is
+why `MetalRingStrideTests` is green and why nothing before row 13 could surface it: the set's own creation-time
+call passes a caller offset of zero and is a tautology, and `setBufferOffset:` carries no length so no device
+reports it either. What surfaced it was row 13's own `[GpuFact]` fixture binding a whole buffer and passing an
+offset, which is the shape a consumer would reach for first. Both package READMEs carry the rule now.
+
+**And row 13 enforces the ALIGNMENT of the composed offset, against the DEVICE's own reported number.** Section
+18 names an unaligned offset as one of this row's three risks and nothing was checking it: the frame base is a
+multiple of M-M3's 256-byte stride by construction, but the set's `GpuBufferRange.Offset` and the caller's
+per-draw offset are raw values arriving through the seam, and an unaligned result is a validation error under
+the debug layer M-T7 arms on every run and undefined behaviour without it. The number checked against is
+`MetalDeviceFacts.BufferOffsetAlignment`, read off the `MTLDevice` by M-N4's probe at creation and threaded to
+both `MetalBindRecords` arms through the command list. **It is deliberately not M-M3's 256 and not a constant
+picked here.** 256 is the SPACING of the ring segments rather than what the driver requires of an offset, and
+macOS reports 16 or 32 through `minimumConstantBufferOffsetAlignment`, so checking against the stride would
+refuse binds every shipped device accepts, while hardcoding a small number would pass binds a device does not.
+The probe has already refused any device reporting 0 or a value 256 is not a multiple of, so what arrives is a
+power of two dividing the stride. The refusal names all three components, because the composed number alone
+does not say which one to go and look at. Device-free throughout: a test stands the device up at a fixed 16.
 
 **Why the ring is worth more here than on either predecessor (2.1).** On the incumbent a record-time uniform
 write costs an `MTLBuffer` allocation, a `memcpy`, an ENCODER SPLIT, a blit, a release, and then a full

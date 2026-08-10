@@ -1,5 +1,4 @@
 using System;
-using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Gpu.Metal.Internal
 {
@@ -23,44 +22,6 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// </summary>
     internal sealed partial class MetalCommandList
     {
-        // ---- Row 12: passes, clears, viewport and scissor ---------------------------------------------------
-
-        /// <inheritdoc/>
-        public void SetFramebuffer(IGpuFramebuffer fb) => throw NotBuiltYet("Binding a framebuffer", PassesRow);
-
-        /// <inheritdoc/>
-        public void ClearColorTarget(uint index, Color rgba)
-            => throw NotBuiltYet("Clearing a colour target", PassesRow);
-
-        /// <inheritdoc/>
-        public void ClearDepthStencil(float depth)
-            => throw NotBuiltYet("Clearing the depth attachment", PassesRow);
-
-        /// <inheritdoc/>
-        public void SetScissorRect(uint index, uint x, uint y, uint w, uint h)
-            => throw NotBuiltYet("Setting a scissor rect", PassesRow);
-
-        /// <inheritdoc/>
-        public void SetFullScissorRects() => throw NotBuiltYet("Resetting the scissor rects", PassesRow);
-
-        // ---- Row 13: the bind flush --------------------------------------------------------------------------
-
-        /// <inheritdoc/>
-        public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set)
-            => throw NotBuiltYet("Binding a graphics resource set", BindsRow);
-
-        /// <inheritdoc/>
-        public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset)
-            => throw NotBuiltYet("Binding a graphics resource set", BindsRow);
-
-        /// <inheritdoc/>
-        public void SetComputeResourceSet(uint slot, IGpuResourceSet set)
-            => throw NotBuiltYet("Binding a compute resource set", BindsRow);
-
-        /// <inheritdoc/>
-        public void SetComputeResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset)
-            => throw NotBuiltYet("Binding a compute resource set", BindsRow);
-
         // ---- Row 14: draws, dispatches and transfers ---------------------------------------------------------
 
         /// <inheritdoc/>
@@ -118,19 +79,20 @@ namespace KhaozEngine.Gpu.Metal.Internal
         public void ResolveTexture(IGpuTexture src, IGpuTexture dst)
             => throw NotBuiltYet("Resolving a multisampled texture", DrawsRow);
 
-        const string PassesRow = "the render-passes row (https://github.com/APKiwiOrg/KhaozEngine/issues/578)";
-        const string BindsRow = "the bind-flush row (https://github.com/APKiwiOrg/KhaozEngine/issues/579)";
         const string DrawsRow = "the draw-and-dispatch row (https://github.com/APKiwiOrg/KhaozEngine/issues/580)";
 
         static NotSupportedException NotBuiltYet(string what, string row)
             => new($"{what} is not built yet on the native Metal command list: it lands in {row}. The command "
                 + "buffer per Begin, the encoder lifecycle with its one-encoder-at-a-time rule and its M-R4 "
                 + "invalidation, End, disposal and the submit path ARE live (work-breakdown row 7, "
-                + "https://github.com/APKiwiOrg/KhaozEngine/issues/573), and so is UpdateBuffer with the uniform "
-                + "ring behind it and the staging arena behind everything else (row 8, "
-                + "https://github.com/APKiwiOrg/KhaozEngine/issues/574), and binding a graphics or a compute "
-                + "pipeline (row 11, https://github.com/APKiwiOrg/KhaozEngine/issues/577). This is a statement "
-                + "about the package and not about this machine. Select GpuBackendKind.Metal, which goes through "
-                + "Veldrid, for a fully working Metal device.");
+                + "https://github.com/APKiwiOrg/KhaozEngine/issues/573), so is UpdateBuffer with the uniform "
+                + "https://github.com/APKiwiOrg/KhaozEngine/issues/574), so is binding a graphics or a compute "
+                + "pipeline (row 11, https://github.com/APKiwiOrg/KhaozEngine/issues/577), so are framebuffers, "
+                + "the deferred pass with its per-attachment clears, the viewport and the scissor (row 12, "
+                + "https://github.com/APKiwiOrg/KhaozEngine/issues/578), and so are all four resource-set binds "
+                + "with the argument-table flush behind them (row 13, "
+                + "https://github.com/APKiwiOrg/KhaozEngine/issues/579). This is a statement about the package "
+                + "and not about this machine. Select GpuBackendKind.Metal, which goes through Veldrid, for a "
+                + "fully working Metal device.");
     }
 }

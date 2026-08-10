@@ -6,8 +6,14 @@ using KhaozEngine.Gpu.Metal.Internal.ObjC;
 namespace KhaozEngine.Gpu.Metal.Internal
 {
     /// <summary>
-    /// THE SEAM'S <see cref="IGpuResourceFactory"/>, filled to the members the RESOURCE row owns and refusing the
-    /// rest by naming the row that builds each.
+    /// THE SEAM'S <see cref="IGpuResourceFactory"/>, and as of row 12 EVERY member of it is live.
+    ///
+    /// <para><b>THE not-yet LEDGER IS GONE FROM THIS TYPE, which is the discipline rather than a cleanup.</b> This
+    /// file carried a <c>NotBuiltYet</c> helper and one row constant per refusing member, and the rule was that a
+    /// row filling a member deletes its entry. Row 12 filled the last one, so the helper and both constants went
+    /// with it: a refusal message nothing can reach is a claim that this factory is unfinished, and a reader who
+    /// found it would be misled by it. <c>MetalCommandList.Unbuilt.cs</c> still carries its own ledger, because
+    /// row 14 has members left.</para>
     ///
     /// <para><b>WHAT IS LIVE HERE IS BUFFERS, TEXTURES, SAMPLERS AND FENCES.</b> Every one of those is a plain
     /// object with no encoder, no pipeline and no shader behind it, which is exactly the boundary section 18 draws
@@ -26,7 +32,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <para><b>AND BOTH PIPELINES ARE LIVE AS OF ROW 11</b> (https://github.com/APKiwiOrg/KhaozEngine/issues/577),
     /// the row that consumes rows 9 and 10 together: a pipeline is created from the shader set's functions and
     /// checked against the declared layouts, and it is the only caller of
-    /// <c>MetalShaderIndexTable.RequireLayoutShape</c>. What still refuses is the framebuffer they draw into.</para>
+    /// <c>MetalShaderIndexTable.RequireLayoutShape</c>.</para>
+    ///
+    /// <para><b>AND THE FRAMEBUFFER THEY DRAW INTO IS LIVE AS OF ROW 12</b>
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/578), which is the member that closed this type's ledger.
+    /// It aggregates borrowed texture handles and creates nothing native at all.</para>
     ///
     /// <para><b>CREATION IS FREE-THREADED AND TAKES NO LOCK AT ALL (M-W8).</b> An <c>MTLDevice</c> is documented
     /// thread-safe and none of these calls touches shared state: the setup command buffer is the only thing in
@@ -90,8 +100,34 @@ namespace KhaozEngine.Gpu.Metal.Internal
         public IGpuFence CreateFence() => _device.Timeline.CreateFence();
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// AN AGGREGATE OF BORROWED TEXTURE HANDLES AND NOTHING ELSE. It creates no native object, takes no lock
+        /// and issues no command buffer, because a Metal render pass is a descriptor built per pass rather than a
+        /// driver object to cache: there is no render pass and no framebuffer object here to invalidate on a
+        /// resize. See <see cref="MetalFramebuffer"/>.
+        /// <para>
+        /// IT IS THE ONE MEMBER HERE WITH NO <c>OnMacOs</c> HALF, and that follows rather than being an
+        /// exception: with nothing native to make there is nothing for the platform guard to protect, and the
+        /// textures it aggregates were already refused off macOS at their own creation.
+        /// </para>
+        /// </remarks>
         public IGpuFramebuffer CreateFramebuffer(IGpuTexture? depth, params IGpuTexture[] colour)
-            => throw NotBuiltYet("A framebuffer", PassesRow);
+        {
+            ArgumentNullException.ThrowIfNull(colour);
+
+            var textures = new MetalTexture[colour.Length];
+            for (int i = 0; i < colour.Length; i++)
+            {
+                textures[i] = MetalResourceOwnership.Require<MetalTexture>(colour[i], _device.Liveness,
+                    nameof(colour));
+            }
+
+            MetalTexture? depthTexture = depth is null
+                ? null
+                : MetalResourceOwnership.Require<MetalTexture>(depth, _device.Liveness, nameof(depth));
+
+            return new MetalFramebuffer(depthTexture, textures);
+        }
 
         /// <inheritdoc/>
         /// <remarks>
@@ -253,20 +289,5 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 + "MetalGpuDevice exists on a machine that has no Metal at all, which the provider's functional "
                 + "probe refuses before creation.");
 
-        const string PassesRow = "the render-pass row (https://github.com/APKiwiOrg/KhaozEngine/issues/578)";
-
-        // Named rather than a bare NotImplementedException, and it names WHAT IS LIVE as well as what is not, in
-        // the shape MetalGpuDevice settled on: a reader who hits this needs to know whether the backend is
-        // unfinished or their machine is wrong, and those have different answers.
-        static NotSupportedException NotBuiltYet(string what, string row)
-            => new($"{what} is not built yet on the native Metal backend's resource factory: it lands in {row}. "
-                + "Buffers, textures, samplers and fences ARE live (work-breakdown row 6, "
-                + "https://github.com/APKiwiOrg/KhaozEngine/issues/572), so are command lists (row 7, "
-                + "https://github.com/APKiwiOrg/KhaozEngine/issues/573), shader sets and compute shaders (row 9, "
-                + "https://github.com/APKiwiOrg/KhaozEngine/issues/575), resource layouts and resource sets "
-                + "(row 10, https://github.com/APKiwiOrg/KhaozEngine/issues/576), and graphics and compute "
-                + "pipelines (row 11, https://github.com/APKiwiOrg/KhaozEngine/issues/577). This is a statement "
-                + "about the package and not about this machine. Select GpuBackendKind.Metal, which goes through "
-                + "Veldrid, for a fully working Metal device.");
     }
 }

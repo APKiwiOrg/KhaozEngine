@@ -31,11 +31,19 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// indirection per record per boundary.</para>
     ///
     /// <para><b>WHO EMBEDS ONE.</b> Row 11's bound-pipeline record
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/577), row 13's per-slot bind records
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/579), and row 14's vertex-stream and index-buffer records
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/580). Row 7 ships the mechanism and the test rather than
-    /// the records, because the records are those rows' content and the invalidation is the thing that has to be
-    /// true before any of them is written.</para>
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/577), and row 13's per-slot bind records AND
+    /// vertex-stream records (https://github.com/APKiwiOrg/KhaozEngine/issues/579). Row 7 ships the mechanism and
+    /// the test rather than the records, because the records are those rows' content and the invalidation is the
+    /// thing that has to be true before any of them is written.
+    /// <para>
+    /// CORRECTED AT ROW 13: this paragraph put the vertex-stream record on row 14, and section 18's row 13 cell
+    /// names "the vertex-stream cache that is actually maintained" as row 13's. The split that resolves both is
+    /// that the CACHE with its invalidation is row 13's (<see cref="MetalVertexStreamRecords"/>) and the SEAM
+    /// MEMBER that feeds it is row 14's, which is also the only split that lets the cache and the invalidation
+    /// land together, and section 6.3 is explicit that porting one without the other ships a corruption. There is
+    /// no index-buffer record on this backend at all: Metal takes the index buffer in the draw call rather than
+    /// binding it beforehand, so there is no argument-table entry for a record to be about.
+    /// </para></para>
     ///
     /// <para><b>A MUTABLE STRUCT, deliberately</b>, so a record embeds one by value and no allocation happens per
     /// slot per list. It is always accessed through a field on a class (a bind record, a stream record) rather

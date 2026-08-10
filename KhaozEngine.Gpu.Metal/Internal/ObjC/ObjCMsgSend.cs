@@ -65,6 +65,14 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         [SupportedOSPlatform("macos")]
         internal static partial IntPtr SendPtrNUInt(IntPtr receiver, IntPtr sel, nuint a);
 
+        /// <summary>An object-returning message taking one <c>NSInteger</c>:
+        /// <c>-computeCommandEncoderWithDispatchType:</c>. The signed sibling of the shape above, and it rides
+        /// the same spike answer: an integer argument of pointer width goes in a register, and the sign is a
+        /// property of how the callee reads it rather than of where the caller puts it.</summary>
+        [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial IntPtr SendPtrNInt(IntPtr receiver, IntPtr sel, nint a);
+
         // ---- BOOL returns, which are ONE BYTE ---------------------------------------------------------------
 
         /// <summary>A bare <c>BOOL</c> property: <c>-isLowPower</c>, <c>-isRemovable</c>, <c>-isHeadless</c>.</summary>

@@ -67,9 +67,31 @@ namespace KhaozEngine.Gpu.Metal.Internal
             var liveness = new MetalDeviceLiveness();
             var loss = new MetalDeviceLossLatch(liveness);
 
+            MetalTimeline? timeline = null;
+            bool registered = false;
+
             try
             {
-                MetalGpuDevice created = new(device, queue, ReadCapabilities(selected.Facts), liveness, loss);
+                // MM4's DEPTH, resolved once per device and reported, so a capture proves the number its
+                // backpressure counter was measured against rather than resting on the tester believing they set
+                // the variable. Row 8 reads it for the uniform ring and row 15 for maximumDrawableCount.
+                int framesInFlight = MetalFramesInFlight.FromEnvironment(out string? unrecognizedFrames);
+                if (unrecognizedFrames is not null)
+                    log.Warn(MetalFramesInFlight.UnrecognizedWarning(unrecognizedFrames));
+                log.Info(MetalFramesInFlight.ActiveDescription(framesInFlight));
+
+                // THE DEVICE'S ONE COMPLETION TIMELINE (M-F1), created before anything can submit. Row 5 built
+                // it and left the wiring to the first row with a submit path, which is this one.
+                timeline = new MetalTimeline(new MetalSharedEvent(device.Handle), liveness);
+
+                // AND THE ROUTE M-F2's HANDLER DELIVERS THROUGH, keyed on the QUEUE rather than the MTLDevice,
+                // which is a measurement rather than a preference: MTLCreateSystemDefaultDevice is a per-GPU
+                // process singleton, so two engine devices on one GPU are indistinguishable by device pointer.
+                MetalCompletionHandler.Register(queue.Handle, new MetalCompletionErrorRoute(loss));
+                registered = true;
+
+                MetalGpuDevice created = new(device, queue, ReadCapabilities(selected.Facts), liveness, loss,
+                    timeline, new MetalUncommittedBuffers(framesInFlight));
 
                 // THE ARMING IS CHECKED AGAINST THE DEVICE ITSELF, through row 1's own control: a validated
                 // device is an MTLDebugDevice rather than the driver's class. Done here because it is the first
@@ -86,7 +108,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
             catch
             {
                 // Between -newCommandQueue and the constructor taking over, this method holds a +1 queue nothing
-                // else knows about. The device is the caller's to release on this path.
+                // else knows about, a +1 shared event behind the timeline, and possibly a slot in the four-slot
+                // completion table. The device is the caller's to release on this path. Unwound in the reverse
+                // order of acquisition, and the registration goes first because it is the only one of the three
+                // that another thread can reach.
+                if (registered) MetalCompletionHandler.Unregister(queue.Handle);
+                timeline?.Dispose();
                 queue.Release();
                 throw;
             }

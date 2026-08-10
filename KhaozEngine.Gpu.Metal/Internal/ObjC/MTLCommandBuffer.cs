@@ -94,6 +94,12 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
     /// an autoreleased object is an over-release, which is a crash somewhere else entirely.
     /// </para>
     /// <para>
+    /// THE THREE ENCODER FACTORIES ARE HERE AND THEY ALL HAND BACK AUTORELEASED OBJECTS TOO. Exactly one encoder
+    /// may be open on a buffer at a time, which is Metal's rule rather than a policy this backend invents, and
+    /// <c>MetalEncoderScope</c> is the one type that owns the transitions. These members do not enforce that: a
+    /// handle type reproduces the API and the state machine sits above it.
+    /// </para>
+    /// <para>
     /// THE COMPLETION HANDLER IS NOT HERE. <c>-addCompletedHandler:</c> and the <c>[UnmanagedCallersOnly]</c>
     /// block behind it belong to the timeline row
     /// (https://github.com/APKiwiOrg/KhaozEngine/issues/571), whose handler's ONLY job is to read
@@ -138,5 +144,40 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal NSError Error() => new(ObjCMsgSend.Send(Handle, ObjCRuntime.Sel("error")));
+
+        /// <summary>
+        /// <c>-renderCommandEncoderWithDescriptor:</c>. The ONE native call the deferred begin is (M-A1), taking
+        /// the <c>MTLRenderPassDescriptor</c> that carries the attachments, the folded clears and the explicit
+        /// store actions. Nil when Metal will not encode into this buffer, which M-W5's orphan-target rule is the
+        /// answer to rather than a throw.
+        /// </summary>
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal IntPtr RenderCommandEncoder(IntPtr descriptor)
+            => ObjCMsgSend.SendPtr(Handle, ObjCRuntime.Sel("renderCommandEncoderWithDescriptor:"), descriptor);
+
+        /// <summary><c>-blitCommandEncoder</c>. The kind whose cost section 2.1 is about: opening one ENDS a
+        /// render encoder, so a record-time upload that takes this path costs the next draw a full
+        /// re-activation.</summary>
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal IntPtr BlitCommandEncoder()
+            => ObjCMsgSend.Send(Handle, ObjCRuntime.Sel("blitCommandEncoder"));
+
+        /// <summary>
+        /// <c>-computeCommandEncoderWithDispatchType:</c> with <see cref="MTLDispatchType.Serial"/> (M-H4).
+        /// <para>
+        /// SERIAL IS WHAT MAKES THIS BACKEND NEED NO DEPENDENT-DISPATCH HAZARD MACHINERY: dispatches inside one
+        /// serial encoder do not overlap, so a dispatch that reads what an earlier one wrote is ordered without a
+        /// barrier. The dispatch type is passed rather than defaulted because
+        /// <c>-computeCommandEncoder</c> is the concurrent-capable form on some paths and the difference is
+        /// invisible until a chain reads stale data.
+        /// </para>
+        /// </summary>
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal IntPtr ComputeCommandEncoder(MTLDispatchType dispatchType)
+            => ObjCMsgSend.SendPtrNInt(Handle, ObjCRuntime.Sel("computeCommandEncoderWithDispatchType:"),
+                (nint)dispatchType);
     }
 }

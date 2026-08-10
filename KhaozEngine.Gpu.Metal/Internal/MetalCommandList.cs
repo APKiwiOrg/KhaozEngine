@@ -247,6 +247,18 @@ namespace KhaozEngine.Gpu.Metal.Internal
         }
 
         /// <summary>
+        /// Give up a sealed recording WITHOUT committing it, leaving the list reusable. The submit path's
+        /// dead-device arm, and nothing else.
+        /// <para>
+        /// A submit on a device that has already been lost is a no-op rather than a throw (the seam has no
+        /// recovery path and the frame loop above it is not written to handle one), but the buffer still has to
+        /// go back: holding it would keep it counted against the queue's own uncommitted maximum for the life of
+        /// the process, on a device where nothing will ever commit again.
+        /// </para>
+        /// </summary>
+        internal void DiscardRecording() => ReleaseHeldBuffer();
+
+        /// <summary>
         /// Release whatever this list still holds. IDEMPOTENT, because a consumer disposing a list twice is a
         /// teardown-order accident rather than a defect.
         /// <para>

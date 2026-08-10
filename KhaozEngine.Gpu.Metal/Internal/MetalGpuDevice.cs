@@ -10,23 +10,25 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// The engine's native Metal device as the GPU seam sees it: a real <c>MTLDevice</c> and a real
     /// <c>MTLCommandQueue</c> that create and tear down cleanly.
     /// <para>
-    /// <b>NOT EVERY MEMBER IS BUILT YET, and each one that is not names the row that builds it.</b> This is
-    /// work-breakdown row 4 of <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>: the interop layer,
-    /// the device, the queue, <c>KE_METAL_DEVICE</c>, the validation report, the command-buffer error latch, the
-    /// liveness token and a drain before teardown. Resources are row 6, the command list is row 7 and the
-    /// swapchain is row 15, so the members those rows own throw a message saying so rather than returning
-    /// something that fails later somewhere less informative, with three deliberate exceptions whose remarks
-    /// below carry the reasons: <see cref="Counters"/> returns an absent default (row 16's channels, and absent
-    /// is not zero), <see cref="SwapchainFramebuffer"/> returns null (the headless answer is null, not a throw),
-    /// and <see cref="SyncToVerticalBlank"/> is a backing value until row 15 gives it a swapchain to
-    /// reconfigure. Both sibling backends landed the same way and had
-    /// this paragraph rewritten at every fill-in, which is the discipline it is under here too: it is a ledger,
-    /// and a stale one is worse than none.
+    /// <b>NOT EVERY MEMBER IS BUILT YET, and each one that is not names the row that builds it.</b> Rows 4 and 6
+    /// of <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c> have landed: the interop layer, the
+    /// device, the queue, <c>KE_METAL_DEVICE</c>, the validation report, the command-buffer error latch, the
+    /// liveness token and a drain before teardown (row 4), and the resource factory, the shared sampler pair,
+    /// the device-level uploads, the setup command buffer and <c>Map</c> with its read drain (row 6). The command
+    /// list is row 7 and the swapchain is row 15, so the members those rows own throw a message saying so rather
+    /// than returning something that fails later somewhere less informative, with three deliberate exceptions
+    /// whose remarks below carry the reasons: <see cref="Counters"/> returns an absent default (row 16's
+    /// channels, and absent is not zero), <see cref="SwapchainFramebuffer"/> returns null (the headless answer is
+    /// null, not a throw), and <see cref="SyncToVerticalBlank"/> is a backing value until row 15 gives it a
+    /// swapchain to reconfigure. Both sibling backends landed the same way and had this paragraph rewritten at
+    /// every fill-in, which is the discipline it is under here too: it is a ledger, and a stale one is worse than
+    /// none.
     /// </para>
     /// <para>
-    /// <b>THE MEMBERS THIS ROW OWNS ARE LIVE:</b> <see cref="Backend"/>, <see cref="Capabilities"/> (in the part
-    /// this row can read honestly, see below), <see cref="Diagnostics"/> with both of its fields,
-    /// <see cref="WaitForIdle"/> and <see cref="Dispose"/>.
+    /// <b>THE MEMBERS THESE ROWS OWN ARE LIVE:</b> <see cref="Backend"/>, <see cref="Capabilities"/> (in the part
+    /// row 4 can read honestly, see below), <see cref="Diagnostics"/> with both of its fields,
+    /// <see cref="WaitForIdle"/>, <see cref="Dispose"/>, and row 6's whole resource half in
+    /// <c>MetalGpuDevice.Resources.cs</c>.
     /// </para>
     /// <para>
     /// <b><see cref="Capabilities"/> IS PARTIAL AND SAYS WHICH PART.</b> Row 16 owns the capability read and the
@@ -51,19 +53,28 @@ namespace KhaozEngine.Gpu.Metal.Internal
         readonly MetalDeviceLiveness _liveness;
         readonly MetalDeviceLossLatch _loss;
         readonly MTLDevice _device;
+        readonly MetalTimeline _timeline;
+        readonly MetalSetupCommands _setup;
+        readonly MetalResourceFactory _factory;
         readonly object _lifecycle = new();
+
+        MetalSampler _pointSampler = null!;
+        MetalSampler _linearSampler = null!;
 
         bool _disposed;
         bool _syncToVerticalBlank;
 
         MetalGpuDevice(MTLDevice device, MTLCommandQueue queue, GpuCapabilities capabilities,
-            MetalDeviceLiveness liveness, MetalDeviceLossLatch loss)
+            MetalDeviceLiveness liveness, MetalDeviceLossLatch loss, MetalTimeline timeline)
         {
             _device = device;
             Queue = queue;
             _liveness = liveness;
             _loss = loss;
+            _timeline = timeline;
             Capabilities = capabilities;
+            _setup = new MetalSetupCommands(queue, liveness);
+            _factory = new MetalResourceFactory(this);
         }
 
         /// <inheritdoc/>
@@ -112,15 +123,6 @@ namespace KhaozEngine.Gpu.Metal.Internal
         public IGpuFramebuffer? SwapchainFramebuffer => null;
 
         /// <inheritdoc/>
-        public IGpuResourceFactory Factory => throw NotBuiltYet("The resource factory", ResourcesRow);
-
-        /// <inheritdoc/>
-        public IGpuSampler PointSampler => throw NotBuiltYet("The shared point sampler", ResourcesRow);
-
-        /// <inheritdoc/>
-        public IGpuSampler LinearSampler => throw NotBuiltYet("The shared linear sampler", ResourcesRow);
-
-        /// <inheritdoc/>
         /// <remarks>A backing value on a headless device, which is what the seam asks for. It reconfigures
         /// nothing because there is no swapchain to reconfigure, and row 15 is where it starts meaning something
         /// (M-W2 makes it an unconditional <c>displaySyncEnabled</c> on the layer rather than the incumbent's
@@ -160,43 +162,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
             if (_liveness.IsDead) return;
             if (!KhaozEngineMetal.IsPlatformSupported) return;
 
+            // THE SETUP BATCH FIRST (M-M9). A drain that ran before the flush would wait for everything except
+            // the uploads the caller has just made, which is exactly the case an explicit drain is asked for.
+            _setup.Flush();
+
             Drain("waitUntilCompleted (WaitForIdle)");
         }
-
-        /// <inheritdoc/>
-        public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged
-            => throw NotBuiltYet("Uploading to a buffer", ResourcesRow);
-
-        /// <inheritdoc/>
-        public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, T[] data) where T : unmanaged
-            => throw NotBuiltYet("Uploading to a buffer", ResourcesRow);
-
-        /// <inheritdoc/>
-        public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, in T data) where T : unmanaged
-            => throw NotBuiltYet("Uploading to a buffer", ResourcesRow);
-
-        /// <inheritdoc/>
-        public void UpdateTexture(IGpuTexture texture, byte[] data, uint x, uint y, uint width, uint height)
-            => throw NotBuiltYet("Uploading to a texture", ResourcesRow);
-
-        /// <inheritdoc/>
-        public void UpdateTexture(IGpuTexture texture, byte[] data, uint x, uint y, uint width, uint height,
-            uint mipLevel, uint arrayLayer)
-            => throw NotBuiltYet("Uploading to a texture", ResourcesRow);
-
-        /// <inheritdoc/>
-        public MappedData Map(IGpuTexture staging, GpuMapMode mode)
-            => throw NotBuiltYet("Mapping a staging texture", ResourcesRow);
-
-        /// <inheritdoc/>
-        public void Unmap(IGpuTexture staging) => throw NotBuiltYet("Mapping a staging texture", ResourcesRow);
-
-        /// <inheritdoc/>
-        public MappedData Map(IGpuBuffer staging, GpuMapMode mode)
-            => throw NotBuiltYet("Mapping a staging buffer", ResourcesRow);
-
-        /// <inheritdoc/>
-        public void Unmap(IGpuBuffer staging) => throw NotBuiltYet("Mapping a staging buffer", ResourcesRow);
 
         /// <inheritdoc/>
         public void ResizeSwapchain(uint w, uint h) => throw NotBuiltYet("Resizing the swapchain", SwapchainRow);
@@ -238,6 +209,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         void DisposeOnMacOs()
         {
+            // The setup batch is ABANDONED rather than committed, because the drain below is about to wait and
+            // the resources it was filling are being released in the same breath. Its staging buffers go here.
+            _setup.Dispose();
+
             // FIRST. Releasing a device with work in flight is releasing objects the GPU may still be reading.
             MetalCommandBufferFault fault = Drain("waitUntilCompleted (teardown drain)");
 
@@ -245,10 +220,22 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // that is safe to release and the two handles leak deliberately.
             if (fault.IsFailure) return;
 
+            // BEFORE THE FLIP, and that ordering is load-bearing rather than tidy. The shared samplers are the
+            // device's own (nothing else holds a reference, and a consumer disposing PointSampler would be
+            // disposing something it did not create), and every wrapper's Dispose is a no-op once liveness is
+            // dead, so releasing them after the flip would leak both for the life of the process.
+            _pointSampler.Dispose();
+            _linearSampler.Dispose();
+
             // Flipped BEFORE the releases and after the drain, so no wrapper can observe "alive" after the object
             // it would release has gone, and so a wrapper disposed on another thread mid-teardown becomes a
             // no-op rather than a call against a released object.
             _liveness.MarkDead();
+
+            // AFTER the flip, which is the order MetalTimeline.Dispose documents: its release is unconditional,
+            // because an MTLSharedEvent is an ordinary reference-counted object with no vkDestroyDevice rule in
+            // front of it, and skipping it on a dead device would leak it on the path that matters.
+            _timeline.Dispose();
 
             Queue.Release();
             _device.Release();
@@ -272,7 +259,6 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // The row that owns each unbuilt member, as a full URL, because these messages are read by somebody who
         // has just hit one and needs to know whether to wait for a row or file a bug.
         const string CommandListRow = "the command-list row (https://github.com/APKiwiOrg/KhaozEngine/issues/573)";
-        const string ResourcesRow = "the resources row (https://github.com/APKiwiOrg/KhaozEngine/issues/572)";
         const string SwapchainRow = "the swapchain row (https://github.com/APKiwiOrg/KhaozEngine/issues/581)";
 
         // Named rather than a bare NotImplementedException, and it names WHAT IS LIVE as well as what is not,
@@ -282,7 +268,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
             => new($"{what} is not built yet on the native Metal backend: it lands in {row}. The interop layer, "
                 + "the MTLDevice, the MTLCommandQueue, KE_METAL_DEVICE selection, the command-buffer error latch "
                 + "and the liveness token ARE live (work-breakdown row 4, "
-                + "https://github.com/APKiwiOrg/KhaozEngine/issues/570). This is a statement about the package "
+                + "https://github.com/APKiwiOrg/KhaozEngine/issues/570), and so are buffers, textures, samplers, "
+                + "fences, the device-level uploads and Map (row 6, "
+                + "https://github.com/APKiwiOrg/KhaozEngine/issues/572). This is a statement about the package "
                 + "and not about this machine. Select GpuBackendKind.Metal, which goes through Veldrid, for a "
                 + "fully working Metal device.");
 

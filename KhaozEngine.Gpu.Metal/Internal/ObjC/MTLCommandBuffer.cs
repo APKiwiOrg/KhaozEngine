@@ -90,8 +90,17 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
     /// status and error pair decision M-G4's latch is built on.
     /// <para>
     /// IT ARRIVES AUTORELEASED, from <see cref="MTLCommandQueue.CommandBuffer"/>, so every caller is inside an
-    /// <see cref="ObjCAutoreleasePool"/> scope. Nothing here releases one by hand and nothing should: releasing
-    /// an autoreleased object is an over-release, which is a crash somewhere else entirely.
+    /// <see cref="ObjCAutoreleasePool"/> scope. A buffer used and committed INSIDE one pool scope needs nothing
+    /// else, and calling <see cref="Release"/> on one would be an over-release, which is a crash somewhere else
+    /// entirely.
+    /// </para>
+    /// <para>
+    /// <b>A BUFFER HELD ACROSS POOL SCOPES IS THE EXCEPTION, AND IT NEEDS <see cref="Retain"/>.</b> The setup
+    /// command buffer of M-M9 accumulates uploads from separate calls and commits once, so it outlives the pool
+    /// the queue handed it out in, and the pop of that pool would release it: the next append would then message
+    /// a freed object. That is a use-after-free rather than a leak, and it is the failure this pair exists to
+    /// prevent. The rule is the ordinary Objective-C one, written down because the surrounding rule is the
+    /// opposite: whoever holds an autoreleased object past its pool retains it, and releases it once when done.
     /// </para>
     /// <para>
     /// THE COMPLETION HANDLER IS NOT HERE. <c>-addCompletedHandler:</c> and the <c>[UnmanagedCallersOnly]</c>
@@ -107,6 +116,24 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
     {
         /// <summary>True when the queue would not make one, which is a device that is already in trouble.</summary>
         internal bool IsNull => Handle == IntPtr.Zero;
+
+        /// <summary>Retain this buffer, for a holder that keeps it past the autorelease pool it was created in.
+        /// See the type summary: the only holder that does is the device's setup command buffer.</summary>
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal void Retain()
+        {
+            if (Handle != IntPtr.Zero) ObjCRuntime.ObjcRetain(Handle);
+        }
+
+        /// <summary>Release a buffer that was <see cref="Retain"/>ed. Never called on one that was not: an
+        /// autoreleased object released by hand is an over-release.</summary>
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal void Release()
+        {
+            if (Handle != IntPtr.Zero) ObjCRuntime.ObjcRelease(Handle);
+        }
 
         /// <summary><c>-commit</c>. Enqueues the buffer if it was not already enqueued, so commit order IS
         /// execution order when commits are serialised (M-N2).</summary>

@@ -155,7 +155,9 @@ namespace KhaozEngine.Tests.Gpu
         /// EVERY UNBUILT MEMBER NAMES THE ROW THAT BUILDS IT, and says what IS live, because a reader who hits
         /// one needs to know whether the backend is unfinished or their machine is wrong and those have different
         /// answers. This row is what stops the ledger paragraph on the device from rotting silently: it fails the
-        /// day a member starts working and nobody updated the message.
+        /// day a member starts working and nobody updated the message, which is exactly what it did when row 6
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/572) landed the resource factory and the shared
+        /// sampler pair, and why those two moved from the refusal list to the live one below.
         /// </summary>
         [GpuFact]
         public void EveryUnbuiltMember_NamesItsRowAndWhatIsLive()
@@ -164,15 +166,21 @@ namespace KhaozEngine.Tests.Gpu
 
             using IGpuDevice device = CreateHeadless();
 
-            Assert.Contains("572", Refusal(() => _ = device.Factory), StringComparison.Ordinal);
-            Assert.Contains("572", Refusal(() => _ = device.PointSampler), StringComparison.Ordinal);
+            // LIVE as of row 6. Named here rather than deleted, because the whole value of this row is that the
+            // ledger and the code disagree loudly, and a member silently dropped from the list is a member
+            // nothing checks in either direction.
+            Assert.NotNull(device.Factory);
+            Assert.NotNull(device.PointSampler);
+            Assert.NotNull(device.LinearSampler);
+
             Assert.Contains("573", Refusal(() => device.Submit(null!)), StringComparison.Ordinal);
             Assert.Contains("581", Refusal(() => device.Present()), StringComparison.Ordinal);
 
-            string factory = Refusal(() => _ = device.Factory);
-            _output.WriteLine(factory);
-            Assert.Contains("MTLCommandQueue", factory, StringComparison.Ordinal);
-            Assert.Contains("not about this machine", factory, StringComparison.Ordinal);
+            string submit = Refusal(() => device.Submit(null!));
+            _output.WriteLine(submit);
+            Assert.Contains("MTLCommandQueue", submit, StringComparison.Ordinal);
+            Assert.Contains("not about this machine", submit, StringComparison.Ordinal);
+            Assert.Contains("572", submit, StringComparison.Ordinal);
         }
 
         /// <summary>A headless device has no swapchain BY DEFINITION, so null is the correct answer rather than

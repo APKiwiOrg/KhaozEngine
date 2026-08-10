@@ -67,9 +67,22 @@ namespace KhaozEngine.Gpu.Metal.Internal
             var liveness = new MetalDeviceLiveness();
             var loss = new MetalDeviceLossLatch(liveness);
 
+            // THE DEVICE'S ONE COMPLETION TIMELINE (M-F1), created here because every fence sits on it and
+            // IGpuResourceFactory.CreateFence is row 6's. Row 5 built the subsystem and named this as the row
+            // that gives the device one (MetalTimeline.CreateFence's own doc says so); the command-list row
+            // (https://github.com/APKiwiOrg/KhaozEngine/issues/573) is what starts encoding signals into it at
+            // submit, so until that lands a fence is real and simply never armed.
+            var timeline = new MetalTimeline(new MetalSharedEvent(device.Handle), liveness);
+
             try
             {
-                MetalGpuDevice created = new(device, queue, ReadCapabilities(selected.Facts), liveness, loss);
+                MetalGpuDevice created = new(device, queue, ReadCapabilities(selected.Facts), liveness, loss,
+                    timeline);
+
+                // THE SHARED SAMPLER PAIR, from MetalSharedSamplers and not from the engine's same-named
+                // GpuSamplerDescription statics. Both are WRAP on all three axes, and reading the engine statics
+                // instead (which clamp) cost two goldens on the Direct3D 11 leg.
+                created.CreateSharedSamplers();
 
                 // THE ARMING IS CHECKED AGAINST THE DEVICE ITSELF, through row 1's own control: a validated
                 // device is an MTLDebugDevice rather than the driver's class. Done here because it is the first
@@ -85,9 +98,30 @@ namespace KhaozEngine.Gpu.Metal.Internal
             }
             catch
             {
-                // Between -newCommandQueue and the constructor taking over, this method holds a +1 queue nothing
-                // else knows about. The device is the caller's to release on this path.
+                // Between -newCommandQueue and the constructor taking over, this method holds a +1 queue and a
+                // +1 shared event nothing else knows about. The device is the caller's to release on this path.
+                timeline.Dispose();
                 queue.Release();
+                throw;
+            }
+        }
+
+        // Created at device creation rather than lazily, because the seam exposes them as properties with no
+        // failure mode and a lazy pair would need a lock on a path every renderer touches on its first frame.
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void CreateSharedSamplers()
+        {
+            _pointSampler = MetalSampler.Create(_device, _liveness, MetalSharedSamplers.Point);
+
+            try
+            {
+                _linearSampler = MetalSampler.Create(_device, _liveness, MetalSharedSamplers.Linear);
+            }
+            catch
+            {
+                // The point sampler is already a live +1 object nothing else has a reference to.
+                _pointSampler.Dispose();
                 throw;
             }
         }

@@ -102,13 +102,20 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(result.AllCompletionsErrorFree,
                 "a command buffer completed carrying an error:\n" + report);
 
-            // M-F5's counting, and the slice loop's release, measured against the real event on a value nothing
-            // will ever signal. A false here is a hang rather than a wrong number, which is why the probe times
-            // out the flipper thread rather than trusting it.
+            // The slice loop's release, measured against the real event on a value nothing will ever signal. A
+            // false here is a hang rather than a wrong number, which is why the probe times out the flipper
+            // thread rather than trusting it. The COUNT is deliberately not pinned to exactly one: the flipper
+            // is gated on an event set immediately before the drain, but on a loaded runner it can still win
+            // the race to the drain's first liveness check, in which case the drain legitimately never starts
+            // and counts nothing. Both outcomes satisfy the property this test exists for (a dead device never
+            // hangs the drain), and the exact counting semantics are pinned deterministically by the
+            // device-free MetalTimelineTests against the fake, where the race cannot occur. This assertion went
+            // red on the hosted macos-26 leg for exactly that race before it was relaxed.
             Assert.True(result.DrainReleasedByDeviceDeath,
                 "the drain did not return after liveness flipped underneath it:\n" + report);
-            Assert.Equal(1, result.CountedDrains);
-            Assert.True(result.CountedDrainMs > 0,
+            Assert.True(result.CountedDrains <= 1,
+                "a single drain counted more than once:\n" + report);
+            Assert.True(result.CountedDrains == 0 || result.CountedDrainMs > 0,
                 "a drain that really blocked recorded no time:\n" + report);
             Assert.True(result.FenceSignaledAfterDeviceDeath,
                 "a fence did not read signaled after the device died, which is what strands a retire pool "

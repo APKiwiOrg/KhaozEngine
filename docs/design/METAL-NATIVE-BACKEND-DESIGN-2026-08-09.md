@@ -1540,7 +1540,10 @@ assertion. The failure this catches is "everything compiles and every pixel is w
 V-S8 both exist for, arriving through the one door Metal leaves open.
 
 **What row 9 landed, by name.** `MetalShaderIndexTable` is the table, keyed on `(set, binding, stage)` with
-`TryGetIndex` as row 13's read and `ContentKey` as row 10's dedup seat. `MetalMslEntryPoint` is the parse (the
+`TryGetIndex` as row 13's read and `ContentKey` as row 10's dedup seat. That key renders the LAYOUT SHAPE as
+well as the entries, because an element no stage references contributes no entry: on the entries alone two
+programs collide while disagreeing in the layouts `RequireLayoutShape` compares against, and row 10 would then
+hand pipeline B a table that refuses B's own correct declared array. `MetalMslEntryPoint` is the parse (the
 name and the depth-matched argument walk), `MetalShaderBuild` is the device-free path that ties the front end,
 the emission and the join together, and `MetalShaderCompiler` is the two native calls on the far side of it.
 `RequireLayoutShape` is pin 4's check, written here and called by row 11.

@@ -211,9 +211,27 @@ namespace KhaozEngine.Gpu.Metal.Internal
         }
 
         /// <summary>
-        /// A stable rendering of the table's CONTENT, for row 10's deduplication (M-R9). Two programs whose tables
-        /// say the same thing produce the same string here, which is what lets row 10 hand both pipelines one
+        /// A stable rendering of EVERYTHING THIS OBJECT ANSWERS FOR, for row 10's deduplication (M-R9): the
+        /// layout shape first, then every entry. Two programs that produce the same string here are
+        /// interchangeable through every member of this type, which is what lets row 10 hand both pipelines one
         /// shared instance and make the invalidation comparison a handle compare.
+        /// <para>
+        /// THE LAYOUT SHAPE IS IN THE KEY BECAUSE <see cref="RequireLayoutShape"/> IS AN AUTHORITY, and the
+        /// entries alone are not a complete identity of this object. It compares a pipeline's declared array
+        /// against <see cref="Layouts"/>, and two programs can agree on every entry while disagreeing in
+        /// <see cref="Layouts"/>: an element no stage references contributes no entry at all, and that is the
+        /// common case rather than the corner (95 of 254 stage/element slots over the shipped set). Dedup on the
+        /// entries alone would hand pipeline B a table carrying program A's layouts, and pin 4 would then refuse
+        /// B's own perfectly correct declared array. Loud and wrong, which is a better failure than the silent
+        /// one and still not one row 10 should be able to reach. So set count, each set's element count and each
+        /// element's kind are rendered here, which is exactly the triple that check compares.
+        /// </para>
+        /// <para>
+        /// AN ELEMENT'S NAME AND STAGE VISIBILITY ARE DELIBERATELY NOT RENDERED. Nothing on this type reads
+        /// either: the shape check compares kinds, and the join reaches an element only for its kind. If a later
+        /// row starts reading a layout element's name or its visibility off <see cref="Layouts"/>, that becomes
+        /// observable and belongs in here too.
+        /// </para>
         /// <para>
         /// NOT CONSUMED IN THIS ROW, and named rather than left implicit so row 10 does not invent a second
         /// notion of table identity beside this one.
@@ -223,7 +241,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             get
             {
-                var text = new StringBuilder(_entries.Count * 16);
+                var text = new StringBuilder(_entries.Count * 16 + _layouts.Length * 16);
+                text.Append(_layouts.Length.ToString(CultureInfo.InvariantCulture)).Append('|');
+                foreach (GpuResourceLayoutDescription layout in _layouts)
+                {
+                    text.Append(layout.Elements.Length.ToString(CultureInfo.InvariantCulture)).Append(':');
+                    foreach (GpuResourceLayoutElement element in layout.Elements)
+                        text.Append(((int)element.Kind).ToString(CultureInfo.InvariantCulture)).Append(',');
+                    text.Append('|');
+                }
+
                 foreach ((MetalIndexTableKey key, MetalIndexTableEntry entry) in Entries())
                 {
                     text.Append(key.Set.ToString(CultureInfo.InvariantCulture)).Append(':')

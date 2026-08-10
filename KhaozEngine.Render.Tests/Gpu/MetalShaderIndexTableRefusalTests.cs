@@ -240,6 +240,51 @@ namespace KhaozEngine.Tests.Gpu
                 StringComparison.Ordinal);
         }
 
+        /// <summary>
+        /// ROW 10'S SEAT, PINNED: <c>ContentKey</c> is a COMPLETE identity of the table, layouts included. Two
+        /// programs with the same entries and different layouts must not dedup onto one instance, because pin 4
+        /// compares a pipeline's declared array against the table's layouts, so a shared table would answer
+        /// pipeline B's own correct array with program A's reflection and refuse it.
+        /// </summary>
+        [Fact]
+        public void TwoTablesWithTheSameEntriesAndDifferentLayouts_DoNotShareAContentKey()
+        {
+            // The two layouts disagree only at element 1, which NEITHER stage references, so both tables carry
+            // the same single entry. That is the ordinary shape rather than a contrived one: over the shipped set
+            // 95 of 254 stage/element slots are unreferenced by their stage.
+            MetalShaderIndexTable withTexture = OneEntry(
+                GpuResourceKind.UniformBuffer, GpuResourceKind.TextureReadOnly);
+            MetalShaderIndexTable withSampler = OneEntry(
+                GpuResourceKind.UniformBuffer, GpuResourceKind.Sampler);
+
+            Assert.Equal(1, withTexture.Count);
+            Assert.Equal(withTexture.Count, withSampler.Count);
+            Assert.True(withTexture.TryGetIndex(0, 0, MetalShaderStage.Fragment, out MetalIndexTableEntry mine));
+            Assert.True(withSampler.TryGetIndex(0, 0, MetalShaderStage.Fragment, out MetalIndexTableEntry theirs));
+            Assert.Equal(mine, theirs);
+
+            Assert.NotEqual(withTexture.ContentKey, withSampler.ContentKey);
+
+            // POSITIVE CONTROL, so the row above is not passing because every table gets its own key: the same
+            // content really does render the same string, which is the whole point of the seam.
+            Assert.Equal(
+                withTexture.ContentKey,
+                OneEntry(GpuResourceKind.UniformBuffer, GpuResourceKind.TextureReadOnly).ContentKey);
+        }
+
+        /// <summary>A table over the given layout whose fragment stage references element 0 and nothing else. The
+        /// first kind has to be a buffer kind, because the one argument is a <c>[[buffer(0)]]</c>.</summary>
+        static MetalShaderIndexTable OneEntry(params GpuResourceKind[] kinds)
+            => MetalShaderIndexTable.Build(
+                Layout(kinds),
+                new[]
+                {
+                    new MetalMslStageJoin(MetalShaderStage.Fragment,
+                        Spirv((Id: 70, Set: 0, Binding: 0)),
+                        new[] { new MetalMslArgument(MetalIndexSpace.Buffer, 0, "_70") }),
+                },
+                "hand-built");
+
         static ShaderValidationException Build(byte[] spirv, MetalMslArgument argument,
             GpuResourceLayoutDescription[] layouts)
             => Build(spirv, new[] { argument }, layouts);

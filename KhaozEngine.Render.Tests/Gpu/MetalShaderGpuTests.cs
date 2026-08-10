@@ -127,7 +127,7 @@ namespace KhaozEngine.Tests.Gpu
 
             using IGpuDevice device = CreateHeadless();
             var metalDevice = (MetalGpuDevice)device;
-            var compiler = new MetalShaderCompiler(metalDevice.Handle, metalDevice.Liveness);
+            var compiler = new MetalShaderCompiler(metalDevice.Handle, metalDevice.Liveness, metalDevice.IndexTables);
 
             ShaderValidationException error = Rejected(
                 compiler, HandBuilt("#include <metal_stdlib>\nthis is not MSL\n", "main0"));
@@ -152,7 +152,7 @@ namespace KhaozEngine.Tests.Gpu
 
             using IGpuDevice device = CreateHeadless();
             var metalDevice = (MetalGpuDevice)device;
-            var compiler = new MetalShaderCompiler(metalDevice.Handle, metalDevice.Liveness);
+            var compiler = new MetalShaderCompiler(metalDevice.Handle, metalDevice.Liveness, metalDevice.IndexTables);
 
             const string valid = "#include <metal_stdlib>\nusing namespace metal;\n"
                 + "kernel void main0(uint i [[thread_position_in_grid]]) { }\n";

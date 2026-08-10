@@ -32,24 +32,6 @@ namespace KhaozEngine.Gpu.Metal.Internal
         public void SetComputePipeline(IGpuComputePipeline p)
             => throw NotBuiltYet("Binding a compute pipeline", PipelinesRow);
 
-        // ---- Row 13: the bind flush --------------------------------------------------------------------------
-
-        /// <inheritdoc/>
-        public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set)
-            => throw NotBuiltYet("Binding a graphics resource set", BindsRow);
-
-        /// <inheritdoc/>
-        public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset)
-            => throw NotBuiltYet("Binding a graphics resource set", BindsRow);
-
-        /// <inheritdoc/>
-        public void SetComputeResourceSet(uint slot, IGpuResourceSet set)
-            => throw NotBuiltYet("Binding a compute resource set", BindsRow);
-
-        /// <inheritdoc/>
-        public void SetComputeResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset)
-            => throw NotBuiltYet("Binding a compute resource set", BindsRow);
-
         // ---- Row 14: draws, dispatches and transfers ---------------------------------------------------------
 
         /// <inheritdoc/>
@@ -108,7 +90,6 @@ namespace KhaozEngine.Gpu.Metal.Internal
             => throw NotBuiltYet("Resolving a multisampled texture", DrawsRow);
 
         const string PipelinesRow = "the pipelines row (https://github.com/APKiwiOrg/KhaozEngine/issues/577)";
-        const string BindsRow = "the bind-flush row (https://github.com/APKiwiOrg/KhaozEngine/issues/579)";
         const string DrawsRow = "the draw-and-dispatch row (https://github.com/APKiwiOrg/KhaozEngine/issues/580)";
 
         static NotSupportedException NotBuiltYet(string what, string row)
@@ -117,9 +98,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 + "invalidation, End, disposal and the submit path ARE live (work-breakdown row 7, "
                 + "https://github.com/APKiwiOrg/KhaozEngine/issues/573), so is UpdateBuffer with the uniform "
                 + "ring behind it and the staging arena behind everything else (row 8, "
-                + "https://github.com/APKiwiOrg/KhaozEngine/issues/574), and so are framebuffers, the deferred "
+                + "https://github.com/APKiwiOrg/KhaozEngine/issues/574), so are framebuffers, the deferred "
                 + "pass with its per-attachment clears, the viewport and the scissor (row 12, "
-                + "https://github.com/APKiwiOrg/KhaozEngine/issues/578). This is a statement about the package "
+                + "https://github.com/APKiwiOrg/KhaozEngine/issues/578), and so are all four resource-set binds "
+                + "with the argument-table flush behind them (row 13, "
+                + "https://github.com/APKiwiOrg/KhaozEngine/issues/579). This is a statement about the package "
                 + "and not about this machine. Select GpuBackendKind.Metal, which goes through Veldrid, for a "
                 + "fully working Metal device.");
     }

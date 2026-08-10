@@ -264,9 +264,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // THE RECORDER STATE RESET GOES HERE, immediately after the acquisition and before the recording flag
             // flips. A reset added anywhere else is a reset that a re-Begun list can be observed without. Today
             // that is the encoder scope, which bumps its epoch so no record from the discarded recording can read
-            // as valid (M-R4), and the pass schedule, which drops the bound framebuffer, the pending clears, the
-            // scissor-test gate and the viewport and scissor stamps. Rows 11, 13 and 14 add theirs to this ONE
-            // place: both pipelines, both dirty arrays, the vertex-stream records and the index-buffer record.
+            // as valid (M-R4), the pass schedule, which drops the bound framebuffer, the pending clears, the
+            // scissor-test gate and the viewport and scissor stamps, and row 13's three record sets, which drop
+            // every recorded slot, the adopted index table and every vertex stream. Rows 11 and 14 add theirs to
+            // this ONE place: both bound pipelines and the index-buffer record.
             //
             // THE SCOPE GOES FIRST, because the schedule's stamps are compared against the scope's epoch and the
             // BeginRecording bump is what makes every one of them stale. Clearing them after that bump is belt
@@ -274,6 +275,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // ordinary encoder boundary as well, and only one of the two paths can be tested through a Begin.
             _encoders.BeginRecording(buffer);
             _passes.Reset();
+            _graphicsBinds.Reset();
+            _computeBinds.Reset();
+            _streams.Reset();
 
             _recording = true;
             _sealed = false;

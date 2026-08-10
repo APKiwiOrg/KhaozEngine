@@ -8854,8 +8854,9 @@ KhaozEngineMetal.Register();   // unconditionally, on every OS
 
 **It creates a HEADLESS device and it cannot present, which is the honest state of it.** Registration, the
 machine probe and headless creation are real: a `MetalNative` device holds an `MTLDevice` and one
-`MTLCommandQueue`, answers `Backend`, part of `Capabilities`, `Diagnostics`, `WaitForIdle` and `Dispose`, and
-throws from every member whose row has not landed with a message naming that row. WINDOWED creation refuses,
+`MTLCommandQueue`, answers `Backend`, part of `Capabilities`, `Diagnostics`, both `Submit` overloads,
+`WaitForIdle` and `Dispose`, records and submits a command list, and throws from every member whose row has not
+landed with a message naming that row. WINDOWED creation refuses,
 naming the swapchain row (https://github.com/APKiwiOrg/KhaozEngine/issues/581), because a windowed device that
 cannot present is worse than one that says so at creation. `GpuBackendKind.MetalNative` and its `metal-native`
 and `mtl-native` tokens exist, so the kind is nameable via `KE_GRAPHICS_BACKEND=metal-native`: a registered

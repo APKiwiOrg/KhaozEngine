@@ -8857,9 +8857,27 @@ honest state of it.** Registration, the machine probe and headless creation are 
 holds an `MTLDevice` and one `MTLCommandQueue`, answers `Backend`, part of `Capabilities`, `Diagnostics`, both
 `Submit` overloads, `WaitForIdle` and `Dispose`, records and submits a command list, creates real resources
 through `Factory` (buffers, textures, samplers and fences), exposes the shared `PointSampler` and
-`LinearSampler` pair, takes the device-level `UpdateBuffer` and `UpdateTexture`, and answers `Map` and `Unmap`
-for staging resources. It throws from every member whose row has not landed with a message naming that row, so
-there are no pipelines yet and nothing can be drawn.
+`LinearSampler` pair, takes the device-level `UpdateBuffer` and `UpdateTexture`, answers `Map` and `Unmap`
+for staging resources, and COMPILES SHADERS through `CreateShadersFromSpirv` and
+`CreateComputeShaderFromSpirv`. It throws from every member whose row has not landed with a message naming that
+row, so there are no pipelines yet and nothing can be drawn.
+
+**The shader path takes the same GLSL 450 every other backend takes**, so there is nothing to write differently
+for it: sources go in, an `MTLLibrary` and an `MTLFunction` per stage come out, and a compute shader reports the
+`ThreadGroupSize*` its own module declares. What is worth knowing is where a binding index comes from, because
+Metal is the one backend where it is not written in the shader. There is no `register(t3)` and no
+`layout(binding = 3)` on the far side: the cross-compiler assigns each resource an index of its own, per stage,
+following first reference rather than declaration order. The native backend reads those indices out of the
+emitted text and resolves each one back to your declared `(set, binding)` through the shader's own SPIR-V
+decorations, so what it binds is where the resource actually went. The Veldrid Metal backend counts declarations
+instead, which is why the engine's shaders still sample every texture up front in binding order and why
+`ShaderValidation.ValidateCompute` rejects a compute kernel whose kind order disagrees. Keep both habits: that
+backend ships and stays selectable.
+
+A shader whose emission cannot be read fails at `CreateShadersFromSpirv` with a message naming the program, the
+stage and the offending argument, and it fails with no device involved, so it surfaces in a headless test run
+rather than as a wrong pixel. There is deliberately no compiled-shader disk cache: macOS already caches the
+MSL-to-library compile across processes.
 
 **One creation the other backends accept is refused here, deliberately.** A buffer declaring both
 `GpuBufferUsage.UniformBuffer` and either structured usage throws at creation on `MetalNative`. Both Veldrid

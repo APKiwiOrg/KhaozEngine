@@ -590,6 +590,97 @@ device-free and runs on every leg: the Begin and End refusals, the seal, the thr
 buffer goes back, the encoder transitions and their order, the nil-encoder case, the epoch invalidation, the
 bound, and the pre-lock submit phase where the setup flush sits.
 
+### The native Metal shader path, and a binding table read out of the emission rather than counted (#575)
+
+`IGpuResourceFactory.CreateShadersFromSpirv` and `CreateComputeShaderFromSpirv` are live on
+`GpuBackendKind.MetalNative`. GLSL goes in, an `MTLLibrary` and an `MTLFunction` per stage come out, and with
+them the per-program table that says where the emission actually put every declared resource. Row 9 of
+[docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md).
+Pipelines still refuse, so nothing renders yet.
+
+**The MSL target lands beside the HLSL one and costs one file move's worth of change**, which is what phase 3's
+front-end split was paying for. `SpirvCrossCompile` gains `VertexFragmentToMsl` and `ComputeToMsl` under a new
+`MslCrossCompilePin`, the front end is untouched, and both signatures stay Veldrid-free so the backend reads
+them across `InternalsVisibleTo` with no Veldrid type crossing. `CrossCompiledPair`'s members are named for the
+STAGE now rather than for HLSL, since one mirror serves both targets. There is deliberately NO GLSL-source
+convenience for MSL: the Metal path needs each stage's SPIR-V module afterwards, and a convenience that
+swallowed them would force a second compile to get them back.
+
+**Metal has no binding decorations, so the index a resource landed at is a fact about the emitted text.** The
+incumbent instead counts declaration order per kind across the pipeline's layout array, which is right only
+where first-reference order happens to equal declaration order, and this repository records three production
+incidents where it did not: `7.25.0`'s model pass reading the normal texture through the albedo sampler,
+`7.51.2`'s crease term reading depth data, and the splat terrain reading the frame UBO's bytes through the
+params UBO. The native backend reads the table instead. Each stage's emitted entry point is parsed with the
+depth-matched argument walk `ShaderValidation.CheckMslBufferSlots` already shipped, every argument name spells a
+SPIR-V id, and each id resolves to `(set, binding)` through THAT STAGE'S OWN module's `DescriptorSet` and
+`Binding` decorations. Decorations are not debug information, so they survive the debug-info stripping that
+removes names, which is the whole difference from the name-keyed join that was tried first and reached 0 of 159
+emitted arguments. `SpirvResourceDecorations` moves from the test project into `KhaozEngine.Gpu/Internal/` beside
+`SpirvLocalSize` and is a shipped mechanism now.
+
+**The parse never falls back to a count, and that is the load-bearing rule rather than a nicety.** An argument
+name that is not `_<id>`, an id carrying no decorations in that stage's module, a `(set, binding)` outside the
+declared layout array, a kind that does not match its index space, or two arguments resolving to one element:
+each throws at shader-set creation, device-free, naming the program, the stage and the argument.
+`MetalShaderIndexTableRefusalTests` drives every one. A silent recovery would put the counting defect back
+inside the mechanism that replaced it, and the `_<id>` spelling is a SPIRV-Cross convention nothing promises, so
+throwing loudly is what makes that fragility safe. The positional assumption underneath
+`layouts[set].Elements[binding]` is two of those throws rather than a comment, and a shape check against the
+declared layout array is written for the pipeline row to call.
+
+**Measured over the whole shipped set, device-free, on every leg**: 42 programs, 76 stages, 159 emitted
+arguments, and all 159 resolve to exactly one element. 80 of those indices differ from their binding number, so
+the table is not trivially a per-set count. 95 of 254 stage/element slots are unreferenced, so the partial-stage
+case where an element must NOT be bound is exercised rather than assumed. And there are **zero disagreements
+with the incumbent's arithmetic**, which is kept as a standing assertion through the rollout window because it
+is what makes "this backend changes no binding" a checked fact rather than a claim. The day it goes red is the day a
+shipped shader enters the shape the old arithmetic gets wrong, and that is this mechanism being vindicated
+rather than a regression.
+
+**Parity is two artefacts and the measurement came back 76 of 76.** Every shipped stage was cross-compiled to
+MSL twice in one process, once under `MslCrossCompilePin` and once through a faithful replication of the
+incumbent Veldrid Metal device's own call, and all 76 are byte-identical. That is what licenses the committed
+`metal` goldens carrying over to the native backend with no rebake, and it is a standing test
+(`MetalMslIncumbentParityTests`) rather than a remembered afternoon, because the two option sets are maintained
+independently. Beside it `MetalMslByteEqualityTests` pins the emission's own hashes as a drift detector, and
+neither substitutes for the other: a wrong emission produced by both paths passes the parity test and fails the
+drift one.
+
+**Both pins say what they do NOT freeze**, because their names invite the opposite belief. `MslCrossCompilePin`
+freezes the `CrossCompileOptions` the emission is requested under and `MslCompilePin` freezes the
+`MTLCompileOptions` Metal compiles the result under (`languageVersion` 3.2, `fastMathEnabled` on,
+`preserveInvariance` off, all three measured on macOS 26 before being written). Neither reaches SPIRV-Cross's
+naming or its numbering, and the binding table depends on both. What actually freezes the emission is the exact
+`Veldrid.SPIRV` version in `Directory.Packages.props`, so that drift arrives on a deliberate package bump rather
+than on a runner image or an OS update.
+
+**The `.metallib` cache the design specified is refused, with two measurements behind it.** No public API
+serializes an executable-type `MTLLibrary` compiled from source: the selectors that would exist only on the
+concrete class and in no SDK header, and the public `MTLDynamicLibrary` route produces a library whose functions
+are unqualified, so asking the reloaded library for one aborts the process on a `validateMTLFunctionType`
+assertion. It would also buy nothing, because macOS already caches the MSL-to-library compile across processes
+at 0.02 ms against 68 to 98 ms for a genuinely novel source. What the OS does not cache is the engine's own
+half, measured at 4,168 ms for the whole corpus, so the cache worth having caches the EMISSION and its table,
+filed as [#592](https://github.com/APKiwiOrg/KhaozEngine/issues/592). Section 12.5 of the design carries the
+whole measurement in place, and `MTLLibrary`'s header carries the refusal so the next reader who finds
+`-libraryDataContents` in a class dump does not repeat it.
+
+**Also in this row.** The entry-point NAME is read out of the emission rather than assumed to be `main0`, which
+matters because the incumbent gets it from a Veldrid layer this backend does not have, and a wrong name is not a
+compile error: the library builds and the function is nil, so that is its own refusal. One library per stage,
+forced rather than chosen, because SPIRV-Cross names both entry points `main0` and the device rejects the two
+texts compiled together. `NSString` gains the managed-to-native direction its own header had recorded as
+deliberately absent for want of a caller. `SpirvLocalSize` is unchanged and still the only source of the compute
+workgroup size. And a new architecture test asserts over the built IL that the backend names the MSL members and
+never an HLSL one, as a MEMBER check rather than the Vulkan arm's type check, because this backend names
+`SpirvCrossCompile` legitimately and `VertexFragmentToHlsl` is one letter away across the same
+`InternalsVisibleTo` grant.
+
+**On an Apple M2 Max under macOS 26**, all 34 shipped graphics programs and all 8 compute kernels compile on the
+device with both stages' functions resolving by the name the emission gave them. Everything else in the row is
+device-free and runs on every leg.
+
 ## 17.34.0
 
 ### The `vulkan-native` CI leg, both validation tiers, and the first validation layer this repo has ever installed (#529)

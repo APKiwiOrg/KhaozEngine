@@ -29,11 +29,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <para>
     /// WHAT IT IS FOR TODAY IS NAMING, WHICH IS NOT NOTHING. The seam's <c>CreateShadersFromSpirv</c> takes two
     /// GLSL strings and no label, so <see cref="ShortTag"/> is the only stable identity a failure message can
-    /// print, and every one of the binding table's five refusal classes prints it. The disk cache this key was
-    /// also designed for is REFUSED for v1 with a measurement behind it: section 12.5's in-place addendum records
-    /// that macOS already caches the MSL-to-library compile across processes, and that no public API can serialize
-    /// a source-compiled <c>MTLLibrary</c> at all. The key is kept whole rather than trimmed to what naming needs,
-    /// because the follow-up that revisits the cache should not have to re-derive which inputs matter.
+    /// print, and every one of the binding table's five refusal classes prints it. The <c>.metallib</c> cache this
+    /// key was also designed for (M-S7) is REFUSED for v1 with a measurement behind it: section 12.5's in-place
+    /// addendum records that no public API can serialize a source-compiled <c>MTLLibrary</c> at all, and that
+    /// macOS already caches the MSL-to-library compile across processes at 0.02 ms against 68 to 98 ms cold. The
+    /// cache that IS worth building caches the EMISSION instead, and is
+    /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/592">#592</see>. This key is kept whole rather
+    /// than trimmed to what naming needs, because that follow-up should not have to re-derive which inputs
+    /// matter.
     /// </para>
     /// <para>
     /// Pure and device-free, so it is computed and tested identically on every operating system even though only

@@ -7,88 +7,6 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 17.35.0
 
-### A native Metal command list: a buffer per `Begin`, no pool at all, and the invalidation the incumbent forgets (#573)
-
-The native Metal backend records and submits, from row 7 of the same design. A command list takes a fresh
-`MTLCommandBuffer` per `Begin`, keeps exactly one encoder open at a time, seals at `End`, and the device commits
-it under one lock with the timeline signal encoded and the completion handler attached first. All internal,
-nothing public, and no consumer behaviour changes: the seam hands lists out through
-`IGpuResourceFactory.CreateCommandList`, which is row 6's
-([#572](https://github.com/APKiwiOrg/KhaozEngine/issues/572)), so nothing outside the package can reach one yet.
-
-**No op stream (M-R1) and no command-buffer pool (M-R2), and the second is where this diverges from the Vulkan
-sibling rather than from the Direct3D 11 one.** An `MTLCommandBuffer` between `commandBuffer` and `commit` IS a
-driver-encoded command stream, so a managed op stream in front of it would encode twice and move the
-driver-side encode inside the submit lock. And it is single-use: the queue owns its memory, hands out a fresh
-one each time, and there is no reset, no pool object and no allocator to choose between, so V-R2's whole
-`VulkanCommandPoolRing` has no occupant here. The `FramesInFlight` depth survives on the uniform ring's acquire
-alone, which is why `BackpressureStallCount` means one thing on this backend where it means two on Vulkan.
-
-**`KE_METAL_FRAMES_IN_FLIGHT` (1 to 16, default 3) is MM4's lever, and its floor is 1 where the Vulkan
-variable's is 2.** That is derived rather than copied. The Vulkan floor exists because at 1 every list there
-owns one command pool and every `Begin` waits for its own previous record on the GPU, a synchronous round trip
-per RECORD, so a capture taken at 1 measures the drain instead of the pipeline. This backend has no pool, so 1
-is simply the shallowest honest setting and the same degenerate case Direct3D 11 already names. A value set and
-understood as nothing warns and keeps the default, and the session log names the depth the run actually got,
-because a capture is only evidence about the number it was taken at.
-
-**The encoder-scope invalidation is the row's real content, and it is a corruption no golden would catch.**
-Metal's argument tables, pipeline state, viewport, scissor and vertex streams are properties of the ENCODER, so
-ending a render encoder discards all of them. The incumbent's `EndCurrentRenderPass` invalidates most of that
-and does NOT clear `_vertexBuffersActive`, and it gets away with it only because of a second defect:
-`PreDrawCommand`'s vertex loop issues `setVertexBuffer` when the flag is false and never sets it true, so its
-cache is permanently cold and every stream is re-bound on every draw. This backend keeps the cache, because the
-incumbent's per-draw cost is what it exists to beat, so it has to keep the invalidation. The mechanism is an
-encoder EPOCH stamp rather than a reset list, and the difference is which mistake it makes impossible: a reset
-list is forgettable at REGISTRATION, where a record nobody wrote a test for stays green, and a stamp is
-forgettable at READ, where the record is used and the behavioural test catches it. That test is written the way
-M-R4 asks: bind, force an encoder end through a blit, bind again, assert the second bind was re-issued, plus
-the other half (the same bind inside one encoder is issued once) without which the first assertion is satisfied
-by a cache that never caches.
-
-**M-T2's budget seam covers all three call classes, and the encoder boundary emits through it.** Section 6.4
-places the render-encoder begin and end pair on the plain-handle `IMetalRenderApi` by analogy with phase 3,
-where `vkCmdBeginRendering` is deliberately not counted. The analogy does not carry: here the boundary IS a
-counted class, named in M-T2, because it is what a record-time upload multiplies, and a counted class has to be
-emitted through the seam the budget is frozen over or the budget counts what a recorder reports instead of what
-it emits. So all three kinds' begin and end sit on `IMetalEncoderSink` and `IMetalRenderApi` keeps the viewport
-and scissor setters, which is the half of 6.4 whose reason does carry. The design records the correction in
-place. The per-draw classes are still consumed through a struct constraint so the JIT monomorphizes them, and
-the boundary is reached through a plain interface field, because the members that cause a transition are
-`IGpuCommandList` members that cannot be generic and one virtual call per PASS is not the cost that constraint
-exists to avoid.
-
-**The submit path is where M-F2's against-both ruling lands.** Inside `_submitLock`, in order: allocate and
-encode the timeline signal, attach the completion handler, commit, register the value, arm the fence. All of it
-inside, because `commit` ENQUEUES and a queue executes in enqueue order, so submit order is the observable
-order only if commits are serialised, and encoding outside the lock would let two threads encode in one order
-and commit in another. Every committed buffer carries the handler, in every configuration and behind no knob,
-so a Metal command-buffer failure is reported at the site that saw it for the first time. `WaitForIdle` is the
-timeline's counted drain now rather than an empty command buffer committed and waited on, and the teardown
-drain stays the queue drain because a completed buffer proves everything committed before it completed, which
-covers M-W6's present buffer that never signals the timeline.
-
-**The queue's own bound is counted rather than assumed away.** `MTLCommandQueue` has a maximum number of
-UNCOMMITTED buffers and `commandBuffer` BLOCKS at it, which would present as a frame-loop stall with nothing
-attached. The backend tracks what it holds against `FramesInFlight` plus one (M-W6's present buffer) and warns
-once. It reports and does not throw: exceeding it is a pacing defect rather than a corruption, and throwing
-would turn a measurable problem into a crash in a consumer's frame loop.
-
-**What is NOT emitted yet, and why the seam is complete anyway.** `IMetalEncoderSink` declares all three of
-M-T2's call classes, because a budget seam retrofitted after the recorder exists is a seam shaped by the
-recorder rather than by what needs counting, and phase 2 records exactly that outcome. The argument-table
-setters and the draws refuse by name until rows 13 and 14, which are the rows with a caller and a test for
-them: a native prototype added by a row that never executes it is precisely the wrong ABI assumption row 1
-measured everything to avoid, and on this interop layer that is a memory corruption rather than a compile
-error.
-
-**Measured on an Apple M2 Max under macOS 26**, over four `[GpuFact]`s: a recorded blit boundary pair commits
-and its fence reads signalled after the drain with no loss latched, eight frames peak at one uncommitted buffer
-against a bound of four, all three encoder kinds open and close on one command buffer, and a list disposed
-immediately after its submit disturbs nothing in flight. Everything the list DECIDES is device-free and runs on
-every leg: the Begin and End refusals, the seal, the three exits at which a retained buffer goes back, the
-encoder transitions and their order, the nil-encoder case, the epoch invalidation and the bound.
-
 ### `KhaozEngine.Gpu.Metal`, phase 4's package skeleton, and the three spikes that ran on real hardware (#567)
 
 New opt-in package `KhaozEngine.Gpu.Metal`, in no umbrella, from row 1 of
@@ -447,6 +365,230 @@ allocation high-water so the already-caught-up return fires before the slice loo
 And `waitUntilSignaledValue:timeoutMS:` is declared with both parameters as `uint64_t`, matching the SDK: the
 prototype had the second as `uint32_t`, which is the exact class of mistake the typed-overload-per-selector rule
 exists to prevent, since arguments are placed by the caller according to the callee's declared types.
+
+### Native Metal resources: buffers, textures, samplers, a staging layout pinned to a table, and a `Map` that waits (#572)
+
+Row 6 of the same design. The native Metal backend can now create every resource the GPU seam has an object
+for: buffers, textures, samplers and fences, plus the device-level uploads and `IGpuDevice.Map`. Still no
+consumer behaviour change, because nothing selects this backend and there is nothing to draw with until the
+pipeline rows land, and `GpuBackendKind.Metal` through Veldrid remains the working Metal backend.
+`MetalGpuDevice.Factory`, `PointSampler` and `LinearSampler` stop throwing.
+
+**The staging subresource layout is the highest-risk parity surface in the backend and it is now a checked
+fact rather than a claim (M-C5).** Every golden in the suite reads back through `Map` and
+`MappedData.RowPitch`, so an arithmetic that disagrees with the incumbent's garbles all 36 at once and does it
+silently: the readback succeeds, the pointer is valid, and the pixels are simply in the wrong places. The
+incumbent backs a staging texture with a Shared `MTLBuffer` and computes the row pitch, the depth pitch, the
+subresource size and the subresource offset IN SOFTWARE, so reproducing it is reproducing arithmetic rather
+than agreeing with a driver, which is the one reason it can be pinned with no device in the room.
+`MetalStagingLayoutTableTests` carries 232 rows of LITERALS, produced by transcribing Veldrid `4.9.103`'s own
+nine functions into a throwaway generator and running it, never by re-deriving them from the implementation
+under test, which is the shared-mistake failure a self-baked golden has. It covers all eight seam formats
+including the five-byte `D32FloatS8UInt` that is the one value a reader doubts, a 1x1, an odd
+non-power-of-two, a full mip chain down to 1x1, a chain whose halving truncates, a layered texture, and one
+that is both at once. It runs device-free on every leg.
+
+**`Map` WAITS on the read path, which the incumbent does not do at all (M-C6).** `MTLGraphicsDevice.MapCore`
+hands back `contents()` immediately, and that works today only because `GpuReadback` submits and drains before
+mapping, so the seam's guarantee rests on a caller convention rather than on the backend. Getting it wrong
+returns a pointer to bytes the blit has not written yet, which reads as an intermittently wrong golden, and an
+intermittently wrong golden on a real device is the worst failure shape a five-legged blocking matrix has. A
+`Write` mapping still does not wait, because the caller is the producer.
+
+**A device-level `UpdateTexture` no longer issues its own queue submit (M-M9).** The incumbent creates a
+staging texture, a whole command list and a `SubmitCommands` per call, then disposes both. Those now accumulate
+into one device-owned setup command buffer under a short lock, flushed lazily at the next device-level read.
+Eight uploads share one committed batch, measured on a real device rather than described. The read-path half
+is what makes the claim hole-free: `Map` and `WaitForIdle` both commit the pending batch BEFORE draining, so a
+texture uploaded and immediately read back sees the uploaded bytes rather than memory nothing wrote.
+
+**The open batch carries a 64 MB staging budget, which is a safety valve and not M-M8's arena.** Batching
+trades the incumbent's one-live-staging-allocation for holding every payload since the last flush, and every
+flush site is a device-level READ, so a caller that only uploads never reaches one. `Scene3D.LoadSplatMaterial`
+is the named case: ten mip-0 layer uploads with nothing between them, 40 MB of staging at 1024 square and
+160 MB at 2048 square. So an append that would carry the open batch past the cap commits it first. A 1024 set
+still shares one batch and a 2048 set splits, both pinned device-free. The cap bounds RESIDENCY and changes
+nothing about the allocation rate, which is what the pooled arena is for and what
+[#589](https://github.com/APKiwiOrg/KhaozEngine/issues/589) still tracks for the ring row.
+
+**And the setup batch's whole native half moved behind `IMetalSetupNative`.** It used to hold the
+`MTLCommandQueue` and make its own Objective-C calls, which meant none of the bookkeeping ran off a Mac: a nil
+queue answers a nil command buffer, so every append returned early and the batching, the budget, the dead-device
+posture and the disposal ordering had no device-free test at all. That is the split `IMetalSharedEvent` already
+took for the timeline, and the autorelease pools moved with the calls they cover.
+
+**Every device entry point that takes a resource checks which device made it.** The casts were type-only, so
+device A's texture blitted on device B's queue with nothing said. Each wrapper records its creating device and
+`MetalResourceOwnership.Require` is the one cast every entry point makes. The identity is the per-device
+liveness token and NOT the `MTLDevice` handle, because Apple silicon reports one `MTLDevice` for the whole
+process (the same fact that makes `MetalCompletionHandler` key on the queue), so a handle comparison would
+answer "same device" for two devices that share nothing else. Where the devices really are different the copy
+was illegal, and where they share a handle it succeeded and left the two teardowns disagreeing about who
+releases what, which is the shape nothing surfaces until an ordering changes. A wrong-backend resource is
+refused by name too, instead of by `InvalidCastException`.
+
+**An upload region is checked against the destination subresource, on both paths.** Both checked only that the
+source array was long enough, which says nothing about where the bytes land: a payload of exactly the right
+length aimed one texel past the right edge passed. On a staging texture that is a software strided copy writing
+past the subresource into whatever follows it, and on a Private texture it is a blit the driver refuses or
+applies somewhere else. `MetalStagingLayout.RequireRegionFits` is the named refusal, sibling to
+`MetalBufferPolicy.RequireWriteFits`, and it compares against the MIP LEVEL's own dimensions rather than mip
+0's. The staging path's `Buffer.MemoryCopy` also passed the source row pitch as `destinationSizeInBytes`, which
+asked whether n bytes fit in n bytes and could never fire. It gets the subresource's real remaining bytes now,
+so it is a second independent check rather than a decoration.
+
+**No texture view is created for any usage, and that is M-M10 in its strongest form.** The design asks that no
+view factory be reachable from the recording type so a draw-time view is a compile error. On this seam nothing
+can NARROW a texture at all: there is no texture-view type, a resource set binds an `IGpuTexture` whole,
+`CreateFramebuffer` carries no mip or layer parameter, and per-face cubemap rendering is not expressible. So
+every case is the branch where `Veldrid.MTL.MTLTextureView` reuses the target's own texture and creates no
+native object, and this package declares no view factory at all, asserted by
+`MetalEagerViewArchitectureTests`. What the incumbent still pays is a MANAGED wrapper, allocated lazily per
+texture on the DRAW path, which is where all 25 `DEVICE_REMOVED` stacks in
+[#423](https://github.com/APKiwiOrg/KhaozEngine/issues/423) surfaced.
+
+**The shared sampler pair is WRAP on all three axes, from `MetalSharedSamplers` and not from the engine's
+same-named statics.** `GpuSamplerDescription.Point` and `.Linear` carry the same names and CLAMP, and reading
+the wrong one of that pair cost two goldens on the Direct3D 11 leg (`scene3d_texbillboard` at 0.393 and
+`scene3d_particles_flipbook` at 0.359). The test asserts against both, because the engine statics are
+documented public API and are not changed. The incumbent's two sampler conditionals are RESOLVED rather than
+reproduced: the border colour is written unconditionally because its condition is `IsMacOS`, and no compare
+function is written because the engine's one call site passes null. A branch whose condition is constant is a
+branch no test can reach either way.
+
+**One backend-divergent creation failure, documented rather than discovered (M-M6).** A buffer created with
+both `UniformBuffer` and a structured bit throws at creation on the native Metal backend. Both Veldrid backends
+accept the combination and nothing in this engine creates it. A uniform buffer here will be rebased per frame
+by the ring ([#574](https://github.com/APKiwiOrg/KhaozEngine/issues/574)), and a structured binding of the same
+buffer would read whichever segment that frame landed on.
+
+**Two things only a real device could teach, both recorded because the next reader will meet the same
+shapes.** The setup batch holds its command buffer across separate calls, so it outlives the autorelease pool
+the queue handed it out in, and the pop of that pool freed it under the next append. It presented as a test-host
+crash rather than a leak, and the fix is the retain-and-release pair `MTLCommandBuffer` now carries with the
+rule written on it, since the surrounding rule for an autoreleased object is the opposite. And the
+autorelease-rule architecture walk from row 4 caught the upload path reaching `-commandBuffer` with no pool on
+it, on the first new entry point the package gained.
+
+**One new `objc_msgSend` ABI shape, named as such.** `copyFromBuffer:...toTexture:destinationSlice:
+destinationLevel:destinationOrigin:` takes eleven arguments counting the receiver and the selector, against
+eight general-purpose argument registers, so three cross on the STACK. Every argument class in it is covered by
+row 1's spike and only the spill is new, which the prototype's own header records. What answers it is a real
+device taking the call and the batch that CARRIED it finishing clean: `MetalSetupCommands.LastCommittedFault`
+reads `-status` and `-error` off that exact `MTLCommandBuffer` after the drain, and
+`EightDeviceLevelTextureUploads_ShareOneSetupCommandBuffer` asserts `Completed` with a nil error. That reading
+is not decoration. It is a reading of the batch's OWN buffer, where `WaitForIdle`'s fault comes from the
+drain's separate empty one, so without it the test would have asserted only that the process did not abort.
+(The handler the batch attaches is live too now that the command-list row
+([#573](https://github.com/APKiwiOrg/KhaozEngine/issues/573)) registers the queue with it, so a failed setup
+batch also latches device loss by the route a failed frame takes.) The stronger evidence is a RUN rather than an assertion: `MetalResourceGpuTests`
+passes whole under `MTL_DEBUG_LAYER=1` with `MTL_DEBUG_LAYER_ERROR_MODE=assert` and
+`MTL_DEBUG_LAYER_WARNING_MODE=assert`, which is what makes the blit legal under API validation rather than
+merely accepted. Row 1's `MetalInteropSpikeTests` is the one Metal row that cannot join that run, because it
+records an offset setter on an encoder with no pipeline bound and validation calls that an unused binding, so
+an armed run has to exclude it.
+
+### A native Metal command list: a buffer per `Begin`, no pool at all, and the invalidation the incumbent forgets (#573)
+
+The native Metal backend records and submits, from row 7 of the same design. A command list takes a fresh
+`MTLCommandBuffer` per `Begin`, keeps exactly one encoder open at a time, seals at `End`, and the device commits
+it under one lock with the timeline signal encoded and the completion handler attached first. All internal and
+nothing public: `IGpuResourceFactory.CreateCommandList` stops throwing and hands one out, which is the join
+with row 6 ([#572](https://github.com/APKiwiOrg/KhaozEngine/issues/572)) and the point at which a consumer
+holding an `IGpuDevice` could record and submit. No consumer behaviour changes, because nothing selects this
+backend and nothing can be drawn into a list until the pipeline rows land.
+
+**No op stream (M-R1) and no command-buffer pool (M-R2), and the second is where this diverges from the Vulkan
+sibling rather than from the Direct3D 11 one.** An `MTLCommandBuffer` between `commandBuffer` and `commit` IS a
+driver-encoded command stream, so a managed op stream in front of it would encode twice and move the
+driver-side encode inside the submit lock. And it is single-use: the queue owns its memory, hands out a fresh
+one each time, and there is no reset, no pool object and no allocator to choose between, so V-R2's whole
+`VulkanCommandPoolRing` has no occupant here. The `FramesInFlight` depth survives on the uniform ring's acquire
+alone, which is why `BackpressureStallCount` means one thing on this backend where it means two on Vulkan.
+
+**`KE_METAL_FRAMES_IN_FLIGHT` (1 to 16, default 3) is MM4's lever, and its floor is 1 where the Vulkan
+variable's is 2.** That is derived rather than copied. The Vulkan floor exists because at 1 every list there
+owns one command pool and every `Begin` waits for its own previous record on the GPU, a synchronous round trip
+per RECORD, so a capture taken at 1 measures the drain instead of the pipeline. This backend has no pool, so 1
+is simply the shallowest honest setting and the same degenerate case Direct3D 11 already names. A value set and
+understood as nothing warns and keeps the default, and the session log names the depth the run actually got,
+because a capture is only evidence about the number it was taken at.
+
+**The encoder-scope invalidation is the row's real content, and it is a corruption no golden would catch.**
+Metal's argument tables, pipeline state, viewport, scissor and vertex streams are properties of the ENCODER, so
+ending a render encoder discards all of them. The incumbent's `EndCurrentRenderPass` invalidates most of that
+and does NOT clear `_vertexBuffersActive`, and it gets away with it only because of a second defect:
+`PreDrawCommand`'s vertex loop issues `setVertexBuffer` when the flag is false and never sets it true, so its
+cache is permanently cold and every stream is re-bound on every draw. This backend keeps the cache, because the
+incumbent's per-draw cost is what it exists to beat, so it has to keep the invalidation. The mechanism is an
+encoder EPOCH stamp rather than a reset list, and the difference is which mistake it makes impossible: a reset
+list is forgettable at REGISTRATION, where a record nobody wrote a test for stays green, and a stamp is
+forgettable at READ, where the record is used and the behavioural test catches it. That test is written the way
+M-R4 asks: bind, force an encoder end through a blit, bind again, assert the second bind was re-issued, plus
+the other half (the same bind inside one encoder is issued once) without which the first assertion is satisfied
+by a cache that never caches.
+
+**M-T2's budget seam covers all three call classes, and the encoder boundary emits through it.** Section 6.4
+places the render-encoder begin and end pair on the plain-handle `IMetalRenderApi` by analogy with phase 3,
+where `vkCmdBeginRendering` is deliberately not counted. The analogy does not carry: here the boundary IS a
+counted class, named in M-T2, because it is what a record-time upload multiplies, and a counted class has to be
+emitted through the seam the budget is frozen over or the budget counts what a recorder reports instead of what
+it emits. So all three kinds' begin and end sit on `IMetalEncoderSink` and `IMetalRenderApi` keeps the viewport
+and scissor setters, which is the half of 6.4 whose reason does carry. The design records the correction in
+place. The per-draw classes are still consumed through a struct constraint so the JIT monomorphizes them, and
+the boundary is reached through a plain interface field, because the members that cause a transition are
+`IGpuCommandList` members that cannot be generic and one virtual call per PASS is not the cost that constraint
+exists to avoid.
+
+**The submit path is where M-F2's against-both ruling lands.** Inside `_submitLock`, in order: allocate and
+encode the timeline signal, attach the completion handler, commit, register the value, arm the fence. All of it
+inside, because `commit` ENQUEUES and a queue executes in enqueue order, so submit order is the observable
+order only if commits are serialised, and encoding outside the lock would let two threads encode in one order
+and commit in another. Every committed buffer carries the handler, in every configuration and behind no knob,
+so a Metal command-buffer failure is reported at the site that saw it for the first time, the device-level
+setup batch's own buffers included. `WaitForIdle` is the timeline's counted drain now rather than an empty
+command buffer committed and waited on, and the teardown drain stays the queue drain because a completed buffer
+proves everything committed before it completed, which covers M-W6's present buffer that never signals the
+timeline.
+
+**The queue's own bound is counted rather than assumed away.** `MTLCommandQueue` has a maximum number of
+UNCOMMITTED buffers and `commandBuffer` BLOCKS at it, which would present as a frame-loop stall with nothing
+attached. The backend tracks what it holds against `FramesInFlight` plus one (M-W6's present buffer) and warns
+once. It reports and does not throw: exceeding it is a pacing defect rather than a corruption, and throwing
+would turn a measurable problem into a crash in a consumer's frame loop.
+
+**What is NOT emitted yet, and why the seam is complete anyway.** `IMetalEncoderSink` declares all three of
+M-T2's call classes, because a budget seam retrofitted after the recorder exists is a seam shaped by the
+recorder rather than by what needs counting, and phase 2 records exactly that outcome. The argument-table
+setters and the draws refuse by name until rows 13 and 14, which are the rows with a caller and a test for
+them: a native prototype added by a row that never executes it is precisely the wrong ABI assumption row 1
+measured everything to avoid, and on this interop layer that is a memory corruption rather than a compile
+error.
+
+**Two seams join row 6's resources to this row, and both are ordering rather than plumbing.** `Submit` flushes
+the pending setup batch BEFORE it takes the submit lock, which is the obligation M-M9 left for this row: two
+sequential lock acquisitions rather than a nested pair, and a commit order that puts an upload ahead of the
+recording that samples it, because `-commit` enqueues and a Metal queue runs in enqueue order. And
+`WaitForIdle` takes a SECOND drain, the queue's, when and only when its own flush committed a batch. A setup
+batch signals no timeline value, so M-F5's counted drain cannot see it, and on a device that has never
+submitted a list that drain returns immediately and `Map` would hand back bytes the blit had not written, which
+is the defect row 6's read drain exists to close arriving through the back door. The alternative, giving the
+setup flush a timeline signal of its own, was declined because honouring `EncodeSignalForSubmit`'s precondition
+means nesting the submit lock inside the batch's gate, and because it would give a type deliberately free of
+Metal and of the submit path a hard dependency on both. The hole was MEASURED: deleting the second drain
+fails row 6's `EightDeviceLevelTextureUploads_ShareOneSetupCommandBuffer`, which reads the batch's own
+`-status` back as `Committed` where it asserts `Completed`. The design records the reasoning in place, in
+10.1.
+
+**Measured on an Apple M2 Max under macOS 26**, over six `[GpuFact]`s: a recorded blit boundary pair commits
+and its fence reads signalled after the drain with no loss latched, eight frames peak at one uncommitted buffer
+against a bound of four, all three encoder kinds open and close on one command buffer, a list disposed
+immediately after its submit disturbs nothing in flight, a submit commits a pending setup batch and that batch
+completes, and an upload with NO submit behind it is still complete after `WaitForIdle` with the timeline still
+at zero, which is the row that fails if the second drain is ever removed. Everything the list DECIDES is
+device-free and runs on every leg: the Begin and End refusals, the seal, the three exits at which a retained
+buffer goes back, the encoder transitions and their order, the nil-encoder case, the epoch invalidation, the
+bound, and the pre-lock submit phase where the setup flush sits.
 
 ## 17.34.0
 

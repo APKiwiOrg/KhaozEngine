@@ -142,5 +142,58 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         [SupportedOSPlatform("macos")]
         internal static partial byte SendBoolULongULong(IntPtr receiver, IntPtr sel, ulong a, ulong b);
 
+        // ---- The resource row's shapes ----------------------------------------------------------------------
+        //
+        // Every one of these is an existing argument CLASS in a new arrangement rather than a new class, except
+        // the last, which is the only prototype in this file whose ARGUMENT PLACEMENT is not covered by row 1's
+        // spike. Each says which spike answer stands behind it.
+
+        /// <summary>A void message taking one <c>NSUInteger</c>: every descriptor setter this backend calls, and
+        /// every Metal enum with it, because <c>MTLPixelFormat</c>, <c>MTLTextureType</c>, <c>MTLTextureUsage</c>,
+        /// <c>MTLStorageMode</c> and the four sampler enums are all <c>NSUInteger</c>. The integer-argument class
+        /// row 1 measured, with one of them.</summary>
+        [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial void SendVoidNUInt(IntPtr receiver, IntPtr sel, nuint a);
+
+        /// <summary>
+        /// A void message taking one <c>float</c>, which is <c>-setLodMinClamp:</c> and <c>-setLodMaxClamp:</c>.
+        /// <para>
+        /// A SINGLE-PRECISION ARGUMENT RIDES THE VECTOR REGISTERS, which is the same register file
+        /// <c>MTLClearColor</c>'s four doubles crossed in on row 1's spike, and that one had its VALUE checked
+        /// rather than only its acceptance (the readback of <c>(191, 128, 64, 255)</c> in section 3.1). Metal's
+        /// LOD clamps are <c>float</c> and not <c>CGFloat</c>, so this is genuinely 32 bits and not the double a
+        /// <c>CGFloat</c> would be.
+        /// </para>
+        /// </summary>
+        [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial void SendVoidFloat(IntPtr receiver, IntPtr sel, float a);
+
+        /// <summary>An object-returning message taking two <c>NSUInteger</c>s, which is
+        /// <c>-[MTLDevice newBufferWithLength:options:]</c>.</summary>
+        [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial IntPtr SendPtrNUIntNUInt(IntPtr receiver, IntPtr sel, nuint a, nuint b);
+
+        /// <summary>
+        /// <c>-[MTLBlitCommandEncoder copyFromBuffer:sourceOffset:sourceBytesPerRow:sourceBytesPerImage:sourceSize:toTexture:destinationSlice:destinationLevel:destinationOrigin:]</c>,
+        /// and <b>the one prototype here whose ARGUMENT PLACEMENT row 1's spike does not cover</b>.
+        /// <para>
+        /// Eleven arguments counting the receiver and the selector, against eight general-purpose argument
+        /// registers, so the last three cross ON THE STACK. Every argument CLASS is measured: an object pointer
+        /// and an <c>NSUInteger</c> are the integer class the spike used throughout, and a 24-byte integer
+        /// composite is passed indirectly, which is the arm <c>MTLScissorRect</c> measured. What is new is the
+        /// spill, and the runtime performs that lowering itself from a correct managed signature. See
+        /// <see cref="MTLBlitCommandEncoder"/> for the whole argument and for the test that answers it on a
+        /// device.
+        /// </para>
+        /// </summary>
+        [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial void SendVoidBufferToTextureCopy(IntPtr receiver, IntPtr sel, IntPtr sourceBuffer,
+            nuint sourceOffset, nuint sourceBytesPerRow, nuint sourceBytesPerImage, MTLSize sourceSize,
+            IntPtr destinationTexture, nuint destinationSlice, nuint destinationLevel,
+            MTLOrigin destinationOrigin);
     }
 }

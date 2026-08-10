@@ -58,22 +58,6 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
     }
 
     /// <summary>
-    /// <c>MTLPixelFormat</c>, cut down to the ONE member this row asks about. The full map is row 6's
-    /// (<c>MetalFormats.Pixel.cs</c>, split by domain the way <c>ShaderSources</c> was), and transcribing it here
-    /// would be the second copy the folder rule exists to prevent.
-    /// </summary>
-    internal enum MTLPixelFormat : ulong
-    {
-        /// <summary>Not a format.</summary>
-        Invalid = 0,
-
-        /// <summary><c>MTLPixelFormatBGRA8Unorm</c>: what the swapchain and every golden readback use, so the
-        /// buffer-offset alignment question is asked about the format the engine really binds buffers around
-        /// rather than an exotic one.</summary>
-        BGRA8Unorm = 80,
-    }
-
-    /// <summary>
     /// An <c>MTLDevice</c> handle, and the C entry points that produce one.
     /// <para>
     /// A DISTINCT TYPE FROM A QUEUE, WHICH IS THE POINT OF THE HANDLE FAMILY (M-P2). Everything on the
@@ -158,6 +142,36 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal MTLCommandQueue NewCommandQueue()
             => new(ObjCMsgSend.Send(Handle, ObjCRuntime.Sel("newCommandQueue")));
+
+        /// <summary>
+        /// <c>-newBufferWithLength:options:</c>: a +1 buffer the caller releases, or nil.
+        /// <para>
+        /// THIS IS THE WHOLE OF MEMORY MANAGEMENT ON THIS BACKEND (M-M1). There is no allocator, no
+        /// <c>MTLHeap</c>, no memory-type enumeration and no suballocator, because Metal owns device memory and
+        /// this call IS the allocation. Phase 3's section 9.1, its three decisions and its conditional VMA
+        /// rejection have no occupant here at all.
+        /// </para>
+        /// </summary>
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal MTLBuffer NewBuffer(nuint lengthBytes, ulong options)
+            => new(ObjCMsgSend.SendPtrNUIntNUInt(Handle,
+                ObjCRuntime.Sel("newBufferWithLength:options:"), lengthBytes, (nuint)options));
+
+        /// <summary><c>-newTextureWithDescriptor:</c>: a +1 texture the caller releases, or nil on a descriptor
+        /// the device cannot satisfy. NO command buffer is issued (M-M9), which is why the Vulkan phase's
+        /// two-hundred-submits-per-scene-load finding does not transfer.</summary>
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal MTLTexture NewTexture(MTLTextureDescriptor descriptor)
+            => new(ObjCMsgSend.SendPtr(Handle, ObjCRuntime.Sel("newTextureWithDescriptor:"), descriptor.Handle));
+
+        /// <summary><c>-newSamplerStateWithDescriptor:</c>: a +1 sampler state the caller releases, or nil.</summary>
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal MTLSamplerState NewSamplerState(MTLSamplerDescriptor descriptor)
+            => new(ObjCMsgSend.SendPtr(Handle, ObjCRuntime.Sel("newSamplerStateWithDescriptor:"),
+                descriptor.Handle));
 
         /// <summary><c>-supportsFamily:</c> (M-N3).</summary>
         [SupportedOSPlatform("macos")]

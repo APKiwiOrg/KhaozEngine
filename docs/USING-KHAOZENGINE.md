@@ -8852,11 +8852,22 @@ using KhaozEngine.Gpu.Metal;
 KhaozEngineMetal.Register();   // unconditionally, on every OS
 ```
 
-**It creates a HEADLESS device and it cannot present, which is the honest state of it.** Registration, the
-machine probe and headless creation are real: a `MetalNative` device holds an `MTLDevice` and one
-`MTLCommandQueue`, answers `Backend`, part of `Capabilities`, `Diagnostics`, both `Submit` overloads,
-`WaitForIdle` and `Dispose`, records and submits a command list, and throws from every member whose row has not
-landed with a message naming that row. WINDOWED creation refuses,
+**It creates a HEADLESS device with RESOURCES that records and submits, and it cannot present, which is the
+honest state of it.** Registration, the machine probe and headless creation are real: a `MetalNative` device
+holds an `MTLDevice` and one `MTLCommandQueue`, answers `Backend`, part of `Capabilities`, `Diagnostics`, both
+`Submit` overloads, `WaitForIdle` and `Dispose`, records and submits a command list, creates real resources
+through `Factory` (buffers, textures, samplers and fences), exposes the shared `PointSampler` and
+`LinearSampler` pair, takes the device-level `UpdateBuffer` and `UpdateTexture`, and answers `Map` and `Unmap`
+for staging resources. It throws from every member whose row has not landed with a message naming that row, so
+there are no pipelines yet and nothing can be drawn.
+
+**One creation the other backends accept is refused here, deliberately.** A buffer declaring both
+`GpuBufferUsage.UniformBuffer` and either structured usage throws at creation on `MetalNative`. Both Veldrid
+backends accept the combination and nothing in this engine creates it: a uniform buffer on this backend is
+rebased per frame by the uniform ring, and a structured binding of the same buffer would read whichever frame
+segment it landed on. Create two buffers.
+
+WINDOWED creation refuses,
 naming the swapchain row (https://github.com/APKiwiOrg/KhaozEngine/issues/581), because a windowed device that
 cannot present is worse than one that says so at creation. `GpuBackendKind.MetalNative` and its `metal-native`
 and `mtl-native` tokens exist, so the kind is nameable via `KE_GRAPHICS_BACKEND=metal-native`: a registered

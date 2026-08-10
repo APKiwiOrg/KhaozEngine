@@ -90,8 +90,17 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
     /// status and error pair decision M-G4's latch is built on.
     /// <para>
     /// IT ARRIVES AUTORELEASED, from <see cref="MTLCommandQueue.CommandBuffer"/>, so every caller is inside an
-    /// <see cref="ObjCAutoreleasePool"/> scope. Nothing here releases one by hand and nothing should: releasing
-    /// an autoreleased object is an over-release, which is a crash somewhere else entirely.
+    /// <see cref="ObjCAutoreleasePool"/> scope. A buffer used and committed INSIDE one pool scope needs nothing
+    /// else, and calling <see cref="Release"/> on one would be an over-release, which is a crash somewhere else
+    /// entirely.
+    /// </para>
+    /// <para>
+    /// <b>A BUFFER HELD ACROSS POOL SCOPES IS THE EXCEPTION, AND IT NEEDS <see cref="Retain"/>.</b> The setup
+    /// command buffer of M-M9 accumulates uploads from separate calls and commits once, so it outlives the pool
+    /// the queue handed it out in, and the pop of that pool would release it: the next append would then message
+    /// a freed object. That is a use-after-free rather than a leak, and it is the failure this pair exists to
+    /// prevent. The rule is the ordinary Objective-C one, written down because the surrounding rule is the
+    /// opposite: whoever holds an autoreleased object past its pool retains it, and releases it once when done.
     /// </para>
     /// <para>
     /// THE THREE ENCODER FACTORIES ARE HERE AND THEY ALL HAND BACK AUTORELEASED OBJECTS TOO. Exactly one encoder
@@ -113,6 +122,24 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
     {
         /// <summary>True when the queue would not make one, which is a device that is already in trouble.</summary>
         internal bool IsNull => Handle == IntPtr.Zero;
+
+        /// <summary>Retain this buffer, for a holder that keeps it past the autorelease pool it was created in.
+        /// See the type summary: the only holder that does is the device's setup command buffer.</summary>
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal void Retain()
+        {
+            if (Handle != IntPtr.Zero) ObjCRuntime.ObjcRetain(Handle);
+        }
+
+        /// <summary>Release a buffer that was <see cref="Retain"/>ed. Never called on one that was not: an
+        /// autoreleased object released by hand is an over-release.</summary>
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal void Release()
+        {
+            if (Handle != IntPtr.Zero) ObjCRuntime.ObjcRelease(Handle);
+        }
 
         /// <summary><c>-commit</c>. Enqueues the buffer if it was not already enqueued, so commit order IS
         /// execution order when commits are serialised (M-N2).</summary>
@@ -156,13 +183,26 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         internal IntPtr RenderCommandEncoder(IntPtr descriptor)
             => ObjCMsgSend.SendPtr(Handle, ObjCRuntime.Sel("renderCommandEncoderWithDescriptor:"), descriptor);
 
-        /// <summary><c>-blitCommandEncoder</c>. The kind whose cost section 2.1 is about: opening one ENDS a
-        /// render encoder, so a record-time upload that takes this path costs the next draw a full
-        /// re-activation.</summary>
+        /// <summary>
+        /// <c>-blitCommandEncoder</c>: a new blit encoder, AUTORELEASED like the buffer that made it.
+        /// <para>
+        /// TWO CALLERS AND THEY WANT DIFFERENT THINGS FROM IT, which is why it hands back the typed handle rather
+        /// than a raw pointer. The device-owned setup buffer opens one, records its copy and ends it in a single
+        /// call (M-M9, <c>MetalSetupCommands</c>), so it wants <see cref="MTLBlitCommandEncoder"/>'s copy member.
+        /// A command list opens one through <c>MetalEncoderSink</c> and holds it across calls under the
+        /// one-encoder-at-a-time invariant, so it wants the bare handle and takes <c>.Handle</c>. One member
+        /// serves both, because the difference is what the caller does with the encoder and not what
+        /// <c>-blitCommandEncoder</c> returns.
+        /// </para>
+        /// <para>
+        /// THE KIND WHOSE COST SECTION 2.1 IS ABOUT: opening one ENDS a render encoder, so a record-time upload
+        /// that takes this path costs the next draw a full re-activation.
+        /// </para>
+        /// </summary>
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal IntPtr BlitCommandEncoder()
-            => ObjCMsgSend.Send(Handle, ObjCRuntime.Sel("blitCommandEncoder"));
+        internal MTLBlitCommandEncoder BlitCommandEncoder()
+            => new(ObjCMsgSend.Send(Handle, ObjCRuntime.Sel("blitCommandEncoder")));
 
         /// <summary>
         /// <c>-computeCommandEncoderWithDispatchType:</c> with <see cref="MTLDispatchType.Serial"/> (M-H4).

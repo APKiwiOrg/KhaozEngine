@@ -10,12 +10,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// The engine's native Metal device as the GPU seam sees it: a real <c>MTLDevice</c> and a real
     /// <c>MTLCommandQueue</c> that create and tear down cleanly.
     /// <para>
-    /// <b>NOT EVERY MEMBER IS BUILT YET, and each one that is not names the row that builds it.</b> Rows 4 and 7
-    /// of <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c> are both here now: the interop layer, the
+    /// <b>NOT EVERY MEMBER IS BUILT YET, and each one that is not names the row that builds it.</b> Rows 4, 6
+    /// and 7 of <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c> have landed: the interop layer, the
     /// device, the queue, <c>KE_METAL_DEVICE</c>, the validation report, the command-buffer error latch, the
-    /// liveness token, the completion timeline and the SUBMIT path. Resources are row 6 and the swapchain is row
-    /// 15, so the members those rows own throw a message saying so rather than returning something that fails
-    /// later somewhere less informative, with three deliberate exceptions whose remarks below carry the reasons:
+    /// liveness token and a drain before teardown (row 4), the resource factory, the shared sampler pair, the
+    /// device-level uploads, the setup command buffer and <c>Map</c> with its read drain (row 6), and the
+    /// completion timeline, the command list and the SUBMIT path (row 7). The swapchain is row 15, so the members
+    /// that row owns throw a message saying so rather than returning something that fails later somewhere less
+    /// informative, with three deliberate exceptions whose remarks below carry the reasons:
     /// <see cref="Counters"/> returns an absent default (row 16's channels, and absent is not zero),
     /// <see cref="SwapchainFramebuffer"/> returns null (the headless answer is null, not a throw), and
     /// <see cref="SyncToVerticalBlank"/> is a backing value until row 15 gives it a swapchain to reconfigure.
@@ -23,11 +25,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// discipline it is under here too: it is a ledger, and a stale one is worse than none.
     /// </para>
     /// <para>
-    /// <b>THE MEMBERS THESE TWO ROWS OWN ARE LIVE:</b> <see cref="Backend"/>, <see cref="Capabilities"/> (in the
-    /// part row 4 can read honestly, see below), <see cref="Diagnostics"/> with both of its fields, both
-    /// <c>Submit</c> overloads, <see cref="WaitForIdle"/> and <see cref="Dispose"/>. The list they submit comes
-    /// from <see cref="CreateCommandList"/>, which the seam reaches through
-    /// <c>IGpuResourceFactory.CreateCommandList</c> once row 6 builds the factory.
+    /// <b>THE MEMBERS THESE ROWS OWN ARE LIVE:</b> <see cref="Backend"/>, <see cref="Capabilities"/> (in the part
+    /// row 4 can read honestly, see below), <see cref="Diagnostics"/> with both of its fields, both
+    /// <c>Submit</c> overloads, <see cref="WaitForIdle"/>, <see cref="Dispose"/>, and row 6's whole resource half
+    /// in <c>MetalGpuDevice.Resources.cs</c>. The list the submit path takes comes from
+    /// <see cref="CreateCommandList"/>, which the seam reaches through
+    /// <c>IGpuResourceFactory.CreateCommandList</c>.
     /// </para>
     /// <para>
     /// <b><see cref="Capabilities"/> IS PARTIAL AND SAYS WHICH PART.</b> Row 16 owns the capability read and the
@@ -52,18 +55,24 @@ namespace KhaozEngine.Gpu.Metal.Internal
         readonly MetalDeviceLiveness _liveness;
         readonly MetalDeviceLossLatch _loss;
         readonly MTLDevice _device;
+        readonly MetalTimeline _timeline;
+        readonly MetalSetupCommands _setup;
+        readonly MetalResourceFactory _factory;
         readonly object _lifecycle = new();
 
         // THE ONE SERIALISED POINT IN THE FRAME (M-N2). -commit ENQUEUES, and a Metal queue executes in enqueue
         // order, so submit order is the observable order the GPU seam documents only if commits are serialised.
         // The timeline value is allocated and encoded inside this same lock, or two threads could encode in one
         // order and commit in another, which is the half MetalTimeline.EncodeSignalForSubmit cannot enforce
-        // itself. Recording is deliberately NOT under it: N lists record concurrently (M-R3).
+        // itself. Recording is deliberately NOT under it: N lists record concurrently (M-R3). The setup batch's
+        // own gate is never taken under it either, which is why Submit flushes BEFORE it acquires this.
         readonly object _submitLock = new();
 
-        readonly MetalTimeline _timeline;
         readonly MetalCommandBufferSource _commandBuffers;
         readonly MetalUncommittedBuffers _uncommitted;
+
+        MetalSampler _pointSampler = null!;
+        MetalSampler _linearSampler = null!;
 
         bool _disposed;
         bool _syncToVerticalBlank;
@@ -71,7 +80,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         [SupportedOSPlatform("macos")]
         MetalGpuDevice(MTLDevice device, MTLCommandQueue queue, GpuCapabilities capabilities,
             MetalDeviceLiveness liveness, MetalDeviceLossLatch loss, MetalTimeline timeline,
-            MetalUncommittedBuffers uncommitted)
+            MetalUncommittedBuffers uncommitted, IMetalSetupNative setupNative)
         {
             _device = device;
             Queue = queue;
@@ -81,6 +90,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _uncommitted = uncommitted;
             _commandBuffers = new MetalCommandBufferSource(queue);
             Capabilities = capabilities;
+            _setup = new MetalSetupCommands(setupNative, liveness);
+            _factory = new MetalResourceFactory(this);
         }
 
         /// <inheritdoc/>
@@ -120,8 +131,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <summary>
         /// A command list against this device's queue (M-R1, M-R2). Internal because the seam hands lists out
         /// through <c>IGpuResourceFactory.CreateCommandList</c>, which is row 6's
-        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/572): this is what that factory will call, and what
-        /// the <c>[GpuFact]</c> submit path calls today.
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/572): that factory calls this, and so does the
+        /// <c>[GpuFact]</c> submit path.
         /// </summary>
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -150,15 +161,6 @@ namespace KhaozEngine.Gpu.Metal.Internal
         public IGpuFramebuffer? SwapchainFramebuffer => null;
 
         /// <inheritdoc/>
-        public IGpuResourceFactory Factory => throw NotBuiltYet("The resource factory", ResourcesRow);
-
-        /// <inheritdoc/>
-        public IGpuSampler PointSampler => throw NotBuiltYet("The shared point sampler", ResourcesRow);
-
-        /// <inheritdoc/>
-        public IGpuSampler LinearSampler => throw NotBuiltYet("The shared linear sampler", ResourcesRow);
-
-        /// <inheritdoc/>
         /// <remarks>A backing value on a headless device, which is what the seam asks for. It reconfigures
         /// nothing because there is no swapchain to reconfigure, and row 15 is where it starts meaning something
         /// (M-W2 makes it an unconditional <c>displaySyncEnabled</c> on the layer rather than the incumbent's
@@ -180,6 +182,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// EVERY COMMITTED BUFFER GETS THE HANDLER (M-F2, M-G4), in every configuration and behind no knob. It is
         /// the only place a Metal command-buffer failure is ever reported, which the incumbent does not do at
         /// all, and a latch built on checks that compile away in Release never fires.
+        /// </para>
+        /// <para>
+        /// AND THE PENDING SETUP BATCH IS FLUSHED FIRST, OUTSIDE THAT LOCK (M-M9). It is the third of the batch's
+        /// three flush sites, the other two being both <c>Map</c> overloads and <see cref="WaitForIdle"/>. See
+        /// <see cref="SubmitCore"/> for the two separate reasons the position matters.
         /// </para>
         /// <para>
         /// A SUBMIT ON A DEAD DEVICE IS A NO-OP that still consumes the seal, rather than a throw. The seam has no
@@ -209,19 +216,65 @@ namespace KhaozEngine.Gpu.Metal.Internal
             MetalCommandList list = RequireList(cl, this);
             MetalGpuFence? armed = fence is null ? null : RequireFence(fence, _timeline);
 
-            // READ BEFORE THE LOCK so a list with no sealed recording is refused by name rather than inside the
-            // one serialised point in the frame.
-            IntPtr buffer = list.SealedCommandBuffer;
-
+            // THE GUARD IS READ INLINE HERE rather than folded into the argument below, because CA1416 reads the
+            // guard property AT THE CALL SITE and a value passed in hides it (M-P1). It is the same reason
+            // MetalResourceFactory spells the same line at each of its three creation members.
             if (_liveness.IsDead || !KhaozEngineMetal.IsPlatformSupported)
             {
-                // The seal is consumed either way: a list whose recording cannot be submitted is still reusable,
-                // and holding the buffer would keep it counted against the queue's own uncommitted maximum.
-                list.DiscardRecording();
+                PrepareForCommit(list, _setup, alive: false);
                 return;
             }
 
+            // Non-zero by construction on this arm: a sealed list holds a real buffer, because Begin throws
+            // rather than sealing over a nil one.
+            IntPtr buffer = PrepareForCommit(list, _setup, alive: true);
+
             SubmitOnMacOs(list, buffer, armed);
+        }
+
+        /// <summary>
+        /// EVERYTHING A SUBMIT DOES BEFORE IT TAKES THE LOCK, in the one order M-M9 and M-N2 fix between them:
+        /// read the seal, answer a dead device, then flush the pending setup batch. The
+        /// <c>MTLCommandBuffer</c> the caller is to commit, or <see cref="IntPtr.Zero"/> when this submit is a
+        /// no-op. A live sealed list always holds a non-zero buffer, because <see cref="MetalCommandList.Begin"/>
+        /// throws rather than sealing over a nil one, so zero is unambiguous.
+        ///
+        /// <para><b>THE SEAL IS READ FIRST</b>, so a list with no sealed recording is refused by name rather than
+        /// inside the one serialised point in the frame.</para>
+        ///
+        /// <para><b>A DEAD DEVICE CONSUMES THE SEAL AND FLUSHES NOTHING.</b> A list whose recording cannot be
+        /// submitted is still reusable, and holding the buffer would keep it counted against the queue's own
+        /// uncommitted maximum. The flush is skipped because committing to a queue whose device has gone is the
+        /// one call this backend's dead-device posture exists to avoid.</para>
+        ///
+        /// <para><b>AND THE SETUP BATCH FLUSHES HERE, WHICH IS TWO SEPARATE CLAIMS.</b> ORDERING: <c>-commit</c>
+        /// ENQUEUES and a Metal queue runs its buffers in enqueue order, so committing the pending uploads before
+        /// this list's buffer is what makes a recording that samples a texture uploaded through
+        /// <c>UpdateTexture</c> see the uploaded bytes. Flushing after the commit would put the upload behind the
+        /// frame that reads it, which is a wrong pixel rather than a failure. LOCKING: the batch has its OWN gate,
+        /// and this is two sequential acquisitions rather than a nested pair. Taking that gate while holding
+        /// <c>_submitLock</c> would invent an ordering rule between two locks that today have none, and
+        /// <see cref="MetalSetupCommands.Flush"/>'s own doc is where row 6 wrote that obligation down.</para>
+        ///
+        /// <para><b>STATIC, TAKING LIVENESS AS A PLAIN BOOL, so the whole pre-lock decision is device-free</b> and
+        /// a plain <c>[Fact]</c> drives it with a fake command-buffer source and a fake setup batch on a machine
+        /// with no Metal. That is the same split <see cref="RequireList"/> and
+        /// <see cref="MetalCompletionHandler.Deliver"/> already take, and it is what makes the order an assertion
+        /// rather than a comment: the commit lives in <see cref="SubmitOnMacOs"/>, which cannot run until this
+        /// has returned.</para>
+        /// </summary>
+        internal static IntPtr PrepareForCommit(MetalCommandList list, MetalSetupCommands setup, bool alive)
+        {
+            IntPtr buffer = list.SealedCommandBuffer;
+
+            if (!alive)
+            {
+                list.DiscardRecording();
+                return IntPtr.Zero;
+            }
+
+            setup.Flush();
+            return buffer;
         }
 
         [SupportedOSPlatform("macos")]
@@ -324,49 +377,37 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// buffer carries the handler, in every configuration, so the reading happens once per buffer at the site
         /// that saw it instead of once per drain on a buffer that carried none of the work.
         /// </para>
+        /// <para>
+        /// AND IT IS TWO DRAINS RATHER THAN ONE, WHICH IS THE ROW 6 AND ROW 7 SEAM. The setup batch (M-M9) is
+        /// flushed first, and a flushed batch is a committed command buffer that signals NO timeline value, so
+        /// M-F5's counted drain cannot see it. The second drain is the queue's, taken only when the flush
+        /// actually committed something, and it covers the batch by the same enqueue-order argument the teardown
+        /// drain rests on. A frame loop that uploads nothing pays for exactly one drain, which is M-F5's.
+        /// </para>
         /// </summary>
         public void WaitForIdle()
         {
             if (_liveness.IsDead) return;
             if (!KhaozEngineMetal.IsPlatformSupported) return;
 
+            // THE SETUP BATCH FIRST (M-M9). A drain that ran before the flush would wait for everything except
+            // the uploads the caller has just made, which is exactly the case an explicit drain is asked for.
+            // The flush COMMITS and does not wait, and it says whether it committed anything, because that is
+            // what decides the second drain below.
+            bool committed = _setup.Flush();
+
+            // M-F5's DRAIN, counted, over everything a Submit ever took to the queue.
             _timeline.WaitForIdle();
+
+            // AND THE QUEUE DRAIN FOR THE BATCH THE FLUSH JUST COMMITTED, which the timeline cannot cover. A
+            // setup batch encodes NO timeline signal (see DrainForRead in MetalGpuDevice.Resources.cs for the
+            // whole argument and why it is not given one), so it is invisible to a counted drain, and the flush
+            // above just put it BEHIND everything the timeline knows about. An empty command buffer committed
+            // after it and waited on is what covers it, by the same enqueue-order argument teardown already
+            // rests on. Skipped when the flush committed nothing, so the frame loop's own WaitForIdle is exactly
+            // M-F5's drain and nothing more.
+            if (committed) DrainCommittedSetupBatch();
         }
-
-        /// <inheritdoc/>
-        public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged
-            => throw NotBuiltYet("Uploading to a buffer", ResourcesRow);
-
-        /// <inheritdoc/>
-        public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, T[] data) where T : unmanaged
-            => throw NotBuiltYet("Uploading to a buffer", ResourcesRow);
-
-        /// <inheritdoc/>
-        public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, in T data) where T : unmanaged
-            => throw NotBuiltYet("Uploading to a buffer", ResourcesRow);
-
-        /// <inheritdoc/>
-        public void UpdateTexture(IGpuTexture texture, byte[] data, uint x, uint y, uint width, uint height)
-            => throw NotBuiltYet("Uploading to a texture", ResourcesRow);
-
-        /// <inheritdoc/>
-        public void UpdateTexture(IGpuTexture texture, byte[] data, uint x, uint y, uint width, uint height,
-            uint mipLevel, uint arrayLayer)
-            => throw NotBuiltYet("Uploading to a texture", ResourcesRow);
-
-        /// <inheritdoc/>
-        public MappedData Map(IGpuTexture staging, GpuMapMode mode)
-            => throw NotBuiltYet("Mapping a staging texture", ResourcesRow);
-
-        /// <inheritdoc/>
-        public void Unmap(IGpuTexture staging) => throw NotBuiltYet("Mapping a staging texture", ResourcesRow);
-
-        /// <inheritdoc/>
-        public MappedData Map(IGpuBuffer staging, GpuMapMode mode)
-            => throw NotBuiltYet("Mapping a staging buffer", ResourcesRow);
-
-        /// <inheritdoc/>
-        public void Unmap(IGpuBuffer staging) => throw NotBuiltYet("Mapping a staging buffer", ResourcesRow);
 
         /// <inheritdoc/>
         public void ResizeSwapchain(uint w, uint h) => throw NotBuiltYet("Resizing the swapchain", SwapchainRow);
@@ -408,6 +449,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         void DisposeOnMacOs()
         {
+            // The setup batch is ABANDONED rather than committed, because the drain below is about to wait and
+            // the resources it was filling are being released in the same breath. Its staging buffers go here.
+            _setup.Dispose();
+
             // FIRST. Releasing a device with work in flight is releasing objects the GPU may still be reading.
             // The QUEUE drain rather than the timeline's, deliberately, and it is the stronger of the two here: a
             // buffer that completes is proof that everything committed before it has completed too, which covers
@@ -424,18 +469,34 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // that is safe to release and the handles leak deliberately, the shared event with them.
             if (fault.IsFailure) return;
 
+            // BEFORE THE FLIP, and that ordering is load-bearing rather than tidy. The shared samplers are the
+            // device's own (nothing else holds a reference, and a consumer disposing PointSampler would be
+            // disposing something it did not create), and every wrapper's Dispose is a no-op once liveness is
+            // dead, so releasing them after the flip would leak both for the life of the process.
+            _pointSampler.Dispose();
+            _linearSampler.Dispose();
+
             // Flipped BEFORE the releases and after the drain, so no wrapper can observe "alive" after the object
             // it would release has gone, and so a wrapper disposed on another thread mid-teardown becomes a
             // no-op rather than a call against a released object.
             _liveness.MarkDead();
 
-            // AFTER the flip, which is the order row 5 documented and the only thing standing between the shared
-            // event's unconditional release and a fence polled mid-teardown messaging a released object.
+            // AFTER the flip, which is the order MetalTimeline.Dispose documents and the only thing standing
+            // between the shared event's unconditional release and a fence polled mid-teardown messaging a
+            // released object. The release is unconditional because an MTLSharedEvent is an ordinary
+            // reference-counted object with no vkDestroyDevice rule in front of it, so skipping it on a dead
+            // device would leak it on the path that matters.
             _timeline.Dispose();
 
             Queue.Release();
             _device.Release();
         }
+
+        // The queue drain that covers a just-committed setup batch, split out only because Drain is macOS-gated
+        // and WaitForIdle's own body is not. See WaitForIdle for why the timeline's drain cannot do this one.
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void DrainCommittedSetupBatch() => Drain("waitUntilCompleted (setup batch drain)");
 
         // The SYNCHRONOUS way a command-buffer reading reaches the latch. The other is the completion handler on
         // every submitted buffer, through MetalCompletionErrorRoute, and the two are kept apart because they read
@@ -456,7 +517,6 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         // The row that owns each unbuilt member, as a full URL, because these messages are read by somebody who
         // has just hit one and needs to know whether to wait for a row or file a bug.
-        const string ResourcesRow = "the resources row (https://github.com/APKiwiOrg/KhaozEngine/issues/572)";
         const string SwapchainRow = "the swapchain row (https://github.com/APKiwiOrg/KhaozEngine/issues/581)";
 
         // Named rather than a bare NotImplementedException, and it names WHAT IS LIVE as well as what is not,
@@ -466,8 +526,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
             => new($"{what} is not built yet on the native Metal backend: it lands in {row}. The interop layer, "
                 + "the MTLDevice, the MTLCommandQueue, KE_METAL_DEVICE selection, the command-buffer error latch "
                 + "and the liveness token ARE live (work-breakdown row 4, "
-                + "https://github.com/APKiwiOrg/KhaozEngine/issues/570), and so are the completion timeline, the "
-                + "command list and the submit path (row 7, "
+                + "https://github.com/APKiwiOrg/KhaozEngine/issues/570), and so are buffers, textures, samplers, "
+                + "fences, the device-level uploads and Map (row 6, "
+                + "https://github.com/APKiwiOrg/KhaozEngine/issues/572), and the completion timeline, the command "
+                + "list and the submit path (row 7, "
                 + "https://github.com/APKiwiOrg/KhaozEngine/issues/573). This is a statement about the package "
                 + "and not about this machine. Select GpuBackendKind.Metal, which goes through Veldrid, for a "
                 + "fully working Metal device.");

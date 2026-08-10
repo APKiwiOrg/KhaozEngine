@@ -63,7 +63,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         public IntPtr BeginBlitEncoder(IntPtr commandBuffer)
         {
             using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
-            return Retained(new MTLCommandBuffer(commandBuffer).BlitCommandEncoder());
+            // .Handle because a list holds its encoder across calls and every transition here is by raw pointer.
+            // The typed MTLBlitCommandEncoder exists for the setup batch, which opens, copies and ends in one go.
+            return Retained(new MTLCommandBuffer(commandBuffer).BlitCommandEncoder().Handle);
         }
 
         /// <inheritdoc/>

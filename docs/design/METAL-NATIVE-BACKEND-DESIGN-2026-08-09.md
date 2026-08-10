@@ -1,13 +1,16 @@
 # KhaozEngine.Gpu.Metal: native Metal backend design (2026-08-09)
 
-**Status: ROWS 1 AND 2 LANDED IN `17.35.0`, the package skeleton, the three verification spikes, the provider
-and its machine probe. Rows 3 to 19 are not written.** Phase 4 of the staged native GPU backend program
+**Status: ROWS 1 TO 7 LANDED IN `17.35.0`**, the package skeleton, the three verification spikes, the provider
+and its machine probe, the `GpuBackendKind.MetalNative` append with its three silent sites, the Objective-C
+interop layer with a real device and queue, the shared-event timeline, the resources (buffers, textures,
+samplers, fences, the device-level uploads on a setup command buffer, and `Map` with its read drain) and the
+command list with its submit path. **Rows 8 to 19 are not written**, so nothing can bind, draw or present yet.
+Phase 4 of the staged native GPU backend program
 ([#420](https://github.com/APKiwiOrg/KhaozEngine/issues/420)), specified by
 [#566](https://github.com/APKiwiOrg/KhaozEngine/issues/566), following the shipped phase 2
 (`docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md`) and phase 3
 (`docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md`). This document is the phase 4 deliverable.
-Implementation is a numbered issue list in section 18, and its first two rows are done: `KhaozEngine.Gpu.Metal`
-registers a provider whose functional probe answers for the machine, and creates no device.
+Implementation is a numbered issue list in section 18.
 
 **Three things HAVE now run on a device, one of them overturned a ruling, and the ruling has since been
 re-taken.** The interop spike is green on real hardware (3.1), the `MTLCompileOptions` measurement is taken
@@ -1745,6 +1748,27 @@ error. X1's evidence is why, and it is worth restating in a Metal seat where `ne
 enough to do at a bind: all 25 `DEVICE_REMOVED` stacks in #423 surfaced inside the lazy view constructor on the
 draw path.
 
+**Row 6 landed that as an EMPTY set, and the reason is worth recording because it is stronger than the rule
+asked for.** The condition above is "the description actually narrows the target", and NOTHING this seam can
+express narrows one: there is no texture-view type at all, a resource set binds an `IGpuTexture` whole,
+`CreateFramebuffer` carries no mip or layer parameter, and per-face cubemap rendering is not expressible. So
+every case falls in `MTLTextureView`'s `else` branch, which creates no native object. The package therefore
+declares NO view factory anywhere, which implies the design's own condition rather than restating it, and
+`MetalEagerViewArchitectureTests` asserts the absence directly. The day a row genuinely needs a view, that test
+is what fails, and it should be narrowed to the design's wording rather than deleted. What the incumbent
+actually pays on the draw path is the MANAGED wrapper `Util.GetTextureView` allocates per texture under a lock,
+which is the allocation #423's stacks are inside, and that is what disappears here.
+
+**Two things row 6 learned on the device, kept because the next row meets the same shapes.** First, an
+`MTLCommandBuffer` held across autorelease-pool scopes must be RETAINED: the setup buffer accumulates uploads
+from separate calls, so the pop of the pool the queue handed it out in freed it under the next append, and it
+presented as a process crash rather than as a leak. The rule is the ordinary Objective-C one and it is written
+on `MTLCommandBuffer` precisely because the surrounding rule (never release an autoreleased object) is its
+opposite. Second, `copyFromBuffer:...toTexture:destinationSlice:destinationLevel:destinationOrigin:` is the one
+ABI shape row 1's spike does not cover: eleven arguments against eight argument registers, so three cross on
+the stack. Every argument CLASS in it is measured and only the spill is new. Row 14's copies use the same
+family and inherit both answers.
+
 ### 9.4 The ring policy inventory, third column
 
 Phase 3's section 9.4 wrote the policy out as a ten-row checklist with an Owner column, because a decision not
@@ -1875,6 +1899,56 @@ one, so the queue pointer is unique per engine device even when the `MTLDevice` 
 readonly on `MTLCommandBuffer` so the completion path reads it with no state of its own. Row 4 registers the
 queue it creates rather than the device (recorded on
 [#570](https://github.com/APKiwiOrg/KhaozEngine/issues/570)).
+
+**Addendum, at the row 6 and row 7 merge: `WaitForIdle` is TWO drains, and the second one is the queue's.**
+The two rows were built in parallel and each was correct alone. Row 6 put the setup batch's flush at the top of
+`WaitForIdle` and routed `Map`'s read drain through it, on the reasoning that the device had ONE drain point
+and that drain was `MetalQueueDrain`: an empty command buffer committed and waited on, which covers the whole
+queue because Metal runs buffers in enqueue order. Row 7 then did what M-F5 says and moved `WaitForIdle` onto
+`waitUntilSignaledValue:timeoutMS:`. **A setup batch encodes no timeline signal**, so at the merge the counted
+drain stopped covering the flush it had just performed: on a device that has never submitted a list the target
+is 0, the wait returns at once, and `Map` hands back a pointer to bytes the blit has not written, which is
+exactly the defect M-C6 exists to close arriving through the back door.
+
+The fix taken is that `WaitForIdle` flushes, takes M-F5's counted drain, and THEN takes the queue drain when
+and only when that flush actually committed a batch. The alternative weighed and declined was to give the setup
+flush a timeline signal of its own, which would make every committed buffer uniform and leave one counted drain
+sufficient. Both of its costs are structural rather than stylistic. `EncodeSignalForSubmit`'s precondition is
+that it is called inside the lock that orders `-commit`, so honouring it means taking the submit lock while
+holding the batch's own gate, which is the nested pair M-M9's flush contract forbids, and breaking it lets two
+threads allocate values in one order and commit in another, which is the whole basis of `LastSubmitted` meaning
+what it says. And it gives `MetalSetupCommands`, deliberately free of Metal and of the submit path so its
+entire decision surface runs under a plain `[Fact]`, a hard dependency on both. The queue drain needs no new
+argument at all: **a completed empty buffer proves everything committed to that queue before it has completed
+too, including work that signals no timeline value**, which is the identical reason M-F6's teardown drain
+stayed on the queue for M-W6's present buffer. What it costs is that a read-mapping drain does not land in
+`DrainCount` or `DrainMs` when the timeline half found nothing to wait for, and that is the right direction:
+those channels are the timeline's, and `MetalQueueDrain` declines to write into them from a different
+mechanism.
+
+**And `Submit` flushes the batch BEFORE it takes the submit lock**, which is the obligation M-M9 left for this
+row, satisfied as two sequential acquisitions rather than a nested pair. The order buys the ordering claim as
+well as the lock discipline: the uploads are enqueued ahead of the recording that reads them. It also means a
+setup batch committed by a submit IS covered by the counted drain, because it went into the queue ahead of the
+list whose value that drain waits for, which is why the second drain is conditional rather than unconditional.
+
+Three smaller things the merge settled, recorded here so they are not re-derived:
+
+- **The completion route now covers setup buffers.** `MetalSetupNative.BeginBatch` has always attached M-F2's
+  handler, and row 7 is what registers the device's queue with it, so a failed setup batch reaches the device's
+  loss latch by exactly the route a failed frame takes. The handler is one global block keyed on the buffer's
+  own queue and it interprets nothing, so no arm of it distinguishes the two. Teardown clears the queue slot
+  after its drain, so a setup buffer completing late finds no match and is dropped, which
+  `MetalCompletionHandlerTests` already pins device-free.
+- **`NSRange` stays out.** Row 6 removed it with the view factory, noting it belongs back in `MTLTypes.cs` if a
+  consumer appears. Nothing at this merge needs it: the `setBuffers:offsets:withRange:` family belongs to rows
+  13 and 14, and row 1's spike carries its own declaration. It comes back with its first real caller.
+- **Two identity mechanisms exist and are NOT harmonised here.** Row 7 refuses a foreign command list or fence
+  by comparing an OWNER TOKEN (the device instance, and the timeline instance, by reference), and row 6 refuses
+  a foreign buffer, texture or sampler by comparing the LIVENESS TOKEN each wrapper was handed. Both are
+  per-device by construction and both are correct, so unifying them at a merge would be a refactor with no
+  defect behind it. A row that touches both surfaces (row 12 onward binds resources into a list) may unify
+  them, and this note is the record that the divergence is known rather than accidental.
 
 ### 10.2 Hazards, and the machinery that is absent (M-H1 to M-H4)
 

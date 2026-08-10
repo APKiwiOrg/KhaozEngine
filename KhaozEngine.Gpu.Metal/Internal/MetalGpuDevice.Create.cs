@@ -67,6 +67,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
             var liveness = new MetalDeviceLiveness();
             var loss = new MetalDeviceLossLatch(liveness);
 
+            // INSIDE THE TRY, and that is not tidiness. MetalSharedEvent's constructor throws when -newSharedEvent
+            // answers nil, and built above the try it would throw with the +1 queue held by nobody: the catch that
+            // releases the queue would never run and the queue would leak for the life of the process. The whole
+            // window between -newCommandQueue and the constructor taking over belongs to this try.
             MetalTimeline? timeline = null;
             bool registered = false;
 
@@ -81,17 +85,25 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 log.Info(MetalFramesInFlight.ActiveDescription(framesInFlight));
 
                 // THE DEVICE'S ONE COMPLETION TIMELINE (M-F1), created before anything can submit. Row 5 built
-                // it and left the wiring to the first row with a submit path, which is this one.
+                // it and left the wiring to the first row with a submit path, which is row 7.
                 timeline = new MetalTimeline(new MetalSharedEvent(device.Handle), liveness);
 
                 // AND THE ROUTE M-F2's HANDLER DELIVERS THROUGH, keyed on the QUEUE rather than the MTLDevice,
                 // which is a measurement rather than a preference: MTLCreateSystemDefaultDevice is a per-GPU
                 // process singleton, so two engine devices on one GPU are indistinguishable by device pointer.
+                // REGISTERED BEFORE THE DEVICE EXISTS, which is what makes the setup batch's own handler live:
+                // MetalSetupCommands attaches one at BeginBatch, and until this call that handler had nowhere to
+                // deliver, so a failed device-level upload was indistinguishable from a completed one.
                 MetalCompletionHandler.Register(queue.Handle, new MetalCompletionErrorRoute(loss));
                 registered = true;
 
                 MetalGpuDevice created = new(device, queue, ReadCapabilities(selected.Facts), liveness, loss,
-                    timeline, new MetalUncommittedBuffers(framesInFlight));
+                    timeline, new MetalUncommittedBuffers(framesInFlight), new MetalSetupNative(device, queue));
+
+                // THE SHARED SAMPLER PAIR, from MetalSharedSamplers and not from the engine's same-named
+                // GpuSamplerDescription statics. Both are WRAP on all three axes, and reading the engine statics
+                // instead (which clamp) cost two goldens on the Direct3D 11 leg.
+                created.CreateSharedSamplers();
 
                 // THE ARMING IS CHECKED AGAINST THE DEVICE ITSELF, through row 1's own control: a validated
                 // device is an MTLDebugDevice rather than the driver's class. Done here because it is the first
@@ -111,10 +123,30 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 // else knows about, a +1 shared event behind the timeline, and possibly a slot in the four-slot
                 // completion table. The device is the caller's to release on this path. Unwound in the reverse
                 // order of acquisition, and the registration goes first because it is the only one of the three
-                // that another thread can reach.
+                // that another thread can reach. The timeline is null when the shared event itself is what threw.
                 if (registered) MetalCompletionHandler.Unregister(queue.Handle);
                 timeline?.Dispose();
                 queue.Release();
+                throw;
+            }
+        }
+
+        // Created at device creation rather than lazily, because the seam exposes them as properties with no
+        // failure mode and a lazy pair would need a lock on a path every renderer touches on its first frame.
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void CreateSharedSamplers()
+        {
+            _pointSampler = MetalSampler.Create(_device, _liveness, MetalSharedSamplers.Point);
+
+            try
+            {
+                _linearSampler = MetalSampler.Create(_device, _liveness, MetalSharedSamplers.Linear);
+            }
+            catch
+            {
+                // The point sampler is already a live +1 object nothing else has a reference to.
+                _pointSampler.Dispose();
                 throw;
             }
         }

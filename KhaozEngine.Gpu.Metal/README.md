@@ -4,24 +4,27 @@ The engine's own native Metal backend for the [KhaozEngine.Gpu](../KhaozEngine.G
 umbrella: a consumer adds this package explicitly, the same pattern as `Physics.Bepu` or `WorldStore.Sqlite`,
 and nothing that does not want the Objective-C interop ever carries it.
 
-> **Status: it creates a HEADLESS device that RECORDS AND SUBMITS, and it cannot present or make a resource.**
-> Rows 1 to 5 and 7 of the work breakdown are done:
+> **Status: it creates a HEADLESS device with a TIMELINE and REAL RESOURCES that RECORDS AND SUBMITS, and it
+> cannot present.** Rows 1 to 7 of the work breakdown are done:
 > the assembly and its guard rows, the three phase-4 verification spikes, `KhaozEngineMetal.Register()` with the
 > `IGpuBackendProvider` and the functional machine probe behind it, `GpuBackendKind.MetalNative = 6` with its
-> `metal-native` token, and now the Objective-C interop layer, a real `MTLDevice`, one `MTLCommandQueue`,
+> `metal-native` token, and the Objective-C interop layer, a real `MTLDevice`, one `MTLCommandQueue`,
 > `KE_METAL_DEVICE` selection, `KE_METAL_VALIDATION` reporting, the command-buffer error latch and the liveness
-> token. Resources, pipelines and the swapchain are not built, and every member that needs one
+> token. Pipelines and the swapchain are not built, and every member that needs one
 > throws a message naming the row that builds it. WINDOWED creation refuses by naming
 > [row 15](https://github.com/APKiwiOrg/KhaozEngine/issues/581), because a windowed device that cannot present
 > is worse than one that says so at creation. `GpuBackendKind.Metal`, which goes through Veldrid, is the
 > working Metal backend and stays selectable indefinitely.
-> Row 5 added the timeline beside it: one `MTLSharedEvent` per device, a real `IGpuFence`, a counted
+> Row 5 added the timeline: one `MTLSharedEvent` per device, a real `IGpuFence`, a counted
 > `WaitForIdle` in 250 ms slices so a device loss can release it, and a completion handler that reads every
 > command buffer's outcome and latches only failures, keyed on the command queue.
+> Row 6 added the resources: `IGpuDevice.Factory` creates buffers, textures, samplers and fences, the shared
+> WRAP sampler pair exists, the device-level uploads work, and `Map` waits. See
+> [Resources, and the one creation this backend refuses](#resources-and-the-one-creation-this-backend-refuses).
 > Row 7 added the command list and wired the timeline to it: a fresh `MTLCommandBuffer` per `Begin`, the
-> one-encoder-at-a-time lifecycle, and a submit that signals, attaches the handler and commits under one lock.
-> The list can be begun, recorded against and submitted today, and every member that records CONTENT into it
-> still names the row that builds it.
+> one-encoder-at-a-time lifecycle, and a submit that flushes the pending setup batch, then signals, attaches
+> the handler and commits under one lock. The list can be begun, recorded against and submitted today, and
+> every member that records CONTENT into it still names the row that builds it.
 
 Spec, decisions and the nineteen-row work breakdown:
 [docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](../docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md).
@@ -169,6 +172,54 @@ liveness token from Metal's own completion thread. A single unbounded wait canno
 counts one entry into `GpuDeviceCounters.DrainCount` and `DrainMs` per call that actually blocked. The slice has
 one observable cost, which is up to 250ms of extra teardown latency after a device loss, since a waiter already
 blocked inside the native call keeps blocking until its current slice expires.
+
+## Resources, and the one creation this backend refuses
+
+`IGpuDevice.Factory` creates buffers, textures, samplers and fences, and the device's `PointSampler` and
+`LinearSampler` pair exists. Nothing can BIND any of it yet, because the members that record content into
+a list belong to later rows, so what is usable today is creation, the device-level uploads, and readback
+through `Map`.
+
+**Every buffer is `MTLStorageModeShared` and every texture is `MTLStorageModePrivate`**, reproducing the
+incumbent. On unified memory a Shared buffer's `contents()` pointer is stable for its life and visible to both
+sides, so a buffer write is a `memcpy` with no staging path, no flush and no invalidate. There is no allocator
+and no `MTLHeap`: `newBufferWithLength:options:` IS the allocation.
+
+**A buffer that declares BOTH `UniformBuffer` and a structured usage throws at creation, and that is a
+deliberate divergence rather than a gap.** Both Veldrid backends accept the combination and nothing in this
+engine creates it. A uniform buffer on this backend is rebased per frame by the uniform ring, and a structured
+binding of the same buffer would read whichever segment that frame happened to land on. Create two buffers.
+
+**A staging texture is not a texture.** It is a Shared `MTLBuffer` carrying the incumbent's SOFTWARE
+subresource layout, byte for byte, because that is what every golden reads back through. `Map` reports the row
+pitch and size for subresource 0 out of that arithmetic, which a checked-in 232-row table pins against
+Veldrid's own functions with no device in the room. `Unmap` is a no-op, as it is in the incumbent, because a
+Shared buffer's pointer needs no unmapping.
+
+**`Map` waits, where the incumbent does not.** `MTLGraphicsDevice.MapCore` hands back `contents()` immediately,
+which is correct today only because every engine caller drains first, so the seam's guarantee rests on a
+convention rather than on the backend. Here a read mapping drains, and it commits the pending setup batch
+first, so a texture uploaded and immediately read back sees the uploaded bytes. That drain is the QUEUE
+drain rather than the timeline's, because a setup batch signals no timeline value and only a completed
+empty buffer covers one. A write mapping does not drain, because the caller is the producer.
+
+**A device-level `UpdateTexture` records into a device-owned setup command buffer rather than issuing its own
+queue submit.** The incumbent creates a staging texture, a command list and a whole `SubmitCommands` per call.
+Here they accumulate into one buffer, flushed at the next device-level read. That trades the incumbent's one
+live staging allocation for holding every payload since the last flush, so the open batch carries a **64 MB
+staging budget**: an upload that would cross it commits the batch first. A five-layer 1024-square splat set
+(ten uploads, 40 MB, no drain between them) still shares one batch, and a 2048-square one splits rather than
+holding 160 MB.
+
+**An upload region is checked against the destination subresource, and a resource is checked against the device
+that created it.** Both refusals are `ArgumentException` shaped and both close a hole a caller could not
+otherwise see: a payload of exactly the right length aimed one texel past the mip's edge, and a resource from
+another `IGpuDevice`. The second matters more here than it reads: Apple silicon reports one `MTLDevice` for the
+process, so two devices share a handle and a cross-device use SUCCEEDS, leaving their teardowns to disagree
+about who releases what.
+
+The `MipLodBias` a sampler description carries is dropped, because `MTLSamplerDescriptor` has no LOD bias field
+at all, which is why `GpuCapabilities.SamplerLodBias` is false on this backend and on the incumbent alike.
 
 ## The command list: a buffer per `Begin`, and no pool at all (M-R1 to M-R4)
 

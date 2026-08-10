@@ -104,8 +104,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <param name="description">The seam's description: a layout plus one resource per element, in
         /// order.</param>
         /// <exception cref="ArgumentException">The resource count disagrees with the layout, a resource is null,
-        /// belongs to another backend or another device, is disposed, or is the wrong kind of thing for the
-        /// element it lands on.</exception>
+        /// belongs to another backend or another device, is already disposed, or is the wrong kind of thing for
+        /// the element it lands on.</exception>
+        /// <exception cref="ObjectDisposedException">The layout is already disposed, refused through
+        /// <see cref="MetalResourceLayout.Require"/>.</exception>
         internal MetalResourceSet(IMetalDeviceLiveness liveness, in GpuResourceSetDescription description)
         {
             ArgumentNullException.ThrowIfNull(liveness);
@@ -151,7 +153,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </summary>
         internal ReadOnlySpan<MetalBoundResource> Bindings => _bindings;
 
-        /// <summary>True once disposed. Nothing native is released. See the class note.</summary>
+        /// <summary>True once disposed. Nothing native is released, and the flag is what <see cref="Require"/>
+        /// refuses on. See the class note.</summary>
         internal bool IsDisposed { get; private set; }
 
         /// <inheritdoc/>
@@ -159,8 +162,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// all.</remarks>
         public void Dispose() => IsDisposed = true;
 
-        /// <summary>A set this backend created, on THIS device, refused by name for anything else. Row 13 binds
-        /// through this.</summary>
+        /// <summary>
+        /// A set this backend created, on THIS device, NOT DISPOSED, refused by name for anything else. Row 13
+        /// binds through this, which is the reason the disposed check is here rather than nowhere: a set owns no
+        /// Objective-C object, so binding a disposed one would simply work, and the caller who disposed it
+        /// believes its bindings are gone.
+        /// </summary>
+        /// <exception cref="ArgumentException">No set, another backend's, or another device's.</exception>
+        /// <exception cref="ObjectDisposedException">This backend's set, on this device, already
+        /// disposed.</exception>
         internal static MetalResourceSet Require(IGpuResourceSet? set, IMetalDeviceLiveness owner, string what)
         {
             if (set is null)
@@ -169,7 +179,18 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     $"{what} was given no resource set.", nameof(set));
             }
 
-            return MetalResourceOwnership.Require<MetalResourceSet>(set, owner, nameof(set));
+            MetalResourceSet typed = MetalResourceOwnership.Require<MetalResourceSet>(set, owner, nameof(set));
+
+            if (typed.IsDisposed)
+            {
+                throw new ObjectDisposedException(
+                    nameof(MetalResourceSet),
+                    $"{what} was given a native Metal resource set that is already disposed. A set releases "
+                    + "nothing on this backend, so the bind would work and would name resources the caller "
+                    + "considers unbound.");
+            }
+
+            return typed;
         }
 
         /// <summary>

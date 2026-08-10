@@ -183,21 +183,60 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Same(ours, MetalResourceLayout.Require(ours, mine, "a set"));
         }
 
-        /// <summary>Disposal releases nothing, because there is nothing native to release. The flag exists so a
-        /// use-after-dispose is a stated error rather than a silently working call.</summary>
+        /// <summary>
+        /// DISPOSAL RELEASES NOTHING AND <c>Require</c> IS WHAT MAKES IT MEAN ANYTHING. There is nothing native
+        /// behind a layout, so every member still answers afterwards and a set built on a disposed layout would
+        /// resolve perfectly well against an array its owner has already let go of. The flag is only a stated
+        /// error where something reads it, so both entry points the row hands out refuse on it: the shared
+        /// <c>Require</c> and, through it, set creation.
+        /// </summary>
         [Fact]
-        public void Disposal_IsAFlagAndNotARelease()
+        public void ADisposedLayout_IsRefusedByRequireAndBySetCreation()
         {
+            var liveness = new FakeMetalDeviceLiveness();
             var layout = new MetalResourceLayout(
-                new FakeMetalDeviceLiveness(),
-                new GpuResourceLayoutDescription(Element("Frame", GpuResourceKind.UniformBuffer)));
+                liveness, new GpuResourceLayoutDescription(Element("Frame", GpuResourceKind.UniformBuffer)));
 
             Assert.False(layout.IsDisposed);
             layout.Dispose();
             layout.Dispose();
 
             Assert.True(layout.IsDisposed);
+
+            // STILL PLAIN DATA. The array is the layout, so nothing about it stops answering: that is precisely
+            // why the two refusals below have to be explicit.
             Assert.Equal(1, layout.ElementCount);
+
+            Assert.Contains("already disposed",
+                Assert.Throws<ObjectDisposedException>(
+                    () => MetalResourceLayout.Require(layout, liveness, "a set")).Message,
+                StringComparison.Ordinal);
+
+            Assert.Throws<ObjectDisposedException>(() => new MetalResourceSet(
+                liveness, new GpuResourceSetDescription(layout)));
+        }
+
+        /// <summary>
+        /// AND A DISPOSED SET IS REFUSED WHERE ROW 13 WOULD BIND IT, for the same reason and with the same
+        /// mechanism: a set owns no Objective-C object, so binding one the caller has disposed would simply work
+        /// and would name resources that caller considers unbound.
+        /// </summary>
+        [Fact]
+        public void ADisposedSet_IsRefusedByRequire()
+        {
+            var liveness = new FakeMetalDeviceLiveness();
+            using var layout = new MetalResourceLayout(liveness, new GpuResourceLayoutDescription());
+            var set = new MetalResourceSet(liveness, new GpuResourceSetDescription(layout));
+
+            // The positive control first, so the refusal below is about disposal rather than about the fixture.
+            Assert.Same(set, MetalResourceSet.Require(set, liveness, "a bind"));
+
+            set.Dispose();
+
+            Assert.Contains("already disposed",
+                Assert.Throws<ObjectDisposedException>(
+                    () => MetalResourceSet.Require(set, liveness, "a bind")).Message,
+                StringComparison.Ordinal);
         }
 
         /// <summary>

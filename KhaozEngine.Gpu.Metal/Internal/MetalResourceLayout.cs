@@ -92,7 +92,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
         internal GpuResourceLayoutDescription Description { get; }
 
         /// <summary>True once disposed. Nothing native is released because nothing native was created: the flag
-        /// exists so a use-after-dispose is a stated error rather than a silently working call.</summary>
+        /// is what <see cref="Require"/> refuses on, which is what makes a use-after-dispose a named error rather
+        /// than a silently working call.</summary>
         internal bool IsDisposed { get; private set; }
 
         /// <inheritdoc/>
@@ -103,9 +104,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <summary>The declared element at one binding, for a set resolving its resources positionally.</summary>
         internal GpuResourceLayoutElement ElementAt(int binding) => _elements[binding];
 
-        /// <summary>A layout this backend created, on THIS device, refused by name for anything else. Shared by
-        /// the resource set and by row 11's pipelines, because both would otherwise carry the same
-        /// message.</summary>
+        /// <summary>
+        /// A layout this backend created, on THIS device, NOT DISPOSED, refused by name for anything else. Shared
+        /// by the resource set and by row 11's pipelines, because both would otherwise carry the same message,
+        /// and it is the single place the disposed check lives: a set or a pipeline built from a disposed layout
+        /// would otherwise resolve positionally against an array its owner has already let go of, and work.
+        /// </summary>
+        /// <exception cref="ArgumentException">No layout, another backend's, or another device's.</exception>
+        /// <exception cref="ObjectDisposedException">This backend's layout, on this device, already
+        /// disposed.</exception>
         internal static MetalResourceLayout Require(IGpuResourceLayout? layout, IMetalDeviceLiveness owner,
             string what)
         {
@@ -117,7 +124,19 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     nameof(layout));
             }
 
-            return MetalResourceOwnership.Require<MetalResourceLayout>(layout, owner, nameof(layout));
+            MetalResourceLayout typed = MetalResourceOwnership.Require<MetalResourceLayout>(
+                layout, owner, nameof(layout));
+
+            if (typed.IsDisposed)
+            {
+                throw new ObjectDisposedException(
+                    nameof(MetalResourceLayout),
+                    $"{what} was given a native Metal resource layout that is already disposed. A layout releases "
+                    + "nothing on this backend, so the call would work, which is exactly why the flag is checked "
+                    + "here: the caller believes the declaration is still theirs to build against.");
+            }
+
+            return typed;
         }
 
         // ONE ELEMENT'S DECLARATION, CHECKED AT CREATION rather than at the bind that would suffer for it. Both

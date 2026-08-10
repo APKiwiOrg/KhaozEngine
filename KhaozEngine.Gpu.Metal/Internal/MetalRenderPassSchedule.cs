@@ -454,6 +454,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // a perfectly good encoder for it. Refusing here makes both shapes the same OBSERVABLE outcome (a
             // draw that goes nowhere, clears still owed) through two different code paths, which is what the two
             // situations actually are.
+            //
+            // THIS RETURN IS NOW THE ONLY LEGITIMATE HANDLING of a descriptor Metal would not build, rather than
+            // the only protection: MetalEncoderScope.EnsureRenderEncoder REFUSES a nil descriptor by name, so a
+            // later row that builds its own descriptor and skips this arm is caught at the transition instead of
+            // reaching the driver.
             if (descriptor == IntPtr.Zero) return IntPtr.Zero;
 
             IntPtr encoder;

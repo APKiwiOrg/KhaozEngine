@@ -138,6 +138,49 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(MetalEncoderKind.None, scope.EnsureNoEncoder());
         }
 
+        /// <summary>
+        /// AND A NIL DESCRIPTOR IS THE OTHER FAILURE, refused by name rather than passed on.
+        /// <c>renderCommandEncoderWithDescriptor:</c> takes a nonnull argument, so handing it nil is undefined on
+        /// a device rather than a refusal it reports. The pass schedule already returns without calling this when
+        /// Metal refuses to build one, so a nil reaching here is a caller that took the schedule's job without
+        /// taking its nil arm, and the scope is where that is caught because it is the one owner of every
+        /// transition.
+        /// </summary>
+        [Fact]
+        public void ANilDescriptorIsRefusedByName()
+        {
+            (MetalEncoderScope scope, FakeMetalEncoderCalls calls) = NewScope();
+
+            ArgumentException thrown = Assert.Throws<ArgumentException>(
+                () => scope.EnsureRenderEncoder(IntPtr.Zero));
+
+            Assert.Contains("nil MTLRenderPassDescriptor", thrown.Message, StringComparison.Ordinal);
+            Assert.Equal("descriptor", thrown.ParamName);
+
+            // Nothing was opened and nothing was ended, so the refusal costs no boundary and leaves the scope in
+            // the state it was in.
+            Assert.Equal(MetalEncoderKind.None, scope.Open);
+            Assert.Equal(0, calls.EncoderBoundaries);
+        }
+
+        /// <summary>
+        /// AND THE FAKE REFUSES IT TOO, which is the half that keeps a future caller from being invisible. The
+        /// scope's guard protects everything routed through the scope. A row that reaches the sink directly is
+        /// the shape that hid this defect the first time, because a fake ignoring the descriptor obligingly hands
+        /// back a perfectly good encoder and the device-free suite stays green.
+        /// </summary>
+        [Fact]
+        public void TheFakeSinkRefusesANilDescriptorForARenderEncoderToo()
+        {
+            FakeMetalEncoderCalls calls = new();
+            FakeMetalEncoderSink sink = new(calls);
+
+            Assert.Throws<ArgumentException>(() => sink.BeginRenderEncoder(new IntPtr(0x100), IntPtr.Zero));
+
+            // The other two kinds carry no descriptor at all, so the contract is the render kind's alone.
+            Assert.NotEqual(IntPtr.Zero, sink.BeginBlitEncoder(new IntPtr(0x100)));
+        }
+
         [Fact]
         public void ANilBlitEncoderIsNotAdoptedEither()
         {

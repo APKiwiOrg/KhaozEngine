@@ -117,6 +117,20 @@ namespace KhaozEngine.Tests.Gpu
 
         internal IntPtr BeginEncoder(MetalEncoderKind kind, IntPtr commandBuffer, IntPtr descriptor)
         {
+            // THE FAKE IS STRICT ABOUT THE ONE ARGUMENT IT WOULD OTHERWISE HIDE. The real
+            // renderCommandEncoderWithDescriptor: takes a nonnull descriptor, so a nil one is undefined on a
+            // device, and a fake that ignores the argument hands back a perfectly good encoder for it and keeps
+            // the whole device-free suite green through a defect that only a Mac can see. That is exactly how the
+            // first draft of the pass schedule ran a refused descriptor into the encoder factory. The other two
+            // kinds take no descriptor and pass Zero, so the check is keyed on the kind.
+            if (kind == MetalEncoderKind.Render && descriptor == IntPtr.Zero)
+            {
+                throw new ArgumentException(
+                    "The fake encoder sink was asked for a RENDER encoder with a nil descriptor. The real "
+                    + "selector takes a nonnull argument, so this would be undefined behaviour on a device and "
+                    + "the caller owes the pass schedule's nil arm instead.", nameof(descriptor));
+            }
+
             if (kind == NilForKind)
             {
                 _log.Add($"begin {kind} -> nil");

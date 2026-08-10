@@ -1462,6 +1462,15 @@ had a fake obligingly returning a perfectly good encoder for a nil descriptor, w
 have reached the leg. Both now answer the same thing to the caller (a draw that goes nowhere, with the pending
 clears still owed and the frame still counting) through two separate arms.
 
+**And row 12's review moved the guard down and closed the fake, because the arm above protects only the caller
+that has it.** The schedule's nil-descriptor return was the whole of the protection, and it lives one level
+above `MetalEncoderScope`, which is the one owner of every transition and the type row 15 and every later row
+inherit. So `EnsureRenderEncoder` now REFUSES a nil descriptor by name (an `ArgumentException`, because it is a
+caller bug rather than a framebuffer failure, and the schedule's return is the one legitimate handling of a
+descriptor Metal would not build), and `FakeMetalEncoderSink` asserts the same contract, so the obliging fake
+this addendum describes is gone rather than merely routed around. Both have device-free rows. The two nil cases
+still answer the caller the same thing through separate arms, which is unchanged.
+
 ### 7.2 The per-attachment clear (M-A2)
 
 This is the one place this design deliberately renders differently from the incumbent, so it gets its own gate,

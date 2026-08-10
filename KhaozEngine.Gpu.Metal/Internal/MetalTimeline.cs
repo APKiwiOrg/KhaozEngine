@@ -339,6 +339,41 @@ namespace KhaozEngine.Gpu.Metal.Internal
             }
         }
 
+        /// <summary>
+        /// BLOCK UNTIL THE COUNTER REACHES <paramref name="target"/>, in the same slices
+        /// <see cref="WaitForIdle"/> uses and for the same reason, and return whether it got there. The uniform
+        /// ring's segment gate is the caller (M-M3, https://github.com/APKiwiOrg/KhaozEngine/issues/574) and it
+        /// is the only one.
+        ///
+        /// <para><b>IT DOES NOT TOUCH <c>DrainCount</c> OR <c>DrainMs</c>, AND THAT IS THE POINT OF IT BEING A
+        /// SEPARATE MEMBER RATHER THAN <see cref="WaitForIdle"/> WITH AN ARGUMENT.</b> Those two channels are the
+        /// seam's reading of explicit device drains, which is a caller asking the CPU to stop until the GPU has
+        /// caught up. A segment stall is the opposite reading: nobody asked for it, and it says the pipeline is
+        /// deeper than <c>KE_METAL_FRAMES_IN_FLIGHT</c> allows. It goes to
+        /// <c>BackpressureStallCount</c> and <c>BackpressureStallMs</c> through
+        /// <see cref="MetalBackpressure"/>, which the ring records into, and mixing the two would make MM4's
+        /// zero-stall exit criterion unreadable behind whatever drains the frame loop happens to do.</para>
+        ///
+        /// <para><b>THE CALLER TIMES IT rather than this member</b>, for the same reason: the accumulator that
+        /// gets the entry belongs to the ring, and a member that both waited and recorded would have to know
+        /// which of the two accumulators to write into.</para>
+        ///
+        /// <para><b>THE CALLER ALSO POLLS FIRST.</b> A wait that found the GPU already caught up is not a stall,
+        /// and this member has no way to distinguish the two: <c>waitUntilSignaledValue:timeoutMS:</c> returns
+        /// true immediately in that case, and the elapsed time is a few microseconds rather than zero.</para>
+        /// </summary>
+        /// <param name="target">The timeline value to wait for.</param>
+        /// <returns>True when the counter reached it. False when the wait ended because the device died, which
+        /// on this backend is a command-buffer failure latched from Metal's own completion thread, so the value
+        /// being waited for will never arrive at all.</returns>
+        internal bool WaitForValue(ulong target)
+        {
+            if (target == 0) return true;
+            if (_liveness.IsDead) return false;
+
+            return WaitInSlices(target);
+        }
+
         // The slice loop. See WaitForIdle's third paragraph for why it is a loop rather than one wait: the only
         // way out other than the value arriving is the liveness flip, and nothing delivers that to a blocked
         // waiter.

@@ -35,8 +35,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         }
 
         /// <inheritdoc/>
-        /// <remarks>Shared storage, the incumbent's four-byte size rounding, and M-M6's creation refusal for a
-        /// buffer that is both a uniform and a structured buffer. See <see cref="MetalBufferPolicy"/>.</remarks>
+        /// <remarks>Shared storage, and M-M6's creation refusal for a buffer that is both a uniform and a
+        /// structured buffer. A <c>UniformBuffer</c>-usage buffer is cut into the device's ring segments
+        /// (M-M3) and everything else takes the incumbent's four-byte size rounding. See
+        /// <see cref="MetalBufferPolicy"/> and <see cref="MetalRingStride"/>.</remarks>
         public IGpuBuffer CreateBuffer(in GpuBufferDescription d)
         {
             // The guard is INLINE at every one of these three sites rather than factored into a helper, because
@@ -123,7 +125,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         IGpuBuffer CreateBufferOnMacOs(in GpuBufferDescription d)
         {
             using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
-            return MetalBuffer.Create(_device.Handle, _device.Liveness, d);
+            return MetalBuffer.Create(_device.Handle, _device.Liveness, d, _device.Rings);
         }
 
         [SupportedOSPlatform("macos")]

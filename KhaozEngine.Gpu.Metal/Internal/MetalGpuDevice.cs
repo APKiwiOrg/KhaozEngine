@@ -71,6 +71,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
         readonly MetalCommandBufferSource _commandBuffers;
         readonly MetalUncommittedBuffers _uncommitted;
 
+        // MM4's depth, and the two subsystems that are the only things in this backend sized by it: the uniform
+        // ring's segments (M-M3) and each list's staging arena slots (M-M8). No command buffer anywhere is
+        // allocated per frame in flight, which is the whole of M-R2.
+        readonly int _framesInFlight;
+        readonly MetalBackpressure _backpressure;
+        readonly MetalRingAllocator _rings;
+        readonly IMetalStagingSource _staging;
+
         MetalSampler _pointSampler = null!;
         MetalSampler _linearSampler = null!;
 
@@ -80,7 +88,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
         [SupportedOSPlatform("macos")]
         MetalGpuDevice(MTLDevice device, MTLCommandQueue queue, GpuCapabilities capabilities,
             MetalDeviceLiveness liveness, MetalDeviceLossLatch loss, MetalTimeline timeline,
-            MetalUncommittedBuffers uncommitted, IMetalSetupNative setupNative)
+            MetalUncommittedBuffers uncommitted, IMetalSetupNative setupNative, int framesInFlight,
+            IMetalStagingSource staging)
         {
             _device = device;
             Queue = queue;
@@ -91,6 +100,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _commandBuffers = new MetalCommandBufferSource(queue);
             Capabilities = capabilities;
             _setup = new MetalSetupCommands(setupNative, liveness);
+            _framesInFlight = framesInFlight;
+            _staging = staging;
+
+            // THE ONE RING ALLOCATOR (M-M3), sharing the submit lock rather than owning one. It has to read
+            // MetalTimeline.LastSubmitted under exactly the lock that orders the commit which registers it, or
+            // the segment owner it records would name a submission that had not happened yet.
+            _backpressure = new MetalBackpressure();
+            _rings = new MetalRingAllocator(framesInFlight, timeline, _backpressure, _submitLock);
+
             _factory = new MetalResourceFactory(this);
         }
 
@@ -120,9 +138,25 @@ namespace KhaozEngine.Gpu.Metal.Internal
         internal MetalDeviceLossLatch Loss => _loss;
 
         /// <summary>The device's one completion timeline (M-F1). Row 6's factory reads it for
-        /// <c>CreateFence</c> (https://github.com/APKiwiOrg/KhaozEngine/issues/572) and row 8's uniform ring for
-        /// its segment gate (https://github.com/APKiwiOrg/KhaozEngine/issues/574).</summary>
+        /// <c>CreateFence</c> (https://github.com/APKiwiOrg/KhaozEngine/issues/572) and the uniform ring reads it
+        /// for its segment gate.</summary>
         internal MetalTimeline Timeline => _timeline;
+
+        /// <summary>
+        /// The device's ONE uniform ring allocator (M-M3). Every ring-backed buffer this device creates rotates
+        /// on its segment index, every <c>Begin</c> advances it, and a device-level write to a uniform buffer
+        /// goes through its every-segment path (M-M5).
+        /// </summary>
+        internal MetalRingAllocator Rings => _rings;
+
+        /// <summary>
+        /// The ring's segment stalls, cumulative since the device was created. MM4's exit criterion is that this
+        /// count is ZERO across a whole capture window at the default depth, and on this backend it has exactly
+        /// one source (M-R2), so a non-zero reading is unambiguous. Row 16
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/582) reads it for
+        /// <c>GpuDeviceCounters.BackpressureStallCount</c> and <c>BackpressureStallMs</c>.
+        /// </summary>
+        internal MetalWaitTotals BackpressureTotals => _backpressure.Totals;
 
         /// <summary>How many uncommitted command buffers this device is holding, against section 6.1's bound.
         /// Read by the device-free assertion and by row 16's counter fill.</summary>
@@ -137,7 +171,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal MetalCommandList CreateCommandList()
-            => new(_commandBuffers, _uncommitted, new MetalEncoderSink(), this);
+            => new(_commandBuffers, _uncommitted, new MetalEncoderSink(), this, _rings,
+                // A FRESH ARENA PER LIST (M-M8), not one shared by the device. Two lists recording on two threads
+                // must not sub-allocate from the same blocks, and the recycling proof is per list too: each slot
+                // remembers the timeline value THAT list's submission took. The list disposes it.
+                new MetalStagingArena(_staging, _framesInFlight), new MetalBlitApi(), _liveness);
 
         /// <inheritdoc/>
         /// <remarks>M-G2's <c>softwareAdapter</c> is ALWAYS false with confidence rather than null, because Apple
@@ -283,9 +321,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
 
+            ulong value;
+
             lock (_submitLock)
             {
-                ulong value = _timeline.EncodeSignalForSubmit(buffer);
+                value = _timeline.EncodeSignalForSubmit(buffer);
 
                 // BEFORE THE COMMIT. Metal refuses a handler added to a buffer that has already been committed,
                 // and a buffer that completed before its handler was attached would report nothing at all.
@@ -299,7 +339,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             // AFTER the commit and outside the lock: the queue retains a committed buffer until it completes, so
             // this cannot free one the GPU is running, and the release is not something the ordering depends on.
-            list.MarkSubmitted();
+            // The value travels with it, because the list's staging arena gates its own recycling on exactly the
+            // value the submission that read those blocks signals (M-M8).
+            list.MarkSubmitted(value);
             _commandBuffers.Release(buffer);
         }
 

@@ -195,5 +195,23 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
             nuint sourceOffset, nuint sourceBytesPerRow, nuint sourceBytesPerImage, MTLSize sourceSize,
             IntPtr destinationTexture, nuint destinationSlice, nuint destinationLevel,
             MTLOrigin destinationOrigin);
+
+        // ---- The uniform-ring row's one shape ----------------------------------------------------------------
+
+        /// <summary>
+        /// <c>-[MTLBlitCommandEncoder copyFromBuffer:sourceOffset:toBuffer:destinationOffset:size:]</c>, which is
+        /// the record-time bulk upload's copy out of the staging arena (M-M8).
+        /// <para>
+        /// NOTHING NEW ABOUT IT, and that is worth saying beside the prototype above, which IS new. Seven
+        /// arguments counting the receiver and the selector, all of them the integer class row 1's spike measured
+        /// throughout, so every one rides a general-purpose argument register and nothing spills. It is the same
+        /// receiver and the same selector family as the buffer-to-texture copy, with the argument list that does
+        /// not reach the interesting part of the ABI.
+        /// </para>
+        /// </summary>
+        [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial void SendVoidBufferToBufferCopy(IntPtr receiver, IntPtr sel, IntPtr sourceBuffer,
+            nuint sourceOffset, IntPtr destinationBuffer, nuint destinationOffset, nuint size);
     }
 }

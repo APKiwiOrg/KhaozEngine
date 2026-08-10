@@ -50,6 +50,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         readonly IMetalCommandBufferSource _buffers;
         readonly MetalUncommittedBuffers _uncommitted;
         readonly MetalEncoderScope _encoders;
+        readonly MetalRingAllocator _rings;
+        readonly MetalStagingArena _arena;
+        readonly IMetalBlitApi _blit;
+        readonly IMetalDeviceLiveness _liveness;
         readonly object _owner;
 
         // The RETAINED buffer this list holds, or Zero when it holds none. One field for both states a held
@@ -69,18 +73,39 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// (<see cref="IMetalEncoderSink"/>).</param>
         /// <param name="owner">The device that created this list, held as an opaque token and compared by
         /// REFERENCE at the submit. See <see cref="Owner"/>.</param>
+        /// <param name="rings">The device's ONE ring allocator (M-M3). <see cref="Begin"/> is this backend's
+        /// frame boundary, so this is where the segment rotates and where the only wait in the whole recording
+        /// path happens.</param>
+        /// <param name="arena">This list's OWN staging arena (M-M8), where a record-time upload to a non-uniform
+        /// buffer puts its bytes. Per list rather than per device, so two lists recording concurrently never
+        /// touch the same blocks and the record path takes no lock. Disposed with the list.</param>
+        /// <param name="blit">The one copy a bulk upload emits (<see cref="IMetalBlitApi"/>).</param>
+        /// <param name="liveness">The creating device's liveness token, which IS its identity
+        /// (<see cref="MetalResourceOwnership"/>). Held so <c>UpdateBuffer</c> can refuse a buffer another device
+        /// created, in row 6's shape rather than a third mechanism. It is deliberately NOT what
+        /// <see cref="Owner"/> is: a list is refused at the submit by the device INSTANCE, because that is the
+        /// object whose submit lock orders the queue, and the two questions are different.</param>
         internal MetalCommandList(IMetalCommandBufferSource buffers, MetalUncommittedBuffers uncommitted,
-            IMetalEncoderSink sink, object owner)
+            IMetalEncoderSink sink, object owner, MetalRingAllocator rings, MetalStagingArena arena,
+            IMetalBlitApi blit, IMetalDeviceLiveness liveness)
         {
             ArgumentNullException.ThrowIfNull(buffers);
             ArgumentNullException.ThrowIfNull(uncommitted);
             ArgumentNullException.ThrowIfNull(sink);
             ArgumentNullException.ThrowIfNull(owner);
+            ArgumentNullException.ThrowIfNull(rings);
+            ArgumentNullException.ThrowIfNull(arena);
+            ArgumentNullException.ThrowIfNull(blit);
+            ArgumentNullException.ThrowIfNull(liveness);
 
             _buffers = buffers;
             _uncommitted = uncommitted;
             _encoders = new MetalEncoderScope(sink);
             _owner = owner;
+            _rings = rings;
+            _arena = arena;
+            _blit = blit;
+            _liveness = liveness;
         }
 
         /// <summary>
@@ -155,9 +180,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </para>
         /// <para>
         /// THE RING'S FRAME SLOT IS WAITED ON HERE, and it is the ONE thing this backend's Begin gates on
-        /// (M-R2). Row 8 (https://github.com/APKiwiOrg/KhaozEngine/issues/574) is what puts the wait in: until
-        /// then there is no ring, so there is nothing to wait for, and the wait is not a placeholder that could be
-        /// forgotten because the ring's acquire is where it belongs rather than a second call site here.
+        /// (M-R2). This IS the frame boundary on this backend, where both siblings put theirs at <c>Present</c>:
+        /// they each have a second per-list index that advances at <c>Begin</c> and this backend has none, and
+        /// hanging the acquire off a present that the headless golden path never calls would leave the ring
+        /// rotating never. <see cref="MetalRingAllocator.BeginFrame"/> carries the whole argument.
         /// </para>
         /// </remarks>
         public void Begin()
@@ -190,6 +216,19 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             _commandBuffer = buffer;
             _uncommitted.Acquired();
+
+            // THE RING'S FRAME SLOT, and the ONLY place in a recording that can block (M-M3, M-R2). It closes the
+            // outgoing segment against the last accepted timeline value, advances, and waits there until the GPU
+            // has finished with the segment it is opening. AFTER the acquisition rather than before it, so the
+            // uncommitted-buffer count during the wait is the one MetalFramesInFlight.UncommittedBufferBound is
+            // stated over, and BEFORE the recording flag flips, so nothing can be recorded into a segment the GPU
+            // is still reading.
+            int segment = _rings.BeginFrame();
+
+            // AND THE ARENA ROTATES ONTO THE SAME SLOT, taking the completion value the gate above just read
+            // rather than polling the timeline a second time. It gives back the blocks that slot filled last time
+            // round when, and only when, the submission that read them has completed, and it never waits.
+            _arena.BeginSlot(segment, _rings.CompletedValue);
 
             // THE RECORDER STATE RESET GOES HERE, immediately after the acquisition and before the recording flag
             // flips. A reset added anywhere else is a reset that a re-Begun list can be observed without. Today
@@ -263,9 +302,20 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// buffer Metal has already taken, which is a driver-side failed assertion that aborts the process rather
         /// than anything this backend could report. See <see cref="MetalEncoderScope.ForgetCommandBuffer"/>.
         /// </para>
+        /// <para>
+        /// AND THE STAGING ARENA LEARNS THE VALUE HERE, which is its whole recycling proof (M-M8). The blocks
+        /// this recording leased are read by the submission that just committed, so the slot they are in may not
+        /// be handed back until the device timeline reaches <paramref name="signalledValue"/>. The Vulkan sibling
+        /// gets that proof for free from its command-pool ring and this backend has no pool at all (M-R2), so the
+        /// arena carries it per slot instead.
+        /// </para>
         /// </summary>
-        internal void MarkSubmitted()
+        /// <param name="signalledValue">The timeline value the committed buffer signals, from
+        /// <see cref="MetalTimeline.EncodeSignalForSubmit"/>.</param>
+        internal void MarkSubmitted(ulong signalledValue)
         {
+            _arena.RecordSubmitted(signalledValue);
+
             _sealed = false;
             _commandBuffer = IntPtr.Zero;
             _encoders.ForgetCommandBuffer();
@@ -309,6 +359,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <c>commandBufferWithUnretainedReferences</c> is never used anywhere in this backend: taking it would
         /// remove exactly that retain and put the retire list back.
         /// </para>
+        /// <para>
+        /// THE STAGING ARENA DIES WITH THE LIST, blocks and all, and it is safe for the same reason (M-H3): a
+        /// submitted blit retains the block it reads until it completes, so releasing the arena's own reference
+        /// here frees nothing the GPU is using.
+        /// </para>
         /// </summary>
         public void Dispose()
         {
@@ -321,6 +376,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _encoders.EnsureNoEncoder();
 
             ReleaseHeldBuffer();
+
+            _arena.Dispose();
         }
 
         // The ONE place a held buffer goes back, so the three exits (a re-Begin, a dispose, and the sealed record

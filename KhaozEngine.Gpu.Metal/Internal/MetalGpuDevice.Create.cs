@@ -78,7 +78,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
             {
                 // MM4's DEPTH, resolved once per device and reported, so a capture proves the number its
                 // backpressure counter was measured against rather than resting on the tester believing they set
-                // the variable. Row 8 reads it for the uniform ring and row 15 for maximumDrawableCount.
+                // the variable. The uniform ring's segments and each list's staging arena slots are cut to it,
+                // and row 15 reads it for maximumDrawableCount.
                 int framesInFlight = MetalFramesInFlight.FromEnvironment(out string? unrecognizedFrames);
                 if (unrecognizedFrames is not null)
                     log.Warn(MetalFramesInFlight.UnrecognizedWarning(unrecognizedFrames));
@@ -98,7 +99,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 registered = true;
 
                 MetalGpuDevice created = new(device, queue, ReadCapabilities(selected.Facts), liveness, loss,
-                    timeline, new MetalUncommittedBuffers(framesInFlight), new MetalSetupNative(device, queue));
+                    timeline, new MetalUncommittedBuffers(framesInFlight), new MetalSetupNative(device, queue),
+                    framesInFlight, new MetalStagingSource(device));
 
                 // THE SHARED SAMPLER PAIR, from MetalSharedSamplers and not from the engine's same-named
                 // GpuSamplerDescription statics. Both are WRAP on all three axes, and reading the engine statics

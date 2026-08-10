@@ -127,21 +127,6 @@ namespace KhaozEngine.Gpu.Metal.Internal
         public void ResolveTexture(IGpuTexture src, IGpuTexture dst)
             => throw NotBuiltYet("Resolving a multisampled texture", DrawsRow);
 
-        // ---- Row 8: the uniform ring and the staging arena ---------------------------------------------------
-
-        /// <inheritdoc/>
-        /// <remarks>Row 8 is the routing decision rather than the write: a ring-backed uniform buffer takes a
-        /// memcpy into the current segment and opens NO ENCODER AT ALL, which is the whole motivation for the
-        /// ring (2.1), and everything else stages through this list's arena and pays the blit encoder's
-        /// boundary.</remarks>
-        public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, in T data) where T : unmanaged
-            => throw NotBuiltYet("Uploading to a buffer", RingRow);
-
-        /// <inheritdoc/>
-        public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged
-            => throw NotBuiltYet("Uploading to a buffer", RingRow);
-
-        const string RingRow = "the uniform-ring row (https://github.com/APKiwiOrg/KhaozEngine/issues/574)";
         const string PipelinesRow = "the pipelines row (https://github.com/APKiwiOrg/KhaozEngine/issues/577)";
         const string PassesRow = "the render-passes row (https://github.com/APKiwiOrg/KhaozEngine/issues/578)";
         const string BindsRow = "the bind-flush row (https://github.com/APKiwiOrg/KhaozEngine/issues/579)";
@@ -151,7 +136,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
             => new($"{what} is not built yet on the native Metal command list: it lands in {row}. The command "
                 + "buffer per Begin, the encoder lifecycle with its one-encoder-at-a-time rule and its M-R4 "
                 + "invalidation, End, disposal and the submit path ARE live (work-breakdown row 7, "
-                + "https://github.com/APKiwiOrg/KhaozEngine/issues/573). This is a statement about the package "
+                + "https://github.com/APKiwiOrg/KhaozEngine/issues/573), and so is UpdateBuffer with the uniform "
+                + "ring behind it and the staging arena behind everything else (row 8, "
+                + "https://github.com/APKiwiOrg/KhaozEngine/issues/574). This is a statement about the package "
                 + "and not about this machine. Select GpuBackendKind.Metal, which goes through Veldrid, for a "
                 + "fully working Metal device.");
     }

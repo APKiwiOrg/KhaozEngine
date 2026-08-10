@@ -15,13 +15,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// creates, which is Shared storage with the default cache mode, and this backend passes the same value
     /// spelled out (<c>MTLResourceOptions.SharedDefaultCache</c>).</para>
     ///
-    /// <para><b>THE RING IS NOT BUILT HERE AND THE PREDICATE IT WILL READ IS.</b>
-    /// <see cref="IsRingBacked"/> is the creation-time question M-M6's two invariants are stated in terms of, and
-    /// the uniform ring itself (one buffer of <c>stride * FramesInFlight</c>, the segment gate, the bind-time
-    /// base) is the ring row's, https://github.com/APKiwiOrg/KhaozEngine/issues/574. A uniform buffer created
-    /// today is a plain Shared buffer of the size the caller asked for, and that row is what changes its SIZE. The
-    /// refusal below lives here rather than there because it is a CREATION failure and creation is this row's, and
-    /// because a consumer that could create the refused shape today would have it start throwing later.</para>
+    /// <para><b>THE RING IS NOT BUILT HERE AND THE PREDICATE IT READS IS.</b> <see cref="IsRingBacked"/> is the
+    /// creation-time question M-M6's two invariants are stated in terms of, and the uniform ring itself (one
+    /// buffer of <c>stride * FramesInFlight</c>, the segment gate, the bind-time base) is
+    /// <see cref="MetalUniformRing"/> and <see cref="MetalRingAllocator"/>. What that means for
+    /// <see cref="AllocationBytes"/> is that a ring-backed buffer does NOT take it: its allocation is
+    /// <see cref="MetalRingStride.TotalBytesFor"/> instead, and the 256-byte stride subsumes the four-byte
+    /// rounding rather than stacking with it. The refusal below lives here rather than beside the ring because it
+    /// is a CREATION failure and creation is where a consumer finds out.</para>
     /// </summary>
     internal static class MetalBufferPolicy
     {

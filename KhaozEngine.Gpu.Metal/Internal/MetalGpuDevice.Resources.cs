@@ -207,11 +207,20 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             if (!KhaozEngineMetal.IsPlatformSupported || _liveness.IsDead) return;
 
-            // A ring-backed buffer's device-level write is #484's every-segment rule and belongs to the ring row
-            // (https://github.com/APKiwiOrg/KhaozEngine/issues/574). Until then a uniform buffer is a plain
-            // Shared buffer of the requested size, so one write reaches the only bytes there are, which is the
-            // incumbent's behaviour exactly. The predicate is read here rather than assumed away so that row has
-            // a named place to branch.
+            // A RING-BACKED BUFFER TAKES THE EVERY-SEGMENT PATH (M-M5,
+            // https://github.com/APKiwiOrg/KhaozEngine/issues/484). A device-level write has no frame to belong
+            // to, so writing the current segment alone would leave a load-time value in one segment out of the
+            // frames in flight and the other frames would bind memory nothing had ever written. It reaches every
+            // segment, gated on the same completion read, deferring the ones an earlier frame is still reading
+            // as pending patches rather than waiting for them, so this call never blocks whoever made it.
+            if (metal.Ring is { } ring)
+            {
+                _rings.UpdateBuffer(ring, offsetBytes, data);
+                return;
+            }
+
+            // Everything else is the ungated copy into contents(), which is the incumbent's behaviour and is
+            // correct for a load-time write to a vertex, index or structured buffer.
             metal.Write(offsetBytes, data);
         }
 

@@ -138,5 +138,20 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal NSError Error() => new(ObjCMsgSend.Send(Handle, ObjCRuntime.Sel("error")));
+
+        /// <summary>
+        /// <c>-blitCommandEncoder</c>: a new blit encoder, AUTORELEASED like the buffer that made it.
+        /// <para>
+        /// THE ONE ENCODER THE RESOURCE ROW OPENS, and it opens it on the DEVICE'S SETUP BUFFER rather than on a
+        /// command list (M-M9, <c>MetalSetupCommands</c>). The command list's own encoders and the
+        /// one-at-a-time invariant between them are the recording row's
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/573), and that row adds its render and compute
+        /// siblings beside this member.
+        /// </para>
+        /// </summary>
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal MTLBlitCommandEncoder BlitCommandEncoder()
+            => new(ObjCMsgSend.Send(Handle, ObjCRuntime.Sel("blitCommandEncoder")));
     }
 }

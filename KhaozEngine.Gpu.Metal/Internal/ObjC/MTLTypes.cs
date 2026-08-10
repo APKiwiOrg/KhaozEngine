@@ -42,8 +42,8 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
     /// </para>
     /// <para>
     /// THE CHANNELS ARE ZERO TO ONE AND UNCLAMPED BY THIS TYPE, which is Metal's own contract: the runtime
-    /// converts to the attachment's pixel format at the clear. The engine's <c>Color</c> is bytes, so
-    /// <c>MetalRenderApi</c> is where the divide by 255 happens and where a test can read it.
+    /// converts to the attachment's pixel format at the clear. The engine's <c>Color</c> is already four floats
+    /// in that range, so <c>MetalRenderApi</c> widens each to a double and nothing rescales.
     /// </para>
     /// </summary>
     /// <param name="Red">Red channel, 0 to 1.</param>

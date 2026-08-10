@@ -75,7 +75,7 @@ namespace KhaozEngine.Tests.Gpu
                 // The vertex stage's own uniform buffer is at the BOTTOM of the same space, which is the whole
                 // no-collision property standing up on a device rather than on paper.
                 _output.WriteLine("vertex-stage buffer indices the emission chose: "
-                    + string.Join(", ", MetalVertexStreams.VertexStageBufferIndices(typed.Table)));
+                    + string.Join(", ", MetalVertexPlan.VertexStageBufferIndices(typed.Table)));
 
                 // A DEPTH OUTPUT MEANS A DEPTH-STENCIL STATE, which is the creation half of the depth-target
                 // guard.

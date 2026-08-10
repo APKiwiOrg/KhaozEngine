@@ -70,7 +70,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// disagreement in any one of these maps moves pixels in a whole family at once, silently, with the goldens
     /// as the only witness. The two places this backend departs from it are both structural rather than
     /// behavioural, and both are argued where they happen: vertex stream numbering (M-B2,
-    /// <see cref="MetalVertexStreams"/>) and the compute pipeline's descriptor
+    /// <see cref="MetalVertexStreamIndex"/>) and the compute pipeline's descriptor
     /// (<see cref="MTLComputePipelineState"/>).</para>
     ///
     /// <para><b>A DEPTH-TEST-OFF PIPELINE IS <c>Always</c> WITH WRITES OFF, which is where the seam's three-field

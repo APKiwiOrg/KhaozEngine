@@ -204,7 +204,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         }
 
         // M-B2 AND THE VERTEX PLAN, WRITTEN OUT. The layout index and the attribute's bufferIndex are the SAME
-        // number by construction, because both come from MetalVertexStreams.IndexOf: the incumbent computes it
+        // number by construction, because both come from MetalVertexStreamIndex.ForSlot: the incumbent computes it
         // twice from NonVertexBufferCount and getting the two out of step is what binds a vertex buffer where a
         // uniform should be.
         [SupportedOSPlatform("macos")]

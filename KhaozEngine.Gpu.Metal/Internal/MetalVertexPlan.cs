@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Metal.Internal.ObjC;
 
@@ -60,6 +61,17 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <para><b>THE EMPTY CASE IS THE FULLSCREEN ONE AND IS LEGAL.</b> A pass that builds its geometry from
     /// <c>gl_VertexIndex</c> declares no vertex layouts at all, which yields no streams and no attributes. Six
     /// shipped renderers are in that shape.</para>
+    ///
+    /// <para><b>THE NUMBERING ITSELF IS NOT HERE, AND THAT IS THE POINT.</b> Every buffer index below comes from
+    /// <see cref="MetalVertexStreamIndex"/>, the one type both readers of M-B2's numbering share: this plan
+    /// writes the <c>MTLVertexDescriptor</c>'s layout index and row 13's flush writes the
+    /// <c>setVertexBuffers:</c> bind index, and a device reports NOTHING when the two disagree. Two independent
+    /// subtractions that happened to agree today is exactly the shape M-B2 exists to remove, so this file
+    /// performs none of its own.</para>
+    ///
+    /// <para><b>AND M-B2's NO-COLLISION ASSERTION LIVES HERE rather than on that type</b>, because it is row 11's
+    /// claim rather than the numbering's: it needs a PIPELINE's stream count and its binding table together,
+    /// neither of which a shared index mapping has any business knowing.</para>
     /// </summary>
     internal static class MetalVertexPlan
     {
@@ -94,7 +106,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
             for (int slot = 0; slot < layouts.Count; slot++)
             {
                 GpuVertexLayoutDescription layout = layouts[slot];
-                uint bufferIndex = MetalVertexStreams.IndexOf(slot);
+
+                // THE GUARDED MAPPING, not a subtraction of this file's own. A slot past the bottom of the table
+                // throws here rather than wrapping into a plausible-looking index, which is the arm
+                // RequireNoCollision refuses first on the pipeline path and which nothing else may reach.
+                uint bufferIndex = MetalVertexStreamIndex.ForSlot((uint)slot);
 
                 GpuVertexElement[] declared = ElementsOf(layout);
                 uint offset = 0;
@@ -120,6 +136,97 @@ namespace KhaozEngine.Gpu.Metal.Internal
             }
 
             return streams;
+        }
+
+        /// <summary>
+        /// M-B2'S NO-COLLISION ASSERTION, taken at pipeline creation against the indices the emission chose, and
+        /// taken BEFORE <see cref="Build"/> runs.
+        /// <para>
+        /// TWO REFUSALS, AND THEY ARE DIFFERENT FAILURES. A pipeline declaring more vertex streams than one
+        /// stage's buffer table holds is a caller asking for something the API cannot express at all, whatever
+        /// shader it uses. A vertex-stage resource buffer landing in the top-pinned range is the combined-bindings
+        /// case section 8.3 names, and it is a fact about the EMISSION meeting the declaration, which is why it
+        /// reads as a shader validation failure and quotes both sides.
+        /// </para>
+        /// <para>
+        /// THE COUNT ARM RUNS FIRST AND IT RUNS EARLY, which is an ordering obligation rather than a preference.
+        /// <see cref="MetalVertexStreamIndex.ForSlot"/> refuses a slot the table cannot hold, so the plan cannot
+        /// silently produce a wrapped index either way, but the message a caller gets should be this one: it
+        /// names the pipeline, both numbers and the scheme, where the mapping's refusal only knows about a slot.
+        /// So the caller asks this of the DECLARED layout count before the plan is built at all.
+        /// </para>
+        /// <para>
+        /// IT IS CHECKED RATHER THAN ARGUED. The property is easy to believe from the arithmetic (resource
+        /// buffers grow from 0, streams grow from 30 downward, and the shipped programs use a handful of each),
+        /// and believing it is exactly how an inherited assumption survives the change that breaks it.
+        /// <c>MetalVertexInputTests.NoShippedProgramsVertexStageReachesTheTopPinnedRange</c> takes the same
+        /// measurement over every shipped program before any pipeline exists.
+        /// </para>
+        /// </summary>
+        /// <param name="streamCount">How many vertex buffer slots the pipeline declares.</param>
+        /// <param name="table">The program's binding table, whose vertex-stage buffer entries are the indices the
+        /// emission chose.</param>
+        /// <param name="label">A name for the pipeline, quoted in either message.</param>
+        /// <exception cref="ArgumentOutOfRangeException">More vertex streams than the buffer table has
+        /// entries.</exception>
+        /// <exception cref="ShaderValidationException">A vertex-stage resource buffer landed in the range the
+        /// streams occupy.</exception>
+        internal static void RequireNoCollision(int streamCount, MetalShaderIndexTable table, string label)
+        {
+            ArgumentNullException.ThrowIfNull(table);
+
+            if (streamCount < 0 || streamCount > MetalVertexStreamIndex.BufferTableSize)
+            {
+                throw new ArgumentOutOfRangeException(nameof(streamCount), streamCount,
+                    $"{label}: a native Metal graphics pipeline declares "
+                    + $"{streamCount.ToString(CultureInfo.InvariantCulture)} vertex buffer slots and one stage's "
+                    + "buffer argument table has "
+                    + $"{MetalVertexStreamIndex.BufferTableSize.ToString(CultureInfo.InvariantCulture)} "
+                    + "entries, so they cannot all be bound whatever else the pipeline does. Vertex streams are "
+                    + "pinned at the top of that space (M-B2), so slot 0 is buffer 30 and the count is what runs "
+                    + "out.");
+            }
+
+            int lowest = MetalVertexStreamIndex.LowestIndexFor(streamCount);
+
+            foreach ((MetalIndexTableKey key, MetalIndexTableEntry entry) in table.Entries())
+            {
+                if (key.Stage != MetalShaderStage.Vertex) continue;
+                if (entry.Space != MetalIndexSpace.Buffer) continue;
+                if (entry.Index < lowest) continue;
+
+                throw new ShaderValidationException(
+                    $"{label}: the emitted vertex function binds set "
+                    + $"{key.Set.ToString(CultureInfo.InvariantCulture)} binding "
+                    + $"{key.Binding.ToString(CultureInfo.InvariantCulture)} at "
+                    + $"[[buffer({entry.Index.ToString(CultureInfo.InvariantCulture)})]], and this pipeline's "
+                    + $"{streamCount.ToString(CultureInfo.InvariantCulture)} vertex streams occupy "
+                    + $"{lowest.ToString(CultureInfo.InvariantCulture)} upward. Vertex streams take the top of "
+                    + "the buffer space (M-B2) and resource buffers grow from 0, so the two collide only when a "
+                    + "program's combined vertex-stage bindings exceed the "
+                    + $"{MetalVertexStreamIndex.BufferTableSize.ToString(CultureInfo.InvariantCulture)} the table "
+                    + "has. Binding both would put a vertex stream where a uniform is read.");
+            }
+        }
+
+        /// <summary>
+        /// The vertex-stage buffer indices one program's emission chose, in ascending order. The measurement
+        /// behind <see cref="RequireNoCollision"/>, exposed so the corpus test can REPORT the headroom rather
+        /// than only assert that there is some.
+        /// </summary>
+        internal static IReadOnlyList<int> VertexStageBufferIndices(MetalShaderIndexTable table)
+        {
+            ArgumentNullException.ThrowIfNull(table);
+
+            var indices = new List<int>();
+            foreach ((MetalIndexTableKey key, MetalIndexTableEntry entry) in table.Entries())
+            {
+                if (key.Stage == MetalShaderStage.Vertex && entry.Space == MetalIndexSpace.Buffer)
+                    indices.Add(entry.Index);
+            }
+
+            indices.Sort();
+            return indices;
         }
 
         static GpuVertexElement[] ElementsOf(in GpuVertexLayoutDescription layout) => layout.Elements ?? [];

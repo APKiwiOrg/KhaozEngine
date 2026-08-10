@@ -20,28 +20,12 @@ namespace KhaozEngine.Tests.Gpu
     /// </summary>
     public sealed class MetalVertexStreamCacheTests
     {
-        /// <summary>
-        /// M-B2's NUMBERING: streams take the TOP of the vertex stage's buffer table and count downward, so
-        /// resource buffers growing from 0 upward cannot collide with them and neither numbering depends on the
-        /// other's count. Asserted here because two independent pieces of code read it (this flush's
-        /// <c>setVertexBuffers:</c> index and row 11's <c>MTLVertexDescriptor</c> layout index) and a device
-        /// reports nothing at all when they disagree.
-        /// </summary>
-        [Fact]
-        public void StreamsArePinnedAtTheTopOfTheBufferTableAndCountDownward()
-        {
-            Assert.Equal(30u, MetalVertexStreamIndex.ForSlot(0));
-            Assert.Equal(29u, MetalVertexStreamIndex.ForSlot(1));
-            Assert.Equal(0u, MetalVertexStreamIndex.ForSlot(30));
-
-            Assert.Throws<ArgumentOutOfRangeException>(() => MetalVertexStreamIndex.ForSlot(31));
-
-            // The floor row 11's no-collision assertion compares an emitted index against. A pipeline with no
-            // streams claims nothing, so nothing is off limits.
-            Assert.Equal(31, MetalVertexStreamIndex.LowestIndexFor(0));
-            Assert.Equal(30, MetalVertexStreamIndex.LowestIndexFor(1));
-            Assert.Equal(29, MetalVertexStreamIndex.LowestIndexFor(2));
-        }
+        // M-B2's NUMBERING IS PINNED ONCE, IN MetalVertexInputTests.StreamsAreNumberedFromTheTopDownward, and
+        // this row deliberately does not carry a second copy. Two independent pieces of code read the mapping
+        // (this flush's setVertexBuffers: index and row 11's MTLVertexDescriptor layout index) and a device
+        // reports nothing at all when they disagree, which is an argument for ONE type and therefore for one
+        // pin: a second copy of the numbers here would pass while the two readers drifted, because it would be
+        // asserting the same shared type both of them already come from.
 
         /// <summary>
         /// TWO DIRTY STREAMS ARE ONE ARRAY CALL, not one per stream. They are ordinary <c>[[buffer(n)]]</c>

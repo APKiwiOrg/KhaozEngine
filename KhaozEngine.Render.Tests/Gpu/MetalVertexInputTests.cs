@@ -40,21 +40,38 @@ namespace KhaozEngine.Tests.Gpu
 
         public MetalVertexInputTests(ITestOutputHelper output) => _output = output;
 
-        /// <summary>Stream 0 takes the top of the space and each next one takes the slot below it, which is the
-        /// whole of the numbering.</summary>
+        /// <summary>
+        /// M-B2's NUMBERING, PINNED ONCE FOR BOTH OF ITS READERS. Stream 0 takes the top of the vertex stage's
+        /// buffer table and each next one takes the slot below it, so resource buffers growing from 0 upward
+        /// cannot collide with them and neither numbering depends on the other's count.
+        /// <para>
+        /// THIS IS THE ONLY PIN, and it being the only one is the assertion. Rows 11 and 13 each carried their
+        /// own copy of it over their own copy of the mapping (the <c>MTLVertexDescriptor</c>'s layout index and
+        /// the <c>setVertexBuffers:</c> bind index), which is precisely the shape M-B2 exists to remove: two
+        /// independent subtractions agreeing today, with a device that reports NOTHING on the day they stop.
+        /// Both call sites now come from <see cref="MetalVertexStreamIndex"/> and both rows' assertions are
+        /// merged here. <c>MetalVertexStreamCacheTests</c> is row 13's flush behaviour and points at this row for
+        /// the numbers.
+        /// </para>
+        /// </summary>
         [Fact]
         public void StreamsAreNumberedFromTheTopDownward()
         {
-            Assert.Equal(30u, MetalVertexStreams.IndexOf(0));
-            Assert.Equal(29u, MetalVertexStreams.IndexOf(1));
-            Assert.Equal(28u, MetalVertexStreams.IndexOf(2));
+            Assert.Equal(30u, MetalVertexStreamIndex.ForSlot(0));
+            Assert.Equal(29u, MetalVertexStreamIndex.ForSlot(1));
+            Assert.Equal(28u, MetalVertexStreamIndex.ForSlot(2));
+
+            // The BOTTOM of the table, and the slot past it. A wrapping subtraction answers a plausible-looking
+            // huge index here instead of refusing, which is the failure the guarded mapping removes.
+            Assert.Equal(0u, MetalVertexStreamIndex.ForSlot(30));
+            Assert.Throws<ArgumentOutOfRangeException>(() => MetalVertexStreamIndex.ForSlot(31));
 
             // A pipeline with no streams occupies nothing, so the lowest occupied index is past the top of the
             // table rather than 30. Without that, a fullscreen pass would reserve buffer 30 for a stream it does
             // not have.
-            Assert.Equal(31u, MetalVertexStreams.LowestStreamIndex(0));
-            Assert.Equal(30u, MetalVertexStreams.LowestStreamIndex(1));
-            Assert.Equal(29u, MetalVertexStreams.LowestStreamIndex(2));
+            Assert.Equal(31, MetalVertexStreamIndex.LowestIndexFor(0));
+            Assert.Equal(30, MetalVertexStreamIndex.LowestIndexFor(1));
+            Assert.Equal(29, MetalVertexStreamIndex.LowestIndexFor(2));
         }
 
         /// <summary>
@@ -73,7 +90,7 @@ namespace KhaozEngine.Tests.Gpu
                 MetalMslProgram built = MetalShaderBuild.Pair(
                     program.VertexGlsl, program.FragmentGlsl, program.Name);
 
-                IReadOnlyList<int> indices = MetalVertexStreams.VertexStageBufferIndices(built.Table);
+                IReadOnlyList<int> indices = MetalVertexPlan.VertexStageBufferIndices(built.Table);
                 vertexBufferEntries += indices.Count;
                 programs++;
 
@@ -81,7 +98,7 @@ namespace KhaozEngine.Tests.Gpu
                 {
                     // THE LITERAL PROPERTY 8.3 STATES: no index the emission chose reaches 30 downward, so even a
                     // one-stream pipeline built on this program has its stream to itself.
-                    Assert.True(index < MetalVertexStreams.IndexOf(0),
+                    Assert.True(index < MetalVertexStreamIndex.ForSlot(0),
                         $"{program.Name}: the emitted vertex function binds a resource at [[buffer({index})]], "
                         + "which is inside the range M-B2 pins vertex streams to.");
 
@@ -93,10 +110,10 @@ namespace KhaozEngine.Tests.Gpu
                 // And the shipped scheme end to end: two streams is the most any renderer declares (the model
                 // pass's vertex plus instance buffers), so this is the real pipeline shape rather than the
                 // one-stream floor above.
-                MetalVertexStreams.RequireNoCollision(2, built.Table, program.Name);
+                MetalVertexPlan.RequireNoCollision(2, built.Table, program.Name);
             }
 
-            int headroom = (int)MetalVertexStreams.LowestStreamIndex(0) - 1 - highest;
+            int headroom = MetalVertexStreamIndex.LowestIndexFor(0) - 1 - highest;
             report.AppendLine($"programs={programs} vertex-stage buffer entries={vertexBufferEntries}");
             report.AppendLine($"highest emitted vertex-stage buffer index={highest} ({highestProgram})");
             report.AppendLine($"streams that could be top-pinned before a collision={headroom}");
@@ -124,10 +141,10 @@ namespace KhaozEngine.Tests.Gpu
             MetalShaderIndexTable table = VertexTableAt(30);
 
             // With no streams there is no collision: nothing occupies the top.
-            MetalVertexStreams.RequireNoCollision(0, table, "no streams");
+            MetalVertexPlan.RequireNoCollision(0, table, "no streams");
 
             ShaderValidationException error = Assert.Throws<ShaderValidationException>(
-                () => MetalVertexStreams.RequireNoCollision(1, table, "one stream"));
+                () => MetalVertexPlan.RequireNoCollision(1, table, "one stream"));
 
             Assert.Contains("[[buffer(30)]]", error.Message, StringComparison.Ordinal);
             Assert.Contains("one stream", error.Message, StringComparison.Ordinal);
@@ -135,9 +152,9 @@ namespace KhaozEngine.Tests.Gpu
             // The boundary is exact rather than approximate: an entry at 29 collides with two streams and not
             // with one, which is what makes the check about the COUNT rather than about a fixed range.
             MetalShaderIndexTable lower = VertexTableAt(29);
-            MetalVertexStreams.RequireNoCollision(1, lower, "one stream");
+            MetalVertexPlan.RequireNoCollision(1, lower, "one stream");
             Assert.Throws<ShaderValidationException>(
-                () => MetalVertexStreams.RequireNoCollision(2, lower, "two streams"));
+                () => MetalVertexPlan.RequireNoCollision(2, lower, "two streams"));
         }
 
         /// <summary>
@@ -157,7 +174,7 @@ namespace KhaozEngine.Tests.Gpu
                 },
                 "fragment only");
 
-            MetalVertexStreams.RequireNoCollision(2, table, "two streams");
+            MetalVertexPlan.RequireNoCollision(2, table, "two streams");
         }
 
         /// <summary>More streams than the buffer table has entries is a different failure and says so.</summary>
@@ -165,7 +182,7 @@ namespace KhaozEngine.Tests.Gpu
         public void MoreStreamsThanTheTableHas_IsRefusedOnItsOwn()
         {
             ArgumentOutOfRangeException error = Assert.Throws<ArgumentOutOfRangeException>(
-                () => MetalVertexStreams.RequireNoCollision(32, VertexTableAt(0), "too many"));
+                () => MetalVertexPlan.RequireNoCollision(32, VertexTableAt(0), "too many"));
 
             Assert.Contains("31", error.Message, StringComparison.Ordinal);
         }

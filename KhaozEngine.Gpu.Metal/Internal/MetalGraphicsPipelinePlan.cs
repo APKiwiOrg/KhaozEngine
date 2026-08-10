@@ -20,8 +20,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// caller sees.</b> Ownership first, because a layout from another device makes every later question
     /// meaningless. Then the layout SHAPE against the reflection (2.2b, pin 4), because the binding table is keyed
     /// on <c>(set, binding, stage)</c> read out of the shader's own decorations and a differently shaped array
-    /// resolves every element through a key that means something else. Then the vertex plan, and only then M-B2's
-    /// collision check, which needs the stream COUNT the plan produced.</para>
+    /// resolves every element through a key that means something else. Then M-B2's collision check, which needs
+    /// the DECLARED stream count and the table, and only then the vertex plan, whose per-slot numbering that
+    /// check has already established there is room for.</para>
     ///
     /// <para><b>NOTHING HERE READS A LAYOUT'S PER-KIND COUNTS, and there are none to read (2.2b).</b> The
     /// incumbent's <c>MTLPipeline</c> constructor sums <c>MTLResourceLayout.BufferCount</c> across every layout
@@ -126,13 +127,20 @@ namespace KhaozEngine.Gpu.Metal.Internal
             for (int i = 0; i < layouts.Length; i++) declared[i] = layouts[i].Description;
             shaders.Table.RequireLayoutShape(declared, Label);
 
+            // M-B2'S NO-COLLISION ASSERTION, TAKEN BEFORE THE PLAN IS BUILT, which is the whole reason it reads
+            // the DECLARED layout count rather than the built plan's stream count: they are the same number, and
+            // asking the description for it is what lets the refusal come first. Both arms need only the count
+            // and the table, so nothing is lost by moving it forward, and what is gained is that a pipeline
+            // declaring more streams than one stage's buffer table holds is refused HERE, naming the pipeline and
+            // both numbers, rather than inside the plan's per-slot mapping which only knows about a slot.
+            //
+            // It reads the vertex stage's own entries out of the table rather than anything the layouts declare
+            // visible, because SPIRV-Cross omits an argument a stage never references.
+            int streamCount = description.VertexLayouts?.Count ?? 0;
+            MetalVertexPlan.RequireNoCollision(streamCount, shaders.Table, Label);
+
             MetalVertexStream[] streams = MetalVertexPlan.Build(
                 description.VertexLayouts, out MetalVertexAttribute[] attributes);
-
-            // M-B2'S NO-COLLISION ASSERTION, which needs the stream count and therefore cannot be taken before
-            // the plan above. It reads the vertex stage's own entries out of the table rather than anything the
-            // layouts declare visible.
-            MetalVertexStreams.RequireNoCollision(streams.Length, shaders.Table, Label);
 
             return new MetalGraphicsPipelinePlan(
                 shaders,

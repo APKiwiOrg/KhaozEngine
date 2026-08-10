@@ -286,12 +286,20 @@ namespace KhaozEngine.Gpu.Metal.Internal
         }
 
         /// <summary>
-        /// Abandon any open batch and release the staging buffers. Called by the device's teardown, after its
-        /// drain and before the queue and device are released.
+        /// Abandon any open batch and release everything this type still holds. Called by the device's teardown
+        /// BEFORE its drain, and before the queue and device are released.
         /// <para>
-        /// AN OPEN BATCH IS DISCARDED RATHER THAN COMMITTED. Teardown has already drained, so committing here
-        /// would mean waiting again, and the textures that batch was filling are being destroyed in the same
-        /// breath. The command buffer itself is autoreleased and needs nothing.
+        /// AN OPEN BATCH IS DISCARDED RATHER THAN COMMITTED, and running before the drain is what makes that
+        /// correct rather than merely convenient. An uncommitted command buffer was never enqueued, so nothing it
+        /// carries is observable to anything and the drain that follows has nothing of its to wait for. Its
+        /// staging buffers are referenced by no command buffer either, so releasing them here is the last
+        /// reference rather than a race with the GPU, and a COMMITTED batch's staging was already released at its
+        /// flush. The buffer itself is an ordinary object nothing else holds.
+        /// </para>
+        /// <para>
+        /// COMMITTING HERE INSTEAD would be the wrong trade in both directions: it would enqueue work in front of
+        /// the teardown drain, for textures being destroyed in the same breath, and the drain would then wait for
+        /// it.
         /// </para>
         /// </summary>
         public void Dispose()

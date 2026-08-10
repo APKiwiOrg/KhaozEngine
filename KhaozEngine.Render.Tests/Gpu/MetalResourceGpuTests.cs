@@ -271,6 +271,35 @@ namespace KhaozEngine.Tests.Gpu
             }
         }
 
+        /// <summary>
+        /// A REGION PAST THE DESTINATION'S EDGE IS REFUSED ON BOTH UPLOAD PATHS, and this row is the staging one,
+        /// which needs a device because a staging texture IS a real <c>MTLBuffer</c> with a real base pointer.
+        /// The payload is exactly the right length for the region every time, so the length check has nothing to
+        /// say and only the region check can refuse. Without it the strided copy would write past the subresource
+        /// into whatever follows it, with no driver in the path to notice.
+        /// <para>
+        /// The Private path's own refusal is pinned device-free in <c>MetalSetupBatchTests</c>, and the shared
+        /// arithmetic both paths call is pinned in <c>MetalResourcePolicyTests</c>.
+        /// </para>
+        /// </summary>
+        [GpuFact]
+        public void AStagingUploadPastTheEdge_IsRefusedOnBothAxes()
+        {
+            if (!Available()) return;
+
+            using IGpuDevice device = CreateHeadless();
+            using IGpuTexture staging = device.Factory.CreateTexture(
+                GpuTextureDescription.Texture2D(16, 16, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Staging));
+
+            var payload = new byte[8 * 8 * 4];
+
+            // In range, so the refusals below are about the region and not about the texture.
+            device.UpdateTexture(staging, payload, 8, 8, 8, 8);
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => device.UpdateTexture(staging, payload, 9, 8, 8, 8));
+            Assert.Throws<ArgumentOutOfRangeException>(() => device.UpdateTexture(staging, payload, 8, 9, 8, 8));
+        }
+
         /// <summary>Mapping a texture that is not a staging texture is refused with the reason, because a Private
         /// texture has no CPU-visible memory at all and a null pointer would be discovered somewhere else.</summary>
         [GpuFact]

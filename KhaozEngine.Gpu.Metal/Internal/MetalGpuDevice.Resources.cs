@@ -188,6 +188,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
         static unsafe void WriteStagingTexture(MetalTexture destination, in MetalTextureUpload upload,
             byte[] data)
         {
+            // THE REGION FIRST, because the length check below only says the SOURCE is long enough. A rectangle
+            // that runs past the mip's own dimensions writes past the subresource into whatever follows it, and
+            // this path is a software copy with no driver behind it to notice.
+            MetalStagingLayout.RequireRegionFits(destination.Shape, upload.MipLevel, upload.ArrayLayer, upload.X,
+                upload.Y, upload.Width, upload.Height);
+
             MetalSubresourceLayout layout = destination.SubresourceLayout(upload.MipLevel, upload.ArrayLayer);
 
             ulong sourceRowPitch = MetalStagingLayout.RowPitch(upload.Width, destination.Format);
@@ -209,11 +215,17 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 for (uint row = 0; row < upload.Height; row++)
                 {
                     byte* from = source + (row * sourceRowPitch);
-                    byte* to = destinationBase
-                        + ((upload.Y + row) * layout.RowPitch)
+
+                    // THE REAL REMAINING DESTINATION, not the row pitch. Passing sourceRowPitch as
+                    // destinationSizeInBytes made MemoryCopy's own overflow argument vacuous, since it then asked
+                    // whether a copy of n bytes fits in n bytes and the answer was always yes. With the
+                    // subresource's remaining bytes it is a second, independent check on the arithmetic the
+                    // region refusal above already made.
+                    ulong offsetInSubresource = ((ulong)(upload.Y + row) * layout.RowPitch)
                         + ((ulong)upload.X * texelBytes);
 
-                    Buffer.MemoryCopy(from, to, sourceRowPitch, sourceRowPitch);
+                    Buffer.MemoryCopy(from, destinationBase + offsetInSubresource,
+                        layout.Size - offsetInSubresource, sourceRowPitch);
                 }
             }
         }

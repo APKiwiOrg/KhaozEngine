@@ -225,6 +225,35 @@ namespace KhaozEngine.Gpu.Metal.Internal
             => DepthPitch(RowPitch(width, format), height, format);
 
         /// <summary>
+        /// REFUSE A REGION THAT DOES NOT FIT ITS DESTINATION SUBRESOURCE. The texture sibling of
+        /// <c>MetalBufferPolicy.RequireWriteFits</c>, and the check both upload paths were missing: they checked
+        /// only that the SOURCE array was long enough, which says nothing about where the bytes land.
+        /// <para>
+        /// WHAT IT PREVENTS IS DIFFERENT ON THE TWO PATHS, and neither is loud. A staging texture is an
+        /// <c>MTLBuffer</c> written by a software strided copy, so an over-large region writes past the
+        /// subresource into whatever follows it in the same allocation, or past the allocation itself. A Private
+        /// texture is written by a blit the DRIVER validates, so an over-large region is a validation failure at
+        /// best and texels in the wrong place at worst. The incumbent checks neither.
+        /// </para>
+        /// <para>
+        /// The mip level and array layer are checked first, through the same <c>RequireSubresource</c> the layout
+        /// arithmetic uses, because a region cannot be compared against a subresource that does not exist.
+        /// </para>
+        /// </summary>
+        internal static void RequireRegionFits(in MetalStagingShape shape, uint mipLevel, uint arrayLayer,
+            uint x, uint y, uint width, uint height)
+        {
+            RequireShape(shape);
+            RequireSubresource(shape, mipLevel, arrayLayer);
+
+            uint mipWidth = MipDimension(shape.Width, mipLevel);
+            uint mipHeight = MipDimension(shape.Height, mipLevel);
+
+            if ((ulong)x + width > mipWidth) throw Outside(nameof(x), x, width, mipWidth, "wide", mipLevel);
+            if ((ulong)y + height > mipHeight) throw Outside(nameof(y), y, height, mipHeight, "tall", mipLevel);
+        }
+
+        /// <summary>
         /// Which mip level and array layer a flat subresource index names. <c>Util.GetMipLevelAndArrayLayer</c>:
         /// the layer is the index divided by the mip count and the level is the remainder, so subresources run
         /// mip-major within a layer.
@@ -282,6 +311,28 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 + shape.ArrayLayers.ToString(CultureInfo.InvariantCulture)
                 + " array layers. The offset it would produce lands in whatever follows the buffer.");
         }
+
+        // One axis of the region refusal, as one sentence a caller can act on: which edge it crossed, by how
+        // much, and what the mip level it was aimed at actually measures.
+        static ArgumentOutOfRangeException Outside(string axis, uint origin, uint extent, uint bound,
+            string dimension, uint mipLevel)
+            => new(axis, origin,
+                "A native Metal texture upload of "
+                + extent.ToString(CultureInfo.InvariantCulture)
+                + " texels from "
+                + axis
+                + " = "
+                + origin.ToString(CultureInfo.InvariantCulture)
+                + " runs to "
+                + ((ulong)origin + extent).ToString(CultureInfo.InvariantCulture)
+                + ", past a mip level "
+                + mipLevel.ToString(CultureInfo.InvariantCulture)
+                + " that is only "
+                + bound.ToString(CultureInfo.InvariantCulture)
+                + " texels "
+                + dimension
+                + ". On a staging texture that writes past the subresource into whatever follows it, and on a "
+                + "Private texture the driver either refuses the blit or puts the texels somewhere else.");
 
         // The 32-bit ceiling. See the class note: identical to the incumbent everywhere the incumbent does not
         // wrap, and named rather than silent above it.

@@ -212,6 +212,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
             ulong required = MetalStagingLayout.RequiredUploadBytes(upload.Width, upload.Height, shape.Format);
             if (required == 0) return;
 
+            // THE REGION, AGAINST THE DESTINATION. The length check below only says the SOURCE is long enough,
+            // which says nothing about where the bytes land: an origin plus an extent past the mip's own
+            // dimensions is a blit the driver refuses or applies somewhere else.
+            MetalStagingLayout.RequireRegionFits(shape, upload.MipLevel, upload.ArrayLayer, upload.X, upload.Y,
+                upload.Width, upload.Height);
+
             if ((ulong)data.Length < required)
             {
                 throw new ArgumentException(

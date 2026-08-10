@@ -417,6 +417,16 @@ queue answers a nil command buffer, so every append returned early and the batch
 posture and the disposal ordering had no device-free test at all. That is the split `IMetalSharedEvent` already
 took for the timeline, and the autorelease pools moved with the calls they cover.
 
+**An upload region is checked against the destination subresource, on both paths.** Both checked only that the
+source array was long enough, which says nothing about where the bytes land: a payload of exactly the right
+length aimed one texel past the right edge passed. On a staging texture that is a software strided copy writing
+past the subresource into whatever follows it, and on a Private texture it is a blit the driver refuses or
+applies somewhere else. `MetalStagingLayout.RequireRegionFits` is the named refusal, sibling to
+`MetalBufferPolicy.RequireWriteFits`, and it compares against the MIP LEVEL's own dimensions rather than mip
+0's. The staging path's `Buffer.MemoryCopy` also passed the source row pitch as `destinationSizeInBytes`, which
+asked whether n bytes fit in n bytes and could never fire. It gets the subresource's real remaining bytes now,
+so it is a second independent check rather than a decoration.
+
 **No texture view is created for any usage, and that is M-M10 in its strongest form.** The design asks that no
 view factory be reachable from the recording type so a draw-time view is a compile error. On this seam nothing
 can NARROW a texture at all: there is no texture-view type, a resource set binds an `IGpuTexture` whole,

@@ -175,6 +175,33 @@ namespace KhaozEngine.Tests.Gpu
             Assert.False(setup.HasPendingWork);
         }
 
+        /// <summary>
+        /// THE PRIVATE PATH'S REGION REFUSAL, end to end. The payload is exactly the right length for the region,
+        /// so the length check has nothing to say, and the region still lands past the destination's edge. Nothing
+        /// is staged and nothing is encoded, which is what says the refusal happens before the allocation rather
+        /// than after it.
+        /// </summary>
+        [Fact]
+        public void AnUploadPastTheDestinationsEdge_IsRefusedBeforeAnythingIsStaged()
+        {
+            var native = new FakeMetalSetupNative();
+            using var setup = new MetalSetupCommands(native, new FakeMetalDeviceLiveness(), Budget);
+
+            var shape = new MetalStagingShape(16, 16, 1, 1, GpuPixelFormat.R8G8B8A8UNorm);
+
+            // In range first, so the refusals below are about the region rather than about the shape.
+            setup.Upload(default, shape, new MetalTextureUpload(0, 0, 8, 8, 8, 8), new byte[8 * 8 * 4]);
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => setup.Upload(default, shape,
+                new MetalTextureUpload(0, 0, 9, 8, 8, 8), new byte[8 * 8 * 4]));
+            Assert.Throws<ArgumentOutOfRangeException>(() => setup.Upload(default, shape,
+                new MetalTextureUpload(0, 0, 8, 9, 8, 8), new byte[8 * 8 * 4]));
+
+            Assert.Single(native.Staged);
+            Assert.Single(native.Encoded);
+            Assert.Equal(1, setup.AppendCount);
+        }
+
         // 4096 bytes, which is four 16x16 RGBA8 uploads. Small enough to drive the budget with no allocation
         // worth naming, and the arithmetic stays legible in the assertions.
         const ulong Budget = 4096;

@@ -324,6 +324,75 @@ namespace KhaozEngine.Tests.Gpu
                 new GpuSamplerDescription(GpuSamplerFilter.Anisotropic, maximumAnisotropy: 0)).MaxAnisotropy);
         }
 
+        // ---- Upload regions -----------------------------------------------------------------------------------
+
+        /// <summary>
+        /// A region inside its destination subresource is accepted, on every shape the seam can name: the whole
+        /// mip, a sub-rectangle at a non-zero origin, one that ends exactly on both edges, a non-zero mip level
+        /// and a non-zero array layer.
+        /// </summary>
+        [Fact]
+        public void ARegionInsideItsSubresource_IsAccepted()
+        {
+            var shape = new MetalStagingShape(64, 32, 4, 3, GpuPixelFormat.R8G8B8A8UNorm);
+
+            MetalStagingLayout.RequireRegionFits(shape, 0, 0, 0, 0, 64, 32);
+            MetalStagingLayout.RequireRegionFits(shape, 0, 0, 1, 1, 2, 2);
+            MetalStagingLayout.RequireRegionFits(shape, 0, 0, 63, 31, 1, 1);
+
+            // Mip 2 of a 64 by 32 texture is 16 by 8, and the region is checked against THAT rather than against
+            // mip 0, which is the whole reason the check takes the level.
+            MetalStagingLayout.RequireRegionFits(shape, 2, 0, 0, 0, 16, 8);
+            MetalStagingLayout.RequireRegionFits(shape, 2, 2, 8, 4, 8, 4);
+        }
+
+        /// <summary>
+        /// ONE TEXEL PAST THE RIGHT EDGE IS REFUSED, which is the case the length check cannot see: the payload
+        /// is exactly the right size for the region and the region is in the wrong place.
+        /// </summary>
+        [Fact]
+        public void ARegionOneTexelPastTheRightEdge_IsRefused()
+        {
+            var shape = new MetalStagingShape(64, 32, 4, 1, GpuPixelFormat.R8G8B8A8UNorm);
+
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => MetalStagingLayout.RequireRegionFits(shape, 0, 0, 1, 0, 64, 32));
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => MetalStagingLayout.RequireRegionFits(shape, 0, 0, 0, 0, 65, 32));
+
+            // And against the MIP's dimensions rather than mip 0's: 32 by 16 fits the texture and not level 2.
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => MetalStagingLayout.RequireRegionFits(shape, 2, 0, 0, 0, 32, 8));
+        }
+
+        /// <summary>The same one texel past the BOTTOM edge, because a check that only compared one axis would
+        /// pass every row of this class and still corrupt memory.</summary>
+        [Fact]
+        public void ARegionOneTexelPastTheBottomEdge_IsRefused()
+        {
+            var shape = new MetalStagingShape(64, 32, 4, 1, GpuPixelFormat.R8G8B8A8UNorm);
+
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => MetalStagingLayout.RequireRegionFits(shape, 0, 0, 0, 1, 64, 32));
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => MetalStagingLayout.RequireRegionFits(shape, 0, 0, 0, 0, 64, 33));
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => MetalStagingLayout.RequireRegionFits(shape, 2, 0, 0, 0, 16, 16));
+        }
+
+        /// <summary>A subresource that does not exist is refused before its dimensions are asked for, since there
+        /// is nothing to compare a region against.</summary>
+        [Fact]
+        public void AMipLevelOrArrayLayerOutsideTheTexture_IsRefused()
+        {
+            var shape = new MetalStagingShape(64, 32, 4, 3, GpuPixelFormat.R8G8B8A8UNorm);
+
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => MetalStagingLayout.RequireRegionFits(shape, 4, 0, 0, 0, 1, 1));
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => MetalStagingLayout.RequireRegionFits(shape, 0, 3, 0, 0, 1, 1));
+        }
+
         // Every usage combination a BINDABLE texture can carry, which is the power set of the five bits that are
         // not Staging, minus the empty set. Enumerated rather than sampled, because "for every usage" is what the
         // eager-view claim says and a sampled subset would be a weaker statement wearing the same words.

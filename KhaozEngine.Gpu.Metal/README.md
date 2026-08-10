@@ -190,6 +190,9 @@ Vulkan list owns `FramesInFlight` command pools because a pool cannot be reset w
 A Metal command buffer is single-use, the queue owns its memory, and there is no reset, no pool object and no
 allocator to choose between. So `KE_METAL_FRAMES_IN_FLIGHT` sizes the uniform ring and the drawable queue and
 nothing else, and `GpuDeviceCounters.BackpressureStallCount` means ONE thing here where it means two on Vulkan.
+Neither consumer is in the package yet, so today the variable is resolved, validated and named in the session
+log and sizes nothing: the ring is [row 8](https://github.com/APKiwiOrg/KhaozEngine/issues/574) and
+`maximumDrawableCount` is [row 15](https://github.com/APKiwiOrg/KhaozEngine/issues/581).
 What the queue does have is its own maximum number of UNCOMMITTED buffers, past which `commandBuffer` blocks,
 so the backend counts what it holds against that depth plus one (the separate present buffer) and warns once
 rather than discovering it as a frame-loop stall with nothing attached.

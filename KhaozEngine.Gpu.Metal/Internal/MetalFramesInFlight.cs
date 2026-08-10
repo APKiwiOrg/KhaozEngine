@@ -98,20 +98,31 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 + $"{Minimum} rather than the Vulkan backend's 2 because nothing here is allocated per frame in "
                 + "flight except uniform ring segments: this backend has no command-buffer pool to advance onto.";
 
-        /// <summary>The INFO line naming how many frames this run got, so a capture proves the number its
-        /// backpressure counter was measured against rather than resting on the tester believing they set the
-        /// variable. MM4's exit criterion is a count taken at a specific depth, so the two belong in one session
-        /// log.</summary>
+        /// <summary>
+        /// The INFO line naming how many frames this run got, so a capture proves the number its backpressure
+        /// counter was measured against rather than resting on the tester believing they set the variable. MM4's
+        /// exit criterion is a count taken at a specific depth, so the two belong in one session log.
+        /// <para>
+        /// IT SAYS WHAT IS TRUE TODAY AND NAMES THE ROWS THAT WILL MAKE THE REST TRUE. The number's consumers are
+        /// row 8's uniform ring (https://github.com/APKiwiOrg/KhaozEngine/issues/574) and row 15's
+        /// <c>maximumDrawableCount</c> (https://github.com/APKiwiOrg/KhaozEngine/issues/581), and NEITHER exists
+        /// in the package yet, so a line stating segments-per-ring and a drawable count would be describing
+        /// subsystems this backend does not have. That matters more here than anywhere else this row logs: this
+        /// is the line MM4's measurement rests on, and a session log a measurement is read out of cannot be the
+        /// place a claim runs ahead of the code.
+        /// </para>
+        /// </summary>
         internal static string ActiveDescription(int framesInFlight)
             => framesInFlight == Default
-                ? $"The native Metal backend runs {Default} frames in flight, the default: {Default} segments "
-                    + $"per uniform ring and a maximumDrawableCount of {Default}. Set {EnvVarName}=<n> to change "
-                    + "it, which is the MM4 lever. There is no command-buffer pool on this backend, so this "
-                    + "number sizes the uniform ring and the drawable queue and nothing else."
-                : $"The native Metal backend runs {framesInFlight} frames in flight (from "
-                    + $"{EnvVarName}={framesInFlight}) rather than the default {Default}. Every uniform buffer is "
-                    + "allocated that many segments and the drawable queue is that deep, and the backpressure "
-                    + "counter for this run describes that depth.";
+                ? $"The native Metal backend resolved {Default} frames in flight, the default. Nothing consumes "
+                    + "that depth yet: it sizes row 8's uniform ring segments and row 15's maximumDrawableCount "
+                    + $"when those rows land, and nothing else ever, because there is no command-buffer pool on "
+                    + $"this backend. Set {EnvVarName}=<n> to change it, which is the MM4 lever."
+                : $"The native Metal backend resolved {framesInFlight} frames in flight (from "
+                    + $"{EnvVarName}={framesInFlight}) rather than the default {Default}. Nothing consumes that "
+                    + "depth yet: it sizes row 8's uniform ring segments and row 15's maximumDrawableCount when "
+                    + "those rows land, so a capture taken now describes the number this run resolved rather than "
+                    + "a ring or a drawable queue that was built at it.";
 
         /// <summary>
         /// THE UNCOMMITTED-COMMAND-BUFFER BOUND (section 6.1), which is <see cref="Default"/> plus one and is the

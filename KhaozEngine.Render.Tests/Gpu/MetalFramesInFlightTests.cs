@@ -102,6 +102,24 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
+        /// AND IT DESCRIBES WHAT EXISTS. The depth's only consumers are row 8's uniform ring and row 15's
+        /// <c>maximumDrawableCount</c>, and neither is in the package, so a line stating a segment count and a
+        /// drawable count would put a false claim in the one session log MM4's measurement is read out of. Both
+        /// arms name the rows instead, and this pins that mechanically rather than leaving it to a reader.
+        /// </summary>
+        [Theory]
+        [InlineData(MetalFramesInFlight.Default)]
+        [InlineData(5)]
+        public void TheActiveLineNamesTheRowsThatWillConsumeTheDepthRatherThanClaimingThemToday(int frames)
+        {
+            string line = MetalFramesInFlight.ActiveDescription(frames);
+
+            Assert.Contains("Nothing consumes that depth yet", line, System.StringComparison.Ordinal);
+            Assert.Contains("row 8", line, System.StringComparison.Ordinal);
+            Assert.Contains("row 15", line, System.StringComparison.Ordinal);
+        }
+
+        /// <summary>
         /// THE UNCOMMITTED BOUND (section 6.1) is the depth PLUS ONE, and the one is M-W6's present command
         /// buffer. Pinned here rather than left as arithmetic at the call site, because it is the number a
         /// device-free test asserts a whole frame's recording against.

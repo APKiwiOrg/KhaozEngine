@@ -287,7 +287,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 {
                     text.Append(key.Set.ToString(CultureInfo.InvariantCulture)).Append(':')
                         .Append(key.Binding.ToString(CultureInfo.InvariantCulture)).Append(':')
-                        .Append((int)key.Stage).Append('=')
+                        .Append(((int)key.Stage).ToString(CultureInfo.InvariantCulture)).Append('=')
                         .Append(entry.Space.Word()).Append(':')
                         .Append(entry.Index.ToString(CultureInfo.InvariantCulture)).Append(';');
                 }

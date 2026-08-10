@@ -588,7 +588,12 @@ namespace KhaozEngine.Tests.Gpu
                 StringComparison.Ordinal);
             Assert.Contains("577", Refusal(() => factory.CreateGraphicsPipeline(default)),
                 StringComparison.Ordinal);
-            Assert.Contains("578", Refusal(() => factory.CreateFramebuffer(null)), StringComparison.Ordinal);
+
+            // AND FRAMEBUFFERS ARE LIVE AS OF ROW 12, so what replaces that refusal is the one the member
+            // actually has: a framebuffer needs at least one attachment, which reads nothing like an unbuilt
+            // path and is the point of asserting the new one.
+            Assert.Contains("at least one attachment", Refusal(() => factory.CreateFramebuffer(null)),
+                StringComparison.Ordinal);
 
             // The layout row is the first one on this factory that still refuses, so it is what carries the
             // message naming every landed row as live.
@@ -598,6 +603,7 @@ namespace KhaozEngine.Tests.Gpu
                 StringComparison.Ordinal);
             Assert.Contains("573", layouts, StringComparison.Ordinal);
             Assert.Contains("575", layouts, StringComparison.Ordinal);
+            Assert.Contains("578", layouts, StringComparison.Ordinal);
         }
 
         static IGpuDevice CreateHeadless() => new MetalBackendProvider().CreateHeadless().Device;

@@ -181,11 +181,16 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Throws<InvalidOperationException>(() => _ = list.SealedCommandBuffer);
         }
 
-        /// <summary>Disposing mid-recording is legal and ends nothing: the recording is discarded, which is what
-        /// disposing a list mid-record asks for, and an endEncoding on a buffer nobody will commit is a native
-        /// call bought for nothing.</summary>
+        /// <summary>
+        /// Disposing mid-recording is legal, the recording is discarded, and the OPEN ENCODER IS ENDED on the way
+        /// out. The sink retains every encoder it opens and the end is the only release, so dropping one here
+        /// leaks that +1 and, because an encoder holds a reference to its own command buffer, keeps the buffer
+        /// alive after this list released it. The queue then never gets its uncommitted slot back and blocks
+        /// inside <c>-commandBuffer</c> once enough of them have accumulated, which is a hang with nothing
+        /// reporting why: <c>MetalUncommittedBuffers</c> already counted the buffer as released.
+        /// </summary>
         [Fact]
-        public void DisposingMidRecordingReleasesTheBufferAndEndsNoEncoder()
+        public void DisposingMidRecordingReleasesTheBufferAndEndsTheOpenEncoder()
         {
             (MetalCommandList list, FakeMetalCommandBufferSource buffers, FakeMetalEncoderCalls calls,
                 MetalUncommittedBuffers uncommitted) = NewList();
@@ -196,7 +201,12 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal(0, buffers.Outstanding);
             Assert.Equal(0, uncommitted.Outstanding);
-            Assert.Equal(1, calls.EncoderBoundaries);
+            Assert.Equal(MetalEncoderKind.None, list.Encoders.Open);
+
+            // A begin and its end, and the retain balanced with them.
+            Assert.Equal(2, calls.EncoderBoundaries);
+            Assert.Equal(0, calls.OutstandingEncoders);
+            Assert.Equal(0, calls.UnbalancedEncoderReleases);
         }
 
         [Fact]
@@ -266,6 +276,41 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(2, buffers.Released.Count);
             Assert.Equal(buffers.Acquired[1], buffers.Released[0]);
             Assert.Equal(buffers.Acquired[2], buffers.Released[1]);
+        }
+
+        /// <summary>
+        /// THE SAME RULE FOR ENCODERS, at the same three exits, because the retain is the same shape and the leak
+        /// is worse. An encoder holds a reference to its own command buffer, so an abandoned one keeps a buffer
+        /// counted against the queue's maximum number of uncommitted buffers after this list has released it, and
+        /// <c>-commandBuffer</c> BLOCKS at that maximum rather than failing. The uncommitted counter cannot see
+        /// it, so a leak here presents as a frame loop that hangs and nothing that says so.
+        /// </summary>
+        [Fact]
+        public void EveryEncoderIsEndedExactlyOnceAcrossEveryExit()
+        {
+            (MetalCommandList list, _, FakeMetalEncoderCalls calls, _) = NewList();
+
+            // Exit 1: committed. End is what closes the encoder, which is also what makes the buffer committable.
+            list.Begin();
+            list.Encoders.EnsureBlitEncoder();
+            list.End();
+            list.MarkSubmitted();
+
+            // Exit 2: abandoned by the next Begin. The encoder is closed by End here too, because a list cannot
+            // reach a Begin with one open: Begin refuses while recording and End ends unconditionally.
+            list.Begin();
+            list.Encoders.EnsureBlitEncoder();
+            list.End();
+            list.Begin();
+
+            // Exit 3: disposal, mid-recording, with an encoder open. The one that leaked.
+            list.Encoders.EnsureComputeEncoder();
+            list.Dispose();
+
+            Assert.Equal(3, calls.RetainedEncoders.Count);
+            Assert.Equal(3, calls.ReleasedEncoders.Count);
+            Assert.Equal(0, calls.OutstandingEncoders);
+            Assert.Equal(0, calls.UnbalancedEncoderReleases);
         }
 
         [Fact]

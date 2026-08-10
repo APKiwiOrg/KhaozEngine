@@ -33,6 +33,19 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// shape accumulates), or an explicit retain and release pair per boundary. The pair costs two C calls a
     /// handful of times per frame and makes the lifetime independent of any pool discipline at all, which is why
     /// it is what this takes.</para>
+    ///
+    /// <para><b>SO THE OWNERSHIP RULE IS THE COMMAND BUFFER'S, WORD FOR WORD, AND IT APPLIES TO ENCODERS TOO:
+    /// EXACTLY ONE RELEASE PER ACQUISITION, ACROSS EVERY EXIT.</b> The exits are the ordinary end (a kind switch,
+    /// or the <c>End</c> that seals a record), a recording abandoned by the next <c>Begin</c>, and a command list
+    /// disposed mid-record, and <see cref="MetalEncoderScope.EnsureNoEncoder"/> is the one place all three reach.
+    /// The reason to spell it here rather than trust the happy path is what an abandoned encoder actually costs.
+    /// It is not one leaked encoder: an encoder holds a reference to its own command buffer, so the buffer stays
+    /// alive after the list has released it and stays counted against the queue's maximum number of UNCOMMITTED
+    /// buffers, which is 64 and which <c>-commandBuffer</c> BLOCKS at rather than failing. The observable
+    /// end state is a frame loop that hangs on the 65th buffer with nothing reporting why, and
+    /// <see cref="MetalUncommittedBuffers"/> is blind to it because the list counted that buffer as released.
+    /// Ending an encoder on a buffer nobody will commit is one native call, and it buys the slot back, a driver
+    /// left in a clean state, and one code path instead of three.</para>
     /// </summary>
     [SupportedOSPlatform("macos")]
     internal readonly struct MetalEncoderSink : IMetalEncoderSink

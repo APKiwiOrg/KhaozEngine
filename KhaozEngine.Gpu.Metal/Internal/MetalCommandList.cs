@@ -262,9 +262,18 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// Release whatever this list still holds. IDEMPOTENT, because a consumer disposing a list twice is a
         /// teardown-order accident rather than a defect.
         /// <para>
-        /// DISPOSING MID-RECORDING IS LEGAL AND ENDS NOTHING. The recording is discarded, which is what disposing
-        /// a list mid-record asks for, and the buffer is released without being committed: an
-        /// <c>-endEncoding</c> on a buffer nobody will commit would be a native call bought for nothing.
+        /// DISPOSING MID-RECORDING IS LEGAL AND IT STILL ENDS THE OPEN ENCODER. The recording is discarded, which
+        /// is what disposing a list mid-record asks for, and the buffer is released without being committed, but
+        /// the encoder is NOT dropped on the way out: the sink retains every encoder it opens and
+        /// <c>EndEncoding</c> is the only place that release happens, so an abandoned encoder leaks its own +1 and,
+        /// through the reference an encoder holds on its command buffer, keeps that buffer alive after this list
+        /// has released it. The queue then never gets its uncommitted slot back, and since a queue blocks in
+        /// <c>-commandBuffer</c> at its maximum of 64 uncommitted buffers, the leak presents as a frame loop that
+        /// hangs rather than as a counter anything reports. <see cref="MetalUncommittedBuffers"/> cannot see it
+        /// either, because the release below has already counted the buffer as gone. One native call on a buffer
+        /// nobody will commit is what that costs, and it is bought through
+        /// <see cref="MetalEncoderScope.EnsureNoEncoder"/> rather than here, so the scope stays the single owner of
+        /// every encoder transition.
         /// </para>
         /// <para>
         /// THERE IS NO DEFERRED DESTROY AND NO RETIRE LIST HERE (M-H3), which is the whole shape the Vulkan
@@ -280,6 +289,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
             if (_disposed) return;
             _disposed = true;
             _recording = false;
+
+            // BEFORE the buffer goes back, and through the scope. See this member's remarks: an encoder dropped
+            // here holds its own retain and its command buffer's, so the queue slot never frees.
+            _encoders.EnsureNoEncoder();
 
             ReleaseHeldBuffer();
         }

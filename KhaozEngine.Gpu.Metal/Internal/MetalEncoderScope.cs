@@ -67,6 +67,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// Adopt <paramref name="commandBuffer"/> as the buffer every encoder is opened on, and forget everything
         /// about the previous recording. Called by <c>MetalCommandList.Begin</c> and by nothing else.
         /// <para>
+        /// IT ENDS A STALE ENCODER FIRST rather than dropping it, which is the ownership rule
+        /// <see cref="IMetalEncoderSink"/> states: one release per acquisition, at every exit including this one.
+        /// </para>
+        /// <para>
         /// IT BUMPS THE EPOCH, so a record made during a recording that was discarded cannot read as valid in the
         /// one that follows. A fresh <c>MTLCommandBuffer</c> has no encoder and no encoder state, so every record
         /// against the old one describes state that never existed on this one.
@@ -74,9 +78,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </summary>
         internal void BeginRecording(IntPtr commandBuffer)
         {
-            // No end for the previous encoder: a Begin that discards a recording discards the command buffer with
-            // it, and -endEncoding on an encoder belonging to a buffer nobody will commit buys nothing. The
-            // command list releases that buffer, which is where the ownership lives.
+            // THROUGH THE ONE TRANSITION HELPER, so the release the sink's retain is paired with happens here too.
+            // Dropping the encoder instead would leak its +1, and an encoder holds a reference to its own command
+            // buffer, so the buffer the command list has just released would stay alive and stay counted against
+            // the queue's maximum number of uncommitted buffers for the life of the process. That maximum is 64
+            // and -commandBuffer BLOCKS at it, so the leak presents as a frame loop that hangs rather than as a
+            // number anything reports. One native call on a buffer nobody will commit is what it costs to buy the
+            // slot back, and it leaves the driver a clean state and this type one code path.
+            EnsureNoEncoder();
+
             _commandBuffer = commandBuffer;
             _encoder = IntPtr.Zero;
             _kind = MetalEncoderKind.None;

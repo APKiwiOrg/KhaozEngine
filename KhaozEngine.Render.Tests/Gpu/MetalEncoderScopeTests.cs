@@ -164,20 +164,53 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// A Begin that discards a recording discards the command buffer with it, so there is deliberately no
-        /// <c>-endEncoding</c> on the way out: an encoder belonging to a buffer nobody will commit costs a native
-        /// call for nothing, and the buffer's release is the command list's.
+        /// A BEGIN THAT DISCARDS A RECORDING STILL ENDS ITS ENCODER, which is the ownership rule rather than a
+        /// courtesy to the driver. The sink retains every encoder it opens and the end is the only release, so
+        /// dropping one here would leak that +1 and, through the reference an encoder holds on its command
+        /// buffer, keep a buffer the command list has already released counted against the queue's uncommitted
+        /// maximum. The queue BLOCKS in <c>-commandBuffer</c> at that maximum, so the leak is a hang rather than
+        /// a number.
         /// </summary>
         [Fact]
-        public void ARecordingDiscardedByANewBeginEndsNoEncoder()
+        public void ARecordingDiscardedByANewBeginEndsItsOpenEncoder()
         {
             (MetalEncoderScope scope, FakeMetalEncoderCalls calls) = NewScope();
 
-            scope.EnsureRenderEncoder(new IntPtr(0xD5));
+            IntPtr abandoned = scope.EnsureRenderEncoder(new IntPtr(0xD5));
             scope.BeginRecording(new IntPtr(0x200));
 
             Assert.Equal(MetalEncoderKind.None, scope.Open);
-            Assert.Equal(1, calls.EncoderBoundaries);
+
+            // A begin and its end, in that order, and the retain balanced with them.
+            Assert.Equal(2, calls.EncoderBoundaries);
+            Assert.Equal($"end Render {abandoned}", calls.Log[1]);
+            Assert.Equal(0, calls.OutstandingEncoders);
+            Assert.Equal(0, calls.UnbalancedEncoderReleases);
+        }
+
+        /// <summary>THE ENCODER OWNERSHIP RULE, end to end at the scope: exactly one release per acquisition,
+        /// across the ordinary end, a kind switch, and a recording abandoned by the next begin. A leak at any of
+        /// them holds a command buffer alive against a queue maximum that blocks rather than fails.</summary>
+        [Fact]
+        public void EveryEncoderIsEndedExactlyOnceAcrossEveryScopeExit()
+        {
+            (MetalEncoderScope scope, FakeMetalEncoderCalls calls) = NewScope();
+
+            // The kind switch, which ends the outgoing encoder.
+            scope.EnsureRenderEncoder(new IntPtr(0xD5));
+            scope.EnsureBlitEncoder();
+
+            // The ordinary end.
+            scope.EnsureNoEncoder();
+
+            // And the abandon, with one open.
+            scope.EnsureComputeEncoder();
+            scope.BeginRecording(new IntPtr(0x300));
+
+            Assert.Equal(3, calls.RetainedEncoders.Count);
+            Assert.Equal(3, calls.ReleasedEncoders.Count);
+            Assert.Equal(0, calls.OutstandingEncoders);
+            Assert.Equal(0, calls.UnbalancedEncoderReleases);
         }
 
         [Fact]

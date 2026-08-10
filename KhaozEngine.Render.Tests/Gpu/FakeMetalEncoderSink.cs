@@ -60,10 +60,23 @@ namespace KhaozEngine.Tests.Gpu
             => Calls.Draw($"dispatch {groupCountX}x{groupCountY}x{groupCountZ}");
     }
 
-    /// <summary>The mutable half, held by reference so every copy of the sink writes into one record.</summary>
+    /// <summary>
+    /// The mutable half, held by reference so every copy of the sink writes into one record.
+    /// <para>
+    /// IT MODELS THE RETAIN AND RELEASE PAIR, not just the call counts. The real sink takes an explicit
+    /// <c>objc_retain</c> on every encoder it opens and balances it inside <c>EndEncoding</c>, so an abandoned
+    /// encoder leaks that +1 AND, through the reference an encoder holds on its command buffer, keeps a buffer
+    /// counted against the queue's uncommitted maximum for the life of the process. That is a hang on the 65th
+    /// command buffer rather than a wrong number, so <see cref="OutstandingEncoders"/> is what makes it a
+    /// device-free assertion instead of something only a soak finds.
+    /// </para>
+    /// </summary>
     internal sealed class FakeMetalEncoderCalls
     {
         readonly List<string> _log = new();
+        readonly List<IntPtr> _retainedEncoders = new();
+        readonly List<IntPtr> _releasedEncoders = new();
+        readonly HashSet<IntPtr> _live = new();
 
         int _nextEncoder = 0x1000;
 
@@ -86,6 +99,22 @@ namespace KhaozEngine.Tests.Gpu
         /// orphan-target case for a render encoder and a device in trouble for the other two.</summary>
         internal MetalEncoderKind NilForKind { get; set; } = MetalEncoderKind.None;
 
+        /// <summary>Every encoder the sink handed back and took a retain on, in order. A nil begin takes none,
+        /// which is what the real sink's <c>Retained</c> helper does.</summary>
+        internal IReadOnlyList<IntPtr> RetainedEncoders => _retainedEncoders;
+
+        /// <summary>Every encoder that was ended, and therefore released, in order.</summary>
+        internal IReadOnlyList<IntPtr> ReleasedEncoders => _releasedEncoders;
+
+        /// <summary>What is still retained. MUST be 0 after every exit: an encoder left open holds its own +1 and
+        /// its command buffer's, and the buffer stays counted against the queue's uncommitted maximum.</summary>
+        internal int OutstandingEncoders => _retainedEncoders.Count - _releasedEncoders.Count;
+
+        /// <summary>Ends of a handle that was not live. An over-release of an Objective-C object is a
+        /// use-after-free somewhere else entirely, so it is counted rather than left to the balance, which a
+        /// double end plus a leak would net back to zero.</summary>
+        internal int UnbalancedEncoderReleases { get; private set; }
+
         internal IntPtr BeginEncoder(MetalEncoderKind kind, IntPtr commandBuffer, IntPtr descriptor)
         {
             if (kind == NilForKind)
@@ -100,13 +129,22 @@ namespace KhaozEngine.Tests.Gpu
             _log.Add($"begin {kind} on {commandBuffer} -> {encoder}");
             EncoderBoundaries++;
             EncoderBegins++;
+            _retainedEncoders.Add(encoder);
+            _live.Add(encoder);
             return encoder;
         }
 
         internal void EndEncoder(MetalEncoderKind kind, IntPtr encoder)
         {
+            // The real sink returns before the native call for a nil handle, so no boundary is emitted and there
+            // is no retain to balance.
+            if (encoder == IntPtr.Zero) return;
+
             _log.Add($"end {kind} {encoder}");
             EncoderBoundaries++;
+
+            _releasedEncoders.Add(encoder);
+            if (!_live.Remove(encoder)) UnbalancedEncoderReleases++;
         }
 
         internal void ArgumentTableWrite(string what)

@@ -183,10 +183,12 @@ blocked inside the native call keeps blocking until its current slice expires.
 
 ## Resources, and the one creation this backend refuses
 
-`IGpuDevice.Factory` creates buffers, textures, samplers and fences, and the device's `PointSampler` and
-`LinearSampler` pair exists. Nothing can BIND any of it yet, because the members that record a pipeline or a
-resource set belong to later rows, so what is usable today is creation, the device-level uploads, the
-record-time `UpdateBuffer` described below, and readback through `Map`.
+`IGpuDevice.Factory` creates buffers, textures, samplers, fences and framebuffers, and the device's
+`PointSampler` and `LinearSampler` pair exists. A FRAMEBUFFER can be bound and cleared, which is row 12's and
+which the render-pass section below covers. Nothing else can be bound yet, because the members that record a
+pipeline or a resource set belong to later rows, so what is usable today is creation, the framebuffer bind and
+its clears, the device-level uploads, the record-time `UpdateBuffer` described below, and readback through
+`Map`.
 
 **Every buffer is `MTLStorageModeShared` and every texture is `MTLStorageModePrivate`**, reproducing the
 incumbent. On unified memory a Shared buffer's `contents()` pointer is stable for its life and visible to both
@@ -418,8 +420,11 @@ backend.** That one writes every clear into `colorAttachments[0]`, so a framebuf
 target clears only its first, and the engine's own model pass clears three attachments of `ModelFB` and ships a
 comment describing the collapse. The two attachments that were never cleared load a freshly created
 `StorageModePrivate` texture nothing has written, which is undefined rather than stable. Set
-`KE_METAL_CLEAR=attachment0` to reproduce the collapse exactly, for an A/B against the committed goldens. That
-variable is temporary and goes away with the losing branch once the goldens have answered.
+`KE_METAL_CLEAR=attachment0` to reproduce the collapse exactly, for an A/B against the committed goldens. A
+value that is set and not understood WARNS at device creation, names what you typed and leaves the
+per-attachment clear, because a typo that silently selected the fix while you believed you had selected the
+incumbent would make the whole comparison report the same position twice. That variable is temporary and goes
+away with the losing branch once the goldens have answered.
 
 **Store actions are set explicitly.** The descriptor's own default DISCARDS the attachment, so every colour and
 depth attachment is given `MTLStoreActionStore` rather than left alone. Depth `DontCare` is a real win on a

@@ -878,6 +878,20 @@ draw at all. The `attachment0` position is read back too, and its uncleared atta
 NOT the colour asked for, because asserting a specific value would be asserting the instability M-A2 exists to
 end. Everything the schedule DECIDES is device-free and runs on the Linux and Windows legs.
 
+**Four guards this row's own review added, each closing a gap that produced no error anywhere.** A mistyped
+`KE_METAL_CLEAR` now WARNS at device creation naming the value: the parse always reported the typo and nothing
+logged it, so a mistyped A/B run would have measured the fix twice while the tester believed they had captured
+the incumbent. `MetalEncoderScope.EnsureRenderEncoder` refuses a nil `MTLRenderPassDescriptor` by name, because
+`renderCommandEncoderWithDescriptor:` takes a nonnull argument and the pass schedule's own nil arm protects only
+callers that go through the schedule, and the device-free fake asserts the same contract instead of obligingly
+handing back an encoder for it. `EndPass` refuses a render pass that is open AND owed a clear, which is the
+invariant its clear-only flush is built on and which anything opening a render encoder outside the schedule can
+break, silently unclearing an attachment. And the ownership cast asks about null before it dereferences, so a
+null colour attachment in `CreateFramebuffer` is refused by the caller's own parameter name rather than
+producing a `NullReferenceException` from inside the refusal that exists to name the problem. The two
+attachment-action maps also list every enum member with a throwing default, since a new member absorbed into
+`Store` would emit a store where the plan asked for something else and complete with no error.
+
 ## 17.34.0
 
 ### The `vulkan-native` CI leg, both validation tiers, and the first validation layer this repo has ever installed (#529)

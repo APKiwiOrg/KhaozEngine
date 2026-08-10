@@ -421,13 +421,14 @@ namespace KhaozEngine.Tests.Gpu
         /// whether to wait for a row or file a bug. Asserted rather than left as prose, because a message that
         /// says "not built" without saying by whom is what sends the next reader to the issue tracker.
         /// <para>
-        /// IT MOVED FROM <c>SetFramebuffer</c> TO <c>SetPipeline</c> WHEN ROW 12 LANDED
-        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/578), which is the ledger discipline working: a row
-        /// that fills a member takes it off the list, and this row keeps testing whatever is still on it. The
-        /// live rows it names grow with each one, because a reader who hits the message needs to know whether
-        /// the backend is unfinished or their machine is wrong. Row 13
-        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/579) took the four resource-set members off the list
-        /// and added itself to the live half, and <c>SetPipeline</c> is still on it.
+        /// IT MOVED FROM <c>SetFramebuffer</c> TO <c>SetPipeline</c> TO <c>Draw</c>, which is the ledger
+        /// discipline working: a row that fills a member takes it off the list, and this row keeps testing
+        /// whatever is still on it. Row 12 (https://github.com/APKiwiOrg/KhaozEngine/issues/578) took the
+        /// framebuffer and the clears, row 13 (https://github.com/APKiwiOrg/KhaozEngine/issues/579) took the
+        /// four resource-set members, and row 11 (https://github.com/APKiwiOrg/KhaozEngine/issues/577) took both
+        /// pipeline binds, so what is left on the list is row 14's draws, dispatches and transfers. The live rows
+        /// the message names grow with each one, because a reader who hits it needs to know whether the backend
+        /// is unfinished or their machine is wrong.
         /// </para>
         /// </summary>
         [Fact]
@@ -436,14 +437,38 @@ namespace KhaozEngine.Tests.Gpu
             (MetalCommandList list, _, _, _) = NewList();
             list.Begin();
 
-            NotSupportedException thrown =
-                Assert.Throws<NotSupportedException>(() => list.SetPipeline(null!));
+            NotSupportedException thrown = Assert.Throws<NotSupportedException>(() => list.Draw(3));
 
-            Assert.Contains("issues/577", thrown.Message, StringComparison.Ordinal);
+            // The row that builds what was refused.
+            Assert.Contains("issues/580", thrown.Message, StringComparison.Ordinal);
+
+            // And every row that has landed, named as live.
             Assert.Contains("issues/573", thrown.Message, StringComparison.Ordinal);
+            Assert.Contains("issues/574", thrown.Message, StringComparison.Ordinal);
+            Assert.Contains("issues/577", thrown.Message, StringComparison.Ordinal);
             Assert.Contains("issues/578", thrown.Message, StringComparison.Ordinal);
             Assert.Contains("issues/579", thrown.Message, StringComparison.Ordinal);
             Assert.Contains("GpuBackendKind.Metal", thrown.Message, StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// AND BOTH PIPELINE BINDS ARE LIVE, so what a caller gets from one is its own refusal rather than the
+        /// ledger's. This is the walk-forward half for row 11, in the shape the resource-set row below already
+        /// has: it fails the day a member goes back to a not-built throw, which a test that only asserted "it
+        /// threw something" would not.
+        /// </summary>
+        [Fact]
+        public void BothPipelineBindsAreLiveAndRefuseWithTheirOwnMessage()
+        {
+            (MetalCommandList list, _, _, _) = NewList();
+            list.Begin();
+
+            ArgumentNullException graphics = Assert.Throws<ArgumentNullException>(() => list.SetPipeline(null!));
+            Assert.DoesNotContain("not built", graphics.Message, StringComparison.Ordinal);
+
+            ArgumentNullException compute = Assert.Throws<ArgumentNullException>(
+                () => list.SetComputePipeline(null!));
+            Assert.DoesNotContain("not built", compute.Message, StringComparison.Ordinal);
         }
 
         /// <summary>

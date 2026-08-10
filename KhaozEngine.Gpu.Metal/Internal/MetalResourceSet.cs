@@ -218,6 +218,51 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 nameof(range));
         }
 
+        /// <summary>
+        /// A TEXTURE HAS TO HAVE BEEN CREATED FOR THE DIRECTION THE ELEMENT DECLARES, which is the Vulkan
+        /// sibling's refusal in this backend's own terms. <c>VulkanResourceSet.ResolveImage</c> refuses a texture
+        /// with no view for the descriptor it is landing on, and every view there is created from the declared
+        /// usage bits at RESOURCE creation. Metal creates no views at all (M-M10), so what stands in for the
+        /// missing view is the <c>MTLTextureUsage</c> the texture was created with, which
+        /// <see cref="MetalFormats.ToTextureUsage"/> derives from the same seam bits: no
+        /// <see cref="GpuTextureUsage.Sampled"/> means no <c>ShaderRead</c>, and no
+        /// <see cref="GpuTextureUsage.Storage"/> means no <c>ShaderWrite</c>. Binding a texture into a table
+        /// without the bit it is read or written through is a validation abort under the debug layer M-T7 arms on
+        /// every run, and undefined behaviour without it.
+        /// <para>
+        /// THE MATRIX IS THE SIBLING'S, INCLUDING THE ONE ARM THAT LOOKS ODD HERE.
+        /// <see cref="GpuTextureUsage.GenerateMipmaps"/> admits a read-only binding, because Vulkan creates the
+        /// sampled view for it. On Metal it maps to no usage bit at all, so such a texture is created
+        /// <c>MTLTextureUsage.Unknown</c>, which Metal reads as "any usage" rather than "none": the binding is
+        /// legal for the same reason by a different mechanism, and diverging from the sibling here would refuse
+        /// something that works.
+        /// </para>
+        /// <para>
+        /// STATIC AND OVER THE SEAM'S OWN ENUMS, like <see cref="RequireWindowInBuffer"/>, so both directions run
+        /// under an ordinary <c>[Fact]</c> on a machine with no Metal at all.
+        /// </para>
+        /// </summary>
+        /// <exception cref="ArgumentException">The texture cannot be read, or cannot be written, the way the
+        /// element declares.</exception>
+        internal static void RequireTextureUsage(GpuResourceKind kind, GpuTextureUsage usage, string where)
+        {
+            bool write = kind == GpuResourceKind.TextureReadWrite;
+
+            GpuTextureUsage needed = write
+                ? GpuTextureUsage.Storage
+                : GpuTextureUsage.Sampled | GpuTextureUsage.GenerateMipmaps;
+
+            if ((usage & needed) != 0) return;
+
+            throw new ArgumentException(
+                $"{where} declares a {kind} bound to a texture created with usage {usage}, which cannot be "
+                + (write ? "written" : "read") + " by a shader. A Metal texture's usage bits are fixed at "
+                + "creation from the declared seam usage and no view narrows or widens one here (M-M10), so this "
+                + "is a texture that was not created for the job rather than something the bind could arrange. "
+                + "Add GpuTextureUsage." + (write ? "Storage" : "Sampled") + " to its description.",
+                nameof(usage));
+        }
+
         // ONE BINDING, FULLY RESOLVED. Every refusal names the element by its declared name, because a message
         // about "element 4" is unactionable in a seven-element material layout, and by the KIND it declares,
         // because the mismatch is nearly always the resource array being one out of step with the layout.
@@ -305,6 +350,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     nameof(resource));
             }
 
+            RequireTextureUsage(element.Kind, texture.Usage, where);
             RequireHandle(texture.Handle.Handle, element, where, "MTLTexture");
 
             return new MetalBoundResource(

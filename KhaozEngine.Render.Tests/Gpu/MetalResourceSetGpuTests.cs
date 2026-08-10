@@ -186,8 +186,19 @@ namespace KhaozEngine.Tests.Gpu
             _output.WriteLine(refused);
             Assert.Contains("STAGING texture", refused, StringComparison.Ordinal);
 
-            // AND A DISPOSED RESOURCE ANSWERS A NIL HANDLE. A set is a snapshot taken at creation, so this is the
-            // last moment the difference between "not created" and "already released" is still visible.
+            // A TEXTURE BOUND FOR A DIRECTION IT WAS NOT CREATED FOR, through the real factory, so the usage the
+            // description declared really is what reaches the check. Sampled-only into a read-write element is
+            // the shape that would otherwise land in the argument table with no ShaderWrite bit.
+            using IGpuResourceLayout storage = factory.CreateResourceLayout(new GpuResourceLayoutDescription(
+                Element("Target", GpuResourceKind.TextureReadWrite)));
+
+            Assert.Contains("Add GpuTextureUsage.Storage",
+                Refusal(() => factory.CreateResourceSet(new GpuResourceSetDescription(storage, albedo))),
+                StringComparison.Ordinal);
+
+            // AND A DISPOSED RESOURCE ANSWERS A NIL HANDLE. Creation is where a resource that is ALREADY gone is
+            // still in front of the caller, and one disposed later degrades to the same nil at the bind on its
+            // own, because a binding holds the wrapper rather than a copy of its handle.
             IGpuTexture disposed = factory.CreateTexture(GpuTextureDescription.Texture2D(
                 16, 16, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled));
             disposed.Dispose();

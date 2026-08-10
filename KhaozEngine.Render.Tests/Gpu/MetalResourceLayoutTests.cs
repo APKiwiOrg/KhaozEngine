@@ -7,8 +7,8 @@ namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
     /// ROW 10'S DEVICE-FREE HALF (https://github.com/APKiwiOrg/KhaozEngine/issues/576): everything a resource
-    /// layout decides, plus the one piece of a resource set's resolution that is arithmetic rather than a check
-    /// against a wrapper only a device can make.
+    /// layout decides, plus the pieces of a resource set's resolution that are arithmetic or a declaration check
+    /// rather than a check against a wrapper only a device can make, plus what disposal means for both types.
     ///
     /// <para>
     /// THE HEADLINE ROW IS THAT NOTHING COUNTS. The incumbent's <c>MTLResourceLayout</c> is this class plus
@@ -263,6 +263,49 @@ namespace KhaozEngine.Tests.Gpu
             ArgumentException failed = Assert.Throws<ArgumentException>(
                 () => MetalResourceSet.RequireWindowInBuffer(offset, range, size, "a row"));
             Assert.Contains("a row binds", failed.Message, StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// A TEXTURE HAS TO HAVE BEEN CREATED FOR THE DIRECTION THE ELEMENT DECLARES, which is
+        /// <c>VulkanResourceSet.ResolveImage</c>'s refusal reached by this backend's own route. There are no views
+        /// here to be missing (M-M10), so the thing that stands in for one is the <c>MTLTextureUsage</c> the
+        /// texture was created with: no <c>Sampled</c> means no <c>ShaderRead</c> and no <c>Storage</c> means no
+        /// <c>ShaderWrite</c>, and binding a texture into a table without the bit it is read or written through is
+        /// a validation abort under the debug layer and undefined behaviour without it.
+        /// <para>
+        /// <c>GenerateMipmaps</c> ADMITS A READ-ONLY BINDING and that is the sibling's matrix rather than a hole.
+        /// Vulkan creates the sampled view for it; on Metal it maps to no usage bit, so the texture is created
+        /// <c>MTLTextureUsage.Unknown</c>, which Metal reads as any usage rather than none.
+        /// </para>
+        /// </summary>
+        [Theory]
+        [InlineData(GpuResourceKind.TextureReadOnly, GpuTextureUsage.Sampled, true)]
+        [InlineData(GpuResourceKind.TextureReadOnly, GpuTextureUsage.Sampled | GpuTextureUsage.Storage, true)]
+        [InlineData(GpuResourceKind.TextureReadOnly, GpuTextureUsage.GenerateMipmaps, true)]
+        [InlineData(GpuResourceKind.TextureReadOnly, GpuTextureUsage.Storage, false)]
+        [InlineData(GpuResourceKind.TextureReadOnly, GpuTextureUsage.RenderTarget, false)]
+        [InlineData(GpuResourceKind.TextureReadWrite, GpuTextureUsage.Storage, true)]
+        [InlineData(GpuResourceKind.TextureReadWrite, GpuTextureUsage.Sampled | GpuTextureUsage.Storage, true)]
+        [InlineData(GpuResourceKind.TextureReadWrite, GpuTextureUsage.Sampled, false)]
+        [InlineData(GpuResourceKind.TextureReadWrite, GpuTextureUsage.None, false)]
+        public void ATextureBoundForADirectionItWasNotCreatedFor_IsRefused(
+            GpuResourceKind kind, GpuTextureUsage usage, bool allowed)
+        {
+            if (allowed)
+            {
+                MetalResourceSet.RequireTextureUsage(kind, usage, "a row");
+                return;
+            }
+
+            ArgumentException failed = Assert.Throws<ArgumentException>(
+                () => MetalResourceSet.RequireTextureUsage(kind, usage, "a row"));
+
+            Assert.Contains("a row declares a " + kind, failed.Message, StringComparison.Ordinal);
+            Assert.Contains(
+                kind == GpuResourceKind.TextureReadWrite
+                    ? "Add GpuTextureUsage.Storage"
+                    : "Add GpuTextureUsage.Sampled",
+                failed.Message, StringComparison.Ordinal);
         }
 
         static GpuResourceLayoutElement Element(string name, GpuResourceKind kind, bool dynamic = false)

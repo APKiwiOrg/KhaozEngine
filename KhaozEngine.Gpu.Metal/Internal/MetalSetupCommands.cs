@@ -70,6 +70,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         readonly IMetalDeviceLiveness _liveness;
 
         MTLCommandBuffer _buffer;
+        MTLCommandBuffer _lastCommitted;
         bool _open;
         bool _disposed;
 
@@ -101,6 +102,36 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <summary>How many uploads have been appended since construction, across every batch. Paired with
         /// <see cref="FlushCount"/> it is the ratio M-M9 is about.</summary>
         internal int AppendCount { get; private set; }
+
+        /// <summary>
+        /// The last committed batch's <c>-status</c> and <c>-error</c>, or null when nothing has been committed
+        /// on a live device.
+        ///
+        /// <para><b>THIS IS WHAT MAKES THE GPU TEST AN ASSERTION ABOUT THE BLIT RATHER THAN ABOUT THE PROCESS.</b>
+        /// The completion handler attached at <c>BeginBatch</c> is inert until the device registers its queue with
+        /// it, which is the command-list row's wiring
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/573), so until that lands nothing on the shipping path
+        /// reads this batch's outcome at all: a failed setup buffer would be indistinguishable from a completed
+        /// one, and a test that only checked the process had not aborted would be checking nothing about the
+        /// eleven-argument copy. Reading it here closes that hole for the one path this row owns.</para>
+        ///
+        /// <para><b>IT IS ONLY MEANINGFUL AFTER A DRAIN.</b> The commit does not wait, so a reading taken
+        /// immediately after <see cref="Flush"/> reports <c>Committed</c> rather than <c>Completed</c>. Every
+        /// caller that wants an outcome calls it after <c>WaitForIdle</c> or after a <c>Map</c>, both of which
+        /// flush and then drain.</para>
+        ///
+        /// <para>NULL ON A DEAD DEVICE, which is the same posture as every release in this type: the driver has
+        /// given up on the work, and messaging a buffer it may already have torn down to ask how it went is the
+        /// one call least worth making.</para>
+        /// </summary>
+        internal MetalCommandBufferFault? LastCommittedFault()
+        {
+            lock (_gate)
+            {
+                if (_disposed || _liveness.IsDead || _lastCommitted.IsNull) return null;
+                return _native.ReadFault(_lastCommitted);
+            }
+        }
 
         /// <summary>
         /// Append a device-level texture upload: stage the tightly packed payload into a Shared buffer and record
@@ -208,6 +239,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 if (!_liveness.IsDead)
                 {
                     if (_open) _native.ReleaseBatch(_buffer);
+
+                    // And the committed batch this type still holds a claim on, which nothing else will release
+                    // now that no further commit will happen (see CommitOpenBatch for why it is held at all).
+                    if (!_lastCommitted.IsNull) _native.ReleaseBatch(_lastCommitted);
                     ReleaseStaging();
                 }
                 else
@@ -216,13 +251,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 }
 
                 _buffer = default;
+                _lastCommitted = default;
                 _disposed = true;
                 _open = false;
             }
         }
 
-        // Called with the gate held. Commits the open batch, releases the +1 EnsureOpen took, and releases the
-        // staging buffers it accumulated.
+        // Called with the gate held. Commits the open batch, hands the +1 EnsureOpen took to _lastCommitted, and
+        // releases the staging buffers the batch accumulated.
         void CommitOpenBatch()
         {
             if (!_open) return;
@@ -231,15 +267,23 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             // A dead device abandons the batch: committing to a queue whose device has gone is a call into
             // an object the driver has already given up on.
-            if (!_liveness.IsDead)
+            if (_liveness.IsDead)
             {
-                _native.Commit(_buffer);
-                FlushCount++;
+                _native.ReleaseBatch(_buffer);
+                _buffer = default;
+                ReleaseStaging();
+                return;
             }
 
-            // The +1 EnsureOpen took. The driver holds its own reference to a committed buffer until it
-            // completes, so this releases the holder's claim rather than the buffer.
-            _native.ReleaseBatch(_buffer);
+            _native.Commit(_buffer);
+            FlushCount++;
+
+            // THE +1 TRAVELS RATHER THAN BEING RELEASED HERE, which is what keeps -status and -error readable
+            // after the drain (see LastCommittedFault). The previous batch's claim is dropped as this one takes
+            // its place, so exactly one committed buffer is held at a time. The driver keeps its own reference
+            // until a buffer completes either way, so holding this one costs a reference and nothing else.
+            if (!_lastCommitted.IsNull) _native.ReleaseBatch(_lastCommitted);
+            _lastCommitted = _buffer;
             _buffer = default;
             ReleaseStaging();
         }

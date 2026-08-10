@@ -4,6 +4,7 @@ using System.Runtime.Versioning;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Metal;
 using KhaozEngine.Gpu.Metal.Internal;
+using KhaozEngine.Gpu.Metal.Internal.ObjC;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -26,9 +27,27 @@ namespace KhaozEngine.Tests.Gpu
     /// real memory. The PRIVATE-texture upload cannot be read back at all from this row: a Private texture has no
     /// CPU pointer and the reverse copy is the command list's
     /// (https://github.com/APKiwiOrg/KhaozEngine/issues/580). So its assertion is that the command buffer
-    /// carrying the blit COMPLETED with no error, which is the same bar row 1's spike used for every shape whose
-    /// value it could not observe, and it is exactly what catches the one new ABI shape this row adds. The pixel
-    /// proof arrives with that row's readback.</para>
+    /// carrying the blit COMPLETED with no error, read off THAT buffer through
+    /// <c>MetalSetupCommands.LastCommittedFault</c> after the drain, which is the same bar row 1's spike used for
+    /// every shape whose value it could not observe, and it is exactly what catches the one new ABI shape this
+    /// row adds. The pixel proof arrives with that row's readback.</para>
+    ///
+    /// <para><b>THE STRONGER EVIDENCE IS THE DEBUG LAYER, and it is a RUN rather than an assertion.</b> A
+    /// completed command buffer says the driver did not fault on the copy. It does not say the copy was LEGAL:
+    /// API validation is what checks the region against the destination, the storage modes against the operation
+    /// and the encoder against its buffer. So this class is run under
+    /// <c>MTL_DEBUG_LAYER=1 MTL_DEBUG_LAYER_ERROR_MODE=assert MTL_DEBUG_LAYER_WARNING_MODE=assert</c>, where
+    /// validation turns any complaint into an abort rather than a log line nobody reads, and every row passes.
+    /// That is what makes the blit legal rather than merely accepted, and it is the same two-tier idea the Vulkan
+    /// leg is already gated on (see <c>docs/CROSS-PLATFORM.md</c>). It is not on by default because the variables
+    /// have to be set before the process starts.</para>
+    ///
+    /// <para><b>TWO ROWS OF THE WIDER METAL SET DO NOT SURVIVE THAT RUN, AND NEITHER IS ON THIS PATH</b>, which
+    /// is worth writing down so the next reader does not conclude the backend fails validation.
+    /// <c>MetalInteropSpikeTests</c> aborts on <c>setVertexBufferOffset:attributeStride:atIndex:</c> recorded on
+    /// an encoder with no pipeline bound, which validation reports as an unused binding and which is exactly what
+    /// a self-contained ABI measurement looks like. <c>MetalValidationReaderTests</c> fails because it is the
+    /// test that READS those variables and the run has just set them.</para>
     ///
     /// <para>In <c>NativeDeviceLifecycle</c> because it creates and tears down real devices, which is the
     /// collection that keeps a second live-device backend from taking a leg from 17 minutes to 49.</para>
@@ -276,6 +295,13 @@ namespace KhaozEngine.Tests.Gpu
         /// three arguments cross on the stack, and that the command buffer carrying it completed with no error.
         /// A wrong prototype presents as a crash or a validation failure rather than as a wrong pixel.</para>
         ///
+        /// <para><b>THE OUTCOME IS READ OFF THE BATCH THAT CARRIED THE BLIT.</b> Not off a fresh buffer and not
+        /// off the absence of a crash: <c>LastCommittedFault</c> messages the very <c>MTLCommandBuffer</c> the
+        /// eight uploads were encoded into, after the drain has waited for it. Without that reading this row
+        /// would assert only that the process survived, since the completion handler attached at
+        /// <c>BeginBatch</c> stays inert until the command-list row registers the queue with it and
+        /// <c>WaitForIdle</c>'s own fault comes from the drain's separate empty buffer.</para>
+        ///
         /// <para><b>AND THE RATIO IS THE POINT OF THE DECISION.</b> Eight uploads produce ONE committed batch,
         /// where the incumbent issues one whole queue submit per call. The counters are read before and after the
         /// flush so the claim is a measurement rather than a description.</para>
@@ -301,6 +327,10 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(0, metal.Setup.FlushCount);
             Assert.True(metal.Setup.HasPendingWork);
 
+            // Nothing has been committed yet, so there is no outcome to read. The null is the assertion that the
+            // reading below comes from a real commit rather than from a default-shaped struct.
+            Assert.Null(metal.Setup.LastCommittedFault());
+
             // WaitForIdle flushes and then drains, which is the read-path half of M-M9 through the explicit
             // drain rather than through Map.
             device.WaitForIdle();
@@ -308,7 +338,15 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(1, metal.Setup.FlushCount);
             Assert.False(metal.Setup.HasPendingWork);
 
-            _output.WriteLine($"{metal.Setup.AppendCount} uploads in {metal.Setup.FlushCount} committed batches");
+            MetalCommandBufferFault? outcome = metal.Setup.LastCommittedFault();
+            Assert.NotNull(outcome);
+            Assert.Equal(MTLCommandBufferStatus.Completed, outcome.Value.Status);
+            Assert.Equal(MTLCommandBufferError.None, outcome.Value.Code);
+            Assert.Equal("", outcome.Value.Description);
+            Assert.False(outcome.Value.IsFailure);
+
+            _output.WriteLine($"{metal.Setup.AppendCount} uploads in {metal.Setup.FlushCount} committed batches, "
+                + $"which finished at {outcome.Value.Status} with error {outcome.Value.Code}");
         }
 
         /// <summary>

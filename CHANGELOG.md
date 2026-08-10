@@ -438,8 +438,19 @@ it, on the first new entry point the package gained.
 **One new `objc_msgSend` ABI shape, named as such.** `copyFromBuffer:...toTexture:destinationSlice:
 destinationLevel:destinationOrigin:` takes eleven arguments counting the receiver and the selector, against
 eight general-purpose argument registers, so three cross on the STACK. Every argument class in it is covered by
-row 1's spike and only the spill is new, which the prototype's own header records, and a real device accepting
-the call under a completed command buffer is what answers it.
+row 1's spike and only the spill is new, which the prototype's own header records. What answers it is a real
+device taking the call and the batch that CARRIED it finishing clean: `MetalSetupCommands.LastCommittedFault`
+reads `-status` and `-error` off that exact `MTLCommandBuffer` after the drain, and
+`EightDeviceLevelTextureUploads_ShareOneSetupCommandBuffer` asserts `Completed` with a nil error. That reading
+is not decoration. The completion handler the batch attaches stays inert until the command-list row
+([#573](https://github.com/APKiwiOrg/KhaozEngine/issues/573)) registers the queue with it, and `WaitForIdle`'s
+own fault comes from the drain's separate empty buffer, so without it the test would have asserted only that
+the process did not abort. The stronger evidence is a RUN rather than an assertion: `MetalResourceGpuTests`
+passes whole under `MTL_DEBUG_LAYER=1` with `MTL_DEBUG_LAYER_ERROR_MODE=assert` and
+`MTL_DEBUG_LAYER_WARNING_MODE=assert`, which is what makes the blit legal under API validation rather than
+merely accepted. Row 1's `MetalInteropSpikeTests` is the one Metal row that cannot join that run, because it
+records an offset setter on an encoder with no pipeline bound and validation calls that an unused binding, so
+an armed run has to exclude it.
 
 ## 17.34.0
 

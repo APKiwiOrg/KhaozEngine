@@ -3,33 +3,41 @@ using System;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// THE ONE TEST-ONLY INTERFACE THE UNIFORM RING'S SEMANTIC TESTS RUN THROUGH, on BOTH backends (decisions V-P5
-    /// and V-T6 of <c>docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md</c>).
+    /// THE ONE TEST-ONLY INTERFACE THE UNIFORM RING'S SEMANTIC TESTS RUN THROUGH, on ALL THREE engine-owned
+    /// backends (decisions V-P5 and V-T6 of <c>docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md</c>, and
+    /// M-P5 and M-T5 of <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>).
     ///
     /// <para><b>WHY THE TESTS ARE SHARED AND THE CODE IS NOT.</b> Section 2.2 weighed extracting the ring into a
     /// shared production home and declined it on the rule of three: the ring's POLICY is genuinely identical
-    /// across the two backends and its MECHANISM is not. Direct3D 11 has no persistent mapping, so its ring
-    /// carries a whole map lifecycle, a mapped-ring registry and a per-submit unmap. Vulkan maps a host-visible
-    /// chunk once and never unmaps, so its ring is a pointer plus arithmetic. Shared code would prove one
-    /// implementation exists. A shared TEST proves both implementations behave.</para>
+    /// across the backends and its MECHANISM is not. Direct3D 11 has no persistent mapping, so its ring carries a
+    /// whole map lifecycle, a mapped-ring registry and a per-submit unmap. Vulkan maps a host-visible chunk once
+    /// and never unmaps, so its ring is a pointer plus arithmetic. Metal's buffers are Shared with a stable
+    /// <c>contents()</c>, so its ring is a pointer with no memory type to have chosen first. The Metal phase
+    /// REACHED the rule of three and declined the extraction again in its own 2.8, which is what makes this
+    /// interface the durable home of the policy rather than a stopgap. Shared code would prove one implementation
+    /// exists. A shared TEST proves all three behave.</para>
     ///
     /// <para><b>THIS INTERFACE IS ITSELF AN ABSTRACTION DERIVED FROM ONE IMPLEMENTATION, and 2.2 names that cost
     /// rather than presenting it as free.</b> It is a much smaller one than a shared ring would be, and it is
-    /// deliberately shaped from what BOTH rings can answer honestly rather than from what either one exposes.
-    /// Every member below is either in the design's own list (acquire a segment, write off-timeline, read a segment
+    /// deliberately shaped from what EVERY ring can answer honestly rather than from what any one exposes. Every
+    /// member below is either in the design's own list (acquire a segment, write off-timeline, read a segment
     /// base, read the stall count) or is a plain consequence of it: a policy about WHERE bytes land is not
     /// observable without reading bytes back, and a gate is not observable without driving the two values it
-    /// compares.</para>
+    /// compares. The third adapter joined without changing a member, which is the strongest thing that can be
+    /// said about an abstraction derived from one implementation.</para>
     ///
-    /// <para><b>WHAT IT DELIBERATELY DOES NOT CARRY.</b> Nothing about mapping, because one backend has no
+    /// <para><b>WHAT IT DELIBERATELY DOES NOT CARRY.</b> Nothing about mapping, because two backends have no
     /// mapping to speak of. Nothing about locks, because 9.4 assigns Lock legality to each backend's own tests:
     /// each has its own lock and its own deadlock to not have, and a shared test would assert against a lock this
     /// interface cannot see. Nothing about the stride arithmetic, for the same reason: 9.4 assigns Stride to each
-    /// backend too, since the arithmetic differs (a 16-constant count there, a
-    /// <c>minUniformBufferOffsetAlignment</c> floor and a descriptor range here) where the invariant does not, and
-    /// the Vulkan half additionally answers to a VUID. Nothing about ORDERING either, which 9.4 records as a
-    /// BUILD-ORDER fact rather than a runtime semantic: what enforces it is the Vulkan ring row depending on the
-    /// completion-primitive row, and there is nothing a test can observe.</para>
+    /// backend too, since the arithmetic differs (a 16-constant count on one, a
+    /// <c>minUniformBufferOffsetAlignment</c> floor and a descriptor range on the next, a flat 256-byte floor
+    /// against a device limit the third could have read) where the invariant does not, and the Vulkan half
+    /// additionally answers to a VUID. Nothing about ORDERING either, which 9.4 records as a BUILD-ORDER fact
+    /// rather than a runtime semantic: what enforces it is each ring row depending on its own backend's
+    /// completion-primitive row, and there is nothing a test can observe. And nothing about WHERE the frame
+    /// boundary is called from, which is a backend fact rather than a policy: it is a present on two of them and
+    /// a command list's <c>Begin</c> on Metal, because that backend has no second per-list index (M-R2).</para>
     ///
     /// <para><b>SEVEN OF SECTION 9.4'S TEN ROWS RUN THROUGH HERE:</b> segment selection, fence gating,
     /// backpressure counting, the off-timeline every-segment reach, its gating, its never-blocking pending-patch
@@ -38,7 +46,7 @@ namespace KhaozEngine.Tests.Gpu
     internal interface IGpuUniformRingUnderTest : IDisposable
     {
         /// <summary>Which backend this adapter drives, for the failure message of a shared row: an assertion that
-        /// fires on one of two adapters has to say which.</summary>
+        /// fires on one of three adapters has to say which.</summary>
         string BackendName { get; }
 
         /// <summary>How many segments the ring is cut into, which is the device's frames-in-flight.</summary>

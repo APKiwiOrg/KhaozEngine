@@ -5,25 +5,30 @@ using Xunit;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// SECTION 9.4'S SEVEN SHARED ROWS, RUN AGAINST BOTH BACKENDS' UNIFORM RINGS through the one test-only
+    /// SECTION 9.4'S SEVEN SHARED ROWS, RUN AGAINST ALL THREE BACKENDS' UNIFORM RINGS through the one test-only
     /// interface of decisions V-P5 and V-T6
-    /// (<c>docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md</c>).
+    /// (<c>docs/design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md</c>), joined by the native Metal ring at M-P5
+    /// and M-T5 (<c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>).
     ///
     /// <para><b>WHY THIS FILE EXISTS AT ALL.</b> Section 2.2 declined to extract the ring into a shared production
     /// home, on the rule of three and on the observation that the POLICY is identical while the MECHANISM is not.
-    /// A decision not to share code is not a decision to re-derive the policy from memory, so 9.4 writes the
-    /// policy out as a ten-row inventory with an OWNER per row, and these are the seven whose owner is "shared".
-    /// Shared code would prove one implementation exists. A shared test proves both implementations behave.</para>
+    /// The Metal phase reached the rule of three and declined it AGAIN for the same reason, in its own 2.8, which
+    /// makes this file the thing carrying the policy rather than a stopgap until an extraction. A decision not to
+    /// share code is not a decision to re-derive the policy from memory, so 9.4 writes the policy out as a
+    /// ten-row inventory with an OWNER per row, and these are the seven whose owner is "shared". Shared code
+    /// would prove one implementation exists. A shared test proves all three behave.</para>
     ///
     /// <para><b>THE OTHER THREE ROWS ARE EACH BACKEND'S OWN AND ARE NOT HERE.</b> Ordering is a BUILD-ORDER fact
-    /// with nothing a test can observe, enforced by the Vulkan ring row depending on the completion-primitive row.
-    /// Lock legality is per-backend because each has its own lock and its own deadlock to not have, and a shared
-    /// test would assert against a lock the interface cannot see. Stride is per-backend because the arithmetic
-    /// differs where the invariant does not, and the Vulkan half additionally answers to a VUID. See
-    /// <see cref="VulkanUniformRingTests"/> and <see cref="D3D11UniformRingTests"/>.</para>
+    /// with nothing a test can observe, enforced by each ring row depending on its backend's completion-primitive
+    /// row. Lock legality is per-backend because each has its own lock and its own deadlock to not have, and a
+    /// shared test would assert against a lock the interface cannot see. Stride is per-backend because the
+    /// arithmetic differs where the invariant does not: the Vulkan half additionally answers to a VUID and the
+    /// Metal half floors flat at 256 against a device limit it could have read. See
+    /// <see cref="VulkanUniformRingTests"/>, <see cref="D3D11UniformRingTests"/> and
+    /// <see cref="MetalUniformRingTests"/>.</para>
     ///
-    /// <para><b>EVERY ROW HERE RUNS DEVICE-FREE ON BOTH ADAPTERS AND NEITHER SKIPS.</b> A shared row that could
-    /// skip on one side is a shared row that quietly became one backend's, which is the outcome V-P5 exists to
+    /// <para><b>EVERY ROW HERE RUNS DEVICE-FREE ON EVERY ADAPTER AND NONE SKIPS.</b> A shared row that could skip
+    /// on one side is a shared row that quietly became one backend's, which is the outcome V-P5 exists to
     /// prevent, so these are plain <c>[Theory]</c> cases rather than <c>[GpuTheory]</c> ones.</para>
     /// </summary>
     public sealed class GpuUniformRingSharedTests
@@ -31,16 +36,18 @@ namespace KhaozEngine.Tests.Gpu
         const uint Size = 256;
         const int Frames = 3;
 
-        /// <summary>Both adapters are reachable and neither is silently absent, which is the assertion the whole
-        /// file rests on: a shared row list that lost one adapter would still pass every row below it.</summary>
+        /// <summary>Every adapter is reachable and none is silently absent, which is the assertion the whole file
+        /// rests on: a shared row list that lost one adapter would still pass every row below it, and the row
+        /// below it would then be one backend's test wearing a shared name.</summary>
         [Fact]
-        public void BothBackends_AreUnderTest()
+        public void EveryBackend_IsUnderTest()
         {
             string[] names = GpuUniformRingAdapters.All().Select(row => (string)row[0]).ToArray();
 
-            Assert.Equal(2, names.Length);
+            Assert.Equal(3, names.Length);
             Assert.Contains(GpuUniformRingAdapters.Direct3D11, names);
             Assert.Contains(GpuUniformRingAdapters.Vulkan, names);
+            Assert.Contains(GpuUniformRingAdapters.Metal, names);
 
             foreach (string name in names)
             {

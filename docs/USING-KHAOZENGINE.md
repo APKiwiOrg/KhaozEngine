@@ -9064,7 +9064,11 @@ MTL_CAPTURE_ENABLED=1 dotnet run --project <your game>
 
 Without it nothing is captured and nothing is logged as an error, because the capture asks Metal whether the
 GPU-trace destination is supported and gets no. An arm is consumed at a present, so a headless device consumes
-none, and the trace covers one whole frame between two presents rather than a single `Submit`.
+none, and the trace covers one whole frame between two presents rather than a single `Submit`. It works end to
+end once row 15's swapchain present lands
+([#581](https://github.com/APKiwiOrg/KhaozEngine/issues/581)): the native consumption site exists and has run,
+but nothing on this backend presents yet, so an arm taken today is consumed only by the test that drives that
+boundary call directly.
 
 Call it unconditionally and on every OS, exactly as you would the other two, and for the Direct3D 11 package's
 reason rather than the Vulkan package's. Metal IS an OS-specific API, so this package carries a

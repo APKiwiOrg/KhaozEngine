@@ -204,7 +204,9 @@ still has to do. `MTL_CAPTURE_ENABLED=1` must be in the environment BEFORE the p
 process-launch rule the validation variables have. Without it the capture asks Metal whether the destination is
 supported, gets no, and does nothing. That guard is not decoration: starting a capture in a process where
 capture was never enabled raises an Objective-C exception, which is a process abort rather than a caught error.
-An arm is consumed at a PRESENT boundary, so a headless device consumes none.
+An arm is consumed at a PRESENT boundary, so a headless device consumes none, and this backend does not present
+until row 15 (https://github.com/APKiwiOrg/KhaozEngine/issues/581), so today the only thing that consumes one is
+the test driving that boundary call.
 
 ## The timeline, and why a fence here is two fields (M-F1 to M-F5)
 

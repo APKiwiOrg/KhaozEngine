@@ -489,6 +489,14 @@ this encoder's table, so what selects it is a comparison against what the flush 
 third state on the record: a slot bound to another set and back again with no draw between takes it correctly,
 because the first set never left the table.
 
+**And what was emitted includes each binding's LIVENESS, not just which set it was.** A binding holds the
+resource wrapper and reads its handle and its ring through that wrapper's own disposal guard at every bind,
+which is what makes a resource disposed after its set was built degrade to nil by construction. The bindings
+array does not move when that happens, so a set whose buffer was released between two draws still compares
+equal, and moving an offset on a table index holding a released buffer is something Metal accepts without a
+word. Each slot therefore records, per binding, whether it was ringed and whether its handle was non-nil, and
+any movement falls back to the full rebind, whose nil handle is the safe degradation.
+
 **Every bind record carries an encoder-epoch stamp, so a boundary re-activates it.** A record-time
 `UpdateBuffer` big enough to take the staging path opens a blit encoder mid-pass, and the reopened pass is a new
 encoder with an empty argument table. The incumbent tracks vertex-stream binds and does NOT invalidate them

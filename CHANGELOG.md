@@ -1017,7 +1017,13 @@ times a frame. `setBufferOffset:atIndex:` adjusts an EXISTING binding, so its pr
 resources are in this encoder's table right now, and the record answers that question by comparing against the
 bindings array it last wrote plus the encoder epoch it wrote them in, rather than by carrying a third state the
 recorder would have to classify correctly. A slot bound to another set and back again with no draw between
-therefore takes the offsets-only arm correctly, because the first set never left the table.
+therefore takes the offsets-only arm correctly, because the first set never left the table. What each slot
+remembers includes the per-binding LIVENESS as well as the array, because the two values a binding reads
+through its wrapper (the handle and the ring) are exactly the ones whose job is to change on disposal: the
+array does not move when a buffer is released, so without that a set rebound after a disposal would take the
+derived arm, compose off the unringed branch and move an offset on a table index holding the released buffer.
+Any movement in the liveness falls back to the full rebind, whose nil handle is the degradation the set's own
+wrapper-holding design promised.
 
 **Every bind record carries its own encoder-epoch stamp, and the vertex-stream cache arrives WITH its
 invalidation.** A record-time `UpdateBuffer` big enough to take the staging path opens a blit encoder mid-pass,

@@ -192,6 +192,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
             if (!set.IsBound)
             {
                 record.EmittedBindings = null;
+                record.EmittedRinged = 0;
+                record.EmittedLive = 0;
                 record.Emitted.Clear();
             }
 
@@ -254,6 +256,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 _slots[slot].Dirty = true;
                 _slots[slot].Emitted.Clear();
                 _slots[slot].EmittedBindings = null;
+                _slots[slot].EmittedRinged = 0;
+                _slots[slot].EmittedLive = 0;
             }
         }
 
@@ -369,13 +373,53 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 ref SlotRecord record = ref _slots[slot];
                 if (record.Work == SlotWork.Full)
                 {
-                    record.EmittedBindings = record.Bound.Bindings;
+                    RememberWhatWasEmitted(ref record);
                     record.Emitted.Mark(epoch);
                 }
 
                 record.Dirty = false;
                 record.Work = SlotWork.None;
             }
+        }
+
+        // WHAT THE ARGUMENT TABLE NOW HOLDS, as the offsets-only arm's precondition needs it: the bindings array
+        // AND, per binding, whether it was ringed and whether its handle was non-nil. The array alone is not
+        // enough, because those two are read through the wrapper at every bind and their whole job is to CHANGE
+        // on disposal, so an array compare says "same set" about a set whose buffer has since been released.
+        //
+        // A SET WIDER THAN THE FINGERPRINT FORGETS ITS ARRAY INSTEAD, which costs it the derived arm and nothing
+        // else: the reference compare then fails and every rebind of it is a full one. That is the direction
+        // that cannot render wrong, and no shipped layout is within two orders of magnitude of the width.
+        static void RememberWhatWasEmitted(ref SlotRecord record)
+        {
+            ReadOnlySpan<MetalBoundResource> bindings = record.Bound.Resources;
+            if (bindings.Length > LivenessBits)
+            {
+                record.EmittedBindings = null;
+                record.EmittedRinged = 0;
+                record.EmittedLive = 0;
+                return;
+            }
+
+            record.EmittedBindings = record.Bound.Bindings;
+            (record.EmittedRinged, record.EmittedLive) = LivenessOf(bindings);
+        }
+
+        // TWO BITS PER BINDING, and they are the two the composition and the array call actually read: a ring
+        // decides whether a frame base is added and whether M-M4's window check runs, and a handle decides
+        // whether the entry binds a buffer or unbinds its index.
+        static (ulong Ringed, ulong Live) LivenessOf(ReadOnlySpan<MetalBoundResource> bindings)
+        {
+            ulong ringed = 0;
+            ulong live = 0;
+
+            for (int binding = 0; binding < bindings.Length; binding++)
+            {
+                if (bindings[binding].Ring is not null) ringed |= 1UL << binding;
+                if (bindings[binding].Handle != IntPtr.Zero) live |= 1UL << binding;
+            }
+
+            return (ringed, live);
         }
 
         // WHAT A REFUSED FLUSH LEAVES BEHIND: nothing staged, nothing believed about any argument table, and
@@ -448,8 +492,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // the stride is that size rounded up. Here the caller's real per-draw offset is in hand, and it fails on
         // the last frame slot for an offset five shipped renderers pass.
         //
-        // AN UNRINGED BINDING HAS NO SEGMENT TO LEAVE, so it composes the last two terms and is not checked here:
-        // its window was bounded against the buffer's own size at set creation.
+        // A BINDING WITH NO RING TAKES THE LAST TWO TERMS ALONE, AND ARRIVES HERE FOR TWO DIFFERENT REASONS.
+        // GENUINELY UNRINGED (a non-buffer binding, or a buffer whose usage is not ring-backed) has no segment to
+        // leave, and its window was bounded against the buffer's own size at set creation, so there is nothing
+        // for M-M4 to check. A DISPOSED RING is the other reason, and there the creation-time bound describes a
+        // buffer the driver has taken back: the two are told apart by WorkFor rather than here, which is what
+        // keeps this arm honest. A disposed binding only ever reaches this on the FULL arm, where the offset
+        // composed here travels in the same array entry as a NIL handle and Metal reads the index as unbound, so
+        // nothing reads it. What must not happen is the offsets-only arm reaching it, which would move a real
+        // offset on an index still holding the released buffer.
         static nuint ComposedOffset(in MetalBoundResource bound, int segment, uint callerDynamicOffset)
         {
             uint caller = bound.AppliesCallerOffset ? callerDynamicOffset : 0;
@@ -466,13 +517,30 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // WHAT SEPARATES THE THREE ARMS, IN ONE PLACE. Read the order: an invalid stamp beats a clean flag,
         // because a slot that was flushed and never re-recorded is still owed a rebind after an encoder boundary
         // took the whole argument table with it (M-R4).
+        //
+        // AND THE ARRAY COMPARE IS NOT THE WHOLE PRECONDITION, which is the row 10 correction arriving at the
+        // arm that consumes it. A binding holds the WRAPPER and reads its handle and its ring through the
+        // wrapper's own disposal guard at every bind, precisely so a resource disposed after the set was built
+        // degrades to nil BY CONSTRUCTION. The bindings array does not move when that happens, so a slot whose
+        // ring-backed buffer was disposed between two draws still compares equal by reference: the derived arm
+        // would fire, the composition would take its unringed branch, drop the frame base, skip the window check
+        // and emit setBufferOffset: against a table index still holding the released buffer. So the emitted
+        // fingerprint carries the liveness of every binding as well, and any movement in it falls back to the
+        // FULL arm, whose nil handle is the safe degradation.
+        //
+        // IT COSTS A WALK OF THE BINDINGS ON THE OFFSETS-ONLY PATH, which is the shadow pass's path. Two
+        // property reads per binding over a single-digit set, against the alternative of binding a released
+        // MTLBuffer's index with nothing downstream to report it.
         static SlotWork WorkFor(ref SlotRecord record, ulong epoch)
         {
             if (!record.Bound.IsBound) return SlotWork.None;
             if (!record.Emitted.IsValidIn(epoch)) return SlotWork.Full;
             if (!record.Dirty) return SlotWork.None;
+            if (!ReferenceEquals(record.EmittedBindings, record.Bound.Bindings)) return SlotWork.Full;
 
-            return ReferenceEquals(record.EmittedBindings, record.Bound.Bindings)
+            (ulong ringed, ulong live) = LivenessOf(record.Bound.Resources);
+
+            return ringed == record.EmittedRinged && live == record.EmittedLive
                 ? SlotWork.OffsetsOnly
                 : SlotWork.Full;
         }
@@ -544,6 +612,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
             OffsetsOnly = 2,
         }
 
+        // How many bindings the emitted-liveness fingerprint can cover, which is the width of the two masks. A
+        // set past it forgets its emitted array instead and takes the full arm every time.
+        const int LivenessBits = 64;
+
         struct SlotRecord
         {
             internal MetalBoundSet Bound;
@@ -554,6 +626,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // offsets-only arm's precondition: this set's resources are in THIS encoder's table.
             internal MetalBoundResource[]? EmittedBindings;
             internal MetalEncoderMark Emitted;
+
+            // AND WHAT THOSE RESOURCES WERE WHEN THEY WENT IN, one bit per binding each: it had a ring, and its
+            // handle was non-nil. Both are live reads through the wrapper, so the array being the same array
+            // says nothing about either. See WorkFor.
+            internal ulong EmittedRinged;
+            internal ulong EmittedLive;
 
             // Transient, one flush wide, so the three arms are classified once rather than once per stage.
             internal SlotWork Work;

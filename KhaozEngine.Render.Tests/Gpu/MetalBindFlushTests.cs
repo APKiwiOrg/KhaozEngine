@@ -339,6 +339,71 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
+        /// THE OFFSETS-ONLY ARM DOES NOT SURVIVE A DISPOSAL, which is the one shape the array-reference compare
+        /// cannot see. A binding holds the WRAPPER and reads its handle and its ring through the wrapper's own
+        /// disposal guard at every bind, so a resource released between two draws changes both values while the
+        /// bindings ARRAY stays the identical object. A slot rebound with a moved dynamic offset therefore looks
+        /// exactly like the shadow pass's own shape, and taking the derived arm there would compose an offset off
+        /// the unringed branch (no frame base, no window check) and send <c>setBufferOffset:</c> to a table index
+        /// still holding the released buffer, which Metal accepts without a word.
+        /// <para>
+        /// SO THE FALLBACK IS THE FULL ARM AND THE FULL ARM'S NIL IS THE DEGRADATION row 10's correction
+        /// promised. What the driver ends up with is an unbound index rather than a moved window on a freed
+        /// allocation.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void ARingBackedBufferDisposedBetweenTwoDrawsFallsBackToTheFullArm()
+        {
+            using var harness = new MetalRingHarness();
+            MetalBuffer frame = harness.NewBuffer(64, GpuBufferUsage.UniformBuffer);
+            MetalBuffer material = harness.NewBuffer(32, GpuBufferUsage.UniformBuffer);
+
+            MetalBoundSet set = MetalBindProgram.Set(
+                new MetalBoundResource(MetalIndexSpace.Buffer, frame, 0, 64, AppliesCallerOffset: true),
+                new MetalBoundResource(MetalIndexSpace.Buffer, material, 0, 32, AppliesCallerOffset: false),
+                new MetalBoundResource(MetalIndexSpace.Texture, new FakeMetalBindable(0x7E11), 0, 0, false),
+                new MetalBoundResource(MetalIndexSpace.Sampler, new FakeMetalBindable(0x5A11), 0, 0, false));
+
+            var records = MetalBindRecords.ForGraphics();
+            MetalShaderIndexTable table = MetalBindProgram.Table();
+            var calls = new FakeMetalEncoderCalls();
+            var sink = new FakeMetalEncoderSink(calls);
+
+            records.SetIndexTable(table);
+            records.Record(0, set, 0);
+            records.Flush(ref sink, Encoder, Epoch, segment: 0);
+
+            Assert.NotNull(frame.Ring);
+            int arraysAfterActivation = calls.ArrayWrites.Count;
+
+            // THE DISPOSAL IS THE ONLY THING THAT HAPPENS BETWEEN THE TWO DRAWS. The set is the same object and
+            // the recorded array is the same array.
+            harness.DisposeWithoutRelease(frame);
+            Assert.Null(frame.Ring);
+
+            records.Record(0, set, 128);
+            records.Flush(ref sink, Encoder, Epoch, segment: 0);
+
+            // NEVER A BARE setBufferOffset:, and a full re-activation instead.
+            Assert.Empty(calls.OffsetWrites);
+            Assert.Equal(arraysAfterActivation + 4, calls.ArrayWrites.Count);
+
+            // AND THE SINK SAW A NIL, which is the unbound index the degradation is.
+            FakeMetalArrayWrite vertex = calls.ArrayWrites
+                .Last(w => w.Stage == MetalShaderStage.Vertex && w.Space == MetalIndexSpace.Buffer);
+
+            Assert.Equal(IntPtr.Zero, Assert.Single(vertex.Objects));
+
+            FakeMetalArrayWrite fragment = calls.ArrayWrites
+                .Last(w => w.Stage == MetalShaderStage.Fragment && w.Space == MetalIndexSpace.Buffer);
+
+            Assert.True(table.TryGetIndex(0, MetalBindProgram.FrameBinding, MetalShaderStage.Fragment,
+                out MetalIndexTableEntry frameEntry));
+            Assert.Equal(IntPtr.Zero, fragment.Objects[frameEntry.Index - (int)fragment.FirstIndex]);
+        }
+
+        /// <summary>
         /// A NIL IN THE MIDDLE OF A RUN DOES NOT SPLIT IT, which is the deliberate half of the disposal
         /// degradation and the half nothing exercised. A HOLE cuts a run because the index is not being written
         /// at all and a nil there would unbind whatever another slot legitimately put in it. A NIL HANDLE is the

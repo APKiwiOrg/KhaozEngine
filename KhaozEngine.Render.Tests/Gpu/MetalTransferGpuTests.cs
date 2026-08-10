@@ -248,6 +248,96 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
+        /// THE PRIVATE-TEXTURE UPLOAD'S DESTINATION SUBRESOURCE AND ORIGIN, ASSERTED AS BYTES, which closes
+        /// https://github.com/APKiwiOrg/KhaozEngine/issues/588.
+        ///
+        /// <para><b>WHAT THAT ISSUE IS ABOUT.</b> Row 6's device-level <c>UpdateTexture</c> records
+        /// <c>copyFromBuffer:...toTexture:destinationSlice:destinationLevel:destinationOrigin:</c> on a blit
+        /// encoder, and until this row there was no way to read the destination back: a Private texture has no
+        /// CPU pointer, and the reverse copy is row 14's. So the upload was checked by ACCEPTANCE, which leaves
+        /// the three destination terms and the source pitch unverified. A swapped slice and level, or an origin
+        /// applied to the wrong axis, is accepted by the device and puts texels somewhere else.</para>
+        ///
+        /// <para><b>SO EVERY ONE OF THE THREE IS NON-ZERO HERE, AND THEY ARE ALL DIFFERENT NUMBERS.</b> Mip 1,
+        /// array layer 2, origin (1, 1). Equal numbers would let a swap pass, which is the failure a probe like
+        /// this exists to catch, and a zero would let a dropped argument pass. The pattern written is a gradient
+        /// rather than a flat colour, so a copy that landed at the right subresource with the wrong ROW PITCH
+        /// still reads back wrong.</para>
+        /// </summary>
+        [GpuFact]
+        public void APrivateTextureUploadLandsAtItsNonZeroSubresourceAndOrigin()
+        {
+            if (!Available()) return;
+
+            using MetalGpuDevice device = CreateHeadless();
+            IGpuResourceFactory factory = device.Factory;
+
+            const uint Layers = 3;
+            const uint Region = 2;
+
+            // EIGHT WIDE so that mip 1 is 4x4 and a 2x2 region at origin (1, 1) fits inside it with room to
+            // spare. A 4x4 base would put mip 1 at 2x2, where that region runs off the end and the upload's own
+            // bounds check refuses it, which is the check doing its job rather than a shape worth forcing.
+            using IGpuTexture target = factory.CreateTexture(GpuTextureDescription.Texture2DArray(
+                Size * 2, Size * 2, GpuPixelFormat.B8G8R8A8UNorm, GpuTextureUsage.Sampled, Layers, mipLevels: 2));
+            using IGpuTexture staging = factory.CreateTexture(new GpuTextureDescription(Size * 2, Size * 2,
+                GpuPixelFormat.B8G8R8A8UNorm, GpuTextureUsage.Staging, mipLevels: 2, arrayLayers: Layers));
+
+            // A GRADIENT rather than a flat colour: four distinct texels in a 2x2 region, so a copy that reached
+            // the right subresource with the wrong row pitch reads back the wrong ones.
+            var payload = new byte[Region * Region * 4];
+            for (uint i = 0; i < Region * Region; i++)
+            {
+                payload[(i * 4) + 0] = (byte)(16 * (i + 1));   // B
+                payload[(i * 4) + 1] = (byte)(32 * (i + 1));   // G
+                payload[(i * 4) + 2] = (byte)(48 * (i + 1));   // R
+                payload[(i * 4) + 3] = 255;
+            }
+
+            // MIP 1, LAYER 2, ORIGIN (1, 1): three different non-zero numbers, so no swap and no dropped
+            // argument survives the readback.
+            device.UpdateTexture(target, payload, 1, 1, Region, Region, mipLevel: 1, arrayLayer: 2);
+
+            using (MetalCommandList list = device.CreateCommandList())
+            {
+                list.Begin();
+                list.CopyTexture(target, staging);
+                list.End();
+                device.Submit(list);
+            }
+
+            device.WaitForIdle();
+
+            Assert.Null(device.Diagnostics.DeviceLossReason);
+
+            var typed = (MetalTexture)staging;
+            MetalSubresourceLayout layout = typed.SubresourceLayout(1, 2);
+
+            MappedData mapped = device.Map(staging, GpuMapMode.Read);
+            try
+            {
+                // The region's TOP-LEFT texel, which is the payload's first, sits at (1, 1) of mip 1. Reading
+                // it at one row and one texel in is what says the ORIGIN was applied on both axes rather than
+                // dropped or transposed, and reading it through the layout's own RowPitch is what says the
+                // source pitch was right.
+                var texel = new byte[4];
+                System.Runtime.InteropServices.Marshal.Copy(
+                    mapped.Data + (int)layout.Offset + (int)layout.RowPitch + 4, texel, 0, 4);
+
+                Assert.Equal(16, texel[0]);
+                Assert.Equal(32, texel[1]);
+                Assert.Equal(48, texel[2]);
+            }
+            finally
+            {
+                device.Unmap(staging);
+            }
+
+            _output.WriteLine("mip 1, layer 2, origin (1, 1): the upload's three destination terms read back as "
+                + "bytes, which is what #588 asked row 14 for.");
+        }
+
+        /// <summary>
         /// EVERY TEXTURE-SHAPE REFUSAL, WHICH IS A DEVICE ROW ONLY BECAUSE A <c>MetalTexture</c> CANNOT BE BUILT
         /// WITHOUT ONE. The decisions here are as device-free as any other, and they are not tested that way for
         /// a mechanical reason worth writing down: the four texture members type-check their arguments to the

@@ -1245,7 +1245,12 @@ nobody. `FramesBegun` and the acquire pair are zero on a headless device and tha
 a placeholder, since both are the present boundary's and a headless device has no swapchain. The test asserts
 each seam field by IDENTITY against the device's own reading rather than by range, because the failure this
 kind of fill actually has is a transposed pair and a transposed pair of non-negative numbers passes every range
-check there is. `softwareAdapter` is pinned to the literal `false` all the way into the header JSON, where the
+check there is. Two of the three pairs are driven OFF ZERO before that reading is taken, by a loop of undrained
+recordings that runs until a segment claim has waited and a device-level write has been deferred, because an
+identity assertion between two zeros holds whichever accumulator the field is wired to and would pass the
+transposed pair it exists to catch. The drain pair is left as it falls: a wait that did not block is not
+counted, and an empty submission on this hardware retires before the wait is entered, so asserting that one
+would be asserting a race. `softwareAdapter` is pinned to the literal `false` all the way into the header JSON, where the
 Vulkan sibling could only assert that a boolean survived the path: Apple ships no software Metal rasterizer, so
 there is no machine on which it answers anything else.
 

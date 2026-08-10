@@ -818,8 +818,16 @@ shipped graphics programs, activated in full through the shipped flush, **no pro
 run at all**, and the worst full activation is **6 array calls** (`Water`, the only shape whose two stages
 between them read all three argument tables). `MetalBindBudgetTests` reports both numbers. Read them as a
 measurement of the renderers as they stood rather than as a property of the mechanism: a shader change can
-introduce a hole, and the bound the budget test actually asserts is one call per (space, stage) plus one per
-hole.
+introduce a hole.
+
+**What the budget test asserts is an EQUALITY against the table, and the ceiling it first asserted was a
+tautology.** The first version read the hole count back off the call log (`holes = calls - distinctPairs`) and
+asserted `calls <= 6 + holes`, which substitutes down to `distinctPairs <= 6` and is therefore true for every
+emission that can exist: two stages times three argument tables is six pairs and no flush can produce a
+seventh. A one-call-per-argument emission satisfied it. The assertion now walks the program's own binding table,
+groups the referenced indices by (stage, space), counts the contiguous runs, and requires the flush to have
+emitted exactly that many array calls, with a corpus-level row requiring the run cutter to collapse something:
+over the 34 programs, 92 array calls carry 131 arguments.
 
 ### 2.8 The #531 extraction: scope, list and trigger
 

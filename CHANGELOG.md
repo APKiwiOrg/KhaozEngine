@@ -1003,7 +1003,11 @@ programs the worst full activation is **6 array calls** (`Water`, the only shape
 read all three argument tables), and **no shipped program produces a non-contiguous index run**, so the extra
 call a hole costs is never paid on anything the engine ships today. A hole CUTS the run rather than being padded
 with nil, because Metal's argument tables are absolute: a nil written into a gap would unbind whatever another
-slot legitimately put there.
+slot legitimately put there. The budget test freezes that as an EQUALITY against each program's own binding
+table (group the referenced indices by (stage, space), count the contiguous runs, require exactly that many
+array calls) rather than as a per-(space, stage) ceiling, which is a tautology on a two-stage program: six pairs
+is the most any emission can touch, so a flush emitting one call per argument would satisfy it. Over the whole
+catalog 92 array calls carry 131 arguments.
 
 **The offsets-only rebind is a different selector rather than a cheaper variant, and what selects it is what
 was EMITTED.** A slot whose only change is its per-draw dynamic offset emits one `setVertexBufferOffset:` or

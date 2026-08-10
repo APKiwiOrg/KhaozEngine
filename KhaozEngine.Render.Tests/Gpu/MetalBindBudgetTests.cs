@@ -155,20 +155,31 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// EVERY SHIPPED GRAPHICS PROGRAM, ACTIVATED IN FULL, AND THE BOUND M-R6 PUTS ON IT. One array call per
-        /// (space, stage) is at most SIX for a two-stage program, and any program needing more than that has an
-        /// emission whose indices are not contiguous within a space, which the run cutter answers with an extra
-        /// call rather than by padding a hole with nil.
-        /// <para>
-        /// THE HOLE COUNT IS THE MEASUREMENT WORTH HAVING HERE, and it is reported rather than asserted at a
-        /// number: it is a property of what SPIRV-Cross emits for the shipped shaders, so it can move on a
-        /// deliberate <c>Veldrid.SPIRV</c> bump, and the bound is what actually protects the budget.
-        /// </para>
+        /// EVERY SHIPPED GRAPHICS PROGRAM, ACTIVATED IN FULL, AGAINST THE CALL COUNT ITS OWN BINDING TABLE
+        /// PREDICTS. M-R6's law is one array call per CONTIGUOUS RUN of indices within a (space, stage), so the
+        /// number this asserts is derived from the TABLE: walk every (slot, binding, stage) the emission
+        /// references, group the indices by (stage, space), and count the runs. That number is what the flush
+        /// must emit, exactly.
+        ///
+        /// <para><b>IT WAS A CEILING AND A CEILING IS A TAUTOLOGY HERE, WHICH IS WHY IT IS AN EQUALITY NOW.</b>
+        /// The first version asserted <c>calls &lt;= 6 + holes</c> with the hole count computed as
+        /// <c>calls - distinctPairs</c>. Substituting one into the other reduces it to
+        /// <c>distinctPairs &lt;= 6</c>, which is true for EVERY possible emission by construction: two stages
+        /// times three argument tables is six pairs and a flush cannot produce a seventh whatever it does.
+        /// Reverting <see cref="MetalArgumentBatch"/> to one call per entry would have kept it green. Reading the
+        /// hole count off the indices instead makes the assertion a statement about the run cutter, and the
+        /// corpus-level check at the bottom is the same statement said once more in the direction that cannot be
+        /// satisfied by accident.</para>
+        ///
+        /// <para><b>THE HOLE COUNT IS STILL A MEASUREMENT AND IS STILL REPORTED RATHER THAN FROZEN</b>, because
+        /// it is a property of what SPIRV-Cross emits for the shipped shaders and can move on a deliberate
+        /// <c>Veldrid.SPIRV</c> bump. What changed is that the assertion no longer reads it back out of the thing
+        /// it is meant to be checking.</para>
         /// </summary>
         [Fact]
-        public void EveryShippedProgramActivatesWithinTheOneCallPerKindPerStageBound()
+        public void EveryShippedProgramEmitsExactlyTheArrayCallsItsTableRunsPredict()
         {
-            int programs = 0, worst = 0, withHoles = 0;
+            int programs = 0, worst = 0, withHoles = 0, totalCalls = 0, totalEntries = 0;
             string worstProgram = "";
             var report = new List<string>();
 
@@ -187,9 +198,10 @@ namespace KhaozEngine.Tests.Gpu
 
                 records.Flush(ref sink, Encoder, Epoch, segment: 0);
 
-                int distinctPairs = calls.ArrayWrites
-                    .Select(w => (w.Stage, w.Space)).Distinct().Count();
-                int holes = calls.ArrayWrites.Count - distinctPairs;
+                // OFF THE TABLE, NOT OFF THE CALL LOG. Every number below comes from what the emission says the
+                // indices ARE, so the call log has nothing to do with what it is being compared against.
+                (int runs, int pairs, int entries) = TableRuns(table);
+                int holes = runs - pairs;
 
                 if (holes > 0) withHoles++;
                 if (calls.ArrayWrites.Count > worst)
@@ -198,12 +210,17 @@ namespace KhaozEngine.Tests.Gpu
                     worstProgram = program.Name;
                 }
 
-                report.Add($"{program.Name}: {calls.ArrayWrites.Count} array calls over {distinctPairs} "
-                    + $"(stage, space) pairs, {holes} extra from non-contiguous runs");
+                totalCalls += calls.ArrayWrites.Count;
+                totalEntries += entries;
 
-                // THE BOUND: at most one call per (space, stage) unless the emission left a hole in a run.
-                Assert.True(calls.ArrayWrites.Count <= 6 + holes,
-                    $"{program.Name} emitted {calls.ArrayWrites.Count} array calls");
+                report.Add($"{program.Name}: {calls.ArrayWrites.Count} array calls over {pairs} "
+                    + $"(stage, space) pairs carrying {entries} arguments, {holes} extra from non-contiguous "
+                    + "runs");
+
+                // THE LAW: one array call per contiguous run, and not one per argument and not one per pair.
+                Assert.Equal(runs, calls.ArrayWrites.Count);
+
+                Assert.Equal(pairs, calls.ArrayWrites.Select(w => (w.Stage, w.Space)).Distinct().Count());
 
                 programs++;
             }
@@ -211,10 +228,71 @@ namespace KhaozEngine.Tests.Gpu
             foreach (string line in report) _output.WriteLine(line);
             _output.WriteLine($"programs: {programs.ToString(CultureInfo.InvariantCulture)}, worst full "
                 + $"activation: {worst.ToString(CultureInfo.InvariantCulture)} calls ({worstProgram}), programs "
-                + $"with a non-contiguous run: {withHoles.ToString(CultureInfo.InvariantCulture)}");
+                + $"with a non-contiguous run: {withHoles.ToString(CultureInfo.InvariantCulture)}, "
+                + $"{totalCalls.ToString(CultureInfo.InvariantCulture)} calls carrying "
+                + $"{totalEntries.ToString(CultureInfo.InvariantCulture)} arguments over the whole catalog");
 
             Assert.True(programs >= 30, "the shipped catalog emptied out from under this measurement");
+
+            // THE ANTI-TAUTOLOGY ROW. A flush emitting one call per argument satisfies every per-(space, stage)
+            // ceiling that can be written, and it cannot satisfy this: over the shipped catalog the run cutter
+            // has to collapse SOMETHING, so the two totals cannot be equal.
+            Assert.True(totalCalls < totalEntries,
+                $"the shipped catalog took {totalCalls.ToString(CultureInfo.InvariantCulture)} array calls to "
+                + $"carry {totalEntries.ToString(CultureInfo.InvariantCulture)} arguments, so nothing was "
+                + "collapsed into a run at all, which is what a one-call-per-argument emission looks like");
         }
+
+        // WHAT THE BINDING TABLE ITSELF PREDICTS a full activation costs: the (stage, space) pairs it touches,
+        // the contiguous index runs inside them, and how many arguments those runs carry. The run count is the
+        // number of array calls M-R6 says the flush owes, computed from the emission's indices with no reference
+        // to anything the flush did.
+        static (int Runs, int Pairs, int Entries) TableRuns(MetalShaderIndexTable table)
+        {
+            var groups = new Dictionary<(MetalShaderStage Stage, MetalIndexSpace Space), SortedSet<int>>();
+            int entries = 0;
+
+            for (int slot = 0; slot < table.Layouts.Count; slot++)
+            {
+                GpuResourceLayoutDescription layout = table.Layouts[slot];
+                for (int binding = 0; binding < layout.Elements.Length; binding++)
+                {
+                    foreach (MetalShaderStage stage in GraphicsStages)
+                    {
+                        if (!table.TryGetIndex(slot, binding, stage, out MetalIndexTableEntry entry)) continue;
+
+                        (MetalShaderStage, MetalIndexSpace) key = (stage, entry.Space);
+                        if (!groups.TryGetValue(key, out SortedSet<int>? indices))
+                        {
+                            indices = new SortedSet<int>();
+                            groups.Add(key, indices);
+                        }
+
+                        // A DUPLICATE INDEX WOULD BE SWALLOWED HERE AND IS REFUSED THERE. Two arguments at one
+                        // index throws out of MetalArgumentBatch, so the flush above has already failed the test
+                        // by the time this could under-count.
+                        indices.Add(entry.Index);
+                        entries++;
+                    }
+                }
+            }
+
+            int runs = 0;
+            foreach (SortedSet<int> indices in groups.Values)
+            {
+                int previous = int.MinValue;
+                foreach (int index in indices)
+                {
+                    if (index != previous + 1) runs++;
+                    previous = index;
+                }
+            }
+
+            return (runs, groups.Count, entries);
+        }
+
+        static readonly MetalShaderStage[] GraphicsStages =
+            [MetalShaderStage.Vertex, MetalShaderStage.Fragment];
 
         // A SET MATCHING A REFLECTED LAYOUT, with the FIRST buffer-space element declared dynamic, which is the
         // engine's own shape: one per-draw uniform window per set and everything else fixed. The resources are

@@ -37,6 +37,18 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <c>ReferenceEquals</c>, but plain data has no reference to compare, so each <see cref="MetalFramebuffer"/>
     /// takes a process-unique number at construction and carries it here. Zero means nothing is bound, which is
     /// what a fresh recording holds.</para>
+    ///
+    /// <para><b>SO A SOURCE WHOSE BOUND TEXTURE CAN MOVE BETWEEN ACQUIRES MUST MINT A FRESH <see cref="Id"/> PER
+    /// ACQUIRE, and this is the one rule <see cref="IMetalBoundFramebufferSource"/> cannot enforce for its
+    /// implementers.</b> M-A6's guard compares this number and RETURNS when it matches, without copying the
+    /// incoming record, so the schedule keeps the attachment handles it took at the first bind. For an ordinary
+    /// framebuffer that is exactly right and free: the handles never move, so a rebind has nothing to copy. For
+    /// the swapchain's framebuffer (row 15, https://github.com/APKiwiOrg/KhaozEngine/issues/581) it is only right
+    /// while the drawable's texture is pinned for the recording. The moment a second <c>AsBound</c> read inside
+    /// one recording can answer with a DIFFERENT texture, a stable Id makes the schedule go on describing the
+    /// first one, and the pass renders into a drawable the present has moved past with nothing reporting it. The
+    /// Id therefore identifies the ATTACHMENT SET rather than the framebuffer OBJECT: whatever moves a texture
+    /// moves the Id with it, and a source that cannot move its textures keeps one number forever.</para>
     /// </summary>
     /// <param name="Id">The bound framebuffer's process-unique identity, or 0 for none.</param>
     /// <param name="Width">Width in pixels, which is the viewport and the full scissor.</param>
@@ -78,7 +90,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// </summary>
     internal interface IMetalBoundFramebufferSource
     {
-        /// <summary>The framebuffer as the recorder binds it, read at the moment of the bind.</summary>
+        /// <summary>The framebuffer as the recorder binds it, read at the moment of the bind.
+        /// <para>
+        /// A READ THAT CAN ANSWER WITH A MOVED TEXTURE MUST ALSO ANSWER WITH A NEW
+        /// <see cref="MetalBoundFramebuffer.Id"/>, or the change is invisible to the bind. See the record's own
+        /// remarks: M-A6's guard compares the Id and skips the copy on a match, so a moving texture under a
+        /// stable number is a pass that keeps describing the previous one.
+        /// </para>
+        /// </summary>
         MetalBoundFramebuffer AsBound { get; }
 
         /// <summary>Whether this is the swapchain's framebuffer, which is what row 15's present path asks before

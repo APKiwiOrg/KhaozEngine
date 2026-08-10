@@ -41,6 +41,10 @@ and nothing that does not want the Objective-C interop ever carries it.
 > Row 13 added the bind flush: all four `Set*ResourceSet` overloads record, and a draw emits one ARRAY call per
 > kind per stage through the binding table. See [The bind flush: one array call per kind per
 > stage](#the-bind-flush-one-array-call-per-kind-per-stage).
+> Row 16 finished what the device says about itself: the whole `GpuCapabilities` set at ZERO permitted
+> differences from the Veldrid Metal backend, every `GpuDeviceCounters` channel a device with no swapchain has,
+> and a frame capture that takes this backend's own queue pointer. See [What the device reports about
+> itself](#what-the-device-reports-about-itself).
 
 Spec, decisions and the nineteen-row work breakdown:
 [docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](../docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md).
@@ -157,6 +161,50 @@ results, and stopping is the conservative direction.
 Teardown drains first, then flips liveness, then releases the queue and the device, in that order. Metal has no
 device-level wait, so the drain is an empty command buffer committed and waited on, which covers the whole queue
 because a queue executes in enqueue order.
+
+## What the device reports about itself
+
+**`GpuCapabilities` is at ZERO permitted differences from the Veldrid Metal backend**, which is a stricter bar
+than the native Direct3D 11 backend's and is the right one here: the incumbent Metal backend has no capability
+defect to correct. A test creates both devices in one process and compares every member, and it carries a
+reflection check that the comparison covers the whole struct, so a member added later cannot weaken the
+assertion by being forgotten.
+
+Seven of the nine members are CONSTANTS, because the incumbent answers them with constants too. Metal's clip
+space already matches the engine's, so `ClipSpaceYInverted` is false with no viewport correction anywhere.
+`SamplerLodBias` is false, and it is the one capability that differs from both other native backends, because
+`MTLSamplerDescriptor` has no LOD bias field at all. `SupportsShadowMaps` is true unconditionally: the
+incumbent's own question routes to a format switch with no `R32_Float` case, so it answers true on every Metal
+device, and asking Metal a real question instead could only produce a parity difference.
+
+**`MaxMsaaSampleCount` asks `-supportsTextureSampleCount:` for 32, 16, 8, 4, 2 and 1 and takes the first yes.**
+That reproduces the incumbent's own walk, including the fact that it ignores the pixel format, and the
+format-blindness is CORRECT rather than a bug carried for parity: `-supportsTextureSampleCount:` is the only
+sample-count query Metal has and it takes no format, so a sample-count limit on Metal is format-independent by
+construction. Asking per format would be inventing a question the API cannot answer. Downward matters, because
+the supported counts are not required to be contiguous. An Apple M2 Max answers 4.
+
+**`GpuDeviceCounters` is filled in every channel a device has**, cumulative since creation, so a telemetry
+session brackets a window by subtracting two sampled rows. `BackpressureStallCount` here counts the uniform
+ring's segment acquire ALONE, where the same field on the native Vulkan backend also folds in a command list
+waiting on its own oldest buffer slot: this backend has no command-buffer pool to wait on, so a non-zero
+reading is unambiguously a pipeline-depth statement about `KE_METAL_FRAMES_IN_FLIGHT`. The off-timeline pair is
+deliberately NOT part of that number, because a deferred write blocks nobody and usually happens at load time.
+`FramesBegun` and the acquire pair belong to the present boundary, so a headless device reports zero for all
+three, which is literally true rather than a placeholder.
+
+**`GpuDeviceDiagnostics.SoftwareAdapter` is FALSE with confidence rather than null**, because Apple ships no
+software Metal rasterizer at all. That is a different fact from "nobody asked", which is what null means and
+what the Veldrid Metal path correctly reports, since it cannot answer. `DeviceLossReason` is the latch above.
+
+**A Metal GPU frame capture takes this backend's queue directly.** `GpuFrameCapture.ArmNext(path)` writes the
+next frame to an Xcode `.gputrace`, and on this backend the capture names the `MTLCommandQueue` the device
+created rather than reaching into Veldrid's private field by reflection, which is what the Veldrid Metal path
+still has to do. `MTL_CAPTURE_ENABLED=1` must be in the environment BEFORE the process launches, the same
+process-launch rule the validation variables have. Without it the capture asks Metal whether the destination is
+supported, gets no, and does nothing. That guard is not decoration: starting a capture in a process where
+capture was never enabled raises an Objective-C exception, which is a process abort rather than a caught error.
+An arm is consumed at a PRESENT boundary, so a headless device consumes none.
 
 ## The timeline, and why a fence here is two fields (M-F1 to M-F5)
 

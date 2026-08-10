@@ -2810,7 +2810,7 @@ device.
 | `SamplerAnisotropy` | **true**, hardcoded, reproducing `GraphicsDeviceFeatures(samplerAnisotropy: true)` | identical |
 | `SamplerLodBias` | **false**, because `MTLSamplerDescriptor` has no LOD bias at all | identical, and it is the one capability that differs from both other native backends |
 | `MaxMsaaSampleCount` | the incumbent's own computation reproduced, format-independent by API (M-C3) | asserted identical, and satisfiable by construction rather than by luck |
-| `SupportsShadowMaps` | the incumbent's own question: is `R32_Float` usable as BOTH render target and sampled | asserted identical |
+| `SupportsShadowMaps` | the incumbent's own question: is `R32_Float` usable as BOTH render target and sampled (**corrected at row 16: that question has NO device call in it on Metal, so this is a CONSTANT true. See the addendum below**) | asserted identical |
 | `SupportsCompute` | true | identical |
 | `SupportsCompletionFences` | **true** (M-F4) | identical, and it was already true |
 
@@ -2819,6 +2819,29 @@ same reason: the incumbent Metal backend has no capability defect to correct. Th
 reflection-completeness check phase 2 called the guard that matters most, that the comparison covers every
 member of `GpuCapabilities`, so a member appended later cannot silently weaken the assertion. It runs in one
 process on the Metal leg.
+
+**Row 16 addendum, corrected in place: `SupportsShadowMaps` is a CONSTANT here, and `MaxMsaaSampleCount`
+landed in this row rather than in row 14.**
+
+The table's `SupportsShadowMaps` cell reads as though a device were being asked something, which is what it
+means on the Vulkan sibling, where the same row is a real `vkGetPhysicalDeviceFormatProperties` call. Asking
+the incumbent's question ON METAL turns out to have no device call in it at all. `VeldridMap.SupportsShadowMaps`
+calls `GetPixelFormatSupport`, `MTLGraphicsDevice.GetPixelFormatSupportCore` asks
+`MTLFormats.IsFormatSupported`, and that switch has no `R32_Float` case and falls through to
+`default: return true`. The rest of the method only fills in a `PixelFormatProperties` struct nothing on this
+path reads, and returns true for a `Texture2D` unconditionally. So the incumbent answers TRUE on every Metal
+device in existence, and reproducing its question faithfully means reproducing a constant. Asking Metal a REAL
+question instead is M-N3's parity exception biting on the one member where it can: a native read could only
+ever DIFFER, and a difference here is not a red leg but the shadow path degrading to blob shadows on one
+backend with nothing reported, which is the phase-3 failure this section already inherits by name.
+
+`MaxMsaaSampleCount` is section 18's row 14 in the breakdown and section 14's table here, and the two rows
+cannot both own it: a capability read that leaves it pinned at 1 cannot be at ZERO-difference parity, because
+an Apple M2 Max reports 4 and the parity test runs on a real device the day it is written. So M-C3's walk is in
+`MetalCapabilityRead` with the rest of the table, and row 14 READS the capability rather than computing a
+second answer for the resolve. The pin's substance is unchanged: the walk is
+`MTLGraphicsDevice.GetSampleCountLimit`'s own, downward from 32 over `-supportsTextureSampleCount:`, and the
+argument-ignoring is recorded as correct rather than carried.
 
 **Two phase-3 lessons are inherited by name rather than rediscovered.** `DeviceName` is NOT trimmed: the
 incumbent takes `_device.name` as it comes, so a trim on the native path alone would fail parity on any device
@@ -2870,6 +2893,26 @@ backend owns the queue, so the native path hands the pointer in and the reflecti
 capture stops being one Veldrid refactor away from silently not working. The reflection version stays for the
 Veldrid Metal leg for as long as that leg ships. The append audit's third silent site (4.2) is the gate that
 decides which path runs, which is why this is a row rather than a nicety.
+
+**Row 16 addendum: the capture path could not be EXECUTED by a test until a guard was added, and that is a
+device fact rather than a preference.** `-startCaptureWithDescriptor:error:` in a process that was never
+launched with `MTL_CAPTURE_ENABLED=1` raises an Objective-C exception rather than answering false through its
+error parameter, and an Objective-C exception crossing a managed frame is a process abort that the routine's
+own `try` cannot intercept. So the whole capture path would have been untestable and the row would have shipped
+an interop route nobody had ever taken, which is exactly the shape row 12 wrote a rule against. Measured on an
+Apple M2 Max under macOS 26: `-[MTLCaptureManager supportsDestination:]` answers NO for BOTH destinations in
+that case, so asking it first makes the raising call unreachable in precisely the case that would raise. With
+the guard, both arms run for real: unset, the guard answers false and nothing starts, and with the variable set
+the capture starts from the native queue pointer and writes its `.gputrace` bundle. The reflection that
+survives for the Veldrid leg is its own named member (`VeldridMetalCommandQueue`) rather than a step inside the
+capture, so a `[GpuFact]` asks a live Veldrid Metal device for the queue directly and the next Veldrid rename
+is a red test instead of an empty output directory.
+
+**And the CONSUMPTION site is the present boundary, which is row 15's.** A capture brackets a whole frame
+between two presents rather than one submit, so `MetalGpuDevice.ServiceFrameCaptureAtPresentBoundary` is what
+row 16 builds and what row 15 calls after presenting the drawable. Until then an arm taken on a HEADLESS native
+device is consumed by nothing, which is the honest position rather than a gap: a headless device presents no
+frames.
 
 **Counters (M-G6).** `FramesBegun`, `DrainCount`, `DrainMs`, `BackpressureStallCount`, `BackpressureStallMs`,
 `OffTimelineDeferred`, `OffTimelineOutstanding`, `AcquireWaitCount` and `AcquireWaitMs` are all populated from
@@ -3111,7 +3154,7 @@ Each row becomes one implementation issue, `kind/backlog` unless noted, `confide
 | 11 | Pipelines: graphics and compute, the render pipeline descriptor from `GpuOutputDescription`, the `MTLVertexDescriptor` with **vertex streams pinned at the TOP of the buffer space (M-B2)** and its no-collision assertion against the index table, the over-31-bindings throw, depth-stencil state with its depth-target guard, blend state, and **the `SetPipeline` identity guard the incumbent lacks (M-R8)**. **Depends on 9 and 10**. (**Corrected in place: the state block's EMISSION is row 14's and only its DECISIONS are here**, because the deferred begin means no encoder exists at `SetPipeline` and the depth-target guard asks about the bound framebuffer. See the row 11 addendum in 6.3. The compute pipeline takes the FUNCTION route with no descriptor, per the addendum in section 13, and M-B2's addendum in 8.3 carries the corpus measurement and the device answer.) | `ResourceBindingModel` exists to manage a collision this row's numbering removes, and getting the vertex descriptor's layout index and the command list's bind index out of step binds a vertex buffer where a uniform should be. `setDepthStencilState` on a pass with no depth attachment is a validation error under the debug layer M-T7 arms on every run. A redundant pipeline bind costs a full re-activation today |
 | 12 | Render passes: deferred begin, **per-attachment clear folding into `loadAction` with `KE_METAL_CLEAR` (M-A2)**, explicit `storeAction`, the clear-only-pass flush at both forcing sites, the end-before-illegal-command invariant, and the framebuffer-change-guarded viewport and scissor with the `ScissorTestEnabled` gate and the unconditional plural setters | The incumbent writes every clear into `colorAttachments[0]`, so `ModelFB`'s normal and linear-depth attachments are never cleared, and `ModelRenderer.BeginModelPass` carries a shipped comment working around it incompletely. An unguarded viewport emit silently resets a live scissor, which is golden-visible and which phase 2's first spec froze the wrong way. The clear-only case is forced by the incumbent at two sites and a golden depends on it |
 | 13 | Bind flush: two-state per-slot records, **per-(kind, stage) ARRAY calls (M-R6)**, the offsets-only `setBufferOffset:` path per visible stage, the vertex-stream cache that is actually maintained, index-table invalidation on a pipeline switch, the composed `frameBase + rangeOffset + callerDynamicOffset` offset, and the device-free budget test. **Binds through 2.2b's table**, so an element with no entry for a stage is not bound for that stage | One native call per resource per stage is the #418 fan-out defect arriving on a second API, and the fork's binding layer does not declare a single array setter. An offsets-only rebind is the shadow pass's shape thousands of times a frame. An unaligned buffer offset is a validation error under the debug layer and undefined behaviour without it |
-| 14 | Draw and dispatch paths, vertex and index binding with its offset arithmetic, compute pipelines and dispatch with the SERIAL dispatch type, rule 1 and rule 2 behaviour, MSAA resolve with `MaxMsaaSampleCount` **READ OFF the incumbent's own computation and pinned with the note that the argument-ignoring is correct**, mip generation, and copies with the alignment throw and its unreachability assertion | The 36 goldens, and the compute `[GpuFact]` suite that proves rules 1 and 2 on every backend. Both prior phases had drafts that invented an MSAA formula and then asserted equality with the incumbent, which is the C4 failure phase 2 corrected in flight and the V-C5 ruling phase 3 made against both of its drafts. The serial dispatch type is what makes M-H4 true and the fork never chains dependent dispatches, so it is not grounded in its usage |
+| 14 | Draw and dispatch paths, vertex and index binding with its offset arithmetic, compute pipelines and dispatch with the SERIAL dispatch type, rule 1 and rule 2 behaviour, MSAA resolve with `MaxMsaaSampleCount` **READ OFF the incumbent's own computation and pinned with the note that the argument-ignoring is correct** (**corrected in place: the capability's own walk landed in ROW 16, because a capability read pinned at 1 cannot be at zero-difference parity on a device reporting 4. This row READS `GpuCapabilities.MaxMsaaSampleCount` and computes no second answer. See the row 16 addendum in section 14**), mip generation, and copies with the alignment throw and its unreachability assertion | The 36 goldens, and the compute `[GpuFact]` suite that proves rules 1 and 2 on every backend. Both prior phases had drafts that invented an MSAA formula and then asserted equality with the incumbent, which is the C4 failure phase 2 corrected in flight and the V-C5 ruling phase 3 made against both of its drafts. The serial dispatch type is what makes M-H4 true and the fork never chains dependent dispatches, so it is not grounded in its usage |
 | 15 | Swapchain: `CAMetalLayer` acquisition and configuration reproduced field for field, **unconditional `displaySyncEnabled` (M-W2)**, the drawable acquired at the present boundary and counted into the acquire-wait pair, `maximumDrawableCount`, **the nil-drawable orphan target and the skipped present that still counts into `FramesBegun`**, the separate present command buffer, queued resize and vsync change applied at the boundary after a drain, and stable framebuffer identity | The incumbent silently discards every draw of a frame whose drawable is nil, recreates the depth texture inline with no drain while in-flight frames may be reading it, throttles the CPU on `nextDrawable` with nothing counting it, and applies a vsync toggle only inside three values of a deprecated enum. Zero automated coverage anywhere in the net (MM7) |
 | 16 | Capability read and the ZERO-difference parity test with its reflection-completeness check, the `GpuDeviceCounters` fill, `GpuDeviceDiagnostics` with `softwareAdapter` and `deviceLossReason`, and **`MetalFrameCapture` taking the native queue pointer instead of reflecting into Veldrid's private field** | Capability drift is silent and golden-visible through `AntiAliasing.ResolveFor`. Phase 3's row-18 pair are both inherited by name: `DeviceName` is not trimmed, and `SupportsShadowMaps` asks what the incumbent asks rather than what the member's name suggests. The frame-capture reflection is one Veldrid refactor away from silently not working, and it is one of 4.2's three silent sites |
 | 17 | **MM6's measurement**: the two-uniform-buffer `[GpuFact]` probes with pixel READBACK assertions, and the RESULT recorded in this design doc whichever way it goes. **No shader change lands in this row**, and M-B4's invariant stays in force regardless | The memory records four sessions' worth of open question and one shipped consequence. A `GpuFact` that only asserts no-throw is how the all-black splat terrain shipped. A pass authorises FILING the invariant's removal with its own gates and nothing more |

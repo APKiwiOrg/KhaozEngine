@@ -1196,6 +1196,79 @@ builds from its function, and a descriptor missing an attribute the vertex funct
 Metal's own message (`Vertex attribute m_17(2) is missing from the vertex descriptor`). Every decision in front
 of those calls is device-free and runs on all five legs.
 
+### The native Metal capability read at zero permitted differences, the counter fill, and a frame capture with no reflection in it (#582)
+
+Row 16 of [docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md).
+What a native Metal device reports about ITSELF: the whole `GpuCapabilities` set, the whole
+`GpuDeviceCounters` fill, and `GpuDeviceDiagnostics` end to end into a telemetry session header. No public API
+changed and no seam member was added, which is decision M-G6 held to.
+
+**Seven of the nine capability members turn out to be constants, and re-reading the incumbent's source is what
+established that** rather than reasoning from what each member's name suggests. `MTLGraphicsDevice` answers
+`IsClipSpaceYInverted` and `IsDepthRangeZeroToOne` as hardcoded properties, and `samplerAnisotropy`,
+`samplerLodBias` and `computeShader` are literals in its `GraphicsDeviceFeatures`. Every one is a constant in
+`MetalCapabilityRead`, which has no device in it at all, so the rules that decide what the engine believes
+about the GPU are plain `[Fact]`s on a machine with no Metal.
+
+**`MaxMsaaSampleCount` reproduces the incumbent's own walk (M-C3), and it landed in this row rather than being
+left pinned at 1.** `MTLGraphicsDevice.GetSampleCountLimit` walks its `_supportedSampleCounts` array from the
+top and returns the first supported entry, ignoring both of its parameters. The reproduction is the same walk
+with the array left out: ask `-supportsTextureSampleCount:` for 32, 16, 8, 4, 2, 1 and stop at the first yes.
+Downward is load-bearing, because the supported counts are not required to be contiguous. The
+argument-ignoring is CORRECT rather than a bug carried for parity, since `-supportsTextureSampleCount:` is the
+only sample-count query Metal has and it takes no format, so a limit on Metal is format-independent by
+construction and `VeldridMap.MaxMsaaSampleCount`'s min over three formats is a no-op. An M2 Max reports 4, so
+leaving the capability pinned at 1 would have been a parity FAILURE on the first machine the row ran on rather
+than a conservative placeholder.
+
+**`SupportsShadowMaps` is a constant here, which corrects section 14's table in place.** The design describes
+the native source as "the incumbent's own question", which on the Vulkan sibling is a real
+`vkGetPhysicalDeviceFormatProperties` read. Asking that question on Metal has no device call in it:
+`GetPixelFormatSupportCore` asks `MTLFormats.IsFormatSupported`, whose switch has no `R32_Float` case and falls
+to `default: return true`, and the rest of that method only fills a properties struct. So the incumbent answers
+true on every Metal device that exists, and reproducing the question faithfully means reproducing the constant.
+Asking Metal a real question instead could only produce a difference, and a difference on that member is not a
+red leg but the shadow path degrading to blob shadows on one backend with nothing reported.
+
+**The parity test ran against two real devices in one process and every member agreed**, at M-G1's bar of ZERO
+permitted differences with nothing exempted, which is phase 3's bar rather than phase 2's because the incumbent
+Metal backend has no capability defect to correct. Both read `Apple M2 Max`, `msaa=4`, `shadows=True`,
+`aniso=True`, `lodBias=False`, `fences=True`. It carries the reflection-completeness check that makes the
+assertion mean something: a member appended to `GpuCapabilities` without a line added to the comparer fails it
+rather than passing quietly. The device-free half drives the walk over holed support sets, the
+ask-once-and-stop behaviour, and the no-trim device name.
+
+**The counter fill reads the accumulators the landed rows already keep**, with no parallel bookkeeping invented
+for it: the drain pair off `MetalTimeline.TotalDrain`, the backpressure pair off `MetalBackpressure`, and the
+off-timeline pair off the uniform ring's pending patches, which stay separate because a deferred patch blocks
+nobody. `FramesBegun` and the acquire pair are zero on a headless device and that is literally true rather than
+a placeholder, since both are the present boundary's and a headless device has no swapchain. The test asserts
+each seam field by IDENTITY against the device's own reading rather than by range, because the failure this
+kind of fill actually has is a transposed pair and a transposed pair of non-negative numbers passes every range
+check there is. `softwareAdapter` is pinned to the literal `false` all the way into the header JSON, where the
+Vulkan sibling could only assert that a boolean survived the path: Apple ships no software Metal rasterizer, so
+there is no machine on which it answers anything else.
+
+**`MetalFrameCapture` takes an `id<MTLCommandQueue>` pointer now (M-G5)** instead of reaching into Veldrid's
+private `_commandQueue` field. The native backend owns its queue, so on that path the reflection is deleted
+rather than handled, and what survives for the Veldrid Metal leg is isolated in `VeldridMetalCommandQueue` as
+one named member a `[GpuFact]` asks a live device about. That matters because the old failure mode was silent:
+a Veldrid rename returns zero, the capture is skipped, and the session that armed it finds an empty output
+directory, indistinguishable from a missing `MTL_CAPTURE_ENABLED` and from an unarmed run.
+`MetalGpuDevice.ServiceFrameCaptureAtPresentBoundary` is the native consumption site, which closes the third of
+the `GpuBackendKind` append audit's silently degrading sites: an arm taken on a native Metal session used to
+stay armed for ever. The swapchain row calls it after presenting, because a capture has to bracket whole frames
+rather than one submit.
+
+**One thing the device taught that the design did not predict, and it decided the shape.**
+`-startCaptureWithDescriptor:error:` in a process where capture was never enabled raises an Objective-C
+exception rather than answering false through its error parameter, and that is a process abort no managed
+`catch` can intercept, so the capture path could not have been exercised by a test at all. Measured on an Apple
+M2 Max under macOS 26: `-[MTLCaptureManager supportsDestination:]` answers NO for both destinations in that
+case. Guarding on it makes the raising call unreachable in exactly the case that would raise, and both arms now
+run for real. Without the variable the guard answers false and nothing starts. With `MTL_CAPTURE_ENABLED=1` the
+capture starts from the native queue pointer and writes its `.gputrace` bundle.
+
 ## 17.34.0
 
 ### The `vulkan-native` CI leg, both validation tiers, and the first validation layer this repo has ever installed (#529)

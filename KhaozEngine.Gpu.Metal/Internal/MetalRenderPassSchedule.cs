@@ -437,6 +437,17 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 _framebuffer.DepthHasStencil);
 
             IntPtr descriptor = _api.CreateRenderPassDescriptor(_beginColour.AsSpan(0, colour.Length), in depth);
+
+            // A NIL DESCRIPTOR IS NOT HANDED ON, and this is the one arm the design did not predict. M-W5's
+            // orphan case is about the ENCODER coming back nil, so the first draft ran both through one path and
+            // let the nil descriptor reach the encoder factory. That is not the same failure:
+            // renderCommandEncoderWithDescriptor: takes a nonnull argument, so passing nil is undefined rather
+            // than a documented refusal, and the device-free row that found this had a fake obligingly returning
+            // a perfectly good encoder for it. Refusing here makes both shapes the same OBSERVABLE outcome (a
+            // draw that goes nowhere, clears still owed) through two different code paths, which is what the two
+            // situations actually are.
+            if (descriptor == IntPtr.Zero) return IntPtr.Zero;
+
             IntPtr encoder;
             try
             {

@@ -81,6 +81,47 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
                 ObjCRuntime.Sel("copyFromBuffer:sourceOffset:toBuffer:destinationOffset:size:"),
                 source.Handle, sourceOffset, destination.Handle, destinationOffset, size);
 
+        /// <summary>
+        /// <c>-copyFromTexture:sourceSlice:sourceLevel:sourceOrigin:sourceSize:toBuffer:destinationOffset:destinationBytesPerRow:destinationBytesPerImage:</c>,
+        /// the READBACK direction of the copy above.
+        /// <para>
+        /// <b>IT IS HERE FOR ROW 12, AND THE REASON IS THAT A <c>[GpuFact]</c> WHICH ONLY ASSERTS NO-THROW IS HOW
+        /// THE ALL-BLACK SPLAT TERRAIN SHIPPED.</b> M-A2's whole claim is that a clear lands on the attachment
+        /// the caller named, and M-A4's is that the result is STORED rather than discarded by the descriptor's
+        /// own default. Neither is observable from a command buffer that completed: a pass that cleared the wrong
+        /// attachment and a pass that threw its result away both complete with a nil error. This selector is what
+        /// turns both into a pixel read, in
+        /// <c>MetalRenderPassGpuTests</c>.
+        /// </para>
+        /// <para>
+        /// ROW 14 (https://github.com/APKiwiOrg/KhaozEngine/issues/580) OWNS THE SEAM MEMBER ABOVE IT.
+        /// <c>IGpuCommandList.CopyTexture</c> into a staging texture is the engine's readback path and it is that
+        /// row's, so this is the interop half arriving one row early with a caller and a test rather than a
+        /// declaration nobody has run.
+        /// </para>
+        /// <para>
+        /// SAME ABI SHAPE AS THE UPLOAD COPY, mirrored: eleven arguments with three on the stack, one 24-byte
+        /// integer composite in each of the two positions. Row 1's spike ran this exact prototype against a
+        /// device as its by-value round-trip, so the shape is measured rather than assumed.
+        /// </para>
+        /// <para>
+        /// <paramref name="destinationBytesPerImage"/> IS THE DEPTH PITCH RATHER THAN ZERO here, unlike the
+        /// upload's, because a readback names where the NEXT slice would start and the engine's staging layout
+        /// has an answer for that (<c>MetalStagingLayout.DepthPitch</c>). For the single-slice copies this
+        /// backend records the two readings are interchangeable.
+        /// </para>
+        /// </summary>
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal void CopyFromTextureToBuffer(MTLTexture source, nuint sourceSlice, nuint sourceLevel,
+            MTLOrigin sourceOrigin, MTLSize sourceSize, MTLBuffer destination, nuint destinationOffset,
+            nuint destinationBytesPerRow, nuint destinationBytesPerImage)
+            => ObjCMsgSend.SendVoidTextureToBufferCopy(Handle,
+                ObjCRuntime.Sel("copyFromTexture:sourceSlice:sourceLevel:sourceOrigin:sourceSize:toBuffer:"
+                    + "destinationOffset:destinationBytesPerRow:destinationBytesPerImage:"),
+                source.Handle, sourceSlice, sourceLevel, sourceOrigin, sourceSize, destination.Handle,
+                destinationOffset, destinationBytesPerRow, destinationBytesPerImage);
+
         /// <summary><c>-endEncoding</c>. An encoder that is not ended blocks every later encoder on the same
         /// command buffer, and Metal traps on a second encoder while one is open, which is why the setup buffer
         /// ends this one in the same call that opened it.</summary>

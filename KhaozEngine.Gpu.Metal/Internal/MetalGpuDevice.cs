@@ -168,9 +168,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// (https://github.com/APKiwiOrg/KhaozEngine/issues/572): that factory calls this, and so does the
         /// <c>[GpuFact]</c> submit path.
         /// </summary>
+        /// <param name="clearMode">M-A2's position for this list. Defaults to the ONE reading of
+        /// <c>KE_METAL_CLEAR</c> this process took, which is what every real caller gets. A test passes a literal
+        /// instead, because reading the environment once per process means a test that mutated it would be racing
+        /// every other list in the same collection.</param>
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal MetalCommandList CreateCommandList()
+        internal MetalCommandList CreateCommandList(MetalClearMode? clearMode = null)
             => new(_commandBuffers, _uncommitted, new MetalEncoderSink(), this, _rings,
                 // A FRESH ARENA PER LIST (M-M8), not one shared by the device. Two lists recording on two threads
                 // must not sub-allocate from the same blocks, and the recycling proof is per list too: each slot
@@ -181,7 +185,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 // M-A2's POSITION, READ ONCE PER PROCESS AND COPIED PER LIST. Reading the environment per pass
                 // would let a mid-run change split one frame's clears between two policies, which is a shape the
                 // gate-1 A/B could not interpret. See MetalClearPolicy.
-                MetalClearPolicy.Current);
+                clearMode ?? MetalClearPolicy.Current);
 
         /// <inheritdoc/>
         /// <remarks>M-G2's <c>softwareAdapter</c> is ALWAYS false with confidence rather than null, because Apple

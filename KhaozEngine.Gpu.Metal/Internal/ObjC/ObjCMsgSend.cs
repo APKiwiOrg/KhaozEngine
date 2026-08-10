@@ -340,5 +340,25 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
         [SupportedOSPlatform("macos")]
         internal static partial void SendVoidPtrNUInt(IntPtr receiver, IntPtr sel, void* values, nuint count);
+
+        /// <summary>
+        /// <c>-[MTLBlitCommandEncoder copyFromTexture:sourceSlice:sourceLevel:sourceOrigin:sourceSize:toBuffer:destinationOffset:destinationBytesPerRow:destinationBytesPerImage:]</c>,
+        /// the READBACK mirror of <see cref="SendVoidBufferToTextureCopy"/> and what turns row 12's clear claims
+        /// into a pixel read rather than a completed command buffer.
+        /// <para>
+        /// THIS IS THE ONE PROTOTYPE ROW 1's SPIKE RAN VERBATIM. It is the exact declaration
+        /// <c>MetalInteropSpike.Native.cs</c> named <c>MsgSendVoidBlitToBuffer</c> and used to close the by-value
+        /// struct round trip: two 24-byte integer composites interleaved with scalars on both sides, eleven
+        /// arguments against eight registers so the last three spill, and the value that came back was the
+        /// <c>(191, 128, 64, 255)</c> readback section 3.1 records. So its argument placement is measured to a
+        /// stronger standard than any other shape in this file.
+        /// </para>
+        /// </summary>
+        [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial void SendVoidTextureToBufferCopy(IntPtr receiver, IntPtr sel, IntPtr sourceTexture,
+            nuint sourceSlice, nuint sourceLevel, MTLOrigin sourceOrigin, MTLSize sourceSize,
+            IntPtr destinationBuffer, nuint destinationOffset, nuint destinationBytesPerRow,
+            nuint destinationBytesPerImage);
     }
 }

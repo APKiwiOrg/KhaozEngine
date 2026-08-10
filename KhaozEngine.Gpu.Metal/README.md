@@ -430,8 +430,9 @@ therefore invalidate nothing, and with a fresh table object per program that com
 that is never equal, so every switch would invalidate everything, which is exactly what the incumbent already
 does. Tables are keyed on a content string rendering the layout shape and every entry, canonicalised at
 shader-set creation because a table is a property of the emission, and never evicted, because a rebuilt instance
-would silently start invalidating again. Over the shipped catalog **42 programs produce 17 distinct tables and 25
-programs share one with an earlier program**.
+would silently start invalidating again. Measured over the shipped catalog at row 10, on 2026-08-10, **42
+programs produced 17 distinct tables and 25 programs shared one with an earlier program**. That is a measurement
+of the renderers as they stood rather than a property of this package, so it moves as the catalog does.
 
 ## Three decisions worth knowing before reading the code
 

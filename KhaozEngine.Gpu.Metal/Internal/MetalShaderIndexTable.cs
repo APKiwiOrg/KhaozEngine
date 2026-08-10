@@ -254,9 +254,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// observable and belongs in here too.
         /// <para>
         /// AND ROW 10 MEASURED WHAT THAT WOULD COST, so this is a constraint with a size rather than a caution.
-        /// Over the shipped catalog 25 of 42 programs merge onto an earlier program's table and 16 of those 25
-        /// disagree on at least one element NAME, so a member reading one off <see cref="Layouts"/> would be
-        /// reading another program's name in the majority of merges.
+        /// Measured over the shipped catalog at row 10, on 2026-08-10, 25 of 42 programs merged onto an earlier
+        /// program's table and 16 of those 25 disagreed on at least one element NAME, so a member reading one off
+        /// <see cref="Layouts"/> would be reading another program's name in the majority of merges. The catalog is
+        /// a property of the shipped renderers rather than of this type, so read those numbers as the measurement
+        /// they were and take them again before quoting them.
         /// <c>MetalIndexTableDedupTests.TwoTablesDifferingOnlyInElementNames_AreInterchangeable</c> pins the
         /// invariant behaviourally, which catches a change to this key or to
         /// <see cref="RequireLayoutShape"/> and NOT a new member that reads a name. Making that mechanical is

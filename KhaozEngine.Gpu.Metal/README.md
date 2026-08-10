@@ -474,7 +474,9 @@ Measured across the 34 shipped graphics programs, the worst full activation is *
 is the only shape whose two stages between them read all three tables), and **no shipped program produces a
 non-contiguous run**, so the extra call a hole would cost is never paid today. A hole CUTS the run rather than
 being padded with nil, because Metal's tables are absolute and a nil in a gap would unbind whatever another slot
-legitimately put there. The budget test asserts an EQUALITY rather than a ceiling: it walks each program's own
+legitimately put there. A nil HANDLE is the opposite case and does not cut anything: the index is being written,
+and it is written with nil, which Metal reads as an unbound index. That is what a resource disposed since its
+set was created degrades to, including in the middle of a run. The budget test asserts an EQUALITY rather than a ceiling: it walks each program's own
 binding table, counts the contiguous index runs, and requires the flush to have emitted exactly that many array
 calls. Over the whole catalog 92 array calls carry 131 arguments, and a flush that emitted one call per argument
 would be red on both numbers while satisfying any per-(space, stage) ceiling that could be written.

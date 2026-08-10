@@ -339,6 +339,75 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
+        /// A NIL IN THE MIDDLE OF A RUN DOES NOT SPLIT IT, which is the deliberate half of the disposal
+        /// degradation and the half nothing exercised. A HOLE cuts a run because the index is not being written
+        /// at all and a nil there would unbind whatever another slot legitimately put in it. A NIL HANDLE is the
+        /// opposite case: the index IS being written, and what it is written with is nil, which Metal reads as an
+        /// unbound index. So the run stays whole and the middle entry carries a nil.
+        /// <para>
+        /// THREE BUFFERS ARE THE MINIMUM THAT CAN TELL THOSE APART. In a two-element run the nil is always at an
+        /// end, where "the run did not split" and "the run stopped early" produce the same call log.
+        /// </para>
+        /// <para>
+        /// AND THE MIDDLE ONE IS SET 1's, which is the emission deciding rather than the fixture: the two sets'
+        /// three buffers land at 0, 1 and 2 in both stages with slot 1's between slot 0's two. That is 2.2b's
+        /// point arriving for free (an index is a fact about the emission, not about the slot), and it is read
+        /// off the table below rather than assumed, so a cross-compiler bump that renumbers them fails on the
+        /// premise instead of on the subject.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void ANilHandleBetweenTwoLiveOnesDoesNotSplitTheRun()
+        {
+            using var harness = new MetalRingHarness();
+            MetalShaderIndexTable table = MetalTwoSetProgram.Table();
+
+            MetalBuffer frame = harness.NewBuffer(64, GpuBufferUsage.UniformBuffer);
+            MetalBuffer material = harness.NewBuffer(32, GpuBufferUsage.UniformBuffer);
+            MetalBuffer model = harness.NewBuffer(32, GpuBufferUsage.UniformBuffer);
+
+            MetalBoundSet slotZero = MetalBindProgram.Set(
+                new MetalBoundResource(MetalIndexSpace.Buffer, frame, 0, 64, AppliesCallerOffset: true),
+                new MetalBoundResource(MetalIndexSpace.Buffer, material, 0, 32, AppliesCallerOffset: false));
+
+            MetalBoundSet slotOne = MetalBindProgram.Set(
+                new MetalBoundResource(MetalIndexSpace.Buffer, model, 0, 32, AppliesCallerOffset: false));
+
+            // THE PREMISE, READ OFF THE TABLE: three contiguous indices with slot 1's buffer in the middle.
+            Assert.True(table.TryGetIndex(1, MetalTwoSetProgram.ObjectBinding, MetalShaderStage.Fragment,
+                out MetalIndexTableEntry middle));
+            Assert.True(table.TryGetIndex(0, MetalTwoSetProgram.FrameBinding, MetalShaderStage.Fragment,
+                out MetalIndexTableEntry frameEntry));
+            Assert.True(table.TryGetIndex(0, MetalTwoSetProgram.MaterialBinding, MetalShaderStage.Fragment,
+                out MetalIndexTableEntry materialEntry));
+            Assert.Equal(
+                new[] { middle.Index - 1, middle.Index, middle.Index + 1 },
+                new[] { materialEntry.Index, middle.Index, frameEntry.Index });
+
+            var records = MetalBindRecords.ForGraphics();
+            var calls = new FakeMetalEncoderCalls();
+            var sink = new FakeMetalEncoderSink(calls);
+
+            harness.DisposeWithoutRelease(model);
+            Assert.Equal(IntPtr.Zero, ((IMetalBindable)model).BindHandle);
+
+            records.SetIndexTable(table);
+            records.Record(0, slotZero, 0);
+            records.Record(1, slotOne, 0);
+            records.Flush(ref sink, Encoder, Epoch, segment: 0);
+
+            FakeMetalArrayWrite buffers = Single(calls, MetalShaderStage.Fragment, MetalIndexSpace.Buffer);
+
+            // ONE CALL, THREE INDICES, and the middle pointer nil with both neighbours live.
+            Assert.Equal(3, buffers.Objects.Length);
+
+            int at = middle.Index - (int)buffers.FirstIndex;
+            Assert.Equal(IntPtr.Zero, buffers.Objects[at]);
+            Assert.NotEqual(IntPtr.Zero, buffers.Objects[at - 1]);
+            Assert.NotEqual(IntPtr.Zero, buffers.Objects[at + 1]);
+        }
+
+        /// <summary>
         /// DOOR ONE OF THE PARTIAL FLUSH: a throw inside the slot walk happens with entries already STAGED, and
         /// they are staged in the batch rather than emitted, so <see cref="MetalArgumentBatch.Emit"/>'s own
         /// clearing <c>finally</c> is never reached. Left there, they belong to the NEXT flush, which emits them

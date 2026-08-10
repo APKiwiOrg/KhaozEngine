@@ -8861,8 +8861,18 @@ through `Factory` (buffers, textures, samplers, fences and framebuffers), expose
 for staging resources, COMPILES SHADERS through `CreateShadersFromSpirv` and
 `CreateComputeShaderFromSpirv`, and creates the RESOURCE LAYOUTS and RESOURCE SETS a pipeline will bind
 through. A recording can BIND a framebuffer and clear it, and the clear lands on the attachment it
-names. It throws from every member whose row has not landed with a message naming that row, so there
-are no pipelines yet and nothing can be drawn.
+names, and it can BIND RESOURCE SETS through all four `Set*ResourceSet` overloads. It throws from every member
+whose row has not landed with a message naming that row, so there are no pipelines yet and nothing can be
+drawn.
+
+**A resource-set bind RECORDS and the next draw emits it**, which is worth knowing only because of what it
+means for a per-draw dynamic offset. Re-binding the same set with the same offset costs nothing at all, so a
+renderer that binds its sets on every draw pays for the first one and nothing after it. Moving only the offset
+costs one `setBufferOffset:` per stage that actually reads the buffer, which is the cheapest rebind Metal has.
+And an element the emitted shader does not reference in a stage is NOT bound for that stage, which is the same
+"where the resource actually went" rule the shader section above describes, applied to visibility instead of to
+indices: `GpuResourceLayoutElement`'s `Stages` is what you declared and the emission is what the compiler did,
+and this backend binds on the second.
 
 **The shader path takes the same GLSL 450 every other backend takes**, so there is nothing to write differently
 for it: sources go in, an `MTLLibrary` and an `MTLFunction` per stage come out, and a compute shader reports the

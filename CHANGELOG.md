@@ -976,6 +976,82 @@ producing a `NullReferenceException` from inside the refusal that exists to name
 attachment-action maps also list every enum member with a throwing default, since a new member absorbed into
 `Store` would emit a store where the plan asked for something else and complete with no error.
 
+### The native Metal bind flush: one array call per kind per stage, and the offsets-only rebind (#579)
+
+The native Metal backend gets all four `IGpuCommandList.Set*ResourceSet` overloads and the argument-table flush
+behind them, from row 13 of
+[docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md).
+Nothing selects this backend and pipelines and draws are still other rows', so the visible effect is that a
+recording can now bind resource sets. `GpuBackendKind.Metal`, through Veldrid, remains the working Metal
+backend.
+
+**One ARRAY call per (kind, stage), which is the row's whole point.**
+`setVertexBuffers:offsets:withRange:` and its five siblings take an `NSRange`, so one call writes a contiguous
+run of a stage's argument table. A full activation of a model-shaped set is one buffer call, one texture call
+and one sampler call on the fragment stage plus one buffer call on the vertex stage. The Veldrid Metal backend
+emits one call per element per stage, which is the same fan-out defect [#418](https://github.com/APKiwiOrg/KhaozEngine/issues/418)
+records on Direct3D 11 and which this program already paid to fix once, and the vendored fork's binding layer
+cannot express the alternative at all because it declares no array setter. So the six selectors, the two offset
+setters and the three `objc_msgSend` shapes behind them are engine-owned and hand-written, one of them passing
+an `NSRange` BY VALUE: sixteen bytes of integers is exactly the arm64 boundary where a composite stops being
+passed indirectly and rides two general registers instead, and getting that wrong shifts every argument after
+it with nothing after it to notice. Row 1's interop spike measured that shape against real hardware and
+`MetalBindFlushGpuTests` sends every one of the seven new selectors to a real encoder.
+
+**Measured over the shipped catalog, and neither number was predicted.** Across the 34 shipped graphics
+programs the worst full activation is **6 array calls** (`Water`, the only shape whose two stages between them
+read all three argument tables), and **no shipped program produces a non-contiguous index run**, so the extra
+call a hole costs is never paid on anything the engine ships today. A hole CUTS the run rather than being padded
+with nil, because Metal's argument tables are absolute: a nil written into a gap would unbind whatever another
+slot legitimately put there.
+
+**The offsets-only rebind is a different selector rather than a cheaper variant, and what selects it is what
+was EMITTED.** A slot whose only change is its per-draw dynamic offset emits one `setVertexBufferOffset:` or
+`setFragmentBufferOffset:` per stage that actually reads the buffer, writing an integer into the encoder's
+command stream where the array setter writes whole table entries. That is the shadow pass's shape thousands of
+times a frame. `setBufferOffset:atIndex:` adjusts an EXISTING binding, so its precondition is that this set's
+resources are in this encoder's table right now, and the record answers that question by comparing against the
+bindings array it last wrote plus the encoder epoch it wrote them in, rather than by carrying a third state the
+recorder would have to classify correctly. A slot bound to another set and back again with no draw between
+therefore takes the offsets-only arm correctly, because the first set never left the table.
+
+**Every bind record carries its own encoder-epoch stamp, and the vertex-stream cache arrives WITH its
+invalidation.** A record-time `UpdateBuffer` big enough to take the staging path opens a blit encoder mid-pass,
+and the reopened pass is a new encoder whose argument table is empty. The Veldrid Metal backend tracks
+vertex-stream binds and does not clear that tracking at a pass end, and what stops it being a corruption is a
+second defect that makes the cache permanently cold. Porting the tracking without the invalidation would ship a
+corruption no golden reaches, since the goldens do not restart a render pass mid-scene, so both land together:
+two vertex streams cost one array call on the draw that binds them, zero on every draw after, and one again
+after any boundary. The sharp device-free assertion is that a boundary forces a FULL rebind even when the only
+thing that moved was the dynamic offset, because `setBufferOffset:` against an index holding no buffer is
+undefined.
+
+**A pipeline switch invalidates recorded slots only where the incoming program's binding TABLE differs**, which
+row 10's content deduplication is what makes possible. A switch that does invalidate CLEARS the epoch stamps
+rather than only marking slots dirty, because the incoming program expects each element at a different index
+and an offsets-only rebind would move an offset on a binding it never reads. The seam a pipeline calls is
+`MetalBindRecords.SetIndexTable`, which composes with the identity guard rather than duplicating it.
+
+**A buffer bind's offset is `frameBase + rangeOffset + callerDynamicOffset`**, where the frame base is the ring
+segment THAT RECORDING captured at its `Begin` and never the allocator's live one: shipped paths open several
+command lists per frame, so a bind composed against the live segment would name a version the recording never
+wrote. A composed window that would leave its own segment is refused by name, and that refusal is genuinely
+this path's: the same shared check at set creation passes a caller offset of zero, where the window is already
+bounded by the buffer's logical size and the stride is that size rounded up, so it cannot fire there. Nothing
+downstream would report it either, because `setBufferOffset:` carries an offset and no length at all.
+
+**Binds go through the binding table, so an element with no entry for a stage is not bound for that stage.**
+That is the same rule row 9's table states and row 10's sets defer to, arriving at the place it actually binds:
+over the shipped corpus 95 of 254 stage/element slots are unreferenced, so the partial-stage path runs
+constantly rather than rarely. A non-zero dynamic offset against a set whose layout declares no dynamic element
+is refused by name, because it would otherwise be dropped and the draw would read the buffer's first slot.
+
+The whole schedule is device-free and runs on every leg, including the two assertions that fail on a corruption
+rather than on bookkeeping (the encoder boundary and the pipeline switch each beating the offsets-only
+comparison), the composed offset against a real uniform ring, and the field walk asserting the records reach no
+factory, no device and no layout. What needs a device is that the seven new Objective-C prototypes are accepted
+by a real encoder, which is two `[GpuFact]` rows.
+
 ## 17.34.0
 
 ### The `vulkan-native` CI leg, both validation tiers, and the first validation layer this repo has ever installed (#529)

@@ -35,6 +35,9 @@ and nothing that does not want the Objective-C interop ever carries it.
 > Row 10 added resource layouts and resource sets, neither of which touches Metal at all, and deduplicated the
 > binding table so two programs that map every element the same way share one. See
 > [Layouts, sets, and the table two pipelines can share](#layouts-sets-and-the-table-two-pipelines-can-share).
+> Row 13 added the bind flush: all four `Set*ResourceSet` overloads record, and a draw emits one ARRAY call per
+> kind per stage through the binding table. See [The bind flush: one array call per kind per
+> stage](#the-bind-flush-one-array-call-per-kind-per-stage).
 
 Spec, decisions and the nineteen-row work breakdown:
 [docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](../docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md).
@@ -189,10 +192,10 @@ blocked inside the native call keeps blocking until its current slice expires.
 
 `IGpuDevice.Factory` creates buffers, textures, samplers, fences and framebuffers, and the device's
 `PointSampler` and `LinearSampler` pair exists. A FRAMEBUFFER can be bound and cleared, which is row 12's and
-which the render-pass section below covers. Nothing else can be bound yet, because the members that record a
-pipeline or a resource set belong to later rows, so what is usable today is creation, the framebuffer bind and
-its clears, the device-level uploads, the record-time `UpdateBuffer` described below, and readback through
-`Map`.
+which the render-pass section below covers, and a RESOURCE SET can be bound, which is row 13's and which the
+bind-flush section covers. What cannot be bound yet is a PIPELINE, so nothing is drawn: what is usable today is
+creation, the framebuffer bind and its clears, the resource-set binds, the device-level uploads, the record-time
+`UpdateBuffer` described below, and readback through `Map`.
 
 **Every buffer is `MTLStorageModeShared` and every texture is `MTLStorageModePrivate`**, reproducing the
 incumbent. On unified memory a Shared buffer's `contents()` pointer is stable for its life and visible to both
@@ -454,6 +457,54 @@ shader-set creation because a table is a property of the emission, and never evi
 would silently start invalidating again. Measured over the shipped catalog at row 10, on 2026-08-10, **42
 programs produced 17 distinct tables and 25 programs shared one with an earlier program**. That is a measurement
 of the renderers as they stood rather than a property of this package, so it moves as the catalog does.
+
+## The bind flush: one array call per kind per stage
+
+All four `Set*ResourceSet` overloads are live. A bind RECORDS into a per-slot `(set, offset)` array and emits
+nothing, and the next draw or dispatch flushes every dirty slot, so several binds between two draws collapse to
+one flush and a bind that changes nothing costs nothing.
+
+**A flush emits ONE ARRAY CALL per (kind, stage), not one call per resource per stage.**
+`setVertexBuffers:offsets:withRange:` and its five siblings take a range, so a full activation of a
+model-shaped set is one buffer call, one texture call and one sampler call on the fragment stage plus one
+buffer call on the vertex stage. The incumbent emits one call per element per stage, which is a fan-out defect
+this engine already paid to fix once on another API, and the vendored Metal fork's binding layer does not
+declare a single array setter, so these are hand-written against the ABI a spike measured on real hardware.
+Measured across the 34 shipped graphics programs, the worst full activation is **6 array calls** (`Water`, which
+is the only shape whose two stages between them read all three tables), and **no shipped program produces a
+non-contiguous run**, so the extra call a hole would cost is never paid today. A hole CUTS the run rather than
+being padded with nil, because Metal's tables are absolute and a nil in a gap would unbind whatever another slot
+legitimately put there.
+
+**A slot whose only change is its dynamic offset takes a different selector entirely.**
+`setVertexBufferOffset:atIndex:` writes an integer into the encoder's command stream where `setBuffers:` writes
+whole argument-table entries, and it is emitted once per stage that actually reads the buffer. That is the
+shadow pass's shape thousands of times a frame. It is only legal for a slot whose set is the one already in
+this encoder's table, so what selects it is a comparison against what the flush last EMITTED rather than a
+third state on the record: a slot bound to another set and back again with no draw between takes it correctly,
+because the first set never left the table.
+
+**Every bind record carries an encoder-epoch stamp, so a boundary re-activates it.** A record-time
+`UpdateBuffer` big enough to take the staging path opens a blit encoder mid-pass, and the reopened pass is a new
+encoder with an empty argument table. The incumbent tracks vertex-stream binds and does NOT invalidate them
+there, and is saved only by a second defect that makes its cache permanently cold. Porting the tracking without
+the invalidation would ship a corruption no golden reaches, because the goldens do not restart a render pass
+mid-scene, so both arrive together here: two vertex streams cost one array call on the draw that binds them,
+zero on every draw after, and one again after any encoder boundary.
+
+**A pipeline switch invalidates recorded slots only where the incoming program's binding TABLE differs.** Two
+programs sharing a table invalidate nothing, which the deduplication above is what makes possible. A switch
+that does invalidate clears the epoch stamps rather than only marking slots dirty, because the incoming program
+expects each element at a different index and an offsets-only rebind would move an offset on a binding it never
+reads.
+
+**A buffer bind's offset is `frameBase + rangeOffset + callerDynamicOffset`**, where the frame base is the ring
+segment THAT RECORDING captured at its `Begin` and never the allocator's live one: shipped paths open several
+lists per frame, so a bind composed against the live segment would name a version the recording never wrote. A
+composed window that would leave its own segment is refused by name, and that refusal is genuinely this path's:
+the same check at set creation passes a zero caller offset and cannot fire. Nothing else would report it, since
+`setBufferOffset:` carries an offset and no length at all.
+
 ## Render passes: a descriptor per pass, and one index the incumbent gets wrong
 
 `IGpuDevice.Factory.CreateFramebuffer` gives back a render target, and `SetFramebuffer`, `ClearColorTarget`,

@@ -797,6 +797,30 @@ the authority is the per-program INDEX TABLE read out of the MSL, so M-R9 compar
 so two programs with identical tables invalidate nothing. That is the fine comparison the reuse-first draft
 said did not exist, computed off the source the Metal-idiomatic draft did not use.
 
+**Corrected in place at row 13: "two states" is right about the RECORD and the offsets-only arm is still chosen,
+and this section reads as though those two sentences were in tension.** They are not, and the resolution is
+worth stating because it is the one thing an implementer of this row is most likely to get wrong in the other
+direction, by adding a third state. `setBufferOffset:atIndex:` adjusts an EXISTING binding, so its precondition
+is that this set's resources are in THIS ENCODER'S table right now, and that is a question about what the flush
+last EMITTED rather than about what a caller last recorded. A third record state would have to be right about
+the encoder epoch as well as about which fields moved, which is exactly the half a recorder gets wrong: it would
+say "offsets only" for a slot whose set is unchanged across an encoder boundary, and `setBufferOffset:` against
+an index holding no buffer is undefined. So the record keeps two states and each slot additionally remembers the
+bindings array it last wrote plus the epoch it wrote it in, and the arm is DERIVED at flush time from that pair.
+It also comes out strictly better than a third state would: a slot bound to another set and back again with no
+draw between takes the offsets-only arm correctly, because the first set never left the table.
+
+**And the run-cutting cost this section assumes is zero on everything the engine ships, measured at row 13.**
+The array setters take an `NSRange`, so a non-contiguous set of indices within one (space, stage) costs one
+extra call per hole rather than one call with nil padding, which is deliberate: Metal's argument tables are
+absolute, so a nil written into a gap would unbind whatever another slot legitimately put there. Over the 34
+shipped graphics programs, activated in full through the shipped flush, **no program produces a non-contiguous
+run at all**, and the worst full activation is **6 array calls** (`Water`, the only shape whose two stages
+between them read all three argument tables). `MetalBindBudgetTests` reports both numbers. Read them as a
+measurement of the renderers as they stood rather than as a property of the mechanism: a shader change can
+introduce a hole, and the bound the budget test actually asserts is one call per (space, stage) plus one per
+hole.
+
 ### 2.8 The #531 extraction: scope, list and trigger
 
 **#531 is explicit that this phase decides it**, and equally explicit about how: re-assess each candidate
@@ -1337,6 +1361,25 @@ stream, invalidated wholesale by M-R4. The incumbent pays one per stream per dra
 native per-draw marginal is strictly LOWER and the budget test freezes the lower number. **That marginal is a
 REGRESSION target rather than a parity target**, and it is worth naming: a future change reintroducing the
 unconditional bind is a red test rather than an invisible cost.
+
+**Corrected in place at row 13, on two points about the streams.** First, the flush issues one
+`setVertexBuffers:offsets:withRange:` per contiguous RUN of dirty streams rather than one `setVertexBuffer` per
+stream, and it does so through the same array setter the resource buffers use, which is why `IMetalEncoderSink`
+has no vertex-stream member of its own. A vertex stream IS a `[[buffer(n)]]` binding of the vertex stage, pinned
+at the top of that space by M-B2 while the resource buffers grow from 0 upward, so the two runs come from
+opposite ends and cannot overlap. Two dirty streams are therefore ONE native call, which is lower again than
+this paragraph's own number. Second, the row split: the CACHE and its invalidation are row 13's, because 6.2 is
+explicit that porting the tracking without the invalidation ships a corruption no golden reaches, so the two
+cannot land in different rows. The seam member `SetVertexBuffer` that feeds it is row 14's. `MetalEncoderMark`'s
+own header put the whole thing on row 14 and is corrected to match. There is no index-buffer record on this
+backend at all, because Metal takes the index buffer in the draw call rather than binding it beforehand.
+
+**And M-B2's numbering is a shared TYPE rather than a subtraction written twice**, which is 8.3's own
+requirement made mechanical: `MetalVertexStreamIndex` carries the top index, the per-slot mapping the flush's
+`setVertexBuffers:` index reads, and the floor row 11's no-collision assertion compares an emitted index
+against. 8.3 says the index only has to agree between the `MTLVertexDescriptor`'s layout index and the
+`setVertexBuffer` index, both of which this backend owns, and a device reports nothing at all when they
+disagree, so the one place they can be spelled is the place they are both read from.
 
 ### 6.4 The budget seam (M-T2)
 

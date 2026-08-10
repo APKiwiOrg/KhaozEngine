@@ -103,15 +103,31 @@ namespace KhaozEngine.Gpu.Internal
         {
             _capturing = false;
 
+            // THE ZERO-QUEUE REFUSAL COMES BEFORE EVERY P/INVOKE IN THIS TYPE, WHICH IS WHAT MAKES IT AN ANSWER ON
+            // EVERY PLATFORM. libobjc does not exist on Linux or Windows, so the pool push below is a
+            // DllNotFoundException there, and pushing before this check threw that exception out of Start on the
+            // two legs where zero is the ONLY input this member ever gets. Zero is exactly what a Veldrid layout
+            // change produces, so the refusal has to be a false rather than a throw wherever it is reached.
+            if (commandQueue == IntPtr.Zero) return false;
+
             // THE POOL IS PUSHED HERE RATHER THAN LEFT TO THE CALLER'S, which is M-N5's rule honoured on the one
             // path the package's own architecture walk cannot see: this type lives in KhaozEngine.Gpu and keeps
             // its own objc_msgSend declarations, so the walk over KhaozEngine.Gpu.Metal never reaches it. The
             // NSString, the NSURL and the shared manager are all autoreleased, and a present boundary on a thread
-            // with no pool would leak them for the life of the process.
-            IntPtr pool = PoolPush();
+            // with no pool would leak them for the life of the process. What keeps that true now that the push is
+            // one call among several is MetalAutoreleaseArchitectureTests, which reads this member's IL.
+            //
+            // IT IS PUSHED INSIDE THE TRY, and popped only if the push returned, because the push is itself a call
+            // into libobjc and belongs to the catch below like every other one. The flag rather than a zero
+            // sentinel: objc_autoreleasePoolPop(nullptr) is documented as "pop everything", so a pop skipped or
+            // taken on the strength of a returned pointer would be guessing about a value this code never has to
+            // interpret.
+            bool pooled = false;
+            IntPtr pool = IntPtr.Zero;
             try
             {
-                if (commandQueue == IntPtr.Zero) return false;
+                pool = PoolPush();
+                pooled = true;
 
                 // BEFORE ANY OTHER CALL. See the class remarks: starting a capture in a process where capture was
                 // never enabled raises an Objective-C exception, which is a process abort rather than something
@@ -146,7 +162,7 @@ namespace KhaozEngine.Gpu.Internal
                 }
             }
             catch { return false; }
-            finally { PoolPop(pool); }
+            finally { if (pooled) PoolPop(pool); }
         }
 
         /// <summary>
@@ -158,11 +174,19 @@ namespace KhaozEngine.Gpu.Internal
         /// document with the frame's work still running.</param>
         internal static void Stop(Action waitForIdle)
         {
+            // NOTHING IS CAPTURING UNTIL A START SUCCEEDED, so this refusal is also the platform refusal: the only
+            // thing that ever sets the flag is the start call below a successful destination guard, which no
+            // non-macOS process reaches. It is the first statement here for the reason the zero-queue check is the
+            // first statement in Start, and it is why this member's own row is a plain [Fact] too.
             if (!_capturing) return;
 
-            IntPtr pool = PoolPush();
+            bool pooled = false;
+            IntPtr pool = IntPtr.Zero;
             try
             {
+                pool = PoolPush();
+                pooled = true;
+
                 waitForIdle();
                 IntPtr mgr = Send(GetClass("MTLCaptureManager"), Sel("sharedCaptureManager"));
                 Send(mgr, Sel("stopCapture"));
@@ -170,7 +194,7 @@ namespace KhaozEngine.Gpu.Internal
             catch { /* best-effort */ }
             finally
             {
-                PoolPop(pool);
+                if (pooled) PoolPop(pool);
                 _capturing = false;
             }
         }

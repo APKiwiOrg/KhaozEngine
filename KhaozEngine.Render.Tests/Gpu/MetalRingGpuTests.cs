@@ -144,6 +144,56 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
+        /// AND A DISPOSED RING-BACKED BUFFER TAKES NEITHER WRITE PATH, which is the one disposal case that would
+        /// CORRUPT rather than fail. The ring holds the <c>contents()</c> pointer the buffer took at creation and
+        /// disposal releases the <c>MTLBuffer</c> under it, so a write that still reached the ring would be a
+        /// <c>memcpy</c> into memory the driver has taken back. Both paths read
+        /// <see cref="MetalBuffer.Ring"/> BEFORE any disposal check of their own, so the property answering null is
+        /// what routes them onto the device write's named refusal and the record path's nil-handle no-op.
+        /// <para>
+        /// IT IS A <c>[GpuFact]</c> BECAUSE A <see cref="MetalBuffer"/> CANNOT BE BUILT WITHOUT AN
+        /// <c>MTLDevice</c>: its only constructor runs behind <c>MetalBuffer.Create</c>, which allocates. What
+        /// each path DOES with the null ring is device-free, in <c>MetalBufferUploadTests</c> for the record fork
+        /// and in this file's siblings for the ring itself.
+        /// </para>
+        /// </summary>
+        [GpuFact]
+        public void ADisposedRingBackedBufferIsRefusedByTheDeviceWriteAndRecordsNothing()
+        {
+            if (!Available()) return;
+
+            using MetalGpuDevice device = CreateHeadless();
+            var buffer = (MetalBuffer)device.Factory.CreateBuffer(
+                new GpuBufferDescription(256, GpuBufferUsage.UniformBuffer));
+            using MetalCommandList list = device.CreateCommandList();
+
+            Assert.NotNull(buffer.Ring);
+
+            buffer.Dispose();
+            Assert.Null(buffer.Ring);
+
+            byte[] payload = Payload(32, seed: 12);
+
+            // THE DEVICE PATH: the null ring falls through to MetalBuffer.Write, which is disposal-guarded.
+            Assert.Throws<ObjectDisposedException>(
+                () => device.UpdateBuffer(buffer, 0, (ReadOnlySpan<byte>)payload));
+
+            // THE RECORD PATH: the null ring falls through to the staging fork, which finds the nil handle and
+            // records nothing. No block leased, no encoder opened, and above all no write through the ring.
+            list.Begin();
+            list.UpdateBuffer(buffer, 0, (ReadOnlySpan<byte>)payload);
+            list.End();
+            device.Submit(list);
+            device.WaitForIdle();
+
+            Assert.Equal(0, list.Arena.BlocksCreated);
+            Assert.Null(device.Diagnostics.DeviceLossReason);
+
+            _output.WriteLine("a disposed ring-backed buffer refused the device write by name and recorded "
+                + $"nothing, leasing {list.Arena.BlocksCreated} staging blocks");
+        }
+
+        /// <summary>
         /// THE ARENA'S COPY, EXECUTED BY THE GPU. This is the row that answers the native call: the payload goes
         /// into a pooled Shared block, one
         /// <c>copyFromBuffer:sourceOffset:toBuffer:destinationOffset:size:</c> is encoded into the list's blit

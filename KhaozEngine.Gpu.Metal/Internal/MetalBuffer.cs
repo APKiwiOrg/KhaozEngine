@@ -85,8 +85,19 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// The uniform ring behind this buffer, or null for every buffer that is not
         /// <see cref="IsRingBacked"/>, and null for a ring-backed buffer created without an allocator, which is
         /// the shape only a test builds. Read by the device-level write (M-M5) and by the record-time one.
+        /// <para>
+        /// NULL AFTER DISPOSAL, FOR THE SAME REASON <see cref="Handle"/> AND <see cref="Contents"/> ARE, AND THIS
+        /// IS THE ONE OF THE THREE THAT WOULD CORRUPT RATHER THAN FAIL. A ring holds the <c>contents()</c> pointer
+        /// this buffer took at creation, and <see cref="Dispose"/> releases the <c>MTLBuffer</c> underneath it
+        /// without the ring learning anything: a write reaching the ring afterwards is a <c>memcpy</c> into memory
+        /// the driver has taken back, which is silent and lands wherever that address was reused. Both write paths
+        /// branch on this property BEFORE any disposal check of their own, so answering null here is what routes
+        /// them onto the two behaviours a disposed buffer already has. The device-level write falls through to
+        /// <see cref="Write"/>'s <see cref="ObjectDisposedException"/>, and the record-time write falls through to
+        /// the staging fork, which finds the nil <see cref="Handle"/> and records nothing at all.
+        /// </para>
         /// </summary>
-        internal MetalUniformRing? Ring => _ring;
+        internal MetalUniformRing? Ring => _disposed ? null : _ring;
 
         /// <summary>
         /// Create one, or throw by name. Refuses M-M6's illegal combination FIRST, so a caller that asked for the

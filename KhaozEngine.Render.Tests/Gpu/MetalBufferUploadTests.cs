@@ -242,6 +242,38 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(MetalEncoderKind.None, _encoders.Open);
         }
 
+        /// <summary>
+        /// A DISPOSED BUFFER'S SHAPE RECORDS NOTHING, which is the record-time half of the ring's disposal guard.
+        /// A disposed <c>MetalBuffer</c> answers a null ring AND a nil handle, so the write arrives here as this
+        /// pair, and the only two outcomes worth having are a no-op and a refusal. What it must never be is the
+        /// third: a <c>memcpy</c> through the <c>contents()</c> pointer the ring took at creation, which the
+        /// driver has since taken back.
+        /// </summary>
+        [Fact]
+        public void ADisposedBuffersNullRingAndNilHandleRecordNothing()
+        {
+            byte[] payload = Payload(64, seed: 10);
+
+            MetalBufferUpload.Record(ring: null, IntPtr.Zero, DestinationSize, 0, payload, _encoders, _arena,
+                _harness.Blit);
+
+            Assert.Equal(0, _calls.EncoderBoundaries);
+            Assert.Equal(MetalEncoderKind.None, _encoders.Open);
+            Assert.Empty(_harness.Blit.Copies);
+            Assert.Equal(0, _arena.BlocksCreated);
+        }
+
+        /// <summary>AND THE REFUSALS STILL RUN FIRST on that shape, because a write past the end of the buffer is
+        /// the caller's mistake whether or not the buffer was disposed. Without this the nil-handle return would
+        /// be a way to make a bad write look fine.</summary>
+        [Fact]
+        public void ANilHandleStillRefusesAWritePastTheEnd()
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() => MetalBufferUpload.Record(
+                ring: null, IntPtr.Zero, DestinationSize, DestinationSize - 8, Payload(16, seed: 11), _encoders,
+                _arena, _harness.Blit));
+        }
+
         void Record(MetalUniformRing? ring, uint offsetBytes, ReadOnlySpan<byte> data)
             => MetalBufferUpload.Record(ring, Destination, DestinationSize, offsetBytes, data, _encoders, _arena,
                 _harness.Blit);

@@ -30,8 +30,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </summary>
         /// <param name="ring">The destination's uniform ring, or null for every buffer that is not
         /// <c>UniformBuffer</c> usage (M-M6).</param>
-        /// <param name="destination">The destination's <c>MTLBuffer</c> handle, used only by the staging
-        /// path.</param>
+        /// <param name="destination">The destination's <c>MTLBuffer</c> handle, used only by the staging path.
+        /// <see cref="IntPtr.Zero"/> for a buffer that has been disposed, which records nothing.</param>
         /// <param name="destinationSizeBytes">Its LOGICAL size, which is what the write is bounded against.
         /// </param>
         /// <param name="offsetBytes">Where in the logical buffer the write lands.</param>
@@ -83,6 +83,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // arithmetic: the caller's offset is a multiple of four and offset + length is inside the logical
             // size, so offset + align4(length) is inside align4(size), which is what was allocated.
             uint copyBytes = CopyBytesFor(offsetBytes, (uint)data.Length, destinationSizeBytes);
+
+            // A NIL DESTINATION RECORDS NOTHING, in the same shape the nil encoder below is handled and for a
+            // reason that arrives at this method the same way: MetalBuffer.Handle answers nil once the buffer has
+            // been disposed, deliberately, so a record-time write to a disposed buffer reaches here with a zero.
+            // Encoding the copy anyway would name a nil MTLBuffer in a copy command, which the driver refuses with
+            // an assertion that aborts the process rather than anything this backend can report, and it would take
+            // a staging lease and an encoder boundary on the way. The refusals above still run first, because a
+            // write that runs past the end of the buffer is the caller's mistake whether or not it was disposed.
+            if (destination == IntPtr.Zero) return;
 
             MetalStagingLease lease = arena.Take(copyBytes);
             Span<byte> staged = lease.Span;

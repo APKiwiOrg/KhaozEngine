@@ -1426,6 +1426,42 @@ load and store actions since Metal 1. `MTLRenderPassDescriptor`'s per-attachment
 `clearValue` and `storeOp` almost member for member, so V-A1 through V-A6 port with Metal nouns and no
 argument. That is #531's prediction about Metal and Vulkan mapping onto each other holding up.
 
+**Addendum, at row 12: the schedule keeps NO "is a pass open" flag, and the state list above is one item
+shorter for it.** The state this section names is the framebuffer, the pending clears, and "whether a render
+encoder is open". The Vulkan sibling can hold the third as a bool because `vkCmdBeginRendering` and
+`vkCmdEndRendering` are the only two things that can change it. Here they are not: a record-time `UpdateBuffer`
+large enough to take the staging path opens a BLIT encoder (M-M8), which ends the render encoder without the
+schedule being told, and 2.1 is the whole section about how ordinary and how expensive that is. A duplicate flag
+would then claim a pass was open while the encoder underneath it had gone, and every draw after it would record
+into a dead handle, which is a corruption no golden reaches because the goldens do not upload mid-pass. So the
+question is asked of `MetalEncoderScope.Open`, the one owner of every transition, and the answer cannot be stale
+by construction. The same fact makes the viewport and the scissor `MetalEncoderMark` EPOCH STAMPS rather than
+dirty bools: both are encoder state (M-R4), so a pass split by a blit and reopened owes both again with nothing
+about the framebuffer having changed, and a stamp answers that for free where a bool would need every path that
+ends an encoder to remember to set it.
+
+**Second addendum, at row 12: the flush stays at the incumbent's TWO forcing sites, not at every illegal
+command.** The fourth bullet above puts the clear-only flush on `End` "or any command illegal inside a render
+encoder", which is the Vulkan sibling's shape read across. 2.1's evidence says the incumbent forces it at
+exactly two sites, `SetFramebufferCore` and `End`, and M-A3 says the case is reproduced because a golden
+depends on it, so those two are what row 12 takes. Flushing on a dispatch or a copy as well is a SUPERSET: it
+costs an encoder pair that M-T2's budget counts, and the only observable difference it buys is for a dispatch
+that samples the attachment between a clear and the next draw, where the incumbent would read the uncleared
+contents. Parity is the bar, so the superset is not taken. M-A5's own invariant is untouched and needs no member
+on the schedule at all, which is the third thing this section did not predict: every command illegal inside a
+render encoder opens a DIFFERENT encoder kind, each of those goes through `MetalEncoderScope`, and that type
+ends whatever is open as its first act. The invariant is therefore already enforced for callers rows 13 and 14
+have not written yet, and what row 12 owes is that the schedule OBSERVES the result rather than contradicting
+it, which is the first addendum.
+
+**Third addendum, at row 12: a nil DESCRIPTOR and a nil ENCODER are the same outcome by two different paths.**
+M-W5's orphan case is about `renderCommandEncoderWithDescriptor:` answering nil, and the first implementation
+ran both through it. That is wrong in one direction: the selector's argument is nonnull, so handing it a
+descriptor Metal refused is undefined rather than a refusal it reports back. The device-free row that found it
+had a fake obligingly returning a perfectly good encoder for a nil descriptor, which is exactly how this would
+have reached the leg. Both now answer the same thing to the caller (a draw that goes nowhere, with the pending
+clears still owed and the frame still counting) through two separate arms.
+
 ### 7.2 The per-attachment clear (M-A2)
 
 This is the one place this design deliberately renders differently from the incumbent, so it gets its own gate,
@@ -1479,6 +1515,41 @@ No `SetViewport` member is added to the seam. Phase 2 counted 48 `SetFramebuffer
 sites, phase 3 confirmed it, and it has not changed. It remains a reasonable addition when the seam is being
 revisited for its own reasons, and this is the last backend, so "when the seam is being revisited anyway" no
 longer has a scheduled occasion.
+
+**Addendum, at row 12: M-A7 is taken LITERALLY (the plural setters), which corrects row 7's declaration of
+`IMetalRenderApi` in place.** That row declared `SetViewport` as `-[MTLRenderCommandEncoder setViewport:]`, the
+singular, reading M-A7's point as "one code path, no feature-set read" and taking the simpler-looking selector
+to get there. M-A7 names `setViewports:count:` and `setScissorRects:count:` in as many words and both readings
+agree on the part that matters, so this is a correction rather than a reversal. It also happens to be the
+cheaper of the two on the one axis this program takes seriously: the SINGULAR setters pass their structs BY
+VALUE, which is arm64's indirect-composite path (`MTLViewport` is six doubles, one past the HFA limit, and
+`MTLScissorRect` is four integers), and the PLURAL ones pass an array address and a count, two plain register
+arguments. The seam's own signature stays scalar, because a count of 1 is not something a caller should be able
+to say otherwise.
+
+**Second addendum, at row 12: the render pass DESCRIPTOR crosses the uncounted seam, which corrects one sentence
+of 6.4's split.** `IMetalEncoderSink`'s summary lists clears among the things that go "straight to the interop
+layer with no indirection", and the reason it gives is entirely about the BUDGET: a clear is a descriptor field
+rather than a call, nothing about it scales with draw count, and freezing a marginal over it would gate on a
+figure nobody should gate on. All of that is right and none of it is a reason to put the call where no test can
+see it. Section 18's row 12 requires the clear folding, the load and store action selection and the
+deferred-begin state machine to run device-free, and the BEGIN is what consumes the pending clears, so a
+schedule reaching a static P/Invoke for its descriptor could not open a pass at all on the Linux and Windows
+legs. So the descriptor and its release pair live on `IMetalRenderApi`, which keeps both properties: outside
+M-T2's budget, and observable. The pair is two members rather than one because `+renderPassDescriptor` is a
+convenience constructor whose object dies with the pool that was in scope, and the pass is built in one managed
+call and opened in another.
+
+**Third addendum, at row 12: the STORE ACTION travels in the plan, where the Vulkan sibling leaves it
+implicit.** V-A6's attachment record deliberately has no store field, on the rule that a field which only ever
+holds one value is a field somebody eventually sets to the other one. That rule is right where nothing is
+queued to change it, and here two things are: 2.5 files depth `DontCare` and the folded resolve as measured
+follow-ups with named consumers, each blocked by a stated argument rather than by being a bad idea. Carrying the
+choice means a device-free row reads it and a future change lands at a seam something can see. M-A4 is
+unaffected either way, because M-A4 is about the native CALL being made rather than about where the value is
+held: the descriptor's own default DISCARDS, so a plan saying `Store` and an implementation that never sent it
+would render a whole frame and throw it away, which is why the claim also has a `[GpuFact]` texel readback
+behind it.
 
 ---
 

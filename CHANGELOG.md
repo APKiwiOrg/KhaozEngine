@@ -811,6 +811,73 @@ can pass at zero. Everything else the ring and the arena DECIDE is device-free t
 golden could ever see: that a ring-backed write opens no encoder, emits no copy and takes no staging block,
 counted through the same budget seam the encoder boundaries are frozen over.
 
+### Native Metal render passes: the clear stops collapsing onto attachment 0, and the pass has no flag to go stale (#578)
+
+The native Metal backend gets framebuffers and the deferred render pass: `IGpuResourceFactory.CreateFramebuffer`
+plus `SetFramebuffer`, `ClearColorTarget`, `ClearDepthStencil`, `SetScissorRect` and `SetFullScissorRects` on the
+command list, from row 12 of
+[docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md).
+Nothing selects this backend and pipelines and draws are still other rows', so the visible effect is that a
+recording can now bind a target and clear it. `GpuBackendKind.Metal`, through Veldrid, remains the working Metal
+backend.
+
+**The one behaviour change this phase spends on the reference golden family is one index (M-A2).** The Veldrid
+Metal backend writes every clear into `colorAttachments[0]`, so a framebuffer with more than one colour target
+clears only its first. `KhaozEngine.Render3D/Rendering/ModelRenderer.BeginModelPass` clears attachments 0, 1 and
+2 of `ModelFB` and ships a comment describing the collapse, whose workaround (make the three clear values equal)
+does nothing about two attachments that are never cleared at all. This backend clears the attachment the caller
+named. The consequence is that `ModelFB`'s normal and linear-depth attachments start being CLEARED where today
+they LOAD, and what they load today is a freshly created `StorageModePrivate` texture nothing has written, which
+means the current behaviour is the unstable one and the committed `metal` goldens were baked reading it.
+`KE_METAL_CLEAR=attachment0` reproduces the collapse exactly, for the A/B on the first golden run, and both the
+switch and the losing branch are removed at gate 1.
+
+**A pass is a descriptor per pass, so most of what phase 3 had to build has no occupant here.** No render pass
+object to cache, no framebuffer object to rebuild on a resize, and no invalidation of either.
+`MetalFramebuffer` creates nothing native at all and its disposal releases nothing: it is an aggregate of
+borrowed texture handles, flattened to plain data at construction, and `CreateFramebuffer` is the one factory
+member with no `OnMacOs` half because there is nothing for the platform guard to protect. Attachments are mip 0
+slice 0 because the seam carries no mip or layer parameter, which is what makes M-M10's no-view-factory rule
+reach all the way to the attachment.
+
+**The pass schedule keeps NO "is a pass open" flag, and that is the one structural difference from the Vulkan
+sibling.** There a render pass instance can only be opened or closed by one call, so a flag cannot drift. Here a
+record-time `UpdateBuffer` large enough to take the staging path opens a BLIT encoder and ends the render
+encoder without the schedule being told, which is section 2.1's whole subject. A duplicate flag would then claim
+a pass was open while its encoder had gone, and every draw after it would record into a dead handle. So the
+question is asked of `MetalEncoderScope`, the one owner of every transition, and cannot be stale by
+construction. The same fact makes the viewport and the scissor `MetalEncoderMark` epoch stamps rather than dirty
+bools: both are encoder state, so a pass split by a blit and reopened owes both again with nothing about the
+framebuffer having changed (M-R4).
+
+**The clear-only pass is reproduced deliberately at both of the incumbent's forcing sites (M-A3).** A
+framebuffer plus a clear plus an `End` with no draw must still clear, and so must a framebuffer CHANGE that
+leaves clears behind. Under a deferred begin that is a begin and end pair with no draws, and it needs no "did a
+draw happen" flag to detect: a begin CONSUMES the pending array, so a pending clear still sitting there is
+itself the proof. A clear arriving AFTER the pass opened costs an encoder boundary and goes back on the pending
+array, because Metal has no clear command and the incumbent forces the same thing through its own
+`EnsureNoRenderPass`.
+
+**The viewport and the scissor reproduce all three halves of Veldrid's behaviour (M-A6).** Both are emitted on a
+framebuffer CHANGE and neither on a rebind of the same one, because the shipped sequence `SetFramebuffer(fb)`,
+`SetScissorRect(...)`, draw, `SetFramebuffer(fb)`, draw would otherwise silently restore the full scissor and
+render the second draw outside the intended rectangle. The scissor stays gated on the bound pipeline's
+`ScissorTestEnabled`, which is the backend honouring the SEAM's rasterizer state rather than the API's: Metal
+has no scissor-test enable and its rectangle is always live, so not reproducing the gate would make a scissor
+set before a pipeline with the test off apply here and not on Direct3D 11. A gated-out rectangle stays OWED, so
+the next pipeline with the test on receives it. `setViewports:count:` and `setScissorRects:count:` are used
+unconditionally at a count of 1 (M-A7), which retires the incumbent's deprecated-feature-set read on the hot
+path and, as a side effect, removes an ABI question rather than adding one: the singular setters pass their
+structs by value on arm64's indirect-composite path, and the plural ones pass an array address and a count.
+
+**Every clear claim is read back as a texel, because a completed command buffer cannot tell three defects
+apart.** A pass that cleared the wrong attachment, a pass that discarded its result at the descriptor's default
+store action, and a clear-only pass whose flush never ran all complete with a nil error. So the hardware rows
+blit each render target into a Shared staging buffer and read texel (0, 0): three attachments, three colours, no
+draw at all. The `attachment0` position is read back too, and its uncleared attachments are asserted only to be
+NOT the colour asked for, because asserting a specific value would be asserting the instability M-A2 exists to
+end. Everything the schedule DECIDES is device-free and runs on the Linux and Windows legs.
+
 ## 17.34.0
 
 ### The `vulkan-native` CI leg, both validation tiers, and the first validation layer this repo has ever installed (#529)

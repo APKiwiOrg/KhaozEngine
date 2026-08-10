@@ -4,8 +4,8 @@ The engine's own native Metal backend for the [KhaozEngine.Gpu](../KhaozEngine.G
 umbrella: a consumer adds this package explicitly, the same pattern as `Physics.Bepu` or `WorldStore.Sqlite`,
 and nothing that does not want the Objective-C interop ever carries it.
 
-> **Status: it creates a HEADLESS device with a TIMELINE and REAL RESOURCES that RECORDS AND SUBMITS, and it
-> cannot present.** Rows 1 to 7 of the work breakdown are done:
+> **Status: it creates a HEADLESS device with a TIMELINE and REAL RESOURCES that RECORDS RENDER PASSES AND
+> SUBMITS, and it cannot present or draw.** Rows 1 to 7 of the work breakdown are done:
 > the assembly and its guard rows, the three phase-4 verification spikes, `KhaozEngineMetal.Register()` with the
 > `IGpuBackendProvider` and the functional machine probe behind it, `GpuBackendKind.MetalNative = 6` with its
 > `metal-native` token, and the Objective-C interop layer, a real `MTLDevice`, one `MTLCommandQueue`,
@@ -28,6 +28,10 @@ and nothing that does not want the Objective-C interop ever carries it.
 > Row 9 added the shader path: `CreateShadersFromSpirv` and `CreateComputeShaderFromSpirv` compile GLSL to
 > `MTLLibrary` and `MTLFunction` per stage, and read the per-program binding table out of the emitted MSL. See
 > [The shader path, and where a binding index comes from](#the-shader-path-and-where-a-binding-index-comes-from).
+> Row 12 added framebuffers and the deferred render pass: `CreateFramebuffer`, `SetFramebuffer`, both clears and
+> both scissor members. A recording can bind a target and clear it, and the clear lands on the attachment it
+> names. See [Render passes: a descriptor per pass, and one index the incumbent gets
+> wrong](#render-passes-a-descriptor-per-pass-and-one-index-the-incumbent-gets-wrong).
 
 Spec, decisions and the nineteen-row work breakdown:
 [docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](../docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md).
@@ -46,8 +50,8 @@ KhaozEngineMetal.Register();   // unconditionally, on every OS, once at startup
 next row has to mean it. Everything else in the assembly is internal: the Objective-C interop layer, the
 device and its queue, the provider, the machine probe and its device-free decision half, the completion
 timeline and the fence on it, the command list with its encoder lifecycle and the submit path, the shader path
-with its emission parse and binding table, plus the three verification spikes, which exist to answer a question
-rather than to run in a game.
+with its emission parse and binding table, the framebuffer and the pass schedule behind it, plus the three
+verification spikes, which exist to answer a question rather than to run in a game.
 
 **Call `Register()` unconditionally and on every operating system.** Registering says a provider EXISTS, which
 is a fact about your app's wiring. Whether this machine can run it is the separate question
@@ -389,6 +393,47 @@ processes (0.02 ms for a source it has seen before, against 68 to 98 ms cold, bo
 service warmed first so neither number is startup cost), and no public API can serialize a source-compiled
 `MTLLibrary` anyway. The cost worth caching is the engine's own GLSL-to-MSL half, which is
 tracked as [#592](https://github.com/APKiwiOrg/KhaozEngine/issues/592).
+
+## Render passes: a descriptor per pass, and one index the incumbent gets wrong
+
+`IGpuDevice.Factory.CreateFramebuffer` gives back a render target, and `SetFramebuffer`, `ClearColorTarget`,
+`ClearDepthStencil`, `SetScissorRect` and `SetFullScissorRects` record against it. Draws and pipelines are other
+rows, so what a recording can do today is bind a target and clear it.
+
+**A framebuffer creates nothing native, and that is the API rather than a simplification.** A Metal render pass
+is an `MTLRenderPassDescriptor` built per pass from the attachment textures themselves, so there is no render
+pass object to cache, no framebuffer object to rebuild when the window resizes, and no invalidation of either.
+The framebuffer here is an aggregate of borrowed texture handles, flattened once at construction, and its
+disposal releases nothing. Attachments are mip 0 slice 0 because `CreateFramebuffer` takes bare textures with no
+mip and no layer parameter, which is the same reason this package declares no texture-view factory at all.
+
+**The begin is deferred to the first draw, so a clear costs no command.** `ClearColorTarget` before a draw
+stores the value, which becomes `loadAction = Clear` on that attachment when the pass opens. A clear recorded
+AFTER the pass opened ends the pass and goes back on the pending array, because Metal has no clear command and
+there is no cheaper shape available. A framebuffer plus a clear plus an `End` with no draw at all still clears,
+through a begin and end pair with nothing between them.
+
+**The clear lands on the attachment you NAME, and that is a deliberate difference from the Veldrid Metal
+backend.** That one writes every clear into `colorAttachments[0]`, so a framebuffer with more than one colour
+target clears only its first, and the engine's own model pass clears three attachments of `ModelFB` and ships a
+comment describing the collapse. The two attachments that were never cleared load a freshly created
+`StorageModePrivate` texture nothing has written, which is undefined rather than stable. Set
+`KE_METAL_CLEAR=attachment0` to reproduce the collapse exactly, for an A/B against the committed goldens. That
+variable is temporary and goes away with the losing branch once the goldens have answered.
+
+**Store actions are set explicitly.** The descriptor's own default DISCARDS the attachment, so every colour and
+depth attachment is given `MTLStoreActionStore` rather than left alone. Depth `DontCare` is a real win on a
+tile-based GPU and is deliberately not taken here: it leaves contents undefined, and undefined is not stable
+across runs.
+
+**The viewport and the scissor are emitted on a framebuffer CHANGE only.** There is no `SetViewport` on the GPU
+seam at all: the engine gets one because Veldrid's own `SetFramebuffer` auto-applies a full viewport and a full
+scissor, inside an identity guard. Both halves are reproduced. A backend that never emits rasterises nothing,
+and one that emits on every bind silently restores the full scissor and renders the next draw outside the
+rectangle the caller set. The scissor is additionally gated on the bound pipeline's `ScissorTestEnabled`: Metal
+has no scissor-test enable and its rectangle is always live, so the gate is this backend honouring the seam's
+own rasterizer state, which is what keeps it agreeing with Direct3D 11. A rectangle gated out by one pipeline
+stays owed to the next one that wants it.
 
 ## Three decisions worth knowing before reading the code
 

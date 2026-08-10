@@ -35,6 +35,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
     {
         readonly IMetalDeviceLiveness _liveness;
 
+        // The handle, held in a field because the property refuses once disposed and ReleaseOnMacOs runs AFTER
+        // the flag flips. Disposal is the one reader that must still see it.
+        readonly MTLComputePipelineState _state;
+
         /// <param name="liveness">The creating device's token, which is its identity.</param>
         /// <param name="shader">The compiled compute shader, which carries the function, the binding table and
         /// the workgroup size.</param>
@@ -50,7 +54,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _liveness = liveness;
             Shader = shader;
             Layouts = layouts;
-            State = state;
+            _state = state;
         }
 
         /// <summary>The name every refusal from this half of the row quotes.</summary>
@@ -66,8 +70,32 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <summary>The declared resource layouts, in set order. A set bound at slot k indexes this array.</summary>
         internal MetalResourceLayout[] Layouts { get; }
 
-        /// <summary>The compiled pipeline state, bound with <c>-setComputePipelineState:</c>.</summary>
-        internal MTLComputePipelineState State { get; }
+        /// <summary>
+        /// The compiled pipeline state, bound with <c>-setComputePipelineState:</c>.
+        /// <para>
+        /// IT THROWS ONCE DISPOSED RATHER THAN ANSWERING, which is <c>MetalShaderSet.FunctionFor</c>'s precedent
+        /// and for its reason: <see cref="Dispose"/> RELEASES this object, so handing the pointer back would set
+        /// a released <c>MTLComputePipelineState</c> on a live compute encoder, which is a use-after-free inside
+        /// the driver rather than anything this backend could report.
+        /// </para>
+        /// </summary>
+        /// <exception cref="ObjectDisposedException">This pipeline is disposed.</exception>
+        internal MTLComputePipelineState State
+        {
+            get
+            {
+                if (IsDisposed)
+                {
+                    throw new ObjectDisposedException(
+                        nameof(MetalComputePipeline),
+                        Label + "'s State was read after the pipeline was disposed. Disposal released the "
+                        + "MTLComputePipelineState, so what is left is a pointer to an object the device has "
+                        + "already let go of.");
+                }
+
+                return _state;
+            }
+        }
 
         /// <summary>The binding table row 13 binds through and compares by reference on a switch (M-R9).</summary>
         internal MetalShaderIndexTable Table => Shader.Table;
@@ -77,6 +105,37 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         /// <summary>True once disposed.</summary>
         internal bool IsDisposed { get; private set; }
+
+        /// <summary>
+        /// THE ACCEPT PATH's WHOLE CHECK, the compute sibling of <c>MetalGraphicsPipeline.Require</c>: the right
+        /// backend, the right device, and NOT DISPOSED. The disposal arm carries the same reason, with the same
+        /// one object behind it rather than two.
+        /// </summary>
+        /// <param name="pipeline">The seam pipeline the caller passed.</param>
+        /// <param name="owner">The calling device's liveness token, which is its identity.</param>
+        /// <param name="parameterName">The entry point's own parameter name, for the exception.</param>
+        /// <exception cref="ArgumentNullException">No pipeline.</exception>
+        /// <exception cref="ArgumentException">A pipeline from another backend or another device.</exception>
+        /// <exception cref="ObjectDisposedException">A disposed pipeline.</exception>
+        internal static MetalComputePipeline Require(IGpuComputePipeline? pipeline, IMetalDeviceLiveness owner,
+            string parameterName)
+        {
+            ArgumentNullException.ThrowIfNull(pipeline, parameterName);
+
+            MetalComputePipeline typed = MetalResourceOwnership.Require<MetalComputePipeline>(
+                pipeline, owner, parameterName);
+
+            if (typed.IsDisposed)
+            {
+                throw new ObjectDisposedException(
+                    nameof(MetalComputePipeline),
+                    Label + " that is already disposed was bound. Its MTLComputePipelineState has been released, "
+                    + "so recording it would leave the dispatch that flushes it setting a released object on an "
+                    + "encoder.");
+            }
+
+            return typed;
+        }
 
         /// <summary>
         /// Build a compute pipeline on <paramref name="device"/>: check the declaration device-free first, then
@@ -178,7 +237,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         void ReleaseOnMacOs()
         {
             using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
-            State.Release();
+
+            // The field, not the property: IsDisposed is already true by the time this runs, so the property
+            // would refuse the one caller that is entitled to the handle.
+            _state.Release();
         }
     }
 }

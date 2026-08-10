@@ -42,6 +42,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
     {
         readonly IMetalDeviceLiveness _liveness;
 
+        // THE TWO HANDLES, held in fields rather than in the properties, because the properties refuse once
+        // disposed and ReleaseOnMacOs runs AFTER the flag flips. Disposal is the one reader that must still see
+        // them.
+        readonly MTLRenderPipelineState _renderState;
+        readonly MTLDepthStencilState _depthStencilState;
+
         /// <param name="liveness">The creating device's token, which is its identity.</param>
         /// <param name="plan">The resolved and checked plan. Built device-free by
         /// <see cref="MetalGraphicsPipelinePlan.Build"/>.</param>
@@ -56,8 +62,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             _liveness = liveness;
             Plan = plan;
-            RenderState = renderState;
-            DepthStencilState = depthState;
+            _renderState = renderState;
+            _depthStencilState = depthState;
         }
 
         /// <inheritdoc/>
@@ -66,14 +72,41 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <summary>Everything this pipeline decided, resolved once at creation.</summary>
         internal MetalGraphicsPipelinePlan Plan { get; }
 
-        /// <summary>The compiled pipeline state, bound with <c>-setRenderPipelineState:</c>.</summary>
-        internal MTLRenderPipelineState RenderState { get; }
+        /// <summary>
+        /// The compiled pipeline state, bound with <c>-setRenderPipelineState:</c>.
+        /// <para>
+        /// IT THROWS ONCE DISPOSED RATHER THAN ANSWERING, which is <c>MetalShaderSet.FunctionFor</c>'s precedent
+        /// and for its reason: <see cref="Dispose"/> RELEASES this object, so the field still holds a pointer
+        /// whose last reference is gone, and handing it back would set a released
+        /// <c>MTLRenderPipelineState</c> on a live encoder. That is a use-after-free inside the driver rather
+        /// than anything this backend could report, and it is the failure a disposed-pipeline bind would
+        /// otherwise reach.
+        /// </para>
+        /// </summary>
+        /// <exception cref="ObjectDisposedException">This pipeline is disposed.</exception>
+        internal MTLRenderPipelineState RenderState
+        {
+            get
+            {
+                RequireLive(nameof(RenderState));
+                return _renderState;
+            }
+        }
 
         /// <summary>
         /// The depth-stencil state, or NIL when this pipeline declares no depth output. Nil is a legal and common
-        /// value here rather than a failure, and it is half of the depth-target guard.
+        /// value here rather than a failure, and it is half of the depth-target guard. Disposed, it throws for
+        /// <see cref="RenderState"/>'s reason.
         /// </summary>
-        internal MTLDepthStencilState DepthStencilState { get; }
+        /// <exception cref="ObjectDisposedException">This pipeline is disposed.</exception>
+        internal MTLDepthStencilState DepthStencilState
+        {
+            get
+            {
+                RequireLive(nameof(DepthStencilState));
+                return _depthStencilState;
+            }
+        }
 
         /// <summary>The rasterizer, depth and topology values a pipeline change emits.</summary>
         internal MetalPipelineState State => Plan.State;
@@ -100,6 +133,45 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         /// <summary>True once disposed.</summary>
         internal bool IsDisposed { get; private set; }
+
+        /// <summary>
+        /// THE ACCEPT PATH's WHOLE CHECK: the right backend, the right device, and NOT DISPOSED. What
+        /// <c>SetPipeline</c> takes a pipeline through, in the shape <c>MetalResourceLayout.Require</c> and
+        /// <c>MetalResourceSet.Require</c> already settled on.
+        /// <para>
+        /// THE DISPOSAL ARM IS THE ONE THIS TYPE ADDS A REASON TO. A disposed layout or set releases nothing at
+        /// all on this backend, so refusing one is about the caller's belief that the declaration is still
+        /// theirs. A disposed PIPELINE has released two Objective-C objects, so accepting one records a dangling
+        /// handle into the recording and hands the pre-draw flush a released
+        /// <c>MTLRenderPipelineState</c> to set on a live encoder. Refusing at the bind names the mistake at the
+        /// call that made it, where the alternative is undefined behaviour inside the driver several calls later.
+        /// </para>
+        /// </summary>
+        /// <param name="pipeline">The seam pipeline the caller passed.</param>
+        /// <param name="owner">The calling device's liveness token, which is its identity.</param>
+        /// <param name="parameterName">The entry point's own parameter name, for the exception.</param>
+        /// <exception cref="ArgumentNullException">No pipeline.</exception>
+        /// <exception cref="ArgumentException">A pipeline from another backend or another device.</exception>
+        /// <exception cref="ObjectDisposedException">A disposed pipeline.</exception>
+        internal static MetalGraphicsPipeline Require(IGpuPipeline? pipeline, IMetalDeviceLiveness owner,
+            string parameterName)
+        {
+            ArgumentNullException.ThrowIfNull(pipeline, parameterName);
+
+            MetalGraphicsPipeline typed = MetalResourceOwnership.Require<MetalGraphicsPipeline>(
+                pipeline, owner, parameterName);
+
+            if (typed.IsDisposed)
+            {
+                throw new ObjectDisposedException(
+                    nameof(MetalGraphicsPipeline),
+                    MetalGraphicsPipelinePlan.Label + " that is already disposed was bound. Its "
+                    + "MTLRenderPipelineState and MTLDepthStencilState have been released, so recording it would "
+                    + "leave the draw that flushes it setting a released object on an encoder.");
+            }
+
+            return typed;
+        }
 
         /// <summary>
         /// Build a graphics pipeline on <paramref name="device"/>: resolve and check everything device-free
@@ -257,8 +329,28 @@ namespace KhaozEngine.Gpu.Metal.Internal
         void ReleaseOnMacOs()
         {
             using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
-            DepthStencilState.Release();
-            RenderState.Release();
+
+            // THE FIELDS, not the properties: IsDisposed is already true by the time this runs, so the properties
+            // would refuse the one caller that is entitled to the handles.
+            _depthStencilState.Release();
+            _renderState.Release();
+        }
+
+        // The precedent is MetalResourceLayout.Require and MetalResourceSet.Require, and this is the same guard
+        // with a stronger reason behind it. A disposed layout or set releases NOTHING on this backend, so their
+        // checks are about the caller's belief. A disposed pipeline has released two Objective-C objects, so the
+        // handles it still holds are dangling and using one is a driver-side use-after-free.
+        void RequireLive(string member)
+        {
+            if (!IsDisposed) return;
+
+            throw new ObjectDisposedException(
+                nameof(MetalGraphicsPipeline),
+                MetalGraphicsPipelinePlan.Label + "'s " + member + " was read after the pipeline was disposed. "
+                + "Disposal released the "
+                + "MTLRenderPipelineState and the MTLDepthStencilState, so what is left is a pointer to an object "
+                + "the device has already let go of, and setting it on an encoder is a use-after-free inside the "
+                + "driver rather than anything this backend could report.");
         }
 
         // Metal's own words, because this is the one compatibility check the API performs for this backend and

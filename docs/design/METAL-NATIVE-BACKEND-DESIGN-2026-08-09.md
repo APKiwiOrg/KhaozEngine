@@ -1539,6 +1539,15 @@ resolves to exactly one index in exactly the spaces its declared stages need. Pl
 assertion. The failure this catches is "everything compiles and every pixel is wrong", which is what S2 and
 V-S8 both exist for, arriving through the one door Metal leaves open.
 
+**What row 9 landed, by name.** `MetalShaderIndexTable` is the table, keyed on `(set, binding, stage)` with
+`TryGetIndex` as row 13's read and `ContentKey` as row 10's dedup seat. That key renders the LAYOUT SHAPE as
+well as the entries, because an element no stage references contributes no entry: on the entries alone two
+programs collide while disagreeing in the layouts `RequireLayoutShape` compares against, and row 10 would then
+hand pipeline B a table that refuses B's own correct declared array. `MetalMslEntryPoint` is the parse (the
+name and the depth-matched argument walk), `MetalShaderBuild` is the device-free path that ties the front end,
+the emission and the join together, and `MetalShaderCompiler` is the two native calls on the far side of it.
+`RequireLayoutShape` is pin 4's check, written here and called by row 11.
+
 **The table is also the invalidation authority (M-R9).** Two pipelines whose tables are identical invalidate
 nothing on a switch, and the comparison is a handle compare once the tables are content-deduplicated. That is
 the fine comparison 2.7 rules for, and it is only computable because the table exists as an object rather than
@@ -2221,6 +2230,28 @@ type crossing the boundary. The front end is untouched, so the SPIR-V byte-equal
 `VulkanSpirvIncumbentParityTests` both keep meaning what they meant. The architecture test gains its third arm:
 `KhaozEngine.Gpu.Metal` names the front end and the MSL members and never names an HLSL member.
 
+**Addendum, row 9, on two details this section got slightly wrong and one it left implicit.**
+
+**There is no GLSL-source convenience for the MSL target, and there must not be.** `GlslPairToHlsl` exists
+because the Direct3D path never needs the SPIR-V again once the HLSL is out. This path does: 2.2b's join reads
+each stage's `DescriptorSet` and `Binding` decorations out of that stage's own module, so a convenience that
+swallowed the modules would force the backend to compile the same GLSL twice to get them back. The backend calls
+`SpirvFrontEnd.ToSpirv` itself and keeps both modules until the table is built, which is the shape 2.2b costed
+the id join at.
+
+**The architecture test is a MEMBER check, not a type check, and the difference is load-bearing.** Section 12.1
+says the third arm asserts the backend "never names an HLSL member", and the Vulkan precedent it inherits from
+(`VulkanShaderFrontEndOnlyTests`) is a TYPE check, because that backend must not name `SpirvCrossCompile` at
+all. This one names it legitimately. A type-level arm here would pass while the backend cross-compiled the whole
+corpus to HLSL, so `MetalShaderArchitectureTests` reads the `MemberRef` table instead. What that catches is
+worth naming: `VertexFragmentToHlsl` is one letter from `VertexFragmentToMsl` across the same
+`InternalsVisibleTo` grant and returns the same mirror type. A binding table parsed out of HLSL finds no
+`[[buffer(n)]]` attributes at all, so every element reads as unreferenced, nothing is bound, and the frame is
+black with no error anywhere.
+
+**And `CrossCompiledPair`'s members are named for the STAGE now**, not for HLSL, since one mirror serves both
+targets. That is what "the same engine-owned mirrors" in the paragraph above has to mean to be true.
+
 ### 12.2 #462 is not taken, and 2.2 is why (M-S2)
 
 #566 banks that the shader back end grows an MSL target via the direct SPIRV-Cross migration, deliberately
@@ -2265,6 +2296,18 @@ hands GLSL to the three-argument `CreateFromSpirv`, which constructs `new CrossC
 it, while this path compiles under `MslCrossCompilePin`. The two sets are maintained independently. A red run
 there means the committed `metal` goldens are baked on one emission and asserted against another, and the
 response is to decide which side moved rather than to re-bake the hash table.
+
+**MEASURED 2026-08-10 by row 9, and it is 76 of 76.** Every shipped stage (34 graphics pairs plus the compute
+kernels at all four cascade resolutions) was cross-compiled to MSL twice in one process, once under
+`MslCrossCompilePin` and once through a faithful replication of the incumbent's own call
+(`SpirvCompilation.CompileVertexFragment` / `CompileCompute` with a default-constructed `CrossCompileOptions`,
+which is what the three-argument `CreateFromSpirv` forwards). All 76 emitted stages are byte-identical, with no
+exceptions of any size. **That is the fact that licenses "no rebake" on the fleet's reference `metal` golden
+family**, and it lands exactly where the pin's own reasoning predicted: the pin states the library defaults, so
+the equality is arithmetic rather than luck. It is also a STANDING test now
+(`KhaozEngine.Render.Tests/Gpu/MetalMslIncumbentParityTests.cs`), which is phase 3's upgrade inherited, because
+the two option sets are maintained independently and a one-off measurement licenses only the afternoon it was
+taken.
 
 **The pin's values, and why they are the library defaults.** `HlslCrossCompilePin` already records what
 `CreateFromSpirv` does with its options: it forwards them verbatim and derives nothing from
@@ -2328,6 +2371,44 @@ own serialisation discipline and its own questions (its behaviour across an OS u
 a pipeline built from a runtime-compiled library at all). The compile time is in the LIBRARY, which is what the
 `.metallib` cache addresses. Filed as a follow-up gated on a measurement showing where the remaining launch
 cost is, rather than taken on the assumption that lower is better.
+
+**Addendum, row 9: THE `.metallib` CACHE AS SPECIFIED CANNOT BE BUILT, AND IT WOULD BUY NOTHING IF IT COULD.**
+Two independent findings, both measured on an Apple M2 Max under macOS 26 (Darwin 25.6) before any of it was
+written. The section above is left standing because its REASONING is the thing that survives.
+
+*It cannot be built.* There is no public API that serializes an executable-type `MTLLibrary` compiled from
+source. The concrete `_MTLLibrary` class does carry `-libraryDataContents` and `-serializeToURL:error:`, and
+neither is in any SDK header: `serializeToURL:error:` is declared only on `MTLBinaryArchive` and
+`MTLDynamicLibrary`. The public route was tried and measured. Compiling with
+`libraryType = MTLLibraryTypeDynamic` plus an `installName` works, `newDynamicLibrary:error:` works,
+`serializeToURL:` writes a real 10,224-byte `.metallib`, and both `newLibraryWithURL:` and `newLibraryWithData:`
+load it back reporting the right `functionNames`. It is still a dead end, because `MTLLibrary.h` says in as many
+words that a dynamic library "contains no qualified functions", and asking the reloaded library for one aborts
+the process on `validateMTLFunctionType:11161: failed assertion 'type is not a valid MTLFunctionType.'`. So the
+only serializable library is one whose functions cannot drive a pipeline.
+
+*And it would buy nothing.* **macOS already caches the MSL-to-library compile across PROCESSES, keyed on the
+source.** With the compiler service warmed first so the number is not startup cost: a source compiled by an
+earlier run of a different process comes back in **0.02 ms**, and a genuinely novel source costs **68 to 98 ms**
+every time. That is precisely the win M-S7 exists to capture, already captured, one layer down and by the OS.
+
+*What replaced it, and why there is still a cache-shaped hole.* The cost the OS does NOT touch is the ENGINE's
+half: GLSL to SPIR-V through glslang, then SPIR-V to MSL through SPIRV-Cross. Row 9 measured that at **4,168 ms
+for the whole shipped corpus** (42 programs, 76 stages), which is the same cost the Direct3D 11 backend caches
+DXBC to skip. So the cache worth having on this backend is an MSL-plus-table cache rather than a `.metallib`
+one, and pin 6 of section 2.2b already describes exactly that shape: "a cache hit skips the emission and the
+table is derived from it". Row 9 does NOT build it, deliberately, because it is a self-contained addition with
+its own key discipline, its own header validation and its own corruption test, and folding it into the row that
+introduces the binding mechanism would give a first golden run two candidate causes. It is filed as
+[#592](https://github.com/APKiwiOrg/KhaozEngine/issues/592) with this measurement.
+
+*What row 9 kept from M-S7 anyway.* `MetalShaderKey` exists, whole, hashing all three pinned option sets and the
+whole program's sources, because the follow-up should not have to re-derive which inputs matter. Today it names
+programs in error messages, which is not nothing: the seam's `CreateShadersFromSpirv` takes two GLSL strings and
+no label, so its short tag is the only stable identity a failure can print. **Pin 6 is satisfied vacuously and
+that is worth stating**: nothing skips the emission, so the table is always built from it, and the pin's real
+content is a constraint on any cache that ever lands. `MTLLibrary`'s own header carries the refusal so that the
+next reader who finds `-libraryDataContents` in a class dump does not have to repeat this.
 
 ### 12.6 Three things this backend must not "fix" (M-B4, M-B5)
 

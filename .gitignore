@@ -55,6 +55,10 @@ KhaozEngine.Render.Tests/Gpu/hlsl-evidence/
 # Compiled SPIR-V written by VulkanSpirvByteEqualityTests when a pinned hash no longer matches. Local-only,
 # uploaded as a CI artifact so a front-end option drift can be disassembled rather than guessed at
 KhaozEngine.Render.Tests/Gpu/spirv-evidence/
+# Emitted MSL written by MetalMslByteEqualityTests when a pinned hash no longer matches. Local-only,
+# uploaded as a CI artifact: an emission drift here moves the native Metal backend's binding table as
+# well as its pixels, so the text is what tells the two apart
+KhaozEngine.Render.Tests/Gpu/msl-evidence/
 # CPU-vs-GPU skinning parity PNG dumps (Render3DGpuSkinningGpuTests); local-only diagnostic evidence
 gpu-skinning-evidence/
 

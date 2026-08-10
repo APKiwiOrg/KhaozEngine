@@ -143,13 +143,13 @@ namespace KhaozEngine.Tests.Gpu
             {
                 CrossCompiledPair pair = SpirvCrossCompile.GlslPairToHlsl(
                     program.VertexGlsl, program.FragmentGlsl, program.Name);
-                emitted[program.Name + ".vertex"] = Sha256(pair.VertexHlsl);
-                emitted[program.Name + ".fragment"] = Sha256(pair.FragmentHlsl);
+                emitted[program.Name + ".vertex"] = Sha256(pair.VertexSource);
+                emitted[program.Name + ".fragment"] = Sha256(pair.FragmentSource);
             }
             foreach (ShippedComputeKernel kernel in D3D11ShaderProgramCatalog.ComputeKernels())
             {
                 CrossCompiledCompute compute = SpirvCrossCompile.GlslComputeToHlsl(kernel.ComputeGlsl, kernel.Name);
-                emitted[kernel.Name + ".compute"] = Sha256(compute.ComputeHlsl);
+                emitted[kernel.Name + ".compute"] = Sha256(compute.ComputeSource);
             }
             return emitted;
         }
@@ -170,12 +170,12 @@ namespace KhaozEngine.Tests.Gpu
                 if (!string.Equals(program.Name, name, StringComparison.Ordinal)) continue;
                 CrossCompiledPair pair = SpirvCrossCompile.GlslPairToHlsl(
                     program.VertexGlsl, program.FragmentGlsl, program.Name);
-                return stage == "vertex" ? pair.VertexHlsl : pair.FragmentHlsl;
+                return stage == "vertex" ? pair.VertexSource : pair.FragmentSource;
             }
             foreach (ShippedComputeKernel kernel in D3D11ShaderProgramCatalog.ComputeKernels())
             {
                 if (string.Equals(kernel.Name, name, StringComparison.Ordinal))
-                    return SpirvCrossCompile.GlslComputeToHlsl(kernel.ComputeGlsl, kernel.Name).ComputeHlsl;
+                    return SpirvCrossCompile.GlslComputeToHlsl(kernel.ComputeGlsl, kernel.Name).ComputeSource;
             }
             return string.Empty;
         }

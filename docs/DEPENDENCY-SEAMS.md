@@ -684,28 +684,45 @@ The no-Veldrid rule below applies to BOTH packages, and both assertions are theo
 WHY a machine is unsupported instead of answering a bare false), `Vortice.Direct3D11` and `Vortice.D3DCompiler`.
 It declares NO `Veldrid` package, and that is decision P2 rather than an accident of ordering.
 
-The shader path needs glslang and, for Direct3D 11, SPIRV-Cross. Both arrive as `Veldrid.SPIRV`. Referencing it
-from a backend would be the obvious shortcut and is rejected twice over: blessing a Veldrid package inside a
-backend whose entire premise is being Veldrid-free is a bad signal no guard would catch, and it would scatter
-the eventual SPIRV-Cross replacement across three packages instead of one. The edge stays in `KhaozEngine.Gpu`
-behind internal helpers plus `InternalsVisibleTo`, which is where it already belongs: this package owns
-`ShaderValidation`, which uses precisely that static API with no device in existence.
+The shader path needs glslang and, for Direct3D 11 and Metal, SPIRV-Cross. Both arrive as `Veldrid.SPIRV`.
+Referencing it from a backend would be the obvious shortcut and is rejected twice over: blessing a Veldrid
+package inside a backend whose entire premise is being Veldrid-free is a bad signal no guard would catch, and it
+would scatter the eventual SPIRV-Cross replacement across every backend package instead of keeping it in one.
+The edge stays in `KhaozEngine.Gpu` behind internal helpers plus `InternalsVisibleTo`, which is where it already
+belongs: this package owns `ShaderValidation`, which uses precisely that static API with no device in existence.
 
 **AND THAT SEAM IS TWO MEMBERS NOW RATHER THAN ONE, which is decision V-S3** (section 12.3 of
 [design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md](design/VULKAN-NATIVE-BACKEND-DESIGN-2026-08-05.md), landed
 by [#526](https://github.com/APKiwiOrg/KhaozEngine/issues/526)). `Internal/SpirvFrontEnd` is the glslang half
-(GLSL 450 to SPIR-V, under `Internal/SpirvFrontEndPin`) and `Internal/SpirvCrossCompile` is the SPIRV-Cross half
-(SPIR-V to HLSL, under `Internal/HlslCrossCompilePin`). `KhaozEngine.Gpu.D3D11` reaches both, because DXBC is a
-function of both. `KhaozEngine.Gpu.Vulkan` reaches the FRONT END ONLY, because Vulkan consumes SPIR-V and
-`vkCreateShaderModule` takes the bytes verbatim, so nothing on that backend's shader path is cross-compiled.
+(GLSL 450 to SPIR-V, under `Internal/SpirvFrontEndPin`) and `Internal/SpirvCrossCompile` is the SPIRV-Cross half.
 
-That one-sided edge is asserted rather than intended, and it needs its own assertion because the two scans below
-cannot see it: both halves live in the same assembly, so a Vulkan call into `SpirvCrossCompile` would compile,
-would add no Veldrid reference, and would read identically to every package-level and assembly-level check.
-`VulkanShaderFrontEndOnlyTests` reads the backend's `TypeRef` table off disk instead, and asserts it names
-`SpirvFrontEnd` and no back-end type. What it buys is that the eventual SPIRV-Cross migration
-([#462](https://github.com/APKiwiOrg/KhaozEngine/issues/462)) stays a change to one half of one file with one
-consumer family.
+**THE BACK-END HALF EMITS TWO LANGUAGES NOW, and it has three consumers rather than two** (decision M-S1,
+section 12.1 of
+[design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md), landed by
+[#575](https://github.com/APKiwiOrg/KhaozEngine/issues/575)). `SpirvCrossCompile` emits SPIR-V to HLSL under
+`Internal/HlslCrossCompilePin` and SPIR-V to MSL under `Internal/MslCrossCompilePin`, as two pairs of members in
+one file rather than a second file, because the SPIRV-Cross replacement
+([#462](https://github.com/APKiwiOrg/KhaozEngine/issues/462)) has to stay one seat. The two pins are separate
+because they freeze different option sets and drift independently.
+
+- `KhaozEngine.Gpu.D3D11` reaches both halves, because DXBC is a function of both.
+- `KhaozEngine.Gpu.Metal` reaches both halves too, and that is the Direct3D 11 shape rather than the Vulkan one:
+  its sources are GLSL and Metal consumes MSL. It reaches one member more than its Direct3D 11 sibling,
+  `Internal/SpirvResourceDecorations`, which is the `(id, set, binding)` walk its binding table joins on
+  (section 2.2b). That walk was written in the test project as a measurement and promoted into
+  `KhaozEngine.Gpu/Internal` when the ruling took the id join, so the grant that already carried the toolchain
+  carries it as well rather than a second grant existing for it.
+- `KhaozEngine.Gpu.Vulkan` reaches the FRONT END ONLY, because Vulkan consumes SPIR-V and
+  `vkCreateShaderModule` takes the bytes verbatim, so nothing on that backend's shader path is cross-compiled.
+
+Those one-sided edges are asserted rather than intended, and they need their own assertions because the two
+scans below cannot see them: every half lives in the same assembly, so a Vulkan call into `SpirvCrossCompile`
+would compile, would add no Veldrid reference, and would read identically to every package-level and
+assembly-level check. `VulkanShaderFrontEndOnlyTests` reads that backend's `TypeRef` table off disk instead, and
+asserts it names `SpirvFrontEnd` and no back-end type. `MetalShaderArchitectureTests` does the Metal half as a
+MEMBER check rather than a type check, because that backend names `SpirvCrossCompile` legitimately and
+`VertexFragmentToHlsl` is one letter away from `VertexFragmentToMsl` across the same grant. What both buy is
+that the SPIRV-Cross migration stays a change to one half of one file.
 
 ```
 KhaozEngine.Gpu.D3D11 -> Vortice.Direct3D11, Vortice.D3DCompiler   (its subject matter)

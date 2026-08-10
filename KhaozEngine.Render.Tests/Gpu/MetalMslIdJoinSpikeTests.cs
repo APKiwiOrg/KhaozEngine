@@ -67,6 +67,16 @@ namespace KhaozEngine.Tests.Gpu
     /// Recording only, not a re-ruling: section 2.2a carries the measurement, and re-adjudicating M-B1 is its own
     /// step, for whoever takes rows 9, 10 and 13. Device-free and on every leg.
     /// </para>
+    /// <para>
+    /// THE RE-ADJUDICATION HAPPENED AND IT TOOK THIS JOIN (2.2b), so two things about this file changed and its
+    /// assertions did not. <c>SpirvResourceDecorations</c> moved into <c>KhaozEngine.Gpu/Internal/</c> beside
+    /// <c>SpirvLocalSize</c>, which is what its own header named as the move if the ruling went this way, and it
+    /// is a shipped mechanism now rather than a measurement. And the incumbent-agreement counter below stopped
+    /// being the tripwire on a fallback nobody took: it is the standing evidence that this backend changes NO
+    /// binding, kept through the rollout window as 2.2b requires, and it is retired by a deliberate act with a
+    /// recorded reason rather than by updating a number. What the census still measures is unchanged, which is
+    /// the point: the ruling rests on these numbers, so they are re-measured on every leg rather than quoted.
+    /// </para>
     /// </summary>
     public sealed class MetalMslIdJoinSpikeTests
     {
@@ -203,7 +213,7 @@ namespace KhaozEngine.Tests.Gpu
             foreach ((string stage, string msl, string keyword, byte[] spirv) in stages)
             {
                 IReadOnlyDictionary<uint, SpirvResourceDecoration> decorations =
-                    SpirvResourceDecorations.Read(spirv);
+                    SpirvResourceDecorations.Read(spirv, program + "." + stage);
                 List<EmittedArgument> arguments = MslEntryPointArguments.Parse(msl, keyword);
 
                 census.StageElementSlots += totalElements;

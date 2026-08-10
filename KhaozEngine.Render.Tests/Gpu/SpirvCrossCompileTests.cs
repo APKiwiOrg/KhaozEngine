@@ -66,12 +66,12 @@ void main()
         {
             CrossCompiledPair pair = SpirvCrossCompile.GlslPairToHlsl(VertexGlsl, FragmentGlsl, "test pair");
 
-            Assert.False(string.IsNullOrWhiteSpace(pair.VertexHlsl));
-            Assert.False(string.IsNullOrWhiteSpace(pair.FragmentHlsl));
+            Assert.False(string.IsNullOrWhiteSpace(pair.VertexSource));
+            Assert.False(string.IsNullOrWhiteSpace(pair.FragmentSource));
             // Emitted HLSL, not the GLSL it came from. A cross-compiler that silently passed the source through
             // would satisfy every other assertion here.
-            Assert.DoesNotContain("#version 450", pair.VertexHlsl, StringComparison.Ordinal);
-            Assert.Contains("cbuffer", pair.VertexHlsl, StringComparison.Ordinal);
+            Assert.DoesNotContain("#version 450", pair.VertexSource, StringComparison.Ordinal);
+            Assert.Contains("cbuffer", pair.VertexSource, StringComparison.Ordinal);
         }
 
         /// <summary>
@@ -121,7 +121,7 @@ void main()
         {
             CrossCompiledCompute compute = SpirvCrossCompile.GlslComputeToHlsl(ComputeGlsl, "test compute");
 
-            Assert.False(string.IsNullOrWhiteSpace(compute.ComputeHlsl));
+            Assert.False(string.IsNullOrWhiteSpace(compute.ComputeSource));
             Assert.Empty(compute.Reflection.VertexElements);
 
             GpuResourceLayoutDescription layout = Assert.Single(compute.Reflection.ResourceLayouts);

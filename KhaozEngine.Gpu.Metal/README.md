@@ -25,6 +25,9 @@ and nothing that does not want the Objective-C interop ever carries it.
 > one-encoder-at-a-time lifecycle, and a submit that flushes the pending setup batch, then signals, attaches
 > the handler and commits under one lock. The list can be begun, recorded against and submitted today, and
 > every member that records CONTENT into it still names the row that builds it.
+> Row 9 added the shader path: `CreateShadersFromSpirv` and `CreateComputeShaderFromSpirv` compile GLSL to
+> `MTLLibrary` and `MTLFunction` per stage, and read the per-program binding table out of the emitted MSL. See
+> [The shader path, and where a binding index comes from](#the-shader-path-and-where-a-binding-index-comes-from).
 
 Spec, decisions and the nineteen-row work breakdown:
 [docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](../docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md).
@@ -42,8 +45,9 @@ KhaozEngineMetal.Register();   // unconditionally, on every OS, once at startup
 `Register` and `IsPlatformSupported` are the whole public surface, and a test pins it member by member so the
 next row has to mean it. Everything else in the assembly is internal: the Objective-C interop layer, the
 device and its queue, the provider, the machine probe and its device-free decision half, the completion
-timeline and the fence on it, the command list with its encoder lifecycle and the submit path, plus the three
-verification spikes, which exist to answer a question rather than to run in a game.
+timeline and the fence on it, the command list with its encoder lifecycle and the submit path, the shader path
+with its emission parse and binding table, plus the three verification spikes, which exist to answer a question
+rather than to run in a game.
 
 **Call `Register()` unconditionally and on every operating system.** Registering says a provider EXISTS, which
 is a fact about your app's wiring. Whether this machine can run it is the separate question
@@ -335,6 +339,56 @@ bookkeeping.
 command buffer and its own encoders, and this backend has no shared record-time state at all: no layout
 tracker, no barrier batch, no device state cache. The portable contract remains one open recording per device,
 and code that relies on more does not port.
+
+## The shader path, and where a binding index comes from
+
+`CreateShadersFromSpirv` takes two GLSL 450 sources and gives back a shader set. On the way it compiles each
+stage to SPIR-V, cross-compiles the pair to MSL under a pinned option set, reads each stage's emitted entry
+point, compiles each stage's MSL into its own `MTLLibrary`, and looks up the entry-point function by the name
+the emission gave it. `CreateComputeShaderFromSpirv` is the single-stage sibling and also reports the workgroup
+size read out of the module, because MSL does not carry it and `dispatchThreadgroups` needs those exact numbers.
+
+**One library per STAGE is forced, not chosen.** SPIRV-Cross emits each stage as its own translation unit and
+names both entry points `main0`, so compiling the two texts together is a duplicate-symbol error. The
+entry-point name is READ rather than assumed for the same family of reason: the incumbent gets it from a Veldrid
+layer this backend does not have, and a wrong name is not a compile error at all, it is a library that builds
+and a nil function, so that is a separate refusal with its own message.
+
+**Metal has no binding decorations, so where a resource landed is a fact about the emitted text.** There is no
+`register(t3)` and no `layout(binding = 3)` on the far side: the cross-compiler assigns each resource an index
+of its own, per stage, in an order that follows first reference rather than the shader's declarations. Counting
+declarations on the CPU and hoping the two agree is what produced three recorded incidents in this engine (a
+model pass reading the normal texture through the albedo sampler, a crease term reading depth data, and the
+splat terrain reading one uniform buffer's bytes through another). So this backend does not count. It reads each
+stage's emitted entry point, takes the SPIR-V id each argument's name spells, and resolves that id to a
+`(set, binding)` through that stage's own `DescriptorSet` and `Binding` decorations. Decorations survive the
+debug-info stripping that removes names, and each stage's ids are read from that stage's own module, which is
+why this works where a name-keyed join does not.
+
+**An element with no entry for a stage is NOT bound for that stage**, and that is correct rather than a gap: the
+cross-compiler omits an argument a stage does not reference, and binding one anyway is the off-by-one.
+
+**The parse never falls back to a count.** An argument name that is not the expected shape, an id with no
+decorations in that stage's module, a `(set, binding)` outside the declared layout array, a kind that does not
+match its index space, or two arguments landing on one element: each throws at shader-set creation, naming the
+program, the stage and the argument. Two more throw earlier, where the arguments are read off the emitted text:
+an index attribute that never closes, and an index that is not a number. Neither is reachable from anything the
+cross-compiler emits today, and they throw rather than skip the argument because a dropped argument is one the
+five refusals above can never see, so its element would read as unreferenced by that stage and simply not be
+bound. This all happens with no device involved, so a shader whose emission cannot be read fails on a CI leg
+that has no GPU rather than as a wrong pixel on one that does.
+
+**The emission is pinned twice and neither pin covers the numbering.** One pin freezes the cross-compile options
+and one freezes `MTLCompileOptions` (`languageVersion` 3.2, fast math on, `preserveInvariance` off, all measured
+rather than assumed). Neither reaches the cross-compiler's naming or index assignment, which the binding table
+depends on. What freezes those is the exact `Veldrid.SPIRV` version the engine pins, so that drift arrives on a
+deliberate package bump and lands as a red device-free test rather than as a wrong frame.
+
+**There is no compiled-shader disk cache, deliberately.** macOS already caches the MSL-to-library compile across
+processes (0.02 ms for a source it has seen before, against 68 to 98 ms cold, both taken with the compiler
+service warmed first so neither number is startup cost), and no public API can serialize a source-compiled
+`MTLLibrary` anyway. The cost worth caching is the engine's own GLSL-to-MSL half, which is
+tracked as [#592](https://github.com/APKiwiOrg/KhaozEngine/issues/592).
 
 ## Three decisions worth knowing before reading the code
 

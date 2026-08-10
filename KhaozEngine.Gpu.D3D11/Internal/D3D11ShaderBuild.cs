@@ -67,9 +67,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             {
                 CrossCompiledPair hlsl = SpirvCrossCompile.GlslPairToHlsl(vertexGlsl, fragmentGlsl, tag);
                 vertexDxbc ??= CompileAndCache(
-                    hlsl.VertexHlsl, D3D11ShaderStage.Vertex, flags, cache, vertexKey, tag + " [vertex]");
+                    hlsl.VertexSource, D3D11ShaderStage.Vertex, flags, cache, vertexKey, tag + " [vertex]");
                 fragmentDxbc ??= CompileAndCache(
-                    hlsl.FragmentHlsl, D3D11ShaderStage.Fragment, flags, cache, fragmentKey, tag + " [fragment]");
+                    hlsl.FragmentSource, D3D11ShaderStage.Fragment, flags, cache, fragmentKey, tag + " [fragment]");
             }
 
             // DECISION S5. Reflected from the bytes rather than from the cross-compile, so a cached module is
@@ -108,7 +108,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             if (dxbc is null)
             {
                 CrossCompiledCompute hlsl = SpirvCrossCompile.ComputeToHlsl(spirv, tag);
-                dxbc = CompileAndCache(hlsl.ComputeHlsl, D3D11ShaderStage.Compute, flags, cache, key, tag);
+                dxbc = CompileAndCache(hlsl.ComputeSource, D3D11ShaderStage.Compute, flags, cache, key, tag);
             }
 
             return new D3D11CompiledCompute(dxbc, x, y, z);

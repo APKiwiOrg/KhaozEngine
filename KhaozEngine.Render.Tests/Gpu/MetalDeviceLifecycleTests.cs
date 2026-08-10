@@ -166,8 +166,14 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Contains("572", Refusal(() => _ = device.Factory), StringComparison.Ordinal);
             Assert.Contains("572", Refusal(() => _ = device.PointSampler), StringComparison.Ordinal);
-            Assert.Contains("573", Refusal(() => device.Submit(null!)), StringComparison.Ordinal);
             Assert.Contains("581", Refusal(() => device.Present()), StringComparison.Ordinal);
+
+            // SUBMIT IS BUILT NOW, which is what this row is for: it named row 573 until that row landed, and
+            // leaving the assertion would keep a ledger entry alive for a member that works. What replaces it is
+            // the refusal that member actually has, which is a foreign list rather than an unbuilt path.
+            using var foreign = new NullGpuCommandList();
+            Assert.Contains("not created by this native Metal device",
+                Refusal(() => device.Submit(foreign)), StringComparison.Ordinal);
 
             string factory = Refusal(() => _ = device.Factory);
             _output.WriteLine(factory);

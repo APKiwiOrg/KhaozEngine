@@ -14,6 +14,21 @@ namespace KhaozEngine.Gpu.Metal.Internal
         internal bool QueueCreated { get; init; }
         internal bool SharedEventCreated { get; init; }
 
+        /// <summary>
+        /// Whether <c>MTLCreateSystemDefaultDevice</c> handed back the SAME pointer when called twice, which is
+        /// the measurement that decides what the completion registry keys on. True means the default device is a
+        /// per-GPU process singleton, so two engine devices on one GPU are indistinguishable by
+        /// <c>MTLDevice</c> pointer and the routing table has to key on something unique per engine device.
+        /// </summary>
+        internal bool DefaultDeviceIsProcessSingleton { get; init; }
+
+        /// <summary>
+        /// Two queues on ONE device each registered their own latch and both registrations were accepted, which
+        /// is the routing key's whole point measured on real Metal. Keyed on the <c>MTLDevice</c> this would be
+        /// false, because the second call would hit the registered-twice refusal.
+        /// </summary>
+        internal bool TwoQueuesOnOneDeviceBothRegistered { get; init; }
+
         /// <summary>The value the first submission was allocated and encoded. 1 on a fresh timeline.</summary>
         internal ulong FirstValue { get; init; }
 
@@ -83,6 +98,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
             sb.AppendLine("device created: " + DeviceCreated);
             sb.AppendLine("queue created: " + QueueCreated);
             sb.AppendLine("MTLSharedEvent created: " + SharedEventCreated);
+            sb.AppendLine("MTLCreateSystemDefaultDevice twice, same pointer: "
+                + DefaultDeviceIsProcessSingleton);
+            sb.AppendLine("two queues on one device both registered a latch: "
+                + TwoQueuesOnOneDeviceBothRegistered);
             sb.AppendLine("first submission value: " + FirstValue);
             sb.AppendLine("second submission value: " + SecondValue);
             sb.AppendLine("fence signaled before arming: " + FenceSignaledBeforeArming);

@@ -25,12 +25,15 @@ namespace KhaozEngine.Tests.Gpu
     /// zero-skipped gate satisfied by rows asserting nothing is worth nothing.
     /// </para>
     /// <para>
-    /// IT SHARES THE COMPLETION REGISTRY'S SERIALISED COLLECTION with
-    /// <see cref="MetalCompletionHandlerTests"/>, because the probe registers a real device into the same
-    /// four-slot process-static table those tests fill.
+    /// IT SITS IN <c>NativeDeviceLifecycle</c> FOR BOTH OF THAT COLLECTION'S REASONS. It builds a whole
+    /// <c>MTLDevice</c> and queue beside the suite's own, which is the collection's original reason, and it
+    /// registers a real queue into the same four-slot process-static table
+    /// <see cref="MetalCompletionHandlerTests"/> fills, which is why that class moved here too. A class can only
+    /// be in one collection, so a separate registry collection would have forced a choice between the two, and
+    /// the device-creating half is the one row 19 requires.
     /// </para>
     /// </summary>
-    [Collection("MetalCompletionRegistry")]
+    [Collection("NativeDeviceLifecycle")]
     public sealed class MetalTimelineGpuTests
     {
         readonly ITestOutputHelper _output;
@@ -55,6 +58,17 @@ namespace KhaozEngine.Tests.Gpu
                 + "Everything below is unmeasured:\n" + report);
             Assert.True(result.QueueCreated, "newCommandQueue returned nil:\n" + report);
             Assert.True(result.SharedEventCreated, "newSharedEvent returned nil:\n" + report);
+
+            // THE ROUTING KEY, on the hardware that decided it. The pointer-equality reading is RECORDED rather
+            // than asserted, because it is a fact about the machine: on this one MTLCreateSystemDefaultDevice is
+            // a per-GPU process singleton, and a machine where it is not would still route correctly on the
+            // queue. What IS asserted is the consequence, which holds either way: two engine devices on one GPU
+            // each register their own latch. A device-keyed table fails this outright.
+            _output.WriteLine("routing key measurement: MTLCreateSystemDefaultDevice twice returns the same "
+                + "pointer = " + result.DefaultDeviceIsProcessSingleton);
+            Assert.True(result.TwoQueuesOnOneDeviceBothRegistered,
+                "two queues on one device could not both register a completion latch, so a second engine device "
+                + "on this GPU could not be created:\n" + report);
 
             // The values, which is the shared event being created AT 0: the first submission takes 1, which is
             // what makes 0 usable as a fence's unarmed marker.

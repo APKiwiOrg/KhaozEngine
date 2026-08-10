@@ -1809,16 +1809,31 @@ ONE drain, because the loop is inside it, and the whole cost of the choice is on
 of a genuinely long drain. Metal's call takes a timeout where Vulkan's does not, which is why this costs
 nothing to spell.
 
-**The completion handler finds its latch by asking the buffer for its device, which is M-F2's mechanics and is
+**The completion handler finds its latch by asking the buffer for its QUEUE, which is M-F2's mechanics and is
 also a row-5 decision rather than a doc one.** The block is global and carries no captures, which is the shape
-row 1's spike proved, so it cannot hold a device pointer of its own without becoming a heap block with copy and
+row 1's spike proved, so it cannot hold a pointer of its own without becoming a heap block with copy and
 dispose helpers that would then have to outlive every command buffer referencing it. The invoke therefore reads
-`[commandBuffer device]` and scans a four-slot table of registered latches. **That is not the dictionary M-F1
-removes.** The thing rejected there is a lock plus a hash lookup inside the driver's callback, once per FENCE,
-and this is a lock-free pointer comparison over at most four slots, once per command buffer. It exists because
-a process can hold more than one live native Metal device at a time (a test assembly creating and disposing
-headless devices is the ordinary case, which is why row 19 adds a lifecycle collection rather than asserting
-one device exists), and delivering device A's failure to device B's latch would flip the wrong liveness token.
+`[commandBuffer commandQueue]` and scans a four-slot table of registered latches. **That is not the dictionary
+M-F1 removes.** The thing rejected there is a lock plus a hash lookup inside the driver's callback, once per
+FENCE, and this is a lock-free pointer comparison over at most four slots, once per command buffer. It exists
+because a process can hold more than one live native Metal device at a time (a test assembly creating and
+disposing headless devices is the ordinary case, which is why row 19's lifecycle collection serialises those
+lifetimes rather than asserting one device exists), and delivering device A's failure to device B's latch would
+flip the wrong liveness token.
+
+**The key is the queue and NOT `[commandBuffer device]`, and that is a measurement.** Row 5 shipped the device
+first and it was wrong. `MTLCreateSystemDefaultDevice` called twice in one process hands back the **same
+pointer** (measured on an Apple M2 Max under macOS 26, and `MetalTimelineProbe` records the reading in its
+transcript on every run, so a machine that answers differently says so rather than being assumed). It is a
+per-GPU process singleton, so two engine devices on one GPU are indistinguishable by `MTLDevice` pointer, and a
+device-keyed table breaks twice over: the second engine device's registration hits the registered-twice refusal
+and its creation fails outright, and an unregister followed by a register routes a late completion from the OLD
+device's buffers straight into the NEW device's latch, which is precisely the mis-delivery the table exists to
+prevent. An `MTLCommandQueue` is a fresh object per `newCommandQueue` and M-N2 gives each engine device exactly
+one, so the queue pointer is unique per engine device even when the `MTLDevice` underneath is shared, and it is
+readonly on `MTLCommandBuffer` so the completion path reads it with no state of its own. Row 4 registers the
+queue it creates rather than the device (recorded on
+[#570](https://github.com/APKiwiOrg/KhaozEngine/issues/570)).
 
 ### 10.2 Hazards, and the machinery that is absent (M-H1 to M-H4)
 

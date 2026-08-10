@@ -120,6 +120,15 @@ namespace KhaozEngine.Tests.Gpu
     /// <c>D3D11BackendRegistrationTests</c> sibling stays there, correctly, because that one really does read the
     /// registry the append-audit rows empty.</para>
     ///
+    /// <para><b>IT ALSO CARRIES THE NATIVE METAL COMPLETION REGISTRY,</b> which is a second piece of shared
+    /// state rather than a second meaning. <c>MetalCompletionHandler</c>'s routing table is one process-static
+    /// array of four slots, and the two suites that fill it are <c>MetalCompletionHandlerTests</c> and
+    /// <c>MetalTimelineGpuTests</c>. The second of those BUILDS A DEVICE, so it belongs here on the original
+    /// reason, and a class can only be in one collection, so a registry collection of its own would have forced
+    /// a choice between serialising the device work and serialising the table. Both suites live here instead,
+    /// which is also the stronger guarantee: xUnit runs the classes of ONE collection in sequence, where two
+    /// separate non-parallel collections are only ordered by the runner's own rules.</para>
+    ///
     /// <para>Per-assembly, like every xUnit collection definition, and there are TWO copies now.
     /// <c>KhaozEngine.MapEditor.Tests</c> carries an identical definition of its own, the way
     /// <c>AllocSensitive</c> already did, because four of its rows build a whole device across two classes and

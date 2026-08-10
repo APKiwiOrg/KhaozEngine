@@ -15,17 +15,20 @@ namespace KhaozEngine.Tests.Gpu
     /// what happens when the sink throws inside a callback that must not let anything escape.
     /// </para>
     /// <para>
-    /// THE REGISTRY IS PROCESS-STATIC, which is why this class shares a serialised collection with the GPU test
-    /// that registers a real device against it. Two suites filling the same four-slot table concurrently would
-    /// fail each other for a reason that is a test-harness artefact rather than a defect.
+    /// THE REGISTRY IS PROCESS-STATIC, which is why this class sits in <c>NativeDeviceLifecycle</c> alongside
+    /// the GPU test that registers a real queue into the same four-slot table. Two suites filling it
+    /// concurrently would fail each other for a reason that is a test-harness artefact rather than a defect, and
+    /// one collection is what makes the two run in sequence: xUnit runs the CLASSES of a collection one at a
+    /// time, where two separate non-parallel collections would only be ordered by the runner's own rules. See
+    /// <see cref="NativeDeviceLifecycleCollection"/> for the collection's other, older reason to exist.
     /// </para>
     /// </summary>
-    [Collection("MetalCompletionRegistry")]
+    [Collection("NativeDeviceLifecycle")]
     public sealed class MetalCompletionHandlerTests
     {
-        // Opaque stand-ins for MTLDevice handles. Nothing dereferences them: the table is keyed on the pointer
-        // and compares it, which is the whole of the lookup on the completion path.
-        static IntPtr Device(int n) => new(0x3000 + n);
+        // Opaque stand-ins for MTLCommandQueue handles. Nothing dereferences them: the table is keyed on the
+        // pointer and compares it, which is the whole of the lookup on the completion path.
+        static IntPtr Queue(int n) => new(0x3000 + n);
 
         static MetalCommandBufferOutcome Completed()
             => new(MetalCommandBufferStatus.Completed, 0, "");
@@ -34,13 +37,13 @@ namespace KhaozEngine.Tests.Gpu
             => new(MetalCommandBufferStatus.Error, 5, "Caused GPU Timeout Error (00000002:kIOAccelCommandBufferCallbackErrorTimeout)");
 
         [Fact]
-        public void ACompletion_ReachesTheSinkRegisteredForThatDevice()
+        public void ACompletion_ReachesTheSinkRegisteredForThatQueue()
         {
             var sink = new RecordingSink();
-            MetalCompletionHandler.Register(Device(1), sink);
+            MetalCompletionHandler.Register(Queue(1), sink);
             try
             {
-                MetalCompletionHandler.Deliver(Device(1), Completed());
+                MetalCompletionHandler.Deliver(Queue(1), Completed());
 
                 MetalCommandBufferOutcome only = Assert.Single(sink.Seen);
                 Assert.Equal(MetalCommandBufferStatus.Completed, only.Status);
@@ -48,23 +51,23 @@ namespace KhaozEngine.Tests.Gpu
             }
             finally
             {
-                MetalCompletionHandler.Unregister(Device(1));
+                MetalCompletionHandler.Unregister(Queue(1));
             }
         }
 
         [Fact]
-        public void ACompletion_ReachesOnlyItsOwnDevicesSink()
+        public void ACompletion_ReachesOnlyItsOwnQueuesSink()
         {
             var first = new RecordingSink();
             var second = new RecordingSink();
-            MetalCompletionHandler.Register(Device(2), first);
-            MetalCompletionHandler.Register(Device(3), second);
+            MetalCompletionHandler.Register(Queue(2), first);
+            MetalCompletionHandler.Register(Queue(3), second);
             try
             {
-                MetalCompletionHandler.Deliver(Device(3), Failed());
+                MetalCompletionHandler.Deliver(Queue(3), Failed());
 
                 // Delivering device A's failure to device B's latch would flip the wrong liveness token, which
-                // is the whole reason the block reads the device off the command buffer rather than carrying no
+                // is the whole reason the block reads the queue off the command buffer rather than carrying no
                 // key at all.
                 Assert.Empty(first.Seen);
                 MetalCommandBufferOutcome only = Assert.Single(second.Seen);
@@ -74,24 +77,24 @@ namespace KhaozEngine.Tests.Gpu
             }
             finally
             {
-                MetalCompletionHandler.Unregister(Device(2));
-                MetalCompletionHandler.Unregister(Device(3));
+                MetalCompletionHandler.Unregister(Queue(2));
+                MetalCompletionHandler.Unregister(Queue(3));
             }
         }
 
         [Fact]
-        public void ACompletionForAnUnregisteredDevice_ReachesNobodyAndIsQuiet()
+        public void ACompletionForAnUnregisteredQueue_ReachesNobodyAndIsQuiet()
         {
             var sink = new RecordingSink();
-            MetalCompletionHandler.Register(Device(4), sink);
+            MetalCompletionHandler.Register(Queue(4), sink);
             try
             {
-                MetalCompletionHandler.Deliver(Device(5), Completed());
+                MetalCompletionHandler.Deliver(Queue(5), Completed());
                 Assert.Empty(sink.Seen);
             }
             finally
             {
-                MetalCompletionHandler.Unregister(Device(4));
+                MetalCompletionHandler.Unregister(Queue(4));
             }
         }
 
@@ -99,53 +102,107 @@ namespace KhaozEngine.Tests.Gpu
         public void Unregister_StopsDelivery()
         {
             var sink = new RecordingSink();
-            MetalCompletionHandler.Register(Device(6), sink);
-            MetalCompletionHandler.Unregister(Device(6));
+            MetalCompletionHandler.Register(Queue(6), sink);
+            MetalCompletionHandler.Unregister(Queue(6));
 
             // A buffer completing after its device has been torn down has nothing left to latch on to, which is
-            // why the device slot is cleared before the sink slot.
-            MetalCompletionHandler.Deliver(Device(6), Completed());
+            // why the queue slot is cleared before the sink slot.
+            MetalCompletionHandler.Deliver(Queue(6), Completed());
             Assert.Empty(sink.Seen);
         }
 
         [Fact]
-        public void Unregister_ForADeviceThatNeverRegistered_IsQuiet()
-            => MetalCompletionHandler.Unregister(Device(7));
+        public void ALateCompletionFromATornDownDevice_DoesNotReachItsSuccessorsLatch()
+        {
+            // THE FAILURE THE QUEUE KEY EXISTS FOR. MTLCreateSystemDefaultDevice is a per-GPU process singleton
+            // (measured, see MetalTimelineProbe), so an engine device torn down and replaced presents the SAME
+            // MTLDevice pointer to the table. Keyed on the device, this delivery would land in the successor's
+            // latch and flip the liveness token of a device that is perfectly healthy. Keyed on the queue, the
+            // old buffer's key is a queue nobody holds any more.
+            var torn = new RecordingSink();
+            var successor = new RecordingSink();
+
+            MetalCompletionHandler.Register(Queue(11), torn);
+            MetalCompletionHandler.Unregister(Queue(11));
+            MetalCompletionHandler.Register(Queue(12), successor);
+            try
+            {
+                MetalCompletionHandler.Deliver(Queue(11), Failed());
+
+                Assert.Empty(successor.Seen);
+                Assert.Empty(torn.Seen);
+            }
+            finally
+            {
+                MetalCompletionHandler.Unregister(Queue(12));
+            }
+        }
 
         [Fact]
-        public void RegisteringTheSameDeviceTwice_IsRefused()
+        public void TwoQueuesOnOneDevice_EachRegisterTheirOwnLatch()
         {
-            MetalCompletionHandler.Register(Device(8), new RecordingSink());
+            // The same measurement from the other side: two engine devices on one GPU are indistinguishable by
+            // MTLDevice pointer, so a device-keyed table would refuse the second one's registration outright and
+            // its creation would fail. Two distinct queues are two distinct keys.
+            var first = new RecordingSink();
+            var second = new RecordingSink();
+
+            MetalCompletionHandler.Register(Queue(13), first);
+            MetalCompletionHandler.Register(Queue(14), second);
+            try
+            {
+                MetalCompletionHandler.Deliver(Queue(14), Completed());
+
+                Assert.Empty(first.Seen);
+                Assert.Single(second.Seen);
+            }
+            finally
+            {
+                MetalCompletionHandler.Unregister(Queue(13));
+                MetalCompletionHandler.Unregister(Queue(14));
+            }
+        }
+
+        [Fact]
+        public void Unregister_ForAQueueThatNeverRegistered_IsQuiet()
+            => MetalCompletionHandler.Unregister(Queue(7));
+
+        [Fact]
+        public void RegisteringTheSameQueueTwice_IsRefused()
+        {
+            MetalCompletionHandler.Register(Queue(8), new RecordingSink());
             try
             {
                 // A latch that was replaced would stop hearing about the failures of buffers already in flight
                 // against it, so the second registration is refused rather than winning.
                 Assert.Throws<InvalidOperationException>(
-                    () => MetalCompletionHandler.Register(Device(8), new RecordingSink()));
+                    () => MetalCompletionHandler.Register(Queue(8), new RecordingSink()));
             }
             finally
             {
-                MetalCompletionHandler.Unregister(Device(8));
+                MetalCompletionHandler.Unregister(Queue(8));
             }
         }
 
         [Fact]
-        public void RegisteringMoreDevicesThanTheTableHolds_IsRefused()
+        public void RegisteringMoreQueuesThanTheTableHolds_IsRefused()
         {
             var registered = new List<IntPtr>();
             try
             {
                 // The scan runs per command buffer on the completion path, so the table is deliberately small.
-                // This walks up to one past capacity rather than asserting a fixed count, because another suite
-                // in this collection's process may legitimately hold a slot.
+                // The count is EXACT rather than tolerant: this class and the GPU probe are the only registrants
+                // in the assembly and they share one collection, whose classes xUnit runs one at a time, so the
+                // table is empty when this starts. A tolerant "at most capacity" would pass with zero slots
+                // free, which is the assertion emptying itself.
                 Exception? refused = null;
-                for (int i = 0; i <= MetalCompletionHandler.MaxRegisteredDevices; i++)
+                for (int i = 0; i <= MetalCompletionHandler.MaxRegisteredQueues; i++)
                 {
-                    IntPtr device = Device(100 + i);
+                    IntPtr queue = Queue(100 + i);
                     try
                     {
-                        MetalCompletionHandler.Register(device, new RecordingSink());
-                        registered.Add(device);
+                        MetalCompletionHandler.Register(queue, new RecordingSink());
+                        registered.Add(queue);
                     }
                     catch (InvalidOperationException ex)
                     {
@@ -155,27 +212,27 @@ namespace KhaozEngine.Tests.Gpu
                 }
 
                 Assert.NotNull(refused);
-                Assert.True(registered.Count <= MetalCompletionHandler.MaxRegisteredDevices);
+                Assert.Equal(MetalCompletionHandler.MaxRegisteredQueues, registered.Count);
             }
             finally
             {
-                foreach (IntPtr device in registered) MetalCompletionHandler.Unregister(device);
+                foreach (IntPtr queue in registered) MetalCompletionHandler.Unregister(queue);
             }
         }
 
         [Fact]
         public void ASinkThatThrows_DoesNotEscapeTheCompletionPath()
         {
-            MetalCompletionHandler.Register(Device(9), new ThrowingSink());
+            MetalCompletionHandler.Register(Queue(9), new ThrowingSink());
             try
             {
                 // The real caller is an Objective-C callback, where an escaping exception terminates the process
                 // rather than unwinding to anything that could report it.
-                MetalCompletionHandler.Deliver(Device(9), Failed());
+                MetalCompletionHandler.Deliver(Queue(9), Failed());
             }
             finally
             {
-                MetalCompletionHandler.Unregister(Device(9));
+                MetalCompletionHandler.Unregister(Queue(9));
             }
         }
 
@@ -189,11 +246,11 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [Fact]
-        public void RegisteringWithNoSinkOrNoDevice_IsRefused()
+        public void RegisteringWithNoSinkOrNoQueue_IsRefused()
         {
             Assert.Throws<ArgumentNullException>(
                 () => MetalCompletionHandler.Register(IntPtr.Zero, new RecordingSink()));
-            Assert.Throws<ArgumentNullException>(() => MetalCompletionHandler.Register(Device(10), null!));
+            Assert.Throws<ArgumentNullException>(() => MetalCompletionHandler.Register(Queue(10), null!));
         }
 
         sealed class RecordingSink : IMetalCommandBufferErrorSink
@@ -209,13 +266,4 @@ namespace KhaozEngine.Tests.Gpu
                 => throw new InvalidOperationException("a latch that throws inside a driver callback");
         }
     }
-
-    /// <summary>
-    /// The completion registry is one process-static table of four slots, so every suite that registers into it
-    /// runs serially against every other. That is the same reason <c>NativeDeviceLifecycle</c> exists, applied
-    /// to a smaller piece of shared state: a suite filling the table while another is registering would fail it
-    /// for a reason that is a harness artefact rather than a defect.
-    /// </summary>
-    [CollectionDefinition("MetalCompletionRegistry", DisableParallelization = true)]
-    public sealed class MetalCompletionRegistryCollection { }
 }

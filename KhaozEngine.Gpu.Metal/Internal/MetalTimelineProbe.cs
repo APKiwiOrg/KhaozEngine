@@ -79,6 +79,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 return new MetalTimelineProbeResult { Notes = notes };
             }
 
+            bool singleton = MeasureDeviceIdentity(device, notes);
+
             IntPtr queue = MetalTimelineNative.MsgSend(device, MetalTimelineNative.Sel("newCommandQueue"));
             if (queue == IntPtr.Zero)
             {
@@ -87,24 +89,97 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 return new MetalTimelineProbeResult { DeviceCreated = true, Notes = notes };
             }
 
+            bool twoQueuesRegistered = MeasureTwoQueuesOnOneDevice(device, notes);
+
             var sink = new RecordingSink();
-            MetalCompletionHandler.Register(device, sink);
+            MetalCompletionHandler.Register(queue, sink);
             try
             {
-                return Measure(device, queue, sink, notes);
+                return Measure(device, queue, sink, singleton, twoQueuesRegistered, notes);
             }
             finally
             {
-                MetalCompletionHandler.Unregister(device);
+                MetalCompletionHandler.Unregister(queue);
                 MetalTimelineNative.ObjcRelease(queue);
                 MetalTimelineNative.ObjcRelease(device);
             }
         }
 
+        /// <summary>
+        /// THE CONSEQUENCE OF THE MEASUREMENT ABOVE, ON REAL METAL: two engine devices on ONE GPU each register
+        /// their own latch and both registrations are accepted. Keyed on the <c>MTLDevice</c> this could not
+        /// pass, because that pointer is the same for both, and the second engine device's creation would fail
+        /// with the registered-twice refusal. Two queues on one device is the same shape with the device
+        /// creation left out, which is what makes it measurable before row 4 exists.
+        /// </summary>
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static bool MeasureTwoQueuesOnOneDevice(IntPtr device, List<string> notes)
+        {
+            IntPtr first = MetalTimelineNative.MsgSend(device, MetalTimelineNative.Sel("newCommandQueue"));
+            IntPtr second = MetalTimelineNative.MsgSend(device, MetalTimelineNative.Sel("newCommandQueue"));
+            if (first == IntPtr.Zero || second == IntPtr.Zero || first == second)
+            {
+                notes.Add("two newCommandQueue calls on one device did not hand back two distinct queues, so "
+                    + "the routing key's uniqueness is unmeasured on this run.");
+                if (first != IntPtr.Zero) MetalTimelineNative.ObjcRelease(first);
+                if (second != IntPtr.Zero) MetalTimelineNative.ObjcRelease(second);
+                return false;
+            }
+
+            try
+            {
+                MetalCompletionHandler.Register(first, new RecordingSink());
+                MetalCompletionHandler.Register(second, new RecordingSink());
+                return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                notes.Add("the second latch registration for the same device was refused: " + ex.Message);
+                return false;
+            }
+            finally
+            {
+                MetalCompletionHandler.Unregister(first);
+                MetalCompletionHandler.Unregister(second);
+                MetalTimelineNative.ObjcRelease(first);
+                MetalTimelineNative.ObjcRelease(second);
+            }
+        }
+
+        /// <summary>
+        /// THE MEASUREMENT THAT DECIDES THE ROUTING KEY: is <c>MTLCreateSystemDefaultDevice</c> a per-GPU
+        /// PROCESS SINGLETON, so that two engine devices on one GPU present the same <c>MTLDevice</c> pointer?
+        /// If it is, keying <see cref="MetalCompletionHandler"/>'s table on the device would refuse the second
+        /// engine device's registration outright and would let an unregister/register cycle route a late
+        /// completion into the new device's latch, which is the exact failure that table exists to prevent.
+        /// <para>
+        /// The second reference is released immediately. Whichever way it answers, the value is recorded in the
+        /// transcript rather than asserted, because it is a fact about the machine rather than a pass.
+        /// </para>
+        /// </summary>
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static bool MeasureDeviceIdentity(IntPtr device, List<string> notes)
+        {
+            IntPtr second = MetalTimelineNative.MTLCreateSystemDefaultDevice();
+            if (second == IntPtr.Zero)
+            {
+                notes.Add("the second MTLCreateSystemDefaultDevice returned nil, so the process-singleton "
+                    + "question is unmeasured on this run.");
+                return false;
+            }
+
+            bool same = second == device;
+            MetalTimelineNative.ObjcRelease(second);
+            return same;
+        }
+
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         static MetalTimelineProbeResult Measure(
-            IntPtr device, IntPtr queue, RecordingSink sink, List<string> notes)
+            IntPtr device, IntPtr queue, RecordingSink sink, bool singleton, bool twoQueuesRegistered,
+            List<string> notes)
         {
             using var timeline = new MetalTimeline(new MetalSharedEvent(device));
             MetalGpuFence fence = timeline.CreateFence();
@@ -136,6 +211,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 DeviceCreated = true,
                 QueueCreated = true,
                 SharedEventCreated = true,
+                DefaultDeviceIsProcessSingleton = singleton,
+                TwoQueuesOnOneDeviceBothRegistered = twoQueuesRegistered,
                 FirstValue = first,
                 SecondValue = second,
                 FenceSignaledBeforeArming = unsignaledBeforeArming,

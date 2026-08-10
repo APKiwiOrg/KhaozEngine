@@ -83,8 +83,34 @@ namespace KhaozEngine.Gpu.Metal.Internal
         public IGpuFence CreateFence() => _device.Timeline.CreateFence();
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// AN AGGREGATE OF BORROWED TEXTURE HANDLES AND NOTHING ELSE. It creates no native object, takes no lock
+        /// and issues no command buffer, because a Metal render pass is a descriptor built per pass rather than a
+        /// driver object to cache: there is no render pass and no framebuffer object here to invalidate on a
+        /// resize. See <see cref="MetalFramebuffer"/>.
+        /// <para>
+        /// IT IS THE ONE MEMBER HERE WITH NO <c>OnMacOs</c> HALF, and that follows rather than being an
+        /// exception: with nothing native to make there is nothing for the platform guard to protect, and the
+        /// textures it aggregates were already refused off macOS at their own creation.
+        /// </para>
+        /// </remarks>
         public IGpuFramebuffer CreateFramebuffer(IGpuTexture? depth, params IGpuTexture[] colour)
-            => throw NotBuiltYet("A framebuffer", PassesRow);
+        {
+            ArgumentNullException.ThrowIfNull(colour);
+
+            var textures = new MetalTexture[colour.Length];
+            for (int i = 0; i < colour.Length; i++)
+            {
+                textures[i] = MetalResourceOwnership.Require<MetalTexture>(colour[i], _device.Liveness,
+                    nameof(colour));
+            }
+
+            MetalTexture? depthTexture = depth is null
+                ? null
+                : MetalResourceOwnership.Require<MetalTexture>(depth, _device.Liveness, nameof(depth));
+
+            return new MetalFramebuffer(depthTexture, textures);
+        }
 
         /// <inheritdoc/>
         public IGpuResourceLayout CreateResourceLayout(in GpuResourceLayoutDescription d)
@@ -203,7 +229,6 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         const string LayoutsRow = "the resource-layout row (https://github.com/APKiwiOrg/KhaozEngine/issues/576)";
         const string PipelinesRow = "the pipeline row (https://github.com/APKiwiOrg/KhaozEngine/issues/577)";
-        const string PassesRow = "the render-pass row (https://github.com/APKiwiOrg/KhaozEngine/issues/578)";
 
         // Named rather than a bare NotImplementedException, and it names WHAT IS LIVE as well as what is not, in
         // the shape MetalGpuDevice settled on: a reader who hits this needs to know whether the backend is
@@ -212,9 +237,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
             => new($"{what} is not built yet on the native Metal backend's resource factory: it lands in {row}. "
                 + "Buffers, textures, samplers and fences ARE live (work-breakdown row 6, "
                 + "https://github.com/APKiwiOrg/KhaozEngine/issues/572), so are command lists (row 7, "
-                + "https://github.com/APKiwiOrg/KhaozEngine/issues/573), and so are shader sets and compute "
-                + "shaders (row 9, https://github.com/APKiwiOrg/KhaozEngine/issues/575). This is a statement "
-                + "about the package and not about this machine. Select GpuBackendKind.Metal, which goes through "
-                + "Veldrid, for a fully working Metal device.");
+                + "https://github.com/APKiwiOrg/KhaozEngine/issues/573), so are shader sets and compute shaders "
+                + "(row 9, https://github.com/APKiwiOrg/KhaozEngine/issues/575), and so are framebuffers (row "
+                + "12, https://github.com/APKiwiOrg/KhaozEngine/issues/578). This is a statement about the "
+                + "package and not about this machine. Select GpuBackendKind.Metal, which goes through Veldrid, "
+                + "for a fully working Metal device.");
     }
 }

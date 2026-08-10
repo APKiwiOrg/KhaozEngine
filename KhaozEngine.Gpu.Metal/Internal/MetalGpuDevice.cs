@@ -177,7 +177,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 // remembers the timeline value THAT list's submission took. The list disposes it. It takes the
                 // liveness token because its block creation is a native allocation on this device (M-F6).
                 new MetalStagingArena(_staging, _framesInFlight, liveness: _liveness), new MetalBlitApi(),
-                _liveness);
+                _liveness, new MetalRenderApi(),
+                // M-A2's POSITION, READ ONCE PER PROCESS AND COPIED PER LIST. Reading the environment per pass
+                // would let a mid-run change split one frame's clears between two policies, which is a shape the
+                // gate-1 A/B could not interpret. See MetalClearPolicy.
+                MetalClearPolicy.Current);
 
         /// <inheritdoc/>
         /// <remarks>M-G2's <c>softwareAdapter</c> is ALWAYS false with confidence rather than null, because Apple

@@ -252,6 +252,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// either: the shape check compares kinds, and the join reaches an element only for its kind. If a later
         /// row starts reading a layout element's name or its visibility off <see cref="Layouts"/>, that becomes
         /// observable and belongs in here too.
+        /// <para>
+        /// AND ROW 10 MEASURED WHAT THAT WOULD COST, so this is a constraint with a size rather than a caution.
+        /// Over the shipped catalog 25 of 42 programs merge onto an earlier program's table and 16 of those 25
+        /// disagree on at least one element NAME, so a member reading one off <see cref="Layouts"/> would be
+        /// reading another program's name in the majority of merges.
+        /// <c>MetalIndexTableDedupTests.TwoTablesDifferingOnlyInElementNames_AreInterchangeable</c> pins the
+        /// invariant behaviourally, which catches a change to this key or to
+        /// <see cref="RequireLayoutShape"/> and NOT a new member that reads a name. Making that mechanical is
+        /// https://github.com/APKiwiOrg/KhaozEngine/issues/594.
+        /// </para>
         /// </para>
         /// <para>
         /// CONSUMED BY <see cref="MetalIndexTableCache"/> AND BY NOTHING ELSE, which is what keeps it the one

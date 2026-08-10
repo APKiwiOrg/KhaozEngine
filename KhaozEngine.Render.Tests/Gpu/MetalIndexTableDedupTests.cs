@@ -178,6 +178,12 @@ namespace KhaozEngine.Tests.Gpu
         /// that started reading a name off <c>Layouts</c> would be reading another program's name in the majority
         /// of merges rather than in a corner case.
         /// </para>
+        /// <para>
+        /// WHAT THIS ROW DOES NOT CATCH is a NEW member that reads a name: it pins the two mechanisms that exist
+        /// (the key and the shape check) and nothing about members that do not exist yet. Making the constraint
+        /// mechanical, as an IL walk over the table's own methods, is
+        /// https://github.com/APKiwiOrg/KhaozEngine/issues/594.
+        /// </para>
         /// </summary>
         [Fact]
         public void TwoTablesDifferingOnlyInElementNames_AreInterchangeable()

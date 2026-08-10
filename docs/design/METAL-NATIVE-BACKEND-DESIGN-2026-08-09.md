@@ -1572,7 +1572,8 @@ remains correct. What changes is the cost of getting it wrong later: a member th
 `Layouts` would be reading ANOTHER PROGRAM'S name in 16 of 25 merges, not in a rare collision.
 `MetalIndexTableDedupTests` asserts the equivalence directly, walking every merged pair and checking the entries
 and the shape `RequireLayoutShape` compares, driven both ways, and pins the name invariance behaviourally beside
-it.
+it. What that pin cannot see is a NEW member reading a name, so making it mechanical is filed as
+https://github.com/APKiwiOrg/KhaozEngine/issues/594.
 
 **The pipeline's reference needed nothing new at the pipeline, which is the row's scope line resolving into
 less code than it sounds like.** Because the canonicalisation happens where the table is BUILT, every

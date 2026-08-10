@@ -38,7 +38,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     ///
     /// <para><b>EVERYTHING HERE IS DEVICE-FREE</b>, over a plain snapshot and the plain
     /// <see cref="MetalDeviceLiveness"/> class, so the latch, the once-only rule, the liveness flip, the header
-    /// string and the publish race all run under <c>dotnet test</c> on Linux and Windows.</para>
+    /// string and the once-only publication all run under <c>dotnet test</c> on Linux and Windows.</para>
     /// </summary>
     internal sealed class MetalDeviceLossLatch
     {

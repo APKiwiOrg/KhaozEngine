@@ -25,6 +25,7 @@ namespace KhaozEngine.Tests.Gpu
     /// actually needed for.
     /// </para>
     /// </summary>
+    [Collection("NativeDeviceLifecycle")]
     public sealed class MetalDeviceLifecycleTests
     {
         readonly ITestOutputHelper _output;

@@ -9,7 +9,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>
     /// Decisions M-G4 and M-F6: the command-buffer error latch and the liveness token it flips. All device-free,
     /// over a plain <see cref="MetalCommandBufferFault"/> snapshot, so the latch, the once-only rule, the
-    /// liveness flip, the header string and the publish race all run on Linux and Windows where there is no Metal
+    /// liveness flip, the header string and the once-only publication all run on Linux and Windows where there is no Metal
     /// at all.
     /// <para>
     /// THERE IS NO INCUMBENT BEHAVIOUR TO PORT HERE, which makes this the one diagnostics surface in the phase

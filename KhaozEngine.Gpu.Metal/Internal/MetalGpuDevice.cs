@@ -15,7 +15,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// the device, the queue, <c>KE_METAL_DEVICE</c>, the validation report, the command-buffer error latch, the
     /// liveness token and a drain before teardown. Resources are row 6, the command list is row 7 and the
     /// swapchain is row 15, so the members those rows own throw a message saying so rather than returning
-    /// something that fails later somewhere less informative. Both sibling backends landed the same way and had
+    /// something that fails later somewhere less informative, with three deliberate exceptions whose remarks
+    /// below carry the reasons: <see cref="Counters"/> returns an absent default (row 16's channels, and absent
+    /// is not zero), <see cref="SwapchainFramebuffer"/> returns null (the headless answer is null, not a throw),
+    /// and <see cref="SyncToVerticalBlank"/> is a backing value until row 15 gives it a swapchain to
+    /// reconfigure. Both sibling backends landed the same way and had
     /// this paragraph rewritten at every fill-in, which is the discipline it is under here too: it is a ledger,
     /// and a stale one is worse than none.
     /// </para>

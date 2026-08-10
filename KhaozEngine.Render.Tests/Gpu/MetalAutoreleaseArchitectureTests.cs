@@ -222,6 +222,11 @@ namespace KhaozEngine.Tests.Gpu
         // objc_getClass return runtime singletons nobody owns, and the pool calls are the pool.
         static bool IsMessageSend(MethodBase method) => method.DeclaringType == typeof(ObjCMsgSend);
 
+        // POSITION-BLIND, knowingly: a method counts as covered if its IL calls Enter anywhere, so an early
+        // return that sends a message before entering the pool would read as clean. Every current opener enters
+        // as its first statement, and a positional IL check would have to model control flow for a case nobody
+        // writes. If an opener ever grows an early message-send path, this is the comment that says the walk
+        // did not lie, it just cannot see ordering.
         static bool OpensAPool(MethodBase method)
             => Callees(method).Any(c => c.DeclaringType == typeof(ObjCAutoreleasePool)
                 && c.Name == nameof(ObjCAutoreleasePool.Enter));

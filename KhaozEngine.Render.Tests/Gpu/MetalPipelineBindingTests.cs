@@ -217,13 +217,188 @@ namespace KhaozEngine.Tests.Gpu
             list.End();
         }
 
+        /// <summary>
+        /// A DISPOSED PIPELINE IS REFUSED AT THE BIND, BY NAME, and both kinds are.
+        ///
+        /// <para><b>THIS IS THE ONE REFUSAL ON THIS PATH THAT IS ABOUT MEMORY RATHER THAN ABOUT BELIEF.</b> A
+        /// disposed resource LAYOUT or SET releases nothing at all on this backend, so refusing one is about the
+        /// caller thinking the declaration is still theirs. A disposed PIPELINE has released its
+        /// <c>MTLRenderPipelineState</c> and its <c>MTLDepthStencilState</c>, so accepting one records a dangling
+        /// handle that the pre-draw flush later sets on a live encoder: a use-after-free inside the driver, at a
+        /// call several steps removed from the mistake.</para>
+        /// </summary>
+        [Fact]
+        public void ADisposedPipeline_IsRefused()
+        {
+            MetalCommandList list = NewList();
+            list.Begin();
+
+            MetalGraphicsPipeline graphics = Pipeline();
+            graphics.Dispose();
+
+            ObjectDisposedException refused = Assert.Throws<ObjectDisposedException>(
+                () => list.SetPipeline(graphics));
+            Assert.Contains("already disposed", refused.Message, StringComparison.Ordinal);
+            Assert.Contains("MTLRenderPipelineState", refused.Message, StringComparison.Ordinal);
+
+            MetalComputePipeline compute = ComputePipeline();
+            compute.Dispose();
+
+            ObjectDisposedException refusedCompute = Assert.Throws<ObjectDisposedException>(
+                () => list.SetComputePipeline(compute));
+            Assert.Contains("already disposed", refusedCompute.Message, StringComparison.Ordinal);
+            Assert.Contains("MTLComputePipelineState", refusedCompute.Message, StringComparison.Ordinal);
+
+            // NOTHING WAS RECORDED BY EITHER, which is the half that would still be wrong if the refusal landed
+            // after the record instead of before it.
+            Assert.Null(list.Pipelines.Graphics);
+            Assert.Null(list.Pipelines.Compute);
+
+            list.End();
+        }
+
+        /// <summary>
+        /// AND THE STATE ACCESSORS REFUSE TOO, which is the second door into the same released object.
+        /// <c>MetalShaderSet.FunctionFor</c> set this precedent for exactly this reason: a disposed set answers
+        /// nothing rather than handing back a released handle. Everything on these types that is MANAGED data
+        /// keeps answering, because none of it was released and a reader of it is asking a question disposal did
+        /// not change.
+        /// </summary>
+        [Fact]
+        public void ADisposedPipelinesReleasedHandles_AreRefusedAndItsManagedDataIsNot()
+        {
+            MetalGraphicsPipeline graphics = Pipeline();
+            MetalShaderIndexTable table = graphics.Table;
+            graphics.Dispose();
+
+            Assert.Throws<ObjectDisposedException>(() => graphics.RenderState);
+            Assert.Throws<ObjectDisposedException>(() => graphics.DepthStencilState);
+
+            // The plan is managed data that disposal released nothing of, so it still answers.
+            Assert.Same(table, graphics.Table);
+            Assert.False(graphics.State.ScissorTestEnabled);
+
+            MetalComputePipeline compute = ComputePipeline();
+            compute.Dispose();
+
+            Assert.Throws<ObjectDisposedException>(() => compute.State);
+            Assert.NotNull(compute.Table);
+        }
+
+        /// <summary>
+        /// M-R9 THROUGH THE LIST: a pipeline switch adopts the incoming program's index table, and invalidates
+        /// the recorded binds only where the table actually differs.
+        ///
+        /// <para><b>THE SAME-TABLE ARM IS THE ONE WITH A COST BEHIND IT.</b> Row 10 content-deduplicates the
+        /// tables per device, so two programs that map every element to the same indices SHARE one instance and
+        /// this is a reference compare that answers "nothing to invalidate". Without the identity half, every
+        /// pipeline switch in a frame would throw away every recorded bind and pay a full re-activation, which is
+        /// the incumbent's behaviour and the thing M-R8 and M-R9 exist to stop.</para>
+        /// </summary>
+        [Fact]
+        public void APipelineSwitchAdoptsTheIncomingTableAndInvalidatesOnlyOnARealChange()
+        {
+            MetalShaderIndexTable shared = EmptyTable();
+
+            MetalCommandList list = NewList();
+            list.Begin();
+
+            Assert.Null(list.GraphicsBinds.IndexTable);
+
+            list.SetPipeline(Pipeline(table: shared));
+            Assert.Same(shared, list.GraphicsBinds.IndexTable);
+
+            // A recorded slot, flushed clean, so the invalidation below is visible as a change rather than as the
+            // state a fresh record is already in.
+            list.GraphicsBinds.Record(0, MetalBindProgram.Set(_harness), 0);
+            var sink = new FakeMetalEncoderSink(new FakeMetalEncoderCalls());
+            list.GraphicsBinds.Flush(ref sink, new IntPtr(0xD5), list.Encoders.Epoch, segment: 0);
+            Assert.False(list.GraphicsBinds.IsDirty(0));
+
+            // A DIFFERENT pipeline carrying the SAME table instance: the switch is real (M-R8 lets it through)
+            // and the binds survive it.
+            list.SetPipeline(Pipeline(table: shared));
+            Assert.Same(shared, list.GraphicsBinds.IndexTable);
+            Assert.False(list.GraphicsBinds.IsDirty(0));
+
+            // A pipeline whose table maps its elements somewhere else: every recorded slot owes a full rebind,
+            // because the resources sitting in the argument table are at indices the incoming program does not
+            // read.
+            MetalShaderIndexTable other = EmptyTable();
+            list.SetPipeline(Pipeline(table: other));
+            Assert.Same(other, list.GraphicsBinds.IndexTable);
+            Assert.True(list.GraphicsBinds.IsDirty(0));
+
+            list.End();
+        }
+
+        /// <summary>
+        /// AND THE COMPUTE SWITCH DOES IT TOO, which is the arm most easily lost: the graphics site carries a
+        /// loud comment about M-R9 and this one carries none, and <c>BindCompute</c>'s change bool is the one the
+        /// caller has no other reason to read. A compute path that skipped this would bind a dispatch's resources
+        /// at the previous kernel's indices.
+        /// </summary>
+        [Fact]
+        public void AComputePipelineSwitchAdoptsItsTableOnTheSameRule()
+        {
+            MetalShaderIndexTable shared = EmptyTable();
+
+            MetalCommandList list = NewList();
+            list.Begin();
+
+            Assert.Null(list.ComputeBinds.IndexTable);
+
+            list.SetComputePipeline(ComputePipeline(shared));
+            Assert.Same(shared, list.ComputeBinds.IndexTable);
+
+            list.ComputeBinds.Record(0, MetalBindProgram.Set(_harness), 0);
+            var sink = new FakeMetalEncoderSink(new FakeMetalEncoderCalls());
+            list.ComputeBinds.Flush(ref sink, new IntPtr(0xC5), list.Encoders.Epoch, segment: 0);
+            Assert.False(list.ComputeBinds.IsDirty(0));
+
+            list.SetComputePipeline(ComputePipeline(shared));
+            Assert.False(list.ComputeBinds.IsDirty(0));
+
+            MetalShaderIndexTable other = EmptyTable();
+            list.SetComputePipeline(ComputePipeline(other));
+            Assert.Same(other, list.ComputeBinds.IndexTable);
+            Assert.True(list.ComputeBinds.IsDirty(0));
+
+            list.End();
+        }
+
+        /// <summary>
+        /// M-A6's SCISSOR GATE REACHES THE SCHEDULE ON A PIPELINE CHANGE. Metal has no scissor-test enable of its
+        /// own, so the seam's flag is honoured by this backend deciding whether to emit the rectangle at all.
+        /// Without this propagation the gate reads false for the whole recording and a draw rasterises the entire
+        /// attachment where the caller asked for a rectangle: no crash, no validation error, a wrong frame.
+        /// </summary>
+        [Fact]
+        public void APipelineSwitchPropagatesTheScissorGateToTheSchedule()
+        {
+            MetalCommandList list = NewList();
+            list.Begin();
+
+            // A fresh schedule gates the scissor OFF, which is what a recording with no pipeline bound holds.
+            Assert.False(list.Passes.ScissorTestEnabled);
+
+            list.SetPipeline(Pipeline(scissorTestEnabled: true));
+            Assert.True(list.Passes.ScissorTestEnabled);
+
+            list.SetPipeline(Pipeline(scissorTestEnabled: false));
+            Assert.False(list.Passes.ScissorTestEnabled);
+
+            list.End();
+        }
+
         // ---- fixtures ------------------------------------------------------------------------------------
 
         MetalCommandList NewList()
             => _harness.NewList(new object(), new FakeMetalCommandBufferSource(), new FakeMetalEncoderCalls(),
                 new MetalUncommittedBuffers(_harness.FramesInFlight, new RecordingLogger()));
 
-        MetalGraphicsPipeline Pipeline(IMetalDeviceLiveness? owner = null)
+        MetalGraphicsPipeline Pipeline(IMetalDeviceLiveness? owner = null, MetalShaderIndexTable? table = null,
+            bool scissorTestEnabled = false)
         {
             IMetalDeviceLiveness liveness = owner ?? _harness.Liveness;
             MetalShaderSet shaders = new(
@@ -232,7 +407,7 @@ namespace KhaozEngine.Tests.Gpu
                     new MetalCompiledStage(MetalShaderStage.Vertex, default, default),
                     new MetalCompiledStage(MetalShaderStage.Fragment, default, default),
                 ],
-                EmptyTable());
+                table ?? EmptyTable());
 
             var description = new GpuPipelineDescription
             {
@@ -241,7 +416,7 @@ namespace KhaozEngine.Tests.Gpu
                 BlendAttachments = [GpuBlendAttachment.OverrideBlend],
                 DepthStencil = GpuDepthStencilState.Disabled,
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid,
-                    GpuFrontFace.Clockwise, depthClipEnabled: false, scissorTestEnabled: false),
+                    GpuFrontFace.Clockwise, depthClipEnabled: false, scissorTestEnabled),
                 Topology = GpuPrimitiveTopology.TriangleList,
                 VertexLayouts = new List<GpuVertexLayoutDescription>(),
                 Outputs = new GpuOutputDescription(null, GpuPixelFormat.B8G8R8A8UNorm),
@@ -253,9 +428,9 @@ namespace KhaozEngine.Tests.Gpu
                 liveness, MetalGraphicsPipelinePlan.Build(liveness, description), default, default);
         }
 
-        MetalComputePipeline ComputePipeline()
+        MetalComputePipeline ComputePipeline(MetalShaderIndexTable? table = null)
             => new(_harness.Liveness,
-                new MetalComputeShader(_harness.Liveness, default, EmptyTable(), 64, 1, 1),
+                new MetalComputeShader(_harness.Liveness, default, table ?? EmptyTable(), 64, 1, 1),
                 [],
                 default);
 

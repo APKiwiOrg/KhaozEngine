@@ -24,71 +24,74 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <inheritdoc/>
         /// <remarks>
         /// Records the pipeline, and on a genuine CHANGE tells the pass schedule which scissor gate is now in
-        /// force.
+        /// force and tells the graphics bind records which index table the next flush binds through.
         /// <para>
         /// A REDUNDANT BIND DOES NOTHING AT ALL (M-R8): no state re-emission is scheduled, no recorded resource
-        /// slot is invalidated, and the scissor gate is not touched, because none of the three has changed.
+        /// slot is invalidated, the scissor gate is not touched and the index table is not re-adopted, because
+        /// none of the four has changed.
         /// </para>
         /// </remarks>
         /// <exception cref="ArgumentNullException">No pipeline.</exception>
         /// <exception cref="ArgumentException">A pipeline from another backend or another device.</exception>
+        /// <exception cref="ObjectDisposedException">A disposed pipeline, or a disposed list.</exception>
         /// <exception cref="InvalidOperationException">This list is not recording.</exception>
         public void SetPipeline(IGpuPipeline p)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            ArgumentNullException.ThrowIfNull(p);
 
             // ARGUMENT VALIDATION FIRST, in the shape UpdateBuffer settled on: a caller passing another device's
-            // pipeline has made the same mistake whether or not this list is recording.
-            MetalGraphicsPipeline pipeline = MetalResourceOwnership.Require<MetalGraphicsPipeline>(
-                p, _liveness, nameof(p));
+            // pipeline, or one they have already disposed, has made the same mistake whether or not this list is
+            // recording. Require asks all three questions (backend, device, disposal) in one place.
+            MetalGraphicsPipeline pipeline = MetalGraphicsPipeline.Require(p, _liveness, nameof(p));
 
             if (!_recording) throw NotRecording("SetPipeline");
 
             if (!_pipelines.BindGraphics(pipeline)) return;
 
-            // ---- ROW 12'S CALL GOES HERE AT THE MERGE, AND IT IS AN OBLIGATION RATHER THAN A NICETY ----
+            // ---- ROW 12'S OBLIGATION, ON THE CHANGE PATH ----
             //
-            //     Passes.SetScissorTestEnabled(pipeline.ScissorTestEnabled);
-            //
-            // MetalRenderPassSchedule.SetScissorTestEnabled is row 12's
-            // (https://github.com/APKiwiOrg/KhaozEngine/issues/578), which is not on this branch yet, so the call
-            // is documented here rather than written against a member that does not exist. It is NOT optional:
-            // M-A6 keeps the incumbent's gate, where PreDrawCommand flushes the scissor only when the bound
+            // M-A6 keeps the incumbent's gate, where the pre-draw flush emits the scissor only when the bound
             // pipeline has the seam's ScissorTestEnabled set. Metal has no scissor-test enable of its own, so
-            // without the call the gate reads false forever and no scissor rectangle is ever emitted, which is
+            // without this call the gate reads false forever and no scissor rectangle is ever emitted, which is
             // not a crash and not a validation error: it is a draw that rasterises the whole attachment where the
             // caller asked for a rectangle.
-            //
-            // It belongs on the CHANGE path rather than on every call, which is this guard's other half: a
-            // redundant bind cannot change the gate.
+            _passes.SetScissorTestEnabled(pipeline.ScissorTestEnabled);
 
-            // ---- AND ROW 13'S INVALIDATION GOES HERE TOO (M-R9) ----
+            // ---- AND ROW 13'S INVALIDATION (M-R9) ----
             //
             // A switch invalidates a recorded slot only where the incoming program's index table maps that slot's
-            // elements to different indices than the outgoing one did, which is a reference compare through
-            // MetalShaderIndexTable.SameIndicesAs now that row 10 has content-deduplicated the tables. The
-            // per-slot records it invalidates are row 13's
-            // (https://github.com/APKiwiOrg/KhaozEngine/issues/579) and do not exist on this branch either.
+            // elements to different indices than the outgoing one did. Row 10 content-deduplicated the tables, so
+            // two programs that map every element identically SHARE one instance and this is a reference compare
+            // that answers "nothing to invalidate" for the common case.
+            _graphicsBinds.SetIndexTable(pipeline.Table);
         }
 
         /// <inheritdoc/>
-        /// <remarks>The compute sibling. Same guard, and nothing to tell the pass schedule: a compute pipeline
-        /// has no scissor and no framebuffer.</remarks>
+        /// <remarks>
+        /// The compute sibling. Same three-question guard, and nothing to tell the pass schedule, because a
+        /// compute pipeline has no scissor and no framebuffer.
+        /// <para>
+        /// IT STILL ADOPTS THE INDEX TABLE, and that is the half a compute path loses most easily: the graphics
+        /// site carries a loud comment about M-R9 and this one carries none, and <c>BindCompute</c>'s bool is
+        /// discarded where the graphics arm's early-returns on it. So the identity guard is read EXPLICITLY here
+        /// rather than relied on as a side effect, and the table is adopted only on a genuine change.
+        /// </para>
+        /// </remarks>
         /// <exception cref="ArgumentNullException">No pipeline.</exception>
         /// <exception cref="ArgumentException">A pipeline from another backend or another device.</exception>
+        /// <exception cref="ObjectDisposedException">A disposed pipeline, or a disposed list.</exception>
         /// <exception cref="InvalidOperationException">This list is not recording.</exception>
         public void SetComputePipeline(IGpuComputePipeline p)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            ArgumentNullException.ThrowIfNull(p);
 
-            MetalComputePipeline pipeline = MetalResourceOwnership.Require<MetalComputePipeline>(
-                p, _liveness, nameof(p));
+            MetalComputePipeline pipeline = MetalComputePipeline.Require(p, _liveness, nameof(p));
 
             if (!_recording) throw NotRecording("SetComputePipeline");
 
-            _pipelines.BindCompute(pipeline);
+            if (!_pipelines.BindCompute(pipeline)) return;
+
+            _computeBinds.SetIndexTable(pipeline.Table);
         }
 
         /// <summary>

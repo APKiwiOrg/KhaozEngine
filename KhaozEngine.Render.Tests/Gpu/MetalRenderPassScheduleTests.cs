@@ -480,6 +480,46 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(new MetalScissorRect(10, 20, 30, 40), Assert.Single(h.Render.Scissors).Rect);
         }
 
+        /// <summary>
+        /// AND THE OTHER HALF OF THE SAME CALL: it never MARKS the scissor either. A rectangle already emitted
+        /// stays emitted across a pipeline switch, whatever the new pipeline's gate says, because the owed-ness
+        /// is carried by the encoder stamp and nothing about a pipeline change invalidates encoder state. Marking
+        /// here would re-emit an identical rectangle on every draw that follows a <c>SetPipeline</c>, which is a
+        /// per-draw native call the incumbent does not make.
+        /// </summary>
+        [Fact]
+        public void EnablingTheScissorTestAfterAnEmissionDoesNotOweTheRectangleAgain()
+        {
+            Harness h = Harness.New();
+            h.Schedule.SetScissorTestEnabled(true);
+            h.Schedule.SetFramebuffer(Framebuffer(1, colourCount: 1, width: 800, height: 600));
+            h.Schedule.PrepareDraw();
+
+            Assert.False(h.Schedule.ScissorOwed);
+
+            // Another pipeline with the test on, then one with it off and one with it on again. None of the three
+            // is a reason to re-emit.
+            h.Schedule.SetScissorTestEnabled(true);
+            Assert.False(h.Schedule.ScissorOwed);
+            h.Schedule.SetScissorTestEnabled(false);
+            Assert.False(h.Schedule.ScissorOwed);
+            h.Schedule.SetScissorTestEnabled(true);
+            Assert.False(h.Schedule.ScissorOwed);
+
+            h.Schedule.PrepareDraw();
+
+            Assert.Single(h.Render.Scissors);
+        }
+
+        /// <summary>The gate reads FALSE on a schedule nothing has told anything, which is not only the state a
+        /// <c>Reset</c> restores: it is the state a list starts in, and it is why row 11's call is load-bearing
+        /// rather than an optimisation. No pipeline is bound there, so no draw is possible either.</summary>
+        [Fact]
+        public void AFreshScheduleHasTheScissorTestOff()
+        {
+            Assert.False(Harness.New().Schedule.ScissorTestEnabled);
+        }
+
         /// <summary>Repeated rectangles between two draws collapse to ONE emission, and it is the last writer's.
         /// </summary>
         [Fact]

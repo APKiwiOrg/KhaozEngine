@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.Versioning;
 using KhaozEngine.Gpu.Metal.Internal;
 
 namespace KhaozEngine.Tests.Gpu
@@ -58,6 +59,91 @@ namespace KhaozEngine.Tests.Gpu
         public void Dispatch(IntPtr encoder, uint groupCountX, uint groupCountY, uint groupCountZ,
             uint threadsPerGroupX, uint threadsPerGroupY, uint threadsPerGroupZ)
             => Calls.Draw($"dispatch {groupCountX}x{groupCountY}x{groupCountZ}");
+    }
+
+    /// <summary>
+    /// THE REAL SINK, WITH A LOG OF WHAT WENT THROUGH IT. Every argument-table member sends to a live Metal
+    /// encoder through <see cref="MetalEncoderSink"/> and THEN records the call, so the log names calls the
+    /// driver accepted rather than calls a recorder intended.
+    ///
+    /// <para><b>IT EXISTS BECAUSE "THE SELECTORS WERE ACCEPTED" IS NOT SOMETHING A NO-THROW ASSERTION CAN
+    /// SAY.</b> A <c>[GpuFact]</c> that runs a flush and checks the command buffer completed proves the calls
+    /// that were MADE were accepted, and says nothing about which ones were made. The row this was written for
+    /// had shipped claiming every new selector had been sent to a device while two of them
+    /// (<c>setVertexTextures:withRange:</c> and <c>setVertexSamplerStates:withRange:</c>) had no fixture that
+    /// could reach them, and a wrong selector string is an unrecognised-selector abort rather than a wrong pixel.
+    /// The log turns that claim into an assertion.</para>
+    ///
+    /// <para><b>THE BOUNDARY MEMBERS FORWARD WITHOUT LOGGING</b>, because
+    /// <see cref="FakeMetalEncoderCalls.BeginEncoder"/> fabricates its own handles and the caller needs the real
+    /// one. Encoder accounting is <see cref="FakeMetalEncoderSink"/>'s subject on the device-free legs.</para>
+    ///
+    /// <para><b>A READONLY STRUCT WITH ITS STATE BEHIND A CLASS</b>, for the reason
+    /// <see cref="IMetalEncoderSink"/> gives: this seam is consumed boxed on the boundary path and unboxed
+    /// through a struct constraint on the per-draw path.</para>
+    /// </summary>
+    [SupportedOSPlatform("macos")]
+    internal readonly struct RecordingMetalEncoderSink : IMetalEncoderSink
+    {
+        internal RecordingMetalEncoderSink(FakeMetalEncoderCalls calls) => Calls = calls;
+
+        /// <summary>What reached the driver, in order.</summary>
+        internal FakeMetalEncoderCalls Calls { get; }
+
+        public IntPtr BeginRenderEncoder(IntPtr commandBuffer, IntPtr descriptor)
+            => new MetalEncoderSink().BeginRenderEncoder(commandBuffer, descriptor);
+
+        public IntPtr BeginBlitEncoder(IntPtr commandBuffer)
+            => new MetalEncoderSink().BeginBlitEncoder(commandBuffer);
+
+        public IntPtr BeginComputeEncoder(IntPtr commandBuffer)
+            => new MetalEncoderSink().BeginComputeEncoder(commandBuffer);
+
+        public void EndEncoding(MetalEncoderKind kind, IntPtr encoder)
+            => new MetalEncoderSink().EndEncoding(kind, encoder);
+
+        // SENT FIRST AND LOGGED SECOND, in all four, so an unrecognised selector takes the process down before
+        // anything claims the call happened.
+        public void SetBuffers(MetalShaderStage stage, IntPtr encoder, ReadOnlySpan<IntPtr> buffers,
+            ReadOnlySpan<nuint> offsets, uint firstIndex)
+        {
+            new MetalEncoderSink().SetBuffers(stage, encoder, buffers, offsets, firstIndex);
+            Calls.ArrayWrite(stage, MetalIndexSpace.Buffer, encoder, firstIndex, buffers, offsets);
+        }
+
+        public void SetTextures(MetalShaderStage stage, IntPtr encoder, ReadOnlySpan<IntPtr> textures,
+            uint firstIndex)
+        {
+            new MetalEncoderSink().SetTextures(stage, encoder, textures, firstIndex);
+            Calls.ArrayWrite(stage, MetalIndexSpace.Texture, encoder, firstIndex, textures, default);
+        }
+
+        public void SetSamplerStates(MetalShaderStage stage, IntPtr encoder, ReadOnlySpan<IntPtr> samplers,
+            uint firstIndex)
+        {
+            new MetalEncoderSink().SetSamplerStates(stage, encoder, samplers, firstIndex);
+            Calls.ArrayWrite(stage, MetalIndexSpace.Sampler, encoder, firstIndex, samplers, default);
+        }
+
+        public void SetBufferOffset(MetalShaderStage stage, IntPtr encoder, nuint offset, uint index)
+        {
+            new MetalEncoderSink().SetBufferOffset(stage, encoder, offset, index);
+            Calls.OffsetWrite(stage, encoder, offset, index);
+        }
+
+        public void Draw(IntPtr encoder, uint vertexStart, uint vertexCount, uint instanceCount,
+            uint baseInstance)
+            => new MetalEncoderSink().Draw(encoder, vertexStart, vertexCount, instanceCount, baseInstance);
+
+        public void DrawIndexed(IntPtr encoder, uint indexCount, IntPtr indexBuffer, nuint indexBufferOffset,
+            bool sixteenBitIndices, uint instanceCount, int baseVertex, uint baseInstance)
+            => new MetalEncoderSink().DrawIndexed(encoder, indexCount, indexBuffer, indexBufferOffset,
+                sixteenBitIndices, instanceCount, baseVertex, baseInstance);
+
+        public void Dispatch(IntPtr encoder, uint groupCountX, uint groupCountY, uint groupCountZ,
+            uint threadsPerGroupX, uint threadsPerGroupY, uint threadsPerGroupZ)
+            => new MetalEncoderSink().Dispatch(encoder, groupCountX, groupCountY, groupCountZ, threadsPerGroupX,
+                threadsPerGroupY, threadsPerGroupZ);
     }
 
     /// <summary>

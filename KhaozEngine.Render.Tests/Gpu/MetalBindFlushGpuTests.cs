@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Runtime.Versioning;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Metal;
@@ -17,12 +18,23 @@ namespace KhaozEngine.Tests.Gpu
     /// <para><b>THIS FILE EXISTS BECAUSE OF ONE RULE: A PROTOTYPE WITH NO TEST THAT RUNS IT IS AN OBJECTIVE-C
     /// DECLARATION NOBODY HAS EVER EXECUTED.</b> Row 1's own regression evidence is that a wrong ABI assumption
     /// in interop is a memory corruption rather than a compile error, which is why the design has each row add
-    /// its native prototypes only alongside the caller and the test that drives them. Seven selectors arrive with
-    /// this row (three on the render encoder per stage, three on the compute encoder, and the two offset
-    /// setters), through three new <c>objc_msgSend</c> shapes, one of which passes an <c>NSRange</c> BY VALUE:
-    /// sixteen bytes of integers is exactly the arm64 boundary, so it rides two general registers rather than
-    /// going indirectly, and getting that wrong shifts every argument after it with nothing after it to
-    /// notice.</para>
+    /// its native prototypes only alongside the caller and the test that drives them. TWELVE selectors arrive
+    /// with this row: eight on the render encoder (a buffer, a texture and a sampler array setter plus an offset
+    /// setter, each spelled once per stage) and four on the compute encoder, which is a different protocol whose
+    /// selectors carry no stage word at all. They go through three new <c>objc_msgSend</c> shapes, one of which
+    /// passes an <c>NSRange</c> BY VALUE: sixteen bytes of integers is exactly the arm64 boundary, so it rides
+    /// two general registers rather than going indirectly, and getting that wrong shifts every argument after it
+    /// with nothing after it to notice.</para>
+    ///
+    /// <para><b>ALL TWELVE ARE SENT HERE, AND COUNTING THEM WAS THE POINT.</b> This file first shipped claiming
+    /// seven and sending ten: its only render fixture has a vertex function that reads ONE BUFFER, so
+    /// <c>setVertexTextures:withRange:</c> and <c>setVertexSamplerStates:withRange:</c> were unreachable from it
+    /// and had never been executed anywhere, by this row or by row 1's spike. A wrong selector string is an
+    /// unrecognised-selector abort, so the other ten being fine says nothing about those two, and row 14's first
+    /// <c>Water</c> draw would have been where a Mac found out.
+    /// <see cref="TheVertexStageTextureAndSamplerSettersAreAcceptedByARealEncoder"/> binds a program whose vertex
+    /// stage samples, and asserts the executed set off <see cref="RecordingMetalEncoderSink"/>'s log rather than
+    /// from the absence of a throw.</para>
     ///
     /// <para><b>WHAT A RED RUN HERE MEANS, AND WHAT IT DOES NOT.</b> Every DECISION is covered device-free by
     /// <see cref="MetalBindRecordsTests"/>, <see cref="MetalBindFlushTests"/>,
@@ -60,11 +72,13 @@ namespace KhaozEngine.Tests.Gpu
         public MetalBindFlushGpuTests(ITestOutputHelper output) => _output = output;
 
         /// <summary>
-        /// THE FULL ACTIVATION ON A REAL RENDER ENCODER: <c>setVertexBuffers:offsets:withRange:</c>,
+        /// THE PARTIAL-STAGE ACTIVATION ON A REAL RENDER ENCODER: <c>setVertexBuffers:offsets:withRange:</c>,
         /// <c>setFragmentBuffers:offsets:withRange:</c>, <c>setFragmentTextures:withRange:</c> and
         /// <c>setFragmentSamplerStates:withRange:</c>, at the indices a real index table read out of a real MSL
         /// emission put the elements at, over real <c>MTLBuffer</c>, <c>MTLTexture</c> and <c>MTLSamplerState</c>
-        /// objects, with offsets composed against a real uniform ring.
+        /// objects, with offsets composed against a real uniform ring. The vertex stage of this fixture reads one
+        /// buffer, which is what makes it the partial-stage row and also what leaves the two vertex-stage
+        /// selectors to <see cref="TheVertexStageTextureAndSamplerSettersAreAcceptedByARealEncoder"/>.
         /// <para>
         /// THE OFFSET IS ALIGNED AND THAT IS LOAD-BEARING RATHER THAN INCIDENTAL. An unaligned buffer offset is a
         /// validation error under the debug layer M-T7 arms on every run and undefined behaviour without it,
@@ -153,6 +167,115 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
+        /// THE VERTEX STAGE'S TEXTURE AND SAMPLER TABLES, WHICH NOTHING HAD EVER WRITTEN INTO ON A DEVICE.
+        /// <c>setVertexTextures:withRange:</c> and <c>setVertexSamplerStates:withRange:</c> were declared, called
+        /// by the flush for any program that references them, and unreachable from every fixture this row had:
+        /// the one above has a vertex function that reads a single buffer, and row 1's interop spike never sent
+        /// them either. A wrong selector string is an unrecognised-selector abort rather than a wrong pixel, so
+        /// "the other four were fine" is not evidence about these two.
+        /// <para>
+        /// THE PROGRAM IS THE SHAPE ROW 14's FIRST WATER DRAW HAS, which is the shipped catalog's worst full
+        /// activation for exactly this reason: two stages that between them read all three argument tables. Both
+        /// stages also read the dynamic uniform, so the second flush drives BOTH offset setters as well.
+        /// </para>
+        /// <para>
+        /// AND WHAT MAKES IT AN ASSERTION RATHER THAN A NO-THROW IS THE SINK'S OWN LOG.
+        /// <see cref="RecordingMetalEncoderSink"/> sends each call to the live encoder and then records it, so
+        /// what is asserted below is the set of selector paths that actually executed on this device. Section
+        /// 18's row 17 records that a <c>[GpuFact]</c> asserting only no-throw is how the all-black splat terrain
+        /// shipped, and a no-throw row cannot tell "the call was accepted" from "the call was never made".
+        /// </para>
+        /// </summary>
+        [GpuFact]
+        public void TheVertexStageTextureAndSamplerSettersAreAcceptedByARealEncoder()
+        {
+            if (!Available()) return;
+
+            using MetalGpuDevice device = CreateHeadless();
+            IGpuResourceFactory factory = device.Factory;
+
+            MetalShaderIndexTable table = MetalShaderBuild.Pair(
+                MetalVertexSamplingProgram.VertexGlsl, MetalVertexSamplingProgram.FragmentGlsl,
+                "MetalVertexSamplingProgram").Table;
+
+            // THE PREMISE, READ OFF THE TABLE: the vertex function really does reference a texture and a
+            // sampler, so the flush really will reach the two selectors this row exists for.
+            Assert.True(table.TryGetIndex(0, MetalVertexSamplingProgram.TextureBinding, MetalShaderStage.Vertex,
+                out _));
+            Assert.True(table.TryGetIndex(0, MetalVertexSamplingProgram.SamplerBinding, MetalShaderStage.Vertex,
+                out _));
+
+            using IGpuResourceLayout layout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(
+                Element("Frame", GpuResourceKind.UniformBuffer, dynamic: true),
+                Element("Material", GpuResourceKind.UniformBuffer),
+                Element("Albedo", GpuResourceKind.TextureReadOnly),
+                Element("Samp", GpuResourceKind.Sampler)));
+
+            table.RequireLayoutShape([((MetalResourceLayout)layout).Description], "MetalVertexSamplingProgram");
+
+            using IGpuBuffer frame = factory.CreateBuffer(
+                new GpuBufferDescription(1024, GpuBufferUsage.UniformBuffer));
+            using IGpuBuffer material = factory.CreateBuffer(
+                new GpuBufferDescription(256, GpuBufferUsage.UniformBuffer));
+            using IGpuTexture albedo = factory.CreateTexture(GpuTextureDescription.Texture2D(
+                16, 16, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled));
+            using IGpuSampler sampler = factory.CreateSampler(GpuSamplerDescription.Linear);
+
+            // A WINDOW rather than the whole buffer, for the reason the row above records.
+            using IGpuResourceSet set = factory.CreateResourceSet(new GpuResourceSetDescription(
+                layout, new GpuBufferRange(frame, 0, 256), material, albedo, sampler));
+
+            using IGpuTexture colour = Target(device);
+            using IGpuFramebuffer fb = factory.CreateFramebuffer(null, colour);
+
+            var calls = new FakeMetalEncoderCalls();
+            var sink = new RecordingMetalEncoderSink(calls);
+
+            using (MetalCommandList list = device.CreateCommandList())
+            {
+                list.Begin();
+                list.SetFramebuffer(fb);
+                list.ClearColorTarget(0, Blue);
+
+                list.GraphicsBinds.SetIndexTable(table);
+                list.SetGraphicsResourceSet(0, set, 256);
+
+                IntPtr encoder = list.Passes.PrepareDraw();
+                Assert.NotEqual(IntPtr.Zero, encoder);
+
+                list.FlushGraphicsBinds(ref sink, encoder);
+
+                list.SetGraphicsResourceSet(0, set, 512);
+                list.FlushGraphicsBinds(ref sink, encoder);
+
+                list.End();
+                device.Submit(list);
+            }
+
+            device.WaitForIdle();
+
+            Assert.Null(device.Diagnostics.DeviceLossReason);
+
+            // EVERY RENDER SELECTOR THIS ROW ADDED, CONFIRMED TO HAVE EXECUTED. Three array setters on each of
+            // two stages, plus the two offset setters on the rebind.
+            Assert.Equal(1, Sent(calls, MetalShaderStage.Vertex, MetalIndexSpace.Buffer));
+            Assert.Equal(1, Sent(calls, MetalShaderStage.Vertex, MetalIndexSpace.Texture));
+            Assert.Equal(1, Sent(calls, MetalShaderStage.Vertex, MetalIndexSpace.Sampler));
+            Assert.Equal(1, Sent(calls, MetalShaderStage.Fragment, MetalIndexSpace.Buffer));
+            Assert.Equal(1, Sent(calls, MetalShaderStage.Fragment, MetalIndexSpace.Texture));
+            Assert.Equal(1, Sent(calls, MetalShaderStage.Fragment, MetalIndexSpace.Sampler));
+
+            Assert.Equal(
+                new[] { MetalShaderStage.Vertex, MetalShaderStage.Fragment },
+                calls.OffsetWrites.Select(o => o.Stage).ToArray());
+
+            foreach (string line in calls.Log) _output.WriteLine(line);
+            _output.WriteLine("all eight MTLRenderCommandEncoder argument-table selectors executed against a "
+                + "real encoder, including the vertex stage's texture and sampler tables, and the buffer "
+                + "completed with no error.");
+        }
+
+        /// <summary>
         /// THE COMPUTE SIBLINGS, WHICH ARE A DIFFERENT PROTOCOL AND THEREFORE DIFFERENT SELECTORS:
         /// <c>setBuffers:offsets:withRange:</c>, <c>setTextures:withRange:</c>,
         /// <c>setSamplerStates:withRange:</c> and <c>setBufferOffset:atIndex:</c>, all unprefixed because a
@@ -233,6 +356,10 @@ void main() {
     imageStore(Out, at, texture(sampler2D(Src, Samp), vec2(0.5)) * Tint);
 }
 ";
+
+        // HOW MANY CALLS OF ONE (stage, space) THE DRIVER ACTUALLY TOOK, off the recording sink's log.
+        static int Sent(FakeMetalEncoderCalls calls, MetalShaderStage stage, MetalIndexSpace space)
+            => calls.ArrayWrites.Count(w => w.Stage == stage && w.Space == space);
 
         [SupportedOSPlatform("macos")]
         static IGpuTexture Target(MetalGpuDevice device) => device.Factory.CreateTexture(

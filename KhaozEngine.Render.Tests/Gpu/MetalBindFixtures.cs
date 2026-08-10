@@ -115,6 +115,63 @@ void main() { oColor = texture(sampler2D(Albedo, Samp), vec2(0.5)) * Tint * View
     }
 
     /// <summary>
+    /// A PROGRAM WHOSE VERTEX STAGE SAMPLES A TEXTURE, which is the shape that puts a texture and a sampler into
+    /// the VERTEX argument tables. <see cref="MetalBindProgram"/>'s vertex function reads one buffer and nothing
+    /// else, so <c>setVertexTextures:withRange:</c> and <c>setVertexSamplerStates:withRange:</c> had no fixture
+    /// that could drive them: they were declared, called by the flush for any program that references them, and
+    /// never once executed against a real encoder.
+    ///
+    /// <para><b>WHICH IS WHY THIS IS A SECOND PROGRAM RATHER THAN AN EDIT TO THE FIRST.</b> The partial-stage
+    /// case (a stage with no entry for an element) is the thing 2.2b's rules are asserted against, and it needs a
+    /// vertex function that reads LESS than the fragment one. Widening that fixture to sample would delete the
+    /// case it exists for.</para>
+    ///
+    /// <para><b>IT IS THE SHAPE ROW 14's FIRST WATER DRAW HAS</b>, which is the measured worst full activation of
+    /// the shipped catalog: the only program whose two stages between them read all three argument tables. The
+    /// vertex stage samples with an explicit LOD because implicit derivatives exist in a fragment function
+    /// alone.</para>
+    /// </summary>
+    internal static class MetalVertexSamplingProgram
+    {
+        /// <summary>Set 0, binding 0: a uniform buffer both stages read, declared dynamic.</summary>
+        internal const int FrameBinding = 0;
+
+        /// <summary>Set 0, binding 1: a uniform buffer only the fragment stage reads, so the partial-stage case
+        /// survives here too.</summary>
+        internal const int MaterialBinding = 1;
+
+        /// <summary>Set 0, binding 2: a texture BOTH stages read.</summary>
+        internal const int TextureBinding = 2;
+
+        /// <summary>Set 0, binding 3: a sampler BOTH stages read.</summary>
+        internal const int SamplerBinding = 3;
+
+        internal const string VertexGlsl = @"#version 450
+layout(set=0, binding=0) uniform Frame { mat4 ViewProj; };
+layout(set=0, binding=2) uniform texture2D Albedo;
+layout(set=0, binding=3) uniform sampler Samp;
+layout(location=0) in vec3 Pos;
+void main() {
+    vec4 displace = textureLod(sampler2D(Albedo, Samp), vec2(0.5), 0.0);
+    gl_Position = ViewProj * vec4(Pos + displace.xyz, 1.0);
+}
+";
+
+        internal const string FragmentGlsl = @"#version 450
+layout(set=0, binding=0) uniform Frame { mat4 ViewProj; };
+layout(set=0, binding=1) uniform Material { vec4 Tint; };
+layout(set=0, binding=2) uniform texture2D Albedo;
+layout(set=0, binding=3) uniform sampler Samp;
+layout(location=0) out vec4 oColor;
+void main() { oColor = texture(sampler2D(Albedo, Samp), vec2(0.5)) * Tint * ViewProj[0]; }
+";
+
+        /// <summary>The real table for the pair above, built by the shipped path.</summary>
+        internal static MetalShaderIndexTable Table()
+            => MetalShaderBuild.Pair(VertexGlsl, FragmentGlsl, "MetalVertexSamplingProgram").Table;
+    }
+
+    /// <summary>
     /// TWO SETS, THREE BUFFERS, BOTH STAGES READING ALL OF THEM, and a real index table again rather than a
     /// hand-built one. <see cref="MetalBindProgram"/> is the PARTIAL-STAGE fixture and deliberately has one set,
     /// which leaves two shapes it cannot produce.

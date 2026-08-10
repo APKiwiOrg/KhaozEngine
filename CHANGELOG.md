@@ -991,12 +991,18 @@ run of a stage's argument table. A full activation of a model-shaped set is one 
 and one sampler call on the fragment stage plus one buffer call on the vertex stage. The Veldrid Metal backend
 emits one call per element per stage, which is the same fan-out defect [#418](https://github.com/APKiwiOrg/KhaozEngine/issues/418)
 records on Direct3D 11 and which this program already paid to fix once, and the vendored fork's binding layer
-cannot express the alternative at all because it declares no array setter. So the six selectors, the two offset
-setters and the three `objc_msgSend` shapes behind them are engine-owned and hand-written, one of them passing
-an `NSRange` BY VALUE: sixteen bytes of integers is exactly the arm64 boundary where a composite stops being
-passed indirectly and rides two general registers instead, and getting that wrong shifts every argument after
-it with nothing after it to notice. Row 1's interop spike measured that shape against real hardware and
-`MetalBindFlushGpuTests` sends every one of the seven new selectors to a real encoder.
+cannot express the alternative at all because it declares no array setter. So twelve selectors and the three
+`objc_msgSend` shapes behind them are engine-owned and hand-written: eight on `MTLRenderCommandEncoder` (a
+buffer, a texture and a sampler array setter plus an offset setter, each spelled once per stage) and four on
+`MTLComputeCommandEncoder`, which is a different protocol whose selectors carry no stage word at all. One shape
+passes an `NSRange` BY VALUE: sixteen bytes of integers is exactly the arm64 boundary where a composite stops
+being passed indirectly and rides two general registers instead, and getting that wrong shifts every argument
+after it with nothing after it to notice. Row 1's interop spike measured that shape against real hardware and
+`MetalBindFlushGpuTests` sends **all twelve** to a real encoder, asserting the executed set off the sink's own
+call log rather than from a run that did not throw. That last part is load-bearing: the first draft of those
+rows had no fixture whose VERTEX stage sampled anything, so `setVertexTextures:withRange:` and
+`setVertexSamplerStates:withRange:` had never been executed at all, and an unrecognised selector aborts the
+process rather than producing a wrong pixel.
 
 **Measured over the shipped catalog, and neither number was predicted.** Across the 34 shipped graphics
 programs the worst full activation is **6 array calls** (`Water`, the only shape whose two stages between them
@@ -1077,8 +1083,8 @@ is refused by name, because it would otherwise be dropped and the draw would rea
 The whole schedule is device-free and runs on every leg, including the two assertions that fail on a corruption
 rather than on bookkeeping (the encoder boundary and the pipeline switch each beating the offsets-only
 comparison), the composed offset against a real uniform ring, and the field walk asserting the records reach no
-factory, no device and no layout. What needs a device is that the seven new Objective-C prototypes are accepted
-by a real encoder, which is two `[GpuFact]` rows.
+factory, no device and no layout. What needs a device is that the twelve new Objective-C prototypes are accepted
+by a real encoder, which is three `[GpuFact]` rows.
 
 ## 17.34.0
 

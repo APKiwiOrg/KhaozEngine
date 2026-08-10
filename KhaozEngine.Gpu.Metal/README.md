@@ -469,7 +469,10 @@ one flush and a bind that changes nothing costs nothing.
 model-shaped set is one buffer call, one texture call and one sampler call on the fragment stage plus one
 buffer call on the vertex stage. The incumbent emits one call per element per stage, which is a fan-out defect
 this engine already paid to fix once on another API, and the vendored Metal fork's binding layer does not
-declare a single array setter, so these are hand-written against the ABI a spike measured on real hardware.
+declare a single array setter, so these are hand-written against the ABI a spike measured on real hardware. All
+twelve selectors (eight on the render encoder, four on the compute encoder, which is a separate protocol) are
+sent to a live encoder by a `[GpuFact]`, including the vertex stage's texture and sampler tables, which only a
+program whose vertex function samples can reach.
 Measured across the 34 shipped graphics programs, the worst full activation is **6 array calls** (`Water`, which
 is the only shape whose two stages between them read all three tables), and **no shipped program produces a
 non-contiguous run**, so the extra call a hole would cost is never paid today. A hole CUTS the run rather than

@@ -12,10 +12,17 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
     /// <c>MetalEncoderSink</c> states and the reason this file stays short: a native prototype added by a row with
     /// no caller and no test that runs it is an Objective-C declaration nobody has ever executed, and a wrong ABI
     /// assumption in interop is a memory corruption rather than a compile error. The argument-table setters are
-    /// here now, with the bind flush (https://github.com/APKiwiOrg/KhaozEngine/issues/579) calling them and
-    /// <c>MetalBindFlushGpuTests</c> running every one of them on a device. The draws arrive with row 14
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/580) and the pipeline-state block with row 11
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/577).</para>
+    /// here now, with the bind flush (https://github.com/APKiwiOrg/KhaozEngine/issues/579) calling them. The
+    /// draws arrive with row 14 (https://github.com/APKiwiOrg/KhaozEngine/issues/580) and the pipeline-state
+    /// block with row 11 (https://github.com/APKiwiOrg/KhaozEngine/issues/577).</para>
+    ///
+    /// <para><b>EIGHT SELECTORS LIVE HERE AND ALL EIGHT HAVE BEEN SENT TO A REAL ENCODER</b>, which is a stronger
+    /// statement than it looks and was not true when they landed. The four members below are four PAIRS, and
+    /// <c>MetalBindFlushGpuTests</c>'s original fixture had a vertex function reading one buffer, so the vertex
+    /// halves of the texture and sampler setters were never executed by anything. That is exactly the class of
+    /// gap the rule above exists to close, since an unrecognised selector aborts the process rather than
+    /// producing a wrong pixel, so a second fixture whose vertex stage samples now drives them and the test reads
+    /// the executed set off the sink's own log rather than inferring it from a run that did not throw.</para>
     ///
     /// <para><b>THE FOUR ARGUMENT-TABLE SETTERS TAKE THE STAGE AS AN ARGUMENT, because on this protocol the stage
     /// is spelled INSIDE the selector.</b> <c>setVertexBuffers:offsets:withRange:</c> and

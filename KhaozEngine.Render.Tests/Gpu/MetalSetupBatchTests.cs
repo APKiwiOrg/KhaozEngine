@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Metal.Internal;
 using KhaozEngine.Gpu.Metal.Internal.ObjC;
@@ -200,6 +201,94 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Single(native.Staged);
             Assert.Single(native.Encoded);
             Assert.Equal(1, setup.AppendCount);
+        }
+
+        /// <summary>
+        /// A FLUSH AFTER THE DEVICE DIES RELEASES NOTHING, which is the posture every wrapper in the package
+        /// takes and which the flush path used to contradict: it committed nothing (correctly) and then released
+        /// the command buffer and every staging buffer anyway, which is a call into objects the driver has
+        /// already given up on. The managed references go, so nothing reaches them later either.
+        /// </summary>
+        [Fact]
+        public void AFlushAfterTheDeviceDies_ReleasesNothing()
+        {
+            var native = new FakeMetalSetupNative();
+            var liveness = new FakeMetalDeviceLiveness();
+            using var setup = new MetalSetupCommands(native, liveness, Budget);
+
+            Upload(setup, 8, 8);
+            Upload(setup, 8, 8);
+            Assert.Equal(2, native.Staged.Count);
+
+            liveness.MarkDead();
+            setup.Flush();
+
+            Assert.Empty(native.Committed);
+            Assert.Empty(native.ReleasedBatches);
+            Assert.Empty(native.ReleasedStaging);
+            Assert.Equal(0, setup.FlushCount);
+            Assert.False(setup.HasPendingWork);
+            Assert.Equal(0u, setup.StagedBytes);
+            Assert.Equal(0, setup.StagingCount);
+        }
+
+        /// <summary>Disposal takes the same posture, which is where it was already documented. The two paths say
+        /// one thing now rather than two.</summary>
+        [Fact]
+        public void DisposalAfterTheDeviceDies_ReleasesNothing()
+        {
+            var native = new FakeMetalSetupNative();
+            var liveness = new FakeMetalDeviceLiveness();
+            var setup = new MetalSetupCommands(native, liveness, Budget);
+
+            Upload(setup, 8, 8);
+            setup.Flush();
+            Upload(setup, 8, 8);
+
+            int releasedBatches = native.ReleasedBatches.Count;
+            int releasedStaging = native.ReleasedStaging.Count;
+
+            liveness.MarkDead();
+            setup.Dispose();
+
+            Assert.Equal(releasedBatches, native.ReleasedBatches.Count);
+            Assert.Equal(releasedStaging, native.ReleasedStaging.Count);
+
+            // And a dead device answers no outcome, rather than messaging a buffer the driver may have torn down.
+            Assert.Null(setup.LastCommittedFault());
+        }
+
+        /// <summary>
+        /// ON A LIVE DEVICE EVERY HANDLE IS RELEASED EXACTLY ONCE, across a run that commits twice and then tears
+        /// down with a batch still open. An over-release of an Objective-C object is a use-after-free somewhere
+        /// else entirely, so the counts are what pin the ownership rather than the absence of a crash.
+        /// </summary>
+        [Fact]
+        public void OnALiveDevice_EveryHandleIsReleasedExactlyOnce()
+        {
+            var native = new FakeMetalSetupNative();
+            var setup = new MetalSetupCommands(native, new FakeMetalDeviceLiveness(), Budget);
+
+            Upload(setup, 8, 8);
+            setup.Flush();
+            Upload(setup, 8, 8);
+            setup.Flush();
+            Upload(setup, 8, 8);
+
+            setup.Dispose();
+
+            Assert.Equal(3, native.Batches.Count);
+            Assert.Equal(2, native.Committed.Count);
+
+            // Once each, and every one of them. The ORDER is deliberately not asserted: a committed batch is
+            // released when its successor commits, so the last teardown releases the open one before the
+            // committed one it is still holding.
+            Assert.Equal(3, native.ReleasedBatches.Count);
+            Assert.Equal(3, native.ReleasedBatches.Distinct().Count());
+            Assert.All(native.Batches, batch => Assert.Contains(batch, native.ReleasedBatches));
+
+            Assert.Equal(3, native.ReleasedStaging.Count);
+            Assert.Equal(3, native.ReleasedStaging.Distinct().Count());
         }
 
         // 4096 bytes, which is four 16x16 RGBA8 uploads. Small enough to drive the budget with no allocation

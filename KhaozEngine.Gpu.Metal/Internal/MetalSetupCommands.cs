@@ -336,13 +336,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             _open = false;
 
-            // A dead device abandons the batch: committing to a queue whose device has gone is a call into
-            // an object the driver has already given up on.
+            // A DEAD DEVICE ABANDONS THE BATCH AND RELEASES NOTHING. Committing to a queue whose device has gone
+            // is a call into an object the driver has already given up on, and so is releasing one, which is why
+            // this arm drops the managed references instead. That is the posture every wrapper in this package
+            // takes and the one Dispose below documents, and this path used to contradict it by releasing the
+            // command buffer and the staging buffers anyway.
             if (_liveness.IsDead)
             {
-                _native.ReleaseBatch(_buffer);
                 _buffer = default;
-                ReleaseStaging();
+                _staging.Clear();
+                _stagedBytes = 0;
                 return;
             }
 

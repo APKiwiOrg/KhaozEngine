@@ -53,7 +53,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// element: every one of them throws, naming the program, the stage and the offending argument. A silent
     /// fallback would reintroduce the arithmetic's failure mode inside this mechanism, which is the worst of the
     /// three outcomes available. The <c>_&lt;id&gt;</c> spelling is a SPIRV-Cross emission convention that nothing
-    /// promises, and throwing loudly is what makes that fragility safe.
+    /// promises, and throwing loudly is what makes that fragility safe. Those are the five classes THIS type
+    /// owns. <see cref="MetalMslEntryPoint"/> owns two more in front of it, for the same reason and with the same
+    /// answer: an argument whose index attribute cannot be read is a throw there rather than a dropped argument,
+    /// because an argument dropped before this point is one none of the five refusals below can ever see.
     /// </para>
     /// <para>
     /// AN ELEMENT WITH NO ENTRY FOR A STAGE IS NOT BOUND FOR THAT STAGE, and that is correct by construction
@@ -98,7 +101,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// emitted entry point. The arguments are passed in rather than re-parsed here so the name the library is
         /// asked for and the indices the table is built from come from ONE read of the emission.</param>
         /// <param name="label">A name for the program, included in every error message.</param>
-        /// <exception cref="ShaderValidationException">Any of pin 1's five failure classes.</exception>
+        /// <exception cref="ShaderValidationException">Any of the five failure classes pin 1 gives the JOIN. The
+        /// two the argument parse owns have already fired before this runs.</exception>
         internal static MetalShaderIndexTable Build(GpuResourceLayoutDescription[] layouts,
             IReadOnlyList<MetalMslStageJoin> stages, string label)
         {

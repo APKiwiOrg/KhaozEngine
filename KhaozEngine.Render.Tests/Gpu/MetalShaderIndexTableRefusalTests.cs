@@ -7,9 +7,11 @@ using Xunit;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// PIN 1 OF SECTION 2.2b, DRIVEN: <b>the parse fails LOUDLY and never falls back.</b> Every one of the five
-    /// ways the id-keyed join can fail throws at shader-set creation, device-free, naming the program, the stage
-    /// and the offending argument.
+    /// PIN 1 OF SECTION 2.2b, DRIVEN: <b>the parse fails LOUDLY and never falls back.</b> All SEVEN ways it can
+    /// fail throw at shader-set creation, device-free, naming the program, the stage and the offending argument.
+    /// Five of them are the id-keyed join in <c>MetalShaderIndexTable</c>, and two are the argument parse in front
+    /// of it (<c>MetalMslEntryPoint</c>), where a malformed index attribute is a stop rather than a dropped
+    /// argument.
     ///
     /// <para>
     /// WHY THIS IS THE MOST IMPORTANT FILE IN THE ROW. The <c>_&lt;id&gt;</c> argument name is a SPIRV-Cross
@@ -116,6 +118,60 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Contains("bijection", error.Message, StringComparison.Ordinal);
         }
 
+        /// <summary>
+        /// REFUSAL SIX, IN THE PARSE RATHER THAN THE JOIN: an index attribute that never closes. The join cannot
+        /// refuse an argument it never receives, so dropping this one would leave its element absent from the
+        /// table, reading as unreferenced by the stage and therefore not bound. That is the black-frame-no-error
+        /// outcome the whole row exists to close, so it is a stop here.
+        /// </summary>
+        [Fact]
+        public void AnIndexAttributeThatNeverCloses_IsRefusedRatherThanDropped()
+        {
+            // The attribute's ')' lands past a comma, so the argument the parse sees carries an unterminated
+            // [[buffer(. The entry point's own parentheses still balance, which is what keeps this the attribute's
+            // refusal rather than the argument list's.
+            ShaderValidationException error = ParseRefusal("constant _68& _70 [[buffer(0, 1)]]");
+
+            Assert.Contains("_70", error.Message, StringComparison.Ordinal);
+            Assert.Contains("never closes", error.Message, StringComparison.Ordinal);
+            Assert.Contains("not bound", error.Message, StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// REFUSAL SEVEN: an index that is not a number. Unreachable from any shipped emission, because
+        /// SPIRV-Cross writes a decimal literal, and that is exactly why it has to throw: the day it is reachable
+        /// is the day the emission changed shape, and a skip would answer that with a silently unbound element.
+        /// </summary>
+        [Fact]
+        public void AnIndexThatIsNotANumber_IsRefusedRatherThanDropped()
+        {
+            ShaderValidationException error = ParseRefusal("texture2d<float> _77 [[texture(zero)]]");
+
+            Assert.Contains("_77", error.Message, StringComparison.Ordinal);
+            Assert.Contains("zero", error.Message, StringComparison.Ordinal);
+            Assert.Contains("no path that skips", error.Message, StringComparison.Ordinal);
+        }
+
+        /// <summary>The other half of those two: a WELL-FORMED entry point of the same shape parses, so neither
+        /// row above is passing against a parse that throws unconditionally. It also pins what the parse reads,
+        /// which is the name past the reference punctuation and the index out of the attribute.</summary>
+        [Fact]
+        public void AWellFormedEntryPoint_ParsesItsNameAndItsArgumentIndices()
+        {
+            (string name, List<MetalMslArgument> arguments) = MetalMslEntryPoint.Parse(
+                EntryPoint("constant _68& _70 [[buffer(2)]]", "texture2d<float> _77 [[texture(0)]]"),
+                MetalShaderStage.Fragment, "hand-built");
+
+            Assert.Equal("main0", name);
+            Assert.Equal(
+                new[]
+                {
+                    new MetalMslArgument(MetalIndexSpace.Buffer, 2, "_70"),
+                    new MetalMslArgument(MetalIndexSpace.Texture, 0, "_77"),
+                },
+                arguments);
+        }
+
         /// <summary>The other half of pin 1: a CLEAN join over the same hand-built shape produces the index the
         /// emission chose, not the binding number. Without this the rows above would all pass against a Build
         /// that threw unconditionally.</summary>
@@ -196,6 +252,16 @@ namespace KhaozEngine.Tests.Gpu
                 "hand-built"));
 
         static string Refusal(Action call) => Assert.Throws<ShaderValidationException>(call).Message;
+
+        static ShaderValidationException ParseRefusal(params string[] arguments)
+            => Assert.Throws<ShaderValidationException>(() => MetalMslEntryPoint.Parse(
+                EntryPoint(arguments), MetalShaderStage.Fragment, "hand-built"));
+
+        /// <summary>A fragment entry point of the shape SPIRV-Cross emits, carrying the given argument text
+        /// verbatim. The return type between the keyword and the name is not decoration: it is why the name is
+        /// read backwards from the parenthesis rather than forwards from the keyword.</summary>
+        static string EntryPoint(params string[] arguments)
+            => "fragment main0_out main0(" + string.Join(", ", arguments) + ")\n{\n    return out;\n}\n";
 
         static GpuResourceLayoutDescription[] Layout(params GpuResourceKind[] kinds)
             => new[] { new GpuResourceLayoutDescription(Elements(kinds)) };

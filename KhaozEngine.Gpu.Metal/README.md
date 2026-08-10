@@ -299,8 +299,12 @@ cross-compiler omits an argument a stage does not reference, and binding one any
 **The parse never falls back to a count.** An argument name that is not the expected shape, an id with no
 decorations in that stage's module, a `(set, binding)` outside the declared layout array, a kind that does not
 match its index space, or two arguments landing on one element: each throws at shader-set creation, naming the
-program, the stage and the argument. This all happens with no device involved, so a shader whose emission cannot
-be read fails on a CI leg that has no GPU rather than as a wrong pixel on one that does.
+program, the stage and the argument. Two more throw earlier, where the arguments are read off the emitted text:
+an index attribute that never closes, and an index that is not a number. Neither is reachable from anything the
+cross-compiler emits today, and they throw rather than skip the argument because a dropped argument is one the
+five refusals above can never see, so its element would read as unreferenced by that stage and simply not be
+bound. This all happens with no device involved, so a shader whose emission cannot be read fails on a CI leg
+that has no GPU rather than as a wrong pixel on one that does.
 
 **The emission is pinned twice and neither pin covers the numbering.** One pin freezes the cross-compile options
 and one freezes `MTLCompileOptions` (`languageVersion` 3.2, fast math on, `preserveInvariance` off, all measured

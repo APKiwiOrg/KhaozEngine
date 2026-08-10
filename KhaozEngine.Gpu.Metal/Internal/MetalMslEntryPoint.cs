@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using KhaozEngine.Gpu;
 
 namespace KhaozEngine.Gpu.Metal.Internal
@@ -35,9 +36,19 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// </para>
     /// <para>
     /// AND EVERY FAILURE HERE IS LOUD (2.2b, pin 1). An entry point that cannot be found, an argument list that
-    /// does not close: each throws naming the program and the stage. There is no path from a malformed emission
+    /// does not close, a name that cannot be read, an index attribute that does not close, and an index that is
+    /// not a number: each throws naming the program and the stage. There is no path from a malformed emission
     /// to an empty argument list that a later count could fill in, because a silent fallback to counting is
     /// precisely the mechanism this backend exists not to reproduce.
+    /// </para>
+    /// <para>
+    /// THE LAST TWO OF THOSE ARE WHY DROPPING AN ARGUMENT IS NOT AN OPTION HERE. A malformed
+    /// <c>[[buffer(n)]]</c> is unreachable from any shipped emission, because SPIRV-Cross always writes a decimal
+    /// literal, so the tempting shape is to skip the argument and carry on. That skip is the row's own failure
+    /// mode wearing a different hat: the element then reaches <see cref="MetalShaderIndexTable"/> as an argument
+    /// that was never there, none of the join's refusals can fire on an argument it never sees, and the element
+    /// reads as unreferenced by that stage and is simply not bound. Black frame, no error. So the two shapes that
+    /// could only ever be skipped are throws instead.
     /// </para>
     /// </summary>
     internal static class MetalMslEntryPoint
@@ -58,7 +69,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <param name="stage">Which stage's entry point to find.</param>
         /// <param name="label">A name for the program, included in any error message.</param>
         /// <exception cref="ShaderValidationException">The stage's entry point is not present, its argument list
-        /// does not close, or its name cannot be read.</exception>
+        /// does not close, its name cannot be read, or one of its resource arguments carries an index attribute
+        /// that does not close or whose index is not a number.</exception>
         internal static (string Name, List<MetalMslArgument> Arguments) Parse(string msl, MetalShaderStage stage,
             string label)
         {
@@ -98,7 +110,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     + "is truncated or is not MSL.");
             }
 
-            return (ReadName(msl, start + keyword.Length, open, where), ReadArguments(msl, open, close));
+            return (ReadName(msl, start + keyword.Length, open, where), ReadArguments(msl, open, close, where));
         }
 
         // The declared name is the last identifier before the '(': "vertex main0_out main0(" names main0, and the
@@ -122,7 +134,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             return name;
         }
 
-        static List<MetalMslArgument> ReadArguments(string msl, int open, int close)
+        static List<MetalMslArgument> ReadArguments(string msl, int open, int close, string where)
         {
             var arguments = new List<MetalMslArgument>();
 
@@ -135,10 +147,32 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     int at = argument.IndexOf(marker, StringComparison.Ordinal);
                     if (at < 0) continue;
 
+                    // An argument WITHOUT one of the three markers is skipped, and that is the only skip in here:
+                    // stage_in, the return value's position and every builtin land in this loop and none of them
+                    // is a resource. Past this point the argument IS a resource, so the two ways its index can
+                    // fail to read are stops rather than skips.
                     int numberStart = at + marker.Length;
                     int numberEnd = argument.IndexOf(')', numberStart);
-                    if (numberEnd < 0) continue;
-                    if (!int.TryParse(argument.AsSpan(numberStart, numberEnd - numberStart), out int index)) continue;
+                    if (numberEnd < 0)
+                    {
+                        throw new ShaderValidationException(
+                            $"{where}: the resource argument '{argument}' opens a [[{space.Word()}(]] attribute "
+                            + "that never closes, so there is no index to read out of it. Skipping the argument "
+                            + "is what a count-based backend does: this element would then be absent from the "
+                            + "binding table, read as unreferenced by this stage, and simply not bound, which is "
+                            + "a wrong frame with no error (2.2b, pin 1).");
+                    }
+
+                    string number = argument[numberStart..numberEnd];
+                    if (!int.TryParse(number, NumberStyles.None, CultureInfo.InvariantCulture, out int index))
+                    {
+                        throw new ShaderValidationException(
+                            $"{where}: the resource argument '{argument}' declares "
+                            + $"[[{space.Word()}({number})]] and '{number}' is not an index. SPIRV-Cross writes a "
+                            + "decimal literal here, so an emission this cannot read has changed shape and the "
+                            + "indices are no longer being read at all. There is deliberately no path that skips "
+                            + "the argument: an unbound element renders a wrong frame with no error.");
+                    }
 
                     // The declared name is the last identifier before the attribute, past any reference or
                     // pointer punctuation: "constant _68& _70 [[buffer(0)]]" names _70.

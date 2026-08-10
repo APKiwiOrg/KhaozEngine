@@ -207,6 +207,15 @@ namespace KhaozEngine.Tests.Gpu
                 stageElementSlots += totalElements;
                 perStage.TryGetValue(stage.Stage, out int referenced);
                 unreferencedSlots += totalElements - referenced;
+
+                // STRUCTURAL: every resource argument the parse produced reached the table, per stage. The census
+                // floor below counts the CORPUS rather than the join, so without this a single dropped argument
+                // would sit invisible inside a total of more than a hundred entries and read as an element the
+                // stage never referenced. The parse closes the other half of the same hole itself: an argument
+                // whose index attribute cannot be read is a throw rather than a skip, so the count on this side
+                // cannot quietly shrink either.
+                (_, List<MetalMslArgument> arguments) = MetalMslEntryPoint.Parse(stage.Msl, stage.Stage, program);
+                Assert.Equal(arguments.Count, referenced);
             }
         }
 

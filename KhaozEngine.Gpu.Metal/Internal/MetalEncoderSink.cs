@@ -149,7 +149,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// unpooled" with no exception list, and an exception list is the thing that rots. The cost is a push and
         /// a pop around one C call on the shadow pass's per-draw path, which is the one number in this backend
         /// worth measuring before anyone argues about it
-        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/595).
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/600).
         /// </remarks>
         [MethodImpl(MethodImplOptions.NoInlining)]
         public void SetBufferOffset(MetalShaderStage stage, IntPtr encoder, nuint offset, uint index)

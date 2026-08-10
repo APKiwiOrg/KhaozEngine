@@ -505,6 +505,14 @@ composed window that would leave its own segment is refused by name, and that re
 the same check at set creation passes a zero caller offset and cannot fire. Nothing else would report it, since
 `setBufferOffset:` carries an offset and no length at all.
 
+**Which has one consequence worth stating as a usage rule, because the device run found it in this package's own
+test fixture.** A dynamic element bound as a BARE BUFFER takes the buffer's logical size as its window, and the
+ring stride is that size rounded up to 256, so the window already fills the segment and there is no room for a
+per-draw offset of any size. A dynamic element therefore has to be bound as a `GpuBufferRange` window, which is
+what every shipped resource-set shape already does and what `MetalRingStrideTests` asserts over all of them. The
+refusal names the numbers, so a caller who gets it wrong is told at the first draw rather than reading another
+frame's uniforms.
+
 ## Render passes: a descriptor per pass, and one index the incumbent gets wrong
 
 `IGpuDevice.Factory.CreateFramebuffer` gives back a render target, and `SetFramebuffer`, `ClearColorTarget`,

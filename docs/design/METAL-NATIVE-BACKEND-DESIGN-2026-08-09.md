@@ -1881,6 +1881,16 @@ because it is the Stride row of section 9.4's inventory and this backend owns it
 of the three rings and the asymmetry is worth naming**: D3D11 pays a map window plus a 16-constant count,
 Vulkan pays a positional `pDynamicOffsets` array plus a bind-window range, Metal pays neither.
 
+**Row 13 sharpened this into a usage rule, and the device run is what found it.** The invariant reads as a
+caution about large offsets and it is not: a dynamic element bound as a BARE BUFFER has a range equal to its
+stride by construction, because the range IS the buffer's logical size and the stride is that size rounded up to
+256. Such a binding therefore leaves room for NO caller offset at all rather than for a small one, so a dynamic
+element has to be bound as a `GpuBufferRange` window. Every shipped resource-set shape already is one, which is
+why `MetalRingStrideTests` is green and why nothing before row 13 could surface it: the set's own creation-time
+call passes a caller offset of zero and is a tautology, and `setBufferOffset:` carries no length so no device
+reports it either. What surfaced it was row 13's own `[GpuFact]` fixture binding a whole buffer and passing an
+offset, which is the shape a consumer would reach for first. Both package READMEs carry the rule now.
+
 **Why the ring is worth more here than on either predecessor (2.1).** On the incumbent a record-time uniform
 write costs an `MTLBuffer` allocation, a `memcpy`, an ENCODER SPLIT, a blit, a release, and then a full
 graphics state re-activation at the next draw. Under the ring it costs a `memcpy`. **The saved work is not the

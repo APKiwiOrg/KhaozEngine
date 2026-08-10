@@ -14,9 +14,17 @@ namespace KhaozEngine.Tests.Gpu
     /// out opaque numbers.
     /// </para>
     /// </summary>
-    public sealed class MetalCommandListRecordingTests
+    public sealed class MetalCommandListRecordingTests : IDisposable
     {
-        static (MetalCommandList List, FakeMetalCommandBufferSource Buffers, FakeMetalEncoderCalls Calls,
+        /// <inheritdoc/>
+        public void Dispose() => _harness.Dispose();
+
+        // Every list here is built through the ring harness, because Begin is this backend's frame boundary and
+        // therefore needs a real ring allocator behind it (M-R2). The harness is disposed with the fixture rather
+        // than per test, since a fake shared event and a pinned array cost nothing to hold.
+        readonly MetalRingHarness _harness = new();
+
+        (MetalCommandList List, FakeMetalCommandBufferSource Buffers, FakeMetalEncoderCalls Calls,
             MetalUncommittedBuffers Uncommitted) NewList(int framesInFlight = MetalFramesInFlight.Default)
         {
             FakeMetalCommandBufferSource buffers = new();
@@ -25,7 +33,7 @@ namespace KhaozEngine.Tests.Gpu
 
             // The owner is an opaque token here, which is all the submit path compares it as. Whose it is, and
             // what a list from ANOTHER device's token gets, is MetalSubmitTargetIdentityTests.
-            MetalCommandList list = new(buffers, uncommitted, new FakeMetalEncoderSink(calls), new object());
+            MetalCommandList list = _harness.NewList(new object(), buffers, calls, uncommitted);
             return (list, buffers, calls, uncommitted);
         }
 
@@ -173,7 +181,7 @@ namespace KhaozEngine.Tests.Gpu
 
             list.Begin();
             list.End();
-            list.MarkSubmitted();
+            list.MarkSubmitted(1);
 
             Assert.False(list.IsSealed);
             Assert.Equal(0, uncommitted.Outstanding);
@@ -198,7 +206,7 @@ namespace KhaozEngine.Tests.Gpu
 
             list.Begin();
             list.End();
-            list.MarkSubmitted();
+            list.MarkSubmitted(1);
 
             Assert.Throws<InvalidOperationException>(() => list.Encoders.EnsureBlitEncoder());
             Assert.Throws<InvalidOperationException>(() => list.Encoders.EnsureComputeEncoder());
@@ -305,7 +313,7 @@ namespace KhaozEngine.Tests.Gpu
             // Exit 1: committed.
             list.Begin();
             list.End();
-            list.MarkSubmitted();
+            list.MarkSubmitted(1);
 
             // Exit 2: abandoned by the next Begin.
             list.Begin();
@@ -338,7 +346,7 @@ namespace KhaozEngine.Tests.Gpu
             list.Begin();
             list.Encoders.EnsureBlitEncoder();
             list.End();
-            list.MarkSubmitted();
+            list.MarkSubmitted(1);
 
             // Exit 2: abandoned by the next Begin. The encoder is closed by End here too, because a list cannot
             // reach a Begin with one open: Begin refuses while recording and End ends unconditionally.
@@ -362,15 +370,29 @@ namespace KhaozEngine.Tests.Gpu
         {
             MetalUncommittedBuffers uncommitted = new(MetalFramesInFlight.Default, new RecordingLogger());
             FakeMetalEncoderSink sink = new(new FakeMetalEncoderCalls());
+            FakeMetalCommandBufferSource buffers = new();
+            MetalRingAllocator rings = _harness.Rings;
+            using MetalStagingArena arena = _harness.NewArena();
+            FakeMetalBlitApi blit = _harness.Blit;
+            FakeMetalDeviceLiveness liveness = _harness.Liveness;
             object owner = new();
 
-            Assert.Throws<ArgumentNullException>(() => new MetalCommandList(null!, uncommitted, sink, owner));
             Assert.Throws<ArgumentNullException>(
-                () => new MetalCommandList(new FakeMetalCommandBufferSource(), null!, sink, owner));
+                () => new MetalCommandList(null!, uncommitted, sink, owner, rings, arena, blit, liveness));
             Assert.Throws<ArgumentNullException>(
-                () => new MetalCommandList(new FakeMetalCommandBufferSource(), uncommitted, null!, owner));
+                () => new MetalCommandList(buffers, null!, sink, owner, rings, arena, blit, liveness));
             Assert.Throws<ArgumentNullException>(
-                () => new MetalCommandList(new FakeMetalCommandBufferSource(), uncommitted, sink, null!));
+                () => new MetalCommandList(buffers, uncommitted, null!, owner, rings, arena, blit, liveness));
+            Assert.Throws<ArgumentNullException>(
+                () => new MetalCommandList(buffers, uncommitted, sink, null!, rings, arena, blit, liveness));
+            Assert.Throws<ArgumentNullException>(
+                () => new MetalCommandList(buffers, uncommitted, sink, owner, null!, arena, blit, liveness));
+            Assert.Throws<ArgumentNullException>(
+                () => new MetalCommandList(buffers, uncommitted, sink, owner, rings, null!, blit, liveness));
+            Assert.Throws<ArgumentNullException>(
+                () => new MetalCommandList(buffers, uncommitted, sink, owner, rings, arena, null!, liveness));
+            Assert.Throws<ArgumentNullException>(
+                () => new MetalCommandList(buffers, uncommitted, sink, owner, rings, arena, blit, null!));
         }
 
         /// <summary>

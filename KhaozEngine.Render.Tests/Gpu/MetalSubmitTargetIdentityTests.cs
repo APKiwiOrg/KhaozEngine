@@ -24,13 +24,14 @@ namespace KhaozEngine.Tests.Gpu
     /// plain <c>[Fact]</c> needs and no <c>MTLDevice</c> is involved. The same split
     /// <see cref="MetalCompletionHandler.Deliver"/> takes for the completion path.</para>
     /// </summary>
-    public sealed class MetalSubmitTargetIdentityTests
+    public sealed class MetalSubmitTargetIdentityTests : IDisposable
     {
-        static MetalCommandList NewList(object owner)
-            => new(new FakeMetalCommandBufferSource(),
-                new MetalUncommittedBuffers(MetalFramesInFlight.Default, new RecordingLogger()),
-                new FakeMetalEncoderSink(new FakeMetalEncoderCalls()),
-                owner);
+        readonly MetalRingHarness _harness = new();
+
+        /// <inheritdoc/>
+        public void Dispose() => _harness.Dispose();
+
+        MetalCommandList NewList(object owner) => _harness.NewList(owner);
 
         [Fact]
         public void AListThisDeviceCreatedIsAccepted()

@@ -22,10 +22,15 @@ namespace KhaozEngine.Tests.Gpu
     /// produce peak one lower, which is a fact about coverage rather than about the bound, so the assertions
     /// below are written against <c>Bound</c> rather than against a number.</para>
     /// </summary>
-    public sealed class MetalUncommittedBufferBoundTests
+    public sealed class MetalUncommittedBufferBoundTests : IDisposable
     {
-        static MetalCommandList NewList(FakeMetalCommandBufferSource buffers, MetalUncommittedBuffers uncommitted)
-            => new(buffers, uncommitted, new FakeMetalEncoderSink(new FakeMetalEncoderCalls()), new object());
+        readonly MetalRingHarness _harness = new();
+
+        /// <inheritdoc/>
+        public void Dispose() => _harness.Dispose();
+
+        MetalCommandList NewList(FakeMetalCommandBufferSource buffers, MetalUncommittedBuffers uncommitted)
+            => _harness.NewList(new object(), buffers, uncommitted: uncommitted);
 
         [Fact]
         public void TheBoundIsTheFrameDepthPlusThePresentBuffer()
@@ -63,7 +68,7 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal(frames, uncommitted.Outstanding);
 
-            foreach (MetalCommandList list in lists) list.MarkSubmitted();
+            foreach (MetalCommandList list in lists) list.MarkSubmitted(1);
 
             Assert.Equal(0, uncommitted.Outstanding);
             Assert.Equal(frames, uncommitted.Peak);
@@ -88,7 +93,7 @@ namespace KhaozEngine.Tests.Gpu
             {
                 list.Begin();
                 list.End();
-                list.MarkSubmitted();
+                list.MarkSubmitted(1);
             }
 
             Assert.Equal(0, uncommitted.Outstanding);

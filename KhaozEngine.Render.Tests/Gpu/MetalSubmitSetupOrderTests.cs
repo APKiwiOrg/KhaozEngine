@@ -27,8 +27,13 @@ namespace KhaozEngine.Tests.Gpu
     /// driver property, and that the whole path is wired through <c>IGpuDevice.Submit</c>.
     /// <c>MetalCommandListGpuTests</c> owns both, under a <c>[GpuFact]</c> against a real device.</para>
     /// </summary>
-    public sealed class MetalSubmitSetupOrderTests
+    public sealed class MetalSubmitSetupOrderTests : IDisposable
     {
+        readonly MetalRingHarness _harness = new();
+
+        /// <inheritdoc/>
+        public void Dispose() => _harness.Dispose();
+
         /// <summary>
         /// THE ORDER. An upload is pending, the list is sealed, and the pre-lock phase returns the buffer to
         /// commit with the batch already committed behind it.
@@ -123,15 +128,10 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(setup.HasPendingWork);
         }
 
-        static (MetalCommandList List, FakeMetalCommandBufferSource Buffers) NewList()
+        (MetalCommandList List, FakeMetalCommandBufferSource Buffers) NewList()
         {
             FakeMetalCommandBufferSource buffers = new();
-            MetalCommandList list = new(buffers,
-                new MetalUncommittedBuffers(MetalFramesInFlight.Default, new RecordingLogger()),
-                new FakeMetalEncoderSink(new FakeMetalEncoderCalls()),
-                new object());
-
-            return (list, buffers);
+            return (_harness.NewList(new object(), buffers), buffers);
         }
 
         static void Upload(MetalSetupCommands setup)

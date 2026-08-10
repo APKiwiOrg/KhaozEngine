@@ -1,0 +1,233 @@
+using System;
+using System.Threading;
+using KhaozEngine.Gpu.Metal.Internal;
+using Xunit;
+
+namespace KhaozEngine.Tests.Gpu
+{
+    /// <summary>
+    /// THE THREE ROWS OF SECTION 9.4 THAT ARE THIS BACKEND'S OWN, plus the geometry underneath them, device-free.
+    /// The other seven run against all three backends through <see cref="GpuUniformRingSharedTests"/>.
+    ///
+    /// <para><b>Stride</b> is <see cref="MetalRingStrideTests"/>. <b>Lock legality</b> and <b>Ordering</b> are
+    /// here, because each backend has its own lock and its own deadlock to not have, and the shared interface
+    /// cannot see either.</para>
+    ///
+    /// <para><b>WHAT A RED RUN MEANS.</b> Everything here is engine arithmetic over a pointer, so a failure is a
+    /// bad segment base, a bounds check that lets a write spill into the next frame's segment, or a lock rule
+    /// broken. None of them is visible on a device: they present as another frame's uniforms being subtly wrong,
+    /// several frames from the cause.</para>
+    /// </summary>
+    public sealed class MetalUniformRingTests : IDisposable
+    {
+        readonly MetalRingHarness _harness = new();
+
+        /// <inheritdoc/>
+        public void Dispose() => _harness.Dispose();
+
+        [Fact]
+        public void TheAllocationIsTheStrideTimesTheDepthAndTheLogicalSizeIsWhatTheCallerAsked()
+        {
+            MetalUniformRing ring = _harness.NewRing(200, out byte[] backing);
+
+            Assert.Equal(200u, ring.SizeInBytes);
+            Assert.Equal(256u, ring.SegmentStrideBytes);
+            Assert.Equal(768ul, ring.TotalBytes);
+            Assert.Equal(768, backing.Length);
+            Assert.Equal(MetalFramesInFlight.Default, ring.FramesInFlight);
+        }
+
+        [Fact]
+        public void SegmentBasesAreEvenlySpacedAndSegmentZeroStartsAtZero()
+        {
+            MetalUniformRing ring = _harness.NewRing(256, out _);
+
+            Assert.Equal(0ul, ring.FrameBaseBytes(0));
+            Assert.Equal(256ul, ring.FrameBaseBytes(1));
+            Assert.Equal(512ul, ring.FrameBaseBytes(2));
+        }
+
+        [Fact]
+        public void ASegmentThatDoesNotExistIsRefusedByName()
+        {
+            MetalUniformRing ring = _harness.NewRing(256, out _);
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => ring.FrameBaseBytes(-1));
+            Assert.Throws<ArgumentOutOfRangeException>(() => ring.FrameBaseBytes(MetalFramesInFlight.Default));
+        }
+
+        /// <summary>
+        /// A NULL <c>contents()</c> POINTER IS REFUSED AT CONSTRUCTION. Every buffer this backend creates is
+        /// Shared and a Shared buffer always answers a real pointer, so a zero means the storage mode changed
+        /// rather than that an allocation failed, and sub-allocating into address zero is the one outcome worth
+        /// refusing loudly.
+        /// </summary>
+        [Fact]
+        public void ANullContentsPointerIsRefusedByName()
+        {
+            ArgumentOutOfRangeException thrown = Assert.Throws<ArgumentOutOfRangeException>(
+                () => new MetalUniformRing(_harness.Rings, IntPtr.Zero, 256));
+
+            Assert.Contains("MTLStorageModeShared", thrown.Message, StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// A WRITE PAST THE LOGICAL SIZE IS REFUSED, and the reason is what makes it worth a check rather than a
+        /// comment: without it the bytes spill into the NEXT frame's segment, which the GPU may be reading right
+        /// now, so it would present as a different frame's uniforms being wrong. The incumbent's own
+        /// <c>UpdateBufferCore</c> has no bound check at all.
+        /// </summary>
+        [Fact]
+        public void AWriteThatLeavesTheLogicalBufferIsRefusedByName()
+        {
+            MetalUniformRing ring = _harness.NewRing(200, out _);
+
+            ArgumentOutOfRangeException thrown =
+                Assert.Throws<ArgumentOutOfRangeException>(() => ring.Write(192, new byte[16]));
+
+            Assert.Contains("next frame's segment", thrown.Message, StringComparison.Ordinal);
+
+            // The last byte the caller owns is still writable, so the refusal is exact rather than conservative.
+            ring.Write(192, new byte[8]);
+        }
+
+        /// <summary>
+        /// THE LOGICAL SIZE IS THE BOUND AND THE STRIDE IS NOT, which is the mistake available here: a
+        /// 200-byte buffer has a 256-byte stride, and the 56 bytes of slack belong to nobody. A caller writing
+        /// into them would be writing into padding on every segment except at the point a future change made the
+        /// stride equal to the size.
+        /// </summary>
+        [Fact]
+        public void TheSlackBetweenTheSizeAndTheStrideIsNotWritable()
+        {
+            MetalUniformRing ring = _harness.NewRing(200, out _);
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => ring.Write(200, new byte[1]));
+        }
+
+        /// <summary>
+        /// SECTION 9.4's LOCK LEGALITY ROW: the off-timeline write is legal from a caller who ALREADY HOLDS the
+        /// submit lock, and it is legal because it never waits for anything. The lock is a
+        /// <see cref="Monitor"/>, so the acquisition inside is a free re-entry, and there is nothing inside that
+        /// could wait for work only another thread could do.
+        /// <para>
+        /// This is a shape a real caller has: <c>MetalGpuDevice</c> holds the submit lock across a commit, and a
+        /// future row that wrote a uniform buffer from inside it would deadlock instantly on a design that waited
+        /// there. Asserting it costs one test and is the only place the property is written down as behaviour.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void TheOffTimelineWriteIsLegalFromInsideTheSubmitLock()
+        {
+            MetalUniformRing ring = _harness.NewRing(256, out _);
+            byte[] payload = { 1, 2, 3, 4 };
+
+            // Two frames closed against work the GPU has not reached, so the gate would have something to wait
+            // for if it ever waited.
+            SubmitWork(5);
+            _harness.Rings.BeginFrame();
+            SubmitWork(6);
+            _harness.Rings.BeginFrame();
+
+            lock (_harness.SubmitLock)
+            {
+                _harness.Rings.UpdateBuffer(ring, 0, payload);
+            }
+
+            Assert.Equal(payload, ring.ReadSegment(_harness.Rings.CurrentSegment, 0, payload.Length));
+            Assert.Equal(MetalFramesInFlight.Default - 1, ring.PendingPatchCount);
+        }
+
+        /// <summary>
+        /// SECTION 9.4's ORDERING ROW, as far as anything can assert it: the ring reads a COMPLETION value rather
+        /// than a submit receipt. The two differ by exactly the window between a commit returning and the GPU
+        /// finishing, and a ring gated on the receipt hands a segment back inside that window.
+        /// </summary>
+        [Fact]
+        public void TheGateReadsCompletionAndNotTheSubmitReceipt()
+        {
+            SubmitWork(7);
+
+            // Registered as submitted, and the counter has NOT moved: a receipt-gated ring would already consider
+            // this segment free.
+            Assert.Equal(7ul, _harness.Timeline.LastSubmitted);
+            Assert.Equal(0ul, _harness.Timeline.CompletedValue);
+
+            for (int frame = 0; frame < MetalFramesInFlight.Default - 1; frame++) _harness.Rings.BeginFrame();
+            Assert.Equal(0, _harness.Rings.StallCount);
+
+            _harness.Rings.BeginFrame();
+
+            Assert.Equal(1, _harness.Rings.StallCount);
+            Assert.Equal(1, _harness.Backpressure.Totals.Count);
+        }
+
+        /// <summary>
+        /// A RING WHOSE BUFFER IS DISPOSED LEAVES THE ALLOCATOR AND TAKES ITS PATCHES WITH IT, counted as
+        /// dropped. Reference counting keeps the ALLOCATION alive while a submitted buffer reads it (M-H3) and
+        /// says nothing about a CPU write scheduled for a future frame boundary, which is what a pending patch is.
+        /// </summary>
+        [Fact]
+        public void ForgettingARingDropsItsPatchesAndCountsThem()
+        {
+            MetalUniformRing ring = _harness.NewRing(256, out _);
+
+            SubmitWork(5);
+            _harness.Rings.BeginFrame();
+            SubmitWork(6);
+            _harness.Rings.BeginFrame();
+
+            _harness.Rings.UpdateBuffer(ring, 0, new byte[] { 9, 9, 9, 9 });
+            Assert.Equal(MetalFramesInFlight.Default - 1, ring.PendingPatchCount);
+
+            _harness.Rings.Forget(ring);
+
+            Assert.Equal(0, ring.PendingPatchCount);
+
+            MetalRingPatchStats stats = _harness.Rings.OffTimelinePatches;
+            Assert.Equal(MetalFramesInFlight.Default - 1, stats.Deferred);
+            Assert.Equal(MetalFramesInFlight.Default - 1, stats.Dropped);
+            Assert.Equal(0, stats.Outstanding);
+        }
+
+        /// <summary>A caller already inside the submit lock cannot open a frame, because that is the ONE member
+        /// that blocks: it would hold the frame's one serialised point for up to a frame and shut out the
+        /// submission that would end the wait.</summary>
+        [Fact]
+        public void BeginFrameFromInsideTheSubmitLockIsRefusedByName()
+        {
+            InvalidOperationException thrown = Assert.Throws<InvalidOperationException>(() =>
+            {
+                lock (_harness.SubmitLock) _harness.Rings.BeginFrame();
+            });
+
+            Assert.Contains("held the submit lock", thrown.Message, StringComparison.Ordinal);
+        }
+
+        /// <summary>The allocator refuses a depth outside the knob's own range, so a caller that read the
+        /// environment itself cannot build a ring the env var would have clamped.</summary>
+        [Theory]
+        [InlineData(0)]
+        [InlineData(MetalFramesInFlight.Maximum + 1)]
+        public void ADepthOutsideTheKnobsRangeIsRefusedByName(int framesInFlight)
+        {
+            ArgumentOutOfRangeException thrown = Assert.Throws<ArgumentOutOfRangeException>(
+                () => new MetalRingAllocator(framesInFlight, _harness.Timeline, _harness.Backpressure,
+                    new object()));
+
+            Assert.Contains(MetalFramesInFlight.EnvVarName, thrown.Message, StringComparison.Ordinal);
+        }
+
+        // The submit path's whole observable effect on the timeline, in the order MetalGpuDevice.SubmitOnMacOs
+        // takes it: allocate and encode inside the lock, then register the value the commit accepted.
+        void SubmitWork(ulong value)
+        {
+            while (_harness.Timeline.LastAllocated < value)
+            {
+                _harness.Timeline.EncodeSignalForSubmit(IntPtr.Zero);
+            }
+
+            _harness.Timeline.RegisterSubmitted(value);
+        }
+    }
+}

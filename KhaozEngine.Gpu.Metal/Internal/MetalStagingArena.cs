@@ -184,13 +184,27 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// the smallest pooled block that fits, and only a request that fits in neither creates one.
         /// </para>
         /// </summary>
-        /// <param name="sizeBytes">The payload size, already rounded up to <see cref="CopyAlignment"/> by the
-        /// caller if the copy needs it. Zero is refused, because a copy of nothing is a command recorded for no
-        /// reason and the caller has a bug rather than an empty upload.</param>
+        /// <param name="sizeBytes">The payload size, ALREADY rounded up to <see cref="CopyAlignment"/> by the
+        /// caller (<see cref="AlignedCopyBytes"/>). Zero is refused, because a copy of nothing is a command
+        /// recorded for no reason and the caller has a bug rather than an empty upload, and a size that is not a
+        /// multiple of the alignment is refused for the reason below.</param>
         internal MetalStagingLease Take(ulong sizeBytes)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             ArgumentOutOfRangeException.ThrowIfZero(sizeBytes);
+
+            // THE ALIGNED SIZE IS A PRECONDITION RATHER THAN SOMETHING THIS ROUNDS, and it is what makes a block
+            // the exact size of a request enough. Every lease starts at an aligned offset and advances the bump
+            // by an aligned amount, so by induction from zero every offset in a block is aligned and no block
+            // ever needs slack for the padding. Rounding the block up instead, which is what a caller-agnostic
+            // arena would have to do, costs a whole size class on every power-of-two request.
+            if (sizeBytes % CopyAlignment != 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(sizeBytes), sizeBytes,
+                    "A native Metal staging lease is taken at a multiple of " + CopyAlignment
+                    + " bytes, which is what the copy selector requires of its size on macOS. Round the payload "
+                    + "with MetalStagingArena.AlignedCopyBytes before asking for it.");
+            }
 
             List<OpenBlock> open = _open[_slot];
 
@@ -323,17 +337,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
         internal static uint AlignedCopyBytes(uint sizeBytes)
             => sizeBytes + ((uint)CopyAlignment - (sizeBytes % (uint)CopyAlignment)) % (uint)CopyAlignment;
 
-        // The smallest pooled block that fits, or a fresh one. The alignment is folded into the requirement
-        // rather than checked afterwards, so a block that fits the payload but not the padding is not taken and
-        // then found wanting.
+        // The smallest pooled block that fits, or a fresh one. No slack is added for the alignment, because
+        // Take's precondition already keeps every offset in a block aligned. See that member.
         MetalStagingBlock TakeBlock(ulong sizeBytes)
         {
-            ulong needed = sizeBytes + (CopyAlignment - 1);
-            if (needed < sizeBytes) needed = sizeBytes;
-
             for (int i = 0; i < _free.Count; i++)
             {
-                if (_free[i].SizeBytes < needed) continue;
+                if (_free[i].SizeBytes < sizeBytes) continue;
 
                 MetalStagingBlock pooled = _free[i];
                 _free.RemoveAt(i);
@@ -341,14 +351,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 return pooled;
             }
 
-            MetalStagingBlock block = _source.Create(BlockSizeFor(needed, _blockBytes));
+            ulong blockBytes = BlockSizeFor(sizeBytes, _blockBytes);
+            MetalStagingBlock block = _source.Create(blockBytes);
             BlocksCreated++;
 
             if (!block.IsValid)
             {
                 throw new InvalidOperationException(
-                    "The native Metal device would not allocate a "
-                    + BlockSizeFor(needed, _blockBytes)
+                    "The native Metal device would not allocate a " + blockBytes
                     + "-byte Shared staging block for a record-time buffer upload. "
                     + "-newBufferWithLength:options: answers nil only when the allocation itself fails, so this "
                     + "is memory pressure rather than a malformed request.");

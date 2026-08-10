@@ -77,6 +77,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // form a list takes it in, so this is also one box for the device instead of one per CreateCommandList.
         readonly IMetalRenderApi _renderApi;
 
+        // THE THIRD UNCOUNTED EMISSION SEAM, one member wide, boxed once here for the same reason: a list takes
+        // it as an interface, so constructing one per list would box one per list to describe a value that cannot
+        // differ. See IMetalComputeApi for why the compute encoder gets its own line rather than a member on the
+        // render one.
+        readonly IMetalComputeApi _computeApi;
+
         // THE ONE INDEX-TABLE CACHE (row 10), inline rather than in the constructor because the factory built
         // below reads it lazily and a field initialiser cannot be out of order with that. Deduplicating the
         // per-program binding tables is what makes M-R9's pipeline-switch comparison a handle compare instead of
@@ -121,6 +127,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _framesInFlight = framesInFlight;
             _staging = staging;
             _renderApi = new MetalRenderApi();
+            _computeApi = new MetalComputeApi();
             _bufferOffsetAlignment = bufferOffsetAlignment;
 
             // THE ONE RING ALLOCATOR (M-M3), sharing the submit lock rather than owning one. It has to read
@@ -206,7 +213,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 // remembers the timeline value THAT list's submission took. The list disposes it. It takes the
                 // liveness token because its block creation is a native allocation on this device (M-F6).
                 new MetalStagingArena(_staging, _framesInFlight, liveness: _liveness), new MetalBlitApi(),
-                _liveness, _renderApi,
+                _liveness, _renderApi, _computeApi,
                 // THE DEVICE'S OWN ALIGNMENT, read once at creation by M-N4's probe. Every composed bind offset
                 // is checked against it, which is section 18's third named risk for this row.
                 _bufferOffsetAlignment,

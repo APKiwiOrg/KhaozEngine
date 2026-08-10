@@ -72,6 +72,74 @@ namespace KhaozEngine.Gpu.Metal.Internal
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// ONE ATTACHMENT, LOAD AND RESOLVE, AND NOTHING ELSE. There is no clear colour to send, because a pass
+        /// that loads never reads one, and there is no depth slot: the incumbent's <c>ResolveTextureCore</c>
+        /// builds exactly this descriptor and this reproduces it field for field.
+        /// <para>
+        /// THE SOURCE'S CONTENTS ARE DESTROYED BY THIS, which the incumbent's own TODO says and which is
+        /// reproduced rather than fixed (M-C4): the engine re-clears its MSAA sources at the start of the next
+        /// frame's pass, discarding is the bandwidth-correct answer on this architecture, and it is what
+        /// <c>scene3d_hdr_msaa</c> was baked under. The divergence from <c>ResolveSubresource</c> and
+        /// <c>vkCmdResolveImage</c> is documented in the package README so a consumer that ever needs the source
+        /// preserved finds a property rather than a surprise.
+        /// </para>
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public IntPtr CreateResolveDescriptor(IntPtr source, IntPtr destination)
+        {
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+
+            MTLRenderPassDescriptor descriptor = MTLRenderPassDescriptor.Create();
+            if (descriptor.IsNull) return IntPtr.Zero;
+
+            MTLRenderPassAttachmentDescriptor slot = descriptor.ColourAttachment(0);
+            if (slot.IsNull)
+            {
+                descriptor.Release();
+                return IntPtr.Zero;
+            }
+
+            slot.SetTexture(new MTLTexture(source));
+            slot.SetLoadAction(MTLLoadAction.Load);
+            slot.SetStoreAction(MTLStoreAction.MultisampleResolve);
+            slot.SetResolveTexture(new MTLTexture(destination));
+
+            return descriptor.Handle;
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// THE ORDER IS THE INCUMBENT'S <c>PreDrawCommand</c> BLOCK, call for call: the pipeline state, the cull
+        /// mode, the winding, the fill mode, the blend colour, and then the depth trio behind the framebuffer
+        /// guard. Nothing about the order is load-bearing to Metal, and it is kept anyway so a reader diffing the
+        /// two sources sees one shape.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public void SetGraphicsState(IntPtr encoder, in MetalGraphicsStateBlock block)
+        {
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+
+            var target = new MTLRenderCommandEncoder(encoder);
+            target.SetRenderPipelineState(new MTLRenderPipelineState(block.RenderState));
+            target.SetCullMode(block.CullMode);
+            target.SetFrontFacingWinding(block.FrontFace);
+            target.SetTriangleFillMode(block.FillMode);
+            target.SetBlendColour(block.BlendColour.X, block.BlendColour.Y, block.BlendColour.Z,
+                block.BlendColour.W);
+
+            // THE GUARD IS THE FRAMEBUFFER'S ALONE, which is the incumbent's own condition and NOT the pipeline
+            // declaring a depth output: a colour-only pipeline drawing into a framebuffer that has depth is sent
+            // a NIL depth-stencil state, which Metal reads as its default. MetalGraphicsStateBlock carries the
+            // whole argument, including why sending the trio to a depth-less pass is a debug-layer failure.
+            if (!block.DepthTrio) return;
+
+            target.SetDepthStencilState(new MTLDepthStencilState(block.DepthStencilState));
+            target.SetDepthClipMode(block.DepthClipMode);
+            target.SetStencilReferenceValue(block.StencilReference);
+        }
+
+        /// <inheritdoc/>
         [MethodImpl(MethodImplOptions.NoInlining)]
         public void ReleaseRenderPassDescriptor(IntPtr descriptor)
         {

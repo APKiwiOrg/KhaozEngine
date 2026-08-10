@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.Gpu.Metal.Internal.ObjC;
 
 namespace KhaozEngine.Gpu.Metal.Internal
 {
@@ -52,9 +53,19 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// Nothing about any of them scales per draw, and freezing numbers over them would gate on figures nobody
     /// should gate on.</para>
     ///
-    /// <para><b>HANDLES ARE <c>IntPtr</c> AND NOTHING HERE NAMES AN OBJECTIVE-C TYPE.</b> A fake invents plain
+    /// <para><b>HANDLES ARE <c>IntPtr</c> AND NOTHING HERE NAMES AN OBJECTIVE-C OBJECT.</b> A fake invents plain
     /// numbers, so the budget test and the recording-contract tests stay device-free and run on the Linux and
     /// Windows legs where no Metal exists at all.</para>
+    ///
+    /// <para><b>CORRECTED AT ROW 14: THAT RULE IS ABOUT HANDLES, AND ONE OBJECTIVE-C ENUM CROSSES IT.</b> The
+    /// sentence above used to read "nothing here names an Objective-C type", which the draw members cannot
+    /// honour: <c>-drawPrimitives:</c> takes the TOPOLOGY as an argument on this API (it is input-assembler state
+    /// on Direct3D 11 and pipeline state on Vulkan), and a five-member enum has no total plain-value spelling the
+    /// way a two-member index width has, which is why row 13's <c>sixteenBitIndices</c> is a <c>bool</c> and this
+    /// is not. Declaring a duplicate backend enum to shadow <see cref="MTLPrimitiveType"/> would be a second
+    /// thing to keep in step with the first for no gain, and the rule's own reason survives intact: an enum IS a
+    /// plain number, a fake names it on Linux with no Metal loaded, and nothing here is an
+    /// <c>MTLBuffer</c>.</para>
     /// </summary>
     internal interface IMetalEncoderSink
     {
@@ -129,15 +140,19 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         // ---- Draws and dispatches ----------------------------------------------------------------------------
 
-        /// <summary><c>-[MTLRenderCommandEncoder drawPrimitives:vertexStart:vertexCount:instanceCount:baseInstance:]</c>.
-        /// Row 14 owns the emission (https://github.com/APKiwiOrg/KhaozEngine/issues/580).</summary>
-        void Draw(IntPtr encoder, uint vertexStart, uint vertexCount, uint instanceCount, uint baseInstance);
+        /// <summary><c>-[MTLRenderCommandEncoder drawPrimitives:vertexStart:vertexCount:instanceCount:baseInstance:]</c>,
+        /// the LONG form unconditionally. <paramref name="topology"/> comes off the bound pipeline, which
+        /// resolved it once at creation.</summary>
+        void Draw(IntPtr encoder, MTLPrimitiveType topology, uint vertexStart, uint vertexCount,
+            uint instanceCount, uint baseInstance);
 
-        /// <summary><c>-[MTLRenderCommandEncoder drawIndexedPrimitives:indexCount:indexType:indexBuffer:indexBufferOffset:instanceCount:baseVertex:baseInstance:]</c>.
-        /// The index buffer travels in the call rather than being bound beforehand, which is Metal's shape and
-        /// not an engine choice. Row 14 owns the emission.</summary>
-        void DrawIndexed(IntPtr encoder, uint indexCount, IntPtr indexBuffer, nuint indexBufferOffset,
-            bool sixteenBitIndices, uint instanceCount, int baseVertex, uint baseInstance);
+        /// <summary><c>-[MTLRenderCommandEncoder drawIndexedPrimitives:indexCount:indexType:indexBuffer:indexBufferOffset:instanceCount:baseVertex:baseInstance:]</c>,
+        /// the long form for the same reason. The index buffer travels in the call rather than being bound
+        /// beforehand, which is Metal's shape and not an engine choice, and it is why this backend keeps no
+        /// index-buffer argument-table record at all.</summary>
+        void DrawIndexed(IntPtr encoder, MTLPrimitiveType topology, uint indexCount, IntPtr indexBuffer,
+            nuint indexBufferOffset, bool sixteenBitIndices, uint instanceCount, int baseVertex,
+            uint baseInstance);
 
         /// <summary><c>-[MTLComputeCommandEncoder dispatchThreadgroups:threadsPerThreadgroup:]</c>. Row 14 owns
         /// the emission.</summary>

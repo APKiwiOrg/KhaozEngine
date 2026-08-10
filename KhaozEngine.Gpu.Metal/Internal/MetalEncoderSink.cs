@@ -163,35 +163,51 @@ namespace KhaozEngine.Gpu.Metal.Internal
         }
 
         /// <inheritdoc/>
-        public void Draw(IntPtr encoder, uint vertexStart, uint vertexCount, uint instanceCount,
+        /// <remarks>THE LONG FORM UNCONDITIONALLY. The incumbent picks between this and the four-argument
+        /// selector on <c>instanceStart == 0</c>, and at a base instance of zero the two are the same draw, so
+        /// the branch buys nothing and one code path is one thing to be right about.</remarks>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public void Draw(IntPtr encoder, MTLPrimitiveType topology, uint vertexStart, uint vertexCount,
+            uint instanceCount, uint baseInstance)
+        {
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+
+            new MTLRenderCommandEncoder(encoder).DrawPrimitives(
+                topology, vertexStart, vertexCount, instanceCount, baseInstance);
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>THE ONE MEMBER IN THIS TYPE WHOSE ABI ROW 1's SPIKE DOES NOT COVER: two of its arguments
+        /// cross on the stack. <see cref="ObjCMsgSend.SendVoidDrawIndexedPrimitives"/> carries the argument and
+        /// names the device probe that answers it by value.</remarks>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public void DrawIndexed(IntPtr encoder, MTLPrimitiveType topology, uint indexCount, IntPtr indexBuffer,
+            nuint indexBufferOffset, bool sixteenBitIndices, uint instanceCount, int baseVertex,
             uint baseInstance)
-            => throw NotBuiltYet("Drawing", DrawsRow);
+        {
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+
+            new MTLRenderCommandEncoder(encoder).DrawIndexedPrimitives(
+                topology, indexCount, sixteenBitIndices ? MTLIndexType.UInt16 : MTLIndexType.UInt32,
+                new MTLBuffer(indexBuffer), indexBufferOffset, instanceCount, baseVertex, baseInstance);
+        }
 
         /// <inheritdoc/>
-        public void DrawIndexed(IntPtr encoder, uint indexCount, IntPtr indexBuffer, nuint indexBufferOffset,
-            bool sixteenBitIndices, uint instanceCount, int baseVertex, uint baseInstance)
-            => throw NotBuiltYet("Drawing indexed", DrawsRow);
-
-        /// <inheritdoc/>
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public void Dispatch(IntPtr encoder, uint groupCountX, uint groupCountY, uint groupCountZ,
             uint threadsPerGroupX, uint threadsPerGroupY, uint threadsPerGroupZ)
-            => throw NotBuiltYet("Dispatching", DrawsRow);
+        {
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+
+            new MTLComputeCommandEncoder(encoder).DispatchThreadgroups(
+                new MTLSize(groupCountX, groupCountY, groupCountZ),
+                new MTLSize(threadsPerGroupX, threadsPerGroupY, threadsPerGroupZ));
+        }
 
         // The retain is what makes the encoder's lifetime this backend's rather than the caller's pool's. See the
         // class note: the alternative is a pool spanning a whole recording, which is the accumulation M-N5 exists
         // to prevent.
         static IntPtr Retained(IntPtr encoder)
             => encoder == IntPtr.Zero ? IntPtr.Zero : ObjCRuntime.ObjcRetain(encoder);
-
-        const string DrawsRow = "the draw-and-dispatch row (https://github.com/APKiwiOrg/KhaozEngine/issues/580)";
-
-        static NotSupportedException NotBuiltYet(string what, string row)
-            => new($"{what} is not built yet on the native Metal backend: it lands in {row}, which is the row "
-                + "that has a caller for it and the test that runs the Objective-C prototype it adds. The seam "
-                + "itself covers all three of decision M-T2's call classes already, and TWO of the three emit: "
-                + "the ENCODER BOUNDARY from work-breakdown row 7 "
-                + "(https://github.com/APKiwiOrg/KhaozEngine/issues/573) and every ARGUMENT-TABLE write from row "
-                + "13 (https://github.com/APKiwiOrg/KhaozEngine/issues/579). This is a statement about the "
-                + "package and not about this machine.");
     }
 }

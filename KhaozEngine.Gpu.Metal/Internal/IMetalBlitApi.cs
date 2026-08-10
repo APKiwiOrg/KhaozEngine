@@ -6,9 +6,17 @@ using KhaozEngine.Gpu.Metal.Internal.ObjC;
 namespace KhaozEngine.Gpu.Metal.Internal
 {
     /// <summary>
-    /// THE BLIT-ENCODER-SCOPED COPY, behind an interface so the ROUTING above it is device-free: one
-    /// <c>copyFromBuffer:sourceOffset:toBuffer:destinationOffset:size:</c>, which is what a record-time
-    /// <c>UpdateBuffer</c> on a NON-uniform buffer emits (M-M8).
+    /// THE BLIT-ENCODER-SCOPED TRANSFERS, behind an interface so the ROUTING and the ARITHMETIC above them are
+    /// device-free: the buffer copy a record-time <c>UpdateBuffer</c> on a NON-uniform buffer emits (M-M8), the
+    /// three copy selectors the seam's texture copies fan out to, and mip generation.
+    ///
+    /// <para><b>ROW 8 DECLARED ONE MEMBER AND ROW 14 ADDED FOUR</b>
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/580), which is the same line drawn wider rather than a
+    /// different line: a texture copy's arithmetic (which of the four staging cases it is, which subresource each
+    /// side names, and the byte offsets and pitches the staging side supplies) is the highest-risk parity surface
+    /// in this backend, since a wrong pitch garbles every golden readback at once with no error anywhere. Behind
+    /// this interface all of it runs under a plain <c>[Fact]</c> on a machine with no Metal at all. See
+    /// <see cref="MetalTransferPlan"/>.</para>
     ///
     /// <para><b>THIS IS NOT <see cref="IMetalEncoderSink"/> AND MUST NOT BECOME IT</b>, which is the same
     /// sentence <see cref="IMetalRenderApi"/> carries and the same reason. That seam exists to be COUNTED: M-T2
@@ -45,6 +53,51 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// incumbent's own size pad.</param>
         void CopyBufferToBuffer(IntPtr encoder, IntPtr source, ulong sourceOffsetBytes, IntPtr destination,
             ulong destinationOffsetBytes, ulong sizeBytes);
+
+        /// <summary>
+        /// <c>-copyFromTexture:...toTexture:...</c>, the arm a copy between two non-staging textures takes.
+        /// </summary>
+        /// <param name="encoder">The open blit encoder.</param>
+        /// <param name="source">The source <c>MTLTexture</c>.</param>
+        /// <param name="destination">The destination <c>MTLTexture</c>.</param>
+        /// <param name="region">Which subresource on each side, and how many texels.</param>
+        void CopyTextureToTexture(IntPtr encoder, IntPtr source, IntPtr destination,
+            in MetalTextureRegion region);
+
+        /// <summary>
+        /// <c>-copyFromTexture:...toBuffer:...</c>, the READBACK arm, which is what every golden in the suite
+        /// goes through.
+        /// </summary>
+        /// <param name="encoder">The open blit encoder.</param>
+        /// <param name="source">The source <c>MTLTexture</c>.</param>
+        /// <param name="destination">The staging texture's backing <c>MTLBuffer</c>.</param>
+        /// <param name="region">The buffer terms and the texture's subresource.</param>
+        void CopyTextureToBuffer(IntPtr encoder, IntPtr source, IntPtr destination,
+            in MetalBufferImageRegion region);
+
+        /// <summary>
+        /// <c>-copyFromBuffer:...toTexture:...</c>, the upload arm, which is a record-time copy out of a staging
+        /// texture rather than row 6's device-level one.
+        /// </summary>
+        /// <param name="encoder">The open blit encoder.</param>
+        /// <param name="source">The staging texture's backing <c>MTLBuffer</c>.</param>
+        /// <param name="destination">The destination <c>MTLTexture</c>.</param>
+        /// <param name="region">The buffer terms and the texture's subresource.</param>
+        void CopyBufferToTexture(IntPtr encoder, IntPtr source, IntPtr destination,
+            in MetalBufferImageRegion region);
+
+        /// <summary>
+        /// <c>-generateMipmapsForTexture:</c>, the WHOLE chain in one call.
+        /// <para>
+        /// THERE IS NO REGION AND NO FILTER ARGUMENT, and the absence is Metal being shorter than both siblings
+        /// rather than this seam hiding something: Vulkan generates a chain as a loop of <c>vkCmdBlitImage</c>
+        /// with a layout transition per level and a filter to choose, and the blit encoder does the whole thing
+        /// itself. What is left for the caller is deciding whether the texture is a legal argument at all.
+        /// </para>
+        /// </summary>
+        /// <param name="encoder">The open blit encoder.</param>
+        /// <param name="texture">The <c>MTLTexture</c> whose chain is generated from its base level.</param>
+        void GenerateMipmaps(IntPtr encoder, IntPtr texture);
     }
 
     /// <summary>
@@ -66,5 +119,59 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 new MTLBuffer(source), (nuint)sourceOffsetBytes,
                 new MTLBuffer(destination), (nuint)destinationOffsetBytes, (nuint)sizeBytes);
         }
+
+        /// <inheritdoc/>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public void CopyTextureToTexture(IntPtr encoder, IntPtr source, IntPtr destination,
+            in MetalTextureRegion region)
+        {
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+
+            new MTLBlitCommandEncoder(encoder).CopyFromTextureToTexture(
+                new MTLTexture(source), region.SourceLayer, region.SourceLevel, Origin,
+                new MTLSize(region.Width, region.Height, 1),
+                new MTLTexture(destination), region.DestinationLayer, region.DestinationLevel, Origin);
+        }
+
+        /// <inheritdoc/>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public void CopyTextureToBuffer(IntPtr encoder, IntPtr source, IntPtr destination,
+            in MetalBufferImageRegion region)
+        {
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+
+            new MTLBlitCommandEncoder(encoder).CopyFromTextureToBuffer(
+                new MTLTexture(source), region.Layer, region.Level, Origin,
+                new MTLSize(region.Width, region.Height, 1),
+                new MTLBuffer(destination), (nuint)region.BufferOffset, (nuint)region.BytesPerRow,
+                (nuint)region.BytesPerImage);
+        }
+
+        /// <inheritdoc/>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public void CopyBufferToTexture(IntPtr encoder, IntPtr source, IntPtr destination,
+            in MetalBufferImageRegion region)
+        {
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+
+            new MTLBlitCommandEncoder(encoder).CopyFromBufferToTexture(
+                new MTLBuffer(source), (nuint)region.BufferOffset, (nuint)region.BytesPerRow,
+                (nuint)region.BytesPerImage, new MTLSize(region.Width, region.Height, 1),
+                new MTLTexture(destination), region.Layer, region.Level, Origin);
+        }
+
+        /// <inheritdoc/>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public void GenerateMipmaps(IntPtr encoder, IntPtr texture)
+        {
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+
+            new MTLBlitCommandEncoder(encoder).GenerateMipmapsForTexture(new MTLTexture(texture));
+        }
+
+        // THE ONLY ORIGIN ANY OF THESE EVER PASSES. The seam copies whole subresources from their top-left
+        // corner, on both sides, so a parameter for it would be a parameter that only ever holds one value. See
+        // MetalTextureRegion for the same note one level up.
+        static MTLOrigin Origin => new(0, 0, 0);
     }
 }

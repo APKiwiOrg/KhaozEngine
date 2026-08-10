@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 
 namespace KhaozEngine.Gpu.Metal.Internal
 {
@@ -70,9 +71,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
         internal static uint CopyBytesFor(uint offsetBytes, uint lengthBytes, uint destinationSizeBytes)
         {
             MetalBufferPolicy.RequireWriteFits(offsetBytes, lengthBytes, destinationSizeBytes);
-            RequireCopyAlignedOffset(offsetBytes, lengthBytes);
 
-            return MetalStagingArena.AlignedCopyBytes(lengthBytes);
+            // THE RULE ITSELF MOVED TO MetalCopyAlignment AT ROW 14 and nothing about it changed: CopyBuffer and
+            // the staging-to-staging arm of a texture copy need the identical refusal, and a second spelling of
+            // section 9.3's ruling is the one that would drift.
+            MetalCopyAlignment.RequireAlignedOffset(offsetBytes, nameof(offsetBytes),
+                "A record-time upload of " + lengthBytes.ToString(CultureInfo.InvariantCulture)
+                + " bytes to a non-uniform native Metal buffer", "destination");
+
+            return MetalCopyAlignment.PaddedSize(lengthBytes);
         }
 
         // THE BULK PATH (M-M8): lease from the list's arena, copy the payload in, and encode ONE blit. Bulk
@@ -127,25 +134,5 @@ namespace KhaozEngine.Gpu.Metal.Internal
             blit.CopyBufferToBuffer(encoder, lease.Buffer, lease.OffsetBytes, destination, offsetBytes, copyBytes);
         }
 
-        // The destination offset is the CALLER's and this backend cannot align it for them. macOS requires both
-        // offsets of copyFromBuffer:sourceOffset:toBuffer:destinationOffset:size: to be multiples of four, and
-        // section 9.3's ruling is that the SIZE half is padded while the OFFSET half throws by name: the
-        // incumbent routes an unaligned copy through an embedded compute shader and a dedicated pipeline, and
-        // shipping a second metallib for a case no consumer produces is the unreachable-code reproduction this
-        // design declines. Every record-time UpdateBuffer site in the engine passes 0 or a multiple of the
-        // element stride, so nothing legitimate reaches this.
-        static void RequireCopyAlignedOffset(uint offsetBytes, uint lengthBytes)
-        {
-            if (offsetBytes % MetalStagingArena.CopyAlignment == 0) return;
-
-            throw new ArgumentOutOfRangeException(nameof(offsetBytes), offsetBytes,
-                "A record-time upload of " + lengthBytes + " bytes to a non-uniform native Metal buffer was "
-                + "given a destination offset of " + offsetBytes + ", which is not a multiple of "
-                + MetalStagingArena.CopyAlignment + ". The copy this becomes requires that on macOS. The "
-                + "incumbent routes the unaligned case through an embedded compute shader and a dedicated "
-                + "compute pipeline, which this backend declines to reproduce for a case no shipped call site "
-                + "produces (section 9.3). Align the offset, or write the buffer through the device-level "
-                + "UpdateBuffer instead, which is a plain copy with no blit behind it.");
-        }
     }
 }

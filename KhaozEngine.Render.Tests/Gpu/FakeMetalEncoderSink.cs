@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.Versioning;
 using KhaozEngine.Gpu.Metal.Internal;
+using KhaozEngine.Gpu.Metal.Internal.ObjC;
 
 namespace KhaozEngine.Tests.Gpu
 {
@@ -48,17 +49,24 @@ namespace KhaozEngine.Tests.Gpu
         public void SetBufferOffset(MetalShaderStage stage, IntPtr encoder, nuint offset, uint index)
             => Calls.OffsetWrite(stage, encoder, offset, index);
 
-        public void Draw(IntPtr encoder, uint vertexStart, uint vertexCount, uint instanceCount,
-            uint baseInstance)
-            => Calls.Draw($"draw {vertexCount}v x{instanceCount}");
+        public void Draw(IntPtr encoder, MTLPrimitiveType topology, uint vertexStart, uint vertexCount,
+            uint instanceCount, uint baseInstance)
+            => Calls.Draw(encoder, new FakeMetalDrawCall(topology, vertexStart, vertexCount, instanceCount,
+                baseInstance), $"draw {vertexCount}v x{instanceCount} {topology}");
 
-        public void DrawIndexed(IntPtr encoder, uint indexCount, IntPtr indexBuffer, nuint indexBufferOffset,
-            bool sixteenBitIndices, uint instanceCount, int baseVertex, uint baseInstance)
-            => Calls.Draw($"drawIndexed {indexCount}i x{instanceCount}");
+        public void DrawIndexed(IntPtr encoder, MTLPrimitiveType topology, uint indexCount, IntPtr indexBuffer,
+            nuint indexBufferOffset, bool sixteenBitIndices, uint instanceCount, int baseVertex,
+            uint baseInstance)
+            => Calls.DrawIndexed(encoder, new FakeMetalIndexedDrawCall(topology, indexCount, indexBuffer,
+                indexBufferOffset, sixteenBitIndices, instanceCount, baseVertex, baseInstance),
+                $"drawIndexed {indexCount}i x{instanceCount} @{indexBufferOffset} base{baseVertex}");
 
         public void Dispatch(IntPtr encoder, uint groupCountX, uint groupCountY, uint groupCountZ,
             uint threadsPerGroupX, uint threadsPerGroupY, uint threadsPerGroupZ)
-            => Calls.Draw($"dispatch {groupCountX}x{groupCountY}x{groupCountZ}");
+            => Calls.Dispatch(encoder, new FakeMetalDispatchCall(groupCountX, groupCountY, groupCountZ,
+                threadsPerGroupX, threadsPerGroupY, threadsPerGroupZ),
+                $"dispatch {groupCountX}x{groupCountY}x{groupCountZ} "
+                + $"tpg {threadsPerGroupX}x{threadsPerGroupY}x{threadsPerGroupZ}");
     }
 
     /// <summary>
@@ -131,19 +139,38 @@ namespace KhaozEngine.Tests.Gpu
             Calls.OffsetWrite(stage, encoder, offset, index);
         }
 
-        public void Draw(IntPtr encoder, uint vertexStart, uint vertexCount, uint instanceCount,
-            uint baseInstance)
-            => new MetalEncoderSink().Draw(encoder, vertexStart, vertexCount, instanceCount, baseInstance);
+        // SENT FIRST AND LOGGED SECOND, exactly as the four setters above are, so a wrong prototype takes the
+        // process down before anything claims the call happened. The draws are the family whose wrong answer is a
+        // wrong PIXEL rather than an abort, which is why MetalDrawPathGpuTests reads a texel as well as this log.
+        public void Draw(IntPtr encoder, MTLPrimitiveType topology, uint vertexStart, uint vertexCount,
+            uint instanceCount, uint baseInstance)
+        {
+            new MetalEncoderSink().Draw(encoder, topology, vertexStart, vertexCount, instanceCount, baseInstance);
+            Calls.Draw(encoder, new FakeMetalDrawCall(topology, vertexStart, vertexCount, instanceCount,
+                baseInstance), $"draw {vertexCount}v x{instanceCount} {topology}");
+        }
 
-        public void DrawIndexed(IntPtr encoder, uint indexCount, IntPtr indexBuffer, nuint indexBufferOffset,
-            bool sixteenBitIndices, uint instanceCount, int baseVertex, uint baseInstance)
-            => new MetalEncoderSink().DrawIndexed(encoder, indexCount, indexBuffer, indexBufferOffset,
+        public void DrawIndexed(IntPtr encoder, MTLPrimitiveType topology, uint indexCount, IntPtr indexBuffer,
+            nuint indexBufferOffset, bool sixteenBitIndices, uint instanceCount, int baseVertex,
+            uint baseInstance)
+        {
+            new MetalEncoderSink().DrawIndexed(encoder, topology, indexCount, indexBuffer, indexBufferOffset,
                 sixteenBitIndices, instanceCount, baseVertex, baseInstance);
+            Calls.DrawIndexed(encoder, new FakeMetalIndexedDrawCall(topology, indexCount, indexBuffer,
+                indexBufferOffset, sixteenBitIndices, instanceCount, baseVertex, baseInstance),
+                $"drawIndexed {indexCount}i x{instanceCount} @{indexBufferOffset} base{baseVertex}");
+        }
 
         public void Dispatch(IntPtr encoder, uint groupCountX, uint groupCountY, uint groupCountZ,
             uint threadsPerGroupX, uint threadsPerGroupY, uint threadsPerGroupZ)
-            => new MetalEncoderSink().Dispatch(encoder, groupCountX, groupCountY, groupCountZ, threadsPerGroupX,
+        {
+            new MetalEncoderSink().Dispatch(encoder, groupCountX, groupCountY, groupCountZ, threadsPerGroupX,
                 threadsPerGroupY, threadsPerGroupZ);
+            Calls.Dispatch(encoder, new FakeMetalDispatchCall(groupCountX, groupCountY, groupCountZ,
+                threadsPerGroupX, threadsPerGroupY, threadsPerGroupZ),
+                $"dispatch {groupCountX}x{groupCountY}x{groupCountZ} "
+                + $"tpg {threadsPerGroupX}x{threadsPerGroupY}x{threadsPerGroupZ}");
+        }
     }
 
     /// <summary>
@@ -165,6 +192,9 @@ namespace KhaozEngine.Tests.Gpu
         readonly HashSet<IntPtr> _live = new();
         readonly List<FakeMetalArrayWrite> _arrayWrites = new();
         readonly List<FakeMetalOffsetWrite> _offsetWrites = new();
+        readonly List<(IntPtr Encoder, FakeMetalDrawCall Call)> _draws = new();
+        readonly List<(IntPtr Encoder, FakeMetalIndexedDrawCall Call)> _indexedDraws = new();
+        readonly List<(IntPtr Encoder, FakeMetalDispatchCall Call)> _dispatches = new();
 
         int _nextEncoder = 0x1000;
 
@@ -288,12 +318,74 @@ namespace KhaozEngine.Tests.Gpu
             ArgumentTableWrites++;
         }
 
-        internal void Draw(string what)
+        /// <summary>Every non-indexed draw as it was issued, so a test reads the TOPOLOGY and the four counts
+        /// rather than inferring them from a call tally.</summary>
+        internal IReadOnlyList<(IntPtr Encoder, FakeMetalDrawCall Call)> Draws => _draws;
+
+        /// <summary>Every indexed draw, including the byte offset the element-index arithmetic produced and the
+        /// signed base vertex, which are the two numbers that draw a different mesh when they are wrong.</summary>
+        internal IReadOnlyList<(IntPtr Encoder, FakeMetalIndexedDrawCall Call)> IndexedDraws => _indexedDraws;
+
+        /// <summary>Every dispatch, including the threadgroup size read off the shader.</summary>
+        internal IReadOnlyList<(IntPtr Encoder, FakeMetalDispatchCall Call)> Dispatches => _dispatches;
+
+        internal void Draw(IntPtr encoder, FakeMetalDrawCall call, string what)
         {
+            _draws.Add((encoder, call));
+            _log.Add(what);
+            DrawsAndDispatches++;
+        }
+
+        internal void DrawIndexed(IntPtr encoder, FakeMetalIndexedDrawCall call, string what)
+        {
+            _indexedDraws.Add((encoder, call));
+            _log.Add(what);
+            DrawsAndDispatches++;
+        }
+
+        internal void Dispatch(IntPtr encoder, FakeMetalDispatchCall call, string what)
+        {
+            _dispatches.Add((encoder, call));
             _log.Add(what);
             DrawsAndDispatches++;
         }
     }
+
+    /// <summary>ONE NON-INDEXED DRAW AS IT REACHED THE SEAM.</summary>
+    /// <param name="Topology">The bound pipeline's resolved primitive type, which is a DRAW argument on this
+    /// API.</param>
+    /// <param name="VertexStart">First vertex.</param>
+    /// <param name="VertexCount">How many.</param>
+    /// <param name="InstanceCount">How many instances.</param>
+    /// <param name="BaseInstance">The first instance, which is one of the arguments that crosses on the
+    /// stack.</param>
+    internal readonly record struct FakeMetalDrawCall(
+        MTLPrimitiveType Topology, uint VertexStart, uint VertexCount, uint InstanceCount, uint BaseInstance);
+
+    /// <summary>ONE INDEXED DRAW AS IT REACHED THE SEAM.</summary>
+    /// <param name="Topology">The bound pipeline's resolved primitive type.</param>
+    /// <param name="IndexCount">How many indices.</param>
+    /// <param name="IndexBuffer">The MTLBuffer, which travels IN the call on this API.</param>
+    /// <param name="IndexBufferOffset">The BYTE offset the element-index arithmetic produced.</param>
+    /// <param name="SixteenBitIndices">The element width.</param>
+    /// <param name="InstanceCount">How many instances.</param>
+    /// <param name="BaseVertex">Signed, added to every index before the vertex buffer is read.</param>
+    /// <param name="BaseInstance">The first instance.</param>
+    internal readonly record struct FakeMetalIndexedDrawCall(
+        MTLPrimitiveType Topology, uint IndexCount, IntPtr IndexBuffer, nuint IndexBufferOffset,
+        bool SixteenBitIndices, uint InstanceCount, int BaseVertex, uint BaseInstance);
+
+    /// <summary>ONE DISPATCH AS IT REACHED THE SEAM, group counts and the threadgroup size together, because
+    /// Metal is the one backend that needs the second at the call.</summary>
+    /// <param name="GroupCountX">Threadgroups on X.</param>
+    /// <param name="GroupCountY">Threadgroups on Y.</param>
+    /// <param name="GroupCountZ">Threadgroups on Z.</param>
+    /// <param name="ThreadsPerGroupX">Threads per group on X, off the compiled kernel.</param>
+    /// <param name="ThreadsPerGroupY">Threads per group on Y.</param>
+    /// <param name="ThreadsPerGroupZ">Threads per group on Z.</param>
+    internal readonly record struct FakeMetalDispatchCall(
+        uint GroupCountX, uint GroupCountY, uint GroupCountZ, uint ThreadsPerGroupX, uint ThreadsPerGroupY,
+        uint ThreadsPerGroupZ);
 
     /// <summary>ONE ARRAY CALL AS IT WAS EMITTED (M-R6): which stage's table, which of the three index spaces,
     /// the run's first index, and the contents.</summary>

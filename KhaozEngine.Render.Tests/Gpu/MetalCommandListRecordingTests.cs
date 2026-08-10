@@ -377,78 +377,97 @@ namespace KhaozEngine.Tests.Gpu
             FakeMetalBlitApi blit = _harness.Blit;
             FakeMetalDeviceLiveness liveness = _harness.Liveness;
             FakeMetalRenderApi render = new(new FakeMetalRenderCalls());
+            FakeMetalComputeApi compute = new();
             object owner = new();
 
             const uint Alignment = MetalBindProgram.DeviceOffsetAlignment;
 
             Assert.Throws<ArgumentNullException>(
                 () => new MetalCommandList(null!, uncommitted, sink, owner, rings, arena, blit, liveness, render,
-                    Alignment));
+                    compute, Alignment));
             Assert.Throws<ArgumentNullException>(
                 () => new MetalCommandList(buffers, null!, sink, owner, rings, arena, blit, liveness, render,
-                    Alignment));
+                    compute, Alignment));
             Assert.Throws<ArgumentNullException>(
                 () => new MetalCommandList(buffers, uncommitted, null!, owner, rings, arena, blit, liveness,
-                    render, Alignment));
+                    render, compute, Alignment));
             Assert.Throws<ArgumentNullException>(
                 () => new MetalCommandList(buffers, uncommitted, sink, null!, rings, arena, blit, liveness,
-                    render, Alignment));
+                    render, compute, Alignment));
             Assert.Throws<ArgumentNullException>(
                 () => new MetalCommandList(buffers, uncommitted, sink, owner, null!, arena, blit, liveness,
-                    render, Alignment));
+                    render, compute, Alignment));
             Assert.Throws<ArgumentNullException>(
                 () => new MetalCommandList(buffers, uncommitted, sink, owner, rings, null!, blit, liveness,
-                    render, Alignment));
+                    render, compute, Alignment));
             Assert.Throws<ArgumentNullException>(
                 () => new MetalCommandList(buffers, uncommitted, sink, owner, rings, arena, null!, liveness,
-                    render, Alignment));
+                    render, compute, Alignment));
             Assert.Throws<ArgumentNullException>(
                 () => new MetalCommandList(buffers, uncommitted, sink, owner, rings, arena, blit, null!, render,
-                    Alignment));
+                    compute, Alignment));
             Assert.Throws<ArgumentNullException>(
                 () => new MetalCommandList(buffers, uncommitted, sink, owner, rings, arena, blit, liveness, null!,
-                    Alignment));
+                    compute, Alignment));
+            Assert.Throws<ArgumentNullException>(
+                () => new MetalCommandList(buffers, uncommitted, sink, owner, rings, arena, blit, liveness,
+                    render, null!, Alignment));
 
             // AND THE DEVICE'S ALIGNMENT IS REFUSED THE SAME WAY when it is not a power of two, because the
             // creation-time probe has already refused a device that could report one.
             Assert.Throws<ArgumentOutOfRangeException>(
                 () => new MetalCommandList(buffers, uncommitted, sink, owner, rings, arena, blit, liveness,
-                    render, 0));
+                    render, compute, 0));
         }
 
         /// <summary>
-        /// THE LEDGER OF UNBUILT MEMBERS names the row that builds each one, so a reader who hits it knows
-        /// whether to wait for a row or file a bug. Asserted rather than left as prose, because a message that
-        /// says "not built" without saying by whom is what sends the next reader to the issue tracker.
-        /// <para>
-        /// IT MOVED FROM <c>SetFramebuffer</c> TO <c>SetPipeline</c> TO <c>Draw</c>, which is the ledger
-        /// discipline working: a row that fills a member takes it off the list, and this row keeps testing
-        /// whatever is still on it. Row 12 (https://github.com/APKiwiOrg/KhaozEngine/issues/578) took the
-        /// framebuffer and the clears, row 13 (https://github.com/APKiwiOrg/KhaozEngine/issues/579) took the
-        /// four resource-set members, and row 11 (https://github.com/APKiwiOrg/KhaozEngine/issues/577) took both
-        /// pipeline binds, so what is left on the list is row 14's draws, dispatches and transfers. The live rows
-        /// the message names grow with each one, because a reader who hits it needs to know whether the backend
-        /// is unfinished or their machine is wrong.
-        /// </para>
+        /// THE LEDGER IS CLOSED, AND THIS IS WHAT CLOSED IT: every seam member the unbuilt ledger ever carried is
+        /// LIVE, and each answers its own refusal rather than a not-built one.
+        ///
+        /// <para><b>IT IS A DISCRIMINATING TEST AND NOT A RE-POINTED PROBE, which is the whole difference between
+        /// a ledger that retires and one that rots.</b> The probe this replaces asserted that
+        /// <c>MetalCommandList.Draw</c> threw a <see cref="NotSupportedException"/> naming row 14, and it moved
+        /// from <c>SetFramebuffer</c> to <c>SetPipeline</c> to <c>Draw</c> as each row filled its members. With
+        /// row 14 there is nothing left to point it at, and <c>MetalCommandList.Unbuilt.cs</c> is deleted, so the
+        /// question changes from "does the last unbuilt member name its row" to "is anything unbuilt". Asserting
+        /// the second needs every member called, because a test that walked one member forward would pass
+        /// forever the day someone put a stub back on a DIFFERENT one.</para>
+        ///
+        /// <para><b>EACH CALL IS SHAPED TO REACH ITS OWN FIRST GUARD, which on a list that is not recording is
+        /// the recording guard or an argument one.</b> What matters is the NEGATIVE: no member may answer
+        /// <see cref="NotSupportedException"/> and no message may say "not built", which is exactly what a
+        /// re-introduced stub would do. Row 11's factory retirement is the precedent this follows.</para>
         /// </summary>
         [Fact]
-        public void AnUnbuiltMemberNamesItsRowAndSaysWhatIsLive()
+        public void EverySeamMemberIsLiveAndRefusesWithItsOwnMessage()
         {
             (MetalCommandList list, _, _, _) = NewList();
-            list.Begin();
 
-            NotSupportedException thrown = Assert.Throws<NotSupportedException>(() => list.Draw(3));
+            Action[] everyMember =
+            [
+                () => list.SetVertexBuffer(0, null!),
+                () => list.SetVertexBuffer(0, null!, 16),
+                () => list.SetIndexBuffer(null!, KhaozEngine.Gpu.GpuIndexFormat.UInt16),
+                () => list.Draw(3),
+                () => list.Draw(3, 1, 0, 0),
+                () => list.DrawIndexed(3, 1, 0, 0, 0),
+                () => list.Dispatch(1, 1, 1),
+                () => list.CopyBuffer(null!, 0, null!, 0, 4),
+                () => list.CopyTexture(null!, null!),
+                () => list.CopyTextureSubresource(null!, 0, 0, null!, 4, 4),
+                () => list.CopyTextureSubresource(null!, 0, 0, null!, 0, 0, 4, 4),
+                () => list.GenerateMipmaps(null!),
+                () => list.ResolveTexture(null!, null!),
+            ];
 
-            // The row that builds what was refused.
-            Assert.Contains("issues/580", thrown.Message, StringComparison.Ordinal);
+            foreach (Action member in everyMember)
+            {
+                Exception thrown = Assert.ThrowsAny<Exception>(member);
 
-            // And every row that has landed, named as live.
-            Assert.Contains("issues/573", thrown.Message, StringComparison.Ordinal);
-            Assert.Contains("issues/574", thrown.Message, StringComparison.Ordinal);
-            Assert.Contains("issues/577", thrown.Message, StringComparison.Ordinal);
-            Assert.Contains("issues/578", thrown.Message, StringComparison.Ordinal);
-            Assert.Contains("issues/579", thrown.Message, StringComparison.Ordinal);
-            Assert.Contains("GpuBackendKind.Metal", thrown.Message, StringComparison.Ordinal);
+                Assert.IsNotType<NotSupportedException>(thrown);
+                Assert.DoesNotContain("not built", thrown.Message, StringComparison.Ordinal);
+                Assert.DoesNotContain("issues/580", thrown.Message, StringComparison.Ordinal);
+            }
         }
 
         /// <summary>

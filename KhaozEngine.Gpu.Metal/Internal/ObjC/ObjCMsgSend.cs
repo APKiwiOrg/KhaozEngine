@@ -455,5 +455,105 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
         [SupportedOSPlatform("macos")]
         internal static partial void SendVoidNUIntNUInt(IntPtr receiver, IntPtr sel, nuint a, nuint b);
+
+        // ---- The draw row's shapes ---------------------------------------------------------------------------
+        //
+        // ONE of the five is a genuinely new ARGUMENT PLACEMENT and the header's standard applies to it: an
+        // argument that spills onto the STACK in a slot the callee does not read is not a fault, it is a wrong
+        // number the driver acts on. See MTLRenderCommandEncoder.DrawIndexedPrimitives for the device probe that
+        // answers it by VALUE rather than by acceptance.
+
+        /// <summary>
+        /// A void message taking four <c>float</c>s, which is
+        /// <c>-[MTLRenderCommandEncoder setBlendColorRed:green:blue:alpha:]</c>.
+        /// <para>
+        /// FOUR SEPARATE SINGLE-PRECISION ARGUMENTS, NOT A COMPOSITE, which is why this needs no new spike answer:
+        /// each rides its own vector register (<c>s0</c> to <c>s3</c>), the same register file
+        /// <see cref="SendVoidFloat"/>'s single one does and the same file
+        /// <see cref="SendVoidClearColor"/>'s value-checked four-double HFA rode. The HFA rule is about a STRUCT
+        /// crossing by value and there is no struct here.
+        /// </para>
+        /// </summary>
+        [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial void SendVoidFloat4(IntPtr receiver, IntPtr sel, float a, float b, float c,
+            float d);
+
+        /// <summary>
+        /// <c>-[MTLRenderCommandEncoder drawPrimitives:vertexStart:vertexCount:instanceCount:baseInstance:]</c>.
+        /// <para>
+        /// SEVEN ARGUMENTS COUNTING THE RECEIVER AND THE SELECTOR, all of them the integer class row 1's spike
+        /// measured throughout, so every one rides a general-purpose argument register and NOTHING SPILLS. It is
+        /// the long form of the selector unconditionally: the incumbent picks between this and the four-argument
+        /// one on <c>instanceStart == 0</c>, and at a base instance of zero the two are the same draw, so one code
+        /// path is taken for <c>setViewports:count:</c>'s reason.
+        /// </para>
+        /// </summary>
+        [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial void SendVoidDrawPrimitives(IntPtr receiver, IntPtr sel, nuint primitiveType,
+            nuint vertexStart, nuint vertexCount, nuint instanceCount, nuint baseInstance);
+
+        /// <summary>
+        /// <c>-[MTLRenderCommandEncoder drawIndexedPrimitives:indexCount:indexType:indexBuffer:indexBufferOffset:instanceCount:baseVertex:baseInstance:]</c>,
+        /// and <b>the one prototype this row adds whose ARGUMENT PLACEMENT row 1's spike does not cover</b>.
+        /// <para>
+        /// TEN ARGUMENTS COUNTING THE RECEIVER AND THE SELECTOR, against eight general-purpose argument registers,
+        /// so <c>baseVertex</c> and <c>baseInstance</c> CROSS ON THE STACK. Every argument CLASS is measured (an
+        /// object pointer and an <c>NSUInteger</c> are what the spike used throughout, and <c>baseVertex</c> is
+        /// their signed sibling, whose sign is a property of how the callee reads the register rather than of
+        /// where the caller puts it). What is new is the spill, and it is new in a WORSE shape than row 6's
+        /// eleven-argument copy: there the three spilled slots are a copy's extents, so a wrong placement is a
+        /// region the driver refuses or a texture that faults. Here they are a vertex base and an instance base,
+        /// so a wrong placement is a draw that reads the wrong vertices and completes with a nil error, which is
+        /// the wrong-pixel-no-diagnostic class the whole golden gate exists to catch late.
+        /// </para>
+        /// <para>
+        /// SO IT IS ANSWERED BY VALUE RATHER THAN BY ACCEPTANCE.
+        /// <c>MetalDrawPathGpuTests.TheSpilledBaseVertexAndIndexOffsetLandWhereTheDriverReadsThem</c> issues one
+        /// draw whose <c>indexBufferOffset</c> and <c>baseVertex</c> each select a DIFFERENT triangle out of the
+        /// same pair of buffers, and reads the colour back: every wrong placement of either produces a different
+        /// texel or no triangle at all. That is the standard row 1 held <see cref="SendVoidClearColor"/> to and
+        /// the one this file's header states.
+        /// </para>
+        /// </summary>
+        [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial void SendVoidDrawIndexedPrimitives(IntPtr receiver, IntPtr sel,
+            nuint primitiveType, nuint indexCount, nuint indexType, IntPtr indexBuffer, nuint indexBufferOffset,
+            nuint instanceCount, nint baseVertex, nuint baseInstance);
+
+        /// <summary>
+        /// <c>-[MTLComputeCommandEncoder dispatchThreadgroups:threadsPerThreadgroup:]</c>.
+        /// <para>
+        /// TWO 24-BYTE INTEGER COMPOSITES BY VALUE, which is <see cref="MTLSize"/>'s indirect path twice, and it
+        /// is the arm row 1's spike measured through <c>MTLScissorRect</c> and row 6 sent twice in one call
+        /// through the eleven-argument copy. Four arguments counting the receiver and the selector, so the two
+        /// pointers the caller supplies ride registers and nothing spills.
+        /// </para>
+        /// </summary>
+        [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial void SendVoidDispatchThreadgroups(IntPtr receiver, IntPtr sel,
+            MTLSize threadgroupsPerGrid, MTLSize threadsPerThreadgroup);
+
+        /// <summary>
+        /// <c>-[MTLBlitCommandEncoder copyFromTexture:sourceSlice:sourceLevel:sourceOrigin:sourceSize:toTexture:destinationSlice:destinationLevel:destinationOrigin:]</c>,
+        /// the texture-to-texture arm of the copy family whose two buffer-side siblings are already here.
+        /// <para>
+        /// ELEVEN ARGUMENTS WITH THREE ON THE STACK, and three 24-byte integer composites rather than two, which
+        /// is the same placement question <see cref="SendVoidTextureToBufferCopy"/> answers and the same one row
+        /// 1's spike ran verbatim. The third composite is the destination origin, which is the LAST argument and
+        /// therefore one of the spilled ones: it is always <c>(0, 0, 0)</c> on the calls this backend records, so
+        /// the device probe for this shape is the mip readback, where a misplaced source origin or size produces
+        /// the wrong texels rather than a refusal.
+        /// </para>
+        /// </summary>
+        [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial void SendVoidTextureToTextureCopy(IntPtr receiver, IntPtr sel,
+            IntPtr sourceTexture, nuint sourceSlice, nuint sourceLevel, MTLOrigin sourceOrigin, MTLSize sourceSize,
+            IntPtr destinationTexture, nuint destinationSlice, nuint destinationLevel,
+            MTLOrigin destinationOrigin);
     }
 }

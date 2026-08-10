@@ -32,7 +32,13 @@ namespace KhaozEngine.Tests.Gpu
             in MetalDepthAttachment depth)
             => Calls.CreateDescriptor(colour, in depth);
 
+        public IntPtr CreateResolveDescriptor(IntPtr source, IntPtr destination)
+            => Calls.CreateResolveDescriptor(source, destination);
+
         public void ReleaseRenderPassDescriptor(IntPtr descriptor) => Calls.ReleaseDescriptor(descriptor);
+
+        public void SetGraphicsState(IntPtr encoder, in MetalGraphicsStateBlock block)
+            => Calls.GraphicsState(encoder, in block);
 
         public void SetViewport(IntPtr encoder, float x, float y, float width, float height,
             float minDepth, float maxDepth)
@@ -40,6 +46,21 @@ namespace KhaozEngine.Tests.Gpu
 
         public void SetScissorRect(IntPtr encoder, uint x, uint y, uint width, uint height)
             => Calls.Scissor(encoder, new MetalScissorRect(x, y, width, height));
+    }
+
+    /// <summary>
+    /// THE COMPUTE-ENCODER STATE SETTER AS A LOG, which is what makes the pre-dispatch emission a device-free
+    /// assertion: whether a dispatch emits <c>-setComputePipelineState:</c> at all is M-R8's identity guard and
+    /// M-R4's encoder invalidation between them, and both are decisions a golden cannot see.
+    /// </summary>
+    internal sealed class FakeMetalComputeApi : IMetalComputeApi
+    {
+        /// <summary>Every pipeline-state bind, with the encoder it went into so a test can tell two compute
+        /// encoders apart.</summary>
+        internal List<(IntPtr Encoder, IntPtr State)> States { get; } = new();
+
+        /// <inheritdoc/>
+        public void SetComputePipelineState(IntPtr encoder, IntPtr state) => States.Add((encoder, state));
     }
 
     /// <summary>One pass descriptor exactly as the schedule asked for it, so a test reads load actions, store
@@ -58,6 +79,8 @@ namespace KhaozEngine.Tests.Gpu
         readonly List<RecordedRenderPass> _passes = new();
         readonly List<(IntPtr Encoder, MetalViewportRect Rect)> _viewports = new();
         readonly List<(IntPtr Encoder, MetalScissorRect Rect)> _scissors = new();
+        readonly List<(IntPtr Encoder, MetalGraphicsStateBlock Block)> _stateBlocks = new();
+        readonly List<(IntPtr Source, IntPtr Destination)> _resolves = new();
         readonly HashSet<IntPtr> _liveDescriptors = new();
 
         int _nextDescriptor = 0x9000;
@@ -76,6 +99,14 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>Every scissor emission.</summary>
         internal IReadOnlyList<(IntPtr Encoder, MetalScissorRect Rect)> Scissors => _scissors;
+
+        /// <summary>Every pipeline-state block a draw emitted, with the encoder it went into. The DEPTH TRIO's
+        /// guard is read straight off <see cref="MetalGraphicsStateBlock.DepthTrio"/>, which is the decision the
+        /// debug layer would otherwise be the only witness to.</summary>
+        internal IReadOnlyList<(IntPtr Encoder, MetalGraphicsStateBlock Block)> StateBlocks => _stateBlocks;
+
+        /// <summary>Every standalone resolve pass the recording asked for, source then destination.</summary>
+        internal IReadOnlyList<(IntPtr Source, IntPtr Destination)> Resolves => _resolves;
 
         /// <summary>What is still retained. MUST be 0 after every exit, including the one where the encoder came
         /// back nil.</summary>
@@ -115,6 +146,30 @@ namespace KhaozEngine.Tests.Gpu
             _log.Add($"release descriptor {descriptor}");
             _released++;
             if (!_liveDescriptors.Remove(descriptor)) UnbalancedDescriptorReleases++;
+        }
+
+        internal IntPtr CreateResolveDescriptor(IntPtr source, IntPtr destination)
+        {
+            _resolves.Add((source, destination));
+
+            if (NextCreateFails)
+            {
+                NextCreateFails = false;
+                _log.Add("resolve descriptor -> nil");
+                return IntPtr.Zero;
+            }
+
+            IntPtr descriptor = new(_nextDescriptor++);
+            _log.Add($"resolve descriptor {descriptor} {source} -> {destination}");
+            _created++;
+            _liveDescriptors.Add(descriptor);
+            return descriptor;
+        }
+
+        internal void GraphicsState(IntPtr encoder, in MetalGraphicsStateBlock block)
+        {
+            _log.Add($"state block on {encoder} depthTrio={block.DepthTrio}");
+            _stateBlocks.Add((encoder, block));
         }
 
         internal void Viewport(IntPtr encoder, MetalViewportRect rect)

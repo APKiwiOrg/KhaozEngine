@@ -16,12 +16,13 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
     /// <see cref="ObjCMsgSend"/>, and the folder's one-file-per-class rule is what keeps the two selector sets
     /// from being spelled in one switch that has to be right about three protocols at once.</para>
     ///
-    /// <para><b>THE REST OF THE PROTOCOL LANDS WITH THE ROW THAT CALLS IT.</b>
-    /// <c>setComputePipelineState:</c> is row 11's (https://github.com/APKiwiOrg/KhaozEngine/issues/577) and
-    /// <c>dispatchThreadgroups:threadsPerThreadgroup:</c> is row 14's
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/580). A prototype with no caller and no test that runs it
-    /// is an Objective-C declaration nobody has ever executed, and a wrong ABI assumption in interop is a memory
-    /// corruption rather than a compile error.</para>
+    /// <para><b>EVERY SELECTOR ARRIVED WITH THE ROW THAT CALLS IT.</b> Both
+    /// <c>setComputePipelineState:</c> and <c>dispatchThreadgroups:threadsPerThreadgroup:</c> are row 14's
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/580), including the pipeline-state one that row 11's own
+    /// cell predicted: it goes into a COMPUTE ENCODER, and under M-A1's deferred begin there is no encoder at the
+    /// moment <c>SetComputePipeline</c> is called, which is the same correction 6.3 records for the graphics
+    /// block. A prototype with no caller and no test that runs it is an Objective-C declaration nobody has ever
+    /// executed, and a wrong ABI assumption in interop is a memory corruption rather than a compile error.</para>
     ///
     /// <para><b><c>-endEncoding</c> IS NOT HERE</b>, for the reason <see cref="MTLRenderCommandEncoder"/> gives:
     /// it belongs to the protocol all three kinds share, lives once on <see cref="MTLCommandEncoder"/>, and
@@ -94,5 +95,34 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal void SetBufferOffset(nuint offset, uint index)
             => ObjCMsgSend.SendVoidNUIntNUInt(Handle, ObjCRuntime.Sel("setBufferOffset:atIndex:"), offset, index);
+
+        /// <summary><c>-setComputePipelineState:</c>, the compute half of the pipeline-state block. One call
+        /// rather than the render encoder's five to eight, because a compute pipeline has no rasterizer state, no
+        /// blend colour and no depth-stencil state to go with it.</summary>
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal void SetComputePipelineState(MTLComputePipelineState state)
+            => ObjCMsgSend.SendVoidPtr(Handle, ObjCRuntime.Sel("setComputePipelineState:"), state.Handle);
+
+        /// <summary>
+        /// <c>-dispatchThreadgroups:threadsPerThreadgroup:</c>.
+        /// <para>
+        /// THE GROUP SIZE IS AN ARGUMENT HERE WHERE BOTH SIBLINGS READ IT OUT OF THE COMPILED MODULE, which is
+        /// why <c>MetalComputePipeline</c> carries the workgroup size at all: row 9 reads it out of the SPIR-V
+        /// (<c>SpirvLocalSize</c>) rather than taking it from a description nothing validates, and it travels from
+        /// the shader to this call.
+        /// </para>
+        /// <para>
+        /// THE ENCODER IS SERIAL (M-H4), which is what makes two dispatches inside it ordered with no barrier
+        /// machinery, and is the whole of why this backend has none. That is set at
+        /// <c>-computeCommandEncoderWithDispatchType:</c> and not here.
+        /// </para>
+        /// </summary>
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal void DispatchThreadgroups(MTLSize threadgroupsPerGrid, MTLSize threadsPerThreadgroup)
+            => ObjCMsgSend.SendVoidDispatchThreadgroups(Handle,
+                ObjCRuntime.Sel("dispatchThreadgroups:threadsPerThreadgroup:"),
+                threadgroupsPerGrid, threadsPerThreadgroup);
     }
 }

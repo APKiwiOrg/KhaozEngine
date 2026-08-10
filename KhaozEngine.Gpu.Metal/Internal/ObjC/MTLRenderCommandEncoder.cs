@@ -5,24 +5,28 @@ using System.Runtime.Versioning;
 namespace KhaozEngine.Gpu.Metal.Internal.ObjC
 {
     /// <summary>
-    /// AN <c>MTLRenderCommandEncoder</c>, with the two members the PASS row emits: the viewport and the scissor
-    /// rectangle.
+    /// AN <c>MTLRenderCommandEncoder</c>: the viewport and scissor the PASS row emits, the argument-table setters
+    /// the BIND row emits, and the pipeline-state block and the two draws the DRAW row emits.
     ///
-    /// <para><b>THE REST OF THIS PROTOCOL LANDS WITH THE ROWS THAT CALL IT</b>, which is the rule
-    /// <c>MetalEncoderSink</c> states and the reason this file stays short: a native prototype added by a row with
-    /// no caller and no test that runs it is an Objective-C declaration nobody has ever executed, and a wrong ABI
-    /// assumption in interop is a memory corruption rather than a compile error. The argument-table setters are
-    /// here now, with the bind flush (https://github.com/APKiwiOrg/KhaozEngine/issues/579) calling them. The
-    /// draws arrive with row 14 (https://github.com/APKiwiOrg/KhaozEngine/issues/580) and the pipeline-state
-    /// block with row 11 (https://github.com/APKiwiOrg/KhaozEngine/issues/577).</para>
+    /// <para><b>EVERY SELECTOR HERE ARRIVED WITH THE ROW THAT CALLS IT</b>, which is the rule
+    /// <c>MetalEncoderSink</c> states: a native prototype added by a row with no caller and no test that runs it
+    /// is an Objective-C declaration nobody has ever executed, and a wrong ABI assumption in interop is a memory
+    /// corruption rather than a compile error. The argument-table setters landed with the bind flush
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/579), and the state block and the draws with row 14
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/580), which is where their callers are. Section 6.3's
+    /// row-11 addendum is why the state block is NOT row 11's: it goes into a render encoder, and under M-A1's
+    /// deferred begin no encoder exists at the moment <c>SetPipeline</c> is called.</para>
     ///
-    /// <para><b>EIGHT SELECTORS LIVE HERE AND ALL EIGHT HAVE BEEN SENT TO A REAL ENCODER</b>, which is a stronger
-    /// statement than it looks and was not true when they landed. The four members below are four PAIRS, and
-    /// <c>MetalBindFlushGpuTests</c>'s original fixture had a vertex function reading one buffer, so the vertex
-    /// halves of the texture and sampler setters were never executed by anything. That is exactly the class of
-    /// gap the rule above exists to close, since an unrecognised selector aborts the process rather than
-    /// producing a wrong pixel, so a second fixture whose vertex stage samples now drives them and the test reads
-    /// the executed set off the sink's own log rather than inferring it from a run that did not throw.</para>
+    /// <para><b>EIGHTEEN SELECTORS LIVE HERE AND ALL EIGHTEEN HAVE BEEN SENT TO A REAL ENCODER</b>, which is a
+    /// stronger statement than it looks and was not true of the first eight when they landed. The four
+    /// argument-table members are four PAIRS, and <c>MetalBindFlushGpuTests</c>'s original fixture had a vertex
+    /// function reading one buffer, so the vertex halves of the texture and sampler setters were never executed
+    /// by anything. That is exactly the class of gap the rule above exists to close, since an unrecognised
+    /// selector aborts the process rather than producing a wrong pixel, so a second fixture whose vertex stage
+    /// samples now drives them and the test reads the executed set off the sink's own log rather than inferring
+    /// it from a run that did not throw. The ten added by row 14 are driven by
+    /// <c>MetalDrawPathGpuTests</c>, which reads a PIXEL rather than an outcome, because the draws are the one
+    /// family here whose wrong answer is a wrong colour rather than a refusal.</para>
     ///
     /// <para><b>THE FOUR ARGUMENT-TABLE SETTERS TAKE THE STAGE AS AN ARGUMENT, because on this protocol the stage
     /// is spelled INSIDE the selector.</b> <c>setVertexBuffers:offsets:withRange:</c> and
@@ -169,6 +173,109 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
                     "setFragmentBufferOffset:atIndex:")),
                 offset,
                 index);
+
+        /// <summary><c>-setRenderPipelineState:</c>, the first call of the pipeline-state block (section 6.3).
+        /// </summary>
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal void SetRenderPipelineState(MTLRenderPipelineState state)
+            => ObjCMsgSend.SendVoidPtr(Handle, ObjCRuntime.Sel("setRenderPipelineState:"), state.Handle);
+
+        /// <summary><c>-setCullMode:</c>.</summary>
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal void SetCullMode(MTLCullMode mode)
+            => ObjCMsgSend.SendVoidNUInt(Handle, ObjCRuntime.Sel("setCullMode:"), (nuint)(ulong)mode);
+
+        /// <summary><c>-setFrontFacingWinding:</c>. The selector carries the word <c>Winding</c> where the
+        /// incumbent's own binding names the method <c>setFrontFacing</c>, and the SELECTOR is what the runtime
+        /// looks up, so the spelling here is the SDK's rather than the fork's.</summary>
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal void SetFrontFacingWinding(MTLWinding winding)
+            => ObjCMsgSend.SendVoidNUInt(Handle, ObjCRuntime.Sel("setFrontFacingWinding:"), (nuint)(ulong)winding);
+
+        /// <summary><c>-setTriangleFillMode:</c>.</summary>
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal void SetTriangleFillMode(MTLTriangleFillMode mode)
+            => ObjCMsgSend.SendVoidNUInt(Handle, ObjCRuntime.Sel("setTriangleFillMode:"), (nuint)(ulong)mode);
+
+        /// <summary><c>-setBlendColorRed:green:blue:alpha:</c>, four separate <c>float</c>s rather than a
+        /// composite, which is what makes it the plain vector-register class.</summary>
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal void SetBlendColour(float red, float green, float blue, float alpha)
+            => ObjCMsgSend.SendVoidFloat4(Handle, ObjCRuntime.Sel("setBlendColorRed:green:blue:alpha:"),
+                red, green, blue, alpha);
+
+        /// <summary>
+        /// <c>-setDepthStencilState:</c>, one of the DEPTH TRIO.
+        /// <para>
+        /// ONLY LEGAL ON A PASS WITH A DEPTH ATTACHMENT, which is why the caller gates all three on the BOUND
+        /// FRAMEBUFFER rather than on the pipeline alone (<see cref="MetalGraphicsStateBlock"/>). Sending it to a
+        /// colour-only pass is a validation error under the debug layer M-T7 arms on every native-leg run.
+        /// </para>
+        /// </summary>
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal void SetDepthStencilState(MTLDepthStencilState state)
+            => ObjCMsgSend.SendVoidPtr(Handle, ObjCRuntime.Sel("setDepthStencilState:"), state.Handle);
+
+        /// <summary><c>-setDepthClipMode:</c>, the second of the depth trio.</summary>
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal void SetDepthClipMode(MTLDepthClipMode mode)
+            => ObjCMsgSend.SendVoidNUInt(Handle, ObjCRuntime.Sel("setDepthClipMode:"), (nuint)(ulong)mode);
+
+        /// <summary><c>-setStencilReferenceValue:</c>, the third. A <c>uint32_t</c> and not an
+        /// <c>NSUInteger</c>, declared at its real width for <c>SendVoidUInt</c>'s reason.</summary>
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal void SetStencilReferenceValue(uint reference)
+            => ObjCMsgSend.SendVoidUInt(Handle, ObjCRuntime.Sel("setStencilReferenceValue:"), reference);
+
+        /// <summary>
+        /// <c>-drawPrimitives:vertexStart:vertexCount:instanceCount:baseInstance:</c>, the LONG form
+        /// unconditionally.
+        /// <para>
+        /// THE INCUMBENT PICKS BETWEEN THIS AND THE SHORTER SELECTOR ON <c>instanceStart == 0</c> and this
+        /// backend does not, for M-A7's reason applied to a different pair: at a base instance of zero the two
+        /// calls are the same draw, so the branch buys nothing and one code path is one thing to be right about.
+        /// </para>
+        /// </summary>
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal void DrawPrimitives(MTLPrimitiveType type, uint vertexStart, uint vertexCount,
+            uint instanceCount, uint baseInstance)
+            => ObjCMsgSend.SendVoidDrawPrimitives(Handle,
+                ObjCRuntime.Sel("drawPrimitives:vertexStart:vertexCount:instanceCount:baseInstance:"),
+                (nuint)(ulong)type, vertexStart, vertexCount, instanceCount, baseInstance);
+
+        /// <summary>
+        /// <c>-drawIndexedPrimitives:indexCount:indexType:indexBuffer:indexBufferOffset:instanceCount:baseVertex:baseInstance:</c>,
+        /// the long form for the same reason, and <b>the one call in this row whose ARGUMENT PLACEMENT is not
+        /// covered by row 1's spike</b>.
+        /// <para>
+        /// TEN ARGUMENTS AGAINST EIGHT REGISTERS, so <paramref name="baseVertex"/> and
+        /// <paramref name="baseInstance"/> cross ON THE STACK. <see cref="ObjCMsgSend.SendVoidDrawIndexedPrimitives"/>
+        /// carries the whole argument, including why acceptance is not evidence here and which device probe
+        /// answers it by value.
+        /// </para>
+        /// <para>
+        /// THE INDEX BUFFER TRAVELS IN THE CALL rather than being bound beforehand, which is Metal's shape and not
+        /// an engine choice, and it is why this backend keeps no index-buffer bind record at all.
+        /// </para>
+        /// </summary>
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal void DrawIndexedPrimitives(MTLPrimitiveType type, uint indexCount, MTLIndexType indexType,
+            MTLBuffer indexBuffer, nuint indexBufferOffset, uint instanceCount, int baseVertex, uint baseInstance)
+            => ObjCMsgSend.SendVoidDrawIndexedPrimitives(Handle,
+                ObjCRuntime.Sel("drawIndexedPrimitives:indexCount:indexType:indexBuffer:indexBufferOffset:"
+                    + "instanceCount:baseVertex:baseInstance:"),
+                (nuint)(ulong)type, indexCount, (nuint)(ulong)indexType, indexBuffer.Handle, indexBufferOffset,
+                instanceCount, baseVertex, baseInstance);
 
         // THE ONE PLACE THE STAGE BECOMES A SELECTOR, so a new setter added later cannot spell the fork a second
         // way. Compute is refused rather than folded into the vertex arm: a compute encoder is a different

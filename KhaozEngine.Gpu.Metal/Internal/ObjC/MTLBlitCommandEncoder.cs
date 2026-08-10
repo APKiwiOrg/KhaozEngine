@@ -122,6 +122,48 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
                 source.Handle, sourceSlice, sourceLevel, sourceOrigin, sourceSize, destination.Handle,
                 destinationOffset, destinationBytesPerRow, destinationBytesPerImage);
 
+        /// <summary>
+        /// <c>-copyFromTexture:sourceSlice:sourceLevel:sourceOrigin:sourceSize:toTexture:destinationSlice:destinationLevel:destinationOrigin:</c>,
+        /// the texture-to-texture arm, which is what a copy between two non-staging textures is
+        /// (the incumbent's <c>CopyTextureCore</c> normal-to-normal branch).
+        /// <para>
+        /// ITS OWN USE IS SEEDING THE BASE LEVEL OF A MIPPED TEXTURE FROM A SINGLE-MIP ONE WRITTEN BY COMPUTE, per
+        /// the seam's own doc on the general <c>CopyTextureSubresource</c>: a storage-image binding must cover
+        /// exactly one mip level, so a compute-written map that also needs a chain has to be two textures with a
+        /// copy between them.
+        /// </para>
+        /// <para>
+        /// SAME ABI FAMILY AS THE TWO COPIES ABOVE, with THREE 24-byte integer composites rather than two, and the
+        /// last of the three is the spilled destination origin. See
+        /// <see cref="ObjCMsgSend.SendVoidTextureToTextureCopy"/>.
+        /// </para>
+        /// </summary>
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal void CopyFromTextureToTexture(MTLTexture source, nuint sourceSlice, nuint sourceLevel,
+            MTLOrigin sourceOrigin, MTLSize sourceSize, MTLTexture destination, nuint destinationSlice,
+            nuint destinationLevel, MTLOrigin destinationOrigin)
+            => ObjCMsgSend.SendVoidTextureToTextureCopy(Handle,
+                ObjCRuntime.Sel("copyFromTexture:sourceSlice:sourceLevel:sourceOrigin:sourceSize:toTexture:"
+                    + "destinationSlice:destinationLevel:destinationOrigin:"),
+                source.Handle, sourceSlice, sourceLevel, sourceOrigin, sourceSize, destination.Handle,
+                destinationSlice, destinationLevel, destinationOrigin);
+
+        /// <summary>
+        /// <c>-generateMipmapsForTexture:</c>, the whole mip chain in ONE call.
+        /// <para>
+        /// THIS IS WHERE METAL IS SHORTER THAN BOTH SIBLINGS RATHER THAN LONGER. Vulkan generates a chain as a
+        /// LOOP of <c>vkCmdBlitImage</c> with a layout transition per level, and Direct3D 11 has its own
+        /// one-call <c>GenerateMips</c>. Metal's blit encoder does the whole chain itself, so there is no
+        /// per-level filter to choose, no per-level barrier and nothing this backend can get out of step: the
+        /// only decision left is whether the texture is a legal argument, which is the caller's guard.
+        /// </para>
+        /// </summary>
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal void GenerateMipmapsForTexture(MTLTexture texture)
+            => ObjCMsgSend.SendVoidPtr(Handle, ObjCRuntime.Sel("generateMipmapsForTexture:"), texture.Handle);
+
         /// <summary><c>-endEncoding</c>. An encoder that is not ended blocks every later encoder on the same
         /// command buffer, and Metal traps on a second encoder while one is open, which is why the setup buffer
         /// ends this one in the same call that opened it.</summary>

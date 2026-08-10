@@ -97,4 +97,27 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         /// <summary>Connected triangle strip.</summary>
         TriangleStrip = 4,
     }
+
+    /// <summary>
+    /// <c>MTLIndexType</c>, an <c>NSUInteger</c>: how wide one element of the index buffer is.
+    /// <para>
+    /// IT IS A DRAW ARGUMENT TOO, and for the same reason the primitive type is: Metal takes the index buffer,
+    /// its offset and its element width in <c>-drawIndexedPrimitives:</c> itself rather than binding any of them
+    /// beforehand. That is why this backend has no index-buffer argument-table entry and therefore no
+    /// index-buffer BIND RECORD, where both siblings have one (section 6.3).
+    /// </para>
+    /// <para>
+    /// THE TWO MEMBERS ARE THE WHOLE SET AND THE SEAM HAS EXACTLY THE SAME TWO, so
+    /// <c>GpuIndexFormat</c> maps onto it total and there is no unmappable arm to refuse.
+    /// </para>
+    /// </summary>
+    internal enum MTLIndexType : ulong
+    {
+        /// <summary><c>MTLIndexTypeUInt16</c>: two bytes per index, which is what every shipped mesh under 65536
+        /// vertices uses.</summary>
+        UInt16 = 0,
+
+        /// <summary><c>MTLIndexTypeUInt32</c>: four bytes per index.</summary>
+        UInt32 = 1,
+    }
 }

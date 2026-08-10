@@ -67,19 +67,54 @@ namespace KhaozEngine.Tests.Gpu
     }
 
     /// <summary>
-    /// THE BLIT COPY AS A LOG RATHER THAN A MESSAGE SEND, which is what makes row 8's central claim testable off
-    /// a device: a record-time write to a UNIFORM buffer emits NOTHING here and a write to any other buffer emits
-    /// exactly one entry. See <see cref="IMetalBlitApi"/> for why that line exists at all.
+    /// EVERY BLIT-ENCODER TRANSFER AS A LOG RATHER THAN A MESSAGE SEND, which is what makes two claims testable
+    /// off a device. Row 8's: a record-time write to a UNIFORM buffer emits NOTHING here and a write to any other
+    /// buffer emits exactly one entry. And row 14's: which of the four staging cases a texture copy fans out to,
+    /// and the byte offsets and pitches the staging side supplies, which is the arithmetic that garbles every
+    /// golden readback at once when it is wrong. See <see cref="IMetalBlitApi"/>.
     /// </summary>
     internal sealed class FakeMetalBlitApi : IMetalBlitApi
     {
-        /// <summary>Every copy encoded, in order.</summary>
+        /// <summary>Every buffer-to-buffer copy encoded, in order.</summary>
         internal List<(IntPtr Encoder, IntPtr Source, ulong SourceOffset, IntPtr Destination,
             ulong DestinationOffset, ulong Size)> Copies { get; } = new();
+
+        /// <summary>Every texture-to-texture copy, in order.</summary>
+        internal List<(IntPtr Encoder, IntPtr Source, IntPtr Destination, MetalTextureRegion Region)>
+            TextureCopies { get; } = new();
+
+        /// <summary>Every readback (texture into a staging buffer), in order.</summary>
+        internal List<(IntPtr Encoder, IntPtr Source, IntPtr Destination, MetalBufferImageRegion Region)>
+            Readbacks { get; } = new();
+
+        /// <summary>Every upload (staging buffer into a texture), in order.</summary>
+        internal List<(IntPtr Encoder, IntPtr Source, IntPtr Destination, MetalBufferImageRegion Region)>
+            Uploads { get; } = new();
+
+        /// <summary>Every mip-chain generation, in order.</summary>
+        internal List<(IntPtr Encoder, IntPtr Texture)> MipChains { get; } = new();
 
         /// <inheritdoc/>
         public void CopyBufferToBuffer(IntPtr encoder, IntPtr source, ulong sourceOffsetBytes, IntPtr destination,
             ulong destinationOffsetBytes, ulong sizeBytes)
             => Copies.Add((encoder, source, sourceOffsetBytes, destination, destinationOffsetBytes, sizeBytes));
+
+        /// <inheritdoc/>
+        public void CopyTextureToTexture(IntPtr encoder, IntPtr source, IntPtr destination,
+            in MetalTextureRegion region)
+            => TextureCopies.Add((encoder, source, destination, region));
+
+        /// <inheritdoc/>
+        public void CopyTextureToBuffer(IntPtr encoder, IntPtr source, IntPtr destination,
+            in MetalBufferImageRegion region)
+            => Readbacks.Add((encoder, source, destination, region));
+
+        /// <inheritdoc/>
+        public void CopyBufferToTexture(IntPtr encoder, IntPtr source, IntPtr destination,
+            in MetalBufferImageRegion region)
+            => Uploads.Add((encoder, source, destination, region));
+
+        /// <inheritdoc/>
+        public void GenerateMipmaps(IntPtr encoder, IntPtr texture) => MipChains.Add((encoder, texture));
     }
 }

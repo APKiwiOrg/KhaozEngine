@@ -57,6 +57,18 @@ namespace KhaozEngine.Gpu.Metal.Internal
         readonly IMetalDeviceLiveness _liveness;
         readonly object _owner;
 
+        // THE COUNTED SEAM, HELD BOXED AND UNBOXED PER COMMAND. The encoder scope holds the same reference for
+        // the BOUNDARY path, which is 6.4's one virtual call per pass. This field is the DRAW path's, and each
+        // draw type-tests it back to a struct so the generic body is monomorphized. See MetalRelayEncoderSink for
+        // why that fork exists rather than the list being generic over its sink.
+        readonly IMetalEncoderSink _sink;
+
+        // THE TWO UNCOUNTED EMISSION SEAMS THIS LIST REACHES DIRECTLY. The schedule holds the render one too, for
+        // the descriptor and the two dynamic-state setters; what the list itself sends through it is the
+        // pipeline-state block, which is a draw's business rather than a pass's.
+        readonly IMetalRenderApi _render;
+        readonly IMetalComputeApi _compute;
+
         // THE BOUND-PIPELINE RECORD (M-R8, M-R4). Allocated with the list rather than per recording, because it
         // is reset at every Begin and a per-recording allocation would buy nothing.
         readonly MetalPipelineBinding _pipelines = new();
@@ -106,9 +118,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// of. Carried down to both <see cref="MetalBindRecords"/> arms rather than read from a constant, because
         /// M-M3's 256-byte ring stride is the SPACING of the segments and not what the driver requires of an
         /// offset. A test passes a fixed value, which is what keeps the check device-free.</param>
+        /// <param name="compute">The COMPUTE-encoder-scoped state setter (<see cref="IMetalComputeApi"/>), which
+        /// is the third of the uncounted emission seams and carries exactly one member. Separate from
+        /// <paramref name="render"/> because a compute encoder is a different protocol, and separate from
+        /// <paramref name="sink"/> because nothing about a pipeline-state bind scales with dispatch count.</param>
         internal MetalCommandList(IMetalCommandBufferSource buffers, MetalUncommittedBuffers uncommitted,
             IMetalEncoderSink sink, object owner, MetalRingAllocator rings, MetalStagingArena arena,
-            IMetalBlitApi blit, IMetalDeviceLiveness liveness, IMetalRenderApi render,
+            IMetalBlitApi blit, IMetalDeviceLiveness liveness, IMetalRenderApi render, IMetalComputeApi compute,
             uint bufferOffsetAlignment, MetalClearMode clearMode = MetalClearMode.PerAttachment)
         {
             ArgumentNullException.ThrowIfNull(buffers);
@@ -120,9 +136,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
             ArgumentNullException.ThrowIfNull(blit);
             ArgumentNullException.ThrowIfNull(liveness);
             ArgumentNullException.ThrowIfNull(render);
+            ArgumentNullException.ThrowIfNull(compute);
 
             _buffers = buffers;
             _uncommitted = uncommitted;
+            _sink = sink;
             _encoders = new MetalEncoderScope(sink);
             _passes = new MetalRenderPassSchedule(_encoders, render, clearMode);
             _owner = owner;
@@ -130,6 +148,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _arena = arena;
             _blit = blit;
             _liveness = liveness;
+            _render = render;
+            _compute = compute;
 
             // The two bind arms, which cannot be field initialisers because they need the device's alignment.
             // MetalCommandList.Binds.cs declares them.
@@ -280,8 +300,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // that is the encoder scope, which bumps its epoch so no record from the discarded recording can read
             // as valid (M-R4), the pass schedule, which drops the bound framebuffer, the pending clears, the
             // scissor-test gate and the viewport and scissor stamps, row 13's three record sets, which drop every
-            // recorded slot, the adopted index table and every vertex stream, and row 11's bound-pipeline record,
-            // which forgets both pipelines. Row 14 adds its index-buffer record to this ONE place.
+            // recorded slot, the adopted index table and every vertex stream, row 11's bound-pipeline record,
+            // which forgets both pipelines, and row 14's index binding.
             //
             // THE SCOPE GOES FIRST, because the schedule's stamps are compared against the scope's epoch and the
             // BeginRecording bump is what makes every one of them stale. Clearing them after that bump is belt
@@ -297,6 +317,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // is specifically about which pipeline is bound: that is recorder state and survives an encoder
             // boundary on purpose, so only a new recording clears it.
             _pipelines.Reset();
+
+            // AND THE INDEX BINDING, for the same reason and with no epoch stamp at all. Metal takes the index
+            // buffer IN the draw call, so it never reaches an argument table and no encoder boundary can discard
+            // it, which makes a Begin the only thing that clears it. See MetalIndexBinding.
+            _indices.Reset();
 
             _recording = true;
             _sealed = false;

@@ -114,6 +114,23 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         internal void SetStoreAction(MTLStoreAction action)
             => ObjCMsgSend.SendVoidNUInt(Handle, ObjCRuntime.Sel("setStoreAction:"), (nuint)(ulong)action);
 
+        /// <summary>
+        /// <c>-setResolveTexture:</c>, on a COLOUR slot: where the samples of a multisampled attachment are
+        /// averaged to when the store action resolves.
+        /// <para>
+        /// SET ONLY ON THE STANDALONE RESOLVE PASS, which is M-C4's reproduction of the incumbent's
+        /// <c>ResolveTextureCore</c>: a descriptor whose one colour attachment is the MSAA source at
+        /// <c>loadAction = Load</c> and <c>storeAction = MultisampleResolve</c>, with the destination here, opened
+        /// and immediately ended. FOLDING that store action into the producing pass instead is the Metal-native
+        /// answer and is deferred with a stated blocker
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/596), so no ordinary pass reaches this setter.
+        /// </para>
+        /// </summary>
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal void SetResolveTexture(MTLTexture texture)
+            => ObjCMsgSend.SendVoidPtr(Handle, ObjCRuntime.Sel("setResolveTexture:"), texture.Handle);
+
         /// <summary><c>-setClearColor:</c>, on a COLOUR slot. The four-double HFA row 1's spike value-checked.
         /// </summary>
         [SupportedOSPlatform("macos")]
@@ -171,9 +188,17 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
     ///
     /// <para><b>WHAT IS NOT HERE.</b> No <c>renderTargetWidth</c> or <c>renderTargetHeight</c>: Metal derives the
     /// render area from the attachments themselves and setting them is for a pass rendering into a SUBSET of an
-    /// attachment, which this seam cannot express. No <c>resolveTexture</c>: M-A4 keeps the standalone resolve
-    /// encoder (2.5). No <c>visibilityResultBuffer</c>, no sample-buffer attachments, no tile settings: nothing
-    /// on the seam reaches any of them.</para>
+    /// attachment, which this seam cannot express. No <c>visibilityResultBuffer</c>, no sample-buffer
+    /// attachments, no tile settings: nothing on the seam reaches any of them.</para>
+    ///
+    /// <para><b>CORRECTED AT ROW 14: <c>resolveTexture</c> IS HERE, AND THE SENTENCE THAT SAID OTHERWISE HAD THE
+    /// RIGHT REASON ATTACHED TO THE WRONG FACT.</b> That list read "No <c>resolveTexture</c>: M-A4 keeps the
+    /// standalone resolve encoder (2.5)", which reverses the implication. The standalone encoder IS a render pass
+    /// and its descriptor is the one place a resolve texture is named: what 2.5 defers is FOLDING the resolve into
+    /// the producing pass's store action (https://github.com/APKiwiOrg/KhaozEngine/issues/596), which would put
+    /// the setter on the ORDINARY pass path. So the setter exists, exactly one caller reaches it
+    /// (<c>MetalRenderApi.CreateResolveDescriptor</c>), and <c>MetalRenderPassSchedule</c>'s begin still never
+    /// names one.</para>
     /// </summary>
     /// <param name="Handle">The Objective-C object, or <see cref="IntPtr.Zero"/> for nil.</param>
     internal readonly record struct MTLRenderPassDescriptor(IntPtr Handle)

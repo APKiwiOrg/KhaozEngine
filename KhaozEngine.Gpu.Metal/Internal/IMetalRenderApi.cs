@@ -76,9 +76,44 @@ namespace KhaozEngine.Gpu.Metal.Internal
         IntPtr CreateRenderPassDescriptor(ReadOnlySpan<MetalColourAttachment> colour,
             in MetalDepthAttachment depth);
 
-        /// <summary>Give back the retain <see cref="CreateRenderPassDescriptor"/> took. Safe on
-        /// <see cref="IntPtr.Zero"/>, so the caller's <c>finally</c> needs no test of its own.</summary>
+        /// <summary>
+        /// BUILD THE DESCRIPTOR FOR A STANDALONE MULTISAMPLE RESOLVE (M-C4), and take a retain on it exactly as
+        /// <see cref="CreateRenderPassDescriptor"/> does, so the caller's release pairs with either one.
+        /// <para>
+        /// IT IS A SECOND MEMBER RATHER THAN A WIDER FIRST ONE, AND THAT KEEPS A DEFERRED DECISION DEFERRED. A
+        /// resolve pass is one colour attachment holding the MSAA source, at <c>loadAction = Load</c> and
+        /// <c>storeAction = MultisampleResolve</c>, with the destination as its <c>resolveTexture</c> and no
+        /// clear, no depth and no second attachment. Widening <see cref="MetalColourAttachment"/> with a resolve
+        /// texture and <c>MetalStoreAction</c> with a resolve member would express exactly the FOLDED resolve
+        /// section 2.5 defers with a stated blocker (https://github.com/APKiwiOrg/KhaozEngine/issues/596), and a
+        /// deferral that leaves the mechanism sitting on the ordinary pass path is a deferral in name only.
+        /// </para>
+        /// </summary>
+        /// <param name="source">The multisampled <c>MTLTexture</c>, which the pass loads and discards.</param>
+        /// <param name="destination">The single-sample <c>MTLTexture</c> the samples resolve into.</param>
+        /// <returns>The retained descriptor, or <see cref="IntPtr.Zero"/> when Metal would not make one.</returns>
+        IntPtr CreateResolveDescriptor(IntPtr source, IntPtr destination);
+
+        /// <summary>Give back the retain <see cref="CreateRenderPassDescriptor"/> or
+        /// <see cref="CreateResolveDescriptor"/> took. Safe on <see cref="IntPtr.Zero"/>, so the caller's
+        /// <c>finally</c> needs no test of its own.</summary>
         void ReleaseRenderPassDescriptor(IntPtr descriptor);
+
+        /// <summary>
+        /// EMIT THE PIPELINE-STATE BLOCK into <paramref name="encoder"/>: five calls always, plus the DEPTH TRIO
+        /// when <see cref="MetalGraphicsStateBlock.DepthTrio"/> says the bound framebuffer has a depth attachment
+        /// (section 6.3).
+        /// <para>
+        /// EVERY DECISION IS ALREADY MADE BY THE TIME IT ARRIVES HERE, which is
+        /// <see cref="CreateRenderPassDescriptor"/>'s rule applied to the other half of a draw's preamble. WHICH
+        /// values, and whether the trio is among them, are <see cref="MetalGraphicsStateBlock"/>'s. WHETHER the
+        /// block is emitted at all is <c>MetalPipelineBinding.NeedsGraphicsStateBlock</c>'s, which is M-R8's
+        /// identity guard and M-R4's encoder invalidation between them. What is left here is eight message sends.
+        /// </para>
+        /// </summary>
+        /// <param name="encoder">The open render encoder.</param>
+        /// <param name="block">The resolved block.</param>
+        void SetGraphicsState(IntPtr encoder, in MetalGraphicsStateBlock block);
 
         /// <summary>
         /// <c>-[MTLRenderCommandEncoder setViewports:count:]</c> WITH A COUNT OF 1, which is M-A7 taken

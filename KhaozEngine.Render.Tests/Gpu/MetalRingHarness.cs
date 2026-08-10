@@ -137,12 +137,13 @@ namespace KhaozEngine.Tests.Gpu
         internal MetalCommandList NewList(object owner, FakeMetalCommandBufferSource? buffers = null,
             FakeMetalEncoderCalls? calls = null, MetalUncommittedBuffers? uncommitted = null,
             MetalStagingArena? arena = null, FakeMetalRenderCalls? render = null,
-            MetalClearMode clearMode = MetalClearMode.PerAttachment)
+            FakeMetalComputeApi? compute = null, MetalClearMode clearMode = MetalClearMode.PerAttachment)
             => new(buffers ?? new FakeMetalCommandBufferSource(),
                 uncommitted ?? new MetalUncommittedBuffers(FramesInFlight, new RecordingLogger()),
                 new FakeMetalEncoderSink(calls ?? new FakeMetalEncoderCalls()),
                 owner, Rings, arena ?? NewArena(), Blit, Liveness,
                 new FakeMetalRenderApi(render ?? new FakeMetalRenderCalls()),
+                compute ?? new FakeMetalComputeApi(),
                 // The device's reported buffer-offset alignment, which a device-free list stands up at the value
                 // macOS actually reports. See MetalBindProgram.DeviceOffsetAlignment.
                 MetalBindProgram.DeviceOffsetAlignment, clearMode);

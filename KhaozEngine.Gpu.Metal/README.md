@@ -176,9 +176,9 @@ blocked inside the native call keeps blocking until its current slice expires.
 ## Resources, and the one creation this backend refuses
 
 `IGpuDevice.Factory` creates buffers, textures, samplers and fences, and the device's `PointSampler` and
-`LinearSampler` pair exists. Nothing can BIND any of it yet, because the members that record content into
-a list belong to later rows, so what is usable today is creation, the device-level uploads, and readback
-through `Map`.
+`LinearSampler` pair exists. Nothing can BIND any of it yet, because the members that record a pipeline or a
+resource set belong to later rows, so what is usable today is creation, the device-level uploads, the
+record-time `UpdateBuffer` described below, and readback through `Map`.
 
 **Every buffer is `MTLStorageModeShared` and every texture is `MTLStorageModePrivate`**, reproducing the
 incumbent. On unified memory a Shared buffer's `contents()` pointer is stable for its life and visible to both
@@ -221,6 +221,58 @@ about who releases what.
 The `MipLodBias` a sampler description carries is dropped, because `MTLSamplerDescriptor` has no LOD bias field
 at all, which is why `GpuCapabilities.SamplerLodBias` is false on this backend and on the incumbent alike.
 
+## The uniform ring: a `memcpy` where the incumbent splits the encoder (M-M3 to M-M8)
+
+**A `UniformBuffer`-usage buffer is ONE `MTLBuffer` of `align(size, 256) * KE_METAL_FRAMES_IN_FLIGHT`**, and
+none of that is visible through the seam. `IGpuBuffer.SizeInBytes` still reports what you asked for, the buffer
+identity never changes, and the per-frame base is applied at BIND. Frame N writes segment `N % framesInFlight`,
+and a segment is handed out again only after the `MTLSharedEvent` has reached the value the frame that last
+owned it recorded.
+
+**The point is the ENCODER rather than the copy.** On the incumbent a record-time `UpdateBuffer` allocates an
+`MTLBuffer`, copies, ENDS THE RENDER ENCODER to open a blit encoder, copies again and releases, and then the
+next draw pays a full graphics-state re-activation, because ending a render encoder discards the bound
+pipeline, the whole argument table, the viewport, the scissor and every vertex stream. Under the ring the same
+call is a `memcpy` into mapped memory and opens nothing at all. The shipped renderers write a uniform buffer
+per pass and often per draw.
+
+**It is also a CORRECTNESS change, which the same ring was not on Direct3D 11.**
+`MTLGraphicsDevice.UpdateBufferCore` is an unguarded copy into `contents()` with no fence, no frame index and
+no diagnostic. Direct3D 11's `MAP_WRITE_DISCARD` lets the driver rename a buffer under a write and Metal
+renames nothing, so that is a plain data race with a submitted command buffer, and the segment gate is what
+removes it. Automatic hazard tracking does not help: it orders GPU work against GPU work and says nothing about
+a CPU write racing a GPU read.
+
+**A device-level `UpdateBuffer` on a uniform buffer reaches EVERY segment**, gated on the same completion read,
+with a segment an earlier frame is still reading queued as a pending patch applied at its next acquire rather
+than waited for. So the call never blocks, from any thread, at any pipeline depth, and a value written once
+persists for the buffer's life exactly as it does on a backend where the buffer has one copy. Writing only the
+current segment was a shipped defect elsewhere for one release: a load-time write reached one segment in three,
+so two frames in three bound memory nothing had ever written, with nothing thrown and nothing logged.
+
+**Every OTHER record-time `UpdateBuffer` stages through a per-list arena and pays one blit.** Bulk payloads
+genuinely need the copy command, so what the arena removes is the incumbent's allocate-and-release of a whole
+`MTLBuffer` per call, which its own source carries a TODO asking for. Blocks are pooled by power-of-two size
+class, sub-allocated by bumping, and handed back only once the timeline has reached the value the submission
+that read them signalled. The arena never waits: a slot still in flight keeps its blocks and gets them back at
+a later visit. It retains up to 8 MiB of idle blocks and releases the largest first past that.
+
+**The frame boundary is `IGpuCommandList.Begin` on this backend**, where both sibling backends put theirs at
+`Present`. Each of those has a second per-list index that advances at `Begin` and this one has none, and
+hanging the acquire off a present would leave the ring rotating never on the headless path. `Begin` is
+therefore the only call in a recording that can block, and `GpuDeviceCounters.BackpressureStallCount` counts
+exactly those blocks and nothing else.
+
+**One creation-time refusal follows from all of it**, and it is the divergence named above: a buffer declaring
+both `UniformBuffer` and a structured usage throws, because the ring rebases every bind of it and a structured
+binding of the same buffer would read whichever segment the frame landed on.
+
+**A record-time upload to a non-uniform buffer needs a four-byte-aligned destination offset.** macOS requires
+that of the copy, the size half is padded up the way the incumbent already pads it, and the offset half throws
+by name rather than shipping the incumbent's answer to it, which is an embedded compute shader and a dedicated
+pipeline for a case no shipped call site produces. Every record-time site in the engine passes 0 or a multiple
+of an element stride. A ring-backed write has no such requirement, being a `memcpy`.
+
 ## The command list: a buffer per `Begin`, and no pool at all (M-R1 to M-R4)
 
 `Begin` takes a fresh `MTLCommandBuffer` from the queue and retains it, `End` closes any open encoder and seals
@@ -239,11 +291,11 @@ compared by reference at the submit.
 **There is no command-buffer pool either, and that is where this backend diverges from the Vulkan one.** A
 Vulkan list owns `FramesInFlight` command pools because a pool cannot be reset while its buffers are in flight.
 A Metal command buffer is single-use, the queue owns its memory, and there is no reset, no pool object and no
-allocator to choose between. So `KE_METAL_FRAMES_IN_FLIGHT` sizes the uniform ring and the drawable queue and
-nothing else, and `GpuDeviceCounters.BackpressureStallCount` means ONE thing here where it means two on Vulkan.
-Neither consumer is in the package yet, so today the variable is resolved, validated and named in the session
-log and sizes nothing: the ring is [row 8](https://github.com/APKiwiOrg/KhaozEngine/issues/574) and
-`maximumDrawableCount` is [row 15](https://github.com/APKiwiOrg/KhaozEngine/issues/581).
+allocator to choose between. So `KE_METAL_FRAMES_IN_FLIGHT` sizes the uniform ring, each list's staging arena
+and the drawable queue, and nothing else, and `GpuDeviceCounters.BackpressureStallCount` means ONE thing here
+where it means two on Vulkan. The first two are live and the third is
+[row 15](https://github.com/APKiwiOrg/KhaozEngine/issues/581), so raising the variable today costs a
+256-aligned segment per uniform buffer per extra frame and nothing more.
 What the queue does have is its own maximum number of UNCOMMITTED buffers, past which `commandBuffer` blocks,
 so the backend counts what it holds against that depth plus one (the separate present buffer) and warns once
 rather than discovering it as a frame-loop stall with nothing attached.

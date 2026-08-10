@@ -50,10 +50,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// obligation that leaves for the command-list row is stated once, in <see cref="Flush"/>.</para>
     ///
     /// <para><b>THE STAGING BUFFERS ARE ONE PER UPLOAD AND THE BATCH OWNS THEM.</b> M-M8's pooled arena is the
-    /// RECORD-TIME path (a per-list arena, sub-allocated and recycled at slot retirement) and belongs to the ring
-    /// row, https://github.com/APKiwiOrg/KhaozEngine/issues/574. The device-level path is the incumbent's own
-    /// one-allocation-per-call shape, which M-M9 does not ask to change, and the allocation it replaces was a
-    /// whole staging TEXTURE. They are released after the commit returns rather than after the encode, which is
+    /// RECORD-TIME path and it exists now (<see cref="MetalStagingArena"/>), but it is deliberately NOT pointed
+    /// at this one: its whole recycling proof is a timeline value, and a setup batch encodes no timeline signal
+    /// at all, which is the same fact that makes <c>WaitForIdle</c> two drains. Pooling here means giving this
+    /// type a completion question of its own, and that is a design decision with its own test surface rather
+    /// than a wiring change, tracked at https://github.com/APKiwiOrg/KhaozEngine/issues/589. The device-level
+    /// path is meanwhile the incumbent's own one-allocation-per-call shape, which M-M9 does not ask to change,
+    /// and the allocation it replaces was a whole staging TEXTURE. They are released after the commit returns
+    /// rather than after the encode, which is
     /// belt and braces: an <c>MTLCommandBuffer</c> retains everything its encoders reference from the moment they
     /// reference it (M-H3), so either point is safe, and releasing after the commit does not depend on that
     /// reading being exactly right.</para>

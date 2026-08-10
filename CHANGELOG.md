@@ -590,6 +590,80 @@ device-free and runs on every leg: the Begin and End refusals, the seal, the thr
 buffer goes back, the encoder transitions and their order, the nil-encoder case, the epoch invalidation, the
 bound, and the pre-lock submit phase where the setup flush sits.
 
+### The native Metal uniform ring, where a record-time uniform write stops splitting the encoder (#574)
+
+A `UniformBuffer`-usage buffer on `KhaozEngine.Gpu.Metal` is now ONE `MTLBuffer` of
+`align(size, 256) * KE_METAL_FRAMES_IN_FLIGHT` in Shared memory, and a record-time `UpdateBuffer` into it is a
+`memcpy` into the current segment that opens NO ENCODER AT ALL. Row 8 of
+[docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md).
+Nothing of it is visible through the seam: `IGpuBuffer.SizeInBytes` still reports the size the caller asked
+for, the buffer identity never changes, and the per-frame base is applied at BIND.
+
+**The saved work is the ENCODER rather than the copy, and that is why the ring is worth more here than on
+either predecessor.** On the incumbent Metal backend a record-time uniform write allocates an `MTLBuffer`,
+copies, ENDS THE RENDER ENCODER to open a blit encoder, copies again and releases, and then the next draw pays
+a full graphics-state re-activation, because ending a render encoder discards the bound pipeline, the whole
+argument table, the viewport, the scissor and every vertex stream. The shipped renderers write a uniform buffer
+per pass and often per draw. Under the ring that call makes no native call whatsoever.
+
+**And it is a CORRECTNESS change, which the same ring was not on Direct3D 11.**
+`MTLGraphicsDevice.UpdateBufferCore` is an unguarded copy into `contents()` with no fence, no frame index and
+no diagnostic. Direct3D 11's `MAP_WRITE_DISCARD` gives the driver licence to rename a buffer under a write and
+Metal renames nothing, so that is a plain data race with a submitted command buffer reading those bytes, and
+the segment gate is what removes it. Automatic hazard tracking does not help, because it orders GPU work
+against GPU work and says nothing about a CPU write racing a GPU read.
+
+**The frame boundary is `IGpuCommandList.Begin` here, where both sibling backends put theirs at `Present`.**
+Each of those carries a SECOND per-list index that advances at `Begin` (a map scope on one, a command-pool slot
+on the other) and this backend has none, because an `MTLCommandBuffer` is single-use and the queue owns its
+memory. Hanging the acquire off a present would leave the ring rotating never on the HEADLESS path, which is
+where the 36 goldens and every `[GpuFact]` run, so the gate this row exists to build would be dead code on the
+only path CI can drive. The swapchain row therefore adds no second call at the present boundary. The
+consequence for the seam is that `Begin` is the only call in a recording that can block, and
+`GpuDeviceCounters.BackpressureStallCount` counts exactly those blocks and nothing else, where on Vulkan it
+folds two sources.
+
+**A device-level write reaches EVERY segment**, which is
+[#484](https://github.com/APKiwiOrg/KhaozEngine/issues/484)'s rule adopted wholesale for the third time, with
+its pending-patch queue and its never-wait property intact. A segment an earlier frame is still reading takes
+the write as a queued patch applied at its next acquire rather than being waited for, so the call returns
+immediately from any thread at any pipeline depth, and a retry loop waiting for every non-current segment at
+once (the shape that gets drafted first) never terminates in the GPU-bound steady state.
+
+**Every OTHER record-time `UpdateBuffer` stages through a per-list arena and pays one blit.** Bulk payloads
+genuinely need the copy command, so what the arena removes is the incumbent's allocate-and-release of a whole
+`MTLBuffer` per call, which its own source carries a TODO asking for. Blocks are pooled by power-of-two size
+class, sub-allocated by bumping, and handed back only once the timeline has reached the value the submission
+that read them signalled. That per-slot value is this backend's own machinery rather than the Vulkan sibling's
+inherited proof: there the list's command-pool ring has already waited for the slot it advances onto, and here
+there is no pool to inherit from. The arena never waits, so a slot still in flight keeps its blocks and gets
+them back at a later visit, which keeps the stall count single-sourced.
+
+**Two refusals a consumer can reach.** A buffer declaring both `UniformBuffer` and a structured usage already
+threw at creation, and this is the row that makes the reason real: the ring rebases every bind of it. And a
+record-time upload to a NON-uniform buffer needs a four-byte-aligned destination offset, because macOS requires
+it of the copy. The size half is padded up the way the incumbent already pads it, with the pad bytes zeroed so
+a readback cannot depend on which upload last used that staging block, and the offset half throws by name
+rather than reproducing the incumbent's answer to it, which is an embedded compute shader and a dedicated
+compute pipeline for a case no shipped call site produces.
+
+**Section 9.4's seven shared ring rows now run against THREE implementations.** The Metal adapter joined
+`KhaozEngine.TestSupport.Gpu` without changing a member of the shared test-only interface, which is the
+strongest thing that can be said about an abstraction derived from one implementation, and the three rings
+still deliberately share no production code: the policy is identical and the mechanism is a map lifecycle, a
+persistently mapped chunk and a Shared buffer's `contents()`.
+
+**Measured on an Apple M2 Max under macOS 26**, over seven `[GpuFact]`s. A 200-byte uniform buffer allocates
+768 bytes across three segments, checked against the driver's own `-length` rather than against the engine's
+arithmetic repeated back, while a 200-byte vertex buffer allocates 200. One device-level write reaches all
+three segments of the real allocation. Twenty-four frames of record-time uploads create THREE staging blocks
+rather than twenty-four. Twelve drained frames rotate the ring with zero stalls, and sixty-four UNDRAINED
+frames stall twenty-two times for 0.3 ms in total, which is what says the gate blocks and the counter counts
+something rather than reading zero because it was never wired. Everything the ring and the arena DECIDE is
+device-free and runs on every leg, including the one claim no golden could ever see: that a ring-backed write
+opens no encoder, emits no copy and takes no staging block, counted through the same budget seam the encoder
+boundaries are frozen over.
+
 ## 17.34.0
 
 ### The `vulkan-native` CI leg, both validation tiers, and the first validation layer this repo has ever installed (#529)

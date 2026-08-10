@@ -5,17 +5,19 @@ namespace KhaozEngine.Gpu.Metal.Internal
 {
     /// <summary>
     /// <c>KE_METAL_FRAMES_IN_FLIGHT</c>, MM4'S KNOB: the ONE depth this backend pipelines at. Row 7 owns the
-    /// constant (https://github.com/APKiwiOrg/KhaozEngine/issues/573) and row 8's uniform ring READS it
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/574).
+    /// constant (https://github.com/APKiwiOrg/KhaozEngine/issues/573) and
+    /// <see cref="MetalRingAllocator"/> and <see cref="MetalStagingArena"/> read it.
     ///
-    /// <para><b>ONE NUMBER, ONE INDEX, AND THAT IS THE DIFFERENCE FROM THE VULKAN SIBLING (M-R2).</b> There the
-    /// same number governs two things, a per-list command-pool slot and a per-frame ring segment, and conflating
-    /// them is the mistake available. Here there is no second index at all. An <c>MTLCommandBuffer</c> is
-    /// single-use: the queue owns its memory, hands out a fresh one per <c>Begin</c>, and there is no reset, no
-    /// pool object and no allocator to choose between, so V-R2's command-buffer ring has nothing to hold. The
-    /// depth exists for EXACTLY ONE reason, the uniform ring's segment recycling, and it lives on that ring's
-    /// acquire alone. <c>BackpressureStallCount</c> therefore means one thing on this backend where it means two
-    /// on Vulkan.</para>
+    /// <para><b>ONE NUMBER, ONE WAIT, AND THAT IS THE DIFFERENCE FROM THE VULKAN SIBLING (M-R2).</b> There the
+    /// same number governs two things that each BLOCK, a per-list command-pool slot and a per-frame ring segment,
+    /// and conflating them is the mistake available. Here there is no command-buffer pool at all. An
+    /// <c>MTLCommandBuffer</c> is single-use: the queue owns its memory, hands out a fresh one per <c>Begin</c>,
+    /// and there is no reset, no pool object and no allocator to choose between, so V-R2's command-buffer ring
+    /// has nothing to hold. The uniform ring's segment acquire is the ONLY thing on this backend that ever waits
+    /// on the GPU during a recording, so <c>BackpressureStallCount</c> means one thing here where it means two on
+    /// Vulkan. The per-list staging arena is cut to the same depth and rotates on the same index, and it
+    /// deliberately never waits: a slot whose blocks the GPU has not finished with keeps them until a later
+    /// visit, which is what keeps that number single-sourced.</para>
     ///
     /// <para><b>THE FLOOR IS 1 HERE AND 2 ON VULKAN, and that is a derived difference rather than a copied
     /// constant drifting.</b> The Vulkan floor is 2 because at 1 every list would own ONE command pool, so every
@@ -35,10 +37,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// way to keep a failed default.</para>
     ///
     /// <para><b>COST OF RAISING IT</b>, so a field session knows what it is trading. Every uniform buffer in the
-    /// process is allocated at its 256-aligned size times this number (row 8), and the swapchain's
-    /// <c>maximumDrawableCount</c> is set to it (M-W4, row 15), so four is a third more uniform memory and one
-    /// more drawable held. No command buffer anywhere is allocated per frame in flight, which is the whole of
-    /// M-R2.</para>
+    /// process is allocated at its 256-aligned size times this number, each command list's staging arena keeps
+    /// one more slot of pooled blocks, and the swapchain's <c>maximumDrawableCount</c> is set to it (M-W4, row
+    /// 15), so four is a third more uniform memory and one more drawable held. No command buffer anywhere is
+    /// allocated per frame in flight, which is the whole of M-R2.</para>
     ///
     /// <para>Everything here is pure except <see cref="FromEnvironment"/>, so the parse is headless-testable on
     /// any operating system, matching <see cref="MetalValidation"/> and <see cref="MetalDeviceSelection"/>.</para>
@@ -103,26 +105,25 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// counter was measured against rather than resting on the tester believing they set the variable. MM4's
         /// exit criterion is a count taken at a specific depth, so the two belong in one session log.
         /// <para>
-        /// IT SAYS WHAT IS TRUE TODAY AND NAMES THE ROWS THAT WILL MAKE THE REST TRUE. The number's consumers are
-        /// row 8's uniform ring (https://github.com/APKiwiOrg/KhaozEngine/issues/574) and row 15's
-        /// <c>maximumDrawableCount</c> (https://github.com/APKiwiOrg/KhaozEngine/issues/581), and NEITHER exists
-        /// in the package yet, so a line stating segments-per-ring and a drawable count would be describing
-        /// subsystems this backend does not have. That matters more here than anywhere else this row logs: this
-        /// is the line MM4's measurement rests on, and a session log a measurement is read out of cannot be the
-        /// place a claim runs ahead of the code.
+        /// IT SAYS WHAT IS TRUE TODAY AND NAMES THE ROW THAT WILL MAKE THE REST TRUE. The number's consumers are
+        /// the uniform ring's segments and each list's staging arena slots, both LIVE, and row 15's
+        /// <c>maximumDrawableCount</c> (https://github.com/APKiwiOrg/KhaozEngine/issues/581), which is not. That
+        /// split matters more here than anywhere else this row logs: this is the line MM4's measurement rests on,
+        /// and a session log a measurement is read out of cannot be the place a claim runs ahead of the code.
         /// </para>
         /// </summary>
         internal static string ActiveDescription(int framesInFlight)
             => framesInFlight == Default
-                ? $"The native Metal backend resolved {Default} frames in flight, the default. Nothing consumes "
-                    + "that depth yet: it sizes row 8's uniform ring segments and row 15's maximumDrawableCount "
-                    + $"when those rows land, and nothing else ever, because there is no command-buffer pool on "
-                    + $"this backend. Set {EnvVarName}=<n> to change it, which is the MM4 lever."
+                ? $"The native Metal backend resolved {Default} frames in flight, the default. It sizes every "
+                    + "uniform buffer's ring segments and each command list's staging arena slots, and row 15's "
+                    + "maximumDrawableCount when the swapchain lands, and nothing else ever, because there is no "
+                    + $"command-buffer pool on this backend. Set {EnvVarName}=<n> to change it, which is the MM4 "
+                    + "lever."
                 : $"The native Metal backend resolved {framesInFlight} frames in flight (from "
-                    + $"{EnvVarName}={framesInFlight}) rather than the default {Default}. Nothing consumes that "
-                    + "depth yet: it sizes row 8's uniform ring segments and row 15's maximumDrawableCount when "
-                    + "those rows land, so a capture taken now describes the number this run resolved rather than "
-                    + "a ring or a drawable queue that was built at it.";
+                    + $"{EnvVarName}={framesInFlight}) rather than the default {Default}. Every uniform buffer's "
+                    + "ring and every command list's staging arena were built at that depth, so a backpressure "
+                    + $"reading from this run describes {framesInFlight} frames rather than the default. The "
+                    + "drawable queue is not sized yet, which is row 15's.";
 
         /// <summary>
         /// THE UNCOMMITTED-COMMAND-BUFFER BOUND (section 6.1), which is <see cref="Default"/> plus one and is the

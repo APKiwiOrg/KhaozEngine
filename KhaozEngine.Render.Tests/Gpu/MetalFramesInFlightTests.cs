@@ -102,20 +102,22 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// AND IT DESCRIBES WHAT EXISTS. The depth's only consumers are row 8's uniform ring and row 15's
-        /// <c>maximumDrawableCount</c>, and neither is in the package, so a line stating a segment count and a
-        /// drawable count would put a false claim in the one session log MM4's measurement is read out of. Both
-        /// arms name the rows instead, and this pins that mechanically rather than leaving it to a reader.
+        /// AND IT DESCRIBES WHAT EXISTS, WHICH IS THE HALF THAT KEEPS MOVING. Row 7 wrote this line when NOTHING
+        /// consumed the depth and pinned that wording, precisely so a later row could not leave a false claim in
+        /// the one session log MM4's measurement is read out of. The uniform ring and the staging arena are now
+        /// live and the drawable queue is still row 15's, so the line names both halves and this asserts the
+        /// split rather than the sentence.
         /// </summary>
         [Theory]
         [InlineData(MetalFramesInFlight.Default)]
         [InlineData(5)]
-        public void TheActiveLineNamesTheRowsThatWillConsumeTheDepthRatherThanClaimingThemToday(int frames)
+        public void TheActiveLineNamesWhatConsumesTheDepthAndWhatDoesNotYet(int frames)
         {
             string line = MetalFramesInFlight.ActiveDescription(frames);
 
-            Assert.Contains("Nothing consumes that depth yet", line, System.StringComparison.Ordinal);
-            Assert.Contains("row 8", line, System.StringComparison.Ordinal);
+            Assert.DoesNotContain("Nothing consumes that depth", line, System.StringComparison.Ordinal);
+            Assert.Contains("ring", line, System.StringComparison.Ordinal);
+            Assert.Contains("staging arena", line, System.StringComparison.Ordinal);
             Assert.Contains("row 15", line, System.StringComparison.Ordinal);
         }
 

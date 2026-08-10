@@ -8902,13 +8902,13 @@ The engine's knob then logs which tier is really armed, checks that against the 
 when a tier was asked for and this process cannot have it. Neither tier is a synchronisation validator.
 
 **`KE_METAL_FRAMES_IN_FLIGHT=<n>` sets how far ahead of the GPU the CPU may run** (1 to 16, default 3). It
-sizes ONE thing on this backend, the uniform ring's per-frame segments, and through them the swapchain's
-`maximumDrawableCount`. Neither of those is in the package yet (the ring lands with the uniform-ring row,
-https://github.com/APKiwiOrg/KhaozEngine/issues/574, and the drawable queue with the swapchain row,
-https://github.com/APKiwiOrg/KhaozEngine/issues/581), so today the value is resolved, validated and named in
-the session log and sizes nothing. Nothing here is a command-buffer pool either: a Metal command buffer is
-single-use, the queue owns its memory and hands out a fresh one per `Begin`, so this number never multiplies
-command buffers the way the Vulkan variable does.
+sizes the uniform ring's per-frame segments, each command list's staging arena slots, and through the same
+number the swapchain's `maximumDrawableCount`. The first two are live and the third lands with the swapchain
+row (https://github.com/APKiwiOrg/KhaozEngine/issues/581), so raising it today costs a 256-aligned segment per
+uniform buffer per extra frame and nothing else. Nothing here is a command-buffer pool: a Metal command buffer
+is single-use, the queue owns its memory and hands out a fresh one per `Begin`, so this number never
+multiplies command buffers the way the Vulkan variable does, and `GpuDeviceCounters.BackpressureStallCount`
+therefore has exactly one source on this backend where it has two on Vulkan.
 
 ```bash
 KE_METAL_FRAMES_IN_FLIGHT=4   # deeper, if a soak reports backpressure stalls at the default

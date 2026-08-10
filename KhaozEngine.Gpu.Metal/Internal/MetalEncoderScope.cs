@@ -149,9 +149,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// THIS IS THE EXPENSIVE ONE AND IT IS EXPENSIVE OUT OF PROPORTION TO WHAT IT COPIES (2.1). Ending a
         /// render encoder to open this discards the bound pipeline, every argument-table entry, the viewport, the
         /// scissor and every vertex stream, so the next draw pays a full re-activation for a copy of a few bytes.
-        /// That is the whole motivation for row 8's uniform ring
-        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/574), whose record-time write is a memcpy into
-        /// mapped memory and opens nothing at all.
+        /// That is the whole motivation for the uniform ring (<see cref="MetalUniformRing"/>), whose record-time
+        /// write is a memcpy into mapped memory and never reaches this member at all.
         /// </para>
         /// </summary>
         internal IntPtr EnsureBlitEncoder()

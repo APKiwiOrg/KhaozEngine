@@ -1710,6 +1710,21 @@ That combination is vacuous in the engine today and legal on the seam, and both 
 it is a **backend-divergent creation failure** documented as one in the package README rather than discovered
 by a consumer.
 
+**Addendum, at row 8: the frame boundary is `MetalCommandList.Begin`, and this section never said where it
+was.** Everything above describes what happens when a segment is acquired and nothing says who acquires it. On
+both siblings the answer is `Present`, and copying that by analogy would have been wrong here for a reason
+neither of them has. Each of those backends carries a SECOND per-frame index that advances at the list's own
+`Begin` (a map scope on Direct3D 11, a command-pool slot on Vulkan), so the ring's index can hang off the
+present and the recording path still has its own rotation. M-R2 removes that second index entirely: an
+`MTLCommandBuffer` is single-use, the queue owns its memory, and the depth exists for the ring and nothing
+else. Hanging the acquire off the present would therefore leave it UNREACHED on the headless path, where the 36
+goldens and every `[GpuFact]` run and where nothing ever presents. The ring would never rotate, every frame
+would write segment 0, and the completion gate this section is about would be dead code on the only path CI can
+drive. So `Begin` closes the outgoing segment, advances, and waits, which also makes it the only call in a
+recording that can block and makes `BackpressureStallCount` single-sourced by construction rather than by
+convention. **The consequence for M-W6 is that row 15 adds NO second call at the present boundary**, and a
+windowed frame reaches the acquire through `Begin` exactly as a headless one does.
+
 ### 9.3 Bulk uploads, textures and views (M-M8 to M-M10)
 
 Record-time `UpdateBuffer` on a NON-uniform buffer, and record-time `UpdateTexture`, write into a per-list
@@ -1768,6 +1783,40 @@ opposite. Second, `copyFromBuffer:...toTexture:destinationSlice:destinationLevel
 ABI shape row 1's spike does not cover: eleven arguments against eight argument registers, so three cross on
 the stack. Every argument CLASS in it is measured and only the spill is new. Row 14's copies use the same
 family and inherit both answers.
+
+**Addendum, at row 8: what "recycled at slot retirement" turned out to mean, and the two things the sentence
+hid.** M-M8 says the arena is recycled at slot retirement and this section says "when the list's timeline value
+is reached", and the two are the same statement only once you know there is no slot retirement to hang it on.
+The Vulkan sibling gets its boundary FREE: its list owns a command-pool ring, `Begin` already waits for the
+slot it advances onto, so the blocks that slot filled last time round are provably finished with and the arena
+inherits a proof it did not have to build. M-R2 leaves this backend with no pool and no per-list wait at all,
+so the arena carries the proof itself: each slot remembers the timeline value the list's submission took while
+that slot was open, and a slot's blocks come back only once the device's completion counter has passed it. That
+is why `MarkSubmitted` grew a value argument. Two properties fall out and both are deliberate. The gate is PER
+LIST, so two lists recording concurrently (M-R3) never gate on each other and a list that recorded uploads and
+was never submitted keeps its blocks rather than recycling memory nothing proved finished. And the arena NEVER
+WAITS: a slot whose value has not been reached simply keeps its blocks and gets them back at a later visit,
+because an arena that could block would put a second source into the stall count M-R2 just made
+single-sourced.
+
+**And one correction to the shape ported from that sibling, found by a test rather than by reading.** The
+Vulkan arena folds the copy alignment into its block requirement (`sizeBytes + alignment - 1`) before choosing a
+size class, which is correct and costs a WHOLE SIZE CLASS on every power-of-two request: a 256 KiB upload takes
+a 512 KiB block. Here the lease size is a PRECONDITION at a multiple of four instead, satisfied by the one
+caller, and the slack disappears: every lease starts at an aligned offset and advances the bump by an aligned
+amount, so by induction from zero every offset in a block is aligned and no block ever needs padding room. The
+same tightening is available to the Vulkan arena and is not taken here, because a change to a shipped backend
+does not belong in this phase's rows.
+
+**#589 is NOT closed by this row, and the reason is worth stating so the next reader does not re-derive it.**
+That issue tracks the DEVICE-LEVEL setup batch allocating a staging `MTLBuffer` per upload, and M-M9 explicitly
+does not ask to change it. The arena this row builds cannot simply be pointed at that path: its whole recycling
+proof is a timeline value, and a setup batch encodes no timeline signal at all (which is the same fact that
+makes `WaitForIdle` two drains, 10.1). Giving the setup path a pooled arena means giving it a completion
+question of its own, most cheaply by polling each committed batch's `-status` through `IMetalSetupNative` and
+recycling the blocks of those that have completed. That is a real design decision with its own device-free test
+surface, and it belongs to whoever takes #589 rather than being smuggled into this row. Row 6's 64 MB staging
+budget bounds the RESIDENCY of that path already and is explicitly not the arena.
 
 ### 9.4 The ring policy inventory, third column
 

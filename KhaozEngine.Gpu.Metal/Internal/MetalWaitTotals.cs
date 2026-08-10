@@ -5,8 +5,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
 {
     /// <summary>
     /// A COUNT AND A DURATION ACCUMULATED SINCE THE DEVICE WAS CREATED, which is the shape the soak gates report
-    /// in. <see cref="MetalTimeline.TotalDrain"/> accumulates M-F5's drains into one, and row 8's ring segment
-    /// stalls will accumulate into another (https://github.com/APKiwiOrg/KhaozEngine/issues/574).
+    /// in. <see cref="MetalTimeline.TotalDrain"/> accumulates M-F5's drains into one, and
+    /// <see cref="MetalBackpressure"/> accumulates the uniform ring's segment stalls into another. They are
+    /// deliberately two accumulators rather than one: a drain is a caller asking the CPU to stop until the GPU
+    /// catches up, and a segment stall is nobody asking, which is the reading MM4's exit criterion is a zero of.
     /// <para>
     /// CUMULATIVE RATHER THAN PER FRAME. A telemetry session writes a sample row on its own cadence, so a
     /// per-frame value read a few times a second reports the frames it happened to land on and says nothing

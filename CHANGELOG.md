@@ -834,13 +834,17 @@ incidents row 9's entry lists. Section 2.2b rules the arithmetic is written once
 `MetalShaderIndexTableTests`, and never on a shipped path. What declaration order is still for is that an
 element's POSITION is its binding number, which is the key the table is read through.
 
-**The one refusal a layout adds is narrower than the Vulkan sibling's, deliberately.** A per-draw dynamic offset
-on a texture or a sampler element is refused at creation, because on Metal the offset is applied with
+**The one refusal a layout adds is the seam's own width, which no other backend implements.** A per-draw dynamic
+offset on a texture or a sampler element is refused at creation, because on Metal the offset is applied with
 `-setVertexBufferOffset:atIndex:` or its stage sibling, which exists only in the `[[buffer(n)]]` space, so
-declaring one anywhere else would be silently dropped at every bind. `VulkanDescriptorPolicy` refuses a dynamic
-element that is not a UNIFORM buffer, because a storage descriptor there has no dynamic offset at all. Metal's
-`setBufferOffset:` works at any buffer index whatever the kind, so a dynamic structured buffer is expressible
-here and reproducing the wider refusal would be inheriting a constraint that is not this API's.
+declaring one anywhere else would be silently dropped at every bind. On any BUFFER kind it is accepted, which is
+what `GpuResourceLayoutElement.Dynamic` documents ("a dynamic-offset uniform/structured buffer"), and Metal's
+`setBufferOffset:` works at any buffer index whatever the kind. Both siblings are narrower than that contract:
+`VulkanDescriptorPolicy` refuses a dynamic element that is not a UNIFORM buffer, because a storage descriptor
+there has no dynamic offset at all, and `D3D11ResourceLayout` refuses the same combination, because a structured
+buffer binds through a view created once over the whole buffer with no per-bind window. So a consumer using a
+dynamic structured element is `MetalNative`-only today, and reconciling the seam's documented width with the two
+refusals is [#597](https://github.com/APKiwiOrg/KhaozEngine/issues/597).
 
 **A set resolves everything at creation and nothing at a bind**, because a set is created once at load time
 across 68 shipped call sites and bound thousands of times a frame. Each binding comes out as the argument table

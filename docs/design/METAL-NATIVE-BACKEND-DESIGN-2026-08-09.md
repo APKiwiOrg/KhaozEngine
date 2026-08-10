@@ -1582,16 +1582,32 @@ holds the table its shader set carries and the handle compare is sound with no p
 The alternative, deduplicating at pipeline creation, is unavailable rather than merely worse: two shader sets
 would already have handed out two instances of one content before any pipeline existed.
 
-**Addendum, row 10, on the two seam types: neither touches Metal, and the layout's one refusal is NARROWER than
-the Vulkan sibling's.** `MetalResourceLayout` is a copied element array (M-B6 leaves nothing to create, since
-Metal has no layout object) and `MetalResourceSet` is the declared elements resolved once into
-`MetalBoundResource` records, which carry the space, the raw Objective-C object an array setter writes, the ring,
-the window and whether the caller's per-draw offset applies. The refusal worth recording is that a per-draw
-dynamic offset is refused on a texture or a sampler element and ACCEPTED on any buffer kind.
-`VulkanDescriptorPolicy` refuses a dynamic element that is not a UNIFORM buffer, because a storage descriptor
-there has no dynamic offset at all, and reproducing that here would be inheriting a constraint that is not this
-API's: `setBufferOffset:` works at any buffer index whatever the kind. What the two share is the direction, which
-is that the offset has to have somewhere to go.
+**Addendum, row 10, on the two seam types: neither touches Metal, and the layout's one refusal is the only one of
+three backends that matches the seam's stated width.** `MetalResourceLayout` is a copied element array (M-B6
+leaves nothing to create, since Metal has no layout object) and `MetalResourceSet` is the declared elements
+resolved once into `MetalBoundResource` records, which carry the space, the resolved wrapper whose Objective-C
+object an array setter writes, the window and whether the caller's per-draw offset applies. The refusal worth
+recording is that a per-draw dynamic offset is refused on a texture or a sampler element and ACCEPTED on any
+buffer kind.
+
+**And the framing that first went in here was wrong.** It read as "narrower than the Vulkan sibling's", which
+says one backend is being generous. `GpuResourceLayoutElement.Dynamic` documents a dynamic-offset
+"uniform/structured buffer", so the seam's contract includes both structured kinds, and Metal is the backend
+that IMPLEMENTS that contract: `setBufferOffset:` works at any buffer index whatever the kind. Both siblings are
+narrower than the contract, for reasons that are real on their own APIs. `VulkanDescriptorPolicy` refuses a
+dynamic element that is not a UNIFORM buffer, because a storage descriptor there has no dynamic offset at all.
+`D3D11ResourceLayout` refuses the same combination, because a structured buffer binds through a view created
+once over the whole buffer and neither `*SetShaderResources` nor `*SetUnorderedAccessViews` has a per-bind
+window. So a consumer declaring a dynamic structured element is Metal-only today, and the seam says otherwise:
+resolving that, by narrowing the seam doc or widening the siblings, is
+https://github.com/APKiwiOrg/KhaozEngine/issues/597. What all three share is the direction, which is that the
+offset has to have somewhere to go.
+
+**One more thing the first draft of this addendum got wrong, corrected at the review:** the bound record does
+not carry the raw handle and the ring as snapshots. It holds the WRAPPER and reads both through the wrapper's
+own disposal guard at the bind, because those two are exactly the values whose job is to change on disposal.
+Snapshotting them put `MetalBuffer.Ring`'s null-after-dispose out of the bind's reach, which is a silent write
+through a released `contents()` pointer rather than a loud failure.
 
 **One M-M4 detail the design's wording invites getting wrong.** The set asserts
 `MetalRingStride.RequireBindWindowFits` at creation with a caller offset of 0, and that assertion CANNOT FIRE

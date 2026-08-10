@@ -164,10 +164,17 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 nameof(element));
         }
 
-        // NARROWER THAN THE VULKAN SIBLING'S REFUSAL, deliberately. VulkanDescriptorPolicy refuses a dynamic
-        // element that is not a UNIFORM buffer, because a storage descriptor there has no dynamic offset at all.
-        // Metal's setBufferOffset: works at any buffer index whatever the kind, so a dynamic structured buffer is
-        // expressible here and is not refused.
+        // THIS IS THE BACKEND THAT MATCHES THE SEAM, AND BOTH SIBLINGS ARE NARROWER THAN THE CONTRACT.
+        // GpuResourceLayoutElement.Dynamic documents a dynamic-offset "uniform/structured buffer", and Metal's
+        // setBufferOffset: works at any buffer index whatever the kind, so every kind the seam names is honoured
+        // here. VulkanDescriptorPolicy refuses a dynamic element that is not a UNIFORM buffer, because a storage
+        // descriptor there has no dynamic offset at all, and D3D11ResourceLayout refuses the same combination,
+        // because a structured buffer binds through a view created once over the whole buffer and neither
+        // *SetShaderResources nor *SetUnorderedAccessViews has a per-bind window. So the divergence is not "Metal
+        // is wider than Vulkan": it is that the seam's documented width is implemented on ONE of three backends,
+        // and a consumer using a dynamic structured element is Metal-only today. Resolving that, by narrowing the
+        // seam doc or widening the siblings, is
+        // https://github.com/APKiwiOrg/KhaozEngine/issues/597.
 
         static string Describe(in GpuResourceLayoutElement element)
             => string.IsNullOrEmpty(element.Name) ? "<unnamed>" : element.Name;

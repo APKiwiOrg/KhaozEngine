@@ -8884,7 +8884,12 @@ MSL-to-library compile across processes.
 others take: `GpuResourceLayoutElement`'s `dynamic: true` on a texture or a sampler element. The per-draw offset
 is applied with Metal's `setBufferOffset:`, which exists only for buffers, so a dynamic offset declared anywhere
 else would be silently dropped at every bind and is refused at layout creation instead. On a buffer element of
-any kind it is accepted, including both structured kinds, which is wider than the native Vulkan backend allows.
+any kind it is accepted, including both structured kinds, which is the width
+`GpuResourceLayoutElement.Dynamic` documents ("a dynamic-offset uniform/structured buffer"). Both native
+siblings are NARROWER than that: the native Vulkan and Direct3D 11 backends refuse a dynamic structured element
+at layout creation, each for a reason that is real on its own API. So a dynamic structured element works on
+`MetalNative` alone today, and reconciling the seam's documented width with those two refusals is
+[#597](https://github.com/APKiwiOrg/KhaozEngine/issues/597): treat it as Metal-only until that lands.
 A set is resolved once when you create it, so a resource you dispose while a set still names it is a mistake with
 no later point at which it could come right, and a staging texture cannot be bound at all: it is a mappable
 buffer on this backend rather than a texture.

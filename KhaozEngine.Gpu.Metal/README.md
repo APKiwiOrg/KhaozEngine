@@ -313,8 +313,9 @@ depends on. What freezes those is the exact `Veldrid.SPIRV` version the engine p
 deliberate package bump and lands as a red device-free test rather than as a wrong frame.
 
 **There is no compiled-shader disk cache, deliberately.** macOS already caches the MSL-to-library compile across
-processes (0.02 ms for a source it has seen before, against 68 to 98 ms cold), and no public API can serialize a
-source-compiled `MTLLibrary` anyway. The cost worth caching is the engine's own GLSL-to-MSL half, which is
+processes (0.02 ms for a source it has seen before, against 68 to 98 ms cold, both taken with the compiler
+service warmed first so neither number is startup cost), and no public API can serialize a source-compiled
+`MTLLibrary` anyway. The cost worth caching is the engine's own GLSL-to-MSL half, which is
 tracked as [#592](https://github.com/APKiwiOrg/KhaozEngine/issues/592).
 
 ## Three decisions worth knowing before reading the code

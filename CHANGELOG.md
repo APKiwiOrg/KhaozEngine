@@ -660,7 +660,8 @@ serializes an executable-type `MTLLibrary` compiled from source: the selectors t
 concrete class and in no SDK header, and the public `MTLDynamicLibrary` route produces a library whose functions
 are unqualified, so asking the reloaded library for one aborts the process on a `validateMTLFunctionType`
 assertion. It would also buy nothing, because macOS already caches the MSL-to-library compile across processes
-at 0.02 ms against 68 to 98 ms for a genuinely novel source. What the OS does not cache is the engine's own
+at 0.02 ms against 68 to 98 ms for a genuinely novel source, both measured with the compiler service warmed
+first so neither number is carrying startup cost. What the OS does not cache is the engine's own
 half, measured at 4,168 ms for the whole corpus, so the cache worth having caches the EMISSION and its table,
 filed as [#592](https://github.com/APKiwiOrg/KhaozEngine/issues/592). Section 12.5 of the design carries the
 whole measurement in place, and `MTLLibrary`'s header carries the refusal so the next reader who finds

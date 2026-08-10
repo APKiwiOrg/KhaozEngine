@@ -98,12 +98,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
         [SupportedOSPlatform("macos")]
         internal static partial void MsgSendVoidPtrULong(IntPtr receiver, IntPtr sel, IntPtr a, ulong b);
 
-        // -waitUntilSignaledValue:timeoutMS:, a uint64_t plus a uint32_t returning BOOL. BOOL is ONE BYTE on
-        // arm64, which is why this returns byte rather than bool: a bool return would also generate a
-        // marshalling stub, which SYSLIB1054 rejects under this repo's rules.
+        // -waitUntilSignaledValue:timeoutMS:, TWO uint64_t returning BOOL. BOTH arguments are 64-bit: the SDK
+        // declares the method as (uint64_t value, uint64_t milliseconds), and a uint32_t prototype for the
+        // second would be the exact class of mistake the overload set exists to prevent, since arguments are
+        // placed by the caller according to the CALLEE's declared types. BOOL is ONE BYTE on arm64, which is
+        // why this returns byte rather than bool: a bool return would also generate a marshalling stub, which
+        // SYSLIB1054 rejects under this repo's rules.
         [LibraryImport(Objc, EntryPoint = "objc_msgSend")]
         [SupportedOSPlatform("macos")]
-        internal static partial byte MsgSendBoolULongUInt(IntPtr receiver, IntPtr sel, ulong a, uint b);
+        internal static partial byte MsgSendBoolULongULong(IntPtr receiver, IntPtr sel, ulong a, ulong b);
 
         // -status on MTLCommandBuffer and -code on NSError, both NSInteger (M-G4).
         [LibraryImport(Objc, EntryPoint = "objc_msgSend")]

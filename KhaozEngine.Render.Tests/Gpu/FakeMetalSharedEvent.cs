@@ -39,7 +39,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>The timeout the last wait passed, which is what pins the sliced drain to
         /// <see cref="MetalTimeline.DrainSliceMs"/> rather than to some number a caller invented.</summary>
-        internal uint? LastWaitTimeoutMs { get; private set; }
+        internal ulong? LastWaitTimeoutMs { get; private set; }
 
         /// <summary>What <see cref="WaitUntil"/> returns. False models a slice that expired without the counter
         /// arriving, which on the real event is a timeout and nothing else.</summary>
@@ -77,7 +77,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <inheritdoc/>
-        public bool WaitUntil(ulong value, uint timeoutMs)
+        public bool WaitUntil(ulong value, ulong timeoutMs)
         {
             WaitCount++;
             LastWaitValue = value;

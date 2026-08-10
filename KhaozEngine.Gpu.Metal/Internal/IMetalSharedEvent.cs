@@ -51,9 +51,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </para>
         /// </summary>
         /// <param name="value">The timeline value to wait for.</param>
-        /// <param name="timeoutMs">How long to block before giving up on this attempt.</param>
+        /// <param name="timeoutMs">How long to block before giving up on this attempt. A <c>ulong</c> because
+        /// the SDK's second parameter is a <c>uint64_t</c>, and row 4 absorbs this seam as declared.</param>
         /// <returns>True when the counter reached the value. False when the wait timed out.</returns>
-        bool WaitUntil(ulong value, uint timeoutMs);
+        bool WaitUntil(ulong value, ulong timeoutMs);
 
         /// <summary>
         /// Encode a signal of <paramref name="value"/> on this event into

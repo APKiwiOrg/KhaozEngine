@@ -61,7 +61,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <see cref="WaitForIdle"/> re-checks device liveness and goes round again. See that member for why the
         /// drain is sliced at all rather than passing a timeout nobody expects to reach.
         /// </summary>
-        internal const uint DrainSliceMs = 250;
+        internal const ulong DrainSliceMs = 250;
 
         /// <summary>
         /// PARITY, NOT AN UPGRADE, and that is worth stating where a reader will look for it (M-F4).

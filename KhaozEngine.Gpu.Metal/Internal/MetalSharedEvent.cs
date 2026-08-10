@@ -79,8 +79,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         /// <inheritdoc/>
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public bool WaitUntil(ulong value, uint timeoutMs)
-            => MetalTimelineNative.MsgSendBoolULongUInt(_handle, _waitUntilSignaledValue, value, timeoutMs) != 0;
+        public bool WaitUntil(ulong value, ulong timeoutMs)
+            => MetalTimelineNative.MsgSendBoolULongULong(_handle, _waitUntilSignaledValue, value, timeoutMs) != 0;
 
         /// <inheritdoc/>
         [MethodImpl(MethodImplOptions.NoInlining)]

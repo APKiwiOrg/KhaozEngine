@@ -61,8 +61,9 @@ device and its queue, the provider, the machine probe and its device-free decisi
 timeline and the fence on it, the command list with its encoder lifecycle and the submit path, the shader path
 with its emission parse and binding table, the resource layouts and sets a pipeline binds through, the two
 pipeline types and the vertex-stream numbering behind them, the framebuffer and the pass schedule behind it,
-the bind records and the argument batch that flushes them, plus the three verification spikes, which exist to
-answer a question rather than to run in a game.
+the bind records and the argument batch that flushes them, the draw and dispatch path with the
+pipeline-state block and the index binding behind it, the transfer family and its copy arithmetic, plus the
+three verification spikes, which exist to answer a question rather than to run in a game.
 
 **Call `Register()` unconditionally and on every operating system.** Registering says a provider EXISTS, which
 is a fact about your app's wiring. Whether this machine can run it is the separate question
@@ -645,6 +646,56 @@ rectangle the caller set. The scissor is additionally gated on the bound pipelin
 has no scissor-test enable and its rectangle is always live, so the gate is this backend honouring the seam's
 own rasterizer state, which is what keeps it agreeing with Direct3D 11. A rectangle gated out by one pipeline
 stays owed to the next one that wants it.
+
+## Draws, dispatches and transfers: the backend renders
+
+`Draw`, `DrawIndexed`, `Dispatch`, `SetVertexBuffer`, `SetIndexBuffer`, `CopyBuffer`, `CopyTexture`,
+`CopyTextureSubresource`, `GenerateMipmaps` and `ResolveTexture` are live, which completes the minimal
+renderable path: a recording binds a framebuffer, clears it, binds a pipeline, binds resource sets and
+geometry, and draws.
+
+**The order inside a draw is four steps and it is written once.** The pass opens (the deferred begin, which
+folds the pending clears into load actions and emits the viewport and the scissor if either is owed), then the
+pipeline-state block, then the resource-set flush and the vertex-stream flush, then the command. It lives in
+one private helper because five entry points repeating it would be five places for a step to go missing, and a
+missing step renders plausibly wrong rather than throwing.
+
+**The index buffer is the one binding an encoder boundary does not discard.** Metal takes it, its byte offset
+and its element width in the draw call ITSELF rather than binding any of them beforehand, so it never reaches
+an argument table. Everything else a draw needs (the argument tables, the vertex streams, the pipeline-state
+block, the viewport, the scissor) is encoder state and is re-issued after any boundary. The topology is a draw
+ARGUMENT here too, where Direct3D 11 sets it on the input assembler and Vulkan bakes it into the pipeline, so
+the pipeline resolves it once at creation and nothing is mapped per draw.
+
+**Two dependent dispatches inside one recording are ordered, and that is a BACKEND PROPERTY rather than a
+contract.** The compute encoder is opened with the SERIAL dispatch type, so dispatches inside it do not overlap
+and a read-after-write between them needs no barrier, which is why this backend carries no barrier batch, no
+layout tracker and no dependency analysis at all. **The GPU seam's compute rule 2 is unchanged**: chaining
+dependent dispatches still needs `End`, `Submit` and `WaitForIdle` in portable code, because the other backends
+need the drain and code that drops it because THIS one tolerates the chain breaks on them.
+
+**`ResolveTexture` DESTROYS the source texture's contents, and that is deliberate.** The resolve is a
+standalone render pass whose one colour attachment is the multisampled source at `loadAction = Load` and
+`storeAction = MultisampleResolve`, with the destination as its resolve texture. Metal's resolve store action
+does not also store the multisampled attachment, so the source is undefined afterwards. This diverges from
+Direct3D 11's `ResolveSubresource` and Vulkan's `vkCmdResolveImage`, which both leave the source alone, and it
+is reproduced from the Veldrid Metal backend rather than fixed: the engine re-clears its MSAA render targets at
+the start of the next frame's pass, discarding is the bandwidth-correct answer on Apple's tile-based
+architecture, and the committed `metal` goldens were baked under it. **If you need the source preserved, copy it
+before resolving.** A consumer relying on the source surviving a resolve is relying on behaviour this backend
+does not have.
+
+**`CopyBuffer` requires both offsets to be multiples of four, and refuses by name when they are not.** macOS
+requires that of the underlying copy. The SIZE is padded up for you, which lands inside the destination's own
+allocation by construction. An unaligned OFFSET throws rather than being routed through an embedded compute
+shader the way the Veldrid backend does, because no shipped call site in the engine produces one and a
+device-free test over every call site is what keeps that true. Align the offset, or use the device-level
+`UpdateBuffer`, which is a plain copy with no blit behind it.
+
+**Mip generation is one call.** `-generateMipmapsForTexture:` fills the whole chain, so unlike the Vulkan
+backend there is no per-level blit, no per-level barrier and no filter to choose. The texture needs more than
+one mip level and must not be a staging texture, which on this backend is an `MTLBuffer` with a software
+subresource layout and has no texture to generate from.
 
 ## Three decisions worth knowing before reading the code
 

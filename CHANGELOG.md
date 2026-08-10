@@ -1196,6 +1196,114 @@ builds from its function, and a descriptor missing an attribute the vertex funct
 Metal's own message (`Vertex attribute m_17(2) is missing from the vertex descriptor`). Every decision in front
 of those calls is device-free and runs on all five legs.
 
+### Native Metal draws, dispatches and transfers: the backend renders (#580)
+
+`IGpuCommandList.Draw`, `DrawIndexed`, `Dispatch`, `SetVertexBuffer`, `SetIndexBuffer`, `CopyBuffer`,
+`CopyTexture`, both `CopyTextureSubresource` overloads, `GenerateMipmaps` and `ResolveTexture` are live on
+`GpuBackendKind.MetalNative`. Row 14 of
+[docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md),
+and the row that completes the minimal renderable path: a recording can now bind a framebuffer, clear it, bind
+a pipeline, bind resource sets and geometry, and draw. `MetalCommandList.Unbuilt.cs` is deleted, because there
+is nothing left on it.
+
+**The order inside a draw is four steps and it is written once.** The deferred begin
+(`MetalRenderPassSchedule.PrepareDraw`, which opens the pass, folds the pending clears into load actions and
+emits the viewport and the scissor if either is owed), then the pipeline-state block, then row 13's resource-set
+flush and vertex-stream flush, then the command. Five entry points each repeating that sequence would be five
+places for a step to go missing, and a missing step renders plausibly wrong rather than throwing, so it lives in
+one private helper. A nil encoder returns before any of it (M-W5's orphan target): a message to nil is a silent
+no-op in Objective-C, so a bind flush into one would go nowhere while every record was marked clean, and a later
+frame would render against argument tables nothing ever wrote.
+
+**The pipeline-state block is EMITTED here and DECIDED by row 11, which is a correction section 6.3 now carries
+in place.** Row 11's cell named the depth-stencil state and its guard, and row 12's interop header predicted row
+11 would add the setters. It could not: the block goes into a render encoder, and under M-A1's deferred begin no
+encoder exists at the moment `SetPipeline` is called. The guard makes the same point from the other side, since
+it asks about the BOUND FRAMEBUFFER rather than the pipeline. So the eight selectors land with their caller, and
+the block itself is a value (`MetalGraphicsStateBlock`) so the depth-trio guard is a device-free assertion rather
+than a branch inside a native call the debug layer is the only witness to.
+
+**That guard is the framebuffer's and only the framebuffer's, which is the incumbent's own condition and not the
+one a reader expects.** A colour-only pipeline drawing into a framebuffer that HAS depth is sent
+`-setDepthStencilState:` with the nil state object row 11 creates for it, which Metal reads as its own default.
+Reproducing that is not cosmetic: the 36 committed `metal` goldens were baked through it, and a backend that
+skipped the call for a nil state would leave the previous pipeline's depth test in force.
+
+**`drawIndexedPrimitives:` is the one new ABI shape, and it is answered by VALUE rather than by acceptance.** Ten
+arguments counting the receiver and the selector, against arm64's eight general-purpose argument registers, so
+`baseVertex` and `baseInstance` cross on the stack. Row 1's spike did not measure that shape, and unlike row 6's
+eleven-argument copy a misplaced argument here is a draw that reads the wrong vertices and completes with a nil
+error rather than a region the driver refuses. So `MetalDrawPathGpuTests` issues one indexed draw whose index
+offset, base vertex and base instance each select a different piece of the same two buffers, with the vertex
+buffer sized so that even the wrong index range lands on a real vertex group: dropping the offset paints white,
+dropping the base vertex paints magenta, dropping the base instance paints green, and only all three landing
+correctly paints cyan. Every failure mode is a defined value, which is what makes it a measurement.
+
+**The index buffer is the one record an encoder boundary does not invalidate.** Metal takes it, its offset and
+its element width in the draw call itself rather than binding any of them beforehand, so it never reaches an
+argument table and there is nothing on the encoder for M-R4 to discard. `MetalIndexBinding` is therefore
+recorder state with no epoch stamp, cleared only by a `Begin`, and it carries the one piece of arithmetic an
+indexed draw does: an element index becomes a byte offset, widened before it multiplies.
+
+**The serial dispatch type is what makes rule 2 hold, and it now has a test that depends on it.** The compute
+encoder is opened with `MTLDispatchType.Serial` (M-H4), so two dispatches inside one encoder do not overlap and a
+read-after-write between them is ordered by the encoder rather than by machinery this backend does not have: no
+barrier batch, no layout tracker, no dependency analysis. Section 18 notes that the vendored fork never chains
+dependent dispatches, so the decision was not grounded in its own usage. It is now: a `[GpuFact]` chains two
+dependent dispatches in one recording with no drain between them and reads the doubled bytes back. The seam's
+compute rule 2 is unchanged, because the other legs need the drain and a consumer that dropped it because this
+backend tolerates the chain would break on them.
+
+**The resolve is the incumbent's standalone encoder, reproduced with its own documented divergence.**
+`ResolveTexture` builds a descriptor whose one colour attachment is the MSAA source at `loadAction = Load` and
+`storeAction = MultisampleResolve` with the destination as its resolve texture, opens the encoder and ends it
+immediately. That destroys the source's contents, which the incumbent's own TODO says and which diverges from
+what `ResolveSubresource` and `vkCmdResolveImage` do. It is reproduced anyway (M-C4): the engine re-clears its
+MSAA sources at the start of the next frame's pass, discarding is the bandwidth-correct answer on this
+architecture, and it is what `scene3d_hdr_msaa` was baked under. The divergence is in the package README.
+Folding the resolve into the producing pass's store action is the Metal-native answer and is deferred with a
+stated blocker (#596). `MTLRenderPassDescriptor`'s own header said "No `resolveTexture`: M-A4 keeps the
+standalone resolve encoder", which reverses the implication and is corrected in place: the standalone encoder IS
+a render pass and its descriptor is the one place a resolve texture is named.
+
+**`CopyBuffer`'s alignment ruling now has one home.** macOS requires both offsets and the size of
+`copyFromBuffer:sourceOffset:toBuffer:destinationOffset:size:` to be multiples of four. Section 9.3 pads the size
+and throws by name on an offset, and row 8 wrote that rule for the record-time bulk `UpdateBuffer`. Two more seam
+members need it now, so it moved to `MetalCopyAlignment` rather than being spelled a second time, with the
+arithmetic proof that the pad lands inside both allocations written on it. The incumbent's unaligned path (an
+embedded compute shader driven by a dedicated compute pipeline) is still declined, and a device-free test over
+every `CopyBuffer` call site in the engine is what says nothing legitimate reaches the throw.
+
+**Mip generation is where Metal is SHORTER than both siblings.** `-generateMipmapsForTexture:` does the whole
+chain in one call, where Vulkan needs a loop of `vkCmdBlitImage` with a layout transition and a filter choice per
+level. So there is no per-level barrier to get wrong and no filter to pick: what is left is the guard, and the
+guard is real, since a staging texture is an `MTLBuffer` with a software subresource layout and has no texture to
+generate from.
+
+**A third uncounted emission seam, one per encoder kind.** `IMetalRenderApi` carries what a render encoder is
+sent outside M-T2's counted classes and `IMetalBlitApi` what a blit encoder is sent, so the compute encoder's
+`-setComputePipelineState:` gets `IMetalComputeApi` rather than a member on a neighbour whose every other member
+names a different protocol. The blit seam widens from one member to five, which is the same line drawn further
+rather than a different line: a texture copy's arithmetic is the highest-risk parity surface in the backend,
+since a wrong pitch garbles every golden readback at once with no error anywhere, and behind that interface all
+of it runs under a plain `[Fact]` on a machine with no Metal at all.
+
+**The counted seam gains one Objective-C enum, and the rule it bends is narrower than it read.**
+`IMetalEncoderSink`'s header said nothing on it names an Objective-C type, which the draws cannot honour: the
+topology is an argument to `-drawPrimitives:` on this API, where Direct3D 11 sets it on the input assembler and
+Vulkan bakes it into the pipeline. A five-member enum has no total plain-value spelling the way a two-member
+index width has, which is why row 13's `sixteenBitIndices` is a `bool` and this is not, and declaring a duplicate
+backend enum to shadow `MTLPrimitiveType` would be a second thing to keep in step for no gain. The rule's own
+reason survives: an enum is a plain number, a fake names it on Linux with no Metal loaded, and nothing on the
+seam is an `MTLBuffer`.
+
+**The unbuilt ledger closed with a discriminating test rather than a re-pointed probe.** The old row asserted
+that `MetalCommandList.Draw` threw a `NotSupportedException` naming row 14, and it walked from `SetFramebuffer`
+to `SetPipeline` to `Draw` as each row filled its members. With nothing left to point it at, the question changes
+from "does the last unbuilt member name its row" to "is anything unbuilt", and answering the second needs every
+member called: a test that walked one member forward would pass forever the day someone put a stub back on a
+different one.
+
 ## 17.34.0
 
 ### The `vulkan-native` CI leg, both validation tiers, and the first validation layer this repo has ever installed (#529)

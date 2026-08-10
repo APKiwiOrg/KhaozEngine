@@ -1376,6 +1376,21 @@ block makes, in a form a device-free test reads (`MetalPipelineState` carries th
 the eight selectors land with their caller. A prototype added a row early is an Objective-C declaration nobody
 has ever executed, which is the rule that file's own header states.
 
+**And at row 14, the same correction applies to the COMPUTE block, which row 11's cell also implied it owned.**
+`-setComputePipelineState:` goes into a COMPUTE encoder, and under M-A1's deferred begin there is no encoder at
+the moment `SetComputePipeline` is called either, so it lands with the dispatch. It is one call rather than the
+render block's five to eight, because a compute pipeline has no rasterizer state, no blend colour and no
+depth-stencil state to go with it, and `MetalPipelineBinding` already carried its stamp pair from row 11.
+
+**Row 14 also settled WHERE the guard's condition is read, and made the block a VALUE so it can be read without a
+device.** `MetalGraphicsStateBlock.For(pipeline, framebufferHasDepth)` resolves the whole block, and the guard is
+the framebuffer's ALONE, which is the incumbent's own condition and not the one a reader expects: a colour-only
+pipeline drawing into a framebuffer that HAS depth is sent `-setDepthStencilState:` with the nil state object row
+11 creates for it, which Metal reads as its own default. Reproducing that matters because the 36 committed
+goldens were baked through it, and a backend that skipped the call for a nil state would leave the previous
+pipeline's depth test in force. With the block a value, both directions of the guard are a plain `[Fact]` rather
+than something `MTL_DEBUG_LAYER` is the only witness to.
+
 **Vertex streams get a cache that is actually maintained.** `SetVertexBuffer(slot, buffer, offset)` marks the
 stream dirty when the buffer or the offset differs, and the flush issues one `setVertexBuffer` per dirty
 stream, invalidated wholesale by M-R4. The incumbent pays one per stream per draw unconditionally (2.1), so the
@@ -1441,6 +1456,26 @@ avoid. It does mean every sink implementation must be a readonly struct whose mu
 reference, which is already the emitter rule both siblings enforce, and which is load-bearing here for a reason
 they do not have: a sink with a mutable field would count boundaries into the boxed copy and draws into the
 by-ref one.
+
+**Corrected at row 14: HOW the by-ref one is obtained, which this section leaves open and which has exactly one
+answer under its own two rules.** The list holds the sink boxed and may not be generic over it, so each command
+type-tests the field back to the shipped `MetalEncoderSink` and hands the generic body either that or a
+`MetalRelayEncoderSink` wrapping the interface. On the shipped path the test hits, `TSink` is the real sink, and
+a draw carries no interface dispatch at all, which is what this section asks for. On a test path the relay costs
+one virtual call per emission, on top of a fake that is already writing to a list. The two shapes that avoid the
+fork are both worse: making the list generic is the thing this section forbids, and routing everything through
+the relay would put a virtual call per EMISSION on the shipped hot path, which is the cost the struct constraint
+exists to avoid. The fork repeats at each entry point and the pre-command ORDER does not, which is the split that
+matters, because a missing fork arm is a compile error where a missing step in the order is a wrong picture.
+
+**And the seam gained ONE Objective-C enum, which narrows a rule rather than breaking it.** `IMetalEncoderSink`'s
+header said nothing on it names an Objective-C type. The draws cannot honour that: the topology is an ARGUMENT
+to `-drawPrimitives:` on this API, where Direct3D 11 sets it on the input assembler and Vulkan bakes it into the
+pipeline, and a five-member enum has no total plain-value spelling the way a two-member index width has (which
+is why row 13's `sixteenBitIndices` is a `bool` and this is not). Declaring a duplicate backend enum to shadow
+`MTLPrimitiveType` would be a second thing to keep in step with the first for no gain. The rule's own reason
+survives: an enum is a plain number, a fake names it on Linux with no Metal loaded, and nothing on the seam is an
+`MTLBuffer`.
 
 **Aiming this at either neighbour's call classes would have been the mistake, twice over.** D3D11's fan-out
 class is one call per resource per stage through an array setter. Vulkan's is per-draw descriptor set
@@ -2079,6 +2114,15 @@ aligned path, and THROWS with a named exception on a genuinely unaligned OFFSET.
 `CopyBuffer` call site asserts none produces one, so nothing legitimate reaches the throw. Shipping a second
 embedded metallib and a second compute pipeline for a case no consumer produces is the kind of unreachable-code
 reproduction G1 already declined once, and the follow-up is filed with the throw as its trigger.
+
+**Addendum at row 14: the rule has ONE home now, because three seam members need it.** Row 8 wrote it inside
+`MetalBufferUpload` for the record-time bulk `UpdateBuffer`. `IGpuCommandList.CopyBuffer` needs the identical
+refusal on BOTH offsets, and the staging-to-staging arm of a texture copy inherits it second-hand from the
+software layout's own offsets, so it moved to `MetalCopyAlignment` rather than being spelled a second time. The
+arithmetic proof that the pad lands inside the allocation is written on that type: an offset that reaches it is a
+multiple of four and `offset + size` is inside the LOGICAL size, so `offset + align4(size)` is
+`align4(offset + size)`, which is at most `align4(logical)`, which is what `MetalBufferPolicy.AllocationBytes`
+allocated. It holds on the source and on the destination alike.
 
 **Every view is created at RESOURCE creation (M-M10)**, from the declared usage bits, following the incumbent's
 rule that a view object is created only when the description actually narrows the target (a non-zero base mip
@@ -2756,6 +2800,16 @@ this is the third phase to have to write that down. `AntiAliasing.ResolveFor` cl
 `scene3d_hdr_msaa` is baked under it. The implementation issue re-reads the incumbent's source before writing
 the reproduction, which is phase 3's row-15 correction inherited as a PROCESS rule rather than as a fact.
 
+**Corrected at row 14: `MaxMsaaSampleCount` is ROW 16's and only the RESOLVE is row 14's, which is a split row 4
+already made in shipped code and which section 18's row-14 cell had not caught up with.** That cell names the
+capability alongside the resolve. Row 4's `MetalGpuDevice` pins `MaxMsaaSampleCount` to 1 with a comment saying
+in as many words that M-C3's reproduction is row 16's, because row 16 IS the capability read and its
+zero-permitted-difference parity test against the incumbent is what would catch a wrong answer. Row 14 needs no
+sample count at all: `ResolveTexture` asks whether the source is multisampled and the destination is not, and
+reads both off the two textures. So the two rows do not overlap and neither is short. The paragraph above stands
+unchanged as the instruction to whoever writes the capability, and the PROCESS rule in its last sentence is the
+load-bearing part of it.
+
 **The resolve (M-C4).** `ResolveTexture` opens an empty render encoder with the MSAA source as
 `colorAttachments[0]`, `loadAction = Load`, `storeAction = MultisampleResolve` and the destination as
 `resolveTexture`, then ends it, at mip 0 layer 0, outside any live encoder. That is the incumbent's shape and
@@ -2765,6 +2819,22 @@ re-cleared at the start of the next frame's pass, discarding is the bandwidth-co
 architecture, and it is what the goldens were baked against. **The divergence goes in the package README** so a
 consumer that ever needs the source preserved finds a documented property rather than a surprise. Folding the
 resolve into the producing pass's store action is the Metal-native answer and 2.5 records why it is deferred.
+
+**Row 14 built it, and it needed a SECOND descriptor member rather than a wider first one.** A resolve pass is
+one colour attachment, no clear, no depth and no second attachment, so `IMetalRenderApi` gains
+`CreateResolveDescriptor` beside `CreateRenderPassDescriptor`, and both are released through the one existing
+`ReleaseRenderPassDescriptor`. Widening `MetalColourAttachment` with a resolve texture and `MetalStoreAction`
+with a resolve member would have expressed exactly the FOLDED resolve #596 defers, and a deferral that leaves
+the mechanism sitting on the ordinary pass path is a deferral in name only. `MTLRenderPassDescriptor`'s own
+header said "No `resolveTexture`: M-A4 keeps the standalone resolve encoder", which reverses the implication and
+is corrected in place: the standalone encoder IS a render pass and its descriptor is the one place a resolve
+texture is named.
+
+**And it is the ONE place in the backend that opens a render encoder outside `MetalRenderPassSchedule`.** The
+schedule's invariant (a pass is never both OPEN and owed a clear) survives it because the encoder is opened and
+ended inside the one call, and that invariant is only ever read at `EndPass`, by which time nothing is open. What
+a resolve does observably is end an open pass and bump the epoch, which is M-A5 and M-R4 taking their ordinary
+course.
 
 An out-of-range requested sample count THROWS at texture creation rather than silently falling to 1, which is
 C4's departure inherited for C4's reason: the engine clamps upstream so nothing legitimate reaches the throw,
@@ -3111,7 +3181,7 @@ Each row becomes one implementation issue, `kind/backlog` unless noted, `confide
 | 11 | Pipelines: graphics and compute, the render pipeline descriptor from `GpuOutputDescription`, the `MTLVertexDescriptor` with **vertex streams pinned at the TOP of the buffer space (M-B2)** and its no-collision assertion against the index table, the over-31-bindings throw, depth-stencil state with its depth-target guard, blend state, and **the `SetPipeline` identity guard the incumbent lacks (M-R8)**. **Depends on 9 and 10**. (**Corrected in place: the state block's EMISSION is row 14's and only its DECISIONS are here**, because the deferred begin means no encoder exists at `SetPipeline` and the depth-target guard asks about the bound framebuffer. See the row 11 addendum in 6.3. The compute pipeline takes the FUNCTION route with no descriptor, per the addendum in section 13, and M-B2's addendum in 8.3 carries the corpus measurement and the device answer.) | `ResourceBindingModel` exists to manage a collision this row's numbering removes, and getting the vertex descriptor's layout index and the command list's bind index out of step binds a vertex buffer where a uniform should be. `setDepthStencilState` on a pass with no depth attachment is a validation error under the debug layer M-T7 arms on every run. A redundant pipeline bind costs a full re-activation today |
 | 12 | Render passes: deferred begin, **per-attachment clear folding into `loadAction` with `KE_METAL_CLEAR` (M-A2)**, explicit `storeAction`, the clear-only-pass flush at both forcing sites, the end-before-illegal-command invariant, and the framebuffer-change-guarded viewport and scissor with the `ScissorTestEnabled` gate and the unconditional plural setters | The incumbent writes every clear into `colorAttachments[0]`, so `ModelFB`'s normal and linear-depth attachments are never cleared, and `ModelRenderer.BeginModelPass` carries a shipped comment working around it incompletely. An unguarded viewport emit silently resets a live scissor, which is golden-visible and which phase 2's first spec froze the wrong way. The clear-only case is forced by the incumbent at two sites and a golden depends on it |
 | 13 | Bind flush: two-state per-slot records, **per-(kind, stage) ARRAY calls (M-R6)**, the offsets-only `setBufferOffset:` path per visible stage, the vertex-stream cache that is actually maintained, index-table invalidation on a pipeline switch, the composed `frameBase + rangeOffset + callerDynamicOffset` offset, and the device-free budget test. **Binds through 2.2b's table**, so an element with no entry for a stage is not bound for that stage | One native call per resource per stage is the #418 fan-out defect arriving on a second API, and the fork's binding layer does not declare a single array setter. An offsets-only rebind is the shadow pass's shape thousands of times a frame. An unaligned buffer offset is a validation error under the debug layer and undefined behaviour without it |
-| 14 | Draw and dispatch paths, vertex and index binding with its offset arithmetic, compute pipelines and dispatch with the SERIAL dispatch type, rule 1 and rule 2 behaviour, MSAA resolve with `MaxMsaaSampleCount` **READ OFF the incumbent's own computation and pinned with the note that the argument-ignoring is correct**, mip generation, and copies with the alignment throw and its unreachability assertion | The 36 goldens, and the compute `[GpuFact]` suite that proves rules 1 and 2 on every backend. Both prior phases had drafts that invented an MSAA formula and then asserted equality with the incumbent, which is the C4 failure phase 2 corrected in flight and the V-C5 ruling phase 3 made against both of its drafts. The serial dispatch type is what makes M-H4 true and the fork never chains dependent dispatches, so it is not grounded in its usage |
+| 14 | Draw and dispatch paths, vertex and index binding with its offset arithmetic, compute pipelines and dispatch with the SERIAL dispatch type, rule 1 and rule 2 behaviour, the MSAA resolve, mip generation, and copies with the alignment throw and its unreachability assertion. (**Corrected in place: `MaxMsaaSampleCount` is ROW 16's**, which row 4's device pin already said and which this cell had not caught up with. It is a CAPABILITY, row 16 is the capability read, and its zero-permitted-difference parity test is what would catch a wrong answer. The resolve needs no sample count at all. M-C3's instruction, that the incumbent's own computation is READ OFF the seam and pinned with the note that the argument-ignoring is correct, is unchanged and binds row 16. See the row 14 addendum in section 13.) | The 36 goldens, and the compute `[GpuFact]` suite that proves rules 1 and 2 on every backend. Both prior phases had drafts that invented an MSAA formula and then asserted equality with the incumbent, which is the C4 failure phase 2 corrected in flight and the V-C5 ruling phase 3 made against both of its drafts. The serial dispatch type is what makes M-H4 true and the fork never chains dependent dispatches, so it is not grounded in its usage |
 | 15 | Swapchain: `CAMetalLayer` acquisition and configuration reproduced field for field, **unconditional `displaySyncEnabled` (M-W2)**, the drawable acquired at the present boundary and counted into the acquire-wait pair, `maximumDrawableCount`, **the nil-drawable orphan target and the skipped present that still counts into `FramesBegun`**, the separate present command buffer, queued resize and vsync change applied at the boundary after a drain, and stable framebuffer identity | The incumbent silently discards every draw of a frame whose drawable is nil, recreates the depth texture inline with no drain while in-flight frames may be reading it, throttles the CPU on `nextDrawable` with nothing counting it, and applies a vsync toggle only inside three values of a deprecated enum. Zero automated coverage anywhere in the net (MM7) |
 | 16 | Capability read and the ZERO-difference parity test with its reflection-completeness check, the `GpuDeviceCounters` fill, `GpuDeviceDiagnostics` with `softwareAdapter` and `deviceLossReason`, and **`MetalFrameCapture` taking the native queue pointer instead of reflecting into Veldrid's private field** | Capability drift is silent and golden-visible through `AntiAliasing.ResolveFor`. Phase 3's row-18 pair are both inherited by name: `DeviceName` is not trimmed, and `SupportsShadowMaps` asks what the incumbent asks rather than what the member's name suggests. The frame-capture reflection is one Veldrid refactor away from silently not working, and it is one of 4.2's three silent sites |
 | 17 | **MM6's measurement**: the two-uniform-buffer `[GpuFact]` probes with pixel READBACK assertions, and the RESULT recorded in this design doc whichever way it goes. **No shader change lands in this row**, and M-B4's invariant stays in force regardless | The memory records four sessions' worth of open question and one shipped consequence. A `GpuFact` that only asserts no-throw is how the all-black splat terrain shipped. A pass authorises FILING the invariant's removal with its own gates and nothing more |

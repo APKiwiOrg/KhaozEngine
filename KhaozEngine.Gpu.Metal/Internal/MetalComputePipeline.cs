@@ -175,6 +175,19 @@ namespace KhaozEngine.Gpu.Metal.Internal
             MetalComputeShader shader = MetalResourceOwnership.Require<MetalComputeShader>(
                 description.Shader, liveness, nameof(description));
 
+            // THE DEVICE-FREE HALF OF THE DISPOSED-SHADER REFUSAL, for the reason
+            // MetalGraphicsPipelinePlan.Build gives at its own copy: MetalComputeShader.Function throws for a
+            // disposed shader and nothing reaches it off macOS, so a refusal this type claims runs on one leg
+            // out of five unless it is asked here.
+            if (shader.IsDisposed)
+            {
+                throw new ObjectDisposedException(
+                    nameof(MetalComputeShader),
+                    Label + " was given a native Metal compute shader that is already disposed. Its MTLFunction "
+                    + "and MTLLibrary have been released, so the pipeline would be created from a function the "
+                    + "device has already let go of.");
+            }
+
             IGpuResourceLayout[] declaredLayouts = description.ResourceLayouts ?? [];
             var layouts = new MetalResourceLayout[declaredLayouts.Length];
             var declared = new GpuResourceLayoutDescription[declaredLayouts.Length];

@@ -58,6 +58,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <summary>Every compiled stage, for the pipeline descriptor. Empty after disposal.</summary>
         internal IReadOnlyList<MetalCompiledStage> Stages => _disposed ? Array.Empty<MetalCompiledStage>() : _stages;
 
+        /// <summary>
+        /// True once disposed, so a DEVICE-FREE caller can refuse this set before reaching a member that only
+        /// throws on macOS. <see cref="FunctionFor"/> is the native-half guard and it is the last line rather
+        /// than the first: on the Linux and Windows legs nothing ever calls it, so a pipeline built from a
+        /// disposed set was refused on one leg out of five until <c>MetalGraphicsPipelinePlan.Build</c> started
+        /// asking this instead.
+        /// </summary>
+        internal bool IsDisposed => _disposed;
+
         /// <summary>The function for one stage, which is what a render pipeline descriptor's
         /// <c>vertexFunction</c> and <c>fragmentFunction</c> are set to.</summary>
         /// <exception cref="InvalidOperationException">This set carries no such stage, or it is disposed.</exception>
@@ -149,6 +158,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         /// <summary>Where the emission put each declared element for the compute stage (M-B1).</summary>
         internal MetalShaderIndexTable Table { get; }
+
+        /// <summary>True once disposed. <see cref="MetalShaderSet.IsDisposed"/> carries the reason a DEVICE-FREE
+        /// caller needs it.</summary>
+        internal bool IsDisposed => _disposed;
 
         /// <summary>The kernel function, which is what a compute pipeline is created from.</summary>
         /// <exception cref="InvalidOperationException">This shader is disposed.</exception>

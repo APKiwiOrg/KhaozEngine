@@ -116,6 +116,20 @@ namespace KhaozEngine.Gpu.Metal.Internal
             MetalShaderSet shaders = MetalResourceOwnership.Require<MetalShaderSet>(
                 description.ShaderSet, liveness, nameof(description));
 
+            // A DISPOSED SHADER SET IS REFUSED HERE RATHER THAN AT THE DESCRIPTOR, which is the difference
+            // between a refusal this row claims on every leg and one it only makes on macOS.
+            // MetalShaderSet.FunctionFor already throws for a disposed set, but nothing reaches it off macOS, so
+            // the check ran on one leg out of five in a type whose whole reason for existing is that its
+            // refusals run device-free. This is MetalResourceLayout.Require's arm applied to the other input.
+            if (shaders.IsDisposed)
+            {
+                throw new ObjectDisposedException(
+                    nameof(MetalShaderSet),
+                    Label + " was given a native Metal shader set that is already disposed. Its MTLFunctions and "
+                    + "MTLLibrary have been released, so the pipeline would be created from functions the device "
+                    + "has already let go of.");
+            }
+
             MetalResourceLayout[] layouts = RequireLayouts(description.ResourceLayouts, liveness);
 
             // PIN 4 OF SECTION 2.2b, AND THIS IS ITS ONLY CALL SITE. Row 9 wrote the check and pipeline creation

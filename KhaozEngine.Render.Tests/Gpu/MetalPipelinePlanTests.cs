@@ -107,6 +107,36 @@ namespace KhaozEngine.Tests.Gpu
                 () => MetalGraphicsPipelinePlan.Build(_liveness, Description(shaders, layouts)));
         }
 
+        /// <summary>
+        /// A DISPOSED SHADER SET IS REFUSED ON EVERY LEG, which is <c>ADisposedLayout_IsRefused</c>'s shape
+        /// applied to the other input, and it is here rather than only on macOS for a reason worth stating.
+        /// <c>MetalShaderSet.FunctionFor</c> throws for a disposed set, but the only caller of it is the native
+        /// half, so before this check the refusal was made on ONE leg out of five, by the very type whose reason
+        /// for existing is that every pipeline refusal is a fact about managed data. Both kinds are driven,
+        /// because the compute half has its own copy of the check and no shared helper to keep them in step.
+        /// </summary>
+        [Fact]
+        public void ADisposedShaderSetOrKernel_IsRefusedDeviceFree()
+        {
+            MetalShaderSet shaders = ShaderSet(TableFor(GpuResourceKind.UniformBuffer));
+            shaders.Dispose();
+
+            ObjectDisposedException refused = Assert.Throws<ObjectDisposedException>(
+                () => MetalGraphicsPipelinePlan.Build(
+                    _liveness, Description(shaders, Layout(GpuResourceKind.UniformBuffer))));
+            Assert.Contains("already disposed", refused.Message, StringComparison.Ordinal);
+
+            MetalComputeShader kernel = new(
+                _liveness, default, TableFor(GpuResourceKind.UniformBuffer), 64, 1, 1);
+            kernel.Dispose();
+
+            ObjectDisposedException refusedKernel = Assert.Throws<ObjectDisposedException>(
+                () => MetalComputePipeline.Check(
+                    _liveness,
+                    new GpuComputePipelineDescription(kernel, Layout(GpuResourceKind.UniformBuffer))));
+            Assert.Contains("already disposed", refusedKernel.Message, StringComparison.Ordinal);
+        }
+
         /// <summary>No shader set at all is a named refusal rather than a null reference from inside the
         /// cast.</summary>
         [Fact]

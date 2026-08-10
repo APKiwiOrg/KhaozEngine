@@ -132,9 +132,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             MetalResourceLayout[] layouts = RequireLayouts(description.ResourceLayouts, liveness);
 
-            // PIN 4 OF SECTION 2.2b, AND THIS IS ITS ONLY CALL SITE. Row 9 wrote the check and pipeline creation
-            // is the first moment the ENGINE-declared array and the reflection the table was built from exist
-            // together. Without it a pipeline whose layouts disagree with its shader resolves every element
+            // PIN 4 OF SECTION 2.2b, AND PIPELINE CREATION IS THE ONLY KIND OF CALLER IT HAS. Row 9 wrote the
+            // check with no caller at all, because pipeline creation is the first moment the ENGINE-declared
+            // array and the reflection the table was built from exist together. There are TWO call sites and
+            // both are pipeline creation: this one and MetalComputePipeline.Check, which asks the same question
+            // of a kernel. Without it a pipeline whose layouts disagree with its shader resolves every element
             // through a key that means something else, which is the wrong-pixel-no-error class the whole
             // mechanism exists to close, arriving through the one door the id join leaves open.
             var declared = new GpuResourceLayoutDescription[layouts.Length];
@@ -170,7 +172,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         // Every declared layout, cast and identity-checked through the one helper row 10 wrote for it, so a
         // pipeline and a resource set refuse the same wrong layout with the same message. A null ARRAY is the
-        // no-resources case and is legal; a null ELEMENT is not, and MetalResourceLayout.Require names it.
+        // no-resources case and is legal. A null ELEMENT is not, and MetalResourceLayout.Require names it.
         static MetalResourceLayout[] RequireLayouts(IGpuResourceLayout[]? declared, IMetalDeviceLiveness liveness)
         {
             if (declared is null || declared.Length == 0) return [];

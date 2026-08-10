@@ -8924,6 +8924,14 @@ left empty for a shader that references nothing, because such a shader still ref
 And your vertex layouts have to cover every attribute the vertex function declares, because Metal validates the
 pipeline against the compiled function and says which attribute is missing.
 
+**Disposing a shader set or a pipeline and then using it is refused by name on this backend, where the Veldrid
+legs are quieter about it.** Creating a pipeline from a disposed `IGpuShaderSet`, or binding a disposed
+`IGpuPipeline` or `IGpuComputePipeline` through `SetPipeline` or `SetComputePipeline`, throws
+`ObjectDisposedException` rather than proceeding. That is not defensiveness for its own sake: disposal here
+releases real Objective-C objects, so the alternative is a later draw setting a released pipeline state on a
+live encoder, which surfaces as a process-level failure with no line of yours anywhere near it. Keep a pipeline
+alive for as long as any recording that binds it, which is what the engine's own renderers already do.
+
 **Vertex buffer SLOT numbers are unchanged and the indices behind them are not.** You still call
 `SetVertexBuffer(slot, ...)` with the slot the pipeline declared. Underneath, this backend pins streams to the
 top of Metal's buffer space (slot 0 is `[[buffer(30)]]`, slot 1 is 29) so they cannot collide with the resource

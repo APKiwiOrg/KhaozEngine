@@ -506,6 +506,17 @@ re-activation of every resource set. Here it costs one reference comparison. Whi
 encoder boundary, because the recorder still intends it, and whether its state has reached the current encoder
 does not, because that is encoder state: the two are tracked separately rather than collapsed into one flag.
 
+**And a real switch is what drives the other two rows.** It tells the pass schedule the incoming pipeline's
+`ScissorTestEnabled`, which is the gate deciding whether a scissor rectangle is emitted at all, and it hands the
+bind records the incoming program's binding table, which is what invalidates a recorded resource slot only where
+the two programs map that slot's elements to different indices. Both hang off the identity guard above, so a
+redundant bind touches neither, and the compute bind carries the second one for the same reason a dispatch has.
+
+**A disposed pipeline is refused at the bind, by name.** Disposing one releases its `MTLRenderPipelineState` and
+its `MTLDepthStencilState`, so binding it afterwards would leave a later draw setting a released object on a
+live encoder. That is the one refusal on this path about memory rather than about a caller's belief: a disposed
+resource layout or resource set releases nothing at all here, where a pipeline genuinely has.
+
 ## The bind flush: one array call per kind per stage
 
 All four `Set*ResourceSet` overloads are live. A bind RECORDS into a per-slot `(set, offset)` array and emits

@@ -172,7 +172,18 @@ namespace KhaozEngine.Tests.Gpu
                 // Metal's own diagnostic, not a paraphrase. It names the attribute, which is the only thing that
                 // makes a rejected pipeline actionable.
                 Assert.Contains("rejected this graphics pipeline", error.Message, StringComparison.Ordinal);
-                Assert.Contains("ertex", error.Message, StringComparison.Ordinal);
+
+                // THE TOKEN ONLY METAL CAN SUPPLY. The wrapper's own prefix and tail already contain "rejected
+                // this graphics pipeline" and the words "vertex layouts", so an assertion on either passes on
+                // the arm where -newRenderPipelineStateWithDescriptor:error: answered nil and wrote NO NSError,
+                // which is precisely the case this row exists to distinguish. "attribute" appears nowhere in the
+                // wrapper and is the word Metal's own message is built around (measured: "Vertex attribute
+                // m_17(2) is missing from the vertex descriptor").
+                Assert.Contains("attribute", error.Message, StringComparison.Ordinal);
+
+                // And the nil arm named outright, so a future edit to the wrapper's wording cannot make the line
+                // above pass for the wrong reason.
+                Assert.DoesNotContain("wrote no NSError", error.Message, StringComparison.Ordinal);
             }
             finally
             {
@@ -202,6 +213,12 @@ namespace KhaozEngine.Tests.Gpu
                 using IGpuPipeline pipeline = factory.CreateGraphicsPipeline(description);
 
                 var typed = (MetalGraphicsPipeline)pipeline;
+
+                // WHAT THIS PINS IS THE CREATION, not the setter. Metal accepting the descriptor says the sample
+                // count reached it in a shape the driver liked, and the plan carrying 4 says this backend
+                // resolved it. Neither reads the value back off the MTLRenderPipelineState, because there is no
+                // getter for it, so a wrong count that Metal happened to accept would still pass here. The
+                // rendered proof is the MSAA golden the draw row bakes.
                 Assert.False(typed.RenderState.IsNull);
                 Assert.Equal(4, typed.Plan.SampleCount);
             }

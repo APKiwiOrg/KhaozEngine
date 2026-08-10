@@ -1106,6 +1106,12 @@ pinning depends on nothing, and `ResourceBindingModel` stops being a concept the
 no pixel**, because a stream's buffer index is invisible to the emitted MSL, which reaches vertex attributes
 through `[[stage_in]]`: the index only has to agree between the two places this backend owns.
 
+**Those two places read ONE type, `MetalVertexStreamIndex`, which is the whole of what M-B2 buys.** The
+`MTLVertexDescriptor`'s layout index and the bind flush's `setVertexBuffers:` index both come from it, and a
+slot past the bottom of the buffer table throws by name there rather than wrapping into a plausible-looking
+index. The pipeline path refuses the count first, before the vertex plan runs, so the message a caller gets
+names the pipeline and both numbers instead of naming a slot.
+
 **The no-collision property is measured rather than argued.** Over the 34 shipped graphics programs, the highest
 `[[buffer(n)]]` index any VERTEX function's emission chose is **0**, leaving 30 of the 31 entries free, and the
 largest shipped pipeline declares two streams. The assertion is taken against the indices the emission actually
@@ -1114,13 +1120,14 @@ visible, because SPIRV-Cross omits an argument a stage never references. A pipel
 bindings would collide throws at creation naming both sides, and more streams than the table has entries is a
 separate refusal.
 
-**`RequireLayoutShape` gets its only call site, which is pin 4 of 2.2b landing.** Row 9 wrote the check and left
-it with no caller, because pipeline creation is the first moment the ENGINE-declared layout array and the
-reflection the table was built from exist together. Without it, a pipeline whose layouts disagree with its
-shader resolves every element through a key that means something else, which is the wrong-pixel-no-error class
-the whole binding mechanism exists to close, arriving through the one door the id join leaves open. The compute
-half calls it too, where the same failure is worse rather than milder: a dispatch writing through a storage
-buffer resolved from another declaration corrupts memory the next pass reads.
+**`RequireLayoutShape` gets its callers, which is pin 4 of 2.2b landing.** Row 9 wrote the check and left it
+with no caller at all, because pipeline creation is the first moment the ENGINE-declared layout array and the
+reflection the table was built from exist together. It has two now and both are pipeline creation: the graphics
+plan and `MetalComputePipeline.Check`. Without it, a pipeline whose layouts disagree with its shader resolves
+every element through a key that means something else, which is the wrong-pixel-no-error class the whole binding
+mechanism exists to close, arriving through the one door the id join leaves open. On the compute half the same
+failure is worse rather than milder: a dispatch writing through a storage buffer resolved from another
+declaration corrupts memory the next pass reads.
 
 **`SetPipeline` on the pipeline already bound does nothing (M-R8).** `MTLCommandList.SetPipelineCore` stores the
 pipeline, clears the whole active-set array and sets its changed flag on every call with no comparison, so a
@@ -1130,6 +1137,30 @@ boundary, and WHETHER its state block has reached the current encoder is encoder
 Metal's bound pipeline state is a property of the encoder (M-R4). The second is a `MetalEncoderMark`, so the
 invalidation falls out of the epoch the scope already counts instead of being something a boundary has to
 remember, which is what the incumbent's single flag forces it to do by hand.
+
+**And the CHANGE path is what wires two seams rows 12 and 13 shipped with no caller.** Row 12's
+`MetalRenderPassSchedule.SetScissorTestEnabled` and row 13's `MetalBindRecords.SetIndexTable` both existed and
+both had zero call sites, because the only thing that can drive either is a pipeline switch. `SetPipeline` now
+calls both, and `SetComputePipeline` calls the second, in each case after M-R8's identity guard has decided the
+pipeline really is changing, so a redundant bind still costs one comparison and nothing else. Without the first
+the scissor gate reads false for a whole recording and a draw rasterises the entire attachment where the caller
+asked for a rectangle, which is not a crash and not a validation error. Without the second a dispatch or a draw
+binds its resources at the previous program's indices.
+
+**A DISPOSED pipeline is refused at the bind rather than accepted.** `SetPipeline` and `SetComputePipeline` take
+their argument through a `Require` that asks three questions in one place, the shape resource layouts and
+resource sets already used: the right backend, the right device, and not disposed. The third arm carries more
+weight here than it does there, and the code says so. A disposed layout or set releases nothing at all on this
+backend, so refusing one is about the caller's belief that the declaration is still theirs. A disposed PIPELINE
+has released its `MTLRenderPipelineState` and its `MTLDepthStencilState`, so accepting one records a dangling
+handle for a later draw to set on a live encoder. The state accessors refuse once disposed for the same reason,
+which is `MetalShaderSet.FunctionFor`'s precedent, while everything on the type that is managed data keeps
+answering because disposal released none of it.
+
+**And a disposed SHADER SET is refused device-free.** Both shader types already threw from the member that hands
+out a function, but the only caller of that member is the native half, so the refusal was made on one leg out of
+five by the very types whose reason for existing is that every pipeline refusal is a fact about managed data.
+`MetalGraphicsPipelinePlan.Build` and `MetalComputePipeline.Check` now ask it directly.
 
 **A pipeline is two Objective-C objects, and the second exists only for a depth output.** The render pipeline
 state carries the functions, the vertex layout, the attachment formats and the per-attachment blend state. The

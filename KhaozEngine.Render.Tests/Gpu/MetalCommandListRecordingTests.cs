@@ -409,7 +409,9 @@ namespace KhaozEngine.Tests.Gpu
         /// (https://github.com/APKiwiOrg/KhaozEngine/issues/578), which is the ledger discipline working: a row
         /// that fills a member takes it off the list, and this row keeps testing whatever is still on it. The
         /// live rows it names grow with each one, because a reader who hits the message needs to know whether
-        /// the backend is unfinished or their machine is wrong.
+        /// the backend is unfinished or their machine is wrong. Row 13
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/579) took the four resource-set members off the list
+        /// and added itself to the live half, and <c>SetPipeline</c> is still on it.
         /// </para>
         /// </summary>
         [Fact]
@@ -424,7 +426,64 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Contains("issues/577", thrown.Message, StringComparison.Ordinal);
             Assert.Contains("issues/573", thrown.Message, StringComparison.Ordinal);
             Assert.Contains("issues/578", thrown.Message, StringComparison.Ordinal);
+            Assert.Contains("issues/579", thrown.Message, StringComparison.Ordinal);
             Assert.Contains("GpuBackendKind.Metal", thrown.Message, StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// AND THE FOUR RESOURCE-SET MEMBERS ARE LIVE, so what a caller gets from one is its own refusal rather
+        /// than the ledger's. A recording guard rather than an unbuilt row is the difference between "wait for a
+        /// row" and "call Begin", and those need different answers. This is the probe walking forward one row at
+        /// a time, which is what stops the ledger rotting: it fails the day a member starts working and nobody
+        /// moved it.
+        /// </summary>
+        [Fact]
+        public void TheFourResourceSetMembersAreLiveAndRefuseALisThatIsNotRecording()
+        {
+            (MetalCommandList list, _, _, _) = NewList();
+
+            InvalidOperationException thrown = Assert.Throws<InvalidOperationException>(
+                () => list.SetGraphicsResourceSet(0, null!));
+
+            Assert.Contains("Call Begin first", thrown.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain("not built", thrown.Message, StringComparison.Ordinal);
+
+            // AND A NULL SET IS RECORDED RATHER THAN REFUSED once the list is recording, which is clause 6: the
+            // seam has no unbind, so a caller clearing a slot is saying this draw does not use it.
+            list.Begin();
+            list.SetGraphicsResourceSet(0, null!);
+            list.SetComputeResourceSet(0, null!, 0);
+
+            Assert.Equal(1, list.GraphicsBinds.RecordedSlotCount);
+            Assert.Equal(1, list.ComputeBinds.RecordedSlotCount);
+        }
+
+        /// <summary>
+        /// A <c>Begin</c> RESETS THE BIND RECORDS ALONG WITH EVERYTHING ELSE, in the ONE reset block the command
+        /// list keeps. A reset added anywhere else is a reset a re-Begun list can be observed without, and the
+        /// records belong to a recording a Begin discards by contract.
+        /// </summary>
+        [Fact]
+        public void ABeginForgetsEveryRecordedSlotAndTheAdoptedIndexTable()
+        {
+            (MetalCommandList list, _, _, _) = NewList();
+
+            list.Begin();
+            list.SetGraphicsResourceSet(2, null!);
+            list.GraphicsBinds.SetIndexTable(MetalBindProgram.Table());
+            list.VertexStreams.Record(1, new IntPtr(0xA), 0);
+            list.End();
+
+            Assert.Equal(3, list.GraphicsBinds.RecordedSlotCount);
+            Assert.NotNull(list.GraphicsBinds.IndexTable);
+            Assert.Equal(2, list.VertexStreams.RecordedSlotCount);
+
+            list.Begin();
+
+            Assert.Equal(0, list.GraphicsBinds.RecordedSlotCount);
+            Assert.Null(list.GraphicsBinds.IndexTable);
+            Assert.Equal(0, list.ComputeBinds.RecordedSlotCount);
+            Assert.Equal(0, list.VertexStreams.RecordedSlotCount);
         }
 
         /// <summary>

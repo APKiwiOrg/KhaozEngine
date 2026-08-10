@@ -213,6 +213,35 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(0, calls.UnbalancedEncoderReleases);
         }
 
+        /// <summary>
+        /// A SCOPE WITH NO BUFFER REFUSES BY NAME rather than handing nil to the three factories, and the two
+        /// states that get here are the same sequencing error: nothing has been recorded yet, or the recording is
+        /// over and <c>ForgetCommandBuffer</c> has run. The second is the one that matters, because an encoder
+        /// opened on a COMMITTED command buffer is a driver assertion that aborts the process.
+        /// </summary>
+        [Fact]
+        public void EnsuringAnEncoderWithNoRecordingIsRefusedByName()
+        {
+            FakeMetalEncoderCalls calls = new();
+            MetalEncoderScope scope = new(new FakeMetalEncoderSink(calls));
+
+            InvalidOperationException thrown =
+                Assert.Throws<InvalidOperationException>(() => scope.EnsureBlitEncoder());
+            Assert.Contains("no recording in flight", thrown.Message, StringComparison.Ordinal);
+
+            scope.BeginRecording(new IntPtr(0x100));
+            Assert.NotEqual(IntPtr.Zero, scope.EnsureBlitEncoder());
+
+            // And the same refusal once the buffer is gone, which is the post-submit state.
+            scope.EnsureNoEncoder();
+            scope.ForgetCommandBuffer();
+
+            Assert.Throws<InvalidOperationException>(() => scope.EnsureBlitEncoder());
+
+            // One begin and one end, so nothing reached the sink on either refusal.
+            Assert.Equal(2, calls.EncoderBoundaries);
+        }
+
         [Fact]
         public void ANullSinkIsRefusedAtConstruction()
             => Assert.Throws<ArgumentNullException>(() => new MetalEncoderScope(null!));

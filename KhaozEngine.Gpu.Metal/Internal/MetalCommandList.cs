@@ -238,11 +238,18 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <see cref="SealedCommandBuffer"/> rather than committing a buffer twice, which is a call Metal
         /// refuses and which would take a second timeline value with it.
         /// </para>
+        /// <para>
+        /// AND THE ENCODER SCOPE FORGETS THE BUFFER TOO, because the seal gates the SUBMIT path and nothing else.
+        /// A scope still holding the committed handle would let a post-submit <c>Ensure</c> open an encoder on a
+        /// buffer Metal has already taken, which is a driver-side failed assertion that aborts the process rather
+        /// than anything this backend could report. See <see cref="MetalEncoderScope.ForgetCommandBuffer"/>.
+        /// </para>
         /// </summary>
         internal void MarkSubmitted()
         {
             _sealed = false;
             _commandBuffer = IntPtr.Zero;
+            _encoders.ForgetCommandBuffer();
             _uncommitted.Released();
         }
 
@@ -303,6 +310,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // paired with a native call this type does not make.
         void ReleaseHeldBuffer()
         {
+            // FIRST, and unconditionally, for MarkSubmitted's reason in the other direction: a scope pointing at a
+            // buffer this list has released would open an encoder on a released Objective-C object, which is a
+            // use-after-free rather than a driver assertion.
+            _encoders.ForgetCommandBuffer();
+
             if (_commandBuffer == IntPtr.Zero)
             {
                 _sealed = false;

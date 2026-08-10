@@ -94,6 +94,28 @@ namespace KhaozEngine.Gpu.Metal.Internal
         }
 
         /// <summary>
+        /// The command buffer this scope was recording into is no longer the command list's, so forget it. Called
+        /// by <c>MetalCommandList.MarkSubmitted</c> after the commit and by the one place the list releases a
+        /// buffer it never committed, and by nothing else.
+        /// <para>
+        /// THE SEAL ALONE DOES NOT COVER THIS, WHICH IS WHY IT IS A MEMBER RATHER THAN AN ASSUMPTION. Clearing the
+        /// list's seal refuses a second SUBMIT and says nothing about the encoder path, so without this the scope
+        /// would still hold the committed handle and an <c>Ensure</c> after the submit would open an encoder on a
+        /// buffer Metal has already taken. That is not a wrong number and not an exception: it is a driver-side
+        /// failed assertion (<c>_status &lt; MTLCommandBufferStatusCommitted</c>) that aborts the process. With the
+        /// handle gone the three <c>Ensure</c> helpers refuse by name instead, at the call that made the sequencing
+        /// error.
+        /// </para>
+        /// <para>
+        /// IT DOES NOT BUMP THE EPOCH, and does not need to. Every record is encoder-scoped, an encoder can only
+        /// have existed if one was opened, and the <c>End</c> that made the buffer committable ended it and bumped
+        /// on the way. A record that could still read valid here would be one stamped against an encoder that was
+        /// never ended, which is a buffer that could never have been committed.
+        /// </para>
+        /// </summary>
+        internal void ForgetCommandBuffer() => _commandBuffer = IntPtr.Zero;
+
+        /// <summary>
         /// Open a render encoder from <paramref name="descriptor"/>, ending whatever else is open first. Returns
         /// the encoder already open when it is already a render encoder, WITHOUT re-emitting anything: the
         /// deferred begin (M-A1) means the descriptor is built once per pass, and a second Ensure inside one pass
@@ -114,7 +136,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             EnsureNoEncoder();
 
-            IntPtr encoder = _sink.BeginRenderEncoder(_commandBuffer, descriptor);
+            IntPtr encoder = _sink.BeginRenderEncoder(RecordingBuffer(), descriptor);
             if (encoder == IntPtr.Zero) return IntPtr.Zero;
 
             Adopt(MetalEncoderKind.Render, encoder);
@@ -142,7 +164,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // is in a state it will not encode into, and adopting it would leave this scope believing a kind is
             // open while every command against it went nowhere, which is the shape that reads as a silently
             // empty frame rather than as a failure.
-            IntPtr encoder = _sink.BeginBlitEncoder(_commandBuffer);
+            IntPtr encoder = _sink.BeginBlitEncoder(RecordingBuffer());
             if (encoder == IntPtr.Zero) return IntPtr.Zero;
 
             Adopt(MetalEncoderKind.Blit, encoder);
@@ -158,7 +180,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             EnsureNoEncoder();
 
-            IntPtr encoder = _sink.BeginComputeEncoder(_commandBuffer);
+            IntPtr encoder = _sink.BeginComputeEncoder(RecordingBuffer());
             if (encoder == IntPtr.Zero) return IntPtr.Zero;
 
             Adopt(MetalEncoderKind.Compute, encoder);
@@ -190,6 +212,21 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _sink.EndEncoding(ended, encoder);
             return ended;
         }
+
+        // THE ONE READ OF THE BUFFER, so no Ensure can hand a stale handle to the sink. Two states reach the
+        // refusal and both are the same sequencing error at the seam: nothing has been recorded yet (no Begin), or
+        // the recording is over and the buffer has gone (ForgetCommandBuffer, from the submit or from a release
+        // this list made without committing). Naming it here beats what Metal does with the second one, which is
+        // a driver-side failed assertion that takes the process with it.
+        IntPtr RecordingBuffer()
+            => _commandBuffer != IntPtr.Zero
+                ? _commandBuffer
+                : throw new InvalidOperationException(
+                    "An encoder was opened on a native Metal command list with no recording in flight. Call Begin "
+                    + "first, and do not record against a list that has already been submitted: an encoder opened "
+                    + "on a command buffer Metal has already taken is not an error this backend can report, it is "
+                    + "a driver assertion that aborts the process. The buffer either was never taken from the "
+                    + "queue or has been committed or released since.");
 
         // The epoch bump belongs to the BEGIN as much as to the end: a record stamped against the encoder that
         // was open before this one describes an argument table that no longer exists, and a bump only at the end

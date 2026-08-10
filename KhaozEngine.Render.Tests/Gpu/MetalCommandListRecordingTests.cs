@@ -182,6 +182,47 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
+        /// THE SEAL GATES THE SUBMIT PATH AND NOTHING ELSE, so the encoder path needs its own answer. A scope that
+        /// still held the committed handle would open an encoder on a command buffer Metal has already taken,
+        /// which is not an exception this backend can report: it is a driver-side failed assertion
+        /// (<c>_status &lt; MTLCommandBufferStatusCommitted</c>) that aborts the process. Asserted through the fake
+        /// sink, so the claim is that nothing REACHED the native layer rather than that the driver forgave it.
+        /// </summary>
+        [Fact]
+        public void AnEnsureAfterTheSubmitCannotReachTheDriverWithTheCommittedBuffer()
+        {
+            (MetalCommandList list, _, FakeMetalEncoderCalls calls, _) = NewList();
+
+            list.Begin();
+            list.End();
+            list.MarkSubmitted();
+
+            Assert.Throws<InvalidOperationException>(() => list.Encoders.EnsureBlitEncoder());
+            Assert.Throws<InvalidOperationException>(() => list.Encoders.EnsureComputeEncoder());
+            Assert.Throws<InvalidOperationException>(
+                () => list.Encoders.EnsureRenderEncoder(new IntPtr(0xD5)));
+
+            Assert.Empty(calls.Log);
+            Assert.Equal(0, calls.EncoderBoundaries);
+            Assert.Equal(MetalEncoderKind.None, list.Encoders.Open);
+        }
+
+        /// <summary>The same answer for the buffer this list released without committing, where the stale handle
+        /// would be a released Objective-C object rather than a committed one.</summary>
+        [Fact]
+        public void AnEnsureAfterADiscardedRecordingCannotReachTheDriverEither()
+        {
+            (MetalCommandList list, _, FakeMetalEncoderCalls calls, _) = NewList();
+
+            list.Begin();
+            list.End();
+            list.DiscardRecording();
+
+            Assert.Throws<InvalidOperationException>(() => list.Encoders.EnsureBlitEncoder());
+            Assert.Empty(calls.Log);
+        }
+
+        /// <summary>
         /// Disposing mid-recording is legal, the recording is discarded, and the OPEN ENCODER IS ENDED on the way
         /// out. The sink retains every encoder it opens and the end is the only release, so dropping one here
         /// leaks that +1 and, because an encoder holds a reference to its own command buffer, keeps the buffer

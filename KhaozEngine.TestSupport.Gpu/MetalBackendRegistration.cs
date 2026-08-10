@@ -32,12 +32,13 @@ namespace KhaozEngine.Tests.Gpu
     /// names a Metal selector, and those bodies are <c>NoInlining</c> so the JIT never compiles one off macOS.
     /// </para>
     /// <para>
-    /// REGISTERING IS ALL THIS DOES, and today what it registers can probe but not create. The provider answers
-    /// a real functional probe (the system default <c>MTLDevice</c>, its name, its <c>supportsFamily:</c> floor,
-    /// its buffer-offset alignment and its sample-count answer) and refuses creation by naming
-    /// https://github.com/APKiwiOrg/KhaozEngine/issues/570. The seat is taken rows before the device exists,
-    /// deliberately: the row that builds the device is the row that must NOT also have to discover where the
-    /// registration goes. What it registers under is <c>KhaozEngineMetal.MetalNativeKind</c>, which was a pinned
+    /// REGISTERING IS ALL THIS DOES, and today what it registers can probe and create a HEADLESS device. The
+    /// provider answers a real functional probe (the device <c>KE_METAL_DEVICE</c> names, its name, its
+    /// <c>supportsFamily:</c> floor, its buffer-offset alignment and its sample-count answer) and hands back a
+    /// device holding a real <c>MTLDevice</c> and one <c>MTLCommandQueue</c>, refusing only the WINDOWED path by
+    /// naming the swapchain row (https://github.com/APKiwiOrg/KhaozEngine/issues/581). The seat was taken two
+    /// rows before the device existed, deliberately, and that paid out exactly as intended: the row that built
+    /// the device did not also have to discover where the registration goes. What it registers under is <c>KhaozEngineMetal.MetalNativeKind</c>, which was a pinned
     /// ordinal until row 3 (https://github.com/APKiwiOrg/KhaozEngine/issues/569) landed and is the named
     /// <c>GpuBackendKind.MetalNative</c> now, the same shape the Vulkan seat went through.
     /// </para>

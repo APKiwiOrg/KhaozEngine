@@ -7,8 +7,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <summary>
     /// The interop DECLARATIONS half of the spike: the runtime shim, the typed <c>objc_msgSend</c> overload set,
     /// and the by-value structs. Split from the exercise half purely so neither file grows past the size cap
-    /// while both stay readable, which is the same answer the design gives for the real interop layer in row 4
-    /// (one file per Objective-C class rather than one per API surface).
+    /// while both stay readable, which is the answer the real interop layer took in row 4 as well
+    /// (<c>Internal/ObjC/</c>, one file per Objective-C class rather than one per API surface). This set is NOT
+    /// folded into that one: it is the measurement, and its value is being self-contained.
     /// <para>
     /// EVERY SIGNATURE HERE IS BLITTABLE AND EVERY IMPORT IS <c>[LibraryImport]</c>, so the source generator
     /// emits a direct call with no marshalling stub. That is decision M-P2's mechanism, and under this repo's

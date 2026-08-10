@@ -181,9 +181,100 @@ line, which is the property that home was moved for. The regression evidence is 
 not re-earned a third time: registration living only in `Render.Tests` threw in all four `MapEditor.Tests` GPU
 tests on that backend's first native leg.
 
-**No behaviour changed for any consumer.** Nothing selects this backend, `GpuBackendKind` still has no native
-Metal member, and no existing package gained or lost an edge. Calling `Register()` today costs one dictionary
-entry.
+**No behaviour changed for any consumer.** Nothing selects this backend and no existing package gained or lost
+an edge. Calling `Register()` today costs one dictionary entry. (That paragraph originally also said
+`GpuBackendKind` had no native Metal member, which row 3 above made false inside this same version. Corrected
+here rather than left as a version entry contradicting itself two sections up.)
+
+### The Objective-C interop layer, an `MTLDevice`, one `MTLCommandQueue`, and the error nobody reads today (#570)
+
+Row 4 of the same design, and the last of its four prerequisites. `KhaozEngine.Gpu.Metal` creates a real
+headless device now: `MetalBackendProvider.CreateHeadless()` returns an `IGpuDevice` holding an `MTLDevice` and
+one `MTLCommandQueue`, with `Backend`, `Capabilities` (in part), `Diagnostics`, `WaitForIdle` and `Dispose`
+live and every other member throwing a message naming the row that builds it. The WINDOWED path still refuses,
+now naming the swapchain row ([#581](https://github.com/APKiwiOrg/KhaozEngine/issues/581)) rather than this
+one, because a windowed device that cannot present is worse than one that says so at creation. Nothing selects
+this backend by default, so no consumer behaviour changes.
+
+**The interop layer is the file family M-P2 decided**, under `Internal/ObjC/`: a runtime shim, ONE typed
+`objc_msgSend` prototype per SIGNATURE SHAPE rather than per selector, a readonly handle struct per Objective-C
+class so a queue cannot be passed where a device belongs, and each class's enums with the right underlying
+width. One file per class, which is the rule the design pins and the vendored fork already follows. Every shape
+in it was measured by row 1's spike before it was used, which is what "shape" buys: one representative stands
+for every selector sharing its argument classes, so this row added selectors without re-measuring anything.
+
+**One `objc_msgSend` declaration set survives, and the choice between the two is written down.**
+`MetalSupportProbe.Native.cs` is DELETED, which was the first half of row 2's handoff: it carried nine
+declarations verbatim from the spike with a comment saying to delete it, and the assembly must not ship two live
+hand-rolled dispatch sets. `MetalInteropSpike` keeps its own, deliberately, because it is a MEASUREMENT whose
+value is being self-contained and re-runnable against exactly what row 1 asked. The design rules on neither, so
+the rule taken is that a duplicate goes and a measurement stays.
+
+**`KE_METAL_DEVICE` (M-N1), with a default that is a different function rather than a different index.** Unset
+takes `MTLCreateSystemDefaultDevice()`, which is what the incumbent calls, so `GpuCapabilities.DeviceName`
+parity under section 14's zero-permitted-difference bar is satisfiable by construction. Taking
+`MTLCopyAllDevices()[0]` instead would be a different choice on any machine where the two differ, and an
+ordinary run therefore never enumerates at all. Set, it takes an index, a case-insensitive name substring, or
+`discrete`, `integrated` or `low-power`. Metal has exactly ONE classification flag (`-isLowPower`) and no
+discrete flag, so `discrete` is defined as its negation and the docs say so rather than implying a richer
+taxonomy the API cannot support. An ineligible device is never chosen on any path including an explicit index,
+an unhonourable request WARNS with the full enumeration and falls back, and the log line says SELECTION or
+SUBSTITUTED in as many words, because a soak comparing this backend against the incumbent has to tell those
+apart.
+
+**And the probe now reads the SELECTED device**, which is the other half of row 2's handoff. Both the probe and
+creation go through one acquisition, so `IsBackendSupported` and the fallback report stop describing a device
+the backend would not use on a dual-GPU Mac with the variable set.
+
+**`KE_METAL_VALIDATION` reports rather than arms, because M-G3 measured that it cannot arm.** Metal reads
+`MTL_DEBUG_LAYER` and `MTL_SHADER_VALIDATION` at process launch, and row 1's spike proved with a control that an
+in-process `setenv` ahead of any Metal use leaves the device class `AGXG14CDevice` while the same run launched
+with the variable set gets `MTLDebugDevice`. So the knob logs which tier is really armed and WARNS, naming the
+exact launch prefix, when a tester asked for a tier this process cannot have. The WARN section 14 asks for (the
+variable set after the runtime read it) turned out to be DETECTABLE rather than guessable: on Unix the CLR keeps
+its own copy of the environment and `Environment.SetEnvironmentVariable` never writes through, so a variable the
+managed side reports and `getenv` does not was set in-process. The report is then checked against the device
+itself through the spike's own class-name control, so the log says what the runtime did rather than echoing the
+environment back.
+
+**The command-buffer error latch (M-G4), which is net-new rather than reproduced.** The incumbent reads
+`MTLCommandBuffer.status` in exactly one place, to decide whether waiting is worth it, and never reads `.error`
+at all, so a Metal device loss is invisible to the engine and to telemetry today. Every failure now latches the
+`MTLCommandBufferError` code and the driver's localized description AT the site that saw it, flips the liveness
+token, and surfaces through the existing `deviceLossReason` header field, which closes
+[#427](https://github.com/APKiwiOrg/KhaozEngine/issues/427) for the Metal leg on the day the backend lands.
+Every failure and not only the device-level codes, which is the design's ruling and is argued at the type rather
+than assumed: the Vulkan sibling triages because a caller can recover an ordinary failure, and the GPU seam has
+no way to resubmit a Metal command buffer whose work was discarded, so a frame that failed is followed by one
+that reads its results.
+
+**A drain BEFORE teardown (M-F6), built from what this row owns.** Metal has no device-level wait, so there is
+no `vkDeviceWaitIdle` to call and the Vulkan device row's answer does not transfer. Instead an empty command
+buffer is committed and waited on: a queue executes in ENQUEUE order and `commit` enqueues, so a completed
+buffer proves everything committed before it completed too. The timeline row
+([#571](https://github.com/APKiwiOrg/KhaozEngine/issues/571)) supersedes the call site rather than the
+reasoning, with `waitUntilSignaledValue:timeoutMS:` plus the two drain counters, which is the stronger version
+because it is bounded and counted. Teardown is then M-F6's order exactly: drain, flip liveness inside the
+lifecycle lock, release the queue and the device. A drain that saw a failure has already flipped liveness
+through the latch, so the two handles leak deliberately rather than releasing into a device that reported itself
+gone.
+
+**The autorelease rule is enforced by a walk over call sites (M-N5).** Every Objective-C factory method returns
+an autoreleased object, and the incumbent wraps four sites and not others, which is the shape that accumulates
+under a frame loop. The rule is now a type (`ObjCAutoreleasePool`, a `ref struct` so a scope cannot escape its
+frame) plus an architecture test asserting that no path from an entry point reaches an `objc_msgSend` without
+passing through a method that opens one. It departs from V-D2's field-walk shape in one place and says why: V-D2
+forbids a TYPE from being reachable, which a field graph can answer, while this requires a CALL on a path, which
+a field graph cannot see at all. Entry points are COMPUTED as the roots of the package's own call graph rather
+than listed, so a member added later is covered without anybody remembering, and a positive control proves the
+walk really reaches the interop layer so a green result cannot mean the reflection returned nothing.
+
+**Measured on an Apple M2 Max under macOS 26**: highest Apple family 8, `Mac2` and `Common1` both yes,
+buffer-offset alignment 16 through `-minimumLinearTextureAlignmentForPixelFormat:` (which agrees exactly with
+the `16` the incumbent hardcodes for macOS), device name `Apple M2 Max` identical through the probe and through
+the created device, and a name pin taking the enumerated `MTLCopyAllDevices()` path and landing on the same
+device. The device and queue create and tear down cleanly eight times in sequence, which is the cheapest place
+an ownership mistake in the borrowed-out-of-an-`NSArray` path would have shown up.
 
 ## 17.34.0
 

@@ -94,7 +94,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// Creation is not built yet, and the refusal is asserted rather than left implicit because of what the
+        /// THE WINDOWED PATH REFUSES, and the refusal is asserted rather than left implicit because of what the
         /// creation path does with it: it catches, WARNs with the message and falls back to the incumbent, so
         /// this text is what a tester who named the native backend actually reads.
         /// <para>
@@ -102,21 +102,18 @@ namespace KhaozEngine.Tests.Gpu
         /// Off macOS it is a <see cref="PlatformNotSupportedException"/> about the PLATFORM (M-P1, and the one
         /// place this package differs from the Vulkan sibling, which has no guard to raise). On a Mac whose
         /// probe answers no it is about the MACHINE. On a Mac whose probe answers yes it is about the PACKAGE
-        /// and names row 4. None of the three may be
+        /// and names the swapchain row, because a windowed device that cannot present is worse than one that
+        /// says so at creation. None of the three may be
         /// <see cref="GpuBackendProviderMissingException"/>, which is about the WIRING and is thrown by the
         /// registry before this type is reached at all.
         /// </para>
         /// </summary>
-        [Theory]
-        [InlineData(true)]
-        [InlineData(false)]
-        public void Creation_RefusesWithTheRightOneOfThreeReasons(bool windowed)
+        [Fact]
+        public void WindowedCreation_RefusesWithTheRightOneOfThreeReasons()
         {
             var provider = new MetalBackendProvider();
 
-            Exception ex = windowed
-                ? Assert.ThrowsAny<Exception>(() => provider.CreateForWindow(default))
-                : Assert.ThrowsAny<Exception>(() => provider.CreateHeadless());
+            Exception ex = Assert.ThrowsAny<Exception>(() => provider.CreateForWindow(default));
             _output.WriteLine(ex.GetType().Name + ": " + ex.Message);
 
             Assert.IsNotType<GpuBackendProviderMissingException>(ex);
@@ -133,7 +130,7 @@ namespace KhaozEngine.Tests.Gpu
             {
                 // The PACKAGE refusal, which must name the row that ends it. A message that only said
                 // "unsupported" would be indistinguishable in a log from the machine refusal below.
-                Assert.Contains("570", ex.Message, StringComparison.Ordinal);
+                Assert.Contains("581", ex.Message, StringComparison.Ordinal);
             }
             else
             {
@@ -142,17 +139,33 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// The provider returns a real device or throws, and never hands back an empty result. Pinned here
-        /// because the adopting path checks for a null device and produces its own message for it, and that
-        /// guard only stays meaningful while no provider actually relies on it.
+        /// HEADLESS CREATION SUCCEEDS OR THROWS, and never hands back an empty result. Pinned because the
+        /// adopting path checks for a null device and produces its own message for it, and that guard only stays
+        /// meaningful while no provider actually relies on it.
+        /// <para>
+        /// This row runs on every leg, which is what makes it worth having off macOS: there the answer is a
+        /// PLATFORM refusal, and asserting the shape everywhere is how the two stay tellable apart.
+        /// </para>
         /// </summary>
         [Fact]
-        public void CreationNeverReturnsAnEmptyResult()
+        public void HeadlessCreation_ReturnsARealDeviceOrThrows()
         {
             var provider = new MetalBackendProvider();
 
-            Assert.ThrowsAny<Exception>(() => provider.CreateForWindow(default));
-            Assert.ThrowsAny<Exception>(() => provider.CreateHeadless());
+            if (!KhaozEngineMetal.IsPlatformSupported || MetalSupportProbe.MissingRequirement() is not null)
+            {
+                Assert.ThrowsAny<Exception>(() => provider.CreateHeadless());
+                return;
+            }
+
+            GpuProviderDevice created = provider.CreateHeadless();
+            using IGpuDevice device = created.Device;
+
+            Assert.NotNull(device);
+            // No threading probe and no threading failure: Metal has no D3D11_FEATURE_DATA_THREADING analogue at
+            // all, so two nulls are the honest answer rather than a gap (4.2's first two rows).
+            Assert.Null(created.ThreadingCaps);
+            Assert.Null(created.ThreadingProbeFailure);
         }
 
         /// <summary>

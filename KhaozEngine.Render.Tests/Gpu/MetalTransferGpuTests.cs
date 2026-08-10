@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.Versioning;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Metal;
@@ -42,6 +43,11 @@ namespace KhaozEngine.Tests.Gpu
         const uint Size = 4;
 
         static readonly Color Amber = new(64f / 255f, 128f / 255f, 192f / 255f, 1f);
+
+        // WHAT THE ONE DRAW IN THIS FILE PAINTS, deliberately not the clear colour: the resolve-with-the-pass-open
+        // row separates "the resolve ran" from "it captured the pass before the draw" by which of the two it reads
+        // back, and from "it never ran at all" by black.
+        static readonly Color Drawn = new(32f / 255f, 192f / 255f, 96f / 255f, 1f);
 
         readonly ITestOutputHelper _output;
 
@@ -188,6 +194,95 @@ namespace KhaozEngine.Tests.Gpu
             _output.WriteLine($"resolve read back {texel}, wanted {Amber}.");
 
             Assert.Equal(Amber, texel);
+        }
+
+        /// <summary>
+        /// THE SAME RESOLVE WITH THE PRODUCING PASS STILL OPEN, WHICH IS THE SHAPE EVERY SHIPPED CALLER ACTUALLY
+        /// MAKES AND THE ONE THE ROW ABOVE CANNOT SEE. <c>Scene3D.ResolveDepthNormal</c> draws its scene and then
+        /// issues two resolves without ending anything, so the resolve is reached with a render encoder open.
+        ///
+        /// <para><b>WHAT IT CLOSES.</b> A resolve opens a RENDER encoder, the same kind a draw uses, so
+        /// <c>MetalEncoderScope.EnsureRenderEncoder</c> short-circuits on an open pass: it hands the caller's own
+        /// scene encoder straight back and the resolve descriptor, with its <c>MultisampleResolve</c> store action
+        /// and its resolve texture, is built, never used and released. The pass then ends normally and the command
+        /// buffer completes with a nil error, so the destination simply keeps whatever it held. With the resolve
+        /// SEPARATED into its own recording, as the row above has it, nothing is open when it runs and the defect
+        /// is invisible. That is why this row draws first: with the pass open, a destination that reads back the
+        /// drawn colour is the only outcome the correct end-first ordering can produce.</para>
+        ///
+        /// <para><b>THE DRAWN COLOUR IS NOT THE CLEAR COLOUR</b>, so the row also separates "the resolve ran"
+        /// from "the resolve ran before the draw": a resolve that somehow captured the pass at its clear would
+        /// read back <see cref="Amber"/> rather than <see cref="Drawn"/>, and an untouched destination reads back
+        /// black.</para>
+        /// </summary>
+        [GpuFact]
+        public void AResolveIssuedWithThePassStillOpenStillReachesTheDestination()
+        {
+            if (!Available()) return;
+
+            using MetalGpuDevice device = CreateHeadless();
+            IGpuResourceFactory factory = device.Factory;
+
+            using IGpuTexture multisampled = factory.CreateTexture(new GpuTextureDescription(Size, Size,
+                GpuPixelFormat.B8G8R8A8UNorm, GpuTextureUsage.RenderTarget, mipLevels: 1, arrayLayers: 1,
+                sampleCount: 4));
+            using IGpuTexture resolved = Target(factory, Size);
+            using IGpuFramebuffer fb = factory.CreateFramebuffer(null, multisampled);
+
+            using IGpuShaderSet shaders = factory.CreateShadersFromSpirv(FullscreenVert, ConstantFrag);
+
+            var layouts = new List<IGpuResourceLayout>();
+            foreach (GpuResourceLayoutDescription reflected in ((MetalShaderSet)shaders).Table.Layouts)
+                layouts.Add(factory.CreateResourceLayout(reflected));
+
+            try
+            {
+                // THE PIPELINE'S OUTPUTS COME OFF THE FRAMEBUFFER, which is where its sample count of 4 comes
+                // from: a pipeline's count must match the target it draws into, and reading it back off the live
+                // framebuffer is what keeps the two from being typed out twice.
+                using IGpuPipeline pipeline = factory.CreateGraphicsPipeline(new GpuPipelineDescription
+                {
+                    ShaderSet = shaders,
+                    ResourceLayouts = layouts.ToArray(),
+                    BlendAttachments = [GpuBlendAttachment.OverrideBlend],
+                    DepthStencil = GpuDepthStencilState.Disabled,
+                    Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid,
+                        GpuFrontFace.Clockwise, depthClipEnabled: false, scissorTestEnabled: false),
+                    Topology = GpuPrimitiveTopology.TriangleList,
+                    VertexLayouts = new List<GpuVertexLayoutDescription>(),
+                    Outputs = fb.Outputs,
+                });
+
+                using (MetalCommandList list = device.CreateCommandList())
+                {
+                    list.Begin();
+                    list.SetFramebuffer(fb);
+                    list.ClearColorTarget(0, Amber);
+                    list.SetPipeline(pipeline);
+
+                    // THE DRAW OPENS THE PASS AND LEAVES IT OPEN, which is the whole point of the row.
+                    list.Draw(3);
+                    list.ResolveTexture(multisampled, resolved);
+
+                    list.End();
+                    device.Submit(list);
+                }
+
+                device.WaitForIdle();
+
+                Assert.Null(device.Diagnostics.DeviceLossReason);
+
+                Color texel = ReadFirstTexel(device, resolved);
+                _output.WriteLine($"resolve with the pass open read back {texel}, wanted the drawn {Drawn}. "
+                    + "Black means the resolve never happened, which is what reusing the open pass's encoder "
+                    + "and discarding the resolve descriptor produces.");
+
+                Assert.Equal(Drawn, texel);
+            }
+            finally
+            {
+                foreach (IGpuResourceLayout layout in layouts) layout.Dispose();
+            }
         }
 
         /// <summary>
@@ -479,6 +574,20 @@ namespace KhaozEngine.Tests.Gpu
                 device.Unmap(staging);
             }
         }
+
+        // THE FULL-SCREEN TRIANGLE WITH NO VERTEX BUFFER AT ALL, driven off the vertex index, so the one draw in
+        // this file needs no stream, no vertex layout and no geometry fixture. What it draws is not the subject
+        // here: it exists to leave a render pass OPEN with known contents behind it.
+        const string FullscreenVert = @"#version 450
+void main()
+{
+    vec2 p = vec2(float((gl_VertexIndex << 1) & 2), float(gl_VertexIndex & 2));
+    gl_Position = vec4((p * 2.0) - 1.0, 0.0, 1.0);
+}";
+
+        const string ConstantFrag = @"#version 450
+layout(location=0) out vec4 Colour;
+void main() { Colour = vec4(32.0 / 255.0, 192.0 / 255.0, 96.0 / 255.0, 1.0); }";
 
         [SupportedOSPlatform("macos")]
         static IGpuTexture Target(IGpuResourceFactory factory, uint size)

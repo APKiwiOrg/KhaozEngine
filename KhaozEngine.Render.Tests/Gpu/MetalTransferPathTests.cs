@@ -21,16 +21,20 @@ namespace KhaozEngine.Tests.Gpu
     /// and disposal refusals every member shares. <see cref="MetalRenderPassScheduleTests"/> records the same
     /// constraint for the pass schedule, for the same reason.</para>
     ///
-    /// <para><b>THE ENCODER BOUNDARY IS THE CLAIM WORTH THE MOST HERE.</b> Every member of this family opens a
-    /// DIFFERENT encoder kind from the one a draw uses, and ending the open render pass first is M-A5 enforced by
-    /// <see cref="MetalEncoderScope"/> rather than by a line repeated in five places. That is a decision no golden
-    /// can see: a copy that failed to end the pass would be a driver refusal on a device and nothing at all on a
-    /// fake, so the boundary is asserted through <see cref="FakeMetalEncoderCalls"/> where it is visible.</para>
+    /// <para><b>THE ENCODER BOUNDARY IS THE CLAIM WORTH THE MOST HERE.</b> Four of the five members open a BLIT
+    /// encoder, which is a DIFFERENT kind from the one a draw uses, so ending the open render pass first is M-A5
+    /// enforced by <see cref="MetalEncoderScope"/> rather than by a line repeated in four places. The RESOLVE is
+    /// the exception and has its own row: it opens a RENDER encoder, the same kind, so the scope's Ensure
+    /// short-circuits and the member ends the pass itself. That is a decision no golden can see: a copy that
+    /// failed to end the pass would be a driver refusal on a device, and a resolve that failed to is a silent
+    /// no-op on a device AND nothing at all on a fake, so the boundary is asserted through
+    /// <see cref="FakeMetalEncoderCalls"/> where it is visible.</para>
     ///
-    /// <para><b>WHAT A RED RUN MEANS.</b> Either a copy stopped ending the open pass (M-A5), or the alignment
-    /// ruling of section 9.3 stopped being asymmetric (the offsets throw by name, the size is padded up), or a
-    /// refusal started spending an encoder boundary before it refused, or the zero-byte no-op turned back into the
-    /// Vulkan sibling's throw.</para>
+    /// <para><b>WHAT A RED RUN MEANS.</b> Either a copy stopped ending the open pass (M-A5), or a resolve went
+    /// back to reusing an open pass's encoder and discarding its own descriptor, or the alignment ruling of
+    /// section 9.3 stopped being asymmetric (the offsets throw by name, the size is padded up), or a refusal
+    /// started spending an encoder boundary before it refused, or the zero-byte no-op turned back into the Vulkan
+    /// sibling's throw.</para>
     /// </summary>
     public sealed class MetalTransferPathTests : IDisposable
     {
@@ -171,6 +175,65 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(8, _harness.Blit.Copies.Count);
             Assert.Equal(1, _calls.EncoderBegins);
             Assert.Single(_harness.Blit.Copies.Select(copy => copy.Encoder).Distinct());
+        }
+
+        // ---- The resolve's own boundary ----------------------------------------------------------------------
+
+        /// <summary>
+        /// A RESOLVE ISSUED WITH A RENDER PASS OPEN ENDS THAT PASS AND OPENS A FRESH ENCODER FROM ITS OWN
+        /// DESCRIPTOR. This is the one member of the family the encoder scope does NOT cover, and the row exists
+        /// because the first implementation of it was a silent no-op.
+        ///
+        /// <para><b>THE FAILURE IT CLOSES.</b> A blit is a different encoder kind from a draw's, so
+        /// <see cref="MetalEncoderScope.EnsureBlitEncoder"/> ends the open pass on the way in. A resolve opens a
+        /// RENDER encoder, the SAME kind, so <see cref="MetalEncoderScope.EnsureRenderEncoder"/> short-circuits
+        /// and hands back the caller's own scene encoder with the resolve descriptor UNUSED. Nothing then carries
+        /// the <c>MultisampleResolve</c> store action, the following <c>EnsureNoEncoder</c> ends the scene pass as
+        /// though all were well, the command buffer completes with a nil error, and the destination texture keeps
+        /// whatever it held. The shipped <c>Scene3D.ResolveDepthNormal</c> issues two back-to-back resolves with
+        /// the pass open, so the first was skipped and the second worked.
+        /// </para>
+        ///
+        /// <para><b>WHY IT DRIVES <c>StandaloneResolvePass</c> RATHER THAN <c>ResolveTexture</c>.</b> The public
+        /// member type-checks two <see cref="MetalTexture"/>s and that class cannot be built without an
+        /// <c>MTLDevice</c>, which is this file's standing limit. The ORDER is a decision rather than a driver
+        /// call, so it is asserted where a fake can see it and the pixel half is the <c>[GpuFact]</c> companion's.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void AResolveWithAPassOpenEndsItAndBeginsAFreshEncoderWithItsOwnDescriptor()
+        {
+            IntPtr source = new(0x51);
+            IntPtr destination = new(0x52);
+            _list.Begin();
+
+            IntPtr scene = _list.Encoders.EnsureRenderEncoder(Descriptor);
+            Assert.NotEqual(IntPtr.Zero, scene);
+
+            _list.StandaloneResolvePass(source, destination);
+
+            // THE RESOLVE'S OWN DESCRIPTOR REACHED A BEGIN, which is the whole claim: two render begins, the
+            // second one handed a descriptor that is not the scene pass's.
+            Assert.Equal((source, destination), Assert.Single(_render.Resolves));
+            Assert.Equal(2, _calls.EncoderBegins);
+            Assert.Equal(2, _calls.RenderDescriptors.Count);
+            Assert.Equal(Descriptor, _calls.RenderDescriptors[0]);
+            Assert.NotEqual(Descriptor, _calls.RenderDescriptors[1]);
+            Assert.NotEqual(IntPtr.Zero, _calls.RenderDescriptors[1]);
+
+            // AND IT IS A FRESH ENCODER RATHER THAN A REUSE, in the order end-then-begin.
+            Assert.Equal(4, _calls.Log.Count);
+            Assert.StartsWith("begin Render", _calls.Log[0], StringComparison.Ordinal);
+            Assert.StartsWith("end Render", _calls.Log[1], StringComparison.Ordinal);
+            Assert.StartsWith("begin Render", _calls.Log[2], StringComparison.Ordinal);
+            Assert.StartsWith("end Render", _calls.Log[3], StringComparison.Ordinal);
+            Assert.Equal(2, _calls.RetainedEncoders.Count);
+            Assert.NotEqual(scene, _calls.RetainedEncoders[1]);
+
+            // Nothing is left open and nothing is left retained, on either seam.
+            Assert.Equal(MetalEncoderKind.None, _list.Encoders.Open);
+            Assert.Equal(0, _calls.OutstandingEncoders);
+            Assert.Equal(0, _render.OutstandingDescriptors);
         }
 
         // ---- CopyBuffer: the refusals ------------------------------------------------------------------------

@@ -1266,6 +1266,20 @@ stated blocker (#596). `MTLRenderPassDescriptor`'s own header said "No `resolveT
 standalone resolve encoder", which reverses the implication and is corrected in place: the standalone encoder IS
 a render pass and its descriptor is the one place a resolve texture is named.
 
+**And the resolve is the ONE command in the backend that ends the open pass itself, which the first draft of it
+got wrong.** The other four transfer members open a BLIT encoder, a different kind from a draw's, so the encoder
+scope ends the open render pass on the way in and M-A5 needs no line in any of them. A resolve opens a RENDER
+encoder, the SAME kind, so the scope's Ensure short-circuits, hands the caller's own scene encoder back and
+leaves the resolve descriptor unused, and the `MultisampleResolve` store action never reaches anything. Nothing
+about that is loud: the pass ends normally and the command buffer completes with a nil error, so the destination
+keeps whatever it held, which on `Scene3D.ResolveDepthNormal` (two back-to-back resolves issued with the pass
+open) is the previous frame's contents. `ResolveTexture` therefore calls `EnsureNoEncoder` before it builds the
+descriptor, which is the incumbent's order too. Plain `EnsureNoEncoder` rather than the clear-flushing `EndPass`,
+because the incumbent's `ResolveTextureCore` calls plain `EnsureNoRenderPass` and leaves a clear-only pass's
+clears owed across a resolve. A `[GpuFact]` draws into an MSAA target, resolves with the pass still open and
+reads the resolved texel, which is the shape every shipped caller makes and the one a resolve in its own
+recording cannot see.
+
 **`CopyBuffer`'s alignment ruling now has one home.** macOS requires both offsets and the size of
 `copyFromBuffer:sourceOffset:toBuffer:destinationOffset:size:` to be multiples of four. Section 9.3 pads the size
 and throws by name on an offset, and row 8 wrote that rule for the record-time bulk `UpdateBuffer`. Two more seam

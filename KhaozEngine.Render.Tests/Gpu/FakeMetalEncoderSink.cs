@@ -189,6 +189,7 @@ namespace KhaozEngine.Tests.Gpu
         readonly List<string> _log = new();
         readonly List<IntPtr> _retainedEncoders = new();
         readonly List<IntPtr> _releasedEncoders = new();
+        readonly List<IntPtr> _renderDescriptors = new();
         readonly HashSet<IntPtr> _live = new();
         readonly List<FakeMetalArrayWrite> _arrayWrites = new();
         readonly List<FakeMetalOffsetWrite> _offsetWrites = new();
@@ -224,6 +225,15 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>Every encoder that was ended, and therefore released, in order.</summary>
         internal IReadOnlyList<IntPtr> ReleasedEncoders => _releasedEncoders;
 
+        /// <summary>
+        /// The <c>MTLRenderPassDescriptor</c> each RENDER begin was handed, in order, including the begins that
+        /// answered nil. It is what says a descriptor was CONSUMED rather than built and dropped, which is the
+        /// resolve's whole failure mode: the scope short-circuits on an already-open render encoder, so a caller
+        /// that did not end the pass first gets someone else's encoder back and its own descriptor never reaches
+        /// a begin at all.
+        /// </summary>
+        internal IReadOnlyList<IntPtr> RenderDescriptors => _renderDescriptors;
+
         /// <summary>What is still retained. MUST be 0 after every exit: an encoder left open holds its own +1 and
         /// its command buffer's, and the buffer stays counted against the queue's uncommitted maximum.</summary>
         internal int OutstandingEncoders => _retainedEncoders.Count - _releasedEncoders.Count;
@@ -248,6 +258,8 @@ namespace KhaozEngine.Tests.Gpu
                     + "selector takes a nonnull argument, so this would be undefined behaviour on a device and "
                     + "the caller owes the pass schedule's nil arm instead.", nameof(descriptor));
             }
+
+            if (kind == MetalEncoderKind.Render) _renderDescriptors.Add(descriptor);
 
             if (kind == NilForKind)
             {

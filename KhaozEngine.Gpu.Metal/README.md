@@ -685,6 +685,15 @@ architecture, and the committed `metal` goldens were baked under it. **If you ne
 before resolving.** A consumer relying on the source surviving a resolve is relying on behaviour this backend
 does not have.
 
+**A resolve ends the render pass you have open, and it does not flush a clear-only one.** It is the only
+recorded command here that needs its own end, because it opens a render encoder of its own and every other
+command that interrupts a pass opens a different encoder kind. So a resolve issued mid-pass costs a pass
+boundary, which discards the pipeline state, every argument-table entry, the viewport, the scissor and every
+vertex stream, and the next draw pays a full re-activation. What it does NOT do is force out a pass that
+collected clears and saw no draw: those clears stay owed until a draw, a framebuffer change or `End`, so
+clearing a target and resolving it with nothing drawn resolves its PRE-CLEAR contents. That is the Veldrid Metal
+backend's behaviour reproduced rather than smoothed.
+
 **`CopyBuffer` requires both offsets to be multiples of four, and refuses by name when they are not.** macOS
 requires that of the underlying copy. The SIZE is padded up for you, which lands inside the destination's own
 allocation by construction. An unaligned OFFSET throws rather than being routed through an embedded compute

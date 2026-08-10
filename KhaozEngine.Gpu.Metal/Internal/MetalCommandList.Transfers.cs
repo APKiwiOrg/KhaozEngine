@@ -7,11 +7,17 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// THE TRANSFER FAMILY: buffer copies, texture copies, mip generation and the multisample resolve. Work
     /// breakdown row 14 (https://github.com/APKiwiOrg/KhaozEngine/issues/580).
     ///
-    /// <para><b>EVERY MEMBER HERE OPENS A DIFFERENT ENCODER KIND FROM THE ONE A DRAW USES, AND THAT IS WHAT
-    /// ENFORCES M-A5.</b> Four of the five open a BLIT encoder and the resolve opens a RENDER one of its own, and
-    /// each goes through <see cref="MetalEncoderScope"/>, whose first act is to end whatever is open. So the
-    /// end-before-anything-illegal invariant is the scope's rather than a line repeated in five places, which is
-    /// the decision row 12 recorded when it did NOT add an <c>EndPass</c> for these callers to call.</para>
+    /// <para><b>FOUR OF THE FIVE OPEN A BLIT ENCODER AND GET M-A5 FOR FREE. THE RESOLVE DOES NOT, AND IT IS THE
+    /// ONE MEMBER THAT ENDS THE OPEN PASS ITSELF.</b> A blit is a DIFFERENT kind from the one a draw uses, so
+    /// <see cref="MetalEncoderScope.EnsureBlitEncoder"/> ends whatever is open on the way and the invariant is the
+    /// scope's rather than a line repeated in four places, which is the decision row 12 recorded when it did NOT
+    /// add an <c>EndPass</c> for these callers to call. The resolve opens a RENDER encoder, which is the SAME kind
+    /// a draw uses, so <see cref="MetalEncoderScope.EnsureRenderEncoder"/> short-circuits on an open pass and hands
+    /// the caller's own scene encoder straight back with the resolve descriptor unused. Row 12's comment said "a
+    /// resolve opens a blit one" and it was wrong. So <see cref="ResolveTexture"/> calls
+    /// <see cref="MetalEncoderScope.EnsureNoEncoder"/> itself, first, and the incumbent does the same thing for
+    /// the same reason (<c>ResolveTextureCore</c> is <c>EnsureNoBlitEncoder</c> then <c>EnsureNoRenderPass</c>
+    /// then a DIRECT encoder creation).</para>
     ///
     /// <para><b>THE ARITHMETIC IS NOT HERE.</b> Which of the four staging cases a copy is, which subresource each
     /// side names and what byte offsets and pitches the staging side supplies are
@@ -179,8 +185,18 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// BACKEND THAT DOES, and the schedule's own invariant survives it because the encoder is opened and
         /// ended inside this call. That invariant (a pass is never both OPEN and owed a clear) is only ever read
         /// at <c>EndPass</c>, and by the time control returns here nothing is open at all, so no caller can
-        /// observe the intermediate state. What a resolve DOES do is end an open pass and bump the epoch, which
-        /// is M-A5 and M-R4 taking their ordinary course.
+        /// observe the intermediate state.
+        /// </para>
+        /// <para>
+        /// AND IT ENDS THE OPEN PASS ITSELF, WHICH IS THE ONE PLACE IN THIS FILE THAT HAS TO. See the type
+        /// remarks: a resolve opens the SAME encoder kind a draw uses, so the scope's Ensure would short-circuit
+        /// on an open pass, hand the caller's scene encoder back and DISCARD the resolve descriptor, and the
+        /// <c>MultisampleResolve</c> store action would never be set on anything. Nothing about that failure is
+        /// loud: the pass ends normally, the buffer completes with a nil error, and the destination keeps whatever
+        /// it held. <see cref="MetalEncoderScope.EnsureNoEncoder"/> is the parity-correct call rather than
+        /// <c>EndPass</c>: the incumbent's <c>ResolveTextureCore</c> calls plain <c>EnsureNoRenderPass</c> and
+        /// leaves a clear-only pass's pending clears OWED across the resolve, which is M-A3's flush staying at its
+        /// two forcing sites (a framebuffer change and <c>End</c>) rather than gaining a third here.
         /// </para>
         /// </remarks>
         public void ResolveTexture(IGpuTexture src, IGpuTexture dst)
@@ -194,7 +210,28 @@ namespace KhaozEngine.Gpu.Metal.Internal
             RequireRecording("Resolving a multisampled texture");
             RequireResolvable(source, destination);
 
-            IntPtr descriptor = _render.CreateResolveDescriptor(source.Handle.Handle, destination.Handle.Handle);
+            StandaloneResolvePass(source.Handle.Handle, destination.Handle.Handle);
+        }
+
+        /// <summary>
+        /// THE RESOLVE'S ENCODER SEQUENCE, with the two textures already resolved to handles and every refusal
+        /// already spent. Called by <see cref="ResolveTexture"/> and, for the reason
+        /// <c>MetalTransferPathTests</c> records in full, by the device-free row that asserts the end-first
+        /// ordering: a <see cref="MetalTexture"/> has a private constructor and one factory that takes an
+        /// <c>MTLDevice</c>, so the public member cannot be driven off a device at all, and the ordering it
+        /// depends on is a decision rather than a driver call.
+        /// </summary>
+        /// <param name="sourceTexture">The multisampled <c>MTLTexture</c> the pass loads and resolves out of.
+        /// </param>
+        /// <param name="destinationTexture">The single-sample <c>MTLTexture</c> named as the resolve target.
+        /// </param>
+        internal void StandaloneResolvePass(IntPtr sourceTexture, IntPtr destinationTexture)
+        {
+            // END WHATEVER IS OPEN BEFORE THE DESCRIPTOR IS EVEN BUILT, which is the incumbent's own order and the
+            // half the scope cannot do for this member. Plain EnsureNoEncoder, not EndPass: see the remarks above.
+            _encoders.EnsureNoEncoder();
+
+            IntPtr descriptor = _render.CreateResolveDescriptor(sourceTexture, destinationTexture);
             if (descriptor == IntPtr.Zero) return;
 
             try

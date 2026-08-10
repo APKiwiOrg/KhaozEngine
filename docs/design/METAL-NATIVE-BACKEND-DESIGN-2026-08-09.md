@@ -2832,9 +2832,22 @@ texture is named.
 
 **And it is the ONE place in the backend that opens a render encoder outside `MetalRenderPassSchedule`.** The
 schedule's invariant (a pass is never both OPEN and owed a clear) survives it because the encoder is opened and
-ended inside the one call, and that invariant is only ever read at `EndPass`, by which time nothing is open. What
-a resolve does observably is end an open pass and bump the epoch, which is M-A5 and M-R4 taking their ordinary
-course.
+ended inside the one call, and that invariant is only ever read at `EndPass`, by which time nothing is open.
+
+**Corrected after row 14's review: M-A5 does NOT take its ordinary course here, and the resolve has to end the
+open pass ITSELF.** The first draft of this paragraph said a resolve ends an open pass through the scope, the way
+the other four transfer members do. It does not, and the reason is the one thing that makes the resolve different
+from them: they open a BLIT encoder, which is a different kind, so `EnsureBlitEncoder` ends what is open on the
+way in. A resolve opens a RENDER encoder, the SAME kind a draw uses, so `EnsureRenderEncoder` short-circuits on
+an open pass and hands the caller's own scene encoder back with the resolve descriptor unused, and the
+`MultisampleResolve` store action is never set on anything. The pass then ends normally, the command buffer
+completes with a nil error, and the destination keeps whatever it held, which is a previous frame's contents on
+the shipped `Scene3D.ResolveDepthNormal` path, where two back-to-back resolves are issued with the pass open. So
+`ResolveTexture` calls `EnsureNoEncoder` first, before the descriptor is even built, which is the incumbent's own
+order (`EnsureNoBlitEncoder`, `EnsureNoRenderPass`, then a DIRECT encoder creation). Plain `EnsureNoEncoder`
+rather than `EndPass`, because the incumbent's `ResolveTextureCore` calls plain `EnsureNoRenderPass` and leaves a
+clear-only pass's pending clears owed across the resolve. The epoch bump is unchanged and is M-R4 taking its
+ordinary course.
 
 An out-of-range requested sample count THROWS at texture creation rather than silently falling to 1, which is
 C4's departure inherited for C4's reason: the engine clamps upstream so nothing legitimate reaches the throw,

@@ -82,12 +82,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// should have had.</para>
     ///
     /// <para><b>M-A5's END-BEFORE-ANYTHING-ILLEGAL DOES NOT NEED A MEMBER HERE, and that is worth saying because
-    /// its absence looks like an omission.</b> Every command illegal inside a render encoder opens a different
-    /// encoder kind (a dispatch a compute one, a copy or a mip chain or a resolve a blit one), and each of those
-    /// goes through <see cref="MetalEncoderScope"/>, whose first act is to end whatever is open. So the
-    /// invariant is the scope's and is already enforced for callers that have not been written yet. What this
-    /// type owes is that it OBSERVES the result rather than contradicting it, which is the no-flag rule above and
-    /// which has its own device-free row.</para>
+    /// its absence looks like an omission.</b> Almost every command illegal inside a render encoder opens a
+    /// different encoder kind (a dispatch a compute one, a copy or a mip chain a blit one), and each of those goes
+    /// through <see cref="MetalEncoderScope"/>, whose first act is to end whatever is open. So the invariant is
+    /// the scope's and is already enforced for callers that have not been written yet.
+    /// <b>THE ONE EXCEPTION IS THE RESOLVE, and row 12's version of this paragraph got it wrong</b>: a resolve
+    /// opens a RENDER encoder of its own, which is the SAME kind, so the scope's Ensure short-circuits instead of
+    /// ending anything and <c>MetalCommandList.ResolveTexture</c> calls
+    /// <see cref="MetalEncoderScope.EnsureNoEncoder"/> itself. What this type owes either way is that it OBSERVES
+    /// the result rather than contradicting it, which is the no-flag rule above and which has its own device-free
+    /// row.</para>
     ///
     /// <para><b>NOTHING HERE IS SYNCHRONISED</b>, on the same grounds as the list that owns it: one list records
     /// on one thread at a time and this schedule is that list's alone.</para>

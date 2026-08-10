@@ -1813,6 +1813,23 @@ the streams occupy is the combined-bindings case, and it is refused against the 
 is strictly stronger than a count comparison: it fires on the actual collision rather than on the pigeonhole
 that implies one.
 
+**Second addendum, at the row 11 and row 13 merge: the numbering is ONE TYPE, and this section's whole argument
+is why it had to be.** The two rows landed on separate branches and each wrote its own mapping under its own
+filename, so git kept both silently and the two readers M-B2 exists to hold together (the
+`MTLVertexDescriptor`'s layout index in row 11 and the `setVertexBuffers:` bind index in row 13) came from two
+independent subtractions again. That is the failure this decision was taken to remove, arriving through the
+merge rather than through the code, and it is worth recording because nothing mechanical caught it: both
+branches were green, both numberings agreed, and a device reports NOTHING on the day they stop. The surviving
+type is `MetalVertexStreamIndex`, and it is the GUARDED one: its `ForSlot` refuses a slot past the bottom of
+the table where the retired one subtracted unchecked and wrapped into a plausible-looking index.
+
+**And the pipeline path takes the count refusal BEFORE it builds the vertex plan**, which the first draft had
+the other way round. Both arms of the no-collision assertion need only the stream count and the table, and the
+count is the declared layout count, so nothing is lost by moving it forward. What is gained is the message: a
+pipeline declaring more streams than one stage's table can hold is refused by the check that names the pipeline
+and both numbers, rather than by the per-slot mapping several frames of reasoning later, which knows only about
+a slot.
+
 ### 8.4 Declining argument buffers, heaps, bindless and `setBytes` (M-B6)
 
 The idiomatic prior wants all four, so each decline needs an argument rather than an omission.

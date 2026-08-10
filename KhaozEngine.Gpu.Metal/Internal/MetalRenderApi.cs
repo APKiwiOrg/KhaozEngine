@@ -143,18 +143,33 @@ namespace KhaozEngine.Gpu.Metal.Internal
         }
 
         // The two enum maps, as switches rather than casts. The values happen to differ (this backend's Load is 0
-        // and Metal's is 1), so a cast would be silently wrong, and a switch with no default arm is what makes a
-        // future member a compile error rather than a wrong load action.
+        // and Metal's is 1), so a cast would be silently wrong.
+        //
+        // EVERY NAMED MEMBER HAS ITS OWN ARM AND THE DISCARD THROWS, which is this package's absorbing-default
+        // rule and is as far as the language allows the check to go. A switch expression listing every member and
+        // no discard does NOT compile: CS8524 is an error here (warnings are errors), because an enum can hold a
+        // value no member names. So a future member cannot be made a build break, and the next best thing is that
+        // it cannot be silently absorbed either. #596's MultisampleResolve is the named candidate, and under an
+        // absorbing `_ => Store` it would have emitted Store and resolved nothing, which is a wrong store action
+        // with no error anywhere: exactly the class M-A4 exists to close.
         static MTLLoadAction ToLoadAction(MetalLoadAction action) => action switch
         {
+            MetalLoadAction.Load => MTLLoadAction.Load,
             MetalLoadAction.Clear => MTLLoadAction.Clear,
-            _ => MTLLoadAction.Load,
+            _ => throw new ArgumentOutOfRangeException(nameof(action), action,
+                "this MetalLoadAction has no MTLLoadAction. Both members are listed, so this is a new one, and "
+                + "absorbing it into Load would silently load an attachment the plan asked to do something else "
+                + "with."),
         };
 
         static MTLStoreAction ToStoreAction(MetalStoreAction action) => action switch
         {
+            MetalStoreAction.Store => MTLStoreAction.Store,
             MetalStoreAction.DontCare => MTLStoreAction.DontCare,
-            _ => MTLStoreAction.Store,
+            _ => throw new ArgumentOutOfRangeException(nameof(action), action,
+                "this MetalStoreAction has no MTLStoreAction. Both members are listed, so this is a new one, and "
+                + "absorbing it into Store would emit a store where the plan asked for a resolve or a discard, "
+                + "which completes with no error and the wrong contents."),
         };
 
         // The engine's Color is already four floats in 0 to 1, which is MTLClearColor's own range, so this widens

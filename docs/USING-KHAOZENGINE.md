@@ -8858,9 +8858,10 @@ holds an `MTLDevice` and one `MTLCommandQueue`, answers `Backend`, part of `Capa
 `Submit` overloads, `WaitForIdle` and `Dispose`, records and submits a command list, creates real resources
 through `Factory` (buffers, textures, samplers and fences), exposes the shared `PointSampler` and
 `LinearSampler` pair, takes the device-level `UpdateBuffer` and `UpdateTexture`, answers `Map` and `Unmap`
-for staging resources, and COMPILES SHADERS through `CreateShadersFromSpirv` and
-`CreateComputeShaderFromSpirv`. It throws from every member whose row has not landed with a message naming that
-row, so there are no pipelines yet and nothing can be drawn.
+for staging resources, COMPILES SHADERS through `CreateShadersFromSpirv` and
+`CreateComputeShaderFromSpirv`, and creates the RESOURCE LAYOUTS and RESOURCE SETS a pipeline will bind through.
+It throws from every member whose row has not landed with a message naming that row, so there are no pipelines
+yet and nothing can be drawn.
 
 **The shader path takes the same GLSL 450 every other backend takes**, so there is nothing to write differently
 for it: sources go in, an `MTLLibrary` and an `MTLFunction` per stage come out, and a compute shader reports the
@@ -8878,6 +8879,15 @@ A shader whose emission cannot be read fails at `CreateShadersFromSpirv` with a 
 stage and the offending argument, and it fails with no device involved, so it surfaces in a headless test run
 rather than as a wrong pixel. There is deliberately no compiled-shader disk cache: macOS already caches the
 MSL-to-library compile across processes.
+
+**Layouts and sets are the same code you already write**, with one declaration this backend refuses that the
+others take: `GpuResourceLayoutElement`'s `dynamic: true` on a texture or a sampler element. The per-draw offset
+is applied with Metal's `setBufferOffset:`, which exists only for buffers, so a dynamic offset declared anywhere
+else would be silently dropped at every bind and is refused at layout creation instead. On a buffer element of
+any kind it is accepted, including both structured kinds, which is wider than the native Vulkan backend allows.
+A set is resolved once when you create it, so a resource you dispose while a set still names it is a mistake with
+no later point at which it could come right, and a staging texture cannot be bound at all: it is a mappable
+buffer on this backend rather than a texture.
 
 **One creation the other backends accept is refused here, deliberately.** A buffer declaring both
 `GpuBufferUsage.UniformBuffer` and either structured usage throws at creation on `MetalNative`. Both Veldrid

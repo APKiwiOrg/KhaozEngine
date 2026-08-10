@@ -28,6 +28,9 @@ and nothing that does not want the Objective-C interop ever carries it.
 > Row 9 added the shader path: `CreateShadersFromSpirv` and `CreateComputeShaderFromSpirv` compile GLSL to
 > `MTLLibrary` and `MTLFunction` per stage, and read the per-program binding table out of the emitted MSL. See
 > [The shader path, and where a binding index comes from](#the-shader-path-and-where-a-binding-index-comes-from).
+> Row 10 added resource layouts and resource sets, neither of which touches Metal at all, and deduplicated the
+> binding table so two programs that map every element the same way share one. See
+> [Layouts, sets, and the table two pipelines can share](#layouts-sets-and-the-table-two-pipelines-can-share).
 
 Spec, decisions and the nineteen-row work breakdown:
 [docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](../docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md).
@@ -46,8 +49,8 @@ KhaozEngineMetal.Register();   // unconditionally, on every OS, once at startup
 next row has to mean it. Everything else in the assembly is internal: the Objective-C interop layer, the
 device and its queue, the provider, the machine probe and its device-free decision half, the completion
 timeline and the fence on it, the command list with its encoder lifecycle and the submit path, the shader path
-with its emission parse and binding table, plus the three verification spikes, which exist to answer a question
-rather than to run in a game.
+with its emission parse and binding table, the resource layouts and sets a pipeline will bind through, plus the
+three verification spikes, which exist to answer a question rather than to run in a game.
 
 **Call `Register()` unconditionally and on every operating system.** Registering says a provider EXISTS, which
 is a fact about your app's wiring. Whether this machine can run it is the separate question
@@ -389,6 +392,46 @@ processes (0.02 ms for a source it has seen before, against 68 to 98 ms cold, bo
 service warmed first so neither number is startup cost), and no public API can serialize a source-compiled
 `MTLLibrary` anyway. The cost worth caching is the engine's own GLSL-to-MSL half, which is
 tracked as [#592](https://github.com/APKiwiOrg/KhaozEngine/issues/592).
+
+## Layouts, sets, and the table two pipelines can share
+
+`CreateResourceLayout` and `CreateResourceSet` are live, and **neither makes a single native call**. Metal has no
+`MTLResourceLayout` and no descriptor-set layout, because an argument table is addressed by integer per stage, so
+a layout here is the engine's own bookkeeping and nothing else. Metal's answer to a descriptor set is an argument
+buffer, which this backend declines by name: the engine's per-frame binding traffic is dominated by offsets-only
+rebinds of ONE set, which argument buffers do not improve, and every route to them changes the emitted MSL for
+every program at once, which would put the committed `metal` goldens in play and destroy the byte-equality parity
+claim in the same move.
+
+**A layout counts nothing.** The incumbent's layout object is the same element array plus per-kind counters, and
+its bind path re-walks the whole layout array to sum them on every single bind. That arithmetic is right only
+where the compiler's first-reference order happens to equal declaration order, which is the mechanism behind the
+three incidents the section above lists. What declaration order is for here is that an element's POSITION is its
+binding number, which is the key the binding table is read through. The only refusal a layout adds is a per-draw
+dynamic offset declared on a texture or a sampler, because the offset is applied with `setBufferOffset:` and that
+exists only in the buffer space, so declaring one anywhere else would be dropped at every bind with nothing said.
+
+**A set resolves everything at creation and nothing at a bind.** A set is created once at load time and bound
+thousands of times a frame, so each binding comes out already carrying which argument table it goes in, the
+Objective-C object a bind writes, and the numbers a buffer bind composes its offset from: the ring the buffer was
+cut into, the window's own offset, and whether the caller's per-draw offset is added. The window is the range's
+size, or the buffer's own LOGICAL size for a bare buffer, which on a ring-backed uniform buffer is emphatically
+not its allocation. A staging texture is refused: it is a Shared `MTLBuffer` on this backend rather than an
+`MTLTexture`, so there is nothing to write into the texture table.
+
+**Which stages a set binds for is decided by the binding table and NOT by the declared visibility flags.** The
+seam's `GpuShaderStages` is what the engine declared, the table is what the compiler did, and an element with no
+entry for a stage is not referenced by that stage's function and must not be bound for it.
+
+**The table is content-deduplicated per device, and that is what lets a pipeline switch keep its binds.** Metal's
+argument tables are absolute and per encoder, so a bound resource survives a pipeline switch: what a switch can
+invalidate is only the mapping from an element to an index. Two programs that map every element identically
+therefore invalidate nothing, and with a fresh table object per program that comparison would be a reference test
+that is never equal, so every switch would invalidate everything, which is exactly what the incumbent already
+does. Tables are keyed on a content string rendering the layout shape and every entry, canonicalised at
+shader-set creation because a table is a property of the emission, and never evicted, because a rebuilt instance
+would silently start invalidating again. Over the shipped catalog **42 programs produce 17 distinct tables and 25
+programs share one with an earlier program**.
 
 ## Three decisions worth knowing before reading the code
 

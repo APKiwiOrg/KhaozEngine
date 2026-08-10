@@ -811,6 +811,68 @@ can pass at zero. Everything else the ring and the arena DECIDE is device-free t
 golden could ever see: that a ring-backed write opens no encoder, emits no copy and takes no staging block,
 counted through the same budget seam the encoder boundaries are frozen over.
 
+### Native Metal resource layouts and sets, and the binding table deduplicated so a pipeline switch can keep its binds (#576)
+
+`IGpuResourceFactory.CreateResourceLayout` and `CreateResourceSet` are live on `GpuBackendKind.MetalNative`, and
+the per-program binding table is content-deduplicated per device. Row 10 of
+[docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md).
+Pipelines still refuse, so nothing renders yet.
+
+**Neither type touches Metal at all, and both facts are the API rather than a choice.** Metal has no
+`MTLResourceLayout` and no descriptor-set layout: an argument table is addressed by integer per stage, so a
+layout is purely the engine's own bookkeeping. And Metal's answer to a descriptor set is an argument buffer,
+which section 8.4 declines by name because this engine's per-frame traffic is dominated by offsets-only rebinds
+of one set, which argument buffers do not improve, and because every route to them changes the emission for
+every program at once and puts the 36 committed `metal` goldens in play. So both are resolved managed data,
+creation makes no native call and takes no lock, and disposing either releases nothing.
+
+**The layout counts NOTHING, which is the whole of what this row had to get right.** The incumbent's
+`MTLResourceLayout` is this class plus per-kind counters, and `GetBufferBase` and its siblings re-walk the
+layout array on every single bind to sum them. That arithmetic is right only where the emission's
+first-reference order happens to equal declaration order, which is the mechanism behind the three production
+incidents row 9's entry lists. Section 2.2b rules the arithmetic is written once, as the comparison inside
+`MetalShaderIndexTableTests`, and never on a shipped path. What declaration order is still for is that an
+element's POSITION is its binding number, which is the key the table is read through.
+
+**The one refusal a layout adds is narrower than the Vulkan sibling's, deliberately.** A per-draw dynamic offset
+on a texture or a sampler element is refused at creation, because on Metal the offset is applied with
+`-setVertexBufferOffset:atIndex:` or its stage sibling, which exists only in the `[[buffer(n)]]` space, so
+declaring one anywhere else would be silently dropped at every bind. `VulkanDescriptorPolicy` refuses a dynamic
+element that is not a UNIFORM buffer, because a storage descriptor there has no dynamic offset at all. Metal's
+`setBufferOffset:` works at any buffer index whatever the kind, so a dynamic structured buffer is expressible
+here and reproducing the wider refusal would be inheriting a constraint that is not this API's.
+
+**A set resolves everything at creation and nothing at a bind**, because a set is created once at load time
+across 68 shipped call sites and bound thousands of times a frame. Each binding comes out as the argument table
+it belongs in, the Objective-C object the array setter writes, and the three numbers a buffer bind composes
+`frameBase + rangeOffset + callerDynamicOffset` from. The window is the range's size, or the buffer's own
+LOGICAL size for a bare buffer, which on a ring-backed uniform buffer is emphatically not its allocation. The
+declared `GpuShaderStages` is NOT what decides which stages get a bind: the index table is, and an element with
+no entry for a stage is not referenced by that stage's emitted function.
+
+**Deduplicating the table is what makes M-R9's pipeline-switch comparison a handle compare.** Metal's argument
+tables are absolute and per encoder, so a bound resource survives a pipeline switch and what a switch can
+invalidate is only the mapping from an element to an index. Every table built is a fresh object, so without
+deduplication that comparison is a reference test which is never equal, every switch invalidates everything, and
+the backend reproduces exactly what `MTLCommandList.SetPipelineCore` already does by clearing its whole
+active-set array. `MetalIndexTableCache` keys on the `ContentKey` row 9 named as the seat, canonicalises at
+shader-set creation because the table is a property of the emission, and never evicts: a table retired and
+rebuilt would be a different instance, so two pipelines that should invalidate nothing would silently start
+invalidating everything.
+
+**Measured over the shipped catalog: 42 programs produce 17 distinct tables, and 25 programs merge onto an
+earlier one.** So this is not a repeat-compile optimisation, it is 25 of 42 programs whose pipelines can now
+switch to a neighbour and keep every bind. The device-free suite asserts the EQUIVALENCE rather than the rate:
+for every pair the cache merged, the entries agree and the layout shape `RequireLayoutShape` compares agrees,
+driven both ways. **16 of those 25 merges disagree on at least one element NAME**, which is why `ContentKey`
+rendering the layout shape and no names is load-bearing rather than tidy: the day a member starts reading a name
+off a table's layouts it will be reading another program's name in the majority of merges, not in a corner case.
+
+**On an Apple M2 Max under macOS 26**, sets resolve against real buffers, textures, samplers and rings, every
+refusal fires by name including the staging texture that is a Shared `MTLBuffer` rather than an `MTLTexture`,
+and two shader sets compiled from one program come back sharing one table through the device's cache.
+Everything else in the row is device-free and runs on every leg.
+
 ## 17.34.0
 
 ### The `vulkan-native` CI leg, both validation tiers, and the first validation layer this repo has ever installed (#529)

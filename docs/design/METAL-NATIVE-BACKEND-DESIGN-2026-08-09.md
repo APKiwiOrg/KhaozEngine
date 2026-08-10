@@ -1553,6 +1553,52 @@ nothing on a switch, and the comparison is a handle compare once the tables are 
 the fine comparison 2.7 rules for, and it is only computable because the table exists as an object rather than
 as arithmetic re-derived per bind.
 
+**Addendum, row 10: what the dedup landed as, and the number that turns it from a nicety into the row's point.**
+`MetalIndexTableCache` is one `ConcurrentDictionary` per DEVICE keyed on `ContentKey`, consulted at shader-set
+creation and nowhere else, and `MetalShaderIndexTable.SameIndicesAs` is the reference compare row 13 calls. Two
+things the design did not say, both measured rather than reasoned.
+
+**The dedup is not a repeat-compile optimisation, which is how this row reads if you only look at the
+mechanism.** Over the shipped catalog 42 programs produce **17 distinct tables**, and **25 of the 42 share a
+table with an earlier program**: `Model` with `ModelDissolve`, the eight programs behind `ShadowDepth`, the
+seven behind `PostPalette`, both ocean FFT pass families. So the property M-R9 buys is not "compiling the same
+shader twice is cheap", it is that a switch between two of those 25 pipelines keeps every bind, which is the
+common case in a shadow pass and a post chain rather than the corner.
+
+**And the name divergence is the majority of merges, which sharpens `ContentKey`'s exclusion from a tidiness
+note into a real constraint.** 16 of those 25 merges disagree on at least one element NAME. The key renders the
+layout shape and the entries and deliberately no names, because nothing the table answers reads one, and that
+remains correct. What changes is the cost of getting it wrong later: a member that starts reading a name off
+`Layouts` would be reading ANOTHER PROGRAM'S name in 16 of 25 merges, not in a rare collision.
+`MetalIndexTableDedupTests` asserts the equivalence directly, walking every merged pair and checking the entries
+and the shape `RequireLayoutShape` compares, driven both ways, and pins the name invariance behaviourally beside
+it.
+
+**The pipeline's reference needed nothing new at the pipeline, which is the row's scope line resolving into
+less code than it sounds like.** Because the canonicalisation happens where the table is BUILT, every
+`MetalShaderSet.Table` and `MetalComputeShader.Table` is already the canonical instance, so row 11's pipeline
+holds the table its shader set carries and the handle compare is sound with no pipeline-side machinery at all.
+The alternative, deduplicating at pipeline creation, is unavailable rather than merely worse: two shader sets
+would already have handed out two instances of one content before any pipeline existed.
+
+**Addendum, row 10, on the two seam types: neither touches Metal, and the layout's one refusal is NARROWER than
+the Vulkan sibling's.** `MetalResourceLayout` is a copied element array (M-B6 leaves nothing to create, since
+Metal has no layout object) and `MetalResourceSet` is the declared elements resolved once into
+`MetalBoundResource` records, which carry the space, the raw Objective-C object an array setter writes, the ring,
+the window and whether the caller's per-draw offset applies. The refusal worth recording is that a per-draw
+dynamic offset is refused on a texture or a sampler element and ACCEPTED on any buffer kind.
+`VulkanDescriptorPolicy` refuses a dynamic element that is not a UNIFORM buffer, because a storage descriptor
+there has no dynamic offset at all, and reproducing that here would be inheriting a constraint that is not this
+API's: `setBufferOffset:` works at any buffer index whatever the kind. What the two share is the direction, which
+is that the offset has to have somewhere to go.
+
+**One M-M4 detail the design's wording invites getting wrong.** The set asserts
+`MetalRingStride.RequireBindWindowFits` at creation with a caller offset of 0, and that assertion CANNOT FIRE
+today: the window is already bounded by the buffer's logical size and the segment stride is that size rounded
+up. It is kept because the invariant is then stated by one shared helper both where the window is resolved and
+where row 13 composes the offset, so the two cannot drift, and the real failure lives at row 13 on the last
+frame slot only. Reading the creation-time call as the live guard would be reading a tautology as a check.
+
 ### 8.3 Vertex streams take the top of the space (M-B2)
 
 The one real collision in Metal's model is that vertex STREAM buffers and resource buffers share the

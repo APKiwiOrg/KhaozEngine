@@ -228,9 +228,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
             if (ring is not null)
             {
                 // M-M4, AT CREATION, with the caller's per-draw offset taken as 0 because it is not knowable
-                // here. Row 13 is where it can really fail, on the last frame slot only, for a caller offset five
-                // shipped renderers pass, and it asserts the same invariant through the same helper so the two
-                // cannot drift into disagreeing.
+                // here. IT CANNOT FIRE TODAY AND SAYING SO IS MORE USEFUL THAN IMPLYING IT IS LOAD-BEARING: the
+                // window check above already bounds rangeOffset + range by the LOGICAL size, and the stride is
+                // that size rounded UP, so a zero caller offset always fits. What it buys is that the invariant
+                // is stated by one shared helper at the place the window is resolved and again at the place row
+                // 13 composes the offset, so the two cannot drift into disagreeing about it. Row 13 is where it
+                // can really fail, on the last frame slot only, for a caller offset five shipped renderers pass.
                 MetalRingStride.RequireBindWindowFits(
                     rangeOffset, callerDynamicOffset: 0, range, ring.SegmentStrideBytes);
             }

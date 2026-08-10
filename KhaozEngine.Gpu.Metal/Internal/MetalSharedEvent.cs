@@ -76,13 +76,24 @@ namespace KhaozEngine.Gpu.Metal.Internal
         internal IntPtr Handle => _handle;
 
         /// <inheritdoc/>
+        /// <remarks>The three sends below return scalars, so strictly no autoreleased object exists to pool.
+        /// The pool is opened anyway: M-N5's walk guarantees every message-send path is pooled, and buying that
+        /// structural guarantee costs two C calls on the poll path, which the design prices as nothing against
+        /// the class of leak the walk exists to prevent.</remarks>
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public ulong Read() => ObjCMsgSend.SendULong(_handle, _signaledValue);
+        public ulong Read()
+        {
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+            return ObjCMsgSend.SendULong(_handle, _signaledValue);
+        }
 
         /// <inheritdoc/>
         [MethodImpl(MethodImplOptions.NoInlining)]
         public bool WaitUntil(ulong value, ulong timeoutMs)
-            => ObjCMsgSend.SendBoolULongULong(_handle, _waitUntilSignaledValue, value, timeoutMs) != 0;
+        {
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+            return ObjCMsgSend.SendBoolULongULong(_handle, _waitUntilSignaledValue, value, timeoutMs) != 0;
+        }
 
         /// <inheritdoc/>
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -90,6 +101,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if (commandBuffer == IntPtr.Zero) throw new ArgumentNullException(nameof(commandBuffer));
 
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
             ObjCMsgSend.SendVoidPtrULong(commandBuffer, _encodeSignalEvent, _handle, value);
         }
 

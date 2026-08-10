@@ -54,7 +54,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         internal static MetalTimelineProbeResult Run()
         {
             var notes = new List<string>();
-            IntPtr pool = ObjCRuntime.AutoreleasePoolPush();
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
             try
             {
                 return RunInsidePool(notes);
@@ -63,10 +63,6 @@ namespace KhaozEngine.Gpu.Metal.Internal
             {
                 notes.Add("the probe threw: " + ex.GetType().Name + ": " + ex.Message);
                 return new MetalTimelineProbeResult { Notes = notes };
-            }
-            finally
-            {
-                ObjCRuntime.AutoreleasePoolPop(pool);
             }
         }
 

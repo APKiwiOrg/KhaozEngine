@@ -237,10 +237,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             _ = block;
 
-            IntPtr pool = IntPtr.Zero;
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
             try
             {
-                pool = ObjCRuntime.AutoreleasePoolPush();
                 Deliver(
                     ObjCMsgSend.Send(commandBuffer, Selectors.CommandQueue),
                     ReadOutcome(commandBuffer));
@@ -248,10 +247,6 @@ namespace KhaozEngine.Gpu.Metal.Internal
             catch (Exception ex)
             {
                 Swallow(ex, "the native Metal completion handler threw while reading a command buffer's status");
-            }
-            finally
-            {
-                if (pool != IntPtr.Zero) ObjCRuntime.AutoreleasePoolPop(pool);
             }
         }
 

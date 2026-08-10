@@ -5,6 +5,7 @@ using System.Threading;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Metal.Internal;
 using KhaozEngine.Gpu.Metal.Internal.ObjC;
+using KhaozEngine.Primitives;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
@@ -448,11 +449,11 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// AN INDEXED DRAW WITH NO INDEX BUFFER IS REFUSED, AND IT IS REFUSED EVEN WHEN THE ENCODER CAME BACK
-        /// NIL. That ordering reads backwards and is deliberate, and it is written down in
-        /// <c>MetalCommandList.Draws.cs</c>: a recording that forgot <c>SetIndexBuffer</c> has made a caller error
-        /// whether or not this frame's drawable arrived, so M-W5's orphan arm must not SWALLOW it. A frame that
-        /// silently dropped the mistake would report it on the next frame that happened to get a drawable, which
-        /// is a bug report about the wrong frame.
+        /// NIL. The refusal comes before the pass opens at all, which puts it before M-W5's orphan arm for free:
+        /// a recording that forgot <c>SetIndexBuffer</c> has made a caller error whether or not this frame's
+        /// drawable arrived, so the orphan arm must not SWALLOW it. A frame that silently dropped the mistake
+        /// would report it on the next frame that happened to get a drawable, which is a bug report about the
+        /// wrong frame.
         ///
         /// <para><b>WHAT A RED RUN MEANS.</b> Either the refusal moved below the nil arm (an intermittent
         /// exception that names the wrong frame), or it went away entirely, in which case the call names a nil
@@ -491,6 +492,45 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         // ---- The refusals ---------------------------------------------------------------------------------
+
+        /// <summary>
+        /// AND THAT REFUSAL SPENDS NOTHING, WHICH INCLUDES THE PENDING CLEARS. The branch's rule is that a refusal
+        /// costs no encoder boundary, and this member was the one that broke it: <c>PrepareDraw</c> ran first, so
+        /// the pass opened and CONSUMED the clears into its load actions before the index refusal was reached, and
+        /// the recording lost them to a draw that never happened.
+        ///
+        /// <para><b>THE CLEAR IS THE HALF A BOUNDARY COUNT CANNOT SEE.</b> A pass that opened and threw leaves the
+        /// clear folded into a descriptor nobody drew into, so the next real draw opens a pass with
+        /// <c>loadAction = Load</c> and the frame renders over whatever the target held. Asserting the clear is
+        /// still owed means driving the next draw and reading its load action, which is what this does.</para>
+        /// </summary>
+        [Fact]
+        public void DrawIndexedWithNoIndexBufferSpendsNothing_TheClearsIncluded()
+        {
+            (MetalCommandList list, FakeMetalEncoderCalls calls, FakeMetalRenderCalls render, _) = NewList();
+            Color owed = new(0.25f, 0.5f, 0.75f, 1f);
+
+            list.Begin();
+            list.SetFramebuffer(new RecordedFramebuffer());
+            list.SetPipeline(Pipeline());
+            list.ClearColorTarget(0, owed);
+
+            Assert.Throws<InvalidOperationException>(() => list.DrawIndexed(3, 1, 0, 0, 0));
+
+            Assert.Empty(render.Passes);
+            Assert.Equal(0, calls.EncoderBoundaries);
+            Assert.Equal(MetalEncoderKind.None, list.Encoders.Open);
+
+            // AND THE CLEAR IS STILL OWED: the next draw, with the index buffer the refusal was about, folds it
+            // into the pass it opens.
+            list.SetIndexBuffer(_harness.NewBuffer(64, GpuBufferUsage.IndexBuffer), GpuIndexFormat.UInt16);
+            list.DrawIndexed(3, 1, 0, 0, 0);
+
+            Assert.Single(render.Passes);
+            Assert.Equal(owed, render.ClearOn(0));
+
+            list.End();
+        }
 
         /// <summary>
         /// A DRAW WITH NO GRAPHICS PIPELINE IS REFUSED BEFORE THE PASS OPENS, which is why <c>BeginDraw</c> reads

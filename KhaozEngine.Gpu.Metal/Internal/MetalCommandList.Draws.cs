@@ -167,14 +167,20 @@ namespace KhaozEngine.Gpu.Metal.Internal
         public void DrawIndexed(uint indexCount, uint instanceCount, uint indexStart, int vertexOffset,
             uint instanceStart)
         {
-            MetalGraphicsPipeline pipeline = BeginDraw("Drawing indexed", out IntPtr encoder);
+            MetalGraphicsPipeline pipeline = RequireGraphicsPipeline("Drawing indexed");
 
-            // THE INDEX REFUSAL COMES BEFORE THE NIL ARM, which reads backwards and is deliberate. A recording
-            // that forgot SetIndexBuffer has made a caller error whether or not this frame's drawable arrived, so
-            // M-W5's orphan target must not SWALLOW it: a frame that silently dropped the mistake would report it
-            // on the next frame that happened to get a drawable, which is a bug report about the wrong frame.
+            // THE INDEX REFUSAL COMES BEFORE THE PASS OPENS, beside the pipeline refusal and for its reason: a
+            // refusal spends nothing. PrepareDraw opens the encoder and CONSUMES the pending clears, so refusing
+            // after it would cost a boundary and swallow the clears of a frame that never drew.
+            //
+            // It also lands before M-W5's nil arm, which the ordering above gives for free and which is the half
+            // worth naming: a recording that forgot SetIndexBuffer has made a caller error whether or not this
+            // frame's drawable arrived, so the orphan target must not SWALLOW it. A frame that silently dropped
+            // the mistake would report it on the next frame that happened to get a drawable, which is a bug
+            // report about the wrong frame.
             if (_indices.DrawRefusal() is { } refusal) throw new InvalidOperationException(refusal);
 
+            IntPtr encoder = _passes.PrepareDraw();
             if (encoder == IntPtr.Zero) return;
 
             if (KhaozEngineMetal.IsPlatformSupported && _sink is MetalEncoderSink native)
@@ -297,21 +303,30 @@ namespace KhaozEngine.Gpu.Metal.Internal
             FlushVertexStreams(ref sink, encoder);
         }
 
-        // THE FIRST STEP, plus the two things every graphics command needs true. The pipeline is read BEFORE the
-        // pass opens, so a recording with no pipeline is refused without having spent an encoder on it.
+        // THE FIRST STEP, plus the two things every graphics command needs true. Every refusal is spent BEFORE
+        // the pass opens, which is why the two halves are separate members: DrawIndexed has a third refusal of its
+        // own and it belongs between them.
         MetalGraphicsPipeline BeginDraw(string what, out IntPtr encoder)
+        {
+            MetalGraphicsPipeline pipeline = RequireGraphicsPipeline(what);
+
+            encoder = _passes.PrepareDraw();
+            return pipeline;
+        }
+
+        // EVERYTHING A GRAPHICS COMMAND REFUSES ON, and nothing that spends anything. PrepareDraw opens an encoder
+        // and consumes the pending clears, so a guard that ran after it would cost a boundary and lose the clears
+        // for a command that never happened.
+        MetalGraphicsPipeline RequireGraphicsPipeline(string what)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             RequireRecording(what);
 
-            MetalGraphicsPipeline pipeline = _pipelines.Graphics ?? throw new InvalidOperationException(
+            return _pipelines.Graphics ?? throw new InvalidOperationException(
                 what + " was recorded on a native Metal command list with no graphics pipeline bound. Call "
                 + "SetPipeline first. A pipeline is where the render pipeline state, the rasterizer state and the "
                 + "TOPOLOGY all come from, and on this API the topology is an argument to the draw call itself, "
                 + "so there is nothing to fall back to.");
-
-            encoder = _passes.PrepareDraw();
-            return pipeline;
         }
     }
 }

@@ -243,10 +243,37 @@ the value arriving.
 which is the one place this diverges from the Vulkan sibling: `vkDestroyDevice` destroys every child object so
 that backend must skip its destroy, while an `MTLSharedEvent` is an ordinary reference-counted object and
 skipping the release would leak it on exactly the teardown path that matters. And the handler finds its latch by
-asking the buffer for its device and scanning a four-slot lock-free table, because a global block carries no
+asking the buffer for its queue and scanning a four-slot lock-free table, because a global block carries no
 captures. That table is not the dictionary this row removes: that one was a lock plus a hash lookup per fence,
 this is a pointer comparison per command buffer, and it exists so one device's failure cannot flip another
 device's liveness token.
+
+**The routing key is the QUEUE and not the `MTLDevice`, which is a measurement rather than a preference.**
+`MTLCreateSystemDefaultDevice` called twice in one process hands back the **same pointer** (measured on an Apple
+M2 Max under macOS 26, and the probe records the reading in its transcript on every run, so a machine that
+answers differently says so rather than being assumed). It is a per-GPU process singleton, so two engine devices
+on one GPU are indistinguishable by device pointer, and a device-keyed table breaks twice over: the second
+engine device's registration hits the registered-twice refusal and its creation fails outright, and an
+unregister followed by a register routes a late completion from the OLD device's buffers into the NEW device's
+latch, which is precisely the mis-delivery the table exists to prevent. An `MTLCommandQueue` is a fresh object
+per `newCommandQueue` and each engine device has exactly one, so the queue pointer is unique per engine device
+even when the `MTLDevice` underneath is shared, and it is readonly on `MTLCommandBuffer` so the completion path
+reads it with no state of its own. Two device-free rows pin the failure from both sides and the probe measures
+the consequence on real hardware: two queues on one device both register a latch, which a device-keyed table
+cannot do.
+
+**The slice's one observable cost is stated where the slice is decided:** up to 250ms of extra teardown latency
+after a device loss, because the liveness flip is not delivered to a waiter already blocked inside the native
+call, so a drain in flight keeps blocking until its current slice expires. A healthy drain is unaffected.
+
+**A fence polled after disposal can no longer message a released `MTLSharedEvent`.** The documented teardown
+order flips liveness before the timeline is disposed and stays the contract, but it was also the only thing
+standing between the unconditional release above and a use-after-free. `CompletedValue` now answers the dead
+answer once disposed, which also covers `WaitForIdle` for free, because its target can never exceed the
+allocation high-water so the already-caught-up return fires before the slice loop can touch a released event.
+And `waitUntilSignaledValue:timeoutMS:` is declared with both parameters as `uint64_t`, matching the SDK: the
+prototype had the second as `uint32_t`, which is the exact class of mistake the typed-overload-per-selector rule
+exists to prevent, since arguments are placed by the caller according to the callee's declared types.
 
 ## 17.34.0
 

@@ -91,11 +91,20 @@ only job: reading `status` and `error` at completion, which the incumbent never 
 Metal command-buffer failure is invisible to the engine and to telemetry today. The shared event owns ordering
 and the handler owns reporting, and the handler takes no lock, touches no dictionary and advances no counter.
 
+It is one global block carrying no captures, so it finds the right latch by reading `[commandBuffer
+commandQueue]` and scanning a four-slot lock-free table. **The key is the queue rather than the device because
+of a measurement:** `MTLCreateSystemDefaultDevice` called twice in one process hands back the same pointer, so
+two engine devices on one GPU are indistinguishable by `MTLDevice` and a device-keyed table would both refuse
+the second device's registration and route a torn-down device's late completions into its successor's latch. A
+queue is a fresh object per `newCommandQueue` and each device has exactly one.
+
 **`WaitForIdle` waits on the last submitted value in slices.** It blocks for as long as the GPU takes, and the
 slice exists for the failure shape rather than for the timeout: a Metal command-buffer failure is asynchronous,
 so a failed buffer's signal never arrives and the only notification is the error latch flipping the device's
 liveness token from Metal's own completion thread. A single unbounded wait cannot observe that flip. The drain
-counts one entry into `GpuDeviceCounters.DrainCount` and `DrainMs` per call that actually blocked.
+counts one entry into `GpuDeviceCounters.DrainCount` and `DrainMs` per call that actually blocked. The slice has
+one observable cost, which is up to 250ms of extra teardown latency after a device loss, since a waiter already
+blocked inside the native call keeps blocking until its current slice expires.
 
 ## Three decisions worth knowing before reading the code
 

@@ -10,36 +10,34 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// The engine's native Metal device as the GPU seam sees it: a real <c>MTLDevice</c> and a real
     /// <c>MTLCommandQueue</c> that create and tear down cleanly.
     /// <para>
-    /// <b>NOT EVERY MEMBER IS BUILT YET, and each one that is not names the row that builds it.</b> Rows 4, 6
-    /// and 7 of <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c> have landed: the interop layer, the
-    /// device, the queue, <c>KE_METAL_DEVICE</c>, the validation report, the command-buffer error latch, the
+    /// <b>NOT EVERY MEMBER IS BUILT YET, and each one that is not names the row that builds it.</b> Rows 4, 6,
+    /// 7 and 16 of <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c> have landed: the interop layer,
+    /// the device, the queue, <c>KE_METAL_DEVICE</c>, the validation report, the command-buffer error latch, the
     /// liveness token and a drain before teardown (row 4), the resource factory, the shared sampler pair, the
-    /// device-level uploads, the setup command buffer and <c>Map</c> with its read drain (row 6), and the
-    /// completion timeline, the command list and the SUBMIT path (row 7). The swapchain is row 15, so the members
+    /// device-level uploads, the setup command buffer and <c>Map</c> with its read drain (row 6), the
+    /// completion timeline, the command list and the SUBMIT path (row 7), and the whole capability read, the
+    /// counter fill and the native frame-capture path (row 16). The swapchain is row 15, so the members
     /// that row owns throw a message saying so rather than returning something that fails later somewhere less
-    /// informative, with three deliberate exceptions whose remarks below carry the reasons:
-    /// <see cref="Counters"/> returns an absent default (row 16's channels, and absent is not zero),
+    /// informative, with two deliberate exceptions whose remarks below carry the reasons:
     /// <see cref="SwapchainFramebuffer"/> returns null (the headless answer is null, not a throw), and
     /// <see cref="SyncToVerticalBlank"/> is a backing value until row 15 gives it a swapchain to reconfigure.
     /// Both sibling backends landed the same way and had this paragraph rewritten at every fill-in, which is the
     /// discipline it is under here too: it is a ledger, and a stale one is worse than none.
     /// </para>
     /// <para>
-    /// <b>THE MEMBERS THESE ROWS OWN ARE LIVE:</b> <see cref="Backend"/>, <see cref="Capabilities"/> (in the part
-    /// row 4 can read honestly, see below), <see cref="Diagnostics"/> with both of its fields, both
-    /// <c>Submit</c> overloads, <see cref="WaitForIdle"/>, <see cref="Dispose"/>, and row 6's whole resource half
-    /// in <c>MetalGpuDevice.Resources.cs</c>. The list the submit path takes comes from
-    /// <see cref="CreateCommandList"/>, which the seam reaches through
+    /// <b>THE MEMBERS THESE ROWS OWN ARE LIVE:</b> <see cref="Backend"/>, <see cref="Capabilities"/> in full,
+    /// <see cref="Counters"/> in every channel a device with no swapchain has, <see cref="Diagnostics"/> with
+    /// both of its fields, both <c>Submit</c> overloads, <see cref="WaitForIdle"/>, <see cref="Dispose"/>, and
+    /// row 6's whole resource half in <c>MetalGpuDevice.Resources.cs</c>. The list the submit path takes comes
+    /// from <see cref="CreateCommandList"/>, which the seam reaches through
     /// <c>IGpuResourceFactory.CreateCommandList</c>.
     /// </para>
     /// <para>
-    /// <b><see cref="Capabilities"/> IS PARTIAL AND SAYS WHICH PART.</b> Row 16 owns the capability read and the
-    /// ZERO-permitted-difference parity test against the incumbent (section 14). What this row fills is
-    /// everything readable off a device with no renderer on it, and <c>MaxMsaaSampleCount</c> is pinned to 1
-    /// rather than guessed, because M-C3 says the incumbent's own computation is what row 16 reproduces and a
-    /// formula invented here would be a silent lie <c>AntiAliasing.ResolveFor</c> would act on. Nothing selects
-    /// this backend, so a conservative 1 costs nothing and an invented value would cost the parity test its
-    /// meaning.
+    /// <b><see cref="Capabilities"/> IS COMPLETE AS OF ROW 16</b>
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/582), including M-C3's sample-count walk, and it is
+    /// pinned member for member against the incumbent at ZERO permitted differences by
+    /// <c>NativeVsVeldridMetalCapabilityParityTests</c>. Every decision behind it is in
+    /// <see cref="MetalCapabilityRead"/>, which has no device in it.
     /// </para>
     /// <para>
     /// <b>TEARDOWN IS M-F6's ORDER AND NOTHING ELSE:</b> drain first, stop the completion route, then flip the
@@ -224,11 +222,61 @@ namespace KhaozEngine.Gpu.Metal.Internal
         public GpuDeviceDiagnostics Diagnostics => new(softwareAdapter: false, _loss.HeaderValue);
 
         /// <inheritdoc/>
-        /// <remarks>Row 16 fills these from the subsystems that count them, none of which exist yet. The default
-        /// is the honest answer meanwhile, and the struct's own doc already says absent is not zero, so a capture
-        /// from this row reports no channels rather than reporting zeros a reader would take for
-        /// measurements.</remarks>
-        public GpuDeviceCounters Counters => default;
+        /// <remarks>
+        /// M-G6's FILL, WITH NO SEAM ADDITION. Every field comes off the subsystem that already counts it, and
+        /// which subsystem that is matters enough to say here. <c>DrainCount</c> and <c>DrainMs</c> come off
+        /// <see cref="MetalTimeline.TotalDrain"/> (M-F5, row 5) and are the MM2 numbers.
+        /// <c>BackpressureStallCount</c> and <c>BackpressureStallMs</c> come off <see cref="MetalBackpressure"/>
+        /// (row 8) and are MM3's. <c>OffTimelineDeferred</c> and <c>OffTimelineOutstanding</c> come off
+        /// <see cref="MetalRingAllocator.OffTimelinePatches"/> and are deliberately NOT folded into that pair.
+        /// <para>
+        /// <b>THE BACKPRESSURE PAIR HAS EXACTLY ONE SOURCE HERE, WHICH IS THE READING DIFFERENCE FROM VULKAN.</b>
+        /// There is no command-buffer pool to wait on (M-R2), so this counts the uniform ring's segment acquire
+        /// ALONE, where the same seam field on the native Vulkan backend folds in a command list's own oldest
+        /// buffer slot. A non-zero reading here is therefore unambiguous: the pipeline is deeper than
+        /// <c>KE_METAL_FRAMES_IN_FLIGHT</c> allows on this machine, and MM4's exit criterion (zero across a whole
+        /// capture window at the default depth) is a statement about one thing. The seam's own doc comment says
+        /// the second meaning is Vulkan's rather than universal, which is row 19's edit.
+        /// </para>
+        /// <para>
+        /// <b>A DEFERRED PATCH IS NOT A STALL AND IS NOT FOLDED IN.</b> Nobody blocks on the off-timeline path,
+        /// and the writes it counts are usually load-time before any frame exists, so folding it would turn a
+        /// load-time <c>UpdateBuffer</c> into evidence against the frames-in-flight count and make MM4's
+        /// zero-stall criterion unreachable for a reason unrelated to depth. See
+        /// <see cref="MetalRingPatchStats"/>.
+        /// </para>
+        /// <para>
+        /// <b><c>FramesBegun</c> AND THE ACQUIRE PAIR ARE ZERO, AND ON A HEADLESS DEVICE THAT IS LITERALLY TRUE
+        /// RATHER THAN A PLACEHOLDER.</b> Both are the PRESENT boundary's numbers, which is the swapchain row
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/581): a headless device has no swapchain, opens no
+        /// frame at this seam and never waits on a drawable. That is the bar the struct's own "absent is not
+        /// zero" rule sets for reporting <see cref="GpuDeviceCounters.HasValue"/> at all, and it is the same
+        /// position the Vulkan sibling's headless device reports from. What a reader must not do is divide by
+        /// <c>FramesBegun</c> while it is 0.
+        /// </para>
+        /// </remarks>
+        public GpuDeviceCounters Counters
+        {
+            get
+            {
+                MetalWaitTotals drain = _timeline.TotalDrain;
+                MetalWaitTotals stalls = _backpressure.Totals;
+                MetalRingPatchStats patches = _rings.OffTimelinePatches;
+
+                // Named arguments, because the two longs and the two doubles sit next to each other: a transposed
+                // pair here compiles, passes every test, and reports a stall count as a drain count in the field.
+                return new GpuDeviceCounters(
+                    framesBegun: 0,
+                    drainCount: drain.Count,
+                    drainMs: drain.TotalMs,
+                    backpressureStallCount: stalls.Count,
+                    backpressureStallMs: stalls.TotalMs,
+                    offTimelineDeferred: patches.Deferred,
+                    offTimelineOutstanding: patches.Outstanding,
+                    acquireWaitCount: 0,
+                    acquireWaitMs: 0d);
+            }
+        }
 
         /// <inheritdoc/>
         /// <remarks>Null, and correct rather than unbuilt: this row creates HEADLESS devices only, and a headless

@@ -333,6 +333,71 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(0, h.Encoders.EncoderBoundaries);
         }
 
+        /// <summary>
+        /// THE FLUSH'S INVARIANT HOLDS ON EVERY PATH THAT REACHES IT: a pass is never both open and owed a clear.
+        /// Recording a clear ends the open pass first and a begin consumes the pending array, so the guard below
+        /// is unreachable from this type's own API. This drives the sequences that would break it if either half
+        /// stopped being true, so the guard is proved to be a statement about OTHER callers rather than a trap
+        /// under the ordinary ones.
+        /// </summary>
+        [Fact]
+        public void TheClearOnlyFlushsInvariantHoldsOnEveryOrdinaryPath()
+        {
+            Harness h = Harness.New();
+            h.Schedule.SetFramebuffer(Framebuffer(1, colourCount: 2, depth: true));
+
+            // Clear, draw, clear again mid-pass, draw again, then end. Every one of these calls EndPass or opens
+            // a pass, and none of them may leave the pair set.
+            h.Schedule.ClearColourTarget(0, Red);
+            h.Schedule.ClearDepthStencil(1f);
+            h.Schedule.PrepareDraw();
+            h.Schedule.ClearColourTarget(1, Green);
+            h.Schedule.PrepareDraw();
+            h.Schedule.EndPass();
+
+            // A clear with no draw at all, flushed by a framebuffer change and then by an End.
+            h.Schedule.ClearColourTarget(0, Blue);
+            h.Schedule.SetFramebuffer(Framebuffer(2, colourCount: 1));
+            h.Schedule.ClearColourTarget(0, Red);
+            h.Schedule.EndPass();
+
+            // And the refused-descriptor path, which is the one place a begin leaves the clears owed.
+            h.Render.NextCreateFails = true;
+            h.Schedule.ClearColourTarget(0, Green);
+            h.Schedule.PrepareDraw();
+            h.Schedule.EndPass();
+
+            Assert.False(h.Schedule.IsRendering);
+            Assert.Equal(0, h.Encoders.OutstandingEncoders);
+            Assert.Equal(0, h.Render.OutstandingDescriptors);
+        }
+
+        /// <summary>
+        /// AND THE STATE IS CONSTRUCTIBLE FROM OUTSIDE, which is why the invariant is checked rather than
+        /// commented. The scope is the one owner of every transition and anything in the backend may drive it, so
+        /// a later row that opens a render encoder itself (row 15's present path is the obvious candidate)
+        /// produces exactly the pair the flush assumes away. Without the guard those clears are dropped at the
+        /// next <c>EndPass</c> with nothing said, and an attachment silently keeps what the previous pass left.
+        /// </summary>
+        [Fact]
+        public void APassOpenedBehindTheSchedulesBackWithClearsOwedIsRefusedByName()
+        {
+            Harness h = Harness.New();
+            h.Schedule.SetFramebuffer(Framebuffer(1, colourCount: 1));
+            h.Schedule.ClearColourTarget(0, Red);
+
+            // What a row that took the schedule's job without taking its rules would do. The descriptor is opaque
+            // and never dereferenced, and it is non-nil because the scope refuses a nil one by name.
+            h.Scope.EnsureRenderEncoder(new IntPtr(0xD5));
+
+            Assert.True(h.Schedule.IsRendering);
+            Assert.True(h.Schedule.HasPendingClears);
+
+            InvalidOperationException thrown = Assert.Throws<InvalidOperationException>(h.Schedule.EndPass);
+
+            Assert.Contains("OPEN and still owes a clear", thrown.Message, StringComparison.Ordinal);
+        }
+
         // ---- The viewport and the scissor (M-A6, M-A7) -------------------------------------------------------
 
         /// <summary>SECTION 7.3's FIRST ASSERTION: both are emitted at a framebuffer change. A backend that does

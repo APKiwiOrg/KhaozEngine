@@ -359,9 +359,24 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// IT IS SAFE TO CALL WHEN NOTHING IS OPEN AND NOTHING IS PENDING, and does nothing then, so a caller
         /// never has to ask first.
         /// </para>
+        /// <para>
+        /// THE FLUSH RESTS ON AN INVARIANT, SO THE INVARIANT IS CHECKED RATHER THAN ASSUMED: a pass is never both
+        /// OPEN and owed a clear. It holds because recording a clear ends the open pass before it stores the
+        /// value (<see cref="ClearColourTarget"/>, <see cref="ClearDepthStencil"/>) and a begin CONSUMES the
+        /// pending array on the way in, so the two states are mutually exclusive by construction. It is checked
+        /// because it is a relation between this type and <see cref="MetalEncoderScope"/>, which anything in the
+        /// backend may drive: a row that opens a render encoder itself, behind the schedule's back, produces
+        /// exactly that combination, and the flush below would then decline to flush and
+        /// <see cref="EndOpenPass"/> would drop the clears with nothing said. Silently unclearing an attachment
+        /// is the failure M-A3 exists to prevent, so it is named here instead.
+        /// </para>
         /// </summary>
+        /// <exception cref="InvalidOperationException">A render pass is open AND clears are pending, which is the
+        /// broken invariant above.</exception>
         internal void EndPass()
         {
+            RequireNoPendingClearsWhileRendering();
+
             if (!IsRendering && HasPendingClears && _framebuffer.IsBound) BeginPass();
 
             EndOpenPass();
@@ -490,6 +505,22 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             Array.Resize(ref _colourClears, capacity);
             Array.Resize(ref _beginColour, capacity);
+        }
+
+        // THE INVARIANT THE CLEAR-ONLY FLUSH IS BUILT ON, checked at the one place that acts on it. See EndPass
+        // for why a relation this type cannot enforce alone is worth a throw rather than a comment.
+        void RequireNoPendingClearsWhileRendering()
+        {
+            if (!IsRendering || !HasPendingClears) return;
+
+            throw new InvalidOperationException(
+                "A native Metal render pass is OPEN and still owes a clear, which this schedule's clear-only "
+                + "flush (M-A3) assumes cannot happen: recording a clear ends the open pass before it stores the "
+                + "value, and opening a pass consumes every pending clear on the way in. Something opened a "
+                + "render encoder without going through this schedule, so the clears would be dropped by the end "
+                + "of this pass and an attachment would silently keep whatever the last pass left in it. Record "
+                + "clears through ClearColorTarget and ClearDepthStencil, and open render encoders through "
+                + "PrepareDraw rather than through MetalEncoderScope directly.");
         }
 
         void RequireFramebuffer(string what)

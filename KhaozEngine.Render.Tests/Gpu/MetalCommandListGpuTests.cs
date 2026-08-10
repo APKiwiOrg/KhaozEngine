@@ -1,7 +1,9 @@
 using System;
 using System.Runtime.Versioning;
+using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Metal;
 using KhaozEngine.Gpu.Metal.Internal;
+using KhaozEngine.Gpu.Metal.Internal.ObjC;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -207,6 +209,102 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal(1UL, device.Timeline.LastSubmitted);
             Assert.Null(device.Diagnostics.DeviceLossReason);
+        }
+
+        /// <summary>
+        /// THE ROW 6 AND ROW 7 JOIN, on hardware: a device-level upload is still PENDING when a frame is
+        /// submitted, and the submit commits that batch before it commits the recording (M-M9).
+        ///
+        /// <para><b>THE ORDER ITSELF IS PINNED DEVICE-FREE</b> by <c>MetalSubmitSetupOrderTests</c>, over the
+        /// static pre-lock phase. What only a device can settle is that the wiring is really on
+        /// <c>IGpuDevice.Submit</c> and that both buffers complete, so this asserts the batch was committed by
+        /// the submit and then reads the batch's own outcome after the drain.</para>
+        ///
+        /// <para><b>AND THE DRAIN IS THE OTHER HALF OF THE SAME MERGE.</b> A setup batch signals no timeline
+        /// value, so <c>WaitForIdle</c> takes the queue drain as well whenever its flush committed one. Here the
+        /// SUBMIT already flushed, so the batch is ahead of the frame in enqueue order and the timeline's own
+        /// counted drain covers it, which is the case that needs no second drain at all.</para>
+        /// </summary>
+        [GpuFact]
+        public void ASubmitFlushesThePendingSetupBatchBeforeItCommitsTheRecording()
+        {
+            if (!Available()) return;
+
+            using MetalGpuDevice device = CreateHeadless();
+
+            using IGpuTexture target = device.Factory.CreateTexture(
+                GpuTextureDescription.Texture2D(16, 16, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled));
+
+            device.UpdateTexture(target, new byte[16 * 16 * 4], 0, 0, 16, 16);
+
+            Assert.True(device.Setup.HasPendingWork);
+            Assert.Equal(0, device.Setup.FlushCount);
+            Assert.Null(device.Setup.LastCommittedFault());
+
+            using MetalCommandList list = device.CreateCommandList();
+            list.Begin();
+            list.Encoders.EnsureBlitEncoder();
+            list.End();
+            device.Submit(list);
+
+            // Committed by the SUBMIT, before it returned, which is what puts the upload ahead of the frame.
+            Assert.Equal(1, device.Setup.FlushCount);
+            Assert.False(device.Setup.HasPendingWork);
+
+            device.WaitForIdle();
+
+            MetalCommandBufferFault? outcome = device.Setup.LastCommittedFault();
+            Assert.NotNull(outcome);
+            Assert.Equal(MTLCommandBufferStatus.Completed, outcome.Value.Status);
+            Assert.False(outcome.Value.IsFailure);
+
+            Assert.Equal(1UL, device.Timeline.LastSubmitted);
+            Assert.Null(device.Diagnostics.DeviceLossReason);
+        }
+
+        /// <summary>
+        /// AND THE CASE THE MERGE ACTUALLY BROKE, from the other direction: an upload with NO submit behind it,
+        /// drained through <c>WaitForIdle</c> alone.
+        ///
+        /// <para>Row 7 moved <c>WaitForIdle</c> onto the timeline's counted drain, and a setup batch signals no
+        /// timeline value, so on a device that has never submitted anything the target is 0 and that drain
+        /// returns without waiting. The batch would then read <c>Committed</c> rather than <c>Completed</c> and a
+        /// <c>Map</c> would hand back bytes the blit had not written. The queue drain is what covers it.</para>
+        ///
+        /// <para><b>THE DETERMINISTIC DETECTOR IS ROW 6's OWN, AND THAT WAS MEASURED RATHER THAN ASSUMED.</b>
+        /// Deleting the queue drain and re-running was tried at the merge: it failed
+        /// <c>MetalResourceGpuTests.EightDeviceLevelTextureUploads_ShareOneSetupCommandBuffer</c>, which reads
+        /// <c>Committed</c> where it asserts <c>Completed</c>, and it did NOT fail this row. A committed buffer
+        /// completes whenever the GPU gets to it, so a four-megabyte blit can still finish inside the few
+        /// instructions between the flush and the reading. This row is kept because it states the case in the
+        /// shape the merge broke it (an upload with no submit behind it, so the timeline is provably not what
+        /// covered it) and because it is where a reader looks, not because it is the tripwire.</para>
+        /// </summary>
+        [GpuFact]
+        public void AnUploadWithNoSubmitBehindIt_IsStillCompleteAfterWaitForIdle()
+        {
+            if (!Available()) return;
+
+            using MetalGpuDevice device = CreateHeadless();
+
+            using IGpuTexture target = device.Factory.CreateTexture(
+                GpuTextureDescription.Texture2D(1024, 1024, GpuPixelFormat.R8G8B8A8UNorm,
+                    GpuTextureUsage.Sampled));
+
+            device.UpdateTexture(target, new byte[1024 * 1024 * 4], 0, 0, 1024, 1024);
+
+            device.WaitForIdle();
+
+            // NOTHING was ever submitted, so the timeline has no value to wait for and cannot be what covered it.
+            Assert.Equal(0UL, device.Timeline.LastSubmitted);
+
+            MetalCommandBufferFault? outcome = device.Setup.LastCommittedFault();
+            Assert.NotNull(outcome);
+            Assert.Equal(MTLCommandBufferStatus.Completed, outcome.Value.Status);
+            Assert.False(outcome.Value.IsFailure);
+
+            _output.WriteLine($"the setup batch finished at {outcome.Value.Status} with the timeline still at "
+                + $"{device.Timeline.LastSubmitted}, which is what says the queue drain covered it");
         }
 
         // A [SupportedOSPlatformGuard] rather than an inline check at every row, which is the same mechanism the

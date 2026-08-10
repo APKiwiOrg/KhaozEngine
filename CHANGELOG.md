@@ -1263,7 +1263,12 @@ directory, indistinguishable from a missing `MTL_CAPTURE_ENABLED` and from an un
 `MetalGpuDevice.ServiceFrameCaptureAtPresentBoundary` is the native consumption site, which closes the third of
 the `GpuBackendKind` append audit's silently degrading sites: an arm taken on a native Metal session used to
 stay armed for ever. The swapchain row calls it after presenting, because a capture has to bracket whole frames
-rather than one submit.
+rather than one submit, and until that row lands the only thing that consumes an arm is the test driving the
+boundary directly. The zero-queue refusal comes before every P/Invoke in that type, so the row asserting it is
+a plain `[Fact]` on the Linux and Windows legs where libobjc does not exist, and the autorelease pool it pushes
+is now guarded mechanically: the M-N5 architecture walk covers `KhaozEngine.Gpu.Metal` and this type is in
+`KhaozEngine.Gpu` with its own imports, so it gets its own narrow root set over the same IL reader with
+`CaptureIsEnabledForThisProcess` as the one allowlisted exception.
 
 **One thing the device taught that the design did not predict, and it decided the shape.**
 `-startCaptureWithDescriptor:error:` in a process where capture was never enabled raises an Objective-C

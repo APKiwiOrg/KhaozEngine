@@ -488,10 +488,11 @@ seven mutations, each caught by the row that owns it, each reverted. The write-m
 read one, because a device that drained on every map would look identical to a correct one on a suite that only
 checked reads, and would serialise every staging write behind the queue.
 
-**Left for the CI leg, deliberately.** No fake can prove a value was signalled because real GPU work finished, so
-"the flush and the drain happen against a real driver" stays with the `vulkan-native` leg. What this catches is a
-regression in the WIRING, which would otherwise ship silently until a golden read back stale bytes on Linux and
-be read as an intermittent golden failure rather than as a defect.
+**Left for the CI leg, deliberately, and filed rather than assumed (#615).** No fake can prove a value was
+signalled because real GPU work finished, so "the flush and the drain happen against a real driver" stays with
+the `vulkan-native` lavapipe leg and is its own item. What this catches is a regression in the WIRING, which
+would otherwise ship silently until a golden read back stale bytes on Linux and be read as an intermittent
+golden failure rather than as a defect.
 
 ### The ambient `GuiTheme.Default` swap stops racing the rest of the Gui test assembly (#349)
 

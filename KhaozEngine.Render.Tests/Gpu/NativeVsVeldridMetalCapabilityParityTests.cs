@@ -440,4 +440,66 @@ namespace KhaozEngine.Tests.Gpu
         [System.Runtime.Versioning.SupportedOSPlatform("macos")]
         static string? MissingRequirement() => MetalSupportProbe.MissingRequirement();
     }
+
+    /// <summary>
+    /// THE OTHER MACHINE FACT A ROW CAN HAVE TO STAND DOWN FOR, and it is nothing to do with having a device:
+    /// whether this PROCESS was launched with Metal's API validation layer armed
+    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/591">#591</see>). The <c>metal-native</c> CI
+    /// leg sets <c>MTL_DEBUG_LAYER=1</c> as a job variable on every run, which is decision M-T7's first tier.
+    /// <para>
+    /// <b>THE DEFAULT ERROR MODE IS ASSERT, MEASURED RATHER THAN ASSUMED, AND THAT IS THE WHOLE PROBLEM.</b>
+    /// #591 recorded this as a property of <c>MTL_DEBUG_LAYER_ERROR_MODE=assert</c>, which reads as "do not set
+    /// that and you are fine". Row 19 measured otherwise: plain <c>MTL_DEBUG_LAYER=1</c> aborted the test HOST
+    /// on the first objection, taking the whole run's signal with it (5956 of 6039 rows reported, then "Test Run
+    /// Aborted"). <c>MTL_DEBUG_LAYER_ERROR_MODE=nslog</c> stops the abort and was measured to report NOTHING to
+    /// the captured stream, which would be a tier that can neither fail nor testify, so it is not taken. The leg
+    /// runs the layer at its default and the rows that legitimately provoke it stand down here instead.
+    /// </para>
+    /// <para>
+    /// <b>A ROW ONLY BELONGS HERE IF IT PROVOKES VALIDATION ON PURPOSE.</b> Reproducing a known mis-binding for
+    /// a measurement, or recording ABI calls on an encoder with no pipeline bound, are legitimate things for a
+    /// test to do and illegitimate things for a shipped frame to do, so validation is right and the row is
+    /// right, and they cannot share a process. A row standing down because a real defect makes it uncomfortable
+    /// would be this helper doing exactly the damage it exists to prevent.
+    /// </para>
+    /// </summary>
+    static class MetalValidationDormancy
+    {
+        /// <summary>
+        /// True when Metal's API validation is armed in this process, which on macOS means the NATIVE
+        /// environment carried the variable at launch, since the runtime reads it before managed code exists.
+        /// False off macOS and false on an ordinary developer run.
+        /// </summary>
+        internal static bool ArmedAtLaunch
+        {
+            get
+            {
+                if (!KhaozEngineMetal.IsPlatformSupported) return false;
+
+                MetalValidationArming arming = Capture();
+                // Armed with the in-process flag clear is exactly the launch-armed shape: a variable this
+                // process set for itself never reached the Metal runtime and cannot be what is validating.
+                return arming.Armed != MetalValidationMode.Off && !arming.DebugLayerSetInProcessOnly;
+            }
+        }
+
+        /// <summary>
+        /// Stand down when validation is armed, saying so on <paramref name="output"/> and naming the row's own
+        /// reason, and answer false otherwise so the caller carries on. The reason is the caller's because it is
+        /// the part a reader needs and the part this type cannot know.
+        /// </summary>
+        internal static bool StandDown(ITestOutputHelper output, string whatItProvokes)
+        {
+            if (!ArmedAtLaunch) return false;
+
+            output.WriteLine(
+                "dormant: Metal API validation is armed in this process, and this row " + whatItProvokes
+                + ". The layer's default error mode is assert, so running it here would abort the test host "
+                + "rather than fail a row. See https://github.com/APKiwiOrg/KhaozEngine/issues/591.");
+            return true;
+        }
+
+        [System.Runtime.Versioning.SupportedOSPlatform("macos")]
+        static MetalValidationArming Capture() => MetalValidationReader.Capture();
+    }
 }

@@ -184,10 +184,31 @@ namespace KhaozEngine.Tests.Gpu
         /// have read anything, so the managed answer is the whole answer and the code deliberately has no second
         /// path there to drift.
         /// </para>
+        /// <para>
+        /// AND IT GOES DORMANT IN A PROCESS THAT WAS LAUNCHED WITH THE VARIABLE, which is the `metal-native` CI
+        /// leg, where `MTL_DEBUG_LAYER=1` is a job variable
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/591). The property under test is "the managed
+        /// environment carries it and the native one does not", and there is no way to observe that in a process
+        /// whose native environment carries it already: the in-process set becomes a no-op over a value that was
+        /// there at launch, and the reader is RIGHT to report the launch. Dormant rather than a skip, for the
+        /// reason every other dormant row here is, and NOT covered by `KE_METAL_REQUIRED`, which is about a
+        /// machine having a device rather than about a property being observable.
+        /// </para>
         /// </summary>
         [Fact]
         public void AVariableSetInProcess_IsTellableApartFromOneSetAtLaunch()
         {
+            // Read BEFORE anything is set in-process. Armed with the in-process flag clear is exactly the shape
+            // of a launch-armed process, and it is the only shape this row cannot measure.
+            MetalValidationArming launch = MetalValidationReader.Capture();
+            if (launch.Armed != MetalValidationMode.Off && !launch.DebugLayerSetInProcessOnly)
+            {
+                _output.WriteLine(
+                    "dormant: this process was LAUNCHED with Metal validation armed (" + launch.Armed
+                    + "), so an in-process set of MTL_DEBUG_LAYER cannot be told apart from the launch's own.");
+                return;
+            }
+
             using var _ = new EnvironmentValue(MetalValidation.EnvVarName, "1");
             using var __ = new EnvironmentValue(MetalValidation.DebugLayerVar, "1");
 

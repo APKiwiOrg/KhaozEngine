@@ -1133,6 +1133,17 @@ is, that is the user's call.
   not survive: Vulkan collapses it to two, because a descriptor bind is one call whether one offset moved or
   every image changed. What IS shared at two implementations is the uniform ring's SEMANTIC TESTS. The
   extraction is filed as that document's VF1, triggered by phase 4 landing.)
+  (**Corrected again 2026-08-11, and this time with an answer rather than a deferral.** Phase 4 landed, so the
+  extraction this bullet anticipated and the 2026-08-05 note deferred is DECIDED:
+  `METAL-NATIVE-BACKEND-DESIGN-2026-08-09` section 2.8 names five things that move into
+  `KhaozEngine.Gpu/Internal/` and four that do not, each refusal in writing. Moving: the `DeviceLiveness` latch,
+  the counter accumulators, the diagnostic rate limiter, the shader-cache key and file discipline, and the
+  completion timeline's bookkeeping. Staying per backend: the ring's CODE, the record-then-flush schedule, the
+  dirty MODEL and the generic emitter interface. So this bullet's own "what genuinely generalises" list was
+  wrong in BOTH directions at two implementations, which is the whole argument for waiting: the dirty tracking
+  it named as general did not survive Vulkan, the schedule it named as general did not survive Metal, and what
+  did generalise is the bookkeeping nobody listed. The extraction lands after phase 4's rollout gate 3 rather
+  than with it, so a golden failure has one candidate cause instead of two.)
 - The `Veldrid.SPIRV` edge is confined to `KhaozEngine.Gpu` behind one internal helper (P2), so the
   "no Veldrid in the graph" endpoint is one package to change, not three.
 - Making `WaitForIdle` real on D3D11 means all three backends will honour rule 2 identically, so the
@@ -1198,6 +1209,14 @@ Filed as issues when this spec lands, not discovered later.
   blocker if M2's exit criterion fails.
 - **F2.** Drop the managed `Veldrid.SPIRV` dependency with an engine-owned P/Invoke shim over
   `libveldrid-spirv`, seated in the internal helper P2 creates. Phase 3.
+  (**Answered 2026-08-11, and the answer is "not in phase 3 or phase 4 either", with a reason that only became
+  visible at phase 4.** `METAL-NATIVE-BACKEND-DESIGN-2026-08-09` section 12.2 declines it by name and section
+  2.2 is why: `libveldrid-spirv` exports three C entry points and NONE of them carries a binding table, so a
+  shim over that library cannot reach `add_msl_resource_binding` and cannot pin Metal's binding indices. The
+  shim was never the endpoint, a DIRECT SPIRV-Cross binding is, and that lands in the closing act (section 19
+  of the same document) where it deletes the MSL argument parse and the SPIR-V decoration walk phase 4 shipped
+  instead. What phase 3 DID pay for is the seat: `SpirvCrossCompile`'s front-end and back-end halves are split,
+  so the eventual replacement is one half of one file rather than a change scattered across three packages.)
 - **F3.** Multi-threaded command recording, enabled by this design and not shipped (W5).
 - **F4.** Flip-model swapchain, `ALLOW_TEARING`, the RTV-unbound-at-present obligation and a waitable
   frame-latency swapchain, with #380's pacing measurement as its own gate (9.1, M5).

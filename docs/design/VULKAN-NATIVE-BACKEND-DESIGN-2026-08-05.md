@@ -33,7 +33,7 @@ what was rejected from both.
 | V-P1 | Package | New `KhaozEngine.Gpu.Vulkan`, opt-in, outside every umbrella, `net10.0` with NO OS platform guard. Vulkan is not a Windows API, so the `[SupportedOSPlatformGuard]` plus `NoInlining` apparatus `Gpu.D3D11` needs has no analogue. The assembly loads harmlessly on macOS, where it is never selected | Both, converged |
 | V-P2 | Binding | `Silk.NET.Vulkan` plus `Silk.NET.Vulkan.Extensions.KHR` and `.EXT`, pinned to the `2.23.0` line the windowing, input and audio stacks already pin. Hand-rolled P/Invoke, TerraFX and vendoring Veldrid's `Vulkan.*` namespace all rejected (section 3.1) | Both, converged |
 | V-P3 | Layering | References `KhaozEngine.Gpu` and Silk.NET only. The no-Veldrid-edge assertion is extended in BOTH its forms: the csproj read and the IL reference walk. The walk is the load-bearing one, because Veldrid is in the transitive closure through `KhaozEngine.Gpu` whatever the csproj says | A's two-way form |
-| V-P4 | Shared home | NOTHING is extracted from `KhaozEngine.Gpu.D3D11` into a shared home in this phase. The rule of three is not satisfied by two, and section 2.2 names each candidate and what fails it | B |
+| V-P4 | Shared home | NOTHING is extracted from `KhaozEngine.Gpu.D3D11` into a shared home in this phase. The rule of three is not satisfied by two, and section 2.2 names each candidate and what fails it | B |<br>**Answered 2026-08-11, and the wait paid.** The rule of three is satisfied now, and `METAL-NATIVE-BACKEND-DESIGN-2026-08-09` section 2.8 decides #531 per candidate: five things move into `KhaozEngine.Gpu/Internal/` (the `DeviceLiveness` latch, the counter accumulators, the diagnostic rate limiter, the shader-cache key and file discipline, and the completion timeline's bookkeeping) and four stay put with a written refusal (the ring's CODE, the record-then-flush schedule, the dirty MODEL, the generic emitter interface). **This row's own prediction was right for a reason it did not name**: it expected D3D11 to be the outlier, and what actually happened is that the two lists BOTH prior phases would have extracted from were wrong. Phase 2 named three-state dirty tracking as general and Vulkan collapsed it to two, phase 2 named the flush schedule as general and Metal's has a call class neither neighbour has, and the timeline bookkeeping that turned out to be genuinely common appears on neither phase's list. It is also only extractable because M-F1 chose a shared event, so a ruling in one section decided a candidate in another |
 | V-P5 | Shared home | What IS shared now is the uniform ring's SEMANTIC tests, run against both backends' rings through one internal test-only interface. Share the tests at two implementations, share the code at three. The interface and BOTH adapters live in `KhaozEngine.TestSupport.Gpu`, which already references `Gpu.D3D11`, is `IsPackable=false` and ships nothing, so V-P4's no-shared-PRODUCTION-home rule is untouched. `Gpu.D3D11` grants it `InternalsVisibleTo` beside the one grant it has today | B, home named by the judge |
 | V-P6 | Shared home | Section 9.4 carries the explicit POLICY INVENTORY the Vulkan ring must satisfy, so the decision not to share code does not become a decision to re-derive the policy from memory. The extraction issue is filed now, triggered by phase 4 | Judge, new |
 | V-I1 | Identity | Append `GpuBackendKind.VulkanNative = 5` with an explicit ordinal and the existing append-only comment. New tokens `vulkan-native` and `vk-native` | Both, converged |
@@ -2241,6 +2241,19 @@ plan somebody is still executing.
   onto `VkRenderingAttachmentInfo` nearly one to one, and argument buffers that map onto descriptor sets. The
   resting-layout composability model, the timeline-as-theorem argument, the record-then-flush schedule and the
   deferred-begin clear folding should all survive contact with Metal largely intact.
+  (**Confirmed 2026-08-11, with the score.** `METAL-NATIVE-BACKEND-DESIGN-2026-08-09` section 7.1 records the
+  central claim holding: `MTLRenderPassDescriptor`'s per-attachment `texture`, `loadAction`, `clearColor` and
+  `storeAction` map onto `VkRenderingAttachmentInfo`'s `imageView`, `loadOp`, `clearValue` and `storeOp` almost
+  member for member, so V-A1 through V-A6 ported with Metal nouns and no argument, and Metal has carried those
+  actions since Metal 1 where Vulkan needed dynamic rendering to get them. **Three of the four named here
+  survived and one did not, in a way worth reading.** The resting-layout model has NO Metal occupant at all,
+  because automatic hazard tracking means there are no layouts to rest in. The timeline argument survived and
+  paid twice, since the shared event is what made the timeline bookkeeping extractable at all (2.8). The clear
+  folding survived and found a defect in the incumbent on the way through (2.4). The record-then-flush schedule
+  survived as a SHAPE and not as code: Metal's flush is per (kind, stage) array calls with an encoder-boundary
+  call class neither neighbour has, which is exactly why 2.8 refuses to extract it. What the prediction got
+  wrong is not any of the four, it is the assumption that "closer to Vulkan" implies shareable, and section 2.8
+  is where that distinction is finally written down.)
 - The shader-shape invariant Metal depends on is written down and defended here (V-S6) rather than being an
   unwritten property a Vulkan-only author would have broken.
 

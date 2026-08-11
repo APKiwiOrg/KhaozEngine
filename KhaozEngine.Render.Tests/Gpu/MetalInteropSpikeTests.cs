@@ -51,6 +51,17 @@ namespace KhaozEngine.Tests.Gpu
                 return;
             }
 
+            // THE SPIKE AND THE VALIDATION LAYER CANNOT SHARE A PROCESS, and both of them are right
+            // (https://github.com/APKiwiOrg/KhaozEngine/issues/591). This records the offset setters on a render
+            // encoder with NO pipeline bound, because it is measuring the objc_msgSend ABI rather than drawing
+            // anything, and the layer reads that as an unused binding and asserts. The layer's default error
+            // mode aborts the test host, so on the metal-native leg this row would read as a crash rather than
+            // as a finding. The ABI answer it takes is a one-off recorded in the design doc, and its standing
+            // value on that leg is the full suite passing, which the leg has in abundance.
+            if (MetalValidationDormancy.StandDown(_output,
+                "records the offset setters on an encoder with no pipeline bound, which is an ABI measurement "
+                + "rather than a draw")) return;
+
             MetalInteropSpikeResult result = MetalInteropSpike.Run();
             string report = result.Report();
             _output.WriteLine(report);

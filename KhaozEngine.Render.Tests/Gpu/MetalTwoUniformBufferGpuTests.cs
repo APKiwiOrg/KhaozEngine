@@ -232,6 +232,21 @@ namespace KhaozEngine.Tests.Gpu
         // incumbent's own behaviour improves. A control that cannot be taken at all is recorded as that.
         void RecordIncumbent(string vertex, string fragment, GpuShaderStages first, GpuShaderStages second)
         {
+            // THE CONTROL IS THE HALF THAT PROVOKES METAL'S API VALIDATION, and on the split-stage shape it does
+            // so by construction: the whole point of that row is that the incumbent writes the fragment's buffer
+            // at index 1 while the emitted function reads index 0, so the draw really does leave a declared
+            // fragment buffer unbound. The debug layer is entitled to object, and its default error mode aborts
+            // the host, which on the metal-native leg would take the other six thousand rows down with it. The
+            // NATIVE measurement above is untouched and still runs under validation, which is the half that
+            // asserts anything.
+            //
+            // The layer independently confirming MM6's mechanism is worth recording rather than only working
+            // around: "Fragment Function(main0): missing Buffer binding at index 0" is the incumbent's
+            // mis-binding, seen from outside this repository's own reasoning about it (2.3a of the design).
+            if (MetalValidationDormancy.StandDown(_out,
+                "reproduces the incumbent's mis-binding on purpose, which the layer sees as a draw with an "
+                + "unbound fragment buffer")) return;
+
             try
             {
                 using GpuDeviceContext incumbent = GpuDeviceContext.CreateHeadless(GpuBackendKind.Metal);

@@ -1563,6 +1563,129 @@ skipping it permanently over-retains a layer a consumer's window still owns. The
 list and is named there: it is an ordinary engine `MTLTexture` whose disposal is a no-op once liveness is dead.
 
 
+### The `metal-native` CI leg, both Metal validation tiers, and the four-slot table an engine-wide suite outgrew (#585)
+
+Row 19 of [docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md),
+the last buildable row of phase 4, so the native Metal backend now has its continuous exercise. A sixth leg
+joins `cross-platform-gpu.yml`: `metal-native` on hosted `macos-26`, pinned to the number rather than to
+`macos-latest` so an image promotion cannot move the GPU under a golden gate, running the WHOLE suite on every
+trigger, which is the incumbent Metal leg's tier exactly. It is a GUEST in the committed `metal` golden family
+the way `direct3d11-native` and `vulkan-native` are guests in theirs, so `KE_UPDATE_GOLDENS` stays empty on it
+for every trigger and it sits a bake dispatch out entirely.
+
+**This is the strongest regression net the three-phase program has produced, and that is why it takes the
+expensive tier rather than the cheap one.** The Direct3D 11 native leg runs golden-only on push, on WARP. The
+Vulkan native leg runs golden-only on push, on lavapipe, with no swapchain coverage at all. This one runs
+everything, on a real GPU, every time, against the one golden family baked on real hardware. That family is
+also the fleet's cross-backend reference, which cuts both ways and is worth stating plainly: a disagreement
+here is a fleet event rather than a leg event.
+
+**Three things are the native leg's own rather than the incumbent Metal leg's.**
+
+- **`KE_METAL_REQUIRED=1`**, phase 3's row-19 lesson inherited by name. Every Metal row that needs a native
+  device asks `MetalDormancy.NativeDeviceAvailable` and returns early when the machine cannot provide one,
+  which is right on a Windows box, on a Linux box and on the incumbent Metal leg. On THIS leg that early return
+  is a test that asserted nothing and reported green, and the zero-skipped criterion of rollout gate 2 cannot
+  see it, because a dormant row does not skip. With the variable set every dormant answer THROWS instead,
+  naming what the machine objected to in the probe's own words. The variable has exactly one reader however
+  many places go dormant, and the rows that carry their own inline copy of the dormancy pair route their
+  refusal through it.
+- **Both of Metal's validation tiers (M-T7).** `MTL_DEBUG_LAYER=1` on every run, which is affordable at that
+  cadence because it is an environment variable with no install, no apt package and no manifest to check, where
+  the Vulkan layer's cost bought it a weekly slot. `MTL_SHADER_VALIDATION=1` on the deep sweep, because it
+  instruments every shader. **Neither is a synchronisation validator and Metal has none at all**, which is the
+  one place this matrix is weaker on the Metal side than on the Vulkan one, and it is said in the workflow
+  header rather than left for a reader to conclude that Metal's validation is simply cheaper.
+- **`MTL_CAPTURE_ENABLED=1` on the deep sweep alone.** Not a validation tier, and it is armed on the same
+  trigger and nowhere else: without it Metal refuses the GPU-trace destination and the frame-capture suite
+  asserts only that an unarmed process refuses, and with it the capture really starts from the native queue
+  pointer and writes a `.gputrace` bundle the row then asserts and deletes. That is the only thing in the net
+  that exercises the capture interop end to end.
+
+**Arming the layer corrected what [#591](https://github.com/APKiwiOrg/KhaozEngine/issues/591) recorded, and it
+took two measurements to settle.** That issue records the host-aborting behaviour as a property of
+`MTL_DEBUG_LAYER_ERROR_MODE=assert`, which reads as "do not set it and you are fine". **Assert is the
+DEFAULT**: plain `MTL_DEBUG_LAYER=1` aborted the test host on the first objection and took the run's whole
+signal with it, 5956 of 6039 rows reported and then "Test Run Aborted". The obvious fix,
+`MTL_DEBUG_LAYER_ERROR_MODE=nslog`, was measured too and is REJECTED: it stops the abort and reports nothing at
+all to the captured stream, not even the layer's own banner, which would leave the leg with a tier that can
+neither fail nor testify, and an empty artifact is worse than a missing one.
+
+So the layer runs at its default and the rows that provoke it ON PURPOSE stand down in-process, which is
+#591's own second option and keeps the filter out of the workflow where a filter goes stale. A row qualifies
+only if the thing it does is legitimate in a test and illegitimate in a shipped frame, which is three rows
+today: the row-1 interop spike records offset setters on an encoder with no pipeline bound because it is
+measuring the `objc_msgSend` ABI rather than drawing, the validation-reader row cannot tell an in-process
+variable from a launch one in a process launched with it, and **MM6's incumbent CONTROL reproduces the Veldrid
+Metal mis-binding on purpose**. That last one is worth reading twice: the layer's objection is
+`Fragment Function(main0): missing Buffer binding at index 0`, which is the incumbent writing the fragment's
+buffer at index 1 while the emitted function reads index 0. **Metal's own validation layer independently
+confirms MM6's mechanism**, from outside this repository's reasoning about it, and it did so the first time
+anyone armed it. The native measurement in that row is untouched and still runs under validation.
+
+**The 284-failure run, and the fix that was not the one the work breakdown predicted.** Row 14 measured the
+whole `KhaozEngine.Render.Tests` assembly against `KE_GRAPHICS_BACKEND=metal-native` and got 284 failures out
+of 6039, every one of them the same exception, from `MetalCompletionHandler`'s four-slot registration table.
+Section 18 named the `NativeDeviceLifecycle` collection as this row's answer, and the audit found that cell
+already SATISFIED: both assemblies carrying `[GpuFact]` already define the collection. The collection holds the
+classes that build a device BESIDE the suite's own, which is the right membership on every leg where the suite
+runs on another backend. On this leg the suite runs on THIS backend, so every engine-wide device-building class
+builds one of these devices and xUnit runs those classes in parallel.
+
+So the table was raised from 4 to 64, and the alternative was PRICED rather than argued away, because the
+cell's literal reading (put every device-building class in the collection) is a real option and declining it
+needs a number. A fully serialised run of that assembly takes **23m12s against 4m06s parallel** on the same
+machine and commit, and the collection is backend-agnostic, so serialising would have charged the Windows and
+Linux legs for a limit only Metal has. Raising the table costs a slightly longer lock-free scan per
+command buffer and nothing anywhere else. The refusal still names a leak and now says which knob moves it, and
+a device-free ratchet row pins the floor so the number cannot quietly go back.
+
+**Serialising the suite also surfaced a failure the first one had been hiding**, which is the argument for
+running a broken suite twice rather than once. `GpuDeviceSmokeTests` builds a passthrough pipeline declaring
+NO resource layouts, from shaders whose reflection reports one (empty) set, and the native Metal backend's
+layout-shape check refuses the mismatch by design. Every other backend accepts it, so the row had been green
+everywhere for years. The test now declares the empty layout it was already creating and never passing, which
+is what the unused local in it was for. The check's own behaviour is untouched here and the case it is
+over-strict about, an empty declared array against a reflection whose only set is also empty, is filed rather
+than quietly relaxed inside a CI change.
+
+**The seam's compute rule 2 has a third arm, and it completes a quorum.** `GpuInterfaces.cs` named the native
+Vulkan backend as the one implementation more permissive than the seam's contract. The native Metal backend is
+too, by a third mechanism: its compute encoder is created with the default SERIAL dispatch type, where
+consecutive dispatches in one encoder are ordered and their hazards tracked by the driver. Three of three
+engine-owned backends now honour rule 2 natively by three different mechanisms, and only the two Veldrid legs
+need the drain, which is the quorum
+[#461](https://github.com/APKiwiOrg/KhaozEngine/issues/461) has been waiting for. It is EVIDENCE, not a
+contract change: the drain is still what the seam guarantees, and consumer code that drops it because the
+machine it was written on tolerated it still breaks on the fallback.
+
+**Four seam doc comments stopped naming an API where they meant an implementation.**
+`IGpuCommandList.Begin` said the same code "on Metal" was a half-recorded frame, which is true of the Veldrid
+Metal backend and false of the native one, where each list holds its own `MTLCommandBuffer` and the backend
+keeps no record-time state outside the list at all. `IGpuDevice.SyncToVerticalBlank` said the Metal present
+does not throttle the CPU from vsync alone, measured on the Veldrid backend and an open question for the native
+one until gate 5 reads it. `GpuDeviceCounters.BackpressureStallCount` folded two meanings, and the second is
+Vulkan's: the native Metal backend has no command-buffer pool to wait on, so every unit on that counter there
+is the uniform ring's segment acquire alone, which makes a non-zero reading unambiguously a
+`KE_METAL_FRAMES_IN_FLIGHT` statement. And `ModelRenderer.BeginModelPass`'s MRT-clear comment described a
+workaround for a defect it does not fix, without saying which backend has the defect.
+
+**Documentation.** `docs/DEPENDENCY-SEAMS.md` gains the third instance of the inverted out-of-package backend
+edge, with the two things a reader would otherwise take from the wrong sibling (the Metal package declares no
+third-party binding at all, and its platform boundary is the Direct3D 11 apparatus rather than the Vulkan
+package's deliberate absence of one). `docs/CROSS-PLATFORM.md` gains the leg, the native column in its
+platform mapping, the six-leg count and the Metal validation artifacts, and loses a stale claim that the Metal
+leg is self-hosted. Both prior design docs get a corrected-in-place note: the shared-home question both left
+open is answered by phase 4's section 2.8, and phase 3's prediction that Metal's model would map onto Vulkan's
+is confirmed with the score, three of four survived and the resting-layout model has no Metal occupant at all.
+
+**No rollout gate moved, and the `ProbeOS` flip is deliberately not here.** Section 17 gates the flip on five
+green gates. This row BUILDS the instrument for gates 1 and 2 and can read neither, because a hosted leg's
+first run is the push that merges it. The rollout record now carries every gate's standing with its instrument
+named, and all three flip sites (the `ProbeOS` macOS arm, `_windowCandidates`, and the two frame-cap sites)
+keep the doc comments row 3 wrote saying what they are waiting for.
+
+
 ## 17.34.0
 
 ### The `vulkan-native` CI leg, both validation tiers, and the first validation layer this repo has ever installed (#529)

@@ -6,10 +6,18 @@ using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Tests.Gpu
 {
-    /// <summary>A pass-through <see cref="IGpuCommandList"/> that records every <c>UpdateBuffer</c> a pass records,
-    /// so a test can assert on the SHAPE of a frame's uploads (how many, to which buffer, covering what extent)
+    /// <summary>A pass-through <see cref="IGpuCommandList"/> that records every <c>UpdateBuffer</c> and every
+    /// <c>ResolveTexture</c> a pass records, so a test can assert on the SHAPE of a frame (how many uploads, to
+    /// which buffer, covering what extent; which multisampled source lands in which single-sample destination)
     /// rather than on pixels. Everything else forwards untouched, so the frame renders exactly as it would have.
-    /// <para>Give <see cref="Inner"/> to <c>IGpuDevice.Submit</c>: the device needs the real list, not this.</para></summary>
+    /// <para>Give <see cref="Inner"/> to <c>IGpuDevice.Submit</c>: the device needs the real list, not this.</para>
+    /// <para>
+    /// THE RESOLVE HALF IS DEVICE-FREE ON PURPOSE. Wrapped around a <see cref="NullGpuCommandList"/> over a
+    /// <see cref="FakeGpuDevice"/> it answers "which resolves did this pass ask for", which is the wiring half of
+    /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/603">#603</see>: a resolve deleted or pointed at
+    /// the wrong texture is a source-code fault that no GPU is needed to see, and catching it on the ordinary
+    /// push-path suite is far cheaper than waiting for a leg with a device.
+    /// </para></summary>
     internal sealed class RecordingGpuCommandList : IGpuCommandList
     {
         /// <summary>One recorded upload: which buffer, at what byte offset, how many bytes.</summary>
@@ -21,7 +29,11 @@ namespace KhaozEngine.Tests.Gpu
             public bool IsWholeBuffer => Offset == 0 && Bytes == Buffer.SizeInBytes;
         }
 
+        /// <summary>One recorded multisample resolve: which texture was averaged into which.</summary>
+        internal readonly record struct Resolve(IGpuTexture Source, IGpuTexture Destination);
+
         readonly List<Upload> _uploads = new();
+        readonly List<Resolve> _resolves = new();
 
         public RecordingGpuCommandList(IGpuCommandList inner) => Inner = inner;
 
@@ -31,8 +43,17 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>Uploads recorded since the last <see cref="Clear"/>, in the order they were recorded.</summary>
         public IReadOnlyList<Upload> Uploads => _uploads;
 
+        /// <summary>Resolves recorded since the last <see cref="Clear"/>, IN THE ORDER THEY WERE RECORDED. The
+        /// order is part of what a test asserts: a resolve issued before the pass that writes its source publishes
+        /// the previous frame, which is a defect the destination's contents show and a count never would.</summary>
+        public IReadOnlyList<Resolve> Resolves => _resolves;
+
         /// <summary>Forget everything recorded so far (call between frames to assert on ONE frame).</summary>
-        public void Clear() => _uploads.Clear();
+        public void Clear()
+        {
+            _uploads.Clear();
+            _resolves.Clear();
+        }
 
         /// <summary>Every recorded upload whose destination is <paramref name="sizeInBytes"/> bytes.</summary>
         public List<Upload> ToBuffersOfSize(uint sizeInBytes)
@@ -82,7 +103,11 @@ namespace KhaozEngine.Tests.Gpu
             IGpuTexture dst, uint dstMipLevel, uint dstArrayLayer, uint width, uint height)
             => Inner.CopyTextureSubresource(src, srcMipLevel, srcArrayLayer, dst, dstMipLevel, dstArrayLayer, width, height);
         public void GenerateMipmaps(IGpuTexture texture) => Inner.GenerateMipmaps(texture);
-        public void ResolveTexture(IGpuTexture src, IGpuTexture dst) => Inner.ResolveTexture(src, dst);
+        public void ResolveTexture(IGpuTexture src, IGpuTexture dst)
+        {
+            _resolves.Add(new Resolve(src, dst));
+            Inner.ResolveTexture(src, dst);
+        }
         public void SetComputePipeline(IGpuComputePipeline p) => Inner.SetComputePipeline(p);
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set) => Inner.SetComputeResourceSet(slot, set);
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset)

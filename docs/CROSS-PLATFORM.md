@@ -259,6 +259,19 @@ not a CI filter contract):
 - **property / invariant "goldens"** - assert thresholds or invariants on the rendered pixels instead of a
   committed grid (e.g. `SplatTerrainGoldenTests`, `SplatTerrainDistanceGoldenTests`). No committed grid.
 
+**A committed grid sees the FINAL image and nothing else, which is a smaller claim than the family's name
+suggests.** `MsaaResolveTargetGoldenTests` exists because of a measured case
+([#603](https://github.com/APKiwiOrg/KhaozEngine/issues/603)): `Golden3D_HdrMsaa` drives the MSAA resolve path
+six times per run, twice with a render encoder already open, and every one of the 91 goldens stayed green with
+the first of `RenderResources.ResolveDepthNormal`'s back-to-back pair silently discarded. A 32x18 grid of
+per-cell average RGB cannot see one intermediate target holding the previous frame. So that test reads the
+resolve DESTINATIONS back after a real `Scene3D` frame and checks them against the same scene rendered on the
+single-sample path, where those two textures ARE the MRT attachments and no resolve happens: one path checking
+the other, in one session on one device, with nothing committed and nothing to bake. Its device-free sibling
+`MsaaResolveWiringTests` asserts which resolves the pass records, from which source into which destination, in
+what order, and needs no GPU at all. The general lesson is worth more than the pair: when a change lands on an
+INTERMEDIATE target, ask what in the final image would have to move before assuming the golden family covers it.
+
 | trigger                          | behaviour                                                                     |
 | -------------------------------- | ----------------------------------------------------------------------------- |
 | `push` / `pull_request` on main  | **verify**: both Metal legs run the full suite. Both D3D11 legs and both Vulkan legs run the golden tests only. The only validation tier that runs is Metal's debug layer, which the native Metal leg arms on every trigger, alongside `MTL_CAPTURE_ENABLED=1` |

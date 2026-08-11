@@ -75,6 +75,33 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Null(GpuFactAttribute.CompletionFenceSkipReason(null));
         }
 
+        // The MSAA gate (#603). A device below four samples downgrades an MSAA request to Fxaa inside
+        // AntiAliasing.ResolveFor, so a test that asks for MSAA and does not check would compare the single-sample
+        // path against itself and pass having measured nothing. The named skip is what stops that being invisible.
+        [Theory]
+        [InlineData(4, false)]
+        [InlineData(8, false)]
+        [InlineData(2, true)]
+        [InlineData(1, true)]
+        public void Four_sample_msaa_skip_fires_only_below_four_samples(int maxMsaa, bool expectSkip)
+        {
+            string? reason = GpuFactAttribute.FourSampleMsaaSkipReason(("Vulkan", maxMsaa));
+            Assert.Equal(expectSkip, reason != null);
+            if (expectSkip)
+            {
+                Assert.Contains("Vulkan", reason!, StringComparison.Ordinal);
+                Assert.Contains("MaxMsaaSampleCount", reason!, StringComparison.Ordinal);
+            }
+        }
+
+        [Fact]
+        public void No_device_at_all_runs_the_msaa_gate_too()
+        {
+            // The same rule the completion-fence gate follows: a device that could not be created is an error
+            // downstream, never a capability skip.
+            Assert.Null(GpuFactAttribute.FourSampleMsaaSkipReason(null));
+        }
+
         [Theory]
         [InlineData("Apple Paravirtual device", true)]
         [InlineData("Microsoft Basic Render Driver", false)]

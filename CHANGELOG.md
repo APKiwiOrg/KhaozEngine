@@ -195,6 +195,42 @@ raise one.
 by default on `MetalNative` exactly as the Direct3D 11 and Vulkan ones are on theirs. Set `KE_METAL_MSL_CACHE=off`
 while chasing a shader or binding problem if you want to be sure of what ran.
 
+### The golden family gets an instrument for the MSAA resolve it could never see (#603)
+
+The 91 committed goldens stayed green with the depth resolve silently discarded, and now two new tests do not.
+
+**What was measured.** `Golden3D_HdrMsaa` drives the resolve path six times in one run, twice with a render
+encoder already open, which is exactly `RenderResources.ResolveDepthNormal`'s back-to-back pair. Remove the row
+14 fix that ends the open encoder first and the FIRST of that pair is silently discarded: the descriptor goes
+unused, the pass ends, the command buffer completes with a nil error, and `DepthColorTex` keeps whatever it held.
+Every golden still passed. A 32x18 grid of per-cell average RGB of the FINAL image cannot see one intermediate
+target holding the wrong frame, so the family's coverage claim over-promised for that target.
+
+**`MsaaResolveTargetGoldenTests` reads the destination instead of the final image.** It renders one fixed scene
+twice on one headless device, at `AntiAliasing.Off` and at `AntiAliasing.Msaa(4)`, and reads both resolve
+destinations back: the linear-depth target as `R32Float` and the encoded-normal target as RGBA. On the
+single-sample path those two textures ARE the MRT attachments and no resolve happens at all, so that run is the
+reference and the MSAA run has to match it. One path checking the other, in one session on one device, which
+means no committed grid, no per-backend bake and no re-bake when a shader moves. The comparison is
+dimensionless (mean absolute difference over the reference's own mean absolute deviation) so it needs no
+per-backend tolerance: measured at 0.0003 for depth and 0.0009 for normals on Apple silicon, against a limit of
+0.25, and a dropped resolve scores at or above 1.0 because a target nothing wrote is the constant the ratio
+normalises against. Verified both directions by removing the fix and putting it back.
+
+**`MsaaResolveWiringTests` is the device-free half**, so the cheap failures do not wait for a leg with a GPU. It
+asserts which resolves each of the three `RenderResources` entry points records, from which source into which
+destination, in what ORDER (the pair is back to back, and the first is the one a backend can drop while the
+second lands), and that the single-sample path records none at all.
+
+**Two supporting knobs.** `[GpuFact(RequiresFourSampleMsaa = true)]` skips with the backend and the real limit
+named on a device below four samples, because `AntiAliasing.ResolveFor` downgrades an MSAA request to Fxaa there
+and the test would otherwise compare the single-sample path against itself and pass having measured nothing.
+`RecordingGpuCommandList` now records resolves alongside uploads.
+
+**Cost: +0.15s on a 3.26s golden run** (median of three, warm cache, `metal-native`), which is the whole reason
+both runs share one device rather than creating one each. No public API changed: the three new `Scene3D`
+accessors are `internal`, next to the ones that already expose the render-target size to tests.
+
 ## 17.35.0
 
 ### `KhaozEngine.Gpu.Metal`, phase 4's package skeleton, and the three spikes that ran on real hardware (#567)

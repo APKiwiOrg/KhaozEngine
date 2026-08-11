@@ -65,6 +65,7 @@ namespace KhaozEngine.Tests.Gpu
         // deliberately does NOT skip - see RequiresCompletionFences.
         static readonly Lazy<(string Backend, bool Fences)?> Caps = new(ProbeCapabilities);
         static readonly Lazy<string?> DeviceName = new(ProbeDeviceName);
+        static readonly Lazy<(string Backend, int MaxMsaa)?> MsaaCaps = new(ProbeMsaa);
 
         public GpuFactAttribute()
         {
@@ -158,6 +159,59 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         bool _requiresRealGpu;
+
+        /// <summary>
+        /// Declare that this test needs FOUR-SAMPLE MSAA, so it SKIPS with the backend and the real limit named on
+        /// a device that cannot give it, instead of quietly measuring nothing.
+        /// <para>
+        /// THE QUIET OUTCOME IS THE ONE THIS EXISTS FOR. <c>AntiAliasing.ResolveFor</c> (KhaozEngine.Render3D,
+        /// which this assembly deliberately does not reference) DOWNGRADES an MSAA request to Fxaa on a device whose
+        /// <see cref="KhaozEngine.Gpu.GpuCapabilities.MaxMsaaSampleCount"/> is below it, so a test that asks for
+        /// MSAA and gets the single-sample path back still runs, still passes, and has compared that path against
+        /// itself. That is the exact failure shape
+        /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/603">#603</see> is about, one layer down, so
+        /// an MSAA instrument that could go quiet on a leg would be reproducing the defect it was written to catch.
+        /// </para>
+        /// <para>
+        /// A null probe (no device could be created) RUNS, which is <see cref="CompletionFenceSkipReason"/>'s rule
+        /// and for its reason: a broken device has to error downstream rather than be reported as a capability
+        /// skip.
+        /// </para>
+        /// </summary>
+        public bool RequiresFourSampleMsaa
+        {
+            get => _requiresFourSampleMsaa;
+            set
+            {
+                _requiresFourSampleMsaa = value;
+                if (value && Skip == null) Skip = FourSampleMsaaSkipReason(MsaaCaps.Value);
+            }
+        }
+
+        bool _requiresFourSampleMsaa;
+
+        /// <summary>Pure decision for <see cref="RequiresFourSampleMsaa"/>: the skip reason for the probed
+        /// <paramref name="caps"/>, or null to RUN. Factored out to be unit-tested headlessly, exactly like
+        /// <see cref="SkipReason"/> and <see cref="CompletionFenceSkipReason"/>.</summary>
+        internal static string? FourSampleMsaaSkipReason((string Backend, int MaxMsaa)? caps)
+            => caps is { } c && c.MaxMsaa < 4
+                ? $"the {c.Backend} device reports MaxMsaaSampleCount = {c.MaxMsaa}, below the 4 this test asks "
+                    + "for, so AntiAliasing.ResolveFor would downgrade the request to Fxaa and the test would "
+                    + "compare the single-sample path against itself"
+                : null;
+
+        static (string Backend, int MaxMsaa)? ProbeMsaa()
+        {
+            try
+            {
+                using var ctx = KhaozEngine.Gpu.GpuDeviceContext.CreateHeadless();
+                return (ctx.GpuDevice.Backend.ToString(), ctx.Capabilities.MaxMsaaSampleCount);
+            }
+            catch
+            {
+                return null;
+            }
+        }
 
         /// <summary>Pure decision for <see cref="RequiresRealGpu"/>: the skip reason for a virtualised adapter, or
         /// null to RUN. A null name (no device could be created) RUNS, so a broken device errors downstream rather

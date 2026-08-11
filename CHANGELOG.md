@@ -1753,6 +1753,69 @@ criterion also gained its one standing exception from the same run: a `RequiresR
 paravirtual adapter by design, so the leg reads 0 skipped beyond those rows rather than a flat 0.
 
 
+### #531's extraction, re-assessed against three implementations: two things move, three are refused (#584)
+
+Row 18 of [docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md),
+the last row of phase 4 and the one that could only run once three native backends existed.
+[#531](https://github.com/APKiwiOrg/KhaozEngine/issues/531) was filed to find out what the three backends
+genuinely share, and its own instruction was to re-assess each candidate against them rather than assume the
+list carries. It did not carry. M-P4 named FIVE things. Two moved, one of those only in part, and three were
+refused in writing. **No public API changes and no observable behaviour changes on any backend**, which is the
+bar an extraction has to clear: phase 2's and phase 3's frozen native-call marginals are device-free tests that
+run on every `dotnet test`, and they are byte-identical across both commits.
+
+**The `DeviceLiveness` latch moved whole, and it absorbed a FOURTH copy nobody had counted.**
+`D3D11DeviceLiveness`, `VulkanDeviceLiveness` and `MetalDeviceLiveness` were member for member identical down to
+accessibility and initializer form: one `volatile bool`, no lock, no `Interlocked`, no reset path, each shipping
+the same read interface and the same null object beside it. They are now `KhaozEngine.Gpu/Internal/DeviceLiveness.cs`,
+holding `IDeviceLiveness`, `DeviceLiveness` and `LiveDevice`, reached through the `InternalsVisibleTo` grants
+that already carried the shader toolchain. The fourth copy is what made this not close: `KhaozEngine.Gpu.Internal`
+already declared a `DeviceLiveness` for the Veldrid wrappers, a bare `public volatile bool Dead` with no
+interface and no null object, in the very namespace the extraction lands in. Deleting three and keeping a fourth
+where a reader looks first is not an extraction, so `Dead` became `IsDead` and its two writes became `MarkDead()`,
+which is the same volatile store either way. Two things did NOT move and both survive untouched: WHERE in
+teardown each backend flips it (D3D11 flips last, Vulkan between `vkDeviceWaitIdle` and `vkDestroyDevice`, Metal
+after the drain, and the Veldrid wrapper first) lives in the CALLER, and Metal's second use of the token as
+device IDENTITY works on a shared interface exactly as well as on a per-backend class, because what
+`MetalResourceOwnership.Require` needs is reference identity and Apple silicon reports one `MTLDevice` per
+process.
+
+**The counter CARRIERS moved and the accumulation SITES were refused, which is the half M-P4 named first.**
+`WaitTotals` (the count-and-duration snapshot with its volatile per-field `Sample`), `WaitAccumulator` (the
+nine-line `Record` pair behind it) and `RingPatchStats` (the off-timeline deferral counters) are now three files
+under `KhaozEngine.Gpu/Internal/`. At the carrier level the copies were identical to the byte, and
+`MetalWaitTotals`'s own header said it was written to be deleted and named this row. At the SITE level everything
+differs and every difference is argued in the code that holds it: the drain pair is counted on every drain in
+D3D11 and only on a drain that was not already caught up in the other two, the backpressure pair folds one source
+in D3D11 and two in each of the others, the acquire pair is hardcoded to zero in D3D11, probe-gated in Vulkan and
+unconditional in Metal, and `FramesBegun` is the ring's rotation index in D3D11 and a standalone `long` on the
+present boundary in the other two. `DrainCount` is a shipped `GpuDeviceCounters` channel, so a shared drain
+picking either counting rule would change a number in the field on two backends. One cost is accepted rather than
+argued away: four role-named accumulator types became one, so a mix-up at an injection site now COMPILES where it
+used to be a type error. The role moved to the field name and its doc at each host, there are two injection sites
+per backend, and both have a counters test that would fail immediately.
+
+**Three refusals, and two of them overturn a FACT the decisions table asserted rather than a judgement it made.**
+The diagnostic rate limiter is refused because there is no third implementation and there cannot be one: Metal has
+no `Admit`, no key, no dedup table and no cap anywhere, because API validation output goes to the OS console
+rather than through engine logging and the only engine-visible diagnostic is a per-buffer completion object whose
+`Description` is a localized human sentence. What stands in its place is a once-only latch, which is the honest
+volume control for a backend whose seam has no resubmit path. The shader-cache key and file discipline is refused
+because the candidate as specified exists at NO backend: Metal has no disk cache at all (section 12.5's row-9
+addendum already recorded why, with two measurements), and the two that do share nothing on either axis, since
+`D3D11DxbcCache`'s key is pure content with no header at all and `VulkanPipelineCacheFile`'s is pure device
+identity validated against the driver's own header. The completion timeline's bookkeeping is refused because
+#531's own prediction about Direct3D 11 came true at the last candidate: M-F1 did make Vulkan's and Metal's
+timelines the same object nearly line for line, but D3D11's peer is `D3D11FenceSubsystem` rather than the type
+that looks like one, and it carries seven things the other two deliberately do not have.
+
+`KhaozEngine.Gpu` gains one `InternalsVisibleTo`, for `KhaozEngine.TestSupport.Gpu`, because the three shared
+uniform-ring adapters build their backend's ring (which takes a `WaitAccumulator`) and read the stall count off a
+`WaitTotals`. [docs/DEPENDENCY-SEAMS.md](docs/DEPENDENCY-SEAMS.md) carries the new shared-internal seam beside the
+shader-toolchain one it extends, and the row 18 addendum in section 2.8 of the design doc is the canonical home
+for all seven written refusals #531 now closes with.
+
+
 ## 17.34.0
 
 ### The `vulkan-native` CI leg, both validation tiers, and the first validation layer this repo has ever installed (#529)

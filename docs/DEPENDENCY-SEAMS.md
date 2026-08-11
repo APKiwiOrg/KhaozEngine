@@ -806,6 +806,36 @@ The same `InternalsVisibleTo` carries the other internal the backend needs, `IGp
 created device implements it to get the same disposal latch the Veldrid wrapper has, so a resource wrapper
 disposed after the device no-ops instead of calling into freed driver objects.
 
+### The shared-internal seam: four types all three backends now sit on
+
+The shader toolchain above was the FIRST thing the backends shared. It is not the only thing any more.
+[#531](https://github.com/APKiwiOrg/KhaozEngine/issues/531) re-assessed every candidate once a third backend
+existed and moved two of them into `KhaozEngine.Gpu/Internal/`, on the same `InternalsVisibleTo` grants, so the
+edge shape is unchanged and only its contents grew. That ruling and its three written refusals are the row 18
+addendum to section 2.8 of
+[design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md).
+
+- **`Internal/DeviceLiveness`**, holding `IDeviceLiveness`, `DeviceLiveness` and `LiveDevice`. The volatile
+  once-flipped token every resource wrapper reads before releasing anything. It absorbed a FOURTH copy that
+  already lived in this namespace for the Veldrid wrappers, so the seam has one liveness type rather than four.
+  WHERE in teardown each backend flips it still differs and lives in the caller, and the Metal backend's second
+  use of the token as device IDENTITY (Apple silicon reports one `MTLDevice` per process, so a handle comparison
+  decides nothing) works on the shared interface exactly as it did on the per-backend class.
+- **`Internal/WaitTotals`**, **`Internal/WaitAccumulator`** and **`Internal/RingPatchStats`**: the counter
+  CARRIERS behind `GpuDeviceCounters`. A count-and-duration snapshot with its volatile per-field `Sample`, the
+  nine-line accumulator behind it, and the off-timeline deferral counters.
+
+**What did NOT move is the counting, and that is the load-bearing half of the ruling.** The accumulation sites
+stayed per backend because every one of them differs for an argued reason: a Direct3D 11 present has no acquire
+to wait on, a `VkCommandPool` cannot be reset while its buffers are in flight where an `MTLCommandBuffer` is
+single-use, and `nextDrawable` has no zero-timeout form to probe with where `vkAcquireNextImageKHR` does.
+`DrainCount` is a shipped seam channel, so a shared drain would have to pick one counting rule and would change a
+number in the field on two backends.
+
+`KhaozEngine.TestSupport.Gpu` gets its own `InternalsVisibleTo` for one reason only: the three shared uniform-ring
+adapters build their backend's ring, which takes a `WaitAccumulator`, and read the stall count off a `WaitTotals`.
+It reaches nothing else internal to `KhaozEngine.Gpu`.
+
 ## Three flavours of the same idea
 
 The pattern is applied at the granularity the dependency warrants:

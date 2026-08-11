@@ -570,9 +570,12 @@ and what the tests assert. Neither survives being SAMPLED: a telemetry session w
 so a per-frame value read a few times a second reports the frames it happened to land on and says nothing about
 the hundreds it skipped. M3's exit criterion is a stall count of ZERO across a whole capture window, which that
 reading cannot establish and a cumulative one settles by subtracting the first sampled row from the last. M2's
-per-frame drain figure is the same subtraction over the frames between them. `D3D11WaitTotals` is the shared
+per-frame drain figure is the same subtraction over the frames between them. `WaitTotals` is the shared
 count-and-duration pair behind `D3D11FenceSubsystem.TotalDrain` and `D3D11RingAllocator.TotalBackpressure`, and
 it keeps `Stopwatch` ticks rather than a running double, because a week-long soak sums tens of millions of waits.
+It lives in `KhaozEngine.Gpu` as of #531's extraction, shared with the other two native backends, and what did
+NOT move with it is the counting rule: this backend counts every drain where the other two skip one that was
+already caught up, and that difference is why the sites stayed per backend.
 
 **Both backpressure readings cross, on separately named members**
 (https://github.com/APKiwiOrg/KhaozEngine/issues/499). `BackpressureStallCount` is the frame boundary that
@@ -617,12 +620,15 @@ The input layout needs the compiled vertex shader signature, which is in hand at
 no state cache: the Direct3D 11 runtime already returns an existing object for an identical state description,
 so the incumbent's was dropped.
 
-**Disposal after device death is a no-op.** `D3D11DeviceLiveness` is a volatile token the device flips inside
-its lifecycle lock before the real device is released, and every wrapper's `Dispose` reads it. Destroying the
-device already freed every child object, so a wrapper disposed afterwards must do nothing rather than release
-twice. It is also the one implementation of `ID3D11DeviceLiveness`, which is the READ half the fence subsystem
-was built against: a fence asks whether the device is dead so it can answer signalled, and it has no business
-flipping the token, so `MarkDead` stays off that interface and the device's teardown remains its only caller.
+**Disposal after device death is a no-op.** `DeviceLiveness` is a volatile token the device flips inside its
+lifecycle lock before the real device is released, and every wrapper's `Dispose` reads it. Destroying the device
+already freed every child object, so a wrapper disposed afterwards must do nothing rather than release twice. It
+implements `IDeviceLiveness`, which is the READ half the fence subsystem was built against: a fence asks whether
+the device is dead so it can answer signalled, and it has no business flipping the token, so `MarkDead` stays off
+that interface and the device's teardown remains its only caller. Both types live in `KhaozEngine.Gpu` as of
+#531's extraction, shared with the other two native backends and with the Veldrid wrappers. WHERE in teardown
+the flip happens is still this backend's own decision and is unchanged: it flips LAST, because every release
+above it reads the token.
 
 ## Per-frame memory: the constant-buffer ring
 

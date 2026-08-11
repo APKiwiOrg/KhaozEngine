@@ -1,11 +1,14 @@
 # KhaozEngine.Gpu.Metal: native Metal backend design (2026-08-09)
 
-**Status: ROWS 1 TO 7 LANDED IN `17.35.0`**, the package skeleton, the three verification spikes, the provider
-and its machine probe, the `GpuBackendKind.MetalNative` append with its three silent sites, the Objective-C
-interop layer with a real device and queue, the shared-event timeline, the resources (buffers, textures,
-samplers, fences, the device-level uploads on a setup command buffer, and `Map` with its read drain) and the
-command list with its submit path. **Rows 8 to 19 are not written**, so nothing can bind, draw or present yet.
-Phase 4 of the staged native GPU backend program
+**Status: ALL NINETEEN ROWS LANDED IN `17.35.0`, so the program is BUILT and this document is history rather
+than a plan.** The package skeleton and its three verification spikes, the provider and its machine probe, the
+`GpuBackendKind.MetalNative` append with its three silent sites, the Objective-C interop layer with a real device
+and queue, the shared-event timeline, the resources, the command list and its submit path, the uniform ring, the
+shader path, the pipelines, the bind flush, the draw, dispatch and transfer paths, the windowed
+`CAMetalLayer` swapchain, the capability, counter and diagnostics reads, MM6's measurement, the #531 extraction
+(row 18) and the `metal-native` CI leg (row 19). **What is NOT done is the ROLLOUT**: the five gates of section
+17 are PENDING with their instruments built, none has been read, and the `ProbeOS` flip waits on them at three
+sites that say so in their own doc comments. Phase 4 of the staged native GPU backend program
 ([#420](https://github.com/APKiwiOrg/KhaozEngine/issues/420)), specified by
 [#566](https://github.com/APKiwiOrg/KhaozEngine/issues/566), following the shipped phase 2
 (`docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md`) and phase 3
@@ -2365,8 +2368,8 @@ vocabulary correction rather than a redesign. Five things follow and all five ar
    takes a value ABOVE the one its segment was closed at, so the wrap back would wait for the earlier value and
    write into a segment a live submission was still reading. A recording abandoned without a submit leaves the
    owner untouched, so the gate can never wait on a value nothing will signal.
-3. **The rotation is one atomic step under the submit lock.** The index advance was a plain `++` while
-   `MetalBackpressure` documents concurrent `Begin` as supported, and the old four-step sequence spanned three
+3. **The rotation is one atomic step under the submit lock.** The index advance was a plain `++` while M-R3
+   documents concurrent `Begin` as supported, and the old four-step sequence spanned three
    synchronisation regimes. Advance, owner read, claim, patch replay and publish now happen in one hold. The hold
    is DROPPED across the wait and the owner is re-read afterwards, for two reasons that both bite: the wait is up
    to a submission long on the one serialised point in the frame, and point 2 above puts the value being waited

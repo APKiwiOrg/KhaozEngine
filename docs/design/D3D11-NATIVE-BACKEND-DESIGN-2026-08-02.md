@@ -1144,6 +1144,16 @@ is, that is the user's call.
   it named as general did not survive Vulkan, the schedule it named as general did not survive Metal, and what
   did generalise is the bookkeeping nobody listed. The extraction lands after phase 4's rollout gate 3 rather
   than with it, so a golden failure has one candidate cause instead of two.)
+  (**Corrected in place at phase 4's row 18, 2026-08-11: the list above is what section 2.8 RULED, and executing
+  it moved it again.** Two things extracted, one of them only in part, and three were refused. The
+  `DeviceLiveness` latch moved whole and absorbed a fourth copy nobody had counted. The counters moved at the
+  CARRIERS and were refused at the accumulation SITES, where every backend's counting rule differs for an argued
+  reason. The rate limiter, the shader-cache key and the timeline bookkeeping were all refused, the first two
+  because the third implementation this list assumed does not exist: Metal has no rate limiter and no disk shader
+  cache, and cannot have either. Which makes the bullet above right one more time and for one more reason. Its
+  "what genuinely generalises" list was wrong in both directions at two implementations, and the list written at
+  THREE was still wrong in both directions until it was executed. See the row 18 addendum in section 2.8 of
+  `METAL-NATIVE-BACKEND-DESIGN-2026-08-09`.)
 - The `Veldrid.SPIRV` edge is confined to `KhaozEngine.Gpu` behind one internal helper (P2), so the
   "no Veldrid in the graph" endpoint is one package to change, not three.
 - Making `WaitForIdle` real on D3D11 means all three backends will honour rule 2 identically, so the

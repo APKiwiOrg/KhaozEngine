@@ -800,8 +800,12 @@ reading more than one uniform buffer mis-binds, full stop. Measured on an Apple 
 broad rule forbids bind CORRECTLY on the incumbent: a vertex stage reading two uniform buffers at sets 0 and
 1, and a pipeline whose set-0 buffer is read by both stages with a fragment-only second buffer at set 1. The
 shape that fails is the one the shipped record failed in, each stage referencing exactly one of the two
-buffers. TEXTURES and samplers in a second set map fine (measured), only uniform buffers past the first
-mis-bind, and for the same counting reason.
+buffers. TEXTURES and samplers in a second set mapped fine in the shapes measured. Read that as a result about
+those shapes rather than as a property of the texture index space: the count runs PER index space, so the
+identical per-stage condition predicts a texture index disagreeing the same way. That prediction is not
+measured here, and it is what the sample-all-textures-in-binding-order discipline already guards. This engine's
+own incident record has two texture-space mis-binds in it, a model pass reading the normal texture through the
+albedo sampler and a crease term reading depth data.
 
 **The engine's own native Metal backend (`GpuBackendKind.MetalNative`) does not have the defect**, because it
 binds at the index read out of each stage's own emission rather than at a counted one. All three shapes read

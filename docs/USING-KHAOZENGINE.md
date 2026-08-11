@@ -9076,17 +9076,12 @@ copies the current segment and defers the segments still in flight, and at a dep
 so an ungated copy would be a CPU write into the one segment the GPU may be reading. Correct but slow is the
 right trade at a depth that exists for measuring.
 
-**`KE_METAL_CLEAR=attachment0` puts a run back on the incumbent's clear behaviour, for one measurement.** This
-backend clears the colour attachment the caller NAMED. The Veldrid Metal backend writes every clear into
-`colorAttachments[0]`, so a framebuffer with more than one colour target clears only its first, and
-`ModelRenderer.BeginModelPass` reaches exactly that with `ModelFB`'s three attachments. That is the one
-deliberate rendering change this backend makes, so the old behaviour stays selectable for an A/B against the
-committed `metal` goldens. `attachment0`, `attachment-0` and `incumbent` all select it, case-insensitively.
-Anything else that is set and not understood WARNS at device creation, names the value verbatim and leaves the
-per-attachment clear, because a typo that silently selected the fix while you believed you had selected the
-incumbent would make the comparison report the same position twice. The reading is taken ONCE per process, so
-changing the variable mid-run does nothing. **This variable is removed at rollout gate 1** along with whichever
-branch loses, so do not build anything on it.
+**This backend clears the colour attachment you NAMED, and there is no knob for the other behaviour.** The
+Veldrid Metal backend writes every clear into `colorAttachments[0]`, so a framebuffer with more than one colour
+target clears only its first, and `ModelRenderer.BeginModelPass` reaches exactly that with `ModelFB`'s three
+attachments. That is the one deliberate rendering change this backend makes. A `KE_METAL_CLEAR=attachment0`
+switch existed to put a run back on the incumbent's behaviour for rollout gate 1's A/B, and it was removed at
+that gate along with the losing branch, so nothing you can set changes where a clear lands.
 
 **A Metal command-buffer failure is reported now, which it was not before.** Every command buffer's status and
 error are read when it finishes, in every configuration, and the first failure latches its

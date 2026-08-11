@@ -1714,6 +1714,14 @@ means the CURRENT behaviour is the unstable one.
 sort it selects a branch inside one implementation, so it is cheap, and its deadline is GATE 1: once the
 goldens have answered, the switch is removed and the losing branch deleted whichever way it goes.
 
+**RETIRED 2026-08-11 AT GATE 1, AND THE POSITION OUTLIVED THE SWITCH.** The variable, its once-per-process
+memo, its parse and its typo WARN are gone, and `MetalClearPolicy` is the per-attachment mode unconditionally.
+What did NOT go is `MetalClearMode.Attachment0`, and the reason is the A/B's own answer: the golden suite
+passed 31 of 31 in BOTH positions, so no committed golden can tell M-A2's fix from the incumbent's collapse,
+and the one instrument that can is `MetalRenderPassGpuTests`'s texel readback. That row names the position as a
+CONSTRUCTOR VALUE, which is the shape it was already written in, so the enum stays reachable from the recording
+types and from nowhere else. The rollout record below carries the reading.
+
 **And the renderer-side comment is a doc task with an owner.** `ModelRenderer.BeginModelPass` currently tells
 the next reader that Metal collapses MRT clears, which will be false on the native leg and is an incomplete
 description of the Veldrid one. It is reworded to name the implementation it describes, which is V-C3's

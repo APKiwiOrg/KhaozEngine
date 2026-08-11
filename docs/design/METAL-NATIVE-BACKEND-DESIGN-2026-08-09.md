@@ -3600,6 +3600,11 @@ cross-check row). Ledger consequence for every future feature gate: on this runn
 promise is NOT evidence the feature works, and the first hosted run of any family-gated feature is the real
 measurement.
 
+**THE THIRD HOSTED RUN IS THE LEG'S FIRST GREEN** (run 31464944222, commit b4b46fcf, both Metal legs
+success beside the four incumbent and native siblings), so gates 1 and 2 have their first readable pass and
+their PENDING status now means "accumulating", not "never read". The gate readings themselves stay a
+deliberate recording task against that run's artifacts and counts, per the instrument column.
+
 **The device fact.** The hosted runner's Apple Paravirtual device does not support sampler border colours,
 which are a `MTLGPUFamilyMac2` feature. That is the first CONFIRMED behavioural difference between the hosted
 GPU and this Mac's M2 Max, and it is worth carrying here rather than only in the changelog, because it changes

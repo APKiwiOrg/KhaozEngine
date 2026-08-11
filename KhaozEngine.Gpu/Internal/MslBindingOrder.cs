@@ -57,6 +57,17 @@ namespace KhaozEngine.Gpu.Internal
 
         static readonly string[] Spaces = { "buffer", "texture", "sampler" };
 
+        /// <summary>WHICH BACKEND THE CONSTRAINT PROTECTS, carried in every message this type throws. Without it
+        /// the rejection reads as a bug in the validator to anyone whose shader draws correctly on every device
+        /// they own: the engine's own native Metal backend binds at the index read out of each stage's emission
+        /// and renders all of these shapes correctly, so the constraint is the INCUMBENT Veldrid Metal backend's
+        /// alone and retires with that leg (issue #604).</summary>
+        const string IncumbentClause =
+            "This constrains the INCUMBENT Veldrid Metal backend (GpuBackendKind.Metal) alone. The engine's own "
+            + "native Metal backend binds at the index read out of each stage's emission, and Vulkan and "
+            + "Direct3D11 honour the decorations, so all three render this correctly and a shader that looks fine "
+            + "on every device you tested can still be rejected here.";
+
         /// <summary>
         /// Check one cross-compiled Metal stage: within each index space, the arguments in Metal index order must
         /// be the arguments in binding order.
@@ -100,7 +111,8 @@ namespace KhaozEngine.Gpu.Internal
                         + "FIRST-REFERENCE order while the resource layout is counted in binding order. Where the "
                         + "two disagree the wrong resource is bound to each slot, on Metal ONLY, and silently. "
                         + "Make the first reference to each resource happen in binding order - hoist a first touch "
-                        + "into main when a helper function reaches a later binding first.");
+                        + "into main when a helper function reaches a later binding first. "
+                        + IncumbentClause);
                 }
             }
             return bySpace;
@@ -169,7 +181,8 @@ namespace KhaozEngine.Gpu.Internal
                     + $"this stage reaches for a lower {space} index than the layout binds binding {binding} at, "
                     + "and no binding number can reconcile the two. Reorder the layout so every resource this "
                     + $"stage reads comes before the ones it does not, or give it a reference to binding "
-                    + $"{missedBinding} as well.");
+                    + $"{missedBinding} as well. "
+                    + IncumbentClause);
             }
         }
 

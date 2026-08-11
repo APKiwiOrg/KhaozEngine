@@ -24,8 +24,9 @@ namespace KhaozEngine.Tests.Gpu
     /// sends a readback down the upload selector), or the buffer and texture halves of a region have been crossed
     /// (which is the split the type's own doc calls the one that is easy to get backwards), or the readback and
     /// upload depth-pitch asymmetry has been smoothed away, or the staging-to-staging arm has stopped taking the
-    /// SMALLER of the two subresource sizes, which turns a mismatched pair from a short copy into an
-    /// overrun.</para>
+    /// SMALLER of the two subresource sizes, which turns a mismatched pair from a short copy into an overrun, or
+    /// that arm's size has started being PADDED up to four, which writes into the subresource after the one the
+    /// copy was aimed at.</para>
     /// </summary>
     public sealed class MetalTransferPlanTests
     {
@@ -355,6 +356,45 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(16384ul, sourceOffset);
             Assert.Equal(8192ul, destinationOffset);
             Assert.Equal(4096ul, size);
+        }
+
+        /// <summary>
+        /// THE SIZE IS EXACT, AND ON THIS SHAPE A PAD WOULD LAND IN THE NEXT SUBRESOURCE. Section 9.3 rounds a
+        /// copy SIZE up to four, which is safe between two <c>IGpuBuffer</c>s because both are allocated rounded
+        /// up, and this arm's two sides are staging textures instead: an <c>MTLBuffer</c> allocated at exactly
+        /// <see cref="MetalStagingLayout.TotalBytes"/> with its subresources PACKED end to end.
+        ///
+        /// <para><b>THE SHAPE IS CHOSEN SO THE CROSSING IS REAL RATHER THAN HYPOTHETICAL.</b> <c>R8UNorm</c> at
+        /// 3x3 is a 9-byte subresource, so layer 1 starts at byte 9, and a copy into layer 0 padded to 12 would
+        /// overwrite the first three bytes of layer 1. On the LAST layer the same pad runs past the allocation.
+        /// There is no room to clamp it into either, because this size is already the smaller of the two
+        /// subresources, so any pad at all is past the end of one of them.</para>
+        ///
+        /// <para><b>WHAT A RED RUN MEANS.</b> The size came back rounded, which is a copy that silently corrupts
+        /// the subresource after the one it was aimed at. <c>CopyTexture</c> survives that by iteration order (it
+        /// rewrites what it clobbered on the next pass of the loop) and <c>CopyTextureSubresource</c> does
+        /// not.</para>
+        /// </summary>
+        [Fact]
+        public void StagingToStaging_TheSizeIsExactBecauseAPadWouldCrossIntoTheNextSubresource()
+        {
+            // R8UNorm 3x3, one mip, two layers: a 9-byte subresource, and 9 is not a multiple of four.
+            var packed = new MetalStagingShape(3, 3, 1, 2, GpuPixelFormat.R8UNorm);
+
+            (_, ulong destinationOffset, ulong size) = MetalTransferPlan.StagingToStaging(
+                packed, sourceLevel: 0, sourceLayer: 0, packed, destinationLevel: 0, destinationLayer: 0);
+
+            Assert.Equal(9ul, size);
+            Assert.NotEqual(0ul, size % MetalCopyAlignment.Bytes);
+
+            // WHERE THE PAD WOULD HAVE GONE: the next subresource starts at byte 9 and a padded copy writes 12.
+            ulong next = MetalStagingLayout.For(packed, mipLevel: 0, arrayLayer: 1).Offset;
+            Assert.Equal(9ul, next);
+            Assert.True(destinationOffset + MetalCopyAlignment.PaddedSize((uint)size) > next,
+                "the shape has to be one where padding really would cross, or the row asserts nothing");
+
+            // AND THE WHOLE ALLOCATION IS 18 BYTES, so the same pad on the LAST layer runs off the end of it.
+            Assert.Equal(18ul, MetalStagingLayout.TotalBytes(packed));
         }
 
         /// <summary>

@@ -1288,6 +1288,17 @@ arithmetic proof that the pad lands inside both allocations written on it. The i
 embedded compute shader driven by a dedicated compute pipeline) is still declined, and a device-free test over
 every `CopyBuffer` call site in the engine is what says nothing legitimate reaches the throw.
 
+**The size half of that ruling applies to a copy between two buffers and to nothing else.** A copy between two
+STAGING TEXTURES passes its size exactly. The pad is safe between two `IGpuBuffer`s because both were allocated
+rounded up (a ring-backed one for a stronger reason, since its 256-byte segment stride subsumes the rounding to
+four), and a staging texture's `MTLBuffer` is allocated at exactly the software layout's total with its
+subresources packed end to end, so four padding bytes land in the next subresource, or past the allocation on the
+last one. Clamping the pad is not available either, because that copy's size is already the SMALLER of the two
+subresources and any pad at all is past the end of one of them. The incumbent agrees by construction: its
+staging-to-staging branch issues one exact row-sized copy per row with no padding anywhere. `CopyTexture` was
+saved from this by iteration order alone, since the region a pad clobbers is the next one written, and
+`CopyTextureSubresource` was not.
+
 **Mip generation is where Metal is SHORTER than both siblings.** `-generateMipmapsForTexture:` does the whole
 chain in one call, where Vulkan needs a loop of `vkCmdBlitImage` with a layout transition and a filter choice per
 level. So there is no per-level barrier to get wrong and no filter to pick: what is left is the guard, and the

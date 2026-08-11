@@ -164,6 +164,20 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// per-row loop and one contiguous copy move identical bytes. Taking the smaller size is what keeps a
         /// mismatched pair a short copy rather than an overrun.
         /// </para>
+        /// <para>
+        /// <b>AND THE SIZE IS EXACT: THE CALLER PASSES IT TO THE SELECTOR UNPADDED, WHICH IS THE ONE COPY IN THE
+        /// BACKEND THAT DOES.</b> Section 9.3's ruling rounds a copy SIZE up to four, and that pad is safe between
+        /// two <c>IGpuBuffer</c>s because both were allocated rounded up. Neither side here is one. A staging
+        /// texture's <c>MTLBuffer</c> is allocated at exactly <see cref="MetalStagingLayout.TotalBytes"/> with its
+        /// subresources PACKED end to end, so a pad either overwrites the first bytes of the NEXT subresource or,
+        /// on the last one, runs past the allocation, and the read side runs past the source's end the same way.
+        /// There is no room to clamp it into either: this size is the SMALLER of the two subresources, so a pad
+        /// that changed it at all would already be past the end of one of them. <c>CopyTexture</c>'s own loop is
+        /// saved from that by iteration order alone (each region is followed by the one it would overwrite, which
+        /// then rewrites it), and <c>CopyTextureSubresource</c> is not, which is what makes the unpadded size a
+        /// rule rather than an optimisation. The incumbent agrees by construction: its staging-to-staging arm
+        /// issues one EXACT row-sized copy per row with no padding anywhere.
+        /// </para>
         /// </summary>
         internal static (ulong SourceOffset, ulong DestinationOffset, ulong Size) StagingToStaging(
             in MetalStagingShape sourceShape, uint sourceLevel, uint sourceLayer,

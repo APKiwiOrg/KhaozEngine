@@ -2124,6 +2124,20 @@ multiple of four and `offset + size` is inside the LOGICAL size, so `offset + al
 `align4(offset + size)`, which is at most `align4(logical)`, which is what `MetalBufferPolicy.AllocationBytes`
 allocated. It holds on the source and on the destination alike.
 
+**Corrected after row 14's review: the SIZE half applies to a copy between two `IGpuBuffer`s and to nothing
+else.** The proof above rests on both allocations being rounded up, which the first draft stated as "every buffer
+is allocated at `MetalBufferPolicy.AllocationBytes`". Two kinds of buffer are not. A ring-backed uniform buffer
+takes `MetalBuffer.RingAllocationBytes` instead, and the pad is safe there for a STRONGER reason rather than the
+same one, since a segment stride is rounded up to 256 and that subsumes the rounding to four. A STAGING TEXTURE's
+buffer is the case the rule genuinely does not cover: it is allocated at exactly `MetalStagingLayout.TotalBytes`,
+with the subresources packed end to end and no rounding anywhere, so padding a staging-to-staging copy writes
+into the first bytes of the NEXT subresource, or past the allocation on the last one, and reads past the source's
+end the same way. Nor is there room to clamp the pad, because that copy's size is already the SMALLER of the two
+subresources, so any pad at all is past the end of one of them. So that arm passes the size EXACTLY, which is
+also what the incumbent does: its staging-to-staging branch issues one exact row-sized copy per row with no
+padding at all. `CopyTexture`'s loop was saved from the defect by iteration order alone (the region a pad
+clobbers is the next one written), and `CopyTextureSubresource` was not.
+
 **Every view is created at RESOURCE creation (M-M10)**, from the declared usage bits, following the incumbent's
 rule that a view object is created only when the description actually narrows the target (a non-zero base mip
 or layer, a partial range, or a different format) and the target's own texture is used otherwise. The

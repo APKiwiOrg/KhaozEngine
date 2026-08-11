@@ -291,6 +291,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // alignment ruling second-hand: the offsets come from the layout rather than from a caller, so an
         // unaligned one is a FORMAT whose row pitch is not a multiple of four rather than a caller mistake, and
         // the refusal names that.
+        //
+        // AND IT IS THE ONE COPY WHOSE SIZE IS NOT PADDED UP. The pad is safe between two IGpuBuffers because
+        // both were allocated rounded up to four, and neither side here is one: a staging texture's buffer is
+        // allocated at exactly MetalStagingLayout.TotalBytes with its subresources packed end to end, so four
+        // padding bytes land in the NEXT subresource, or past the allocation on the last one. See
+        // MetalTransferPlan.StagingToStaging, which is where the rule and the incumbent's agreement with it live.
         void StagingToStaging(IntPtr encoder, MetalTexture source, uint sourceLevel, uint sourceLayer,
             MetalTexture destination, uint destinationLevel, uint destinationLayer)
         {
@@ -305,7 +311,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 "A native Metal staging-to-staging texture copy", "destination subresource");
 
             _blit.CopyBufferToBuffer(encoder, source.StagingBuffer.Handle, from,
-                destination.StagingBuffer.Handle, to, MetalCopyAlignment.PaddedSize((uint)size));
+                destination.StagingBuffer.Handle, to, (uint)size);
         }
 
         // THE THREE THINGS EVERY TEXTURE COPY DOES BEFORE ITS FIRST REGION, minus the encoder, which the caller

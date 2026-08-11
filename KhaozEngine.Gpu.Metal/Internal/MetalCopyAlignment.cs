@@ -19,12 +19,24 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// pipeline for a case no consumer produces is the unreachable-code reproduction G1 declined once already.
     /// </para>
     ///
-    /// <para><b>THE PAD LANDS INSIDE THE ALLOCATION, AND THE PROOF IS ARITHMETIC RATHER THAN A BOUND CHECK.</b>
-    /// Every buffer is allocated at <c>MetalBufferPolicy.AllocationBytes</c>, which is its logical size rounded up
-    /// to four. An offset that reaches here is a multiple of four and <c>offset + size</c> is inside the LOGICAL
-    /// size, so <c>offset + align4(size)</c> is <c>align4(offset + size)</c>, which is at most
-    /// <c>align4(logical)</c>, which is what was allocated. That holds on the destination and on the source
-    /// alike, so the padded copy never reads or writes past an allocation on either side.</para>
+    /// <para><b>THE PAD LANDS INSIDE THE ALLOCATION OF AN <c>IGpuBuffer</c>, AND THE PROOF IS ARITHMETIC RATHER
+    /// THAN A BOUND CHECK.</b> A plain buffer is allocated at <c>MetalBufferPolicy.AllocationBytes</c>, which is
+    /// its logical size rounded up to four. An offset that reaches here is a multiple of four and
+    /// <c>offset + size</c> is inside the LOGICAL size, so <c>offset + align4(size)</c> is
+    /// <c>align4(offset + size)</c>, which is at most <c>align4(logical)</c>, which is what was allocated. A
+    /// RING-BACKED buffer does not take that number at all (<c>MetalBuffer.RingAllocationBytes</c> gives it
+    /// <c>MetalRingStride.SegmentStrideFor</c> times the frame count), and the pad is safe there for a stronger
+    /// reason rather than the same one: a segment stride is rounded up to 256, which subsumes the rounding to four
+    /// rather than stacking with it. Either way it holds on the destination and on the source alike, so a padded
+    /// copy between two <c>IGpuBuffer</c>s never reads or writes past an allocation on either side.</para>
+    ///
+    /// <para><b>AND IT IS NOT APPLIED TO A COPY BETWEEN TWO STAGING TEXTURES, WHICH IS THE ONE PLACE THE PROOF
+    /// ABOVE DOES NOT REACH.</b> Neither of those buffers is a <c>MetalBuffer</c>: a staging texture allocates its
+    /// <c>MTLBuffer</c> at exactly <c>MetalStagingLayout.TotalBytes</c>, with the subresources PACKED end to end
+    /// and no rounding anywhere, so a pad on the last subresource runs past the allocation and a pad on any other
+    /// one overwrites the first bytes of the next. <c>MetalTransferPlan.StagingToStaging</c> carries the rule and
+    /// the incumbent's own shape backs it: its staging-to-staging arm issues EXACT row-sized copies with no
+    /// padding at all.</para>
     ///
     /// <para><b>THE THROW IS THE FOLLOW-UP's TRIGGER.</b> Section 9.3 files the unaligned-copy support with this
     /// refusal as the thing that would ask for it, and the device-free test over every <c>CopyBuffer</c> CALL

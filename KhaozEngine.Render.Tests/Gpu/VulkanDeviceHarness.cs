@@ -64,8 +64,9 @@ namespace KhaozEngine.Tests.Gpu
 
         internal int FramesInFlight { get; }
 
-        /// <summary>The device's liveness token. Flipped by <see cref="Dispose"/>, because the live teardown path
-        /// calls <c>vkDeviceWaitIdle</c> through entry points this device does not have.</summary>
+        /// <summary>The device's liveness token, and the one its timeline was built on. Left ALIVE through
+        /// teardown: the device routes itself past the native path on the instance it does not hold rather than on
+        /// this token, so flipping it would only skip destroys the fakes can observe.</summary>
         internal DeviceLiveness Liveness { get; }
 
         /// <summary>The timeline semaphore, which is where a DRAIN becomes observable: <c>WaitCount</c> and
@@ -142,15 +143,10 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// Kill the device before disposing it. <see cref="VulkanGpuDevice.Dispose"/>'s live path calls
-        /// <c>vkDeviceWaitIdle</c> and <c>vkDestroyDevice</c> through entry points a device built over fake seams
-        /// does not have, so the dead path is the only one this rig can take. Everything it skips is a native
-        /// destroy of a fake's integer.
+        /// Dispose the device and nothing else. <see cref="VulkanGpuDevice.Dispose"/> routes a device that holds
+        /// no instance to the teardown that touches nothing native, so this rig no longer kills the liveness token
+        /// on its way out, and killing it would only skip the seam calls the fakes are here to observe.
         /// </summary>
-        public void Dispose()
-        {
-            Liveness.MarkDead();
-            Device.Dispose();
-        }
+        public void Dispose() => Device.Dispose();
     }
 }

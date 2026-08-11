@@ -59,10 +59,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// takes has to be the one that timeline reads or a dead-device test would flip only half the device.
         /// </para>
         /// <para>
-        /// A DEVICE FROM HERE IS DISPOSED THROUGH ITS DEAD PATH ONLY. <see cref="Dispose"/>'s live path calls
-        /// <c>vkDeviceWaitIdle</c> and <c>vkDestroyDevice</c> through <see cref="Instance"/>, which this device
-        /// does not have, so a test that disposes one marks the liveness token dead first. Leaving it undisposed
-        /// is equally fine: every handle under it is a fake's integer.
+        /// A DEVICE FROM HERE DISPOSES THROUGH THE TEARDOWN THAT TOUCHES NOTHING NATIVE, and routes itself there:
+        /// <see cref="Dispose"/> branches on the missing lease, not on the liveness token, because its native path
+        /// calls <c>vkDeviceWaitIdle</c> and <c>vkDestroyDevice</c> through <see cref="Instance"/>. A caller marks
+        /// nothing dead first. Leaving it undisposed is equally fine: every handle under it is a fake's integer.
         /// </para>
         /// </summary>
         /// <param name="liveness">The device's liveness token, and the one the timeline was built on.</param>

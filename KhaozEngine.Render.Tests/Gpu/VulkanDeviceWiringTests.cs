@@ -193,5 +193,29 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Contains("no VkInstance", ex.Message, System.StringComparison.Ordinal);
         }
+
+        /// <summary>
+        /// A DEVICE BUILT OVER FAKE SEAMS TEARS ITSELF DOWN, with nothing killed first. Teardown's native path
+        /// reads <c>Instance</c> on its first statement, so a device holding no lease has to be routed past it by
+        /// the lease rather than by the liveness token, and the failure this row is written against is what
+        /// happens otherwise: <c>Dispose</c> throws with the disposed flag already set, the next call returns
+        /// silently, and the maps, the setup buffer, the descriptors, the modules, the pipelines and the timeline
+        /// are never released. The semaphore is the one release visible from here, because the timeline owns it
+        /// and destroys it through the fake this rig handed in.
+        /// </summary>
+        [Fact]
+        public void ADeviceBuiltOverSeams_TearsItselfDownWithNothingKilledFirst()
+        {
+            using var fixture = new VulkanDeviceFixture();
+            using (fixture.OpenSetupWork()) { }
+
+            Assert.False(fixture.Liveness.IsDead);
+            Assert.False(fixture.Semaphore.Disposed);
+
+            fixture.Device.Dispose();
+
+            Assert.Equal(1, fixture.Semaphore.DisposeCount);
+            Assert.Single(fixture.PipelineApi.DestroyedCaches);
+        }
     }
 }

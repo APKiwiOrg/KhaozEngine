@@ -556,6 +556,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// share an instance whose first holder is gone.
         /// </para>
         /// <para>
+        /// A DEVICE WITH NO INSTANCE TAKES THE SECOND PATH WHATEVER ITS LIVENESS TOKEN SAYS. The first path's
+        /// first statement reads <see cref="Instance"/>, so on the test hook's device it would throw out of
+        /// Dispose with <c>_disposed</c> already set, which makes the next call a silent no-op and leaves the
+        /// maps, the setup buffer, the descriptors, the modules, the pipelines and the timeline unreleased.
+        /// </para>
+        /// <para>
         /// The order below is held by nothing more than the sequence of statements: no test asserts it, because
         /// there is no seam that can observe teardown order device-free. An edit that reorders these lines must
         /// re-read this block rather than trust a green suite to catch the regression.
@@ -570,7 +576,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
                 try
                 {
-                    if (!_liveness.IsDead)
+                    // THE FIRST PATH NEEDS AN INSTANCE AS MUCH AS IT NEEDS A LIVE DEVICE. Every native call in it
+                    // goes through Instance, which a device the test hook built does not have.
+                    if (_instance is not null && !_liveness.IsDead)
                     {
                         Vk vk = Instance.Api;
 
@@ -670,9 +678,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     }
                     else
                     {
-                        // A device that was ALREADY dead when Dispose arrived. Its children went with it, so the
-                        // held destroys are dropped rather than run, every memory chunk is forgotten rather than
-                        // freed, and the timeline's own Dispose skips the native destroy for the same reason.
+                        // A DEVICE WITH NOTHING NATIVE LEFT TO DESTROY, which is two entrants: one that was
+                        // already dead when Dispose arrived, and one the test hook built, which never had a
+                        // loader under it at all. Its children went with it (or were never real), so the held
+                        // destroys are dropped rather than run, every memory chunk is forgotten rather than
+                        // freed, and each subsystem below releases only what its own seam can still be asked
+                        // for, which on a dead liveness token is nothing.
                         ReportForgottenMaps(_maps.Forget());
                         _setup.Retire(_retired);
                         ReportAbandoned(_retired.Abandon(), _memory.Abandon());

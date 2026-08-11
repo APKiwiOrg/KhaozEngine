@@ -16,9 +16,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
     ///
     /// <para><b>THE PLUS ONE IS THE PRESENT BUFFER.</b> M-W6 keeps <c>presentDrawable:</c> on its own command
     /// buffer, exactly as the incumbent does, so a frame at full depth holds one buffer per in-flight recording
-    /// plus that one. Row 15 (https://github.com/APKiwiOrg/KhaozEngine/issues/581) is what makes the plus one
-    /// occupied, and until then the peak observed is one lower, which is a fact about coverage rather than about
-    /// the bound.</para>
+    /// plus that one. Row 15 (https://github.com/APKiwiOrg/KhaozEngine/issues/581) is what OCCUPIED the plus
+    /// one, and before it landed the peak observed was one lower, which was a fact about coverage rather than
+    /// about the bound.</para>
     ///
     /// <para><b>IT REPORTS AND DOES NOT THROW.</b> Exceeding the bound is a pacing defect rather than a
     /// corruption: the work is still correct, the frame loop is simply able to run further ahead than the design

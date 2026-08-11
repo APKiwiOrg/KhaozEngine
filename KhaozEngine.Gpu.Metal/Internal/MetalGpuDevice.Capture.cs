@@ -21,8 +21,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// (https://github.com/APKiwiOrg/KhaozEngine/issues/581). A capture has to span a whole frame rather than one
     /// submit, because a frame's GPU work is several submits (the offscreen model pass, then the composite) and
     /// wrapping a single one catches the wrong command buffer. That makes "between two presents" the only correct
-    /// bracket, so row 15 calls <see cref="ServiceFrameCaptureAtPresentBoundary"/> after it presents the drawable
-    /// and this row builds the thing it calls. Until then an armed capture on a HEADLESS native device is never
+    /// bracket, so row 15's boundary calls <see cref="ServiceFrameCaptureAtPresentBoundary"/> after it presents
+    /// the drawable and this row builds the thing it calls. On a HEADLESS device an armed capture is still never
     /// consumed, which is exactly the honest position: a headless device presents no frames, so there is no frame
     /// to capture.
     /// </para>

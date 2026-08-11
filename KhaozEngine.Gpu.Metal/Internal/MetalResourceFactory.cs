@@ -12,8 +12,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// file carried a <c>NotBuiltYet</c> helper and one row constant per refusing member, and the rule was that a
     /// row filling a member deletes its entry. Row 12 filled the last one, so the helper and both constants went
     /// with it: a refusal message nothing can reach is a claim that this factory is unfinished, and a reader who
-    /// found it would be misled by it. <c>MetalCommandList.Unbuilt.cs</c> still carries its own ledger, because
-    /// row 14 has members left.</para>
+    /// found it would be misled by it. <c>MetalCommandList.Unbuilt.cs</c> carried the same kind of ledger until
+    /// row 14 filled its last member and deleted the file, so no ledger of that sort is left in the package.</para>
     ///
     /// <para><b>WHAT IS LIVE HERE IS BUFFERS, TEXTURES, SAMPLERS AND FENCES.</b> Every one of those is a plain
     /// object with no encoder, no pipeline and no shader behind it, which is exactly the boundary section 18 draws

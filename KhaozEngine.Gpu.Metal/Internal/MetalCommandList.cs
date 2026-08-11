@@ -22,13 +22,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// (<see cref="MetalFramesInFlight"/>), which is why <c>BackpressureStallCount</c> means one thing on this
     /// backend where it means two on Vulkan.</para>
     ///
-    /// <para><b>WHAT THIS ROW OWNS IS THE LIFECYCLE, and every other member names the row that builds it.</b>
+    /// <para><b>WHAT THIS ROW OWNS IS THE LIFECYCLE, and the recording CONTENT belongs to the rows above it.</b>
     /// This is work-breakdown row 7 (https://github.com/APKiwiOrg/KhaozEngine/issues/573): the buffer per
     /// <see cref="Begin"/>, the encoder transitions, <see cref="End"/>, the seal the submit path reads, disposal,
-    /// and the two seams the later rows record through. The recording CONTENT is theirs, and
-    /// <c>MetalCommandList.Unbuilt.cs</c> is the ledger of which row owns which member. That file is under the
-    /// same discipline the device's is: it is a ledger, and a stale one is worse than none, so a row that fills a
-    /// member deletes its entry.</para>
+    /// and the two seams the later rows record through. Those rows have all landed, so there is no unbuilt member
+    /// left on this type and no ledger file beside it any more: <c>MetalCommandList.Unbuilt.cs</c> carried one
+    /// under the same discipline the device's did, and row 14 deleted it with its last entry.</para>
     ///
     /// <para><b>N LISTS RECORD CONCURRENTLY ON THIS BACKEND, AND THE PORTABLE CONTRACT IS UNCHANGED (M-R3).</b>
     /// The seam documents exactly one open recording per device, and that rule is what portable code is written

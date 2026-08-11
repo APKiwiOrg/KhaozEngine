@@ -8852,8 +8852,8 @@ using KhaozEngine.Gpu.Metal;
 KhaozEngineMetal.Register();   // unconditionally, on every OS
 ```
 
-**It creates a HEADLESS device with RESOURCES that records, DRAWS and submits, and it cannot present, which is
-the honest state of it.** Registration, the machine probe and headless creation are real: a `MetalNative` device
+**It creates a device, HEADLESS OR WINDOWED, with RESOURCES that records, DRAWS, submits and PRESENTS.**
+Registration, the machine probe and both creation paths are real: a `MetalNative` device
 holds an `MTLDevice` and one `MTLCommandQueue`, answers `Backend`, the whole of `Capabilities` and `Counters`,
 `Diagnostics`, both `Submit` overloads, `WaitForIdle` and `Dispose`, records and submits a command list, creates
 real resources through `Factory` (buffers, textures, samplers, fences and framebuffers), exposes the shared
@@ -8866,9 +8866,32 @@ overloads. Every member of the resource FACTORY is now live, and since
 [#580](https://github.com/APKiwiOrg/KhaozEngine/issues/580) so is every member of the command list: it DRAWS.
 Both `Draw` overloads, `DrawIndexed`, `Dispatch`, the vertex and index binds, `CopyBuffer`, `CopyTexture`, both
 `CopyTextureSubresource` overloads, `GenerateMipmaps` and `ResolveTexture` all record, so `IGpuCommandList` has
-no refusing member left. What still throws is the SWAPCHAIN, with a message naming the row that builds it
-([#581](https://github.com/APKiwiOrg/KhaozEngine/issues/581)), so this device renders into a texture you read
-back and cannot present.
+no refusing member left. And since [#581](https://github.com/APKiwiOrg/KhaozEngine/issues/581) the SWAPCHAIN is
+live too: `GpuDeviceContext.CreateForWindow` builds a real one over a Cocoa `NSWindow`, so
+`SwapchainFramebuffer`, `SyncToVerticalBlank`, `ResizeSwapchain` and `Present` all work and `IGpuDevice` has no
+refusing member left either.
+
+**The swapchain behaves like the Veldrid Metal backend's in configuration and unlike it in four places, all of
+them visible from your frame loop.** A frame whose drawable came back nil (a minimised or zero-sized window is
+the ordinary cause) renders into a device-owned ORPHAN TARGET at the current size and is submitted and completed
+like any other frame with only its PRESENT skipped, so it counts into `GpuDeviceCounters.FramesBegun` and the
+first skip WARNs once per device. The incumbent instead reports its framebuffer unrenderable and silently
+discards every draw in that frame. `SyncToVerticalBlank` always applies, where the incumbent writes
+`displaySyncEnabled` only inside three values of an enum deprecated since macOS 10.15 and so does nothing at all
+on a machine outside that set. `ResizeSwapchain` and a `SyncToVerticalBlank` write both QUEUE and apply at the
+next `Present` after a drain, so they take no lock, make no native call and are safe from any thread, and a
+burst of thirty size events between two presents costs one apply. And the drawable acquire is counted and timed
+into `AcquireWaitCount` and `AcquireWaitMs`, one entry per boundary, because `-nextDrawable` BLOCKS and Metal
+offers no zero-timeout probe. Expect that pair to be non-zero under vsync: a vsync-paced frame SHOULD wait for a
+drawable.
+
+**One thing carries over that you can see, and it is deliberate.** The layer's initial `drawableSize` is the
+content view's frame in POINTS where a drawable size is in PIXELS, which is the incumbent's own arithmetic
+reproduced rather than corrected, so on a Retina display the window starts at half its real resolution until the
+first framebuffer-resize callback writes the right number over it
+([#605](https://github.com/APKiwiOrg/KhaozEngine/issues/605)). The swapchain framebuffer has no depth attachment
+and no MSAA, matching the incumbent as the engine drives it, and its `Outputs` are fixed at construction, so
+every pipeline built against the window survives every resize.
 
 **Two recording behaviours are worth knowing before you use it.** `ResolveTexture` ends the render pass you have
 open, because it opens a render encoder of its own, so a resolve issued mid-pass costs a full re-activation of
@@ -8956,9 +8979,10 @@ backends accept the combination and nothing in this engine creates it: a uniform
 rebased per frame by the uniform ring, and a structured binding of the same buffer would read whichever frame
 segment it landed on. Create two buffers.
 
-WINDOWED creation refuses,
-naming the swapchain row (https://github.com/APKiwiOrg/KhaozEngine/issues/581), because a windowed device that
-cannot present is worse than one that says so at creation. `GpuBackendKind.MetalNative` and its `metal-native`
+WINDOWED creation is real
+(https://github.com/APKiwiOrg/KhaozEngine/issues/581), and what a windowed request can still be refused for is
+the world rather than the package: this operating system, this machine, or a handle that is not a Cocoa
+`NSWindow` with a content view. `GpuBackendKind.MetalNative` and its `metal-native`
 and `mtl-native` tokens exist, so the kind is nameable via `KE_GRAPHICS_BACKEND=metal-native`: a registered
 process answers the machine probe for it, an unregistered one throws the provider-missing exception rather than
 falling back, and nothing selects it by default (`ProbeOS` still answers `Metal` on macOS).
@@ -8992,9 +9016,10 @@ when a tier was asked for and this process cannot have it. Neither tier is a syn
 
 **`KE_METAL_FRAMES_IN_FLIGHT=<n>` sets how far ahead of the GPU the CPU may run** (1 to 16, default 3). It
 sizes the uniform ring's segments, each command list's staging arena slots, and through the same
-number the swapchain's `maximumDrawableCount`. The first two are live and the third lands with the swapchain
-row (https://github.com/APKiwiOrg/KhaozEngine/issues/581), so raising it today costs a 256-aligned segment per
-uniform buffer per extra step and nothing else. Nothing here is a command-buffer pool: a Metal command buffer
+number the swapchain's `maximumDrawableCount`. All three are live
+(https://github.com/APKiwiOrg/KhaozEngine/issues/581), so raising it costs a 256-aligned segment per uniform
+buffer per extra step, plus one more drawable in the layer's queue on a windowed device, and nothing else. A
+headless device spends only the first two, because it has no layer. Nothing here is a command-buffer pool: a Metal command buffer
 is single-use, the queue owns its memory and hands out a fresh one per `Begin`, so this number never
 multiplies command buffers the way the Vulkan variable does, and `GpuDeviceCounters.BackpressureStallCount`
 therefore has exactly one source on this backend where it has two on Vulkan.
@@ -9076,10 +9101,8 @@ MTL_CAPTURE_ENABLED=1 dotnet run --project <your game>
 Without it nothing is captured and nothing is logged as an error, because the capture asks Metal whether the
 GPU-trace destination is supported and gets no. An arm is consumed at a present, so a headless device consumes
 none, and the trace covers one whole frame between two presents rather than a single `Submit`. It works end to
-end once row 15's swapchain present lands
-([#581](https://github.com/APKiwiOrg/KhaozEngine/issues/581)): the native consumption site exists and has run,
-but nothing on this backend presents yet, so an arm taken today is consumed only by the test that drives that
-boundary call directly.
+end on a windowed device now that the swapchain presents
+([#581](https://github.com/APKiwiOrg/KhaozEngine/issues/581)).
 
 Call it unconditionally and on every OS, exactly as you would the other two, and for the Direct3D 11 package's
 reason rather than the Vulkan package's. Metal IS an OS-specific API, so this package carries a

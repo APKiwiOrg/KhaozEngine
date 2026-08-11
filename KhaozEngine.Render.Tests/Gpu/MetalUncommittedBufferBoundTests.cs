@@ -17,10 +17,11 @@ namespace KhaozEngine.Tests.Gpu
     /// list. Two things keep the queue's bound out of reach rather than relying on it: <c>Begin</c> waits on the
     /// ring's frame slot, and this counter says whether the first one worked.</para>
     ///
-    /// <para><b>THE PLUS ONE IS M-W6's PRESENT BUFFER</b>, which row 15 makes occupied
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/581). Until then the recording shapes this backend can
-    /// produce peak one lower, which is a fact about coverage rather than about the bound, so the assertions
-    /// below are written against <c>Bound</c> rather than against a number.</para>
+    /// <para><b>THE PLUS ONE IS M-W6's PRESENT BUFFER</b>, which row 15 occupied
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/581). The RECORDING shapes this file drives still peak
+    /// one lower, because that buffer is the present boundary's rather than a recording's, so the assertions
+    /// below are written against <c>Bound</c> rather than against a number and
+    /// <c>MetalPresentBoundaryTests</c> is where the present buffer's own occupancy is asserted.</para>
     /// </summary>
     public sealed class MetalUncommittedBufferBoundTests : IDisposable
     {

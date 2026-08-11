@@ -8,10 +8,10 @@ using Xunit.Abstractions;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// The <c>KhaozEngine.Gpu.Metal</c> package as work-breakdown rows 2 and 4 of
+    /// The <c>KhaozEngine.Gpu.Metal</c> package as work-breakdown rows 2, 4 and 15 of
     /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c> leave it: a real registration, a real
-    /// functional probe, real HEADLESS creation, and a windowed path that refuses by naming the row that builds
-    /// it.
+    /// functional probe, and both creation paths real, so the refusals left describe the WORLD (this operating
+    /// system, this machine, this window handle) rather than an unfinished package.
     /// <para>
     /// Every test here runs on macOS, Linux and Windows alike, which takes ARRANGING in a way the Vulkan
     /// sibling's did not. Metal is an OS-specific API (M-P1), so the probe rows below assert the SHAPE of the

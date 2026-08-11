@@ -191,9 +191,12 @@ here rather than left as a version entry contradicting itself two sections up.)
 Row 4 of the same design, and the last of its four prerequisites. `KhaozEngine.Gpu.Metal` creates a real
 headless device now: `MetalBackendProvider.CreateHeadless()` returns an `IGpuDevice` holding an `MTLDevice` and
 one `MTLCommandQueue`, with `Backend`, `Capabilities` (in part), `Diagnostics`, `WaitForIdle` and `Dispose`
-live and every other member throwing a message naming the row that builds it. The WINDOWED path still refuses,
-now naming the swapchain row ([#581](https://github.com/APKiwiOrg/KhaozEngine/issues/581)) rather than this
-one, because a windowed device that cannot present is worse than one that says so at creation. Nothing selects
+live and every other member throwing a message naming the row that builds it. The WINDOWED path refused at the
+time, naming the swapchain row ([#581](https://github.com/APKiwiOrg/KhaozEngine/issues/581)) rather than this
+one, because a windowed device that cannot present is worse than one that says so at creation. (Row 15 below
+built that swapchain inside this same version, so the refusal is gone and both creation paths are real. Said in
+the past tense here rather than left as a version entry contradicting itself further down, which is the same
+correction the paragraph at the end of row 1's entry above records.) Nothing selects
 this backend by default, so no consumer behaviour changes.
 
 **The interop layer is the file family M-P2 decided**, under `Internal/ObjC/`: a runtime shim, ONE typed

@@ -153,7 +153,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// THE PRESENT BOUNDARY THE SWAPCHAIN ROW WILL CALL
+        /// THE PRESENT BOUNDARY THE SWAPCHAIN ROW CALLS
         /// (https://github.com/APKiwiOrg/KhaozEngine/issues/581), driven here against a real device so it is a
         /// path that has executed rather than an Objective-C route nobody has ever taken. The arm is CONSUMED,
         /// which is the behaviour the append audit's third silent site was about: before this row an arm taken on

@@ -32,11 +32,11 @@ namespace KhaozEngine.Tests.Gpu
     /// names a Metal selector, and those bodies are <c>NoInlining</c> so the JIT never compiles one off macOS.
     /// </para>
     /// <para>
-    /// REGISTERING IS ALL THIS DOES, and today what it registers can probe and create a HEADLESS device. The
+    /// REGISTERING IS ALL THIS DOES, and what it registers can probe and create a device on either path. The
     /// provider answers a real functional probe (the device <c>KE_METAL_DEVICE</c> names, its name, its
     /// <c>supportsFamily:</c> floor, its buffer-offset alignment and its sample-count answer) and hands back a
-    /// device holding a real <c>MTLDevice</c> and one <c>MTLCommandQueue</c>, refusing only the WINDOWED path by
-    /// naming the swapchain row (https://github.com/APKiwiOrg/KhaozEngine/issues/581). The seat was taken two
+    /// device holding a real <c>MTLDevice</c> and one <c>MTLCommandQueue</c>, with the WINDOWED path building a
+    /// real swapchain since row 15 (https://github.com/APKiwiOrg/KhaozEngine/issues/581). The seat was taken two
     /// rows before the device existed, deliberately, and that paid out exactly as intended: the row that built
     /// the device did not also have to discover where the registration goes. What it registers under is <c>KhaozEngineMetal.MetalNativeKind</c>, which was a pinned
     /// ordinal until row 3 (https://github.com/APKiwiOrg/KhaozEngine/issues/569) landed and is the named

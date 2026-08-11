@@ -4,16 +4,17 @@ The engine's own native Metal backend for the [KhaozEngine.Gpu](../KhaozEngine.G
 umbrella: a consumer adds this package explicitly, the same pattern as `Physics.Bepu` or `WorldStore.Sqlite`,
 and nothing that does not want the Objective-C interop ever carries it.
 
-> **Status: it creates a HEADLESS device with a TIMELINE and REAL RESOURCES that RECORDS AND SUBMITS, IT DRAWS,
-> and it cannot present.** Rows 1 to 7 of the work breakdown are done:
+> **Status: it creates a device, HEADLESS OR WINDOWED, with a TIMELINE and REAL RESOURCES that RECORDS AND
+> SUBMITS, IT DRAWS, and IT PRESENTS.** Rows 1 to 7 of the work breakdown are done:
 > the assembly and its guard rows, the three phase-4 verification spikes, `KhaozEngineMetal.Register()` with the
 > `IGpuBackendProvider` and the functional machine probe behind it, `GpuBackendKind.MetalNative = 6` with its
 > `metal-native` token, and the Objective-C interop layer, a real `MTLDevice`, one `MTLCommandQueue`,
 > `KE_METAL_DEVICE` selection, `KE_METAL_VALIDATION` reporting, the command-buffer error latch and the liveness
-> token. The SWAPCHAIN is what is not built, so the members it owns throw a message naming the row that builds
-> them. WINDOWED creation refuses by naming
-> [row 15](https://github.com/APKiwiOrg/KhaozEngine/issues/581), because a windowed device that cannot present
-> is worse than one that says so at creation. `GpuBackendKind.Metal`, which goes through Veldrid, is the
+> token. Neither `IGpuDevice` nor `IGpuCommandList` has an unbuilt member left. WINDOWED creation builds a real
+> `CAMetalLayer` swapchain over the Cocoa `NSWindow` as of
+> [row 15](https://github.com/APKiwiOrg/KhaozEngine/issues/581), and what a windowed request can still be
+> refused for is the world rather than the package: this operating system, this machine, or a handle that is not
+> an `NSWindow` with a content view. `GpuBackendKind.Metal`, which goes through Veldrid, is the
 > working Metal backend and stays selectable indefinitely.
 > Row 5 added the timeline: one `MTLSharedEvent` per device, a real `IGpuFence`, a counted
 > `WaitForIdle` in 250 ms slices so a device loss can release it, and a completion handler that reads every
@@ -211,9 +212,9 @@ still has to do. `MTL_CAPTURE_ENABLED=1` must be in the environment BEFORE the p
 process-launch rule the validation variables have. Without it the capture asks Metal whether the destination is
 supported, gets no, and does nothing. That guard is not decoration: starting a capture in a process where
 capture was never enabled raises an Objective-C exception, which is a process abort rather than a caught error.
-An arm is consumed at a PRESENT boundary, so a headless device consumes none, and this backend does not present
-until row 15 (https://github.com/APKiwiOrg/KhaozEngine/issues/581), so today the only thing that consumes one is
-the test driving that boundary call.
+An arm is consumed at a PRESENT boundary, which a windowed device reaches every frame as of row 15
+(https://github.com/APKiwiOrg/KhaozEngine/issues/581). A HEADLESS device consumes none, which is honest rather
+than unbuilt: it presents no frames, so there is no frame to capture.
 
 ## The timeline, and why a fence here is two fields (M-F1 to M-F5)
 
@@ -392,9 +393,10 @@ Vulkan list owns `FramesInFlight` command pools because a pool cannot be reset w
 A Metal command buffer is single-use, the queue owns its memory, and there is no reset, no pool object and no
 allocator to choose between. So `KE_METAL_FRAMES_IN_FLIGHT` sizes the uniform ring, each list's staging arena
 and the drawable queue, and nothing else, and `GpuDeviceCounters.BackpressureStallCount` means ONE thing here
-where it means two on Vulkan. The first two are live and the third is
-[row 15](https://github.com/APKiwiOrg/KhaozEngine/issues/581), so raising the variable today costs a
-256-aligned segment per uniform buffer per extra frame and nothing more.
+where it means two on Vulkan. All three are live as of
+[row 15](https://github.com/APKiwiOrg/KhaozEngine/issues/581), so raising the variable costs a
+256-aligned segment per uniform buffer per extra frame, plus one more drawable in the layer's queue on a
+windowed device, and nothing more. A headless device spends only the first two, having no layer.
 What the queue does have is its own maximum number of UNCOMMITTED buffers, past which `commandBuffer` blocks,
 so the backend counts what it holds against that depth plus one (the separate present buffer) and warns once
 rather than discovering it as a frame-loop stall with nothing attached.
@@ -776,7 +778,8 @@ improved.** `device`, `pixelFormat` (`BGRA8Unorm`, or its sRGB sibling if the se
 drawable size is in PIXELS, which is the incumbent's own arithmetic: on a Retina display the layer starts at
 half the window's real resolution and the first framebuffer-resize callback writes the right number over it.
 Correcting it would be a resolution change smuggled into a backend swap, on the one surface a human is the only
-witness to.
+witness to, so it is carried deliberately and tracked as
+[#605](https://github.com/APKiwiOrg/KhaozEngine/issues/605).
 
 **Four things do change, and each answers something the incumbent gets wrong.**
 

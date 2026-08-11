@@ -30,6 +30,17 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// thing with a name rather than an inline library default nobody could point at.
     /// </para>
     /// <para>
+    /// AND THE CROSS-COMPILER'S OWN VERSION IS IN THE KEY, which neither pin covers
+    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/610">#610</see>). Both pins freeze the OPTIONS
+    /// the toolchain is asked for, and each of their headers says so: what freezes the emitted HLSL itself is the
+    /// <c>Veldrid.SPIRV</c> package, which carries glslang and SPIRV-Cross and is not an engine assembly, so the
+    /// engine version does not move when it does. Within one engine version a package bump therefore used to
+    /// leave every cached stage answering with the previous cross-compiler's output, on this backend and on Metal
+    /// alike, and the symptom is that nothing changes when it should.
+    /// <see cref="SpirvToolchainVersion.Identity"/> is that package read off the assembly this process loaded,
+    /// and hashing it is what makes a bump partition the cache instead.
+    /// </para>
+    /// <para>
     /// THE ENGINE VERSION IS BELT AND BRACES on top of all of that. The five components above should already be
     /// complete, but the cost of being wrong is a stale shader that renders subtly incorrectly on a developer
     /// machine and correctly everywhere else, which is the worst failure this cache can produce. Versioning the
@@ -46,8 +57,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     {
         /// <summary>The key format's own version. Bumped by hand when the FIELDS below change (not their values),
         /// so a reshaped key cannot collide with an old one that happened to hash the same inputs differently.
+        /// <c>v3</c> added the cross-compiler's own package version.
         /// </summary>
-        internal const string Schema = "khaozengine-d3d11-dxbc-v2";
+        internal const string Schema = "khaozengine-d3d11-dxbc-v3";
 
         /// <summary>
         /// The engine version the key and the cache directory carry, as <c>major.minor.patch</c>. Read off this
@@ -67,7 +79,26 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <param name="programSources">Every GLSL source of the program, in declaration order.</param>
         /// <returns>Lowercase hex SHA-256, 64 characters, safe as a file name on every platform.</returns>
         internal static string For(D3D11ShaderStage stage, uint flags, params string[] programSources)
+            => For(stage, flags, SpirvToolchainVersion.Identity, programSources);
+
+        /// <summary>
+        /// The same key with the cross-compiler's identity passed in, so its contribution is testable without
+        /// building against two packages. Nothing in the shipped path calls this overload.
+        /// <para>
+        /// THE SOURCE ARRAY IS NOT <c>params</c> HERE, deliberately. Two <c>params</c> overloads whose expanded
+        /// shapes both end in strings would let a call meant for one bind to the other, folding the identity into
+        /// the source list or a source into the identity, and a key is precisely the place where a silent
+        /// mis-bind costs stale bytes with no error. The shipped entry point above keeps the convenience.
+        /// </para>
+        /// </summary>
+        /// <param name="stage">Which stage's DXBC this key identifies.</param>
+        /// <param name="flags">The FXC flags the compile will use.</param>
+        /// <param name="spirvToolchain">Stands in for <see cref="SpirvToolchainVersion.Identity"/>.</param>
+        /// <param name="programSources">Every GLSL source of the program, in declaration order.</param>
+        internal static string For(D3D11ShaderStage stage, uint flags, string spirvToolchain,
+            string[] programSources)
         {
+            ArgumentException.ThrowIfNullOrWhiteSpace(spirvToolchain);
             ArgumentNullException.ThrowIfNull(programSources);
             if (programSources.Length == 0)
             {
@@ -79,6 +110,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             var text = new StringBuilder(4096);
             text.Append(Schema).Append('\n')
                 .Append(EngineVersion).Append('\n')
+                .Append(spirvToolchain).Append('\n')
                 .Append(SpirvFrontEndPin.Identity).Append('\n')
                 .Append(HlslCrossCompilePin.Identity).Append('\n')
                 .Append(D3D11ShaderProfile.For(stage)).Append('\n')

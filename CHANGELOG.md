@@ -8,8 +8,9 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 ## 17.36.0
 
 A crash that nothing logged now writes its own file, the Metal shader emission is cached across
-processes, the MSAA resolve destinations gain the instrument the golden family is not, the Retina first
-frame is sized in pixels, and two of phase 4's guards get the teeth their prose already claimed.
+processes, both shader-cache keys learn to name the cross-compiler that produced the bytes, the MSAA resolve
+destinations gain the instrument the golden family is not, the Retina first frame is sized in pixels, and two of
+phase 4's guards get the teeth their prose already claimed.
 
 ### The last-chance crash file (`CrashReport`, #607)
 
@@ -264,6 +265,47 @@ whole conversion being handed to `-[NSView convertRectToBacking:]`: that would p
 and move the only assertable part into a selector no Linux or Windows leg can reach. The new prototype is a bare
 `double` return, which row 1's interop spike ran verbatim and value-checked by reading `2.0` back off
 `-setContentsScale:` on a real layer, so the ABI needed no new measurement.
+
+### Both shader-cache keys now name the cross-compiler that produced the bytes (#610)
+
+`MetalShaderKey` and `D3D11ShaderKey` hash the `Veldrid.SPIRV` version as well, through the new
+`SpirvToolchainVersion` in `KhaozEngine.Gpu`. Every option pin in this engine freezes what the toolchain is
+ASKED for, and each of their headers says so. What freezes the emitted text is the package itself, which carries
+glslang for the front end and SPIRV-Cross for both back ends, and it was in neither key.
+
+**The reachable case is a bump without a bump.** The engine version is both a key component and a cache-directory
+segment, so a released engine bump already partitioned both caches. Within ONE engine version it did not: a
+developer bumping `Veldrid.SPIRV` in `Directory.Packages.props` without bumping `<KhaozEngineVersion>`, or moving
+across a branch that did, left every cached program on both backends answering with the previous cross-compiler's
+output. The symptom is that nothing changes when it should, which is the hard direction to notice. Not reachable
+from a consumer, since a released engine version carries exactly one package pin. The Metal key's two module
+version ids do not cover it either, because this is not an engine assembly and nothing about it moves when the
+engine rebuilds.
+
+**Read off the loaded assembly, not out of the props file**, so it cannot drift from what is actually running,
+which is the same reasoning that put those module version ids in the Metal key. Both the assembly version and the
+informational version are hashed, because either alone can stand still across a package bump: the assembly
+version is what the loader binds on and a publisher may hold it across a patch release, and the informational
+version is the package version plus the source commit but is free text a publisher can omit. The two versions
+this engine has shipped under are proof neither is redundant: `1.0.14` carries assembly `1.0.14.3` and package
+`1.0.14+3c482d30de`, `1.0.15` carries assembly `1.0.15.1` and package `1.0.15+a872acfa33`.
+
+**The managed assembly is a PROXY for the native `libveldrid-spirv`, and that is worth saying plainly.** The
+native library is where glslang and SPIRV-Cross actually live, and it carries no version this process can read:
+it is reached through `[DllImport]` and exports three entry points, none of which reports one. The proxy holds
+because the two ship as one package, so the native binary beside a given managed assembly is the one that package
+built. What it does not cover is replacing that binary in an output directory by hand, which is a deliberate act
+on a developer machine and is what the caches' disable words are for.
+
+**One more one-time invalidation, in the same release that introduced the Metal cache.** Both schema tags moved
+(`khaozengine-metal-program-v3`, `khaozengine-d3d11-dxbc-v3`), so every existing entry on both backends is
+unreachable and the next start re-emits once. `SpirvToolchainVersion` lives in `KhaozEngine.Gpu` because the
+`Veldrid.SPIRV` edge does (decision P2, enforced by `ArchitectureTests.ThirdPartyHomes`) and crosses to both
+backends as a plain string, so neither takes a Veldrid type reference in its own IL. Each key gained an overload
+that takes the identity, so the contribution is asserted without restoring two versions of the package, and the
+source array on those overloads is deliberately NOT `params`: two `params` overloads ending in strings would let
+a call bind to the wrong one and fold an identity into the source list, which is the one place a silent mis-bind
+costs a wrong payload with no error.
 
 ## 17.35.0
 

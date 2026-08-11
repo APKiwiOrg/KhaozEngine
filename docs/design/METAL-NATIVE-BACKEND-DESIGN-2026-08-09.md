@@ -3224,8 +3224,9 @@ fails identically on every future launch.
 *And the drift test was checked rather than assumed.* `MetalMslByteEqualityTests` compares FRESH emission against
 the bake, which matters more now than before: the cache key names the sources, the engine version, all three pins
 and (from the review addendum below) the two producing assemblies, but not the `Veldrid.SPIRV` package version,
-which is what the pins' own headers say actually freezes the emission. So a cached entry can be stale WITHIN one
-engine version, and a drift test reading one would report no drift on precisely the change it exists to catch. It
+which is what the pins' own headers say actually freezes the emission (later in 17.36.0 it does name that too,
+per #610's note below). So a cached entry could be stale WITHIN one engine version, and a drift test reading one
+would report no drift on precisely the change it exists to catch. It
 drives `SpirvCrossCompile` directly, in a package that cannot see this cache, and now says so with a test rather
 than only in prose.
 
@@ -3271,6 +3272,11 @@ fixed for the life of the release and a player's cache behaves exactly as it did
 assembly, so no MVID moves when it does. That channel is
 [#610](https://github.com/APKiwiOrg/KhaozEngine/issues/610)'s own scope and stays open for Direct3D 11 as well as
 for this backend, which is why the fix here does not close it.
+
+> **Closed later in 17.36.0.** #610 landed on both backends at once: `SpirvToolchainVersion` reads the package's
+> assembly and informational versions off the loaded assembly and both keys hash it, with both schema tags bumped
+> to `v3`. It lives in `KhaozEngine.Gpu` because the `Veldrid.SPIRV` edge does, and crosses to both backends as a
+> string, so neither takes a Veldrid type reference the IL walk would fail on.
 
 *Three smaller review findings landed with it, all on the read side of the payload.* The table rebuild now takes
 the payload's STAGE SET and refuses anything that is not one of the two shapes a Metal program has, then refuses

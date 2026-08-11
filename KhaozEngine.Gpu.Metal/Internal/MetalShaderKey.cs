@@ -64,13 +64,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// release and a player's cache behaves exactly as before.
     /// </para>
     /// <para>
-    /// WHAT THE KEY STILL DOES NOT NAME IS THE CROSS-COMPILER'S OWN VERSION, and a cache reader should know it.
-    /// The three pins freeze OPTIONS rather than the emission, and each of their headers says so: what actually
-    /// pins the emitted text is the <c>Veldrid.SPIRV</c> package version, which is not in this hash and is not an
-    /// engine assembly, so the MVIDs above do not move when it does. Within one engine version a package bump can
-    /// therefore leave a cached entry holding the previous cross-compiler's output, on this backend and on
-    /// Direct3D 11 alike (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/610">#610</see>). Across
-    /// releases the engine version segment covers it, which is the case that matters in the field, and
+    /// AND THE CROSS-COMPILER'S OWN VERSION IS IN THE KEY TOO, which closes the last hole
+    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/610">#610</see>). The three pins freeze
+    /// OPTIONS rather than the emission, and each of their headers says so: what actually pins the emitted text
+    /// is the <c>Veldrid.SPIRV</c> package, which is not an engine assembly, so neither the engine version nor
+    /// the MVIDs above move when it does. Within one engine version a package bump therefore used to leave a
+    /// cached entry holding the previous cross-compiler's output, on this backend and on Direct3D 11 alike.
+    /// <see cref="SpirvToolchainVersion.Identity"/> is that package read off the assembly this process loaded,
+    /// and hashing it is what makes a bump partition the cache instead. Across releases the engine version
+    /// segment already covered it, which is the case that matters in the field, and
     /// <c>MetalMslByteEqualityTests</c> deliberately emits fresh so the drift test cannot be answered from a
     /// cache that has it.
     /// </para>
@@ -83,8 +85,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
     {
         /// <summary>The key format's own version. Bumped by hand when the FIELDS below change (not their values),
         /// so a reshaped key cannot collide with an old one that happened to hash the same inputs
-        /// differently. <c>v2</c> added the two producing assemblies' MVIDs.</summary>
-        internal const string Schema = "khaozengine-metal-program-v2";
+        /// differently. <c>v2</c> added the two producing assemblies' MVIDs, <c>v3</c> the cross-compiler's own
+        /// package version.</summary>
+        internal const string Schema = "khaozengine-metal-program-v3";
 
         /// <summary>
         /// The engine version, as <c>major.minor.patch</c>, read off this assembly, which the shared
@@ -117,17 +120,26 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </summary>
         /// <returns>Lowercase hex SHA-256, 64 characters, safe as a file name on every platform.</returns>
         internal static string For(params string[] programSources)
-            => For(MetalModuleId, GpuModuleId, programSources);
+            => For(MetalModuleId, GpuModuleId, SpirvToolchainVersion.Identity, programSources);
 
         /// <summary>
-        /// The same key with the two producing assemblies' identities passed in, so the MVID's contribution is
-        /// testable without building two engines. Nothing in the shipped path calls this overload.
+        /// The same key with every producer identity passed in, so each one's contribution is testable without
+        /// building two engines against two packages. Nothing in the shipped path calls this overload.
+        /// <para>
+        /// THE SOURCE ARRAY IS NOT <c>params</c> HERE, deliberately. Two <c>params</c> overloads whose expanded
+        /// shapes both end in strings would let a call meant for one bind to the other, folding an identity into
+        /// the source list or a source into the identity, and a key is precisely the place where a silent
+        /// mis-bind costs a wrong payload with no error. The shipped entry point above keeps the convenience.
+        /// </para>
         /// </summary>
         /// <param name="metalModuleId">Stands in for <see cref="MetalModuleId"/>.</param>
         /// <param name="gpuModuleId">Stands in for <see cref="GpuModuleId"/>.</param>
+        /// <param name="spirvToolchain">Stands in for <see cref="SpirvToolchainVersion.Identity"/>.</param>
         /// <param name="programSources">Every GLSL source of the program, in declared order.</param>
-        internal static string For(Guid metalModuleId, Guid gpuModuleId, params string[] programSources)
+        internal static string For(Guid metalModuleId, Guid gpuModuleId, string spirvToolchain,
+            string[] programSources)
         {
+            ArgumentException.ThrowIfNullOrWhiteSpace(spirvToolchain);
             ArgumentNullException.ThrowIfNull(programSources);
             if (programSources.Length == 0)
             {
@@ -141,6 +153,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 .Append(EngineVersion).Append('\n')
                 .Append(metalModuleId.ToString("N", CultureInfo.InvariantCulture)).Append('\n')
                 .Append(gpuModuleId.ToString("N", CultureInfo.InvariantCulture)).Append('\n')
+                .Append(spirvToolchain).Append('\n')
                 .Append(SpirvFrontEndPin.Identity).Append('\n')
                 .Append(MslCrossCompilePin.Identity).Append('\n')
                 .Append(MslCompilePin.Identity).Append('\n')

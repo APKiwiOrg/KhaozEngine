@@ -792,7 +792,9 @@ shader edit. Thirty moving at once is an option drift, which is exactly what the
 or option change and is never set on CI, where the whole point is that the table does not move on its own.
 
 **Compiled modules are cached on disk.** Keyed on the whole program's GLSL sources, the FXC profile, the FXC
-flags, the pinned cross-compile options and the engine version, under
+flags, the pinned cross-compile options, the `Veldrid.SPIRV` version that emitted the HLSL
+([#610](https://github.com/APKiwiOrg/KhaozEngine/issues/610), read off the assembly the process loaded rather
+than out of the props file) and the engine version, under
 `<local-app-data>/KhaozEngine/d3d11-dxbc/<engine version>/`. The key covers the WHOLE program rather than one
 stage, because a pair is cross-compiled together and the emitted vertex HLSL is a function of the fragment source
 too. Every failure is a miss: a cache that cannot be read or written is a slower start and nothing else. Set

@@ -44,7 +44,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// names is not protected by anything in this file. <c>MslCrossCompilePin</c> does not freeze them either.
     /// What actually freezes the emission is the exact <c>Veldrid.SPIRV</c> version pinned in
     /// <c>Directory.Packages.props</c>, whose bundled <c>libveldrid-spirv</c> carries the SPIRV-Cross the engine
-    /// emits through, so that drift arrives on a deliberate package bump rather than on an OS update.
+    /// emits through, so that drift arrives on a deliberate package bump rather than on an OS update. That
+    /// version is in the emission cache's key as well, read off the loaded assembly by
+    /// <c>SpirvToolchainVersion</c>, so a bump partitions the cache instead of leaving it answering with the
+    /// previous cross-compiler's output
+    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/610">#610</see>).
     /// </para>
     /// </summary>
     internal static class MslCompilePin

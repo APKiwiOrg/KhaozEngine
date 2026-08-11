@@ -38,7 +38,10 @@ namespace KhaozEngine.Gpu.Internal
     /// package bump rather than on a runner image or an OS update, and <c>MetalShaderIndexTableTests</c> plus
     /// <c>MetalMslIncumbentParityTests</c> are what turn that bump into a red device-free leg instead of a wrong
     /// pixel. <c>MslCompilePin</c>, in the Metal backend, carries the same sentence about the other half of the
-    /// toolchain.
+    /// toolchain. Both shader-cache keys hash that package version too, read off the loaded assembly by
+    /// <see cref="SpirvToolchainVersion"/>, so a bump partitions the caches rather than leaving them answering
+    /// with the previous cross-compiler's output
+    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/610">#610</see>).
     /// </para>
     /// <para>
     /// Veldrid-free on purpose, like everything else the native backend reads across

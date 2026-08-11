@@ -493,7 +493,10 @@ that has no GPU rather than as a wrong pixel on one that does.
 and one freezes `MTLCompileOptions` (`languageVersion` 3.2, fast math on, `preserveInvariance` off, all measured
 rather than assumed). Neither reaches the cross-compiler's naming or index assignment, which the binding table
 depends on. What freezes those is the exact `Veldrid.SPIRV` version the engine pins, so that drift arrives on a
-deliberate package bump and lands as a red device-free test rather than as a wrong frame.
+deliberate package bump and lands as a red device-free test rather than as a wrong frame. That version is in the
+emission cache's key as well, read off the assembly the process loaded rather than out of the props file, so a
+bump partitions the cache instead of serving the previous cross-compiler's output
+([#610](https://github.com/APKiwiOrg/KhaozEngine/issues/610)).
 
 **The disk cache holds the EMISSION, not a `.metallib`.** macOS already caches the MSL-to-library compile across
 processes (0.02 ms for a source it has seen before, against 68 to 98 ms cold, both taken with the compiler
@@ -502,9 +505,9 @@ service warmed first so neither number is startup cost), and no public API can s
 engine's own half, GLSL to SPIR-V and then SPIR-V to MSL, and that is what is cached
 ([#592](https://github.com/APKiwiOrg/KhaozEngine/issues/592)). One file per program under
 `<local-app-data>/KhaozEngine/metal-msl/<engine version>/`, keyed on the shader sources, all three pinned option
-sets, the engine version and the module version ids of the two assemblies that PRODUCE the payload, holding every
-stage's MSL, every stage's entry-point name, the binding table read off that emission and a compute kernel's
-workgroup size. Over the shipped corpus of 42 programs that is 333 KiB and turns 3,443 ms of cold emission into
+sets, the engine version, the `Veldrid.SPIRV` version that emitted it and the module version ids of the two
+assemblies that PRODUCE the payload, holding every stage's MSL, every stage's entry-point name, the binding table
+read off that emission and a compute kernel's workgroup size. Over the shipped corpus of 42 programs that is 333 KiB and turns 3,443 ms of cold emission into
 13 ms.
 
 **Why the producing assemblies are in the key, and what it costs you.** The pins name the toolchain, and four of

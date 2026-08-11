@@ -1,4 +1,7 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
 using System.Runtime.Versioning;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Metal;
@@ -182,6 +185,17 @@ namespace KhaozEngine.Tests.Gpu
         /// stub back on a different one. The refusals that remain are refusals about the CALLER (a foreign
         /// command list) rather than about the package, and telling those two apart is what the row is for.
         /// </para>
+        /// <para>
+        /// <b>AND "EVERY MEMBER" IS CHECKED BY REFLECTION RATHER THAN BELIEVED</b>, which is the same guard
+        /// <c>NativeVsVeldridMetalCapabilityParityTests</c> puts on its hand-written comparer. The first version
+        /// of this row drove twelve of the interface's members and claimed all of them: the whole data half
+        /// (both <c>Map</c> overloads, both <c>Unmap</c>, all three <c>UpdateBuffer</c>, both
+        /// <c>UpdateTexture</c>) and <c>Submit(list, fence)</c> were never called, so a stub put back on
+        /// <c>Map</c> would have passed this forever. Every call is recorded by name, and
+        /// <see cref="RequireEveryMemberDriven"/> compares that against
+        /// <c>typeof(IGpuDevice)</c>'s own public members INCLUDING their overload counts, so a member appended
+        /// to the seam fails this row until somebody drives it.
+        /// </para>
         /// </summary>
         [GpuFact]
         public void NoMemberOfTheDeviceIsUnbuilt()
@@ -190,29 +204,118 @@ namespace KhaozEngine.Tests.Gpu
 
             using IGpuDevice device = CreateHeadless();
 
-            // EVERY MEMBER, called. A NotSupportedException out of any of them is the unbuilt shape, and the
-            // helper below is what names which member produced one.
-            NothingUnbuilt(() => _ = device.Backend, nameof(device.Backend));
-            NothingUnbuilt(() => _ = device.Capabilities, nameof(device.Capabilities));
-            NothingUnbuilt(() => _ = device.Counters, nameof(device.Counters));
-            NothingUnbuilt(() => _ = device.Diagnostics, nameof(device.Diagnostics));
-            NothingUnbuilt(() => _ = device.Factory, nameof(device.Factory));
-            NothingUnbuilt(() => _ = device.PointSampler, nameof(device.PointSampler));
-            NothingUnbuilt(() => _ = device.LinearSampler, nameof(device.LinearSampler));
-            NothingUnbuilt(() => _ = device.SwapchainFramebuffer, nameof(device.SwapchainFramebuffer));
-            NothingUnbuilt(() => device.SyncToVerticalBlank = !device.SyncToVerticalBlank,
+            // THE MINIMUM RESOURCES THE DATA MEMBERS NEED. Staging on both, because Map is the member that
+            // refuses anything else on this backend (M-M2: every other texture is Private and has no CPU-visible
+            // memory at all), and a buffer big enough for the writes below.
+            using IGpuBuffer buffer = device.Factory.CreateBuffer(
+                new GpuBufferDescription(64, GpuBufferUsage.Staging));
+            using IGpuTexture staging = device.Factory.CreateTexture(
+                GpuTextureDescription.Texture2D(4, 4, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Staging));
+            using IGpuCommandList list = device.Factory.CreateCommandList();
+            using IGpuFence fence = device.Factory.CreateFence();
+
+            var texels = new byte[2 * 2 * 4];
+            byte one = 1;
+
+            // EVERY MEMBER, called, and RECORDED as it is called. A NotSupportedException out of any of them is
+            // the unbuilt shape, and the helper below is what names which member produced one.
+            var driven = new List<string>();
+
+            void Drive(Action call, string member)
+            {
+                driven.Add(member);
+                NothingUnbuilt(call, member);
+            }
+
+            Drive(() => _ = device.Backend, nameof(device.Backend));
+            Drive(() => _ = device.Capabilities, nameof(device.Capabilities));
+            Drive(() => _ = device.Counters, nameof(device.Counters));
+            Drive(() => _ = device.Diagnostics, nameof(device.Diagnostics));
+            Drive(() => _ = device.Factory, nameof(device.Factory));
+            Drive(() => _ = device.PointSampler, nameof(device.PointSampler));
+            Drive(() => _ = device.LinearSampler, nameof(device.LinearSampler));
+            Drive(() => _ = device.SwapchainFramebuffer, nameof(device.SwapchainFramebuffer));
+            Drive(() => device.SyncToVerticalBlank = !device.SyncToVerticalBlank,
                 nameof(device.SyncToVerticalBlank));
-            NothingUnbuilt(() => device.ResizeSwapchain(640u, 480u), nameof(device.ResizeSwapchain));
-            NothingUnbuilt(() => device.Present(), nameof(device.Present));
-            NothingUnbuilt(device.WaitForIdle, nameof(device.WaitForIdle));
+            Drive(() => device.ResizeSwapchain(640u, 480u), nameof(device.ResizeSwapchain));
+            Drive(() => device.Present(), nameof(device.Present));
+            Drive(device.WaitForIdle, nameof(device.WaitForIdle));
+
+            // THE THREE UpdateBuffer OVERLOADS, spelled so each one really is a different overload: an array, an
+            // explicit span, and a single value by readonly reference.
+            Drive(() => device.UpdateBuffer(buffer, 0u, new byte[16]), nameof(device.UpdateBuffer));
+            Drive(() => device.UpdateBuffer(buffer, 16u, (ReadOnlySpan<byte>)new byte[16]),
+                nameof(device.UpdateBuffer));
+            Drive(() => device.UpdateBuffer(buffer, 32u, in one), nameof(device.UpdateBuffer));
+
+            // BOTH UpdateTexture OVERLOADS. The six-argument one forwards to the eight-argument one, and both are
+            // driven anyway: which of them a caller reaches is the seam's business and a stub could be put on
+            // either.
+            Drive(() => device.UpdateTexture(staging, texels, 0u, 0u, 2u, 2u), nameof(device.UpdateTexture));
+            Drive(() => device.UpdateTexture(staging, texels, 0u, 0u, 2u, 2u, 0u, 0u),
+                nameof(device.UpdateTexture));
+
+            // BOTH Map AND BOTH Unmap, on staging resources, which is the row 6 API. Map(Read) additionally
+            // flushes the setup batch and drains (M-C6), so this is the one pair here that does real work.
+            Drive(() => _ = device.Map(staging, GpuMapMode.Read), nameof(device.Map));
+            Drive(() => device.Unmap(staging), nameof(device.Unmap));
+            Drive(() => _ = device.Map(buffer, GpuMapMode.Read), nameof(device.Map));
+            Drive(() => device.Unmap(buffer), nameof(device.Unmap));
+
+            // AND THE SECOND Submit OVERLOAD, on a real recording, because the fence arm is where the timeline
+            // signal is encoded and a device that could submit but not arm a fence would pass a list-only call.
+            list.Begin();
+            list.End();
+            Drive(() => device.Submit(list, fence), nameof(device.Submit));
 
             // AND THE REFUSAL THAT IS LEFT IS ABOUT THE CALLER, not about the package. Asserted by its message
             // rather than by its type, because both shapes are exceptions and only the message tells a reader
-            // whether to fix their code or wait for a row.
+            // whether to fix their code or wait for a row. It drives the one-argument Submit at the same time.
             using var foreign = new NullGpuCommandList();
+            driven.Add(nameof(device.Submit));
             string refusal = Refusal(() => device.Submit(foreign));
             _output.WriteLine(refusal);
             Assert.Contains("not created by this native Metal device", refusal, StringComparison.Ordinal);
+
+            RequireEveryMemberDriven(driven);
+        }
+
+        /// <summary>
+        /// THE COMPLETENESS BACKSTOP: the set of member names the row above drives, against the seam's own
+        /// public members and their overload counts. Without it the claim in that row's title is a comment.
+        /// <para>
+        /// COUNTS AND NOT JUST NAMES, because five of the fourteen methods on this interface are overload pairs
+        /// or triples and a name-only check is satisfied by driving one of each. Declared members are filtered
+        /// to those this interface itself declares, so <c>IDisposable.Dispose</c> is not in the ledger (teardown
+        /// has its own rows in this file), and property accessors are dropped so a property counts once.
+        /// </para>
+        /// </summary>
+        void RequireEveryMemberDriven(IEnumerable<string> driven)
+        {
+            Dictionary<string, int> declared = typeof(IGpuDevice)
+                .GetMembers(BindingFlags.Public | BindingFlags.Instance)
+                .Where(m => m.DeclaringType == typeof(IGpuDevice))
+                .Where(m => m is not MethodInfo { IsSpecialName: true })
+                .GroupBy(m => m.Name, StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
+
+            Dictionary<string, int> called = driven
+                .GroupBy(name => name, StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
+
+            _output.WriteLine($"IGpuDevice declares {declared.Values.Sum()} members over {declared.Count} names, "
+                + $"and this row drove {called.Values.Sum()}.");
+
+            Assert.Equal(declared.Keys.OrderBy(name => name, StringComparer.Ordinal),
+                called.Keys.OrderBy(name => name, StringComparer.Ordinal));
+
+            foreach ((string member, int overloads) in declared)
+            {
+                Assert.True(called[member] >= overloads,
+                    "IGpuDevice." + member + " declares " + overloads
+                    + " overloads and this row drives only " + called[member]
+                    + ". Drive the missing one, or a stub put back on it passes this row forever.");
+            }
         }
 
         /// <summary>A headless device has no swapchain BY DEFINITION, so null is the correct answer rather than

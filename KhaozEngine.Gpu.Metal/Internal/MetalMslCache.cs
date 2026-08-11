@@ -122,10 +122,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
         internal static MetalMslCache? FromEnvironment()
             => Resolve(Environment.GetEnvironmentVariable(EnvVarName));
 
-        /// <summary>The file an entry lives in.</summary>
+        /// <summary>The file an entry lives in. Throws on a key that is not one, because a caller asking for a
+        /// path means it wants a path. The two best-effort members below guard first rather than call this with
+        /// something it would refuse.</summary>
         internal string PathFor(string key)
         {
-            ArgumentNullException.ThrowIfNull(key);
+            ArgumentException.ThrowIfNullOrWhiteSpace(key);
             return Path.Combine(_directory, key + FileExtension);
         }
 
@@ -134,10 +136,21 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// not parse, does not authenticate or does not survive the table's structural checks is DELETED on the
         /// way out, because it can only fail the same way on every future launch.
         /// </summary>
-        /// <param name="key">The program's content key.</param>
+        /// <param name="key">The program's content key. A null or blank one is a miss, not a throw.</param>
         /// <param name="label">A name for the program, for the message a refused table would carry.</param>
-        internal MetalMslCacheEntry? TryLoad(string key, string label)
+        internal MetalMslCacheEntry? TryLoad(string? key, string label)
         {
+            // A KEY THAT IS NOT A KEY IS A MISS AND NOT A THROW, which is where the file plumbing's extraction
+            // moved the line and this moves it back. The path used to be computed INSIDE the try that made every
+            // failure a miss, so a null key answered "no entry" exactly as an unreadable directory does.
+            // Computing it outside that protection turned one caller mistake into an exception out of a pair of
+            // members whose whole contract is that they never raise one.
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                Interlocked.Increment(ref _misses);
+                return null;
+            }
+
             string path = PathFor(key);
             byte[]? file = GpuDiskCache.TryReadAllBytes(path);
             if (file is null)
@@ -162,11 +175,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <summary>
         /// Store <paramref name="entry"/> under <paramref name="key"/>, best effort. Returns whether it landed,
         /// for a test and for a diagnostic line, and never throws: a cache that cannot be written is a slower
-        /// start and nothing else.
+        /// start and nothing else. A null or blank key is a "no" like a full disk is, rather than an exception
+        /// out of a member that promises not to raise one.
         /// </summary>
-        internal bool TryStore(string key, MetalMslCacheEntry entry)
+        internal bool TryStore(string? key, MetalMslCacheEntry entry)
         {
             ArgumentNullException.ThrowIfNull(entry);
+            if (string.IsNullOrWhiteSpace(key)) return false;   // a miss, for the reason TryLoad states
 
             if (!GpuDiskCache.TryWriteAtomic(PathFor(key), entry.Serialize(key))) return false;
 

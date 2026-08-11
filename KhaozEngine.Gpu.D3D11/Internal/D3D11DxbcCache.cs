@@ -102,20 +102,30 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         internal static D3D11DxbcCache? FromEnvironment()
             => Resolve(Environment.GetEnvironmentVariable(EnvVarName));
 
-        /// <summary>The file an entry lives in.</summary>
+        /// <summary>The file an entry lives in. Throws on a key that is not one, because a caller asking for a
+        /// path means it wants a path. The two best-effort members below guard first rather than call this with
+        /// something it would refuse.</summary>
         internal string PathFor(string key)
         {
-            ArgumentNullException.ThrowIfNull(key);
+            ArgumentException.ThrowIfNullOrWhiteSpace(key);
             return Path.Combine(_directory, key + FileExtension);
         }
 
         /// <summary>
-        /// The cached DXBC for <paramref name="key"/>, or null on any miss. An empty file is treated as a miss
-        /// rather than as empty bytes: a zero-length DXBC cannot be a shader, so it is a half-written entry from a
-        /// process that died, and handing it to <c>CreateVertexShader</c> would fail somewhere far less
-        /// informative than here.
+        /// The cached DXBC for <paramref name="key"/>, or null on any miss, a null or blank key included. An
+        /// empty file is treated as a miss rather than as empty bytes: a zero-length DXBC cannot be a shader, so
+        /// it is a half-written entry from a process that died, and handing it to <c>CreateVertexShader</c> would
+        /// fail somewhere far less informative than here.
+        /// <para>
+        /// A KEY THAT IS NOT A KEY IS A MISS AND NOT A THROW. The path used to be computed INSIDE the try that
+        /// made every failure a miss, so a null key answered "no entry" exactly as an unreadable directory does.
+        /// Moving the file plumbing out to <see cref="GpuDiskCache"/> left the computation outside that
+        /// protection, which turned one caller mistake into an exception out of a pair of members whose whole
+        /// contract is that they never raise one.
+        /// </para>
         /// </summary>
-        internal byte[]? TryRead(string key) => GpuDiskCache.TryReadAllBytes(PathFor(key));
+        internal byte[]? TryRead(string? key)
+            => string.IsNullOrWhiteSpace(key) ? null : GpuDiskCache.TryReadAllBytes(PathFor(key));
 
         /// <summary>
         /// Store <paramref name="dxbc"/> under <paramref name="key"/>, best effort. Returns whether it landed,
@@ -129,7 +139,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// at once cannot overwrite each other's partial file.
         /// </para>
         /// </summary>
-        internal bool TryWrite(string key, ReadOnlySpan<byte> dxbc)
-            => GpuDiskCache.TryWriteAtomic(PathFor(key), dxbc);
+        internal bool TryWrite(string? key, ReadOnlySpan<byte> dxbc)
+            => !string.IsNullOrWhiteSpace(key) && GpuDiskCache.TryWriteAtomic(PathFor(key), dxbc);
     }
 }

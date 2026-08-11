@@ -380,6 +380,34 @@ void main() { Values[gl_GlobalInvocationID.x] = gl_GlobalInvocationID.x; }
             Assert.Equal(new MetalIndexTableEntry(MetalIndexSpace.Buffer, 2), entry);
         }
 
+        // ---- the null edge -------------------------------------------------------------------------------
+
+        /// <summary>
+        /// A KEY THAT IS NOT A KEY IS A MISS AND A "NO", NEVER A THROW. Both members promise they never raise,
+        /// and the path used to be computed inside the guard that made that true. Moving the file plumbing into
+        /// <c>GpuDiskCache</c> lifted the computation out of it, which turned one caller mistake into an
+        /// exception out of a cache whose only job is to save time.
+        /// </summary>
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData("   ")]
+        public void ANullOrBlankKey_IsAMissAndAFailedStoreRatherThanAThrow(string? key)
+        {
+            using var temp = new TempCacheDirectory();
+            var cache = new MetalMslCache(temp.Path);
+            MetalMslProgram program = MetalShaderBuild.Pair(
+                MetalBindProgram.VertexGlsl, MetalBindProgram.FragmentGlsl, null, "null-key");
+
+            Assert.Null(cache.TryLoad(key, "null-key"));
+            Assert.False(cache.TryStore(key, new MetalMslCacheEntry(program, 0, 0, 0)));
+
+            Assert.Equal(0, cache.Hits);
+            Assert.Equal(1, cache.Misses);
+            Assert.Equal(0, cache.Writes);
+            Assert.Empty(Directory.GetFiles(temp.Path));
+        }
+
         [Fact]
         public void ACacheThatCannotBeUsed_FailsSilentlyBothWays()
         {

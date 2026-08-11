@@ -129,8 +129,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <summary><c>VK_PIPELINE_CACHE_HEADER_VERSION_ONE</c>.</summary>
         internal const uint HeaderVersionOne = 1;
 
-        readonly string _directory;
         readonly VulkanPipelineCacheIdentity _identity;
+        readonly string _path;
 
         /// <summary>Creates a cache rooted at <paramref name="directory"/>, which is created on first write rather
         /// than here, so a process that only reads leaves no directory behind.</summary>
@@ -144,12 +144,21 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     + "instead of pointing it at nothing.", nameof(directory));
             }
 
-            _directory = directory;
             _identity = identity;
+            _path = System.IO.Path.Combine(directory, identity.Key + FileExtension);
         }
 
-        /// <summary>Where the entry is written. Exposed so a diagnostic line can name the real path.</summary>
-        internal string Path => System.IO.Path.Combine(_directory, _identity.Key + FileExtension);
+        /// <summary>
+        /// Where the entry is written. Exposed so a diagnostic line can name the real path.
+        /// <para>
+        /// COMPUTED ONCE, AT CONSTRUCTION, and that is the sibling of what the two keyed caches do with a null
+        /// key. Both of this type's inputs are fixed by the constructor, so the path is too, and doing the work
+        /// here rather than on every access means the three best-effort members below never compute anything
+        /// outside their own protection. Construction is allowed to refuse a bad directory loudly, and a read or
+        /// a write is not.
+        /// </para>
+        /// </summary>
+        internal string Path => _path;
 
         /// <summary>
         /// The engine version, read off this assembly, which the shared <c>&lt;KhaozEngineVersion&gt;</c> line

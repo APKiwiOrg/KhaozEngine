@@ -3156,7 +3156,7 @@ backend can answer is exactly the "no seam change" claim phase 3 warned costs a 
 | Drawable-boundary test, device-free (M-W5) | The nil-drawable frame: orphan target bound, recorded, submitted, present skipped, `FramesBegun` incremented | Every `dotnet test` |
 | `CopyBuffer` alignment assertion (9.3) | That no shipped call site produces an unaligned offset, so the named throw is unreachable | Every `dotnet test` |
 | Uncommitted-command-buffer bound (6.1) | That the backend never holds more uncommitted buffers than `FramesInFlight` plus one | Every `dotnet test` |
-| **MM6's two-uniform-buffer probes (2.3)** | Whether the one-UBO constraint is a property of the incumbent's numbering or of Metal, with a pixel READBACK assertion rather than a no-throw assertion. **Taken and PASSED at row 17, and the probes STAY as a standing pair: `MetalTwoUniformBufferGpuTests` (2.3a)** | Metal leg, gate 3 |
+| **MM6's two-uniform-buffer probes (2.3)** | Whether the one-UBO constraint is a property of the incumbent's numbering or of Metal, with a pixel READBACK assertion rather than a no-throw assertion. **Taken and PASSED at row 17, and the probes STAY: THREE pixel rows plus the device-free mechanism row, all in `MetalTwoUniformBufferGpuTests` (2.3a)** | Metal leg, gate 3, and the mechanism row on every `dotnet test` |
 | Full `macos-26` suite | 0 failed, 0 skipped, passed at or above the incumbent's on the same commit | Metal leg, every trigger |
 | `OpenListTrackingGpuDevice` | Nested `Begin`. Stays the PORTABLE guard, passes trivially here, and is NOT evidence about this backend | Every `dotnet test` |
 | `GpuFactSkipReasonTests` extension | That `KE_GPU_TESTS=probe` still answers correctly once a third provider registers | Every `dotnet test` |

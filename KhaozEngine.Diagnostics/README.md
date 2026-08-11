@@ -89,6 +89,10 @@ the graphics backend as soon as its window exists), so this is only wired by han
   `MaxRetainedReports` (default 20) per process label. The process id and the counter are what make the name
   unique: unobserved task exceptions arrive from the finalizer thread in a burst, and a stamp that stops at the
   millisecond loses every collision silently (a measured burst of twelve wrote seven files).
+- Unobserved task exceptions are recorded by default (`IncludeUnobservedTaskExceptions`) and get their OWN stem,
+  `{process}-taskfault-...`, and their own retention pool. They come from the finalizer thread at a garbage
+  collection, so they arrive long after the failure and usually while the game is running fine. Keeping them out
+  of the crash stem is what stops a tester collecting a task fault when they were asked for the crash file.
 - Retention matches the whole generated shape, not the stem, so a label whose stem starts with another's
   (`show` against `show-crash`) no longer prunes the other's reports out of a shared crash directory. Two labels
   that SANITISE to the same stem (`My Game` and `My-Game`) do share one pool, by construction.
@@ -117,7 +121,9 @@ Do **not** prefix the message with the category: `Log.Info("[CloudSave] saved")`
 - `ILogger` - category logger (`Trace`/`Debug`/`Info`/`Warn`/`Error`/`Fatal`, each with an optional exception).
 - `ILogSink` + `FileSink` (rotate-on-launch + size rotation + retention), `ConsoleSink`, `DebugSink`, `InMemorySink`. Implement `ILogSink` for custom targets (in-game console, crash uploader).
 - `CrashHandler` - wires `AppDomain.UnhandledException` + `TaskScheduler.UnobservedTaskException` into the log.
-- `CrashReport` + `CrashReportOptions` - the last-chance crash FILE, written with no logging configured.
+- `CrashReport` + `CrashReportOptions` + `CrashReportKind` - the last-chance crash FILE, written with no logging
+  configured. The kind picks the stem: an unhandled exception is a crash, an unobserved task exception is a task
+  fault, and they retain separately.
 - `IClock`/`SystemClock` - injectable timestamps.
 
 (OS-correct app-data paths live in `KhaozEngine.App` as `AppDataPaths`; resolve `FileSinkOptions.Path` through it.)

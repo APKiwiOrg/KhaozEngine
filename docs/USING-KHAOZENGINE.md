@@ -8041,9 +8041,16 @@ exception to its own file whether or not the game configured any logging.
 | Windows | `%LOCALAPPDATA%\KhaozEngine\crash\` |
 | Linux | `$XDG_STATE_HOME/KhaozEngine/crash/`, else `~/.local/state/KhaozEngine/crash/` |
 
-One file per crash, named `{window title}-crash-{yyyyMMdd-HHmmss-fff}-{pid}-{counter}.log`, oldest pruned beyond
-20. It carries the timestamp, the process, the engine version, the runtime and OS, the graphics backend, then the
-exception's type, message and full stack. The process id and the counter are what make one crash one file: a
+**Two signals, two stems, two retention pools:**
+
+| Signal | File | What it means |
+|---|---|---|
+| `AppDomain.UnhandledException` | `{window title}-crash-{yyyyMMdd-HHmmss-fff}-{pid}-{counter}.log` | The process is going down. This is "the crash file". |
+| `TaskScheduler.UnobservedTaskException` | `{window title}-taskfault-{yyyyMMdd-HHmmss-fff}-{pid}-{counter}.log` | A faulted task nobody awaited, raised from the FINALIZER thread at a garbage collection, so it arrives long after the failure and usually while the game is still running fine. Recorded by default (`CrashReportOptions.IncludeUnobservedTaskExceptions`), because nothing else in the process records it at all. |
+
+One file per event, oldest pruned beyond 20 PER STEM, so a task-fault storm cannot evict the crash. Each file
+carries the timestamp, the process, the engine version, the runtime and OS, the graphics backend, then the
+exception's type, message and full stack. The process id and the counter are what make one event one file: a
 name that stopped at the millisecond lost back-to-back writes to each other silently, and pruning matches the
 whole shape rather than the stem, so a head named `show` cannot delete a head named `show-crash`'s reports out of
 the shared directory.

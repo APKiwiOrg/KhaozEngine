@@ -104,7 +104,9 @@ redirected. Opt out with `GameAppOptions.SuppressParentConsoleAttach = true` (de
 **Last-chance crash file.** `GameApp` arms `KhaozEngine.Diagnostics.CrashReport` for every head, so an unhandled
 exception is written with its type, message, stack, the engine version and the graphics backend to a file in the
 OS crash location (`~/Library/Logs/KhaozEngine/` on macOS, `%LOCALAPPDATA%\KhaozEngine\crash\` on Windows),
-whether or not the game configured any logging and whether or not it has a console. Add your own facts with
+whether or not the game configured any logging and whether or not it has a console. A task exception nobody
+awaited is recorded too, by default, but under its own `{title}-taskfault-` stem with its own retention, because
+it comes from the finalizer thread at a collection and is not the process dying. Add your own facts with
 `CrashReport.Note(key, value)`, opt out with `GameAppOptions.SuppressCrashReportFile = true` (default off), and
 wire `KhaozEngine.Diagnostics.CrashHandler` for the richer `game.log` path. See
 [docs/USING-KHAOZENGINE.md](../docs/USING-KHAOZENGINE.md) "Game head build settings".

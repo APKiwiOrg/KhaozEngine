@@ -80,7 +80,8 @@ public static class CrashReport
     /// <see cref="CrashReportOptions.IncludeUnobservedTaskExceptions"/>, a
     /// <see cref="TaskScheduler.UnobservedTaskException"/>) writes one report into
     /// <see cref="CrashReportOptions.Directory"/>. Idempotent: a second call replaces the first arming rather
-    /// than adding a second handler.
+    /// than adding a second handler. The two signals write under different stems (<c>-crash</c> and
+    /// <c>-taskfault</c>) and retain separately, per <see cref="CrashReportKind"/>.
     /// </summary>
     /// <param name="options">Where the file goes and what names it. Null is ignored.</param>
     public static void Install(CrashReportOptions options)
@@ -99,8 +100,11 @@ public static class CrashReport
             if (options.IncludeUnobservedTaskExceptions)
             {
                 // Deliberately NOT marked observed: whether an unobserved task exception is fatal stays the
-                // game's decision (CrashHandler is the type that answers it), and this hook only records.
-                taskHandler = (_, e) => OnCrash("Unobserved task exception", e.Exception, e.Exception);
+                // game's decision (CrashHandler is the type that answers it), and this hook only records. It
+                // writes under its OWN stem, because a faulted task nobody awaited is not the process dying and
+                // must not be mistaken for the crash file.
+                taskHandler = (_, e) => OnCrash("Unobserved task exception", e.Exception, e.Exception,
+                    CrashReportKind.UnobservedTask);
                 TaskScheduler.UnobservedTaskException += taskHandler;
             }
         }
@@ -234,9 +238,11 @@ public static class CrashReport
     /// <param name="context">What kind of crash this is.</param>
     /// <param name="exception">The exception, when the crash carried one.</param>
     /// <param name="raw">The raw thrown object, used when <paramref name="exception"/> is null.</param>
+    /// <param name="kind">Which signal produced this, which picks the file-name stem and the retention pool.</param>
     /// <returns>The crash file's full path, or null.</returns>
-    public static string? Write(CrashReportOptions options, string context, Exception? exception, object? raw)
-        => WriteAt(options, context, exception, raw, DateTimeOffset.UtcNow,
+    public static string? Write(CrashReportOptions options, string context, Exception? exception, object? raw,
+        CrashReportKind kind = CrashReportKind.Unhandled)
+        => WriteAt(options, context, exception, raw, kind, DateTimeOffset.UtcNow,
             Interlocked.Increment(ref sequence));
 
     /// <summary>
@@ -244,7 +250,7 @@ public static class CrashReport
     /// writer is about to open and stage a failure on exactly that path. Internal for that reason and no other.
     /// </summary>
     internal static string? WriteAt(CrashReportOptions options, string context, Exception? exception, object? raw,
-        DateTimeOffset timestamp, long sequenceNumber)
+        CrashReportKind kind, DateTimeOffset timestamp, long sequenceNumber)
     {
         if (options is null) return null;
 
@@ -254,7 +260,7 @@ public static class CrashReport
         try
         {
             directory = string.IsNullOrWhiteSpace(options.Directory) ? DefaultDirectory : options.Directory!;
-            prefix = FileNamePrefix(options.ProcessLabel);
+            prefix = FileNamePrefix(options.ProcessLabel, kind);
             Directory.CreateDirectory(directory);
 
             path = Path.Combine(directory, FileName(prefix, timestamp, sequenceNumber));
@@ -283,11 +289,12 @@ public static class CrashReport
     /// What the installed handlers call. Internal so a test can drive the whole armed path without an actual
     /// process-killing exception, which is the same seam <see cref="CrashHandler.Report"/> uses.
     /// </summary>
-    internal static string? OnCrash(string context, Exception? exception, object? raw)
+    internal static string? OnCrash(string context, Exception? exception, object? raw,
+        CrashReportKind kind = CrashReportKind.Unhandled)
     {
         CrashReportOptions? options;
         lock (gate) { options = armed; }
-        return options is null ? null : Write(options, context, exception, raw);
+        return options is null ? null : Write(options, context, exception, raw, kind);
     }
 
     /// <summary>
@@ -370,13 +377,18 @@ public static class CrashReport
         return true;
     }
 
-    /// <summary>The file-name stem for one process label, which is also the prune pattern's prefix.</summary>
-    internal static string FileNamePrefix(string? processLabel)
+    /// <summary>
+    /// The file-name stem for one process label and one signal, which is also what the prune matches on. The
+    /// stem is where the two signals separate: a crash and an unobserved task fault are different events with
+    /// different urgency, so they get different files and different retention pools.
+    /// </summary>
+    internal static string FileNamePrefix(string? processLabel,
+        CrashReportKind kind = CrashReportKind.Unhandled)
     {
         string name = string.IsNullOrWhiteSpace(processLabel) ? "game" : processLabel!;
         foreach (char c in Path.GetInvalidFileNameChars())
             name = name.Replace(c, '_');
-        return name.Replace(' ', '-') + "-crash";
+        return name.Replace(' ', '-') + (kind == CrashReportKind.UnobservedTask ? "-taskfault" : "-crash");
     }
 
     static void UninstallCore()

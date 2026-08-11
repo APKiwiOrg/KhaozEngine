@@ -296,6 +296,75 @@ public class CrashReportTests
         finally { Directory.Delete(dir, true); }
     }
 
+    /// <summary>
+    /// AN UNOBSERVED TASK FAULT IS NOT THE CRASH FILE. It arrives from the finalizer thread at a collection,
+    /// often while the game is still running fine, so it lands under its own stem: a tester asked for "the
+    /// crash file" must not be handed a task fault from ten minutes earlier.
+    /// </summary>
+    [Fact]
+    public void Write_AnUnobservedTaskFault_LandsUnderItsOwnStem()
+    {
+        CrashReport.ClearNotes();
+        string dir = TempDir();
+        try
+        {
+            string? path = CrashReport.Write(new CrashReportOptions { Directory = dir, ProcessLabel = "head" },
+                "Unobserved task exception", Thrown("nobody awaited this"), null,
+                CrashReportKind.UnobservedTask);
+
+            Assert.NotNull(path);
+            Assert.StartsWith("head-taskfault-", Path.GetFileName(path), StringComparison.Ordinal);
+            Assert.Empty(Directory.GetFiles(dir, "head-crash-*.log"));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    /// <summary>
+    /// AND THE TWO POOLS ARE SEPARATE, which is the reason the stems are. A fault storm bounded to the same
+    /// pool as the crashes would evict exactly the report worth keeping.
+    /// </summary>
+    [Fact]
+    public void Write_CrashRetention_DoesNotTouchTheTaskFaultPool()
+    {
+        CrashReport.ClearNotes();
+        string dir = TempDir();
+        try
+        {
+            for (int i = 0; i < 4; i++)
+                File.WriteAllText(Path.Combine(dir, Report("head-taskfault", "20260101", i)), "x");
+
+            CrashReport.Write(
+                new CrashReportOptions { Directory = dir, ProcessLabel = "head", MaxRetainedReports = 1 },
+                "Unhandled exception", Thrown("x"), null);
+
+            Assert.Equal(4, Directory.GetFiles(dir, "head-taskfault-*.log").Length);
+            Assert.Single(Directory.GetFiles(dir, "head-crash-*.log"));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    /// <summary>The armed unobserved-task hook is what picks the stem in the field, not the caller.</summary>
+    [Fact]
+    public void OnCrash_ForAnUnobservedTaskException_WritesUnderTheTaskFaultStem()
+    {
+        CrashReport.ClearNotes();
+        string dir = TempDir();
+        try
+        {
+            CrashReport.Install(new CrashReportOptions { Directory = dir, ProcessLabel = "head" });
+            string? path = CrashReport.OnCrash("Unobserved task exception", Thrown("faulted"), null,
+                CrashReportKind.UnobservedTask);
+
+            Assert.NotNull(path);
+            Assert.StartsWith("head-taskfault-", Path.GetFileName(path), StringComparison.Ordinal);
+        }
+        finally
+        {
+            CrashReport.Uninstall();
+            Directory.Delete(dir, true);
+        }
+    }
+
     /// <summary>The generated name is what the prune matches, and both halves of that are worth naming.</summary>
     [Fact]
     public void FileName_CarriesTheProcessAndTheCounter_AndIsWhatTheReportMatcherAccepts()
@@ -363,7 +432,7 @@ public class CrashReportTests
 
             string? path = CrashReport.WriteAt(
                 new CrashReportOptions { Directory = dir, ProcessLabel = "head", MaxRetainedReports = 1 },
-                "Unhandled exception", Thrown("x"), null, when, 1);
+                "Unhandled exception", Thrown("x"), null, CrashReportKind.Unhandled, when, 1);
 
             Assert.Null(path);
             Assert.Equal(4, Directory.GetFiles(dir, "head-crash-2026080?-*.log").Length);

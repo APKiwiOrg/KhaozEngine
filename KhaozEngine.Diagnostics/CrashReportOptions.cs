@@ -30,16 +30,30 @@ public sealed class CrashReportOptions
 
     /// <summary>
     /// How many crash files are kept in <see cref="Directory"/> for this <see cref="ProcessLabel"/>, oldest
-    /// deleted first. Defaults to <see cref="CrashReport.DefaultMaxRetainedReports"/>.
+    /// deleted first. Defaults to <see cref="CrashReport.DefaultMaxRetainedReports"/>. Counted per stem, so
+    /// crashes and unobserved task faults (see <see cref="IncludeUnobservedTaskExceptions"/>) each keep this
+    /// many and a fault storm cannot evict the crash that matters.
     /// </summary>
     public int MaxRetainedReports { get; set; } = CrashReport.DefaultMaxRetainedReports;
 
     /// <summary>
-    /// When true (the default), a <see cref="System.Threading.Tasks.TaskScheduler.UnobservedTaskException"/>
-    /// is written as well as an <see cref="System.AppDomain.UnhandledException"/>. An unobserved task
-    /// exception does not terminate the process, so this is the noisier of the two hooks, and
-    /// <see cref="MaxRetainedReports"/> is what bounds it. <see cref="CrashReport"/> never marks such an
-    /// exception observed: whether the process treats it as handled stays the game's decision.
+    /// When true (THE DEFAULT), a <see cref="System.Threading.Tasks.TaskScheduler.UnobservedTaskException"/>
+    /// is recorded as well as an <see cref="System.AppDomain.UnhandledException"/>. On by default because the
+    /// alternative loses the evidence of a faulted task by default, which is the harder failure to get back:
+    /// nothing else in the process records it at all.
+    /// <para>
+    /// IT IS A DIFFERENT EVENT AND IT GETS A DIFFERENT FILE. This one is raised from the FINALIZER thread when
+    /// a faulted task is collected, so it arrives at a garbage collection rather than at the failure, usually
+    /// long after the code that produced it ran and while the game is still running perfectly well. Those
+    /// reports are written under <c>{ProcessLabel}-taskfault-</c> rather than <c>{ProcessLabel}-crash-</c>,
+    /// with their own retention pool, so "the crash file" still means the crash and a tester cannot collect
+    /// the wrong artifact. It is also the noisier of the two hooks, and its own
+    /// <see cref="MaxRetainedReports"/> pool is what bounds it.
+    /// </para>
+    /// <para>
+    /// <see cref="CrashReport"/> never marks such an exception observed: whether the process treats it as
+    /// handled stays the game's decision.
+    /// </para>
     /// </summary>
     public bool IncludeUnobservedTaskExceptions { get; set; } = true;
 }

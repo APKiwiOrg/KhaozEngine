@@ -138,9 +138,7 @@ namespace KhaozEngine.Gpu
 
         /// <summary>
         /// Whether <paramref name="kind"/> is Apple Metal through EITHER implementation. The third of these
-        /// predicates (decision M-I5 of <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>), and the
-        /// one that arrives with readers already waiting for it rather than ahead of them the way
-        /// <see cref="IsVulkan"/> did.
+        /// predicates (decision M-I5 of <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>).
         /// <para>
         /// It is the right question for anything that talks to the Metal API or reasons about how a Metal frame
         /// reaches the display, because the drawable and the display underneath are the same ones whichever
@@ -149,12 +147,15 @@ namespace KhaozEngine.Gpu
         /// <see cref="GpuBackendKind.Metal"/> is Veldrid's.
         /// </para>
         /// <para>
-        /// Its readers are the software frame-cap pair in <c>KhaozEngine.Windowing</c>,
-        /// <c>FrameCap.Resolve</c> and <c>DisplaySettings.RequiresFrameCapWarning</c>. Both are the reason this
-        /// predicate exists: an appended Metal member falling into their uncapped arm would silently take the
-        /// software cap away from a native Mac client, which is the one thing the previous two appends did not
-        /// have to think about. Which arm the native backend BELONGS in is a measurement rather than an
-        /// assumption (decision M-W3), and both sites say so at the site.
+        /// It has NO reader in the engine today, and the reason is worth recording rather than looking like an
+        /// oversight. It was written for the software frame-cap pair in <c>KhaozEngine.Windowing</c>,
+        /// <c>FrameCap.Resolve</c> and <c>DisplaySettings.RequiresFrameCapWarning</c>, which took the family arm
+        /// as a CONSERVATIVE DEFAULT while which arm <see cref="GpuBackendKind.MetalNative"/> belongs in was an
+        /// open measurement (decision M-W3). Rollout gate 5 took that measurement on 2026-08-11: the native
+        /// present throttles the CPU from vsync alone, so both sites went back to an equality against
+        /// <see cref="GpuBackendKind.Metal"/> and the software cap is the incumbent's alone. The predicate stays
+        /// because the QUESTION it asks is still the right one for the next site that reasons about the Metal API
+        /// rather than about Veldrid's implementation of it.
         /// </para>
         /// </summary>
         public static bool IsMetal(this GpuBackendKind kind)

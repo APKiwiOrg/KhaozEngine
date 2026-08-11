@@ -101,6 +101,11 @@ public class DisplaySettingsTests
     [InlineData(GpuBackendKind.Metal, PresentMode.Immediate, 0)]  // not vsync
     [InlineData(GpuBackendKind.Direct3D11, PresentMode.Vsync, 0)] // D3D11 vsync really caps
     [InlineData(GpuBackendKind.Vulkan, PresentMode.Vsync, 0)]     // Vulkan FIFO really caps
+    [InlineData(GpuBackendKind.Direct3D11Native, PresentMode.Vsync, 0)] // as its incumbent
+    [InlineData(GpuBackendKind.VulkanNative, PresentMode.Vsync, 0)]     // as its incumbent
+    // MetalNative measured at rollout gate 5 (2026-08-11): its present throttles the CPU from vsync alone, so
+    // vsync with no software cap is a healthy configuration there and warning about it would be noise (M-W3).
+    [InlineData(GpuBackendKind.MetalNative, PresentMode.Vsync, 0)]
     public void Other_configs_do_not_warn(GpuBackendKind backend, PresentMode mode, int cap)
     {
         Assert.False(DisplaySettings.RequiresFrameCapWarning(backend, mode, cap));

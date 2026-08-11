@@ -378,9 +378,9 @@ namespace KhaozEngine.Windowing
         /// <summary>Resolve <see cref="_requestedCap"/> for the live backend + present mode into the effective base
         /// cap the loop paces to (0 = uncapped), then re-evaluate the Metal-vsync warning against it. Called from the
         /// ctor (once the device exists), the cap setters, and the present-mode setter. The default
-        /// <see cref="Windowing.FrameCap.Auto"/> resolves to a real cap on Metal + vsync (the live display refresh, or
-        /// <see cref="Windowing.FrameCap.DefaultMetalAutoCapHz"/>) so the warning path never fires for it. Only an
-        /// explicit uncapped choice on Metal + vsync still warns.</summary>
+        /// <see cref="Windowing.FrameCap.Auto"/> resolves to a real cap on the incumbent Metal backend + vsync (the
+        /// live display refresh, or <see cref="Windowing.FrameCap.DefaultMetalAutoCapHz"/>) so the warning path
+        /// never fires for it. Only an explicit uncapped choice on that backend + vsync still warns.</summary>
         void ApplyFrameCap()
         {
             _effectiveBaseCapHz = _requestedCap.Resolve(Backend, _presentMode, DisplayRefreshHz());
@@ -404,12 +404,12 @@ namespace KhaozEngine.Windowing
             }
         }
 
-        /// <summary>One-time warning for vsync plus an effective free-run on a Metal-family backend (resolved base
-        /// cap 0). A finding on the incumbent (the Veldrid Metal present does not throttle the CPU from vsync
-        /// alone), the conservative default on <c>MetalNative</c> until gate 5 measures its present (design M-W3).
-        /// Fires only when a consumer forces uncapped + vsync (<see cref="Windowing.FrameCap.Auto"/> always
-        /// resolves positive here). Pure decision via <see cref="DisplaySettings.RequiresFrameCapWarning"/>,
-        /// written to <c>Console.Error</c> for bare hosts, deduped.</summary>
+        /// <summary>One-time warning for vsync plus an effective free-run (resolved base cap 0) on the INCUMBENT
+        /// Veldrid Metal backend, whose present does not throttle the CPU from vsync alone. It does NOT fire on
+        /// <c>MetalNative</c>, measured at rollout gate 5 as throttling from vsync like the other two native
+        /// backends (M-W3, the three legs are in <see cref="DisplaySettings.RequiresFrameCapWarning"/>). Fires
+        /// only when a consumer forces uncapped + vsync (<see cref="Windowing.FrameCap.Auto"/> resolves positive
+        /// there). Pure decision via that same predicate, written to <c>Console.Error</c> for bare hosts, deduped.</summary>
         void WarnIfMetalVsyncUncapped()
         {
             if (_warnedMetalVsync) return;

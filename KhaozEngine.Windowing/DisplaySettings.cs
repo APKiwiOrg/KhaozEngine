@@ -36,26 +36,36 @@ namespace KhaozEngine.Windowing
         /// <summary>
         /// True when <paramref name="presentMode"/> cannot deterministically cap the frame rate on
         /// <paramref name="backend"/> without a software <see cref="FrameCapHz"/>: vsync selected, no frame cap, on
-        /// Metal - where the Veldrid Metal present does not throttle the CPU from vsync alone (a Mac client free-runs
-        /// well above the refresh). Pure and headless-testable. <see cref="AppWindow"/> uses it to emit a one-time
-        /// warning so a consumer knows to set <see cref="FrameCapHz"/> for a real cap on macOS.
+        /// the INCUMBENT <see cref="GpuBackendKind.Metal"/> backend, whose Veldrid present does not throttle the
+        /// CPU from vsync alone (a Mac client free-runs well above the refresh). Pure and headless-testable.
+        /// <see cref="AppWindow"/> uses it to emit a one-time warning so a consumer knows to set
+        /// <see cref="FrameCapHz"/> for a real cap on that backend.
         /// <para>
-        /// A family predicate (<c>GpuBackendKinds.IsMetal</c>), so BOTH Metal implementations warn. This is the
-        /// same arm as <see cref="FrameCap.Resolve"/> and it takes the same decision for the same reason, and the
-        /// full reasoning lives there rather than being restated: the question the arm asks is whether the
-        /// backend's present throttles the CPU from vsync alone, the answer is known for the Veldrid Metal path
-        /// and is an open MEASUREMENT for the native one, and defaulting the native backend into the warning arm
-        /// is conservative in both directions. Gate 5 settles it and the disposition lands in both doc comments
+        /// An equality against the incumbent kind rather than the <c>GpuBackendKinds.IsMetal</c> family predicate,
+        /// because the question the arm asks is whether THIS BACKEND'S PRESENT throttles the CPU from vsync alone,
+        /// not which API it is. <see cref="GpuBackendKind.MetalNative"/> was measured at rollout gate 5 on
+        /// 2026-08-11 and its present DOES throttle, on three legs: an uncapped 8000-frame field capture with
+        /// vsync on read <c>AcquireWaitCount</c> at exactly 1.000 per frame and <c>AcquireWaitMs</c> at 15.175 ms
+        /// against a 16.669 ms median frame, a human windowed pass on a display pinned to 120 Hz sat at 120 fps,
+        /// and toggling vsync OFF mid-session jumped to 700 fps and beyond with visible tearing, which is what
+        /// proves the pacing came from vsync rather than from any other bottleneck. So vsync plus an uncapped
+        /// frame rate is a HEALTHY configuration on the native backend and warning about it would be noise
         /// (decision M-W3 of <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c>).
         /// </para>
         /// <para>
-        /// An appended NON-Metal backend warns about nothing, which is correct for
-        /// <see cref="GpuBackendKind.Direct3D11Native"/> and <see cref="GpuBackendKind.VulkanNative"/>, whose
-        /// vsync throttles the CPU exactly as their incumbents' does.
+        /// This is the same arm as <see cref="FrameCap.Resolve"/> and it takes the same decision for the same
+        /// reason, so the two move together or the pair disagrees: the warning tells a consumer to set a cap
+        /// precisely when the backend-aware default would not supply one.
+        /// </para>
+        /// <para>
+        /// No other backend warns, which is correct for <see cref="GpuBackendKind.MetalNative"/> by the
+        /// measurement above and for <see cref="GpuBackendKind.Direct3D11Native"/> and
+        /// <see cref="GpuBackendKind.VulkanNative"/> because their vsync throttles the CPU exactly as their
+        /// incumbents' does.
         /// </para>
         /// </summary>
         public static bool RequiresFrameCapWarning(GpuBackendKind backend, PresentMode presentMode, int frameCapHz)
-            => backend.IsMetal() && presentMode == PresentMode.Vsync && frameCapHz <= 0;
+            => backend == GpuBackendKind.Metal && presentMode == PresentMode.Vsync && frameCapHz <= 0;
     }
 
     /// <summary>
@@ -70,7 +80,9 @@ namespace KhaozEngine.Windowing
     public interface IDisplaySettings
     {
         /// <summary>How the window presents frames. Setting it reconfigures the live swapchain's vsync in place
-        /// (no recreate). On Metal, pair vsync with <see cref="FrameCapHz"/> for a deterministic cap.</summary>
+        /// (no recreate). On the incumbent Veldrid Metal backend, pair vsync with <see cref="FrameCapHz"/> for a
+        /// deterministic cap. The engine's own <c>MetalNative</c> backend throttles from vsync alone (gate 5,
+        /// see <see cref="DisplaySettings.RequiresFrameCapWarning"/>), so it needs no cap.</summary>
         PresentMode PresentMode { get; set; }
 
         /// <summary>Software frame-rate cap in Hz (0 = uncapped). Takes effect next frame.</summary>

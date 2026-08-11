@@ -54,6 +54,19 @@ namespace KhaozEngine.Tests.Windowing
             Assert.Equal(60, FrameCap.Auto.Resolve(GpuBackendKind.Metal, PresentMode.Vsync, displayRefreshHz: 60));
         }
 
+        // The capped arm is the INCUMBENT Veldrid Metal backend alone. Rollout gate 5 measured the engine's own
+        // MetalNative present on 2026-08-11 and it throttles the CPU from vsync by itself (the acquire blocks
+        // once per frame for 15.175 ms of a 16.669 ms frame, a 120 Hz pinned display paced at 120 fps, and vsync
+        // off mid-session free-ran past 700 fps with tearing), so it takes the uncapped arm with the other two
+        // native backends. Decision M-W3 of docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md.
+        [Fact]
+        public void Auto_on_native_Metal_vsync_stays_uncapped_unlike_the_incumbent()
+        {
+            Assert.Equal(0, FrameCap.Auto.Resolve(GpuBackendKind.MetalNative, PresentMode.Vsync, displayRefreshHz: 144));
+            Assert.Equal(0, FrameCap.Auto.Resolve(GpuBackendKind.MetalNative, PresentMode.Vsync, displayRefreshHz: 0));
+            Assert.Equal(144, FrameCap.Auto.Resolve(GpuBackendKind.Metal, PresentMode.Vsync, displayRefreshHz: 144));
+        }
+
         [Fact]
         public void Auto_on_Metal_vsync_falls_back_to_the_default_cap_when_refresh_unknown()
         {
@@ -72,7 +85,10 @@ namespace KhaozEngine.Tests.Windowing
         [Theory]
         [InlineData(GpuBackendKind.Direct3D11)]
         [InlineData(GpuBackendKind.Vulkan)]
-        public void Auto_on_D3D11_or_Vulkan_vsync_stays_uncapped_because_vsync_throttles(GpuBackendKind backend)
+        [InlineData(GpuBackendKind.Direct3D11Native)]
+        [InlineData(GpuBackendKind.VulkanNative)]
+        [InlineData(GpuBackendKind.MetalNative)]
+        public void Auto_stays_uncapped_where_the_present_throttles(GpuBackendKind backend)
         {
             Assert.Equal(0, FrameCap.Auto.Resolve(backend, PresentMode.Vsync, displayRefreshHz: 144));
         }

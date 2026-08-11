@@ -24,6 +24,13 @@ namespace KhaozEngine.Tests.Gpu
     /// argument for walking the table every time rather than diffing the last one.
     /// </para>
     /// <para>
+    /// The first two of those three took the incumbent's capped arm as a CONSERVATIVE DEFAULT rather than as a
+    /// finding, and rollout gate 5 has since measured them (2026-08-11): the native present throttles the CPU
+    /// from vsync alone, so both flipped to the incumbent alone. The rows below pin the measured answer, and each
+    /// one asserts the incumbent's side too, because a flip that moved every backend would satisfy a one-sided
+    /// assertion just as well as the right one does.
+    /// </para>
+    /// <para>
     /// Rows 3, 6 and 8 are in <see cref="GpuBackendKindMetalAppendAuditRegistryTests"/> for the reason both
     /// earlier audits split the same three out: they touch the process-wide provider registry under the REAL
     /// kind, so they cannot share the parallel pool.
@@ -46,9 +53,11 @@ namespace KhaozEngine.Tests.Gpu
             => Assert.NotEqual(GpuBackendKind.Metal, GpuBackendKind.MetalNative);
 
         /// <summary>
-        /// Both implementations answer the Metal family predicate, and nothing else does (decision M-I5). Unlike
-        /// <c>IsVulkan</c>, which was pinned ahead of its first reader, this one lands with two readers already
-        /// waiting: the frame-cap pair below.
+        /// Both implementations answer the Metal family predicate, and nothing else does (decision M-I5). It
+        /// landed with two readers waiting, the frame-cap pair below, and gate 5's measurement then took both of
+        /// them back to an equality against the incumbent, so the predicate has none today. It is still pinned
+        /// here: it is public API, and the question it asks is the right one for the next site that reasons about
+        /// the Metal API rather than about Veldrid's implementation of it.
         /// </summary>
         [Fact]
         public void IsMetal_CoversBothImplementations_AndNothingElse()
@@ -218,32 +227,41 @@ namespace KhaozEngine.Tests.Gpu
         // --- rows 9 and 10: FrameCap.Resolve and DisplaySettings.RequiresFrameCapWarning. THE FIRST TWO OF THE
         // THREE SILENT SITES, and the first append for which these rows are not correct by default. Both apply a
         // real software cap only on Metal, so an appended Metal member left in the uncapped arm would take the
-        // cap away from a native Mac client with nothing failing anywhere. Both route through IsMetal() now, and
-        // decision M-W3 rules that the ARM is a gate-5 MEASUREMENT rather than an assumption, with the Metal arm
-        // as the conservative default. ---
+        // cap away from a native Mac client with nothing failing anywhere. Both routed through IsMetal() at the
+        // append because decision M-W3 rules that the ARM is a gate-5 MEASUREMENT rather than an assumption, and
+        // the capped arm was the conservative default until it was read.
+        //
+        // GATE 5 READ IT ON 2026-08-11 AND THE ARM FLIPPED FOR MetalNative. Three legs: an uncapped 8000-frame
+        // field capture with vsync on blocked in the drawable acquire exactly 1.000 times per frame for 15.175 ms
+        // against a 16.669 ms median frame, a human windowed pass on a display pinned to 120 Hz sat at 120 fps,
+        // and toggling vsync OFF mid-session jumped past 700 fps with visible tearing, which is what rules out
+        // any other bottleneck as the source of the pacing. The native present throttles the CPU from vsync
+        // alone, exactly as Direct3D11Native's and VulkanNative's do, so a software cap at the refresh cannot
+        // bind and the warning would be noise. The capped arm is the incumbent's alone again. ---
 
         /// <summary>
-        /// The native kind resolves EXACTLY like the incumbent, which is the conservative default and not a
-        /// finding. If the native present turns out to throttle the CPU from vsync alone, a cap at the display
-        /// refresh does not bind and costs nothing. If it does not, the cap is required. Gate 5's mid-session
-        /// vsync toggle reads which, and this row is what a later edit has to come through to change it.
+        /// The native kind is UNCAPPED where the incumbent caps, which is gate 5's measured answer rather than a
+        /// default. Both halves are asserted in one row deliberately: the interesting failure is not "the native
+        /// kind reads 0", it is the two kinds agreeing, which is what an over-wide edit in either direction would
+        /// produce and what the conservative arm this replaced actually did.
         /// </summary>
         [Fact]
-        public void FrameCapAuto_CapsTheNativeKindExactlyLikeTheIncumbent()
+        public void FrameCapAuto_LeavesTheNativeKindUncapped_UnlikeTheIncumbent()
         {
-            Assert.Equal(144, FrameCap.Auto.Resolve(GpuBackendKind.MetalNative, PresentMode.Vsync, 144));
-            Assert.Equal(FrameCap.Auto.Resolve(GpuBackendKind.Metal, PresentMode.Vsync, 144),
-                FrameCap.Auto.Resolve(GpuBackendKind.MetalNative, PresentMode.Vsync, 144));
+            Assert.Equal(0, FrameCap.Auto.Resolve(GpuBackendKind.MetalNative, PresentMode.Vsync, 144));
+            Assert.Equal(144, FrameCap.Auto.Resolve(GpuBackendKind.Metal, PresentMode.Vsync, 144));
 
             // The fallback arm too, since a windowed Mac session with no live refresh rate is the case the
-            // constant exists for.
+            // constant exists for, and it is the arm that would silently reintroduce a 120 Hz cap.
+            Assert.Equal(0, FrameCap.Auto.Resolve(GpuBackendKind.MetalNative, PresentMode.Vsync, displayRefreshHz: 0));
             Assert.Equal(FrameCap.DefaultMetalAutoCapHz,
-                FrameCap.Auto.Resolve(GpuBackendKind.MetalNative, PresentMode.Vsync, displayRefreshHz: 0));
+                FrameCap.Auto.Resolve(GpuBackendKind.Metal, PresentMode.Vsync, displayRefreshHz: 0));
         }
 
         /// <summary>
-        /// An Immediate present is still an intentional free-run on the native kind, which is what keeps the
-        /// widening honest: the new arm is about Metal, not about capping everything on a Mac.
+        /// An Immediate present is still an intentional free-run on the native kind. Implied by the row above now
+        /// that the whole backend is uncapped, and kept because it is the pin that survives the arm moving again:
+        /// #380's present-pacing work is stated against exactly this site.
         /// </summary>
         [Fact]
         public void FrameCapAuto_LeavesAnImmediatePresentUncapped_OnTheNativeKind()
@@ -251,9 +269,8 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// An explicit consumer choice still outranks the backend-aware default on the native kind, both ways.
-        /// Asserted because the widening touched the Auto arm and a mistake there is invisible: a
-        /// <see cref="FrameCap.Uncapped"/> silently becoming a cap is exactly the free-run a tester asked for and
-        /// did not get.
+        /// This is what the flip did NOT change and the half most easily lost with it: a consumer that asks for
+        /// 30 Hz on a Mac still gets 30 Hz, whatever the present does on its own.
         /// </summary>
         [Fact]
         public void AnExplicitCap_StillOutranksTheDefault_OnTheNativeKind()
@@ -263,25 +280,32 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// And the warning fires on the native kind exactly as it does on the incumbent, because the two sites
-        /// take one decision and a session that capped without saying so (or said so without capping) would be
-        /// the pair disagreeing.
+        /// And the warning is SILENT on the native kind while it still fires on the incumbent, because the two
+        /// sites take one decision and a session that capped without saying so (or said so without capping) would
+        /// be the pair disagreeing. Vsync plus an uncapped frame rate is a healthy configuration there, so the
+        /// warning telling a tester to set a cap would be advice against the measurement.
         /// </summary>
         [Fact]
-        public void FrameCapWarning_FiresOnTheNativeKind_ExactlyLikeTheIncumbent()
+        public void FrameCapWarning_IsSilentOnTheNativeKind_UnlikeTheIncumbent()
         {
-            Assert.True(DisplaySettings.RequiresFrameCapWarning(
+            Assert.False(DisplaySettings.RequiresFrameCapWarning(
                 GpuBackendKind.MetalNative, PresentMode.Vsync, frameCapHz: 0));
+            Assert.True(DisplaySettings.RequiresFrameCapWarning(
+                GpuBackendKind.Metal, PresentMode.Vsync, frameCapHz: 0));
+
+            // And the other two inputs still gate it on the incumbent, so the flip narrowed the BACKEND arm and
+            // nothing else.
             Assert.False(DisplaySettings.RequiresFrameCapWarning(
-                GpuBackendKind.MetalNative, PresentMode.Vsync, frameCapHz: 60));
+                GpuBackendKind.Metal, PresentMode.Vsync, frameCapHz: 60));
             Assert.False(DisplaySettings.RequiresFrameCapWarning(
-                GpuBackendKind.MetalNative, PresentMode.Immediate, frameCapHz: 0));
+                GpuBackendKind.Metal, PresentMode.Immediate, frameCapHz: 0));
         }
 
         /// <summary>
         /// The two sites agree on every backend, which is the claim that actually matters and the one neither
         /// site can make alone: the warning tells a consumer to set a cap precisely when the default would not
-        /// supply one. Walked over every member so a fourth append cannot move one site and not the other.
+        /// supply one. Walked over every member so a fourth append cannot move one site and not the other, and it
+        /// is what would have caught gate 5's flip landing at one site only.
         /// </summary>
         [Fact]
         public void TheTwoFrameCapSites_AgreeOnEveryBackend()
@@ -298,17 +322,21 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// The OTHER two native kinds stay out of the capped arm, which is the half a family predicate makes easy
-        /// to get wrong. Their presents throttle the CPU from vsync exactly as their incumbents' do, so each must
-        /// behave identically to the implementation it is being A/B'd against.
+        /// The capped arm is ONE member wide, walked over the whole enum. Stated this way rather than as a list
+        /// of the other native kinds because that is what the flip made true: every native backend's present
+        /// throttles the CPU from vsync, MetalNative's by gate 5's measurement and the other two by their
+        /// incumbents', so each behaves identically to the implementation it is being A/B'd against and only the
+        /// Veldrid Metal present still needs a software cap.
         /// </summary>
-        [Theory]
-        [InlineData(GpuBackendKind.Direct3D11Native)]
-        [InlineData(GpuBackendKind.VulkanNative)]
-        public void TheOtherNativeKinds_AreUntouchedByTheMetalArm(GpuBackendKind kind)
+        [Fact]
+        public void OnlyTheIncumbentMetalKind_IsInTheCappedArm()
         {
-            Assert.Equal(0, FrameCap.Auto.Resolve(kind, PresentMode.Vsync, 144));
-            Assert.False(DisplaySettings.RequiresFrameCapWarning(kind, PresentMode.Vsync, frameCapHz: 0));
+            foreach (GpuBackendKind kind in Enum.GetValues<GpuBackendKind>())
+            {
+                bool expected = kind == GpuBackendKind.Metal;
+                Assert.Equal(expected, FrameCap.Auto.Resolve(kind, PresentMode.Vsync, 144) > 0);
+                Assert.Equal(expected, DisplaySettings.RequiresFrameCapWarning(kind, PresentMode.Vsync, 0));
+            }
         }
 
         // --- row 11: GoldenCompare, at BOTH filename sites (decision M-I3) ---

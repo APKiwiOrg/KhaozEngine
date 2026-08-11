@@ -129,6 +129,14 @@ namespace KhaozEngine.Tests.Gpu
     /// which is also the stronger guarantee: xUnit runs the classes of ONE collection in sequence, where two
     /// separate non-parallel collections are only ordered by the runner's own rules.</para>
     ///
+    /// <para><b>AND THE FRAME-CAPTURE ARM, WHICH IS THE THIRD PIECE OF SHARED STATE.</b>
+    /// <c>GpuFrameCapture</c> holds ONE armed output path for the whole process, and M-G5 gave the native Metal
+    /// backend its own consumption site, so there are now two suites that arm it: <c>GpuFrameCaptureTests</c>,
+    /// which is device-free, and <c>MetalFrameCaptureTests</c>, which builds a device and therefore belongs here
+    /// on the original reason. Two classes arming in parallel consume each other's path, so both live here, which
+    /// is the same resolution the completion registry got and for the same reason: a class can only be in one
+    /// collection.</para>
+    ///
     /// <para>Per-assembly, like every xUnit collection definition, and there are TWO copies now.
     /// <c>KhaozEngine.MapEditor.Tests</c> carries an identical definition of its own, the way
     /// <c>AllocSensitive</c> already did, because four of its rows build a whole device across two classes and

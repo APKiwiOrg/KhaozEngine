@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Metal.Internal;
 using KhaozEngine.Gpu.Metal.Internal.ObjC;
 using Xunit;
@@ -51,6 +52,13 @@ namespace KhaozEngine.Tests.Gpu
     /// <c>MetalCompileOptionsProbe</c> open pools of their own anyway, and neither is on any consumer path. The
     /// probe's duplicate declaration set was a different thing and row 4 deleted it, which is the other half of
     /// the handoff on https://github.com/APKiwiOrg/KhaozEngine/issues/570.</para>
+    ///
+    /// <para><b>AND ONE TYPE IN THE OTHER ASSEMBLY GETS ITS OWN NARROW ROOT SET.</b>
+    /// <see cref="MetalFrameCapture"/> lives in <c>KhaozEngine.Gpu</c> and keeps its own <c>objc_msgSend</c>
+    /// declarations, exactly like the spikes, so the walk above cannot see it for two independent reasons. Unlike
+    /// the spikes it IS on a consumer path: a present boundary calls it, on a frame loop, which is precisely the
+    /// case M-N5 exists for. Its pool discipline was correct and unguarded, so a second row below reads the same
+    /// IL for that type alone, with the roots being its internal members and one documented exception.</para>
     /// </summary>
     public sealed class MetalAutoreleaseArchitectureTests
     {
@@ -144,6 +152,122 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Contains("MetalBackendProvider.CreateHeadless", roots, StringComparer.Ordinal);
             Assert.Contains("MetalBackendProvider.IsSupported", roots, StringComparer.Ordinal);
         }
+
+        // ---- The frame capture, in the other assembly ----------------------------------------------------------
+
+        /// <summary>The one member of <see cref="MetalFrameCapture"/> that may reach libobjc without pushing a
+        /// pool. Its own remarks say why, and the row below quotes the reason rather than restating it: it creates
+        /// no Objective-C object at all, because <c>objc_getClass</c> and <c>sel_registerName</c> allocate nothing
+        /// and <c>+sharedCaptureManager</c> is a retained singleton rather than an autoreleased instance.</summary>
+        const string CaptureMemberWithNoPool = nameof(MetalFrameCapture.CaptureIsEnabledForThisProcess);
+
+        /// <summary>
+        /// M-N5 ON <see cref="MetalFrameCapture"/>, which the walk above cannot reach. Every internal member that
+        /// reaches one of that type's own libobjc imports pushes a pool of its own, with exactly one allowlisted
+        /// exception. Before this row the discipline was written once, correctly, and nothing would have noticed a
+        /// member added later that sent a message with no pool under it: the type is called at a present boundary,
+        /// so what leaks there leaks once per frame for the life of the process.
+        /// </summary>
+        [Fact]
+        public void TheFrameCapturesOwnMembersPushTheirOwnPool()
+        {
+            var violations = new List<string>();
+            foreach (MethodBase entry in CaptureRoots())
+            {
+                if (entry.Name == CaptureMemberWithNoPool) continue;
+                if (!ReachesAnObjCImport(entry, new HashSet<MethodBase>())) continue;
+                if (!PushesAPool(entry)) violations.Add(Describe(entry));
+            }
+
+            Assert.True(violations.Count == 0,
+                "These members of MetalFrameCapture reach one of its libobjc imports with no autorelease pool "
+                + "pushed on the way, which is decision M-N5's failure in the one type the architecture walk over "
+                + "KhaozEngine.Gpu.Metal cannot see. The NSString, the NSURL and the shared capture manager are "
+                + "autoreleased, and a present boundary on a thread with no pool holds them for the life of the "
+                + "process. Push one with 'IntPtr pool = PoolPush();' inside the try, and pop it in the finally.\n"
+                + string.Join("\n", violations));
+        }
+
+        /// <summary>
+        /// THE POSITIVE CONTROL FOR THAT ROW, and without it the one above would pass on a walk that found
+        /// nothing: both members really do reach a message send, and both really are recognised as pushing a pool,
+        /// so a green run means the rule held rather than that the IL reader came back empty.
+        /// </summary>
+        [Fact]
+        public void TheWalk_SeesBothHalvesOfTheFrameCapturesPoolDiscipline()
+        {
+            foreach (string name in new[] { nameof(MetalFrameCapture.Start), nameof(MetalFrameCapture.Stop) })
+            {
+                MethodBase member = CaptureMember(name);
+                Assert.True(ReachesAnObjCImport(member, new HashSet<MethodBase>()),
+                    $"the IL walk found no libobjc import under MetalFrameCapture.{name}, which means the walk is "
+                    + "broken rather than that the member is clean: it drives MTLCaptureManager, and every step of "
+                    + "that is a message send.");
+                Assert.True(PushesAPool(member),
+                    $"MetalFrameCapture.{name} no longer pushes an autorelease pool.");
+            }
+        }
+
+        /// <summary>
+        /// AND THE ONE EXCEPTION IS STILL EARNED. The allowlist entry is only sound while that member creates no
+        /// Objective-C object, so this row asserts the two halves of its documented rationale: it does reach
+        /// libobjc, and it pushes no pool. A member that started pushing one would make the exemption stale, and a
+        /// member that stopped touching libobjc would make it pointless.
+        /// </summary>
+        [Fact]
+        public void TheFrameCapturesOnePoolFreeMemberIsTheDocumentedOne()
+        {
+            MethodBase member = CaptureMember(CaptureMemberWithNoPool);
+
+            Assert.True(ReachesAnObjCImport(member, new HashSet<MethodBase>()));
+            Assert.False(PushesAPool(member),
+                "MetalFrameCapture." + CaptureMemberWithNoPool + " pushes an autorelease pool now, so the reason "
+                + "it is allowlisted here (\"IT PUSHES NO POOL OF ITS OWN ... it creates no Objective-C object at "
+                + "all\") no longer describes it. Either the member gained an autoreleased object, in which case "
+                + "the pool is right and this allowlist entry must go, or the push is unnecessary.");
+        }
+
+        // The roots for that type: its internal members, which are the only ones anything outside it can call. A
+        // private helper is covered through its caller, exactly as the walk above covers a pooled delegation.
+        static IReadOnlyList<MethodBase> CaptureRoots()
+            => typeof(MetalFrameCapture)
+                .GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static
+                    | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                .Where(m => m.IsAssembly)
+                .ToArray();
+
+        static MethodBase CaptureMember(string name)
+            => typeof(MetalFrameCapture).GetMethod(name, BindingFlags.NonPublic | BindingFlags.Public
+                | BindingFlags.Static)
+                ?? throw new InvalidOperationException($"MetalFrameCapture.{name} is gone.");
+
+        // Whether anything under this member calls one of the type's own libobjc imports, the pool pair excepted.
+        // Every import there is either a message send or a runtime lookup that stands next to one, so the rule
+        // does not have to tell them apart: what it needs to know is whether the member goes near libobjc at all.
+        static bool ReachesAnObjCImport(MethodBase method, HashSet<MethodBase> seen)
+        {
+            if (!seen.Add(method)) return false;
+
+            foreach (MethodBase callee in Callees(method))
+            {
+                if (callee.DeclaringType != typeof(MetalFrameCapture)) continue;
+                if (IsPoolCall(callee)) continue;
+                if (IsNativeImport(callee)) return true;
+                if (ReachesAnObjCImport(callee, seen)) return true;
+            }
+
+            return false;
+        }
+
+        // POSITION-BLIND for the reason OpensAPool is, and the same comment applies: every push here is the first
+        // statement of its try, and a positional check would have to model control flow for a case nobody writes.
+        static bool PushesAPool(MethodBase method)
+            => Callees(method).Any(c => c.DeclaringType == typeof(MetalFrameCapture) && c.Name == "PoolPush");
+
+        static bool IsPoolCall(MethodBase method) => method.Name is "PoolPush" or "PoolPop";
+
+        static bool IsNativeImport(MethodBase method)
+            => (method.Attributes & MethodAttributes.PinvokeImpl) != 0;
 
         // ---- The entry-point set ------------------------------------------------------------------------------
 

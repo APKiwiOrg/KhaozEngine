@@ -8852,13 +8852,13 @@ using KhaozEngine.Gpu.Metal;
 KhaozEngineMetal.Register();   // unconditionally, on every OS
 ```
 
-**It creates a HEADLESS device with RESOURCES that records and submits, and it cannot present, which is the
-honest state of it.** Registration, the machine probe and headless creation are real: a `MetalNative` device
-holds an `MTLDevice` and one `MTLCommandQueue`, answers `Backend`, part of `Capabilities`, `Diagnostics`, both
-`Submit` overloads, `WaitForIdle` and `Dispose`, records and submits a command list, creates real resources
-through `Factory` (buffers, textures, samplers, fences and framebuffers), exposes the shared `PointSampler` and
-`LinearSampler` pair, takes the device-level `UpdateBuffer` and `UpdateTexture`, answers `Map` and `Unmap`
-for staging resources, COMPILES SHADERS through `CreateShadersFromSpirv` and
+**It creates a HEADLESS device with RESOURCES that records, DRAWS and submits, and it cannot present, which is
+the honest state of it.** Registration, the machine probe and headless creation are real: a `MetalNative` device
+holds an `MTLDevice` and one `MTLCommandQueue`, answers `Backend`, the whole of `Capabilities` and `Counters`,
+`Diagnostics`, both `Submit` overloads, `WaitForIdle` and `Dispose`, records and submits a command list, creates
+real resources through `Factory` (buffers, textures, samplers, fences and framebuffers), exposes the shared
+`PointSampler` and `LinearSampler` pair, takes the device-level `UpdateBuffer` and `UpdateTexture`, answers
+`Map` and `Unmap` for staging resources, COMPILES SHADERS through `CreateShadersFromSpirv` and
 `CreateComputeShaderFromSpirv`, creates the RESOURCE LAYOUTS and RESOURCE SETS a pipeline binds through, and
 builds GRAPHICS AND COMPUTE PIPELINES. A recording can BIND either pipeline, BIND a framebuffer and clear it,
 with the clear landing on the attachment it names, and BIND RESOURCE SETS through all four `Set*ResourceSet`
@@ -9045,6 +9045,41 @@ error are read when it finishes, in every configuration, and the first failure l
 the telemetry session header's `deviceLossReason` field. The Veldrid Metal path cannot do this: it reads
 `status` in one place and never reads `error`, so a device loss there is invisible to the engine and to
 telemetry.
+
+**`GpuCapabilities` off a `MetalNative` device is identical to the Veldrid Metal backend's, member for member.**
+There are no permitted differences at all, a test compares both devices in one process, and it carries a
+reflection check that the comparison covers the whole struct so a member added later cannot slip past it. Seven
+of the nine members are constants of what the incumbent answers, `MaxMsaaSampleCount` reproduces its walk over
+`-supportsTextureSampleCount:` from 32 downward, and `DeviceName` is the device's own `-name` untouched. The
+practical consequence for a consumer is that `AntiAliasing.ResolveFor` clamps to the same number on both Metal
+paths, so a scene renders at the same sample count whichever one is selected.
+
+**`GpuDeviceCounters.HasValue` is true on a `MetalNative` device and false on the Veldrid Metal path**, which is
+the difference between a capture that carries GPU columns and one that carries none. Every channel is
+cumulative since the device was created, so a window is the difference between two sampled rows.
+`BackpressureStallCount` here counts the uniform ring's segment acquire alone, so a non-zero reading is
+unambiguously about `KE_METAL_FRAMES_IN_FLIGHT`, where the same field on `VulkanNative` also folds in a command
+list waiting on its own oldest buffer slot. `FramesBegun` and the acquire pair belong to the present boundary,
+so a headless device reports zero for all three, truthfully rather than as a placeholder.
+`GpuDeviceDiagnostics.SoftwareAdapter` is `false` with confidence rather than null, because Apple ships no
+software Metal rasterizer, and the Veldrid Metal path correctly reports null there because it cannot answer.
+
+**`GpuFrameCapture.ArmNext(path)` works on `MetalNative` too, and it needs no reflection to do it.** The
+capture names the `MTLCommandQueue` this backend created, where the Veldrid Metal path has to find Veldrid's
+private queue field by reflection and skips the capture if it has moved. `MTL_CAPTURE_ENABLED=1` must be in the
+environment BEFORE the process launches, the same process-launch rule the validation variables have:
+
+```bash
+MTL_CAPTURE_ENABLED=1 dotnet run --project <your game>
+```
+
+Without it nothing is captured and nothing is logged as an error, because the capture asks Metal whether the
+GPU-trace destination is supported and gets no. An arm is consumed at a present, so a headless device consumes
+none, and the trace covers one whole frame between two presents rather than a single `Submit`. It works end to
+end once row 15's swapchain present lands
+([#581](https://github.com/APKiwiOrg/KhaozEngine/issues/581)): the native consumption site exists and has run,
+but nothing on this backend presents yet, so an arm taken today is consumed only by the test that drives that
+boundary call directly.
 
 Call it unconditionally and on every OS, exactly as you would the other two, and for the Direct3D 11 package's
 reason rather than the Vulkan package's. Metal IS an OS-specific API, so this package carries a

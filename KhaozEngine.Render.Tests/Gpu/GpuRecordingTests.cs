@@ -225,6 +225,57 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(2, device.Begins);
         }
 
+        /// <summary>
+        /// A scope is a struct, so nothing stops it being disposed twice. Ending a list that is not recording is
+        /// what the native backends throw on, so the second call must reach the list not at all.
+        /// </summary>
+        [Fact]
+        public void Disposing_a_scope_twice_ends_the_list_once()
+        {
+            using var device = new OpenListTrackingGpuDevice();
+            using IGpuCommandList cl = device.Factory.CreateCommandList();
+
+            GpuRecordingScope scope = GpuRecording.Open(device, cl, "a pass");
+            scope.Dispose();
+            scope.Dispose();
+            scope.Dispose();
+
+            Assert.Equal(0, device.OpenLists);      // a second End would have driven this negative
+            Assert.Null(GpuRecording.OpenOwner(device));
+
+            using (GpuRecording.Open(device, cl, "the next pass")) { }
+            Assert.Equal(2, device.Begins);
+            Assert.Equal(0, device.OpenLists);
+        }
+
+        /// <summary>
+        /// The copy hazard proper, and the reason the release is matched against the LIST rather than trusting
+        /// whoever calls it. A struct copies silently, so a scope can outlive the recording it named: disposing
+        /// that leftover must not end a stale list, and must not release a claim that now belongs to somebody
+        /// else entirely.
+        /// </summary>
+        [Fact]
+        public void A_stale_copy_of_a_scope_leaves_the_recording_that_followed_it_alone()
+        {
+            using var device = new OpenListTrackingGpuDevice();
+            using IGpuCommandList first = device.Factory.CreateCommandList();
+            using IGpuCommandList second = device.Factory.CreateCommandList();
+
+            GpuRecordingScope scope = GpuRecording.Open(device, first, "the first pass");
+            GpuRecordingScope stale = scope;        // silently, exactly as an assignment or an argument would
+            scope.Dispose();                        // the first pass is over and the device is free
+
+            using (GpuRecording.Open(device, second, "the pass that followed"))
+            {
+                stale.Dispose();
+                Assert.Equal("the pass that followed", GpuRecording.OpenOwner(device));
+                Assert.Equal(1, device.OpenLists);
+            }
+
+            Assert.Equal(0, device.OpenLists);
+            Assert.Null(GpuRecording.OpenOwner(device));
+        }
+
         /// <summary>The not-recording scope a frame loop holds on a frame it decided not to render.</summary>
         [Fact]
         public void The_default_scope_disposes_to_nothing()

@@ -85,7 +85,13 @@ namespace KhaozEngine.Gpu
     {
         // One per device, and its own lock. Everything the register does to a device is short: read the owner,
         // claim it, release it. The expensive part (the backend's Begin) happens outside.
-        sealed class Slot { internal string? Owner; }
+        // Commands is the identity half of the claim: it is what lets a release ask "am I still the open one"
+        // rather than trusting the caller, which is what makes a copied scope harmless.
+        sealed class Slot
+        {
+            internal string? Owner;
+            internal IGpuCommandList? Commands;
+        }
 
         static readonly ConditionalWeakTable<IGpuDevice, Slot> Slots = new();
 
@@ -135,6 +141,7 @@ namespace KhaozEngine.Gpu
             {
                 if (slot.Owner is { } open) throw new GpuNestedRecordingException(open, owner);
                 slot.Owner = owner;
+                slot.Commands = commands;
             }
 
             try { commands.Begin(); }
@@ -143,17 +150,42 @@ namespace KhaozEngine.Gpu
                 // A backend may refuse the Begin for its own reasons (the native Metal list refuses a second
                 // Begin on ITSELF, since it takes a fresh command buffer per recording). Nothing was begun, so
                 // nothing may stay claimed: a device left marked as recording would refuse every later frame.
-                Close(device);
+                Release(device, commands, end: false);
                 throw;
             }
             return new GpuRecordingScope(device, commands);
         }
 
-        /// <summary>Release the device's claim. Idempotent: a slot that is already clear stays clear.</summary>
-        internal static void Close(IGpuDevice device)
+        /// <summary>End <paramref name="commands"/> and release the device's claim, if that list is still the one
+        /// holding it. What <see cref="GpuRecordingScope.Dispose"/> calls.</summary>
+        internal static void EndAndRelease(IGpuDevice device, IGpuCommandList commands)
+            => Release(device, commands, end: true);
+
+        // THE OWNER-MATCHED RELEASE, and the match is the point. A GpuRecordingScope is a struct, so it copies
+        // silently, and before this it ended its list and cleared the device unconditionally: a second Dispose
+        // ended a list that was no longer recording (which the native backends throw on) and a copy left over
+        // from an earlier scope released whatever recording happened to be open by then. Matching the list makes
+        // both of those nothing at all.
+        //
+        // The End runs while the claim is still held, so the device is never briefly free with a list still open,
+        // and it runs inside the finally so an End that faults cannot leave the device marked as recording for
+        // ever. Holding the lock across it is safe in a way holding it across Begin was not: End seals a list
+        // rather than waiting on the GPU, and the lock is this device's own.
+        //
+        // `end` is false only on the Begin-failure path above, where there is no recording to seal.
+        static void Release(IGpuDevice device, IGpuCommandList commands, bool end)
         {
             if (!Slots.TryGetValue(device, out Slot? slot)) return;
-            lock (slot) slot.Owner = null;
+            lock (slot)
+            {
+                if (!ReferenceEquals(slot.Commands, commands)) return;
+                try { if (end) commands.End(); }
+                finally
+                {
+                    slot.Owner = null;
+                    slot.Commands = null;
+                }
+            }
         }
     }
 
@@ -161,6 +193,14 @@ namespace KhaozEngine.Gpu
     /// One open recording, returned by <see cref="GpuRecording.Open"/>. Disposing it ends the command list and
     /// releases the device's claim, in that order, and the release happens even when the end throws: a device
     /// left permanently marked as recording would refuse every later frame for a fault that already happened.
+    /// <para>
+    /// IDEMPOTENT, AND SO IS EVERY COPY OF IT. This is a struct, so it copies whenever it is assigned, passed or
+    /// captured, and a copy is indistinguishable from the original. Disposal is therefore matched against the
+    /// list the device's claim actually names: the FIRST dispose of a scope ends its list and releases, and a
+    /// second dispose, or a copy left over from a recording that has already finished, does nothing at all.
+    /// Without that match a stale copy would end a list that is not recording, which the native backends throw
+    /// on, and would release a claim belonging to whatever recording had opened since.
+    /// </para>
     /// <para>The default value is the NOT-RECORDING scope, which disposes to nothing. That is what a frame loop
     /// holds on a frame it decided not to render.</para>
     /// </summary>
@@ -178,12 +218,12 @@ namespace KhaozEngine.Gpu
         /// <summary>The list this scope opened, or null for the default not-recording scope.</summary>
         public IGpuCommandList? Commands => _commands;
 
-        /// <summary>End the recording and release the device's claim.</summary>
+        /// <summary>End the recording and release the device's claim, if this scope's list is still the one
+        /// holding it. See the type's note: a second call and a stale copy both do nothing.</summary>
         public void Dispose()
         {
             if (_device is null || _commands is null) return;
-            try { _commands.End(); }
-            finally { GpuRecording.Close(_device); }
+            GpuRecording.EndAndRelease(_device, _commands);
         }
     }
 }

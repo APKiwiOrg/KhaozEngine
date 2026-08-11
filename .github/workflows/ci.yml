@@ -44,9 +44,10 @@ jobs:
       # The three whole-tree convention guards, run unconditionally: every event, both paths, before the
       # dotnet setup below and outside ci-selective-test.sh's docs-only skip (a docs-only push is exactly
       # when the dash and prose guards matter most). They are seconds-fast text sweeps over tracked files,
-      # so there is nothing to gate them on. .githooks/pre-commit runs the cheaper STAGED legs of dashes
-      # and prose at commit time; tree mode is what catches a commit that bypassed the hook (--no-verify,
-      # another IDE, the GitHub web UI), which the staged leg by construction cannot see. Each script
+      # so there is nothing to gate them on. .githooks/pre-commit covers the cheaper STAGED legs at commit
+      # time, calling scripts/check-prose.sh for prose and scanning the staged diff for dashes with its own
+      # inline grep (it never invokes check-dashes.sh). Tree mode is what catches a commit that bypassed
+      # the hook (--no-verify, another IDE, the GitHub web UI), which no staged leg can see. Each script
       # exits 1 on a violation and 0 clean, so the default bash -e shell fails the job on the first one.
       # Both ratchets, though, exit 0 with only a stderr notice when their baseline file is missing, which
       # is right for propagating this step into a repo that has not adopted them and wrong here, where a

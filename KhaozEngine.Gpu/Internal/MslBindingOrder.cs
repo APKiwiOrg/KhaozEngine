@@ -246,19 +246,43 @@ namespace KhaozEngine.Gpu.Internal
             return name.Length >= 2 && name[0] == '_' && uint.TryParse(name.AsSpan(1), out id);
         }
 
-        /// <summary>The position of the entry point's opening parenthesis, found at the start of a line so a
-        /// stage keyword occurring inside an emitted identifier cannot be mistaken for it.</summary>
+        /// <summary>The position of the entry point's opening parenthesis, found only where a declaration can
+        /// actually begin so a stage keyword occurring inside an emitted identifier cannot be mistaken for
+        /// it.</summary>
         static int EntryPointArguments(string msl, string stage)
         {
             string keyword = stage == Compute ? "kernel " : stage + " ";
             for (int i = 0; i <= msl.Length - keyword.Length; i++)
             {
-                if (i != 0 && msl[i - 1] != '\n') continue;
+                if (!BeginsADeclaration(msl, i)) continue;
                 if (string.CompareOrdinal(msl, i, keyword, 0, keyword.Length) != 0) continue;
                 int open = msl.IndexOf('(', i);
                 if (open >= 0) return open;
             }
             return -1;
+        }
+
+        /// <summary>
+        /// Whether a declaration can begin at this position: the start of the source, the start of a line, or
+        /// straight after a function attribute's closing bracket.
+        /// <para>
+        /// THE BRACKET CASE IS NOT A NICETY. SPIRV-Cross emits a function attribute on the SAME LINE as the
+        /// entry point it decorates, so a fragment shader that declares <c>layout(early_fragment_tests) in;</c>
+        /// comes out as <c>[[ early_fragment_tests ]] fragment main0_out main0(...)</c>. A line-start-only test
+        /// misses that entry point entirely, and because <see cref="Resolve"/> returns null rather than throwing
+        /// on an entry point it could not read, the shader would silently lose BOTH its fragment-stage index
+        /// order check AND the pair's prefix check while validating clean.
+        /// </para>
+        /// </summary>
+        static bool BeginsADeclaration(string msl, int i)
+        {
+            for (int j = i - 1; j >= 0; j--)
+            {
+                char c = msl[j];
+                if (c == '\n' || c == ']') return true;
+                if (c != ' ' && c != '\t' && c != '\r') return false;
+            }
+            return true;
         }
 
         // Matched by DEPTH, not by the first closing parenthesis: every argument carries an attribute like

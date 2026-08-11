@@ -97,6 +97,39 @@ namespace KhaozEngine.Tests.Gpu
             ShaderValidation.ValidatePair(lf, ShaderSources.WaterFrag, "WaterUnmodified");
         }
 
+        /// <summary>
+        /// AN ATTRIBUTED ENTRY POINT IS STILL READ. SPIRV-Cross emits a function attribute on the SAME LINE as
+        /// the entry point it decorates, so a fragment declaring <c>layout(early_fragment_tests) in;</c> comes
+        /// out as <c>[[ early_fragment_tests ]] fragment main0_out main0(...)</c>. A parse that accepts the stage
+        /// keyword only at the start of a line loses that entry point, and since an entry point the parse cannot
+        /// find is SILENCE rather than a throw, such a shader would validate clean with no fragment index-order
+        /// check and no prefix check at all. The reversed reference order below is the proof the entry point was
+        /// read: it is rejected, and putting the two reads back in binding order passes again.
+        /// </summary>
+        [Fact]
+        public void AFragmentDeclaringEarlyFragmentTestsIsStillChecked()
+        {
+            const string reversed = "texture(sampler2D(B, S), vec2(0.5)) + texture(sampler2D(A, S), vec2(0.5))";
+            const string inOrder = "texture(sampler2D(A, S), vec2(0.5)) + texture(sampler2D(B, S), vec2(0.5))";
+            const string frag = @"#version 450
+layout(early_fragment_tests) in;
+layout(set=0, binding=0) uniform texture2D A;
+layout(set=0, binding=1) uniform texture2D B;
+layout(set=0, binding=2) uniform sampler S;
+layout(location=0) out vec4 o;
+void main() { o = " + reversed + @"; }";
+
+            var ex = Assert.Throws<ShaderValidationException>(
+                () => ShaderValidation.ValidatePair(PositionOnlyVert, frag, "EarlyFragmentTestsReversed"));
+            Assert.Contains("EarlyFragmentTestsReversed", ex.Message);
+            Assert.Contains("Metal fragment entry point", ex.Message);
+            Assert.Contains("layout(set=0, binding=1) at texture index 0", ex.Message);
+            Assert.Contains("layout(set=0, binding=0)", ex.Message);
+
+            ShaderValidation.ValidatePair(
+                PositionOnlyVert, frag.Replace(reversed, inOrder), "EarlyFragmentTestsInBindingOrder");
+        }
+
         // ---- 2. The compute guard, which could not see a same-kind swap before 17.36.0 -------------------
 
         /// <summary>

@@ -555,5 +555,47 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
             IntPtr sourceTexture, nuint sourceSlice, nuint sourceLevel, MTLOrigin sourceOrigin, MTLSize sourceSize,
             IntPtr destinationTexture, nuint destinationSlice, nuint destinationLevel,
             MTLOrigin destinationOrigin);
+
+        // ---- The swapchain row's three shapes -----------------------------------------------------------------
+        //
+        // All three carry a homogeneous floating-point aggregate of at most FOUR doubles, which is the one arm64
+        // class row 1's spike checked by VALUE rather than by acceptance (SendVoidClearColor's four-double HFA and
+        // the -setContentsScale: round trip). Two of them RETURN one, which is the direction this file did not
+        // have: an HFA return lands in d0 to d3 exactly as an HFA argument does, so there is no
+        // objc_msgSend_stret to reach for and none exists on arm64 to reach for anyway.
+
+        /// <summary>
+        /// A void message taking one <c>CGSize</c>, which is <c>-[CAMetalLayer setDrawableSize:]</c> (M-W1) and
+        /// the one call a resize apply is expressed through (M-W7).
+        /// <para>
+        /// TWO DOUBLES, SO <c>d0</c> AND <c>d1</c>, inside the four-member HFA limit
+        /// <see cref="SendVoidClearColor"/> sits exactly on. A wrong placement here writes a drawable size out of
+        /// two registers the layer does not read, which is a window that presents at the wrong resolution rather
+        /// than a fault, so it is the shape this row's device probe reads BACK rather than only sends.
+        /// </para>
+        /// </summary>
+        [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial void SendVoidCGSize(IntPtr receiver, IntPtr sel, CGSize size);
+
+        /// <summary>
+        /// A <c>CGSize</c>-returning bare message, which is <c>-[CAMetalLayer drawableSize]</c>. The read half of
+        /// the shape above, and what makes the write checkable by value on a real layer.
+        /// </summary>
+        [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial CGSize SendCGSize(IntPtr receiver, IntPtr sel);
+
+        /// <summary>
+        /// A <c>CGRect</c>-returning bare message, which is <c>-[NSView frame]</c> and the one place this backend
+        /// asks a Cocoa object anything at all.
+        /// <para>
+        /// FOUR DOUBLES COMING BACK, so <c>d0</c> to <c>d3</c>. See <see cref="CGRect"/> for why the incumbent's
+        /// architecture branch around <c>objc_msgSend_stret</c> is not reproduced.
+        /// </para>
+        /// </summary>
+        [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial CGRect SendCGRect(IntPtr receiver, IntPtr sel);
     }
 }

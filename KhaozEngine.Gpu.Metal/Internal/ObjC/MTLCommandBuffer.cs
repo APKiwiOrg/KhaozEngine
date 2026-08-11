@@ -219,5 +219,25 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         internal IntPtr ComputeCommandEncoder(MTLDispatchType dispatchType)
             => ObjCMsgSend.SendPtrNInt(Handle, ObjCRuntime.Sel("computeCommandEncoderWithDispatchType:"),
                 (nint)dispatchType);
+
+        /// <summary>
+        /// <c>-presentDrawable:</c>: schedule <paramref name="drawable"/> to be presented when this buffer
+        /// completes. The ONE thing M-W6's separate present command buffer carries.
+        /// <para>
+        /// ITS ORDERING IS THE QUEUE's AND NOTHING ELSE. A Metal queue executes in enqueue order and
+        /// <c>-commit</c> enqueues, so a present committed after the frame's own buffer runs after it, which is
+        /// the same guarantee encoding the present ONTO the frame's buffer would give. That is the whole reason
+        /// 11.2 can decline the idiomatic form without giving anything up.
+        /// </para>
+        /// <para>
+        /// THIS BUFFER SIGNALS NO TIMELINE VALUE, deliberately, which is why teardown drains the QUEUE rather than
+        /// the timeline (M-F5, <see cref="MetalQueueDrain"/>): a counted drain cannot see a buffer the timeline
+        /// allocated no value for.
+        /// </para>
+        /// </summary>
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal void PresentDrawable(IntPtr drawable)
+            => ObjCMsgSend.SendVoidPtr(Handle, ObjCRuntime.Sel("presentDrawable:"), drawable);
     }
 }

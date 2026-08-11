@@ -46,6 +46,14 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         /// and <c>MTLCopyAllDevices</c>, both declared on <see cref="MTLDevice"/> because both produce one).</summary>
         internal const string MetalFramework = "/System/Library/Frameworks/Metal.framework/Metal";
 
+        /// <summary>
+        /// QuartzCore, which is where <c>CAMetalLayer</c> lives. Loaded EXPLICITLY rather than assumed, because
+        /// <c>objc_getClass</c> answers nil for a class whose framework the process has not loaded: a windowed app
+        /// pulls it in through Cocoa long before the swapchain runs, and a headless test host making a layer of
+        /// its own does not. Row 1's spike found exactly that. See <see cref="CAMetalLayer.TryGetClass"/>.
+        /// </summary>
+        internal const string QuartzCoreFramework = "/System/Library/Frameworks/QuartzCore.framework/QuartzCore";
+
         // THE SELECTOR CACHE. sel_registerName is already a hash lookup inside libobjc, so this is not about
         // saving the call: it is about what the call sites are allowed to look like. Later rows send messages on
         // a frame path, and a managed dictionary hit is cheaper than a P/Invoke transition plus a strlen, so

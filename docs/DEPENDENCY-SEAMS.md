@@ -761,7 +761,9 @@ because they freeze different option sets and drift independently.
   `Internal/SpirvResourceDecorations`, which is the `(id, set, binding)` walk its binding table joins on
   (section 2.2b). That walk was written in the test project as a measurement and promoted into
   `KhaozEngine.Gpu/Internal` when the ruling took the id join, so the grant that already carried the toolchain
-  carries it as well rather than a second grant existing for it.
+  carries it as well rather than a second grant existing for it. `KhaozEngine.Gpu`'s own
+  `Internal/MslBindingOrder` reads it too, from inside the package rather than across the seam, which is what
+  lets `ShaderValidation` join an emitted Metal argument back to its declared `(set, binding)`.
 - `KhaozEngine.Gpu.Vulkan` reaches the FRONT END ONLY, because Vulkan consumes SPIR-V and
   `vkCreateShaderModule` takes the bytes verbatim, so nothing on that backend's shader path is cross-compiled.
 

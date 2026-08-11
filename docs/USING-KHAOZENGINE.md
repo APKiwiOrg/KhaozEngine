@@ -8978,8 +8978,9 @@ following first reference rather than declaration order. The native backend read
 emitted text and resolves each one back to your declared `(set, binding)` through the shader's own SPIR-V
 decorations, so what it binds is where the resource actually went. The Veldrid Metal backend counts declarations
 instead, which is why the engine's shaders still sample every texture up front in binding order and why
-`ShaderValidation.ValidateCompute` rejects a compute kernel whose kind order disagrees. Keep both habits: that
-backend ships and stays selectable.
+`ShaderValidation.ValidatePair` and `ValidateCompute` both reject a shader whose emitted index order disagrees
+with its binding order (see "It also checks the Metal binding order" under device-free shader validation). Keep
+both habits: that backend ships and stays selectable.
 
 A shader whose emission cannot be read fails at `CreateShadersFromSpirv` with a message naming the program, the
 stage and the offending argument, and it fails with no device involved, so it surfaces in a headless test run
@@ -10700,6 +10701,34 @@ shader fails CI instead of surfacing only when a player on that backend loads th
 `ShaderValidation.ValidateCompute(computeGlsl, label?)` is the single-stage sibling for a compute shader
 (see the next section).
 
+### It also checks the Metal binding order (17.36.0)
+
+This is the half that is not a compile failure anywhere. Metal has no binding decorations: the cross-compiler
+assigns each resource an index of its own, per stage, in FIRST-REFERENCE order, while the Veldrid Metal backend
+binds a resource set by counting the layout in binding order. Where those two disagree Metal reads the wrong
+resource and returns zero rather than failing, with Vulkan and Direct3D 11 perfectly correct, so the symptom is
+a wrong picture on one backend and there is nothing in the GLSL that looks wrong. This engine shipped that bug
+three times before the guard existed, and found it by image golden or bisect every time.
+
+`ValidatePair` and `ValidateCompute` both run two checks over the emitted Metal, and both throw
+`ShaderValidationException` naming the offending `layout(set=, binding=)` pairs so the message is greppable in
+your GLSL:
+
+- **Index order, per stage, over buffers AND textures AND samplers.** Each emitted argument is joined back to
+  the `(set, binding)` you wrote through that stage's own SPIR-V decorations, so a swap between two resources of
+  the SAME KIND is caught too. The fix is always the same shape: make the first reference to each resource
+  happen in binding order, hoisting a first touch into `main` when a helper function defined above it reaches a
+  later binding first. Note that a first reference is not a sample. `textureSize(sampler2D(Tex, Samp), 0)` names
+  the texture and counts.
+- **The prefix property, for a pair only.** Veldrid counts one slot per kind across the WHOLE layout while the
+  cross-compiler numbers each stage densely from 0 over only what that stage declares, so every stage's
+  resources must be a PREFIX of the layout's, per index space. A vertex-only texture placed after a fragment-only
+  one cannot be made to work at any binding number, and no reordering inside the shader bodies fixes it. Order
+  your `GpuResourceLayoutDescription` so the resources both stages read come first.
+
+Both degrade rather than false-positive. An index space carrying an argument the join cannot resolve is dropped
+silently instead of guessed at, so the guard can miss a swap but will not fail a correct shader.
+
 **It stops at the cross-compile, and that is a real gap on Direct3D 11.** It produces HLSL and never compiles
 it, so HLSL that SPIRV-Cross emits happily and FXC rejects sails straight through, as does a vertex input
 signature with a hole in it. Both have cost this engine a production incident. If you reference
@@ -10828,6 +10857,10 @@ Validate compute sources device-free in your fast test lane, the same way as a g
 public void MyComputeShaderCompilesEverywhere()
     => ShaderValidation.ValidateCompute(MyShaders.SpectrumBake, "SpectrumBake");
 ```
+
+That call also runs the Metal binding-order check described under device-free shader validation above, which is
+worth more on a compute kernel than anywhere else: a kernel typically binds several storage buffers of the same
+kind, and a helper function defined above `main` that touches a later binding first swaps them on Metal alone.
 
 ---
 

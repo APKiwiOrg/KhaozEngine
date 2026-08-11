@@ -584,6 +584,14 @@ the validator that rejects it stays and comes out with that leg. Someone will pr
 this is written down. What it can see is also worth knowing: it is compute-only and compares KIND order, so it
 cannot tell two same-kind buffers apart, which is exactly the class (a) would have been silently wrong about.
 
+Both of those limits were lifted after this ruling landed. 17.36.0
+([#323](https://github.com/APKiwiOrg/KhaozEngine/issues/323)) put the check in
+`KhaozEngine.Gpu/Internal/MslBindingOrder`, which runs on the graphics pair as well as on compute, covers
+textures and samplers alongside buffers, and resolves each emitted argument through THIS SECTION'S id join
+rather than through kinds, so a same-kind swap is now visible to it. `CheckMslBufferSlots` survives underneath
+as the fallback for a buffer space the join declines to read. The paragraph above still holds for why the
+validator stays at all: it is the Veldrid Metal leg's guard, and it comes out with that leg.
+
 **M-B2 is restored rather than changed, and it needed restoring.** Its argument is that reproducing
 `ResourceBindingModel.Improved` would be unsound because `NonVertexBufferCount + i` assumes the resource
 buffers occupy `0..NonVertexBufferCount-1`, which is exactly the CPU-side count M-B1 removes as the authority

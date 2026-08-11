@@ -12,7 +12,8 @@ processes, both shader-cache keys learn to name the cross-compiler that produced
 start pruning the version folders they leave behind, the MSAA resolve destinations gain the instrument the golden
 family is not, the Retina first frame is sized in pixels, the seam's one-open-recording-per-device rule becomes a
 refusal instead of a paragraph, two of phase 4's guards get the teeth their prose already claimed, CI starts
-gating the three whole-tree convention guards it never ran, and the ambient Gui theme stops racing the rest of
+gating the three whole-tree convention guards it never ran, the graphics shader pair finally gets the Metal
+binding-order guard the compute one has had since 16.3.0, and the ambient Gui theme stops racing the rest of
 its test assembly.
 
 ### The last-chance crash file (`CrashReport`, #607)
@@ -484,6 +485,58 @@ watcher classes polling the ambient theme: green with the fix, and with `Disable
 `RetainedWidgetStyleTests.*_Style_defaults_crisp_and_accepts_modern` `Assert.False()` shape from the issue. The
 flake reproduces on demand without the fix and not at all with it. The probe was reverted, and the two classes
 ran together 10 times over with no failure.
+
+### `ShaderValidation.ValidatePair` gains the Metal binding-order guard, and the compute one learns same-kind swaps (#323)
+
+`ValidateCompute` has rejected a Metal emission whose buffer indices disagree with binding order since 16.3.0.
+`ValidatePair` had no equivalent, which is where the same landmine cost the most: the FFT ocean's water fragment
+sampled its derivative map above the resolved scene depth, the cross-compiler swapped the two texture slots, and
+the water read its own derivative layer as the scene depth. It rendered, it just rendered wrong, on Metal only,
+and an image golden was what eventually caught it. There is no behaviour change to any shipped shader here.
+Every production pair and every compute source in the engine validates clean under the new checks, which is the
+other half of what this release establishes.
+
+**Both entry points now run the same guard, over buffers AND textures AND samplers.** Metal has no binding
+decorations, so the cross-compiler assigns each resource an index of its own in FIRST-REFERENCE order while the
+Veldrid Metal backend binds a resource set by counting the layout in binding order. A helper function defined
+above `main` that reaches a later binding first silently swaps the two, on Metal alone, with Vulkan and
+Direct3D 11 perfectly correct because they honour the decorations. `ValidatePair` checks each stage of the pair
+separately, using the `Stages` masks the emission itself carries rather than the reflection's.
+
+**The join is keyed on the SPIR-V id, per stage, which is what makes a SAME-KIND swap visible.** Each emitted
+argument is named `_<id>` after its SPIR-V result id, and `SpirvResourceDecorations` resolves that id to the
+`(set, binding)` the author declared, read out of that stage's own module because ids are renumbered per stage.
+That is the same key the native Metal backend's index table joins on. It is what closes the 16.3.0 guard's
+documented gap: two storage buffers are both `device T&` in Metal and both `StructuredBufferReadWrite` in the
+reflection, so comparing KINDS cannot tell them apart, but their binding decorations differ.
+
+The issue proposed resolving each argument's struct name back to its `struct _NNN { ... }` definition and
+matching on the first member name. That route is closed here, and the reason is worth recording: `SpirvFrontEndPin`
+strips debug info for every engine-owned emission, so members emit as `_m0`/`_m1` and every texture and sampler
+reflects with an empty name. Section 2.2a of the Metal design measured the name join at zero of 159 arguments
+against the id join's 159 of 159.
+
+**The prefix property is checked too, and it is a property of the LAYOUT that no shader-body reordering can
+fix.** Veldrid counts one slot per kind across the whole layout while the cross-compiler numbers each stage
+densely from 0 over only what that stage declares, so every stage's resources must be a PREFIX of the layout's,
+per index space. A vertex-only texture placed after a fragment-only one cannot be made to work at any binding
+number. `ValidatePair` cannot see the caller's hand-written layout, but the emission carries enough to check the
+property, and the message says which binding the stage reads and which earlier one it skips.
+
+**It degrades rather than false-positives, which is the one place it differs from the backend's join.** The
+backend throws loudly on an argument it cannot resolve. This runs on every shader the engine or a consumer
+compiles, so an index space carrying an unresolvable argument (a name that is not the `_<id>` shape, a
+cross-compiler helper argument, an emission whose indices are not dense) is dropped from the check in silence.
+`CheckMslBufferSlots` stays as the buffer-space fallback for exactly that case. Four facts pin the budget: a
+dead-stripped resource between two live ones, a read-only storage buffer beside a texture (they share
+Direct3D 11's `t` register class while living in different Metal index spaces), an array of textures (the Metal
+cross-compile refuses it before the guard ever sees it), and a stage that declares no resources at all.
+
+**Every negative case is real shipped source with one line moved or one expression dropped**, and every one was
+proved to pass again with the guard switched off, so a guard that had started rejecting everything would fail
+these rather than look like a pass. `MslBindingOrderGuardTests` carries the water fragment's depth/ocean texture
+swap, the water vertex's dropped bathymetry tap (the prefix case), and the ocean column pass's storage/storage
+swap. That last one still passed under the 16.3.0 guard, which is the direct evidence for the same-kind half.
 
 ## 17.35.0
 

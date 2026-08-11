@@ -54,7 +54,6 @@
 9 KhaozEngine.Benchmarks/README.md
 8 KhaozEngine.Gui.Tests/Gui/Fixtures/RuinbornePlayChangelog.md
 8 KhaozEngine.App/README.md
-7 KhaozEngine.Gpu/README.md
 7 KhaozEngine.Diagnostics/README.md
 6 tools/proxy-authoring/README.md
 6 docs/design/WATER-CLIPMAP-DESIGN-2026-07-27.md
@@ -69,6 +68,7 @@
 5 docs/PHYSICS-PIPELINE.md
 5 KhaozEngine.Platform/README.md
 5 KhaozEngine.Physics/README.md
+5 KhaozEngine.Gpu/README.md
 5 KhaozEngine.Game/README.md
 5 KhaozEngine.Audio/README.md
 4 docs/design/WATER-SHORE-DESIGN-2026-07-27.md

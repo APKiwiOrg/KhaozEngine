@@ -212,6 +212,12 @@ Direct3D11, silently wrong on Metal, with nothing wrong in the GLSL.
    nothing and reads zero. A single-cascade ocean produced a perfectly correct foam BUFFER and an entirely blank
    map. The allocation now floors at two layers.
 
+**Shapes 1 and 2 are both static checks now, on the graphics pair as well (17.36.0, issue #323).**
+`ShaderValidation.ValidatePair` runs the same guard per stage over buffers, textures and samplers alike, keyed on
+the SPIR-V id so a swap between two resources of the same kind is visible, and it checks the prefix property of
+shape 2 out of the same emission. `MslBindingOrderGuardTests` keeps this section's own water fragment, with the
+scene-depth read lifted above the cascade block, as the negative case.
+
 The common lesson, and the reason all three are written down at the code rather than only here: on Metal a
 resource binding mistake does not fail, it reads zero, and a wave simulation that reads zero looks like a calm
 sea.

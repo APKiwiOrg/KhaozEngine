@@ -318,13 +318,26 @@ What it owns today:
   so a shader syntax error or a backend miscompile is caught in a fast GPU-free test loop instead of at first run
   on a real device of that backend. `ValidateCompute(computeGlsl, label?)` is the single-stage sibling for a
   compute shader. A compile failure throws `ShaderValidationException` naming the label and the failing
-  stage/target. `ValidateCompute` ALSO rejects a source whose cross-compiled Metal entry point numbers its buffer
-  arguments out of binding order (since 16.3.0): Metal has no binding decorations, so the cross-compiler assigns
-  slots in first-reference order while the backend binds a resource set by counting the layout in binding order,
-  and a helper function that reads binding 1 before anything reads binding 0 silently swaps the two on Metal with
-  Vulkan and Direct3D11 perfectly correct. It catches a uniform/storage swap; two same-kind buffers swapping is
-  not visible from the emitted Metal and still needs a readback test. The engine's own shader-source tests use this to validate every embedded production shader; games
-  can validate their custom shaders the same way in their own fast test suites.
+  stage/target. BOTH ALSO CHECK THE METAL BINDING ORDER (17.36.0, and `ValidateCompute` alone since 16.3.0),
+  which is not a compile failure anywhere and is the one shader bug that renders a wrong picture instead of
+  throwing. Metal has no binding decorations, so the cross-compiler assigns each resource an index of its own in
+  first-reference order while the Veldrid Metal backend binds a resource set by counting the layout in binding
+  order, and a helper function that reads binding 1 before anything reads binding 0 silently swaps the two on
+  Metal with Vulkan and Direct3D11 perfectly correct. Two checks run over the emitted Metal:
+  - **Index order, per stage, over buffers AND textures AND samplers.** Each emitted argument is joined back to
+    the `(set, binding)` you declared through that stage's own SPIR-V decorations, so a swap between two
+    resources OF THE SAME KIND is caught as well (two storage buffers are both `device T&` in Metal, which is
+    why the 16.3.0 kind comparison could not see it). The message names both `layout(set=, binding=)` pairs and
+    the slot they collided on.
+  - **The prefix property, for a pair.** Veldrid counts one slot per kind across the whole layout while the
+    cross-compiler numbers each stage densely from 0, so every stage's resources must be a PREFIX of the
+    layout's, per index space. A vertex-only texture placed after a fragment-only one cannot be made to work at
+    any binding number, and no reordering inside the shader bodies fixes it.
+
+  Both degrade rather than false-positive: an index space carrying an argument the join cannot resolve is
+  dropped silently instead of guessed at. The engine's own shader-source tests use this to validate every
+  embedded production shader, and games can validate their custom shaders the same way in their own fast test
+  suites.
 
 This is the ONLY package meant to reference Veldrid, and the containment is complete: the resource, command and
 device surface is the engine-owned `IGpuDevice` / `IGpuResourceFactory` / `IGpuCommandList` interface set, the

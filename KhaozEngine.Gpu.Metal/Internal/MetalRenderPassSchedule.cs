@@ -223,8 +223,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <summary>
         /// A COLOUR CLEAR, WHICH FOLDS OR COSTS A BOUNDARY DEPENDING ON WHETHER THE PASS IS ALREADY OPEN (M-A2).
         /// <para>
-        /// THE INDEX IT LANDS ON IS THE CALLER'S, unless <c>KE_METAL_CLEAR=attachment0</c> put this recording on
-        /// the incumbent's position, and that ONE substitution is the whole of M-A2's kill switch. See
+        /// THE INDEX IT LANDS ON IS THE CALLER'S, unless this recording was built on the incumbent's position,
+        /// which only row 12's readback test asks for now. That ONE substitution is the whole of M-A2. See
         /// <see cref="MetalClearPolicy"/>.
         /// </para>
         /// </summary>

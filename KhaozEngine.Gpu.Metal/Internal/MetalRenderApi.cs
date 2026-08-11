@@ -37,7 +37,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// THE COLOUR LOOP INDEXES BY <c>i</c>, WHICH IS THE ENTIRE OF M-A2's FIX. The incumbent writes every
         /// clear into <c>colorAttachments[0]</c>, so <c>ModelFB</c>'s normal and linear-depth attachments are
         /// never cleared at all. The fold onto slot 0 still HAPPENS under
-        /// <c>KE_METAL_CLEAR=attachment0</c>, and it happens in the schedule where the pending clear is recorded,
+        /// <c>MetalClearMode.Attachment0</c>, and it happens in the schedule where the pending clear is recorded,
         /// so the two positions differ by one plan and not by two code paths through here.
         /// </remarks>
         [MethodImpl(MethodImplOptions.NoInlining)]

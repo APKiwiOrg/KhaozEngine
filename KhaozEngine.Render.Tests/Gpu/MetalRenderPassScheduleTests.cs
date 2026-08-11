@@ -103,9 +103,9 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// THE KILL SWITCH, WHICH HAS TO REPRODUCE THE DEFECT EXACTLY OR THE GATE-1 A/B MEANS NOTHING. Under
-        /// <c>KE_METAL_CLEAR=attachment0</c> the same three calls collapse onto slot 0, the LAST value wins
-        /// there, and attachments 1 and 2 load.
+        /// THE INCUMBENT'S POSITION, WHICH HAS TO REPRODUCE THE DEFECT EXACTLY OR ITS HARDWARE SIBLING PROVES
+        /// NOTHING. Under <see cref="MetalClearMode.Attachment0"/> the same three calls collapse onto slot 0,
+        /// the LAST value wins there, and attachments 1 and 2 load.
         /// </summary>
         [Fact]
         public void TheIncumbentPositionCollapsesEveryClearOntoAttachmentZero()

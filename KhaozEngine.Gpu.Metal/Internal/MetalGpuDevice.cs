@@ -213,13 +213,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// (https://github.com/APKiwiOrg/KhaozEngine/issues/572): that factory calls this, and so does the
         /// <c>[GpuFact]</c> submit path.
         /// </summary>
-        /// <param name="clearMode">M-A2's position for this list. Defaults to the ONE reading of
-        /// <c>KE_METAL_CLEAR</c> this process took, which is what every real caller gets. A test passes a literal
-        /// instead, because reading the environment once per process means a test that mutated it would be racing
-        /// every other list in the same collection.</param>
+        /// <param name="clearMode">M-A2's position for this list, and every real caller takes the default. The
+        /// environment switch that used to select the other one is retired (gate 1, 2026-08-11), so the only
+        /// thing that names <c>Attachment0</c> now is row 12's readback test, which is the one instrument that
+        /// can tell the fix from the incumbent's collapse. See <see cref="MetalClearPolicy"/>.</param>
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal MetalCommandList CreateCommandList(MetalClearMode? clearMode = null)
+        internal MetalCommandList CreateCommandList(MetalClearMode clearMode = MetalClearMode.PerAttachment)
             => new(_commandBuffers, _uncommitted, new MetalEncoderSink(), this, _rings,
                 // A FRESH ARENA PER LIST (M-M8), not one shared by the device. Two lists recording on two threads
                 // must not sub-allocate from the same blocks, and the recycling proof is per list too: each slot
@@ -230,10 +230,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 // THE DEVICE'S OWN ALIGNMENT, read once at creation by M-N4's probe. Every composed bind offset
                 // is checked against it, which is section 18's third named risk for this row.
                 _bufferOffsetAlignment,
-                // M-A2's POSITION, READ ONCE PER PROCESS AND COPIED PER LIST. Reading the environment per pass
-                // would let a mid-run change split one frame's clears between two policies, which is a shape the
-                // gate-1 A/B could not interpret. See MetalClearPolicy.
-                clearMode ?? MetalClearPolicy.Current);
+                // M-A2's POSITION, CAPTURED PER LIST so a recording cannot straddle two policies. It is the
+                // per-attachment fix for every caller the engine has: the switch that could ask for the other
+                // position is gone, and what remains is a test seam. See MetalClearPolicy.
+                clearMode);
 
         /// <inheritdoc/>
         /// <remarks>M-G2's <c>softwareAdapter</c> is ALWAYS false with confidence rather than null, because Apple

@@ -146,13 +146,6 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     log.Warn(MetalFramesInFlight.UnrecognizedWarning(unrecognizedFrames));
                 log.Info(MetalFramesInFlight.ActiveDescription(framesInFlight));
 
-                // M-A2's KNOB, RESOLVED HERE so the one reading every list under this device copies is taken
-                // before any list exists, and so a typo is NAMED. A misspelled KE_METAL_CLEAR silently selects
-                // the per-attachment fix, which is the one failure the gate-1 A/B cannot survive: the tester
-                // believes they captured the incumbent and captured the fix twice. Nothing is logged on a
-                // recognized value, including the default, for the reason MetalValidation gives.
-                MetalClearPolicy.Report(warning => log.Warn(warning));
-
                 // THE DEVICE'S ONE COMPLETION TIMELINE (M-F1), created before anything can submit. Row 5 built
                 // it and left the wiring to the first row with a submit path, which is row 7.
                 timeline = new MetalTimeline(new MetalSharedEvent(device.Handle), liveness);

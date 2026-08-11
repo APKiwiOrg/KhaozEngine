@@ -97,7 +97,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// setters (<see cref="IMetalRenderApi"/>). Separate from <paramref name="sink"/> because nothing on it
         /// scales with draw count, which is the line M-T2's budget is drawn along.</param>
         /// <param name="clearMode">M-A2's position, captured once per list so a recording cannot straddle two
-        /// policies. The device passes <see cref="MetalClearPolicy.Current"/> and a test passes a literal.</param>
+        /// policies. The default is what every production recording gets, and a literal is what row 12's
+        /// readback test passes to reproduce the incumbent's collapse (<see cref="MetalClearPolicy"/>).</param>
         /// <param name="owner">The device that created this list, held as an opaque token and compared by
         /// REFERENCE at the submit. See <see cref="Owner"/>.</param>
         /// <param name="rings">The device's ONE ring allocator (M-M3). <see cref="Begin"/> is this backend's

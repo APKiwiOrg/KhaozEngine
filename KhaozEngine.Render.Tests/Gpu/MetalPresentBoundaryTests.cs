@@ -495,6 +495,34 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Empty(h.Api.Log);
         }
 
+        /// <summary>
+        /// AND IT RELEASES THE LAYER AND THE DRAWABLE EVEN WHEN THE ORPHAN RELEASE FREES NOTHING, which is the
+        /// DEAD-DEVICE shape and the reason <c>MetalGpuDevice.DisposeOnMacOs</c> calls this ABOVE its
+        /// fault return rather than below it.
+        /// <para>
+        /// Nothing in this type reads a liveness token, and that is the property being pinned. A drawable and a
+        /// layer are CoreAnimation objects, so releasing them is an <c>objc_release</c> with no dependence on
+        /// the <c>MTLDevice</c>, and on the adopt path the layer is the HOST VIEW's own and outlives the device,
+        /// so skipping it over-retains a layer a consumer's window still holds. The orphan target is the one of
+        /// the three that genuinely cannot be freed on that path, because it is an engine <c>MTLTexture</c>
+        /// whose <c>Dispose</c> is a no-op once liveness is dead, which is what
+        /// <see cref="FakeMetalOrphanTarget.ReleaseIsInert"/> reproduces here.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void DisposeReleasesTheLayerAndTheDrawableEvenWhenTheOrphanReleaseFreesNothing()
+        {
+            Harness h = Harness.Windowed(scriptDrawables: 1);
+            h.Orphan.ReleaseIsInert = true;
+            h.Api.Log.Clear();
+
+            h.Boundary.Dispose();
+
+            Assert.Contains(h.Api.Handed[0].Drawable, h.Api.Released);
+            Assert.True(h.Api.IsDisposed);
+            Assert.Equal(new[] { "releaseDrawable", "orphanRelease", "disposeApi" }, h.Api.Log);
+        }
+
         /// <summary>A present after teardown is a no-op rather than a throw, matching every other member on this
         /// backend's dead-device posture: the frame loop above is not written to handle a failure here.</summary>
         [Fact]

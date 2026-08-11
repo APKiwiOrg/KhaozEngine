@@ -603,8 +603,29 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // that is going away, and a completion arriving after this point has nothing left to latch on to.
             MetalCompletionHandler.Unregister(Queue.Handle);
 
-            // A drain that saw a failure has already flipped liveness through the latch, so there is nothing left
-            // that is safe to release and the handles leak deliberately, the shared event with them.
+            // THE SWAPCHAIN GOES ON BOTH PATHS, ABOVE THE FAULT RETURN, and it is the one exception to the leak
+            // posture below. It releases the held drawable, the orphan target and the layer. Two of those three
+            // are CoreAnimation objects: releasing a CAMetalDrawable or a CAMetalLayer is an objc_release with
+            // no dependence on the MTLDevice at all, which is exactly the argument MetalTimeline.Dispose makes
+            // for the shared event (an ordinary reference-counted Objective-C object has no vkDestroyDevice rule
+            // in front of it, so skipping the release leaks it on the path that matters). It bites harder here,
+            // because on the ADOPT path the layer is the HOST VIEW's own and outlives this device: leaking it
+            // permanently over-retains a layer a consumer's window still owns, once per device it creates over
+            // that window. Releasing is also safe with work possibly still running, faulted drain or not,
+            // because a committed present buffer retains the drawable until it completes (M-H3), so this is
+            // never the last reference to something the GPU is reading. AFTER the drain above either way, and
+            // that drain is the QUEUE's rather than the timeline's precisely because M-W6's present command
+            // buffer signals no timeline value.
+            //
+            // THE ORPHAN TARGET IS THE ONE OF THE THREE THAT STILL LEAKS ON THE FAULT PATH, and it is named
+            // rather than pretended away: it is an ordinary engine MTLTexture, and MetalTexture.Dispose is a
+            // no-op once liveness is dead, which a faulted drain has already made it through the latch. So its
+            // handle leaks with the queue, the device and the shared event, for the same reason they do.
+            _present?.Dispose();
+
+            // A drain that saw a failure has already flipped liveness through the latch, so nothing MADE FROM
+            // THE DEVICE is safe to release any more and those handles leak deliberately: the queue, the device,
+            // the shared event, and the orphan texture the line above could not release.
             if (fault.IsFailure) return;
 
             // BEFORE THE FLIP, and that ordering is load-bearing rather than tidy. The shared samplers are the
@@ -613,13 +634,6 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // dead, so releasing them after the flip would leak both for the life of the process.
             _pointSampler.Dispose();
             _linearSampler.Dispose();
-
-            // AND THE SWAPCHAIN WITH THEM, for the same reason and one more of its own: it releases the held
-            // drawable, the orphan target (an ordinary engine texture, whose Dispose is a no-op once liveness is
-            // dead) and the layer. AFTER the drain above, which is what makes releasing a drawable a present may
-            // still be running safe, and that drain is the QUEUE's rather than the timeline's precisely because
-            // M-W6's present command buffer signals no timeline value.
-            _present?.Dispose();
 
             // Flipped BEFORE the releases and after the drain, so no wrapper can observe "alive" after the object
             // it would release has gone, and so a wrapper disposed on another thread mid-teardown becomes a

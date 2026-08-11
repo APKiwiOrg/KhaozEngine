@@ -1472,7 +1472,13 @@ encode `-presentDrawable:` onto the frame's own buffer, and it is declined: the 
 call from `Submit()` so the frame's buffer is already committed, `-presentDrawable:` on a later-committed buffer
 runs after it by queue order anyway, and the alternative inherits the Vulkan design's own named limitation into
 the area with the least coverage in the whole net. The uncommitted-command-buffer bound this backend asserts is
-the frames-in-flight depth PLUS ONE, and row 7 left the one unoccupied for exactly this buffer.
+the frames-in-flight depth PLUS ONE, and row 7 left the one unoccupied for exactly this buffer. **The buffer is
+taken BEFORE the submit lock**, which is the second blocking call M-W8's ordering has to keep outside it and the
+one where the failure is worse than a stall: `-commandBuffer` blocks once the queue reaches its own maximum of
+uncommitted buffers, and every commit that could release one goes through that same lock, so taking it inside
+would be a deadlock rather than a wait. What the lock covers is the encode and the commit. The fake underneath
+the device-free rows records `Monitor.IsEntered` at the acquire, at the buffer take and at the present, so
+M-W8's headline claim is asserted from underneath rather than asserted in a comment.
 
 **The swapchain framebuffer's attachment-set identity moves with its texture.** The framebuffer-change guard
 compares a number and returns BEFORE copying the incoming record, so a source whose bound texture moves between
@@ -1501,6 +1507,15 @@ balances the `alloc`/`init` on the path where it CREATED the layer and is an ove
 ADOPTED the host view's and never retained it. The adopt path retains here, so the release is balanced either
 way. Nothing in this fleet reaches that shape today and a consumer embedding the engine in an existing Cocoa app
 would reach it immediately.
+
+**And the swapchain is released even when the teardown drain faulted**, which narrows this backend's documented
+leak posture rather than widening it. A drain that saw a failure has already flipped liveness through the latch,
+and everything MADE FROM the dead device is left alone from that point: the queue, the device, the shared event.
+The layer and the held drawable are not made from it. They are CoreAnimation objects, so releasing them is an
+`objc_release` that never touches the dead `MTLDevice`, which is the same argument the shared event's own
+unconditional release rests on, and on the adopt path the layer is the HOST VIEW's and outlives the device, so
+skipping it permanently over-retains a layer a consumer's window still owns. The orphan target stays on the leak
+list and is named there: it is an ordinary engine `MTLTexture` whose disposal is a no-op once liveness is dead.
 
 
 ## 17.34.0

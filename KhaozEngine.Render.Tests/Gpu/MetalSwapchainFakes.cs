@@ -201,6 +201,14 @@ namespace KhaozEngine.Tests.Gpu
         internal bool IsLive { get; private set; }
         internal IntPtr Handle { get; private set; }
 
+        /// <summary>
+        /// Make <see cref="Release"/> a no-op that still logs, which is the DEAD-DEVICE shape rather than a
+        /// convenience. The real orphan target is an ordinary engine <c>MTLTexture</c> and
+        /// <c>MetalTexture.Dispose</c> returns early once the device's liveness token is dead, so on a teardown
+        /// whose drain faulted the release runs and frees nothing.
+        /// </summary>
+        internal bool ReleaseIsInert { get; set; }
+
         public MetalAttachment Ensure(MetalDrawableSize size, GpuPixelFormat format)
         {
             EnsureCount++;
@@ -217,7 +225,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             ReleaseCount++;
             Log.Add("orphanRelease");
-            IsLive = false;
+            if (!ReleaseIsInert) IsLive = false;
         }
     }
 }

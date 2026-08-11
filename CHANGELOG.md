@@ -5,6 +5,101 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.36.0
+
+A crash that nothing logged now writes its own file, and two of phase 4's guards get the teeth their prose
+already claimed.
+
+### The last-chance crash file (`CrashReport`, #607)
+
+New in `KhaozEngine.Diagnostics`: `CrashReport` writes one file per unhandled exception with NO configuration
+at all, and `GameApp` arms it for every head. A one-off managed exception aborted the engine's own showcase at
+the end of shader warming, the operating system's `.ips` report named only coreclr's dispatch frames, and the
+exception text died with the terminal it printed to. The showcase configures no logging, so `CrashHandler` had
+nothing to route into and nothing was written anywhere. This is the floor under that: `CrashHandler` into a
+configured `LogManager` is still the richer record and the one to read when it exists.
+
+**Where it lands is the point.** The default directory is the per-user log location for the platform:
+`~/Library/Logs/KhaozEngine` on macOS, which is the same tree the `.ips` lands in under `DiagnosticReports`,
+`%LOCALAPPDATA%\KhaozEngine\crash` on Windows, and `$XDG_STATE_HOME/KhaozEngine/crash` (else
+`~/.local/state/...`) elsewhere. Whoever collects the system report finds the managed half beside it. The file
+carries the timestamp, the process, the engine version, the runtime and OS, the crash context, then the
+exception type, message and full stack. `CrashReport.Note(key, value)` adds the facts this package cannot see,
+and `GameApp` notes the graphics backend as soon as its window exists, which is exactly the fact a boot-time
+GPU crash is about.
+
+**One event is one file, by construction.** The name is
+`{label}-{crash|taskfault}-{yyyyMMdd-HHmmss-fff}-{pid}-{counter}.log`. The process id and the process-wide
+atomic counter are load-bearing rather than decoration: unobserved task exceptions arrive from the finalizer
+thread back to back, and with a name that ended at the millisecond a measured burst of twelve sequential
+writes produced SEVEN files, each collision silently overwriting a sibling. There is no probing for a free
+name, which would only be a narrower race on a path that is already re-entrant.
+
+**Retention is per stem and matches the whole generated shape.** A `{prefix}-*.log` glob is not a partition,
+because one label's stem can be a prefix of another's: a head labelled `show` would have deleted every report a
+head labelled `show-crash` wrote into the shared crash directory. Matching stamp, process id and counter closes
+that. What remains, by construction, is that two labels which SANITISE identically (`My Game` and `My-Game`)
+share one pool, documented on `CrashReportOptions.ProcessLabel` and pinned by a test.
+
+**An unobserved task exception is a different event and gets a different file.** `IncludeUnobservedTaskExceptions`
+defaults to true, because nothing else in the process records a faulted task nobody awaited and losing that by
+default is the worse failure. It is raised from the FINALIZER thread when the task is collected, so it arrives
+at a garbage collection rather than at the failure, usually while the game is still running perfectly well.
+Those reports go under `{label}-taskfault-` with their own retention pool (`CrashReportKind`), so "the crash
+file" still means the crash, a tester cannot collect the wrong artifact, and a fault storm cannot evict the
+crash that matters. `CrashReport` never marks such an exception observed.
+
+**It survives the exception it is reporting.** `Message` and `ToString` are both virtual, so both can throw on
+the crash path, hostilely or simply because the crash already tore down what the override reads. The header is
+rendered and WRITTEN first with each of those wrapped on its own, so a throwing `Message` still leaves the
+exception's TYPE (read through the non-virtual `GetType`), the stack is appended afterwards inside its own try,
+and a throwing `ToString` contributes a line saying so. Retention runs only once a file exists, so a crash that
+cannot be written can no longer delete one that was. `CrashReport.Format` is public and hostile-safe rather
+than demoted.
+
+**`GameApp` arms it first-wins.** `GameAppOptions.SuppressCrashReportFile` opts out (default off, so the file
+is on), and a head that called `CrashReport.Install` itself keeps its own directory, label and retention:
+arming is idempotent by REPLACEMENT, so `GameApp` asks the new `CrashReport.IsInstalled` and declines rather
+than pointing the reports somewhere that head is not looking. This replaces `KhaozEngine.Game`'s internal
+`StartupCrashLog`, which armed only on a no-console Windows launch and wrote a bare dump. New public API:
+`CrashReport`, `CrashReportOptions`, `CrashReportKind`, `CrashReport.IsInstalled`,
+`GameAppOptions.SuppressCrashReportFile`.
+
+### Row 10's name blindness is a TRANSITIVE IL walk (#594)
+
+`MetalIndexTableNameBlindnessTests` asserts that no member of `MetalShaderIndexTable` reads a layout element's
+`Name` or `Stages`, which is what licenses `ContentKey` rendering neither: over the shipped catalog 16 of the
+25 programs that merge onto an earlier program's table disagree on at least one element name, so a member
+reading one would be reading another program's name in the MAJORITY of merges.
+
+The walk landed reading each member's own call sites only, while the prose beside it promised that a member
+added later that reads a name is a red test. Those are not the same claim, and the difference is the shape such
+a member would actually take: read the name in a helper and call the helper. The walk is transitive within
+`KhaozEngine.Gpu.Metal` now, reusing the shape `MetalAutoreleaseArchitectureTests.Reaches` already walks, and a
+violation reports the PATH rather than a name, since with a transitive walk the member that has to change is
+usually not the member that reads the name. The descent stops at the assembly edge, and both the test's remarks
+and `ContentKey`'s prose now say so, so the rule's scope is a statement about this package rather than an
+open-ended promise. A third positive control covers the indirection, and the transitive half was verified
+against the real type as well: a member reading a name through a package helper was injected into
+`MetalShaderIndexTable`, the rule went red with the full path, and the probe was reverted.
+
+### The bind path's autorelease pool has a number, with its conditions (#600)
+
+`MetalEncoderSink.SetBufferOffset` opens an autorelease pool it has nothing to drain, because M-N5 is a rule
+without exceptions and an exception list is the thing that rots. What that costs is measured rather than
+argued now, and the measurement records what it was taken under: 2026-08-11, an M2 Max, a real
+`MTLRenderCommandEncoder`, a Release build with the Metal debug layer OFF, best of seven samples, stable
+across sample sizes of 20k and 200k iterations. The member costs about 61 ns per call and the same
+`setBufferOffset:atIndex:` with no pool costs about 40 ns.
+
+The two pool figures are reconciled rather than left as an arithmetic trap. The pair measured standalone (a
+push and a pop with no send between them) is about 14 ns. In situ it is 21, the 61 minus the 40, because the
+pooled member is not the pair alone: it also carries its own `NoInlining` frame and the `using` scope's
+disposal around the same send. "Roughly a third" is 21 of 61. At the shadow pass's own worst shape that is
+about 63 microseconds a frame at an explicit 3000 offsets-only rebinds, a fraction of a percent of a 60 Hz
+budget. Nothing changes on the path: the answer if it ever matters is structural (one pool per FLUSH), never
+an exclusion list. No behaviour change, remarks only.
+
 ## 17.35.0
 
 ### `KhaozEngine.Gpu.Metal`, phase 4's package skeleton, and the three spikes that ran on real hardware (#567)

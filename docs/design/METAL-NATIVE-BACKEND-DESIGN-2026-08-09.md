@@ -2480,7 +2480,10 @@ and a present, and a whole layer-backed device driven through ten present bounda
 flip. Every DECISION above the native calls runs device-free on every leg behind `IMetalSwapchainApi`. What is
 genuinely left with no automated coverage is two things rather than the whole area: the four Cocoa selectors
 that turn an `NSWindow` into a layer, and whether anything appears on a screen. Both are gate 5's, and MM7's
-real lesson survives intact for them.
+real lesson survives intact for them, with one item added to that checklist:
+[#605](https://github.com/APKiwiOrg/KhaozEngine/issues/605), the initial `drawableSize` being the content view's
+frame in POINTS where a drawable size is in PIXELS, which is the incumbent's own arithmetic reproduced here and
+is visible on a Retina display until the first framebuffer-resize callback corrects it.
 
 **`IGpuFramebuffer` wrapper identity is stable across resize BY CONSTRUCTION (M-W7)**, because the colour
 attachment is not an object the wrapper holds. W2 asked D3D11 to behave like Metal here and V-W5 had to build

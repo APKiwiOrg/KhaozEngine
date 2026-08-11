@@ -48,12 +48,18 @@ jobs:
       # and prose at commit time; tree mode is what catches a commit that bypassed the hook (--no-verify,
       # another IDE, the GitHub web UI), which the staged leg by construction cannot see. Each script
       # exits 1 on a violation and 0 clean, so the default bash -e shell fails the job on the first one.
+      # Both ratchets, though, exit 0 with only a stderr notice when their baseline file is missing, which
+      # is right for propagating this step into a repo that has not adopted them and wrong here, where a
+      # deleted baseline would silently disarm the gate rather than fail it. The two test -f lines assert
+      # the baselines exist before either ratchet runs.
       # check-file-size.sh --tree earns its place next to the compile-time KESIZE analyzer because the
       # analyzer only sees what the compiler sees, and the selective path builds a slice of the solution:
       # growth in an unaffected project would otherwise reach main uninspected. Mirrors the five game
       # repos' "Repo convention checks" step in build-test.yml (issue #554).
       - name: Repo convention checks (dash ban + prose ratchet + file-size ratchet)
         run: |
+          test -f .prose-baseline
+          test -f .filesize-baseline
           sh scripts/check-dashes.sh --tree
           sh scripts/check-prose.sh --tree
           sh scripts/check-file-size.sh --tree

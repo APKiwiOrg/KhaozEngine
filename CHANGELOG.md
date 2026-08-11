@@ -370,6 +370,12 @@ and the selective path compiles the affected slice rather than the solution, so 
 reached `main` uninspected on a normal push. This closes the gap that `docs/design/FILESIZE-ANALYZER-DESIGN-2026-07-20.md`
 recorded as a known correction, and that doc now says so.
 
+**The step asserts both baselines exist before it trusts either ratchet.** `check-prose.sh` and
+`check-file-size.sh` exit 0 with a stderr notice when `.prose-baseline` or `.filesize-baseline` is missing,
+which is the right behaviour for propagating this step into a repo that has not adopted the ratchet yet and
+the wrong one here: a deleted baseline would disarm the gate and still paint the job green. Two `test -f`
+lines run first, under the default `bash -e` shell, so the missing-baseline case fails the run instead.
+
 **Each guard was proved to fail before it was trusted.** A guard that prints a violation and exits 0 gates
 nothing, so one deliberate violation was run through each script and then reverted: an em-dash appended to
 `README.md` (exit 1), a prose semicolon appended to `README.md`, taking it to 36 against its baseline of 35

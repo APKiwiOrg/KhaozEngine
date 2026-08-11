@@ -8862,9 +8862,20 @@ for staging resources, COMPILES SHADERS through `CreateShadersFromSpirv` and
 `CreateComputeShaderFromSpirv`, creates the RESOURCE LAYOUTS and RESOURCE SETS a pipeline binds through, and
 builds GRAPHICS AND COMPUTE PIPELINES. A recording can BIND either pipeline, BIND a framebuffer and clear it,
 with the clear landing on the attachment it names, and BIND RESOURCE SETS through all four `Set*ResourceSet`
-overloads. Every member of the resource FACTORY is now live. What still throws is the command list's draws,
-dispatches and transfers, and the swapchain, each with a message naming the row that builds it, so nothing can
-be drawn yet.
+overloads. Every member of the resource FACTORY is now live, and since
+[#580](https://github.com/APKiwiOrg/KhaozEngine/issues/580) so is every member of the command list: it DRAWS.
+Both `Draw` overloads, `DrawIndexed`, `Dispatch`, the vertex and index binds, `CopyBuffer`, `CopyTexture`, both
+`CopyTextureSubresource` overloads, `GenerateMipmaps` and `ResolveTexture` all record, so `IGpuCommandList` has
+no refusing member left. What still throws is the SWAPCHAIN, with a message naming the row that builds it
+([#581](https://github.com/APKiwiOrg/KhaozEngine/issues/581)), so this device renders into a texture you read
+back and cannot present.
+
+**Two recording behaviours are worth knowing before you use it.** `ResolveTexture` ends the render pass you have
+open, because it opens a render encoder of its own, so a resolve issued mid-pass costs a full re-activation of
+the pipeline state, the argument tables, the viewport, the scissor and every vertex stream on the next draw. And
+it does NOT force out a pass that collected clears and saw no draw, so clearing a target and resolving it with
+nothing drawn resolves its pre-clear contents. Both are the Veldrid Metal backend's behaviour reproduced rather
+than smoothed, and the package README carries the whole of it.
 
 **A resource-set bind RECORDS and the next draw emits it**, which is worth knowing only because of what it
 means for a per-draw dynamic offset. Re-binding the same set with the same offset costs nothing at all, so a

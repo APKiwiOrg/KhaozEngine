@@ -72,28 +72,38 @@ namespace KhaozEngine.Gpu
     /// </para>
     /// <para>
     /// The register is keyed by device instance and holds no strong reference, so a disposed device's entry dies
-    /// with it and two devices never see each other. It is not a thread-safety mechanism: the contract it
-    /// enforces is per DEVICE and says nothing about threads, so recording on two threads at once is refused
-    /// here exactly as it is on one.
+    /// with it. TWO DEVICES SHARE NOTHING, including their locks: each entry carries its own, and no lock at all
+    /// is held while a backend is inside <see cref="IGpuCommandList.Begin"/>. That is deliberate rather than
+    /// incidental, because Begin BLOCKS by design on the engine's own backends (the Metal and Vulkan rings both
+    /// wait there for a free slot when the GPU is behind), so a process-wide gate around it would have made one
+    /// device's backpressure into every other device's stall. It is still not a thread-safety mechanism: the
+    /// contract it enforces is per DEVICE and says nothing about threads, so recording on two threads at once is
+    /// refused here exactly as it is on one.
     /// </para>
     /// </summary>
     public static class GpuRecording
     {
+        // One per device, and its own lock. Everything the register does to a device is short: read the owner,
+        // claim it, release it. The expensive part (the backend's Begin) happens outside.
         sealed class Slot { internal string? Owner; }
 
         static readonly ConditionalWeakTable<IGpuDevice, Slot> Slots = new();
-        static readonly object Gate = new();
 
         /// <summary>Who is recording on <paramref name="device"/> right now, or null when nothing is. The
         /// question a caller asks when it wants to branch rather than be refused.</summary>
         public static string? OpenOwner(IGpuDevice device)
         {
             ArgumentNullException.ThrowIfNull(device);
-            lock (Gate) return Slots.TryGetValue(device, out Slot? slot) ? slot.Owner : null;
+            if (!Slots.TryGetValue(device, out Slot? slot)) return null;
+            lock (slot) return slot.Owner;
         }
 
         /// <summary>True when nothing is recording on <paramref name="device"/>, so a caller may open a list of
         /// its own. The inverse of <see cref="OpenOwner"/> being set, named for the question a producer asks.
+        /// <para>ADVISORY, not a reservation. It answers for the instant it was called, so a concurrent
+        /// <see cref="Open"/> on the same device can win the race between the true it returned and the open it
+        /// encouraged. Branch on it to avoid an expected refusal, never to make one impossible: the only thing
+        /// that actually claims the device is <see cref="Open"/>.</para>
         /// </summary>
         public static bool CanOpen(IGpuDevice device) => OpenOwner(device) is null;
 
@@ -115,14 +125,26 @@ namespace KhaozEngine.Gpu
             ArgumentNullException.ThrowIfNull(commands);
             ArgumentException.ThrowIfNullOrEmpty(owner);
 
-            lock (Gate)
+            Slot slot = Slots.GetValue(device, static _ => new Slot());
+
+            // CLAIM FIRST, BEGIN OUTSIDE THE LOCK. The claim is what makes the refusal correct, and it is three
+            // instructions, so it is the only thing serialized. The Begin is not: it blocks by design on the
+            // engine's own backends while the GPU catches up, and running it under the register's lock made one
+            // device's backpressure into another device's stall.
+            lock (slot)
             {
-                Slot slot = Slots.GetValue(device, static _ => new Slot());
                 if (slot.Owner is { } open) throw new GpuNestedRecordingException(open, owner);
-                // Begin BEFORE claiming the slot, so a backend that refuses the Begin for its own reasons (the
-                // native Metal list refuses a second Begin on ITSELF) leaves nothing registered behind.
-                commands.Begin();
                 slot.Owner = owner;
+            }
+
+            try { commands.Begin(); }
+            catch
+            {
+                // A backend may refuse the Begin for its own reasons (the native Metal list refuses a second
+                // Begin on ITSELF, since it takes a fresh command buffer per recording). Nothing was begun, so
+                // nothing may stay claimed: a device left marked as recording would refuse every later frame.
+                Close(device);
+                throw;
             }
             return new GpuRecordingScope(device, commands);
         }
@@ -130,10 +152,8 @@ namespace KhaozEngine.Gpu
         /// <summary>Release the device's claim. Idempotent: a slot that is already clear stays clear.</summary>
         internal static void Close(IGpuDevice device)
         {
-            lock (Gate)
-            {
-                if (Slots.TryGetValue(device, out Slot? slot)) slot.Owner = null;
-            }
+            if (!Slots.TryGetValue(device, out Slot? slot)) return;
+            lock (slot) slot.Owner = null;
         }
     }
 

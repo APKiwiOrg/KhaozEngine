@@ -1,4 +1,7 @@
 using System;
+using System.Globalization;
+using System.Threading;
+using System.Threading.Tasks;
 using KhaozEngine.Gpu;
 using Xunit;
 
@@ -59,6 +62,109 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(3, device.Begins);
             Assert.Equal(1, device.PeakOpenLists);
             Assert.Equal(0, device.OpenLists);
+        }
+
+        /// <summary>
+        /// AND THEY DO NOT WAIT ON EACH OTHER EITHER, which is a stronger claim than the entries being separate
+        /// and is the one that was false when the register shipped: a single process-wide lock was held across
+        /// the backend's <c>Begin</c>, and Begin blocks by design on the engine's own backends while the GPU
+        /// catches up. So device two's frame paid device one's backpressure, measured at half a second in the
+        /// review's probe. Here device one is parked inside its Begin and device two must still get through.
+        /// </summary>
+        [Fact]
+        public void A_device_stalled_inside_begin_does_not_hold_up_another_device()
+        {
+            using var stalled = new OpenListTrackingGpuDevice();
+            using var other = new OpenListTrackingGpuDevice();
+            using IGpuCommandList stalledList = stalled.Factory.CreateCommandList();
+            using IGpuCommandList otherList = other.Factory.CreateCommandList();
+
+            using var insideBegin = new ManualResetEventSlim(false);
+            using var letGo = new ManualResetEventSlim(false);
+            using var secondDone = new ManualResetEventSlim(false);
+            stalled.BeforeBegin = () => { insideBegin.Set(); letGo.Wait(TimeSpan.FromSeconds(20)); };
+
+            Exception? fault = null;
+            Thread parked = Start(() =>
+            {
+                try { using (GpuRecording.Open(stalled, stalledList, "the stalled device's frame")) { } }
+                catch (Exception ex) { fault = ex; }
+            }, null);
+            Assert.True(insideBegin.Wait(TimeSpan.FromSeconds(20)), "the first open never reached Begin");
+
+            Exception? secondFault = null;
+            Thread second = Start(() =>
+            {
+                try { using (GpuRecording.Open(other, otherList, "the other device's frame")) { } }
+                catch (Exception ex) { secondFault = ex; }
+            }, secondDone);
+            Assert.True(secondDone.Wait(TimeSpan.FromSeconds(5)), "the second device waited on the first one's Begin");
+
+            letGo.Set();
+            Assert.True(parked.Join(TimeSpan.FromSeconds(20)));
+            second.Join(TimeSpan.FromSeconds(5));
+            Assert.Null(fault);
+            Assert.Null(secondFault);
+            Assert.Equal(1, stalled.Begins);
+            Assert.Equal(1, other.Begins);
+        }
+
+        /// <summary>
+        /// The other half of the same change: making the gate per device must not weaken the refusal. Threads race
+        /// to open on ONE device, and exactly one of them may be recording at any instant, so every loser gets a
+        /// refusal rather than a second open list.
+        /// </summary>
+        [Fact]
+        public void Concurrent_opens_on_one_device_still_leave_exactly_one_recording()
+        {
+            using var device = new OpenListTrackingGpuDevice();
+            const int Rounds = 200, Threads = 4;
+            var lists = new IGpuCommandList[Threads];
+            for (int i = 0; i < Threads; i++) lists[i] = device.Factory.CreateCommandList();
+
+            var refusals = 0;
+            Parallel.For(0, Threads, t =>
+            {
+                for (int round = 0; round < Rounds; round++)
+                {
+                    try
+                    {
+                        using (GpuRecording.Open(device, lists[t], "racer " + t.ToString(CultureInfo.InvariantCulture))) { }
+                    }
+                    catch (GpuNestedRecordingException)
+                    {
+                        Interlocked.Increment(ref refusals);
+                    }
+                }
+            });
+
+            Assert.Equal(1, device.PeakOpenLists);
+            Assert.Equal(0, device.OpenLists);
+            Assert.Equal(Threads * Rounds, device.Begins + refusals);
+            for (int i = 0; i < Threads; i++) lists[i].Dispose();
+        }
+
+        /// <summary>
+        /// ZERO STEADY-STATE ALLOCATION, asserted rather than reasoned about, because everything that keeps it
+        /// zero is easy to break by accident: the scope is a readonly struct, the slot factory is a cached static
+        /// lambda, the owner names are literals, and the lock is uncontended. Any per-call allocation at all would
+        /// be tens of bytes times ten thousand, so the bound below separates cleanly from measurement noise.
+        /// </summary>
+        [Fact]
+        public void Opening_and_closing_allocates_nothing_in_the_steady_state()
+        {
+            using var device = new OpenListTrackingGpuDevice();
+            using IGpuCommandList cl = device.Factory.CreateCommandList();
+
+            for (int i = 0; i < 10_000; i++)
+                using (GpuRecording.Open(device, cl, "the window's frame list")) { }
+
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 10_000; i++)
+                using (GpuRecording.Open(device, cl, "the window's frame list")) { }
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+            Assert.True(allocated < 1024, $"10000 open+dispose pairs allocated {allocated} bytes.");
         }
 
         [Fact]
@@ -155,6 +261,21 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Throws<InvalidOperationException>(() => GpuRecording.Open(device, refusing, "a pass"));
             Assert.Null(GpuRecording.OpenOwner(device));
             Assert.True(GpuRecording.CanOpen(device));
+        }
+
+        /// <summary>A background thread for the two concurrency tests, started and handed back. Raw threads rather
+        /// than tasks because what is being asked is whether a thread PARKS, and a parked pool thread is a
+        /// different question.</summary>
+        static Thread Start(Action body, ManualResetEventSlim? done)
+        {
+            var t = new Thread(() =>
+            {
+                try { body(); }
+                finally { done?.Set(); }
+            })
+            { IsBackground = true };
+            t.Start();
+            return t;
         }
 
         /// <summary>Whatever went wrong inside a pass. Its own type so it cannot be confused with the register's

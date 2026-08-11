@@ -71,8 +71,15 @@ namespace KhaozEngine.Tests.Gpu
 
         internal void NoteFenceCreated() => FencesCreated++;
 
+        /// <summary>Run on this device's thread at the top of every <c>Begin</c>, before the open is counted.
+        /// Null by default. A test sets it to block, which is what a real backend's Begin does when the GPU is
+        /// behind (the Metal and Vulkan rings both wait there for a free slot), and is the only way to ask
+        /// whether one device's stall reaches another's thread.</summary>
+        internal Action? BeforeBegin { get; set; }
+
         internal void NoteBegin()
         {
+            BeforeBegin?.Invoke();
             Begins++;
             OpenLists++;
             if (OpenLists > PeakOpenLists) PeakOpenLists = OpenLists;

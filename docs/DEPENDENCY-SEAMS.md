@@ -795,6 +795,12 @@ a fragment function that reads set 1 alone is emitted at `buffer(0)` while Veldr
 and the function reads a slot nothing wrote. All zero, silently, with no validation error, surfacing as
 garbage geometry or unlit/black shading rather than as a failure. It holds offscreen as well as windowed.
 
+**TWO SYMPTOMS COME OUT OF THAT ONE DISAGREEMENT, so match on the mechanism rather than on what you saw.**
+Which one you get depends on whether the earlier buffer is bound to the READING stage at the index the function
+ends up reading. Where nothing is bound there, the read is all zero, which is the shape measured above. Where
+the earlier buffer IS bound to that stage, the index holds real bytes and the function reads ANOTHER buffer's
+contents instead of nothing, which is the splat terrain's recorded signature. Same off-by-one either way.
+
 **The narrower statement matters, because the broad one is false.** This section used to say that any pipeline
 reading more than one uniform buffer mis-binds, full stop. Measured on an Apple M2 Max, two shapes that the
 broad rule forbids bind CORRECTLY on the incumbent: a vertex stage reading two uniform buffers at sets 0 and

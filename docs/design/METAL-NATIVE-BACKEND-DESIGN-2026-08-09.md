@@ -761,6 +761,15 @@ UNREPRODUCED rather than explained, which is a narrowing rather than a refutatio
 along with the storage-buffer shape. The engine-wide rule covers both either way, which is the practical
 consequence of keeping it.
 
+**And the same treatment for the splat incident's own SYMPTOM, because this row reproduced its sibling.** The
+recorded signature is one uniform buffer's bytes arriving THROUGH another, a cross-read, and what the third
+shape produces is an all-zero read. Both follow from the same index disagreement, and which one appears depends
+on whether the earlier buffer is bound to the reading stage: the third shape deliberately keeps the fragment
+referencing set 1 alone, so nothing is bound at the index that function reads and the cross-read's precondition
+is absent. So the MECHANISM behind the incident is measured and the incident's own symptom is not, which is
+unreproduced rather than refuted for the same reason as the paragraph above, and it goes on #604's list beside
+the other two.
+
 ### 2.4 The MRT clear, and the shipped workaround one draft missed
 
 **The reuse-first draft ruled the collapse a correction that no golden can see**, on the stated ground that no

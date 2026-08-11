@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Text;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Internal;
@@ -199,17 +200,33 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// which is a miss and a delete rather than a wrong table: a table is the one thing in this backend whose
         /// silent corruption renders wrong pixels with no error anywhere.
         /// </para>
+        /// <para>
+        /// THE STAGE SET IS CHECKED TOO, AND CROSS-CHECKED AGAINST THE ENTRIES, which the layouts cannot do for
+        /// it. A table is keyed on <c>(set, binding, stage)</c> and the SOURCES a payload carries are what decide
+        /// which stages exist, so the two halves of one payload have to agree: a compute payload carrying a
+        /// fragment entry, or a graphics payload with one stage where the emission always produces a pair, is a
+        /// file nothing this engine wrote could have produced. Neither is reachable through
+        /// <see cref="MetalMslCacheEntry"/>'s writer today and both authenticate perfectly once written by hand,
+        /// which is the whole reason the read side checks rather than trusts.
+        /// </para>
         /// </summary>
         /// <param name="entries">The cached entries, in any order.</param>
         /// <param name="layouts">The cached reflection layouts, in set order.</param>
+        /// <param name="stages">The stages the payload carries a source for. A compute program is exactly one
+        /// <see cref="MetalShaderStage.Compute"/>, a graphics program exactly
+        /// <see cref="MetalShaderStage.Vertex"/> and <see cref="MetalShaderStage.Fragment"/>.</param>
         /// <param name="label">A name for the program, included in any error message.</param>
-        /// <exception cref="ShaderValidationException">The payload's entries and layouts do not agree.</exception>
+        /// <exception cref="ShaderValidationException">The payload's entries, stages and layouts do not
+        /// agree.</exception>
         internal static MetalShaderIndexTable FromCache(
             IReadOnlyList<KeyValuePair<MetalIndexTableKey, MetalIndexTableEntry>> entries,
-            GpuResourceLayoutDescription[] layouts, string label)
+            GpuResourceLayoutDescription[] layouts, IReadOnlySet<MetalShaderStage> stages, string label)
         {
             ArgumentNullException.ThrowIfNull(entries);
             ArgumentNullException.ThrowIfNull(layouts);
+            ArgumentNullException.ThrowIfNull(stages);
+
+            RequireProgramShape(stages, label);
 
             var rebuilt = new Dictionary<MetalIndexTableKey, MetalIndexTableEntry>(entries.Count);
             foreach ((MetalIndexTableKey key, MetalIndexTableEntry entry) in entries)
@@ -218,6 +235,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     + $"({entry.Index.ToString(CultureInfo.InvariantCulture)})]] "
                     + $"set={key.Set.ToString(CultureInfo.InvariantCulture)} "
                     + $"binding={key.Binding.ToString(CultureInfo.InvariantCulture)}";
+
+                if (!stages.Contains(key.Stage))
+                {
+                    throw Loud(where,
+                        "the cached entry names a stage the payload carries no source for. The index it holds was "
+                        + "read out of an emission this payload does not contain, so nothing here can be checked "
+                        + "against the text it came from.");
+                }
 
                 if (key.Set < 0 || key.Set >= layouts.Length)
                 {
@@ -246,6 +271,26 @@ namespace KhaozEngine.Gpu.Metal.Internal
             }
 
             return new MetalShaderIndexTable(rebuilt, layouts);
+        }
+
+        // THE TWO SHAPES A METAL PROGRAM CAN HAVE, and there is no third. A compute kernel is one compute stage,
+        // dispatched on its own encoder. A graphics program is a vertex and fragment PAIR, because SPIRV-Cross
+        // assigns the indices across the pair at once and neither half's emission exists without the other. A
+        // payload of any other shape did not come from MetalShaderBuild, so refusing it here is refusing a file
+        // rather than refusing a program.
+        static void RequireProgramShape(IReadOnlySet<MetalShaderStage> stages, string label)
+        {
+            bool compute = stages.Contains(MetalShaderStage.Compute);
+            bool pair = stages.Contains(MetalShaderStage.Vertex) && stages.Contains(MetalShaderStage.Fragment);
+            if (compute ? stages.Count == 1 : pair && stages.Count == 2) return;
+
+            throw new ShaderValidationException(
+                $"{label}: the cached payload carries "
+                + $"{stages.Count.ToString(CultureInfo.InvariantCulture)} stage(s) ["
+                + string.Join(", ", stages.Select(Name))
+                + "], which is neither of the two shapes a Metal program has. A compute program is exactly one "
+                + "compute stage and a graphics program is exactly a vertex and fragment pair, because the pair "
+                + "is cross-compiled together and its indices are assigned across both at once.");
         }
 
         /// <summary>

@@ -210,7 +210,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
             if (entries is null) return null;
             if (body.Position != body.Length) return null;   // trailing bytes nothing wrote
 
-            var program = new MetalMslProgram(stages, MetalShaderIndexTable.FromCache(entries, layouts, label));
+            var program = new MetalMslProgram(
+                stages, MetalShaderIndexTable.FromCache(entries, layouts, seen, label));
             return new MetalMslCacheEntry(program, x, y, z);
         }
 

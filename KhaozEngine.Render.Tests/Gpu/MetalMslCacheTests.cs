@@ -365,19 +365,107 @@ void main() { Values[gl_GlobalInvocationID.x] = gl_GlobalInvocationID.x; }
             };
 
             Assert.Throws<ShaderValidationException>(() => MetalShaderIndexTable.FromCache(
-                Entry(1, 0, MetalIndexSpace.Buffer, 0), layouts, "bad-set"));
+                Entry(1, 0, MetalIndexSpace.Buffer, 0), layouts, Graphics, "bad-set"));
             Assert.Throws<ShaderValidationException>(() => MetalShaderIndexTable.FromCache(
-                Entry(0, 3, MetalIndexSpace.Buffer, 0), layouts, "bad-binding"));
+                Entry(0, 3, MetalIndexSpace.Buffer, 0), layouts, Graphics, "bad-binding"));
             Assert.Throws<ShaderValidationException>(() => MetalShaderIndexTable.FromCache(
-                Entry(0, 0, MetalIndexSpace.Texture, 0), layouts, "wrong-space"));
+                Entry(0, 0, MetalIndexSpace.Texture, 0), layouts, Graphics, "wrong-space"));
             Assert.Throws<ShaderValidationException>(() => MetalShaderIndexTable.FromCache(
-                Entry(0, 0, MetalIndexSpace.Buffer, -1), layouts, "negative-index"));
+                Entry(0, 0, MetalIndexSpace.Buffer, -1), layouts, Graphics, "negative-index"));
 
             // And the shape it accepts, so the four above are refusals rather than a rebuild that never works.
             MetalShaderIndexTable table = MetalShaderIndexTable.FromCache(
-                Entry(0, 0, MetalIndexSpace.Buffer, 2), layouts, "fine");
+                Entry(0, 0, MetalIndexSpace.Buffer, 2), layouts, Graphics, "fine");
             Assert.True(table.TryGetIndex(0, 0, MetalShaderStage.Vertex, out MetalIndexTableEntry entry));
             Assert.Equal(new MetalIndexTableEntry(MetalIndexSpace.Buffer, 2), entry);
+        }
+
+        /// <summary>
+        /// THE STAGE SET IS A PROGRAM SHAPE AND NOT A FREE LIST. A Metal program is one compute stage or a vertex
+        /// and fragment pair, because the pair is cross-compiled together and its indices are assigned across both
+        /// at once. Everything else is a payload nothing in this engine could have written.
+        /// </summary>
+        [Fact]
+        public void TheTableRebuild_RefusesAStageSetThatIsNotAProgramShape()
+        {
+            foreach (MetalShaderStage[] shape in new[]
+                     {
+                         Array.Empty<MetalShaderStage>(),
+                         new[] { MetalShaderStage.Vertex },
+                         new[] { MetalShaderStage.Fragment },
+                         new[] { MetalShaderStage.Compute, MetalShaderStage.Fragment },
+                         new[] { MetalShaderStage.Vertex, MetalShaderStage.Fragment, MetalShaderStage.Compute },
+                     })
+            {
+                Assert.Throws<ShaderValidationException>(() => MetalShaderIndexTable.FromCache(
+                    Array.Empty<KeyValuePair<MetalIndexTableKey, MetalIndexTableEntry>>(),
+                    Array.Empty<GpuResourceLayoutDescription>(), new HashSet<MetalShaderStage>(shape), "shape"));
+            }
+
+            // The two that ARE shapes, so the five above are refusals rather than a rebuild that never works.
+            foreach (IReadOnlySet<MetalShaderStage> shape in new[] { Graphics, Compute })
+            {
+                Assert.Equal(0, MetalShaderIndexTable.FromCache(
+                    Array.Empty<KeyValuePair<MetalIndexTableKey, MetalIndexTableEntry>>(),
+                    Array.Empty<GpuResourceLayoutDescription>(), shape, "shape").Count);
+            }
+        }
+
+        /// <summary>
+        /// AND THE ENTRIES ARE CROSS-CHECKED AGAINST THAT SET. An index was read out of one stage's emitted text,
+        /// so an entry naming a stage the payload carries no source for describes a bind nothing in the payload
+        /// can justify.
+        /// </summary>
+        [Fact]
+        public void TheTableRebuild_RefusesAnEntryForAStageThePayloadDoesNotCarry()
+        {
+            var layouts = new[]
+            {
+                new GpuResourceLayoutDescription(
+                    new GpuResourceLayoutElement("Frame", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex)),
+            };
+
+            Assert.Throws<ShaderValidationException>(() => MetalShaderIndexTable.FromCache(
+                Entry(0, 0, MetalIndexSpace.Buffer, 0, MetalShaderStage.Compute), layouts, Graphics, "not-mine"));
+            Assert.Throws<ShaderValidationException>(() => MetalShaderIndexTable.FromCache(
+                Entry(0, 0, MetalIndexSpace.Buffer, 0, MetalShaderStage.Fragment), layouts, Compute, "not-mine"));
+        }
+
+        /// <summary>
+        /// THE SAME TWO SHAPES THROUGH A REAL FILE, because a rebuild refusal only matters if the read path
+        /// reaches it. Neither payload is producible by the writer, so both are built by handing the entry a
+        /// program whose stage list and table disagree, which is exactly what a hand-edited file would look like
+        /// once it was re-hashed.
+        /// </summary>
+        [Fact]
+        public void APayloadWhoseStagesAndTableDisagree_IsAMissAndTheEntryIsDeleted()
+        {
+            var layouts = new[]
+            {
+                new GpuResourceLayoutDescription(
+                    new GpuResourceLayoutElement("Out", GpuResourceKind.StructuredBufferReadWrite,
+                        GpuShaderStages.Compute)),
+            };
+
+            // A ONE-STAGE GRAPHICS PAYLOAD: the table is a legal graphics table and the payload carries only the
+            // vertex source, so the pair the indices were assigned across is half missing.
+            AssertPayloadRefused(
+                new MetalMslProgram(
+                    new[] { new MetalMslStage(MetalShaderStage.Vertex, "main0", "vertex void main0() {}") },
+                    MetalShaderIndexTable.FromCache(
+                        Entry(0, 0, MetalIndexSpace.Buffer, 0, MetalShaderStage.Vertex), layouts, Graphics,
+                        "half-pair")),
+                0, 0, 0);
+
+            // A COMPUTE PAYLOAD CARRYING A FRAGMENT ENTRY: one compute source, and a table entry read out of an
+            // emission this payload does not contain.
+            AssertPayloadRefused(
+                new MetalMslProgram(
+                    new[] { new MetalMslStage(MetalShaderStage.Compute, "main0", "kernel void main0() {}") },
+                    MetalShaderIndexTable.FromCache(
+                        Entry(0, 0, MetalIndexSpace.Buffer, 0, MetalShaderStage.Fragment), layouts, Graphics,
+                        "wrong-stage")),
+                8, 4, 2);
         }
 
         // ---- the null edge -------------------------------------------------------------------------------
@@ -427,6 +515,28 @@ void main() { Values[gl_GlobalInvocationID.x] = gl_GlobalInvocationID.x; }
 
         // ---- helpers -------------------------------------------------------------------------------------
 
+        /// <summary>The two shapes a Metal program has, for the rebuild's stage argument.</summary>
+        static IReadOnlySet<MetalShaderStage> Graphics { get; } =
+            new HashSet<MetalShaderStage> { MetalShaderStage.Vertex, MetalShaderStage.Fragment };
+
+        static IReadOnlySet<MetalShaderStage> Compute { get; } =
+            new HashSet<MetalShaderStage> { MetalShaderStage.Compute };
+
+        /// <summary>Serialize <paramref name="program"/> as an entry, store it, and assert the read refuses it.
+        /// The store side writes whatever it is given, which is what lets a payload the emitter cannot produce be
+        /// put on disk exactly as a hand-edited and re-hashed file would be.</summary>
+        static void AssertPayloadRefused(MetalMslProgram program, uint x, uint y, uint z)
+        {
+            using var temp = new TempCacheDirectory();
+            var cache = new MetalMslCache(temp.Path);
+            string key = MetalShaderKey.For("disagreeing payload " + Guid.NewGuid().ToString("N"));
+
+            Assert.True(cache.TryStore(key, new MetalMslCacheEntry(program, x, y, z)));
+
+            var reader = new MetalMslCache(temp.Path);
+            AssertRefusedAndDeleted(reader, key, cache.PathFor(key));
+        }
+
         static (MetalMslCache Cache, string Key, string Path) Planted(TempCacheDirectory temp)
         {
             var cache = new MetalMslCache(temp.Path);
@@ -456,11 +566,12 @@ void main() { Values[gl_GlobalInvocationID.x] = gl_GlobalInvocationID.x; }
         }
 
         static List<KeyValuePair<MetalIndexTableKey, MetalIndexTableEntry>> Entry(
-            int set, int binding, MetalIndexSpace space, int index)
+            int set, int binding, MetalIndexSpace space, int index,
+            MetalShaderStage stage = MetalShaderStage.Vertex)
             => new()
             {
                 new KeyValuePair<MetalIndexTableKey, MetalIndexTableEntry>(
-                    new MetalIndexTableKey(set, binding, MetalShaderStage.Vertex),
+                    new MetalIndexTableKey(set, binding, stage),
                     new MetalIndexTableEntry(space, index)),
             };
 

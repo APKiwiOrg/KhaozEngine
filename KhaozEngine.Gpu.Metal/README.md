@@ -502,9 +502,19 @@ service warmed first so neither number is startup cost), and no public API can s
 engine's own half, GLSL to SPIR-V and then SPIR-V to MSL, and that is what is cached
 ([#592](https://github.com/APKiwiOrg/KhaozEngine/issues/592)). One file per program under
 `<local-app-data>/KhaozEngine/metal-msl/<engine version>/`, keyed on the shader sources, all three pinned option
-sets and the engine version, holding every stage's MSL, every stage's entry-point name, the binding table read
-off that emission and a compute kernel's workgroup size. Over the shipped corpus of 42 programs that is 333 KiB
-and turns 3,443 ms of cold emission into 13 ms.
+sets, the engine version and the module version ids of the two assemblies that PRODUCE the payload, holding every
+stage's MSL, every stage's entry-point name, the binding table read off that emission and a compute kernel's
+workgroup size. Over the shipped corpus of 42 programs that is 333 KiB and turns 3,443 ms of cold emission into
+13 ms.
+
+**Why the producing assemblies are in the key, and what it costs you.** The pins name the toolchain, and four of
+those payload fields are read OUT of the emission by engine code the pins do not cover: the entry-point name and
+the argument list, the binding table, the reflected layouts and the workgroup size. Within one engine version,
+editing any of them would otherwise keep serving the payload the previous build wrote, with no error anywhere. So
+`KhaozEngine.Gpu.Metal` and `KhaozEngine.Gpu` are in the hash by their MVID, which the compiler rewrites on every
+build and which therefore cannot be forgotten the way a hand-bumped constant can. If you are DEVELOPING the
+engine, a rebuild of either assembly invalidates the cache and re-emits the corpus once, about 3.4 seconds. If
+you are CONSUMING a release, its assemblies were built once, so nothing changes for you.
 
 **`KE_METAL_MSL_CACHE` relocates it or turns it off.** Point it at a directory to move it (a CI workspace, or a
 machine whose local app data is not writable), or set it to any of `off`, `0`, `false`, `no` or `none` to emit

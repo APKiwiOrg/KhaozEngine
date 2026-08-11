@@ -3175,11 +3175,12 @@ table is re-checked structurally on the way in. Any failure is a miss AND a dele
 fails identically on every future launch.
 
 *And the drift test was checked rather than assumed.* `MetalMslByteEqualityTests` compares FRESH emission against
-the bake, which matters more now than before: the cache key names the sources, the engine version and all three
-pins, but not the `Veldrid.SPIRV` package version, which is what the pins' own headers say actually freezes the
-emission. So a cached entry can be stale WITHIN one engine version, and a drift test reading one would report no
-drift on precisely the change it exists to catch. It drives `SpirvCrossCompile` directly, in a package that cannot
-see this cache, and now says so with a test rather than only in prose.
+the bake, which matters more now than before: the cache key names the sources, the engine version, all three pins
+and (from the review addendum below) the two producing assemblies, but not the `Veldrid.SPIRV` package version,
+which is what the pins' own headers say actually freezes the emission. So a cached entry can be stale WITHIN one
+engine version, and a drift test reading one would report no drift on precisely the change it exists to catch. It
+drives `SpirvCrossCompile` directly, in a package that cannot see this cache, and now says so with a test rather
+than only in prose.
 
 *What row 9 kept from M-S7 anyway.* `MetalShaderKey` exists, whole, hashing all three pinned option sets and the
 whole program's sources, because the follow-up should not have to re-derive which inputs matter. Today it names
@@ -3189,6 +3190,51 @@ row 9 and that was worth stating**: nothing skipped the emission then, so the ta
 the pin's real content was a constraint on any cache that ever landed. One did, and the addendum above is that
 constraint discharged rather than restated. `MTLLibrary`'s own header carries the refusal so that the
 next reader who finds `-libraryDataContents` in a class dump does not have to repeat this.
+
+**SECOND ADDENDUM, AT #592's REVIEW: THE KEY NAMED THE TOOLCHAIN AND NOT THE READER, WHICH IS A SECOND ROUTE INTO
+THE SAME WRONG-PIXEL CLASS.** The addendum above is unchanged and this is the gap its own review found in it.
+
+*What the key covered and what it did not.* Schema, engine version, all three pins, every source. That is the
+TOOLCHAIN: everything that decides what SPIRV-Cross emits. But four of the payload's fields are not emitted by the
+toolchain at all, they are READ out of the emission by engine code that no pin covers: the entry-point name and
+the argument list (`MetalMslEntryPoint.Parse`), the binding table (`MetalShaderIndexTable.Build` on top of
+`SpirvResourceDecorations.Read`), the reflected layouts (`SpirvCrossCompile`'s reflect) and a compute kernel's
+workgroup size (`SpirvLocalSize.Parse`). Within one engine version, editing any of those four and re-running
+serves the OLD payload out of the cache, silently, which is the wrong-pixel-no-error class 2.2b exists to close
+arriving through the cache rather than through a bind. The branch's own planted-entry test is the proof that it is
+reachable rather than theoretical: a hit answers with a stored table for two sources the emitter would refuse
+outright, so the payload genuinely is the only thing consulted.
+
+*The fix is mechanical rather than remembered.* Both producing assemblies are folded into the hashed content by
+their `Module.ModuleVersionId`: `KhaozEngine.Gpu.Metal` for the parse and the table, `KhaozEngine.Gpu` for the
+reflect, the decoration read and the local size. The alternative was a hand-bumped semantics constant beside the
+schema tag, and it was refused for the reason the schema tag itself is only safe: a constant is correct while
+every future editor of four files in two assemblies remembers to move it, and the failure of forgetting is
+SILENT, which is precisely the property that makes this class expensive. The MVID is written by the compiler on
+every build, so it cannot be forgotten.
+
+*The cost, stated so the trade is readable.* A developer rebuild of either assembly invalidates the whole cache
+and re-emits the corpus once, 3.4 seconds on the measured machine. That is the CORRECT behaviour rather than an
+overhead: a rebuild is exactly the moment a reader may have changed, and 3.4 seconds once per build is the price
+of never serving a payload the old code wrote. A shipped build's assemblies are compiled once, so their MVIDs are
+fixed for the life of the release and a player's cache behaves exactly as it did before. The schema tag went to
+`v2` because the fields changed.
+
+*What is still open, and it is the same on both backends.* The `Veldrid.SPIRV` package version is not an engine
+assembly, so no MVID moves when it does. That channel is
+[#610](https://github.com/APKiwiOrg/KhaozEngine/issues/610)'s own scope and stays open for Direct3D 11 as well as
+for this backend, which is why the fix here does not close it.
+
+*Three smaller review findings landed with it, all on the read side of the payload.* The table rebuild now takes
+the payload's STAGE SET and refuses anything that is not one of the two shapes a Metal program has, then refuses
+any entry naming a stage outside that set: an index was read out of one stage's emitted text, so a compute
+payload carrying a fragment entry, or a one-stage graphics payload where the emission always produces a pair,
+describes a bind nothing in the payload can justify. Every count is now bounded BEFORE it is allocated, because
+the hash is an authenticity check and not a sanity one: a file rewritten whole is authentic and arbitrary, and a
+count read straight into an allocation raises `OutOfMemoryException`, which is deliberately outside the caught set
+and would therefore escape the "every failure is a miss" posture and take the process rather than the entry. And
+the null-key edge answers a miss again on all three disk caches, which extracting the file plumbing into
+`GpuDiskCache` had turned into a throw out of members whose whole contract is that they never raise one.
 
 ### 12.6 Three things this backend must not "fix" (M-B4, M-B5)
 

@@ -74,6 +74,30 @@ three callers keep their whole shape: their keys, their extensions, their subfol
 all stay where they are. `D3D11ShaderPathTests` and `VulkanPipelineCacheTests` pass unchanged, which is the
 regression proof, and `GpuDiskCacheTests` drives the shared contract once, directly.
 
+**The key names the code that PRODUCES the payload, not only the toolchain** (#610). Schema, engine version, all
+three pins and every source name what SPIRV-Cross emits. Four of the payload's fields are read back OUT of that
+emission by engine code no pin covers: the entry-point name and the argument list (`MetalMslEntryPoint.Parse`),
+the binding table (`MetalShaderIndexTable.Build` over `SpirvResourceDecorations.Read`), the reflected layouts
+(`SpirvCrossCompile`'s reflect) and a compute kernel's workgroup size (`SpirvLocalSize.Parse`). Within one engine
+version, editing any of them would keep serving the OLD payload with no error anywhere, which is the same
+wrong-pixel-no-error class the binding ruling exists to close, arriving through the cache instead of through a
+bind. So both producing assemblies are in the hashed content by their module version id, which the compiler
+rewrites on every build and which therefore cannot be forgotten the way a hand-bumped semantics constant can. An
+engine DEVELOPER pays one re-emission of the corpus per rebuild, about 3.4 seconds, which is the correct
+behaviour rather than an overhead: a rebuild is exactly when a reader may have changed. A CONSUMER pays nothing,
+because a release's assemblies are built once. The `Veldrid.SPIRV` package-version channel is not an engine
+assembly and stays open on both backends, which is #610's own scope.
+
+**Three more read-side hardenings on the payload.** The table rebuild now takes the payload's STAGE SET, refuses
+anything that is not one of the two shapes a Metal program has (exactly one compute stage, or exactly a vertex
+and fragment pair), and refuses any table entry naming a stage the payload carries no source for. Every count in
+the payload is bounded BEFORE it is allocated, because the SHA-256 is an authenticity check and not a sanity one:
+a file rewritten whole is authentic and arbitrary, and a count read straight into an allocation raises an
+`OutOfMemoryException` that is deliberately outside the caught set, so it would escape the "every failure is a
+miss" posture and take the process rather than the entry. And a null or blank key answers a miss on all three
+disk caches again, which the file-store extraction had turned into a throw out of members documented never to
+raise one.
+
 **Consumer impact: none, unless you want it.** No public API changed, nothing needs adopting, and the cache is on
 by default on `MetalNative` exactly as the Direct3D 11 and Vulkan ones are on theirs. Set `KE_METAL_MSL_CACHE=off`
 while chasing a shader or binding problem if you want to be sure of what ran.

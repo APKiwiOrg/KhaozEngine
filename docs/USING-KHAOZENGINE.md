@@ -8945,8 +8945,13 @@ processes and no public API can serialize a source-compiled `MTLLibrary` anyway.
 own half of the work, GLSL to SPIR-V and then SPIR-V to MSL, which nothing else caches and which cost 3,443 ms
 across the shipped set of 42 programs when measured. One file per program lands under
 `<local-app-data>/KhaozEngine/metal-msl/<engine version>/`, keyed on the shader sources, the pinned compile
-options and the engine version, and holds every stage's emitted MSL, its entry-point name, the binding table read
-off that emission and a compute kernel's workgroup size. A warm start reads all 42 back in 13 ms from 333 KiB.
+options, the engine version and the module version ids of the two engine assemblies that produce the payload, and
+holds every stage's emitted MSL, its entry-point name, the binding table read off that emission and a compute
+kernel's workgroup size. A warm start reads all 42 back in 13 ms from 333 KiB. Those two module ids are in the key
+because four of those fields are read OUT of the emission by engine code the pinned options do not cover, so
+within one engine version an edit to any of them would otherwise keep serving the payload the previous build
+wrote. It costs an engine DEVELOPER one re-emission of the corpus per rebuild, about 3.4 seconds, and costs a
+consumer of a release nothing at all, since a release's assemblies are built once.
 Point the variable at a directory to relocate it, or set it to any of `off`, `0`, `false`, `no` or `none` to emit
 fresh every time, which is what to do when you are chasing a binding or shader problem and want to be sure of
 what ran. Any other value is a directory path, which is why the disable words are a set rather than `off` alone.

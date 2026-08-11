@@ -334,6 +334,11 @@ What it owns today:
     layout's, per index space. A vertex-only texture placed after a fragment-only one cannot be made to work at
     any binding number, and no reordering inside the shader bodies fixes it.
 
+  Both constrain the INCUMBENT Veldrid Metal backend (`GpuBackendKind.Metal`) alone, which the exception
+  message says as well: the engine's own native Metal backend binds at the index read out of each stage's
+  emission, and Vulkan and Direct3D11 honour the decorations, so a rejected shader renders correctly on all
+  three and the rejection can land on a shader that looks fine on every device you own.
+
   Both degrade rather than false-positive: an index space carrying an argument the join cannot resolve is
   dropped silently instead of guessed at. The engine's own shader-source tests use this to validate every
   embedded production shader, and games can validate their custom shaders the same way in their own fast test

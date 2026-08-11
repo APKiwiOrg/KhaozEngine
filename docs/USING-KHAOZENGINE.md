@@ -10726,6 +10726,13 @@ your GLSL:
   one cannot be made to work at any binding number, and no reordering inside the shader bodies fixes it. Order
   your `GpuResourceLayoutDescription` so the resources both stages read come first.
 
+**It is the INCUMBENT Veldrid Metal backend's constraint, and only that one**, which the exception message says
+as well. The engine's own native Metal backend (`GpuBackendKind.MetalNative`) binds at the index read out of each
+stage's emission rather than at a counted one, and Vulkan and Direct3D 11 honour the decorations, so a shader
+rejected here draws correctly on all three. Expect the rejection on a shader that looks fine on every device you
+own. The constraint (and this half of the validator) retires with the Veldrid Metal leg, tracked at
+https://github.com/APKiwiOrg/KhaozEngine/issues/604.
+
 Both degrade rather than false-positive. An index space carrying an argument the join cannot resolve is dropped
 silently instead of guessed at, so the guard can miss a swap but will not fail a correct shader.
 

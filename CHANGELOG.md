@@ -501,7 +501,9 @@ decorations, so the cross-compiler assigns each resource an index of its own in 
 Veldrid Metal backend binds a resource set by counting the layout in binding order. A helper function defined
 above `main` that reaches a later binding first silently swaps the two, on Metal alone, with Vulkan and
 Direct3D 11 perfectly correct because they honour the decorations. `ValidatePair` checks each stage of the pair
-separately, using the `Stages` masks the emission itself carries rather than the reflection's.
+separately, out of that stage's own emission, and no stage mask is consulted at any point: a stage's emitted
+arguments are exactly the resources that stage references, so checking one stage's emission IS the per-stage
+check.
 
 **The join is keyed on the SPIR-V id, per stage, which is what makes a SAME-KIND swap visible.** Each emitted
 argument is named `_<id>` after its SPIR-V result id, and `SpirvResourceDecorations` resolves that id to the
@@ -526,11 +528,28 @@ property, and the message says which binding the stage reads and which earlier o
 **It degrades rather than false-positives, which is the one place it differs from the backend's join.** The
 backend throws loudly on an argument it cannot resolve. This runs on every shader the engine or a consumer
 compiles, so an index space carrying an unresolvable argument (a name that is not the `_<id>` shape, a
-cross-compiler helper argument, an emission whose indices are not dense) is dropped from the check in silence.
-`CheckMslBufferSlots` stays as the buffer-space fallback for exactly that case. Four facts pin the budget: a
-dead-stripped resource between two live ones, a read-only storage buffer beside a texture (they share
-Direct3D 11's `t` register class while living in different Metal index spaces), an array of textures (the Metal
-cross-compile refuses it before the guard ever sees it), and a stage that declares no resources at all.
+cross-compiler helper argument such as a buffer-size buffer, an argument-buffer emission, or an argument whose
+id carries no `DescriptorSet`/`Binding` decoration at all, a push constant being the ordinary case) is dropped
+from the check in silence. `CheckMslBufferSlots` stays as the buffer-space fallback for exactly that case. Four
+facts pin the budget: a dead-stripped resource between two live ones, a read-only storage buffer beside a
+texture (they share Direct3D 11's `t` register class while living in different Metal index spaces), an array of
+textures (the Metal cross-compile refuses it before the guard ever sees it), and a stage that declares no
+resources at all.
+
+**Every message names the backend the constraint protects**, because a consumer whose shader draws correctly on
+every device they own would otherwise read the rejection as a bug in the validator. The engine's own native Metal
+backend binds at the index read out of each stage's emission, and Vulkan and Direct3D 11 honour the decorations,
+so all three render the rejected shapes correctly. The constraint is the incumbent Veldrid Metal backend's alone
+and retires with that leg (#604).
+
+**An attributed entry point is still read, which review caught costing a whole shader class.** SPIRV-Cross emits
+a function attribute on the SAME LINE as the entry point it decorates, so a fragment declaring
+`layout(early_fragment_tests) in;` comes out as `[[ early_fragment_tests ]] fragment main0_out main0(...)`. The
+first cut looked for the stage keyword at the start of a line only, never found that entry point, and, because an
+entry point the parse cannot find is silence rather than a throw, would have validated such a fragment clean with
+no index-order check and no prefix check at all. A declaration may now also begin straight after an attribute's
+closing bracket, and `MslBindingOrderGuardTests` pins it with a reversed-order `early_fragment_tests` fragment
+that throws nothing at all against the old parse.
 
 **Every negative case is real shipped source with one line moved or one expression dropped**, and every one was
 proved to pass again with the guard switched off, so a guard that had started rejecting everything would fail

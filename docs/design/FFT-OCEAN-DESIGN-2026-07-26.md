@@ -195,9 +195,11 @@ Direct3D11, silently wrong on Metal, with nothing wrong in the GLSL.
    before `main`. The row kernel read `H0` (binding 1) inside a helper before anything read the uniform block
    (binding 0), so the two swapped: the kernel read its cascade tile size out of the spectrum buffer, got 0,
    divided by it, and produced a NaN surface. **This one is now guarded.** `ShaderValidation.ValidateCompute`
-   compares the kinds of the Metal entry point's buffer arguments against the reflected layout's, in order, and
-   rejects a mismatch in the GPU-free lane on every push. `OceanFftShaderValidationTests` keeps the real broken
-   source as its negative case.
+   rejects it in the GPU-free lane on every push. THE GUARD IS `MslBindingOrder` since 17.36.0: it joins each
+   emitted Metal argument back to the `(set, binding)` the author declared, through that module's own SPIR-V
+   decorations, so it also sees a swap between two resources of the SAME KIND. The kind comparison this paragraph
+   used to call the guard, `CheckMslBufferSlots`, is demoted to the fallback for a buffer space that join declines
+   to read. `OceanFftShaderValidationTests` keeps the real broken source as its negative case.
 
 2. **Veldrid numbers resources with one counter PER KIND over the whole layout, while the cross-compiler numbers
    each STAGE densely.** They agree only when every stage's resources are a PREFIX of the layout. A vertex-only

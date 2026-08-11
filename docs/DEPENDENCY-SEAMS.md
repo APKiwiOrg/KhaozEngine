@@ -949,6 +949,12 @@ binding 0. Fold everything any stage needs from a UBO - the vertex's ViewProj / 
 transforms AND the fragment's frame/lighting/shadow uniforms - into that single buffer, declared
 identically in both stages (each stage uses its slice). Keep per-mesh TEXTURES at set 1 and up (fragment).
 
+**Since 17.36.0 the shape this rule forbids is rejected STATICALLY rather than only written down here**:
+`MslBindingOrder.CheckPrefix`, run by `ShaderValidation.ValidatePair`, throws when one stage's resources are not
+a prefix of the layout's per index space, which is exactly the each-stage-references-a-different-buffer shape
+measured above (see the `KhaozEngine.Gpu` README and `USING-KHAOZENGINE.md` for the guard's two checks and what
+it deliberately stays silent about).
+
 The model and splat-terrain passes follow this: the shadow-map matrix and the per-material splat params
 ride in the SAME frame UBO after the point-light arrays, so each pass binds exactly one uniform buffer
 (see the splat-params note in `../KhaozEngine.Render3D/Rendering/ModelRenderer.cs` and the `SplatVert`

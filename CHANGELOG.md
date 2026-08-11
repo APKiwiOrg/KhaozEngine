@@ -1905,6 +1905,41 @@ every counter criterion on Metal is absolute rather than comparative. Gate 4 sta
 consecutive seconds and never reached the 120 Hz refresh regime the incumbent did, which the averages do not call
 a regression and which is #608. Full readings in the gate 4 subsection of section 17 of the design.
 
+### The software frame cap stops applying to `MetalNative`, measured at rollout gate 5
+
+**Behaviour change on one backend.** `FrameCap.Resolve` and `DisplaySettings.RequiresFrameCapWarning` are an
+equality against `GpuBackendKind.Metal` again, so on the engine's own `MetalNative` the default `FrameCap.Auto`
+with vsync now resolves to UNCAPPED instead of to the display refresh, and selecting vsync with no cap no longer
+emits the one-time `Console.Error` warning. Nothing changes on the incumbent Veldrid `Metal` backend, whose
+present still does not throttle the CPU from vsync alone, and nothing changes on any other backend. This is
+decision M-W3's open measurement being taken rather than a change of mind: both sites briefly covered the whole
+Metal family as a CONSERVATIVE DEFAULT while the question was open, because a cap that does not bind costs
+nothing and a missing cap regresses a Mac client to a free run.
+
+**What was measured, on 2026-08-11 at `17.35.0+a6f31ab0`, and it takes all three legs.** The gate-4 native
+field capture (uncapped, vsync on, 8000 frames) read `AcquireWaitCount` at exactly 1.000 per frame and
+`AcquireWaitMs` at 15.175 ms against a 16.669 ms median frame, steady across the capture, so 91 percent of every
+frame is blocked in the drawable acquire. On its own that is consistent with a backend that simply cannot go
+faster, so the human windowed pass supplied the other two: on a display pinned to 120 Hz the native session sat
+at 120 fps with vsync on, and F7 toggling vsync OFF mid-session jumped it to 700 to 800+ fps with visible
+tearing. The last one is what rules out every other bottleneck as the source of the pacing, and it confirms
+`displaySyncEnabled=false` genuinely free-runs and tears. `MetalNative` throttles from vsync exactly as
+`Direct3D11Native` and `VulkanNative` do, so a software cap at the refresh cannot bind on top of it and the
+warning would be advice against the measurement.
+
+**`GpuBackendKinds.IsMetal()` keeps its two implementations and loses both of its readers.** It was written for
+this pair, so its doc comment now records having none rather than leaving that to read as an oversight, and the
+predicate stays: the question it asks is still the right one for the next site that reasons about the Metal API
+rather than about Veldrid's implementation of it. The generalizable half is in the backend-selection section of
+`docs/USING-KHAOZENGINE.md`. Ask which question you mean, because "is this the Metal API" and "does this
+implementation behave the way I measured" look identical at a call site and answered differently here.
+
+**Rollout gate 5 is GREEN with this landed**, which leaves gate 4 as the only one still pending, and pending on
+a week of soak plus MM1 rather than on an instrument. The gate's other findings sit beside it: #605 (the Retina
+`drawableSize` read) is reproduced incumbent parity rather than a native defect, and #607 (a single lost warmup
+crash) is an unreproduced one-off. #608 is closed by the 120 Hz leg: the capture-time 60 Hz was the display's
+own dynamic refresh state during an unattended run, not a layer configuration defect.
+
 
 ## 17.34.0
 

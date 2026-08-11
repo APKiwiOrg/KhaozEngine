@@ -278,10 +278,11 @@ initial window mode (also applied on a custom factory window).
 by default, so a client no longer free-runs a whole core plus the GPU out of the box.
 
 - **`FrameCap.Auto` is the default cap** (`GameAppOptions.FrameCap`, and the plain `new AppWindow(title, w, h)` ctor).
-  It is backend-aware: on **Metal + vsync** (where the Veldrid present does not throttle the CPU and a Mac client would
-  otherwise free-run well above the refresh) it resolves to a real cap - the **display refresh rate** when known, else
-  `FrameCap.DefaultMetalAutoCapHz` (120). On **D3D11 / Vulkan + vsync** it stays **uncapped**, because vsync throttles
-  there. With `PresentMode.Immediate` (any backend) it stays uncapped, respecting the lowest-latency intent. A
+  It is backend-aware: on the incumbent **`GpuBackendKind.Metal` + vsync** (where the Veldrid present does not throttle
+  the CPU and a Mac client would otherwise free-run well above the refresh) it resolves to a real cap - the **display
+  refresh rate** when known, else `FrameCap.DefaultMetalAutoCapHz` (120). Everywhere else it stays **uncapped**,
+  because vsync throttles there: **D3D11 / Vulkan**, their two native backends, and (measured 2026-08-11) the engine's
+  own **`MetalNative`**, whose present blocks the CPU in the drawable acquire for the whole vertical-blank wait. With `PresentMode.Immediate` (any backend) it stays uncapped, respecting the lowest-latency intent. A
   consumer-set value always wins: `FrameCap.Uncapped` is an intentional free-run (the pre-10.96 default) and
   `FrameCap.Hz(n)` / a positive `FrameCapHz` is a fixed cap. A positive `GameAppOptions.FrameCapHz` overrides
   `FrameCap`. `FrameCap.Resolve(backend, present, displayRefreshHz)` is the pure, headless-tested resolver.
@@ -322,15 +323,16 @@ app.Display.ApplyDisplay(s);
 `Resize` drive the window and the swapchain follows the new framebuffer via the resize hook, so the HiDPI
 framebuffer semantics are unchanged (the backbuffer always tracks the physical drawable). **Mac/Metal caveat:**
 setting vsync engages `CAMetalLayer.displaySyncEnabled`, but the Veldrid Metal present still does not throttle the
-CPU from vsync alone. That is measured on `GpuBackendKind.Metal`, the Veldrid one, which is the only Metal
-implementation that has run a windowed session so far. Whether the engine's own `MetalNative` needs the cap is an
-open measurement (it writes `displaySyncEnabled` unconditionally and bounds `maximumDrawableCount`, either of
-which may throttle on its own), so BOTH Metal backends take the capped arm until a windowed pass settles it, and
-nothing you write against this changes when it does. The engine handles this by default now - `FrameCap.Auto`
-(the default cap) resolves to a real cap on Metal + vsync, so you no longer have to branch on `GameApp.Backend`
-to set one. `GameApp`/`AppWindow` emit a
+CPU from vsync alone. That is measured on `GpuBackendKind.Metal`, the Veldrid one, and applies to it alone. The
+engine's own `MetalNative` was measured on 2026-08-11 and its present DOES throttle: the drawable acquire blocks
+once per frame for 15.175 ms of a 16.669 ms frame, a display pinned to 120 Hz paces it at 120 fps, and turning
+vsync off mid-session free-runs past 700 fps with visible tearing. So the capped arm is the incumbent's alone, and
+vsync with no software cap is a healthy configuration on `MetalNative`. The engine handles this by default now -
+`FrameCap.Auto` (the default cap) resolves to a real cap on the incumbent Metal + vsync, so you no longer have to
+branch on `GameApp.Backend` to set one. `GameApp`/`AppWindow` emit a
 one-time warning (`Console.Error`) ONLY when you explicitly force an uncapped free-run (`FrameCap.Uncapped` /
-`FrameCapHz = 0`) with vsync on Metal. The resolved auto default never trips it. The window-mode policy is the pure
+`FrameCapHz = 0`) with vsync on the incumbent Metal backend. The resolved auto default never trips it, and neither
+does `MetalNative` in any configuration. The window-mode policy is the pure
 `WindowModePlanner.Compute`, the auto-cap resolver is the pure `FrameCap.Resolve`, and the Metal-warning rule is the
 pure `DisplaySettings.RequiresFrameCapWarning` (fed the resolved cap) - all headless-unit-tested.
 
@@ -8375,12 +8377,15 @@ and 17.35.0), which are true for both implementations of their API. Use them for
 or reports on its driver, and plain equality against `GpuBackendKind.Direct3D11` / `GpuBackendKind.Vulkan` /
 `GpuBackendKind.Metal` for anything that means Veldrid's implementation specifically.
 
-`IsMetal()` is the one with readers in the engine today, and both are in `KhaozEngine.Windowing`:
-`FrameCap.Resolve` and `DisplaySettings.RequiresFrameCapWarning`. Vsync alone does not throttle the CPU on the
-Veldrid Metal present, so those two apply a real software cap on Metal and warn when a consumer has not set one,
-and both cover BOTH Metal implementations. Whether the engine's own Metal backend needs the cap at all is an
-open measurement rather than a settled fact, so the arm it takes today is the conservative one and both sites
-say so where they take it.
+`IsMetal()` is the one with no reader in the engine today, and the reason is worth knowing if you are choosing
+between it and an equality. It was written for the software frame-cap pair in `KhaozEngine.Windowing`,
+`FrameCap.Resolve` and `DisplaySettings.RequiresFrameCapWarning`, which apply a real cap and warn when a consumer
+has not set one, because vsync alone does not throttle the CPU on the Veldrid Metal present. Whether the engine's
+own Metal backend needed the same cap was an open measurement, so both sites covered BOTH implementations as the
+conservative arm. It was measured on 2026-08-11: the native present throttles, so both sites went back to an
+equality against `GpuBackendKind.Metal`. The lesson generalizes to your own code. Ask which question you mean.
+"Is this the Metal API" is the family predicate. "Does this implementation behave the way I measured" is an
+equality, however much the two look alike at the call site.
 
 The trap is what happens when the override is wrong. A typo, a variable set in the wrong shell,
 or a launcher that drops the environment all fall back to the OS probe, and the run looks completely normal. If

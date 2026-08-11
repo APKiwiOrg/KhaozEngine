@@ -41,9 +41,12 @@ namespace KhaozEngine.Render3D
         /// the call below no-ops (#429). A host driving a surface off a raw <see cref="AppWindow"/> should do the
         /// same: queue and prepare the scene in the <c>onPrepare</c> callback, and call this from <c>onFrame</c>.
         /// <b>A host that does not still nests</b>, because the call below then runs inside the frame's recording.
-        /// It renders correctly on every backend that treats a command list as a real list, and under the Veldrid
-        /// fork's <c>4.9.103</c> guardrail (vendored since 17.27.0) that residual is a loud <c>VeldridException</c>
-        /// naming the fix (pass the pre-record phase) instead of silent corruption, which is the intended trade.
+        /// That residual is now a refusal on every backend rather than on one: a producer with GPU work of its own
+        /// opens its list through <see cref="Gpu.GpuRecording"/>, which sees the frame's own list already open and
+        /// throws <see cref="Gpu.GpuNestedRecordingException"/> naming the fix. The Veldrid fork's <c>4.9.103</c>
+        /// guardrail (vendored since 17.27.0) still catches its own leg one layer below. A loud, portable,
+        /// same-everywhere refusal instead of a picture that is silently right on the dev machine and corrupt on a
+        /// player's is the intended trade (#424).
         /// </para></summary>
         public void Render(Frame frame)
         {

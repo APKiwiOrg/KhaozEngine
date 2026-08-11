@@ -392,12 +392,13 @@ namespace KhaozEngine.Render3D.Rendering
         void PrimeRowPass(WaterSeaState sea, int cascades, uint groups, float timeSeconds, float dt)
         {
             using IGpuCommandList cl = _gd.Factory.CreateCommandList();
-            cl.Begin();
-            WriteUbo(cl, sea, cascades, timeSeconds, dt);
-            cl.SetComputePipeline(_rowPipe!);
-            cl.SetComputeResourceSet(0, _rowSets[_pong]!);
-            cl.Dispatch(groups, (uint)cascades, 1);
-            cl.End();
+            using (GpuRecording.Open(_gd, cl, "the FFT ocean's priming pass"))
+            {
+                WriteUbo(cl, sea, cascades, timeSeconds, dt);
+                cl.SetComputePipeline(_rowPipe!);
+                cl.SetComputeResourceSet(0, _rowSets[_pong]!);
+                cl.Dispatch(groups, (uint)cascades, 1);
+            }
             long start = System.Diagnostics.Stopwatch.GetTimestamp();
             _gd.Submit(cl);
             _gd.WaitForIdle();

@@ -597,7 +597,10 @@ namespace KhaozEngine.Render3D
 
         /// <summary>Create an albedo texture from raw RGBA8 bytes (row-major, <paramref name="width"/> *
         /// <paramref name="height"/> * 4 bytes) and return a handle. For procedural textures and tests. The texture
-        /// is owned by the scene and freed in <see cref="Dispose"/>.</summary>
+        /// is owned by the scene and freed in <see cref="Dispose"/>.
+        /// <para>A MIPPED LOAD IS NOT A MID-FRAME CALL: generating the chain needs a command list of its own, so
+        /// this refuses with <see cref="GpuNestedRecordingException"/> while a frame is recording (#424). A
+        /// one-level load opens no list and is unaffected.</para></summary>
         /// <param name="rgba">Row-major RGBA8 pixels.</param>
         /// <param name="width">Texture width in texels.</param>
         /// <param name="height">Texture height in texels.</param>
@@ -619,9 +622,7 @@ namespace KhaozEngine.Render3D
             if (mips > 1)
             {
                 using var cl = _gd.Factory.CreateCommandList();
-                cl.Begin();
-                cl.GenerateMipmaps(tex);
-                cl.End();
+                using (GpuRecording.Open(_gd, cl, "Scene3D.LoadTexture")) cl.GenerateMipmaps(tex);
                 _gd.Submit(cl);
                 _gd.WaitForIdle();
             }
@@ -634,7 +635,9 @@ namespace KhaozEngine.Render3D
         /// RGBA8), with full mip chains generated, plus a params UBO (per-layer tint/tiling/roughness + triplanar
         /// sharpness + projection + base specular). Returns a handle to draw meshes through the splat pipeline. The
         /// material is owned by the scene and freed in <see cref="Dispose"/> (or <see cref="UnloadSplatMaterial"/>);
-        /// it is shared across every mesh that references it (e.g. all terrain chunks).</summary>
+        /// it is shared across every mesh that references it (e.g. all terrain chunks).
+        /// <para>NOT A MID-FRAME CALL either: the two mip chains need a command list of their own, so this
+        /// refuses with <see cref="GpuNestedRecordingException"/> while a frame is recording (#424).</para></summary>
         public SplatMaterialHandle LoadSplatMaterial(int width, int height, IReadOnlyList<SplatLayerImage> layers,
             float triplanarSharpness = 8f, SplatProjection projection = SplatProjection.Triplanar, float baseSpecStrength = 0.15f,
             TerrainSamplerConfig? sampler = null)
@@ -653,10 +656,7 @@ namespace KhaozEngine.Render3D
             }
             // Generate both mip chains in one transient command list.
             using var cl = f.CreateCommandList();
-            cl.Begin();
-            cl.GenerateMipmaps(albedo);
-            cl.GenerateMipmaps(normal);
-            cl.End();
+            using (GpuRecording.Open(_gd, cl, "Scene3D.LoadSplatMaterial")) { cl.GenerateMipmaps(albedo); cl.GenerateMipmaps(normal); }
             _gd.Submit(cl);
             _gd.WaitForIdle();
 
@@ -833,7 +833,7 @@ namespace KhaozEngine.Render3D
                 tex.Width, tex.Height, GpuPixelFormat.R32Float, GpuTextureUsage.Staging));
             using (IGpuCommandList cl = f.CreateCommandList())
             {
-                cl.Begin(); cl.CopyTexture(tex, staging); cl.End();
+                using (GpuRecording.Open(_gd, cl, "Scene3D.DebugReadShadowMap")) cl.CopyTexture(tex, staging);
                 _gd.Submit(cl); _gd.WaitForIdle();
             }
             var outF = new float[width * height];

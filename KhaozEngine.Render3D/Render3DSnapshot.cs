@@ -42,9 +42,8 @@ namespace KhaozEngine.Render3D
                 // list being opened. See Scene3D.PrepareFrame - opening a second list after renderCl.Begin() is
                 // what corrupts the device on Direct3D11 in immediate-context mode (#423).
                 scene.PrepareFrame();
-                renderCl.Begin();
-                scene.RenderInternal(renderCl, width, height, finalFB);
-                renderCl.End();
+                using (GpuRecording.Open(gd, renderCl, "Render3DSnapshot.Capture"))
+                    scene.RenderInternal(renderCl, width, height, finalFB);
                 gd.Submit(renderCl);
             }
             gd.WaitForIdle();

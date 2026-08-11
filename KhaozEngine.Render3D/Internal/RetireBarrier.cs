@@ -68,6 +68,10 @@ namespace KhaozEngine.Render3D.Internal
             // What it is NOT safe against is being Begun while ANOTHER list is recording. With Direct3D11 in
             // immediate-context mode a command list is the device's immediate context and Begin resets it, so this
             // Submit inside Scene3D.Begin would wipe an open frame's bindings (#423, and #424 for the site list).
+            // That is no longer something a caller can reach silently: Submit opens through GpuRecording, so a
+            // Scene3D.Begin called from inside a frame's recording throws GpuNestedRecordingException naming both
+            // sides. The correct call site is unchanged and unaffected, since every host begins the scene in the
+            // frame's pre-record phase.
             //
             // WHICH BACKENDS THAT IS TRUE OF, now that one of them issues real fences. On the Veldrid Direct3D11
             // leg it stays unreachable: that backend reports no completion fences, so TryCreate returns null and
@@ -88,8 +92,10 @@ namespace KhaozEngine.Render3D.Internal
             if (_free.Count > 0) { fence = _free.Pop(); fence.Reset(); }
             else fence = _gd.Factory.CreateFence();
 
-            _cl.Begin();
-            _cl.End();
+            // The body is deliberately empty: the submission itself is the marker, not anything recorded into it
+            // (see the class note). Opened through the seam's register so a barrier fired from inside an open
+            // recording refuses by name rather than resetting that recording's device state (#424).
+            using (GpuRecording.Open(_gd, _cl, "GpuRetireBarrier.Submit")) { }
             _gd.Submit(_cl, fence);
             return fence;
         }

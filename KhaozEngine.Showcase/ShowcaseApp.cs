@@ -156,9 +156,34 @@ namespace KhaozEngine.Showcase
             // match on the resolved room title, so "3D" or "mini" is enough. Unmatched = ignored.
             _autoRoom = System.Environment.GetEnvironmentVariable("KE_SHOWCASE_ROOM");
 
+            // KE_SHOWCASE_FRAME_CAP pins the frame-cap intent for a measured run. The default Auto resolves to a
+            // SOFTWARE cap on Metal plus vsync (FrameCap.Resolve), which is the conservative arm awaiting decision
+            // M-W3's measurement, and that cap sleeps the loop before the present ever blocks. A capture taken
+            // under it therefore reads the acquire-wait counters as near zero no matter how the backend acquires,
+            // which is a false pass rather than a reading. MM4's exit criterion is stated against the UNCAPPED
+            // capture for exactly that reason, so the run that reads it has to be able to ask for one.
+            if (ParseFrameCap(System.Environment.GetEnvironmentVariable("KE_SHOWCASE_FRAME_CAP")) is { } cap)
+                FrameCap = cap;
+
             // Arm the field capture last, once the window and its device exist, so the session header records the
             // backend that actually came up rather than the one that was asked for.
             _telemetry.Start(Window);
+        }
+
+        /// <summary>Parse the KE_SHOWCASE_FRAME_CAP value: <c>auto</c>, <c>uncapped</c> (or <c>0</c>), or a positive
+        /// integer Hz. Null (leave the default alone) for unset, blank, or anything unrecognized, so a typo cannot
+        /// silently change the pacing of a measured run into something nobody chose. Pure.</summary>
+        internal static FrameCap? ParseFrameCap(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return null;
+
+            string text = value.Trim();
+            if (string.Equals(text, "auto", StringComparison.OrdinalIgnoreCase)) return FrameCap.Auto;
+            if (string.Equals(text, "uncapped", StringComparison.OrdinalIgnoreCase)) return FrameCap.Uncapped;
+            if (!int.TryParse(text, System.Globalization.NumberStyles.Integer,
+                    System.Globalization.CultureInfo.InvariantCulture, out int hz)) return null;
+
+            return hz > 0 ? FrameCap.Hz(hz) : FrameCap.Uncapped;
         }
 
         string? _autoRoom;

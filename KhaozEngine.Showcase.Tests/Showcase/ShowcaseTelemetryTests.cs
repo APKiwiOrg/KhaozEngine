@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using KhaozEngine.Diagnostics;
 using KhaozEngine.Gpu;
 using KhaozEngine.Showcase;
+using KhaozEngine.Windowing;
 using Xunit;
 
 namespace KhaozEngine.Tests.Showcase
@@ -85,6 +86,49 @@ namespace KhaozEngine.Tests.Showcase
             using var telemetry = new ShowcaseTelemetry();
             Assert.False(telemetry.IsRecording);
             Assert.Null(telemetry.CurrentPath);
+        }
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData("   ")]
+        [InlineData("nonsense")]
+        [InlineData("60fps")]
+        public void ParseFrameCap_LeavesTheDefaultAlone_ForUnsetOrUnrecognized(string? value)
+        {
+            // A typo must not silently repace a measured run. Null means "do not touch FrameCap".
+            Assert.Null(ShowcaseApp.ParseFrameCap(value));
+        }
+
+        [Theory]
+        [InlineData("uncapped")]
+        [InlineData("UNCAPPED")]
+        [InlineData("0")]
+        [InlineData("-1")]
+        public void ParseFrameCap_ReadsTheFreeRun(string value)
+        {
+            // The uncapped intent is what MM4's acquire-wait reading is taken under: with the Auto default's
+            // software cap in force on Metal plus vsync, the loop sleeps before the present can block.
+            FrameCap? cap = ShowcaseApp.ParseFrameCap(value);
+            Assert.True(cap.HasValue);
+            Assert.True(cap!.Value.IsUncapped);
+        }
+
+        [Fact]
+        public void ParseFrameCap_ReadsAuto_AsAnExplicitChoice()
+        {
+            FrameCap? cap = ShowcaseApp.ParseFrameCap("auto");
+            Assert.True(cap.HasValue);
+            Assert.True(cap!.Value.IsAuto);
+        }
+
+        [Fact]
+        public void ParseFrameCap_ReadsAFixedHz()
+        {
+            FrameCap? cap = ShowcaseApp.ParseFrameCap("90");
+            Assert.True(cap.HasValue);
+            Assert.Equal(FrameCap.CapKind.Fixed, cap!.Value.Kind);
+            Assert.Equal(90, cap.Value.Value);
         }
 
         /// <summary>Set an environment variable for the scope of one test and put it back afterwards.</summary>

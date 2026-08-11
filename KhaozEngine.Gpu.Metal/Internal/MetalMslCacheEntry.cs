@@ -60,6 +60,36 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <summary>Bytes of SHA-256 appended after the body.</summary>
         internal const int HashLength = 32;
 
+        /// <summary>
+        /// The stage count a payload may declare. A Metal program is one compute stage or a vertex and fragment
+        /// pair, so two is the structural maximum rather than a chosen headroom.
+        /// </summary>
+        internal const int MaxStages = 2;
+
+        /// <summary>
+        /// The layout-array length a payload may declare. Set N is the layout at slot N, and the sets come from
+        /// SPIR-V <c>DescriptorSet</c> decorations, so this bounds how many descriptor sets one program may name.
+        /// The shipped catalog uses single digits and Vulkan's own <c>maxBoundDescriptorSets</c> minimum is 4, so
+        /// this is generous headroom on a number that has a real ceiling above it.
+        /// </summary>
+        internal const int MaxLayouts = 32;
+
+        /// <summary>
+        /// The element count one layout may declare. Metal gives a stage 31 buffer slots
+        /// (<see cref="MetalVertexStreamIndex.BufferTableSize"/>), 128 texture slots and 16 sampler slots, so a
+        /// single stage cannot reference more than 175 distinct elements at all and one SET declaring more than
+        /// this could never be bound.
+        /// </summary>
+        internal const int MaxElementsPerLayout = 256;
+
+        /// <summary>
+        /// The table-entry count a payload may declare. One entry is one (element, stage) pair the emission
+        /// referenced, so the structural ceiling is
+        /// <see cref="MaxLayouts"/> * <see cref="MaxElementsPerLayout"/> * <see cref="MaxStages"/>, and this sits
+        /// an order of magnitude under it while still being 25 times the 159 the shipped corpus produces.
+        /// </summary>
+        internal const int MaxEntries = 4096;
+
         readonly MetalMslProgram _program;
 
         /// <param name="program">The emitted program: every stage's MSL and entry-point name, plus its table.</param>
@@ -163,6 +193,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // THE HASH IS CHECKED BEFORE ONE FIELD IS READ, which is what makes every length and count below safe to
         // act on: a truncated or mangled file cannot reach the reader and ask it to allocate an array of a size
         // nobody wrote.
+        //
+        // EVERY COUNT IS STILL CAPPED BEFORE IT IS ALLOCATED, because the hash is an authenticity check and not a
+        // sanity one. A file this process wrote and something then rewrote WHOLE, hash included, is authentic and
+        // arbitrary, and a count read straight into `new T[count]` allocates before the read that would run out
+        // of bytes ever happens. On a constrained host that is an OutOfMemoryException, which is deliberately
+        // outside the caught set here and in GpuDiskCache, so it would escape the "every failure is a miss"
+        // filter and take the process rather than the entry. Bounding first makes the refusal ordinary: over cap
+        // is a miss and a delete like every other structural failure.
         static bool Authenticated(byte[] file)
         {
             if (file.Length <= HashLength + Magic.Length + sizeof(int)) return false;
@@ -185,7 +223,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             if (!string.Equals(reader.ReadString(), key, StringComparison.Ordinal)) return null;
 
             int stageCount = reader.ReadInt32();
-            if (stageCount is < 1 or > 2) return null;
+            if (stageCount < 1 || stageCount > MaxStages) return null;
 
             var stages = new MetalMslStage[stageCount];
             var seen = new HashSet<MetalShaderStage>();
@@ -246,13 +284,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
         static GpuResourceLayoutDescription[]? ReadLayouts(BinaryReader reader)
         {
             int count = reader.ReadInt32();
-            if (count < 0) return null;
+            if (count < 0 || count > MaxLayouts) return null;
 
             var layouts = new GpuResourceLayoutDescription[count];
             for (int set = 0; set < count; set++)
             {
                 int elementCount = reader.ReadInt32();
-                if (elementCount < 0) return null;
+                if (elementCount < 0 || elementCount > MaxElementsPerLayout) return null;
 
                 var elements = new GpuResourceLayoutElement[elementCount];
                 for (int i = 0; i < elementCount; i++)
@@ -287,7 +325,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         static List<KeyValuePair<MetalIndexTableKey, MetalIndexTableEntry>>? ReadEntries(BinaryReader reader)
         {
             int count = reader.ReadInt32();
-            if (count < 0) return null;
+            if (count < 0 || count > MaxEntries) return null;
 
             var entries = new List<KeyValuePair<MetalIndexTableKey, MetalIndexTableEntry>>(count);
             for (int i = 0; i < count; i++)

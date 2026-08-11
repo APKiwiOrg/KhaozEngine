@@ -468,6 +468,81 @@ void main() { Values[gl_GlobalInvocationID.x] = gl_GlobalInvocationID.x; }
                 8, 4, 2);
         }
 
+        // ---- the counts are bounded BEFORE they are allocated ---------------------------------------------
+
+        /// <summary>
+        /// EVERY COUNT IS CAPPED BEFORE IT IS ALLOCATED, and <c>int.MaxValue</c> is the probe because it is the
+        /// value that separates the two behaviours. The hash authenticates a payload, so a file rewritten WHOLE
+        /// (body and hash together) is authentic and arbitrary, and a count read straight into an allocation
+        /// raises an <c>OutOfMemoryException</c> before the read that would have run out of bytes ever happens.
+        /// That exception is deliberately outside the caught set, so it would escape the "every failure is a
+        /// miss" filter and take the process rather than the entry.
+        /// </summary>
+        [Theory]
+        [InlineData("layouts")]
+        [InlineData("elements")]
+        [InlineData("entries")]
+        public void AnOversizedCount_IsAMissAndTheEntryIsDeletedRatherThanAllocated(string which)
+        {
+            using var temp = new TempCacheDirectory();
+            var cache = new MetalMslCache(temp.Path);
+            string key = MetalShaderKey.For("a synthetic payload probe: " + which);
+
+            File.WriteAllBytes(cache.PathFor(key), Authenticated(SyntheticBody(key, writer =>
+            {
+                switch (which)
+                {
+                    case "layouts":
+                        writer.Write(int.MaxValue);
+                        break;
+                    case "elements":
+                        writer.Write(1);
+                        writer.Write(int.MaxValue);
+                        break;
+                    default:
+                        WriteOneLayout(writer);
+                        writer.Write(int.MaxValue);
+                        break;
+                }
+            })));
+
+            AssertRefusedAndDeleted(cache, key, cache.PathFor(key));
+        }
+
+        /// <summary>
+        /// THE CONTROL FOR THE THREE PROBES ABOVE: the same hand-written payload with counts in range loads. A
+        /// synthetic payload that never parsed would make all three refusals vacuous.
+        /// </summary>
+        [Fact]
+        public void TheSameSyntheticPayload_WithCountsInRange_Loads()
+        {
+            using var temp = new TempCacheDirectory();
+            var cache = new MetalMslCache(temp.Path);
+            string key = MetalShaderKey.For("a synthetic payload probe: control");
+
+            File.WriteAllBytes(cache.PathFor(key), Authenticated(SyntheticBody(key, writer =>
+            {
+                WriteOneLayout(writer);
+                writer.Write(1);                                  // one table entry
+                writer.Write(0);                                  // set
+                writer.Write(0);                                  // binding
+                writer.Write((int)MetalShaderStage.Compute);
+                writer.Write((int)MetalIndexSpace.Buffer);
+                writer.Write(3);                                  // index
+            })));
+
+            MetalMslCacheEntry? entry = cache.TryLoad(key, "control");
+
+            Assert.NotNull(entry);
+            Assert.Equal(1, cache.Hits);
+            Assert.Equal(0, cache.Discards);
+            Assert.Equal((8u, 4u, 2u),
+                (entry!.ThreadGroupSizeX, entry.ThreadGroupSizeY, entry.ThreadGroupSizeZ));
+            Assert.True(entry.Program.Table.TryGetIndex(
+                0, 0, MetalShaderStage.Compute, out MetalIndexTableEntry index));
+            Assert.Equal(new MetalIndexTableEntry(MetalIndexSpace.Buffer, 3), index);
+        }
+
         // ---- the null edge -------------------------------------------------------------------------------
 
         /// <summary>
@@ -535,6 +610,55 @@ void main() { Values[gl_GlobalInvocationID.x] = gl_GlobalInvocationID.x; }
 
             var reader = new MetalMslCache(temp.Path);
             AssertRefusedAndDeleted(reader, key, cache.PathFor(key));
+        }
+
+        /// <summary>A hand-written payload body: the header, one compute stage and its workgroup size, then
+        /// whatever <paramref name="tail"/> writes for the layouts and the table. Written by hand rather than
+        /// patched into a real file because the counts under test are what the tail exists to control.</summary>
+        static byte[] SyntheticBody(string key, Action<BinaryWriter> tail)
+        {
+            using var body = new MemoryStream();
+            using (var writer = new BinaryWriter(body, System.Text.Encoding.UTF8, leaveOpen: true))
+            {
+                writer.Write(MetalMslCacheEntry.Magic);
+                writer.Write(MetalMslCacheEntry.FormatVersion);
+                writer.Write(MetalShaderKey.EngineVersion);
+                writer.Write(key);
+
+                writer.Write(1);                                  // one stage
+                writer.Write((int)MetalShaderStage.Compute);
+                writer.Write("main0");
+                writer.Write("kernel void main0() {}");
+
+                writer.Write(8u);                                 // a compute program needs a size on every axis
+                writer.Write(4u);
+                writer.Write(2u);
+
+                tail(writer);
+            }
+            return body.ToArray();
+        }
+
+        /// <summary>One well-formed layout of one element, so a probe aimed at a LATER count reaches it with
+        /// everything in front of it valid.</summary>
+        static void WriteOneLayout(BinaryWriter writer)
+        {
+            writer.Write(1);                                      // one layout
+            writer.Write(1);                                      // holding one element
+            writer.Write("Out");
+            writer.Write((int)GpuResourceKind.StructuredBufferReadWrite);
+            writer.Write((int)GpuShaderStages.Compute);
+            writer.Write(false);
+        }
+
+        /// <summary>A body with its own SHA-256 appended, which is what makes it a file the reader will parse
+        /// rather than one it refuses before reading a field.</summary>
+        static byte[] Authenticated(byte[] body)
+        {
+            byte[] file = new byte[body.Length + MetalMslCacheEntry.HashLength];
+            body.CopyTo(file, 0);
+            SHA256.HashData(body, file.AsSpan(body.Length));
+            return file;
         }
 
         static (MetalMslCache Cache, string Key, string Path) Planted(TempCacheDirectory temp)

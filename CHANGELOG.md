@@ -11,7 +11,8 @@ A crash that nothing logged now writes its own file, the Metal shader emission i
 processes, both shader-cache keys learn to name the cross-compiler that produced the bytes, the GPU disk caches
 start pruning the version folders they leave behind, the MSAA resolve destinations gain the instrument the golden
 family is not, the Retina first frame is sized in pixels, two of phase 4's guards get the teeth their prose
-already claimed, and CI starts gating the three whole-tree convention guards it never ran.
+already claimed, CI starts gating the three whole-tree convention guards it never ran, and the ambient Gui theme
+stops racing the rest of its test assembly.
 
 ### The last-chance crash file (`CrashReport`, #607)
 
@@ -375,6 +376,34 @@ nothing, so one deliberate violation was run through each script and then revert
 (exit 1), 900 padding lines appended to a small unbaselined `.cs`, taking it to 912 against the 800 cap
 (exit 1), and a hand-edited `PackageReference` version in `README.md` (exit 1). All four return 0 on the clean
 tree.
+
+### The ambient `GuiTheme.Default` swap stops racing the rest of the Gui test assembly (#349)
+
+New file `KhaozEngine.Gui.Tests/GuiThemeGlobalCollection.cs` declares the `gui-theme-global` collection with
+`DisableParallelization = true`, and `PatchNotesThemeTests` joins `GuiThemeTests` in it. Test-only, no engine
+code changed, and the mutable `GuiTheme.Default` setter stays exactly as it is, because assigning
+`GuiTheme.Default = GuiTheme.Legacy` at startup is documented consumer API rather than a test affordance.
+
+**`GuiThemeTests` already carried `[Collection("gui-theme-global")]` and it was doing nothing.** No
+`[CollectionDefinition]` for that name existed anywhere in the assembly, so the name grouped one class against
+itself and the collection still ran in parallel with every other collection. That is the trap worth remembering
+from this one: the attribute on the test class is not what serializes anything, the definition is.
+
+**The blast radius was never the two classes in the title.** `GuiStyle.Default` recomputes off
+`GuiTheme.Default` on every get, so during the swap window every widget default in the assembly reads the legacy
+palette. CI caught `PatchNotesThemeTests` getting `Legacy.SurfaceHover` where it asserted `Crisp.SurfaceHover`,
+then later caught `RetainedWidgetStyleTests` on `IsFlat`. Enumerating the readers is not a fix, because the
+reader set is most of the assembly. Serializing the WRITER is, and `DisableParallelization` is what makes it
+one: a collection marked that way runs in its own phase with no other collection running.
+
+**Measured rather than assumed, in both directions.** A throwaway probe pinned xUnit 2.9.2's actual behaviour
+(the parallel collections all completed before the non-parallel phase opened, so a 2s window in the serial phase
+was invisible to four parallel watchers). Then the real writer's swap window was widened to 1.5s with four
+watcher classes polling the ambient theme: green with the fix, and with `DisableParallelization` flipped to
+`false` the same probe failed 12 tests, including the exact
+`RetainedWidgetStyleTests.*_Style_defaults_crisp_and_accepts_modern` `Assert.False()` shape from the issue. The
+flake reproduces on demand without the fix and not at all with it. The probe was reverted, and the two classes
+ran together 10 times over with no failure.
 
 ## 17.35.0
 

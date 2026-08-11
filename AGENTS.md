@@ -74,6 +74,16 @@ exception is the trivial-change case below.
   reference silently degrades selection. Declared test namespaces stay `KhaozEngine.Tests.*`
   (`RootNamespace` is pinned in every split project), and a new test project needs an explicit
   `<IsPackable>false</IsPackable>`.
+- **A test that WRITES process-global state enlists in a `DisableParallelization` collection.** xUnit runs
+  collections in parallel, so a class that swaps an ambient static and restores it in a `finally` leaves a
+  window in which every other class in the assembly reads the other value, which surfaces as a rare failure on
+  someone else's branch (#349, `GuiTheme.Default`). The assembly-level collections are the pattern to copy
+  (`gui-theme-global`, `ClipboardSerial`, `LoggingSerial`, `AmbientLocalization`, `AllocSensitive`,
+  `NativeDeviceLifecycle`), each with the shared state named in its doc comment. The attribute that does the
+  work is the `[CollectionDefinition(..., DisableParallelization = true)]`, not the `[Collection]` on the class:
+  a `[Collection("name")]` with no definition anywhere serializes that name's classes against each other and
+  leaves them running in parallel with everything else, which is how #349 sat open under a collection attribute
+  that looked like a fix.
 - Hit-test via `InputManager`/`Pointer` bounds helpers (`IsTapIn`, etc.), never raw position + button.
 - **The KESIZE file-size ratchet is compile-time, and moving a baseline is the USER's call.** When
   KESIZE001/002 fires, the fix is to put the new code in its own type. Never split a file at an

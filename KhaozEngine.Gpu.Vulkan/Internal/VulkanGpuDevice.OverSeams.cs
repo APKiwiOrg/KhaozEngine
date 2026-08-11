@@ -4,8 +4,11 @@ using KhaozEngine.Gpu.Internal;
 namespace KhaozEngine.Gpu.Vulkan.Internal
 {
     /// <summary>
-    /// THE DEVICE-FREE CONSTRUCTION HOOK, and the one place the shared instance is allowed to be absent. It exists
-    /// because <see cref="VulkanGpuDevice"/>'s constructor is private and reachable only through
+    /// THE DEVICE-FREE CONSTRUCTION HOOK, and the one caller that passes no instance lease. It holds the factory
+    /// and NOTHING the shipped paths depend on: <see cref="Instance"/>, which every device with no lease is read
+    /// through, lives on the main partial beside the field it guards, because teardown and command-list creation
+    /// are shipped members and a shipped member's dependency does not belong in a file named for a test hook. It
+    /// exists because <see cref="VulkanGpuDevice"/>'s constructor is private and reachable only through
     /// <c>CreateHeadless</c> and <c>CreateForWindow</c>, both of which need a Vulkan loader, so until this landed
     /// NO TEST ANYWHERE CONSTRUCTED THIS TYPE and every claim about the device's own WIRING was carried by
     /// inspection (https://github.com/APKiwiOrg/KhaozEngine/issues/550).
@@ -33,20 +36,6 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// </summary>
     internal sealed unsafe partial class VulkanGpuDevice
     {
-        /// <summary>
-        /// The shared <c>VkInstance</c> this device leased, for the members that need the loaded entry points or
-        /// the validation rung. Refuses BY NAME on a device the test hook built, which holds no lease because
-        /// there is no loader under it.
-        /// </summary>
-        /// <exception cref="InvalidOperationException">This device was built by
-        /// <see cref="CreateOverSeams"/> and has no instance.</exception>
-        VulkanInstance Instance
-            => _instance?.Value ?? throw new InvalidOperationException(
-                "This native Vulkan device was built over fake seams by the test hook, so it holds no VkInstance "
-                + "and no loaded entry points. The members that need them (command-list creation, and the "
-                + "teardown that destroys the real device) are not reachable on such a device. Drive the device's "
-                + "own wiring instead, or take a real device through VulkanGpuDevice.CreateHeadless.");
-
         /// <summary>
         /// Build a device over the seams a caller supplies, with NO Vulkan loader, no instance lease, no
         /// swapchain and no disk pipeline cache. Everything the device itself assembles (the block allocator, the

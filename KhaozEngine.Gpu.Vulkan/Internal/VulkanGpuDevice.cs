@@ -169,6 +169,22 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         bool _disposed;
         bool _syncToVerticalBlank;
 
+        /// <summary>
+        /// The shared <c>VkInstance</c> this device leased, for the members that need the loaded entry points or
+        /// the validation rung. Refuses BY NAME on a device the test hook built, which holds no lease because
+        /// there is no loader under it. It lives here rather than with that hook because the members that read it
+        /// are shipped ones: <see cref="Dispose"/> routes past it on the null rather than reading it, and
+        /// <c>CreateCommandList</c> is the refusal itself.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">This device was built by <c>CreateOverSeams</c> and has no
+        /// instance.</exception>
+        VulkanInstance Instance
+            => _instance?.Value ?? throw new InvalidOperationException(
+                "This native Vulkan device was built over fake seams by the test hook, so it holds no VkInstance "
+                + "and no loaded entry points. The members that need them (command-list creation, and the "
+                + "teardown that destroys the real device) are not reachable on such a device. Drive the device's "
+                + "own wiring instead, or take a real device through VulkanGpuDevice.CreateHeadless.");
+
         VulkanGpuDevice(VulkanInstanceLease<VulkanInstance>? instance, Device device, Queue graphicsQueue,
             uint graphicsQueueFamily, GpuCapabilities capabilities, bool softwareAdapter,
             DeviceLiveness liveness, VulkanDeviceLossLatch loss, VulkanTimeline timeline,

@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu.D3D11.Internal
 {
@@ -32,6 +33,14 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// non-roaming half) where a user or a cleanup tool can delete the whole tree with no loss. The engine version
     /// is a path SEGMENT for the same reason: an upgrade leaves one obviously prunable folder behind rather than
     /// files that are unreachable and never expire.
+    /// </para>
+    /// <para>
+    /// THE FILE PLUMBING ITSELF IS <see cref="GpuDiskCache"/> NOW, and what stays here is everything
+    /// above it: the key this cache is keyed on, the extension, the subfolder and the empty-entry rule. That split
+    /// is the one row 18 of the Metal design ruled on, refusing to share the KEY between backends that have
+    /// nothing in common there and recording the plumbing as duplicated. The Metal MSL cache made it three copies,
+    /// which is where the rule of three fires
+    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/606">#606</see>).
     /// </para>
     /// </summary>
     internal sealed class D3D11DxbcCache
@@ -68,18 +77,16 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// the rule that produced it.</summary>
         internal string Directory => _directory;
 
+        /// <summary>The cache's own folder under the local app-data root.</summary>
+        internal const string Subfolder = "d3d11-dxbc";
+
         /// <summary>
         /// The default location: <c>&lt;local-app-data&gt;/KhaozEngine/d3d11-dxbc/&lt;engine version&gt;</c>.
         /// Empty when the platform reports no local application data at all, which is the signal to run without a
         /// cache rather than to invent a path in the current directory.
         /// </summary>
         internal static string DefaultDirectory()
-        {
-            string root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            return string.IsNullOrWhiteSpace(root)
-                ? string.Empty
-                : Path.Combine(root, "KhaozEngine", "d3d11-dxbc", D3D11ShaderKey.EngineVersion);
-        }
+            => GpuDiskCache.DefaultDirectory(Subfolder, D3D11ShaderKey.EngineVersion);
 
         /// <summary>
         /// The cache <paramref name="envValue"/> asks for, or null for no cache. Blank means the default
@@ -87,22 +94,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// engine-version segment appended: a caller who names a directory means that directory).
         /// </summary>
         internal static D3D11DxbcCache? Resolve(string? envValue)
-        {
-            if (string.IsNullOrWhiteSpace(envValue))
-            {
-                string fallback = DefaultDirectory();
-                return string.IsNullOrEmpty(fallback) ? null : new D3D11DxbcCache(fallback);
-            }
-
-            string value = envValue.Trim();
-            switch (value.ToLowerInvariant())
-            {
-                case "off": case "0": case "false": case "no": case "none":
-                    return null;
-                default:
-                    return new D3D11DxbcCache(value);
-            }
-        }
+            => GpuDiskCache.ResolveDirectory(envValue, Subfolder, D3D11ShaderKey.EngineVersion) is { } directory
+                ? new D3D11DxbcCache(directory)
+                : null;
 
         /// <summary>The same decision read from the live environment. The one impure member here.</summary>
         internal static D3D11DxbcCache? FromEnvironment()
@@ -121,20 +115,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// process that died, and handing it to <c>CreateVertexShader</c> would fail somewhere far less
         /// informative than here.
         /// </summary>
-        internal byte[]? TryRead(string key)
-        {
-            try
-            {
-                string path = PathFor(key);
-                if (!File.Exists(path)) return null;
-                byte[] bytes = File.ReadAllBytes(path);
-                return bytes.Length == 0 ? null : bytes;
-            }
-            catch (Exception ex) when (IsRecoverable(ex))
-            {
-                return null;
-            }
-        }
+        internal byte[]? TryRead(string key) => GpuDiskCache.TryReadAllBytes(PathFor(key));
 
         /// <summary>
         /// Store <paramref name="dxbc"/> under <paramref name="key"/>, best effort. Returns whether it landed,
@@ -149,40 +130,6 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// </para>
         /// </summary>
         internal bool TryWrite(string key, ReadOnlySpan<byte> dxbc)
-        {
-            if (dxbc.IsEmpty) return false;
-
-            string temp = string.Empty;
-            try
-            {
-                System.IO.Directory.CreateDirectory(_directory);
-                temp = PathFor(key) + "." + Guid.NewGuid().ToString("N") + ".tmp";
-                File.WriteAllBytes(temp, dxbc);
-                File.Move(temp, PathFor(key), overwrite: true);
-                return true;
-            }
-            catch (Exception ex) when (IsRecoverable(ex))
-            {
-                if (temp.Length != 0) TryDelete(temp);
-                return false;
-            }
-        }
-
-        static void TryDelete(string path)
-        {
-            try
-            {
-                File.Delete(path);
-            }
-            catch (Exception ex) when (IsRecoverable(ex))
-            {
-                // A leftover temp file is litter, not a failure. The next write uses a fresh name.
-            }
-        }
-
-        // Everything a file system can reasonably say no with. Deliberately not a bare catch: an
-        // OutOfMemoryException or a cancellation is not a cache miss and must not be swallowed as one.
-        static bool IsRecoverable(Exception ex)
-            => ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException;
+            => GpuDiskCache.TryWriteAtomic(PathFor(key), dxbc);
     }
 }

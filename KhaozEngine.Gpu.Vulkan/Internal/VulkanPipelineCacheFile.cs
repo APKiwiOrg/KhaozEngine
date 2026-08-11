@@ -1,7 +1,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Globalization;
-using System.IO;
+using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu.Vulkan.Internal
 {
@@ -102,6 +102,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// depend on, and a compiled pipeline blob is DERIVED data that a cleanup tool should be free to delete. The
     /// engine version is a path SEGMENT so an upgrade leaves one obviously prunable folder rather than files
     /// nothing will ever open again.</para>
+    ///
+    /// <para><b>THE FILE PLUMBING BELOW THE HEADER IS <see cref="GpuDiskCache"/> NOW.</b> The directory
+    /// resolution, the disable words, the temp-plus-rename write and the recoverable-exception set are shared with
+    /// the other two backends' caches. What stays here is everything the row-18 refusal said is NOT shared: this
+    /// cache's identity is pure DEVICE where the Direct3D 11 one is pure CONTENT, its file is ONE per device
+    /// rather than one per program, and the header it validates is the driver's own
+    /// <c>VkPipelineCacheHeaderVersionOne</c> rather than one the engine wrote.</para>
     /// </summary>
     internal sealed class VulkanPipelineCacheFile
     {
@@ -151,18 +158,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         internal static string EngineVersion { get; } =
             typeof(KhaozEngineVulkan).Assembly.GetName().Version?.ToString(3) ?? "unknown";
 
+        /// <summary>The cache's own folder under the local app-data root.</summary>
+        internal const string Subfolder = "vulkan-pipeline-cache";
+
         /// <summary>
         /// The default location: <c>&lt;local-app-data&gt;/KhaozEngine/vulkan-pipeline-cache/&lt;engine
         /// version&gt;</c>. Empty when the platform reports no local application data, which is the signal to run
         /// without a cache rather than to invent a path in the current directory.
         /// </summary>
-        internal static string DefaultDirectory()
-        {
-            string root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            return string.IsNullOrWhiteSpace(root)
-                ? string.Empty
-                : System.IO.Path.Combine(root, "KhaozEngine", "vulkan-pipeline-cache", EngineVersion);
-        }
+        internal static string DefaultDirectory() => GpuDiskCache.DefaultDirectory(Subfolder, EngineVersion);
 
         /// <summary>
         /// The cache <paramref name="envValue"/> asks for, or null for no cache at all. Blank means the default
@@ -173,18 +177,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             ArgumentNullException.ThrowIfNull(identity);
 
-            if (string.IsNullOrWhiteSpace(envValue))
-            {
-                string fallback = DefaultDirectory();
-                return string.IsNullOrEmpty(fallback) ? null : new VulkanPipelineCacheFile(fallback, identity);
-            }
-
-            string value = envValue.Trim();
-            return value.ToLowerInvariant() switch
-            {
-                "off" or "0" or "false" or "no" or "none" => null,
-                _ => new VulkanPipelineCacheFile(value, identity),
-            };
+            return GpuDiskCache.ResolveDirectory(envValue, Subfolder, EngineVersion) is { } directory
+                ? new VulkanPipelineCacheFile(directory, identity)
+                : null;
         }
 
         /// <summary>The same decision read from the live environment. The one impure member here.</summary>
@@ -197,18 +192,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// </summary>
         internal byte[]? TryRead()
         {
-            try
-            {
-                string path = Path;
-                if (!File.Exists(path)) return null;
-
-                byte[] blob = File.ReadAllBytes(path);
-                return Validate(blob, _identity) ? blob : null;
-            }
-            catch (Exception ex) when (IsRecoverable(ex))
-            {
-                return null;
-            }
+            byte[]? blob = GpuDiskCache.TryReadAllBytes(Path);
+            return blob is not null && Validate(blob, _identity) ? blob : null;
         }
 
         /// <summary>
@@ -228,24 +213,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// </para>
         /// </summary>
         internal bool TryWrite(ReadOnlySpan<byte> blob)
-        {
-            if (!Validate(blob, _identity)) return false;
-
-            string temp = string.Empty;
-            try
-            {
-                Directory.CreateDirectory(_directory);
-                temp = Path + "." + Guid.NewGuid().ToString("N") + ".tmp";
-                File.WriteAllBytes(temp, blob);
-                File.Move(temp, Path, overwrite: true);
-                return true;
-            }
-            catch (Exception ex) when (IsRecoverable(ex))
-            {
-                if (temp.Length != 0) TryDelete(temp);
-                return false;
-            }
-        }
+            => Validate(blob, _identity) && GpuDiskCache.TryWriteAtomic(Path, blob);
 
         /// <summary>
         /// Delete the entry, best effort, and never throw. A file that was never there is not a failure.
@@ -257,7 +225,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// it.
         /// </para>
         /// </summary>
-        internal void TryDiscard() => TryDelete(Path);
+        internal void TryDiscard() => GpuDiskCache.TryDelete(Path);
 
         /// <summary>
         /// THE HEADER CHECK, AS A PURE FUNCTION. True when <paramref name="blob"/> begins with a
@@ -281,24 +249,5 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             return blob.Slice(16, VulkanPipelineCacheIdentity.UuidLength).SequenceEqual(identity.CacheUuid);
         }
-
-        static void TryDelete(string path)
-        {
-            try
-            {
-                File.Delete(path);
-            }
-            catch (Exception ex) when (IsRecoverable(ex))
-            {
-                // A file that will not delete is litter rather than a failure. A leftover temporary is replaced
-                // by the next write, which takes a fresh name, and a rejected seed nothing could remove costs one
-                // more refused create on the next launch.
-            }
-        }
-
-        // Everything a file system can reasonably say no with. Deliberately not a bare catch: an
-        // OutOfMemoryException or a cancellation is not a cache miss and must not be swallowed as one.
-        static bool IsRecoverable(Exception ex)
-            => ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException;
     }
 }

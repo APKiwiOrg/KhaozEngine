@@ -1158,6 +1158,38 @@ counting rule, and `DrainCount` is a shipped counter, so this refusal and candid
 seen from two directions. The `WaitTotals` struct the drain counts into DOES extract, under candidate 2, which
 is the part of this candidate that was genuinely three implementations writing the same thing.
 
+**ADDENDUM, #592: THE FILE STORE UNDER THE REFUSED KEY EXTRACTS, BECAUSE THE THIRD COPY ARRIVED.** Candidate 4
+above refused the KEY and that refusal is untouched. What it also recorded is that the plumbing BELOW the key is
+duplicated, and that it was two copies, which is the count V-P4 declines. The MSL-plus-table cache
+([#592](https://github.com/APKiwiOrg/KhaozEngine/issues/592)) is the third client, and it is the trigger
+[#606](https://github.com/APKiwiOrg/KhaozEngine/issues/606) named in advance. The four refusals the form owes,
+for the file store alone.
+
+*The shared home.* `KhaozEngine.Gpu/Internal/GpuDiskCache.cs`, five members: `DefaultDirectory(subfolder,
+engineVersion)`, `ResolveDirectory(envValue, subfolder, engineVersion)` with the five disable words,
+`TryReadAllBytes`, `TryWriteAtomic` through a process-unique temporary name, and `TryDelete`, over one private
+recoverable-exception set.
+
+*What each copy does differently.* Nothing, at this level. All three resolve `<local-app-data>/KhaozEngine/<one
+folder>/<engine version>`, all three take the same five disable words and the same verbatim-directory rule, all
+three write through a `Guid`-named temporary in the destination directory and rename over the target, and all
+three catch the same four exception types. The Direct3D 11 copy and the Metal one also share the zero-length
+read as a miss, and the Vulkan one reaches the same answer through its header check, so hoisting the empty
+rule into the reader changes no behaviour on any of the three.
+
+*Essential or drift.* Drift, all of it, and the essential differences all sit ABOVE the line and stay where they
+are. The Direct3D 11 cache is keyed per program stage on pure content, the Vulkan one is a single file per
+device with the driver's own header, and the Metal one is keyed per program on content with an engine-authored
+header and a payload hash. Each keeps its own key, its own extension, its own subfolder and its own validation.
+The `EngineVersion` string stays per backend too, read off each backend's own assembly, because that is what
+makes the path segment honest for a package that could in principle version separately.
+
+*Decision.* **Extract, the store only.** This is the narrowest possible reading of the trigger: the candidate as
+#531 specified it is still refused, and what lands is the part row 18 itself named as duplicated. The three
+callers keep their whole public shape, so `D3D11ShaderPathTests` and `VulkanPipelineCacheTests` pass unchanged,
+which is the regression proof that the move changed nothing. `GpuDiskCacheTests` drives the contract once,
+directly, including the two cases no caller can reach on purpose.
+
 **The tally, and what it costs #531.** Two extractions and three refusals, against a list of five extractions
 and four refusals, so #531 closes with seven written refusals rather than four. That is the outcome M-P6 exists
 to permit, and it is worth being plain about what produced it: two of the three refusals are refusals of a

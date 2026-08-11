@@ -784,14 +784,44 @@ The pattern is applied at the granularity the dependency warrants:
 
 ## GPU-backend invariant: ONE uniform buffer per pipeline (Metal via Veldrid/SPIRV-Cross)
 
-Veldrid/SPIRV-Cross on Metal mis-binds any pipeline that reads more than ONE uniform buffer - full stop.
-The failure surfaced first as a vertex-stage bug (a vertex reading a second UBO, or a storage buffer
-alongside a UBO, gets the wrong bytes: only the first buffer, or its first element, survives). But
-shipping GPU skinning proved the constraint is the whole PIPELINE, not just the vertex stage: a
-SECOND uniform buffer read only by the FRAGMENT - whether placed in the same set (a second binding) or in
-a separate set 1 - ALSO reads all-zero. TEXTURES and samplers in a second set map fine (measured), only
-uniform buffers past the first mis-bind. The read is silent rather than an error, so it surfaces as
-garbage geometry or unlit/black shading, not a validation failure. It holds offscreen as well as windowed.
+**MEASURED 2026-08-11: this is the INCUMBENT'S BUFFER NUMBERING, not a property of Metal.** The rule below is
+KEPT and still binds every new render path, for the reason at the end of this section, but what it is a fact
+ABOUT changed, so read the mechanism before designing around it.
+
+**The mechanism.** Veldrid's `MTLResourceLayout` numbers a buffer by counting every buffer element declared in
+the preceding sets, and SPIRV-Cross numbers only the arguments the stage it is emitting actually REFERENCES.
+So a pipeline mis-binds when a stage references fewer buffers than the declared layout array puts before them:
+a fragment function that reads set 1 alone is emitted at `buffer(0)` while Veldrid writes it at `buffer(1)`,
+and the function reads a slot nothing wrote. All zero, silently, with no validation error, surfacing as
+garbage geometry or unlit/black shading rather than as a failure. It holds offscreen as well as windowed.
+
+**The narrower statement matters, because the broad one is false.** This section used to say that any pipeline
+reading more than one uniform buffer mis-binds, full stop. Measured on an Apple M2 Max, two shapes that the
+broad rule forbids bind CORRECTLY on the incumbent: a vertex stage reading two uniform buffers at sets 0 and
+1, and a pipeline whose set-0 buffer is read by both stages with a fragment-only second buffer at set 1. The
+shape that fails is the one the shipped record failed in, each stage referencing exactly one of the two
+buffers. TEXTURES and samplers in a second set map fine (measured), only uniform buffers past the first
+mis-bind, and for the same counting reason.
+
+**The engine's own native Metal backend (`GpuBackendKind.MetalNative`) does not have the defect**, because it
+binds at the index read out of each stage's own emission rather than at a counted one. All three shapes read
+correct bytes there. The measurement is
+`../KhaozEngine.Render.Tests/Gpu/MetalTwoUniformBufferGpuTests.cs`, three pixel-readback `[GpuFact]`s plus a
+device-free row pinning the two numbers against each other, and section 2.3a of
+`design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md` carries the values and the reasoning.
+
+**One historical signature is NOT explained by that mechanism and was not reproduced.** The original
+vertex-stage report is a bone-palette array losing everything past element 0 rather than a second buffer
+reading all zero, and it was recorded under an older Veldrid and SPIRV-Cross pin. The two-uniform-buffer
+vertex shape measured above does not reproduce it today. That narrows what is currently reproducible without
+refuting the record, and the rule below keeps covering it either way.
+
+**THE RULE IS UNCHANGED AND STILL BINDING**, and the measurement is not a licence to start spreading uniforms
+across sets. `GpuBackendKind.Metal` is still selectable and still ships, so a pipeline written to the native
+backend's binding would be correct there and read zeros on the incumbent, which is the same argument that keeps
+the sample-textures-in-binding-order discipline. Lifting it is its own work with its own gates on all three
+backends, tracked at https://github.com/APKiwiOrg/KhaozEngine/issues/604 and triggered by the retirement of the
+Veldrid Metal leg rather than by this measurement.
 
 The engine-wide rule for any new render path: the pipeline reads exactly ONE uniform buffer, at set 0
 binding 0. Fold everything any stage needs from a UBO - the vertex's ViewProj / bone palette / per-instance
@@ -821,7 +851,10 @@ fold-into-one fix are proven offscreen by `GpuSkinningReproGpuTests` variant 3
 per-draw UBO holding `{ Mvp; Model; P; <frame block>; bones[128] }` read by both stages (vertex =
 matrices+bones, fragment = the frame block for lighting), with material maps at set 1. An earlier attempt
 that kept the frame UBO fragment-only in a second binding/set rendered every skinned mesh black - the
-second-UBO tell - and is the reason this note now says "per pipeline", not "per vertex stage".
+second-UBO tell - and is the reason this note now says "per pipeline", not "per vertex stage". **That black
+frame is the shape the 2026-08-11 measurement reproduces on the incumbent and the mechanism above explains
+exactly**: the fragment referenced only the second buffer, so it was emitted at `buffer(0)` and written at
+`buffer(1)`.
 
 ## Adding a new backend
 

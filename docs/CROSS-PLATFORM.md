@@ -362,9 +362,17 @@ in the `ShaderSources.cs` source comments; this is the consolidated checklist.)
   textures are first SAMPLED, not by `binding=`, so sampling a higher-binding texture first makes a lower one read
   the wrong texture on Metal (untextured meshes came out flat-normal coloured). See the `ModelFrag` / `EdgeFrag` /
   `SplatFrag` comments.
-- **One uniform buffer per pipeline.** A second fragment UBO reads the first UBO's bytes on Metal; fold extra
+- **One uniform buffer per pipeline.** Still the rule for every new render path, but the measured scope is
+  narrower than this bullet used to state it. What mis-binds on the Veldrid Metal backend is a STAGE that
+  references fewer buffers than the declared layout array puts before them, which is the pattern that makes
+  Veldrid's per-kind declaration count and SPIRV-Cross's emission disagree: a fragment function reading set 1
+  alone is emitted at `buffer(0)` and written at `buffer(1)`, so it reads a slot nothing wrote. Measured 2026-08
+  on an M2 Max, two of the three multi-uniform-buffer shapes bind CORRECTLY on the incumbent today and only that
+  third one fails, and the engine's own native Metal backend binds all three, because it binds at the index the
+  emission chose rather than at a counted one. The rule stands while the Veldrid Metal leg ships: fold extra
   per-material data into the frame UBO (the splat pipeline appends its params after the light arrays in one
-  combined UBO). See `SplatVert` / `SplatFrag`.
+  combined UBO). See `SplatVert` / `SplatFrag`, and `docs/DEPENDENCY-SEAMS.md`'s "ONE uniform buffer per
+  pipeline" section for the mechanism and the exact scope.
 - **A new render feature needs a pixel-READBACK assertion, not just "it did not throw".** Any `[GpuFact]` test
   runs on Metal (every trigger) and D3D11 (weekly/dispatch) in `cross-platform-gpu.yml` regardless of its name,
   so this is no longer a naming trap, but the underlying lesson stands: the original splat tests asserted no

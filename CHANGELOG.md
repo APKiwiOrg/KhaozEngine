@@ -1419,6 +1419,51 @@ from "does the last unbuilt member name its row" to "is anything unbuilt", and a
 member called: a test that walked one member forward would pass forever the day someone put a stub back on a
 different one.
 
+### The one-uniform-buffer-per-pipeline constraint is MEASURED, and it is the incumbent's numbering (#583)
+
+No engine code changes and no shader moves. Row 17 of
+[docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md)
+is MM6, a measurement of the invariant that has shaped every uniform block this engine ships: on Metal through
+Veldrid and SPIRV-Cross, a pipeline reading a second uniform buffer mis-binds it silently, so the splat terrain
+and the GPU-skinning pass both carry a bespoke combined UBO and the engine-wide rule for any new render path is
+one uniform buffer at set 0 binding 0. Whether that is a fact about Metal or a fact about the incumbent's
+buffer numbering has been an open question across four diagnostic sessions. It is now answered.
+
+**It is the numbering.** `KhaozEngine.Render.Tests/Gpu/MetalTwoUniformBufferGpuTests.cs` draws a full-screen
+triangle whose colour is composed from two uniform buffers and reads a texel back through the seam's own
+`CopyTexture` and `Map`, with the values arranged so that both buffers landing is yellow, the second reading
+all zero is red, the two aliasing directions are magenta and cyan, and nothing bound is black. Three shapes ran
+on an Apple M2 Max, each through `GpuBackendKind.MetalNative` and through the incumbent `GpuBackendKind.Metal`
+in one process against the same device. The native backend read both buffers in all three. The incumbent read
+both in two of them and read the second as all zero in the third.
+
+**The mechanism, pinned device-free so it runs on every `dotnet test`.** Veldrid numbers a buffer by counting
+every buffer element declared in the preceding sets, and SPIRV-Cross numbers only the arguments the stage it is
+emitting actually references. For a fragment function that reads set 1 alone, the emission puts it at
+`buffer(0)` and the count puts it at `buffer(1)`, so the incumbent writes it where the function does not read.
+That is the whole constraint, and nothing about Metal is involved. The native backend binds at the index read
+out of each stage's own emission (the id join, design section 2.2b), which is why it has no such defect.
+
+**A second correction falls out: the rule as `docs/DEPENDENCY-SEAMS.md` stated it was too broad.** It said any
+pipeline reading more than one uniform buffer mis-binds, full stop. Two of the three shapes are exactly that
+and bind correctly on the incumbent today. What mis-binds is a stage that references fewer buffers than the
+declared layout array puts before them. Every shipped program sits inside the safe region either way, which is
+why the over-broad wording had cost nothing and why nobody had noticed.
+
+**Nothing is lifted.** The rule stays in force and still binds every new render path, because
+`GpuBackendKind.Metal` is still selectable and still ships, so a pipeline written to the native backend's
+binding would render correctly there and read zeros on the incumbent. Removing the invariant is its own work
+with its own gates on all three backends, filed as
+[#604](https://github.com/APKiwiOrg/KhaozEngine/issues/604) with the measurement in its body and triggered by
+the retirement of the Veldrid Metal leg. `docs/DEPENDENCY-SEAMS.md` now carries the mechanism, the corrected
+scope, the native backend's result and that pointer, and design section 2.3a carries the values and the
+reasoning.
+
+**What is deliberately still open.** The seam doc also names a storage buffer alongside a uniform buffer in the
+vertex stage, which this row did not measure, and the original vertex-stage symptom (a bone palette losing
+everything past element 0) is a different signature that the counting mechanism does not predict and that the
+closest measured shape did not reproduce under today's pins. Both are recorded as unreproduced rather than
+refuted, and both are gates on #604.
 ### The native Metal swapchain: a present that cannot be skipped silently, and a vsync toggle that always applies (#581)
 
 `GpuDeviceContext.CreateForWindow` works on `GpuBackendKind.MetalNative`, and `SwapchainFramebuffer`,

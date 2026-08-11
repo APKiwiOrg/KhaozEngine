@@ -3066,10 +3066,14 @@ more than a handful of skinned characters at once, this flag is the single large
 engine has, and the windowed A/B below is the only thing standing between you and it.
 
 The GPU path exists on a specific binding shape because the naive GPU design fails on Metal. **The
-GPU-backend rule (know it if you write custom Render3D code):** Veldrid/SPIRV-Cross on Metal mis-binds any
-pipeline that reads more than ONE uniform buffer - a second UBO read by ANY stage (a second vertex UBO, or
-a fragment-only UBO whether in the same set or a separate set 1) reads all-zero. Textures in a second set
-are fine. So GPU skinning folds EVERYTHING into one combined per-draw UBO (`SkinnedModelVert`):
+GPU-backend rule (know it if you write custom Render3D code):** a pipeline reads exactly ONE uniform buffer,
+at set 0 binding 0, and a second one can read all-zero with no error anywhere. Textures in a second set are
+fine. The cause was measured in 2026-08: it is Veldrid's buffer NUMBERING rather than anything about Metal,
+and what mis-binds is a stage that references fewer buffers than the declared layout array puts before them.
+The rule stands until the Veldrid Metal leg retires, because that leg still ships. Read
+`docs/DEPENDENCY-SEAMS.md`'s "ONE uniform buffer per pipeline" section before designing around it, since the
+exact scope matters and this summary is deliberately the conservative version of it. So GPU skinning folds
+EVERYTHING into one combined per-draw UBO (`SkinnedModelVert`):
 `{ Mvp; Model; P; <frame lighting block>; bones[128] }`, read by both stages (the vertex uses the matrices
 + bones, the fragment uses the frame block for lighting), with the per-mesh material maps at set 1. The
 shadow depth pass mirrors the same one-buffer vertex binding. See `docs/DEPENDENCY-SEAMS.md` (the "ONE

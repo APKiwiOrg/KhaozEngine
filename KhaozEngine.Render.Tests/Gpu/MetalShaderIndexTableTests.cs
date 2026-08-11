@@ -229,8 +229,14 @@ namespace KhaozEngine.Tests.Gpu
         /// binding path. Per-kind counters, with uniform and both structured kinds sharing a buffer counter and
         /// both texture kinds sharing a texture counter, accumulated across the preceding layouts in declaration
         /// order.
+        ///
+        /// <para>TWO COPIES IS THE LIMIT, WHICH IS WHY THIS ONE IS <c>internal</c>. MM6's mechanism row,
+        /// <c>MetalTwoUniformBufferGpuTests.TheSplitStageProgramIsWhereTheEmissionAndTheCountDisagree</c>, needs
+        /// the same walk to say where the incumbent WOULD have put the buffer, and it reads this one rather than
+        /// writing a third. So a correction to the arithmetic lands in both places at once, and the only other
+        /// copy left is the spike's, which is deliberately over Veldrid's own types.</para>
         /// </summary>
-        static Dictionary<(int Set, int Binding), (int Buffer, int Texture, int Sampler)> IncumbentIndices(
+        internal static Dictionary<(int Set, int Binding), (int Buffer, int Texture, int Sampler)> IncumbentIndices(
             IReadOnlyList<GpuResourceLayoutDescription> layouts)
         {
             var indices = new Dictionary<(int, int), (int, int, int)>();

@@ -841,9 +841,9 @@ straight through, which opens a Retina window at half its real resolution until 
 callback corrects it, and the incumbent's own UIView arm multiplies by the native scale. The two arms of one
 constructor disagree and only one of them can be right, so this is a fix rather than an improvement smuggled
 into a backend swap. Only the FIRST frame moves: `ResizeSwapchain` already writes the pixel size the windowing
-layer forwards, so the steady state never had the defect. A degenerate scale (a handle that is not a live
-`NSWindow` answers 0) falls back to 1.0, which is the incumbent's exact behaviour in the one case this backend
-cannot do better in. The arithmetic lives in `MetalSwapchainPolicy` and is asserted device-free on every leg,
+layer forwards, so the steady state never had the defect. A degenerate scale falls back to 1.0. That arm is defensive rather than reachable: the resolve refuses a zero
+window handle and a nil content view before the scale is ever read, so only a future caller that skips those
+refusals could deliver the nil receiver whose message send answers 0. The arithmetic lives in `MetalSwapchainPolicy` and is asserted device-free on every leg,
 which is why the scalar is read rather than the whole conversion handed to `-[NSView convertRectToBacking:]`.
 
 **Four more things change, and each answers something the incumbent gets wrong.**

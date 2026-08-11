@@ -20,7 +20,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <c>CAMetalLayer</c> can be created, configured and asked for drawables with no <c>NSWindow</c>, no view and
     /// no display server, which row 1's spike had already half-established when it round-tripped
     /// <c>maximumDrawableCount</c> on a headless layer. So the ONLY part of this row that has to wait for a
-    /// windowed playtest is <see cref="MetalLayerHost"/>'s five Cocoa selectors, and everything from the layer
+    /// windowed playtest is <see cref="MetalLayerHost"/>'s six Cocoa selectors, and everything from the layer
     /// down runs here.</para>
     ///
     /// <para><b>WHAT A HEADLESS LAYER DOES NOT PROVE is that anything appears on a screen.</b> These rows are

@@ -172,10 +172,18 @@ namespace KhaozEngine.Tests.Gpu
             {
                 for (int i = 0; i < 2; i++)
                 {
+                    // THE TWO FRAMES DIFFER ON PURPOSE: the first box rotates between them. A static pair would
+                    // make frame N-1 identical to frame N, and a destination that is exactly one frame stale
+                    // would read as correct. With the frames distinct, a stale destination differs from the
+                    // reference wherever the rotated box's silhouette moved, so the staleness class the doc
+                    // claims is genuinely exercised (a review experiment proved the static pair could not see a
+                    // first-frame-only resolve).
                     scene.Begin();
                     scene.Draw(floor, Matrix4x4.CreateTranslation(0f, 0f, 0f),
                         new Color(0.30f, 0.34f, 0.40f, 1f));
-                    scene.Draw(box, Matrix4x4.CreateRotationY(0.4f) * Matrix4x4.CreateTranslation(-1.3f, 0.6f, 0.4f),
+                    scene.Draw(box,
+                        Matrix4x4.CreateRotationY(0.4f + (i * 0.9f))
+                            * Matrix4x4.CreateTranslation(-1.3f, 0.6f, 0.4f),
                         new Color(0.35f, 0.6f, 0.85f, 1f));
                     scene.Draw(box, Matrix4x4.CreateTranslation(1.5f, 0.6f, -1.4f),
                         new Color(0.8f, 0.55f, 0.2f, 1f));

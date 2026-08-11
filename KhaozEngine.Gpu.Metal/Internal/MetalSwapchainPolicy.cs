@@ -117,17 +117,22 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// per point of scale rather than up to one pixel.
         /// </para>
         /// <para>
-        /// A DEGENERATE FRAME RESOLVES TO ZERO and is then clamped by the caller, rather than wrapping to four
-        /// billion through an unchecked cast: a window mid-teardown and a minimised window both report sizes an
-        /// unchecked cast turns into a texture no machine can allocate.
+        /// A DEGENERATE FRAME RESOLVES TO ZERO and is then floored to one pixel by the caller, rather than
+        /// WRAPPING through an unchecked cast: a window mid-teardown and a minimised window both report sizes a
+        /// wrap would turn into an arbitrary huge number. The other edge is different on purpose: a scaled size
+        /// past the cast's limit SATURATES to the cast's maximum rather than wrapping, because saturation
+        /// preserves the too-big-ness for the layer to refuse loudly, where a wrap would launder it into a
+        /// plausible small size. Negative and non-finite land on the zero arm, positive overflow on the
+        /// saturating one.
         /// </para>
         /// <para>
         /// AND A DEGENERATE SCALE RESOLVES TO 1.0, THE NON-RETINA IDENTITY, which is the direction that fails
-        /// safe. <c>objc_msgSend</c> to nil answers zero, so a handle that is not an <c>NSWindow</c> reports a
-        /// scale of 0 rather than raising, and a scale of zero applied faithfully would configure a layer at
-        /// nothing at all on a window whose points are perfectly readable. Falling back to the unscaled size
-        /// reproduces exactly the incumbent's behaviour in the one case where this backend cannot do better,
-        /// which is the smallest available divergence rather than a new failure mode.
+        /// safe. <c>objc_msgSend</c> to a NIL receiver answers zero (a non-nil non-window raises instead), and a
+        /// scale of zero applied faithfully would configure a layer at nothing at all on a window whose points
+        /// are perfectly readable. The resolve refuses a zero handle and a nil view before reading the scale, so
+        /// the zero arm is defensive rather than reachable there. Falling back to the unscaled size reproduces
+        /// exactly the incumbent's behaviour in the one case where this backend cannot do better, which is the
+        /// smallest available divergence rather than a new failure mode.
         /// </para>
         /// </summary>
         internal static MetalDrawableSize SizeOfHostView(CGRect frame, double backingScale)

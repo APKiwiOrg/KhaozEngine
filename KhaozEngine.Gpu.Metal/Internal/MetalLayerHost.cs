@@ -25,7 +25,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// runner cannot produce an <c>NSWindow</c> and CAN produce a <c>CAMetalLayer</c>, which row 1's spike already
     /// established. Keeping the window resolution in its own type is what lets
     /// <c>MetalGpuDevice.CreateForLayer</c> exist beside <c>CreateForWindow</c>, so the whole swapchain below this
-    /// line is driven against a REAL layer on a real device in CI, and only these five selectors wait for a
+    /// line is driven against a REAL layer on a real device in CI, and only these six selectors wait for a
     /// windowed playtest. That is as far as MM7 can be pushed and it is a long way further than zero.</para>
     ///
     /// <para><b>ONLY THE <c>NSWindow</c> SOURCE IS REPRODUCED.</b> The incumbent additionally accepts an

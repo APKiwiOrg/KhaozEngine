@@ -8,7 +8,7 @@ namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>A pass-through <see cref="IGpuCommandList"/> that records every <c>UpdateBuffer</c> and every
     /// <c>ResolveTexture</c> a pass records, so a test can assert on the SHAPE of a frame (how many uploads, to
-    /// which buffer, covering what extent; which multisampled source lands in which single-sample destination)
+    /// which buffer, covering what extent, and which multisampled source lands in which single-sample destination)
     /// rather than on pixels. Everything else forwards untouched, so the frame renders exactly as it would have.
     /// <para>Give <see cref="Inner"/> to <c>IGpuDevice.Submit</c>: the device needs the real list, not this.</para>
     /// <para>

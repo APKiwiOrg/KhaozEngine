@@ -36,9 +36,11 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         /// leaves exactly one number crossing the interop boundary.
         /// </para>
         /// <para>
-        /// A NON-WINDOW HANDLE ANSWERS 0 rather than raising, because <c>objc_msgSend</c> to nil returns zero and
-        /// this member is reached only after <see cref="ContentView"/> has already answered non-nil on the same
-        /// object. The policy hardens a zero into the non-Retina identity, so the failure direction is a
+        /// A NIL RECEIVER ANSWERS 0, because <c>objc_msgSend</c> to nil returns zero. That is the only zero this
+        /// member can produce: a non-nil handle that is not an <c>NSWindow</c> raises
+        /// <c>doesNotRecognizeSelector</c> rather than answering, and the one call site refuses a zero handle and
+        /// a nil content view before reading the scale, so the nil arm is defensive. The policy hardens a zero
+        /// into the non-Retina identity anyway, so the failure direction of any future caller is a
         /// correctly-sized window rather than a zero-sized drawable.
         /// </para>
         /// </summary>

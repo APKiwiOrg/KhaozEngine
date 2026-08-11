@@ -8,8 +8,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 ## 17.36.0
 
 A crash that nothing logged now writes its own file, the Metal shader emission is cached across
-processes, and two of phase 4's guards get the teeth their prose
-already claimed.
+processes, the MSAA resolve destinations gain the instrument the golden family is not, the Retina first
+frame is sized in pixels, and two of phase 4's guards get the teeth their prose already claimed.
 
 ### The last-chance crash file (`CrashReport`, #607)
 
@@ -257,7 +257,7 @@ visible defect is fixed. What a windowed run on a Retina display still owes is o
 the UIView arm does, and truncating first would lose up to a whole pixel per point of scale), saturates rather
 than wrapping when the scaled size passes the cast's limit, and falls back to a scale of 1.0 when the scale is
 zero, negative or non-finite. That last one is not defensive decoration: `objc_msgSend` to nil answers zero, so
-a handle that is not a live `NSWindow` reports a scale of 0, and applying it faithfully would configure a layer
+a NIL window receiver reports a scale of 0 (the arm is defensive, the resolve refuses a zero handle and a nil view first), and applying it faithfully would configure a layer
 at nothing at all. Falling back to unscaled is the incumbent's exact behaviour in the one case this backend
 cannot do better in. All of it is asserted on every leg, which is also why the SCALAR is read rather than the
 whole conversion being handed to `-[NSView convertRectToBacking:]`: that would produce the same pixels on a Mac

@@ -2,6 +2,7 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
 using KhaozEngine.Diagnostics;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Metal.Internal.ObjC;
 
 namespace KhaozEngine.Gpu.Metal.Internal
@@ -54,7 +55,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     {
         static readonly ILogger log = Log.For<MetalGpuDevice>();
 
-        readonly MetalDeviceLiveness _liveness;
+        readonly DeviceLiveness _liveness;
         readonly MetalDeviceLossLatch _loss;
         readonly MTLDevice _device;
         readonly MetalTimeline _timeline;
@@ -117,7 +118,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         [SupportedOSPlatform("macos")]
         MetalGpuDevice(MTLDevice device, MTLCommandQueue queue, GpuCapabilities capabilities,
-            MetalDeviceLiveness liveness, MetalDeviceLossLatch loss, MetalTimeline timeline,
+            DeviceLiveness liveness, MetalDeviceLossLatch loss, MetalTimeline timeline,
             MetalUncommittedBuffers uncommitted, IMetalSetupNative setupNative, int framesInFlight,
             IMetalStagingSource staging, uint bufferOffsetAlignment, bool supportsBorderColor)
         {
@@ -164,7 +165,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         internal MTLDevice Handle => _device;
 
         /// <summary>The liveness token every wrapper this device creates will be handed (M-F6).</summary>
-        internal MetalDeviceLiveness Liveness => _liveness;
+        internal DeviceLiveness Liveness => _liveness;
 
         /// <summary>Whether this device supports sampler border colours, which is its <c>MTLGPUFamilyMac2</c>
         /// answer read once at creation. False on a virtualized GPU, where a Border-mode sampler is refused by

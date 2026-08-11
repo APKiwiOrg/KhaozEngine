@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Metal.Internal;
 using KhaozEngine.Gpu.Metal.Internal.ObjC;
 using Xunit;
@@ -415,7 +416,7 @@ namespace KhaozEngine.Tests.Gpu
             return description;
         }
 
-        MetalShaderSet ShaderSet(MetalShaderIndexTable table, IMetalDeviceLiveness? owner = null)
+        MetalShaderSet ShaderSet(MetalShaderIndexTable table, IDeviceLiveness? owner = null)
             => new(owner ?? _liveness,
                 [
                     new MetalCompiledStage(MetalShaderStage.Vertex, default, default),
@@ -425,7 +426,7 @@ namespace KhaozEngine.Tests.Gpu
 
         IGpuResourceLayout[] Layout(params GpuResourceKind[] kinds) => LayoutOn(_liveness, kinds);
 
-        static IGpuResourceLayout[] LayoutOn(IMetalDeviceLiveness owner, params GpuResourceKind[] kinds)
+        static IGpuResourceLayout[] LayoutOn(IDeviceLiveness owner, params GpuResourceKind[] kinds)
         {
             var elements = new GpuResourceLayoutElement[kinds.Length];
             for (int i = 0; i < kinds.Length; i++)

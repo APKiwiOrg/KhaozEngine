@@ -3,15 +3,6 @@ using Veldrid;
 
 namespace KhaozEngine.Gpu.Internal
 {
-    /// <summary>Shared liveness token between a device and every resource wrapper it created. Flipped once at
-    /// device destruction (inside the lifecycle gate) and read lock-free by wrapper Dispose paths, so a wrapper
-    /// disposed after its device no-ops instead of destroying a child object the dead device already freed (the
-    /// Vulkan loader aborts a destroy call against a destroyed device).</summary>
-    internal sealed class DeviceLiveness
-    {
-        public volatile bool Dead;
-    }
-
     /// <summary>Wraps a Veldrid <see cref="DeviceBuffer"/>.</summary>
     internal sealed class VeldridGpuBuffer : IGpuBuffer
     {
@@ -19,7 +10,7 @@ namespace KhaozEngine.Gpu.Internal
         readonly DeviceLiveness _liveness;
         public uint SizeInBytes => Buffer.SizeInBytes;
         public VeldridGpuBuffer(DeviceLiveness liveness, DeviceBuffer buffer) { _liveness = liveness; Buffer = buffer; }
-        public void Dispose() { if (!_liveness.Dead) Buffer.Dispose(); }
+        public void Dispose() { if (_liveness.IsAlive) Buffer.Dispose(); }
     }
 
     /// <summary>Wraps a Veldrid <see cref="Texture"/>.</summary>
@@ -33,7 +24,7 @@ namespace KhaozEngine.Gpu.Internal
         public uint SampleCount => VeldridMap.SampleCountToInt(Texture.SampleCount);
         public GpuPixelFormat Format => VeldridMap.FromVeldrid(Texture.Format);
         public VeldridGpuTexture(DeviceLiveness liveness, Texture texture) { _liveness = liveness; Texture = texture; }
-        public void Dispose() { if (!_liveness.Dead) Texture.Dispose(); }
+        public void Dispose() { if (_liveness.IsAlive) Texture.Dispose(); }
     }
 
     /// <summary>Wraps a Veldrid <see cref="Sampler"/>. <c>ownsSampler</c> is false for the device's shared
@@ -47,7 +38,7 @@ namespace KhaozEngine.Gpu.Internal
         {
             _liveness = liveness; Sampler = sampler; _owns = ownsSampler;
         }
-        public void Dispose() { if (_owns && !_liveness.Dead) Sampler.Dispose(); }
+        public void Dispose() { if (_owns && _liveness.IsAlive) Sampler.Dispose(); }
     }
 
     /// <summary>Wraps a Veldrid <see cref="Fence"/>. <see cref="Signaled"/> reads true once the device is dead:
@@ -59,9 +50,9 @@ namespace KhaozEngine.Gpu.Internal
         internal Fence Fence { get; }
         readonly DeviceLiveness _liveness;
         public VeldridGpuFence(DeviceLiveness liveness, Fence fence) { _liveness = liveness; Fence = fence; }
-        public bool Signaled => _liveness.Dead || Fence.Signaled;
-        public void Reset() { if (!_liveness.Dead) Fence.Reset(); }
-        public void Dispose() { if (!_liveness.Dead) Fence.Dispose(); }
+        public bool Signaled => _liveness.IsDead || Fence.Signaled;
+        public void Reset() { if (_liveness.IsAlive) Fence.Reset(); }
+        public void Dispose() { if (_liveness.IsAlive) Fence.Dispose(); }
     }
 
     /// <summary>Wraps a Veldrid <see cref="Framebuffer"/>. <c>ownsFramebuffer</c> is false for the swapchain
@@ -78,7 +69,7 @@ namespace KhaozEngine.Gpu.Internal
         public GpuOutputDescription Outputs => VeldridMap.FromVeldrid(Framebuffer.OutputDescription);
         public uint Width => Framebuffer.Width;
         public uint Height => Framebuffer.Height;
-        public void Dispose() { if (_owns && !_liveness.Dead) Framebuffer.Dispose(); }
+        public void Dispose() { if (_owns && _liveness.IsAlive) Framebuffer.Dispose(); }
     }
 
     /// <summary>Wraps a Veldrid <see cref="Pipeline"/>.</summary>
@@ -87,7 +78,7 @@ namespace KhaozEngine.Gpu.Internal
         internal Pipeline Pipeline { get; }
         readonly DeviceLiveness _liveness;
         public VeldridGpuPipeline(DeviceLiveness liveness, Pipeline pipeline) { _liveness = liveness; Pipeline = pipeline; }
-        public void Dispose() { if (!_liveness.Dead) Pipeline.Dispose(); }
+        public void Dispose() { if (_liveness.IsAlive) Pipeline.Dispose(); }
     }
 
     /// <summary>Wraps a Veldrid <see cref="ResourceLayout"/>.</summary>
@@ -96,7 +87,7 @@ namespace KhaozEngine.Gpu.Internal
         internal ResourceLayout Layout { get; }
         readonly DeviceLiveness _liveness;
         public VeldridGpuResourceLayout(DeviceLiveness liveness, ResourceLayout layout) { _liveness = liveness; Layout = layout; }
-        public void Dispose() { if (!_liveness.Dead) Layout.Dispose(); }
+        public void Dispose() { if (_liveness.IsAlive) Layout.Dispose(); }
     }
 
     /// <summary>Wraps a Veldrid <see cref="ResourceSet"/>.</summary>
@@ -105,7 +96,7 @@ namespace KhaozEngine.Gpu.Internal
         internal ResourceSet Set { get; }
         readonly DeviceLiveness _liveness;
         public VeldridGpuResourceSet(DeviceLiveness liveness, ResourceSet set) { _liveness = liveness; Set = set; }
-        public void Dispose() { if (!_liveness.Dead) Set.Dispose(); }
+        public void Dispose() { if (_liveness.IsAlive) Set.Dispose(); }
     }
 
     /// <summary>Wraps the Veldrid <see cref="Shader"/>[] a SPIR-V cross-compile produces.</summary>
@@ -114,7 +105,7 @@ namespace KhaozEngine.Gpu.Internal
         internal Shader[] Shaders { get; }
         readonly DeviceLiveness _liveness;
         public VeldridGpuShaderSet(DeviceLiveness liveness, Shader[] shaders) { _liveness = liveness; Shaders = shaders; }
-        public void Dispose() { if (_liveness.Dead) return; foreach (var s in Shaders) s.Dispose(); }
+        public void Dispose() { if (_liveness.IsDead) return; foreach (var s in Shaders) s.Dispose(); }
     }
 
     /// <summary>Wraps the single Veldrid <see cref="Shader"/> a single-stage (compute) SPIR-V cross-compile
@@ -133,7 +124,7 @@ namespace KhaozEngine.Gpu.Internal
             ThreadGroupSizeX = groupX; ThreadGroupSizeY = groupY; ThreadGroupSizeZ = groupZ;
         }
 
-        public void Dispose() { if (!_liveness.Dead) Shader.Dispose(); }
+        public void Dispose() { if (_liveness.IsAlive) Shader.Dispose(); }
     }
 
     /// <summary>Wraps a Veldrid compute <see cref="Pipeline"/> (one created from a
@@ -143,6 +134,6 @@ namespace KhaozEngine.Gpu.Internal
         internal Pipeline Pipeline { get; }
         readonly DeviceLiveness _liveness;
         public VeldridGpuComputePipeline(DeviceLiveness liveness, Pipeline pipeline) { _liveness = liveness; Pipeline = pipeline; }
-        public void Dispose() { if (!_liveness.Dead) Pipeline.Dispose(); }
+        public void Dispose() { if (_liveness.IsAlive) Pipeline.Dispose(); }
     }
 }

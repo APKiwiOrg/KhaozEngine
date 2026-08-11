@@ -1,4 +1,5 @@
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Render2D;
 using Xunit;
 

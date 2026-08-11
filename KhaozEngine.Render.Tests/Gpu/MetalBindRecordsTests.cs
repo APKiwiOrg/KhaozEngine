@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Metal.Internal;
 using Xunit;
 
@@ -316,7 +317,7 @@ namespace KhaozEngine.Tests.Gpu
             Type[] forbidden =
             [
                 typeof(MetalResourceFactory), typeof(MetalGpuDevice), typeof(MetalResourceLayout),
-                typeof(MetalResourceSet), typeof(IMetalDeviceLiveness),
+                typeof(MetalResourceSet), typeof(IDeviceLiveness),
             ];
 
             foreach (Type type in forbidden)

@@ -4,6 +4,7 @@ using System.Reflection;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.D3D11;
 using KhaozEngine.Gpu.D3D11.Internal;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Rendering;
 using Xunit;
@@ -534,7 +535,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void TheLivenessLatch_FlipsOnceAndStaysFlipped()
         {
-            var liveness = new D3D11DeviceLiveness();
+            var liveness = new DeviceLiveness();
 
             Assert.True(liveness.IsAlive);
             Assert.False(liveness.IsDead);
@@ -553,14 +554,14 @@ namespace KhaozEngine.Tests.Gpu
         /// through the device would make every wrapper hold one.
         /// <para>
         /// The fence half of decision X3 (a fence polled after device death answering signaled, and a drain
-        /// becoming a no-op) reads this same latch through <c>ID3D11DeviceLiveness</c>, which this type now
+        /// becoming a no-op) reads this same latch through <c>IDeviceLiveness</c>, which this type now
         /// implements, and is asserted against it in <c>D3D11FenceLifecycleTests</c> rather than here.
         /// </para>
         /// </summary>
         [Fact]
         public void TheLivenessLatch_IsReadableWithoutADevice()
         {
-            var liveness = new D3D11DeviceLiveness();
+            var liveness = new DeviceLiveness();
             bool aliveBeforeDeath = liveness.IsAlive;
             bool deadBeforeDeath = liveness.IsDead;
             Assert.True(aliveBeforeDeath);
@@ -686,7 +687,7 @@ namespace KhaozEngine.Tests.Gpu
             {
                 new GpuVertexLayoutDescription(new GpuVertexElement("A", GpuVertexElementFormat.Float2)),
             }, out _);
-            new D3D11DeviceLiveness().MarkDead();
+            new DeviceLiveness().MarkDead();
 
             string[] loaded = InteropAssembliesLoaded();
             Assert.True(loaded.Length == 0,

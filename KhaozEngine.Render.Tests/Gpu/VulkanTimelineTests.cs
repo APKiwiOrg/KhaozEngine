@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Threading.Tasks;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Vulkan.Internal;
 using Xunit;
 
@@ -8,7 +9,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>
     /// Decisions V-F1 to V-F4: the device's one completion timeline, its monotonic value allocation, the
     /// dead-device answers V-F10 requires of it, and the counted <c>WaitForIdle</c> drain. All device-free, over
-    /// <see cref="FakeVulkanTimelineSemaphore"/> and the shipped <see cref="VulkanDeviceLiveness"/>, so every rule
+    /// <see cref="FakeVulkanTimelineSemaphore"/> and the shipped <see cref="DeviceLiveness"/>, so every rule
     /// here runs on a machine with no Vulkan loader.
     /// <para>
     /// WHAT THESE ROWS DO NOT COVER, and it is the boundary worth naming: no value here is signalled by real GPU
@@ -111,7 +112,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void AfterDeviceDeath_CompletedValueIsWhatWasIssuedAndTheSemaphoreIsNotTouched()
         {
-            var liveness = new VulkanDeviceLiveness();
+            var liveness = new DeviceLiveness();
             var semaphore = new FakeVulkanTimelineSemaphore { Completed = 1 };
             using var timeline = new VulkanTimeline(semaphore, liveness);
 
@@ -132,7 +133,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void ALossDiscoveredInsideTheRead_AnswersFromWhatWasIssued()
         {
-            var liveness = new VulkanDeviceLiveness();
+            var liveness = new DeviceLiveness();
             var semaphore = new FakeVulkanTimelineSemaphore { Completed = 0 };
             using var timeline = new VulkanTimeline(semaphore, liveness);
 
@@ -236,7 +237,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void WaitForIdle_OnADeadDevice_DoesNothing()
         {
-            var liveness = new VulkanDeviceLiveness();
+            var liveness = new DeviceLiveness();
             var semaphore = new FakeVulkanTimelineSemaphore();
             using var timeline = new VulkanTimeline(semaphore, liveness);
 
@@ -257,7 +258,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void WaitForIdle_ThatEndedInADeviceLoss_IsStillCounted()
         {
-            var liveness = new VulkanDeviceLiveness();
+            var liveness = new DeviceLiveness();
             var semaphore = new FakeVulkanTimelineSemaphore { WaitReachesTheValue = false };
             using var timeline = new VulkanTimeline(semaphore, liveness);
 
@@ -292,7 +293,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void Dispose_OnADeadDevice_SkipsTheNativeDestroy()
         {
-            var liveness = new VulkanDeviceLiveness();
+            var liveness = new DeviceLiveness();
             var semaphore = new FakeVulkanTimelineSemaphore();
             var timeline = new VulkanTimeline(semaphore, liveness);
 
@@ -369,7 +370,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void AfterDeviceDeath_TheAnswerCoversTheAllocationHighWaterAndNotJustTheRegisteredOne()
         {
-            var liveness = new VulkanDeviceLiveness();
+            var liveness = new DeviceLiveness();
             var semaphore = new FakeVulkanTimelineSemaphore();
             using var timeline = new VulkanTimeline(semaphore, liveness);
 

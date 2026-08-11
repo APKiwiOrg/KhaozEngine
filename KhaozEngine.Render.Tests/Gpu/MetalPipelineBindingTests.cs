@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Metal.Internal;
 using Xunit;
 
@@ -397,10 +398,10 @@ namespace KhaozEngine.Tests.Gpu
             => _harness.NewList(new object(), new FakeMetalCommandBufferSource(), new FakeMetalEncoderCalls(),
                 new MetalUncommittedBuffers(_harness.FramesInFlight, new RecordingLogger()));
 
-        MetalGraphicsPipeline Pipeline(IMetalDeviceLiveness? owner = null, MetalShaderIndexTable? table = null,
+        MetalGraphicsPipeline Pipeline(IDeviceLiveness? owner = null, MetalShaderIndexTable? table = null,
             bool scissorTestEnabled = false)
         {
-            IMetalDeviceLiveness liveness = owner ?? _harness.Liveness;
+            IDeviceLiveness liveness = owner ?? _harness.Liveness;
             MetalShaderSet shaders = new(
                 liveness,
                 [

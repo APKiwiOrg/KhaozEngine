@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Threading;
 using KhaozEngine.Diagnostics;
+using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu.Vulkan.Internal
 {
@@ -197,7 +198,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <para>
         /// A FREE AFTER TEARDOWN IS A NO-OP rather than a throw, because a resource wrapper outliving its device
         /// is ordinary at teardown and its chunk's memory has already gone with the device. That is the same rule
-        /// <see cref="VulkanDeviceLiveness"/> applies to every other destroy in this package.
+        /// <see cref="DeviceLiveness"/> applies to every other destroy in this package.
         /// </para>
         /// </summary>
         internal void Free(in VulkanMemoryAllocation allocation)

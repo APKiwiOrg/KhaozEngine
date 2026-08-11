@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
+using KhaozEngine.Gpu.Internal;
 using Vortice.Direct3D11;
 
 namespace KhaozEngine.Gpu.D3D11.Internal
@@ -42,7 +43,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     [SupportedOSPlatform("windows")]
     internal sealed class D3D11GraphicsPipeline : IGpuPipeline, ID3D11PipelineState, ID3D11PipelineLayouts
     {
-        readonly D3D11DeviceLiveness _liveness;
+        readonly DeviceLiveness _liveness;
 
         // The topology's D3D_PRIMITIVE_TOPOLOGY value, resolved once here rather than read from Topology per
         // access. A uint field, not a Vortice enum one: a Vortice VALUE-TYPE field anywhere in this package makes
@@ -51,7 +52,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         // for anyway, so the conversion happens once per pipeline instead of once per bind.
         readonly uint _primitiveTopology;
 
-        internal D3D11GraphicsPipeline(ID3D11Device device, D3D11DeviceLiveness liveness,
+        internal D3D11GraphicsPipeline(ID3D11Device device, DeviceLiveness liveness,
             in GpuPipelineDescription description)
         {
             ArgumentNullException.ThrowIfNull(device);

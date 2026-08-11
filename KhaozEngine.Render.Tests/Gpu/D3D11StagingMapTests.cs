@@ -4,6 +4,7 @@ using System.Threading;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.D3D11;
 using KhaozEngine.Gpu.D3D11.Internal;
+using KhaozEngine.Gpu.Internal;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
@@ -194,7 +195,7 @@ namespace KhaozEngine.Tests.Gpu
         public void ASuccessfulMap_AsksTheLatchNothing(int hresult)
         {
             var reason = new FakeRemovedReason();
-            var latch = new D3D11DeviceLossLatch(new D3D11DeviceLiveness(), reason);
+            var latch = new D3D11DeviceLossLatch(new DeviceLiveness(), reason);
 
             D3D11StagingMaps.RequireMapped(hresult, latch);
 
@@ -212,7 +213,7 @@ namespace KhaozEngine.Tests.Gpu
         public void AnOrdinaryFailedMap_ThrowsWithoutLatchingADeviceLoss()
         {
             var reason = new FakeRemovedReason();
-            var latch = new D3D11DeviceLossLatch(new D3D11DeviceLiveness(), reason);
+            var latch = new D3D11DeviceLossLatch(new DeviceLiveness(), reason);
 
             Assert.Throws<InvalidOperationException>(
                 () => D3D11StagingMaps.RequireMapped(D3D11DeviceLossCodes.InvalidCall, latch));
@@ -231,7 +232,7 @@ namespace KhaozEngine.Tests.Gpu
         public void AMapThatFailsWithARemoval_LatchesImmediatelyUnderThisSite()
         {
             var reason = new FakeRemovedReason { Reason = D3D11DeviceLossCodes.DeviceHung };
-            var liveness = new D3D11DeviceLiveness();
+            var liveness = new DeviceLiveness();
             var latch = new D3D11DeviceLossLatch(liveness, reason);
 
             InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
@@ -358,7 +359,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             var submitLock = new object();
             var reason = new FakeRemovedReason { Reason = D3D11DeviceLossCodes.DeviceHung };
-            var liveness = new D3D11DeviceLiveness();
+            var liveness = new DeviceLiveness();
             var latch = new D3D11DeviceLossLatch(liveness, reason);
             using var memory = new FakeD3D11StagingMemory
             {

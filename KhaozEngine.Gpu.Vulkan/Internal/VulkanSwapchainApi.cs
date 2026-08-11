@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using KhaozEngine.Gpu.Internal;
 using Silk.NET.Vulkan;
 using Silk.NET.Vulkan.Extensions.KHR;
 using Semaphore = Silk.NET.Vulkan.Semaphore;
@@ -32,7 +33,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         readonly Queue _queue;
         readonly KhrSwapchain _swapchain;
         readonly VulkanDeviceLossLatch _loss;
-        readonly IVulkanDeviceLiveness _liveness;
+        readonly IDeviceLiveness _liveness;
 
         Fence _acquireFence;
         bool _disposed;
@@ -46,7 +47,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <exception cref="NotSupportedException">The device carries no <c>VK_KHR_swapchain</c>, which means a
         /// headless device was handed to a windowed path.</exception>
         internal VulkanSwapchainApi(Vk vk, Instance instance, Device device, Queue queue,
-            VulkanDeviceLossLatch loss, IVulkanDeviceLiveness liveness)
+            VulkanDeviceLossLatch loss, IDeviceLiveness liveness)
         {
             ArgumentNullException.ThrowIfNull(vk);
             ArgumentNullException.ThrowIfNull(loss);

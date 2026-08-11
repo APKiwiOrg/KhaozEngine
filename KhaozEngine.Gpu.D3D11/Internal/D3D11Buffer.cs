@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
+using KhaozEngine.Gpu.Internal;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
 
@@ -33,14 +34,14 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// requirement.
     /// </para>
     /// <para>
-    /// Disposal is gated on <see cref="D3D11DeviceLiveness"/>, decision X3: destroying the device already freed
+    /// Disposal is gated on <see cref="DeviceLiveness"/>, decision X3: destroying the device already freed
     /// every child object, so a wrapper disposed afterwards must do nothing rather than release twice.
     /// </para>
     /// </summary>
     [SupportedOSPlatform("windows")]
     internal sealed class D3D11Buffer : IGpuBuffer, ID3D11RingBacked, ID3D11BindableViews, ID3D11MappableResource
     {
-        readonly D3D11DeviceLiveness _liveness;
+        readonly DeviceLiveness _liveness;
         readonly D3D11RingAllocator _rings;
 
         /// <param name="device">The device the buffer and its views are created on.</param>
@@ -51,7 +52,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <param name="loss">The device's device-loss latch, or null on a path that has none. It reaches exactly
         /// one place from here: the ring's mapping mechanism, whose <c>Map</c> is a decision G3 check site
         /// (https://github.com/APKiwiOrg/KhaozEngine/issues/500).</param>
-        internal D3D11Buffer(ID3D11Device device, ID3D11DeviceContext context, D3D11DeviceLiveness liveness,
+        internal D3D11Buffer(ID3D11Device device, ID3D11DeviceContext context, DeviceLiveness liveness,
             D3D11RingAllocator rings, in GpuBufferDescription description, D3D11DeviceLossLatch? loss = null)
         {
             ArgumentNullException.ThrowIfNull(device);

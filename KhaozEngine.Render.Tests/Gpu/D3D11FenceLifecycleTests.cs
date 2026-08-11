@@ -1,6 +1,7 @@
 using System;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.D3D11.Internal;
+using KhaozEngine.Gpu.Internal;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
@@ -19,7 +20,7 @@ namespace KhaozEngine.Tests.Gpu
     public sealed class D3D11FenceLifecycleTests
     {
         static D3D11FenceSubsystem Subsystem(
-            FakeD3D11FenceTimeline timeline, ID3D11DeviceLiveness? liveness = null, bool realDrain = true)
+            FakeD3D11FenceTimeline timeline, IDeviceLiveness? liveness = null, bool realDrain = true)
             => new(timeline, new object(), liveness, realDrain);
 
         /// <summary>A fresh fence is UNARMED and reads unsignalled, because the seam requires a fence to be
@@ -366,7 +367,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// THE SAME X3 BEHAVIOUR AGAINST THE REAL LATCH, which is the whole of the wiring between this row and
-        /// the resources row: <see cref="D3D11DeviceLiveness"/> is the device's shared volatile token, and it
+        /// the resources row: <see cref="DeviceLiveness"/> is the device's shared volatile token, and it
         /// rides this subsystem's liveness argument directly rather than through an adapter.
         /// <para>
         /// Worth a test of its own even though the fake already covers the behaviour, because the fake is the
@@ -379,7 +380,7 @@ namespace KhaozEngine.Tests.Gpu
         public void TheDevicesRealLivenessLatch_DrivesTheSameX3Behaviour()
         {
             var timeline = new FakeD3D11FenceTimeline();
-            var liveness = new D3D11DeviceLiveness();
+            var liveness = new DeviceLiveness();
             using D3D11FenceSubsystem fences = Subsystem(timeline, liveness);
             IGpuFence fence = fences.CreateFence();
             fences.SignalEndOfReplay(fence);

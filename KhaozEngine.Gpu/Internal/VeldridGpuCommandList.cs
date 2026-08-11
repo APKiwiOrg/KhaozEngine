@@ -97,6 +97,6 @@ namespace KhaozEngine.Gpu.Internal
         public void Dispatch(uint groupCountX, uint groupCountY, uint groupCountZ)
             => CommandList.Dispatch(groupCountX, groupCountY, groupCountZ);
 
-        public void Dispose() { if (_owns && !_liveness.Dead) CommandList.Dispose(); }
+        public void Dispose() { if (_owns && _liveness.IsAlive) CommandList.Dispose(); }
     }
 }

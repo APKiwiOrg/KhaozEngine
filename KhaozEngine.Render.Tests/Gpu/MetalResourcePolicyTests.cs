@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Metal.Internal;
 using KhaozEngine.Gpu.Metal.Internal.ObjC;
 using Xunit;
@@ -511,9 +512,9 @@ namespace KhaozEngine.Tests.Gpu
 
         // A resource that knows its owner and nothing else. The real wrappers cannot be built without a device,
         // and what is under test here is the ownership rule rather than any of them.
-        sealed class OwnedResource(IMetalDeviceLiveness owner) : IMetalOwnedResource
+        sealed class OwnedResource(IDeviceLiveness owner) : IMetalOwnedResource
         {
-            public IMetalDeviceLiveness Owner { get; } = owner;
+            public IDeviceLiveness Owner { get; } = owner;
         }
 
         // ---- Upload regions -----------------------------------------------------------------------------------

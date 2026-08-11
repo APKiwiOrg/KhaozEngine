@@ -26,14 +26,17 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
-    <!-- The native Direct3D11 backend package (decision P2). It reads two internals of this package and nothing
-         else: the Veldrid-free SPIRV cross-compile helper (Internal/SpirvCrossCompile), which is what keeps the
-         Veldrid.SPIRV edge out of a backend whose premise is being Veldrid-free, and IGpuDeviceLifecycle, the
-         disposal hook a natively created device implements so it gets the same liveness latch the Veldrid
-         wrapper has. Both are internal on purpose: neither is API a consumer should see. -->
+    <!-- The native Direct3D11 backend package (decision P2). It reads three internals of this package and
+         nothing else: the Veldrid-free SPIRV cross-compile helper (Internal/SpirvCrossCompile), which is what
+         keeps the Veldrid.SPIRV edge out of a backend whose premise is being Veldrid-free, IGpuDeviceLifecycle,
+         the disposal hook a natively created device implements so it gets the same liveness latch the Veldrid
+         wrapper has, and Internal/DeviceLiveness, which IS that latch: row 18 of the Metal design extracted the
+         three per-backend copies into one shared token here (#531). All three are internal on purpose: none of
+         them is API a consumer should see. -->
     <InternalsVisibleTo Include="KhaozEngine.Gpu.D3D11" />
     <!-- The native Vulkan backend package (decision V-P3). It reads the FRONT END of the shader toolchain
-         (Internal/SpirvFrontEnd plus its pin), SpirvLocalSize, and IGpuDeviceLifecycle. It deliberately does NOT
+         (Internal/SpirvFrontEnd plus its pin), SpirvLocalSize, IGpuDeviceLifecycle and the shared
+         Internal/DeviceLiveness latch (#531). It deliberately does NOT
          read Internal/SpirvCrossCompile: Vulkan consumes SPIR-V, so nothing on its shader path is cross-compiled,
          and decision V-S3 split the two halves apart so that stays true. VulkanShaderFrontEndOnlyTests asserts it
          over the built IL. -->
@@ -42,8 +45,9 @@
          which is the Direct3D 11 shape rather than the Vulkan one: the front end (Internal/SpirvFrontEnd plus its
          pin) because its sources are GLSL, and Internal/SpirvCrossCompile's MSL half because Metal consumes MSL.
          It also reads SpirvResourceDecorations, which is the key its binding table joins on (section 2.2b), and
-         SpirvLocalSize and IGpuDeviceLifecycle like its siblings. MetalShaderArchitectureTests asserts over the
-         built IL that it names the MSL members and NEVER an HLSL one.
+         SpirvLocalSize, IGpuDeviceLifecycle and the shared Internal/DeviceLiveness latch (#531) like its
+         siblings. MetalShaderArchitectureTests asserts over the built IL that it names the MSL members and
+         NEVER an HLSL one.
          It reads ONE thing no sibling does: Internal/MetalFrameCapture, plus GpuFrameCapture's internal
          arm-consume pair. That is decision M-G5 rather than an extra edge for convenience. The capture lives
          here because the Veldrid Metal path needs it too, and the native backend owns its MTLCommandQueue, so it

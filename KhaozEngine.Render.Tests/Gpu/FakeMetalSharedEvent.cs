@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Metal.Internal;
 
 namespace KhaozEngine.Tests.Gpu
@@ -109,7 +110,7 @@ namespace KhaozEngine.Tests.Gpu
 
     /// <summary>A liveness token a test can flip, standing in for row 4's real one
     /// (https://github.com/APKiwiOrg/KhaozEngine/issues/570).</summary>
-    internal sealed class FakeMetalDeviceLiveness : IMetalDeviceLiveness
+    internal sealed class FakeMetalDeviceLiveness : IDeviceLiveness
     {
         volatile bool _dead;
 

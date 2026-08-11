@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Metal.Internal.ObjC;
 
 namespace KhaozEngine.Gpu.Metal.Internal
@@ -125,7 +126,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             MTLCommandQueue queue = device.NewCommandQueue();
             if (queue.IsNull) throw NoQueue(selected.Facts.DeviceName);
 
-            var liveness = new MetalDeviceLiveness();
+            var liveness = new DeviceLiveness();
             var loss = new MetalDeviceLossLatch(liveness);
 
             // INSIDE THE TRY, and that is not tidiness. MetalSharedEvent's constructor throws when -newSharedEvent

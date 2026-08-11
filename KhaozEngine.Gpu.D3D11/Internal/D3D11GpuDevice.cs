@@ -62,7 +62,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         readonly ID3D11Device _device;
         readonly ID3D11DeviceContext1 _context;
 
-        readonly D3D11DeviceLiveness _liveness;
+        readonly DeviceLiveness _liveness;
         readonly D3D11DeviceLossLatch _loss;
         readonly D3D11FenceSubsystem _fences;
         readonly D3D11RingAllocator _rings;

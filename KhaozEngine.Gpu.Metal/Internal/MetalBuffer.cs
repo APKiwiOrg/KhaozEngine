@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Metal.Internal.ObjC;
 
 namespace KhaozEngine.Gpu.Metal.Internal
@@ -35,7 +36,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// </summary>
     internal sealed class MetalBuffer : IGpuBuffer, IMetalOwnedResource, IMetalBindable
     {
-        readonly IMetalDeviceLiveness _liveness;
+        readonly IDeviceLiveness _liveness;
         readonly MTLBuffer _buffer;
         readonly IntPtr _contents;
         readonly MetalRingAllocator? _rings;
@@ -50,7 +51,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// allocation, the rounding and the <c>contents()</c> checks live: a caller here is stating it has those
         /// answers already.
         /// </summary>
-        internal MetalBuffer(IMetalDeviceLiveness liveness, MTLBuffer buffer, IntPtr contents, uint sizeInBytes,
+        internal MetalBuffer(IDeviceLiveness liveness, MTLBuffer buffer, IntPtr contents, uint sizeInBytes,
             GpuBufferUsage usage, MetalRingAllocator? rings)
         {
             _liveness = liveness;
@@ -74,7 +75,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         internal GpuBufferUsage Usage { get; }
 
         /// <inheritdoc/>
-        public IMetalDeviceLiveness Owner => _liveness;
+        public IDeviceLiveness Owner => _liveness;
 
         /// <summary>The native buffer, for the rows that bind and copy. Null after disposal, deliberately: a
         /// caller reaching a disposed buffer gets a nil handle Metal rejects rather than a released pointer it
@@ -129,7 +130,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// give.</param>
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static MetalBuffer Create(MTLDevice device, IMetalDeviceLiveness liveness,
+        internal static MetalBuffer Create(MTLDevice device, IDeviceLiveness liveness,
             in GpuBufferDescription description, MetalRingAllocator? rings)
         {
             MetalBufferPolicy.RequireCreatable(description.Usage);

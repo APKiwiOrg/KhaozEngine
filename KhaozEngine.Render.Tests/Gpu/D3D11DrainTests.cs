@@ -1,6 +1,7 @@
 using System;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.D3D11.Internal;
+using KhaozEngine.Gpu.Internal;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
@@ -20,7 +21,7 @@ namespace KhaozEngine.Tests.Gpu
     public sealed class D3D11DrainTests
     {
         static D3D11FenceSubsystem Subsystem(
-            ID3D11FenceTimeline timeline, ID3D11DeviceLiveness? liveness = null, bool realDrain = true)
+            ID3D11FenceTimeline timeline, IDeviceLiveness? liveness = null, bool realDrain = true)
             => new(timeline, new object(), liveness, realDrain);
 
         /// <summary>

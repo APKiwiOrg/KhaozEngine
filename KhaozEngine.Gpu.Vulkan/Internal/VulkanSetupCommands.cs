@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using KhaozEngine.Gpu.Internal;
 using Silk.NET.Vulkan;
 
 namespace KhaozEngine.Gpu.Vulkan.Internal
@@ -97,7 +98,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         readonly IVulkanSetupSink _sink;
         readonly VulkanStagingArena _arena;
         readonly VulkanSubmitQueue _submits;
-        readonly IVulkanDeviceLiveness _liveness;
+        readonly IDeviceLiveness _liveness;
 
         int _slot = -1;
         bool _open;
@@ -114,7 +115,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// the nesting from inside the submit, which is the same reason
         /// <see cref="VulkanSubmitQueue"/> accepts one.</param>
         internal VulkanSetupCommands(VulkanCommandPoolRing ring, IVulkanSetupSink sink, VulkanStagingArena arena,
-            VulkanSubmitQueue submits, IVulkanDeviceLiveness liveness, object? setupLock = null)
+            VulkanSubmitQueue submits, IDeviceLiveness liveness, object? setupLock = null)
         {
             ArgumentNullException.ThrowIfNull(ring);
             ArgumentNullException.ThrowIfNull(sink);

@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
 using System.Threading;
 
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Metal.Internal.ObjC;
 
 namespace KhaozEngine.Gpu.Metal.Internal
@@ -345,7 +346,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         }
 
         /// <summary>A liveness token the probe can flip, standing in for row 4's real one.</summary>
-        sealed class MutableLiveness : IMetalDeviceLiveness
+        sealed class MutableLiveness : IDeviceLiveness
         {
             volatile bool _dead;
 

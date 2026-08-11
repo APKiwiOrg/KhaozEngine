@@ -1,12 +1,13 @@
 using System;
 using KhaozEngine.Gpu.D3D11.Internal;
+using KhaozEngine.Gpu.Internal;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
     /// DECISION G3: the device-loss latch, driven device-free off a fake removal-reason source and the real
-    /// <see cref="D3D11DeviceLiveness"/> token, so the once-only rule, the immediate read, the liveness flip, the
+    /// <see cref="DeviceLiveness"/> token, so the once-only rule, the immediate read, the liveness flip, the
     /// header string and the throwing-site path all run on macOS and Linux.
     /// <para>
     /// WHY IMMEDIACY IS THE WHOLE DESIGN. <c>DXGI_ERROR_DEVICE_REMOVED</c> is sticky: every call after the device
@@ -32,10 +33,10 @@ namespace KhaozEngine.Tests.Gpu
             }
         }
 
-        static (D3D11DeviceLossLatch Latch, D3D11DeviceLiveness Liveness, FakeRemovedReason Reason, RecordingLogger Log)
+        static (D3D11DeviceLossLatch Latch, DeviceLiveness Liveness, FakeRemovedReason Reason, RecordingLogger Log)
             Build(int reason = D3D11DeviceLossCodes.DeviceHung)
         {
-            var liveness = new D3D11DeviceLiveness();
+            var liveness = new DeviceLiveness();
             var source = new FakeRemovedReason { Reason = reason };
             var log = new RecordingLogger();
             return (new D3D11DeviceLossLatch(liveness, source, log), liveness, source, log);
@@ -48,7 +49,7 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData(1)]
         public void Check_IgnoresASuccessfulResult(int hresult)
         {
-            (D3D11DeviceLossLatch latch, D3D11DeviceLiveness liveness, FakeRemovedReason reason, _) = Build();
+            (D3D11DeviceLossLatch latch, DeviceLiveness liveness, FakeRemovedReason reason, _) = Build();
 
             Assert.False(latch.Check(hresult, "present"));
             Assert.False(latch.IsLost);
@@ -64,7 +65,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void Check_DoesNotLatchOnAnOrdinaryFailure()
         {
-            (D3D11DeviceLossLatch latch, D3D11DeviceLiveness liveness, FakeRemovedReason reason, _) = Build();
+            (D3D11DeviceLossLatch latch, DeviceLiveness liveness, FakeRemovedReason reason, _) = Build();
 
             Assert.False(latch.Check(D3D11DeviceLossCodes.InvalidCall, "present"));
             Assert.False(latch.IsLost);
@@ -77,7 +78,7 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData(D3D11DeviceLossCodes.DeviceReset)]
         public void Check_LatchesOnEitherRemovalCodeAndReadsTheReasonImmediately(int hresult)
         {
-            (D3D11DeviceLossLatch latch, D3D11DeviceLiveness liveness, FakeRemovedReason reason, RecordingLogger log)
+            (D3D11DeviceLossLatch latch, DeviceLiveness liveness, FakeRemovedReason reason, RecordingLogger log)
                 = Build(D3D11DeviceLossCodes.DeviceHung);
 
             Assert.True(latch.Check(hresult, "present"));
@@ -134,7 +135,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void CheckAfterFault_LatchesWhenTheDeviceIsWhyTheCallThrew()
         {
-            (D3D11DeviceLossLatch latch, D3D11DeviceLiveness liveness, _, _) = Build(D3D11DeviceLossCodes.DeviceRemoved);
+            (D3D11DeviceLossLatch latch, DeviceLiveness liveness, _, _) = Build(D3D11DeviceLossCodes.DeviceRemoved);
 
             Assert.True(latch.CheckAfterFault("swapchain resize apply"));
 
@@ -152,7 +153,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void CheckAfterFault_LeavesTheDeviceAloneWhenItIsFine()
         {
-            (D3D11DeviceLossLatch latch, D3D11DeviceLiveness liveness, _, RecordingLogger log)
+            (D3D11DeviceLossLatch latch, DeviceLiveness liveness, _, RecordingLogger log)
                 = Build(D3D11DeviceLossCodes.Ok);
 
             Assert.False(latch.CheckAfterFault("swapchain resize apply"));
@@ -167,7 +168,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void Check_StillLatchesWhenTheReasonCannotBeRead()
         {
-            (D3D11DeviceLossLatch latch, D3D11DeviceLiveness liveness, FakeRemovedReason reason, RecordingLogger log)
+            (D3D11DeviceLossLatch latch, DeviceLiveness liveness, FakeRemovedReason reason, RecordingLogger log)
                 = Build();
             reason.Throws = true;
 
@@ -213,7 +214,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Throws<ArgumentNullException>(
                 () => new D3D11DeviceLossLatch(null!, new FakeRemovedReason()));
             Assert.Throws<ArgumentNullException>(
-                () => new D3D11DeviceLossLatch(new D3D11DeviceLiveness(), null!));
+                () => new D3D11DeviceLossLatch(new DeviceLiveness(), null!));
         }
 
         // ---------------------------------------------------------------------------------------------------

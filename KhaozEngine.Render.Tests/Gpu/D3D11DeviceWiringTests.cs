@@ -9,6 +9,7 @@ using System.Reflection.PortableExecutable;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.D3D11;
 using KhaozEngine.Gpu.D3D11.Internal;
+using KhaozEngine.Gpu.Internal;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
@@ -150,14 +151,14 @@ namespace KhaozEngine.Tests.Gpu
 
             IReadOnlyList<string> built = backend.ConstructedTypesIn(DeviceType, ".ctor", new[]
             {
-                "D3D11DeviceLiveness", "D3D11DeviceLossLatch", "D3D11FenceSubsystem", "D3D11RingAllocator",
+                "DeviceLiveness", "D3D11DeviceLossLatch", "D3D11FenceSubsystem", "D3D11RingAllocator",
                 "D3D11DeviceState", "D3D11EmitterContext", "D3D11NativeEmitter", "D3D11ResourceFactory",
                 "D3D11StagingAccess", "D3D11Swapchain",
             });
 
             Assert.Equal(new[]
             {
-                "D3D11DeviceLiveness", "D3D11DeviceLossLatch", "D3D11FenceSubsystem", "D3D11RingAllocator",
+                "DeviceLiveness", "D3D11DeviceLossLatch", "D3D11FenceSubsystem", "D3D11RingAllocator",
                 "D3D11DeviceState", "D3D11EmitterContext", "D3D11NativeEmitter", "D3D11ResourceFactory",
                 "D3D11StagingAccess", "D3D11Swapchain",
             }, built);
@@ -187,13 +188,13 @@ namespace KhaozEngine.Tests.Gpu
             IReadOnlyList<string> calls = backend.CalledMembersIn(DeviceType, "MarkDeviceDisposed", new[]
             {
                 "D3D11FenceSubsystem.WaitForIdle", "D3D11InfoQueuePump.Dispose", "D3D11Swapchain.Dispose",
-                "D3D11FenceSubsystem.Dispose", "D3D11DeviceLiveness.MarkDead",
+                "D3D11FenceSubsystem.Dispose", "DeviceLiveness.MarkDead",
             });
 
             Assert.Equal(new[]
             {
                 "D3D11FenceSubsystem.WaitForIdle", "D3D11InfoQueuePump.Dispose", "D3D11Swapchain.Dispose",
-                "D3D11FenceSubsystem.Dispose", "D3D11DeviceLiveness.MarkDead",
+                "D3D11FenceSubsystem.Dispose", "DeviceLiveness.MarkDead",
             }, calls);
         }
 

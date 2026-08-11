@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Metal.Internal.ObjC;
 
 namespace KhaozEngine.Gpu.Metal.Internal
@@ -28,14 +29,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// </summary>
     internal sealed class MetalTexture : IGpuTexture, IMetalOwnedResource, IMetalBindable
     {
-        readonly IMetalDeviceLiveness _liveness;
+        readonly IDeviceLiveness _liveness;
         readonly MTLTexture _texture;
         readonly MTLBuffer _stagingBuffer;
         readonly IntPtr _stagingContents;
 
         bool _disposed;
 
-        MetalTexture(IMetalDeviceLiveness liveness, MTLTexture texture, MTLBuffer stagingBuffer,
+        MetalTexture(IDeviceLiveness liveness, MTLTexture texture, MTLBuffer stagingBuffer,
             IntPtr stagingContents, in GpuTextureDescription description, in MetalTextureViewPlan plan)
         {
             _liveness = liveness;
@@ -76,7 +77,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         internal GpuTextureUsage Usage { get; }
 
         /// <inheritdoc/>
-        public IMetalDeviceLiveness Owner => _liveness;
+        public IDeviceLiveness Owner => _liveness;
 
         /// <summary>The creation plan, decided once (M-M10).</summary>
         internal MetalTextureViewPlan Plan { get; }
@@ -111,7 +112,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// texture.</summary>
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static MetalTexture Create(MTLDevice device, IMetalDeviceLiveness liveness,
+        internal static MetalTexture Create(MTLDevice device, IDeviceLiveness liveness,
             in GpuTextureDescription description)
         {
             MetalTextureViewPlan plan = MetalViewPolicy.ForTexture(
@@ -124,7 +125,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static MetalTexture CreateStaging(MTLDevice device, IMetalDeviceLiveness liveness,
+        static MetalTexture CreateStaging(MTLDevice device, IDeviceLiveness liveness,
             in GpuTextureDescription description, in MetalTextureViewPlan plan)
         {
             var shape = new MetalStagingShape(description.Width, description.Height, description.MipLevels,
@@ -158,7 +159,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static MetalTexture CreateDeviceTexture(MTLDevice device, IMetalDeviceLiveness liveness,
+        static MetalTexture CreateDeviceTexture(MTLDevice device, IDeviceLiveness liveness,
             in GpuTextureDescription description, in MetalTextureViewPlan plan)
         {
             MTLTextureDescriptor descriptor = MTLTextureDescriptor.New();

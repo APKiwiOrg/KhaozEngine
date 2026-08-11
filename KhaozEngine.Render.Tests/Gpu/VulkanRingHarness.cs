@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Vulkan.Internal;
 
 namespace KhaozEngine.Tests.Gpu
@@ -25,7 +26,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             SubmitLock = new object();
             Semaphore = new FakeVulkanTimelineSemaphore();
-            Liveness = new VulkanDeviceLiveness();
+            Liveness = new DeviceLiveness();
             Timeline = new VulkanTimeline(Semaphore, Liveness);
             Backpressure = new VulkanBackpressure();
             Allocator = new VulkanRingAllocator(framesInFlight, Timeline, Backpressure, SubmitLock);
@@ -44,7 +45,7 @@ namespace KhaozEngine.Tests.Gpu
         internal FakeVulkanTimelineSemaphore Semaphore { get; }
 
         /// <summary>The device's liveness token, so a test can kill the device under a wait.</summary>
-        internal VulkanDeviceLiveness Liveness { get; }
+        internal DeviceLiveness Liveness { get; }
 
         /// <summary>The device's one completion timeline, which the segment gate reads.</summary>
         internal VulkanTimeline Timeline { get; }

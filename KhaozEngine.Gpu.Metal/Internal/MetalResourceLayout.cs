@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu.Metal.Internal
 {
@@ -43,7 +44,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// </summary>
     internal sealed class MetalResourceLayout : IGpuResourceLayout, IMetalOwnedResource
     {
-        readonly IMetalDeviceLiveness _liveness;
+        readonly IDeviceLiveness _liveness;
         readonly GpuResourceLayoutElement[] _elements;
 
         /// <param name="liveness">The creating device's token, which is its identity.</param>
@@ -54,7 +55,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// nowhere to put one.</exception>
         /// <exception cref="ArgumentOutOfRangeException">An element declares a kind with no Metal index space,
         /// which is a new <see cref="GpuResourceKind"/> member rather than a caller error.</exception>
-        internal MetalResourceLayout(IMetalDeviceLiveness liveness, in GpuResourceLayoutDescription description)
+        internal MetalResourceLayout(IDeviceLiveness liveness, in GpuResourceLayoutDescription description)
         {
             ArgumentNullException.ThrowIfNull(liveness);
 
@@ -73,7 +74,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         }
 
         /// <inheritdoc/>
-        public IMetalDeviceLiveness Owner => _liveness;
+        public IDeviceLiveness Owner => _liveness;
 
         /// <summary>The declared elements, in declaration order, which is binding order. Same order as a resource
         /// set's resources and the same order the index table's <c>binding</c> key counts in.</summary>
@@ -113,7 +114,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <exception cref="ArgumentException">No layout, another backend's, or another device's.</exception>
         /// <exception cref="ObjectDisposedException">This backend's layout, on this device, already
         /// disposed.</exception>
-        internal static MetalResourceLayout Require(IGpuResourceLayout? layout, IMetalDeviceLiveness owner,
+        internal static MetalResourceLayout Require(IGpuResourceLayout? layout, IDeviceLiveness owner,
             string what)
         {
             if (layout is null)

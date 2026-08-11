@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu.Vulkan.Internal
 {
@@ -43,7 +44,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     internal sealed class VulkanStagingSource : IVulkanStagingSource
     {
         readonly VulkanResourceOwner _owner;
-        readonly IVulkanDeviceLiveness _liveness;
+        readonly IDeviceLiveness _liveness;
 
         // The suballocation each live block came out of, which VulkanStagingBlock deliberately does not carry: it
         // is the arena's value type and the arena has no allocator to hand one back to.
@@ -53,7 +54,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="owner">The device's resource seam, allocator, timeline and retire list.</param>
         /// <param name="liveness">The device's liveness token, which decides between deferring and
         /// abandoning.</param>
-        internal VulkanStagingSource(VulkanResourceOwner owner, IVulkanDeviceLiveness liveness)
+        internal VulkanStagingSource(VulkanResourceOwner owner, IDeviceLiveness liveness)
         {
             ArgumentNullException.ThrowIfNull(owner);
             ArgumentNullException.ThrowIfNull(liveness);

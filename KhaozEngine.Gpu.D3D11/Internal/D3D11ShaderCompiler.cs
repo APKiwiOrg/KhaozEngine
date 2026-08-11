@@ -2,6 +2,7 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
 using KhaozEngine.Diagnostics;
+using KhaozEngine.Gpu.Internal;
 using Vortice.Direct3D11;
 
 namespace KhaozEngine.Gpu.D3D11.Internal
@@ -25,20 +26,20 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         static readonly ILogger log = Log.For<D3D11ShaderCompiler>();
 
         readonly ID3D11Device _device;
-        readonly D3D11DeviceLiveness _liveness;
+        readonly DeviceLiveness _liveness;
         readonly D3D11DxbcCache? _cache;
         readonly uint _flags;
 
         /// <summary>Builds the compiler for a device, reading the compile flags and the cache location off the
         /// live environment and reporting what it found.</summary>
-        internal D3D11ShaderCompiler(ID3D11Device device, D3D11DeviceLiveness liveness)
+        internal D3D11ShaderCompiler(ID3D11Device device, DeviceLiveness liveness)
             : this(device, liveness, D3D11DxbcCache.FromEnvironment(), ResolveFlags())
         {
         }
 
         /// <summary>The explicit form, for a test that wants a known cache and known flags rather than whatever
         /// the machine's environment says.</summary>
-        internal D3D11ShaderCompiler(ID3D11Device device, D3D11DeviceLiveness liveness, D3D11DxbcCache? cache,
+        internal D3D11ShaderCompiler(ID3D11Device device, DeviceLiveness liveness, D3D11DxbcCache? cache,
             uint flags)
         {
             ArgumentNullException.ThrowIfNull(device);
@@ -79,7 +80,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         // in the signature, so nothing resolves the assembly until one actually runs, which is inside a compiler
         // that already holds a live device.
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static ID3D11ShaderSet CreateShaderSetWindows(ID3D11Device device, D3D11DeviceLiveness liveness,
+        static ID3D11ShaderSet CreateShaderSetWindows(ID3D11Device device, DeviceLiveness liveness,
             in D3D11CompiledPair compiled)
             => new D3D11ShaderSet(
                 liveness,
@@ -88,7 +89,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 compiled.VertexDxbc);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static IGpuComputeShader CreateComputeShaderWindows(ID3D11Device device, D3D11DeviceLiveness liveness,
+        static IGpuComputeShader CreateComputeShaderWindows(ID3D11Device device, DeviceLiveness liveness,
             in D3D11CompiledCompute compiled)
             => new D3D11ComputeShader(
                 liveness,

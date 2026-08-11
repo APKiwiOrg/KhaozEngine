@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Threading;
 using KhaozEngine.Diagnostics;
+using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu.Vulkan.Internal
 {
@@ -30,7 +31,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// cover the earlier work at all.</para>
     ///
     /// <para><b>EVERYTHING HERE IS DEVICE-FREE.</b> The native calls are three members on
-    /// <see cref="IVulkanTimelineSemaphore"/> and the liveness is <see cref="IVulkanDeviceLiveness"/>, so the
+    /// <see cref="IVulkanTimelineSemaphore"/> and the liveness is <see cref="IDeviceLiveness"/>, so the
     /// value allocation, the fence lifecycle, the dead-device answers and the drain accounting all run on a
     /// machine with no Vulkan loader. Since row 7 (https://github.com/APKiwiOrg/KhaozEngine/issues/517) that
     /// includes the whole submit ORDERING, driven through <see cref="VulkanSubmitQueue"/> over a fake command
@@ -53,7 +54,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         static readonly ILogger log = Log.For<VulkanTimeline>();
 
         readonly IVulkanTimelineSemaphore _semaphore;
-        readonly IVulkanDeviceLiveness _liveness;
+        readonly IDeviceLiveness _liveness;
 
         // The last value ALLOCATED to a submission, which is not the same as the last value the GPU has reached
         // and not the same as the last value a submission actually took to the queue. Read after device death in
@@ -72,14 +73,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         /// <param name="semaphore">The device's timeline semaphore. Disposed with this timeline.</param>
         /// <param name="liveness">The device's liveness token, or null while a caller does not have one, in which
-        /// case the device is treated as alive forever. See <see cref="IVulkanDeviceLiveness"/> for why defaulting
+        /// case the device is treated as alive forever. See <see cref="IDeviceLiveness"/> for why defaulting
         /// to alive is the safe direction.</param>
-        internal VulkanTimeline(IVulkanTimelineSemaphore semaphore, IVulkanDeviceLiveness? liveness = null)
+        internal VulkanTimeline(IVulkanTimelineSemaphore semaphore, IDeviceLiveness? liveness = null)
         {
             ArgumentNullException.ThrowIfNull(semaphore);
 
             _semaphore = semaphore;
-            _liveness = liveness ?? VulkanLiveDevice.Instance;
+            _liveness = liveness ?? LiveDevice.Instance;
         }
 
         /// <summary>The device's liveness, read through the hook. Fences read it before anything else.</summary>

@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.Versioning;
+using KhaozEngine.Gpu.Internal;
 using Vortice.Direct3D11;
 
 namespace KhaozEngine.Gpu.D3D11.Internal
@@ -24,9 +25,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     [SupportedOSPlatform("windows")]
     internal sealed class D3D11ShaderSet : ID3D11ShaderSet
     {
-        readonly D3D11DeviceLiveness _liveness;
+        readonly DeviceLiveness _liveness;
 
-        internal D3D11ShaderSet(D3D11DeviceLiveness liveness, ID3D11VertexShader vertexShader,
+        internal D3D11ShaderSet(DeviceLiveness liveness, ID3D11VertexShader vertexShader,
             ID3D11PixelShader pixelShader, byte[] vertexShaderBytecode)
         {
             ArgumentNullException.ThrowIfNull(liveness);

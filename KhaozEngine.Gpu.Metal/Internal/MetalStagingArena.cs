@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu.Metal.Internal
 {
@@ -89,7 +90,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         internal const ulong CopyAlignment = 4;
 
         readonly IMetalStagingSource _source;
-        readonly IMetalDeviceLiveness _liveness;
+        readonly IDeviceLiveness _liveness;
         readonly ulong _blockBytes;
         readonly ulong _retentionBytes;
 
@@ -120,11 +121,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// constructible so a test can pin the difference.</param>
         /// <param name="liveness">The creating device's liveness token (M-F6), or null while a caller does not
         /// have one, in which case the device is treated as alive forever. Defaulting to ALIVE is the safe
-        /// direction for the same reason <see cref="MetalLiveDevice"/> gives: defaulting to dead would make every
+        /// direction for the same reason <see cref="LiveDevice"/> gives: defaulting to dead would make every
         /// lease a silent no-op and an upload would simply not happen.</param>
         internal MetalStagingArena(IMetalStagingSource source, int framesInFlight,
             ulong blockBytes = DefaultBlockBytes, ulong retentionBytes = DefaultRetentionBytes,
-            IMetalDeviceLiveness? liveness = null)
+            IDeviceLiveness? liveness = null)
         {
             ArgumentNullException.ThrowIfNull(source);
             ArgumentOutOfRangeException.ThrowIfZero(blockBytes);
@@ -138,7 +139,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             }
 
             _source = source;
-            _liveness = liveness ?? MetalLiveDevice.Instance;
+            _liveness = liveness ?? LiveDevice.Instance;
             _blockBytes = blockBytes;
             _retentionBytes = retentionBytes;
 

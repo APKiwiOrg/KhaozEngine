@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu.Metal.Internal
 {
@@ -53,7 +54,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         readonly MetalRingAllocator _rings;
         readonly MetalStagingArena _arena;
         readonly IMetalBlitApi _blit;
-        readonly IMetalDeviceLiveness _liveness;
+        readonly IDeviceLiveness _liveness;
         readonly object _owner;
 
         // THE COUNTED SEAM, HELD BOXED AND UNBOXED PER COMMAND. The encoder scope holds the same reference for
@@ -123,7 +124,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <paramref name="sink"/> because nothing about a pipeline-state bind scales with dispatch count.</param>
         internal MetalCommandList(IMetalCommandBufferSource buffers, MetalUncommittedBuffers uncommitted,
             IMetalEncoderSink sink, object owner, MetalRingAllocator rings, MetalStagingArena arena,
-            IMetalBlitApi blit, IMetalDeviceLiveness liveness, IMetalRenderApi render, IMetalComputeApi compute,
+            IMetalBlitApi blit, IDeviceLiveness liveness, IMetalRenderApi render, IMetalComputeApi compute,
             uint bufferOffsetAlignment, MetalClearMode clearMode = MetalClearMode.PerAttachment)
         {
             ArgumentNullException.ThrowIfNull(buffers);

@@ -179,7 +179,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             // The liveness token and the loss latch first: every subsystem below holds one, the other, or both,
             // and the latch is what a fault site at any depth reaches. It takes THIS device as its one native
             // call, which is safe in a constructor because the call is never made until a fault happens.
-            _liveness = new D3D11DeviceLiveness();
+            _liveness = new DeviceLiveness();
             _loss = new D3D11DeviceLossLatch(_liveness, this);
 
             // 3. FENCES. The timeline picks its own mechanism (ID3D11Fence via ID3D11Device5, or the event-query

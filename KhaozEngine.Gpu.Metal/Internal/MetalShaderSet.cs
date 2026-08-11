@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Metal.Internal.ObjC;
 
 namespace KhaozEngine.Gpu.Metal.Internal
@@ -35,12 +36,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// </summary>
     internal sealed class MetalShaderSet : IGpuShaderSet, IMetalOwnedResource
     {
-        readonly IMetalDeviceLiveness _liveness;
+        readonly IDeviceLiveness _liveness;
         readonly MetalCompiledStage[] _stages;
 
         bool _disposed;
 
-        internal MetalShaderSet(IMetalDeviceLiveness liveness, MetalCompiledStage[] stages,
+        internal MetalShaderSet(IDeviceLiveness liveness, MetalCompiledStage[] stages,
             MetalShaderIndexTable table)
         {
             _liveness = liveness;
@@ -49,7 +50,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         }
 
         /// <inheritdoc/>
-        public IMetalDeviceLiveness Owner => _liveness;
+        public IDeviceLiveness Owner => _liveness;
 
         /// <summary>Where the emission put each declared element, per stage (M-B1). Read by rows 10, 11 and
         /// 13.</summary>
@@ -128,12 +129,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// </summary>
     internal sealed class MetalComputeShader : IGpuComputeShader, IMetalOwnedResource
     {
-        readonly IMetalDeviceLiveness _liveness;
+        readonly IDeviceLiveness _liveness;
         readonly MetalCompiledStage _stage;
 
         bool _disposed;
 
-        internal MetalComputeShader(IMetalDeviceLiveness liveness, MetalCompiledStage stage,
+        internal MetalComputeShader(IDeviceLiveness liveness, MetalCompiledStage stage,
             MetalShaderIndexTable table, uint x, uint y, uint z)
         {
             _liveness = liveness;
@@ -154,7 +155,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         public uint ThreadGroupSizeZ { get; }
 
         /// <inheritdoc/>
-        public IMetalDeviceLiveness Owner => _liveness;
+        public IDeviceLiveness Owner => _liveness;
 
         /// <summary>Where the emission put each declared element for the compute stage (M-B1).</summary>
         internal MetalShaderIndexTable Table { get; }

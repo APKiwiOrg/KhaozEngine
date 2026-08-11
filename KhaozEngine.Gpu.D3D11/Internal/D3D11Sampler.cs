@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
+using KhaozEngine.Gpu.Internal;
 using Vortice.Direct3D11;
 
 namespace KhaozEngine.Gpu.D3D11.Internal
@@ -30,7 +31,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     [SupportedOSPlatform("windows")]
     internal sealed class D3D11Sampler : IGpuSampler, ID3D11BindableViews
     {
-        readonly D3D11DeviceLiveness _liveness;
+        readonly DeviceLiveness _liveness;
         readonly bool _owns;
 
         /// <summary>
@@ -38,7 +39,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// false for a device-owned shared sampler (the point and linear pair every device exposes), so handing
         /// one to a consumer that disposes it does not destroy the device's own.
         /// </summary>
-        internal D3D11Sampler(ID3D11Device device, D3D11DeviceLiveness liveness,
+        internal D3D11Sampler(ID3D11Device device, DeviceLiveness liveness,
             in GpuSamplerDescription description, bool ownsSampler = true)
         {
             ArgumentNullException.ThrowIfNull(device);

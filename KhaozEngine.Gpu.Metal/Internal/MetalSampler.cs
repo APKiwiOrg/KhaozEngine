@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Metal.Internal.ObjC;
 
 namespace KhaozEngine.Gpu.Metal.Internal
@@ -11,12 +12,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// </summary>
     internal sealed class MetalSampler : IGpuSampler, IMetalOwnedResource, IMetalBindable
     {
-        readonly IMetalDeviceLiveness _liveness;
+        readonly IDeviceLiveness _liveness;
         readonly MTLSamplerState _sampler;
 
         bool _disposed;
 
-        MetalSampler(IMetalDeviceLiveness liveness, MTLSamplerState sampler)
+        MetalSampler(IDeviceLiveness liveness, MTLSamplerState sampler)
         {
             _liveness = liveness;
             _sampler = sampler;
@@ -38,7 +39,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <remarks>Nothing on this row takes a sampler as a device entry point's parameter, so nothing checks it
         /// yet. It is recorded now because a resource that learns its owner LATER learns it in the row that has
         /// already written the bind path, and the resource-set row is the one that will ask.</remarks>
-        public IMetalDeviceLiveness Owner => _liveness;
+        public IDeviceLiveness Owner => _liveness;
 
         /// <summary>
         /// Create one from the seam's description, through the policy.
@@ -51,7 +52,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </summary>
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static MetalSampler Create(MTLDevice device, IMetalDeviceLiveness liveness,
+        internal static MetalSampler Create(MTLDevice device, IDeviceLiveness liveness,
             in GpuSamplerDescription description, bool deviceSupportsBorderColor)
         {
             // BEFORE THE DESCRIPTOR EXISTS, because the abort this avoids happens inside

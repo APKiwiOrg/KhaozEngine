@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using KhaozEngine.Gpu.D3D11.Internal;
+using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Tests.Gpu
 {
@@ -139,8 +140,8 @@ namespace KhaozEngine.Tests.Gpu
     }
 
     /// <summary>The device liveness latch a test flips by hand, standing in for the one the native device's
-    /// resources row builds. See <see cref="ID3D11DeviceLiveness"/> for what decision X3 requires of it.</summary>
-    internal sealed class FakeD3D11DeviceLiveness : ID3D11DeviceLiveness
+    /// resources row builds. See <see cref="IDeviceLiveness"/> for what decision X3 requires of it.</summary>
+    internal sealed class FakeD3D11DeviceLiveness : IDeviceLiveness
     {
         /// <inheritdoc/>
         public bool IsDead { get; set; }

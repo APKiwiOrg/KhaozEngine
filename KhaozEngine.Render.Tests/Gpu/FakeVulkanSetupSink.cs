@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Vulkan.Internal;
 using Silk.NET.Vulkan;
 
@@ -154,7 +155,7 @@ namespace KhaozEngine.Tests.Gpu
 
     /// <summary>A liveness token a test drives directly, so the dead-device arms of the resource paths are
     /// reachable without a device to kill.</summary>
-    internal sealed class FakeVulkanLiveness : IVulkanDeviceLiveness
+    internal sealed class FakeVulkanLiveness : IDeviceLiveness
     {
         /// <inheritdoc/>
         public bool IsDead { get; private set; }

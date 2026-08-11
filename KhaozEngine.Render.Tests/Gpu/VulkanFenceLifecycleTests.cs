@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Vulkan.Internal;
 using Xunit;
 
@@ -121,7 +122,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void AfterDeviceDeath_EveryFenceReadsSignalled()
         {
-            var liveness = new VulkanDeviceLiveness();
+            var liveness = new DeviceLiveness();
             var semaphore = new FakeVulkanTimelineSemaphore();
             using var timeline = new VulkanTimeline(semaphore, liveness);
 

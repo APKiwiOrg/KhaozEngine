@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu.Metal.Internal
 {
@@ -10,7 +11,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     {
         /// <summary>The creating device's liveness token, which every wrapper already holds. See
         /// <see cref="MetalResourceOwnership"/> for why that token IS the device's identity here.</summary>
-        IMetalDeviceLiveness Owner { get; }
+        IDeviceLiveness Owner { get; }
     }
 
     /// <summary>
@@ -23,7 +24,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// reader will want to argue with.</b> Apple silicon reports a SINGLE <c>MTLDevice</c> for the process, which
     /// is why <c>MetalCompletionHandler</c> keys its registry on the queue rather than on the device, so two
     /// <c>MetalGpuDevice</c> instances routinely carry the same handle and comparing handles would answer "same
-    /// device" for two devices that share nothing else. A <see cref="MetalDeviceLiveness"/> is created once per
+    /// device" for two devices that share nothing else. A <see cref="DeviceLiveness"/> is created once per
     /// device in <c>MetalGpuDevice.Create</c> and handed to every wrapper that device makes, so reference
     /// identity on it is exactly "created by this device" and costs no new field anywhere.</para>
     ///
@@ -49,7 +50,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <param name="owner">The calling device's liveness token, which is its identity.</param>
         /// <param name="parameterName">The entry point's own parameter name, for the exception.</param>
         /// <exception cref="ArgumentNullException"><paramref name="resource"/> is null.</exception>
-        internal static T Require<T>(object resource, IMetalDeviceLiveness owner, string parameterName)
+        internal static T Require<T>(object resource, IDeviceLiveness owner, string parameterName)
             where T : class, IMetalOwnedResource
         {
             // NULL IS ASKED FIRST, because the wrong-backend arm below cannot answer it: `resource is not T`

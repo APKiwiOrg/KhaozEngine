@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
+using KhaozEngine.Gpu.Internal;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
 
@@ -48,7 +49,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         readonly ID3D11Device _device;
         readonly ID3D11DeviceContext _context;
         readonly IDXGISwapChain _swapchain;
-        readonly D3D11DeviceLiveness _liveness;
+        readonly DeviceLiveness _liveness;
 
         ID3D11RenderTargetView? _renderTargetView;
         D3D11Texture? _depthTexture;
@@ -57,7 +58,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         [SupportedOSPlatform("windows")]
         D3D11DxgiSwapchain(ID3D11Device device, ID3D11DeviceContext immediateContext, IDXGISwapChain swapchain,
-            GpuPixelFormat? depthFormat, D3D11DeviceLiveness liveness)
+            GpuPixelFormat? depthFormat, DeviceLiveness liveness)
         {
             _device = device;
             _context = immediateContext;
@@ -87,7 +88,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         [SupportedOSPlatform("windows")]
         internal static D3D11DxgiSwapchain CreateWindows(ID3D11Device device, ID3D11DeviceContext immediateContext,
             IDXGIAdapter adapter, IntPtr hwnd, uint width, uint height, GpuPixelFormat? depthFormat,
-            D3D11DeviceLiveness liveness)
+            DeviceLiveness liveness)
         {
             ArgumentNullException.ThrowIfNull(device);
             ArgumentNullException.ThrowIfNull(immediateContext);

@@ -2,6 +2,7 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Metal.Internal.ObjC;
 
 namespace KhaozEngine.Gpu.Metal.Internal
@@ -40,7 +41,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// </summary>
     internal sealed class MetalGraphicsPipeline : IGpuPipeline, IMetalOwnedResource
     {
-        readonly IMetalDeviceLiveness _liveness;
+        readonly IDeviceLiveness _liveness;
 
         // THE TWO HANDLES, held in fields rather than in the properties, because the properties refuse once
         // disposed and ReleaseOnMacOs runs AFTER the flag flips. Disposal is the one reader that must still see
@@ -54,7 +55,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <param name="renderState">The <c>MTLRenderPipelineState</c> at +1, or nil in a device-free test.</param>
         /// <param name="depthState">The <c>MTLDepthStencilState</c> at +1, or nil for a pipeline with no depth
         /// output.</param>
-        internal MetalGraphicsPipeline(IMetalDeviceLiveness liveness, MetalGraphicsPipelinePlan plan,
+        internal MetalGraphicsPipeline(IDeviceLiveness liveness, MetalGraphicsPipelinePlan plan,
             MTLRenderPipelineState renderState, MTLDepthStencilState depthState)
         {
             ArgumentNullException.ThrowIfNull(liveness);
@@ -67,7 +68,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         }
 
         /// <inheritdoc/>
-        public IMetalDeviceLiveness Owner => _liveness;
+        public IDeviceLiveness Owner => _liveness;
 
         /// <summary>Everything this pipeline decided, resolved once at creation.</summary>
         internal MetalGraphicsPipelinePlan Plan { get; }
@@ -153,7 +154,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <exception cref="ArgumentNullException">No pipeline.</exception>
         /// <exception cref="ArgumentException">A pipeline from another backend or another device.</exception>
         /// <exception cref="ObjectDisposedException">A disposed pipeline.</exception>
-        internal static MetalGraphicsPipeline Require(IGpuPipeline? pipeline, IMetalDeviceLiveness owner,
+        internal static MetalGraphicsPipeline Require(IGpuPipeline? pipeline, IDeviceLiveness owner,
             string parameterName)
         {
             ArgumentNullException.ThrowIfNull(pipeline, parameterName);
@@ -180,7 +181,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <exception cref="ShaderValidationException">Metal rejected the descriptor, or one of the device-free
         /// shader checks refused.</exception>
         [SupportedOSPlatform("macos")]
-        internal static MetalGraphicsPipeline Create(MTLDevice device, IMetalDeviceLiveness liveness,
+        internal static MetalGraphicsPipeline Create(MTLDevice device, IDeviceLiveness liveness,
             in GpuPipelineDescription description)
             => CreateOnMacOs(device, liveness, MetalGraphicsPipelinePlan.Build(liveness, description));
 
@@ -201,7 +202,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // resolved and refused on: what is left is writing two descriptors and reading two objects back.
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static MetalGraphicsPipeline CreateOnMacOs(MTLDevice device, IMetalDeviceLiveness liveness,
+        static MetalGraphicsPipeline CreateOnMacOs(MTLDevice device, IDeviceLiveness liveness,
             MetalGraphicsPipelinePlan plan)
         {
             using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();

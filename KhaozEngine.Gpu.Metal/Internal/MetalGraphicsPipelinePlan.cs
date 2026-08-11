@@ -1,5 +1,6 @@
 using System;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Metal.Internal.ObjC;
 
 namespace KhaozEngine.Gpu.Metal.Internal
@@ -99,7 +100,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// a seam enum member with no Metal value.</exception>
         /// <exception cref="ShaderValidationException">The declared layout array is a different shape from the
         /// shader's reflection, or a vertex-stage resource buffer landed in the top-pinned stream range.</exception>
-        internal static MetalGraphicsPipelinePlan Build(IMetalDeviceLiveness liveness,
+        internal static MetalGraphicsPipelinePlan Build(IDeviceLiveness liveness,
             in GpuPipelineDescription description)
         {
             ArgumentNullException.ThrowIfNull(liveness);
@@ -173,7 +174,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // Every declared layout, cast and identity-checked through the one helper row 10 wrote for it, so a
         // pipeline and a resource set refuse the same wrong layout with the same message. A null ARRAY is the
         // no-resources case and is legal. A null ELEMENT is not, and MetalResourceLayout.Require names it.
-        static MetalResourceLayout[] RequireLayouts(IGpuResourceLayout[]? declared, IMetalDeviceLiveness liveness)
+        static MetalResourceLayout[] RequireLayouts(IGpuResourceLayout[]? declared, IDeviceLiveness liveness)
         {
             if (declared is null || declared.Length == 0) return [];
 

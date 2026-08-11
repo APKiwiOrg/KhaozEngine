@@ -52,7 +52,7 @@ namespace KhaozEngine.Gpu.Internal
         // IGpuDeviceLifecycle rather than a cast to this type, so a non-Veldrid device can come back through the
         // same creation path. Public because it implements an interface member: the class itself is internal, so
         // this is still assembly-scoped.
-        public void MarkDeviceDisposed() => _liveness.Dead = true;
+        public void MarkDeviceDisposed() => _liveness.MarkDead();
 
         // ---- IGpuDevice ----
 
@@ -64,7 +64,7 @@ namespace KhaozEngine.Gpu.Internal
 
         public void WaitForIdle()
         {
-            if (_liveness.Dead) return;   // a dead device has nothing to wait for (see the latch above)
+            if (_liveness.IsDead) return;   // a dead device has nothing to wait for (see the latch above)
             GraphicsDevice.WaitForIdle();
         }
 
@@ -387,7 +387,7 @@ namespace KhaozEngine.Gpu.Internal
 
         public void Dispose()
         {
-            if (_ownsDevice) { _liveness.Dead = true; GraphicsDevice.Dispose(); }
+            if (_ownsDevice) { _liveness.MarkDead(); GraphicsDevice.Dispose(); }
         }
     }
 }

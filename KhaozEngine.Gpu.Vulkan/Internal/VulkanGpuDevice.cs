@@ -2,6 +2,7 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using KhaozEngine.Diagnostics;
+using KhaozEngine.Gpu.Internal;
 using Silk.NET.Vulkan;
 
 namespace KhaozEngine.Gpu.Vulkan.Internal
@@ -129,7 +130,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         static readonly ILogger log = Log.For<VulkanGpuDevice>();
 
         readonly VulkanInstanceLease<VulkanInstance> _instance;
-        readonly VulkanDeviceLiveness _liveness;
+        readonly DeviceLiveness _liveness;
         readonly VulkanDeviceLossLatch _loss;
         readonly VulkanTimeline _timeline;
         readonly VulkanRetireList _retired = new();
@@ -166,7 +167,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         VulkanGpuDevice(VulkanInstanceLease<VulkanInstance> instance, Device device, Queue graphicsQueue,
             uint graphicsQueueFamily, GpuCapabilities capabilities, bool softwareAdapter,
-            VulkanDeviceLiveness liveness, VulkanDeviceLossLatch loss, VulkanTimeline timeline,
+            DeviceLiveness liveness, VulkanDeviceLossLatch loss, VulkanTimeline timeline,
             IVulkanDeviceMemoryApi memoryApi, VulkanMemoryFacts memoryFacts, IVulkanCommandApi commands,
             IVulkanResourceApi resourceApi, IVulkanSetupSink setupSink, IVulkanDescriptorApi descriptorApi,
             IVulkanShaderApi shaderApi, IVulkanPipelineApi pipelineApi,

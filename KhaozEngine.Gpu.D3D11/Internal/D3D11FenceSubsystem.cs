@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Threading;
+using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu.D3D11.Internal
 {
@@ -56,7 +57,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         readonly ID3D11FenceTimeline _timeline;
         readonly object _submitLock;
-        readonly ID3D11DeviceLiveness _liveness;
+        readonly IDeviceLiveness _liveness;
         readonly bool _realDrain;
 
         // The last value handed out by the timeline through this subsystem. Read after device death in place of
@@ -81,19 +82,19 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <param name="submitLock">The device's single submit lock (decision W4). Not created here, because the
         /// same lock has to cover replay, present and the resize apply.</param>
         /// <param name="liveness">The device's liveness latch, or null while the device does not have one yet, in
-        /// which case the device is treated as alive forever. See <see cref="ID3D11DeviceLiveness"/>.</param>
+        /// which case the device is treated as alive forever. See <see cref="IDeviceLiveness"/>.</param>
         /// <param name="realDrain">Whether <see cref="WaitForIdle"/> really drains. Resolved from
         /// <see cref="D3D11RealDrain"/> by the caller rather than read from the environment here, so the
         /// behaviour is testable without touching process state.</param>
         internal D3D11FenceSubsystem(
             ID3D11FenceTimeline timeline,
             object submitLock,
-            ID3D11DeviceLiveness? liveness = null,
+            IDeviceLiveness? liveness = null,
             bool realDrain = true)
         {
             _timeline = timeline ?? throw new ArgumentNullException(nameof(timeline));
             _submitLock = submitLock ?? throw new ArgumentNullException(nameof(submitLock));
-            _liveness = liveness ?? D3D11LiveDevice.Instance;
+            _liveness = liveness ?? LiveDevice.Instance;
             _realDrain = realDrain;
         }
 

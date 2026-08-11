@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using KhaozEngine.Diagnostics;
+using KhaozEngine.Gpu.Internal;
 using Silk.NET.Vulkan;
 
 namespace KhaozEngine.Gpu.Vulkan.Internal
@@ -26,7 +27,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <summary>
     /// DECISION V-G4: the device-loss latch. One per device. It is handed a <c>VkResult</c> at each of the sites
     /// that can see a loss, and on the first one that IS a loss it records the result and the site, appends
-    /// whatever <see cref="IVulkanDeviceFault"/> can add, flips <see cref="VulkanDeviceLiveness"/> so every later
+    /// whatever <see cref="IVulkanDeviceFault"/> can add, flips <see cref="DeviceLiveness"/> so every later
     /// destroy is a no-op, and exposes the reason through <see cref="HeaderValue"/>, which
     /// <c>VulkanGpuDevice.Diagnostics</c> reads into the telemetry session header. That closes #427 for the
     /// Vulkan leg on the day the backend lands, which is the correct time: retrofitting the reporting after the
@@ -52,7 +53,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// because the device is just as dead from its point of view.</para>
     ///
     /// <para><b>EVERYTHING HERE IS DEVICE-FREE</b>, over a <c>VkResult</c> value, the plain
-    /// <see cref="VulkanDeviceLiveness"/> class and an optional fault source, so the latch, the once-only rule,
+    /// <see cref="DeviceLiveness"/> class and an optional fault source, so the latch, the once-only rule,
     /// the liveness flip, the header string and the fault append all run under <c>dotnet test</c> on a machine
     /// with no Vulkan loader.</para>
     internal sealed class VulkanDeviceLossLatch
@@ -62,7 +63,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         const int NotLost = 0;
         const int Lost = 1;
 
-        readonly VulkanDeviceLiveness _liveness;
+        readonly DeviceLiveness _liveness;
         readonly IVulkanDeviceFault? _fault;
         readonly ILogger _log;
 
@@ -80,7 +81,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// (V-N6 names <c>VK_KHR_swapchain</c> and nothing else), and wiring it is tracked separately. The seam is
         /// here from the start because a fault source added later must not change the latch.</param>
         /// <param name="logger">The sink, or null for this type's own category logger.</param>
-        internal VulkanDeviceLossLatch(VulkanDeviceLiveness liveness, IVulkanDeviceFault? fault = null,
+        internal VulkanDeviceLossLatch(DeviceLiveness liveness, IVulkanDeviceFault? fault = null,
             ILogger? logger = null)
         {
             ArgumentNullException.ThrowIfNull(liveness);

@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.Versioning;
+using KhaozEngine.Gpu.Internal;
 using Vortice.Direct3D11;
 
 namespace KhaozEngine.Gpu.D3D11.Internal
@@ -52,7 +53,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     {
         readonly ID3D11Device _device;
         readonly ID3D11DeviceContext _context;
-        readonly D3D11DeviceLiveness _liveness;
+        readonly DeviceLiveness _liveness;
         readonly D3D11RingAllocator _rings;
         readonly Func<IGpuCommandList> _createCommandList;
         readonly D3D11CreationGate _creation;
@@ -97,7 +98,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// </para>
         /// </summary>
         internal D3D11ResourceFactory(ID3D11Device device, ID3D11DeviceContext context,
-            D3D11DeviceLiveness liveness, D3D11RingAllocator rings, Func<IGpuCommandList> createCommandList,
+            DeviceLiveness liveness, D3D11RingAllocator rings, Func<IGpuCommandList> createCommandList,
             in GpuCapabilities capabilities, D3D11CreationGate? creation = null,
             Func<IGpuFence>? createFence = null, D3D11DeviceLossLatch? loss = null)
         {

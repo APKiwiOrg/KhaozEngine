@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.Gpu.Internal;
 using Silk.NET.Vulkan;
 using Buffer = Silk.NET.Vulkan.Buffer;
 
@@ -35,14 +36,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         readonly Vk _vk;
         readonly Device _device;
         readonly VulkanDeviceLossLatch _loss;
-        readonly IVulkanDeviceLiveness _liveness;
+        readonly IDeviceLiveness _liveness;
 
         /// <param name="vk">The instance's loaded API.</param>
         /// <param name="device">The device that owns every resource made here and outlives them all.</param>
         /// <param name="loss">The device's loss latch, which every result here is checked against.</param>
         /// <param name="liveness">The device's liveness token, which gates every destroy.</param>
         internal VulkanResourceApi(Vk vk, Device device, VulkanDeviceLossLatch loss,
-            IVulkanDeviceLiveness liveness)
+            IDeviceLiveness liveness)
         {
             ArgumentNullException.ThrowIfNull(vk);
             ArgumentNullException.ThrowIfNull(loss);

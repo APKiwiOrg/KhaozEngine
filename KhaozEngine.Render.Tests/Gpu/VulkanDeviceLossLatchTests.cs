@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Vulkan.Internal;
 using Silk.NET.Vulkan;
 using Xunit;
@@ -24,7 +25,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void AHealthyDevice_LatchesNothing()
         {
-            var liveness = new VulkanDeviceLiveness();
+            var liveness = new DeviceLiveness();
             var latch = new VulkanDeviceLossLatch(liveness, logger: new RecordingLogger());
 
             Assert.False(latch.Check(Result.Success, "vkDeviceWaitIdle"));
@@ -47,7 +48,7 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData(Result.SuboptimalKhr)]
         public void AnOrdinaryResult_IsNotLatched(Result result)
         {
-            var liveness = new VulkanDeviceLiveness();
+            var liveness = new DeviceLiveness();
             var latch = new VulkanDeviceLossLatch(liveness, logger: new RecordingLogger());
 
             Assert.False(latch.Check(result, "vkQueueSubmit"));
@@ -64,7 +65,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void ADeviceLoss_LatchesAtTheSite_AndFlipsLiveness()
         {
-            var liveness = new VulkanDeviceLiveness();
+            var liveness = new DeviceLiveness();
             var log = new RecordingLogger();
             var latch = new VulkanDeviceLossLatch(liveness, logger: log);
 
@@ -85,7 +86,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void TheHeaderValue_IsTheTokenAndTheSite()
         {
-            var latch = new VulkanDeviceLossLatch(new VulkanDeviceLiveness(), logger: new RecordingLogger());
+            var latch = new VulkanDeviceLossLatch(new DeviceLiveness(), logger: new RecordingLogger());
 
             latch.Check(Result.ErrorDeviceLost, "vkDeviceWaitIdle (WaitForIdle)");
 
@@ -101,7 +102,7 @@ namespace KhaozEngine.Tests.Gpu
         public void TheFirstSiteWins_AndLaterOnesStillAnswerTrue()
         {
             var log = new RecordingLogger();
-            var latch = new VulkanDeviceLossLatch(new VulkanDeviceLiveness(), logger: log);
+            var latch = new VulkanDeviceLossLatch(new DeviceLiveness(), logger: log);
 
             Assert.True(latch.Check(Result.ErrorDeviceLost, "vkQueueSubmit"));
             Assert.True(latch.Check(Result.ErrorDeviceLost, "vkAcquireNextImageKHR"));
@@ -119,7 +120,7 @@ namespace KhaozEngine.Tests.Gpu
         public void ConcurrentFaults_ProduceOneRecord()
         {
             var log = new RecordingLogger();
-            var latch = new VulkanDeviceLossLatch(new VulkanDeviceLiveness(), logger: log);
+            var latch = new VulkanDeviceLossLatch(new DeviceLiveness(), logger: log);
 
             Parallel.For(0, 64, i => latch.Check(Result.ErrorDeviceLost, "site" + i));
 
@@ -133,7 +134,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void AnUnnamedSite_IsStillNameable()
         {
-            var latch = new VulkanDeviceLossLatch(new VulkanDeviceLiveness(), logger: new RecordingLogger());
+            var latch = new VulkanDeviceLossLatch(new DeviceLiveness(), logger: new RecordingLogger());
 
             latch.Check(Result.ErrorDeviceLost, "  ");
 
@@ -148,7 +149,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void AFaultDetail_IsAppendedToTheHeader()
         {
-            var latch = new VulkanDeviceLossLatch(new VulkanDeviceLiveness(),
+            var latch = new VulkanDeviceLossLatch(new DeviceLiveness(),
                 new FakeFault("faulting address 0x7ffd0000, vendor fault 0x21"), new RecordingLogger());
 
             latch.Check(Result.ErrorDeviceLost, "vkQueueSubmit");
@@ -167,7 +168,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void AThrowingFaultSource_DoesNotBreakTheLatch()
         {
-            var liveness = new VulkanDeviceLiveness();
+            var liveness = new DeviceLiveness();
             var log = new RecordingLogger();
             var latch = new VulkanDeviceLossLatch(liveness, new ThrowingFault(), log);
 
@@ -186,7 +187,7 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData("   ")]
         public void AnEmptyFaultDetail_IsNoDetail(string? detail)
         {
-            var latch = new VulkanDeviceLossLatch(new VulkanDeviceLiveness(), new FakeFault(detail),
+            var latch = new VulkanDeviceLossLatch(new DeviceLiveness(), new FakeFault(detail),
                 new RecordingLogger());
 
             latch.Check(Result.ErrorDeviceLost, "vkQueueSubmit");
@@ -203,7 +204,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void Liveness_FlipsOnceAndOneWay()
         {
-            var liveness = new VulkanDeviceLiveness();
+            var liveness = new DeviceLiveness();
 
             Assert.True(liveness.IsAlive);
             Assert.False(liveness.IsDead);
@@ -222,7 +223,7 @@ namespace KhaozEngine.Tests.Gpu
         /// </summary>
         [Fact]
         public void TheDefaultLivenessToken_IsAlive()
-            => Assert.False(VulkanLiveDevice.Instance.IsDead);
+            => Assert.False(LiveDevice.Instance.IsDead);
 
         /// <summary>
         /// The unconditional result check, which is the whole point of <see cref="VulkanResultCodes"/>: it must

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Vulkan.Internal;
 using KhaozEngine.Primitives;
 using Xunit;
@@ -493,7 +494,7 @@ namespace KhaozEngine.Tests.Gpu
 
             internal FakeVulkanTimelineSemaphore Semaphore { get; } = new();
 
-            internal VulkanDeviceLiveness Liveness { get; } = new();
+            internal DeviceLiveness Liveness { get; } = new();
 
             internal VulkanTimeline Timeline { get; }
 

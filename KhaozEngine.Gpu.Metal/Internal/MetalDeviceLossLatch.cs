@@ -1,13 +1,14 @@
 using System;
 using System.Threading;
 using KhaozEngine.Diagnostics;
+using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu.Metal.Internal
 {
     /// <summary>
     /// DECISION M-G4: the command-buffer error latch. One per device. It is handed a
     /// <see cref="MetalCommandBufferFault"/> at each site that can see one, and on the first that IS a failure it
-    /// records the code, the description and the site, flips <see cref="MetalDeviceLiveness"/> so every later
+    /// records the code, the description and the site, flips <see cref="DeviceLiveness"/> so every later
     /// release is a no-op, and exposes the reason through <see cref="HeaderValue"/>, which the device reads into
     /// the telemetry session header's existing <c>deviceLossReason</c> field. That closes #427 for the Metal leg
     /// on the day the backend lands, which is the correct time.
@@ -37,7 +38,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// the device is just as dead from its point of view.</para>
     ///
     /// <para><b>EVERYTHING HERE IS DEVICE-FREE</b>, over a plain snapshot and the plain
-    /// <see cref="MetalDeviceLiveness"/> class, so the latch, the once-only rule, the liveness flip, the header
+    /// <see cref="DeviceLiveness"/> class, so the latch, the once-only rule, the liveness flip, the header
     /// string and the once-only publication all run under <c>dotnet test</c> on Linux and Windows.</para>
     /// </summary>
     internal sealed class MetalDeviceLossLatch
@@ -47,7 +48,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         const int Healthy = 0;
         const int Lost = 1;
 
-        readonly MetalDeviceLiveness _liveness;
+        readonly DeviceLiveness _liveness;
         readonly ILogger _log;
 
         int _state = Healthy;
@@ -60,7 +61,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         /// <param name="liveness">The device's one liveness token, flipped on the first observed failure.</param>
         /// <param name="logger">The sink, or null for this type's own category logger.</param>
-        internal MetalDeviceLossLatch(MetalDeviceLiveness liveness, ILogger? logger = null)
+        internal MetalDeviceLossLatch(DeviceLiveness liveness, ILogger? logger = null)
         {
             ArgumentNullException.ThrowIfNull(liveness);
 

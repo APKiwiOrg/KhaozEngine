@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
+using KhaozEngine.Gpu.Internal;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
@@ -31,9 +32,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     [SupportedOSPlatform("windows")]
     internal sealed class D3D11Texture : IGpuTexture, ID3D11BindableViews, ID3D11MappableResource
     {
-        readonly D3D11DeviceLiveness _liveness;
+        readonly DeviceLiveness _liveness;
 
-        internal D3D11Texture(ID3D11Device device, D3D11DeviceLiveness liveness, in GpuTextureDescription description)
+        internal D3D11Texture(ID3D11Device device, DeviceLiveness liveness, in GpuTextureDescription description)
         {
             ArgumentNullException.ThrowIfNull(device);
             ArgumentNullException.ThrowIfNull(liveness);

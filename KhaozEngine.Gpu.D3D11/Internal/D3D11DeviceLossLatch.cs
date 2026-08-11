@@ -1,13 +1,14 @@
 using System;
 using System.Threading;
 using KhaozEngine.Diagnostics;
+using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu.D3D11.Internal
 {
     /// <summary>
     /// DECISION G3: the device-loss latch. One per device. It is handed an HRESULT at each of the sites that can
     /// see a removal, and on the first one that IS a removal it calls <c>GetDeviceRemovedReason</c> immediately,
-    /// records the reason and the site, flips <see cref="D3D11DeviceLiveness"/> so every later disposal is a
+    /// records the reason and the site, flips <see cref="DeviceLiveness"/> so every later disposal is a
     /// no-op, and hands the reason to the telemetry session header.
     /// <para>
     /// IMMEDIACY IS THE WHOLE DESIGN. <c>DXGI_ERROR_DEVICE_REMOVED</c> is sticky: it is returned by every call
@@ -42,7 +43,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// won. What must not happen is another CALL between the fault and the read, and that is what the ordering
     /// inside <see cref="Latch"/> is about.</para>
     ///
-    /// <para><b>IT FLIPS LIVENESS, and that widens what <see cref="D3D11DeviceLiveness"/> was originally for.</b>
+    /// <para><b>IT FLIPS LIVENESS, and that widens what <see cref="DeviceLiveness"/> was originally for.</b>
     /// That token was written for teardown, flipped by the context before the real device is destroyed. A device
     /// loss is the other way a device stops existing: the objects are already gone, the application has not asked
     /// for anything, and every release from here on would be a release against freed memory. Flipping the same
@@ -50,7 +51,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// reason it always did.</para>
     ///
     /// <para><b>EVERYTHING HERE IS DEVICE-FREE</b>, over <see cref="ID3D11RemovedReason"/> and the plain
-    /// <see cref="D3D11DeviceLiveness"/> class, so the latch, the once-only rule, the liveness flip, the header
+    /// <see cref="DeviceLiveness"/> class, so the latch, the once-only rule, the liveness flip, the header
     /// string and the fault path all run under <c>dotnet test</c> on macOS.</para>
     /// </summary>
     internal sealed class D3D11DeviceLossLatch
@@ -60,7 +61,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         const int NotLost = 0;
         const int Lost = 1;
 
-        readonly D3D11DeviceLiveness _liveness;
+        readonly DeviceLiveness _liveness;
         readonly ID3D11RemovedReason _reason;
         readonly ILogger _log;
 
@@ -73,7 +74,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <param name="liveness">The device's one liveness token, flipped on the first observed loss.</param>
         /// <param name="reason">The device, as the one call this makes at a fault site.</param>
         /// <param name="logger">The sink, or null for this type's own category logger.</param>
-        internal D3D11DeviceLossLatch(D3D11DeviceLiveness liveness, ID3D11RemovedReason reason, ILogger? logger = null)
+        internal D3D11DeviceLossLatch(DeviceLiveness liveness, ID3D11RemovedReason reason, ILogger? logger = null)
         {
             ArgumentNullException.ThrowIfNull(liveness);
             ArgumentNullException.ThrowIfNull(reason);

@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Threading;
 using KhaozEngine.Diagnostics;
+using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu.Metal.Internal
 {
@@ -35,7 +36,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// would still be re-deriving what the shared event gives for free.</para>
     ///
     /// <para><b>EVERYTHING HERE IS DEVICE-FREE.</b> The native calls are three members on
-    /// <see cref="IMetalSharedEvent"/> and the liveness is <see cref="IMetalDeviceLiveness"/>, so the value
+    /// <see cref="IMetalSharedEvent"/> and the liveness is <see cref="IDeviceLiveness"/>, so the value
     /// allocation, the fence lifecycle, the dead-device answers and the drain accounting all run on a machine
     /// with no Metal at all, which is what lets them run on the Linux and both Windows legs. What is NOT
     /// exercised device-free is a value being signalled because REAL GPU WORK finished, which needs a live queue
@@ -82,7 +83,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         internal const bool SupportsCompletionFences = true;
 
         readonly IMetalSharedEvent _event;
-        readonly IMetalDeviceLiveness _liveness;
+        readonly IDeviceLiveness _liveness;
 
         // The last value ALLOCATED to a submission, which is not the same as the last value the GPU has reached
         // and not the same as the last value a submission actually took to the queue. Read after device death in
@@ -102,14 +103,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         /// <param name="sharedEvent">The device's shared event. Disposed with this timeline.</param>
         /// <param name="liveness">The device's liveness token, or null while a caller does not have one, in
-        /// which case the device is treated as alive forever. See <see cref="IMetalDeviceLiveness"/> for why
+        /// which case the device is treated as alive forever. See <see cref="IDeviceLiveness"/> for why
         /// defaulting to alive is the safe direction.</param>
-        internal MetalTimeline(IMetalSharedEvent sharedEvent, IMetalDeviceLiveness? liveness = null)
+        internal MetalTimeline(IMetalSharedEvent sharedEvent, IDeviceLiveness? liveness = null)
         {
             ArgumentNullException.ThrowIfNull(sharedEvent);
 
             _event = sharedEvent;
-            _liveness = liveness ?? MetalLiveDevice.Instance;
+            _liveness = liveness ?? LiveDevice.Instance;
         }
 
         /// <summary>The device's liveness, read through the hook. Fences read it before anything else.</summary>

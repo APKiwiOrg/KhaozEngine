@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Metal.Internal.ObjC;
 
 namespace KhaozEngine.Gpu.Metal.Internal
@@ -102,7 +103,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         readonly List<MTLBuffer> _staging = [];
         readonly IMetalSetupNative _native;
-        readonly IMetalDeviceLiveness _liveness;
+        readonly IDeviceLiveness _liveness;
         readonly ulong _stagingCap;
 
         MTLCommandBuffer _buffer;
@@ -115,14 +116,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// the blit encode and the commit.</param>
         /// <param name="liveness">The device's liveness token: after death nothing is recorded and nothing is
         /// committed, which is the posture every path in this package takes.</param>
-        internal MetalSetupCommands(IMetalSetupNative native, IMetalDeviceLiveness liveness)
+        internal MetalSetupCommands(IMetalSetupNative native, IDeviceLiveness liveness)
             : this(native, liveness, DefaultStagingCapBytes) { }
 
         /// <param name="native">See the other constructor.</param>
         /// <param name="liveness">See the other constructor.</param>
         /// <param name="stagingCap">The open batch's staging ceiling. Only a test passes this, so the auto-flush
         /// can be driven with a handful of bytes instead of by allocating the real cap.</param>
-        internal MetalSetupCommands(IMetalSetupNative native, IMetalDeviceLiveness liveness, ulong stagingCap)
+        internal MetalSetupCommands(IMetalSetupNative native, IDeviceLiveness liveness, ulong stagingCap)
         {
             ArgumentNullException.ThrowIfNull(native);
             ArgumentNullException.ThrowIfNull(liveness);

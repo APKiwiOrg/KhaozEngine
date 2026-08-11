@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using KhaozEngine.Gpu.D3D11;
 using KhaozEngine.Gpu.D3D11.Internal;
+using KhaozEngine.Gpu.Internal;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
@@ -80,7 +81,7 @@ namespace KhaozEngine.Tests.Gpu
             }
 
             // The device-loss latch (G3), including the hand-written DXGI codes.
-            var liveness = new D3D11DeviceLiveness();
+            var liveness = new DeviceLiveness();
             var latch = new D3D11DeviceLossLatch(liveness, new AlwaysHung(), new RecordingLogger());
             latch.Check(D3D11DeviceLossCodes.DeviceRemoved, "off-windows present");
             _ = latch.HeaderValue;

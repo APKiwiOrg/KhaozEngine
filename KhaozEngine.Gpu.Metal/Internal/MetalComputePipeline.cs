@@ -2,6 +2,7 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Metal.Internal.ObjC;
 
 namespace KhaozEngine.Gpu.Metal.Internal
@@ -33,7 +34,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// </summary>
     internal sealed class MetalComputePipeline : IGpuComputePipeline, IMetalOwnedResource
     {
-        readonly IMetalDeviceLiveness _liveness;
+        readonly IDeviceLiveness _liveness;
 
         // The handle, held in a field because the property refuses once disposed and ReleaseOnMacOs runs AFTER
         // the flag flips. Disposal is the one reader that must still see it.
@@ -44,7 +45,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// the workgroup size.</param>
         /// <param name="layouts">The declared resource layouts, in set order, already checked.</param>
         /// <param name="state">The <c>MTLComputePipelineState</c> at +1, or nil in a device-free test.</param>
-        internal MetalComputePipeline(IMetalDeviceLiveness liveness, MetalComputeShader shader,
+        internal MetalComputePipeline(IDeviceLiveness liveness, MetalComputeShader shader,
             MetalResourceLayout[] layouts, MTLComputePipelineState state)
         {
             ArgumentNullException.ThrowIfNull(liveness);
@@ -61,7 +62,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         internal const string Label = "A native Metal compute pipeline";
 
         /// <inheritdoc/>
-        public IMetalDeviceLiveness Owner => _liveness;
+        public IDeviceLiveness Owner => _liveness;
 
         /// <summary>The compiled kernel, which is where the function, the binding table and the workgroup size
         /// come from.</summary>
@@ -117,7 +118,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <exception cref="ArgumentNullException">No pipeline.</exception>
         /// <exception cref="ArgumentException">A pipeline from another backend or another device.</exception>
         /// <exception cref="ObjectDisposedException">A disposed pipeline.</exception>
-        internal static MetalComputePipeline Require(IGpuComputePipeline? pipeline, IMetalDeviceLiveness owner,
+        internal static MetalComputePipeline Require(IGpuComputePipeline? pipeline, IDeviceLiveness owner,
             string parameterName)
         {
             ArgumentNullException.ThrowIfNull(pipeline, parameterName);
@@ -147,7 +148,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <exception cref="ShaderValidationException">The declared layout array is a different shape from the
         /// shader's reflection, or Metal rejected the function.</exception>
         [SupportedOSPlatform("macos")]
-        internal static MetalComputePipeline Create(MTLDevice device, IMetalDeviceLiveness liveness,
+        internal static MetalComputePipeline Create(MTLDevice device, IDeviceLiveness liveness,
             in GpuComputePipelineDescription description)
         {
             (MetalComputeShader shader, MetalResourceLayout[] layouts) = Check(liveness, description);
@@ -160,7 +161,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// calls <c>-newComputePipelineStateWithFunction:error:</c> would assert them on one leg out of five.
         /// </summary>
         internal static (MetalComputeShader Shader, MetalResourceLayout[] Layouts) Check(
-            IMetalDeviceLiveness liveness, in GpuComputePipelineDescription description)
+            IDeviceLiveness liveness, in GpuComputePipelineDescription description)
         {
             ArgumentNullException.ThrowIfNull(liveness);
 
@@ -220,7 +221,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static MetalComputePipeline CreateOnMacOs(MTLDevice device, IMetalDeviceLiveness liveness,
+        static MetalComputePipeline CreateOnMacOs(MTLDevice device, IDeviceLiveness liveness,
             MetalComputeShader shader, MetalResourceLayout[] layouts)
         {
             using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();

@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu.Metal.Internal
 {
@@ -136,7 +137,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// </summary>
     internal sealed class MetalResourceSet : IGpuResourceSet, IMetalOwnedResource
     {
-        readonly IMetalDeviceLiveness _liveness;
+        readonly IDeviceLiveness _liveness;
         readonly MetalBoundResource[] _bindings;
 
         /// <param name="liveness">The creating device's token, which is its identity and which every bound
@@ -148,7 +149,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// the element it lands on.</exception>
         /// <exception cref="ObjectDisposedException">The layout is already disposed, refused through
         /// <see cref="MetalResourceLayout.Require"/>.</exception>
-        internal MetalResourceSet(IMetalDeviceLiveness liveness, in GpuResourceSetDescription description)
+        internal MetalResourceSet(IDeviceLiveness liveness, in GpuResourceSetDescription description)
         {
             ArgumentNullException.ThrowIfNull(liveness);
 
@@ -188,7 +189,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         }
 
         /// <inheritdoc/>
-        public IMetalDeviceLiveness Owner => _liveness;
+        public IDeviceLiveness Owner => _liveness;
 
         /// <summary>The layout this set satisfies, whose element count and declaration order this set's bindings
         /// are positional in.</summary>
@@ -227,7 +228,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <exception cref="ArgumentException">No set, another backend's, or another device's.</exception>
         /// <exception cref="ObjectDisposedException">This backend's set, on this device, already
         /// disposed.</exception>
-        internal static MetalResourceSet Require(IGpuResourceSet? set, IMetalDeviceLiveness owner, string what)
+        internal static MetalResourceSet Require(IGpuResourceSet? set, IDeviceLiveness owner, string what)
         {
             if (set is null)
             {

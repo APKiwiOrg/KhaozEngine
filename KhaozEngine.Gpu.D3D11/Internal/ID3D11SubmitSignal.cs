@@ -1,3 +1,5 @@
+using KhaozEngine.Gpu.Internal;
+
 namespace KhaozEngine.Gpu.D3D11.Internal
 {
     /// <summary>
@@ -6,7 +8,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// device hands it to <see cref="D3D11CommandDrivers.Submit{TEmitter}"/> once it exists.
     /// <para>
     /// AN INTERFACE RATHER THAN THE SUBSYSTEM ITSELF, for the same two reasons
-    /// <see cref="ID3D11DeviceLiveness"/> is one. It keeps the driver's submit path drivable with no timeline and
+    /// <see cref="IDeviceLiveness"/> is one. It keeps the driver's submit path drivable with no timeline and
     /// no device behind it, so a device-free test can assert WHERE in a replay the signal lands and WHETHER the
     /// submit lock was held for it, which is the half of decision C5 no fence-lifecycle test can see. And it
     /// keeps the drivers from naming the fence subsystem at all, so the one place that knows both drivers exist

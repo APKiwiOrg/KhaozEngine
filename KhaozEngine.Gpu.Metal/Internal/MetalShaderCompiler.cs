@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Metal.Internal.ObjC;
 
 namespace KhaozEngine.Gpu.Metal.Internal
@@ -40,7 +41,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     internal sealed class MetalShaderCompiler
     {
         readonly MTLDevice _device;
-        readonly IMetalDeviceLiveness _liveness;
+        readonly IDeviceLiveness _liveness;
         readonly MetalIndexTableCache _tables;
 
         /// <param name="device">The device to compile on.</param>
@@ -48,7 +49,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <param name="tables">The device's index-table cache. THIS is the one site that deduplicates
         /// (row 10), because the table is a property of the emission and this is where an emission becomes a
         /// shader set: a table canonicalised any later would already have been handed out twice.</param>
-        internal MetalShaderCompiler(MTLDevice device, IMetalDeviceLiveness liveness, MetalIndexTableCache tables)
+        internal MetalShaderCompiler(MTLDevice device, IDeviceLiveness liveness, MetalIndexTableCache tables)
         {
             ArgumentNullException.ThrowIfNull(liveness);
             ArgumentNullException.ThrowIfNull(tables);

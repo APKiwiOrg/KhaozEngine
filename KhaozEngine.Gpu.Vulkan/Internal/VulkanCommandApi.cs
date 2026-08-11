@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.Gpu.Internal;
 using Silk.NET.Vulkan;
 using Semaphore = Silk.NET.Vulkan.Semaphore;
 
@@ -43,7 +44,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         readonly uint _queueFamily;
         readonly Semaphore _timeline;
         readonly VulkanDeviceLossLatch _loss;
-        readonly IVulkanDeviceLiveness _liveness;
+        readonly IDeviceLiveness _liveness;
 
         /// <param name="vk">The instance's loaded API.</param>
         /// <param name="device">The device that owns every pool made here and outlives them all.</param>
@@ -53,7 +54,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="loss">The device's loss latch, which every result here is checked against.</param>
         /// <param name="liveness">The device's liveness token, which gates the destroy.</param>
         internal VulkanCommandApi(Vk vk, Device device, Queue queue, uint queueFamily, Semaphore timeline,
-            VulkanDeviceLossLatch loss, IVulkanDeviceLiveness liveness)
+            VulkanDeviceLossLatch loss, IDeviceLiveness liveness)
         {
             ArgumentNullException.ThrowIfNull(vk);
             ArgumentNullException.ThrowIfNull(loss);

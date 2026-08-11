@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using KhaozEngine.Gpu.Internal;
 using Silk.NET.Core.Native;
 using Silk.NET.Vulkan;
 
@@ -175,7 +176,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             surfaces?.BindPhysicalDevice(handles[chosen]);
 
             Device device = CreateDevice(vk, handles[chosen], read.GraphicsQueueFamily, features, windowed);
-            var liveness = new VulkanDeviceLiveness();
+            var liveness = new DeviceLiveness();
             var loss = new VulkanDeviceLossLatch(liveness);
 
             try

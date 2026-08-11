@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Metal.Internal;
 using KhaozEngine.Gpu.Metal.Internal.ObjC;
 using Xunit;
@@ -33,7 +34,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void AHealthyCommandBuffer_LatchesNothing()
         {
-            var liveness = new MetalDeviceLiveness();
+            var liveness = new DeviceLiveness();
             var latch = new MetalDeviceLossLatch(liveness, new RecordingLogger());
 
             Assert.False(latch.Check(MetalCommandBufferFault.Completed, "waitUntilCompleted (teardown drain)"));
@@ -61,7 +62,7 @@ namespace KhaozEngine.Tests.Gpu
         public void EveryCommandBufferError_Latches(string codeName)
         {
             var code = Enum.Parse<MTLCommandBufferError>(codeName);
-            var liveness = new MetalDeviceLiveness();
+            var liveness = new DeviceLiveness();
             var latch = new MetalDeviceLossLatch(liveness, new RecordingLogger());
 
             Assert.True(latch.Check(Failed(code), "commit (frame submit)"));
@@ -79,7 +80,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void AnErrorStatusWithNoCode_StillLatchesWithASearchableToken()
         {
-            var liveness = new MetalDeviceLiveness();
+            var liveness = new DeviceLiveness();
             var latch = new MetalDeviceLossLatch(liveness, new RecordingLogger());
 
             Assert.True(latch.Check(new MetalCommandBufferFault(MTLCommandBufferStatus.Error,
@@ -96,7 +97,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void AnUnknownCode_StillProducesASearchableToken()
         {
-            var liveness = new MetalDeviceLiveness();
+            var liveness = new DeviceLiveness();
             var latch = new MetalDeviceLossLatch(liveness, new RecordingLogger());
 
             latch.Check(Failed((MTLCommandBufferError)9999), "commit (frame submit)");
@@ -112,7 +113,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void TheHeader_CarriesTheToken_TheSite_AndTheDriversSentence()
         {
-            var latch = new MetalDeviceLossLatch(new MetalDeviceLiveness(), new RecordingLogger());
+            var latch = new MetalDeviceLossLatch(new DeviceLiveness(), new RecordingLogger());
 
             latch.Check(Failed(MTLCommandBufferError.Timeout, "Execution of the command buffer was aborted"),
                 "waitUntilCompleted (teardown drain)");
@@ -131,7 +132,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void TheFirstFailureWins_AndALaterOneDoesNotOverwriteIt()
         {
-            var latch = new MetalDeviceLossLatch(new MetalDeviceLiveness(), new RecordingLogger());
+            var latch = new MetalDeviceLossLatch(new DeviceLiveness(), new RecordingLogger());
 
             Assert.True(latch.Check(Failed(MTLCommandBufferError.Timeout), "the first site"));
             Assert.True(latch.Check(Failed(MTLCommandBufferError.DeviceRemoved), "the second site"));
@@ -148,7 +149,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void OnceLost_EvenAHealthyReadingAnswersLost()
         {
-            var latch = new MetalDeviceLossLatch(new MetalDeviceLiveness(), new RecordingLogger());
+            var latch = new MetalDeviceLossLatch(new DeviceLiveness(), new RecordingLogger());
             latch.Check(Failed(MTLCommandBufferError.Internal), "the first site");
 
             Assert.True(latch.Check(MetalCommandBufferFault.Completed, "a later drain"));
@@ -162,7 +163,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void ManyThreadsLatchingAtOnce_ProduceOneRecordAndOneLogLine()
         {
-            var liveness = new MetalDeviceLiveness();
+            var liveness = new DeviceLiveness();
             var logger = new RecordingLogger();
             var latch = new MetalDeviceLossLatch(liveness, logger);
 
@@ -182,7 +183,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void AnUnnamedSite_ReadsAsAPlaceholder()
         {
-            var latch = new MetalDeviceLossLatch(new MetalDeviceLiveness(), new RecordingLogger());
+            var latch = new MetalDeviceLossLatch(new DeviceLiveness(), new RecordingLogger());
 
             latch.Check(Failed(MTLCommandBufferError.Internal), "   ");
 
@@ -198,7 +199,7 @@ namespace KhaozEngine.Tests.Gpu
         public void TheLogLine_SaysWhatHappenedAndWhatItMeansForEverythingAfter()
         {
             var logger = new RecordingLogger();
-            var latch = new MetalDeviceLossLatch(new MetalDeviceLiveness(), logger);
+            var latch = new MetalDeviceLossLatch(new DeviceLiveness(), logger);
 
             latch.Check(Failed(MTLCommandBufferError.DeviceRemoved, "The GPU was removed"), "present");
 
@@ -217,7 +218,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void Liveness_IsOneWayAndIdempotent()
         {
-            var liveness = new MetalDeviceLiveness();
+            var liveness = new DeviceLiveness();
             Assert.True(liveness.IsAlive);
 
             liveness.MarkDead();
@@ -234,6 +235,6 @@ namespace KhaozEngine.Tests.Gpu
         /// </summary>
         [Fact]
         public void TheDefaultLivenessToken_SaysAlive()
-            => Assert.False(MetalLiveDevice.Instance.IsDead);
+            => Assert.False(LiveDevice.Instance.IsDead);
     }
 }

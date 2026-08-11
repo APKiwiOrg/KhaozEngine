@@ -300,7 +300,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// The four values the seam does not expose, hardcoded to what the engine's Veldrid path passes: no
         /// comparison function, a minimum LOD of 0, a maximum LOD of <c>uint.MaxValue</c>, and a transparent-black
-        /// border colour. Changing one would move pixels.
+        /// border colour ON A SAMPLER THAT BORDERS. Changing one would move pixels.
         /// </summary>
         [Fact]
         public void TheFourValuesTheSeamDoesNotExpose_AreTheIncumbentsOwn()
@@ -309,7 +309,108 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal(0f, spec.LodMinClamp);
             Assert.Equal(uint.MaxValue, spec.LodMaxClamp);
-            Assert.Equal(MTLSamplerBorderColor.TransparentBlack, spec.BorderColor);
+
+            MetalSamplerSpec bordered = MetalSamplerPolicy.For(
+                new GpuSamplerDescription(GpuSamplerFilter.MinLinearMagLinearMipLinear, GpuSamplerAddress.Border));
+            Assert.Equal(MTLSamplerBorderColor.TransparentBlack, bordered.BorderColor);
+        }
+
+        /// <summary>
+        /// THE BORDER COLOUR IS WRITTEN ONLY WHEN AN ADDRESS MODE ASKS FOR IT, on any one of the three axes, and
+        /// is left alone otherwise. A null spec value means <c>-setBorderColor:</c> is never sent, which is what
+        /// keeps a Wrap, Mirror or Clamp sampler off a property the device may not have. The incumbent writes it
+        /// whenever it is on macOS, so this row is a divergence rather than a reproduction.
+        /// </summary>
+        [Fact]
+        public void TheBorderColour_IsWrittenOnlyWhenAnAddressModeBorders()
+        {
+            foreach (GpuSamplerAddress mode in new[]
+            {
+                GpuSamplerAddress.Wrap, GpuSamplerAddress.Mirror, GpuSamplerAddress.Clamp,
+            })
+            {
+                MetalSamplerSpec plain = MetalSamplerPolicy.For(
+                    new GpuSamplerDescription(GpuSamplerFilter.MinLinearMagLinearMipLinear, mode, mode, mode));
+                Assert.Null(plain.BorderColor);
+            }
+
+            // The shared WRAP pair, which is what every renderer binds, named rather than covered by the loop
+            // above: it is the pair whose descriptor must never carry the property.
+            Assert.Null(MetalSamplerPolicy.For(MetalSharedSamplers.Point).BorderColor);
+            Assert.Null(MetalSamplerPolicy.For(MetalSharedSamplers.Linear).BorderColor);
+
+            // One axis is enough, and each of the three counts.
+            Assert.Equal(MTLSamplerBorderColor.TransparentBlack, MetalSamplerPolicy.For(
+                new GpuSamplerDescription(GpuSamplerFilter.MinLinearMagLinearMipLinear,
+                    GpuSamplerAddress.Border, GpuSamplerAddress.Wrap, GpuSamplerAddress.Clamp)).BorderColor);
+            Assert.Equal(MTLSamplerBorderColor.TransparentBlack, MetalSamplerPolicy.For(
+                new GpuSamplerDescription(GpuSamplerFilter.MinLinearMagLinearMipLinear,
+                    GpuSamplerAddress.Wrap, GpuSamplerAddress.Border, GpuSamplerAddress.Clamp)).BorderColor);
+            Assert.Equal(MTLSamplerBorderColor.TransparentBlack, MetalSamplerPolicy.For(
+                new GpuSamplerDescription(GpuSamplerFilter.MinLinearMagLinearMipLinear,
+                    GpuSamplerAddress.Wrap, GpuSamplerAddress.Clamp, GpuSamplerAddress.Border)).BorderColor);
+        }
+
+        /// <summary>
+        /// THE REFUSAL, BOTH WAYS, WITH NO DEVICE. Border-colour support is the device's <c>MTLGPUFamilyMac2</c>
+        /// answer, so the decision is a pure function of that flag and the description and runs on every leg from
+        /// fabricated support. The refusal fires for a Border mode on a device without support and for nothing
+        /// else, which is the half that matters: a refusal that also caught Wrap would take the shared pair down
+        /// with it and no device would create at all.
+        /// </summary>
+        [Fact]
+        public void TheBorderColourRefusal_FiresOnlyForABorderModeOnADeviceWithoutSupport()
+        {
+            var bordered = new GpuSamplerDescription(GpuSamplerFilter.MinLinearMagLinearMipLinear,
+                GpuSamplerAddress.Border, GpuSamplerAddress.Mirror, GpuSamplerAddress.Clamp);
+
+            string? refusal = MetalSamplerPolicy.MissingBorderColorSupport(bordered, false);
+            Assert.NotNull(refusal);
+
+            // The sentence names the DEVICE FACT and what to use instead, which is what makes it actionable from
+            // a CI log by someone who has never seen this machine.
+            Assert.Contains("MTLGPUFamilyMac2", refusal, StringComparison.Ordinal);
+            Assert.Contains("GpuSamplerAddress.Border", refusal, StringComparison.Ordinal);
+            Assert.Contains("Use Clamp", refusal, StringComparison.Ordinal);
+
+            // A supporting device takes the same description without comment.
+            Assert.Null(MetalSamplerPolicy.MissingBorderColorSupport(bordered, true));
+
+            // And nothing else is refused on a non-supporting device, the shared pair first.
+            Assert.Null(MetalSamplerPolicy.MissingBorderColorSupport(MetalSharedSamplers.Point, false));
+            Assert.Null(MetalSamplerPolicy.MissingBorderColorSupport(MetalSharedSamplers.Linear, false));
+            Assert.Null(MetalSamplerPolicy.MissingBorderColorSupport(GpuSamplerDescription.Point, false));
+            Assert.Null(MetalSamplerPolicy.MissingBorderColorSupport(GpuSamplerDescription.Linear, false));
+            Assert.Null(MetalSamplerPolicy.MissingBorderColorSupport(
+                new GpuSamplerDescription(GpuSamplerFilter.Anisotropic, GpuSamplerAddress.Wrap,
+                    GpuSamplerAddress.Wrap, GpuSamplerAddress.Wrap, maximumAnisotropy: 16), false));
+        }
+
+        /// <summary>
+        /// THE SUPPORT READ IS THE <c>Mac2</c> FIELD OF THE PROBE'S SNAPSHOT and nothing else, driven through the
+        /// fakes in both positions. Metal exposes no <c>supportsBorderColor</c> selector, and the only way to ask
+        /// a device directly is to build a border sampler, which is the abort this whole path exists to avoid.
+        /// </summary>
+        [Theory]
+        [InlineData(true, true)]
+        [InlineData(false, false)]
+        public void BorderColourSupport_IsTheDevicesMac2Answer(bool mac2, bool expected)
+        {
+            var facts = new MetalDeviceFacts(
+                DeviceCreated: true,
+                DeviceName: mac2 ? "Apple M2 Max" : "Apple Paravirtual device",
+                HighestAppleFamily: 9,
+                SupportsMac2: mac2,
+                SupportsCommon1: true,
+                BufferOffsetAlignment: 16,
+                BufferOffsetAlignmentSource: "-minimumLinearTextureAlignmentForPixelFormat:",
+                SupportsTextureSampleCount1: true);
+
+            Assert.Equal(expected, MetalSamplerPolicy.DeviceSupportsBorderColor(facts));
+
+            // A device below the Mac family is still a device this backend runs on: the floor asks for Apple1 OR
+            // Mac2, so a no here is a missing FEATURE rather than a rejected machine.
+            Assert.Null(MetalDeviceRequirements.MissingRequirement(facts));
         }
 
         /// <summary>

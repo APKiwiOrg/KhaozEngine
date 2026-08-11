@@ -427,23 +427,40 @@ namespace KhaozEngine.Tests.Gpu
             Assert.NotSame(device.PointSampler, device.LinearSampler);
         }
 
-        /// <summary>Every sampler description the engine builds is accepted, including the anisotropic one whose
-        /// maximum anisotropy rides a separate field from its filters.</summary>
+        /// <summary>
+        /// Every sampler description the engine builds is accepted, including the anisotropic one whose maximum
+        /// anisotropy rides a separate field from its filters.
+        ///
+        /// <para><b>TWO ARMS, CHOSEN BY THE DEVICE AND NOT BY A SKIP.</b> Border colours are a
+        /// <c>MTLGPUFamilyMac2</c> feature and not every Metal device has them, so the BORDER row's correct
+        /// outcome differs by machine: accepted on a Mac GPU, refused by name on one that answers no. Both arms
+        /// assert, because a skip here would be indistinguishable from the row never running and the leg's gate 2
+        /// counts skips. The arm is logged so a CI reading says which machine ran which.</para>
+        ///
+        /// <para><b>THIS ROW IS WHY THE LEG EXISTS.</b> Its first hosted run on <c>macos-26</c> aborted the test
+        /// host under the armed debug layer, on the Border row, against the Apple Paravirtual device, after 5907
+        /// rows of the same assembly had passed. A device difference no local run can produce is exactly the class
+        /// of finding a second machine is for.</para>
+        /// </summary>
         [GpuFact]
         public void Samplers_OfEveryDescriptionTheEngineBuilds_AreAccepted()
         {
             if (!Available()) return;
 
             using IGpuDevice device = CreateHeadless();
+            var metal = (MetalGpuDevice)device;
 
+            var bordered = new GpuSamplerDescription(GpuSamplerFilter.MinLinearMagLinearMipLinear,
+                GpuSamplerAddress.Border, GpuSamplerAddress.Mirror, GpuSamplerAddress.Clamp);
+
+            // ACCEPTED WHATEVER THE DEVICE ANSWERS. Not one of these borders on any axis, so none of them reaches
+            // the border-colour question and the shared WRAP pair the device already built is in the same class.
             GpuSamplerDescription[] descriptions =
             [
                 GpuSamplerDescription.Point,
                 GpuSamplerDescription.Linear,
                 new(GpuSamplerFilter.Anisotropic, GpuSamplerAddress.Wrap, GpuSamplerAddress.Wrap,
                     GpuSamplerAddress.Wrap, maximumAnisotropy: 16),
-                new(GpuSamplerFilter.MinLinearMagLinearMipLinear, GpuSamplerAddress.Border,
-                    GpuSamplerAddress.Mirror, GpuSamplerAddress.Clamp),
                 // A non-zero LOD bias, which Metal's sampler has no field for at all. It must be accepted and
                 // dropped rather than refused: SamplerLodBias is false on this backend and on the incumbent.
                 new(GpuSamplerFilter.MinLinearMagLinearMipLinear, mipLodBias: 2),
@@ -454,6 +471,30 @@ namespace KhaozEngine.Tests.Gpu
                 using IGpuSampler sampler = device.Factory.CreateSampler(description);
                 Assert.NotNull(sampler);
             }
+
+            if (metal.SupportsBorderColor)
+            {
+                _output.WriteLine("accept arm: this device supports sampler border colours (MTLGPUFamilyMac2), "
+                    + "so the Border description is created like any other.");
+
+                using IGpuSampler border = device.Factory.CreateSampler(bordered);
+                Assert.NotNull(border);
+                return;
+            }
+
+            _output.WriteLine("refusal arm: this device does not support sampler border colours, so the Border "
+                + "description is refused by name rather than aborting the process under the debug layer.");
+
+            string refusal = Refusal(() => device.Factory.CreateSampler(bordered));
+            _output.WriteLine(refusal);
+
+            Assert.Contains("MTLGPUFamilyMac2", refusal, StringComparison.Ordinal);
+            Assert.Contains("GpuSamplerAddress.Border", refusal, StringComparison.Ordinal);
+
+            // AND THE REFUSAL IS THE ONLY THING THAT CHANGES on such a device: the shared pair is still there, so
+            // a machine without border colours has lost a sampler mode rather than a device.
+            Assert.NotNull(device.PointSampler);
+            Assert.NotNull(device.LinearSampler);
         }
 
         /// <summary>

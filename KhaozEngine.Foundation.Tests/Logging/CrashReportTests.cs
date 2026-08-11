@@ -292,6 +292,18 @@ public class CrashReportTests
 
             Assert.Equal(12, paths.Distinct(StringComparer.Ordinal).Count());
             Assert.Equal(12, Directory.GetFiles(dir, "head-crash-*.log").Length);
+
+            // AND THE SAME BURST INSIDE ONE MILLISECOND, deterministically. Twelve real Write calls may or may
+            // not land on one stamp on a given machine, which would let this row pass on the old name by luck.
+            // Pinning the clock is what makes the collision certain rather than likely.
+            var oneInstant = new DateTimeOffset(2026, 8, 12, 3, 4, 5, 678, TimeSpan.Zero);
+            for (int i = 0; i < 12; i++)
+            {
+                CrashReport.WriteAt(options, "Unobserved task exception", Thrown("same ms " + i), null,
+                    CrashReportKind.UnobservedTask, oneInstant, i);
+            }
+
+            Assert.Equal(12, Directory.GetFiles(dir, "head-taskfault-20260812-030405-678-*.log").Length);
         }
         finally { Directory.Delete(dir, true); }
     }

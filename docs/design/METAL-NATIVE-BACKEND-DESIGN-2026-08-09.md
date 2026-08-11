@@ -3447,7 +3447,7 @@ possible should find the row saying so.
 | # | Bet | Measurement gate | Kill switch | Exit criterion | Deadline |
 |---|---|---|---|---|---|
 | MM1 | The ring removes the encoder-split-per-record-time-write class (2.1), and that class is the dominant per-frame cost the incumbent carries. **The MAGNITUDE is unmeasured**: nobody has counted how many record-time `UpdateBuffer` calls per frame the #410 scene makes on Metal, and two releases of renderer-side engineering have already hoisted most of them out of the frame | Count record-time `UpdateBuffer` calls, encoder boundaries and record-time buffer allocations per frame on the #410 scene ON THE INCUMBENT first, through a throwaway instrumented build. Then the same three on the native backend | None. The ring is not optional (9.2), and M-M7 makes it a correctness change, so there is no in-backend fallback to hold | Native encoder boundaries per frame at or below the framebuffer-change count plus the compute and blit passes the frame genuinely needs, native record-time allocations at zero, and frame time no worse than gate 4's baseline. If the incumbent's counts turn out near zero already, the ring is still taken for M-M7 and this bet is **RECORDED AS NOT PAYING** rather than quietly forgotten | Gate 4 |
-| MM2 | Per-attachment clears (M-A2) either do not move a committed metal golden, or move exactly the ones two unwritten attachments can explain | All 36 goldens with `KE_METAL_CLEAR` in both positions on the same build, on the first green run | `KE_METAL_CLEAR=attachment0` reproduces the incumbent exactly | Both positions green, OR exactly the scenes whose framebuffer has more than one colour target differ and the difference is explained by two attachments going from Load to Clear. **A difference anywhere else means something other than this clause moved.** By M-RO4's sort it is a branch inside one implementation, so it is removed at its gate and the losing branch deleted whichever way it goes | **Gate 1. Removed there** |
+| MM2 | Per-attachment clears (M-A2) either do not move a committed metal golden, or move exactly the ones two unwritten attachments can explain | All 36 goldens with `KE_METAL_CLEAR` in both positions on the same build, on the first green run | `KE_METAL_CLEAR=attachment0` reproduces the incumbent exactly | Both positions green, OR exactly the scenes whose framebuffer has more than one colour target differ and the difference is explained by two attachments going from Load to Clear. **A difference anywhere else means something other than this clause moved.** By M-RO4's sort it is a branch inside one implementation, so it is removed at its gate and the losing branch deleted whichever way it goes. **RESOLVED 2026-08-11: BOTH POSITIONS GREEN, which is the first arm.** The native leg's per-scene worst-cell deltas are identical to the incumbent leg's on all 36 scenes, and the local A/B on the M2 Max passes 31 of 31 in both positions, so nothing in the golden family moved and nothing in it can SEE this change either. The switch is removed and the discriminating instrument is row 12's texel readback (7.2, and the gate-1 note in 17) | **Gate 1. Removed there** |
 | MM3 | The array-batched flush (M-R6) collapses a full activation to one call per (kind, stage) and an offsets-only rebind to one per visible stage, with zero encoder boundaries between two draws in one pass | The device-free budget test (M-T2), confirmed on the first green run and then frozen as marginals | None needed. A call-count property with no runtime risk | The first green run's measured marginals are recorded in this document and become the frozen numbers, INCLUDING the vertex-stream marginal, which is a regression target rather than a parity target | Gate 3 |
 | MM4 | `FramesInFlight = 3` is enough that ring backpressure never blocks the CPU, and `maximumDrawableCount = 3` is enough that the drawable acquire does not become the frame's pacing | `BackpressureStallCount` and `BackpressureStallMs` for the ring, `AcquireWaitCount` and `AcquireWaitMs` for the drawable. **The second pair is expected to be non-zero under vsync and that is not a failure**: a vsync-paced frame SHOULD wait for a drawable, so the gate reads the UNCAPPED capture | `KE_METAL_FRAMES_IN_FLIGHT=<n>`, owned by row 7 | Ring stall count zero across a full capture window, and acquire wait per frame near zero on the uncapped capture. A non-zero ring stall means 3 is wrong, not that the design is. **Read the ring half against the capture's RECORDINGS-PER-FRAME count** (row 8's second addendum in 9.2): the depth buys 3 recordings of headroom, not 3 frames, and a frame that opens four command lists has under one frame of headroom at the default, so the count of lists the measured scene opens is part of the reading and goes in the record beside it | Gate 4. A TUNING KNOB by M-RO4's sort, so it may survive as a knob, but only if the exit criterion was met at its DEFAULT. A knob is not a way to ship a failed default |
 | MM5 | (observation, not a bet) **Automatic hazard tracking (M-H1) costs conservatism that nothing in this design measures**, and the cost cannot be priced at all because there is no safe untracked build to A/B against. The driver may serialise two encoders that could have overlapped, and there is no counter for lost overlap. Frame time against the incumbent measures the two configurations TOGETHER, since the incumbent is also tracked | None available in v1. A GPU trace in Xcode's frame debugger would show it and is not a CI instrument | n/a. `MTLResourceHazardTrackingModeUntracked` on an individual resource is the escape hatch, and taking it means writing the barriers for that resource | Recorded so a reader does not mistake "no barriers in the code" for "no serialisation on the device", and does not mistake a green gate 4 for evidence that tracking is free. If a measurement ever shows the cost, the heap decision (8.4) is re-argued in the same change | Open past gate 5, deliberately |
@@ -3535,18 +3535,19 @@ time.
 
 ### Rollout record
 
-Every gate is PENDING, and after row 19 that sentence means something different from what it meant before it.
-Every gate now has its instrument BUILT and none has been READ. This subsection exists so the standing of each
-gate is recorded here as it moves rather than reconstructed from issue comments, in the shape phase 2's and
-phase 3's rollout records established.
+Gates 1, 2 and 3 are GREEN, read on 2026-08-11 off the leg's first green run. Gates 4 and 5 are PENDING with
+their instruments built and neither read, because one wants a field capture on this Mac and the other a person
+at a window. This subsection exists so the standing of each gate is recorded here as it moves rather than
+reconstructed from issue comments, in the shape phase 2's and phase 3's rollout records established.
 
-**The standing after row 19, gate by gate, with the instrument named.**
+**The standing gate by gate, with the instrument named. The readings themselves are the notes under the
+table.**
 
 | Gate | Standing | Instrument, and what has to happen for the gate to move |
 |---|---|---|
-| 1. All 36 goldens green, worst-cell delta recorded, MM2 resolved | PENDING, instrument built, FIRST RUN ABORTED | The `metal-native` leg's golden compares, and the `golden-deltas-metal-native` artifact it uploads on `always()`. The leg's FIRST run is the push that merges row 19, and that run aborted before it could be read (see the paravirtual-device note below), so the earliest reading is now the run after the border-sampler fix. The `KE_METAL_CLEAR` A/B is a second dispatch with the variable set, and the switch is removed at this gate either way |
-| 2. Full `macos-26` suite at 0 failed and NO NEW SKIPS, with the two `[GpuFact]` assemblies at 0 skipped, passed at or above the incumbent's, no validation errors, MM9 met | PENDING, instrument built, FIRST RUN ABORTED | The same leg, which runs the whole suite on every trigger with `MTL_DEBUG_LAYER=1` armed and `KE_METAL_REQUIRED=1` set. **The skip half is read off the `[GpuFact]` assemblies rather than off the leg's own total**, because the leg's test step names no project and therefore runs the whole solution, where 18 backend-independent rows skip for reasons this backend cannot move: 17 in `KhaozEngine.Server.Tests` that need a live SQL Server (the `SqlServerWorldStoreConformanceTests` set and `SqlServerWalletStoreTests`), plus one `Game.Tests` perturbation control that skips on its own condition. `KhaozEngine.Render.Tests` and `KhaozEngine.MapEditor.Tests` are where a Metal row could skip, both genuinely reach 0 skipped on a real GPU, and that is the readable criterion, with ONE standing exception the first hosted run surfaced: a `[GpuFact(RequiresRealGpu = true)]` row self-skips on the hosted runner's paravirtual adapter by design, so on that leg the criterion reads as 0 skipped beyond the `RequiresRealGpu` rows (1 today, `DistortionGpuTests.Distortion_warps_the_starfield`), and a NEW skip is still a red flag. **`KE_METAL_REQUIRED` is what makes it worth reading at all**: a dormant row is not a skip, so without it the criterion could be satisfied by rows that asserted nothing. The passed-count comparison is against the incumbent Metal leg on the same commit, which is the leg beside it in the same matrix |
-| 3. Budget test green with marginals recorded, MM3 met, the MSL index-table test green, MM6 taken | PENDING, one of four halves in hand | MM6 is TAKEN and PASSED (2.3a, row 17). The budget marginals, MM3 and the index-table test are device-free tests that already run on every `dotnet test`, so this gate is a RECORDING task rather than a machine one. Row 18, the #531 extraction, is the only work in section 18 that waits on it |
+| 1. All 36 goldens green, worst-cell delta recorded, MM2 resolved | **GREEN, read 2026-08-11 (run 31464944222)** | The `metal-native` leg's golden compares, and the `golden-deltas-metal-native` artifact it uploads on `always()`. The leg's first two runs aborted before either could be read (see the paravirtual-device note below), so this reading comes off the third, which is the run after the border-sampler fix. The `KE_METAL_CLEAR` A/B was taken on the M2 Max rather than as a second leg dispatch, for the reason the gate-1 note gives, and the switch is now REMOVED |
+| 2. Full `macos-26` suite at 0 failed and NO NEW SKIPS, with the two `[GpuFact]` assemblies at 0 skipped, passed at or above the incumbent's, no validation errors, MM9 met | **GREEN, read 2026-08-11 (run 31464944222)** | The same leg, which runs the whole suite on every trigger with `MTL_DEBUG_LAYER=1` armed and `KE_METAL_REQUIRED=1` set. **The skip half is read off the `[GpuFact]` assemblies rather than off the leg's own total**, because the leg's test step names no project and therefore runs the whole solution, where 18 backend-independent rows skip for reasons this backend cannot move: 17 in `KhaozEngine.Server.Tests` that need a live SQL Server (the `SqlServerWorldStoreConformanceTests` set and `SqlServerWalletStoreTests`), plus one `Game.Tests` perturbation control that skips on its own condition. `KhaozEngine.Render.Tests` and `KhaozEngine.MapEditor.Tests` are where a Metal row could skip, both genuinely reach 0 skipped on a real GPU, and that is the readable criterion, with ONE standing exception the first hosted run surfaced: a `[GpuFact(RequiresRealGpu = true)]` row self-skips on the hosted runner's paravirtual adapter by design, so on that leg the criterion reads as 0 skipped beyond the `RequiresRealGpu` rows (1 today, `DistortionGpuTests.Distortion_warps_the_starfield`), and a NEW skip is still a red flag. **`KE_METAL_REQUIRED` is what makes it worth reading at all**: a dormant row is not a skip, so without it the criterion could be satisfied by rows that asserted nothing. The passed-count comparison is against the incumbent Metal leg on the same commit, which is the leg beside it in the same matrix |
+| 3. Budget test green with marginals recorded, MM3 met, the MSL index-table test green, MM6 taken | **GREEN, read 2026-08-11 (run 31464944222)** | MM6 is TAKEN and PASSED (2.3a, row 17). The budget marginals, MM3 and the index-table test are device-free tests that already run on every `dotnet test`, the leg's included, so this gate was a RECORDING task rather than a machine one and all four halves are now in hand. Row 18, the #531 extraction, is the only work in section 18 that waited on it, and it is unblocked and dispatched |
 | 4. A field session at or above the incumbent's numbers, zero command-buffer errors, MM1, MM4 and MM10 met | PENDING, instrument built, baseline NOT taken | A windowed telemetry session on this Mac, and the FIRST task is the incumbent baseline (MM12), because no Metal field number exists anywhere in this program's record. `GpuDeviceCounters` carries every channel this gate reads, and the session header names the backend. Pin the build line and the capture-window stamps before reading anything |
 | 5. A human windowed pass, with the vsync toggle as a MEASUREMENT | PENDING, instrument built | A person at a window. The checklist is in the gate itself, narrowed by row 15: the layer half of the swapchain runs headless in the `[GpuFact]` suite, so what is genuinely uncovered is `MetalLayerHost`'s four Cocoa selectors and whether anything appears on a screen. It gains one item from #605, the Retina `drawableSize` read on frame one, and the frame-cap arm now has an instrument rather than a judgement: `AcquireWaitMs / AcquireWaitCount` on an uncapped capture with vsync on |
 
@@ -3609,9 +3610,8 @@ promise is NOT evidence the feature works, and the first hosted run of any famil
 measurement.
 
 **THE THIRD HOSTED RUN IS THE LEG'S FIRST GREEN** (run 31464944222, commit b4b46fcf, both Metal legs
-success beside the four incumbent and native siblings), so gates 1 and 2 have their first readable pass and
-their PENDING status now means "accumulating", not "never read". The gate readings themselves stay a
-deliberate recording task against that run's artifacts and counts, per the instrument column.
+success beside the four incumbent and native siblings), so gates 1 and 2 have their first readable pass. The
+readings that run carries are recorded below, and they move gates 1, 2 and 3 to GREEN.
 
 **The device fact.** The hosted runner's Apple Paravirtual device does not support sampler border colours,
 which are a `MTLGPUFamilyMac2` feature. That is the first CONFIRMED behavioural difference between the hosted
@@ -3635,10 +3635,42 @@ crash, and this was a crash, so the resemblance is close enough to say why it is
 Metal's own validation layer reporting a descriptor the device cannot satisfy, with a message naming the
 feature, which is the layer working. Every interop call on the path was accepted.
 
-**Gate 3 has ONE of its four halves in hand. MM6's measurement was TAKEN at row 17 and PASSED (2.3a).** The
-budget marginals, MM3 and the MSL index-table test are still owed, so the gate itself does not move. Recorded
-here because MM6 is the half whose result had to land in this document rather than in a test log, and because
-the measurement was worth taking whichever way it went.
+**GATE 1 READS GREEN.** All 36 goldens green on the `metal-native` leg, worst cell
+`scene3d_sky_world_sun` at 0.0431 against the 0.06 verify tolerance, which is comfortably inside it.
+
+**MM2's resolution is the SHAPE of the per-scene deltas rather than the fact that they passed.** The native
+leg's worst-cell delta is IDENTICAL to the incumbent `metal` leg's on all 36 scenes, line for line, both
+artifacts coming off the same run. So on the paravirtual device the two backends diverge from the committed
+grids by exactly the same amounts, which is MM2's FIRST arm (both positions green) in its strongest available
+form rather than its second (some scenes moved and the movement is explained by two attachments going from
+Load to Clear).
+
+**The `KE_METAL_CLEAR` A/B was taken locally on the M2 Max**, for two reasons rather than one: the workflow
+carries no plumbing for the variable, and a real device beats a paravirtual one for a measurement about what a
+clear leaves in an attachment. The golden suite passes 31 of 31 in BOTH positions. **So the golden family
+cannot distinguish M-A2's fix from the incumbent's collapse at all**, and the discriminating instrument is row
+12's texel-readback test, which fails on the collapse and passes on the fix. That is the A/B's recorded answer,
+and the switch is now removed per this gate's own text, with `MetalClearMode.Attachment0` kept as the
+constructor value that test drives (7.2).
+
+**GATE 2 READS GREEN.** Whole solution at 0 failed on the leg. `KhaozEngine.Render.Tests` reads 6051 passed
+and 1 skipped, that one skip being the `RequiresRealGpu` standing exception (`DistortionGpuTests`) and nothing
+else, `KhaozEngine.MapEditor.Tests` reads 922 passed and 0 skipped, and the 18 backend-independent skips land
+exactly as the criterion's composition predicts. The API validation layer was armed across the whole run and
+reported nothing, which is also where MM9 gets its standing answer.
+
+**The passed count EQUALS the incumbent leg's, and equality is the expected healthy shape here rather than a
+coincidence worth celebrating.** 6051 = 6051, because both legs run the identical suite: the native
+`[GpuFact]` rows build their own devices whatever backend the leg overrides to, so neither leg's total moves
+with the override. The criterion is "at or above", and on this pair an INEQUALITY in either direction is the
+thing that would want investigating.
+
+**GATE 3 READS GREEN, and its four halves came from three different places.** MM6's measurement was TAKEN at
+row 17 and PASSED (2.3a), which is the half whose result had to land in this document rather than in a test
+log, and it was worth taking whichever way it went. The budget test with its marginals, MM3 and the MSL
+index-table test are device-free and green on every `dotnet test`, the leg's run included. So what this gate
+was waiting on was somebody READING it rather than a machine producing it, which is why it moves on the same
+run as its two machine-bound siblings. Row 18, the #531 extraction, was gated on it and is now dispatched.
 
 **Gate 5 carries an obligation from row 3 that is worth naming here rather than only in section 2.9**, because
 it is the one gate whose result lands back in shipped code. `FrameCap.Resolve` and

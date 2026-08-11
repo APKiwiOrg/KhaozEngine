@@ -44,10 +44,33 @@ namespace KhaozEngine.Gpu.Metal.Internal
         internal static GpuProviderDevice CreateForWindow(in GpuWindowedDeviceRequest request)
         {
             MetalSwapchainHost host = MetalLayerHost.Resolve(request.Window);
+            return CreateForHost(host, request.SyncToVerticalBlank);
+        }
 
+        /// <summary>
+        /// Create a device with a swapchain over an ALREADY RESOLVED host, which is the seam between "turn a
+        /// window into a layer" and "build a device over a layer".
+        /// <para>
+        /// <b>IT EXISTS BECAUSE OF MM7, AND IT IS THE FURTHEST THAT OBSERVATION CAN BE PUSHED.</b> The design
+        /// records that not one line of the incumbent's swapchain runs in CI on any leg, ever. A headless runner
+        /// cannot produce an <c>NSWindow</c>, and it CAN produce a <c>CAMetalLayer</c>, which row 1's spike
+        /// established on a real device. So the window resolution is the only part that has to wait for a windowed
+        /// playtest, and everything from the layer down (the configuration, the acquire, the present, the resize
+        /// apply, the counters and the teardown) runs against a REAL layer on a real device in the
+        /// <c>[GpuFact]</c> suite. Splitting here is what makes that possible.
+        /// </para>
+        /// </summary>
+        /// <param name="host">The layer and its size. OWNERSHIP OF THE LAYER TRANSFERS HERE unconditionally: on
+        /// success the device releases it at teardown, and on a throw this method releases it before rethrowing,
+        /// so a caller never releases it either way.</param>
+        /// <param name="syncToVerticalBlank">The initial vsync value (M-W2).</param>
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static GpuProviderDevice CreateForHost(in MetalSwapchainHost host, bool syncToVerticalBlank)
+        {
             try
             {
-                return CreateWith(host, request.SyncToVerticalBlank);
+                return CreateWith(host, syncToVerticalBlank);
             }
             catch
             {

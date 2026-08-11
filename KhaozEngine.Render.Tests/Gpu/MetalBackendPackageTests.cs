@@ -95,18 +95,20 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// THE WINDOWED PATH REFUSES, and the refusal is asserted rather than left implicit because of what the
-        /// creation path does with it: it catches, WARNs with the message and falls back to the incumbent, so
-        /// this text is what a tester who named the native backend actually reads.
+        /// THE WINDOWED PATH REFUSES A WINDOW IT CANNOT PRESENT TO, and the refusal is asserted rather than left
+        /// implicit because of what the creation path does with it: it catches, WARNs with the message and falls
+        /// back to the incumbent, so this text is what a tester who named the native backend actually reads.
         /// <para>
-        /// Which of the three refusals is correct depends on the machine, and asserting that split is the point.
-        /// Off macOS it is a <see cref="PlatformNotSupportedException"/> about the PLATFORM (M-P1, and the one
-        /// place this package differs from the Vulkan sibling, which has no guard to raise). On a Mac whose
-        /// probe answers no it is about the MACHINE. On a Mac whose probe answers yes it is about the PACKAGE
-        /// and names the swapchain row, because a windowed device that cannot present is worse than one that
-        /// says so at creation. None of the three may be
-        /// <see cref="GpuBackendProviderMissingException"/>, which is about the WIRING and is thrown by the
-        /// registry before this type is reached at all.
+        /// <b>THERE WERE THREE REFUSALS AND ROW 15 REMOVED ONE</b>
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/581). Until the swapchain landed, a Mac whose probe
+        /// answered YES was refused by the PACKAGE, naming that row. Both creation paths are real now, so the two
+        /// left are the ones that describe the WORLD. Off macOS it is a
+        /// <see cref="PlatformNotSupportedException"/> about the PLATFORM (M-P1, and the one place this package
+        /// differs from the Vulkan sibling, which has no guard to raise). On a Mac whose probe answers no it is a
+        /// <see cref="NotSupportedException"/> about the MACHINE. On a Mac whose probe answers yes, a DEFAULT
+        /// request carries a null Cocoa handle, so the refusal is about the WINDOW and comes from
+        /// <c>MetalLayerHost</c>. None of them may be <see cref="GpuBackendProviderMissingException"/>, which is
+        /// about the WIRING and is thrown by the registry before this type is reached at all.
         /// </para>
         /// </summary>
         [Fact]
@@ -126,15 +128,18 @@ namespace KhaozEngine.Tests.Gpu
                 return;
             }
 
-            Assert.IsType<NotSupportedException>(ex);
             if (MetalSupportProbe.MissingRequirement() is null)
             {
-                // The PACKAGE refusal, which must name the row that ends it. A message that only said
-                // "unsupported" would be indistinguishable in a log from the machine refusal below.
-                Assert.Contains("581", ex.Message, StringComparison.Ordinal);
+                // THE WINDOW REFUSAL, which is what a default request now reaches: the machine can run the
+                // backend and the handle is null. It must name the handle rather than the package, because a
+                // message about the package would send a reader looking for an unfinished row that is finished.
+                Assert.IsType<ArgumentException>(ex);
+                Assert.Contains("Cocoa window handle", ex.Message, StringComparison.Ordinal);
+                Assert.DoesNotContain("581", ex.Message, StringComparison.Ordinal);
             }
             else
             {
+                Assert.IsType<NotSupportedException>(ex);
                 Assert.Contains("about the MACHINE", ex.Message, StringComparison.Ordinal);
             }
         }

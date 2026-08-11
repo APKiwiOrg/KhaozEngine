@@ -31,18 +31,31 @@ namespace KhaozEngine.Tests.Gpu
     /// that reads a name, because nothing calls that member yet. This walks the IL instead, so the constraint
     /// holds for a member nobody has written a test for.</para>
     ///
-    /// <para><b>DELIBERATELY SCOPED TO THE TABLE'S OWN METHODS</b>, which is where the answers come from.
-    /// External readers of <c>Layouts</c> (this file's own dedup sibling, and row 11's
-    /// <c>RequireLayoutShape</c> call site, which passes its own array IN rather than reading the table's) are
-    /// not covered, and the prose on <c>ContentKey</c> stays the guard for them. The compiler-generated nested
-    /// types ARE in scope: <c>Entries()</c> is an iterator, so its body lives in a state machine rather than in
-    /// the method, and a name read there would be exactly as observable.</para>
+    /// <para><b>ROOTED AT THE TABLE'S OWN METHODS AND TRANSITIVE FROM THERE, WITHIN THE PACKAGE.</b> The roots
+    /// are what this type declares, plus its compiler-generated nested types: <c>Entries()</c> is an iterator,
+    /// so its body lives in a state machine rather than in the method, and a name read there would be exactly
+    /// as observable. From each root the walk follows call sites into <c>KhaozEngine.Gpu.Metal</c>, so a name
+    /// read through a helper in another type of this package is caught. It was depth-1 when it landed, which
+    /// made the prose's promise ("a member added later that reads one is a red test") false for the shape a
+    /// member would most naturally take: read it in a helper and call the helper
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/594).</para>
+    ///
+    /// <para><b>AND THE PACKAGE BOUNDARY IS WHERE THE PROMISE ENDS, deliberately.</b> The descent stops at the
+    /// assembly edge, so a read that happens inside another assembly's method is out of scope. External
+    /// readers of <c>Layouts</c> (this file's own dedup sibling, and row 11's <c>RequireLayoutShape</c> call
+    /// site, which passes its own array IN rather than reading the table's) are not covered either, and the
+    /// prose on <c>ContentKey</c> stays the guard for them.</para>
     ///
     /// <para><b>AND IT IS POSITIVELY CONTROLLED, in the discipline
     /// <see cref="MetalAutoreleaseArchitectureTests"/> set for the shared IL reader.</b> A rule built on a walk
     /// that finds nothing passes for the wrong reason forever. The controls below prove the walk flags a member
-    /// that DOES read a name, leaves one that reads only the kind, and really does read the table's own bodies,
-    /// state machine included.</para>
+    /// that DOES read a name, flags one that reads a name THROUGH A HELPER while reading nothing itself, leaves
+    /// one that reads only the kind, and really does read the table's own bodies, state machine included.
+    /// The transitive half was also verified against the real type rather than only against a control: a
+    /// member reading a name through a helper in another package type was injected into
+    /// <c>MetalShaderIndexTable</c>, the rule went red with the path
+    /// <c>MetalShaderIndexTable.ProbeReadsANameThroughAHelper -&gt; ProbeNameHelper.Read -&gt;
+    /// GpuResourceLayoutElement.get_Name</c>, and the probe was reverted.</para>
     /// </summary>
     public sealed class MetalIndexTableNameBlindnessTests
     {
@@ -59,7 +72,7 @@ namespace KhaozEngine.Tests.Gpu
         public void NoMemberOfTheTableReadsAnElementNameOrItsStages()
         {
             string[] violations = MembersReading(TableMembers(), NameGetter, StagesGetter)
-                .Select(IlCallGraph.Describe)
+                .Select(m => DescribeWithPath(m, NameGetter, StagesGetter))
                 .ToArray();
 
             Assert.True(violations.Length == 0,
@@ -106,6 +119,26 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Empty(MembersReading(new[] { kindOnly }, NameGetter, StagesGetter));
             Assert.Single(MembersReading(new[] { kindOnly }, KindGetter));
+        }
+
+        /// <summary>
+        /// THE CONTROL FOR THE TRANSITIVE HALF, and the one the rule was missing. A member that reads no name
+        /// itself and calls a helper in another type that does is exactly what a later row would write, and a
+        /// depth-1 walk reported it clean. The path in the output is what a violation message looks like.
+        /// </summary>
+        [Fact]
+        public void TheWalk_FlagsAMemberThatReadsANameThroughAHelperInAnotherType()
+        {
+            MethodBase indirect = typeof(IndirectNameReadingControl)
+                .GetMethod(nameof(IndirectNameReadingControl.ReadsTheNameThroughAHelper),
+                    BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static)!;
+
+            _output.WriteLine(DescribeWithPath(indirect, NameGetter, StagesGetter));
+            Assert.Single(MembersReading(new[] { indirect }, NameGetter, StagesGetter));
+
+            // And it is genuinely the indirection being caught: the member reads nothing itself.
+            Assert.DoesNotContain(IlCallGraph.Callees(indirect),
+                c => c.DeclaringType == typeof(GpuResourceLayoutElement));
         }
 
         /// <summary>
@@ -158,15 +191,51 @@ namespace KhaozEngine.Tests.Gpu
             return members;
         }
 
-        // Which of these members call one of the named getters on GpuResourceLayoutElement. Matched on the
-        // declaring type and the accessor name rather than on a MethodInfo handed in, so a resolved token from
-        // another assembly compares the way a reader expects.
+        // Which of these members can REACH one of the named getters on GpuResourceLayoutElement, directly or
+        // through a helper. Matched on the declaring type and the accessor name rather than on a MethodInfo
+        // handed in, so a resolved token from another assembly compares the way a reader expects.
         static IReadOnlyList<MethodBase> MembersReading(IEnumerable<MethodBase> members, params string[] getters)
-            => members
-                .Where(m => IlCallGraph.Callees(m).Any(c =>
-                    c.DeclaringType == typeof(GpuResourceLayoutElement)
-                    && getters.Contains(c.Name, StringComparer.Ordinal)))
-                .ToArray();
+            => members.Where(m => Reaches(m, getters, new List<MethodBase>())).ToArray();
+
+        // A violation as a path rather than a name, because with a transitive walk the member that has to
+        // change is often not the member that reads the name.
+        static string DescribeWithPath(MethodBase member, params string[] getters)
+        {
+            var path = new List<MethodBase> { member };
+            Reaches(member, getters, path);
+            return string.Join(" -> ", path.Select(IlCallGraph.Describe));
+        }
+
+        static bool Reaches(MethodBase method, string[] getters, List<MethodBase> path)
+            => Reaches(method, getters, method.DeclaringType?.Assembly, new HashSet<MethodBase>(), path);
+
+        // Depth-first over call sites, the shape MetalAutoreleaseArchitectureTests.Reaches already walks. The
+        // descent stops at the assembly boundary: within the package a helper is just a place the same read
+        // happens, and outside it the walk would be asking a question about somebody else's code (see the class
+        // remarks for why the boundary is where the rule's promise ends).
+        static bool Reaches(MethodBase method, string[] getters, Assembly? scope, HashSet<MethodBase> seen,
+            List<MethodBase> path)
+        {
+            if (!seen.Add(method)) return false;
+
+            foreach (MethodBase callee in IlCallGraph.Callees(method))
+            {
+                if (callee.DeclaringType == typeof(GpuResourceLayoutElement)
+                    && getters.Contains(callee.Name, StringComparer.Ordinal))
+                {
+                    path.Add(callee);
+                    return true;
+                }
+
+                if (callee.DeclaringType?.Assembly != scope) continue;
+
+                path.Add(callee);
+                if (Reaches(callee, getters, scope, seen, path)) return true;
+                path.RemoveAt(path.Count - 1);
+            }
+
+            return false;
+        }
 
         /// <summary>
         /// The control the walk is pointed at, and the reason it is a type rather than an inline expression: the
@@ -179,6 +248,22 @@ namespace KhaozEngine.Tests.Gpu
             internal static GpuShaderStages ReadsTheStages(GpuResourceLayoutElement element) => element.Stages;
 
             internal static GpuResourceKind ReadsOnlyTheKind(GpuResourceLayoutElement element) => element.Kind;
+        }
+
+        /// <summary>
+        /// The INDIRECT control: it reads no name itself, and calls something in another type that does. This
+        /// is the shape a depth-1 walk was blind to, and the shape a member would actually take when a later
+        /// row wants a name for a diagnostic string.
+        /// </summary>
+        static class IndirectNameReadingControl
+        {
+            internal static string ReadsTheNameThroughAHelper(GpuResourceLayoutElement element)
+                => NameHelper.Read(element);
+        }
+
+        static class NameHelper
+        {
+            internal static string Read(GpuResourceLayoutElement element) => element.Name;
         }
     }
 }

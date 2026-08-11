@@ -251,8 +251,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// AN ELEMENT'S NAME AND STAGE VISIBILITY ARE DELIBERATELY NOT RENDERED, AND THAT IS ENFORCED RATHER
         /// THAN ASKED FOR. Nothing on this type reads either: the shape check compares kinds, and the join
         /// reaches an element only for its kind. <c>MetalIndexTableNameBlindnessTests</c> walks the IL of every
-        /// member this type declares, its iterator's state machine included, and fails on a call to the name or
-        /// visibility getter, so a member added later that reads one is a red test rather than a review miss. If
+        /// member this type declares, its iterator's state machine included, and follows the calls those bodies
+        /// make THROUGH this package, so a member added later is a red test whether it reads the name itself or
+        /// reads it in a helper in another type here. What the walk does not follow is a call into another
+        /// assembly, which is the scope that test states for itself: this rule is about what THIS package does.
+        /// If
         /// a later row NEEDS to read a name off <see cref="Layouts"/>, the name becomes observable and belongs
         /// in here too, which is what makes that guard's failure the right place to have the conversation.
         /// <para>

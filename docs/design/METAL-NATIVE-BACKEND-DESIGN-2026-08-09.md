@@ -2071,8 +2071,12 @@ remains correct. What changes is the cost of getting it wrong later: a member th
 and the shape `RequireLayoutShape` compares, driven both ways, and pins the name invariance behaviourally beside
 it. What that pin cannot see is a NEW member reading a name, because nothing calls it yet, so that half is
 mechanical now: `MetalIndexTableNameBlindnessTests` walks the IL of every member the table declares (its
-iterator's state machine included, since a read there would be exactly as observable) and fails on a call to
-`GpuResourceLayoutElement.get_Name` or `get_Stages`, positively controlled both ways. It reads through
+iterator's state machine included, since a read there would be exactly as observable), follows the calls those
+bodies make through this package, and fails on a call to `GpuResourceLayoutElement.get_Name` or `get_Stages`,
+positively controlled both ways. The transitive descent is what makes the promise true for the shape a member
+would actually take, reading the name in a helper and calling the helper: it landed depth-1, which reported
+exactly that shape clean. The descent stops at the assembly edge, so the rule is a statement about this package
+and not about its callers. It reads through
 `IlCallGraph`, the shared IL reader extracted out of `MetalAutoreleaseArchitectureTests` for this rule and the
 one phase 4 will want next. Closed https://github.com/APKiwiOrg/KhaozEngine/issues/594.
 

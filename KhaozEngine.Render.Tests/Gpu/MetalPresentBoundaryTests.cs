@@ -89,6 +89,46 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
+        /// M-W8's HEADLINE CLAIM, ASSERTED FROM UNDERNEATH RATHER THAN STATED IN A COMMENT: neither blocking
+        /// call runs inside the submit lock. Nothing above the api can see which lock its caller happens to be
+        /// holding, so the fake is handed the harness's own lock object and asks
+        /// <c>Monitor.IsEntered</c> at the moment of each call.
+        /// <para>
+        /// THE TWO FAILURES ARE DIFFERENT SIZES AND BOTH MATTER. <c>-nextDrawable</c> inside the lock stops
+        /// every other thread's submit for the length of a display refresh, which is a stall. M-W6's
+        /// <c>-commandBuffer</c> inside the lock is a DEADLOCK: it blocks at the queue's own maximum of
+        /// uncommitted buffers and every commit that could release one needs this same lock.
+        /// </para>
+        /// <para>
+        /// THE PRESENT IS THE POSITIVE CONTROL, and without it both assertions above would pass on a fake that
+        /// could not see the lock at all, which is the way a negative row rots.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void NeitherBlockingCallRunsInsideTheSubmitLock()
+        {
+            Harness h = Harness.Windowed(scriptDrawables: 3);
+
+            // A resize queued first, so the boundary's other in-lock arm (the drain and the apply) runs too.
+            h.Boundary.QueueResize(320u, 200u);
+            h.Boundary.Present();
+            h.Boundary.Present();
+
+            Assert.False(h.Api.AcquireSawLockHeld,
+                "a drawable acquire ran with the submit lock held. -nextDrawable blocks for up to a display "
+                + "refresh, so that is every other thread's submit stopped for a frame (M-W8).");
+
+            Assert.False(h.Api.PresentBufferSawLockHeld,
+                "M-W6's present command buffer was taken with the submit lock held. -commandBuffer blocks at "
+                + "the queue's own maximum of uncommitted buffers and every commit that could release one takes "
+                + "this lock, so that is a deadlock rather than a stall.");
+
+            Assert.True(h.Api.PresentSawLockHeld,
+                "the present did NOT see the submit lock held, so this fake cannot observe the lock at all and "
+                + "the two assertions above proved nothing.");
+        }
+
+        /// <summary>
         /// THE PRESENTED DRAWABLE IS THE ONE THE FRAME RENDERED INTO, and the next frame binds the next one. A
         /// boundary that presented the drawable it had just acquired would present a frame nothing had drawn into,
         /// which is a black window rather than an error, and is exactly the failure the acquire-at-the-boundary

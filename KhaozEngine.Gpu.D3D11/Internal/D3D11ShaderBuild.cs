@@ -84,11 +84,23 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// Compile a compute GLSL source to DXBC, reading the workgroup size out of the SPIR-V on the way through.
         /// <paramref name="cache"/> may be null, as for <see cref="Pair"/>.
         /// <para>
-        /// The SPIR-V is compiled here even on a cache hit, because the workgroup size lives in the module and
+        /// THE SPIR-V IS COMPILED HERE EVEN ON A CACHE HIT, because the workgroup size lives in the module and
         /// nothing else reports it: <c>Veldrid.SPIRV</c>'s compute result carries only the cross-compiled source
         /// and a resource-layout reflection, and Direct3D takes the size from the module without ever handing it
-        /// back. Caching the three numbers beside the DXBC would be a second thing to keep in sync with the
-        /// shader for a saving measured in microseconds.
+        /// back. What stops this cache carrying the numbers anyway is its PAYLOAD: an entry here is a bare DXBC
+        /// blob written straight to disk, with no header, no version and nowhere to put three more integers, so
+        /// carrying them would mean inventing a container and a format version for this backend.
+        /// </para>
+        /// <para>
+        /// THE METAL SIBLING DOES CARRY THEM, AND THAT IS SOUND RATHER THAN INCONSISTENT.
+        /// <c>MetalMslCacheEntry</c> is a written structure with a magic, a format version and an authenticating
+        /// hash already, because its payload is MSL plus a binding table and neither has a reader below it that
+        /// would refuse a mangled one. Three more integers in a structure that exists cost twelve bytes and buy
+        /// the other half of that backend's compile, so a Metal compute hit skips glslang as well. Drift is not
+        /// the reason to refuse them on either backend: both keys hash the shader's own source, so a changed
+        /// shader is a different entry rather than a stale one, and the numbers cannot disagree with the module
+        /// they were read from. The reason here is the format, and a maintainer who gives this cache a container
+        /// may carry them too.
         /// </para>
         /// </summary>
         /// <exception cref="ShaderValidationException">The source failed to compile to SPIR-V, failed to

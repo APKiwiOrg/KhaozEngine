@@ -636,7 +636,12 @@ samplers in a second set map fine. The read is silent, so it surfaces as garbage
 rather than as a validation failure. **And the doc records that it holds OFFSCREEN as well as windowed**,
 which matters in a moment. The consequences are shipped and expensive: the splat terrain carries a bespoke
 combined UBO per material with the frame block re-synced into it each frame, and the engine-wide rule for any
-new render path is that a pipeline reads exactly one uniform buffer at set 0 binding 0.
+new render path is that a pipeline reads exactly one uniform buffer at set 0 binding 0. (**Corrected in place:
+2.3a measured it and the statement above is TOO BROAD.** Two of the three shapes measured are
+two-uniform-buffer pipelines that bind CORRECTLY on the incumbent today. What mis-binds is narrower, a STAGE
+that references fewer buffers than the declared layout array puts before them, and the texture clause is a
+result about the shapes measured rather than a property of the texture index space. The paragraph is kept as
+written because it is the constraint this section was ruling on. See the row 17 addendum in 2.3a.)
 
 **The reuse-first position: M-B1 turns it from a constraint into a convention.** If the backend binds at the
 index the compiler chose, a second uniform buffer binds correctly, so the rule survives only because the

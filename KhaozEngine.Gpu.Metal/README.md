@@ -236,7 +236,7 @@ Metal command-buffer failure is invisible to the engine and to telemetry today. 
 and the handler owns reporting, and the handler takes no lock, touches no dictionary and advances no counter.
 
 It is one global block carrying no captures, so it finds the right latch by reading `[commandBuffer
-commandQueue]` and scanning a four-slot lock-free table. **The key is the queue rather than the device because
+commandQueue]` and scanning a 64-slot lock-free table. **The key is the queue rather than the device because
 of a measurement:** `MTLCreateSystemDefaultDevice` called twice in one process hands back the same pointer, so
 two engine devices on one GPU are indistinguishable by `MTLDevice` and a device-keyed table would both refuse
 the second device's registration and route a torn-down device's late completions into its successor's latch. A

@@ -598,7 +598,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // timeline allocated a value for.
             MetalCommandBufferFault fault = Drain("waitUntilCompleted (teardown drain)");
 
-            // THE COMPLETION ROUTE STOPS ON EVERY PATH, including the failure one. The table is four slots wide
+            // THE COMPLETION ROUTE STOPS ON EVERY PATH, including the failure one. The table is 64 slots wide
             // for the whole process, so a queue left in it holds a slot for the life of the process on a device
             // that is going away, and a completion arriving after this point has nothing left to latch on to.
             MetalCompletionHandler.Unregister(Queue.Handle);

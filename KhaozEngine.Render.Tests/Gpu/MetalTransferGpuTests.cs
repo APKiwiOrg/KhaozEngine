@@ -34,7 +34,7 @@ namespace KhaozEngine.Tests.Gpu
     /// failure.</para>
     ///
     /// <para><b>IT SITS IN <c>NativeDeviceLifecycle</c></b> because it builds a whole <c>MTLDevice</c> and queue
-    /// beside the suite's own and registers that queue into the same four-slot process-static completion table.
+    /// beside the suite's own and registers that queue into the same process-static completion table.
     /// </para>
     /// </summary>
     [Collection("NativeDeviceLifecycle")]

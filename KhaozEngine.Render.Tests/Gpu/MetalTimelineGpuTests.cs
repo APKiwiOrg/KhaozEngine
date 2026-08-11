@@ -27,7 +27,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <para>
     /// IT SITS IN <c>NativeDeviceLifecycle</c> FOR BOTH OF THAT COLLECTION'S REASONS. It builds a whole
     /// <c>MTLDevice</c> and queue beside the suite's own, which is the collection's original reason, and it
-    /// registers a real queue into the same four-slot process-static table
+    /// registers a real queue into the same process-static table
     /// <see cref="MetalCompletionHandlerTests"/> fills, which is why that class moved here too. A class can only
     /// be in one collection, so a separate registry collection would have forced a choice between the two, and
     /// the device-creating half is the one row 19 requires.

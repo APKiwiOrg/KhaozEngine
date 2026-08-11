@@ -2440,9 +2440,9 @@ block until the process was killed.
 also a row-5 decision rather than a doc one.** The block is global and carries no captures, which is the shape
 row 1's spike proved, so it cannot hold a pointer of its own without becoming a heap block with copy and
 dispose helpers that would then have to outlive every command buffer referencing it. The invoke therefore reads
-`[commandBuffer commandQueue]` and scans a four-slot table of registered latches. **That is not the dictionary
+`[commandBuffer commandQueue]` and scans a 64-slot table of registered latches. **That is not the dictionary
 M-F1 removes.** The thing rejected there is a lock plus a hash lookup inside the driver's callback, once per
-FENCE, and this is a lock-free pointer comparison over at most four slots, once per command buffer. It exists
+FENCE, and this is a lock-free pointer comparison over at most 64 slots, once per command buffer. It exists
 because a process can hold more than one live native Metal device at a time (a test assembly creating and
 disposing headless devices is the ordinary case, which is why row 19's lifecycle collection serialises those
 lifetimes rather than asserting one device exists), and delivering device A's failure to device B's latch would

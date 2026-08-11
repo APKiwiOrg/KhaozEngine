@@ -122,7 +122,7 @@ namespace KhaozEngine.Tests.Gpu
     ///
     /// <para><b>IT ALSO CARRIES THE NATIVE METAL COMPLETION REGISTRY,</b> which is a second piece of shared
     /// state rather than a second meaning. <c>MetalCompletionHandler</c>'s routing table is one process-static
-    /// array of four slots, and the two suites that fill it are <c>MetalCompletionHandlerTests</c> and
+    /// array of 64 slots, and the two suites that fill it are <c>MetalCompletionHandlerTests</c> and
     /// <c>MetalTimelineGpuTests</c>. The second of those BUILDS A DEVICE, so it belongs here on the original
     /// reason, and a class can only be in one collection, so a registry collection of its own would have forced
     /// a choice between serialising the device work and serialising the table. Both suites live here instead,

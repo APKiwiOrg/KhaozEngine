@@ -27,7 +27,7 @@ namespace KhaozEngine.Tests.Gpu
     /// failure, so each row returns early with the platform recorded instead.</para>
     ///
     /// <para><b>IT SITS IN <c>NativeDeviceLifecycle</c></b> because it builds a whole <c>MTLDevice</c> and queue
-    /// beside the suite's own and registers that queue into the same four-slot process-static completion table,
+    /// beside the suite's own and registers that queue into the same process-static completion table,
     /// which is what the collection serialises.</para>
     ///
     /// <para><b>WHAT <c>Assert.Null(DeviceLossReason)</c> MEANS IN EVERY ROW BELOW, ONCE.</b> It is not the

@@ -201,8 +201,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
             catch
             {
                 // Between -newCommandQueue and the constructor taking over, this method holds a +1 queue nothing
-                // else knows about, a +1 shared event behind the timeline, and possibly a slot in the four-slot
-                // completion table. The device is the caller's to release on this path. Unwound in the reverse
+                // else knows about, a +1 shared event behind the timeline, and possibly a slot in the completion
+                // table. The device is the caller's to release on this path. Unwound in the reverse
                 // order of acquisition, and the registration goes first because it is the only one of the three
                 // that another thread can reach. The timeline is null when the shared event itself is what threw.
                 if (registered) MetalCompletionHandler.Unregister(queue.Handle);

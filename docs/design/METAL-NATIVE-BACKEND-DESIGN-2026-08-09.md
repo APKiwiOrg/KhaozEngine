@@ -1168,7 +1168,9 @@ for the file store alone.
 *The shared home.* `KhaozEngine.Gpu/Internal/GpuDiskCache.cs`, five members: `DefaultDirectory(subfolder,
 engineVersion)`, `ResolveDirectory(envValue, subfolder, engineVersion)` with the five disable words,
 `TryReadAllBytes`, `TryWriteAtomic` through a process-unique temporary name, and `TryDelete`, over one private
-recoverable-exception set.
+recoverable-exception set. (Seven later in 17.36.0: `OpenDirectory` and `PruneOtherVersions` joined them for
+[#611](https://github.com/APKiwiOrg/KhaozEngine/issues/611), which is exactly the second shape that issue
+predicted, a rule that lives once because the file store is shared.)
 
 *What each copy does differently.* Nothing, at this level. All three resolve `<local-app-data>/KhaozEngine/<one
 folder>/<engine version>`, all three take the same five disable words and the same verbatim-directory rule, all

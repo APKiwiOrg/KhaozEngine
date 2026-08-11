@@ -34,6 +34,13 @@ namespace KhaozEngine.Gpu.Internal
     /// to delete the whole tree. The engine version is a path SEGMENT for the same reason: an upgrade leaves one
     /// obviously prunable folder rather than files nothing will ever open again.
     /// </para>
+    /// <para>
+    /// AND SOMETHING ACTUALLY PRUNES IT NOW (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/611">
+    /// #611</see>). That prunability was real and no code exercised it, so the tree accumulated one folder per
+    /// engine version a machine had ever run, forever, and only a user or a cleanup tool ever removed one.
+    /// <see cref="OpenDirectory"/> sweeps the siblings at cache open, once per process per cache, which is what
+    /// makes the rule live in ONE place for all three backends rather than three times.
+    /// </para>
     /// </summary>
     internal static class GpuDiskCache
     {
@@ -82,6 +89,113 @@ namespace KhaozEngine.Gpu.Internal
                 "off" or "0" or "false" or "no" or "none" => null,
                 _ => value,
             };
+        }
+
+        /// <summary>
+        /// THE ONE MEMBER A CACHE CALLS AT OPEN: <see cref="ResolveDirectory"/>'s answer, with the stale sibling
+        /// version folders swept when that answer is the DEFAULT location.
+        /// <para>
+        /// THE SWEEP IS GATED ON BEING THE DEFAULT DIRECTORY, never on an explicitly configured one. The three
+        /// environment variables take a directory path VERBATIM with no engine-version segment appended, so a
+        /// caller-named directory has no sibling version folders to reason about and deleting anything beside it
+        /// would be deleting whatever else the caller keeps there. The gate is a comparison against
+        /// <see cref="DefaultDirectory"/> rather than a test for a blank environment value, so pointing the
+        /// variable AT the default location still prunes, and any difference at all (a trailing separator, a
+        /// different spelling of the same path) fails safe by not pruning.
+        /// </para>
+        /// <para>
+        /// SEPARATE FROM <see cref="ResolveDirectory"/> SO THAT ONE STAYS PURE. Resolution is a decision about a
+        /// string and is called freely by tests and by callers who name their own directory. Deleting folders is
+        /// not something either should do as a side effect, and a cache is OPENED once per process, which is
+        /// exactly the frequency this sweep wants.
+        /// </para>
+        /// </summary>
+        /// <param name="envValue">The raw environment value, as <see cref="ResolveDirectory"/> reads it.</param>
+        /// <param name="subfolder">The cache's own folder name.</param>
+        /// <param name="engineVersion">The running engine version, which is the folder that survives.</param>
+        internal static string? OpenDirectory(string? envValue, string subfolder, string engineVersion)
+        {
+            string? directory = ResolveDirectory(envValue, subfolder, engineVersion);
+            if (directory is null) return null;
+
+            if (string.Equals(directory, DefaultDirectory(subfolder, engineVersion), StringComparison.Ordinal))
+            {
+                PruneOtherVersions(directory);
+            }
+
+            return directory;
+        }
+
+        /// <summary>
+        /// Delete every sibling of <paramref name="versionDirectory"/> under its parent, best effort, and never
+        /// throw. Returns how many folders went, for a test and for a diagnostic line.
+        /// <para>
+        /// EVERY OTHER VERSION GOES, INCLUDING A NEWER ONE, and both alternatives were weighed rather than
+        /// skipped. Keeping the previous version back would make a downgrade or a bisect cheap and would roughly
+        /// double the floor, which trades a permanent cost every player pays against a convenience only a
+        /// developer uses, and a developer already has the environment variable. A folder from a NEWER version is
+        /// a downgrade in progress rather than garbage, and deleting it does cost the upgrade back one cold
+        /// start, which is seconds of re-emission and never a wrong answer. Neither is worth a version
+        /// COMPARISON here: parsing a folder name to rank it invents a way to be wrong about a directory whose
+        /// only real property is that the running engine will never open it.
+        /// </para>
+        /// <para>
+        /// A FOLDER THAT WILL NOT DELETE IS LITTER RATHER THAN A FAILURE, matching what <see cref="TryDelete"/>
+        /// does with a file, and it is skipped ON ITS OWN so one locked folder cannot stop the others. Nothing
+        /// here is load bearing: a stale folder is never READ, because the engine version is a path segment as
+        /// well as a key component, so this is disk hygiene and the correct answer to any refusal is to leave it
+        /// and carry on.
+        /// </para>
+        /// </summary>
+        /// <param name="versionDirectory">The running version's own directory, whose siblings are swept. Its own
+        /// folder survives, and so does everything that is not a directory.</param>
+        internal static int PruneOtherVersions(string versionDirectory)
+        {
+            if (string.IsNullOrWhiteSpace(versionDirectory)) return 0;
+
+            string? parent;
+            string keep;
+            try
+            {
+                string trimmed = Path.TrimEndingDirectorySeparator(versionDirectory);
+                parent = Path.GetDirectoryName(trimmed);
+                keep = Path.GetFileName(trimmed);
+            }
+            catch (Exception ex) when (IsRecoverable(ex))
+            {
+                return 0;
+            }
+
+            if (string.IsNullOrEmpty(parent) || keep.Length == 0) return 0;
+
+            string[] siblings;
+            try
+            {
+                if (!Directory.Exists(parent)) return 0;
+                siblings = Directory.GetDirectories(parent);
+            }
+            catch (Exception ex) when (IsRecoverable(ex))
+            {
+                return 0;
+            }
+
+            int removed = 0;
+            foreach (string sibling in siblings)
+            {
+                if (string.Equals(Path.GetFileName(sibling), keep, StringComparison.Ordinal)) continue;
+
+                try
+                {
+                    Directory.Delete(sibling, recursive: true);
+                    removed++;
+                }
+                catch (Exception ex) when (IsRecoverable(ex))
+                {
+                    // Skipped on its own, so the next sibling still goes.
+                }
+            }
+
+            return removed;
         }
 
         /// <summary>

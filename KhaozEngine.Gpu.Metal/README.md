@@ -510,6 +510,14 @@ assemblies that PRODUCE the payload, holding every stage's MSL, every stage's en
 read off that emission and a compute kernel's workgroup size. Over the shipped corpus of 42 programs that is 333 KiB and turns 3,443 ms of cold emission into
 13 ms.
 
+**Old engine versions' folders are swept at cache open** ([#611](https://github.com/APKiwiOrg/KhaozEngine/issues/611)).
+The engine version is a path segment so an upgrade leaves one obviously prunable folder, and nothing used to
+prune one, so a machine kept a folder per engine version it had ever run. Opening the cache now deletes every
+sibling version folder under `<local-app-data>/KhaozEngine/metal-msl/`, running-version folder excepted, best
+effort: one that will not delete is skipped on its own and nothing propagates. Only the DEFAULT location is
+swept, never a directory `KE_METAL_MSL_CACHE` names, which is taken verbatim with no version segment and whose
+neighbours are the caller's own files.
+
 **Why the producing assemblies are in the key, and what it costs you.** The pins name the toolchain, and four of
 those payload fields are read OUT of the emission by engine code the pins do not cover: the entry-point name and
 the argument list, the binding table, the reflected layouts and the workgroup size. Within one engine version,

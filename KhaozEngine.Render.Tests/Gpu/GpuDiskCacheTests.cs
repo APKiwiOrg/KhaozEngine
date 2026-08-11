@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Runtime.Versioning;
 using KhaozEngine.Gpu.Internal;
 using Xunit;
 
@@ -124,6 +125,190 @@ namespace KhaozEngine.Tests.Gpu
 
             GpuDiskCache.TryDelete(Path.Combine(temp.Path, "absent.bin"));
             GpuDiskCache.TryDelete(temp.Path);   // a non-empty directory: also not a failure
+        }
+
+        // ---- pruning the version folders earlier releases left behind (#611) -----------------------------
+
+        /// <summary>
+        /// THE SWEEP AT CACHE OPEN. All three backends put the engine version in the PATH so an upgrade leaves
+        /// one obviously prunable folder, and until #611 nothing ever pruned one, so a machine accumulated a
+        /// folder per engine version it had ever run. The running version's own folder survives, with everything
+        /// in it, and so does anything under the parent that is not a directory.
+        /// </summary>
+        [Fact]
+        public void OldVersionFolders_GoAndTheRunningOneSurvives()
+        {
+            using var temp = new TempDirectory();
+            string running = MakeVersionFolder(temp.Path, Version);
+            string old = MakeVersionFolder(temp.Path, "1.2.2");
+            string older = MakeVersionFolder(temp.Path, "0.9.0");
+            string newer = MakeVersionFolder(temp.Path, "1.3.0");   // a downgrade in progress, not spared
+            string loose = Path.Combine(temp.Path, "not-a-version-folder.txt");
+            File.WriteAllText(loose, "a file beside them is not a version folder");
+
+            Assert.Equal(3, GpuDiskCache.PruneOtherVersions(running));
+
+            Assert.True(Directory.Exists(running));
+            Assert.True(File.Exists(Path.Combine(running, "entry.bin")));
+            Assert.False(Directory.Exists(old));
+            Assert.False(Directory.Exists(older));
+            Assert.False(Directory.Exists(newer));
+            Assert.True(File.Exists(loose));
+
+            // Idempotent: a second open has nothing left to do rather than something to fail on.
+            Assert.Equal(0, GpuDiskCache.PruneOtherVersions(running));
+        }
+
+        /// <summary>A trailing separator is the same directory, so it must not read as a nameless leaf whose
+        /// parent is the version folder itself, which would sweep the running version's own contents.</summary>
+        [Fact]
+        public void ATrailingSeparator_NamesTheSameVersionFolder()
+        {
+            using var temp = new TempDirectory();
+            string running = MakeVersionFolder(temp.Path, Version);
+            MakeVersionFolder(temp.Path, "1.2.2");
+
+            Assert.Equal(1, GpuDiskCache.PruneOtherVersions(running + Path.DirectorySeparatorChar));
+            Assert.True(File.Exists(Path.Combine(running, "entry.bin")));
+        }
+
+        /// <summary>
+        /// A SIBLING THAT WILL NOT DELETE IS SKIPPED ON ITS OWN, so one locked folder cannot stop the others and
+        /// nothing propagates. The arrangement is POSIX mode bits, which is why this leg is Unix-only, and it
+        /// does not bind for a process running as root, so the survival half is asserted only where a probe
+        /// proves the arrangement took. The never-throws half and the other sibling are asserted either way.
+        /// </summary>
+        [Fact]
+        public void ASiblingThatWillNotDelete_IsSkippedRatherThanThrown()
+        {
+            if (OperatingSystem.IsWindows()) return;   // the arrangement below is POSIX mode bits
+
+            AssertABlockedSiblingIsSkipped();
+        }
+
+        [UnsupportedOSPlatform("windows")]
+        static void AssertABlockedSiblingIsSkipped()
+        {
+            using var temp = new TempDirectory();
+            string running = MakeVersionFolder(temp.Path, Version);
+            string deletable = MakeVersionFolder(temp.Path, "1.2.2");
+            string blocked = MakeVersionFolder(temp.Path, "1.1.0");
+            File.SetUnixFileMode(blocked, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+
+            try
+            {
+                GpuDiskCache.PruneOtherVersions(running);   // must not throw
+
+                Assert.True(Directory.Exists(running));
+                Assert.False(Directory.Exists(deletable));   // the refusal did not stop the sweep
+                if (ModeBitsBindHere(temp.Path)) Assert.True(Directory.Exists(blocked));
+            }
+            finally
+            {
+                if (Directory.Exists(blocked)) File.SetUnixFileMode(blocked, UnixFileMode.UserRead
+                    | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            }
+        }
+
+        /// <summary>A layout with no version folders under the parent has nothing to prune, and a parent that is
+        /// not there at all is not a failure either.</summary>
+        [Fact]
+        public void ALayoutWithNoVersionFolders_PrunesNothing()
+        {
+            using var temp = new TempDirectory();
+            string only = MakeVersionFolder(temp.Path, Version);
+            File.WriteAllText(Path.Combine(temp.Path, "stray.bin"), "not a directory");
+
+            Assert.Equal(0, GpuDiskCache.PruneOtherVersions(only));
+            Assert.True(File.Exists(Path.Combine(temp.Path, "stray.bin")));
+
+            Assert.Equal(0, GpuDiskCache.PruneOtherVersions(Path.Combine(temp.Path, "absent", Version)));
+            Assert.Equal(0, GpuDiskCache.PruneOtherVersions("   "));
+        }
+
+        /// <summary>
+        /// THE SWEEP IS GATED ON THE DEFAULT DIRECTORY. An explicitly configured one is taken verbatim with no
+        /// version segment, so its neighbours are whatever the caller keeps there and deleting them would be
+        /// deleting the caller's own files. A disable word still resolves to no cache and prunes nothing.
+        /// </summary>
+        [Fact]
+        public void AnExplicitlyConfiguredDirectory_IsOpenedWithoutPruningItsNeighbours()
+        {
+            using var temp = new TempDirectory();
+            string configured = MakeVersionFolder(temp.Path, Version);
+            string neighbour = MakeVersionFolder(temp.Path, "something-else-the-caller-keeps");
+
+            Assert.Equal(configured, GpuDiskCache.OpenDirectory(configured, Subfolder, Version));
+
+            Assert.True(Directory.Exists(neighbour));
+            Assert.True(File.Exists(Path.Combine(neighbour, "entry.bin")));
+            Assert.Null(GpuDiskCache.OpenDirectory("off", Subfolder, Version));
+        }
+
+        /// <summary>The default location is opened AND swept, which is the whole point, and the answer is still
+        /// the directory <see cref="GpuDiskCache.ResolveDirectory"/> would have given.</summary>
+        [Fact]
+        public void TheDefaultDirectory_IsOpenedAndSwept()
+        {
+            string expected = GpuDiskCache.DefaultDirectory(OpenSubfolder, Version);
+            if (expected.Length == 0) return;   // a platform with no local app data runs without a cache
+
+            string? parent = Path.GetDirectoryName(expected);
+            Assert.NotNull(parent);
+
+            try
+            {
+                string stale = MakeVersionFolder(parent!, "0.0.1");
+
+                Assert.Equal(expected, GpuDiskCache.OpenDirectory(null, OpenSubfolder, Version));
+                Assert.False(Directory.Exists(stale));
+            }
+            finally
+            {
+                if (Directory.Exists(parent!)) Directory.Delete(parent!, recursive: true);
+            }
+        }
+
+        /// <summary>A subfolder of this test's own, so the sweep above can only ever touch a tree this test
+        /// made. Sharing <see cref="Subfolder"/> with the pure resolution cases would be a test that deletes
+        /// whatever another one left behind.</summary>
+        const string OpenSubfolder = "test-disk-cache-open";
+
+        static string MakeVersionFolder(string parent, string name)
+        {
+            string path = Path.Combine(parent, name);
+            Directory.CreateDirectory(path);
+            File.WriteAllBytes(Path.Combine(path, "entry.bin"), new byte[] { 1 });
+            return path;
+        }
+
+        // True when POSIX mode bits actually deny this process, which they do not for root.
+        [UnsupportedOSPlatform("windows")]
+        static bool ModeBitsBindHere(string parent)
+        {
+            string probe = Path.Combine(parent, "mode-probe");
+            Directory.CreateDirectory(probe);
+            File.WriteAllBytes(Path.Combine(probe, "entry.bin"), new byte[] { 1 });
+            File.SetUnixFileMode(probe, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+
+            try
+            {
+                Directory.Delete(probe, recursive: true);
+                return false;   // it deleted anyway, so the arrangement proves nothing here
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return true;
+            }
+            finally
+            {
+                if (Directory.Exists(probe))
+                {
+                    File.SetUnixFileMode(probe, UnixFileMode.UserRead | UnixFileMode.UserWrite
+                        | UnixFileMode.UserExecute);
+                    Directory.Delete(probe, recursive: true);
+                }
+            }
         }
 
         sealed class TempDirectory : IDisposable

@@ -803,6 +803,14 @@ too. Every failure is a miss: a cache that cannot be read or written is a slower
 alone because any OTHER value is taken as a directory path verbatim, so a narrower vocabulary would quietly turn
 `KE_D3D11_SHADER_CACHE=0` into a cache directory named `0` beside whatever the process's working directory is.
 
+**Old engine versions' folders are swept at cache open** ([#611](https://github.com/APKiwiOrg/KhaozEngine/issues/611)).
+The engine version is a path segment so an upgrade leaves one obviously prunable folder, and nothing used to
+prune one, so a machine kept a folder per engine version it had ever run. Opening the cache now deletes every
+sibling version folder under `<local-app-data>/KhaozEngine/d3d11-dxbc/`, running-version folder excepted, best
+effort: one that will not delete is skipped on its own and nothing propagates. Only the DEFAULT location is
+swept, never a directory `KE_D3D11_SHADER_CACHE` names, which is taken verbatim with no version segment and
+whose neighbours are the caller's own files.
+
 **A holed vertex input signature fails loudly instead of corrupting a frame.** SPIRV-Cross drops a vertex input
 the vertex stage does not read, and names each survivor `TEXCOORD<location>`, so dropping the middle of a
 declared range holes the emitted signature, and FXC plus WARP miscompile a holed signature silently. It has cost

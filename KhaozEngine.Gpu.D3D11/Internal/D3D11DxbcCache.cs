@@ -92,15 +92,31 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// The cache <paramref name="envValue"/> asks for, or null for no cache. Blank means the default
         /// location, a disable word means null, and anything else is taken as a directory path VERBATIM (no
         /// engine-version segment appended: a caller who names a directory means that directory).
+        /// <para>
+        /// THE PURE DECISION, AND ONLY THE DECISION. Nothing in the shipped path calls it, which is deliberate
+        /// rather than an oversight: <see cref="FromEnvironment"/> is the OPEN, and an open also prunes. Wiring
+        /// this back into it would drop that sweep silently, and pruning here would make a member tests call
+        /// freely delete folders as a side effect.
+        /// </para>
         /// </summary>
         internal static D3D11DxbcCache? Resolve(string? envValue)
             => GpuDiskCache.ResolveDirectory(envValue, Subfolder, D3D11ShaderKey.EngineVersion) is { } directory
                 ? new D3D11DxbcCache(directory)
                 : null;
 
-        /// <summary>The same decision read from the live environment. The one impure member here.</summary>
+        /// <summary>
+        /// The same decision read from the live environment, and the cache OPEN rather than only the decision.
+        /// The one impure member here, in both senses: it reads the environment, and when the answer is the
+        /// default location it sweeps the sibling engine-version folders left behind by earlier releases
+        /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/611">#611</see>). Never an explicitly
+        /// configured directory, which has no version segment and therefore no siblings to reason about.
+        /// </summary>
         internal static D3D11DxbcCache? FromEnvironment()
-            => Resolve(Environment.GetEnvironmentVariable(EnvVarName));
+            => GpuDiskCache.OpenDirectory(
+                Environment.GetEnvironmentVariable(EnvVarName), Subfolder, D3D11ShaderKey.EngineVersion)
+                    is { } directory
+                ? new D3D11DxbcCache(directory)
+                : null;
 
         /// <summary>The file an entry lives in. Throws on a key that is not one, because a caller asking for a
         /// path means it wants a path. The two best-effort members below guard first rather than call this with

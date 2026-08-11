@@ -8852,7 +8852,9 @@ ran. Any other value is a directory path, which is why the disable words are a s
 failure on the path is a colder start and nothing else: a missing file, an unreadable one, a truncated one, one
 whose header names another device and a disk that cannot be written all fall back to compiling, and none of them
 propagate. The blob's header is validated before the driver is ever handed it, so a corrupt file is discarded
-here rather than parsed there.
+here rather than parsed there. Opening the cache also sweeps the OTHER engine versions' folders beside it, so
+the tree holds the running version's folder rather than one per version the machine has ever run. Only the
+default location is swept, never a directory you named yourself.
 
 **`KE_VULKAN_ACQUIRE` picks how the present boundary gets the next swapchain image**, and it exists to settle a
 measurement rather than to hedge a risk. Two values, unset meaning the first:
@@ -9003,7 +9005,9 @@ fresh every time, which is what to do when you are chasing a binding or shader p
 what ran. Any other value is a directory path, which is why the disable words are a set rather than `off` alone.
 Every failure is a miss and a cache that cannot be read or written is a slower start and nothing else, and an
 entry that does not authenticate, does not restate its own key, is not this payload format or describes a binding
-table that fails its structural checks is deleted rather than used.
+table that fails its structural checks is deleted rather than used. Opening the cache also sweeps the OTHER
+engine versions' folders beside it, so the tree holds the running version's folder rather than one per version
+the machine has ever run. Only the default location is swept, never a directory you named yourself.
 
 **Layouts and sets are the same code you already write**, with one declaration this backend refuses that the
 others take: `GpuResourceLayoutElement`'s `dynamic: true` on a texture or a sampler element. The per-draw offset
@@ -9413,7 +9417,9 @@ Point the variable at a directory to relocate it (a CI workspace, or a machine w
 writable), or set it to any of `off`, `0`, `false`, `no` or `none` to compile fresh every time, which is what to
 do when you are chasing a shader miscompile and want to be sure of what ran. Any other value is a directory path,
 which is why the disable words are a set rather than `off` alone. A cache that cannot be read or written is a slower start and nothing
-else: every failure is a miss and nothing propagates.
+else: every failure is a miss and nothing propagates. Opening the cache also sweeps the OTHER engine versions'
+folders beside it, so the tree holds the running version's folder rather than one per version the machine has
+ever run. Only the default location is swept, never a directory you named yourself.
 
 ### Diagnostics on the native Direct3D 11 backend (17.32.0)
 

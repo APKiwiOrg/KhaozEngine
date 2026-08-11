@@ -8,9 +8,10 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 ## 17.36.0
 
 A crash that nothing logged now writes its own file, the Metal shader emission is cached across
-processes, both shader-cache keys learn to name the cross-compiler that produced the bytes, the MSAA resolve
-destinations gain the instrument the golden family is not, the Retina first frame is sized in pixels, and two of
-phase 4's guards get the teeth their prose already claimed.
+processes, both shader-cache keys learn to name the cross-compiler that produced the bytes, the GPU disk caches
+start pruning the version folders they leave behind, the MSAA resolve destinations gain the instrument the golden
+family is not, the Retina first frame is sized in pixels, and two of phase 4's guards get the teeth their prose
+already claimed.
 
 ### The last-chance crash file (`CrashReport`, #607)
 
@@ -306,6 +307,42 @@ that takes the identity, so the contribution is asserted without restoring two v
 source array on those overloads is deliberately NOT `params`: two `params` overloads ending in strings would let
 a call bind to the wrong one and fold an identity into the source list, which is the one place a silent mis-bind
 costs a wrong payload with no error.
+
+### The GPU disk caches prune the engine-version folders they leave behind (#611)
+
+`GpuDiskCache.OpenDirectory` is what a cache calls at open now, and when the directory it resolves is the DEFAULT
+location it sweeps the sibling engine-version folders first. All three backends get it from one place, because
+the file store has been shared since #606.
+
+**The prunability was real and nothing exercised it.** Every one of the three caches puts the engine version in
+the PATH rather than only in the key, deliberately, so an upgrade leaves one obviously prunable folder rather
+than files nothing will ever open again. Nothing ever deleted one, so the tree accumulated a folder per engine
+version a machine had ever run, forever, and only a user or a cleanup tool removed any of them. A developer
+machine that has run twenty engine versions carried twenty folders. Small per version and unbounded in versions:
+`metal-msl` measures 42 entries and 333 KiB over the shipped corpus, `d3d11-dxbc` is roughly double that file
+count at one file per compiled STAGE, and `vulkan-pipeline-cache` is one blob per GPU in the machine.
+
+**Not a correctness fix, which is why it was low priority.** A stale folder is never READ: the engine version is
+a path segment AND a key component on both keyed backends, so an old folder's entries are unreachable rather
+than wrong. This is disk hygiene.
+
+**Every other version goes, including a newer one**, and both alternatives were weighed. Keeping the previous
+version back would make a downgrade or a bisect cheap and would roughly double the floor, which trades a
+permanent cost every player pays for a convenience only a developer wants, and a developer already has the
+environment variable. A folder from a NEWER version is a downgrade in progress rather than garbage, and deleting
+it costs the upgrade back one cold start, which is seconds of re-emission and never a wrong answer. Neither is
+worth a version COMPARISON: parsing a folder name to rank it invents a way to be wrong about a directory the
+running engine will never open.
+
+**Only the default directory, and best effort throughout.** `KE_METAL_MSL_CACHE`, `KE_D3D11_SHADER_CACHE` and
+`KE_VULKAN_PIPELINE_CACHE` take a directory VERBATIM with no version segment appended, so a caller-named
+directory has no sibling version folders to reason about and deleting anything beside it would be deleting the
+caller's own files. The gate is a comparison against the default path rather than a test for a blank environment
+value, so pointing a variable AT the default location still prunes and any difference at all fails safe by not
+pruning. A folder that will not delete is skipped ON ITS OWN, so one locked folder cannot stop the others, and
+nothing propagates, which is the posture the rest of the file store already had. `ResolveDirectory` stays pure
+and is still what an explicitly named directory goes through, because deciding about a string and deleting
+folders should not be the same call.
 
 ## 17.35.0
 

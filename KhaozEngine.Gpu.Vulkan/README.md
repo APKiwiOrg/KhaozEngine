@@ -944,6 +944,15 @@ are all defensive:
 `KE_VULKAN_PIPELINE_CACHE=<directory>` relocates it and `KE_VULKAN_PIPELINE_CACHE=off` turns it off, so a session
 chasing a pipeline miscompile can prove it is compiling fresh rather than believing it.
 
+**Old engine versions' folders are swept at cache open** ([#611](https://github.com/APKiwiOrg/KhaozEngine/issues/611)).
+The engine version is a path segment so an upgrade leaves one obviously prunable folder, and nothing used to
+prune one, so a machine kept a folder per engine version it had ever run. Opening the cache now deletes every
+sibling version folder under `<local-app-data>/KhaozEngine/vulkan-pipeline-cache/`, running-version folder
+excepted, best effort: one that will not delete is skipped on its own and nothing propagates. Only the DEFAULT
+location is swept, never a directory `KE_VULKAN_PIPELINE_CACHE` names, which is taken verbatim with no version
+segment and whose neighbours are the caller's own files. This folder is the smallest of the three, one blob per
+GPU in the machine rather than one file per program.
+
 **Binding a pipeline invalidates descriptor slots from the first INCOMPATIBLE set onward.** `SetPipeline` emits
 `vkCmdBindPipeline` and then hands the pipeline's own `VkPipelineLayout` and set-layout sequence to the matching
 bind records, whose compatibility-prefix computation landed a row early with the bind flush. A rebind of the

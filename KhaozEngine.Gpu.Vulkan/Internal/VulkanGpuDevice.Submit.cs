@@ -44,6 +44,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
 
+            // READ ONCE, and through the property rather than off the field: a list needs the loaded entry points
+            // five times below, and a device the test hook built has none, which this refuses by name at the top
+            // rather than a third of the way through the wiring.
+            VulkanInstance instance = Instance;
+
             var ring = new VulkanCommandPoolRing(_commands, _framesInFlight, _timeline, _backpressure);
 
             // ITS OWN STAGING ARENA (V-M9, 9.3), on the device's ONE staging source so every block on the device
@@ -56,7 +61,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // (V-A4) reachable on every list rather than on the ones a caller remembered to finish wiring. See
             // IVulkanRecordUploads.UseRenderingScope.
             var uploads = new VulkanListUploads(
-                _instance.Value.Api, ring, new VulkanStagingArena(_staging, _framesInFlight));
+                instance.Api, ring, new VulkanStagingArena(_staging, _framesInFlight));
 
             // DECISION V-R7's DRAW-TIME HALF FOLLOWS THE SAME LEVER THE LAYER ITSELF DOES. The assertion that every
             // bound set's layout is the pipeline layout's set layout at that index is a per-bind loop, so it is
@@ -64,34 +69,34 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // rather than off the environment a second time: two reads could disagree if the variable moved
             // mid-process, and a device whose lists disagree with its own instance about validation is the worst
             // available answer.
-            bool assertBoundSetLayouts = _instance.Value.Validation != VulkanValidationMode.Off;
+            bool assertBoundSetLayouts = instance.Validation != VulkanValidationMode.Off;
 
             // ROW 12's SIX RENDERING CALLS (https://github.com/APKiwiOrg/KhaozEngine/issues/522), which are
             // stateless: the seam is one Vk reference and the whole deferred-begin schedule sits above it inside
             // the list. One instance per list rather than one per device only because the list constructs its own
             // schedule from it, and neither object holds anything a second list could disturb.
-            var render = new VulkanRenderApi(_instance.Value.Api);
+            var render = new VulkanRenderApi(instance.Api);
 
             // ROW 13's ONE RECORD-TIME CALL (https://github.com/APKiwiOrg/KhaozEngine/issues/523), stateless for
             // the same reason and built per list for the same reason. It is NOT the device's _pipelines: that one
             // can create a pipeline and this one can only bind one, which is what keeps a shader compile off every
             // path a recorder can reach.
-            var bindPipeline = new VulkanPipelineBinder(_instance.Value.Api);
+            var bindPipeline = new VulkanPipelineBinder(instance.Api);
 
             // ROW 14's LIST-LOCAL LAYOUT MAP (https://github.com/APKiwiOrg/KhaozEngine/issues/524). ONE PER LIST
             // AND THAT IS THE WHOLE DECISION, not an allocation choice: a tracker shared between two lists would
             // be exactly the record-time layout state on a shared object that V-F7 exists to eliminate, and the
             // loser of the race would skip a barrier it needed (section 2.5). Its recorder is stateless and could
             // be shared, and is not, for the reason the two above are not.
-            var layouts = new VulkanLayoutTracker(new VulkanBarrierRecorder(_instance.Value.Api));
+            var layouts = new VulkanLayoutTracker(new VulkanBarrierRecorder(instance.Api));
 
             // ROW 15's TWO SEAMS (https://github.com/APKiwiOrg/KhaozEngine/issues/525), stateless and per list for
             // the reason the three above are. The DRAW emitter carries the descriptor flush and the command as one
             // monomorphized pair, so it is the line the device-free budget substitutes to see a vkCmdDraw at
             // all. The TRANSFER sink is the six copy, blit and resolve calls, which no budget counts because none
             // of them scales with draw count.
-            var draws = new VulkanDrawEmitter(_instance.Value.Api);
-            var transfers = new VulkanTransferSink(_instance.Value.Api);
+            var draws = new VulkanDrawEmitter(instance.Api);
+            var transfers = new VulkanTransferSink(instance.Api);
 
             return new VulkanCommandList(
                 ring, _retired, uploads, assertBoundSetLayouts, render, bindPipeline, layouts, draws, transfers);

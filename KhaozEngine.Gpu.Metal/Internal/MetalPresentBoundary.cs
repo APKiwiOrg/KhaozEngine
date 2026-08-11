@@ -312,6 +312,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         void AcquireAndPublish()
         {
+            // READ BEFORE THE ACQUIRE OVERWRITES IT, so the release below is a TRANSITION rather than a question
+            // asked every frame. An unconditional call would be a harmless no-op on the real target and would put
+            // a release in the log of every ordinary boundary, which makes "the orphan dies at the next
+            // successful acquire" true only in the sense that the call happens.
+            bool wasOrphanBound = _orphanBound;
+
             MetalAttachment attachment = Acquire();
             Framebuffer.Adopt(attachment, _size);
 
@@ -319,7 +325,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // Its lifetime is the DEVICE's precisely so a recording that bound it is not left naming a destroyed
             // texture, and releasing it before the framebuffer had been repointed would be that exact failure
             // narrowed to one statement.
-            if (!_orphanBound) _orphan.Release();
+            if (wasOrphanBound && !_orphanBound) _orphan.Release();
         }
 
         MetalAttachment Acquire()

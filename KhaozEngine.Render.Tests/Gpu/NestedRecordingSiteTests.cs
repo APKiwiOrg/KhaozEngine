@@ -310,6 +310,33 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
+        /// THE BARRIER'S REFUSAL IS DATA-DEPENDENT, which is the half a host has to be told about, because it is
+        /// what makes this site behave unlike the other six. <c>RetiredResourcePool.BeginFrame</c> only reaches the
+        /// barrier when something was RETIRED since the previous Begin, so a mis-phased host boots perfectly clean,
+        /// runs its whole menu and its first minutes of play, and then throws on the first mesh unload. Both halves
+        /// are pinned here so neither can drift: no retirement is silent, one retirement refuses.
+        /// </summary>
+        [Fact]
+        public void Scene3D_Begin_inside_a_recording_refuses_only_once_something_has_been_retired()
+        {
+            using var device = new OpenListTrackingGpuDevice(completionFences: true);
+            using IGpuFramebuffer fb = NewTarget(device.Factory);
+            using var scene = new Scene3D(device, fb.Outputs);
+            using IGpuCommandList frameList = device.Factory.CreateCommandList();
+
+            using (OpenFrame(device, frameList))
+            {
+                scene.Begin();                   // nothing retired, so the barrier is never reached
+                scene.Begin();
+            }
+
+            scene.UnloadMesh(scene.LoadMesh(Triangle()));
+
+            using (OpenFrame(device, frameList))
+                AssertRefused(scene.Begin, "GpuRetireBarrier.Submit");
+        }
+
+        /// <summary>
         /// And the same barrier from where every host actually begins a scene, which is the frame's pre-record
         /// phase. It submits, nothing is refused, and the peak stays at one open recording.
         /// </summary>

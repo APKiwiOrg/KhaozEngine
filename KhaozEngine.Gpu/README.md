@@ -222,7 +222,13 @@ What it owns today:
   generates and every readback), so the refusal reads the same on every backend and is provable with no GPU.
   Calling `IGpuCommandList.Begin` directly stays legal and unwatched: a consumer's own list gets whatever its
   backend does. Keyed by device instance with no strong reference, and per device rather than per thread, because
-  the contract is.
+  the contract is. Three properties are worth knowing before you build on it. A refusal frees whatever the
+  refused call had already built, so catching it and moving the call leaks nothing even when it is retried every
+  frame. `CanOpen` is advisory rather than a reservation, so a concurrent `Open` can win the race between the
+  `true` it returned and the open it encouraged. And `GpuRecordingScope` is a struct whose release is matched to
+  its own list, so a second `Dispose` and a stale copy both do nothing. Each device's entry carries its own lock and none
+  is held while a backend is inside `Begin`, which blocks by design on the native Metal and Vulkan backends, so
+  one device's GPU backpressure is never paid on another device's thread.
 - **`GpuCapabilities`** - `ClipSpaceYInverted` / `DepthRangeZeroToOne` (so renderers derive clip-Y / depth
   handling from the active backend instead of a baked Metal assumption), plus diagnostics: `DeviceName` (the GPU
   adapter/driver), `SamplerAnisotropy`, `SamplerLodBias` (whether those sampler levers are supported),

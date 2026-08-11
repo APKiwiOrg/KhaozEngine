@@ -381,6 +381,37 @@ It now gets a `GpuNestedRecordingException` naming the fix on every backend. A r
 worth more than a picture that is silently right there and corrupt on a player's. Calling `IGpuCommandList.Begin`
 directly is still legal and still bound by the contract, and is simply not watched.
 
+**A refusal frees what the call had already built.** Four of the seven routed sites opened the recording AFTER
+the expensive allocation, so the first cut threw past a GPU resource nothing owned: a texture per mipped
+`LoadTexture`, two 5-layer mipped arrays per `LoadSplatMaterial`, a render target per
+`Render2DSurface.CaptureToTexture` (whose `finally` deliberately keeps the target, because on the success path it
+survives into the returned `Texture2D`), and a device fence per `GpuRetireBarrier.Submit` (a popped fence is
+already off the free stack and `Dispose` drains only that stack, so it leaked whether it was popped or freshly
+created). That matters because of what the refusal is FOR: it is meant to be recoverable, so a host that retries
+a streaming load every frame leaked one per attempt. The two `Scene3D` sequences moved into
+`Render3D/Internal/TextureUploads`, which owns the create-upload-and-mip path including its failure half.
+
+**The register's gate is per device, and the backend's `Begin` runs outside it.** One process-wide lock was held
+across `Begin`, which blocks by design on the engine's own backends while their rings wait for the GPU, so one
+device's backpressure was paid on another device's thread (measured at half a second). The slot is now claimed
+under its own per-device lock and `Begin` runs outside every lock, with the claim released if `Begin` itself
+throws. Claiming before the `Begin` rather than after is what keeps the refusal correct with no lock held across
+the slow part.
+
+**`GpuRecordingScope` is matched to its own list, so a copy of it is harmless.** It is a struct, and its
+`Dispose` used to end the list and clear the device unconditionally, so a second `Dispose` ended a list that was
+no longer recording (which the native backends throw on) and a stale copy released whatever recording had opened
+since. The claim now carries the list holding it and the release only acts when that list still matches, which
+is what the type's own doc had already promised by calling itself idempotent.
+
+**`Scene3D.Begin`'s refusal is data-dependent, and the docs now say so.** The retire barrier only runs on a
+`Begin` that follows a retirement, so a mis-phased host boots perfectly clean and throws on the first mesh
+unload, potentially minutes into a session. Do not read a clean boot as proof the phase is right.
+`GpuRecording.CanOpen` is likewise documented as advisory rather than a reservation: a concurrent `Open` can win
+the race between the `true` it returned and the open it encouraged. The mid-frame refuser lists in
+`KhaozEngine.Render3D/README.md` and `docs/USING-KHAOZENGINE.md` also gained the two public readbacks they had
+missed, `Scene3D.DebugReadSplatAlbedoMip` and `Render3DPreview.ReadbackRgba`.
+
 ## 17.35.0
 
 ### `KhaozEngine.Gpu.Metal`, phase 4's package skeleton, and the three spikes that ran on real hardware (#567)

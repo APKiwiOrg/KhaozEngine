@@ -53,7 +53,7 @@ this doc cannot silently drift apart.
 
 | Area | Seam (dependency-free) | Backend(s) | Third-party library |
 |---|---|---|---|
-| GPU / rendering | `KhaozEngine.Gpu` (`GpuDeviceContext` + `GpuInterfaces`, `GpuBackendSelector`, and `GpuBackendProviders` / `IGpuBackendProvider` for a backend that ships outside this package) | (in-package) `Internal/VeldridGpuDevice`, which is all four Veldrid legs including Metal, plus THREE engine-owned native backends that ship outside it, each opt-in and in no umbrella: `KhaozEngine.Gpu.D3D11` (`KhaozEngineD3D11.Register()`), `KhaozEngine.Gpu.Vulkan` (`KhaozEngineVulkan.Register()`) and `KhaozEngine.Gpu.Metal` (`KhaozEngineMetal.Register()`), and any other registered out-of-package provider | Veldrid (+ Veldrid.SPIRV, Vortice.Direct3D11) in the seam. Vortice.Direct3D11 + Vortice.D3DCompiler in the D3D11 backend and Silk.NET.Vulkan (+ its KHR and EXT extension packages) in the Vulkan one. The Metal backend declares NO third-party binding at all: its Objective-C interop is engine-owned `libobjc` and `Metal.framework` P/Invoke. None of the three declares a Veldrid package of its own |
+| GPU / rendering | `KhaozEngine.Gpu` (`GpuDeviceContext` + `GpuInterfaces`, `GpuBackendSelector`, `GpuBackendProviders` / `IGpuBackendProvider` for a backend that ships outside this package, and `GpuRecording`, the mandatory open-recording gate described below) | (in-package) `Internal/VeldridGpuDevice`, which is all four Veldrid legs including Metal, plus THREE engine-owned native backends that ship outside it, each opt-in and in no umbrella: `KhaozEngine.Gpu.D3D11` (`KhaozEngineD3D11.Register()`), `KhaozEngine.Gpu.Vulkan` (`KhaozEngineVulkan.Register()`) and `KhaozEngine.Gpu.Metal` (`KhaozEngineMetal.Register()`), and any other registered out-of-package provider | Veldrid (+ Veldrid.SPIRV, Vortice.Direct3D11) in the seam. Vortice.Direct3D11 + Vortice.D3DCompiler in the D3D11 backend and Silk.NET.Vulkan (+ its KHR and EXT extension packages) in the Vulkan one. The Metal backend declares NO third-party binding at all: its Objective-C interop is engine-owned `libobjc` and `Metal.framework` P/Invoke. None of the three declares a Veldrid package of its own |
 | 3D physics | `KhaozEngine.Physics` (`IPhysicsWorld`, value-type shapes/poses/queries, and since the floating-origin release also the default-method `Origin` / `CanRebase` / `Rebase(newOrigin)`, so an existing implementer keeps compiling and correctly reports that it cannot rebase - the seam learns a plain `Vector3`, never a frame type, and keeps its zero project references) | `KhaozEngine.Physics.Bepu` (`BepuPhysicsWorld`, which overrides all three: bulk direct pose writes plus broadphase refits over every allocated body set and the statics, so sleeping bodies, contacts and constraints all survive a shift) | BepuPhysics v2 |
 | Netcode transport | `KhaozEngine.Netcode` (`INetTransport` incl. the default-method `Stats` -> `NetTransportStats`, `LoopbackTransport`) + `Netcode.Abstractions` | `KhaozEngine.Netcode.LiteNetLib` (fills `Stats` via `EnableStatistics`) | LiteNetLib |
 | Persistence | `KhaozEngine.WorldStore` (`IWorldStore`, `InMemoryWorldStore`) | `WorldStore.Sqlite`, `WorldStore.SqlServer` | Microsoft.Data.Sqlite / SqlClient |
@@ -861,6 +861,35 @@ The pattern is applied at the granularity the dependency warrants:
    (`AppWindow` is still the sole toucher), but the half that has no platform dependency is now on the testable
    side of the line, which is what the rule was always for. Two bugs, focus-loss release semantics and
    first-frame cursor priming, had no headless test purely because that half sat inside the GLFW-bound class.
+
+## GPU seam gate: every engine recording opens through `GpuRecording` (17.36.0)
+
+A new kind of seam member, and the first one that is a GATE rather than a contract: `GpuRecording` is where the
+portable one-open-recording-per-device rule on `IGpuCommandList.Begin` stopped being a paragraph and started
+being a refusal. `GpuRecording.Open(device, list, owner)` begins the list and claims the device, the returned
+`GpuRecordingScope` ends it and releases the claim, and a second `Open` on a device that already has one throws
+`GpuNestedRecordingException` naming both sides. Every command list the engine opens goes through it: the
+windowed frame loop, both snapshot hosts, the preview, the offscreen 2D captures, the ocean's priming pass, the
+retire barrier, the mip generates and every readback.
+
+**Why the gate is at the seam and not in a backend.** The backends genuinely disagree about a second concurrent
+recording, and each disagreement is structural for that backend rather than an oversight: the Veldrid Direct3D11
+leg refuses it, the three engine-owned native backends each tolerate N recordings for three different reasons,
+and the Veldrid Metal and Vulkan legs silently produce half a frame. A seam whose behaviour changes when a
+failed device creation falls back to another backend is not a seam, so the rule is enforced above all of them,
+where it reads the same everywhere and is provable with no GPU at all. That makes it the first place in this
+document where the seam constrains its own callers rather than only its implementers.
+
+**What it does not reach**, stated because it bounds the guarantee. A consumer that calls
+`IGpuCommandList.Begin` directly on a list of its own is invisible to the register and gets whatever its backend
+does. That still covers the case that matters, because the OUTER list in a nested pair is almost always the
+engine's own frame list, and the outer one is whose bindings the inner recording destroys.
+
+**No cross-device coupling, by construction.** The register is keyed by device instance in a
+`ConditionalWeakTable`, so a disposed device takes its entry with it, and each entry carries its own lock. No
+lock at all is held while a backend is inside `Begin`, which matters because Begin BLOCKS by design on the
+native Metal and Vulkan backends while their rings wait for the GPU. A process-wide gate around it would have
+turned one device's backpressure into every other device's stall, which is exactly what the first cut did.
 
 ## GPU-backend invariant: ONE uniform buffer per pipeline (Metal via Veldrid/SPIRV-Cross)
 

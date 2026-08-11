@@ -63,8 +63,13 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   issue #429). A host that does neither no longer gets a silently corrupt frame on one backend: every scene path
   that opens a list of its own goes through the seam's open-recording register, so the nesting is a
   `GpuNestedRecordingException` naming both sides on every backend (issue #424). The calls that refuse mid-frame
-  are a mipped `LoadTexture`, `LoadSplatMaterial`, `DebugReadShadowMap`, `Render3DPreview.Capture`, and
-  `Scene3D.Begin` on a device with GPU completion fences (its retire barrier submits).
+  are a mipped `LoadTexture`, `LoadSplatMaterial`, `DebugReadShadowMap`, `DebugReadSplatAlbedoMip`,
+  `Render3DPreview.Capture`, `Render3DPreview.ReadbackRgba`, and `Scene3D.Begin` on a device with GPU completion
+  fences (its retire barrier submits). Every one of them frees whatever it had already built before it was
+  refused, so catching the exception and moving the call costs nothing. **`Scene3D.Begin`'s refusal is
+  data-dependent and the others are not**: the retire barrier only runs when something was retired since the
+  previous `Begin`, so a mis-phased host boots clean and throws on the first mesh unload, which can be minutes
+  into a session rather than on frame one.
 - `TextureMipPolicy` - an optional trailing argument on both `LoadTexture` overloads choosing how much of the mip
   chain to build. `Full` (the default, and what `default(TextureMipPolicy)` is, so every existing call is
   unchanged), `None` for level 0 only, and `AtlasGrid(columns, rows, minCellTexels = 4)` to stop at the coarsest

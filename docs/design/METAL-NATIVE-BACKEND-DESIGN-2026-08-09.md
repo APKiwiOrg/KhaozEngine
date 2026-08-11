@@ -3237,7 +3237,7 @@ backend can answer is exactly the "no seam change" claim phase 3 warned costs a 
 | `CopyBuffer` alignment assertion (9.3) | That no shipped call site produces an unaligned offset, so the named throw is unreachable | Every `dotnet test` |
 | Uncommitted-command-buffer bound (6.1) | That the backend never holds more uncommitted buffers than `FramesInFlight` plus one | Every `dotnet test` |
 | **MM6's two-uniform-buffer probes (2.3)** | Whether the one-UBO constraint is a property of the incumbent's numbering or of Metal, with a pixel READBACK assertion rather than a no-throw assertion. **Taken and PASSED at row 17, and the probes STAY: THREE pixel rows plus the device-free mechanism row, all in `MetalTwoUniformBufferGpuTests` (2.3a)** | Metal leg, gate 3, and the mechanism row on every `dotnet test` |
-| Full `macos-26` suite | 0 failed, 0 skipped, passed at or above the incumbent's on the same commit | Metal leg, every trigger |
+| Full `macos-26` suite | 0 failed, no new skips, 0 skipped in the two `[GpuFact]` assemblies, passed at or above the incumbent's on the same commit | Metal leg, every trigger |
 | `OpenListTrackingGpuDevice` | Nested `Begin`. Stays the PORTABLE guard, passes trivially here, and is NOT evidence about this backend | Every `dotnet test` |
 | `GpuFactSkipReasonTests` extension | That `KE_GPU_TESTS=probe` still answers correctly once a third provider registers | Every `dotnet test` |
 | `GpuDeviceLifecycleTests` | Concurrent create, use and dispose against the native provider | Metal leg |
@@ -3458,11 +3458,15 @@ update flow, then the default. Five gates, all green before any flip.
    references. **This gate is worth more than its siblings and carries more risk**: the `metal` family is the
    fleet's cross-backend reference, so a green here is the strongest evidence any leg in this program produces
    and a red here is a fleet event rather than a leg event.
-2. **Full `macos-26` suite at 0 failed and 0 skipped**, with the passed count at or above the incumbent's on the
-   same commit, `MTL_DEBUG_LAYER=1` producing no validation errors, and MM9 met. **The skip criterion is phase
-   3's rather than phase 2's**: Veldrid Metal already signals on completion, so the `RequiresCompletionFences`
-   pair already runs on this leg and the criterion is NO NEW SKIPS rather than two fewer. A skip is a failed
-   implementation of something, whatever else is green.
+2. **Full `macos-26` suite at 0 failed and no NEW skips**, with the passed count at or above the incumbent's on
+   the same commit, `MTL_DEBUG_LAYER=1` producing no validation errors, and MM9 met. **The skip criterion is
+   phase 3's rather than phase 2's**: Veldrid Metal already signals on completion, so the
+   `RequiresCompletionFences` pair already runs on this leg and the criterion is NO NEW SKIPS rather than two
+   fewer. A skip is a failed implementation of something, whatever else is green. The sharp half of that is the
+   two assemblies carrying `[GpuFact]`, `KhaozEngine.Render.Tests` and `KhaozEngine.MapEditor.Tests`, which is
+   where a Metal row could skip and where the criterion really is ZERO. The leg's own total is not, because its
+   test step names no project and runs the whole solution, which carries a standing set of skips no backend
+   moves.
 3. **Budget test green** with the marginals recorded here, MM3 met, the MSL index-table test green, and
    **MM6's measurement TAKEN and recorded whichever way it went**. No M1-equivalent hangs over this gate,
    because there is one recording driver and nothing to A/B, which is the single biggest difference from phase
@@ -3522,7 +3526,7 @@ phase 3's rollout records established.
 | Gate | Standing | Instrument, and what has to happen for the gate to move |
 |---|---|---|
 | 1. All 36 goldens green, worst-cell delta recorded, MM2 resolved | PENDING, instrument built | The `metal-native` leg's golden compares, and the `golden-deltas-metal-native` artifact it uploads on `always()`. The leg's FIRST run is the push that merges row 19, so the earliest possible reading is that run. The `KE_METAL_CLEAR` A/B is a second dispatch with the variable set, and the switch is removed at this gate either way |
-| 2. Full `macos-26` suite at 0 failed and 0 skipped, passed at or above the incumbent's, no validation errors, MM9 met | PENDING, instrument built | The same leg, which runs the whole suite on every trigger with `MTL_DEBUG_LAYER=1` armed and `KE_METAL_REQUIRED=1` set. **`KE_METAL_REQUIRED` is what makes the zero-skipped half readable at all**: a dormant row is not a skip, so without it the criterion could be satisfied by rows that asserted nothing. The passed-count comparison is against the incumbent Metal leg on the same commit, which is the leg beside it in the same matrix |
+| 2. Full `macos-26` suite at 0 failed and NO NEW SKIPS, with the two `[GpuFact]` assemblies at 0 skipped, passed at or above the incumbent's, no validation errors, MM9 met | PENDING, instrument built | The same leg, which runs the whole suite on every trigger with `MTL_DEBUG_LAYER=1` armed and `KE_METAL_REQUIRED=1` set. **The skip half is read off the `[GpuFact]` assemblies rather than off the leg's own total**, because the leg's test step names no project and therefore runs the whole solution, where a standing set of backend-independent rows skips for reasons this backend cannot move (the `WorldStore.SqlServer` conformance set needs a server, and one `Game.Tests` row skips on its own condition). `KhaozEngine.Render.Tests` and `KhaozEngine.MapEditor.Tests` are where a Metal row could skip, both genuinely reach 0 skipped, and that is the readable criterion. **`KE_METAL_REQUIRED` is what makes it worth reading at all**: a dormant row is not a skip, so without it the criterion could be satisfied by rows that asserted nothing. The passed-count comparison is against the incumbent Metal leg on the same commit, which is the leg beside it in the same matrix |
 | 3. Budget test green with marginals recorded, MM3 met, the MSL index-table test green, MM6 taken | PENDING, one of four halves in hand | MM6 is TAKEN and PASSED (2.3a, row 17). The budget marginals, MM3 and the index-table test are device-free tests that already run on every `dotnet test`, so this gate is a RECORDING task rather than a machine one. Row 18, the #531 extraction, is the only work in section 18 that waits on it |
 | 4. A field session at or above the incumbent's numbers, zero command-buffer errors, MM1, MM4 and MM10 met | PENDING, instrument built, baseline NOT taken | A windowed telemetry session on this Mac, and the FIRST task is the incumbent baseline (MM12), because no Metal field number exists anywhere in this program's record. `GpuDeviceCounters` carries every channel this gate reads, and the session header names the backend. Pin the build line and the capture-window stamps before reading anything |
 | 5. A human windowed pass, with the vsync toggle as a MEASUREMENT | PENDING, instrument built | A person at a window. The checklist is in the gate itself, narrowed by row 15: the layer half of the swapchain runs headless in the `[GpuFact]` suite, so what is genuinely uncovered is `MetalLayerHost`'s four Cocoa selectors and whether anything appears on a screen. It gains one item from #605, the Retina `drawableSize` read on frame one, and the frame-cap arm now has an instrument rather than a judgement: `AcquireWaitMs / AcquireWaitCount` on an uncapped capture with vsync on |

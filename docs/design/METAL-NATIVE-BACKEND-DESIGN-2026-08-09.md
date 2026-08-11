@@ -3383,9 +3383,16 @@ device-free ratchet row pins the floor so the number cannot quietly go back.
 exists is the layout-shape check: it builds a passthrough pipeline declaring NO resource layouts from shaders
 whose reflection reports one empty set, which is #599 exactly, filed at row 11 as unreachable from shipped
 code. It is unreachable from the 34 shipped programs and it was reachable from the engine's own smoke test the
-whole time. Row 19 fixed the TEST, by declaring the empty layout it was already creating and never passing,
-and left the check alone: relaxing a validation rule inside a CI row is how a rule quietly stops holding, and
-#599 already carries the options with the device-free rows they would need. **The lesson is about the
+whole time. Row 19 fixed the TEST and left the check alone: relaxing a validation rule inside a CI row is how a rule
+quietly stops holding, and #599 already carries the options with the device-free rows they would need. **The
+fix took two edits and the second one is the finding.** Declaring the empty layout the test was already
+building satisfies this backend and then breaks the INCUMBENT, with a null dereference inside
+`MTLCommandList.ActivateGraphicsResourceSet` at the draw, because Veldrid reads a declared layout as a promise
+that a set will be bound at that slot. So a resource-free pipeline has no spelling correct on both backends
+without also creating and binding an EMPTY resource set. That is ceremony nobody writes on the first try, and
+it is worth more to #599 than the original refusal was: the question there is framed as this backend's
+strictness, and the thing a consumer actually meets is a shape both implementations dislike for opposite
+reasons. **The lesson is about the
 measurement rather than the defect**: a suite with one systemic failure reports one cause, and the second one
 only becomes visible once the first is removed or routed around, which is an argument for running a broken
 suite a second way rather than fixing it once and believing the number.
@@ -3541,6 +3548,25 @@ this design does not read as unfinished. Section 18's cell lists "the five rollo
 what that means is the gates being STATED, instrumented and recorded here, which this subsection is. Reading
 them is a separate act by a separate agent at a separate time, and four of the five need either a green CI run
 that does not exist yet or a person at a window.
+
+**Gate 2 has a REHEARSAL rather than a reading, and the difference matters enough to name.** Row 19 ran the
+whole `KhaozEngine.Render.Tests` assembly on this Mac in the leg's exact shape, twice, once per trigger tier:
+
+```
+push tier    KE_METAL_REQUIRED=1 MTL_DEBUG_LAYER=1 MTL_CAPTURE_ENABLED=1     0 failed, 6042 passed, 0 skipped, 4m51s
+deep sweep   KE_METAL_REQUIRED=1 MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1   0 failed, 6042 passed, 0 skipped, 5m18s
+```
+
+The INCUMBENT Metal leg's shape was run on the same build too, because every edit this row made to a shared
+test had to hold on both implementations and one of them did not on the first attempt: `KE_GPU_TESTS=1` with no
+backend override reads 0 failed, 6042 passed, 0 skipped in 4m22s.
+
+**That is not gate 2.** Gate 2 is the hosted `macos-26` runner, whose GPU is a paravirtual device rather than
+an M2 Max, and it wants the passed count compared against the incumbent Metal leg on the same commit, which
+only exists as a CI run. What the rehearsal does establish is that the leg is not being landed on a hope: the
+zero-skipped half is real (a dormant row throws under `KE_METAL_REQUIRED`), the API layer is armed and quiet
+across the whole suite, and both tiers were run rather than one being assumed from the other. The gate moves
+when the leg's first hosted run does.
 
 **Gate 3 has ONE of its four halves in hand. MM6's measurement was TAKEN at row 17 and PASSED (2.3a).** The
 budget marginals, MM3 and the MSL index-table test are still owed, so the gate itself does not move. Recorded

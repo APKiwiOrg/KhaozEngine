@@ -9023,6 +9023,21 @@ The engine's knob then logs which tier is really armed, checks that against the 
 (a validated device is an `MTLDebugDevice` rather than the driver's own), and WARNS with the exact prefix above
 when a tier was asked for and this process cannot have it. Neither tier is a synchronisation validator.
 
+**Three things about arming it that cost a debugging session to learn, all measured on macOS 26.**
+
+- **A validation error ABORTS the process.** `MTL_DEBUG_LAYER_ERROR_MODE` defaults to `assert`, so the first
+  objection kills the run rather than logging. That is usually what you want at a debugger and it is a trap in
+  a batch run, where it looks like a crash.
+- **`MTL_DEBUG_LAYER_ERROR_MODE=nslog` stops the abort and also stops the reporting.** Nothing reaches stdout
+  or stderr, not even the layer's own banner, so a run configured that way validates in silence and tells you
+  nothing either way.
+- **`MTL_SHADER_VALIDATION=1` and a GPU-trace capture cannot share a process.** With the shader rung armed,
+  `MTLCaptureManager` still reports the GPU-trace destination as supported and `startCapture` returns false, so
+  `GpuFrameCapture.ArmNext` gets a capture that never starts. Drop the shader rung when you are capturing.
+
+The engine's `metal-native` CI leg arms the API layer on every run and the shader rung on its weekly sweep,
+which is where these three facts come from.
+
 **`KE_METAL_FRAMES_IN_FLIGHT=<n>` sets how far ahead of the GPU the CPU may run** (1 to 16, default 3). It
 sizes the uniform ring's segments, each command list's staging arena slots, and through the same
 number the swapchain's `maximumDrawableCount`. All three are live

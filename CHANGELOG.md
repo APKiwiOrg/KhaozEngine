@@ -1649,10 +1649,14 @@ a device-free ratchet row pins the floor so the number cannot quietly go back.
 running a broken suite twice rather than once. `GpuDeviceSmokeTests` builds a passthrough pipeline declaring
 NO resource layouts, from shaders whose reflection reports one (empty) set, and the native Metal backend's
 layout-shape check refuses the mismatch by design. Every other backend accepts it, so the row had been green
-everywhere for years. The test now declares the empty layout it was already creating and never passing, which
-is what the unused local in it was for. The check's own behaviour is untouched here and the case it is
-over-strict about, an empty declared array against a reflection whose only set is also empty, is filed rather
-than quietly relaxed inside a CI change.
+everywhere for years. **Fixing it took two edits and the second is the finding**: declaring the empty layout
+the test was already building satisfies the native backend and then breaks the INCUMBENT with a null
+dereference inside `MTLCommandList.ActivateGraphicsResourceSet` at the draw, because Veldrid reads a declared
+layout as a promise that a set will be bound at that slot. A resource-free pipeline therefore has no spelling
+that is correct on both backends without also creating and binding an EMPTY resource set, which is what the
+test does now. The check's own behaviour is untouched here, and the case it is over-strict about is filed
+rather than quietly relaxed inside a CI change
+([#599](https://github.com/APKiwiOrg/KhaozEngine/issues/599), which now carries both halves).
 
 **The seam's compute rule 2 has a third arm, and it completes a quorum.** `GpuInterfaces.cs` named the native
 Vulkan backend as the one implementation more permissive than the seam's contract. The native Metal backend is

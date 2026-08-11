@@ -76,10 +76,17 @@ void main() { o = vec4(0.0, 1.0, 0.0, 1.0); }";
                 // own decorations, so it requires the declared array to be the same SHAPE as the reflection it
                 // built the table from, and a pipeline declaring zero layouts against a reflection reporting one
                 // is refused at creation. Declaring the empty layout is what this pipeline always meant.
+                //
+                // AND DECLARING IT OBLIGES THE DRAW TO BIND ONE, which is the half that has to be got right on
+                // BOTH backends at once and was measured rather than reasoned: with the layout declared and no
+                // set bound, Veldrid's Metal backend dereferences a null inside ActivateGraphicsResourceSet at
+                // the draw. So the empty set below is not decoration. One declared layout, one bound set, on
+                // every backend.
                 ResourceLayouts = new[] { layout },
                 Outputs = fb.Outputs,
             };
             using IGpuPipeline pipeline = f.CreateGraphicsPipeline(pd);
+            using IGpuResourceSet emptySet = f.CreateResourceSet(new GpuResourceSetDescription(layout));
 
             // Record: clear green, draw the fullscreen triangle, copy to staging.
             using IGpuCommandList cl = f.CreateCommandList();
@@ -88,6 +95,7 @@ void main() { o = vec4(0.0, 1.0, 0.0, 1.0); }";
             cl.ClearColorTarget(0, Color.Black);
             cl.SetFullScissorRects();
             cl.SetPipeline(pipeline);
+            cl.SetGraphicsResourceSet(0, emptySet);
             cl.SetVertexBuffer(0, vb);
             cl.Draw(3, 1, 0, 0);
             cl.CopyTexture(target, staging);

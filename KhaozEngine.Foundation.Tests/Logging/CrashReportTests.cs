@@ -225,6 +225,65 @@ public class CrashReportTests
         finally { Directory.Delete(dir, true); }
     }
 
+    /// <summary>
+    /// THE HOSTILE EXCEPTION, which is the shape this whole writer exists for. <c>Message</c> and
+    /// <c>ToString</c> are both virtual, and an override that throws used to take the ENTIRE report with it:
+    /// the render was one argument to the write call, so a throwing getter meant no file at all, and the prune
+    /// had already deleted the oldest report on the way in. The floor is that the file exists and names the
+    /// TYPE, which is where an investigation starts.
+    /// </summary>
+    [Fact]
+    public void Write_WithAnExceptionWhoseMessageAndToStringBothThrow_StillNamesTheType()
+    {
+        CrashReport.ClearNotes();
+        string dir = TempDir();
+        try
+        {
+            string? path = CrashReport.Write(new CrashReportOptions { Directory = dir, ProcessLabel = "head" },
+                "Unhandled exception (terminating)", new HostileException(), null);
+
+            Assert.NotNull(path);
+            string body = File.ReadAllText(path!);
+            Assert.Contains("exception: " + typeof(HostileException).FullName, body, StringComparison.Ordinal);
+            Assert.Contains("context: Unhandled exception (terminating)", body, StringComparison.Ordinal);
+            Assert.Contains("--- stack ---", body, StringComparison.Ordinal);
+            // Both halves say what happened rather than going missing.
+            Assert.Contains("Message threw", body, StringComparison.Ordinal);
+            Assert.Contains("ToString threw", body, StringComparison.Ordinal);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    /// <summary>
+    /// AND A WRITE THAT FAILS DELETES NOTHING. The prune used to run first, so a crash that could not be
+    /// written still cost the oldest report that could: the net effect of one hostile crash was minus one
+    /// report and plus none. The failure is staged on the exact path the writer is about to open, which is
+    /// what the clock-in seam is for.
+    /// </summary>
+    [Fact]
+    public void Write_WhenTheFileCannotBeWritten_PrunesNothing()
+    {
+        CrashReport.ClearNotes();
+        string dir = TempDir();
+        try
+        {
+            var when = new DateTimeOffset(2026, 8, 12, 3, 4, 5, TimeSpan.Zero);
+            // A DIRECTORY where the report's own file goes: writing to it fails on every platform.
+            Directory.CreateDirectory(Path.Combine(dir, CrashReport.FileName("head-crash", when)));
+
+            for (int i = 0; i < 4; i++)
+                File.WriteAllText(Path.Combine(dir, $"head-crash-2026080{i}-000000-000.log"), "x");
+
+            string? path = CrashReport.WriteAt(
+                new CrashReportOptions { Directory = dir, ProcessLabel = "head", MaxRetainedReports = 1 },
+                "Unhandled exception", Thrown("x"), null, when);
+
+            Assert.Null(path);
+            Assert.Equal(4, Directory.GetFiles(dir, "head-crash-2026080?-000000-000.log").Length);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
     /// <summary>It runs on the runtime's crash path, where a throw would replace the crash being reported with
     /// a different one.</summary>
     [Fact]
@@ -339,4 +398,15 @@ public class CrashReportTests
         => Assert.Equal(expected, CrashReport.FileNamePrefix(label));
 
     static string Normalize(string path) => path.Replace('\\', '/');
+
+    /// <summary>
+    /// An exception whose two virtual readers both throw. Hostile by construction here, and ordinary in the
+    /// field: an override that reads state the crash already tore down behaves exactly the same way.
+    /// </summary>
+    sealed class HostileException : Exception
+    {
+        public override string Message => throw new NotSupportedException("Message is hostile.");
+
+        public override string ToString() => throw new NotSupportedException("ToString is hostile.");
+    }
 }

@@ -95,7 +95,8 @@ public static class SessionLog
     /// time), so the directory holds at most <paramref name="maxRetained"/> once <see cref="Configure(SessionLogOptions)"/>
     /// opens its own. Internal so the engine tests can exercise it directly without touching the ambient
     /// <see cref="Log"/>/<see cref="CrashHandler"/> global state. The sweep itself is
-    /// <see cref="LogFilePruner.KeepNewest"/>, shared with <see cref="CrashReport"/>, and is best-effort: any I/O
+    /// <see cref="LogFilePruner.KeepNewest(string, int, string)"/>, shared with <see cref="CrashReport"/>, and is
+    /// best-effort: any I/O
     /// failure (locked file, missing/unreadable directory) is swallowed, matching the sinks' "logging never
     /// throws" contract - an odd file-permission setup on a player's machine must not block the game from
     /// starting.

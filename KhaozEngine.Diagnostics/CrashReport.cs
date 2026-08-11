@@ -153,6 +153,13 @@ public static class CrashReport
     /// Renders one crash report: a header of <c>key: value</c> lines (timestamp, process, engine version,
     /// runtime, OS, context, exception type and message, plus every <see cref="Note"/>), then the exception's
     /// full text under a <c>--- stack ---</c> marker. Pure, so the shape is testable without writing a file.
+    /// <para>
+    /// HOSTILE-SAFE, because everything it reads off the exception is VIRTUAL. <c>Message</c> and
+    /// <c>ToString</c> are both overridable and both run here on the runtime's crash path, so an override that
+    /// throws (a hostile one, or simply one that dereferences state the crash already tore down) would
+    /// otherwise take the whole report with it. Each is read on its own, and a throwing one contributes a line
+    /// saying so instead of ending the render.
+    /// </para>
     /// </summary>
     /// <param name="processLabel">Name of the crashing process.</param>
     /// <param name="context">What kind of crash this is, e.g. <c>Unhandled exception (terminating)</c>.</param>
@@ -161,6 +168,15 @@ public static class CrashReport
     /// <param name="timestamp">When the crash happened.</param>
     /// <returns>The rendered report.</returns>
     public static string Format(string processLabel, string context, Exception? exception, object? raw,
+        DateTimeOffset timestamp)
+        => FormatHeader(processLabel, context, exception, raw, timestamp) + FormatStack(exception, raw);
+
+    /// <summary>
+    /// The report's header, ending with the <c>--- stack ---</c> marker: everything that is known without
+    /// asking the exception to render itself. This is what <see cref="Write"/> puts on disk FIRST, so a report
+    /// exists before the one call that a hostile exception can still make fail.
+    /// </summary>
+    internal static string FormatHeader(string processLabel, string context, Exception? exception, object? raw,
         DateTimeOffset timestamp)
     {
         var text = new StringBuilder(1024);
@@ -175,18 +191,43 @@ public static class CrashReport
         foreach (KeyValuePair<string, string> note in NotesSnapshot())
             Line(text, note.Key, note.Value);
 
-        Line(text, "exception", exception?.GetType().FullName ?? raw?.GetType().FullName ?? "unknown");
-        Line(text, "message", exception?.Message ?? raw?.ToString() ?? "none");
+        // The TYPE first and on its own line, read through GetType, which is the one fact here no override can
+        // take away: it is not virtual, so it answers even for an exception whose every other member throws.
+        Line(text, "exception", SafeTypeName(exception, raw));
+        Line(text, "message", SafeMessage(exception, raw));
 
         text.Append("--- stack ---").Append('\n');
-        text.Append(exception?.ToString() ?? raw?.ToString() ?? "No exception object was available.")
-            .Append('\n');
         return text.ToString();
+    }
+
+    /// <summary>
+    /// The report's second half: the exception's own full text. Rendered separately from the header because
+    /// this is the part a hostile <c>ToString</c> can refuse to produce, and a refusal here must cost the
+    /// stack rather than the report.
+    /// </summary>
+    internal static string FormatStack(Exception? exception, object? raw)
+    {
+        object? subject = exception ?? raw;
+        if (subject is null) return "No exception object was available.\n";
+
+        try { return (subject.ToString() ?? "No exception object was available.") + "\n"; }
+        catch (Exception ex)
+        {
+            return "The exception's own ToString threw " + TypeNameOf(ex)
+                + ", so the header above is the whole report.\n";
+        }
     }
 
     /// <summary>
     /// Writes one report per <paramref name="options"/> and returns its full path, or null when nothing could
     /// be written. Never throws.
+    /// <para>
+    /// THE HEADER IS WRITTEN BEFORE THE STACK IS ASKED FOR, AND THE PRUNE RUNS ONLY AFTER A FILE EXISTS. Both
+    /// orderings are the same lesson: this runs where the thing being reported is already hostile. Rendering
+    /// the whole report as one argument meant a throwing <c>Message</c> or <c>ToString</c> lost the header
+    /// too, and pruning first meant that crash ALSO deleted the oldest report it kept, so the net effect of a
+    /// hostile exception was one report destroyed and none written.
+    /// </para>
     /// </summary>
     /// <param name="options">Where the file goes and what names it. Null returns null.</param>
     /// <param name="context">What kind of crash this is.</param>
@@ -194,29 +235,46 @@ public static class CrashReport
     /// <param name="raw">The raw thrown object, used when <paramref name="exception"/> is null.</param>
     /// <returns>The crash file's full path, or null.</returns>
     public static string? Write(CrashReportOptions options, string context, Exception? exception, object? raw)
+        => WriteAt(options, context, exception, raw, DateTimeOffset.UtcNow);
+
+    /// <summary>
+    /// <see cref="Write"/> with the clock passed in, so a test can name the file the writer is about to open
+    /// and stage a failure on exactly that path. Internal for that reason and no other.
+    /// </summary>
+    internal static string? WriteAt(CrashReportOptions options, string context, Exception? exception, object? raw,
+        DateTimeOffset timestamp)
     {
         if (options is null) return null;
+
+        string directory;
+        string prefix;
+        string path;
         try
         {
-            string directory = string.IsNullOrWhiteSpace(options.Directory)
-                ? DefaultDirectory
-                : options.Directory!;
+            directory = string.IsNullOrWhiteSpace(options.Directory) ? DefaultDirectory : options.Directory!;
+            prefix = FileNamePrefix(options.ProcessLabel);
             Directory.CreateDirectory(directory);
 
-            string prefix = FileNamePrefix(options.ProcessLabel);
-            LogFilePruner.KeepNewest(directory, options.MaxRetainedReports, prefix);
-
-            DateTimeOffset now = DateTimeOffset.UtcNow;
-            string path = Path.Combine(directory,
-                $"{prefix}-{now.ToString("yyyyMMdd-HHmmss-fff", CultureInfo.InvariantCulture)}.log");
-            File.WriteAllText(path, Format(options.ProcessLabel, context, exception, raw, now));
-            return path;
+            path = Path.Combine(directory, FileName(prefix, timestamp));
+            File.WriteAllText(path, FormatHeader(options.ProcessLabel, context, exception, raw, timestamp));
         }
         catch (Exception)
         {
             // Crash path: a report that cannot be written is not worth a second exception on top of the first.
+            // Nothing was written, so nothing is pruned either.
             return null;
         }
+
+        // Best-effort from here on: the file already carries the type, the message and the context, which is
+        // what the investigation starts from. A stack that cannot be appended does not unwrite any of that.
+        try { File.AppendAllText(path, FormatStack(exception, raw)); }
+        catch (Exception) { }
+
+        // AFTER the write, so the count includes the report just made and a failed write cannot delete one.
+        LogFilePruner.KeepNewest(directory, Math.Max(1, options.MaxRetainedReports),
+            name => name.StartsWith(prefix + "-", StringComparison.Ordinal)
+                && name.EndsWith(".log", StringComparison.Ordinal));
+        return path;
     }
 
     /// <summary>
@@ -258,6 +316,11 @@ public static class CrashReport
         return Path.Combine(tempDirectory, "KhaozEngine", "crash");
     }
 
+    /// <summary>The name of one report file: the stem, then the stamp that separates it from its siblings.</summary>
+    internal static string FileName(string prefix, DateTimeOffset timestamp)
+        => prefix + "-"
+            + timestamp.ToUniversalTime().ToString("yyyyMMdd-HHmmss-fff", CultureInfo.InvariantCulture) + ".log";
+
     /// <summary>The file-name stem for one process label, which is also the prune pattern's prefix.</summary>
     internal static string FileNamePrefix(string? processLabel)
     {
@@ -283,6 +346,35 @@ public static class CrashReport
 
     static void Line(StringBuilder text, string key, string value)
         => text.Append(key).Append(": ").Append(Flatten(value)).Append('\n');
+
+    // GetType is not virtual, so the TYPE is the one fact a hostile exception cannot withhold. FullName is null
+    // only for a few open generic shapes, where the short name is still an answer.
+    static string SafeTypeName(Exception? exception, object? raw)
+    {
+        object? subject = exception ?? raw;
+        return subject is null ? "unknown" : TypeNameOf(subject);
+    }
+
+    static string TypeNameOf(object subject)
+    {
+        Type type = subject.GetType();
+        return type.FullName ?? type.Name;
+    }
+
+    // Message is VIRTUAL, and so is the ToString the raw-object case falls back to. Each is read inside its own
+    // try, so a throwing one costs its own line and nothing above it.
+    static string SafeMessage(Exception? exception, object? raw)
+    {
+        if (exception is not null)
+        {
+            try { return exception.Message; }
+            catch (Exception ex) { return "the exception's own Message threw " + TypeNameOf(ex); }
+        }
+
+        if (raw is null) return "none";
+        try { return raw.ToString() ?? "none"; }
+        catch (Exception ex) { return "the thrown object's own ToString threw " + TypeNameOf(ex); }
+    }
 
     // One note or one message can never break the file into two records, so every value is one line.
     static string Flatten(string? value)

@@ -89,6 +89,10 @@ the graphics backend as soon as its window exists), so this is only wired by han
   per process label.
 - Contents: timestamp, process, engine version, runtime, OS, the crash context, every `Note`, then the exception
   type, message and full stack.
+- A hostile exception costs its stack and not its report. `Message` and `ToString` are both virtual, so both are
+  read inside their own `try`: the header (type included, read through the non-virtual `GetType`) is written
+  first, the stack is appended after, and a throwing `ToString` leaves a line saying so. Retention runs only
+  once a file exists, so a crash that could not be written cannot delete one that was.
 - Never throws and needs nothing configured, because it runs on the runtime's crash path.
 
 ## Categories

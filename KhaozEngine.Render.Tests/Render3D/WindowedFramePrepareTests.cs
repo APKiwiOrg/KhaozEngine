@@ -122,22 +122,36 @@ namespace KhaozEngine.Tests.Render3D
 
         /// <summary>
         /// The same scene work driven entirely from the record phase, which is what the windowed loop forced before
-        /// this change: the prime opens its list inside the frame's and the peak reaches 2. This is the fault, and
-        /// it is asserted so the tests above cannot pass vacuously on a scene that primes nothing.
+        /// the phase split existed. It used to reach a peak of two open lists and corrupt the device on Direct3D11
+        /// in immediate-context mode. It is now REFUSED at the seam, by name, on every backend and with no GPU
+        /// involved: the frame's list holds the device and the ocean's priming pass cannot open a second one
+        /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/424">#424</see>).
+        /// <para>
+        /// This is also what stops the assertions above passing vacuously. A scene that primed nothing would
+        /// satisfy every "the peak never reached 2" test in this file, and would not throw here.
+        /// </para>
         /// </summary>
         [Fact]
-        public void Preparing_from_the_record_phase_is_the_nesting_the_windowed_loop_used_to_force()
+        public void Preparing_from_the_record_phase_is_refused_by_name()
         {
             using var device = new OpenListTrackingGpuDevice();
             using IGpuFramebuffer fb = NewTarget(device.Factory);
             using Scene3D scene = NewOceanScene(device, fb);
             using IGpuCommandList frameList = device.Factory.CreateCommandList();
 
-            FramePhases.Run(NewFrame(frameList), render: true, device, frameList, Color.Black,
-                onPrepare: null,
-                onFrame: _ => GameApp3D.PrepareScene(scene, QueueOcean));
+            var ex = Assert.Throws<GpuNestedRecordingException>(() =>
+                FramePhases.Run(NewFrame(frameList), render: true, device, frameList, Color.Black,
+                    onPrepare: null,
+                    onFrame: _ => GameApp3D.PrepareScene(scene, QueueOcean)));
 
-            Assert.Equal(2, device.PeakOpenLists);
+            Assert.Equal("the window's frame list", ex.Owner);
+            Assert.Contains("ocean", ex.Attempted);
+            // Both halves of the diagnosis reach the reader, and the message names the fix rather than the symptom.
+            Assert.Contains("the window's frame list", ex.Message);
+            Assert.Contains("pre-record phase", ex.Message);
+            // And the refusal left nothing half-open: the frame's own list still closed on the way out.
+            Assert.Equal(0, device.OpenLists);
+            Assert.Equal(1, device.PeakOpenLists);
         }
 
         /// <summary>

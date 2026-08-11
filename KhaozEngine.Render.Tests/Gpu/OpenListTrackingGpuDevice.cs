@@ -20,14 +20,19 @@ namespace KhaozEngine.Tests.Gpu
     {
         readonly FakeGpuDevice _inner = new();
         readonly TrackingFactory _factory;
+        readonly bool _fences;
 
-        internal OpenListTrackingGpuDevice()
+        /// <param name="completionFences">Report GPU completion fences, so a
+        /// <c>GpuRetireBarrier</c> exists on this device and its own recording can be driven headless. Off by
+        /// default, which is what every caller had before the barrier needed testing.</param>
+        internal OpenListTrackingGpuDevice(bool completionFences = false)
         {
-            _factory = new TrackingFactory(_inner.Factory, this);
+            _fences = completionFences;
+            _factory = new TrackingFactory(_inner.Factory, this, completionFences);
             GpuCapabilities c = _inner.Capabilities;
             Capabilities = new GpuCapabilities(c.ClipSpaceYInverted, c.DepthRangeZeroToOne, c.DeviceName,
                 c.SamplerAnisotropy, c.SamplerLodBias, c.MaxMsaaSampleCount, c.SupportsShadowMaps,
-                supportsCompute: true, supportsCompletionFences: false);
+                supportsCompute: true, supportsCompletionFences: completionFences);
         }
 
         /// <summary>Command lists currently between <c>Begin</c> and <c>End</c>. Never above 1 on a correct
@@ -63,7 +68,13 @@ namespace KhaozEngine.Tests.Gpu
         public bool SyncToVerticalBlank { get => _inner.SyncToVerticalBlank; set => _inner.SyncToVerticalBlank = value; }
 
         public void Submit(IGpuCommandList cl) => Submits++;
-        public void Submit(IGpuCommandList cl, IGpuFence fence) => _inner.Submit(cl, fence);
+        // With fences reported, a fenced submit is a real submit here. Without them, the fake's refusal is the
+        // right answer and stays the answer.
+        public void Submit(IGpuCommandList cl, IGpuFence fence)
+        {
+            if (_fences) Submits++;
+            else _inner.Submit(cl, fence);
+        }
         public void WaitForIdle() { }
 
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged { }
@@ -89,11 +100,13 @@ namespace KhaozEngine.Tests.Gpu
         {
             readonly IGpuResourceFactory _inner;
             readonly OpenListTrackingGpuDevice _device;
+            readonly bool _fences;
 
-            internal TrackingFactory(IGpuResourceFactory inner, OpenListTrackingGpuDevice device)
+            internal TrackingFactory(IGpuResourceFactory inner, OpenListTrackingGpuDevice device, bool fences)
             {
                 _inner = inner;
                 _device = device;
+                _fences = fences;
             }
 
             public IGpuBuffer CreateBuffer(in GpuBufferDescription d) => _inner.CreateBuffer(d);
@@ -112,7 +125,16 @@ namespace KhaozEngine.Tests.Gpu
             public IGpuComputeShader CreateComputeShaderFromSpirv(string computeGlsl) => new StubComputeShader();
             public IGpuComputePipeline CreateComputePipeline(in GpuComputePipelineDescription d)
                 => new StubComputePipeline();
-            public IGpuFence CreateFence() => _inner.CreateFence();
+            // The fake factory throws for this, which is the right answer when the device reports no fences.
+            public IGpuFence CreateFence() => _fences ? new StubFence() : _inner.CreateFence();
+        }
+
+        /// <summary>A fence that is never signaled, which is all a recording-order test needs from one.</summary>
+        sealed class StubFence : IGpuFence
+        {
+            public bool Signaled => false;
+            public void Reset() { }
+            public void Dispose() { }
         }
 
         /// <summary>Drops every command like <c>NullGpuCommandList</c>, but tells the device when it opens and

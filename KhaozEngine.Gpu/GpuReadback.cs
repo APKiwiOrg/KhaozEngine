@@ -11,6 +11,14 @@ namespace KhaozEngine.Gpu
     /// equivalent, for reading a compute-written storage buffer back as a typed array. The source resource must
     /// be done being written before any of these is called (each submits its own copy and drains, but the work
     /// that PRODUCED the data has to have been submitted first).
+    /// <para>
+    /// NONE OF THESE MAY BE CALLED WHILE A FRAME IS RECORDING. Each one opens, submits and drains a command list
+    /// of its own, which is the second recording the seam's one-open-recording-per-device contract forbids (see
+    /// <see cref="IGpuCommandList.Begin"/>). A readback is a synchronous, whole-pipeline operation anyway, so the
+    /// place for it is between frames rather than inside one. Called from inside a recording the engine opened,
+    /// it refuses with a <see cref="GpuNestedRecordingException"/> naming both sides instead of corrupting the
+    /// device (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/424">#424</see>).
+    /// </para>
     /// </summary>
     public static class GpuReadback
     {
@@ -22,9 +30,7 @@ namespace KhaozEngine.Gpu
                 (uint)width, (uint)height, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Staging));
             using (IGpuCommandList cl = f.CreateCommandList())
             {
-                cl.Begin();
-                cl.CopyTexture(src, staging);
-                cl.End();
+                using (GpuRecording.Open(gd, cl, "GpuReadback.ToRgba")) cl.CopyTexture(src, staging);
                 gd.Submit(cl);
                 gd.WaitForIdle();
             }
@@ -61,9 +67,8 @@ namespace KhaozEngine.Gpu
                 (uint)mipWidth, (uint)mipHeight, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Staging));
             using (IGpuCommandList cl = f.CreateCommandList())
             {
-                cl.Begin();
-                cl.CopyTextureSubresource(src, mipLevel, arrayLayer, staging, (uint)mipWidth, (uint)mipHeight);
-                cl.End();
+                using (GpuRecording.Open(gd, cl, "GpuReadback.ToRgbaMip"))
+                    cl.CopyTextureSubresource(src, mipLevel, arrayLayer, staging, (uint)mipWidth, (uint)mipHeight);
                 gd.Submit(cl);
                 gd.WaitForIdle();
             }
@@ -115,9 +120,8 @@ namespace KhaozEngine.Gpu
             gd.WaitForIdle();
             using (IGpuCommandList cl = f.CreateCommandList())
             {
-                cl.Begin();
-                cl.CopyBuffer(src, srcOffsetBytes, staging, 0, sizeBytes);
-                cl.End();
+                using (GpuRecording.Open(gd, cl, "GpuReadback.ReadBuffer"))
+                    cl.CopyBuffer(src, srcOffsetBytes, staging, 0, sizeBytes);
                 gd.Submit(cl);
                 gd.WaitForIdle();
             }

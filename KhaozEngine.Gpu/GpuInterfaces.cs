@@ -182,6 +182,16 @@ namespace KhaozEngine.Gpu
         /// list of its own belongs in the frame's pre-record phase, before the frame's list is opened.
         /// </para>
         /// <para>
+        /// THAT CONTRACT IS ENFORCED, not merely stated, for every recording the engine opens.
+        /// <see cref="GpuRecording.Open"/> is the seam's open-recording register and the way the engine's own
+        /// hosts, renderers and helpers begin a list. A second one on the same device is refused there with a
+        /// <see cref="GpuNestedRecordingException"/> naming both the open recording and the refused one, on
+        /// every backend and with no GPU involved, which is what turns a backend-dependent silent corruption
+        /// into one readable sentence (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/424">#424</see>).
+        /// Calling this method directly is still legal and still bound by the contract above. It is simply not
+        /// watched, so a consumer opening a list of its own gets whatever the backend below does.
+        /// </para>
+        /// <para>
         /// A BACKEND MAY BE MORE PERMISSIVE, AND THAT IS NOT PART OF THIS CONTRACT. The engine's own native
         /// Direct3D11 backend is more permissive on its DEFAULT driver, which records into an engine-owned
         /// command stream and touches no device state here, so N lists may record concurrently there and submit

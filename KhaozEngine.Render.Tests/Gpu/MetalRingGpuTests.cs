@@ -397,6 +397,8 @@ namespace KhaozEngine.Tests.Gpu
         {
             if (KhaozEngineMetal.IsPlatformSupported) return true;
 
+            // KE_METAL_REQUIRED=1 turns this into a throw on the leg that declared a device mandatory.
+            MetalDormancy.ThrowIfRequired("this is not macOS at all");
             _output.WriteLine("dormant: not macOS, so there is no Metal device to record against.");
             return false;
         }

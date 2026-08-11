@@ -360,8 +360,10 @@ namespace KhaozEngine.Tests.Gpu
         {
             if (!KhaozEngineMetal.IsPlatformSupported)
             {
-                // KE_METAL_REQUIRED=1 turns every dormant answer in this assembly into a throw, and the variable
-                // has exactly one reader (MetalDormancy) however many places go dormant.
+                // KE_METAL_REQUIRED=1 turns every dormant answer in this assembly that turns on this machine
+                // HAVING A NATIVE METAL DEVICE into a throw, and the variable has exactly one reader
+                // (MetalDormancy) however many places go dormant. The rows that go dormant for another reason
+                // are not covered and say so where they do it (MetalValidationTests is the standing example).
                 MetalDormancy.ThrowIfRequired("this is not macOS at all");
                 _output.WriteLine("dormant: not macOS, so there is no Metal device to create.");
                 return false;

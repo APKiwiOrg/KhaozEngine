@@ -603,6 +603,8 @@ void main() { Colour = vec4(32.0 / 255.0, 192.0 / 255.0, 96.0 / 255.0, 1.0); }";
         {
             if (!KhaozEngineMetal.IsPlatformSupported)
             {
+                // KE_METAL_REQUIRED=1 turns this into a throw on the leg that declared a device mandatory.
+                MetalDormancy.ThrowIfRequired("this is not macOS at all");
                 _output.WriteLine("dormant: not macOS, so there is no Metal device to create.");
                 return false;
             }
@@ -610,6 +612,7 @@ void main() { Colour = vec4(32.0 / 255.0, 192.0 / 255.0, 96.0 / 255.0, 1.0); }";
             string? missing = MetalSupportProbe.MissingRequirement();
             if (missing is null) return true;
 
+            MetalDormancy.ThrowIfRequired(missing);
             _output.WriteLine("dormant: this machine cannot run the native Metal backend (" + missing + ").");
             return false;
         }

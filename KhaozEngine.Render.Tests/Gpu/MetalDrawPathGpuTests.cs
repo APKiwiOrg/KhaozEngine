@@ -474,6 +474,8 @@ namespace KhaozEngine.Tests.Gpu
         {
             if (!KhaozEngineMetal.IsPlatformSupported)
             {
+                // KE_METAL_REQUIRED=1 turns this into a throw on the leg that declared a device mandatory.
+                MetalDormancy.ThrowIfRequired("this is not macOS at all");
                 _output.WriteLine("dormant: not macOS, so there is no Metal device to create.");
                 return false;
             }
@@ -481,6 +483,7 @@ namespace KhaozEngine.Tests.Gpu
             string? missing = MetalSupportProbe.MissingRequirement();
             if (missing is null) return true;
 
+            MetalDormancy.ThrowIfRequired(missing);
             _output.WriteLine("dormant: this machine cannot run the native Metal backend (" + missing + ").");
             return false;
         }

@@ -655,9 +655,10 @@ jobs:
           # developer box dormant exactly as before.
           KE_VULKAN_REQUIRED: ${{ (matrix.backend == 'vulkan-native') && '1' || '' }}
           # THE SAME DECISION ON THE THIRD BACKEND, and the same reason (decision M-T6, phase 3's row-19 lesson
-          # inherited by name). Every Metal row that needs a native device asks MetalDormancy.NativeDeviceAvailable
-          # and returns early when the machine cannot provide one, which is right on a Windows box, on a Linux box
-          # and on the incumbent Metal leg. On THIS leg that early return is a test that asserted nothing and
+          # inherited by name). Every Metal row that needs a native device routes its dormancy through
+          # MetalDormancy, whether through NativeDeviceAvailable or through the inline copy of the same pair some
+          # of them carry, and returns early when the machine cannot provide one, which is right on a Windows box,
+          # on a Linux box and on the incumbent Metal leg. On THIS leg that early return is a test that asserted nothing and
           # reported green. With the variable set the helper THROWS instead, naming what the machine objected to
           # in the probe's own words, so a runner-image regression that took the Metal device away reds the leg
           # rather than quietly emptying the rows it was built for.

@@ -71,6 +71,46 @@ void main() { Values[gl_GlobalInvocationID.x] = gl_GlobalInvocationID.x; }
             Assert.Contains(MetalShaderKey.EngineVersion, directory, StringComparison.Ordinal);
         }
 
+        // ---- the key names the code that produces the payload, not only the toolchain --------------------
+
+        /// <summary>
+        /// THE KEY MOVES WHEN EITHER PRODUCING ASSEMBLY DOES. Four of the payload's fields are produced by engine
+        /// code the pins do not cover: the entry-point name and the arguments (<c>MetalMslEntryPoint.Parse</c>),
+        /// the binding table (<c>MetalShaderIndexTable.Build</c> over <c>SpirvResourceDecorations.Read</c>), the
+        /// layouts (<c>SpirvCrossCompile</c>'s reflect) and the workgroup size (<c>SpirvLocalSize.Parse</c>).
+        /// Within one engine version, editing any of them would otherwise keep serving the OLD payload, which is
+        /// the wrong-pixel-no-error class arriving through the cache.
+        /// <para>
+        /// DEVICE-FREE AND ENGINE-FREE: the MVIDs are passed in rather than read off the loaded assemblies, so
+        /// the claim is asserted without building two engines. That both real assemblies feed the shipped
+        /// overload is the last assertion here.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void TheKey_MovesWhenEitherProducingAssemblyDoes()
+        {
+            var metal = Guid.Parse("11111111-1111-1111-1111-111111111111");
+            var gpu = Guid.Parse("22222222-2222-2222-2222-222222222222");
+            var other = Guid.Parse("33333333-3333-3333-3333-333333333333");
+            const string source = "#version 450\nvoid main() {}\n";
+
+            string baseline = MetalShaderKey.For(metal, gpu, source);
+
+            Assert.Equal(baseline, MetalShaderKey.For(metal, gpu, source));      // pure
+            Assert.NotEqual(baseline, MetalShaderKey.For(other, gpu, source));   // the parse and table half
+            Assert.NotEqual(baseline, MetalShaderKey.For(metal, other, source)); // the reflect and decorations half
+            Assert.NotEqual(
+                MetalShaderKey.For(other, gpu, source), MetalShaderKey.For(metal, other, source));
+
+            // The shipped overload is the same key under the assemblies this process actually loaded, so a
+            // rebuild of either one invalidates every entry rather than serving a payload the old code wrote.
+            Assert.Equal(MetalShaderKey.For(MetalShaderKey.MetalModuleId, MetalShaderKey.GpuModuleId, source),
+                MetalShaderKey.For(source));
+            Assert.NotEqual(Guid.Empty, MetalShaderKey.MetalModuleId);
+            Assert.NotEqual(Guid.Empty, MetalShaderKey.GpuModuleId);
+            Assert.NotEqual(MetalShaderKey.MetalModuleId, MetalShaderKey.GpuModuleId);
+        }
+
         // ---- the round trip ------------------------------------------------------------------------------
 
         /// <summary>

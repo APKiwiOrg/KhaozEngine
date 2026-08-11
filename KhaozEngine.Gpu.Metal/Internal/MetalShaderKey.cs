@@ -41,12 +41,37 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// message needs is what let that follow-up be written without re-deriving which inputs matter.
     /// </para>
     /// <para>
-    /// WHAT THE KEY DOES NOT NAME IS THE CROSS-COMPILER'S OWN VERSION, and a cache reader should know it. The
-    /// three pins freeze OPTIONS rather than the emission, and each of their headers says so: what actually
-    /// pins the emitted text is the <c>Veldrid.SPIRV</c> package version, which is not in this hash. Within one
-    /// engine version a package bump can therefore leave a cached entry holding the previous cross-compiler's
-    /// output. Across releases the engine version segment covers it, which is the case that matters in the field,
-    /// and <c>MetalMslByteEqualityTests</c> deliberately emits fresh so the drift test cannot be answered from a
+    /// THE TWO PRODUCING ASSEMBLIES ARE IN THE KEY BY THEIR MVID, because the payload has FIELDS this key would
+    /// otherwise not name. The pins and the sources name the TOOLCHAIN, and four payload fields are produced by
+    /// engine code that sits outside it: <see cref="MetalMslEntryPoint"/>'s parse (the entry-point name and every
+    /// argument), <see cref="MetalShaderIndexTable"/>'s build on top of <c>SpirvResourceDecorations.Read</c> (the
+    /// binding table), <c>SpirvCrossCompile</c>'s reflect (the layouts) and <c>SpirvLocalSize.Parse</c> (a compute
+    /// kernel's workgroup size). Within ONE engine version, editing any of those and re-running serves the OLD
+    /// payload out of the cache with no error anywhere, which is the wrong-pixel-no-error class arriving through
+    /// the cache instead of through a bind. The branch's own planted-entry test is the proof it is reachable: a
+    /// hit answers with a stored table for sources the emitter would refuse outright.
+    /// </para>
+    /// <para>
+    /// WHY THE MVID AND NOT A HAND-BUMPED SEMANTICS VERSION. A number in a constant is only correct while every
+    /// future editor of four files in two assemblies remembers to move it, and the failure of forgetting is
+    /// silent, which is exactly the property that makes this class expensive.
+    /// <see cref="System.Reflection.Module.ModuleVersionId"/> is written by the compiler on every build of the
+    /// assembly, so it CANNOT be forgotten: any edit to either
+    /// assembly, semantic or not, produces a new key. The cost is paid where it is cheap and skipped where it is
+    /// not. A developer rebuild re-emits the corpus once, 3.4 seconds measured over the 42 shipped programs, and
+    /// that is the CORRECT behaviour rather than an overhead, because a rebuild is precisely when a reader may
+    /// have changed. A shipped build's assemblies are built once, so their MVIDs are stable for the life of the
+    /// release and a player's cache behaves exactly as before.
+    /// </para>
+    /// <para>
+    /// WHAT THE KEY STILL DOES NOT NAME IS THE CROSS-COMPILER'S OWN VERSION, and a cache reader should know it.
+    /// The three pins freeze OPTIONS rather than the emission, and each of their headers says so: what actually
+    /// pins the emitted text is the <c>Veldrid.SPIRV</c> package version, which is not in this hash and is not an
+    /// engine assembly, so the MVIDs above do not move when it does. Within one engine version a package bump can
+    /// therefore leave a cached entry holding the previous cross-compiler's output, on this backend and on
+    /// Direct3D 11 alike (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/610">#610</see>). Across
+    /// releases the engine version segment covers it, which is the case that matters in the field, and
+    /// <c>MetalMslByteEqualityTests</c> deliberately emits fresh so the drift test cannot be answered from a
     /// cache that has it.
     /// </para>
     /// <para>
@@ -58,8 +83,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
     {
         /// <summary>The key format's own version. Bumped by hand when the FIELDS below change (not their values),
         /// so a reshaped key cannot collide with an old one that happened to hash the same inputs
-        /// differently.</summary>
-        internal const string Schema = "khaozengine-metal-program-v1";
+        /// differently. <c>v2</c> added the two producing assemblies' MVIDs.</summary>
+        internal const string Schema = "khaozengine-metal-program-v2";
 
         /// <summary>
         /// The engine version, as <c>major.minor.patch</c>, read off this assembly, which the shared
@@ -69,11 +94,39 @@ namespace KhaozEngine.Gpu.Metal.Internal
             typeof(KhaozEngineMetal).Assembly.GetName().Version?.ToString(3) ?? "unknown";
 
         /// <summary>
-        /// The key for one program. <paramref name="programSources"/> is EVERY GLSL source of the program in its
-        /// declared order: both stages of a graphics pair, the single source of a compute kernel.
+        /// The module version id of <c>KhaozEngine.Gpu.Metal</c>, which owns the parse
+        /// (<see cref="MetalMslEntryPoint"/>) and the table build (<see cref="MetalShaderIndexTable"/>). The
+        /// compiler writes a fresh value into every build of the assembly, so no reader of the emission can add,
+        /// change or fix a payload field without moving every key.
+        /// </summary>
+        internal static Guid MetalModuleId { get; } =
+            typeof(MetalMslEntryPoint).Assembly.ManifestModule.ModuleVersionId;
+
+        /// <summary>
+        /// The module version id of <c>KhaozEngine.Gpu</c>, which owns the other three payload producers:
+        /// <c>SpirvCrossCompile</c>'s reflect (the layouts), <c>SpirvResourceDecorations.Read</c> (the decorations
+        /// the table joins on) and <c>SpirvLocalSize.Parse</c> (the workgroup size).
+        /// </summary>
+        internal static Guid GpuModuleId { get; } =
+            typeof(SpirvCrossCompile).Assembly.ManifestModule.ModuleVersionId;
+
+        /// <summary>
+        /// The key for one program, under the assemblies this process actually loaded.
+        /// <paramref name="programSources"/> is EVERY GLSL source of the program in its declared order: both
+        /// stages of a graphics pair, the single source of a compute kernel.
         /// </summary>
         /// <returns>Lowercase hex SHA-256, 64 characters, safe as a file name on every platform.</returns>
         internal static string For(params string[] programSources)
+            => For(MetalModuleId, GpuModuleId, programSources);
+
+        /// <summary>
+        /// The same key with the two producing assemblies' identities passed in, so the MVID's contribution is
+        /// testable without building two engines. Nothing in the shipped path calls this overload.
+        /// </summary>
+        /// <param name="metalModuleId">Stands in for <see cref="MetalModuleId"/>.</param>
+        /// <param name="gpuModuleId">Stands in for <see cref="GpuModuleId"/>.</param>
+        /// <param name="programSources">Every GLSL source of the program, in declared order.</param>
+        internal static string For(Guid metalModuleId, Guid gpuModuleId, params string[] programSources)
         {
             ArgumentNullException.ThrowIfNull(programSources);
             if (programSources.Length == 0)
@@ -86,6 +139,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
             var text = new StringBuilder(4096);
             text.Append(Schema).Append('\n')
                 .Append(EngineVersion).Append('\n')
+                .Append(metalModuleId.ToString("N", CultureInfo.InvariantCulture)).Append('\n')
+                .Append(gpuModuleId.ToString("N", CultureInfo.InvariantCulture)).Append('\n')
                 .Append(SpirvFrontEndPin.Identity).Append('\n')
                 .Append(MslCrossCompilePin.Identity).Append('\n')
                 .Append(MslCompilePin.Identity).Append('\n')

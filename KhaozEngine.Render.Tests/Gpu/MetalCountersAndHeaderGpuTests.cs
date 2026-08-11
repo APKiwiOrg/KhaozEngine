@@ -74,6 +74,16 @@ namespace KhaozEngine.Tests.Gpu
             // macOS-only. A helper returning a context carries no guard, so CA1416 could not see the platform.
             if (!MetalDormancy.NativeDeviceAvailable(_out)) return;
 
+            // THE PROVOCATION BELOW IS A RACE, AND ONE VALIDATION RUNG REMOVES IT. The four discriminating
+            // identity assertions need the backpressure pair to have MOVED, which needs the CPU to wrap onto a
+            // segment the GPU has not finished. Measured on the scheduled sweep's tier: with
+            // MTL_SHADER_VALIDATION armed, 512 recordings never make a single claim wait, because in-shader
+            // bounds checking moves the balance and the GPU retires every buffer first. The row then fails on
+            // its own provocation rather than on the wiring it exists to check, which is the least useful shape
+            // a failure can take. It runs on every other trigger of that leg and on every developer box.
+            if (MetalValidationDormancy.StandDownForShaderRung(_out,
+                "the CPU to outrun the GPU far enough to wait on a busy ring segment")) return;
+
             using GpuDeviceContext context = GpuDeviceContext.CreateHeadless(GpuBackendKind.MetalNative);
             var device = (MetalGpuDevice)context.GpuDevice;
 

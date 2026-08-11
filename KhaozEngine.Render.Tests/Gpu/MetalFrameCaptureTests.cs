@@ -105,6 +105,18 @@ namespace KhaozEngine.Tests.Gpu
         {
             if (!MetalDormancy.NativeDeviceAvailable(_out)) return;
 
+            // A GPU-TRACE CAPTURE AND IN-SHADER VALIDATION CANNOT SHARE A PROCESS, measured at row 19 and not
+            // documented anywhere Apple says so. With MTL_CAPTURE_ENABLED=1 alone, and with it beside
+            // MTL_DEBUG_LAYER=1, this row's second arm passes and writes its bundle. Add MTL_SHADER_VALIDATION=1
+            // and `supportsDestination` still answers TRUE while `startCapture` returns false, which is the one
+            // combination that makes this row's own guard-versus-start disagreement assertion fire against a
+            // platform fact rather than against a defect. The metal-native leg keeps the two variables on
+            // different triggers for that reason, and this stand-down is the belt to that brace: a developer who
+            // sets both by hand should read a sentence rather than debug a capture that cannot start.
+            if (MetalValidationDormancy.StandDownForShaderRung(_out,
+                "a GPU-trace capture to be startable, which MTL_SHADER_VALIDATION refuses while still reporting "
+                + "the destination as supported")) return;
+
             using GpuDeviceContext context = GpuDeviceContext.CreateHeadless(GpuBackendKind.MetalNative);
             var device = (MetalGpuDevice)context.GpuDevice;
 

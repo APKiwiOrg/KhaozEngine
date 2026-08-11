@@ -144,9 +144,17 @@ The suite each leg runs is split by trigger, from measured hosted-runner cost
   on push, on software rasterizers, and this one runs everything on a real GPU every time. Three things are its
   own rather than the incumbent Metal leg's. It sets `KE_METAL_REQUIRED=1`, for the reason the Vulkan native leg
   sets its own equivalent below. It arms `MTL_DEBUG_LAYER=1` on every run and `MTL_SHADER_VALIDATION=1` on the
-  scheduled full sweep, which are Metal's two validation tiers. And it sets `MTL_CAPTURE_ENABLED=1` on the
-  scheduled sweep alone, which is what lets the frame-capture suite really start a capture and write a
-  `.gputrace` bundle rather than only assert that an unarmed process refuses to.
+  scheduled full sweep, which are Metal's two validation tiers. And it sets `MTL_CAPTURE_ENABLED=1` on every
+  trigger EXCEPT that sweep, which is what lets the frame-capture suite really start a capture and write a
+  `.gputrace` bundle rather than only assert that an unarmed process refuses to. That inverse trigger is
+  measured rather than preferred: a capture cannot share a process with `MTL_SHADER_VALIDATION` (the manager
+  reports the GPU-trace destination as supported and `startCapture` returns false anyway), and the cost that was
+  supposed to keep the variable off the push path is 2 seconds on a 4m37s suite.
+  **Neither Metal tier sets an error MODE, and the default is assert.** A validation error there aborts the test
+  host rather than failing a row, so the rows that provoke the layer on purpose stand down in-process instead
+  ([#591](https://github.com/APKiwiOrg/KhaozEngine/issues/591)). `MTL_DEBUG_LAYER_ERROR_MODE=nslog` stops the
+  abort and reports nothing at all to the captured stream, so it is rejected: a tier that can neither fail nor
+  testify is worse than none.
 - **GitHub-hosted D3D11 leg (2x billing)**: golden tests only (`FullyQualifiedName~Golden`) on
   `push`/`pull_request`, and the WHOLE suite on the weekly `schedule` (Sunday 18:00 UTC) and on
   `workflow_dispatch`. The full suite on hosted Windows measured 17m14s vs the golden-only 7m44s, about
@@ -253,8 +261,8 @@ not a CI filter contract):
 
 | trigger                          | behaviour                                                                     |
 | -------------------------------- | ----------------------------------------------------------------------------- |
-| `push` / `pull_request` on main  | **verify**: both Metal legs run the full suite. Both D3D11 legs and both Vulkan legs run the golden tests only. The only validation tier that runs is Metal's debug layer, which the native Metal leg arms on every trigger |
-| `schedule` (weekly, Sun 18:00 UTC) | **full sweep**: both Metal legs + both D3D11 legs + both Vulkan legs all run the full suite (both Vulkan legs serialized, the native one under `strict` validation), plus the `sync` validation job. It is also where the native Metal leg adds `MTL_SHADER_VALIDATION=1` and `MTL_CAPTURE_ENABLED=1` |
+| `push` / `pull_request` on main  | **verify**: both Metal legs run the full suite. Both D3D11 legs and both Vulkan legs run the golden tests only. The only validation tier that runs is Metal's debug layer, which the native Metal leg arms on every trigger, alongside `MTL_CAPTURE_ENABLED=1` |
+| `schedule` (weekly, Sun 18:00 UTC) | **full sweep**: both Metal legs + both D3D11 legs + both Vulkan legs all run the full suite (both Vulkan legs serialized, the native one under `strict` validation), plus the `sync` validation job. It is also where the native Metal leg adds `MTL_SHADER_VALIDATION=1` and DROPS `MTL_CAPTURE_ENABLED`, which the shader rung cannot share a process with |
 | `workflow_dispatch` `bake=false` | same as `schedule` (all six legs full suite, both Vulkan legs serialized, plus the `sync` job) |
 | `workflow_dispatch` `bake=true`  | **re-bake** (`KE_UPDATE_GOLDENS=1`) on Metal, D3D11 and Vulkan, uploaded as per-backend goldens. All three guest legs skip their test step and the `sync` job does not run at all: a guest owns no family to bake, and verifying against references being replaced mid-run would only red it |
 

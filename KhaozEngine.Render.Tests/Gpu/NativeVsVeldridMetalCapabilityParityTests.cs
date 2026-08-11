@@ -484,6 +484,15 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
+        /// True when the SHADER rung is armed, which is <c>MTL_SHADER_VALIDATION</c> on top of the API layer and
+        /// the scheduled sweep's tier. A separate question from <see cref="ArmedAtLaunch"/> because it costs
+        /// different things: in-shader bounds checking instruments every shader, which moves TIMING, and a row
+        /// that provokes a CPU-versus-GPU race can stop provoking anything at all under it.
+        /// </summary>
+        internal static bool ShaderRungArmedAtLaunch
+            => KhaozEngineMetal.IsPlatformSupported && Capture().Armed == MetalValidationMode.Shaders;
+
+        /// <summary>
         /// Stand down when validation is armed, saying so on <paramref name="output"/> and naming the row's own
         /// reason, and answer false otherwise so the caller carries on. The reason is the caller's because it is
         /// the part a reader needs and the part this type cannot know.
@@ -496,6 +505,24 @@ namespace KhaozEngine.Tests.Gpu
                 "dormant: Metal API validation is armed in this process, and this row " + whatItProvokes
                 + ". The layer's default error mode is assert, so running it here would abort the test host "
                 + "rather than fail a row. See https://github.com/APKiwiOrg/KhaozEngine/issues/591.");
+            return true;
+        }
+
+        /// <summary>
+        /// Stand down when the SHADER rung is armed, for a row whose provocation the instrumentation removes
+        /// rather than one the layer objects to. Separate from <see cref="StandDown"/> because the two say
+        /// different things and a reader of the log should be able to tell them apart: this one is "the
+        /// measurement stopped being possible", not "the layer would abort".
+        /// </summary>
+        internal static bool StandDownForShaderRung(ITestOutputHelper output, string whatItNeeds)
+        {
+            if (!ShaderRungArmedAtLaunch) return false;
+
+            output.WriteLine(
+                "dormant: MTL_SHADER_VALIDATION is armed in this process, which instruments every shader and "
+                + "moves the CPU-versus-GPU timing this row depends on. It needs " + whatItNeeds
+                + ", and under in-shader bounds checking that stops happening, so the row would fail on its own "
+                + "provocation rather than on the thing it asserts.");
             return true;
         }
 

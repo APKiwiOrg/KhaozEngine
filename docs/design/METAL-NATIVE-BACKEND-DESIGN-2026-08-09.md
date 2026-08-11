@@ -3311,6 +3311,29 @@ tier whose error mode aborts the host is a gate on the SUITE rather than on a ro
 deliberately provokes it has to be found before the leg is trusted, and the only way to find the next one is to
 run the suite again after standing the last one down.
 
+**Tier two costs a second thing M-T7 does not mention, and it is not validation errors: it moves TIMING and it
+forbids a capture.** Two rows fell out of the first armed deep-tier run and neither is a defect.
+
+- `MetalCountersAndHeaderGpuTests` provokes a CPU-versus-GPU race on purpose, because the four identity
+  assertions on the backpressure pair only discriminate once that pair has MOVED. Under in-shader bounds
+  checking, 512 recordings never make a single claim wait: the GPU retires every buffer before the CPU wraps
+  onto its segment. The row then fails on its own provocation rather than on the wiring it exists to check,
+  which is the least useful shape a failure can take, so it stands down for the shader rung alone and runs on
+  every other trigger.
+- **A GPU-trace capture and in-shader validation cannot share a process**, which is measured here and is not
+  written down anywhere Apple says so. With `MTL_CAPTURE_ENABLED=1` alone, and with it beside
+  `MTL_DEBUG_LAYER=1`, `startCapture` succeeds and the bundle is written. Add `MTL_SHADER_VALIDATION=1` and
+  `MTLCaptureManager` still reports the GPU-trace destination as SUPPORTED while `startCapture` returns false,
+  which is exactly the guard-versus-start disagreement that row's assertion exists to catch, fired by a
+  platform fact.
+
+**So the capture variable's trigger is the INVERSE of tier two's rather than the same one**, which also
+corrects the reason row 16 gave for restricting it: cost. There is none to speak of. The full assembly runs
+4m39s with `MTL_CAPTURE_ENABLED=1` against 4m37s without, on the same machine and commit, so it rides EVERY
+trigger of the leg except the deep sweep, and the capture interop is exercised end to end on every push
+instead of weekly. That is strictly more coverage than this design asked for, obtained by reading a
+measurement instead of a plausible sentence.
+
 **The incumbent Metal leg is deliberately NOT coupled to the native backend's health**, for the reason the
 workflow header already gives about the incumbent Vulkan leg. It arms no validation tier, sets no
 `KE_METAL_REQUIRED`, and its rows that touch a native device stay dormant if the probe ever refuses the runner.

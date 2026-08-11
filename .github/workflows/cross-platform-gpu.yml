@@ -37,11 +37,13 @@
 #     cannot see (the same lesson as KE_VULKAN_REQUIRED, inherited by name). It arms Metal's TWO validation
 #     tiers (decision M-T7), MTL_DEBUG_LAYER=1 on every run because it is an environment variable with no
 #     install and no measurable cost at this scale, and MTL_SHADER_VALIDATION=1 on the deep sweep. And it sets
-#     MTL_CAPTURE_ENABLED=1 on the deep sweep alone, which is the only thing that runs the frame-capture interop
-#     end to end: without it Metal refuses the GPU-trace destination and the row asserts that nothing started,
-#     with it the capture really starts from the native queue pointer and writes a .gputrace bundle. It is off
-#     on the push path deliberately, because a capture-enabled process is slower and every armed capture writes
-#     to the runner's temp.
+#     MTL_CAPTURE_ENABLED=1 on every trigger EXCEPT the deep sweep, which is the only thing that runs the
+#     frame-capture interop end to end: without it Metal refuses the GPU-trace destination and the row asserts
+#     that nothing started, with it the capture really starts from the native queue pointer and writes a
+#     .gputrace bundle. The inverse trigger is measured, not preferred: a capture cannot share a process with
+#     MTL_SHADER_VALIDATION (the manager still reports the destination as supported and startCapture returns
+#     false), and the cost that was supposed to keep it off the push path does not exist (4m39s with it against
+#     4m37s without, same machine, same commit).
 #     NEITHER METAL TIER IS A SYNCHRONISATION VALIDATOR, and Metal has none at all: MTL_DEBUG_LAYER is API
 #     validation and MTL_SHADER_VALIDATION is in-shader bounds checking, and neither tracks read-after-write
 #     hazards across encoders. That is the one place this matrix is weaker on the Metal side than on the Vulkan
@@ -675,13 +677,21 @@ jobs:
           # shader, so it is the expensive half, and a broad sweep is worth its cost once a week the same way the
           # Vulkan strict tier is. The predicate lives once, in the METAL_DEEP_TIER job env above.
           MTL_SHADER_VALIDATION: ${{ env.METAL_DEEP_TIER }}
-          # NOT A VALIDATION TIER, and it is here because it is armed on the same trigger and nowhere else. Metal
-          # refuses a GPU-trace capture destination in a process that did not have this set at launch, so without
-          # it MetalFrameCaptureTests asserts only that an unarmed process refuses, and with it the capture really
-          # starts from the native queue pointer and writes a .gputrace bundle the row then asserts and deletes.
-          # That is the one thing in the net that exercises the capture interop end to end. Off on the push path:
-          # a capture-enabled process is slower and every armed capture writes to the runner's temp.
-          MTL_CAPTURE_ENABLED: ${{ env.METAL_DEEP_TIER }}
+          # NOT A VALIDATION TIER, and its trigger is the INVERSE of tier two's, which is a measurement rather
+          # than a preference. Metal refuses a GPU-trace capture destination in a process that did not have this
+          # set at launch, so without it MetalFrameCaptureTests asserts only that an unarmed process refuses, and
+          # with it the capture really starts from the native queue pointer and writes a .gputrace bundle the row
+          # asserts and deletes. That is the one thing in the net that exercises the capture interop end to end.
+          #
+          # TWO MEASUREMENTS PUT IT HERE RATHER THAN ON THE DEEP SWEEP. First, it CANNOT share a process with
+          # MTL_SHADER_VALIDATION: with the shader rung armed, MTLCaptureManager still reports the GPU-trace
+          # destination as supported and startCapture returns false, so the capture arm would fail on a platform
+          # fact. With MTL_DEBUG_LAYER alone, or with neither, it starts and writes. Second, the reason it was
+          # originally proposed for the scheduled sweep alone was cost, and there is none to speak of: the full
+          # assembly runs 4m39s with it against 4m37s without, on the same machine and commit. So it rides EVERY
+          # trigger, which is strictly more coverage than the design asked for, and stands aside on the one
+          # trigger that arms the rung it cannot live with.
+          MTL_CAPTURE_ENABLED: ${{ (matrix.backend == 'metal-native' && env.METAL_DEEP_TIER == '') && '1' || '' }}
           # TIER ONE OF THE VALIDATION GATE (decision V-T4): core validation, error severity fails the leg at a
           # controlled point rather than inside the driver callback. On the FULL suite only, which is the same
           # schedule-and-dispatch condition KE_TEST_FILTER selects on below: the push path is the fast signal and

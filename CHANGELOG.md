@@ -1596,11 +1596,16 @@ here is a fleet event rather than a leg event.
   instruments every shader. **Neither is a synchronisation validator and Metal has none at all**, which is the
   one place this matrix is weaker on the Metal side than on the Vulkan one, and it is said in the workflow
   header rather than left for a reader to conclude that Metal's validation is simply cheaper.
-- **`MTL_CAPTURE_ENABLED=1` on the deep sweep alone.** Not a validation tier, and it is armed on the same
-  trigger and nowhere else: without it Metal refuses the GPU-trace destination and the frame-capture suite
-  asserts only that an unarmed process refuses, and with it the capture really starts from the native queue
-  pointer and writes a `.gputrace` bundle the row then asserts and deletes. That is the only thing in the net
-  that exercises the capture interop end to end.
+- **`MTL_CAPTURE_ENABLED=1` on every trigger EXCEPT the deep sweep.** Not a validation tier, and its trigger is
+  the INVERSE of tier two's for two measured reasons. Without it Metal refuses the GPU-trace destination and
+  the frame-capture suite asserts only that an unarmed process refuses. With it the capture really starts from
+  the native queue pointer and writes a `.gputrace` bundle the row asserts and deletes, which is the only thing
+  in the net that exercises the capture interop end to end. **It cannot share a process with
+  `MTL_SHADER_VALIDATION`**: with the shader rung armed, `MTLCaptureManager` still reports the GPU-trace
+  destination as supported and `startCapture` returns false, which is a platform fact written down nowhere
+  Apple says so. And the cost that was supposed to keep it off the push path does not exist: the full assembly
+  runs 4m39s with it against 4m37s without, same machine, same commit. So it rides every ordinary run instead
+  of the weekly one, which is more coverage than the design asked for.
 
 **Arming the layer corrected what [#591](https://github.com/APKiwiOrg/KhaozEngine/issues/591) recorded, and it
 took two measurements to settle.** That issue records the host-aborting behaviour as a property of

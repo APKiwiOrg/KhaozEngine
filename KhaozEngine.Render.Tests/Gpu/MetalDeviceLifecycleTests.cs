@@ -165,49 +165,59 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// EVERY UNBUILT MEMBER NAMES THE ROW THAT BUILDS IT, and says what IS live, because a reader who hits
-        /// one needs to know whether the backend is unfinished or their machine is wrong and those have different
-        /// answers. This row is what stops the ledger paragraph on the device from rotting silently: it fails the
-        /// day a member starts working and nobody updated the message, which is exactly what it did when row 6
-        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/572) landed the resource factory and the shared
-        /// sampler pair, and again when row 7
-        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/573) landed the submit. All four moved from the
-        /// refusal list to the live one below, which leaves the swapchain row carrying the message on its own.
+        /// NOTHING ON THIS DEVICE IS UNBUILT ANY MORE, AND THE QUESTION CHANGED WITH THAT.
+        /// <para>
+        /// This row used to assert that the last unbuilt member named the row that would build it and said what
+        /// WAS live, which is what stopped the ledger paragraph on the device from rotting silently: it failed
+        /// the day a member started working and nobody updated the message, which it duly did at row 6
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/572), again at row 7
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/573), and a last time at row 15
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/581), which took the swapchain and left the message
+        /// with no caller at all.
+        /// </para>
+        /// <para>
+        /// <b>SO IT ASKS THE OTHER QUESTION NOW: is ANYTHING unbuilt.</b> That is the same transformation row 14
+        /// made on <c>MetalCommandList</c>'s own unbuilt ledger, for the same reason: answering it needs EVERY
+        /// member called, where a row that walked one member forward would pass forever the day somebody put a
+        /// stub back on a different one. The refusals that remain are refusals about the CALLER (a foreign
+        /// command list) rather than about the package, and telling those two apart is what the row is for.
+        /// </para>
         /// </summary>
         [GpuFact]
-        public void EveryUnbuiltMember_NamesItsRowAndWhatIsLive()
+        public void NoMemberOfTheDeviceIsUnbuilt()
         {
             if (!Available()) return;
 
             using IGpuDevice device = CreateHeadless();
 
-            // LIVE as of row 6. Named here rather than deleted, because the whole value of this row is that the
-            // ledger and the code disagree loudly, and a member silently dropped from the list is a member
-            // nothing checks in either direction.
-            Assert.NotNull(device.Factory);
-            Assert.NotNull(device.PointSampler);
-            Assert.NotNull(device.LinearSampler);
+            // EVERY MEMBER, called. A NotSupportedException out of any of them is the unbuilt shape, and the
+            // helper below is what names which member produced one.
+            NothingUnbuilt(() => _ = device.Backend, nameof(device.Backend));
+            NothingUnbuilt(() => _ = device.Capabilities, nameof(device.Capabilities));
+            NothingUnbuilt(() => _ = device.Counters, nameof(device.Counters));
+            NothingUnbuilt(() => _ = device.Diagnostics, nameof(device.Diagnostics));
+            NothingUnbuilt(() => _ = device.Factory, nameof(device.Factory));
+            NothingUnbuilt(() => _ = device.PointSampler, nameof(device.PointSampler));
+            NothingUnbuilt(() => _ = device.LinearSampler, nameof(device.LinearSampler));
+            NothingUnbuilt(() => _ = device.SwapchainFramebuffer, nameof(device.SwapchainFramebuffer));
+            NothingUnbuilt(() => device.SyncToVerticalBlank = !device.SyncToVerticalBlank,
+                nameof(device.SyncToVerticalBlank));
+            NothingUnbuilt(() => device.ResizeSwapchain(640u, 480u), nameof(device.ResizeSwapchain));
+            NothingUnbuilt(() => device.Present(), nameof(device.Present));
+            NothingUnbuilt(device.WaitForIdle, nameof(device.WaitForIdle));
 
-            // AND SUBMIT IS LIVE AS OF ROW 7, so what replaces its refusal is the one that member actually has,
-            // which is a foreign list rather than an unbuilt path.
+            // AND THE REFUSAL THAT IS LEFT IS ABOUT THE CALLER, not about the package. Asserted by its message
+            // rather than by its type, because both shapes are exceptions and only the message tells a reader
+            // whether to fix their code or wait for a row.
             using var foreign = new NullGpuCommandList();
-            Assert.Contains("not created by this native Metal device",
-                Refusal(() => device.Submit(foreign)), StringComparison.Ordinal);
-
-            // The swapchain is the last row on this device that still refuses, so it is the one member left
-            // carrying the NotBuiltYet message, and the message has to name BOTH landed rows as live.
-            string present = Refusal(() => device.Present());
-            _output.WriteLine(present);
-            Assert.Contains("581", present, StringComparison.Ordinal);
-            Assert.Contains("MTLCommandQueue", present, StringComparison.Ordinal);
-            Assert.Contains("not about this machine", present, StringComparison.Ordinal);
-            Assert.Contains("572", present, StringComparison.Ordinal);
-            Assert.Contains("573", present, StringComparison.Ordinal);
+            string refusal = Refusal(() => device.Submit(foreign));
+            _output.WriteLine(refusal);
+            Assert.Contains("not created by this native Metal device", refusal, StringComparison.Ordinal);
         }
 
         /// <summary>A headless device has no swapchain BY DEFINITION, so null is the correct answer rather than
-        /// an unbuilt one, and the windowed path refuses at creation instead of handing back a device that
-        /// cannot present.</summary>
+        /// an unbuilt one. The windowed path is live as of row 15 and builds a real one over the request's Cocoa
+        /// window.</summary>
         [GpuFact]
         public void AHeadlessDevice_HasNoSwapchainFramebuffer()
         {
@@ -215,11 +225,29 @@ namespace KhaozEngine.Tests.Gpu
 
             using IGpuDevice device = CreateHeadless();
             Assert.Null(device.SwapchainFramebuffer);
+
+            // AND ITS PRESENT-BOUNDARY COUNTERS ARE ZERO, which is literally true rather than a placeholder: a
+            // device with no swapchain opens no frame at this seam and never waits on a drawable.
+            Assert.True(device.Counters.HasValue);
+            Assert.Equal(0L, device.Counters.FramesBegun);
+            Assert.Equal(0L, device.Counters.AcquireWaitCount);
         }
 
         static IGpuDevice CreateHeadless() => new MetalBackendProvider().CreateHeadless().Device;
 
         static string Refusal(Action call) => Assert.ThrowsAny<Exception>(call).Message;
+
+        // A member that is UNBUILT raises NotSupportedException, which is the shape MetalGpuDevice.NotBuiltYet
+        // produced until row 15 deleted it with its last caller. Anything else is left to propagate, because a
+        // member that fails for a real reason is a different fact and should fail this row loudly rather than be
+        // swallowed by a catch that was only looking for one type.
+        static void NothingUnbuilt(Action call, string member)
+        {
+            NotSupportedException? unbuilt = Record.Exception(call) as NotSupportedException;
+            Assert.True(unbuilt is null,
+                "IGpuDevice." + member + " on the native Metal backend still refuses as unbuilt: "
+                + unbuilt?.Message);
+        }
 
         // [SupportedOSPlatformGuard] rather than an inline check at every call site, which is the same mechanism
         // KhaozEngineMetal.IsPlatformSupported uses one level down. It is honest: the first thing this asks is

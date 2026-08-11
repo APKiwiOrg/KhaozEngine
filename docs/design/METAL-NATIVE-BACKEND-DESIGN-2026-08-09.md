@@ -2069,8 +2069,12 @@ remains correct. What changes is the cost of getting it wrong later: a member th
 `Layouts` would be reading ANOTHER PROGRAM'S name in 16 of 25 merges, not in a rare collision.
 `MetalIndexTableDedupTests` asserts the equivalence directly, walking every merged pair and checking the entries
 and the shape `RequireLayoutShape` compares, driven both ways, and pins the name invariance behaviourally beside
-it. What that pin cannot see is a NEW member reading a name, so making it mechanical is filed as
-https://github.com/APKiwiOrg/KhaozEngine/issues/594.
+it. What that pin cannot see is a NEW member reading a name, because nothing calls it yet, so that half is
+mechanical now: `MetalIndexTableNameBlindnessTests` walks the IL of every member the table declares (its
+iterator's state machine included, since a read there would be exactly as observable) and fails on a call to
+`GpuResourceLayoutElement.get_Name` or `get_Stages`, positively controlled both ways. It reads through
+`IlCallGraph`, the shared IL reader extracted out of `MetalAutoreleaseArchitectureTests` for this rule and the
+one phase 4 will want next. Closed https://github.com/APKiwiOrg/KhaozEngine/issues/594.
 
 **The pipeline's reference needed nothing new at the pipeline, which is the row's scope line resolving into
 less code than it sounds like.** Because the canonicalisation happens where the table is BUILT, every

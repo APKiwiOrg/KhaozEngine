@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.Reflection.Emit;
 using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Metal.Internal;
 using KhaozEngine.Gpu.Metal.Internal.ObjC;
@@ -357,127 +356,11 @@ namespace KhaozEngine.Tests.Gpu
 
         // ---- The IL walk --------------------------------------------------------------------------------------
 
-        static readonly Dictionary<MethodBase, MethodBase[]> _callees = new();
+        // Read by IlCallGraph, which is the same reader row 10's name-blindness rule walks
+        // (https://github.com/APKiwiOrg/KhaozEngine/issues/594). It was extracted from here when the second rule
+        // needed it: the reader is generic, and what stays in this file is what M-N5 MEANS.
+        static MethodBase[] Callees(MethodBase method) => IlCallGraph.Callees(method);
 
-        static MethodBase[] Callees(MethodBase method)
-        {
-            if (_callees.TryGetValue(method, out MethodBase[]? cached)) return cached;
-
-            MethodBase[] found = ReadCallees(method).ToArray();
-            _callees[method] = found;
-            return found;
-        }
-
-        static IEnumerable<MethodBase> ReadCallees(MethodBase method)
-        {
-            byte[]? il = TryReadIl(method);
-            if (il is null) yield break;
-
-            Type[]? typeArgs = method.DeclaringType is { IsGenericType: true } t ? t.GetGenericArguments() : null;
-            Type[]? methodArgs = method is MethodInfo { IsGenericMethodDefinition: true } mi
-                ? mi.GetGenericArguments()
-                : null;
-
-            int i = 0;
-            while (i < il.Length)
-            {
-                short code = il[i];
-                if (il[i] == 0xFE)
-                {
-                    if (i + 1 >= il.Length) yield break;
-                    code = unchecked((short)(0xFE00 | il[i + 1]));
-                    i += 2;
-                }
-                else
-                {
-                    i += 1;
-                }
-
-                // An opcode this table does not know means the walk has lost alignment, and a misaligned walk
-                // resolves garbage tokens. Stopping is the only safe answer, and it can only make the rule
-                // weaker for that one method rather than wrong for the assembly.
-                if (!Opcodes.TryGetValue(code, out OpCode op)) yield break;
-
-                if (op.OperandType == OperandType.InlineSwitch)
-                {
-                    if (i + 4 > il.Length) yield break;
-                    int cases = BitConverter.ToInt32(il, i);
-                    i += 4 + (4 * cases);
-                    continue;
-                }
-
-                int operand = OperandSize(op.OperandType);
-                if (i + operand > il.Length) yield break;
-
-                if (IsCallSite(op))
-                {
-                    MethodBase? callee = TryResolve(method.Module, BitConverter.ToInt32(il, i), typeArgs,
-                        methodArgs);
-                    if (callee is not null) yield return callee;
-                }
-
-                i += operand;
-            }
-        }
-
-        static byte[]? TryReadIl(MethodBase method)
-        {
-            try
-            {
-                return method.GetMethodBody()?.GetILAsByteArray();
-            }
-            catch (Exception ex) when (ex is BadImageFormatException or NotSupportedException
-                or InvalidOperationException)
-            {
-                // An abstract, extern or runtime-provided method has no body to read, and neither does a
-                // generated P/Invoke stub on some runtimes. None of those can call anything.
-                return null;
-            }
-        }
-
-        static bool IsCallSite(OpCode op)
-            => op == OpCodes.Call || op == OpCodes.Callvirt || op == OpCodes.Newobj
-                || op == OpCodes.Ldftn || op == OpCodes.Ldvirtftn;
-
-        static MethodBase? TryResolve(Module module, int token, Type[]? typeArgs, Type[]? methodArgs)
-        {
-            try
-            {
-                return module.ResolveMethod(token, typeArgs, methodArgs);
-            }
-            catch (Exception ex) when (ex is ArgumentException or MissingMethodException
-                or BadImageFormatException)
-            {
-                // A token that names a constructed generic this context cannot close. Skipping it can only lose
-                // an edge, and the positive control above is what proves the walk still finds the edges that
-                // matter.
-                return null;
-            }
-        }
-
-        static int OperandSize(OperandType type) => type switch
-        {
-            OperandType.InlineNone => 0,
-            OperandType.ShortInlineBrTarget or OperandType.ShortInlineI or OperandType.ShortInlineVar => 1,
-            OperandType.InlineVar => 2,
-            OperandType.InlineI8 or OperandType.InlineR => 8,
-            _ => 4,
-        };
-
-        // Built from the runtime's own opcode table rather than transcribed, so a walk over IL this repo does not
-        // generate itself cannot drift from the real operand widths.
-        static readonly Dictionary<short, OpCode> Opcodes = BuildOpcodes();
-
-        static Dictionary<short, OpCode> BuildOpcodes()
-        {
-            var map = new Dictionary<short, OpCode>();
-            foreach (FieldInfo field in typeof(OpCodes).GetFields(BindingFlags.Public | BindingFlags.Static))
-            {
-                if (field.GetValue(null) is OpCode op) map[op.Value] = op;
-            }
-            return map;
-        }
-
-        static string Describe(MethodBase method) => (method.DeclaringType?.Name ?? "?") + "." + method.Name;
+        static string Describe(MethodBase method) => IlCallGraph.Describe(method);
     }
 }

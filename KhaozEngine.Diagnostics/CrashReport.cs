@@ -49,6 +49,7 @@ public static class CrashReport
     static UnhandledExceptionEventHandler? domainHandler;
     static EventHandler<UnobservedTaskExceptionEventArgs>? taskHandler;
     static string? cachedDefaultDirectory;
+    static long sequence;
 
     /// <summary>
     /// The OS location crash files go to when <see cref="CrashReportOptions.Directory"/> is not set. Resolved
@@ -235,14 +236,15 @@ public static class CrashReport
     /// <param name="raw">The raw thrown object, used when <paramref name="exception"/> is null.</param>
     /// <returns>The crash file's full path, or null.</returns>
     public static string? Write(CrashReportOptions options, string context, Exception? exception, object? raw)
-        => WriteAt(options, context, exception, raw, DateTimeOffset.UtcNow);
+        => WriteAt(options, context, exception, raw, DateTimeOffset.UtcNow,
+            Interlocked.Increment(ref sequence));
 
     /// <summary>
-    /// <see cref="Write"/> with the clock passed in, so a test can name the file the writer is about to open
-    /// and stage a failure on exactly that path. Internal for that reason and no other.
+    /// <see cref="Write"/> with the clock and the sequence number passed in, so a test can name the file the
+    /// writer is about to open and stage a failure on exactly that path. Internal for that reason and no other.
     /// </summary>
     internal static string? WriteAt(CrashReportOptions options, string context, Exception? exception, object? raw,
-        DateTimeOffset timestamp)
+        DateTimeOffset timestamp, long sequenceNumber)
     {
         if (options is null) return null;
 
@@ -255,7 +257,7 @@ public static class CrashReport
             prefix = FileNamePrefix(options.ProcessLabel);
             Directory.CreateDirectory(directory);
 
-            path = Path.Combine(directory, FileName(prefix, timestamp));
+            path = Path.Combine(directory, FileName(prefix, timestamp, sequenceNumber));
             File.WriteAllText(path, FormatHeader(options.ProcessLabel, context, exception, raw, timestamp));
         }
         catch (Exception)
@@ -270,10 +272,10 @@ public static class CrashReport
         try { File.AppendAllText(path, FormatStack(exception, raw)); }
         catch (Exception) { }
 
-        // AFTER the write, so the count includes the report just made and a failed write cannot delete one.
+        // AFTER the write, so the count includes the report just made and a failed write cannot delete one, and
+        // matched on the FULL generated shape rather than on the stem, so this pool is only ever its own.
         LogFilePruner.KeepNewest(directory, Math.Max(1, options.MaxRetainedReports),
-            name => name.StartsWith(prefix + "-", StringComparison.Ordinal)
-                && name.EndsWith(".log", StringComparison.Ordinal));
+            name => IsReportName(prefix, name));
         return path;
     }
 
@@ -316,10 +318,57 @@ public static class CrashReport
         return Path.Combine(tempDirectory, "KhaozEngine", "crash");
     }
 
-    /// <summary>The name of one report file: the stem, then the stamp that separates it from its siblings.</summary>
-    internal static string FileName(string prefix, DateTimeOffset timestamp)
+    /// <summary>
+    /// The name of one report file: the stem, the stamp, THE PROCESS ID AND A PROCESS-WIDE COUNTER.
+    /// <para>
+    /// THE LAST TWO ARE WHAT MAKE IT UNIQUE, AND THE MILLISECOND IS NOT. Unobserved task exceptions arrive
+    /// from the finalizer thread in a burst, back to back, and a burst of twelve inside one millisecond used to
+    /// produce seven files: each write silently overwrote a sibling, so the reports that survived were the
+    /// LAST of each collision rather than the first. Uniqueness is by construction here, with no probing for a
+    /// free name: probing is a race of its own on a path that is already re-entrant.
+    /// </para>
+    /// </summary>
+    internal static string FileName(string prefix, DateTimeOffset timestamp, long sequenceNumber)
         => prefix + "-"
-            + timestamp.ToUniversalTime().ToString("yyyyMMdd-HHmmss-fff", CultureInfo.InvariantCulture) + ".log";
+            + timestamp.ToUniversalTime().ToString("yyyyMMdd-HHmmss-fff", CultureInfo.InvariantCulture) + "-"
+            + Environment.ProcessId.ToString(CultureInfo.InvariantCulture) + "-"
+            + sequenceNumber.ToString(CultureInfo.InvariantCulture) + ".log";
+
+    /// <summary>
+    /// Whether <paramref name="fileName"/> is a report THIS stem generated: the whole shape is matched, not the
+    /// stem alone.
+    /// <para>
+    /// A STEM IS NOT A PARTITION, WHICH IS WHY THE OLD <c>{prefix}-*.log</c> GLOB DELETED OTHER LABELS' FILES.
+    /// One label's stem can be a prefix of another's: process label <c>show</c> writes <c>show-crash-...</c>
+    /// and its glob <c>show-crash-*.log</c> also matched every file written by the label <c>show-crash</c>, so
+    /// retention for one head pruned another head's reports out of the shared OS crash directory. Matching the
+    /// generated tail (stamp, process id, counter) closes that, because <c>show-crash-crash-...</c> has a
+    /// non-numeric first field and cannot be mistaken for a stamp.
+    /// </para>
+    /// </summary>
+    internal static bool IsReportName(string prefix, string fileName)
+    {
+        if (fileName is null) return false;
+        if (!fileName.StartsWith(prefix + "-", StringComparison.Ordinal)) return false;
+        if (!fileName.EndsWith(".log", StringComparison.Ordinal)) return false;
+
+        // What is left is the generated tail and nothing else: yyyyMMdd-HHmmss-fff-<pid>-<counter>.
+        int start = prefix.Length + 1;
+        string[] parts = fileName.Substring(start, fileName.Length - start - 4).Split('-');
+        return parts.Length == 5
+            && IsDigits(parts[0], 8) && IsDigits(parts[1], 6) && IsDigits(parts[2], 3)
+            && IsDigits(parts[3]) && IsDigits(parts[4]);
+    }
+
+    static bool IsDigits(string field, int exactLength = 0)
+    {
+        if (field.Length == 0 || (exactLength > 0 && field.Length != exactLength)) return false;
+        foreach (char c in field)
+        {
+            if (c is < '0' or > '9') return false;
+        }
+        return true;
+    }
 
     /// <summary>The file-name stem for one process label, which is also the prune pattern's prefix.</summary>
     internal static string FileNamePrefix(string? processLabel)

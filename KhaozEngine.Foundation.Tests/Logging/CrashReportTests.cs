@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using KhaozEngine.Diagnostics;
@@ -26,6 +27,11 @@ public class CrashReportTests
         Directory.CreateDirectory(dir);
         return dir;
     }
+
+    // One decoy report in the shape the writer generates: stem, stamp, process id, counter. A test that hand
+    // writes a shorter name is testing a file the prune is entitled to ignore.
+    static string Report(string prefix, string day, int sequence)
+        => $"{prefix}-{day}-000000-000-{Environment.ProcessId}-{sequence}.log";
 
     static Exception Thrown(string message)
     {
@@ -181,12 +187,11 @@ public class CrashReportTests
         string dir = TempDir();
         try
         {
-            // Eight earlier reports with distinct write times, rather than eight Write calls racing the
-            // millisecond stamp in the file name.
+            // Eight earlier reports with distinct write times, in the shape the writer generates.
             var baseTime = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
             for (int i = 0; i < 8; i++)
             {
-                string p = Path.Combine(dir, $"head-crash-2026010{i}-000000-000.log");
+                string p = Path.Combine(dir, Report("head-crash", $"2026010{i}", i));
                 File.WriteAllText(p, "x");
                 File.SetLastWriteTimeUtc(p, baseTime.AddMinutes(i));   // i = 7 is newest
             }
@@ -198,31 +203,113 @@ public class CrashReportTests
             string[] remaining = Directory.GetFiles(dir, "head-crash-*.log")
                 .Select(Path.GetFileName).OrderBy(n => n, StringComparer.Ordinal).ToArray()!;
             Assert.Equal(3, remaining.Length);
-            Assert.Contains("head-crash-20260106-000000-000.log", remaining, StringComparer.Ordinal);
-            Assert.Contains("head-crash-20260107-000000-000.log", remaining, StringComparer.Ordinal);
+            Assert.Contains(Report("head-crash", "20260106", 6), remaining, StringComparer.Ordinal);
+            Assert.Contains(Report("head-crash", "20260107", 7), remaining, StringComparer.Ordinal);
         }
         finally { Directory.Delete(dir, true); }
     }
 
-    /// <summary>Retention is per process label, so two heads sharing the OS crash directory cannot delete each
-    /// other's reports.</summary>
+    /// <summary>
+    /// RETENTION IS PER LABEL, AND THE DECOYS HERE ARE THE FILES THE OLD GLOB ACTUALLY ATE. Its predecessor
+    /// stood up <c>other-crash-NN.log</c> against the pattern <c>head-crash-*.log</c>, which is disjoint by
+    /// inspection: it could not have failed whatever the writer did. The real collision is a STEM that is a
+    /// PREFIX of another label's stem. Label <c>show</c> globbed <c>show-crash-*.log</c> and that matched
+    /// every report the label <c>show-crash</c> wrote, so one head's retention deleted another head's reports
+    /// out of the shared OS crash directory.
+    /// </summary>
     [Fact]
-    public void Write_OnlyPrunesItsOwnProcessLabel()
+    public void Write_DoesNotPruneALabelWhoseStemStartsWithItsOwn()
     {
         CrashReport.ClearNotes();
         string dir = TempDir();
         try
         {
+            // Written by the process label "show-crash", whose stem begins with the stem of the label "show".
             for (int i = 0; i < 4; i++)
-                File.WriteAllText(Path.Combine(dir, $"other-crash-{i:00}.log"), "x");
+                File.WriteAllText(Path.Combine(dir, Report("show-crash-crash", "20260101", i)), "x");
 
             CrashReport.Write(
-                new CrashReportOptions { Directory = dir, ProcessLabel = "head", MaxRetainedReports = 1 },
+                new CrashReportOptions { Directory = dir, ProcessLabel = "show", MaxRetainedReports = 1 },
                 "Unhandled exception", Thrown("x"), null);
 
-            Assert.Equal(4, Directory.GetFiles(dir, "other-crash-*.log").Length);
+            Assert.Equal(4, Directory.GetFiles(dir, "show-crash-crash-*.log").Length);
+            Assert.Single(Directory.GetFiles(dir, "show-crash-2*.log"));
         }
         finally { Directory.Delete(dir, true); }
+    }
+
+    /// <summary>
+    /// THE ONE COLLISION THAT REMAINS, PINNED SO IT STAYS DELIBERATE. Sanitisation is not injective: a space
+    /// becomes a hyphen, so <c>My Game</c> and <c>My-Game</c> produce the same stem and therefore share one
+    /// retention pool. No file-name rule can separate them, because there is no file name left to tell them
+    /// apart, so the answer is the one the option documents: choose labels that do not sanitise onto each
+    /// other.
+    /// </summary>
+    [Fact]
+    public void Write_SharesARetentionPoolWithALabelThatSanitisesIdentically()
+    {
+        CrashReport.ClearNotes();
+        string dir = TempDir();
+        try
+        {
+            Assert.Equal(CrashReport.FileNamePrefix("My Game"), CrashReport.FileNamePrefix("My-Game"));
+
+            for (int i = 0; i < 4; i++)
+                File.WriteAllText(Path.Combine(dir, Report("My-Game-crash", "20260101", i)), "x");
+
+            CrashReport.Write(
+                new CrashReportOptions { Directory = dir, ProcessLabel = "My Game", MaxRetainedReports = 1 },
+                "Unhandled exception", Thrown("x"), null);
+
+            Assert.Single(Directory.GetFiles(dir, "My-Game-crash-*.log"));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    /// <summary>
+    /// THE BURST, WHICH IS THE SHAPE THAT LOSES REPORTS. Unobserved task exceptions arrive from the finalizer
+    /// thread back to back, and the file name used to end at the millisecond: twelve sequential writes
+    /// measured seven files, each collision silently overwriting a sibling. The process id and the counter
+    /// make the name unique by construction, so twelve writes are twelve files.
+    /// </summary>
+    [Fact]
+    public void Write_TwelveInABurst_LeavesTwelveFiles()
+    {
+        CrashReport.ClearNotes();
+        string dir = TempDir();
+        try
+        {
+            var options = new CrashReportOptions
+            {
+                Directory = dir,
+                ProcessLabel = "head",
+                MaxRetainedReports = 100,
+            };
+
+            var paths = new List<string>();
+            for (int i = 0; i < 12; i++)
+                paths.Add(CrashReport.Write(options, "Unobserved task exception", Thrown("burst " + i), null)!);
+
+            Assert.Equal(12, paths.Distinct(StringComparer.Ordinal).Count());
+            Assert.Equal(12, Directory.GetFiles(dir, "head-crash-*.log").Length);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    /// <summary>The generated name is what the prune matches, and both halves of that are worth naming.</summary>
+    [Fact]
+    public void FileName_CarriesTheProcessAndTheCounter_AndIsWhatTheReportMatcherAccepts()
+    {
+        var when = new DateTimeOffset(2026, 8, 12, 3, 4, 5, 678, TimeSpan.Zero);
+        string name = CrashReport.FileName("head-crash", when, 7);
+
+        Assert.Equal($"head-crash-20260812-030405-678-{Environment.ProcessId}-7.log", name);
+        Assert.True(CrashReport.IsReportName("head-crash", name));
+
+        // The stem alone is not enough, which is the whole point of matching the shape.
+        Assert.False(CrashReport.IsReportName("show-crash", CrashReport.FileName("show-crash-crash", when, 7)));
+        Assert.False(CrashReport.IsReportName("head-crash", "head-crash-notes.log"));
+        Assert.False(CrashReport.IsReportName("head-crash", "head-crash-20260812-030405-678.log"));
     }
 
     /// <summary>
@@ -269,17 +356,17 @@ public class CrashReportTests
         {
             var when = new DateTimeOffset(2026, 8, 12, 3, 4, 5, TimeSpan.Zero);
             // A DIRECTORY where the report's own file goes: writing to it fails on every platform.
-            Directory.CreateDirectory(Path.Combine(dir, CrashReport.FileName("head-crash", when)));
+            Directory.CreateDirectory(Path.Combine(dir, CrashReport.FileName("head-crash", when, 1)));
 
             for (int i = 0; i < 4; i++)
-                File.WriteAllText(Path.Combine(dir, $"head-crash-2026080{i}-000000-000.log"), "x");
+                File.WriteAllText(Path.Combine(dir, Report("head-crash", $"2026080{i}", i)), "x");
 
             string? path = CrashReport.WriteAt(
                 new CrashReportOptions { Directory = dir, ProcessLabel = "head", MaxRetainedReports = 1 },
-                "Unhandled exception", Thrown("x"), null, when);
+                "Unhandled exception", Thrown("x"), null, when, 1);
 
             Assert.Null(path);
-            Assert.Equal(4, Directory.GetFiles(dir, "head-crash-2026080?-000000-000.log").Length);
+            Assert.Equal(4, Directory.GetFiles(dir, "head-crash-2026080?-*.log").Length);
         }
         finally { Directory.Delete(dir, true); }
     }

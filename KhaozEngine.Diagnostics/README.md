@@ -85,8 +85,13 @@ the graphics backend as soon as its window exists), so this is only wired by han
   report lands in under `DiagnosticReports`. `%LOCALAPPDATA%\KhaozEngine\crash` on Windows,
   `$XDG_STATE_HOME/KhaozEngine/crash` (else `~/.local/state/...`) elsewhere. Override with
   `CrashReportOptions.Directory`.
-- One file per crash, `{process}-crash-{yyyyMMdd-HHmmss-fff}.log`, pruned to `MaxRetainedReports` (default 20)
-  per process label.
+- One file per crash, `{process}-crash-{yyyyMMdd-HHmmss-fff}-{pid}-{counter}.log`, pruned to
+  `MaxRetainedReports` (default 20) per process label. The process id and the counter are what make the name
+  unique: unobserved task exceptions arrive from the finalizer thread in a burst, and a stamp that stops at the
+  millisecond loses every collision silently (a measured burst of twelve wrote seven files).
+- Retention matches the whole generated shape, not the stem, so a label whose stem starts with another's
+  (`show` against `show-crash`) no longer prunes the other's reports out of a shared crash directory. Two labels
+  that SANITISE to the same stem (`My Game` and `My-Game`) do share one pool, by construction.
 - Contents: timestamp, process, engine version, runtime, OS, the crash context, every `Note`, then the exception
   type, message and full stack.
 - A hostile exception costs its stack and not its report. `Message` and `ToString` are both virtual, so both are

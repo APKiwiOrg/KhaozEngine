@@ -18,6 +18,13 @@ public sealed class CrashReportOptions
     /// <summary>
     /// Name of the crashing process, used both in the file name and in the report's header line. Defaults to
     /// <c>game</c>. Characters a file name cannot carry are replaced.
+    /// <para>
+    /// TWO LABELS THAT SANITISE IDENTICALLY SHARE ONE RETENTION POOL, so choose distinct ones. A space becomes
+    /// a hyphen, which means <c>My Game</c> and <c>My-Game</c> produce the same file-name stem and each head's
+    /// <see cref="MaxRetainedReports"/> then counts the other's reports. This is by construction rather than an
+    /// oversight: once both have written the same stem there is nothing left in the name to tell them apart. A
+    /// label that merely STARTS with another's is fine, because retention matches the whole generated shape.
+    /// </para>
     /// </summary>
     public string ProcessLabel { get; set; } = "game";
 

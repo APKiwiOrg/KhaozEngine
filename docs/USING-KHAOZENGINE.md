@@ -8041,9 +8041,12 @@ exception to its own file whether or not the game configured any logging.
 | Windows | `%LOCALAPPDATA%\KhaozEngine\crash\` |
 | Linux | `$XDG_STATE_HOME/KhaozEngine/crash/`, else `~/.local/state/KhaozEngine/crash/` |
 
-One file per crash, named `{window title}-crash-{yyyyMMdd-HHmmss-fff}.log`, oldest pruned beyond 20. It carries
-the timestamp, the process, the engine version, the runtime and OS, the graphics backend, then the exception's
-type, message and full stack.
+One file per crash, named `{window title}-crash-{yyyyMMdd-HHmmss-fff}-{pid}-{counter}.log`, oldest pruned beyond
+20. It carries the timestamp, the process, the engine version, the runtime and OS, the graphics backend, then the
+exception's type, message and full stack. The process id and the counter are what make one crash one file: a
+name that stopped at the millisecond lost back-to-back writes to each other silently, and pruning matches the
+whole shape rather than the stem, so a head named `show` cannot delete a head named `show-crash`'s reports out of
+the shared directory.
 
 Add your own facts to it with `CrashReport.Note(key, value)` (the current scene, a build channel, the connected
 server), and opt the whole thing out with `GameAppOptions.SuppressCrashReportFile`. A head that is not a `GameApp`

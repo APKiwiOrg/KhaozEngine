@@ -56,8 +56,9 @@ namespace KhaozEngine.Showcase
 
         readonly TelemetryRecorder _recorder = new();
         readonly FrameStats _frameStats = new();
-        readonly List<TelemetryChannel> _channels = new(8 + GpuTelemetryChannels.ChannelCount);
+        readonly List<TelemetryChannel> _channels = new(9 + GpuTelemetryChannels.ChannelCount);
         float _sampleTimer;
+        long _frames;
 
         /// <summary>True once <see cref="Start"/> opened a file, false when the lever was never pulled.</summary>
         public bool IsRecording => _recorder.IsRecording;
@@ -157,12 +158,21 @@ namespace KhaozEngine.Showcase
             // Metered every frame even between rows, so the fps window is the real one rather than a 10 Hz
             // subsample of it.
             _frameStats.Sample(rawDt);
+            _frames++;
 
             _sampleTimer -= rawDt;
             if (_sampleTimer > 0f) return;
             _sampleTimer = SampleSeconds;
 
             _channels.Clear();
+
+            // Loop frames since the capture opened. It is the denominator that makes a capture SELF-VERIFYING:
+            // GpuDeviceCounters.FramesBegun would serve, but a backend with no counters (the Veldrid Metal
+            // incumbent is one) writes no GPU columns at all, and then nothing in the file says whether the rows
+            // describe the frames the run was asked for. Divide it by the elapsed t and a wrong reading has
+            // nowhere to hide.
+            _channels.Add(new TelemetryChannel("frames", _frames));
+
             _channels.Add(new TelemetryChannel("fps", _frameStats.Fps));
             _channels.Add(new TelemetryChannel("frameMsAvg", _frameStats.FrameMsAvg));
             _channels.Add(new TelemetryChannel("frameMsMin", _frameStats.FrameMsMin));

@@ -165,6 +165,15 @@ namespace KhaozEngine.Showcase
             if (ParseFrameCap(System.Environment.GetEnvironmentVariable("KE_SHOWCASE_FRAME_CAP")) is { } cap)
                 FrameCap = cap;
 
+            // KE_SHOWCASE_BACKGROUND_THROTTLE=off disables the unfocused/minimized pacing for a measured run.
+            // The engine default caps an unfocused-but-visible window at BackgroundThrottlePolicy.DefaultUnfocusedHz
+            // (15 Hz), which is correct for a game and ruinous for an unattended capture: an 80-second windowed run
+            // that never took focus reads a flat 66.67 ms frame time and looks like a backend that collapsed. That
+            // is not hypothetical, it is what the first gate 4 baseline attempt recorded before this existed. Focus
+            // is not a variable a reproducible capture (or gate 4's week-long soak) can afford to carry.
+            if (ParseDisabled(System.Environment.GetEnvironmentVariable("KE_SHOWCASE_BACKGROUND_THROTTLE")))
+                BackgroundThrottle = BackgroundThrottlePolicy.Disabled;
+
             // Arm the field capture last, once the window and its device exist, so the session header records the
             // backend that actually came up rather than the one that was asked for.
             _telemetry.Start(Window);
@@ -184,6 +193,19 @@ namespace KhaozEngine.Showcase
                     System.Globalization.CultureInfo.InvariantCulture, out int hz)) return null;
 
             return hz > 0 ? FrameCap.Hz(hz) : FrameCap.Uncapped;
+        }
+
+        /// <summary>True when <paramref name="value"/> asks for a feature to be turned off (<c>off</c>, <c>0</c>,
+        /// <c>false</c>, <c>no</c>, case-insensitive). Anything else, including unset, leaves the default. Pure.</summary>
+        internal static bool ParseDisabled(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return false;
+
+            string text = value.Trim();
+            return string.Equals(text, "off", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(text, "0", StringComparison.Ordinal)
+                || string.Equals(text, "false", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(text, "no", StringComparison.OrdinalIgnoreCase);
         }
 
         string? _autoRoom;

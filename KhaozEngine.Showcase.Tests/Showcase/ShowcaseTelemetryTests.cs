@@ -131,6 +131,25 @@ namespace KhaozEngine.Tests.Showcase
             Assert.Equal(90, cap.Value.Value);
         }
 
+        [Theory]
+        [InlineData("off")]
+        [InlineData("OFF")]
+        [InlineData("0")]
+        [InlineData("false")]
+        [InlineData("no")]
+        public void ParseDisabled_ReadsTheOffForms(string value) => Assert.True(ShowcaseApp.ParseDisabled(value));
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData("  ")]
+        [InlineData("on")]
+        [InlineData("1")]
+        [InlineData("yes")]
+        [InlineData("disabled")]
+        public void ParseDisabled_LeavesTheDefaultAlone_ForAnythingElse(string? value)
+            => Assert.False(ShowcaseApp.ParseDisabled(value));
+
         /// <summary>Set an environment variable for the scope of one test and put it back afterwards.</summary>
         sealed class EnvVar : IDisposable
         {

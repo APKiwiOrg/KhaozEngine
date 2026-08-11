@@ -1710,6 +1710,38 @@ first run is the push that merges it. The rollout record now carries every gate'
 named, and all three flip sites (the `ProbeOS` macOS arm, `_windowCandidates`, and the two frame-cap sites)
 keep the doc comments row 3 wrote saying what they are waiting for.
 
+**The leg's FIRST run found a device difference no local run could produce, which is the leg doing its job.**
+`macos-26 / metal-native` aborted the test host under the armed debug layer with
+`MTLSamplerBorderColorTransparentBlack is not supported on this device`, on
+`MetalResourceGpuTests.Samplers_OfEveryDescriptionTheEngineBuilds_AreAccepted`, after 5907 rows of the same
+assembly had passed. Sampler border colours are a `MTLGPUFamilyMac2` feature and the hosted runner's GPU is an
+Apple Paravirtual device, so this Mac's M2 Max could never reproduce it: every local rehearsal was green
+because every local device has the feature. The incumbent Metal leg beside it passed for two reasons that both
+say "not looked at" rather than "fine": the native suite is dormant there, and the incumbent runs no armed
+validation, so the same wrong sampler would be created silently.
+
+**The fix is a device fact plus a named refusal, and it diverges from the incumbent on purpose.**
+`Veldrid.MTL.MTLSampler` writes the border colour whenever `gd.MetalFeatures.IsMacOS`, unconditionally and
+without asking the device, which is how a virtualized GPU ends up with a border sampler it cannot honour. This
+backend now reads the `MTLGPUFamilyMac2` answer once at device creation, out of the snapshot the probe already
+takes for the floor, and carries it to every sampler creation. `-setBorderColor:` is sent ONLY for a descriptor
+whose address modes actually border, so the shared WRAP pair and every sampler the engine ships are untouched
+by construction. A `GpuSamplerAddress.Border` sampler on a device without support is refused with a
+`NotSupportedException` naming the family answer and what to use instead, which is the backend's standing
+posture applied to a case whose alternative is not a wrong pixel but a process abort. **No sampler the engine
+builds asks for `Border` on any axis**, so nothing shipped changes on any machine, and what the refusal bites
+is a test fixture and a future consumer on a virtualized device.
+
+**The row that found it is now two-armed and still counts zero skips.** Every non-bordering description is
+accepted on every device as before. The Border description is created on a device that supports border colours
+and asserts the named refusal on one that does not, with the arm chosen by reading the device fact and logged
+so a CI reading says which machine ran which. A skip would have been the easy answer and the wrong one: gate 2
+reads the `[GpuFact]` assemblies at 0 skipped, and a skipped row is indistinguishable from a row that never
+ran. The decision itself (the conditional write, the refusal, and the `Mac2` read) is a pure function driven
+device-free from fabricated support in `MetalResourcePolicyTests`, so it runs on the Linux and Windows legs
+too. **Only the hosted leg can exercise the refusal arm**: this Mac supports border colours and therefore always
+takes the accept arm.
+
 
 ## 17.34.0
 

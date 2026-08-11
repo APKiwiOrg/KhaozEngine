@@ -3536,8 +3536,8 @@ phase 3's rollout records established.
 
 | Gate | Standing | Instrument, and what has to happen for the gate to move |
 |---|---|---|
-| 1. All 36 goldens green, worst-cell delta recorded, MM2 resolved | PENDING, instrument built | The `metal-native` leg's golden compares, and the `golden-deltas-metal-native` artifact it uploads on `always()`. The leg's FIRST run is the push that merges row 19, so the earliest possible reading is that run. The `KE_METAL_CLEAR` A/B is a second dispatch with the variable set, and the switch is removed at this gate either way |
-| 2. Full `macos-26` suite at 0 failed and NO NEW SKIPS, with the two `[GpuFact]` assemblies at 0 skipped, passed at or above the incumbent's, no validation errors, MM9 met | PENDING, instrument built | The same leg, which runs the whole suite on every trigger with `MTL_DEBUG_LAYER=1` armed and `KE_METAL_REQUIRED=1` set. **The skip half is read off the `[GpuFact]` assemblies rather than off the leg's own total**, because the leg's test step names no project and therefore runs the whole solution, where 18 backend-independent rows skip for reasons this backend cannot move: 17 in `KhaozEngine.Server.Tests` that need a live SQL Server (the `SqlServerWorldStoreConformanceTests` set and `SqlServerWalletStoreTests`), plus one `Game.Tests` perturbation control that skips on its own condition. `KhaozEngine.Render.Tests` and `KhaozEngine.MapEditor.Tests` are where a Metal row could skip, both genuinely reach 0 skipped, and that is the readable criterion. **`KE_METAL_REQUIRED` is what makes it worth reading at all**: a dormant row is not a skip, so without it the criterion could be satisfied by rows that asserted nothing. The passed-count comparison is against the incumbent Metal leg on the same commit, which is the leg beside it in the same matrix |
+| 1. All 36 goldens green, worst-cell delta recorded, MM2 resolved | PENDING, instrument built, FIRST RUN ABORTED | The `metal-native` leg's golden compares, and the `golden-deltas-metal-native` artifact it uploads on `always()`. The leg's FIRST run is the push that merges row 19, and that run aborted before it could be read (see the paravirtual-device note below), so the earliest reading is now the run after the border-sampler fix. The `KE_METAL_CLEAR` A/B is a second dispatch with the variable set, and the switch is removed at this gate either way |
+| 2. Full `macos-26` suite at 0 failed and NO NEW SKIPS, with the two `[GpuFact]` assemblies at 0 skipped, passed at or above the incumbent's, no validation errors, MM9 met | PENDING, instrument built, FIRST RUN ABORTED | The same leg, which runs the whole suite on every trigger with `MTL_DEBUG_LAYER=1` armed and `KE_METAL_REQUIRED=1` set. **The skip half is read off the `[GpuFact]` assemblies rather than off the leg's own total**, because the leg's test step names no project and therefore runs the whole solution, where 18 backend-independent rows skip for reasons this backend cannot move: 17 in `KhaozEngine.Server.Tests` that need a live SQL Server (the `SqlServerWorldStoreConformanceTests` set and `SqlServerWalletStoreTests`), plus one `Game.Tests` perturbation control that skips on its own condition. `KhaozEngine.Render.Tests` and `KhaozEngine.MapEditor.Tests` are where a Metal row could skip, both genuinely reach 0 skipped, and that is the readable criterion. **`KE_METAL_REQUIRED` is what makes it worth reading at all**: a dormant row is not a skip, so without it the criterion could be satisfied by rows that asserted nothing. The passed-count comparison is against the incumbent Metal leg on the same commit, which is the leg beside it in the same matrix |
 | 3. Budget test green with marginals recorded, MM3 met, the MSL index-table test green, MM6 taken | PENDING, one of four halves in hand | MM6 is TAKEN and PASSED (2.3a, row 17). The budget marginals, MM3 and the index-table test are device-free tests that already run on every `dotnet test`, so this gate is a RECORDING task rather than a machine one. Row 18, the #531 extraction, is the only work in section 18 that waits on it |
 | 4. A field session at or above the incumbent's numbers, zero command-buffer errors, MM1, MM4 and MM10 met | PENDING, instrument built, baseline NOT taken | A windowed telemetry session on this Mac, and the FIRST task is the incumbent baseline (MM12), because no Metal field number exists anywhere in this program's record. `GpuDeviceCounters` carries every channel this gate reads, and the session header names the backend. Pin the build line and the capture-window stamps before reading anything |
 | 5. A human windowed pass, with the vsync toggle as a MEASUREMENT | PENDING, instrument built | A person at a window. The checklist is in the gate itself, narrowed by row 15: the layer half of the swapchain runs headless in the `[GpuFact]` suite, so what is genuinely uncovered is `MetalLayerHost`'s four Cocoa selectors and whether anything appears on a screen. It gains one item from #605, the Retina `drawableSize` read on frame one, and the frame-cap arm now has an instrument rather than a judgement: `AcquireWaitMs / AcquireWaitCount` on an uncapped capture with vsync on |
@@ -3582,6 +3582,36 @@ only exists as a CI run. What the rehearsal does establish is that the leg is no
 zero-skipped half is real (a dormant row throws under `KE_METAL_REQUIRED`), the API layer is armed and quiet
 across the whole suite, and both tiers were run rather than one being assumed from the other. The gate moves
 when the leg's first hosted run does.
+
+**THE FIRST HOSTED RUN ABORTED, AND THE PARAVIRTUAL DEVICE'S LIMITATION IS NOW A LEDGER FACT FOR READING BOTH
+GATES.** Run 31461234042 aborted the test host under the armed debug layer with
+`validateMTLSamplerDescriptor:79: failed assertion 'Sampler Descriptor Validation /
+MTLSamplerBorderColorTransparentBlack is not supported on this device'`, on
+`MetalResourceGpuTests.Samplers_OfEveryDescriptionTheEngineBuilds_AreAccepted`. Both gates read PENDING for
+the same reason: an aborted run has no golden compares to read and no passed count to compare, so gate 1 lost
+its first reading with gate 2's.
+
+**The device fact.** The hosted runner's Apple Paravirtual device does not support sampler border colours,
+which are a `MTLGPUFamilyMac2` feature. That is the first CONFIRMED behavioural difference between the hosted
+GPU and this Mac's M2 Max, and it is worth carrying here rather than only in the changelog, because it changes
+how both gates are read from now on: a `macos-26` result is not an M2 Max result, and a row that passes here
+and fails there is a device difference to investigate before it is a defect. Two properties of the abort are
+worth pinning:
+
+- **the run got FAR before it aborted**: 5907 rows of `KhaozEngine.Render.Tests` passed, including every device
+  creation and therefore every shared WRAP sampler pair, and every golden. So the limitation is narrow. It is
+  reached by an address mode that borders, not by the border-colour property sitting on an ordinary descriptor,
+  which the whole run had already been setting unconditionally without complaint.
+- **the incumbent leg beside it passed, and that is not evidence of health.** The native suite is dormant on
+  `macos-26 / metal` and the incumbent runs no armed validation, so `Veldrid.MTL.MTLSampler`'s unconditional
+  `if (gd.MetalFeatures.IsMacOS)` border-colour write is still arming border colours on that device today, with
+  no golden able to see it because no golden samples a border. The engine's own backend refuses instead, and
+  the divergence is recorded in `KhaozEngine.Gpu.Metal/README.md`.
+
+**MM9 is unaffected by this, and the distinction matters for reading gate 2.** An ABI error presents as a
+crash, and this was a crash, so the resemblance is close enough to say why it is not one: the abort came from
+Metal's own validation layer reporting a descriptor the device cannot satisfy, with a message naming the
+feature, which is the layer working. Every interop call on the path was accepted.
 
 **Gate 3 has ONE of its four halves in hand. MM6's measurement was TAKEN at row 17 and PASSED (2.3a).** The
 budget marginals, MM3 and the MSL index-table test are still owed, so the gate itself does not move. Recorded

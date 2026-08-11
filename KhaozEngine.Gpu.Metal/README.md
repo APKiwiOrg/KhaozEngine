@@ -301,6 +301,26 @@ about who releases what.
 The `MipLodBias` a sampler description carries is dropped, because `MTLSamplerDescriptor` has no LOD bias field
 at all, which is why `GpuCapabilities.SamplerLodBias` is false on this backend and on the incumbent alike.
 
+**`GpuSamplerAddress.Border` is a DEVICE FEATURE here, and this backend diverges from the incumbent over it.**
+Sampler border colours are a `MTLGPUFamilyMac2` feature, so a Metal device that answers no to that family has
+none: the debug layer asserts on any sampler descriptor carrying one, and without the layer armed the device
+samples something other than a border. The incumbent writes the border colour whenever it is on macOS and never
+asks the device, which means it arms border colours on a machine that cannot honour them. This backend asks
+once, at device creation, off the family answer the probe already reads for the floor, and then does two things
+the incumbent does not:
+
+- **the property is written ONLY when an address mode is `Border`.** A Wrap, Mirror or Clamp sampler never sends
+  `-setBorderColor:` at all, so the shared WRAP pair and every shipped engine sampler are untouched by
+  construction rather than by a check.
+- **a `Border` sampler on a device without support is REFUSED BY NAME**, with a `NotSupportedException` saying
+  which family answer produced the refusal and what to use instead. Creating it anyway is not the safer option:
+  it aborts the process under `MTL_DEBUG_LAYER=1` and mis-samples without it.
+
+No sampler the engine itself builds asks for `Border` on any axis, so nothing shipped is affected either way.
+What the refusal bites is a test fixture that exercises every address mode, and a future consumer asking for a
+border sampler on a virtualized GPU. The hosted `macos-26` runner's Apple Paravirtual device is exactly that
+device, and it is where the difference was found.
+
 ## The uniform ring: a `memcpy` where the incumbent splits the encoder (M-M3 to M-M8)
 
 **A `UniformBuffer`-usage buffer is ONE `MTLBuffer` of `align(size, 256) * KE_METAL_FRAMES_IN_FLIGHT`**, and

@@ -11,7 +11,9 @@ A crash that nothing logged now writes its own file, the Metal shader emission i
 processes, both shader-cache keys learn to name the cross-compiler that produced the bytes, the GPU disk caches
 start pruning the version folders they leave behind, the MSAA resolve destinations gain the instrument the golden
 family is not, the Retina first frame is sized in pixels, the seam's one-open-recording-per-device rule becomes a
-refusal instead of a paragraph, and two of phase 4's guards get the teeth their prose already claimed.
+refusal instead of a paragraph, two of phase 4's guards get the teeth their prose already claimed, CI starts
+gating the three whole-tree convention guards it never ran, and the ambient Gui theme stops racing the rest of
+its test assembly.
 
 ### The last-chance crash file (`CrashReport`, #607)
 
@@ -411,6 +413,77 @@ unload, potentially minutes into a session. Do not read a clean boot as proof th
 the race between the `true` it returned and the open it encouraged. The mid-frame refuser lists in
 `KhaozEngine.Render3D/README.md` and `docs/USING-KHAOZENGINE.md` also gained the two public readbacks they had
 missed, `Scene3D.DebugReadSplatAlbedoMip` and `Render3DPreview.ReadbackRgba`.
+
+### CI gates the three whole-tree convention guards (#554)
+
+`ci.yml` gains one unconditional step, `Repo convention checks`, running `check-dashes.sh --tree`,
+`check-prose.sh --tree` and `check-file-size.sh --tree` before the dotnet setup, on every push and PR and on
+both the selective and the full path. It sits beside the existing `check-doc-versions.sh` step, which already
+ran that way. No behaviour change to any script and no baseline moved: all three were green on `main` when this
+landed, so the wiring lands green rather than red.
+
+**The engine carried all three guards and invoked none of them in tree mode.** `.githooks/pre-commit` runs the
+STAGED legs of dashes and prose, which by construction cannot see a commit that never went through the hook.
+`--no-verify`, another IDE, and the GitHub web UI all bypass it, and a violation that lands that way was
+detectable only by a manual sweep somebody had to remember. The five game repos have run exactly these three in
+a `Repo convention checks` step since the fleet prose-gating pass. The engine had no `build-test.yml` for that
+pass to touch, which is the whole reason it was skipped.
+
+**Unconditional, and deliberately outside the selective path.** `ci-selective-test.sh` skips entirely on a
+docs-only diff, which is precisely the diff shape the dash and prose guards exist for, so gating the step on it
+would have disarmed it on the pushes that need it most. The three sweeps are seconds of `git ls-files` plus
+`grep` over tracked text, so there is nothing to gate them on in the first place.
+
+**Why the file-size leg is here despite the compile-time analyzer.** KESIZE only sees files the compiler sees,
+and the selective path compiles the affected slice rather than the solution, so growth in an unaffected project
+reached `main` uninspected on a normal push. This closes the gap that `docs/design/FILESIZE-ANALYZER-DESIGN-2026-07-20.md`
+recorded as a known correction, and that doc now says so.
+
+**The step asserts both baselines exist before it trusts either ratchet.** `check-prose.sh` and
+`check-file-size.sh` exit 0 with a stderr notice when `.prose-baseline` or `.filesize-baseline` is missing,
+which is the right behaviour for propagating this step into a repo that has not adopted the ratchet yet and
+the wrong one here: a deleted baseline would disarm the gate and still paint the job green. Two `test -f`
+lines run first, under the default `bash -e` shell, so the missing-baseline case fails the run instead.
+
+**Each guard was proved to fail before it was trusted.** A guard that prints a violation and exits 0 gates
+nothing, so one deliberate violation was run through each script and then reverted: an em-dash appended to
+`README.md` (exit 1), a prose semicolon appended to `README.md`, taking it to 36 against its baseline of 35
+(exit 1), 900 padding lines appended to a small unbaselined `.cs`, taking it to 912 against the 800 cap
+(exit 1), and a hand-edited `PackageReference` version in `README.md` (exit 1). All four return 0 on the clean
+tree.
+
+### The ambient `GuiTheme.Default` swap stops racing the rest of the Gui test assembly (#349)
+
+New file `KhaozEngine.Gui.Tests/GuiThemeGlobalCollection.cs` declares the `gui-theme-global` collection with
+`DisableParallelization = true`, and `PatchNotesThemeTests` joins `GuiThemeTests` in it. Test-only, no engine
+code changed, and the mutable `GuiTheme.Default` setter stays exactly as it is, because assigning
+`GuiTheme.Default = GuiTheme.Legacy` at startup is documented consumer API rather than a test affordance.
+
+**`GuiThemeTests` already carried `[Collection("gui-theme-global")]` and it was doing nothing.** No
+`[CollectionDefinition]` for that name existed anywhere in the assembly, so the name grouped one class against
+itself and the collection still ran in parallel with every other collection. That is the trap worth remembering
+from this one: the attribute on the test class is not what serializes anything, the definition is. Cross-checking
+every `[Collection]` name in the repo against every `[CollectionDefinition]` found one more orphan of exactly
+that shape and it is fixed here too: `GameAppCrashReportTests` claimed a `CrashReportSerial` collection nobody
+defined, so it installed and uninstalled the process-global `CrashReport` handler in parallel with the rest of
+`KhaozEngine.Game.Tests`, and the new `KhaozEngine.Game.Tests/CrashReportSerialCollection.cs` declares that name
+with `DisableParallelization = true`.
+
+**The blast radius was never the two classes in the title.** `GuiStyle.Default` recomputes off
+`GuiTheme.Default` on every get, so during the swap window every widget default in the assembly reads the legacy
+palette. CI caught `PatchNotesThemeTests` getting `Legacy.SurfaceHover` where it asserted `Crisp.SurfaceHover`,
+then later caught `RetainedWidgetStyleTests` on `IsFlat`. Enumerating the readers is not a fix, because the
+reader set is most of the assembly. Serializing the WRITER is, and `DisableParallelization` is what makes it
+one: a collection marked that way runs in its own phase with no other collection running.
+
+**Measured rather than assumed, in both directions.** A throwaway probe pinned xUnit 2.9.2's actual behaviour
+(the parallel collections all completed before the non-parallel phase opened, so a 2s window in the serial phase
+was invisible to four parallel watchers). Then the real writer's swap window was widened to 1.5s with four
+watcher classes polling the ambient theme: green with the fix, and with `DisableParallelization` flipped to
+`false` the same probe failed 12 tests, including the exact
+`RetainedWidgetStyleTests.*_Style_defaults_crisp_and_accepts_modern` `Assert.False()` shape from the issue. The
+flake reproduces on demand without the fix and not at all with it. The probe was reverted, and the two classes
+ran together 10 times over with no failure.
 
 ## 17.35.0
 

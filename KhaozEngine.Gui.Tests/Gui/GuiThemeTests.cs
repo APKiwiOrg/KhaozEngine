@@ -12,6 +12,9 @@ namespace KhaozEngine.Tests.Gui
     /// <see cref="GuiTheme.Default"/>; <see cref="GuiTheme.Legacy"/> / <see cref="GuiStyle.Legacy"/> reproduce the
     /// pre-change flat blue-grey look for a one-line revert. These are headless value/contract tests.
     /// </summary>
+    // The writer: Setting_the_ambient_theme_reskins_newly_built_widgets assigns GuiTheme.Default. The
+    // collection had no definition until #349, so this attribute grouped nothing and the swap window stayed
+    // open to every other class. GuiThemeGlobalCollection now declares it non-parallel.
     [Collection("gui-theme-global")]
     public class GuiThemeTests
     {

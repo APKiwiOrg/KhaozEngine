@@ -184,6 +184,12 @@ enforcement, so its leniencies have no backstop. Left as is, since the leniencie
 erring lenient in the repo that owns the analyzer is the safer direction, but the claim as written
 was wrong and should not be relied on.
 
+**Superseded by #554.** The engine's `ci.yml` now runs `check-file-size.sh --tree` in its convention
+step, on every push and PR, both the selective and the full path. So the CI backstop this correction
+said did not exist does exist, and the original 14.6.0 claim holds here as well. The gap it closes is
+real rather than theoretical: the selective path compiles only the affected slice, so the analyzer
+never sees an unaffected project's growth on a normal push.
+
 ## 14.8.1: the exemption test is growth, not syntax
 
 14.8.0 shipped the exemption with `ShaderSources.cs` as its canonical example, in this doc, the

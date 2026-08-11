@@ -9,6 +9,9 @@ namespace KhaozEngine.Tests.Gui
     /// literals), mirroring <see cref="UpdateOverlayTheme"/>'s injectable-look shape. Headless value/contract
     /// tests against the crisp default palette.
     /// </summary>
+    // Reads the ambient GuiTheme.Default, so it shares the serial collection with the class that swaps it
+    // (GuiThemeTests). See GuiThemeGlobalCollection for why that collection is non-parallel (#349).
+    [Collection("gui-theme-global")]
     public sealed class PatchNotesThemeTests
     {
         [Fact]

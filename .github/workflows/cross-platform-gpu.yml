@@ -1,5 +1,6 @@
 # cross-platform-gpu: desktop GPU test matrix (Win D3D11 incumbent + Win D3D11 native / Linux Vulkan incumbent
-# + Linux Vulkan native / macOS Metal), plus one Vulkan synchronisation-validation job.
+# + Linux Vulkan native / macOS Metal incumbent + macOS Metal native), plus one Vulkan
+# synchronisation-validation job.
 #
 # BILLING: this repo is PUBLIC, so GitHub-hosted standard runners are free. ALL FIVE legs run hosted and cost
 # nothing, Metal included: it moved to hosted macos-26 (#552), and no leg touches a personal machine any more.
@@ -19,6 +20,40 @@
 #     covers pull_request like every other leg now: the exclusion that used to sit here existed only to keep
 #     a fork from routing work onto a personal machine, and there is no personal machine in this workflow
 #     any more.
+#   * The GitHub-hosted Metal NATIVE leg runs the engine's own KhaozEngine.Gpu.Metal backend
+#     (KE_GRAPHICS_BACKEND=metal-native) on exactly the incumbent Metal leg's tier, which is the FULL suite on
+#     every trigger, on the same hosted macos-26 image (decision M-T6). It is a GUEST in the incumbent's metal
+#     golden family exactly as direct3d11-native and vulkan-native are guests in theirs (decision M-I3): it
+#     VERIFIES the committed metal grids on the same real GPU and never bakes them, so KE_UPDATE_GOLDENS stays
+#     empty on it for every trigger and it sits a bake dispatch out entirely.
+#     THIS IS THE STRONGEST REGRESSION NET IN THE PROGRAM, and that is why it takes the expensive tier. The
+#     other two native legs run golden-only on push, on software rasterizers, and the Vulkan one has no
+#     swapchain coverage at all. This one runs everything, on a real GPU, every time, and the metal family is
+#     the fleet's cross-backend reference, so a golden disagreement here is a fleet event rather than a leg
+#     event.
+#     Three things are its own rather than the incumbent Metal leg's. It sets KE_METAL_REQUIRED=1, because the
+#     rows that need a native device go DORMANT when the probe refuses the machine, and a dormant row on the one
+#     leg built to run them is a pass that asserted nothing which the zero-skipped criterion of rollout gate 2
+#     cannot see (the same lesson as KE_VULKAN_REQUIRED, inherited by name). It arms Metal's TWO validation
+#     tiers (decision M-T7), MTL_DEBUG_LAYER=1 on every run because it is an environment variable with no
+#     install and no measurable cost at this scale, and MTL_SHADER_VALIDATION=1 on the deep sweep. And it sets
+#     MTL_CAPTURE_ENABLED=1 on the deep sweep alone, which is the only thing that runs the frame-capture interop
+#     end to end: without it Metal refuses the GPU-trace destination and the row asserts that nothing started,
+#     with it the capture really starts from the native queue pointer and writes a .gputrace bundle. It is off
+#     on the push path deliberately, because a capture-enabled process is slower and every armed capture writes
+#     to the runner's temp.
+#     NEITHER METAL TIER IS A SYNCHRONISATION VALIDATOR, and Metal has none at all: MTL_DEBUG_LAYER is API
+#     validation and MTL_SHADER_VALIDATION is in-shader bounds checking, and neither tracks read-after-write
+#     hazards across encoders. That is the one place this matrix is weaker on the Metal side than on the Vulkan
+#     one, and it is stated here rather than left for a reader to conclude that Metal's validation is simply
+#     cheaper. It is also why that backend keeps Metal's automatic hazard tracking rather than going untracked.
+#     THE ASSERT MODES ARE NOT ARMED, and that is deliberate rather than an omission
+#     (https://github.com/APKiwiOrg/KhaozEngine/issues/591). MTL_DEBUG_LAYER_ERROR_MODE=assert and its warning
+#     twin abort the test HOST rather than failing a row, and two rows in this assembly legitimately provoke
+#     them: the row-1 interop spike records offset setters on an encoder with no pipeline bound, because it is
+#     measuring the objc_msgSend ABI rather than drawing, and the validation-reader row reads the very variables
+#     such a run sets at launch. A leg that aborts its host reads as a crash rather than as a finding, so the
+#     tiers this leg arms are the two the design names and nothing more.
 #   * The GitHub-hosted D3D11 leg (2x billing) runs only the golden tests
 #     (FullyQualifiedName~Golden) on push / pull_request, and the FULL suite on the weekly
 #     schedule and on workflow_dispatch. Rationale: the full suite on hosted Windows measured
@@ -145,6 +180,11 @@ on:
       # too. Until this line existed, a push touching only Vulkan sources got no matrix run, and the gap
       # stayed invisible because branch merges bundle Render.Tests changes into the same push.
       - 'KhaozEngine.Gpu.Vulkan/**'
+      # The native Metal backend, watched for the same reason as both siblings above and needing its own entry
+      # for the same reason vulkan-native did: 'KhaozEngine.Gpu/**' needs the literal prefix and does not match a
+      # sibling package. Without this line a push touching only Metal sources would get no matrix run, on the one
+      # backend whose leg is the strongest net in the program.
+      - 'KhaozEngine.Gpu.Metal/**'
       - 'KhaozEngine.Gui/**'
       - 'KhaozEngine.Primitives/**'
       # Render/runtime stack layer between Gpu and Render2D/Render3D (AppWindow, GLFW). Was never watched (#198).
@@ -211,7 +251,7 @@ on:
         description: 'Which legs to run. Pick one backend when debugging it, "all" for the full matrix.'
         type: choice
         default: all
-        options: [all, metal, direct3d11, direct3d11-native, vulkan, vulkan-native]
+        options: [all, metal, metal-native, direct3d11, direct3d11-native, vulkan, vulkan-native]
 
 # Least privilege: this workflow only checks out, builds, tests, and uploads run artifacts. No step
 # writes back to the repo or publishes a package, so contents: read covers everything it does.
@@ -303,8 +343,19 @@ jobs:
           # the layer is expensive. Empty means the leg installs no layer at all, which is every leg but
           # vulkan-native. `sync`, the second tier, is not a value here: it runs a different SUITE on a
           # different trigger, so it is the separate gpu-vulkan-sync job rather than a third Linux leg.
+          # `metal-native` is the engine's own native Metal backend (decision M-T6). Same OS, same runner image
+          # and the same `always` tier as the incumbent Metal leg, which is the point for the third time: two
+          # implementations of one API on one GPU, checked against a single shared set of goldens (M-I3). It is
+          # the only guest leg on the expensive tier, and the reason is in the header: it is the only leg in the
+          # program that runs everything on real hardware, and the family it verifies is the fleet's reference.
+          # It pins NO device. Both Windows legs pin their adapter and both Linux legs pin their physical device
+          # because an unpinned native selection there could land on a different rasterizer from the incumbent's.
+          # macOS has no such choice to get wrong: the native backend's default is MTLCreateSystemDefaultDevice()
+          # rather than the enumeration's first element, which is the same device the incumbent gets, so a pin
+          # would add a name that has to match a runner image and buy nothing. KE_METAL_DEVICE stays unset.
           all='[
             {"os":"macos-26",      "backend":"metal",             "runner":"macos-26",                      "fullSuite":"always",    "d3d11Adapter":"",     "vulkanDevice":"",         "vulkanValidation":"",       "goldenGuest":""},
+            {"os":"macos-26",      "backend":"metal-native",      "runner":"macos-26",                      "fullSuite":"always",    "d3d11Adapter":"",     "vulkanDevice":"",         "vulkanValidation":"",       "goldenGuest":"true"},
             {"os":"windows-latest","backend":"direct3d11",        "runner":"windows-latest",                "fullSuite":"scheduled", "d3d11Adapter":"warp", "vulkanDevice":"",         "vulkanValidation":"",       "goldenGuest":""},
             {"os":"windows-latest","backend":"direct3d11-native", "runner":"windows-latest",                "fullSuite":"scheduled", "d3d11Adapter":"warp", "vulkanDevice":"",         "vulkanValidation":"",       "goldenGuest":"true"},
             {"os":"ubuntu-latest", "backend":"vulkan",            "runner":"ubuntu-latest",                 "fullSuite":"scheduled", "d3d11Adapter":"",     "vulkanDevice":"llvmpipe", "vulkanValidation":"",       "goldenGuest":""},
@@ -367,6 +418,22 @@ jobs:
       # its test step. Keeping the predicate identical to the variable's is worth more than shaving that case:
       # the install and the thing it exists to serve cannot drift apart if they are the same expression.
       VULKAN_VALIDATION_ARMED: ${{ (matrix.fullSuite == 'always' || (matrix.fullSuite == 'scheduled' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'))) && matrix.vulkanValidation || '' }}
+      # WHETHER THIS RUN ARMS METAL'S DEEP TIER, as ONE expression with three readers, for the reason the Vulkan
+      # variable above is one expression with three: the shader-validation variable, the capture variable and the
+      # artifact NAME all have to agree, and a copy per site is how they stop agreeing.
+      #
+      # The leg's suite tier cannot express it, which is the one structural difference from the Vulkan side. That
+      # leg is `fullSuite: scheduled`, so "the deep tier" and "the full suite" are the same condition there. This
+      # leg is `fullSuite: always`, so every trigger already runs the whole suite and the deep tier has to be its
+      # own predicate: MTL_DEBUG_LAYER is free enough to arm on every run, and shader validation and an armed
+      # capture are not.
+      #
+      # SCHEDULE OR DISPATCH, which is one deliberate departure from the design's "on the scheduled run". A tier
+      # that can only ever be started by the cron takes its first run unattended at 18:00 on a Sunday and cannot
+      # be re-run against a fix without waiting a week, and an instrument nobody can aim is not one. That is the
+      # same departure the Vulkan sync job already documents and takes. A bake dispatch never reaches the test
+      # step on this leg anyway (guest), so it needs no arm of its own here.
+      METAL_DEEP_TIER: ${{ (matrix.backend == 'metal-native' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')) && '1' || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -576,6 +643,36 @@ jobs:
           # regression reds the leg. Unset everywhere else, which is what keeps the incumbent leg and every
           # developer box dormant exactly as before.
           KE_VULKAN_REQUIRED: ${{ (matrix.backend == 'vulkan-native') && '1' || '' }}
+          # THE SAME DECISION ON THE THIRD BACKEND, and the same reason (decision M-T6, phase 3's row-19 lesson
+          # inherited by name). Every Metal row that needs a native device asks MetalDormancy.NativeDeviceAvailable
+          # and returns early when the machine cannot provide one, which is right on a Windows box, on a Linux box
+          # and on the incumbent Metal leg. On THIS leg that early return is a test that asserted nothing and
+          # reported green. With the variable set the helper THROWS instead, naming what the machine objected to
+          # in the probe's own words, so a runner-image regression that took the Metal device away reds the leg
+          # rather than quietly emptying the rows it was built for.
+          #
+          # AND IT IS UNSET ON THE INCUMBENT METAL LEG, deliberately, exactly as KE_VULKAN_REQUIRED is unset on
+          # the incumbent Vulkan leg. That leg is the escape hatch decision M-RO2 keeps selectable until the
+          # closing act, and an escape hatch that goes red whenever the thing it escapes from goes red is not one.
+          KE_METAL_REQUIRED: ${{ (matrix.backend == 'metal-native') && '1' || '' }}
+          # TIER ONE OF METAL'S VALIDATION GATE (decision M-T7): API validation, on EVERY run of the native Metal
+          # leg. It is an environment variable with no install, no apt package and no manifest to check, which is
+          # what makes "every run" affordable here where the Vulkan layer's cost bought it a weekly slot. The
+          # Metal runtime reads it before the first device exists, which is why it is set as a job variable
+          # rather than through the engine's own KE_METAL_VALIDATION knob: that knob REPORTS which tier is really
+          # armed and warns when a process asked for one it cannot have, and this is what actually arms it.
+          MTL_DEBUG_LAYER: ${{ (matrix.backend == 'metal-native') && '1' || '' }}
+          # TIER TWO (decision M-T7): in-shader bounds checking, on the deep sweep only. It instruments every
+          # shader, so it is the expensive half, and a broad sweep is worth its cost once a week the same way the
+          # Vulkan strict tier is. The predicate lives once, in the METAL_DEEP_TIER job env above.
+          MTL_SHADER_VALIDATION: ${{ env.METAL_DEEP_TIER }}
+          # NOT A VALIDATION TIER, and it is here because it is armed on the same trigger and nowhere else. Metal
+          # refuses a GPU-trace capture destination in a process that did not have this set at launch, so without
+          # it MetalFrameCaptureTests asserts only that an unarmed process refuses, and with it the capture really
+          # starts from the native queue pointer and writes a .gputrace bundle the row then asserts and deletes.
+          # That is the one thing in the net that exercises the capture interop end to end. Off on the push path:
+          # a capture-enabled process is slower and every armed capture writes to the runner's temp.
+          MTL_CAPTURE_ENABLED: ${{ env.METAL_DEEP_TIER }}
           # TIER ONE OF THE VALIDATION GATE (decision V-T4): core validation, error severity fails the leg at a
           # controlled point rather than inside the driver callback. On the FULL suite only, which is the same
           # schedule-and-dispatch condition KE_TEST_FILTER selects on below: the push path is the fast signal and
@@ -635,6 +732,28 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: vulkan-validation-strict-${{ matrix.backend }}
+          path: TestResults/suite-output.log
+          if-no-files-found: ignore
+
+      # METAL'S TIERS' EVIDENCE, on always() and for the same reason as the Vulkan artifact above: the debug
+      # layer reports on stderr interleaved with the test names, that interleaving IS the diagnostic, and a run
+      # that passes still carries every non-fatal line the layer emitted.
+      #
+      # THE NAME CARRIES THE TIER RATHER THAN THE LEG, read off the same expression that arms the tier, because
+      # an artifact whose name is false is worse than a missing one: the name is what a reader trusts when they
+      # go looking for a tier's evidence weeks later. `debug-layer` is API validation alone, `shader-validation`
+      # is that plus in-shader bounds checking, and the two never both exist for one run.
+      #
+      # NO SCAN STEP, unlike the Vulkan sync job, and the difference is worth naming. That job scans because
+      # KE_VULKAN_VALIDATION=sync deliberately does not latch, so an error-severity line would otherwise land in
+      # an artifact under a green job. Metal's debug layer is not a message stream the engine pumps: it reports
+      # through the runtime itself, and its failures surface as command-buffer errors that the backend's own
+      # latch turns into test failures. There is no green-with-errors shape here to gate on.
+      - name: Upload Metal validation log
+        if: always() && matrix.backend == 'metal-native'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: metal-validation-${{ env.METAL_DEEP_TIER != '' && 'shader-validation' || 'debug-layer' }}-${{ matrix.backend }}
           path: TestResults/suite-output.log
           if-no-files-found: ignore
 

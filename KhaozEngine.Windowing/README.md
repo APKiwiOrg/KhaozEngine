@@ -45,8 +45,10 @@ Windowing + input foundation for the custom MonoGame-free stack.
   `AppWindow` implements (also surfaced on `GameApp.Display`):
   - `AppWindow.PresentMode` is now a get/set property (was construction-only). Setting it reconfigures the live
     swapchain's vsync in place via `IGpuDevice.SyncToVerticalBlank` - no recreate. On Metal it engages
-    `CAMetalLayer.displaySyncEnabled` but does not cap the CPU; pair vsync with a `FrameCapHz` (the setter warns
-    once, `Console.Error`, if you select vsync with no cap on Metal - see `DisplaySettings.RequiresFrameCapWarning`).
+    `CAMetalLayer.displaySyncEnabled` but does not cap the CPU, measured on the VELDRID Metal backend and open
+    for the engine's own `MetalNative` until a windowed pass settles it. Pair vsync with a `FrameCapHz` either
+    way (the setter warns once, `Console.Error`, if you select vsync with no cap on either Metal backend, see
+    `DisplaySettings.RequiresFrameCapWarning`).
   - `AppWindow.WindowMode` (`WindowMode { Windowed, BorderlessFullscreen, ExclusiveFullscreen }`) switches how the
     window occupies the display; `AppWindow.Resize(w, h)` sets the windowed size in logical points. The swapchain
     follows the new framebuffer via the existing `FramebufferResize` hook, so HiDPI is unchanged (the backbuffer

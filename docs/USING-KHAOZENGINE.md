@@ -322,8 +322,13 @@ app.Display.ApplyDisplay(s);
 `Resize` drive the window and the swapchain follows the new framebuffer via the resize hook, so the HiDPI
 framebuffer semantics are unchanged (the backbuffer always tracks the physical drawable). **Mac/Metal caveat:**
 setting vsync engages `CAMetalLayer.displaySyncEnabled`, but the Veldrid Metal present still does not throttle the
-CPU from vsync alone. The engine handles this by default now - `FrameCap.Auto` (the default cap) resolves to a real
-cap on Metal + vsync, so you no longer have to branch on `GameApp.Backend` to set one. `GameApp`/`AppWindow` emit a
+CPU from vsync alone. That is measured on `GpuBackendKind.Metal`, the Veldrid one, which is the only Metal
+implementation that has run a windowed session so far. Whether the engine's own `MetalNative` needs the cap is an
+open measurement (it writes `displaySyncEnabled` unconditionally and bounds `maximumDrawableCount`, either of
+which may throttle on its own), so BOTH Metal backends take the capped arm until a windowed pass settles it, and
+nothing you write against this changes when it does. The engine handles this by default now - `FrameCap.Auto`
+(the default cap) resolves to a real cap on Metal + vsync, so you no longer have to branch on `GameApp.Backend`
+to set one. `GameApp`/`AppWindow` emit a
 one-time warning (`Console.Error`) ONLY when you explicitly force an uncapped free-run (`FrameCap.Uncapped` /
 `FrameCapHz = 0`) with vsync on Metal. The resolved auto default never trips it. The window-mode policy is the pure
 `WindowModePlanner.Compute`, the auto-cap resolver is the pure `FrameCap.Resolve`, and the Metal-warning rule is the

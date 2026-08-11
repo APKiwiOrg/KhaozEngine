@@ -94,13 +94,15 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// THE KILL SWITCH REPRODUCES THE DEFECT ON HARDWARE, which is what makes gate 1's A/B a comparison
-        /// rather than a hope. Under <see cref="MetalClearMode.Attachment0"/> the same three calls leave
-        /// attachment 0 holding the LAST colour and attachments 1 and 2 holding nothing anybody wrote.
+        /// THIS ROW REPRODUCES THE DEFECT ON HARDWARE, AND IT IS THE ONLY THING IN THE NET THAT CAN. Under
+        /// <see cref="MetalClearMode.Attachment0"/> the same three calls leave attachment 0 holding the LAST
+        /// colour and attachments 1 and 2 holding nothing anybody wrote.
         /// <para>
-        /// THE LIST IS BUILT DIRECTLY RATHER THAN THROUGH THE DEVICE, because the device reads
-        /// <c>KE_METAL_CLEAR</c> once per process and a test that mutated the environment would be racing every
-        /// other row in the collection. The mode is a constructor argument for exactly this reason.
+        /// IT OUTLIVED THE SWITCH IT WAS WRITTEN BESIDE. Gate 1's A/B found the golden family passing 31 of 31
+        /// in BOTH positions, so no golden can tell M-A2's fix from the incumbent's collapse and this readback
+        /// is the discriminating instrument. <c>KE_METAL_CLEAR</c> was retired at that gate and the position
+        /// stayed, named here as a constructor value, which is also why the environment was never the way to
+        /// reach it: a row that mutated the environment would have raced every other row in the collection.
         /// </para>
         /// <para>
         /// ATTACHMENTS 1 AND 2 ARE ASSERTED ONLY TO BE NOT-THE-COLOUR-ASKED-FOR, not to hold any particular

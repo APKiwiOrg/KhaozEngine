@@ -712,12 +712,12 @@ through a begin and end pair with nothing between them.
 backend.** That one writes every clear into `colorAttachments[0]`, so a framebuffer with more than one colour
 target clears only its first, and the engine's own model pass clears three attachments of `ModelFB` and ships a
 comment describing the collapse. The two attachments that were never cleared load a freshly created
-`StorageModePrivate` texture nothing has written, which is undefined rather than stable. Set
-`KE_METAL_CLEAR=attachment0` to reproduce the collapse exactly, for an A/B against the committed goldens. A
-value that is set and not understood WARNS at device creation, names what you typed and leaves the
-per-attachment clear, because a typo that silently selected the fix while you believed you had selected the
-incumbent would make the whole comparison report the same position twice. That variable is temporary and goes
-away with the losing branch once the goldens have answered.
+`StorageModePrivate` texture nothing has written, which is undefined rather than stable. A
+`KE_METAL_CLEAR=attachment0` switch reproduced the collapse for rollout gate 1's A/B and was removed at that
+gate with the losing branch, so there is nothing to set: the clear lands where you asked, always. The A/B's
+answer is worth carrying, because it says what the goldens can and cannot see. The suite passed in BOTH
+positions, so no committed golden distinguishes the two, and the instrument that does is a `[GpuFact]` that
+clears two attachments and reads the second one back as a texel.
 
 **Store actions are set explicitly.** The descriptor's own default DISCARDS the attachment, so every colour and
 depth attachment is given `MTLStoreActionStore` rather than left alone. Depth `DontCare` is a real win on a

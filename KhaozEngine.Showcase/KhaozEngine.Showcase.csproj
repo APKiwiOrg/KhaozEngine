@@ -41,6 +41,11 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Gpu.Metal/KhaozEngine.Gpu.Metal.csproj" />
+    <!-- ShowcaseTelemetry names both directly: TelemetryRecorder / FrameStats / TelemetrySessionInfo from
+         Diagnostics, and GpuTelemetryChannels / the WithGpu bridge from Gpu. Both already arrive transitively
+         through Windowing, and they are declared anyway because a direct use should be a declared edge. -->
+    <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
+    <ProjectReference Include="../KhaozEngine.Gpu/KhaozEngine.Gpu.csproj" />
     <ProjectReference Include="../KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
     <ProjectReference Include="../KhaozEngine.Render2D/KhaozEngine.Render2D.csproj" />
     <ProjectReference Include="../KhaozEngine.Gui/KhaozEngine.Gui.csproj" />

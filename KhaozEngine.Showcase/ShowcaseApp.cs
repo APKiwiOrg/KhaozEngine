@@ -40,6 +40,10 @@ namespace KhaozEngine.Showcase
         DpiFont _readoutFont = null!;   // point-space readout: baked at the live DPI scale so the overlay stays crisp
         ShowcaseHud _hud = null!;       // shared room chrome (title band, controls band, status line, toasts)
 
+        // Env-gated field capture (KE_TELEMETRY_PATH). Unarmed and free when the variable is unset. See
+        // ShowcaseTelemetry for why the testbed carries one and why it widens no engine API.
+        readonly ShowcaseTelemetry _telemetry = new();
+
         // Runtime display-settings smoke controls (F7-F10), driven through the GameApp.Display surface. The cap /
         // resolution cycles walk fixed tables; window mode + present mode toggle. Overlaid state is drawn each frame.
         static readonly int[] CapCycle = { 0, 30, 60, 120 };
@@ -151,12 +155,20 @@ namespace KhaozEngine.Showcase
             // manager's Viewport/FrameWidth, which are only set once per frame in OnUpdate. Case-insensitive prefix
             // match on the resolved room title, so "3D" or "mini" is enough. Unmatched = ignored.
             _autoRoom = System.Environment.GetEnvironmentVariable("KE_SHOWCASE_ROOM");
+
+            // Arm the field capture last, once the window and its device exist, so the session header records the
+            // backend that actually came up rather than the one that was asked for.
+            _telemetry.Start(Window);
         }
 
         string? _autoRoom;
 
         protected override void OnUpdate(float dt)
         {
+            // Metered from the RAW frame delta, not the dt handed in here (which is time-scaled), so a capture
+            // measures the machine. No-op unless KE_TELEMETRY_PATH armed it.
+            _telemetry.Sample(Clock.RealDeltaSeconds, Clock.ElapsedRealSeconds, Window);
+
             HandleDisplayKeys();
             _hud.Update(dt);
 
@@ -210,6 +222,10 @@ namespace KhaozEngine.Showcase
 
         protected override void OnDraw3D(Scene3D scene) => _scenes.Draw3D(scene);
         protected override void OnResize(int w, int h) => _scenes.Resize(w, h);
+
+        /// <summary>Flush and close the field capture, so a KE_MAX_FRAMES run leaves a complete file behind (a
+        /// crash still leaves a valid partial one, since the recorder flushes every row).</summary>
+        protected override void OnDispose() => _telemetry.Dispose();
 
         /// <summary>Runtime display-settings smoke: F7 toggles vsync, F8 cycles the frame cap, F9 cycles the window
         /// mode, F10 cycles the windowed resolution - all through <see cref="GameApp.Display"/>, live and mid-frame.

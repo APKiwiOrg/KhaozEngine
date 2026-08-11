@@ -315,9 +315,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// are encoder state and there is nothing to set them on until it exists.
         /// </para>
         /// <para>
-        /// IT RETURNS <see cref="IntPtr.Zero"/> RATHER THAN THROWING WHEN THE ENCODER WOULD NOT OPEN, which is
-        /// M-W5's orphan-target case: the caller's draw goes nowhere and the frame still counts. Row 14's draws
-        /// return early on it.
+        /// IT RETURNS <see cref="IntPtr.Zero"/> RATHER THAN THROWING WHEN THE PASS WOULD NOT OPEN, which is a
+        /// DRIVER REFUSAL and not M-W5's orphan case: a nil-drawable frame binds the device-owned orphan
+        /// TARGET, which is a real texture, so its pass opens and its draws land like any other frame's (the
+        /// fourth addendum in 7.1). What reaches this return is Metal refusing to build a descriptor or to open
+        /// an encoder at all. Row 14's draws return early on it.
         /// </para>
         /// </summary>
         /// <returns>The open render encoder, or <see cref="IntPtr.Zero"/>.</returns>
@@ -465,9 +467,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             IntPtr descriptor = _api.CreateRenderPassDescriptor(_beginColour.AsSpan(0, colour.Length), in depth);
 
-            // A NIL DESCRIPTOR IS NOT HANDED ON, and this is the one arm the design did not predict. M-W5's
-            // orphan case is about the ENCODER coming back nil, so the first draft ran both through one path and
-            // let the nil descriptor reach the encoder factory. That is not the same failure:
+            // A NIL DESCRIPTOR IS NOT HANDED ON, and this is the one arm the design did not predict. The first
+            // draft ran a nil descriptor and a nil encoder through one path, on the reading that both were
+            // M-W5's orphan case. Neither is (the fourth addendum in 7.1): a nil-drawable frame binds the orphan
+            // TARGET, a real texture, so its descriptor builds and its encoder opens. These two are the residual
+            // driver refusals that reading hid, and they are not the same failure as each other either:
             // renderCommandEncoderWithDescriptor: takes a nonnull argument, so passing nil is undefined rather
             // than a documented refusal, and the device-free row that found this had a fake obligingly returning
             // a perfectly good encoder for it. Refusing here makes both shapes the same OBSERVABLE outcome (a

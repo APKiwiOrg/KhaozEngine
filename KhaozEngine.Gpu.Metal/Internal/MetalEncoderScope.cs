@@ -121,12 +121,19 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// deferred begin (M-A1) means the descriptor is built once per pass, and a second Ensure inside one pass
         /// is a second draw rather than a second pass.
         /// <para>
-        /// IT CAN RETURN <see cref="IntPtr.Zero"/>, which is M-W5's orphan-target case rather than an error to
-        /// throw on: a nil drawable makes the framebuffer unrenderable for one frame, and the seam's answer is
-        /// that the frame's draws go nowhere and the present is skipped while the frame still COUNTS. Row 12
-        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/578) is where the caller side of that lands, and it
-        /// is a genuine framebuffer failure rather than a state error, which is why this returns rather than
-        /// throwing.
+        /// IT CAN RETURN <see cref="IntPtr.Zero"/>, WHICH IS A DRIVER REFUSAL rather than an error to throw on:
+        /// Metal declined to open an encoder for a descriptor it accepted, which is a genuine framebuffer
+        /// failure rather than a state error, so the caller's draw goes nowhere and the recording carries on.
+        /// Row 12 (https://github.com/APKiwiOrg/KhaozEngine/issues/578) is where the caller side of that lands.
+        /// <para>
+        /// IT IS NOT M-W5's ORPHAN CASE, which is what this comment used to say and what the fourth addendum in
+        /// 7.1 corrects. A nil DRAWABLE repoints the swapchain framebuffer at the device-owned orphan TARGET
+        /// (<see cref="IMetalOrphanTarget"/>), a real <c>MTLTexture</c> at the current drawable size, so the
+        /// descriptor builds, the encoder opens and every draw of that frame rasterises into it. What is left
+        /// for this arm is the residual condition the orphan target REMOVES rather than produces: a texture
+        /// that has gone, or a framebuffer with no attachments. It stays because a defence against a driver
+        /// refusing is not made unnecessary by a caller that no longer provokes it.
+        /// </para>
         /// </para>
         /// <para>
         /// A NIL DESCRIPTOR IS A CALLER BUG AND IS REFUSED BY NAME, which is a different failure from the one

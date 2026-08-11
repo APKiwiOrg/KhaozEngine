@@ -24,13 +24,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// the draw), and it is reproduced anyway, because the only thing a divergence here could buy is a different
     /// answer to a question nobody asked.</para>
     ///
-    /// <para><b>A NIL ENCODER RETURNS EARLY, BEFORE ANY OF IT (M-W5).</b> A framebuffer whose drawable came back
-    /// nil is a legitimate runtime state, and the seam's answer is that the frame's draws go nowhere while the
-    /// frame still COUNTS. Returning early is not a convenience: a message to nil is a silent no-op in
-    /// Objective-C, so a state block and a bind flush into a nil encoder would go nowhere while every record was
-    /// marked CLEAN, and a later frame would render against argument tables nothing ever wrote. Row 13's two
-    /// flushes refuse a nil encoder by name for exactly that reason, and this arm is what keeps them from seeing
-    /// one.</para>
+    /// <para><b>A NIL ENCODER RETURNS EARLY, BEFORE ANY OF IT, AND IT IS NOT M-W5's CASE.</b> A frame whose
+    /// drawable came back nil renders into the device-owned orphan TARGET, which is a real texture at the
+    /// current drawable size, so its pass opens and every draw in it lands (the fourth addendum in 7.1). What
+    /// reaches this arm is Metal refusing to build a descriptor or to open an encoder at all, which is a rarer
+    /// and more degenerate condition than the one M-W5 answers. Returning early is not a convenience: a message
+    /// to nil is a silent no-op in Objective-C, so a state block and a bind flush into a nil encoder would go
+    /// nowhere while every record was marked CLEAN, and a later frame would render against argument tables
+    /// nothing ever wrote. Row 13's two flushes refuse a nil encoder by name for exactly that reason, and this
+    /// arm is what keeps them from seeing one. On the orphan path those flushes DO run, into a live encoder, so
+    /// there is no records-marked-clean hazard there at all.</para>
     ///
     /// <para><b>THE SINK IS UNBOXED AT EACH COMMAND AND THE FORK IS TWO LINES, WHICH IS 6.4's TWO RULES MEETING.
     /// </b> The per-draw classes are consumed through <c>where TSink : struct, IMetalEncoderSink</c> so the JIT
@@ -176,11 +179,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // refusal spends nothing. PrepareDraw opens the encoder and CONSUMES the pending clears, so refusing
             // after it would cost a boundary and swallow the clears of a frame that never drew.
             //
-            // It also lands before M-W5's nil arm, which the ordering above gives for free and which is the half
-            // worth naming: a recording that forgot SetIndexBuffer has made a caller error whether or not this
-            // frame's drawable arrived, so the orphan target must not SWALLOW it. A frame that silently dropped
-            // the mistake would report it on the next frame that happened to get a drawable, which is a bug
-            // report about the wrong frame.
+            // It also lands before the nil-encoder arm below, which the ordering above gives for free. That arm
+            // is a DRIVER REFUSAL rather than M-W5's orphan case (the fourth addendum in 7.1), so a nil-drawable
+            // frame reaches this refusal exactly as any other frame does and the orphan target cannot swallow
+            // it. The half worth naming survives on the arm that is left: a recording that forgot SetIndexBuffer
+            // has made a caller error whether or not an encoder opened, and a frame that silently dropped the
+            // mistake would report it on the next frame that did open one, which is a bug report about the wrong
+            // frame.
             if (_indices.DrawRefusal() is { } refusal) throw new InvalidOperationException(refusal);
 
             IntPtr encoder = _passes.PrepareDraw();

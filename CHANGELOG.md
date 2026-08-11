@@ -1856,6 +1856,17 @@ uniform-ring adapters build their backend's ring (which takes a `WaitAccumulator
 shader-toolchain one it extends, and the row 18 addendum in section 2.8 of the design doc is the canonical home
 for all seven written refusals #531 now closes with.
 
+### The Showcase registers the native Metal backend, which is the first consumer-side opt-in
+
+Gate 5's first windowed boot refused with `GpuBackendProviderMissingException`, which is the registration design
+working as written: the backend never self-registers and nothing falls back silently. What was missing was the
+consumer half, so the Showcase head now makes the one explicit call
+(`KhaozEngineMetal.Register()`, platform-guarded) at startup, exactly the pattern the exception's own message
+prescribes. The OS probe still selects the incumbent by default: this only makes `KE_GRAPHICS_BACKEND=metal-native`
+honourable on the engine's windowed testbed. The first human pass then rendered the 3D overworld correctly with
+`MetalNative` named on the status overlay and a full Retina-scale framebuffer, and its one-off crash at the end
+of shader warming is filed as #607 with the crash report pinned.
+
 
 ## 17.34.0
 

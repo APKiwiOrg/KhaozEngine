@@ -40,6 +40,7 @@
                       OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Gpu.Metal/KhaozEngine.Gpu.Metal.csproj" />
     <ProjectReference Include="../KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
     <ProjectReference Include="../KhaozEngine.Render2D/KhaozEngine.Render2D.csproj" />
     <ProjectReference Include="../KhaozEngine.Gui/KhaozEngine.Gui.csproj" />

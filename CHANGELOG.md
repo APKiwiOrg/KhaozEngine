@@ -387,7 +387,12 @@ code changed, and the mutable `GuiTheme.Default` setter stays exactly as it is, 
 **`GuiThemeTests` already carried `[Collection("gui-theme-global")]` and it was doing nothing.** No
 `[CollectionDefinition]` for that name existed anywhere in the assembly, so the name grouped one class against
 itself and the collection still ran in parallel with every other collection. That is the trap worth remembering
-from this one: the attribute on the test class is not what serializes anything, the definition is.
+from this one: the attribute on the test class is not what serializes anything, the definition is. Cross-checking
+every `[Collection]` name in the repo against every `[CollectionDefinition]` found one more orphan of exactly
+that shape and it is fixed here too: `GameAppCrashReportTests` claimed a `CrashReportSerial` collection nobody
+defined, so it installed and uninstalled the process-global `CrashReport` handler in parallel with the rest of
+`KhaozEngine.Game.Tests`, and the new `KhaozEngine.Game.Tests/CrashReportSerialCollection.cs` declares that name
+with `DisableParallelization = true`.
 
 **The blast radius was never the two classes in the title.** `GuiStyle.Default` recomputes off
 `GuiTheme.Default` on every get, so during the swap window every widget default in the assembly reads the legacy

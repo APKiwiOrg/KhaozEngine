@@ -250,7 +250,24 @@ exit 0. So any of them doubles as a smoke test on a GPU box without needing some
 
 ```bash
 KE_MAX_FRAMES=5 dotnet run --project KhaozEngine.Showcase
-# to smoke a specific room's world build, auto-enter it: KE_SHOWCASE_ROOM="3D World" KE_MAX_FRAMES=5 dotnet run --project KhaozEngine.Showcase
+# to smoke a specific room's world build, auto-enter it (case-insensitive prefix of the room title):
+KE_SHOWCASE_ROOM="3D" KE_MAX_FRAMES=5 dotnet run --project KhaozEngine.Showcase
+```
+
+**Field capture (measuring a backend).** The Showcase also carries the levers a windowed performance capture
+needs. They are the testbed's own, not engine API, and each is a no-op unless set:
+
+| Variable | What it does |
+|---|---|
+| `KE_TELEMETRY_PATH=<file>` | Arms the engine's `TelemetryRecorder` for the whole run: a JSON Lines session with the engine's header (build, backend, adapter, every `KE_` lever) and a raw sample row every 100 ms carrying frame rate, frame times, a loop frame count and the `GpuDeviceCounters` channels |
+| `KE_SHOWCASE_FRAME_CAP=auto\|uncapped\|<hz>` | Pins the frame-cap intent. The default `auto` resolves to a SOFTWARE cap on Metal plus vsync, which sleeps the loop before the present can block, so an acquire-wait or present-pacing reading has to be taken `uncapped` |
+| `KE_SHOWCASE_BACKGROUND_THROTTLE=off` | Disables the unfocused/minimized pacing. The engine default caps an unfocused window at 15 Hz, which is right for a game and ruinous for an unattended capture that never takes focus |
+
+```bash
+# a bounded capture of the 3D room on a named backend, paced by nothing but the present
+KE_TELEMETRY_PATH=/tmp/ke-capture.jsonl KE_GRAPHICS_BACKEND=metal-native \
+KE_SHOWCASE_ROOM=3D KE_SHOWCASE_FRAME_CAP=uncapped KE_SHOWCASE_BACKGROUND_THROTTLE=off \
+KE_MAX_FRAMES=8000 dotnet run --project KhaozEngine.Showcase -c Release
 ```
 
 ## Dev tools

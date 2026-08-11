@@ -1867,6 +1867,44 @@ honourable on the engine's windowed testbed. The first human pass then rendered 
 `MetalNative` named on the status overlay and a full Retina-scale framebuffer, and its one-off crash at the end
 of shader warming is filed as #607 with the crash report pinned.
 
+### The Showcase gains a telemetry capture lever, and Metal rollout gate 4 takes its baseline and first native reading
+
+`TelemetryRecorder` was armed by Ruinborne and by nothing in this repo, which put every engine-side field reading
+behind a game checkout. `KE_TELEMETRY_PATH=<file>` now arms it on the Showcase head for a whole run, streaming the
+usual JSON Lines session with the engine's own header and one raw sample row every 100 ms. Unset, nothing is armed
+and nothing is written. The arming shape is Ruinborne's (own the recorder, meter a `FrameStats` every frame,
+resolve the header once at start, append raw channels on a throttle) minus the in-game arm/confirm UX, it is the
+Showcase's own type, and it widens no engine API: everything it reads is already public on `AppWindow`, and the
+GPU counters go through the existing `GpuTelemetryChannels` bridge. Because SourceLink stamps the commit onto the
+informational version the header records, a capture carries its own build line and no reading depends on a number
+written down beside it.
+
+**Two levers landed beside it, and both exist because a measured run needs them.** `KE_SHOWCASE_FRAME_CAP`
+(`auto` / `uncapped` / `<hz>`) is required by MM4's exit criterion, which is stated against an UNCAPPED capture:
+the default `FrameCap.Auto` resolves to a software cap on Metal plus vsync, and that cap sleeps the loop before
+the present can ever block, so an acquire-wait reading taken under it is near zero whatever the backend does.
+`KE_SHOWCASE_BACKGROUND_THROTTLE=off` exists because the FIRST baseline attempt was void and the file did not say
+so: the window never took focus, `BackgroundThrottlePolicy.DefaultUnfocusedHz` paced the loop at 15 Hz for the
+whole run, and the capture read a flat 66.67 ms frame time that looks exactly like a backend that collapsed.
+Every sample row now also carries a loop frame count, so a capture is self-verifying about how many frames its
+rows describe.
+
+**Gate 4's prerequisite is discharged: the MM12 incumbent baseline is TAKEN and the first native session is READ**,
+both at `17.35.0+a6f31ab0`, Release, on an M2 Max, same scene and same window length. Read like for like at 60 Hz
+the native backend matches the incumbent's median frame time (16.669 against 16.668 ms) with a tighter p99 (17.234
+against 20.892 ms) and a lower worst frame (50.7 against 100.0 ms), at **zero command-buffer errors**. MM4 is MET:
+ring backpressure is zero across the entire capture, and the acquire pair reads exactly 1.000 waits per frame at
+15.175 ms per frame, which under vsync is the expected reading rather than a failure. That also answers M-W3 for
+the native backend, since blocking 91 percent of every frame in the drawable acquire means its present throttles
+the CPU from vsync alone and the software cap is redundant, though the arm stays conservative until gate 5's
+mid-session toggle confirms it. MM10 is discharged by its own v1 refusal (there is no `.metallib` cache to
+corrupt, see #592). **MM1 is still owed on both halves**, and the baseline found why it cannot be shortcut: the
+Veldrid Metal incumbent reports `GpuDeviceCounters.HasValue` false, so it carries no counter columns at all and
+every counter criterion on Metal is absolute rather than comparative. Gate 4 stays PENDING, because its bar is
+"no worse over a week" and these are one capture each. One finding filed: the native session held 60 fps for 124
+consecutive seconds and never reached the 120 Hz refresh regime the incumbent did, which the averages do not call
+a regression and which is #608. Full readings in the gate 4 subsection of section 17 of the design.
+
 
 ## 17.34.0
 

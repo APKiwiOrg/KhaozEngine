@@ -3622,7 +3622,7 @@ possible should find the row saying so.
 | MM1 | The ring removes the encoder-split-per-record-time-write class (2.1), and that class is the dominant per-frame cost the incumbent carries. **The MAGNITUDE is unmeasured**: nobody has counted how many record-time `UpdateBuffer` calls per frame the #410 scene makes on Metal, and two releases of renderer-side engineering have already hoisted most of them out of the frame | Count record-time `UpdateBuffer` calls, encoder boundaries and record-time buffer allocations per frame on the #410 scene ON THE INCUMBENT first, through a throwaway instrumented build. Then the same three on the native backend | None. The ring is not optional (9.2), and M-M7 makes it a correctness change, so there is no in-backend fallback to hold | Native encoder boundaries per frame at or below the framebuffer-change count plus the compute and blit passes the frame genuinely needs, native record-time allocations at zero, and frame time no worse than gate 4's baseline. If the incumbent's counts turn out near zero already, the ring is still taken for M-M7 and this bet is **RECORDED AS NOT PAYING** rather than quietly forgotten | Gate 4 |
 | MM2 | Per-attachment clears (M-A2) either do not move a committed metal golden, or move exactly the ones two unwritten attachments can explain | All 36 goldens with `KE_METAL_CLEAR` in both positions on the same build, on the first green run | `KE_METAL_CLEAR=attachment0` reproduces the incumbent exactly | Both positions green, OR exactly the scenes whose framebuffer has more than one colour target differ and the difference is explained by two attachments going from Load to Clear. **A difference anywhere else means something other than this clause moved.** By M-RO4's sort it is a branch inside one implementation, so it is removed at its gate and the losing branch deleted whichever way it goes. **RESOLVED 2026-08-11: BOTH POSITIONS GREEN, which is the first arm.** The native leg's per-scene worst-cell deltas are identical to the incumbent leg's on all 36 scenes, and the local A/B on the M2 Max passes 31 of 31 in both positions, so nothing in the golden family moved and nothing in it can SEE this change either. The switch is removed and the discriminating instrument is row 12's texel readback (7.2, and the gate-1 note in 17) | **Gate 1. Removed there** |
 | MM3 | The array-batched flush (M-R6) collapses a full activation to one call per (kind, stage) and an offsets-only rebind to one per visible stage, with zero encoder boundaries between two draws in one pass | The device-free budget test (M-T2), confirmed on the first green run and then frozen as marginals | None needed. A call-count property with no runtime risk | The first green run's measured marginals are recorded in this document and become the frozen numbers, INCLUDING the vertex-stream marginal, which is a regression target rather than a parity target | Gate 3 |
-| MM4 | `FramesInFlight = 3` is enough that ring backpressure never blocks the CPU, and `maximumDrawableCount = 3` is enough that the drawable acquire does not become the frame's pacing | `BackpressureStallCount` and `BackpressureStallMs` for the ring, `AcquireWaitCount` and `AcquireWaitMs` for the drawable. **The second pair is expected to be non-zero under vsync and that is not a failure**: a vsync-paced frame SHOULD wait for a drawable, so the gate reads the UNCAPPED capture | `KE_METAL_FRAMES_IN_FLIGHT=<n>`, owned by row 7 | Ring stall count zero across a full capture window, and acquire wait per frame near zero on the uncapped capture. A non-zero ring stall means 3 is wrong, not that the design is. **Read the ring half against the capture's RECORDINGS-PER-FRAME count** (row 8's second addendum in 9.2): the depth buys 3 recordings of headroom, not 3 frames, and a frame that opens four command lists has under one frame of headroom at the default, so the count of lists the measured scene opens is part of the reading and goes in the record beside it | Gate 4. A TUNING KNOB by M-RO4's sort, so it may survive as a knob, but only if the exit criterion was met at its DEFAULT. A knob is not a way to ship a failed default |
+| MM4 | `FramesInFlight = 3` is enough that ring backpressure never blocks the CPU, and `maximumDrawableCount = 3` is enough that the drawable acquire does not become the frame's pacing | `BackpressureStallCount` and `BackpressureStallMs` for the ring, `AcquireWaitCount` and `AcquireWaitMs` for the drawable. **The second pair is expected to be non-zero under vsync and that is not a failure**: a vsync-paced frame SHOULD wait for a drawable, so the gate reads the UNCAPPED capture | `KE_METAL_FRAMES_IN_FLIGHT=<n>`, owned by row 7 | Ring stall count zero across a full capture window, and acquire wait per frame near zero on the uncapped capture. A non-zero ring stall means 3 is wrong, not that the design is. **Read the ring half against the capture's RECORDINGS-PER-FRAME count** (row 8's second addendum in 9.2): the depth buys 3 recordings of headroom, not 3 frames, and a frame that opens four command lists has under one frame of headroom at the default, so the count of lists the measured scene opens is part of the reading and goes in the record beside it | **MEASURED 2026-08-11 at the default, and MET.** Ring: `BackpressureStallCount` 0 and `BackpressureStallMs` 0.0 across the whole capture, warmup included, with `OffTimelineDeferred` and `OffTimelineOutstanding` also 0. Acquire: 7402 waits over 7402 frames, exactly 1.000 per frame, at 15.175 ms per frame, which under vsync is the expected reading rather than a failure. Recordings per frame on the measured scene is **1** (`AppWindow`'s single shared list, opened in `FramePhases`, with `Scene3D`'s other recording sites load-time only and `RetireBarrier` submitting an empty list on retire events), so three segments buy three FULL frames of headroom and this zero is the WEAK case that sentence warns about, not the strong one. `FramesInFlight` was not moved. Full reading in the gate 4 subsection of 17. A TUNING KNOB by M-RO4's sort, so it may survive as a knob, and it earned that by meeting the criterion at its DEFAULT |
 | MM5 | (observation, not a bet) **Automatic hazard tracking (M-H1) costs conservatism that nothing in this design measures**, and the cost cannot be priced at all because there is no safe untracked build to A/B against. The driver may serialise two encoders that could have overlapped, and there is no counter for lost overlap. Frame time against the incumbent measures the two configurations TOGETHER, since the incumbent is also tracked | None available in v1. A GPU trace in Xcode's frame debugger would show it and is not a CI instrument | n/a. `MTLResourceHazardTrackingModeUntracked` on an individual resource is the escape hatch, and taking it means writing the barriers for that resource | Recorded so a reader does not mistake "no barriers in the code" for "no serialisation on the device", and does not mistake a green gate 4 for evidence that tracking is free. If a measurement ever shows the cost, the heap decision (8.4) is re-argued in the same change | Open past gate 5, deliberately |
 | MM6 | **The one-uniform-buffer-per-pipeline constraint is a property of the incumbent's numbering rather than of Metal**, so a pipeline with a second uniform buffer reads correct bytes under M-B1's table. **This bet is only READABLE because 2.2b took the id join**: under #586's fallback the backend under test would have used the incumbent's numbering, so both hypotheses would predict the same fail and the probe could not separate them | Two `[GpuFact]` probes in the shape `GpuSkinningReproGpuTests` established: a pipeline whose vertex stage reads two resource buffers, and a pipeline with a fragment-only second UBO at set 1, each with a pixel READBACK assertion rather than a no-throw assertion. **Headless is the right instrument**, because `docs/DEPENDENCY-SEAMS.md` records that the constraint holds offscreen as well as windowed (2.3) | None. This is a measurement, not a shipped behaviour. **M-B4's invariant STAYS in force regardless of the result** | Both probes read correct values. **A pass does NOT authorise a shader change**: it authorises FILING the invariant's removal as its own work with its own gates on all three backends. A fail is recorded here as the constraint being real on Metal rather than on Veldrid, which is worth just as much and closes four sessions' worth of open question. **RESOLVED 2026-08-11: PASSED, with a live incumbent control that reproduces the failure, and a THIRD shape the plan did not have was needed to separate the hypotheses. The rule is also too broad as written. Section 2.3a, filing https://github.com/APKiwiOrg/KhaozEngine/issues/604** | Gate 3 |
 | MM7 | (observation, not a bet) **The swapchain, the drawable and the present path have ZERO CI coverage**, because the Metal golden suite is headless and a headless device builds no `CAMetalLayer`. Every decision in section 11 is validated by a human at a window, or not at all. **NARROWED at row 15 and the narrowing belongs here rather than only in 11.1, because this table is where a reader comes to find out what is not measured and an overstated row here is the same failure as an understated one.** A `CAMetalLayer` with no `NSWindow`, no view and no display server configures, vends drawables and presents them, measured on an M2 Max, so the LAYER half runs in the `[GpuFact]` suite (`MetalSwapchainGpuTests`) and runs on the `metal-native` leg from row 19. What is genuinely uncovered is `MetalLayerHost`'s four Cocoa selectors and whether anything appears on a screen | None available for the uncovered half. A native soak that reproduces a presentation defect is consistent with several mechanisms | n/a | Recorded so a reader does not mistake a green full-suite leg, which is the best-covered leg in the matrix, for evidence about presentation. Gate 5's manual pass is the only instrument for what is left, **and it is a manual pass alone, because the tool both drafts named for it does not exist (2.10)**. "The swapchain is untested" is now the WRONG summary and would make the windowed pass look bigger than it is | n/a |
@@ -3721,7 +3721,7 @@ table.**
 | 1. All 36 goldens green, worst-cell delta recorded, MM2 resolved | **GREEN, read 2026-08-11 (run 31464944222)** | The `metal-native` leg's golden compares, and the `golden-deltas-metal-native` artifact it uploads on `always()`. The leg's first two runs aborted before either could be read (see the paravirtual-device note below), so this reading comes off the third, which is the run after the border-sampler fix. The `KE_METAL_CLEAR` A/B was taken on the M2 Max rather than as a second leg dispatch, for the reason the gate-1 note gives, and the switch is now REMOVED |
 | 2. Full `macos-26` suite at 0 failed and NO NEW SKIPS, with the two `[GpuFact]` assemblies at 0 skipped, passed at or above the incumbent's, no validation errors, MM9 met | **GREEN, read 2026-08-11 (run 31464944222)** | The same leg, which runs the whole suite on every trigger with `MTL_DEBUG_LAYER=1` armed and `KE_METAL_REQUIRED=1` set. **The skip half is read off the `[GpuFact]` assemblies rather than off the leg's own total**, because the leg's test step names no project and therefore runs the whole solution, where 18 backend-independent rows skip for reasons this backend cannot move: 17 in `KhaozEngine.Server.Tests` that need a live SQL Server (the `SqlServerWorldStoreConformanceTests` set and `SqlServerWalletStoreTests`), plus one `Game.Tests` perturbation control that skips on its own condition. `KhaozEngine.Render.Tests` and `KhaozEngine.MapEditor.Tests` are where a Metal row could skip, both genuinely reach 0 skipped on a real GPU, and that is the readable criterion, with ONE standing exception the first hosted run surfaced: a `[GpuFact(RequiresRealGpu = true)]` row self-skips on the hosted runner's paravirtual adapter by design, so on that leg the criterion reads as 0 skipped beyond the `RequiresRealGpu` rows (1 today, `DistortionGpuTests.Distortion_warps_the_starfield`), and a NEW skip is still a red flag. **`KE_METAL_REQUIRED` is what makes it worth reading at all**: a dormant row is not a skip, so without it the criterion could be satisfied by rows that asserted nothing. The passed-count comparison is against the incumbent Metal leg on the same commit, which is the leg beside it in the same matrix |
 | 3. Budget test green with marginals recorded, MM3 met, the MSL index-table test green, MM6 taken | **GREEN, read 2026-08-11 (run 31464944222)** | MM6 is TAKEN and PASSED (2.3a, row 17). The budget marginals, MM3 and the index-table test are device-free tests that already run on every `dotnet test`, the leg's included, so this gate was a RECORDING task rather than a machine one and all four halves are now in hand. Row 18, the #531 extraction, is the only work in section 18 that waited on it, and it is unblocked and dispatched |
-| 4. A field session at or above the incumbent's numbers, zero command-buffer errors, MM1, MM4 and MM10 met | PENDING, instrument built, baseline NOT taken | A windowed telemetry session on this Mac, and the FIRST task is the incumbent baseline (MM12), because no Metal field number exists anywhere in this program's record. `GpuDeviceCounters` carries every channel this gate reads, and the session header names the backend. Pin the build line and the capture-window stamps before reading anything |
+| 4. A field session at or above the incumbent's numbers, zero command-buffer errors, MM1, MM4 and MM10 met | **PENDING, baseline TAKEN and first native session READ, 2026-08-11** (both at `17.35.0+a6f31ab0`). MM4 met, MM10 discharged by its own refusal, MM1 still owed, and the pass bar itself ("no worse over a week") is a soak nobody has run yet | A windowed telemetry session on this Mac, and the FIRST task was the incumbent baseline (MM12), because no Metal field number existed anywhere in this program's record. Both captures are below. The instrument is the showcase's own `KE_TELEMETRY_PATH` lever, added for this gate, with `KE_SHOWCASE_FRAME_CAP` and `KE_SHOWCASE_BACKGROUND_THROTTLE` beside it for the reasons the gate 4 notes give. `GpuDeviceCounters` carries every channel this gate reads on the native backend and NONE of them on the incumbent (see the note below), and the session header names the backend. The build line and the capture-window stamps were pinned before anything was read |
 | 5. A human windowed pass, with the vsync toggle as a MEASUREMENT | PENDING, instrument built | A person at a window. The checklist is in the gate itself, narrowed by row 15: the layer half of the swapchain runs headless in the `[GpuFact]` suite, so what is genuinely uncovered is `MetalLayerHost`'s four Cocoa selectors and whether anything appears on a screen. It gains one item from #605, the Retina `drawableSize` read on frame one, and the frame-cap arm now has an instrument rather than a judgement: `AcquireWaitMs / AcquireWaitCount` on an uncapped capture with vsync on |
 
 **The `ProbeOS` flip does NOT land in row 19, and the design is unambiguous about why.** Section 17 opens
@@ -3739,6 +3739,95 @@ on any Desktop head, and `GpuDeviceContext.CreateOrFallBack` reports `FallbackAf
 session cannot silently measure the incumbent and report it as the native backend. Producing and running the
 build is the gate, and the gate has a prerequisite this row cannot discharge either: the INCUMBENT baseline
 (MM12), on the same Mac, the same scene and the same capture window, taken before the native session.
+
+#### Gate 4's readings, taken 2026-08-11
+
+**The build line, pinned before either capture was read and identical for both.** Engine
+`17.35.0+a6f31ab0ac7fce17c44be9e08a3e1ed8d2dfc197`, `Release`, net10.0, on an Apple M2 Max (macOS 26.6),
+adapter reported as `Apple M2 Max`. Scene: the showcase's `3D overworld` room, entered by `KE_SHOWCASE_ROOM=3D`.
+Window: `KE_MAX_FRAMES=8000`, vsync ON (the default `PresentMode.Vsync`), `KE_SHOWCASE_FRAME_CAP=uncapped` and
+`KE_SHOWCASE_BACKGROUND_THROTTLE=off`. Both captures carry that build line in their own header, because
+SourceLink stamps the commit onto the informational version the header records, so neither reading depends on
+a number written down beside it.
+
+| | incumbent, `Metal` via `OsProbe` | native, `MetalNative` via `EnvironmentOverride` |
+|---|---|---|
+| capture window (UTC) | 09:34:53 to 09:36:34 | 09:37:52 to 09:40:11 |
+| rows, span | 873 rows, t 0.1 to 94.1 s | 1223 rows, t 0.1 to 134.0 s |
+| frames | 7996 | 7998 |
+| refresh regime | 60 Hz to t=55 s, then 120 Hz | 60 Hz for the whole run |
+| wall rate, 60 Hz phase | 60.16 fps | 59.76 fps |
+| frame time mean / median, 60 Hz | 16.758 / 16.668 ms | 16.737 / 16.669 ms |
+| frame time p99, 60 Hz | 20.892 ms | **17.234 ms** |
+| worst frame seen, 60 Hz | 100.0 ms | **50.7 ms** |
+| frames at or over 33 ms | 2 events in 44.9 s (one per 22.4 s) | **23 events in 124.0 s (one per 5.4 s)** |
+| frames at or over 50 ms | 2 events in 44.9 s | 1 event in 124.0 s |
+| command-buffer errors | not instrumented | **zero** |
+| GPU counters | **none, `HasValue` is false** | all nine present |
+
+**THE INCUMBENT REPORTS NO GPU COUNTERS AT ALL, and that is the single most consequential thing this baseline
+found.** `GpuDeviceCounters.HasValue` is false on the Veldrid Metal device, so the incumbent capture carries no
+counter columns whatsoever: no drain pair, no backpressure pair, no acquire pair. Every counter-based criterion
+in this program is therefore ABSOLUTE on Metal rather than comparative, because there is no incumbent number to
+compare against and never was. That is not a defect and it does not weaken MM4, whose exit criterion is stated
+as a zero rather than as a delta. What it does change is MM1, whose whole shape is "measure the incumbent
+first, then the same three on the native backend": on Metal that first half cannot come from a capture at all
+and needs the throwaway instrumented build MM1 already asks for. It also means a reader must not mistake the
+incumbent's empty columns for a clean soak, which is exactly the confusion `HasValue` exists to prevent.
+
+**MM4 is MET, at the weak end of its own reading.** Ring backpressure is **zero across the entire capture**,
+first row to last, warmup included: `BackpressureStallCount` 0 and `BackpressureStallMs` 0.0, and
+`OffTimelineDeferred` and `OffTimelineOutstanding` are both 0 too. The acquire pair is
+`AcquireWaitCount` 7402 over 7402 steady-state frames, exactly **1.000 waits per frame**, costing
+`AcquireWaitMs` 112 328.87 ms, or **15.175 ms per frame** (15.113 ms in the first third of the window and
+15.209 ms in the last, so it is steady rather than drifting). Under vsync that is the correct and expected
+reading per MM4's own note, and section 9.2's caveat applies to the ring half: **this scene opens ONE command
+list per frame**, so three ring segments buy three full frames of headroom, and a zero here is the weak case
+rather than the strong one. The frame's single list is `AppWindow`'s shared one, opened in `FramePhases`. The
+other recording sites in `Scene3D` are load-time mipmap generation, and `RetireBarrier` submits an empty list
+only on a resource-retire event, so a streaming frame can briefly open two. `FramesBegun` equals the loop's
+own frame count exactly (7998 against 7999, the one-frame difference being the last row), which is the
+cross-check that the per-frame figures above are per frame.
+
+**Drain is zero in steady state.** `DrainCount` is 23 for the whole session and does not move at all after
+load: the steady-state delta is 0 drains and 0.000 ms, against M2's "under 0.2 ms of drain per frame" bar.
+
+**MM10 is discharged by its own refusal rather than by a measurement.** Its exit criterion is a corruption test
+green and no launch failure attributable to the `.metallib` cache, and section 12.5's in-place addendum refuses
+that cache for v1 with a measurement behind it, so there is no cache, no cache key on disk and nothing a
+corrupt file could break. The emission cache that IS worth building is
+[#592](https://github.com/APKiwiOrg/KhaozEngine/issues/592). Recorded here rather than left blank, because a
+gate row that stays empty reads as unmeasured when what actually happened is that the thing it measures was
+declined.
+
+**MM1 is STILL OWED, both halves.** Nothing this session did counts record-time `UpdateBuffer` calls, encoder
+boundaries or record-time buffer allocations, on either backend. The incumbent half needs the throwaway
+instrumented build MM1 names, and the counter gap above means it cannot be shortcut through a capture.
+
+**What gate 4 still owes.** The pass bar is "no worse over a week" (MM12), and a week has not passed: these are
+one capture each. The soak build has to run repeatedly over that window, and MM1's two halves have to be
+measured. The prerequisite is discharged and the gate stays PENDING.
+
+**The native session did NOT reach the 120 Hz refresh regime and the incumbent did.** Read like for like at
+60 Hz the native backend is at or slightly ahead of the incumbent on every average (identical median frame
+time, a tighter p99, a lower worst frame), and behind it on one thing: mild single-interval drops are about
+four times more frequent, one per 5.4 s against one per 22.4 s. But the headline is the regime itself. The
+incumbent ramped to 120 Hz 55 s into a 94 s run and held it, and the native run sat at exactly 60 Hz for 124
+consecutive seconds without ever ramping, despite running LONGER. The acquire pair says the backend has the
+headroom for it: 15.175 ms of each 16.67 ms frame is spent blocked in the drawable acquire, leaving about
+1.5 ms of actual per-frame work. What is NOT established is the cause, and this session cannot establish it,
+because ProMotion's refresh selection is system-managed and was not controlled for. Filed as
+[#608](https://github.com/APKiwiOrg/KhaozEngine/issues/608) with the two candidate mechanisms and the
+controlled measurement that would separate them. It is a finding, not a gate failure.
+
+**A note on how the first baseline attempt went wrong, because the next person to take a capture will hit it.**
+The first run was VOID and the file did not say so. The window never took focus, so
+`BackgroundThrottlePolicy.DefaultUnfocusedHz` paced the loop at 15 Hz for the whole run and the capture read a
+flat 66.67 ms frame time, which looks exactly like a backend that collapsed. The engine default is right for a
+game and wrong for an unattended measurement. `KE_SHOWCASE_BACKGROUND_THROTTLE=off` exists because of it, and
+every sample row now carries a loop frame count so a capture is self-verifying about how many frames its rows
+describe. `FramesBegun` would have caught it on any other backend, which is precisely why the incumbent's
+empty counter set was worth calling out above.
 
 **The flip is also not the end of row 19's work in another sense**, and it is worth saying so the last row of
 this design does not read as unfinished. Section 18's cell lists "the five rollout gates" as row 19 scope, and
@@ -3851,6 +3940,31 @@ it is the one gate whose result lands back in shipped code. `FrameCap.Resolve` a
 incumbent's capped arm as a conservative default. That arm is NOT a finding. Gate 5's mid-session vsync toggle
 is the instrument that decides it, and whichever way it reads, the disposition is written into both doc
 comments. A gate 5 that passes without recording that answer has not been run.
+
+**THE VSYNC MEASUREMENT IS TAKEN, folded into gate 4's native session on 2026-08-11 because the same uncapped
+vsync-on capture answers both.** Build line `17.35.0+a6f31ab0`, Release, M2 Max, the showcase's 3D overworld
+room, vsync ON with `KE_SHOWCASE_FRAME_CAP=uncapped` so no software cap could sleep the loop ahead of the
+present. The numbers: **`AcquireWaitCount` 7402 over 7402 frames, exactly 1.000 per frame, and `AcquireWaitMs`
+112 328.87 ms, or 15.175 ms per frame** against a 16.669 ms median frame. Steady rather than drifting across
+the window (15.113 ms per frame in the first third, 15.209 ms in the last).
+
+**That answers M-W3's question for the native backend: its present DOES throttle the CPU from vsync alone.**
+The CPU blocks in the drawable acquire for 91 percent of every frame, which leaves about 1.5 ms of actual
+per-frame work, and the loop held 59.76 fps on a 60 Hz display for 124 consecutive seconds with the software
+cap explicitly OFF. A cap at the display refresh cannot bind on top of that, so the `IsMetal()` arm in
+`FrameCap.Resolve` and `DisplaySettings.RequiresFrameCapWarning` is REDUNDANT for `MetalNative`. The
+incumbent's uncapped run pinned to the refresh too (60.16 fps, then 119.98 fps once the display ramped), which
+is evidence its present throttles as well, though the incumbent reports no counters at all so the mechanism
+cannot be shown the same way there.
+
+**The arm is NOT flipped yet, deliberately, and gate 5 still owes the toggle.** What was measured is one
+uncapped capture with vsync on for its whole length. What M-W3 actually specifies is a MID-SESSION toggle, and
+the difference matters: the reading above cannot see whether the acquire behaves the same way immediately after
+a live vsync change, which is the transition the queued-resize-and-vsync path in row 15 exists to handle.
+The showcase's F7 is that instrument and a human at the window is what drives it. So the disposition recorded
+here is "the native present throttles, so the cap is expected to be redundant, pending gate 5's toggle", and
+the two doc comments keep the conservative arm until a human has toggled it. Flipping shipped pacing on a
+capture that never toggled would be exactly the assertion M-W3 was written to stop.
 
 ---
 

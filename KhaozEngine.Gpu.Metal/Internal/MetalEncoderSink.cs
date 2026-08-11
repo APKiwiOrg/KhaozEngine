@@ -149,13 +149,26 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// unpooled" with no exception list, and an exception list is the thing that rots.
         /// <para>
         /// AND THE COST IS MEASURED RATHER THAN ARGUED (https://github.com/APKiwiOrg/KhaozEngine/issues/600).
-        /// On an M2 Max, against a real render encoder, a Release build: this member costs about 61 ns per call,
-        /// the same <c>setBufferOffset:atIndex:</c> with no pool costs about 40 ns, and the pool pair on its own
-        /// costs about 14 ns. So the pool is roughly a THIRD of the call rather than the noise the issue guessed
-        /// at, and at the shadow pass's own worst shape (thousands of offsets-only rebinds a frame) it is around
-        /// 60 microseconds a frame, which is a fraction of a percent of a 60 Hz budget. Small and real, which is
-        /// why nothing changes here yet: the answer if it ever matters is structural (one pool per FLUSH), never
-        /// an exclusion list.
+        /// Measured on 2026-08-11, on an M2 Max, against a real <c>MTLRenderCommandEncoder</c>, in a Release
+        /// build with the Metal debug layer OFF, best of seven samples and stable across sample sizes of 20k
+        /// and 200k iterations: this member costs about 61 ns per call, and the same
+        /// <c>setBufferOffset:atIndex:</c> with no pool around it costs about 40 ns.
+        /// </para>
+        /// <para>
+        /// SO THE POOL COSTS 21 ns HERE, WHICH IS THE 61 MINUS THE 40 AND NOT THE 14 THE THIRD ROW REPORTS. The
+        /// pool pair measured standalone (a push and a pop with no message send between them) is about 14 ns.
+        /// In situ it is 21, because the pooled member is not the pair alone: it also carries its own
+        /// <c>NoInlining</c> frame and the <c>using</c> scope's disposal around the same send. The 14 is the
+        /// floor the pair costs anywhere, the 21 is what this member pays for having one, and the "roughly a
+        /// THIRD" below is 21 of 61. It is not the noise the issue guessed at either way.
+        /// </para>
+        /// <para>
+        /// AT THE SHADOW PASS'S OWN WORST SHAPE that is around 63 microseconds a frame, ASSUMING 3000
+        /// offsets-only rebinds in it: 3000 times 21 ns, against the thousands per frame section 6.3 names. A
+        /// fraction of a percent of a 60 Hz budget. Small and real, which is why nothing changes here yet: the
+        /// answer if it ever matters is structural (one pool per FLUSH), never an exclusion list. These are a
+        /// property of that machine and that build rather than of this member, so read them as the measurement
+        /// they were and take them again before quoting them.
         /// </para>
         /// </remarks>
         [MethodImpl(MethodImplOptions.NoInlining)]

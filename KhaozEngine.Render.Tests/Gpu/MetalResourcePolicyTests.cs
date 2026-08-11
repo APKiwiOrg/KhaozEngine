@@ -387,18 +387,24 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// THE SUPPORT READ IS THE <c>Mac2</c> FIELD OF THE PROBE'S SNAPSHOT and nothing else, driven through the
-        /// fakes in both positions. Metal exposes no <c>supportsBorderColor</c> selector, and the only way to ask
-        /// a device directly is to build a border sampler, which is the abort this whole path exists to avoid.
+        /// THE SUPPORT READ IS THE <c>Mac2</c> FIELD OF THE PROBE'S SNAPSHOT AND THE ADAPTER NAME, driven through
+        /// the fakes in every position. Metal exposes no <c>supportsBorderColor</c> selector, and the only way to
+        /// ask a device directly is to build a border sampler, which is the abort this whole path exists to avoid.
+        /// The name half is a measurement, not a caution: the hosted runner's Apple Paravirtual device ANSWERS
+        /// <c>Mac2</c> TRUE and still aborts the creation (run 31463608951, the leg's second run, identical abort
+        /// after the family-only gate landed), so a family-true virtualised adapter must still read as
+        /// unsupported.
         /// </summary>
         [Theory]
-        [InlineData(true, true)]
-        [InlineData(false, false)]
-        public void BorderColourSupport_IsTheDevicesMac2Answer(bool mac2, bool expected)
+        [InlineData(true, "Apple M2 Max", true)]
+        [InlineData(false, "Apple M2 Max", false)]
+        [InlineData(true, "Apple Paravirtual device", false)]
+        [InlineData(false, "Apple Paravirtual device", false)]
+        public void BorderColourSupport_IsTheMac2AnswerOnARealAdapter(bool mac2, string name, bool expected)
         {
             var facts = new MetalDeviceFacts(
                 DeviceCreated: true,
-                DeviceName: mac2 ? "Apple M2 Max" : "Apple Paravirtual device",
+                DeviceName: name,
                 HighestAppleFamily: 9,
                 SupportsMac2: mac2,
                 SupportsCommon1: true,
@@ -411,6 +417,22 @@ namespace KhaozEngine.Tests.Gpu
             // A device below the Mac family is still a device this backend runs on: the floor asks for Apple1 OR
             // Mac2, so a no here is a missing FEATURE rather than a rejected machine.
             Assert.Null(MetalDeviceRequirements.MissingRequirement(facts));
+        }
+
+        /// <summary>
+        /// The engine-side name test agrees with the test-support one (<c>GpuFactAttribute.VirtualGpuSkipReason</c>)
+        /// on the shapes both must classify: the duplication is forced by the reference direction, and this row is
+        /// the cross-check the two sites' comments promise.
+        /// </summary>
+        [Theory]
+        [InlineData("Apple Paravirtual device", true)]
+        [InlineData("Microsoft Basic Render Driver (Virtual)", true)]
+        [InlineData("Apple M2 Max", false)]
+        [InlineData("AMD Radeon Pro 5500M", false)]
+        public void TheVirtualisedAdapterNameTest_AgreesWithTheRequiresRealGpuOne(string name, bool virtualised)
+        {
+            Assert.Equal(virtualised, MetalSamplerPolicy.IsVirtualisedAdapter(name));
+            Assert.Equal(virtualised, GpuFactAttribute.VirtualGpuSkipReason(name) is not null);
         }
 
         /// <summary>

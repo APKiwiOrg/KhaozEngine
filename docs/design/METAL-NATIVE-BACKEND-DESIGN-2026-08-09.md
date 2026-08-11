@@ -3591,6 +3591,15 @@ MTLSamplerBorderColorTransparentBlack is not supported on this device'`, on
 the same reason: an aborted run has no golden compares to read and no passed count to compare, so gate 1 lost
 its first reading with gate 2's.
 
+**THE SECOND HOSTED RUN MEASURED THE FAMILY ANSWER, AND IT IS WRONG ON THE PARAVIRTUAL DEVICE.** Run
+31463608951 carried the family-gated fix and aborted identically, which settles the open question the fix
+shipped with: the paravirtual device answers `MTLGPUFamilyMac2` TRUE while refusing to honour a border colour,
+so a family read alone cannot classify it and the support read now also requires a non-virtualised adapter
+name (the `RequiresRealGpu` name test, duplicated into `MetalSamplerPolicy.IsVirtualisedAdapter` with a
+cross-check row). Ledger consequence for every future feature gate: on this runner, a documented family
+promise is NOT evidence the feature works, and the first hosted run of any family-gated feature is the real
+measurement.
+
 **The device fact.** The hosted runner's Apple Paravirtual device does not support sampler border colours,
 which are a `MTLGPUFamilyMac2` feature. That is the first CONFIRMED behavioural difference between the hosted
 GPU and this Mac's M2 Max, and it is worth carrying here rather than only in the changelog, because it changes

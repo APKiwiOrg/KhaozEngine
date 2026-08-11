@@ -1742,6 +1742,16 @@ device-free from fabricated support in `MetalResourcePolicyTests`, so it runs on
 too. **Only the hosted leg can exercise the refusal arm**: this Mac supports border colours and therefore always
 takes the accept arm.
 
+**The leg's second run measured the family answer wrong, so the support read gained an adapter half.** The
+family-gated fix landed and the run aborted identically (run 31463608951), which is a measurement: the
+paravirtual device ANSWERS `MTLGPUFamilyMac2` TRUE and still cannot honour a border colour, so the family is
+necessary but not sufficient on a virtualised adapter. `MetalSamplerPolicy.DeviceSupportsBorderColor` now also
+requires the adapter name not to be a virtualised one, by the same name test `GpuFactAttribute` already applies
+for `RequiresRealGpu` (duplicated deliberately, the reference direction forbids sharing, both sites
+cross-reference and a device-free row asserts the two agree). The refusal message names both halves. Gate 2's
+criterion also gained its one standing exception from the same run: a `RequiresRealGpu` row self-skips on the
+paravirtual adapter by design, so the leg reads 0 skipped beyond those rows rather than a flat 0.
+
 
 ## 17.34.0
 

@@ -1,3 +1,4 @@
+using System;
 using KhaozEngine.Gpu.Metal.Internal.ObjC;
 
 namespace KhaozEngine.Gpu.Metal.Internal
@@ -60,14 +61,18 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// sampler on a device that does not support border colours is REFUSED BY NAME
     /// (<see cref="MissingBorderColorSupport"/>) rather than created wrong.</para>
     ///
-    /// <para><b>THE SUPPORT ANSWER IS <c>MTLGPUFamilyMac2</c>, READ ONCE AT DEVICE CREATION.</b> Metal exposes no
-    /// <c>supportsBorderColor</c> selector, so the family is the documented question:
-    /// <c>MTLSamplerAddressModeClampToBorderColor</c> and <c>MTLSamplerBorderColor</c> are Mac-family features,
-    /// and every Mac GPU on a macOS this engine supports answers <c>Mac2</c>. The fact is already in
-    /// <see cref="MetalDeviceFacts.SupportsMac2"/> because the probe reads it for the floor, so this adds a
-    /// reading rather than a read. A FUNCTIONAL probe is not available as an alternative: the way to ask a device
-    /// directly is to build a border sampler and see whether it comes back nil, and under
-    /// <c>MTL_DEBUG_LAYER=1</c> that is the abort rather than the nil.</para>
+    /// <para><b>THE SUPPORT ANSWER IS <c>MTLGPUFamilyMac2</c> AND A REAL ADAPTER, READ ONCE AT DEVICE
+    /// CREATION.</b> Metal exposes no <c>supportsBorderColor</c> selector, so the family is the documented
+    /// question: <c>MTLSamplerAddressModeClampToBorderColor</c> and <c>MTLSamplerBorderColor</c> are Mac-family
+    /// features, and every Mac GPU on a macOS this engine supports answers <c>Mac2</c>. The family alone is NOT
+    /// sufficient, and that is a measurement rather than a caution: the hosted CI runner's Apple Paravirtual
+    /// device ANSWERS <c>Mac2</c> TRUE and still aborts border-colour sampler creation under the armed debug
+    /// layer (run 31463608951, the metal-native leg's second run, identical abort after the family gate landed).
+    /// So the reading also requires the adapter not to be a virtualised one, by the same name test
+    /// <c>GpuFactAttribute.VirtualGpuSkipReason</c> already uses for the RequiresRealGpu skip. A FUNCTIONAL probe
+    /// is not available as an alternative: the way to ask a device directly is to build a border sampler and see
+    /// whether it comes back nil, and under <c>MTL_DEBUG_LAYER=1</c> that is the abort rather than the
+    /// nil.</para>
     ///
     /// <para><b>THE ANISOTROPY DEGRADATION IS UNREACHABLE ON METAL, exactly as it was on Direct3D 11 and unlike
     /// on Vulkan.</b> The engine's Veldrid path falls back from anisotropic filtering to trilinear when the device
@@ -126,9 +131,20 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 || r == MTLSamplerAddressMode.ClampToBorderColor;
 
         /// <summary>Whether a device described by <paramref name="facts"/> supports border colours at all: the
-        /// <c>MTLGPUFamilyMac2</c> answer the probe already reads, given a name here so the reading is one place
-        /// rather than a family comparison spelled out at every caller.</summary>
-        internal static bool DeviceSupportsBorderColor(in MetalDeviceFacts facts) => facts.SupportsMac2;
+        /// <c>MTLGPUFamilyMac2</c> answer the probe already reads AND a non-virtualised adapter name, given a
+        /// name here so the reading is one place rather than a comparison spelled out at every caller. The
+        /// adapter half exists because the paravirtual device reports the family and then aborts the creation,
+        /// per the class comment's measurement.</summary>
+        internal static bool DeviceSupportsBorderColor(in MetalDeviceFacts facts)
+            => facts.SupportsMac2 && !IsVirtualisedAdapter(facts.DeviceName);
+
+        /// <summary>The same name test <c>GpuFactAttribute.VirtualGpuSkipReason</c> applies for RequiresRealGpu,
+        /// duplicated here deliberately: the test-support assembly references the engine and not the other way
+        /// around, so the engine cannot reach that member, and the two sites cross-reference each other so a
+        /// change visits both.</summary>
+        internal static bool IsVirtualisedAdapter(string deviceName)
+            => deviceName.Contains("Paravirtual", StringComparison.OrdinalIgnoreCase)
+                || deviceName.Contains("Virtual", StringComparison.OrdinalIgnoreCase);
 
         /// <summary>
         /// Why <paramref name="description"/> cannot be created on a device whose border-colour support is
@@ -150,13 +166,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
             if (!UsesBorderColor(spec.AddressS, spec.AddressT, spec.AddressR)) return null;
 
             return "this Metal device does not support sampler border colours (it answers no to supportsFamily: "
-                + "for MTLGPUFamilyMac2), and the sampler asks for GpuSamplerAddress.Border on at least one axis "
+                + "for MTLGPUFamilyMac2, or it is a virtualised adapter that reports the family and then aborts "
+                + "the creation, which the Apple Paravirtual device on a hosted macOS runner does), and the "
+                + "sampler asks for GpuSamplerAddress.Border on at least one axis "
                 + "(U: " + description.AddressModeU + ", V: " + description.AddressModeV
                 + ", W: " + description.AddressModeW
                 + "). Use Clamp for the same edge behaviour without a border colour, or Wrap or Mirror. Creating "
                 + "it anyway is not the safe option: -newSamplerStateWithDescriptor: aborts the process under "
-                + "MTL_DEBUG_LAYER=1 and samples something other than a border without it. A virtualized GPU is "
-                + "the device this reaches, and the Apple Paravirtual device on a hosted macOS runner is one";
+                + "MTL_DEBUG_LAYER=1 and samples something other than a border without it";
         }
     }
 }

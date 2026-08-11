@@ -161,7 +161,9 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>Pure decision for <see cref="RequiresRealGpu"/>: the skip reason for a virtualised adapter, or
         /// null to RUN. A null name (no device could be created) RUNS, so a broken device errors downstream rather
-        /// than going quiet, exactly as <see cref="CompletionFenceSkipReason"/> does.</summary>
+        /// than going quiet, exactly as <see cref="CompletionFenceSkipReason"/> does. The name test is duplicated
+        /// in the engine's <c>MetalSamplerPolicy.IsVirtualisedAdapter</c> (this assembly references the engine and
+        /// not the reverse): a change here visits that site too.</summary>
         internal static string? VirtualGpuSkipReason(string? deviceName)
             => deviceName is { Length: > 0 } n
                 && (n.Contains("Paravirtual", StringComparison.OrdinalIgnoreCase)

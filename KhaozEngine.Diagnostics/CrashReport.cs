@@ -115,6 +115,17 @@ public static class CrashReport
     public static void Install(string processLabel)
         => Install(new CrashReportOptions { ProcessLabel = processLabel });
 
+    /// <summary>
+    /// Whether an arming is currently in place. This is what lets a turn-key host (<c>GameApp</c>) arm the
+    /// floor without stepping on a consumer that already armed its own: FIRST WINS, because the head that
+    /// called <see cref="Install(CrashReportOptions)"/> by hand chose its directory, its label and its
+    /// retention deliberately, and a default arming that replaced it would be a silent downgrade.
+    /// </summary>
+    public static bool IsInstalled
+    {
+        get { lock (gate) { return armed is not null; } }
+    }
+
     /// <summary>Removes the handlers this type installed. Leaves any notes in place.</summary>
     public static void Uninstall()
     {

@@ -79,7 +79,8 @@ CrashReport.Note("backend", device.Backend.ToString());   // any fact worth havi
 
 `GameApp` does both for every head already (opt out with `GameAppOptions.SuppressCrashReportFile`, and it notes
 the graphics backend as soon as its window exists), so this is only wired by hand in a head that is not a
-`GameApp`, e.g. a dedicated server.
+`GameApp`, e.g. a dedicated server. Calling it yourself first is also fine: `GameApp` arms only when
+`CrashReport.IsInstalled` is false, so your own directory, label and retention win.
 
 - Default directory: `~/Library/Logs/KhaozEngine` on macOS, which is the same tree the system's own `.ips` crash
   report lands in under `DiagnosticReports`. `%LOCALAPPDATA%\KhaozEngine\crash` on Windows,

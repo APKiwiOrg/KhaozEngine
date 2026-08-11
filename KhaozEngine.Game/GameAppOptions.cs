@@ -145,7 +145,15 @@ namespace KhaozEngine.Game
         /// <c>%LOCALAPPDATA%\KhaozEngine\crash</c> on Windows), whether or not the game configured any logging.
         /// It costs nothing until a crash happens and writes nowhere else, so leave this <c>false</c> unless the
         /// head installs its own process-level crash handling. The field is inverted (a suppress flag) so the
-        /// default-zero struct value keeps the file on. See <see cref="KhaozEngine.Diagnostics.CrashReport"/>.
+        /// default-zero struct value keeps the file on.
+        /// <para>
+        /// A HEAD THAT ARMED ITS OWN DOES NOT NEED THIS FLAG. <see cref="GameApp"/> arms only when
+        /// <see cref="KhaozEngine.Diagnostics.CrashReport"/> is not already installed, so an earlier
+        /// <c>CrashReport.Install</c> (with its own directory, label and retention) survives: first wins, and
+        /// arming is idempotent by REPLACEMENT, so the alternative was silently discarding that configuration.
+        /// The flag is for a head that wants no arming at all. See
+        /// <see cref="KhaozEngine.Diagnostics.CrashReport"/>.
+        /// </para>
         /// </summary>
         public bool SuppressCrashReportFile;
 

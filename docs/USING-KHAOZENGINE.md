@@ -8056,8 +8056,10 @@ whole shape rather than the stem, so a head named `show` cannot delete a head na
 the shared directory.
 
 Add your own facts to it with `CrashReport.Note(key, value)` (the current scene, a build channel, the connected
-server), and opt the whole thing out with `GameAppOptions.SuppressCrashReportFile`. A head that is not a `GameApp`
-(a dedicated server, a tool) arms it with one call:
+server), and opt the whole thing out with `GameAppOptions.SuppressCrashReportFile`. A head that arms its OWN
+before constructing its `GameApp` keeps it: `GameApp` arms only when nothing is installed yet (`CrashReport.IsInstalled`),
+so your directory, label and retention survive. First wins. A head that is not a `GameApp` (a dedicated server, a
+tool) arms it with one call:
 
 ```csharp
 CrashReport.Install(new CrashReportOptions { ProcessLabel = "MyGame.Server" });

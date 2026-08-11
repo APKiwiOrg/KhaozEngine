@@ -15,6 +15,9 @@
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.Foundation.Tests" />
+    <!-- GameApp's arming decision is tested where GameApp lives, and driving the ARMED path (rather than a
+         plain Write) is what proves a head's own Install survived. CrashReport.OnCrash is that seam. -->
+    <InternalsVisibleTo Include="KhaozEngine.Game.Tests" />
   </ItemGroup>
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />

@@ -138,6 +138,26 @@ namespace KhaozEngine.Game
         public bool SuppressParentConsoleAttach;
 
         /// <summary>
+        /// Opt OUT of the automatic last-chance crash file (default <c>false</c>, i.e. the file is ON). By
+        /// default <see cref="GameApp"/> arms <see cref="KhaozEngine.Diagnostics.CrashReport"/> for the head, so an unhandled exception
+        /// is written with its type, message, stack, the engine version and the graphics backend to a file in
+        /// the OS crash location (<c>~/Library/Logs/KhaozEngine</c> on macOS,
+        /// <c>%LOCALAPPDATA%\KhaozEngine\crash</c> on Windows), whether or not the game configured any logging.
+        /// It costs nothing until a crash happens and writes nowhere else, so leave this <c>false</c> unless the
+        /// head installs its own process-level crash handling. The field is inverted (a suppress flag) so the
+        /// default-zero struct value keeps the file on.
+        /// <para>
+        /// A HEAD THAT ARMED ITS OWN DOES NOT NEED THIS FLAG. <see cref="GameApp"/> arms only when
+        /// <see cref="KhaozEngine.Diagnostics.CrashReport"/> is not already installed, so an earlier
+        /// <c>CrashReport.Install</c> (with its own directory, label and retention) survives: first wins, and
+        /// arming is idempotent by REPLACEMENT, so the alternative was silently discarding that configuration.
+        /// The flag is for a head that wants no arming at all. See
+        /// <see cref="KhaozEngine.Diagnostics.CrashReport"/>.
+        /// </para>
+        /// </summary>
+        public bool SuppressCrashReportFile;
+
+        /// <summary>
         /// Opt OUT of the built-in diagnostics HUD (default <c>false</c>, i.e. the HUD is ON). By default
         /// <see cref="GameApp"/> wires a <see cref="KhaozEngine.Gui.DiagnosticsHud"/> (FPS / frame-ms / heap,
         /// draw-call + triangle counters, and - for a 3D app - per-pass CPU-encode timings), hidden until toggled

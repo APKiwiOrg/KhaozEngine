@@ -110,14 +110,9 @@ namespace KhaozEngine.Game
             // untouched); never throws. Opt out with GameAppOptions.SuppressParentConsoleAttach.
             AppWindow.TryAttachParentConsole(enable: !options.SuppressParentConsoleAttach);
 
-            // Last-chance crash net for the invisible case: a Windows GUI launch (no parent console, so the attach
-            // above was a no-op) has no window yet and no console, so an uncaught STARTUP crash would vanish
-            // silently. When the process still owns no console, install a floor that writes the fatal exception to
-            // a file under the per-user local app-data dir. A terminal launch (console now attached) shows the
-            // exception on stderr and skips this; a game that wires KhaozEngine.Diagnostics.CrashHandler still gets
-            // its richer game.log too. Never throws.
-            if (!AppWindow.ProcessHasConsole)
-                StartupCrashLog.InstallForNoConsole(options.Title);
+            // Last-chance crash file, armed for EVERY head rather than only for the no-console case (see
+            // TryArmCrashReport for what it is and when it declines).
+            TryArmCrashReport(options);
 
             _resumeGapThresholdSeconds = options.ResumeGapThresholdSeconds;
             _jobSchedulerDisabled = options.DisableJobScheduler;
@@ -164,6 +159,12 @@ namespace KhaozEngine.Game
                 && System.IO.File.Exists(options.WindowIconPath))
                 _window.SetMacDockIcon(System.IO.File.ReadAllBytes(options.WindowIconPath));
 
+            // The graphics backend is the first fact worth having in a crash file and the first one that exists:
+            // the device is up as soon as the window is. A boot-time crash that reads "backend: MetalNative" is a
+            // different investigation from the same crash on the incumbent, and the tester should not have to
+            // remember which one they launched. Free when the crash file is opted out (the note is just held).
+            CrashReport.Note("backend", _window.Backend.ToString());
+
             // Reveal the window now that the runtime icon is set (born hidden - see AppWindow.Show).
             _window.Show();
 
@@ -183,6 +184,39 @@ namespace KhaozEngine.Game
                 _hudFont = _surface2D.LoadDefaultDpiFont(32f);
                 _hudWhite = _surface2D.CreateTexture(new byte[] { 255, 255, 255, 255 }, 1, 1);
             }
+        }
+
+        /// <summary>
+        /// Arm the last-chance crash file for this head, and say whether it did.
+        ///
+        /// <para><b>ARMED FOR EVERY HEAD, not only for the no-console case.</b> A terminal launch does print the
+        /// exception on stderr, which is exactly what is gone an hour later when someone asks what the crash
+        /// said: the engine's own showcase lost a one-off managed exception that way, with the operating
+        /// system's crash report naming only coreclr's dispatch frames
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/607). So the floor writes type, message, stack,
+        /// timestamp, engine version and the graphics backend to a file beside the OS crash report.</para>
+        ///
+        /// <para><b>AND IT DECLINES TWICE: on the opt-out, and on an arming that already exists.</b> FIRST WINS.
+        /// A head that called <see cref="CrashReport.Install(CrashReportOptions)"/> itself before constructing
+        /// its <see cref="GameApp"/> chose its own directory, label and retention, and that arming call is
+        /// idempotent by REPLACEMENT, so arming unconditionally here silently threw that configuration away and
+        /// pointed the reports somewhere the head was not looking. The turn-key floor exists for the head that
+        /// did nothing, and it should behave that way.</para>
+        ///
+        /// <para>Pure enough to test headlessly, which is the other half of why it is a member: the ctor it
+        /// came out of needs a window, so neither the opt-out nor the first-wins rule was reachable from a
+        /// test. Never throws.</para>
+        /// </summary>
+        /// <param name="options">The head's options, read for <see cref="GameAppOptions.SuppressCrashReportFile"/>
+        /// and for the process label.</param>
+        /// <returns>True when this call armed it, false when it was opted out or already armed.</returns>
+        internal static bool TryArmCrashReport(in GameAppOptions options)
+        {
+            if (options.SuppressCrashReportFile) return false;
+            if (CrashReport.IsInstalled) return false;
+
+            CrashReport.Install(new CrashReportOptions { ProcessLabel = options.Title });
+            return true;
         }
 
         /// <summary>

@@ -197,9 +197,11 @@ host (no `GameApp`) gets the same attach from the `AppWindow` constructor. **Opt
 `GameAppOptions.SuppressParentConsoleAttach = true` (default is off, i.e. the attach is on).
 
 **Crash visibility with no console.** A fatal *startup* crash on a WinExe launched from Explorer (no window yet,
-no console) would otherwise be silent. `GameApp` installs a last-chance net in exactly that case (a Windows GUI
-launch that ended up with no console) that writes the unhandled exception to a file under
-`%LOCALAPPDATA%\KhaozEngine\crash\`. This is the floor. The recommended richer path is still to wire
+no console) would otherwise be silent, and so would one on a terminal launch once that terminal is closed.
+`GameApp` therefore arms a last-chance net for every head, which writes the unhandled exception to a file in the
+OS crash location (`%LOCALAPPDATA%\KhaozEngine\crash\` on Windows, `~/Library/Logs/KhaozEngine/` on macOS). This
+is the floor: see [the crash file](#the-crash-file-when-there-is-no-log-to-read-crashreport-17360) below for what
+it contains and how to add your own facts to it. The recommended richer path is still to wire
 `KhaozEngine.Diagnostics.CrashHandler.Install()` with a `FileSink` (see the Diagnostics / logging section below),
 which routes every fatal to your game's `game.log` regardless of console. `KhaozEngine.Showcase` is the reference
 desktop head and ships as `WinExe`.
@@ -261,8 +263,9 @@ game.Run();
 `GameAppOptions` (a struct): `Title`, `Width`/`Height`, `DesignWidth`/`DesignHeight`, `ScaleMode`, `ClearColor`,
 `ResumeGapThresholdSeconds` (see the resume hook below), `PresentMode` + `FrameCapHz` + `WindowMode` (see below), and optional
 `WindowFactory` / `ViewportFactory` (e.g. `AppWindow.Scaled` for a display-fitted window, or an `AdaptiveViewport`
-for responsive layout), `AppUserModelId` (Windows taskbar identity), and `SuppressParentConsoleAttach` (opt out of
-the WinExe parent-console attach - see [Game head build settings](#game-head-build-settings-cetcompat)). Use
+for responsive layout), `AppUserModelId` (Windows taskbar identity), `SuppressParentConsoleAttach` (opt out of
+the WinExe parent-console attach - see [Game head build settings](#game-head-build-settings-cetcompat)), and
+`SuppressCrashReportFile` (opt out of the last-chance crash file). Use
 `GameAppOptions.For(title, w, h)` for the common case.
 
 **Present mode + frame cap.** `GameAppOptions.PresentMode` (`Vsync` default / `Immediate`) selects the swapchain's
@@ -8018,10 +8021,49 @@ Log.Configure(options);
 CrashHandler.Install();
 ```
 
-`SessionLog` composes cleanly with the no-console `StartupCrashLog` net `GameApp` installs automatically on a
-Windows GUI launch (see the `WinExe` subsection): that net only catches a startup crash *before* any logging is
-configured and writes a bare file under `%LocalAppData%\KhaozEngine\crash`, so the two write to different
-destinations and never double-handle a crash. `SessionLog`'s `CrashHandler` is the richer, category-tagged record.
+`SessionLog` composes cleanly with the last-chance `CrashReport` file `GameApp` arms automatically for every head
+(next subsection): that file catches a crash *before* (or without) any logging being configured and goes to an OS
+crash location, so the two write to different destinations and never double-handle a crash. `SessionLog`'s
+`CrashHandler` is the richer, category-tagged record.
+
+### The crash file, when there is no log to read (`CrashReport`, 17.36.0)
+
+A crash the game did not log is the one that costs the most: the exception text goes to a terminal that is closed
+by the time anyone asks what it said, and the operating system's own crash report names only the runtime's
+dispatch frames. `GameApp` therefore arms `KhaozEngine.Diagnostics.CrashReport` for every head, which writes the
+exception to its own file whether or not the game configured any logging.
+
+**Where to look for it after a crash:**
+
+| Platform | Directory |
+|---|---|
+| macOS | `~/Library/Logs/KhaozEngine/` (the same tree as the system's `~/Library/Logs/DiagnosticReports/*.ips`) |
+| Windows | `%LOCALAPPDATA%\KhaozEngine\crash\` |
+| Linux | `$XDG_STATE_HOME/KhaozEngine/crash/`, else `~/.local/state/KhaozEngine/crash/` |
+
+**Two signals, two stems, two retention pools:**
+
+| Signal | File | What it means |
+|---|---|---|
+| `AppDomain.UnhandledException` | `{window title}-crash-{yyyyMMdd-HHmmss-fff}-{pid}-{counter}.log` | The process is going down. This is "the crash file". |
+| `TaskScheduler.UnobservedTaskException` | `{window title}-taskfault-{yyyyMMdd-HHmmss-fff}-{pid}-{counter}.log` | A faulted task nobody awaited, raised from the FINALIZER thread at a garbage collection, so it arrives long after the failure and usually while the game is still running fine. Recorded by default (`CrashReportOptions.IncludeUnobservedTaskExceptions`), because nothing else in the process records it at all. |
+
+One file per event, oldest pruned beyond 20 PER STEM, so a task-fault storm cannot evict the crash. Each file
+carries the timestamp, the process, the engine version, the runtime and OS, the graphics backend, then the
+exception's type, message and full stack. The process id and the counter are what make one event one file: a
+name that stopped at the millisecond lost back-to-back writes to each other silently, and pruning matches the
+whole shape rather than the stem, so a head named `show` cannot delete a head named `show-crash`'s reports out of
+the shared directory.
+
+Add your own facts to it with `CrashReport.Note(key, value)` (the current scene, a build channel, the connected
+server), and opt the whole thing out with `GameAppOptions.SuppressCrashReportFile`. A head that arms its OWN
+before constructing its `GameApp` keeps it: `GameApp` arms only when nothing is installed yet (`CrashReport.IsInstalled`),
+so your directory, label and retention survive. First wins. A head that is not a `GameApp` (a dedicated server, a
+tool) arms it with one call:
+
+```csharp
+CrashReport.Install(new CrashReportOptions { ProcessLabel = "MyGame.Server" });
+```
 
 Rules for consumers:
 

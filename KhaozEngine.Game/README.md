@@ -99,10 +99,16 @@ options.SingleInstance = true;   // reuses AppUserModelId as the guard key
 Windows). Because a Windows-subsystem exe has no console, `GameApp` calls `AppWindow.TryAttachParentConsole()` as
 its very first action, attaching the launching terminal's console so `Console.Write*` still shows under
 `dotnet run` / cmd / PowerShell; it is a silent no-op off Windows, on an Explorer/Start launch, and when output is
-redirected. Opt out with `GameAppOptions.SuppressParentConsoleAttach = true` (default off). When a Windows GUI
-launch leaves the process with no console, `GameApp` also installs a last-chance crash-log net (fatal startup
-exceptions are written to a file under `%LOCALAPPDATA%\KhaozEngine\crash\`) so a no-console startup crash is never
-silent - wire `KhaozEngine.Diagnostics.CrashHandler` for the richer `game.log` path. See
+redirected. Opt out with `GameAppOptions.SuppressParentConsoleAttach = true` (default off).
+
+**Last-chance crash file.** `GameApp` arms `KhaozEngine.Diagnostics.CrashReport` for every head, so an unhandled
+exception is written with its type, message, stack, the engine version and the graphics backend to a file in the
+OS crash location (`~/Library/Logs/KhaozEngine/` on macOS, `%LOCALAPPDATA%\KhaozEngine\crash\` on Windows),
+whether or not the game configured any logging and whether or not it has a console. A task exception nobody
+awaited is recorded too, by default, but under its own `{title}-taskfault-` stem with its own retention, because
+it comes from the finalizer thread at a collection and is not the process dying. Add your own facts with
+`CrashReport.Note(key, value)`, opt out with `GameAppOptions.SuppressCrashReportFile = true` (default off), and
+wire `KhaozEngine.Diagnostics.CrashHandler` for the richer `game.log` path. See
 [docs/USING-KHAOZENGINE.md](../docs/USING-KHAOZENGINE.md) "Game head build settings".
 
 **Point-space UI pass** (since 10.12.0, for DPI-aware crisp UI): `GameApp` exposes a per-frame

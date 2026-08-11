@@ -355,10 +355,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// element's kind are rendered here, which is exactly the triple that check compares.
         /// </para>
         /// <para>
-        /// AN ELEMENT'S NAME AND STAGE VISIBILITY ARE DELIBERATELY NOT RENDERED. Nothing on this type reads
-        /// either: the shape check compares kinds, and the join reaches an element only for its kind. If a later
-        /// row starts reading a layout element's name or its visibility off <see cref="Layouts"/>, that becomes
-        /// observable and belongs in here too.
+        /// AN ELEMENT'S NAME AND STAGE VISIBILITY ARE DELIBERATELY NOT RENDERED, AND THAT IS ENFORCED RATHER
+        /// THAN ASKED FOR. Nothing on this type reads either: the shape check compares kinds, and the join
+        /// reaches an element only for its kind. <c>MetalIndexTableNameBlindnessTests</c> walks the IL of every
+        /// member this type declares, its iterator's state machine included, and follows the calls those bodies
+        /// make THROUGH this package, so a member added later is a red test whether it reads the name itself or
+        /// reads it in a helper in another type here. What the walk does not follow is a call into another
+        /// assembly, which is the scope that test states for itself: this rule is about what THIS package does.
+        /// If
+        /// a later row NEEDS to read a name off <see cref="Layouts"/>, the name becomes observable and belongs
+        /// in here too, which is what makes that guard's failure the right place to have the conversation.
         /// <para>
         /// AND ROW 10 MEASURED WHAT THAT WOULD COST, so this is a constraint with a size rather than a caution.
         /// Measured over the shipped catalog at row 10, on 2026-08-10, 25 of 42 programs merged onto an earlier
@@ -368,8 +374,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// they were and take them again before quoting them.
         /// <c>MetalIndexTableDedupTests.TwoTablesDifferingOnlyInElementNames_AreInterchangeable</c> pins the
         /// invariant behaviourally, which catches a change to this key or to
-        /// <see cref="RequireLayoutShape"/> and NOT a new member that reads a name. Making that mechanical is
-        /// https://github.com/APKiwiOrg/KhaozEngine/issues/594.
+        /// <see cref="RequireLayoutShape"/> and NOT a new member that reads a name. The IL walk in
+        /// <c>MetalIndexTableNameBlindnessTests</c> is the half that catches the new member
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/594).
         /// </para>
         /// </para>
         /// <para>

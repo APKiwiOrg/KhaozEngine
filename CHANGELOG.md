@@ -1416,6 +1416,90 @@ from "does the last unbuilt member name its row" to "is anything unbuilt", and a
 member called: a test that walked one member forward would pass forever the day someone put a stub back on a
 different one.
 
+### The native Metal swapchain: a present that cannot be skipped silently, and a vsync toggle that always applies (#581)
+
+`GpuDeviceContext.CreateForWindow` works on `GpuBackendKind.MetalNative`, and `SwapchainFramebuffer`,
+`SyncToVerticalBlank`, `ResizeSwapchain` and `Present` are live with it, so `IGpuDevice` has no unbuilt member
+left on this backend. Row 15 of
+[docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md).
+The `CAMetalLayer` configuration is reproduced from the Veldrid Metal backend field for field (M-W1), because it
+is visible only to a human, and four things around it are not.
+
+**Vsync applies unconditionally (M-W2).** The incumbent writes `displaySyncEnabled` only when its
+`MTLFeatureSet` enumeration lands on one of exactly three values of an enum deprecated since macOS 10.15, so on a
+machine outside that set a vsync toggle silently does nothing. That enumeration keeps the LAST feature set that
+answered `supportsFeatureSet:` in numeric order, and the enum's tvOS members sort above its macOS ones, so the
+set of machines it silently fails on is not one anybody enumerated. `CAMetalLayer.displaySyncEnabled` is a macOS
+property on a macOS-only backend and needs no capability test at all.
+
+**A frame whose drawable came back nil renders into a device-owned orphan target and counts (M-W5).** The
+incumbent's `MTLSwapchainFramebuffer.IsRenderable` goes false, `PreDrawCommand` then returns false for every
+draw, and a whole frame's recording is built and thrown away with nothing logged and nothing counted. Here the
+swapchain framebuffer is repointed at a colour texture the DEVICE owns, created lazily the first time that path
+is reached and destroyed at the next successful acquire rather than at the end of the frame that used it, so a
+recording that bound it is never left naming a destroyed texture. The frame records, submits and completes
+exactly like any other, only its present is skipped, and it counts into `GpuDeviceCounters.FramesBegun` because
+a skipped present is not a skipped frame and that field is the denominator every per-frame figure is divided by.
+The first skip WARNs once per device.
+
+**The drawable acquire is measured rather than removed (M-W4).** `-nextDrawable` blocks when every drawable is
+in flight, and unlike `vkAcquireNextImageKHR` there is no zero-timeout form, no semaphore variant and no
+readiness query, so the stall is not a synchronisation choice and is not removable. It is counted and timed into
+`GpuDeviceCounters.AcquireWaitCount` and `AcquireWaitMs`, the pair phase 3 appended for its own present
+boundary, with one entry per boundary, which is exactly the reading that pair's own documentation describes for
+a backend that blocks the CPU on its acquire. The count runs exactly ONE ahead of `FramesBegun` on a windowed
+device, because the first drawable is taken at creation: the acquire keeps the incumbent's timing of taking the
+NEXT frame's drawable at the boundary, which is what makes the drawable known before recording starts.
+`maximumDrawableCount` is set to `KE_METAL_FRAMES_IN_FLIGHT`, so the depth of the drawable queue and the depth
+of the uniform ring are one number, and that variable's session-log line names all three of its consumers now
+instead of deferring one.
+
+**A resize and a runtime vsync change queue and apply at the next present boundary, after a drain (M-W7).** The
+incumbent applies a resize inline on the calling thread: it recreates the depth texture, releasing the one
+in-flight frames may still be reading, and takes a new drawable, with no drain anywhere. Here `ResizeSwapchain`
+stores a coalesced size and returns with no lock, no native call and nothing that can block, so a window
+callback arriving on any thread while the submit thread is committing is safe, and the apply lands where the
+boundary provably owns the queue. Metal needs no swapchain recreation at all, so the apply is a `drawableSize`
+write, which is why the two are separate pieces of pending state here where the Vulkan backend folds them into
+one recreate flag. `IGpuFramebuffer` identity is stable across every resize BY CONSTRUCTION, because the colour
+attachment is not an object the wrapper holds.
+
+**The present keeps its own command buffer (M-W6), and the buffer is now counted.** The idiomatic move is to
+encode `-presentDrawable:` onto the frame's own buffer, and it is declined: the seam's `Present()` is a separate
+call from `Submit()` so the frame's buffer is already committed, `-presentDrawable:` on a later-committed buffer
+runs after it by queue order anyway, and the alternative inherits the Vulkan design's own named limitation into
+the area with the least coverage in the whole net. The uncommitted-command-buffer bound this backend asserts is
+the frames-in-flight depth PLUS ONE, and row 7 left the one unoccupied for exactly this buffer.
+
+**The swapchain framebuffer's attachment-set identity moves with its texture.** The framebuffer-change guard
+compares a number and returns BEFORE copying the incoming record, so a source whose bound texture moves between
+acquires under a stable number would leave the pass schedule describing the drawable the present had already
+moved past, with nothing anywhere reporting it. The OBJECT is stable for the life of the device and the NUMBER
+is minted per acquire, and the two claims are different. It costs nothing: an acquire only ever happens at a
+present boundary, so two binds inside one recording always see the same number and a redundant rebind is still
+correctly a no-op.
+
+**A headless device is unchanged and says so.** `SwapchainFramebuffer` is null, `Present()` does nothing,
+`ResizeSwapchain` is a silent no-op matching the incumbent, and `FramesBegun` with the acquire pair read zero,
+which is literally true rather than a placeholder.
+
+**And the swapchain is not the uncovered surface the design assumed.** The design records that not one line of
+the incumbent's swapchain runs in CI on any leg, ever, and reasons from there. That argument assumes
+presentation needs a window, and it does not: a `CAMetalLayer` created with no `NSWindow`, no view and no display
+server configures, vends drawables and presents them, measured here on an Apple M2 Max. So the layer
+configuration is read back off a real layer by value, a real drawable is acquired and presented, and a whole
+layer-backed device is driven through ten present boundaries with a resize and a vsync flip in the `[GpuFact]`
+suite. Every decision above the native calls (the skipped present, the orphan lifetime, the coalescing, the
+counters, the order of the boundary) runs device-free on every leg. What is left for a windowed playtest is the
+four Cocoa selectors that turn an `NSWindow` into a layer, and whether anything appears on a screen.
+
+**One reference-count bug is not reproduced.** `MTLSwapchain.Dispose` releases its layer unconditionally, which
+balances the `alloc`/`init` on the path where it CREATED the layer and is an over-release on the path where it
+ADOPTED the host view's and never retained it. The adopt path retains here, so the release is balanced either
+way. Nothing in this fleet reaches that shape today and a consumer embedding the engine in an existing Cocoa app
+would reach it immediately.
+
+
 ## 17.34.0
 
 ### The `vulkan-native` CI leg, both validation tiers, and the first validation layer this repo has ever installed (#529)

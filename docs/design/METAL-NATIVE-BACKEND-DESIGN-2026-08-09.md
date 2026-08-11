@@ -1575,6 +1575,21 @@ descriptor Metal would not build), and `FakeMetalEncoderSink` asserts the same c
 this addendum describes is gone rather than merely routed around. Both have device-free rows. The two nil cases
 still answer the caller the same thing through separate arms, which is unchanged.
 
+**Fourth addendum, at row 15, correcting the addendum above and row 14's handoff in the same breath: M-W5's
+orphan case does NOT reach either nil arm, and the frame's draws do NOT go nowhere.** Both readings treated
+"the drawable came back nil" and "the encoder came back nil" as the same event, and 11.2 says the opposite in
+as many words: the wrapper is repointed at a device-owned orphan TARGET, and the frame "records, submits and
+completes exactly like any other frame, and only its present is skipped". The orphan target is a real
+`MTLTexture` at the current drawable size, so the descriptor builds, the encoder opens, and every draw in that
+frame rasterises into it. Nothing is discarded and nothing returns early. What the two nil arms actually cover
+is the residual case where Metal will not build a descriptor or will not open an encoder at all (a texture that
+has gone, a framebuffer with no attachments), which is a DIFFERENT and more degenerate condition that M-W5's
+answer removes rather than produces. Both arms stay, because a defence against a driver refusing is not made
+unnecessary by a caller that no longer provokes it, and row 14's early return on `IntPtr.Zero` stays with them.
+The observable consequence of the correction is the opposite of what the earlier reading implied: on the
+nil-drawable frame the bind flushes DO run, into a live encoder, so there is no records-marked-clean-into-nil
+hazard on that path at all.
+
 ### 7.2 The per-attachment clear (M-A2)
 
 This is the one place this design deliberately renders differently from the incumbent, so it gets its own gate,
@@ -2453,6 +2468,20 @@ recorded as an observation so nobody reads a green golden leg as evidence about 
 here in one respect than it was on Vulkan: the Metal leg is otherwise the best-covered leg in the matrix, so a
 green Metal run reads as stronger evidence than it is.
 
+**Corrected in place at row 15: MM7's premise is narrower than it was stated, and the correction is a
+measurement.** The observation above is true of the INCUMBENT and it was generalised into "the swapchain cannot
+be covered", which rests on presentation needing a window. It does not. A `CAMetalLayer` created with no
+`NSWindow`, no view and no display server accepts its whole configuration, vends drawables from
+`-nextDrawable`, hands back their textures and accepts `-presentDrawable:`, measured on an Apple M2 Max under
+macOS 26 (row 1's spike had already round-tripped `maximumDrawableCount` on such a layer without anyone drawing
+the conclusion). So row 15 splits the window resolution from the device build, and the native half runs in the
+`[GpuFact]` suite against a real layer: the configuration read back property by property BY VALUE, an acquire
+and a present, and a whole layer-backed device driven through ten present boundaries with a resize and a vsync
+flip. Every DECISION above the native calls runs device-free on every leg behind `IMetalSwapchainApi`. What is
+genuinely left with no automated coverage is two things rather than the whole area: the four Cocoa selectors
+that turn an `NSWindow` into a layer, and whether anything appears on a screen. Both are gate 5's, and MM7's
+real lesson survives intact for them.
+
 **`IGpuFramebuffer` wrapper identity is stable across resize BY CONSTRUCTION (M-W7)**, because the colour
 attachment is not an object the wrapper holds. W2 asked D3D11 to behave like Metal here and V-W5 had to build
 it for Vulkan. Here there is nothing to build, and the DEPTH texture is the only part that is recreated.
@@ -2490,6 +2519,12 @@ repointed only on the submit thread at the present boundary with no recording in
 target's lifetime is owned by the DEVICE rather than by the framebuffer, so a recording that bound it is not
 left naming a destroyed texture.
 
+**Read that literally, because two later handoffs did not.** "Records, submits and completes exactly like any
+other frame" means the descriptor builds, the encoder opens and every draw rasterises into the orphan texture.
+The frame's work is not skipped, discarded or routed through an early return: the only thing that does not
+happen is the present. The nil-descriptor and nil-encoder arms rows 12 and 14 built are a different and more
+degenerate condition, and the fourth addendum in 7.1 is where that is worked through.
+
 **The present stays on its own command buffer (M-W6).** The idiomatic move is to encode `presentDrawable:` on
 the frame's own buffer, which is the documented shape and removes a command buffer per frame, and the Vulkan
 phase's corrected-in-flight semaphore routing (#563) gives the mechanism for free. It is declined for three
@@ -2520,6 +2555,17 @@ anywhere. The Silk `FramebufferResize` callback fires on the render thread today
 in the shipped loop and the contract hardens against a consumer that does otherwise. That is W3's argument
 verbatim.
 
+**Corrected in place at row 15: the DEPTH half of that regression has no occupant here, and the drain is kept
+anyway.** `MTLSwapchainFramebuffer` creates a depth texture only when its `SwapchainDescription` carries a depth
+format, and the one windowed site in `GpuDeviceContext` passes null. The provider seam cannot carry one either:
+`GpuWindowedDeviceRequest` is a window, a size and a vsync flag. So the native swapchain framebuffer has no
+depth attachment and no MSAA, matching both native siblings and matching the incumbent AS THE ENGINE DRIVES IT,
+there is no depth texture to rebuild at an apply, and the sentence above about swapping a new depth view into
+the existing wrapper describes a shape this row could not build. What the drain protects is the layer
+reconfiguration and the drawable swap, and it is kept for two reasons rather than one: those are worth
+protecting, and it is the seat a depth rebuild would need on the day the seam grows a way to ask for one. It
+costs nothing on an ordinary frame, because a boundary with nothing queued does not drain at all.
+
 **Metal needs no swapchain recreation**, only a `drawableSize` write and a depth rebuild, which is why the
 seam's existing "a resize reconfigures nothing" wording already describes this backend and needs no edit. That
 is a real difference from Vulkan, where a present-mode change forces a whole swapchain recreation, and
@@ -2530,7 +2576,12 @@ is a real difference from Vulkan, where a present-mode change forces a whole swa
 - Recording is lock-free and per list. Any number of lists may record concurrently on any threads, because each
   owns its command buffer and its encoders.
 - One `_submitLock` covers `commit`, `presentDrawable` plus its commit, and the resize apply. Held for
-  microseconds, not a frame.
+  microseconds, not a frame. **The ACQUIRE is deliberately outside it** (row 15): `nextDrawable` blocks for up
+  to a display refresh, and holding the submit lock across that would stop every other thread's submit for the
+  length of it. The frame-capture boundary call is outside it too, because a capture stop DRAINS. **And the
+  resize apply's drain is the TIMELINE's rather than the device's public `WaitForIdle`**, which flushes the
+  setup batch first and so would take the SETUP lock while holding the submit lock, inverting the one ordering
+  rule between two locks this backend has.
 - The SETUP-BUFFER lock covers appends to the device-owned setup command buffer and its lazy flush. The flush
   takes the submit lock under it, in that order and never the reverse.
 - The RING lock covers a segment acquire and an off-timeline write, scoped to the write and never to a frame. A
@@ -3257,7 +3308,7 @@ Each row becomes one implementation issue, `kind/backlog` unless noted, `confide
 | 12 | Render passes: deferred begin, **per-attachment clear folding into `loadAction` with `KE_METAL_CLEAR` (M-A2)**, explicit `storeAction`, the clear-only-pass flush at both forcing sites, the end-before-illegal-command invariant, and the framebuffer-change-guarded viewport and scissor with the `ScissorTestEnabled` gate and the unconditional plural setters | The incumbent writes every clear into `colorAttachments[0]`, so `ModelFB`'s normal and linear-depth attachments are never cleared, and `ModelRenderer.BeginModelPass` carries a shipped comment working around it incompletely. An unguarded viewport emit silently resets a live scissor, which is golden-visible and which phase 2's first spec froze the wrong way. The clear-only case is forced by the incumbent at two sites and a golden depends on it |
 | 13 | Bind flush: two-state per-slot records, **per-(kind, stage) ARRAY calls (M-R6)**, the offsets-only `setBufferOffset:` path per visible stage, the vertex-stream cache that is actually maintained, index-table invalidation on a pipeline switch, the composed `frameBase + rangeOffset + callerDynamicOffset` offset, and the device-free budget test. **Binds through 2.2b's table**, so an element with no entry for a stage is not bound for that stage | One native call per resource per stage is the #418 fan-out defect arriving on a second API, and the fork's binding layer does not declare a single array setter. An offsets-only rebind is the shadow pass's shape thousands of times a frame. An unaligned buffer offset is a validation error under the debug layer and undefined behaviour without it |
 | 14 | Draw and dispatch paths, vertex and index binding with its offset arithmetic, compute pipelines and dispatch with the SERIAL dispatch type, rule 1 and rule 2 behaviour, the MSAA resolve, mip generation, and copies with the alignment throw and its unreachability assertion. (**Corrected in place: `MaxMsaaSampleCount` is ROW 16's**, which row 4's device pin already said and which this cell had not caught up with. It is a CAPABILITY, row 16 is the capability read, and a capability pinned at 1 cannot be at row 16's zero-permitted-difference parity on a device reporting 4, which is what would catch a wrong answer. Row 14 needs no sample count at all: the resolve asks whether the source is multisampled and the destination is not, and reads both off the two textures. M-C3's instruction, that the incumbent's own computation is READ OFF the seam and pinned with the note that the argument-ignoring is correct, is unchanged and binds row 16. See the row 14 addendum in section 13 and the row 16 addendum in section 14.) | The 36 goldens, and the compute `[GpuFact]` suite that proves rules 1 and 2 on every backend. Both prior phases had drafts that invented an MSAA formula and then asserted equality with the incumbent, which is the C4 failure phase 2 corrected in flight and the V-C5 ruling phase 3 made against both of its drafts. The serial dispatch type is what makes M-H4 true and the fork never chains dependent dispatches, so it is not grounded in its usage |
-| 15 | Swapchain: `CAMetalLayer` acquisition and configuration reproduced field for field, **unconditional `displaySyncEnabled` (M-W2)**, the drawable acquired at the present boundary and counted into the acquire-wait pair, `maximumDrawableCount`, **the nil-drawable orphan target and the skipped present that still counts into `FramesBegun`**, the separate present command buffer, queued resize and vsync change applied at the boundary after a drain, and stable framebuffer identity | The incumbent silently discards every draw of a frame whose drawable is nil, recreates the depth texture inline with no drain while in-flight frames may be reading it, throttles the CPU on `nextDrawable` with nothing counting it, and applies a vsync toggle only inside three values of a deprecated enum. Zero automated coverage anywhere in the net (MM7) |
+| 15 | Swapchain: `CAMetalLayer` acquisition and configuration reproduced field for field, **unconditional `displaySyncEnabled` (M-W2)**, the drawable acquired at the present boundary and counted into the acquire-wait pair, `maximumDrawableCount`, **the nil-drawable orphan target and the skipped present that still counts into `FramesBegun`**, the separate present command buffer, queued resize and vsync change applied at the boundary after a drain, and stable framebuffer identity. (**Corrected in place: the DEPTH-TEXTURE half of the regression column has no occupant**, because the seam cannot ask for a swapchain depth attachment at all, so what the drain protects is the layer reconfiguration and the drawable swap. See the row 15 addendum in 11.3. **And "zero automated coverage anywhere in the net" was over-general**: a headless `CAMetalLayer` vends drawables, so the layer half runs in the `[GpuFact]` suite and only the four Cocoa selectors and the does-it-appear question are left for gate 5. See the row 15 addendum in 11.1.) | The incumbent silently discards every draw of a frame whose drawable is nil, recreates the depth texture inline with no drain while in-flight frames may be reading it, throttles the CPU on `nextDrawable` with nothing counting it, and applies a vsync toggle only inside three values of a deprecated enum. Zero automated coverage anywhere in the net (MM7) |
 | 16 | Capability read and the ZERO-difference parity test with its reflection-completeness check, the `GpuDeviceCounters` fill, `GpuDeviceDiagnostics` with `softwareAdapter` and `deviceLossReason`, and **`MetalFrameCapture` taking the native queue pointer instead of reflecting into Veldrid's private field** | Capability drift is silent and golden-visible through `AntiAliasing.ResolveFor`. Phase 3's row-18 pair are both inherited by name: `DeviceName` is not trimmed, and `SupportsShadowMaps` asks what the incumbent asks rather than what the member's name suggests. The frame-capture reflection is one Veldrid refactor away from silently not working, and it is one of 4.2's three silent sites |
 | 17 | **MM6's measurement**: the two-uniform-buffer `[GpuFact]` probes with pixel READBACK assertions, and the RESULT recorded in this design doc whichever way it goes. **No shader change lands in this row**, and M-B4's invariant stays in force regardless | The memory records four sessions' worth of open question and one shipped consequence. A `GpuFact` that only asserts no-throw is how the all-black splat terrain shipped. A pass authorises FILING the invariant's removal with its own gates and nothing more |
 | 18 | **The #531 extraction (M-P4 to M-P6), and it lands AFTER rollout gate 3.** The `DeviceLiveness` latch, the counter accumulators, the diagnostic rate limiter, the shader-cache key and file discipline, and the completion timeline's bookkeeping, into `KhaozEngine.Gpu/Internal/`, with all three backends rewired onto them. The four refusals written per candidate, and #531 closed with the reasoning. **Depends on gate 3** | Phase 2's frozen native-call marginals and phase 3's must be byte-identical across the commit, which is the regression proof, and both are device-free tests that already run on every `dotnet test`. Extracting while the backend is being written gives a golden failure two candidate causes, and the whole value of a guest golden family is that it has one. #531's own instruction is to re-assess each candidate against three implementations rather than assume the list carries |

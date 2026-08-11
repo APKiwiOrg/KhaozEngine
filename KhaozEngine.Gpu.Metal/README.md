@@ -47,6 +47,9 @@ and nothing that does not want the Objective-C interop ever carries it.
 > differences from the Veldrid Metal backend, every `GpuDeviceCounters` channel a device with no swapchain has,
 > and a frame capture that takes this backend's own queue pointer. See [What the device reports about
 > itself](#what-the-device-reports-about-itself).
+> Row 15 made it WINDOWED: the `CAMetalLayer`, the drawable, the present, the queued resize and a vsync toggle
+> that always applies, so `IGpuDevice` has no unbuilt member left. See [The swapchain: a layer, a drawable, and
+> a present that cannot be skipped silently](#the-swapchain-a-layer-a-drawable-and-a-present-that-cannot-be-skipped-silently).
 
 Spec, decisions and the nineteen-row work breakdown:
 [docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](../docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md).
@@ -68,7 +71,8 @@ timeline and the fence on it, the command list with its encoder lifecycle and th
 with its emission parse and binding table, the resource layouts and sets a pipeline binds through, the two
 pipeline types and the vertex-stream numbering behind them, the framebuffer and the pass schedule behind it,
 the bind records and the argument batch that flushes them, the draw and dispatch path with the
-pipeline-state block and the index binding behind it, the transfer family and its copy arithmetic, plus the
+pipeline-state block and the index binding behind it, the transfer family and its copy arithmetic, the
+`CAMetalLayer` and the present boundary over it with its orphan target and its queued resize, plus the
 three verification spikes, which exist to answer a question rather than to run in a game.
 
 **Call `Register()` unconditionally and on every operating system.** Registering says a provider EXISTS, which
@@ -757,6 +761,65 @@ device-free test over every call site is what keeps that true. Align the offset,
 backend there is no per-level blit, no per-level barrier and no filter to choose. The texture needs more than
 one mip level and must not be a staging texture, which on this backend is an `MTLBuffer` with a software
 subresource layout and has no texture to generate from.
+
+## The swapchain: a layer, a drawable, and a present that cannot be skipped silently
+
+`GpuDeviceContext.CreateForWindow` on this backend resolves the Cocoa `NSWindow` into a `CAMetalLayer` (adopting
+the host view's if it already has one, creating and attaching one if it does not), configures it, takes a
+drawable, and hands back a device whose `SwapchainFramebuffer` is the same object for the rest of its life.
+`Present()` presents the drawable the frame rendered into, applies anything a resize or a vsync change queued,
+and acquires the drawable the next frame will use.
+
+**The layer configuration is the Veldrid Metal backend's, field for field, and it is reproduced rather than
+improved.** `device`, `pixelFormat` (`BGRA8Unorm`, or its sRGB sibling if the seam ever grows a way to ask),
+`framebufferOnly = true`, and `drawableSize` from the host view's frame. That last one is in POINTS where a
+drawable size is in PIXELS, which is the incumbent's own arithmetic: on a Retina display the layer starts at
+half the window's real resolution and the first framebuffer-resize callback writes the right number over it.
+Correcting it would be a resolution change smuggled into a backend swap, on the one surface a human is the only
+witness to.
+
+**Four things do change, and each answers something the incumbent gets wrong.**
+
+**Vsync always applies.** The incumbent writes `displaySyncEnabled` only when its `MTLFeatureSet` enumeration
+lands on one of three values of an enum deprecated since macOS 10.15, so on a machine outside that set a vsync
+toggle silently does nothing. `CAMetalLayer.displaySyncEnabled` is a macOS property on a macOS-only backend and
+needs no capability test, so it is written unconditionally.
+
+**A frame with no drawable renders somewhere and counts.** `-nextDrawable` returns nil when the layer has none
+to give. The incumbent's framebuffer then reports itself unrenderable, every draw in that frame is silently
+discarded, and nothing is logged or counted. Here the framebuffer is repointed at a device-owned ORPHAN TARGET
+at the current size, the frame records, submits and completes exactly like any other, only its PRESENT is
+skipped, and it counts into `GpuDeviceCounters.FramesBegun` because a skipped present is not a skipped frame.
+The first one WARNs once per device. A minimised window is the ordinary cause and it recovers by itself.
+
+**The drawable acquire is measured.** `-nextDrawable` BLOCKS when every drawable is still in flight, and Metal
+offers no zero-timeout probe, no semaphore form and no readiness query, so the stall is not removable. It is
+counted and timed into `GpuDeviceCounters.AcquireWaitCount` and `AcquireWaitMs` instead, one entry per boundary,
+which is exactly what that pair's own documentation says a CPU-blocking acquire reports. Expect it to be
+non-zero under vsync: a vsync-paced frame SHOULD wait for a drawable. `maximumDrawableCount` is set to
+`KE_METAL_FRAMES_IN_FLIGHT`, so the depth of the drawable queue and the depth of the uniform ring are one
+number.
+
+**A resize is queued and applied at the next present boundary, after a drain.** `ResizeSwapchain` stores a size
+and returns: no lock, no native call, nothing that can block, so a window callback arriving on any thread while
+the submit thread is committing is safe. The incumbent applies it inline on the calling thread, recreating its
+depth texture (releasing one in-flight frames may still be reading) with no drain anywhere. A runtime
+`SyncToVerticalBlank` change queues the same way, and a burst of thirty size events between two presents costs
+one apply.
+
+**The present rides its own command buffer**, exactly as the incumbent does it. `Present()` is a separate seam
+call from `Submit()`, so the frame's own buffer is already committed by the time a present runs, and
+`-presentDrawable:` on a later-committed buffer runs after it by queue order anyway. One extra command buffer
+per frame is a rounding error, and it is counted: the uncommitted-buffer bound this backend asserts is the
+frames-in-flight depth PLUS ONE, and the one is this buffer.
+
+**The swapchain framebuffer has no depth attachment and no MSAA**, matching the incumbent as the engine drives
+it: `GpuWindowedDeviceRequest` carries a window, a size and a vsync flag, and there is no way to ask for either.
+Its `Outputs` are fixed at construction, so every pipeline built against the window survives every resize.
+
+**A headless device answers `null` for `SwapchainFramebuffer` and does nothing at a `Present()`**, which is
+correct rather than unbuilt. `FramesBegun` and the acquire pair are then genuinely zero rather than absent,
+which is what `GpuDeviceCounters.HasValue` being true is for.
 
 ## Three decisions worth knowing before reading the code
 

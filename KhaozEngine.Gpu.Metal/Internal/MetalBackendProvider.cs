@@ -9,12 +9,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <see cref="KhaozEngineMetal.Register"/> and consumed only through <see cref="IGpuBackendProvider"/>, so
     /// nothing outside this package ever names an Objective-C handle.
     /// <para>
-    /// HEADLESS CREATION IS REAL AND WINDOWED IS NOT YET. <see cref="IsSupported"/> acquires the device
-    /// <c>KE_METAL_DEVICE</c> names and takes M-N4's four reads off it, and <see cref="CreateHeadless"/> hands
-    /// back a device holding a real <c>MTLDevice</c> and a real <c>MTLCommandQueue</c>, whose unbuilt members
-    /// each name the row that builds them. <see cref="CreateForWindow"/> refuses by naming the swapchain row
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/581), which is the honest refusal: a windowed device
-    /// that cannot present is worse than one that says so at creation.
+    /// BOTH CREATION PATHS ARE REAL AS OF ROW 15 (https://github.com/APKiwiOrg/KhaozEngine/issues/581).
+    /// <see cref="IsSupported"/> acquires the device <c>KE_METAL_DEVICE</c> names and takes M-N4's four reads off
+    /// it, <see cref="CreateHeadless"/> hands back an offscreen device, and <see cref="CreateForWindow"/> hands
+    /// back one with a <c>CAMetalLayer</c> over the request's Cocoa window, its drawable already acquired.
     /// </para>
     /// <para>
     /// THE PROBE LANDING A ROW BEFORE CREATION WAS DELIBERATE rather than an artefact of scheduling: it is what
@@ -30,12 +28,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// call on the path, and creation raises a <see cref="PlatformNotSupportedException"/> naming the platform.
     /// </para>
     /// <para>
-    /// THREE REFUSALS, KEPT TELLABLE APART, which is decision M-I4's split and the thing the soak measurement
+    /// TWO REFUSALS, KEPT TELLABLE APART, which is decision M-I4's split and the thing the soak measurement
     /// rests on. A missing REGISTRATION is a wiring fault and throws
     /// <see cref="GpuBackendProviderMissingException"/> from the registry, before this type is reached at all. An
     /// incapable MACHINE is answered by the probe and raises a <see cref="NotSupportedException"/> quoting what
-    /// the device was missing. A capability of the PACKAGE that has not landed yet raises its own
-    /// <see cref="NotSupportedException"/> naming the row. On macOS the OS probe already returns
+    /// the device was missing. There was a third until row 15, for a capability of the PACKAGE that had not
+    /// landed, and nothing is left for it to describe. On macOS the OS probe already returns
     /// <see cref="GpuBackendKind.Metal"/>, so a native request that fails falls back to the incumbent and reports
     /// <see cref="GpuBackendSource.FallbackAfterFailure"/>, which in a log line looks a great deal like a
     /// forgotten registration. A forgotten registration throws instead.
@@ -77,16 +75,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <inheritdoc/>
         public GpuProviderDevice CreateForWindow(in GpuWindowedDeviceRequest request)
         {
-            _ = request;
             if (!KhaozEngineMetal.IsPlatformSupported) throw NotOnThisPlatform("windowed");
 
-            // THE MACHINE IS ASKED BEFORE THE PACKAGE REFUSES, so a Mac that cannot run this backend hears about
-            // the device rather than about a row it was never going to reach. Phase 3 shipped this the other way
-            // round once and the message told a machine with no driver that the package was still being built.
+            // THE MACHINE IS ASKED BEFORE ANYTHING IS BUILT, so a Mac that cannot run this backend hears about
+            // the device rather than about the window. Phase 3 shipped this the other way round once and the
+            // message told a machine with no driver that the package was still being built.
             string? missing = _machineAnswer.Value;
             if (missing is not null) throw ThisMachineCannot(missing);
 
-            throw NotBuiltYet();
+            return MetalGpuDevice.CreateForWindow(request);
         }
 
         /// <inheritdoc/>
@@ -128,21 +125,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 + "question GpuBackendSelector.IsBackendSupported answers without creating anything, asked here "
                 + "so a machine that cannot run the backend refuses instead of failing partway into creation.");
 
-        // The PACKAGE-level refusal, which is a different fact from the two above and names the row that ends
-        // it. The creation path catches this, WARNs with the message and falls back to the incumbent Veldrid
-        // Metal backend, so this text is what a tester who named the native backend actually reads.
-        //
-        // WINDOWED ONLY NOW. Headless creation is live as of row 4, and the windowed path refuses rather than
-        // handing back a device that cannot present: a swapchain is not an optional extra on a windowed device,
-        // it is the whole of what makes it windowed.
-        static NotSupportedException NotBuiltYet()
-            => new("The native Metal backend cannot create a WINDOWED device yet. The probe above answered YES "
-                + "for this machine, so this is a statement about the PACKAGE: the MTLDevice, the "
-                + "MTLCommandQueue, KE_METAL_DEVICE selection and HEADLESS creation are live (work-breakdown "
-                + "row 4, https://github.com/APKiwiOrg/KhaozEngine/issues/570), and the CAMetalLayer, the "
-                + "drawable and the present arrive with row 15 "
-                + "(https://github.com/APKiwiOrg/KhaozEngine/issues/581). Use GpuBackendKind.Metal, which goes "
-                + "through Veldrid, for a windowed Metal device today.");
+        // THERE IS NO PACKAGE-LEVEL REFUSAL LEFT, and its removal is row 15
+        // (https://github.com/APKiwiOrg/KhaozEngine/issues/581). Until this row a windowed request was refused
+        // outright, because a swapchain is not an optional extra on a windowed device: it is the whole of what
+        // makes it windowed, and handing back one that cannot present would be worse than saying so. Both
+        // creation paths are real now, so the only two refusals left are the two that describe the WORLD (this
+        // operating system, and this machine) rather than the state of the package.
 
         // The off-macOS refusal, and it is a PLATFORM answer rather than either of the other two. Registration
         // is safe on every OS on purpose (M-I4), so this is what a consumer that registered unconditionally and

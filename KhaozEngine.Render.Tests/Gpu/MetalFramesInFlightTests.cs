@@ -104,21 +104,27 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// AND IT DESCRIBES WHAT EXISTS, WHICH IS THE HALF THAT KEEPS MOVING. Row 7 wrote this line when NOTHING
         /// consumed the depth and pinned that wording, precisely so a later row could not leave a false claim in
-        /// the one session log MM4's measurement is read out of. The uniform ring and the staging arena are now
-        /// live and the drawable queue is still row 15's, so the line names both halves and this asserts the
-        /// split rather than the sentence.
+        /// the one session log MM4's measurement is read out of. Row 15 landed the last of the three consumers, so
+        /// the line names all three and no longer defers one, and this asserts that rather than the sentence.
         /// </summary>
         [Theory]
         [InlineData(MetalFramesInFlight.Default)]
         [InlineData(5)]
-        public void TheActiveLineNamesWhatConsumesTheDepthAndWhatDoesNotYet(int frames)
+        public void TheActiveLineNamesEveryConsumerOfTheDepth(int frames)
         {
             string line = MetalFramesInFlight.ActiveDescription(frames);
 
             Assert.DoesNotContain("Nothing consumes that depth", line, System.StringComparison.Ordinal);
             Assert.Contains("ring", line, System.StringComparison.Ordinal);
             Assert.Contains("staging arena", line, System.StringComparison.Ordinal);
-            Assert.Contains("row 15", line, System.StringComparison.Ordinal);
+            Assert.Contains("maximumDrawableCount", line, System.StringComparison.Ordinal);
+
+            // AND IT NO LONGER DEFERS ANY OF THEM. The two shapes the line used to carry were "the drawable queue
+            // is not sized yet" and "row 15's", and both are false the moment a windowed device exists. A line
+            // that still names a row as pending is the exact failure row 7 pinned this wording against, arriving
+            // from the other direction.
+            Assert.DoesNotContain("not sized yet", line, System.StringComparison.Ordinal);
+            Assert.DoesNotContain("when the swapchain lands", line, System.StringComparison.Ordinal);
 
             // AND IT SAYS RECORDINGS. Both things the depth sizes rotate at a command list's Begin and a frame
             // opens several lists, so a session log that offered the number as frames of headroom would be

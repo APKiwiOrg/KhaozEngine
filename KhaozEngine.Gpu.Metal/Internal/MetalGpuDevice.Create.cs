@@ -15,17 +15,54 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <c>-isLowPower</c> and the class-name read, all of which return autoreleased objects, and the architecture
     /// test is what keeps that true rather than this paragraph.
     /// </para>
+    /// <para>
+    /// THE HEADLESS AND WINDOWED PATHS DIFFER BY ONE ARGUMENT, which row 15 chose over two creation methods:
+    /// selecting a device, making its queue, resolving MM4's depth and registering the completion route are
+    /// identical for both, and a swapchain is one more thing a device may HAVE rather than a different kind of
+    /// device. The one asymmetry is where the host view is resolved, which is before any device exists, so a
+    /// window this backend cannot present to is refused without allocating anything.
+    /// </para>
     /// </summary>
     internal sealed partial class MetalGpuDevice
     {
         /// <summary>
-        /// Create an OFFSCREEN device with no swapchain, for the headless snapshot and golden paths. The whole of
-        /// this row's creation path: everything a windowed device would additionally need (a
-        /// <c>CAMetalLayer</c>, a drawable, a present) belongs to row 15.
+        /// Create an OFFSCREEN device with no swapchain, for the headless snapshot and golden paths. Everything a
+        /// windowed device additionally needs (a <c>CAMetalLayer</c>, a drawable, a present) is
+        /// <see cref="CreateForWindow"/>'s, and the two share every line except that one.
         /// </summary>
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static GpuProviderDevice CreateHeadless()
+        internal static GpuProviderDevice CreateHeadless() => CreateWith(host: null, syncToVerticalBlank: false);
+
+        /// <summary>
+        /// Create a WINDOWED device, with its swapchain over the request's Cocoa window (row 15). The host view is
+        /// resolved FIRST, before any device exists, so a window this backend cannot present to costs nothing to
+        /// find out about and leaks nothing when it is refused.
+        /// </summary>
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static GpuProviderDevice CreateForWindow(in GpuWindowedDeviceRequest request)
+        {
+            MetalSwapchainHost host = MetalLayerHost.Resolve(request.Window);
+
+            try
+            {
+                return CreateWith(host, request.SyncToVerticalBlank);
+            }
+            catch
+            {
+                // The resolve handed back a layer at +1 and this method owns it until the swapchain api takes
+                // over, which is the last thing construction does. A throw before that would leak the layer, and
+                // on the ADOPT path it would leak a reference to the host view's own layer for the life of the
+                // process.
+                host.Layer.Release();
+                throw;
+            }
+        }
+
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static GpuProviderDevice CreateWith(MetalSwapchainHost? host, bool syncToVerticalBlank)
         {
             using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
 
@@ -39,7 +76,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             try
             {
-                return Create(selected);
+                return Create(selected, host, syncToVerticalBlank);
             }
             catch
             {
@@ -53,7 +90,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static GpuProviderDevice Create(in MetalSelectedDevice selected)
+        static GpuProviderDevice Create(in MetalSelectedDevice selected, MetalSwapchainHost? host,
+            bool syncToVerticalBlank)
         {
             MTLDevice device = selected.Device;
 
@@ -123,6 +161,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 // moment a real device exists to ask, and skipped entirely on an unvalidated run so an ordinary
                 // session gains no line.
                 ReportDeviceClass(device);
+
+                // THE SWAPCHAIN LAST (row 15), INSIDE THIS TRY, and the position is the same argument the
+                // timeline's is: it configures the layer and takes the first drawable, so a throw anywhere in it
+                // has to unwind the queue, the timeline and the completion registration exactly as any other
+                // failure here does. The layer itself is the CALLER's to release on this path, which is what
+                // CreateForWindow's own catch does, because ownership of it transfers to the api this builds.
+                if (host is { } resolved) created.AttachSwapchain(resolved, syncToVerticalBlank, framesInFlight);
 
                 // No threading probe and no threading failure. That pair exists because a natively created
                 // Direct3D 11 device has no Veldrid GraphicsDevice for D3D11ThreadingProbe to read a raw pointer

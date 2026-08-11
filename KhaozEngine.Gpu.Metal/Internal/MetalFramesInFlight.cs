@@ -60,8 +60,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
     ///
     /// <para><b>COST OF RAISING IT</b>, so a field session knows what it is trading. Every uniform buffer in the
     /// process is allocated at its 256-aligned size times this number, each command list's staging arena keeps
-    /// one more slot of pooled blocks, and the swapchain's <c>maximumDrawableCount</c> is set to it (M-W4, row
-    /// 15), so four is a third more uniform memory and one more drawable held. No command buffer anywhere is
+    /// one more slot of pooled blocks, and a windowed device's <c>maximumDrawableCount</c> is set to it (M-W4),
+    /// so four is a third more uniform memory and one more drawable held. No command buffer anywhere is
     /// allocated per frame in flight, which is the whole of M-R2.</para>
     ///
     /// <para>Everything here is pure except <see cref="FromEnvironment"/>, so the parse is headless-testable on
@@ -127,11 +127,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// was measured against rather than resting on the tester believing they set the variable. MM4's exit
         /// criterion is a count taken at a specific depth, so the two belong in one session log.
         /// <para>
-        /// IT SAYS WHAT IS TRUE TODAY AND NAMES THE ROW THAT WILL MAKE THE REST TRUE. The number's consumers are
-        /// the uniform ring's segments and each list's staging arena slots, both LIVE, and row 15's
-        /// <c>maximumDrawableCount</c> (https://github.com/APKiwiOrg/KhaozEngine/issues/581), which is not. That
-        /// split matters more here than anywhere else this row logs: this is the line MM4's measurement rests on,
-        /// and a session log a measurement is read out of cannot be the place a claim runs ahead of the code.
+        /// IT SAYS WHAT IS TRUE TODAY, AND AS OF ROW 15 THAT IS ALL THREE CONSUMERS
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/581). The uniform ring's segments and each list's
+        /// staging arena slots rotate at a command list's <c>Begin</c>, and a windowed device's
+        /// <c>maximumDrawableCount</c> is set to the same number, so the depth of the drawable queue and the depth
+        /// of the uniform ring are one figure (M-W4). The drawable half is the only one a HEADLESS run does not
+        /// spend, which the line says rather than leaving a reader to infer. This matters more here than anywhere
+        /// else this backend logs: it is the line MM4's measurement is read out of, and a session log a
+        /// measurement rests on cannot be the place a claim runs ahead of the code.
         /// </para>
         /// <para>
         /// AND IT SAYS RECORDINGS, not frames, for the reason the class note gives: both things this number sizes
@@ -144,16 +147,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 ? $"The native Metal backend resolved {Default} frames in flight, the default, which is "
                     + $"{Default} RECORDINGS of headroom rather than {Default} frames: it sizes every uniform "
                     + "buffer's ring segments and each command list's staging arena slots, both of which rotate "
-                    + "at a command list's Begin, and row 15's maximumDrawableCount when the swapchain lands, and "
+                    + "at a command list's Begin, and a windowed device's CAMetalLayer maximumDrawableCount, and "
                     + "nothing else ever, because there is no command-buffer pool on this backend. A frame that "
                     + "opens several command lists spends several of these. Set "
                     + $"{EnvVarName}=<n> to change it, which is the MM4 lever."
                 : $"The native Metal backend resolved {framesInFlight} frames in flight (from "
                     + $"{EnvVarName}={framesInFlight}) rather than the default {Default}. Every uniform buffer's "
-                    + "ring and every command list's staging arena were built at that depth, so a backpressure "
-                    + $"reading from this run describes {framesInFlight} RECORDINGS of headroom rather than the "
-                    + "default, and a frame that opens several command lists spends several of them. The "
-                    + "drawable queue is not sized yet, which is row 15's.";
+                    + "ring and every command list's staging arena were built at that depth, and a windowed "
+                    + "device's CAMetalLayer maximumDrawableCount with them, so a backpressure reading from this "
+                    + $"run describes {framesInFlight} RECORDINGS of headroom rather than the default, and a "
+                    + "frame that opens several command lists spends several of them.";
 
         /// <summary>
         /// THE UNCOMMITTED-COMMAND-BUFFER BOUND (section 6.1), which is <see cref="Default"/> plus one and is the
@@ -164,8 +167,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// backend keeps it out of reach rather than relying on it: <c>Begin</c> waits on the ring's frame slot
         /// first, which bounds how far ahead the frame loop can get, and
         /// <see cref="MetalUncommittedBuffers"/> asserts the count device-free. The PLUS ONE is the present
-        /// command buffer M-W6 keeps on its own (row 15,
-        /// https://github.com/APKiwiOrg/KhaozEngine/issues/581).
+        /// command buffer M-W6 keeps on its own, and row 15 is what OCCUPIES it: until the swapchain landed the
+        /// peak observed was one below the bound.
         /// </para>
         /// </summary>
         internal static int UncommittedBufferBound(int framesInFlight) => framesInFlight + 1;

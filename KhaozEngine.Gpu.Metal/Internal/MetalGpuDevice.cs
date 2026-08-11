@@ -10,27 +10,30 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// The engine's native Metal device as the GPU seam sees it: a real <c>MTLDevice</c> and a real
     /// <c>MTLCommandQueue</c> that create and tear down cleanly.
     /// <para>
-    /// <b>NOT EVERY MEMBER IS BUILT YET, and each one that is not names the row that builds it.</b> Rows 4, 6,
-    /// 7, 14 and 16 of <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c> have landed: the interop
-    /// layer, the device, the queue, <c>KE_METAL_DEVICE</c>, the validation report, the command-buffer error
-    /// latch, the liveness token and a drain before teardown (row 4), the resource factory, the shared sampler
-    /// pair, the device-level uploads, the setup command buffer and <c>Map</c> with its read drain (row 6), the
-    /// completion timeline, the command list and the SUBMIT path (row 7), the draws, the dispatches and the
-    /// transfer family, which leave <c>IGpuCommandList</c> with no unbuilt member at all (row 14), and the whole
-    /// capability read, the counter fill and the native frame-capture path (row 16). The swapchain is row 15, so
-    /// the members that row owns throw a message saying so rather than returning something that fails later
-    /// somewhere less informative, with two deliberate exceptions whose remarks below carry the reasons:
-    /// <see cref="SwapchainFramebuffer"/> returns null (the headless answer is null, not a throw), and
-    /// <see cref="SyncToVerticalBlank"/> is a backing value until row 15 gives it a swapchain to reconfigure.
-    /// Both sibling backends landed the same way and had this paragraph rewritten at every fill-in, which is the
-    /// discipline it is under here too: it is a ledger, and a stale one is worse than none.
+    /// <b>NO MEMBER OF <see cref="IGpuDevice"/> IS UNBUILT ANY MORE, and this paragraph is the ledger that says
+    /// so.</b> Rows 4, 6, 7, 9 to 14, 15 and 16 of
+    /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c> have landed: the interop layer, the device,
+    /// the queue, <c>KE_METAL_DEVICE</c>, the validation report, the command-buffer error latch, the liveness
+    /// token and a drain before teardown (row 4), the resource factory, the shared sampler pair, the device-level
+    /// uploads, the setup command buffer and <c>Map</c> with its read drain (row 6), the completion timeline, the
+    /// command list and the SUBMIT path (row 7), the shader path, the layouts and index tables, the pipelines, the
+    /// render passes and the bind flush (rows 9 to 13), the draws, the dispatches and the transfer family, which
+    /// leave <c>IGpuCommandList</c> with no unbuilt member at all (row 14), the <c>CAMetalLayer</c>, the drawable,
+    /// the present, the queued resize and the vsync toggle (row 15), and the whole capability read, the counter
+    /// fill and the native frame-capture path (row 16). What is left is row 18's shared-home extraction and row
+    /// 19's CI leg, its doc sweep and its rollout gates, and neither is a member of this type. Both sibling
+    /// backends had this paragraph rewritten at every fill-in, which is the discipline it is under here too: it is
+    /// a ledger, and a stale one is worse than none. There is no SECOND ledger any more either, which is what
+    /// closed https://github.com/APKiwiOrg/KhaozEngine/issues/601.
     /// </para>
     /// <para>
-    /// <b>THE MEMBERS THESE ROWS OWN ARE LIVE:</b> <see cref="Backend"/>, <see cref="Capabilities"/> in full,
-    /// <see cref="Counters"/> in every channel a device with no swapchain has, <see cref="Diagnostics"/> with
-    /// both of its fields, both <c>Submit</c> overloads, <see cref="WaitForIdle"/>, <see cref="Dispose"/>, and
-    /// row 6's whole resource half in <c>MetalGpuDevice.Resources.cs</c>. The list the submit path takes comes
-    /// from <see cref="CreateCommandList"/>, which the seam reaches through
+    /// <b>SO EVERY MEMBER IS LIVE:</b> <see cref="Backend"/>, <see cref="Capabilities"/> in full,
+    /// <see cref="Counters"/> in every channel, <see cref="Diagnostics"/> with both of its fields, both
+    /// <c>Submit</c> overloads, <see cref="WaitForIdle"/>, <see cref="Dispose"/>, row 6's whole resource half in
+    /// <c>MetalGpuDevice.Resources.cs</c>, and row 15's swapchain half in <c>MetalGpuDevice.Present.cs</c>. A
+    /// HEADLESS device answers null for <c>SwapchainFramebuffer</c> and does nothing at a present, which is
+    /// correct rather than unbuilt: a headless device has no swapchain by definition. The list the submit path
+    /// takes comes from <see cref="CreateCommandList"/>, which the seam reaches through
     /// <c>IGpuResourceFactory.CreateCommandList</c>.
     /// </para>
     /// <para>
@@ -254,13 +257,23 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <see cref="MetalRingPatchStats"/>.
         /// </para>
         /// <para>
-        /// <b><c>FramesBegun</c> AND THE ACQUIRE PAIR ARE ZERO, AND ON A HEADLESS DEVICE THAT IS LITERALLY TRUE
-        /// RATHER THAN A PLACEHOLDER.</b> Both are the PRESENT boundary's numbers, which is the swapchain row
-        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/581): a headless device has no swapchain, opens no
-        /// frame at this seam and never waits on a drawable. That is the bar the struct's own "absent is not
-        /// zero" rule sets for reporting <see cref="GpuDeviceCounters.HasValue"/> at all, and it is the same
-        /// position the Vulkan sibling's headless device reports from. What a reader must not do is divide by
-        /// <c>FramesBegun</c> while it is 0.
+        /// <b><c>FramesBegun</c> AND THE ACQUIRE PAIR ARE THE PRESENT BOUNDARY's, AND ARE ZERO ON A HEADLESS
+        /// DEVICE BECAUSE THAT IS LITERALLY TRUE.</b> <c>FramesBegun</c> comes off
+        /// <see cref="MetalPresentBoundary.FramesBegun"/> (row 15), which counts EVERY boundary including one
+        /// whose drawable came back nil, because a skipped present is not a skipped frame (M-W5). The acquire pair
+        /// comes off <see cref="MetalAcquireWaits"/>, which records EVERY <c>nextDrawable</c> rather than only one
+        /// that blocked: Metal offers no zero-timeout probe, so a boundary cannot tell an instant acquire from a
+        /// blocked one except by timing it, and one entry per boundary is exactly what the seam's own doc says a
+        /// CPU-blocking acquire reports. A headless device has no swapchain, opens no frame at this seam and never
+        /// waits on a drawable, so all three read zero and that is the bar the struct's own "absent is not zero"
+        /// rule sets for reporting <see cref="GpuDeviceCounters.HasValue"/> at all. What a reader must not do is
+        /// divide by <c>FramesBegun</c> while it is 0.
+        /// </para>
+        /// <para>
+        /// <b>THE ACQUIRE COUNT RUNS EXACTLY ONE AHEAD OF <c>FramesBegun</c> ON A WINDOWED DEVICE</b>, and that
+        /// offset is a fact rather than an off-by-one: the first drawable is acquired at CREATION, before any
+        /// frame exists, because M-W4 keeps the incumbent's timing of taking the next frame's drawable at the
+        /// boundary.
         /// </para>
         /// </remarks>
         public GpuDeviceCounters Counters
@@ -270,38 +283,28 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 MetalWaitTotals drain = _timeline.TotalDrain;
                 MetalWaitTotals stalls = _backpressure.Totals;
                 MetalRingPatchStats patches = _rings.OffTimelinePatches;
+                MetalWaitTotals acquires = _acquireWaits.Totals;
 
                 // Named arguments, because the two longs and the two doubles sit next to each other: a transposed
                 // pair here compiles, passes every test, and reports a stall count as a drain count in the field.
                 return new GpuDeviceCounters(
-                    framesBegun: 0,
+                    framesBegun: _present?.FramesBegun ?? 0,
                     drainCount: drain.Count,
                     drainMs: drain.TotalMs,
                     backpressureStallCount: stalls.Count,
                     backpressureStallMs: stalls.TotalMs,
                     offTimelineDeferred: patches.Deferred,
                     offTimelineOutstanding: patches.Outstanding,
-                    acquireWaitCount: 0,
-                    acquireWaitMs: 0d);
+                    acquireWaitCount: acquires.Count,
+                    acquireWaitMs: acquires.TotalMs);
             }
         }
 
-        /// <inheritdoc/>
-        /// <remarks>Null, and correct rather than unbuilt: this row creates HEADLESS devices only, and a headless
-        /// device has no swapchain by definition. The windowed path is row 15, and it refuses at creation rather
-        /// than handing back a device that cannot present.</remarks>
-        public IGpuFramebuffer? SwapchainFramebuffer => null;
-
-        /// <inheritdoc/>
-        /// <remarks>A backing value on a headless device, which is what the seam asks for. It reconfigures
-        /// nothing because there is no swapchain to reconfigure, and row 15 is where it starts meaning something
-        /// (M-W2 makes it an unconditional <c>displaySyncEnabled</c> on the layer rather than the incumbent's
-        /// three-value enum test).</remarks>
-        public bool SyncToVerticalBlank
-        {
-            get => _syncToVerticalBlank;
-            set => _syncToVerticalBlank = value;
-        }
+        /// <summary>M-W4's pair, cumulative since the device was created. Read by the counter fill above and
+        /// asserted against it by identity, the way the drain and backpressure pairs are. It lives on the DEVICE
+        /// rather than on the present boundary so a headless device has something to read without the fill having
+        /// to ask whether a swapchain exists.</summary>
+        internal MetalWaitTotals AcquireTotals => _acquireWaits.Totals;
 
         /// <inheritdoc/>
         /// <remarks>
@@ -550,12 +553,6 @@ namespace KhaozEngine.Gpu.Metal.Internal
             if (committed) DrainCommittedSetupBatch();
         }
 
-        /// <inheritdoc/>
-        public void ResizeSwapchain(uint w, uint h) => throw NotBuiltYet("Resizing the swapchain", SwapchainRow);
-
-        /// <inheritdoc/>
-        public void Present() => throw NotBuiltYet("Presenting a frame", SwapchainRow);
-
         /// <summary>
         /// Tear the device down, in the ONE order M-F6 permits: DRAIN first, then the liveness flip, then release
         /// the queue and the device.
@@ -617,6 +614,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _pointSampler.Dispose();
             _linearSampler.Dispose();
 
+            // AND THE SWAPCHAIN WITH THEM, for the same reason and one more of its own: it releases the held
+            // drawable, the orphan target (an ordinary engine texture, whose Dispose is a no-op once liveness is
+            // dead) and the layer. AFTER the drain above, which is what makes releasing a drawable a present may
+            // still be running safe, and that drain is the QUEUE's rather than the timeline's precisely because
+            // M-W6's present command buffer signals no timeline value.
+            _present?.Dispose();
+
             // Flipped BEFORE the releases and after the drain, so no wrapper can observe "alive" after the object
             // it would release has gone, and so a wrapper disposed on another thread mid-teardown becomes a
             // no-op rather than a call against a released object.
@@ -656,27 +660,17 @@ namespace KhaozEngine.Gpu.Metal.Internal
             return fault;
         }
 
-        // The row that owns each unbuilt member, as a full URL, because these messages are read by somebody who
-        // has just hit one and needs to know whether to wait for a row or file a bug.
-        const string SwapchainRow = "the swapchain row (https://github.com/APKiwiOrg/KhaozEngine/issues/581)";
-
-        // Named rather than a bare NotImplementedException, and it names WHAT IS LIVE as well as what is not,
-        // which is the shape both sibling backends settled on: a reader who hits this needs to know whether the
-        // backend is unfinished or their machine is wrong, and those have different answers.
-        static NotSupportedException NotBuiltYet(string what, string row)
-            => new($"{what} is not built yet on the native Metal backend: it lands in {row}. The interop layer, "
-                + "the MTLDevice, the MTLCommandQueue, KE_METAL_DEVICE selection, the command-buffer error latch "
-                + "and the liveness token ARE live (work-breakdown row 4, "
-                + "https://github.com/APKiwiOrg/KhaozEngine/issues/570), and so are buffers, textures, samplers, "
-                + "fences, the device-level uploads and Map (row 6, "
-                + "https://github.com/APKiwiOrg/KhaozEngine/issues/572), and the completion timeline, the command "
-                + "list and the submit path (row 7, "
-                + "https://github.com/APKiwiOrg/KhaozEngine/issues/573). This is a statement about the package "
-                + "and not about this machine. Select GpuBackendKind.Metal, which goes through Veldrid, for a "
-                + "fully working Metal device.");
-
-        // Creation lives in MetalGpuDevice.Create.cs. It is the same split both sibling devices take, because the
-        // seam surface and the creation policy are different concerns and neither has room for the other under
-        // the file-size cap.
+        // THE SECOND LEDGER IS GONE, AND THAT CLOSES
+        // https://github.com/APKiwiOrg/KhaozEngine/issues/601. NotBuiltYet built the refusal ResizeSwapchain and
+        // Present threw, naming what was live as well as what was not, and it stopped being updated after row 7:
+        // by row 16 it was telling a reader that a backend which compiles shaders, builds pipelines, binds render
+        // targets and reports its own capabilities could do none of those. It had no discipline behind it because
+        // it was a SECOND ledger in a file whose class doc is the first. Row 15 gives both of its callers real
+        // bodies, so the right fix is deletion rather than another rewording: there is now exactly one ledger in
+        // this file and it is the paragraph at the top.
+        //
+        // Creation lives in MetalGpuDevice.Create.cs and the swapchain surface in MetalGpuDevice.Present.cs. It
+        // is the same split both sibling devices take, because the seam surface, the creation policy and the
+        // frame boundary are different concerns and none has room for the others under the file-size cap.
     }
 }

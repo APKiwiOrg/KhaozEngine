@@ -81,12 +81,13 @@ namespace KhaozEngine.Render2D.Internal
             IGpuCommandList cl = f.CreateCommandList();
             try
             {
-                cl.Begin();
-                cl.SetFramebuffer(fb);
-                cl.ClearColorTarget(0, clear);
-                batch.NewFrame(cl, width, height);
-                draw(batch);
-                cl.End();
+                using (GpuRecording.Open(gd, cl, "Render2DSurface.CaptureToTexture"))
+                {
+                    cl.SetFramebuffer(fb);
+                    cl.ClearColorTarget(0, clear);
+                    batch.NewFrame(cl, width, height);
+                    draw(batch);
+                }
                 gd.Submit(cl);
                 gd.WaitForIdle();
             }
@@ -121,14 +122,16 @@ namespace KhaozEngine.Render2D.Internal
             IGpuCommandList cl = f.CreateCommandList();
             try
             {
-                cl.Begin();
-                cl.SetFramebuffer(fb);
-                cl.ClearColorTarget(0, clear);
-                batch.NewFrame(cl, width, height);
-                draw(batch);
-                cl.End();
+                using (GpuRecording.Open(gd, cl, "Render2DSurface.CaptureToRgba"))
+                {
+                    cl.SetFramebuffer(fb);
+                    cl.ClearColorTarget(0, clear);
+                    batch.NewFrame(cl, width, height);
+                    draw(batch);
+                }
                 gd.Submit(cl);
                 gd.WaitForIdle();
+                // The readback opens a list of its own, so it goes AFTER the scope above closes, not inside it.
                 return GpuReadback.ToRgba(gd, target, width, height);
             }
             finally

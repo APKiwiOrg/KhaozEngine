@@ -43,19 +43,27 @@ namespace KhaozEngine.Windowing
             // than in the record phase. frame.Commands is NOT recording during this call.
             onPrepare?.Invoke(frame);
 
-            if (render)
+            // Record. Everything from here to the scope's close belongs in the frame's own list, and the scope is
+            // what makes that enforceable rather than advisory: it claims the device in the seam's open-recording
+            // register, so any engine API that opens a list of its own from inside onFrame refuses by name instead
+            // of resetting this recording's device state (#424). A frame that renders nothing holds the default
+            // not-recording scope, claims nothing, and leaves the prepare-phase freedom intact.
+            GpuRecordingScope recording = render
+                ? GpuRecording.Open(device, commands, "the window's frame list")
+                : default;
+            try
             {
-                commands.Begin();
-                commands.SetFramebuffer(device.SwapchainFramebuffer!);
-                commands.ClearColorTarget(0, clearColor);
+                if (render)
+                {
+                    commands.SetFramebuffer(device.SwapchainFramebuffer!);
+                    commands.ClearColorTarget(0, clearColor);
+                }
+                onFrame(frame);
             }
-
-            // Record. Everything from here to End belongs in the frame's own list.
-            onFrame(frame);
+            finally { recording.Dispose(); }
 
             if (render)
             {
-                commands.End();
                 device.Submit(commands);
                 device.Present();
             }

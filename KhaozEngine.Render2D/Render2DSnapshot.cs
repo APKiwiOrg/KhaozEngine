@@ -63,12 +63,13 @@ namespace KhaozEngine.Render2D
             IGpuCommandList cl = f.CreateCommandList();
             try
             {
-                cl.Begin();
-                cl.SetFramebuffer(fb);
-                cl.ClearColorTarget(0, clear);
-                core.Batch.NewFrame(cl, width, height);
-                draw(new Render2DContext(core, width, height));
-                cl.End();
+                using (GpuRecording.Open(gd, cl, "Render2DSnapshot.Capture"))
+                {
+                    cl.SetFramebuffer(fb);
+                    cl.ClearColorTarget(0, clear);
+                    core.Batch.NewFrame(cl, width, height);
+                    draw(new Render2DContext(core, width, height));
+                }
                 gd.Submit(cl);
                 gd.WaitForIdle();
                 return GpuReadback.ToRgba(gd, target, width, height);

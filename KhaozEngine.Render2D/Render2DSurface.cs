@@ -75,6 +75,13 @@ namespace KhaozEngine.Render2D
         /// <see cref="Render2DSnapshot.Capture"/>, which spins up a throwaway headless device and cannot reuse
         /// live assets. Intended for one-shot captures (e.g. a freeze-frame screenshot). The returned texture is
         /// owned by the caller - dispose it when done. Runs synchronously (submits + waits for the GPU).
+        /// <para>
+        /// NOT A MID-FRAME CALL. It opens, submits and drains a command list of its own, so calling it while the
+        /// frame's list is recording is the second recording the seam forbids
+        /// (<see cref="Gpu.IGpuCommandList.Begin"/>) and it refuses with a
+        /// <see cref="Gpu.GpuNestedRecordingException"/> rather than corrupting the frame. Take the capture from
+        /// the frame's pre-record phase (<c>AppWindow.Run</c>'s <c>onPrepare</c> callback) or outside the loop.
+        /// </para>
         /// </summary>
         /// <param name="width">Target width in pixels (clamped to &gt;= 1).</param>
         /// <param name="height">Target height in pixels (clamped to &gt;= 1).</param>
@@ -87,7 +94,7 @@ namespace KhaozEngine.Render2D
         /// As <see cref="CaptureToTexture"/>, but returns a tightly-packed CPU RGBA8 buffer
         /// (<c>width * height * 4</c> bytes, row-major, top-left origin) instead of a GPU texture - for pixels a
         /// game needs on the CPU (e.g. a clipboard image copy). Reuses this surface's live device + assets. Runs
-        /// synchronously (submits + waits for the GPU).
+        /// synchronously (submits + waits for the GPU), and is NOT a mid-frame call for the same reason.
         /// </summary>
         public byte[] CaptureToRgba(int width, int height, Color clear, Action<SpriteBatch> draw) =>
             Render2DCore.RenderToRgba(_core.Gd, width, height, clear, draw);

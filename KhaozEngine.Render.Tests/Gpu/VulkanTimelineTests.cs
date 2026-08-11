@@ -202,7 +202,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(1, semaphore.WaitCount);
             Assert.Equal(last, semaphore.LastWaitValue);
 
-            VulkanWaitTotals drain = timeline.TotalDrain;
+            WaitTotals drain = timeline.TotalDrain;
             Assert.Equal(1, drain.Count);
         }
 

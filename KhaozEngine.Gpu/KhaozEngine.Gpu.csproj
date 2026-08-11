@@ -26,6 +26,11 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
+    <!-- The shared GPU test-support library, for ONE thing: the three uniform-ring adapters build their backend's
+         ring, which since #531's counter extraction takes an Internal/WaitAccumulator, and read the stall count
+         off an Internal/WaitTotals. Both are internal here, so the adapters cannot name them without this. It
+         reads nothing else of this package's internals. -->
+    <InternalsVisibleTo Include="KhaozEngine.TestSupport.Gpu" />
     <!-- The native Direct3D11 backend package (decision P2). It reads three internals of this package and
          nothing else: the Veldrid-free SPIRV cross-compile helper (Internal/SpirvCrossCompile), which is what
          keeps the Veldrid.SPIRV edge out of a backend whose premise is being Veldrid-free, IGpuDeviceLifecycle,

@@ -168,9 +168,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <summary>
         /// The SAME drains accumulated since the device was created, which is the half a telemetry session can
         /// carry. Nothing rolls it, so two sampled rows bracket a window exactly. Row 16 reads it for
-        /// <c>GpuDeviceCounters.DrainCount</c> and <c>DrainMs</c>. See <see cref="MetalWaitTotals"/>.
+        /// <c>GpuDeviceCounters.DrainCount</c> and <c>DrainMs</c>. See <see cref="WaitTotals"/>.
         /// </summary>
-        internal MetalWaitTotals TotalDrain => MetalWaitTotals.Sample(ref _totalDrainCount, ref _totalDrainTicks);
+        internal WaitTotals TotalDrain => WaitTotals.Sample(ref _totalDrainCount, ref _totalDrainTicks);
 
         /// <summary>
         /// The counter's current value, as a NON-BLOCKING read, or the last value allocated once the device is
@@ -351,8 +351,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// seam's reading of explicit device drains, which is a caller asking the CPU to stop until the GPU has
         /// caught up. A segment stall is the opposite reading: nobody asked for it, and it says the pipeline is
         /// deeper than <c>KE_METAL_FRAMES_IN_FLIGHT</c> allows. It goes to
-        /// <c>BackpressureStallCount</c> and <c>BackpressureStallMs</c> through
-        /// <see cref="MetalBackpressure"/>, which the ring records into, and mixing the two would make MM4's
+        /// <c>BackpressureStallCount</c> and <c>BackpressureStallMs</c> through the BACKPRESSURE
+        /// <see cref="WaitAccumulator"/>, which the ring records into, and mixing the two would make MM4's
         /// zero-stall exit criterion unreadable behind whatever drains the frame loop happens to do.</para>
         ///
         /// <para><b>THE CALLER TIMES IT rather than this member</b>, for the same reason: the accumulator that

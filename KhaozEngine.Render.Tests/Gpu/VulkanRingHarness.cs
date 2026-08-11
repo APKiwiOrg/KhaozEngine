@@ -28,7 +28,7 @@ namespace KhaozEngine.Tests.Gpu
             Semaphore = new FakeVulkanTimelineSemaphore();
             Liveness = new DeviceLiveness();
             Timeline = new VulkanTimeline(Semaphore, Liveness);
-            Backpressure = new VulkanBackpressure();
+            Backpressure = new WaitAccumulator();
             Allocator = new VulkanRingAllocator(framesInFlight, Timeline, Backpressure, SubmitLock);
 
             _bytes = new byte[(int)VulkanRingStride.TotalBytesFor(sizeInBytes, framesInFlight, 0)];
@@ -51,7 +51,7 @@ namespace KhaozEngine.Tests.Gpu
         internal VulkanTimeline Timeline { get; }
 
         /// <summary>The device's ONE backpressure accumulator, shared with the command list's slot wait.</summary>
-        internal VulkanBackpressure Backpressure { get; }
+        internal WaitAccumulator Backpressure { get; }
 
         /// <summary>The device's ring allocator.</summary>
         internal VulkanRingAllocator Allocator { get; }

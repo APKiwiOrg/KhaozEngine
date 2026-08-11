@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Vulkan.Internal;
 
 namespace KhaozEngine.Tests.Gpu
@@ -45,7 +46,7 @@ namespace KhaozEngine.Tests.Gpu
             _semaphore = new Semaphore();
             _timeline = new VulkanTimeline(_semaphore);
             _allocator = new VulkanRingAllocator(
-                framesInFlight, _timeline, new VulkanBackpressure(), new object());
+                framesInFlight, _timeline, new WaitAccumulator(), new object());
 
             _bytes = new byte[(int)VulkanRingStride.TotalBytesFor(
                 sizeInBytes, framesInFlight, VulkanRingStride.OffsetAlignmentFloor)];

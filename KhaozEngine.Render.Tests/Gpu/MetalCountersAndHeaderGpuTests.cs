@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Text.Json;
 using KhaozEngine.Diagnostics;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Metal.Internal;
 using Xunit;
 using Xunit.Abstractions;
@@ -109,9 +110,9 @@ namespace KhaozEngine.Tests.Gpu
             // THE WIRING, WHICH IS THE ONLY THING THIS ROW BUILT. Each seam field against the device's own
             // reading of the subsystem section 14 names as its source. A field wired to the wrong accumulator, or
             // a count and a millisecond figure swapped between two pairs, fails HERE by name.
-            MetalWaitTotals drain = device.Timeline.TotalDrain;
-            MetalWaitTotals stalls = device.BackpressureTotals;
-            MetalRingPatchStats patches = device.Rings.OffTimelinePatches;
+            WaitTotals drain = device.Timeline.TotalDrain;
+            WaitTotals stalls = device.BackpressureTotals;
+            RingPatchStats patches = device.Rings.OffTimelinePatches;
 
             // BOTH PROVOKED PAIRS MOVED, asserted BEFORE the identities they make discriminating. Without this the
             // six assertions below are readings of zero against zero, which hold for a field wired to any of the

@@ -96,7 +96,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // ring's segments (M-M3) and each list's staging arena slots (M-M8). No command buffer anywhere is
         // allocated per frame in flight, which is the whole of M-R2.
         readonly int _framesInFlight;
-        readonly MetalBackpressure _backpressure;
+        readonly WaitAccumulator _backpressure;
         readonly MetalRingAllocator _rings;
         readonly IMetalStagingSource _staging;
 
@@ -141,7 +141,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // THE ONE RING ALLOCATOR (M-M3), sharing the submit lock rather than owning one. It has to read
             // MetalTimeline.LastSubmitted under exactly the lock that orders the commit which registers it, or
             // the segment owner it records would name a submission that had not happened yet.
-            _backpressure = new MetalBackpressure();
+            _backpressure = new WaitAccumulator();
             _rings = new MetalRingAllocator(framesInFlight, timeline, _backpressure, _submitLock);
 
             _factory = new MetalResourceFactory(this);
@@ -202,7 +202,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// (https://github.com/APKiwiOrg/KhaozEngine/issues/582) reads it for
         /// <c>GpuDeviceCounters.BackpressureStallCount</c> and <c>BackpressureStallMs</c>.
         /// </summary>
-        internal MetalWaitTotals BackpressureTotals => _backpressure.Totals;
+        internal WaitTotals BackpressureTotals => _backpressure.Totals;
 
         /// <summary>How many uncommitted command buffers this device is holding, against section 6.1's bound.
         /// Read by the device-free assertion and by row 16's counter fill.</summary>
@@ -249,9 +249,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// M-G6's FILL, WITH NO SEAM ADDITION. Every field comes off the subsystem that already counts it, and
         /// which subsystem that is matters enough to say here. <c>DrainCount</c> and <c>DrainMs</c> come off
         /// <see cref="MetalTimeline.TotalDrain"/> (M-F5, row 5) and are the MM2 numbers.
-        /// <c>BackpressureStallCount</c> and <c>BackpressureStallMs</c> come off <see cref="MetalBackpressure"/>
-        /// (row 8) and are MM3's. <c>OffTimelineDeferred</c> and <c>OffTimelineOutstanding</c> come off
-        /// <see cref="MetalRingAllocator.OffTimelinePatches"/> and are deliberately NOT folded into that pair.
+        /// <c>BackpressureStallCount</c> and <c>BackpressureStallMs</c> come off the device's BACKPRESSURE
+        /// <see cref="WaitAccumulator"/> (row 8) and are MM3's. <c>OffTimelineDeferred</c> and
+        /// <c>OffTimelineOutstanding</c> come off <see cref="MetalRingAllocator.OffTimelinePatches"/> and are
+        /// deliberately NOT folded into that pair.
         /// <para>
         /// <b>THE BACKPRESSURE PAIR HAS EXACTLY ONE SOURCE HERE, WHICH IS THE READING DIFFERENCE FROM VULKAN.</b>
         /// There is no command-buffer pool to wait on (M-R2), so this counts the uniform ring's segment acquire
@@ -266,14 +267,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// and the writes it counts are usually load-time before any frame exists, so folding it would turn a
         /// load-time <c>UpdateBuffer</c> into evidence against the frames-in-flight count and make MM4's
         /// zero-stall criterion unreachable for a reason unrelated to depth. See
-        /// <see cref="MetalRingPatchStats"/>.
+        /// <see cref="RingPatchStats"/>.
         /// </para>
         /// <para>
         /// <b><c>FramesBegun</c> AND THE ACQUIRE PAIR ARE THE PRESENT BOUNDARY's, AND ARE ZERO ON A HEADLESS
         /// DEVICE BECAUSE THAT IS LITERALLY TRUE.</b> <c>FramesBegun</c> comes off
         /// <see cref="MetalPresentBoundary.FramesBegun"/> (row 15), which counts EVERY boundary including one
         /// whose drawable came back nil, because a skipped present is not a skipped frame (M-W5). The acquire pair
-        /// comes off <see cref="MetalAcquireWaits"/>, which records EVERY <c>nextDrawable</c> rather than only one
+        /// comes off the boundary's own ACQUIRE <see cref="WaitAccumulator"/>, a second instance of the same type
+        /// as the backpressure one above and never the same object. It records EVERY <c>nextDrawable</c> rather than
+        /// only one
         /// that blocked: Metal offers no zero-timeout probe, so a boundary cannot tell an instant acquire from a
         /// blocked one except by timing it, and one entry per boundary is exactly what the seam's own doc says a
         /// CPU-blocking acquire reports. A headless device has no swapchain, opens no frame at this seam and never
@@ -292,10 +295,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             get
             {
-                MetalWaitTotals drain = _timeline.TotalDrain;
-                MetalWaitTotals stalls = _backpressure.Totals;
-                MetalRingPatchStats patches = _rings.OffTimelinePatches;
-                MetalWaitTotals acquires = _acquireWaits.Totals;
+                WaitTotals drain = _timeline.TotalDrain;
+                WaitTotals stalls = _backpressure.Totals;
+                RingPatchStats patches = _rings.OffTimelinePatches;
+                WaitTotals acquires = _acquireWaits.Totals;
 
                 // Named arguments, because the two longs and the two doubles sit next to each other: a transposed
                 // pair here compiles, passes every test, and reports a stall count as a drain count in the field.
@@ -316,7 +319,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// asserted against it by identity, the way the drain and backpressure pairs are. It lives on the DEVICE
         /// rather than on the present boundary so a headless device has something to read without the fill having
         /// to ask whether a swapchain exists.</summary>
-        internal MetalWaitTotals AcquireTotals => _acquireWaits.Totals;
+        internal WaitTotals AcquireTotals => _acquireWaits.Totals;
 
         /// <inheritdoc/>
         /// <remarks>

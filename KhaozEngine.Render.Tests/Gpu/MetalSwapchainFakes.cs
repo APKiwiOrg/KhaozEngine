@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Metal.Internal;
 
 namespace KhaozEngine.Tests.Gpu
@@ -76,7 +77,7 @@ namespace KhaozEngine.Tests.Gpu
         internal bool PresentSawLockHeld { get; private set; }
 
         /// <summary>How long the next acquire pretends to take, so the acquire-wait MILLISECONDS can be driven off
-        /// zero rather than only the count. Real time, because <see cref="MetalAcquireWaits"/> reads a stopwatch
+        /// zero rather than only the count. Real time, because <see cref="WaitAccumulator"/> reads a stopwatch
         /// around the call and there is nothing to inject.</summary>
         internal TimeSpan AcquireDelay { get; set; }
 

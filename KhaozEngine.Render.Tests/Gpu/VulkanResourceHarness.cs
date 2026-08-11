@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Vulkan.Internal;
 
 namespace KhaozEngine.Tests.Gpu
@@ -64,7 +65,7 @@ namespace KhaozEngine.Tests.Gpu
             SetupSink = new FakeVulkanSetupSink();
             CommandApi = new FakeVulkanCommandApi();
             RenderApi = new FakeVulkanRenderApi(Trace);
-            Backpressure = new VulkanBackpressure();
+            Backpressure = new WaitAccumulator();
 
             // ROWS 14 AND 15's SEAMS, all three on ONE trace, which is what makes an ORDER assertable: the
             // transitions before the begin, the geometry before the command, the pass ended before a copy.
@@ -145,7 +146,7 @@ namespace KhaozEngine.Tests.Gpu
         /// off it (https://github.com/APKiwiOrg/KhaozEngine/issues/522).</summary>
         internal FakeVulkanRenderApi RenderApi { get; }
 
-        internal VulkanBackpressure Backpressure { get; }
+        internal WaitAccumulator Backpressure { get; }
 
         internal VulkanSubmitQueue Submits { get; }
 

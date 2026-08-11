@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
+using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu.Metal.Internal
 {
@@ -89,7 +90,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     internal sealed class MetalRingAllocator
     {
         readonly MetalTimeline _timeline;
-        readonly MetalBackpressure _backpressure;
+        readonly WaitAccumulator _backpressure;
         readonly object _submitLock;
 
         // The timeline value the submission that last READ each segment signals, raised at that submit by
@@ -104,8 +105,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
         readonly List<MetalUniformRing> _patchedRings = new();
 
         // Recordings begun since the device was created, and the whole of the rotation. Advanced under the submit
-        // lock rather than with a plain increment, because MetalBackpressure documents concurrent Begin as
-        // supported and two threads reading one value would claim the same segment for two live recordings.
+        // lock rather than with a plain increment, because M-R3 documents concurrent Begin as supported and two
+        // threads reading one value would claim the same segment for two live recordings.
         ulong _recordingIndex;
 
         // The DEVICE-level current segment: what the off-timeline write treats as current and what Map answers.
@@ -118,7 +119,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // The off-timeline write's deferrals, their replays, the ones a later write superseded and the ones that
         // went away with a disposed ring, cumulative since the device was created and deliberately NOT rolled per
         // frame. All four are mutated under the submit lock alone, and read volatile because a diagnostic may be
-        // on any thread. See MetalRingPatchStats.
+        // on any thread. See RingPatchStats.
         int _patchesDeferred;
         int _patchesApplied;
         int _patchesCoalesced;
@@ -133,7 +134,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// one source and this is it (M-R2).</param>
         /// <param name="submitLock">The device's single submit lock. Not created here, because the same lock has
         /// to order <c>-commit</c>, the timeline value it encodes and the segment owner that value becomes.</param>
-        internal MetalRingAllocator(int framesInFlight, MetalTimeline timeline, MetalBackpressure backpressure,
+        internal MetalRingAllocator(int framesInFlight, MetalTimeline timeline, WaitAccumulator backpressure,
             object submitLock)
         {
             ArgumentNullException.ThrowIfNull(timeline);
@@ -173,16 +174,17 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <summary>
         /// Segment acquisitions that ACTUALLY BLOCKED, since the device was created. One entry per
         /// <see cref="BeginRecording"/> that waited, however many times it had to revalidate, because the caller
-        /// blocked once. The same entries are recorded into <see cref="MetalBackpressure"/>, which is what the
-        /// seam reports, and this is the ring's own half of that reading so a test can say which source produced a
-        /// count. On this backend they are the same number, because the accumulator has no second source (M-R2).
+        /// blocked once. The same entries are recorded into the device's BACKPRESSURE
+        /// <see cref="WaitAccumulator"/>, which is what the seam reports, and this is the ring's own half of that
+        /// reading so a test can say which source produced a count. On this backend they are the same number,
+        /// because that accumulator has no second source (M-R2).
         /// </summary>
         internal int StallCount => Volatile.Read(ref _stallCount);
 
         /// <summary>The off-timeline write's deferrals and replays, cumulative since the device was created. A
-        /// SEPARATE reading from the backpressure count on purpose: see <see cref="MetalRingPatchStats"/>.
+        /// SEPARATE reading from the backpressure count on purpose: see <see cref="RingPatchStats"/>.
         /// </summary>
-        internal MetalRingPatchStats OffTimelinePatches => new(
+        internal RingPatchStats OffTimelinePatches => new(
             Volatile.Read(ref _patchesDeferred),
             Volatile.Read(ref _patchesApplied),
             Volatile.Read(ref _patchesCoalesced),
@@ -439,9 +441,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// nothing at all about a CPU write arriving after the engine dropped its own reference.
         /// </para>
         /// <para>
-        /// AND THEY ARE COUNTED ON THE WAY OUT, into <see cref="MetalRingPatchStats.Dropped"/>. Dropping them
+        /// AND THEY ARE COUNTED ON THE WAY OUT, into <see cref="RingPatchStats.Dropped"/>. Dropping them
         /// silently would leave them counted as deferred and never as resolved, so
-        /// <see cref="MetalRingPatchStats.Outstanding"/> would sit permanently high in any program that streams
+        /// <see cref="RingPatchStats.Outstanding"/> would sit permanently high in any program that streams
         /// uniform buffers in and out, and the reading that number is FOR would be wrong for exactly the programs
         /// most likely to consult it.
         /// </para>

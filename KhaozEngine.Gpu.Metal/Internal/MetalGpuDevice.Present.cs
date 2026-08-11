@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
+using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu.Metal.Internal
 {
@@ -33,7 +34,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // M-W4's ACCUMULATOR, ON THE DEVICE RATHER THAN ON THE BOUNDARY, so the counter fill has something to
         // read on a headless device without asking whether a swapchain exists, and so the pair survives for the
         // life of the device the way the drain and backpressure pairs do.
-        readonly MetalAcquireWaits _acquireWaits = new();
+        readonly WaitAccumulator _acquireWaits = new();
 
         MetalPresentBoundary? _present;
 

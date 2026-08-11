@@ -137,7 +137,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         readonly VulkanMemoryAllocator _memory;
         readonly IVulkanCommandApi _commands;
         readonly VulkanSubmitQueue _submits;
-        readonly VulkanBackpressure _backpressure = new();
+        readonly WaitAccumulator _backpressure = new();
         readonly VulkanRingAllocator _rings;
         readonly VulkanResourceOwner _resources;
         readonly VulkanStagingSource _staging;
@@ -149,7 +149,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         readonly VulkanStagingMaps _maps = new();
         readonly VulkanSampler _pointSampler;
         readonly VulkanSampler _linearSampler;
-        readonly VulkanAcquireWaits _acquireWaits = new();
+        readonly WaitAccumulator _acquireWaits = new();
         readonly VulkanPresentBoundary? _present;
         readonly int _framesInFlight;
         readonly Device _device;
@@ -385,14 +385,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// EVERY FIELD IS NOW A MEASUREMENT TAKEN FROM THE SUBSYSTEM THAT OWNS IT, and which subsystem that is
         /// matters enough to say here. <c>DrainCount</c> and <c>DrainMs</c> come off
         /// <see cref="VulkanTimeline.TotalDrain"/> and are the M2 numbers (V-F4). <c>BackpressureStallCount</c>
-        /// and <c>BackpressureStallMs</c> come off <see cref="VulkanBackpressure"/> and are MV3's, counting BOTH
-        /// of that accumulator's meanings on one number: a command list's <c>Begin</c> blocking on its own oldest
-        /// pool slot, and a uniform ring's frame boundary finding its segment still in flight (row 8). The two are
+        /// and <c>BackpressureStallMs</c> come off the device's BACKPRESSURE <see cref="WaitAccumulator"/> and
+        /// are MV3's, counting BOTH of that accumulator's meanings on one number: a command list's <c>Begin</c>
+        /// blocking on its own oldest pool slot, and a uniform ring's frame boundary finding its segment still in
+        /// flight (row 8). The two are
         /// folded deliberately, because both say the pipeline is deeper than
         /// <c>KE_VULKAN_FRAMES_IN_FLIGHT</c> allows and both are fixed by the same lever.
         /// <c>OffTimelineDeferred</c> and <c>OffTimelineOutstanding</c> come off
         /// <see cref="VulkanRingAllocator.OffTimelinePatches"/> and are deliberately NOT folded into that number:
-        /// a deferred patch is not a stall at all (see <see cref="VulkanRingPatchStats"/>).
+        /// a deferred patch is not a stall at all (see <see cref="RingPatchStats"/>).
         /// <c>FramesBegun</c> and the <c>AcquireWait</c> pair come off the present boundary (row 17), so both read
         /// 0 on a HEADLESS device, which has no swapchain and opens no frame at this seam. That zero is literally
         /// true about such a device rather than a placeholder, which is the bar the struct's own "absent is not
@@ -412,13 +413,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             get
             {
-                VulkanWaitTotals drain = _timeline.TotalDrain;
-                VulkanWaitTotals stalls = _backpressure.Totals;
-                VulkanRingPatchStats patches = _rings.OffTimelinePatches;
+                WaitTotals drain = _timeline.TotalDrain;
+                WaitTotals stalls = _backpressure.Totals;
+                RingPatchStats patches = _rings.OffTimelinePatches;
 
                 // Named, because the two longs and the two doubles sit next to each other: a transposed pair here
                 // compiles, passes every test, and reports a stall count as a drain count in the field.
-                VulkanWaitTotals acquires = _acquireWaits.Totals;
+                WaitTotals acquires = _acquireWaits.Totals;
 
                 return new GpuDeviceCounters(
                     framesBegun: _present?.FramesBegun ?? 0,

@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using KhaozEngine.Diagnostics;
+using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu.Vulkan.Internal
 {
@@ -82,7 +83,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         readonly IVulkanSwapchainApi _swapchains;
         readonly IVulkanOrphanTarget _orphan;
         readonly VulkanAcquireRing _ring;
-        readonly VulkanAcquireWaits _waits;
+        readonly WaitAccumulator _waits;
         readonly VulkanPresentPending _pending = new();
         readonly VulkanAcquireMode _mode;
         readonly object _submitLock;
@@ -131,7 +132,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="logger">The sink, or null for this type's own category logger.</param>
         internal VulkanPresentBoundary(IVulkanSurfaceApi surfaces, IVulkanSwapchainApi swapchains, ulong surface,
             VulkanExtent requested, bool syncToVerticalBlank, VulkanAcquireMode mode, int framesInFlight,
-            object submitLock, Action drain, IVulkanOrphanTarget orphan, VulkanAcquireWaits waits,
+            object submitLock, Action drain, IVulkanOrphanTarget orphan, WaitAccumulator waits,
             ILogger? logger = null)
         {
             ArgumentNullException.ThrowIfNull(surfaces);

@@ -2,6 +2,7 @@ using System;
 using System.Runtime.InteropServices;
 using KhaozEngine.Diagnostics;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Metal.Internal;
 using KhaozEngine.Gpu.Metal.Internal.ObjC;
 
@@ -40,7 +41,7 @@ namespace KhaozEngine.Tests.Gpu
             Event = new FakeMetalSharedEvent();
             Liveness = new FakeMetalDeviceLiveness();
             Timeline = new MetalTimeline(Event, Liveness);
-            Backpressure = new MetalBackpressure();
+            Backpressure = new WaitAccumulator();
             SubmitLock = new object();
             Rings = new MetalRingAllocator(framesInFlight, Timeline, Backpressure, SubmitLock);
             Staging = new FakeMetalStagingSource();
@@ -61,7 +62,7 @@ namespace KhaozEngine.Tests.Gpu
         internal MetalTimeline Timeline { get; }
 
         /// <summary>MM4's accumulator, whose only source is the ring's segment gate.</summary>
-        internal MetalBackpressure Backpressure { get; }
+        internal WaitAccumulator Backpressure { get; }
 
         /// <summary>The device's submit lock, which the allocator shares rather than owns.</summary>
         internal object SubmitLock { get; }

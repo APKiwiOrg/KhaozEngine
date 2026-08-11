@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Metal.Internal;
 using Xunit;
 
@@ -192,7 +193,7 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal(0, ring.PendingPatchCount);
 
-            MetalRingPatchStats stats = _harness.Rings.OffTimelinePatches;
+            RingPatchStats stats = _harness.Rings.OffTimelinePatches;
             Assert.Equal(MetalFramesInFlight.Default - 1, stats.Deferred);
             Assert.Equal(MetalFramesInFlight.Default - 1, stats.Dropped);
             Assert.Equal(0, stats.Outstanding);

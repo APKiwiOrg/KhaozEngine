@@ -1,35 +1,41 @@
-namespace KhaozEngine.Gpu.D3D11.Internal
+namespace KhaozEngine.Gpu.Internal
 {
     /// <summary>
     /// THE OFF-TIMELINE WRITE'S DEFERRAL COUNTERS, cumulative since the device was created: how many segment
     /// writes were queued as a pending patch instead of copied on the spot, and what became of each one. Every
     /// deferral leaves the queue exactly once, applied, coalesced or dropped with its ring, which is what makes
-    /// <see cref="Outstanding"/> a reading rather than a running total.
+    /// <see cref="Outstanding"/> a READING rather than a running total.
     /// <para>
-    /// SAME REPORTING SHAPE AS <see cref="D3D11BackpressureStats"/>, AND NOT THE SAME MEASUREMENT. That struct is
-    /// M3's, per frame, counting times a frame BLOCKED on the GPU. This one counts no time at all, because the
-    /// path it describes never blocks: a device-level <c>UpdateBuffer</c> that meets a segment an earlier frame is
-    /// still reading records the bytes and returns, and the segment's next acquire writes them. There is no wait
-    /// to time, so a milliseconds field here would report zero forever and read as "the waits are cheap" rather
-    /// than as "there are none".
+    /// IT COUNTS PATCHES RATHER THAN WAITS, because there are no waits on this path to count. A device-level
+    /// uniform-buffer write that meets a segment an earlier frame is still reading records the bytes and returns,
+    /// and the segment's next acquire writes them. Nothing blocks, so a milliseconds field here would report zero
+    /// forever and read as "the waits are cheap" rather than as "there are none". That is also why this is a
+    /// separate struct from <see cref="WaitTotals"/> rather than another pair beside it.
     /// </para>
     /// <para>
-    /// WHY IT IS REPORTED SEPARATELY, which is the reasoning the earlier wait counter carried and keeps.
-    /// M3's exit criterion is that <c>D3D11RingAllocator.LastFrameBackpressure</c> is ZERO across a soak window,
-    /// which reads as "this many segments are enough for this machine". A deferred patch says nothing about that:
-    /// it says a caller wrote a uniform buffer off-timeline while an earlier frame was still reading a segment of
-    /// it, which is normal and costs nobody a stall. Folding the two together would turn a load-time write into
-    /// evidence against the segment count.
+    /// SEPARATE FROM THE BACKPRESSURE ACCUMULATOR ON PURPOSE, and this is the one number the backends deliberately
+    /// do NOT fold into their single stall count. That accumulator exists because the waits it covers are the same
+    /// statement about the same lever, pipeline DEPTH, so one number answers all of them. A deferred patch is not
+    /// a stall at all, so folding it in would turn a load-time write into evidence against the frames-in-flight
+    /// setting and make a zero-stall exit criterion unreachable for a reason unrelated to depth.
     /// </para>
     /// <para>
-    /// CUMULATIVE RATHER THAN ROLLED PER FRAME, for the same reason the wait counter was: these writes are
-    /// typically LOAD-TIME and happen before any frame has begun, so a per-frame roll would discard exactly the
-    /// ones worth seeing.
+    /// CUMULATIVE RATHER THAN ROLLED PER FRAME, because the writes this counts are typically LOAD-TIME and happen
+    /// before any frame has begun, so a per-frame roll would discard exactly the ones worth seeing. It reaches the
+    /// seam through <c>GpuDeviceCounters.OffTimelineDeferred</c> and <c>OffTimelineOutstanding</c>, which are the
+    /// two fields that struct already carries for this reading.
+    /// </para>
+    /// <para>
+    /// <b>ONE TYPE FOR THREE BACKENDS (#531's second extraction).</b> The three copies were code-identical, four
+    /// <c>int</c>s and one subtraction under three sets of prose and one <c>PendingPatchStats</c>-versus-
+    /// <c>RingPatchStats</c> naming. Unlike the wait counters, the accumulation sites agree here too: all three
+    /// rings defer on the same condition and retire a patch the same three ways. That is what makes this the one
+    /// counter of the set where the extraction is not carriers-only.
     /// </para>
     /// </summary>
-    internal readonly struct D3D11PendingPatchStats
+    internal readonly struct RingPatchStats
     {
-        internal D3D11PendingPatchStats(int deferred, int applied, int coalesced, int dropped)
+        internal RingPatchStats(int deferred, int applied, int coalesced, int dropped)
         {
             Deferred = deferred;
             Applied = applied;

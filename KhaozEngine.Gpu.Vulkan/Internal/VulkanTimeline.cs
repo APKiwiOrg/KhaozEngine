@@ -138,9 +138,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <summary>
         /// The SAME drains accumulated since the device was created, which is the half a telemetry session can
         /// carry. Nothing rolls it, so two sampled rows bracket a window exactly. See
-        /// <see cref="VulkanWaitTotals"/>.
+        /// <see cref="WaitTotals"/>.
         /// </summary>
-        internal VulkanWaitTotals TotalDrain => VulkanWaitTotals.Sample(ref _totalDrainCount, ref _totalDrainTicks);
+        internal WaitTotals TotalDrain => WaitTotals.Sample(ref _totalDrainCount, ref _totalDrainTicks);
 
         /// <summary>
         /// The counter's current value, as a NON-BLOCKING read, or the last value allocated once the device is
@@ -225,9 +225,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <summary>
         /// Block until the counter reaches <paramref name="value"/>, with no timeout and NO ACCOUNTING. The
         /// primitive behind a command list's slot wait (row 7) and the uniform ring's segment gate (row 8), both
-        /// of which count their own blocking into <see cref="VulkanBackpressure"/> rather than into the drain
-        /// totals: a stall waiting for a slot to come free is a statement about pipeline DEPTH, and folding it
-        /// into <c>DrainCount</c> would report it as a statement about draining.
+        /// of which count their own blocking into the device's BACKPRESSURE <see cref="WaitAccumulator"/> rather
+        /// than into the drain totals: a stall waiting for a slot to come free is a statement about pipeline
+        /// DEPTH, and folding it into <c>DrainCount</c> would report it as a statement about draining.
         /// <para>
         /// THE CALLER DECIDES WHETHER IT BLOCKED. This member waits unconditionally when the device is alive, so
         /// every caller polls <see cref="CompletedValue"/> first and calls here only when the counter has not

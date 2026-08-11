@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Metal.Internal;
 
 namespace KhaozEngine.Tests.Gpu
@@ -65,7 +66,7 @@ namespace KhaozEngine.Tests.Gpu
             _event = new SharedEvent();
             _timeline = new MetalTimeline(_event);
             _allocator = new MetalRingAllocator(
-                framesInFlight, _timeline, new MetalBackpressure(), new object());
+                framesInFlight, _timeline, new WaitAccumulator(), new object());
 
             _bytes = new byte[(int)MetalRingStride.TotalBytesFor(sizeInBytes, framesInFlight)];
             _pin = GCHandle.Alloc(_bytes, GCHandleType.Pinned);

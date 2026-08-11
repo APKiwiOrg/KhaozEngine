@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
+using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu.Vulkan.Internal
 {
@@ -51,7 +52,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     internal sealed class VulkanRingAllocator
     {
         readonly VulkanTimeline _timeline;
-        readonly VulkanBackpressure _backpressure;
+        readonly WaitAccumulator _backpressure;
         readonly object _submitLock;
 
         // The timeline value each segment's frame was CLOSED at, which is at or above every value a submission made
@@ -79,7 +80,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         // The off-timeline write's deferrals, their replays, the ones a later write superseded and the ones that
         // went away with a disposed ring, cumulative since the device was created and deliberately NOT rolled per
         // frame. All four are mutated under the submit lock alone, and read volatile because a diagnostic may be on
-        // any thread. See VulkanRingPatchStats.
+        // any thread. See RingPatchStats.
         int _patchesDeferred;
         int _patchesApplied;
         int _patchesCoalesced;
@@ -94,7 +95,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// slot wait rather than duplicated: both are the same statement about the same lever (MV3).</param>
         /// <param name="submitLock">The device's single submit lock. Not created here, because the same lock has to
         /// order <c>vkQueueSubmit</c> and the timeline value it signals.</param>
-        internal VulkanRingAllocator(int framesInFlight, VulkanTimeline timeline, VulkanBackpressure backpressure,
+        internal VulkanRingAllocator(int framesInFlight, VulkanTimeline timeline, WaitAccumulator backpressure,
             object submitLock)
         {
             ArgumentNullException.ThrowIfNull(timeline);
@@ -129,15 +130,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         /// <summary>
         /// Segment acquisitions that ACTUALLY BLOCKED, since the device was created. The same entries are recorded
-        /// into <see cref="VulkanBackpressure"/>, which is what the seam reports, and this is the ring's own half of
-        /// that fold so a test can say which of the two sources produced a count.
+        /// into the device's BACKPRESSURE <see cref="WaitAccumulator"/>, which is what the seam reports, and this is
+        /// the ring's own half of that fold so a test can say which of the two sources produced a count.
         /// </summary>
         internal int StallCount => Volatile.Read(ref _stallCount);
 
         /// <summary>The off-timeline write's deferrals and replays, cumulative since the device was created. A
-        /// SEPARATE reading from the backpressure count on purpose: see <see cref="VulkanRingPatchStats"/>.
+        /// SEPARATE reading from the backpressure count on purpose: see <see cref="RingPatchStats"/>.
         /// </summary>
-        internal VulkanRingPatchStats OffTimelinePatches => new(
+        internal RingPatchStats OffTimelinePatches => new(
             Volatile.Read(ref _patchesDeferred),
             Volatile.Read(ref _patchesApplied),
             Volatile.Read(ref _patchesCoalesced),
@@ -277,9 +278,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// freed chunk.
         /// </para>
         /// <para>
-        /// AND THEY ARE COUNTED ON THE WAY OUT, into <see cref="VulkanRingPatchStats.Dropped"/>. Dropping them
+        /// AND THEY ARE COUNTED ON THE WAY OUT, into <see cref="RingPatchStats.Dropped"/>. Dropping them
         /// silently would leave them counted as deferred and never as resolved, so
-        /// <see cref="VulkanRingPatchStats.Outstanding"/> would sit permanently high in any program that streams
+        /// <see cref="RingPatchStats.Outstanding"/> would sit permanently high in any program that streams
         /// uniform buffers in and out, and the reading that number is FOR would be wrong for exactly the programs
         /// most likely to consult it.
         /// </para>

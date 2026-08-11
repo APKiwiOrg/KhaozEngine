@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
+using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu.D3D11.Internal
 {
@@ -141,7 +142,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         long _stallTicks;
         D3D11BackpressureStats _lastFrame;
 
-        // The same stalls, never rolled. See D3D11WaitTotals for why a sampled per-frame number cannot establish
+        // The same stalls, never rolled. See WaitTotals for why a sampled per-frame number cannot establish
         // M3's "zero across the capture window" and this one can. Two plain fields rather than the pair struct, so
         // TotalBackpressure can read each half volatile exactly the way the patch counters below are read.
         long _totalStallCount;
@@ -214,15 +215,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// can carry. <see cref="BeginFrame"/> never rolls it, so M3's exit criterion reads as one subtraction
         /// across the capture window instead of a bet that the sampler happened to land on the stalling frame.
         /// Still frame-boundary stalls ALONE, so it is no more foldable with <see cref="OffTimelinePatches"/> than
-        /// the per-frame roll is. See <see cref="D3D11WaitTotals"/>.
+        /// the per-frame roll is. See <see cref="WaitTotals"/>.
         /// <para>
         /// READ A FIELD AT A TIME, because a telemetry sampler is on whatever thread the consumer runs it on while
         /// the frame thread is recording stalls. Same reason as <see cref="OffTimelinePatches"/> below, and the
         /// same limit: the two halves are each whole, the PAIR may be one entry apart.
         /// </para>
         /// </summary>
-        internal D3D11WaitTotals TotalBackpressure
-            => D3D11WaitTotals.Sample(ref _totalStallCount, ref _totalStallTicks);
+        internal WaitTotals TotalBackpressure
+            => WaitTotals.Sample(ref _totalStallCount, ref _totalStallTicks);
 
         /// <summary>
         /// THE OFF-TIMELINE WRITE'S DEFERRALS AND REPLAYS, CUMULATIVE SINCE THE DEVICE WAS CREATED, and a
@@ -232,7 +233,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <see cref="UpdateBuffer"/> never blocks: a segment an earlier frame is still reading gets the bytes
         /// queued and the call returns, and the segment's next acquire applies them. What is worth reporting is
         /// therefore how often that happened and whether the replays are keeping up, which is what
-        /// <see cref="D3D11PendingPatchStats.Outstanding"/> answers.
+        /// <see cref="RingPatchStats.Outstanding"/> answers.
         /// </para>
         /// <para>
         /// It is not a frame-boundary stall, which is why it is reported apart from the M3 number. M3's exit
@@ -249,7 +250,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// reporting shape as <see cref="D3D11BackpressureStats"/>, so a diagnostic carries the pair the same way.
         /// </para>
         /// </summary>
-        internal D3D11PendingPatchStats OffTimelinePatches => new D3D11PendingPatchStats(
+        internal RingPatchStats OffTimelinePatches => new RingPatchStats(
             Volatile.Read(ref _patchesDeferred),
             Volatile.Read(ref _patchesApplied),
             Volatile.Read(ref _patchesCoalesced),
@@ -624,9 +625,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// released would write through a freed mapping.
         /// </para>
         /// <para>
-        /// AND THEY ARE COUNTED ON THE WAY OUT, into <see cref="D3D11PendingPatchStats.Dropped"/>. Dropping them
+        /// AND THEY ARE COUNTED ON THE WAY OUT, into <see cref="RingPatchStats.Dropped"/>. Dropping them
         /// silently would leave them counted as deferred and never as resolved, so
-        /// <see cref="D3D11PendingPatchStats.Outstanding"/> would sit permanently high in any program that streams
+        /// <see cref="RingPatchStats.Outstanding"/> would sit permanently high in any program that streams
         /// uniform buffers in and out, and the reading that number is FOR ("it climbs rather than settles, so
         /// frames stopped") would be wrong for exactly the programs most likely to consult it.
         /// </para>

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu.Vulkan.Internal
 {
@@ -27,8 +28,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <para><b>THE WRAP IS THE BACKPRESSURE.</b> <see cref="Advance"/> moves to the next slot and waits on the
     /// value that slot was last submitted at, which in the steady state at depth 3 is a value the GPU passed two
     /// records ago and returns immediately from one non-blocking read. When it does NOT, the CPU is more than
-    /// <see cref="Depth"/> records ahead of the GPU on this list, and that wait is recorded into
-    /// <see cref="VulkanBackpressure"/>, which is MV3's exit criterion. A poll that finds the value already
+    /// <see cref="Depth"/> records ahead of the GPU on this list, and that wait is recorded into the device's
+    /// BACKPRESSURE <see cref="WaitAccumulator"/>, which is MV3's exit criterion. A poll that finds the value already
     /// reached records NOTHING, because a counter that ticks on a non-wait cannot answer "was anything ever
     /// blocked" with a zero.</para>
     ///
@@ -57,7 +58,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     {
         readonly IVulkanCommandApi _api;
         readonly VulkanTimeline _timeline;
-        readonly VulkanBackpressure _backpressure;
+        readonly WaitAccumulator _backpressure;
 
         readonly ulong[] _pools;
         readonly ulong[] _buffers;
@@ -80,7 +81,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="timeline">The device's one completion timeline, which slot waits are taken against.</param>
         /// <param name="backpressure">The device's one backpressure accumulator (MV3).</param>
         internal VulkanCommandPoolRing(IVulkanCommandApi api, int framesInFlight, VulkanTimeline timeline,
-            VulkanBackpressure backpressure)
+            WaitAccumulator backpressure)
         {
             ArgumentNullException.ThrowIfNull(api);
             ArgumentNullException.ThrowIfNull(timeline);

@@ -142,7 +142,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         internal D3D11BackpressureStats LastFrameBackpressure => _rings.LastFrameBackpressure;
 
         /// <inheritdoc cref="LastFrameBackpressure"/>
-        internal D3D11PendingPatchStats OffTimelinePatches => _rings.OffTimelinePatches;
+        internal RingPatchStats OffTimelinePatches => _rings.OffTimelinePatches;
 
         /// <inheritdoc cref="LastFrameBackpressure"/>
         internal D3D11DrainStats LastFrameDrain => _fences.LastFrameDrain;
@@ -172,9 +172,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         {
             get
             {
-                D3D11WaitTotals drain = _fences.TotalDrain;
-                D3D11WaitTotals stalls = _rings.TotalBackpressure;
-                D3D11PendingPatchStats patches = _rings.OffTimelinePatches;
+                WaitTotals drain = _fences.TotalDrain;
+                WaitTotals stalls = _rings.TotalBackpressure;
+                RingPatchStats patches = _rings.OffTimelinePatches;
 
                 // Named, because the two longs and the two doubles sit next to each other: a transposed pair here
                 // compiles, passes every test, and reports a stall count as a drain count in the field.

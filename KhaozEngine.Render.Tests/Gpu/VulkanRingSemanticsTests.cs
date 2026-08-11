@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Vulkan.Internal;
 using Xunit;
 
@@ -267,7 +268,7 @@ namespace KhaozEngine.Tests.Gpu
 
             for (int frame = 0; frame < 3; frame++) harness.Allocator.BeginFrame();
 
-            VulkanRingPatchStats stats = harness.Allocator.OffTimelinePatches;
+            RingPatchStats stats = harness.Allocator.OffTimelinePatches;
             Assert.Equal(2, stats.Deferred);
             Assert.Equal(2, stats.Applied);
             Assert.Equal(0, stats.Outstanding);
@@ -314,7 +315,7 @@ namespace KhaozEngine.Tests.Gpu
             using var timeline = new VulkanTimeline(new FakeVulkanTimelineSemaphore());
 
             Assert.Throws<ArgumentOutOfRangeException>(
-                () => new VulkanRingAllocator(framesInFlight, timeline, new VulkanBackpressure(), new object()));
+                () => new VulkanRingAllocator(framesInFlight, timeline, new WaitAccumulator(), new object()));
         }
     }
 }

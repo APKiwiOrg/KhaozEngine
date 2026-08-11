@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Vulkan.Internal;
 using Xunit;
 
@@ -27,7 +28,7 @@ namespace KhaozEngine.Tests.Gpu
             internal FakeVulkanSurfaceApi Surfaces { get; } = new();
             internal FakeVulkanSwapchainApi Swapchains { get; } = new();
             internal FakeVulkanOrphanTarget Orphan { get; } = new();
-            internal VulkanAcquireWaits Waits { get; } = new();
+            internal WaitAccumulator Waits { get; } = new();
             internal int Drains { get; private set; }
             internal VulkanPresentBoundary Boundary { get; }
 
@@ -577,7 +578,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Throws<InvalidOperationException>(() => new VulkanPresentBoundary(
                 surfaces, new FakeVulkanSwapchainApi(), FakeVulkanSurfaceApi.Handle, new VulkanExtent(1280, 720),
                 true, VulkanAcquireMode.Semaphore, 3, new object(), () => { }, new FakeVulkanOrphanTarget(),
-                new VulkanAcquireWaits()));
+                new WaitAccumulator()));
         }
 
         // ---- the checked present result ---------------------------------------------------------------------

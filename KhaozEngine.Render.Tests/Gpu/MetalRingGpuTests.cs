@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Runtime.Versioning;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Metal;
 using KhaozEngine.Gpu.Metal.Internal;
 using Xunit;
@@ -355,7 +356,7 @@ namespace KhaozEngine.Tests.Gpu
 
             device.WaitForIdle();
 
-            MetalWaitTotals totals = device.BackpressureTotals;
+            WaitTotals totals = device.BackpressureTotals;
             Assert.Equal(device.Rings.StallCount, (int)totals.Count);
             Assert.True(totals.Count == 0 || totals.TotalMs > 0,
                 "a stall was counted with no time against it, so the wait was recorded without having blocked");

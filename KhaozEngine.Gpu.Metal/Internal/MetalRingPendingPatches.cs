@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu.Metal.Internal
 {
@@ -141,7 +142,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <para>
         /// THE COUNT IS RETURNED RATHER THAN DISCARDED because these patches were deferred and will never be
         /// replayed, so an allocator that dropped them silently would leave them counted as outstanding for the
-        /// life of the device. See <see cref="MetalRingPatchStats.Dropped"/>.
+        /// life of the device. See <see cref="RingPatchStats.Dropped"/>.
         /// </para>
         /// </summary>
         internal int ClearAll()

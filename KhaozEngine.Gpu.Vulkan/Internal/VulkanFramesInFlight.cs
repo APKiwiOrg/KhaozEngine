@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu.Vulkan.Internal
 {
@@ -19,7 +20,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <para>
     /// THE BET THIS TURNS OFF. MV3 says 3 is enough that ring-segment backpressure and command-buffer slot waits
     /// never block the CPU, and its exit criterion is <c>BackpressureStallCount</c> zero across a full capture
-    /// window, on ONE accumulator covering both (see <see cref="VulkanBackpressure"/>). A non-zero count means 3 is
+    /// window, on ONE <see cref="WaitAccumulator"/> covering both. A non-zero count means 3 is
     /// the wrong number and not that the design is wrong, so the lever raises it rather than disabling anything.
     /// </para>
     /// <para>

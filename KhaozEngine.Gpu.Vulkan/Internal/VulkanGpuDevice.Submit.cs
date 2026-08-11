@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu.Vulkan.Internal
 {
@@ -106,7 +107,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// here and the uniform ring's segment gate will record into at row 8. Exposed because row 8 needs the
         /// same object rather than a second one: two accumulators would report a count nobody could compare
         /// against the exit criterion without adding them up first.</summary>
-        internal VulkanBackpressure Backpressure => _backpressure;
+        internal WaitAccumulator Backpressure => _backpressure;
 
         /// <inheritdoc/>
         /// <remarks>A submit with no fence STILL takes a timeline value, because the timeline has to advance with

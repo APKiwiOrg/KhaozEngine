@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Metal.Internal;
 using Xunit;
 
@@ -617,7 +618,7 @@ namespace KhaozEngine.Tests.Gpu
                 // acquire is one of the ones M-W8's claim covers.
                 api.LockToWatch = harness.SubmitLock;
 
-                harness.Boundary = new MetalPresentBoundary(api, orphan, uncommitted, new MetalAcquireWaits(),
+                harness.Boundary = new MetalPresentBoundary(api, orphan, uncommitted, new WaitAccumulator(),
                     harness.SubmitLock, harness.Drain, () => api.Note("capture"),
                     size ?? new MetalDrawableSize(1280u, 720u), MetalSwapchainPolicy.ColourSrgbRequested,
                     syncToVerticalBlank, FramesInFlight, logger);

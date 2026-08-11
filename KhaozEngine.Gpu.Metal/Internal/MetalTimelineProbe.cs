@@ -310,7 +310,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             if (!flipper.Join(DeadlineMs))
                 notes.Add("the liveness flipper thread had not finished after the drain returned.");
 
-            MetalWaitTotals totals = timeline.TotalDrain;
+            WaitTotals totals = timeline.TotalDrain;
             return (totals.Count, totals.TotalMs, releasedByDeath, fence.Signaled);
         }
 

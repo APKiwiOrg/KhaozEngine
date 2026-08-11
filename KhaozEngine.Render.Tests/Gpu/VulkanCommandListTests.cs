@@ -128,7 +128,7 @@ namespace KhaozEngine.Tests.Gpu
             using var timeline = new VulkanTimeline(semaphore);
 
             Assert.Throws<ArgumentOutOfRangeException>(
-                () => new VulkanCommandPoolRing(api, depth, timeline, new VulkanBackpressure()));
+                () => new VulkanCommandPoolRing(api, depth, timeline, new WaitAccumulator()));
         }
 
         /// <summary>
@@ -223,7 +223,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(1, fixture.Semaphore.WaitCount);
             Assert.Equal(first, fixture.Semaphore.LastWaitValue);
 
-            VulkanWaitTotals stalls = fixture.Backpressure.Totals;
+            WaitTotals stalls = fixture.Backpressure.Totals;
             Assert.Equal(1, stalls.Count);
             Assert.True(stalls.Ticks >= 0);
         }
@@ -500,7 +500,7 @@ namespace KhaozEngine.Tests.Gpu
 
             internal VulkanRetireList Retired { get; } = new();
 
-            internal VulkanBackpressure Backpressure { get; } = new();
+            internal WaitAccumulator Backpressure { get; } = new();
 
             internal VulkanSubmitQueue Submits { get; }
 

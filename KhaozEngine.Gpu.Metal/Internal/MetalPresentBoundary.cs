@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Threading;
 using KhaozEngine.Diagnostics;
+using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu.Metal.Internal
 {
@@ -45,9 +46,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <para><b>THE ACQUIRE IS TIMED RATHER THAN PROBED, and that is forced (M-W4).</b> Vulkan can ask
     /// <c>vkAcquireNextImageKHR</c> for an image with a zero timeout and learn whether waiting was necessary.
     /// <c>-nextDrawable</c> has no such form, no timeout knob and no readiness query, so the block is not
-    /// removable and the only instrument available is a stopwatch around the call. See
-    /// <see cref="MetalAcquireWaits"/> for why recording every acquire is the reading the seam already
-    /// documents.</para>
+    /// removable and the only instrument available is a stopwatch around the call. So the acquire
+    /// <see cref="WaitAccumulator"/> this boundary owns is the one caller in the engine that records a call which
+    /// did NOT block, and <c>GpuDeviceCounters.AcquireWaitCount</c> already documents that reading: a backend that
+    /// blocks the CPU on the acquire reports one per frame.</para>
     ///
     /// <para><b>THE PRESENTED DRAWABLE IS RELEASED THE MOMENT ITS PRESENT IS COMMITTED, and the framebuffer goes
     /// on naming its texture until the acquire republishes.</b> That gap is safe because an
@@ -63,7 +65,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         readonly IMetalSwapchainApi _api;
         readonly IMetalOrphanTarget _orphan;
         readonly MetalUncommittedBuffers _uncommitted;
-        readonly MetalAcquireWaits _waits;
+        readonly WaitAccumulator _waits;
         readonly MetalPresentPending _pending = new();
         readonly object _submitLock;
         readonly Action _drain;
@@ -97,7 +99,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <param name="maximumDrawableCount">The drawable queue depth (M-W4).</param>
         /// <param name="logger">The sink, or null for this type's own category logger.</param>
         internal MetalPresentBoundary(IMetalSwapchainApi api, IMetalOrphanTarget orphan,
-            MetalUncommittedBuffers uncommitted, MetalAcquireWaits waits, object submitLock, Action drain,
+            MetalUncommittedBuffers uncommitted, WaitAccumulator waits, object submitLock, Action drain,
             Action afterPresent, MetalDrawableSize size, bool colourSrgb, bool syncToVerticalBlank,
             int maximumDrawableCount, ILogger? logger = null)
         {
@@ -151,7 +153,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         /// <summary>M-W4's pair, cumulative since the device was created.
         /// <c>GpuDeviceCounters.AcquireWaitCount</c> and <c>AcquireWaitMs</c>.</summary>
-        internal MetalWaitTotals AcquireTotals => _waits.Totals;
+        internal WaitTotals AcquireTotals => _waits.Totals;
 
         /// <summary>Whether the framebuffer currently points at the orphan target rather than at a drawable's
         /// texture.</summary>

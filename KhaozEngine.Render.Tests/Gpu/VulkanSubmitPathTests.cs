@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Vulkan.Internal;
 using Xunit;
 
@@ -300,7 +301,7 @@ namespace KhaozEngine.Tests.Gpu
             using var boundary = new VulkanPresentBoundary(
                 new FakeVulkanSurfaceApi(), new FakeVulkanSwapchainApi(), FakeVulkanSurfaceApi.Handle,
                 new VulkanExtent(1280, 720), true, VulkanAcquireMode.Semaphore, 3, submitLock, () => { },
-                new FakeVulkanOrphanTarget(), new VulkanAcquireWaits());
+                new FakeVulkanOrphanTarget(), new WaitAccumulator());
 
             using var reached = new ManualResetEventSlim();
             VulkanFrameSemaphores taken = default;
@@ -387,7 +388,7 @@ namespace KhaozEngine.Tests.Gpu
             return new VulkanPresentBoundary(
                 new FakeVulkanSurfaceApi(), swapchains, FakeVulkanSurfaceApi.Handle,
                 new VulkanExtent(1280, 720), true, VulkanAcquireMode.Semaphore, 3, new object(), () => { },
-                new FakeVulkanOrphanTarget(), new VulkanAcquireWaits());
+                new FakeVulkanOrphanTarget(), new WaitAccumulator());
         }
     }
 }

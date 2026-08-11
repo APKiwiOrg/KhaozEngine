@@ -68,7 +68,15 @@ void main() { o = vec4(0.0, 1.0, 0.0, 1.0); }";
                     new GpuVertexLayoutDescription(new GpuVertexElement("Pos", GpuVertexElementFormat.Float2)),
                 },
                 ShaderSet = shaders,
-                ResourceLayouts = System.Array.Empty<IGpuResourceLayout>(),
+                // THE EMPTY LAYOUT IS DECLARED RATHER THAN DROPPED, and the local above was always built for
+                // this. These shaders bind no resources, and the SPIR-V reflection still reports ONE resource
+                // layout for them, an empty one. Veldrid tolerates the disagreement, so this read
+                // Array.Empty<IGpuResourceLayout>() for years and passed on every backend. The native Metal
+                // backend does not: its binding table is keyed on (set, binding, stage) read out of the shader's
+                // own decorations, so it requires the declared array to be the same SHAPE as the reflection it
+                // built the table from, and a pipeline declaring zero layouts against a reflection reporting one
+                // is refused at creation. Declaring the empty layout is what this pipeline always meant.
+                ResourceLayouts = new[] { layout },
                 Outputs = fb.Outputs,
             };
             using IGpuPipeline pipeline = f.CreateGraphicsPipeline(pd);

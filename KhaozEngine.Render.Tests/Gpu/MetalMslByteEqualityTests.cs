@@ -39,6 +39,19 @@ namespace KhaozEngine.Tests.Gpu
     /// pixel comparisons.
     /// </para>
     /// <para>
+    /// IT EMITS FRESH, EVERY RUN, AND THAT IS NOW LOAD-BEARING RATHER THAN INCIDENTAL. The Metal backend's own
+    /// build path gained a disk cache in front of the emission
+    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/592">#592</see>), and this test deliberately
+    /// does not go through it: it drives <see cref="SpirvCrossCompile"/> directly, which is a type in
+    /// <c>KhaozEngine.Gpu</c> and cannot see a backend's cache at all. The reason is specific rather than
+    /// hygienic. That cache's key covers the shader sources, the engine version and all three pinned option sets,
+    /// so a source or an options change is a different entry and could never be answered stale. What the key does
+    /// NOT name is the thing each pin's own header says pins the emission, the <c>Veldrid.SPIRV</c> package
+    /// version. So within one engine version a cached entry can hold the PREVIOUS cross-compiler's output, and a
+    /// drift test reading it would report no drift on exactly the change it exists to catch.
+    /// <see cref="ThisTestEmitsFresh_AndCannotBeAnsweredFromADiskCache"/> is that pinned mechanically.
+    /// </para>
+    /// <para>
     /// BAKING. <c>KE_UPDATE_MSL_HASHES=1 dotnet test --filter MetalMslByteEquality</c> rewrites the table and
     /// passes. Do that ONLY when a shader source or the pinned options changed ON PURPOSE, and read the diff: a
     /// one-line GLSL edit moving one program's two hashes is expected, and the same edit moving thirty programs
@@ -100,6 +113,41 @@ namespace KhaozEngine.Tests.Gpu
                 + $"was written to Gpu/msl-evidence/ so the change can be read rather than guessed. Re-bake with "
                 + $"{UpdateEnvVar}=1 once the change is understood and intended.\n"
                 + string.Join("\n", problems));
+        }
+
+        /// <summary>
+        /// THE PIN: NOTHING THIS TEST READS CAN HAVE COME OFF A DISK CACHE. Two checks, and neither is a proof of
+        /// the general statement, which is what the class header's paragraph is for.
+        /// <para>
+        /// The first is structural and total: the emitter this file drives lives in <c>KhaozEngine.Gpu</c>, which
+        /// does not reference the Metal package at all, so no cache in that package can answer for it. The second
+        /// is a source scan of this one file for the backend types that WOULD reach a cache, which catches the
+        /// realistic regression (someone switching this test onto the shipped build path) and would miss a
+        /// rename. The needles are built from parts so the scan does not match its own text.
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void ThisTestEmitsFresh_AndCannotBeAnsweredFromADiskCache()
+        {
+            string[] referenced = typeof(SpirvCrossCompile).Assembly.GetReferencedAssemblies()
+                .Select(a => a.Name ?? string.Empty)
+                .ToArray();
+
+            Assert.NotEmpty(referenced);
+            Assert.DoesNotContain("KhaozEngine.Gpu.Metal", referenced, StringComparer.Ordinal);
+
+            string source = File.ReadAllText(ThisFile());
+            Assert.NotEmpty(source);
+
+            foreach (string forbidden in new[] { "MetalShader" + "Build", "MetalMsl" + "Cache" })
+            {
+                Assert.False(source.Contains(forbidden, StringComparison.Ordinal),
+                    "This test now names " + forbidden + ", which means it may be reading an emission off disk "
+                    + "instead of producing one. The bake it compares against would then be pinned against a copy "
+                    + "of itself for any change the cache key does not name, and the cross-compiler's own package "
+                    + "version is exactly such a change. Emit through SpirvCrossCompile here, and leave the cache "
+                    + "to the tests that exist to exercise it.");
+            }
         }
 
         // ---- emission ------------------------------------------------------------------------------------
@@ -171,6 +219,10 @@ namespace KhaozEngine.Tests.Gpu
 
         static string EvidenceDir([CallerFilePath] string thisFile = "")
             => Path.Combine(Path.GetDirectoryName(thisFile)!, "msl-evidence");
+
+        /// <summary>This source file, for the pin above. Located the same way the hash table is, so it does not
+        /// depend on <c>dotnet test</c>'s working directory.</summary>
+        static string ThisFile([CallerFilePath] string thisFile = "") => thisFile;
 
         static Dictionary<string, string> ReadTable()
         {

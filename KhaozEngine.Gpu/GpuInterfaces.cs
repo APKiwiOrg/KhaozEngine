@@ -509,15 +509,16 @@ namespace KhaozEngine.Gpu
         /// sets the layer's <c>displaySyncEnabled</c>, but the Veldrid Metal present still does not throttle the CPU
         /// from this alone - pair with a software frame cap for a deterministic rate (see <c>PresentMode</c>).
         /// <para>
-        /// THAT SECOND CLAUSE IS MEASURED ON THE VELDRID METAL BACKEND, AND ONLY THERE. It has been the only Metal
-        /// implementation to run a windowed session, so it is the only one anyone has watched free-run. The
-        /// engine's own <see cref="GpuBackendKind.MetalNative"/> writes <c>displaySyncEnabled</c> unconditionally
-        /// where the incumbent writes it inside three values of a deprecated enum, and bounds
-        /// <c>maximumDrawableCount</c> with a blocking acquire at the present boundary, either of which may
-        /// throttle the CPU on its own. Whether it does is an open measurement, taken at rollout gate 5 of
-        /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c> with a mid-session vsync toggle as the
-        /// instrument, and until it is taken both Metal backends keep the software cap as a conservative default
-        /// (<see cref="GpuBackendKinds.IsMetal"/>, and <c>FrameCap.Resolve</c> carries the full reasoning).
+        /// THAT SECOND CLAUSE IS MEASURED ON THE VELDRID METAL BACKEND, AND ONLY THERE. The engine's own
+        /// <see cref="GpuBackendKind.MetalNative"/> writes <c>displaySyncEnabled</c> unconditionally where the
+        /// incumbent writes it inside three values of a deprecated enum, and bounds <c>maximumDrawableCount</c>
+        /// with a blocking acquire at the present boundary. Rollout gate 5 of
+        /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c> measured it on 2026-08-11 and those two
+        /// DO throttle the CPU: the acquire blocks once per frame for 15.175 ms of a 16.669 ms frame, a display
+        /// pinned to 120 Hz paces the loop at 120 fps, and turning this property off mid-session free-runs past
+        /// 700 fps with visible tearing. So the software cap is the incumbent's alone now
+        /// (<c>FrameCap.Resolve</c> carries the full reasoning), and vsync with no cap is healthy on the native
+        /// backend.
         /// </para>
         /// </summary>
         bool SyncToVerticalBlank { get; set; }

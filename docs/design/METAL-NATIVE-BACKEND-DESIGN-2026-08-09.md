@@ -111,7 +111,7 @@ went stale inside one release and `GpuBackendKindAppendAuditTests` records it.
 | M-H4 | Hazards | Seam rule 1 needs no code (the encoder boundary is the dependency, which the seam's own comment already names for Metal). Seam rule 2 is honoured AS WRITTEN with no seam member added, and this backend additionally satisfies it natively through the serial dispatch type. **That makes three of three engine-owned backends able to answer yes, which is #461's quorum.** Evidence, not a contract change | Both, converged |
 | M-W1 | Swapchain | `CAMetalLayer` configuration reproduced from the incumbent field for field, because it is visible only to a human: the layer adopt-or-create dance on the host view, `device`, `pixelFormat` from the sRGB request, `framebufferOnly = true`, and `drawableSize`. W1's lesson binds hardest where nothing in CI runs, and the Metal golden suite is headless | Both, converged |
 | M-W2 | Swapchain | **`displaySyncEnabled` is set UNCONDITIONALLY.** The incumbent's `MTLSwapchain.SetSyncToVerticalBlank` writes it only when `MetalFeatures.MaxFeatureSet` equals one of three values of an enum deprecated since macOS 10.15, so on a machine outside that set a vsync toggle silently does nothing. Reproducing a fragility whose failure is silent is not parity | B |
-| M-W3 | Swapchain | **The two frame-cap sites route through `IsMetal()` and their arm is decided by MEASUREMENT at gate 5, not by assumption.** `FrameCap.Resolve` and `DisplaySettings.RequiresFrameCapWarning` both apply a software cap only on Metal plus vsync, and both carry a comment saying the equality is deliberate because the question is whether the backend's present throttles the CPU. M-W2 plus `maximumDrawableCount` may change that answer for the native backend. Defaulting into the Metal arm preserves today's behaviour in both directions, and gate 5 reads which arm is right | Judge, against both |
+| M-W3 | Swapchain | **The two frame-cap sites route through `IsMetal()` and their arm is decided by MEASUREMENT at gate 5, not by assumption.** `FrameCap.Resolve` and `DisplaySettings.RequiresFrameCapWarning` both apply a software cap only on Metal plus vsync, and both carry a comment saying the equality is deliberate because the question is whether the backend's present throttles the CPU. M-W2 plus `maximumDrawableCount` may change that answer for the native backend. Defaulting into the Metal arm preserves today's behaviour in both directions, and gate 5 reads which arm is right. (**MEASURED AND RESOLVED at gate 5, 2026-08-11: the native present DOES throttle, so the arm FLIPPED for `MetalNative` and STAYED for the incumbent.** Three legs, and it takes all three: the gate-4 native capture (uncapped, vsync on, 8000 frames, build `17.35.0+a6f31ab0`) read `AcquireWaitCount` at exactly 1.000 per frame and `AcquireWaitMs` at 15.175 ms against a 16.669 ms median frame, steady across the capture, so 91 percent of every frame is blocked in the drawable acquire. The human pass on a display pinned to 120 Hz then sat at 120 fps with vsync on, which is the leg the 60 Hz capture could not supply. And F7 toggling vsync OFF mid-session jumped to 700 to 800+ fps with visible tearing, which is what rules out any other bottleneck as the source of the pacing and confirms `displaySyncEnabled=false` really free-runs. Both sites are an equality against `GpuBackendKind.Metal` again, and `IsMetal()` is left with no reader, recorded at the predicate rather than removed) | Judge, against both |
 | M-W4 | Swapchain | `nextDrawable` is taken AT THE PRESENT BOUNDARY for the next frame, keeping the incumbent's timing, which is the good half of it. It BLOCKS and Metal offers no semaphore alternative, so the stall is not removable and is instead MEASURED into `AcquireWaitCount` and `AcquireWaitMs`, the pair phase 3 already appended to `GpuDeviceCounters`. `maximumDrawableCount` is set to `FramesInFlight`. No seam addition at all | Both, converged |
 | M-W5 | Swapchain | A nil drawable binds a device-owned ORPHAN TARGET, records and submits normally, and skips only its present, counting into `FramesBegun`. The incumbent's `MTLSwapchainFramebuffer.IsRenderable` goes false and `PreDrawCommand` returns false for every draw, so a whole frame's recording is built and thrown away with nothing logged and nothing counted | Both, converged |
 | M-W6 | Swapchain | `presentDrawable:` stays on its OWN command buffer, exactly as the incumbent does it. **This is a place where the reuse prior wins**, and 2.11 argues it: the seam's `Present()` is a separate call from `Submit()`, the win is one cheap object per frame, and the alternative inherits the Vulkan design's own named limitation into the one area with zero automated coverage | Both, converged |
@@ -1199,6 +1199,16 @@ pass reads which it is, with the vsync toggle mid-session as its instrument, and
 either way. Both sites' doc comments are rewritten in the same row, because they currently assert a rationale
 that this append makes incomplete.
 
+**MEASURED at gate 5 on 2026-08-11, and the arm FLIPPED for `MetalNative`.** The native present throttles the
+CPU from vsync alone, so the conservative default was the wrong arm and both sites are an equality against
+`GpuBackendKind.Metal` again. The reading, its two other legs and what each one rules out are in the rollout
+record (section 17), and the consequence this subsection owns is the one it opened with: the question these
+sites ask is whether THIS BACKEND'S PRESENT throttles the CPU, and asked that way the answer put `MetalNative`
+beside `Direct3D11Native` and `VulkanNative` rather than beside the Metal it shares an API with. `IsMetal()`
+was written for these two readers and now has none, which is recorded at the predicate rather than being left
+to read as an oversight, and the predicate is kept because the question it asks is still the right one for the
+next site that reasons about the Metal API rather than about Veldrid's implementation of it.
+
 ### 2.10 The rollout conditions, and a gate that cannot be run
 
 **Both drafts make `SlathRepro` a rollout condition.** The reuse-first draft adds it as a sixth condition on
@@ -1456,8 +1466,8 @@ reason this section is not a formality.
 | `GpuBackendSelector.IsBackendSupported` | Route to the provider's probe | Same. Veldrid cannot answer for it |
 | `GpuBackendSelector.ProbeOS` | Unchanged until the flip, and the flip means LINUX | Unchanged until the flip, and **the flip means macOS**, which is the fleet's development platform (section 17) |
 | `GpuBackendSelector._windowCandidates` | Unchanged until default-ready | Same. A player does not choose an implementation |
-| **`Windowing/FrameCap.Resolve`** | Falls into the uncapped arm, correct by default, recorded because it is #380's arm | **MUST CHANGE, and it is silent.** It applies a real software frame cap only on Metal plus vsync, so `MetalNative` falls into the uncapped arm and a native windowed run loses the cap the incumbent run has. Route through `IsMetal()`, and **2.9 rules that the ARM is a gate-5 measurement rather than an assumption**, with the Metal arm as the conservative default |
-| **`Windowing/DisplaySettings.RequiresFrameCapWarning`** | Same shape, same arm | **MUST CHANGE, same shape, same silence, same 2.9 ruling.** Both sites' doc comments assert the equality against `Metal` is deliberate, and both are rewritten in the same row |
+| **`Windowing/FrameCap.Resolve`** | Falls into the uncapped arm, correct by default, recorded because it is #380's arm | **MUST CHANGE, and it is silent.** It applies a real software frame cap only on Metal plus vsync, so `MetalNative` falls into the uncapped arm and a native windowed run loses the cap the incumbent run has. Route through `IsMetal()`, and **2.9 rules that the ARM is a gate-5 measurement rather than an assumption**, with the Metal arm as the conservative default. (**Gate 5 measured it, 2026-08-11, and the answer is the UNCAPPED arm after all**: the native present throttles the CPU from vsync alone, so the site is an equality against `GpuBackendKind.Metal` again. The conservative default was still the right way to hold it, because reaching that answer took a windowed session nobody could run at append time) |
+| **`Windowing/DisplaySettings.RequiresFrameCapWarning`** | Same shape, same arm | **MUST CHANGE, same shape, same silence, same 2.9 ruling.** Both sites' doc comments assert the equality against `Metal` is deliberate, and both are rewritten in the same row. (**Flipped with its pair at gate 5**, and the audit's every-backend row is what holds them together: the warning tells a consumer to set a cap precisely when the default would not supply one, so a flip landing at one site only is the failure it catches) |
 | `GoldenCompare`'s two filename sites | Both route through `GoldenBackendToken` | Both, mapping `MetalNative` to `metal`. The switch has no discard arm and throws, and the audit test turns a missed mapping into a device-free red |
 | `VeldridMap.SupportsCompletionFences` | Not an append site, answers true for Vulkan | Not an append site, and worth naming: it answers true for `GraphicsBackend.Metal` already, which is why M-F4 is parity rather than the upgrade it was on D3D11 |
 | **`VeldridGpuDevice`'s Metal frame-capture gate** | Unaffected | **MUST CHANGE, and it is the third silent one.** It gates a `MTLCaptureManager` capture on `Backend == GpuBackendKind.Metal`, so a native run arms nothing and a diagnostic capture silently produces no trace. M-G5 gives the native backend its own capture path, which is better than widening the gate: it owns the queue, so the reflection into Veldrid's private `_commandQueue` field is unnecessary there |
@@ -2783,9 +2793,13 @@ it for Vulkan. Here there is nothing to build, and the DEPTH texture is the only
 `MaxFeatureSet` means that on a machine outside that set, `SyncToVerticalBlank` silently does nothing.
 `CAMetalLayer.displaySyncEnabled` is a macOS property on a macOS-only backend and needs no capability test.
 Reproducing a fragility whose failure is silent is not parity, which is V-W2's ruling on the two Vulkan bugs
-applied to a third. **And the frame-cap consequence is M-W3's**, which routes both `FrameCap.Resolve` and
+applied to a third. **And the frame-cap consequence is M-W3's**, which routed both `FrameCap.Resolve` and
 `DisplaySettings.RequiresFrameCapWarning` through `IsMetal()` with the Metal arm as the conservative default
-and gate 5's vsync toggle as the instrument that decides whether the arm is right.
+and gate 5's vsync toggle as the instrument that decides whether the arm is right. **Gate 5 decided it on
+2026-08-11 and the unconditional write is a load-bearing part of the answer**: the native present throttles
+the CPU from vsync alone, the arm flipped to the incumbent alone, and the F7 toggle that proved it also showed
+`displaySyncEnabled=false` free-running past 700 fps with visible tearing, which is this decision's write
+taking effect in both directions on a machine where the incumbent's three-value equality may not have.
 
 **The drawable acquire keeps its timing and gets measured (M-W4).** `nextDrawable` is taken at the present
 boundary for the NEXT frame, which is what makes the drawable known before recording starts, so nothing about
@@ -3699,8 +3713,10 @@ regression that only reproduces in a windowed session blocks development rather 
 gate 5 is the only instrument that sees it. That is a reason to hold gate 5 strictly rather than to relax
 anything.
 
-The flip itself is one line in `ProbeOS`, plus adding the kind to `_windowCandidates`, plus settling the two
-frame-cap rows (4.2, M-W3), which are the reason `IsMetal()` exists. `Metal` through Veldrid stays selectable
+The flip itself is one line in `ProbeOS`, plus adding the kind to `_windowCandidates`. The two frame-cap rows
+(4.2, M-W3) were the third piece and they are SETTLED: gate 5 measured the native present as throttling from
+vsync alone on 2026-08-11, so both sites went back to an equality against `GpuBackendKind.Metal` and
+`IsMetal()`, which existed for them, has no reader left. `Metal` through Veldrid stays selectable
 by token (M-RO2), so a field regression is one environment variable away from an A/B on the same build. The
 headless default stays on Veldrid until gate 4, because an early headless flip would silently reduce the
 incumbent's coverage during exactly the window when both must stay green, which is RO3's ruling for the third
@@ -3708,9 +3724,10 @@ time.
 
 ### Rollout record
 
-Gates 1, 2 and 3 are GREEN, read on 2026-08-11 off the leg's first green run. Gates 4 and 5 are PENDING with
-their instruments built and neither read, because one wants a field capture on this Mac and the other a person
-at a window. This subsection exists so the standing of each gate is recorded here as it moves rather than
+Gates 1, 2, 3 and 5 are GREEN, all read on 2026-08-11: the first three off the leg's first green run, and gate
+5 off a person at a window that evening. Gate 4 is the only one PENDING, and it is pending on TIME rather than
+on an instrument: its baseline is taken, its first native session is read, and what is left is the week-long
+soak and MM1. This subsection exists so the standing of each gate is recorded here as it moves rather than
 reconstructed from issue comments, in the shape phase 2's and phase 3's rollout records established.
 
 **The standing gate by gate, with the instrument named. The readings themselves are the notes under the
@@ -3722,7 +3739,7 @@ table.**
 | 2. Full `macos-26` suite at 0 failed and NO NEW SKIPS, with the two `[GpuFact]` assemblies at 0 skipped, passed at or above the incumbent's, no validation errors, MM9 met | **GREEN, read 2026-08-11 (run 31464944222)** | The same leg, which runs the whole suite on every trigger with `MTL_DEBUG_LAYER=1` armed and `KE_METAL_REQUIRED=1` set. **The skip half is read off the `[GpuFact]` assemblies rather than off the leg's own total**, because the leg's test step names no project and therefore runs the whole solution, where 18 backend-independent rows skip for reasons this backend cannot move: 17 in `KhaozEngine.Server.Tests` that need a live SQL Server (the `SqlServerWorldStoreConformanceTests` set and `SqlServerWalletStoreTests`), plus one `Game.Tests` perturbation control that skips on its own condition. `KhaozEngine.Render.Tests` and `KhaozEngine.MapEditor.Tests` are where a Metal row could skip, both genuinely reach 0 skipped on a real GPU, and that is the readable criterion, with ONE standing exception the first hosted run surfaced: a `[GpuFact(RequiresRealGpu = true)]` row self-skips on the hosted runner's paravirtual adapter by design, so on that leg the criterion reads as 0 skipped beyond the `RequiresRealGpu` rows (1 today, `DistortionGpuTests.Distortion_warps_the_starfield`), and a NEW skip is still a red flag. **`KE_METAL_REQUIRED` is what makes it worth reading at all**: a dormant row is not a skip, so without it the criterion could be satisfied by rows that asserted nothing. The passed-count comparison is against the incumbent Metal leg on the same commit, which is the leg beside it in the same matrix |
 | 3. Budget test green with marginals recorded, MM3 met, the MSL index-table test green, MM6 taken | **GREEN, read 2026-08-11 (run 31464944222)** | MM6 is TAKEN and PASSED (2.3a, row 17). The budget marginals, MM3 and the index-table test are device-free tests that already run on every `dotnet test`, the leg's included, so this gate was a RECORDING task rather than a machine one and all four halves are now in hand. Row 18, the #531 extraction, is the only work in section 18 that waited on it, and it is unblocked and dispatched |
 | 4. A field session at or above the incumbent's numbers, zero command-buffer errors, MM1, MM4 and MM10 met | **PENDING, baseline TAKEN and first native session READ, 2026-08-11** (both at `17.35.0+a6f31ab0`). MM4 met, MM10 discharged by its own refusal, MM1 still owed, and the pass bar itself ("no worse over a week") is a soak nobody has run yet | A windowed telemetry session on this Mac, and the FIRST task was the incumbent baseline (MM12), because no Metal field number existed anywhere in this program's record. Both captures are below. The instrument is the showcase's own `KE_TELEMETRY_PATH` lever, added for this gate, with `KE_SHOWCASE_FRAME_CAP` and `KE_SHOWCASE_BACKGROUND_THROTTLE` beside it for the reasons the gate 4 notes give. `GpuDeviceCounters` carries every channel this gate reads on the native backend and NONE of them on the incumbent (see the note below), and the session header names the backend. The build line and the capture-window stamps were pinned before anything was read |
-| 5. A human windowed pass, with the vsync toggle as a MEASUREMENT | PENDING, instrument built | A person at a window. The checklist is in the gate itself, narrowed by row 15: the layer half of the swapchain runs headless in the `[GpuFact]` suite, so what is genuinely uncovered is `MetalLayerHost`'s four Cocoa selectors and whether anything appears on a screen. It gains one item from #605, the Retina `drawableSize` read on frame one, and the frame-cap arm now has an instrument rather than a judgement: `AcquireWaitMs / AcquireWaitCount` on an uncapped capture with vsync on |
+| 5. A human windowed pass, with the vsync toggle as a MEASUREMENT | **GREEN, read 2026-08-11.** The window appears correctly, the Retina framebuffer is full-scale, the vsync measurement is TAKEN and its result has LANDED in shipped code, #605 is filed as reproduced incumbent parity, and #607 sits beside the gate as an unreproduced one-off lead rather than blocking it | A person at a window, plus the F7 vsync toggle as the measuring instrument. The checklist is in the gate itself, narrowed by row 15: the layer half of the swapchain runs headless in the `[GpuFact]` suite, so what was genuinely uncovered is `MetalLayerHost`'s four Cocoa selectors and whether anything appears on a screen. Both now have an answer. The frame-cap arm had an instrument rather than a judgement (`AcquireWaitMs / AcquireWaitCount` on an uncapped capture with vsync on) and the toggle supplied the two legs that capture could not |
 
 **The `ProbeOS` flip does NOT land in row 19, and the design is unambiguous about why.** Section 17 opens
 "Five gates, all green before any flip", and every gate above is PENDING. Row 19 builds the INSTRUMENT for
@@ -3936,10 +3953,11 @@ run as its two machine-bound siblings. Row 18, the #531 extraction, was gated on
 
 **Gate 5 carries an obligation from row 3 that is worth naming here rather than only in section 2.9**, because
 it is the one gate whose result lands back in shipped code. `FrameCap.Resolve` and
-`DisplaySettings.RequiresFrameCapWarning` now route through `IsMetal()`, so the native backend takes the
-incumbent's capped arm as a conservative default. That arm is NOT a finding. Gate 5's mid-session vsync toggle
+`DisplaySettings.RequiresFrameCapWarning` routed through `IsMetal()` at row 3, so the native backend took the
+incumbent's capped arm as a conservative default. That arm was NOT a finding. Gate 5's mid-session vsync toggle
 is the instrument that decides it, and whichever way it reads, the disposition is written into both doc
-comments. A gate 5 that passes without recording that answer has not been run.
+comments. A gate 5 that passes without recording that answer has not been run. (**It was recorded**: the
+reading is the note below, and the flip it produced is the one after that.)
 
 **THE VSYNC MEASUREMENT IS TAKEN, folded into gate 4's native session on 2026-08-11 because the same uncapped
 vsync-on capture answers both.** Build line `17.35.0+a6f31ab0`, Release, M2 Max, the showcase's 3D overworld
@@ -3957,14 +3975,44 @@ incumbent's uncapped run pinned to the refresh too (60.16 fps, then 119.98 fps o
 is evidence its present throttles as well, though the incumbent reports no counters at all so the mechanism
 cannot be shown the same way there.
 
-**The arm is NOT flipped yet, deliberately, and gate 5 still owes the toggle.** What was measured is one
-uncapped capture with vsync on for its whole length. What M-W3 actually specifies is a MID-SESSION toggle, and
-the difference matters: the reading above cannot see whether the acquire behaves the same way immediately after
-a live vsync change, which is the transition the queued-resize-and-vsync path in row 15 exists to handle.
-The showcase's F7 is that instrument and a human at the window is what drives it. So the disposition recorded
-here is "the native present throttles, so the cap is expected to be redundant, pending gate 5's toggle", and
-the two doc comments keep the conservative arm until a human has toggled it. Flipping shipped pacing on a
-capture that never toggled would be exactly the assertion M-W3 was written to stop.
+**The arm was NOT flipped on that capture alone, deliberately.** What it measured is one uncapped capture with
+vsync on for its whole length. What M-W3 actually specifies is a MID-SESSION toggle, and the difference
+matters: the reading above cannot see whether the acquire behaves the same way immediately after a live vsync
+change, which is the transition the queued-resize-and-vsync path in row 15 exists to handle. The showcase's F7
+is that instrument and a human at the window is what drives it. So the disposition recorded at the time was
+"the native present throttles, so the cap is expected to be redundant, pending gate 5's toggle", and the two
+doc comments kept the conservative arm until a human had toggled it. Flipping shipped pacing on a capture that
+never toggled would have been exactly the assertion M-W3 was written to stop.
+
+**GATE 5 READS GREEN, and the toggle came back the same way.** The human windowed pass ran the same evening,
+2026-08-11, on the same build. The window appears correctly, the Retina framebuffer is full-scale (which is
+what #605 turned out to reach, see below), and the two legs the capture could not supply are in hand:
+
+- **On a display pinned to 120 Hz, with vsync ON, the native session sits at 120 fps**, paced at the refresh.
+  That is the leg the field capture could not give, because the capture ran on a 60 Hz display state and a
+  loop pinned at 60 is consistent with a backend that simply cannot go faster. Pinned at 120 and pacing at 120
+  it is not.
+- **F7 toggling vsync OFF mid-session jumps the rate to 700 to 800+ fps with visible screen tearing.** That is
+  the leg that rules out every other bottleneck: whatever was holding the loop at the refresh was vsync, not
+  the CPU, not the GPU and not the acquire's own cost. It also confirms `displaySyncEnabled=false` genuinely
+  free-runs and tears, which is M-W2's unconditional write taking effect in both directions.
+
+**So the arm is FLIPPED for `MetalNative` and STAYS for the incumbent.** `FrameCap.Resolve` and
+`DisplaySettings.RequiresFrameCapWarning` are an equality against `GpuBackendKind.Metal` again, both doc
+comments carry the measured answer and its three legs, and `IsMetal()` is left with no reader, which is
+recorded at the predicate rather than deleted (2.9). A Mac client on the native backend with vsync on and no
+software cap is now a HEALTHY configuration rather than a warned one, and its default `FrameCap.Auto` no
+longer resolves to a cap it does not need. What decided it is the pair of legs above rather than the capture
+alone, which is the shape M-W3 asked for.
+
+**#605 and #607 sit beside this gate rather than inside it, and the standing of each is worth stating.**
+#605, the Retina `drawableSize` read on frame one, is REPRODUCED incumbent behaviour rather than a native
+defect: the window opens at full scale on this Mac because the first framebuffer-resize callback corrects the
+points-versus-pixels truncation before anything visible renders, which is the half the issue records as
+unmeasured. It stays open as the arithmetic question it always was. #607, the single warmup crash, is an
+UNREPRODUCED one-off with the managed exception lost, and it does not block a gate whose subject is the
+windowed surface: it did not recur in five subsequent boots on the same build, and the issue names the next
+actionable step. Holding a green gate on an unreproduced one-off would make the gate unfalsifiable.
 
 ---
 
@@ -4077,13 +4125,17 @@ done rather than a re-read of the whole list.
   reading `VeldridMap`: it answers true for `GraphicsBackend.Metal` off a command-buffer completion handler and
   the native backend answers true off its `MTLSharedEvent`, so the sentence is correct for both.
   **`SyncToVerticalBlank` DONE at row 19**, and it took a paragraph rather than a clause, because the clause
-  that had to be added is the one gate 5 will overwrite.)
+  that had to be added is the one gate 5 will overwrite. **Overwritten at gate 5**, with the measured answer
+  and the two toggle legs in place of the open question.)
 - `FrameCap.Resolve`'s and `DisplaySettings.RequiresFrameCapWarning`'s doc comments, which currently assert the
   equality against `Metal` is deliberate (row 3 rewrites them, and gate 5 settles the arm). (**DONE at row 3,
   and nothing further is owed until gate 5 reads.** Both now say the Metal arm is a conservative default
   awaiting a measurement rather than a finding, and name the instrument. The two CONSUMER-facing copies of the
   same claim were not on this list and row 15 found them: `docs/USING-KHAOZENGINE.md` and
-  `KhaozEngine.Windowing/README.md`, both qualified at row 19.)
+  `KhaozEngine.Windowing/README.md`, both qualified at row 19. **GATE 5 READ IT and all four were rewritten
+  again**, this time to the measured answer, along with `AppWindow`'s warning site, the `IsMetal()` predicate
+  itself, which the flip left with no reader, and the Showcase's `KE_SHOWCASE_FRAME_CAP` comment, which
+  described the capped default as covering both Metal backends.)
 - `ModelRenderer.BeginModelPass`'s MRT-clear comment. (**DONE at row 19.** It now names the Veldrid Metal
   backend as the implementation that collapses the clear, says why equal values do not fix that, and says why
   the three values stay equal anyway: this code cannot tell which Metal it is on and has to be correct on both

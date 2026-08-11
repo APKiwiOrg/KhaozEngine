@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.Gpu.Internal;
 using Veldrid;
 using Veldrid.SPIRV;
 
@@ -31,6 +32,14 @@ namespace KhaozEngine.Gpu
     /// validating a shader nobody ships. Call both, the second behind
     /// <c>KhaozEngineD3D11.IsPlatformSupported</c>.
     /// </para>
+    /// <para>
+    /// IT ALSO CHECKS THE METAL BINDING ORDER, which is not a compile failure anywhere and is the one class of
+    /// shader bug that renders a wrong picture instead of throwing. Both entry points run
+    /// <see cref="Internal.MslBindingOrder"/> over the Metal emission: per stage, the arguments in Metal index
+    /// order must be the arguments in binding order, and for a pair each stage's resources must additionally be a
+    /// PREFIX of the layout's, per index space. Read that type for the mechanism and for what it deliberately
+    /// stays silent about.
+    /// </para>
     /// </remarks>
     public static class ShaderValidation
     {
@@ -54,8 +63,10 @@ namespace KhaozEngine.Gpu
         /// <param name="fragmentGlsl">The fragment shader source, GLSL <c>#version 450</c>.</param>
         /// <param name="label">Optional name for the pair, included in any error message so a failure points at the
         /// offending shader.</param>
-        /// <exception cref="ShaderValidationException">A source failed to compile to SPIR-V, or the pair failed to
-        /// cross-compile to one of the backend targets. The message names the label and the failing stage/target.</exception>
+        /// <exception cref="ShaderValidationException">A source failed to compile to SPIR-V, the pair failed to
+        /// cross-compile to one of the backend targets, or the Metal emission's binding order disagrees with the
+        /// resource layout's (see <see cref="Internal.MslBindingOrder"/>). The message names the label and the
+        /// failing stage/target.</exception>
         public static void ValidatePair(string vertexGlsl, string fragmentGlsl, string? label = null)
         {
             if (vertexGlsl is null) throw new ArgumentNullException(nameof(vertexGlsl));
@@ -68,15 +79,25 @@ namespace KhaozEngine.Gpu
 
             foreach (CrossCompileTarget target in Targets)
             {
+                VertexFragmentCompilationResult result;
                 try
                 {
-                    SpirvCompilation.CompileVertexFragment(vertSpirv, fragSpirv, target);
+                    result = SpirvCompilation.CompileVertexFragment(vertSpirv, fragSpirv, target);
                 }
                 catch (Exception ex)
                 {
                     throw new ShaderValidationException(
                         $"{tag}: cross-compile to {target} failed: {ex.Message}", ex);
                 }
+                if (target != CrossCompileTarget.MSL) continue;
+
+                // Both stages first, then the pair-wide prefix property, so a per-stage swap (the common case,
+                // and the one with a one-line fix) is reported ahead of the layout-shaped constraint.
+                var vertex = MslBindingOrder.CheckStage(
+                    vertSpirv, result.VertexShader, MslBindingOrder.Vertex, tag);
+                var fragment = MslBindingOrder.CheckStage(
+                    fragSpirv, result.FragmentShader, MslBindingOrder.Fragment, tag);
+                MslBindingOrder.CheckPrefix(vertex, fragment, tag);
             }
         }
 
@@ -113,14 +134,26 @@ namespace KhaozEngine.Gpu
                     throw new ShaderValidationException(
                         $"{tag}: compute cross-compile to {target} failed: {ex.Message}", ex);
                 }
-                if (target == CrossCompileTarget.MSL) CheckMslBufferSlots(result, tag);
+                if (target != CrossCompileTarget.MSL) continue;
+
+                // The id join first, because it is exact and sees a same-kind swap. The kind comparison below is
+                // the fallback for the one case the join cannot answer: an index space carrying an argument whose
+                // name is not the _<id> shape, where the join deliberately says nothing rather than guess.
+                var resolved = MslBindingOrder.CheckStage(spirv, result.ComputeShader, MslBindingOrder.Compute, tag);
+                if (resolved is null || !resolved.ContainsKey("buffer")) CheckMslBufferSlots(result, tag);
             }
         }
 
         /// <summary>
+        /// THE FALLBACK, since 17.36.0. <see cref="Internal.MslBindingOrder"/> answers the same question exactly,
+        /// keyed on the SPIR-V id, and this runs only for a buffer space that join declined to read. Kept because
+        /// the join's one refusal (an argument whose name is not the <c>_&lt;id&gt;</c> shape) leaves a shader
+        /// with no check at all otherwise, and half a check beats none.
+        /// <para>
         /// Reject a compute source whose cross-compiled Metal entry point puts its UNIFORM buffer at a different
         /// slot from the one the resource layout will bind it to. This is a real, silent miscompile rather than a
         /// style check, and it is why it exists.
+        /// </para>
         /// <para>
         /// Metal has no binding decorations. The cross-compiler hands each resource a <c>[[buffer(n)]]</c> index of
         /// its own, assigned in SPIR-V id order, which follows where each resource is FIRST REFERENCED across the
@@ -136,8 +169,8 @@ namespace KhaozEngine.Gpu
         /// entry point lists its buffer arguments in Metal-index order, and a uniform buffer that lands at a
         /// different position between the two is the bug. That catches a uniform/storage swap, which is the case a
         /// mixed resource set can hit. It does NOT distinguish two storage buffers from each other, since Metal
-        /// spells both <c>device T&amp;</c> - a swap between two same-kind buffers is not visible from here, and
-        /// only a readback test will catch it.
+        /// spells both <c>device T&amp;</c> - a swap between two same-kind buffers is not visible from here. That
+        /// gap is exactly what the id join above closes, which is why this is a fallback and no longer the guard.
         /// </para>
         /// <para>
         /// The fix in the shader is always the same shape: make the first reference to each resource happen in

@@ -703,6 +703,11 @@ bound.
 | Set 0 read by both stages, a fragment-only second buffer at set 1 | `(1, 1, 0, 1)` both read | `(1, 1, 0, 1)` both read |
 | Set 0 read by the VERTEX alone, set 1 by the FRAGMENT alone | `(1, 1, 0, 1)` both read | `(1, 0, 0, 1)` **the second read ALL ZERO** |
 
+**The incumbent column is the one that can go STALE**, because it is recorded and asserted by nothing. If
+Veldrid starts numbering the way the emission does, no test goes red and the control simply reads
+`(1, 1, 0, 1)` as well, so a changed control reading is a maintenance signal rather than a failure: refresh
+this table and the measurement in the body of #604 when it moves.
+
 **The third row is what makes the answer readable, and it was not in the plan.** 2.3 specified two shapes, and
 both came back yellow on BOTH backends, which is an answer that separates nothing: a native pass beside an
 incumbent that also passes is equally consistent with "the id join fixed it" and with "the constraint stopped
@@ -714,7 +719,9 @@ measurement has a live positive control rather than a remembered one.
 
 **The mechanism is named and pinned DEVICE-FREE**, by
 `MetalTwoUniformBufferGpuTests.TheSplitStageProgramIsWhereTheEmissionAndTheCountDisagree`, which runs on every
-`dotnet test` on the free Linux leg. For a fragment function referencing only the set-1 buffer, the emitted MSL
+`dotnet test` on the free Linux leg. What that row pins is the EMISSION and this engine's reproduction of the
+incumbent's arithmetic, and not the incumbent's live binding: that is what the pixel rows record, and they
+record it rather than assert it. For a fragment function referencing only the set-1 buffer, the emitted MSL
 puts it at `buffer(0)`, while a per-kind declaration-order count over the declared layout array puts it at
 `buffer(1)`, because set 0 declares a buffer that function never mentions. The incumbent writes the buffer at
 index 1 and the function reads index 0, which is a slot nothing wrote. All zero, silently, with no validation

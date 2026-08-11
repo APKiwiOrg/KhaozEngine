@@ -15,10 +15,11 @@ namespace KhaozEngine.Tests.Gpu
     /// (https://github.com/APKiwiOrg/KhaozEngine/issues/583).
     ///
     /// <para><b>THE QUESTION IS FOUR SESSIONS OLD AND HAS ONE SHIPPED CONSEQUENCE.</b>
-    /// <c>docs/DEPENDENCY-SEAMS.md</c> carries the one-uniform-buffer-per-pipeline invariant as a fact about
-    /// METAL: any pipeline reading more than one uniform buffer mis-binds, a second buffer read only by the
-    /// fragment stage reads all zero whether it sits at a second binding or in a separate set, and the read is
-    /// SILENT. The splat terrain and the skinned model both carry a bespoke combined UBO because of it, and the
+    /// <c>docs/DEPENDENCY-SEAMS.md</c> carried the one-uniform-buffer-per-pipeline invariant as a fact about
+    /// METAL until this row ran: any pipeline reading more than one uniform buffer mis-binds, a second buffer
+    /// read only by the fragment stage reads all zero whether it sits at a second binding or in a separate set,
+    /// and the read is SILENT. (It carries the measured, narrower form now, with the same practical rule on top
+    /// of it.) The splat terrain and the skinned model both carry a bespoke combined UBO because of it, and the
     /// engine-wide rule for any new render path is that a pipeline reads exactly one uniform buffer at set 0
     /// binding 0. Section 2.3 rules that this is a HYPOTHESIS about the incumbent's numbering rather than a
     /// measured property of Metal, and MM6 is the measurement that settles it.</para>
@@ -162,8 +163,15 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// WHY THE THIRD SHAPE IS THE ONE THAT SEPARATES THEM, PINNED DEVICE-FREE. The pixel rows above say WHAT
         /// each backend read. This one says WHY, and it runs on every <c>dotnet test</c> on the free Linux leg,
-        /// so the explanation recorded in the design doc cannot quietly stop being true on the days nobody has a
-        /// Mac in front of them.
+        /// so the two halves the explanation rests on, the EMISSION and this engine's reproduction of the
+        /// incumbent's arithmetic, stay checked on the days nobody has a Mac in front of them.
+        ///
+        /// <para><b>WHAT IT DOES NOT PIN IS THE INCUMBENT ITSELF.</b> Veldrid's live binding is recorded by the
+        /// rows above and asserted by nothing, which is the deliberate trade in the control's own header. So the
+        /// day Veldrid numbers its buffers the way the emission does, nothing here goes red: the control quietly
+        /// reads yellow, and what goes stale is the recorded table in 2.3a and the measurement in the body of
+        /// #604. A changed control reading is the signal to refresh both, and it arrives in this file's test
+        /// output rather than as a failure.</para>
         ///
         /// <para><b>THE TWO NUMBERS DISAGREE HERE AND AGREE EVERYWHERE ELSE.</b>
         /// <c>MetalShaderIndexTableTests.EveryShippedProgram_ResolvesEveryEmittedArgumentThroughItsDecorations</c>

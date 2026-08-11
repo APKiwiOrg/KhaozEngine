@@ -360,11 +360,29 @@ namespace KhaozEngine.Tests.Gpu
     /// the Windows and Linux legs run this assembly in strict mode where a skip is a failure, so a row that has no
     /// device to talk to records the reason and asserts nothing.
     /// </para>
+    /// <para>
+    /// AND <c>KE_METAL_REQUIRED=1</c> IS THE WAY OUT OF A DORMANT ROW LOOKING LIKE A PASSING ONE, which is the
+    /// same lesson taken one step further and is phase 3's <c>VulkanDormancy</c> inherited by name. A dormant
+    /// return is right on a developer box and on every CI leg but the <c>metal-native</c> one. On THAT leg it is
+    /// a test that asserted nothing and reported green, which the zero-skipped criterion of rollout gate 2 cannot
+    /// see, because the row did not skip. With the variable set every answer below THROWS instead, naming what
+    /// the probe objected to, so a driver or runner-image regression reds the leg built to catch it. Unset, every
+    /// row goes dormant exactly as before.
+    /// </para>
     /// </summary>
     static class MetalDormancy
     {
+        /// <summary>The variable a leg sets to declare it must have a native Metal device. A constant so the
+        /// workflow, the test file headers and the failure message cannot drift apart on the spelling.</summary>
+        internal const string RequiredVariable = "KE_METAL_REQUIRED";
+
+        /// <summary>Whether this leg declared a native Metal device mandatory. Compared against <c>"1"</c>
+        /// exactly, the spelling <c>GpuFactAttribute</c> already uses for <c>KE_GPU_TESTS</c>.</summary>
+        internal static bool IsRequired => Environment.GetEnvironmentVariable(RequiredVariable) == "1";
+
         /// <summary>True when a native Metal device can be created here. Writes the reason it cannot to
-        /// <paramref name="output"/>, so a dormant run says which of the two machine facts it hit.
+        /// <paramref name="output"/>, so a dormant run says which of the two machine facts it hit, and THROWS
+        /// rather than answering false when <see cref="IsRequired"/>.
         /// <para>
         /// A <c>[SupportedOSPlatformGuard]</c> rather than a plain bool, and it is honest: the first thing this
         /// asks is <c>KhaozEngineMetal.IsPlatformSupported</c>, so a true answer really does imply macOS. That is
@@ -372,11 +390,14 @@ namespace KhaozEngine.Tests.Gpu
         /// already do through their own inline copy of this pair.
         /// </para>
         /// </summary>
+        /// <exception cref="InvalidOperationException">This machine has no native Metal device and the leg set
+        /// <see cref="RequiredVariable"/>.</exception>
         [System.Runtime.Versioning.SupportedOSPlatformGuard("macos")]
         internal static bool NativeDeviceAvailable(ITestOutputHelper output)
         {
             if (!KhaozEngineMetal.IsPlatformSupported)
             {
+                ThrowIfRequired("this is not macOS at all");
                 output.WriteLine("dormant: not macOS, so there is no native Metal device to compare.");
                 return false;
             }
@@ -384,9 +405,35 @@ namespace KhaozEngine.Tests.Gpu
             string? missing = MissingRequirement();
             if (missing is null) return true;
 
+            ThrowIfRequired(missing);
             output.WriteLine("dormant: this machine cannot run the native Metal backend (" + missing + ").");
             return false;
         }
+
+        /// <summary>
+        /// Turn a refusal into a hard failure where the leg declared a device mandatory, and do nothing at all
+        /// otherwise. Called by this type and by the rows that carry their own inline copy of the pair above, so
+        /// the variable has exactly one reader and one message however many places go dormant.
+        /// </summary>
+        /// <param name="probeAnswer">What the machine objected to, in the probe's own words where there is one.</param>
+        internal static void ThrowIfRequired(string? probeAnswer)
+        {
+            if (!IsRequired) return;
+            throw new InvalidOperationException(RefusalMessage(probeAnswer));
+        }
+
+        /// <summary>
+        /// The pure half: what a refusal reads like, given the machine's own answer. Split out so the message is
+        /// assertable on a machine with no Metal at all, which is every Windows and Linux leg in the matrix and
+        /// therefore most of the machines that will ever run this assembly.
+        /// </summary>
+        internal static string RefusalMessage(string? probeAnswer)
+            => $"{RequiredVariable}=1 says this leg must have a native Metal device, and this machine cannot "
+                + "provide one: "
+                + (probeAnswer ?? "no reason was recorded, so the refusal came from outside the requirement walk")
+                + ". This is a hard failure rather than a dormant row because a dormant row on THIS leg is a pass "
+                + "with no assertions in it, which the zero-skipped gate cannot see. Unset "
+                + $"{RequiredVariable} to let these rows go dormant again.";
 
         // Split out under the guard so CA1416 can see that the probe is only ever read on macOS. The caller's own
         // IsPlatformSupported check is what makes that true, and the analyzer reads the guard at the call site.

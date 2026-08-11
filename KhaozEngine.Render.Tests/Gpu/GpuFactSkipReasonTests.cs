@@ -115,5 +115,30 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Contains(VulkanDormancy.RequiredVariable, message, StringComparison.Ordinal);
             Assert.Contains("KE_VULKAN_DEVICE", message, StringComparison.Ordinal);
         }
+
+        // The same escape on the third backend (MetalDormancy), and the same reason for asserting the pure half
+        // here: this message is only ever PRODUCED on a machine that has no Metal, and every Windows and Linux leg
+        // in the matrix is one, so a message that read badly would be discovered by whoever was already debugging
+        // a red leg. The two spellings are asserted rather than the whole text: the variable, because the
+        // workflow, the file headers and this message all have to agree on it, and the machine's own words,
+        // because a refusal that does not carry them tells a reader nothing they did not already know.
+        [Fact]
+        public void A_required_metal_leg_is_told_what_the_machine_objected_to()
+        {
+            string message = MetalDormancy.RefusalMessage(
+                "the default device does not support the MTLGPUFamily floor");
+
+            Assert.Contains(MetalDormancy.RequiredVariable, message, StringComparison.Ordinal);
+            Assert.Contains("MTLGPUFamily floor", message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void A_metal_refusal_with_no_recorded_reason_still_says_so()
+        {
+            string message = MetalDormancy.RefusalMessage(null);
+
+            Assert.Contains(MetalDormancy.RequiredVariable, message, StringComparison.Ordinal);
+            Assert.Contains("no reason was recorded", message, StringComparison.Ordinal);
+        }
     }
 }

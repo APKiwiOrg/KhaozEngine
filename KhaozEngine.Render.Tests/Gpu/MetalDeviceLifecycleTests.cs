@@ -360,6 +360,9 @@ namespace KhaozEngine.Tests.Gpu
         {
             if (!KhaozEngineMetal.IsPlatformSupported)
             {
+                // KE_METAL_REQUIRED=1 turns every dormant answer in this assembly into a throw, and the variable
+                // has exactly one reader (MetalDormancy) however many places go dormant.
+                MetalDormancy.ThrowIfRequired("this is not macOS at all");
                 _output.WriteLine("dormant: not macOS, so there is no Metal device to create.");
                 return false;
             }
@@ -367,6 +370,7 @@ namespace KhaozEngine.Tests.Gpu
             string? missing = MetalSupportProbe.MissingRequirement();
             if (missing is null) return true;
 
+            MetalDormancy.ThrowIfRequired(missing);
             _output.WriteLine("dormant: this machine cannot run the native Metal backend (" + missing + ").");
             return false;
         }
@@ -441,7 +445,13 @@ namespace KhaozEngine.Tests.Gpu
             Assert.False(string.IsNullOrWhiteSpace(device.Capabilities.DeviceName));
         }
 
-        void Dormant(string why) => _output.WriteLine("dormant: " + why + ".");
+        // Throws instead where KE_METAL_REQUIRED=1 says this leg has a device, so a dormant row on the one leg
+        // built to run these cannot report green having asserted nothing (MetalDormancy).
+        void Dormant(string why)
+        {
+            MetalDormancy.ThrowIfRequired(why);
+            _output.WriteLine("dormant: " + why + ".");
+        }
 
         sealed class EnvVar : IDisposable
         {

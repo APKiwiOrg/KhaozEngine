@@ -1605,7 +1605,10 @@ here is a fleet event rather than a leg event.
   destination as supported and `startCapture` returns false, which is a platform fact written down nowhere
   Apple says so. And the cost that was supposed to keep it off the push path does not exist: the full assembly
   runs 4m39s with it against 4m37s without, same machine, same commit. So it rides every ordinary run instead
-  of the weekly one, which is more coverage than the design asked for.
+  of the weekly one, which is more coverage than the design asked for. And because the two arms are inverses,
+  the deep tier is a dispatch INPUT (`tier`, defaulting to `deep`) rather than every dispatch: unconditionally
+  deep left the capture reachable on the push path alone, so the run a person starts to debug a capture was the
+  one run that could not take one. The cron stays deep and an unattended dispatch is unchanged.
 
 **Arming the layer corrected what [#591](https://github.com/APKiwiOrg/KhaozEngine/issues/591) recorded, and it
 took two measurements to settle.** That issue records the host-aborting behaviour as a property of

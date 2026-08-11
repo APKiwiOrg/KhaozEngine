@@ -3334,6 +3334,14 @@ trigger of the leg except the deep sweep, and the capture interop is exercised e
 instead of weekly. That is strictly more coverage than this design asked for, obtained by reading a
 measurement instead of a plausible sentence.
 
+**Which is also why the deep tier is a dispatch INPUT rather than "any dispatch".** Two inverse arms and one
+manual trigger between them means an unconditional rule picks a winner: with the deep tier taking every
+dispatch, the capture arm was reachable on the push path alone and unreachable on demand, so the run a person
+starts to debug a capture was the one run that could not take one. The workflow's `tier` input picks, defaults
+to `deep` so an unattended dispatch and the whole rollout record above are unchanged, and leaves the cron
+always deep. The rule is that every arm this leg has must be startable by a human, which is the same reason the
+tier is on dispatch at all.
+
 **The incumbent Metal leg is deliberately NOT coupled to the native backend's health**, for the reason the
 workflow header already gives about the incumbent Vulkan leg. It arms no validation tier, sets no
 `KE_METAL_REQUIRED`, and its rows that touch a native device stay dormant if the probe ever refuses the runner.

@@ -47,7 +47,7 @@ void main() { Values[gl_GlobalInvocationID.x] = Tint; }
 ";
 
         static readonly (MetalMslProgram Program, uint X, uint Y, uint Z) Kernel =
-            MetalShaderBuild.Compute(KernelGlsl, "MetalDispatchPathKernel");
+            MetalShaderBuild.Compute(KernelGlsl, null, "MetalDispatchPathKernel");
 
         // The graphics table, for the two rows that need a draw to put a render encoder in the way.
         static readonly MetalShaderIndexTable GraphicsTable = MetalBindProgram.Table();

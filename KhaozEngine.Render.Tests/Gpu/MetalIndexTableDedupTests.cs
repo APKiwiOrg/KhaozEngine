@@ -53,9 +53,9 @@ namespace KhaozEngine.Tests.Gpu
             ShippedGraphicsProgram program = D3D11ShaderProgramCatalog.GraphicsPrograms().First();
 
             MetalShaderIndexTable first = MetalShaderBuild.Pair(
-                program.VertexGlsl, program.FragmentGlsl, program.Name).Table;
+                program.VertexGlsl, program.FragmentGlsl, null, program.Name).Table;
             MetalShaderIndexTable second = MetalShaderBuild.Pair(
-                program.VertexGlsl, program.FragmentGlsl, program.Name).Table;
+                program.VertexGlsl, program.FragmentGlsl, null, program.Name).Table;
 
             // WITHOUT THE CACHE THE COMPARISON IS NEVER EQUAL. This is the incumbent's behaviour stated as a
             // measurement rather than as a claim: same program, same emission, two objects.
@@ -268,11 +268,11 @@ namespace KhaozEngine.Tests.Gpu
             foreach (ShippedGraphicsProgram program in D3D11ShaderProgramCatalog.GraphicsPrograms())
             {
                 yield return (program.Name,
-                    MetalShaderBuild.Pair(program.VertexGlsl, program.FragmentGlsl, program.Name).Table);
+                    MetalShaderBuild.Pair(program.VertexGlsl, program.FragmentGlsl, null, program.Name).Table);
             }
 
             foreach (ShippedComputeKernel kernel in D3D11ShaderProgramCatalog.ComputeKernels())
-                yield return (kernel.Name, MetalShaderBuild.Compute(kernel.ComputeGlsl, kernel.Name).Program.Table);
+                yield return (kernel.Name, MetalShaderBuild.Compute(kernel.ComputeGlsl, null, kernel.Name).Program.Table);
         }
 
         // A table over the given layout whose fragment stage references element 0 and nothing else, from the

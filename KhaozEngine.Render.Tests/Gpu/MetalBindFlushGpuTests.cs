@@ -95,7 +95,7 @@ namespace KhaozEngine.Tests.Gpu
             IGpuResourceFactory factory = device.Factory;
 
             MetalShaderIndexTable table = MetalShaderBuild.Pair(
-                MetalBindProgram.VertexGlsl, MetalBindProgram.FragmentGlsl, "MetalBindProgram").Table;
+                MetalBindProgram.VertexGlsl, MetalBindProgram.FragmentGlsl, null, "MetalBindProgram").Table;
 
             using IGpuResourceLayout layout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(
                 Element("Frame", GpuResourceKind.UniformBuffer, dynamic: true),
@@ -195,7 +195,7 @@ namespace KhaozEngine.Tests.Gpu
             IGpuResourceFactory factory = device.Factory;
 
             MetalShaderIndexTable table = MetalShaderBuild.Pair(
-                MetalVertexSamplingProgram.VertexGlsl, MetalVertexSamplingProgram.FragmentGlsl,
+                MetalVertexSamplingProgram.VertexGlsl, MetalVertexSamplingProgram.FragmentGlsl, null,
                 "MetalVertexSamplingProgram").Table;
 
             // THE PREMISE, READ OFF THE TABLE: the vertex function really does reference a texture and a
@@ -290,7 +290,7 @@ namespace KhaozEngine.Tests.Gpu
             using MetalGpuDevice device = CreateHeadless();
             IGpuResourceFactory factory = device.Factory;
 
-            (MetalMslProgram program, _, _, _) = MetalShaderBuild.Compute(ComputeGlsl, "MetalBindCompute");
+            (MetalMslProgram program, _, _, _) = MetalShaderBuild.Compute(ComputeGlsl, null, "MetalBindCompute");
             MetalShaderIndexTable table = program.Table;
 
             using IGpuResourceLayout layout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(

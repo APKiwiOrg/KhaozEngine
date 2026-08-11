@@ -68,7 +68,7 @@ namespace KhaozEngine.Tests.Gpu
             {
                 // Building at all is four of the five assertions: every refusal class is a throw in here.
                 MetalMslProgram built = MetalShaderBuild.Pair(
-                    program.VertexGlsl, program.FragmentGlsl, program.Name);
+                    program.VertexGlsl, program.FragmentGlsl, null, program.Name);
                 Measure(program.Name, built, ref entries, ref differsFromBinding, ref differsFromIncumbent,
                     ref stagesSeen, ref stageElementSlots, ref unreferencedSlots, disagreements);
                 programs++;
@@ -77,7 +77,7 @@ namespace KhaozEngine.Tests.Gpu
             foreach (ShippedComputeKernel kernel in D3D11ShaderProgramCatalog.ComputeKernels())
             {
                 (MetalMslProgram built, uint x, uint y, uint z) = MetalShaderBuild.Compute(
-                    kernel.ComputeGlsl, kernel.Name);
+                    kernel.ComputeGlsl, null, kernel.Name);
 
                 // The workgroup size rides the same call and is what dispatchThreadgroups needs, so a kernel that
                 // built but reported nothing would be a silent zero-thread dispatch later.
@@ -137,7 +137,7 @@ namespace KhaozEngine.Tests.Gpu
             foreach (ShippedGraphicsProgram program in D3D11ShaderProgramCatalog.GraphicsPrograms())
             {
                 MetalMslProgram built = MetalShaderBuild.Pair(
-                    program.VertexGlsl, program.FragmentGlsl, program.Name);
+                    program.VertexGlsl, program.FragmentGlsl, null, program.Name);
 
                 Assert.Equal(2, built.Stages.Count);
                 foreach (MetalMslStage stage in built.Stages)

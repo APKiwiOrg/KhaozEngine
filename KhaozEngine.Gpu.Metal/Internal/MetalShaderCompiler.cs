@@ -37,19 +37,40 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <c>NSError</c> Metal writes is autoreleased, and the class lookups underneath return autoreleased objects.
     /// <c>MetalAutoreleaseArchitectureTests</c> walks the IL rather than trusting this paragraph.
     /// </para>
+    /// <para>
+    /// THE EMISSION CACHE IS READ ONCE, HERE, for the reason <c>D3D11ShaderCompiler</c> gives for its two levers:
+    /// where the cache lives is a property of a SESSION, so re-reading the variable per shader would let it change
+    /// halfway through a load and leave a device holding programs loaded two different ways. Reading it once also
+    /// gives a diagnostic line one honest place to come from.
+    /// </para>
     /// </summary>
     internal sealed class MetalShaderCompiler
     {
         readonly MTLDevice _device;
         readonly IDeviceLiveness _liveness;
         readonly MetalIndexTableCache _tables;
+        readonly MetalMslCache? _cache;
 
+        /// <summary>Builds the compiler for a device, reading the emission cache's location off the live
+        /// environment.</summary>
         /// <param name="device">The device to compile on.</param>
         /// <param name="liveness">The device's identity token, handed to every shader set this makes.</param>
         /// <param name="tables">The device's index-table cache. THIS is the one site that deduplicates
         /// (row 10), because the table is a property of the emission and this is where an emission becomes a
         /// shader set: a table canonicalised any later would already have been handed out twice.</param>
         internal MetalShaderCompiler(MTLDevice device, IDeviceLiveness liveness, MetalIndexTableCache tables)
+            : this(device, liveness, tables, MetalMslCache.FromEnvironment())
+        {
+        }
+
+        /// <summary>The explicit form, for a test that wants a known cache rather than whatever the machine's
+        /// environment says.</summary>
+        /// <param name="device">The device to compile on.</param>
+        /// <param name="liveness">The device's identity token.</param>
+        /// <param name="tables">The device's index-table cache.</param>
+        /// <param name="cache">The emission cache, or null to emit unconditionally.</param>
+        internal MetalShaderCompiler(MTLDevice device, IDeviceLiveness liveness, MetalIndexTableCache tables,
+            MetalMslCache? cache)
         {
             ArgumentNullException.ThrowIfNull(liveness);
             ArgumentNullException.ThrowIfNull(tables);
@@ -57,7 +78,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _device = device;
             _liveness = liveness;
             _tables = tables;
+            _cache = cache;
         }
+
+        /// <summary>The emission cache in use, or null when it is off or the platform reports no cache
+        /// location.</summary>
+        internal MetalMslCache? Cache => _cache;
 
         /// <summary>Emit a GLSL 450 vertex and fragment pair to MSL and compile both stages.</summary>
         /// <exception cref="ShaderValidationException">A source failed to compile to SPIR-V, the pair failed to
@@ -65,11 +91,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
         [SupportedOSPlatform("macos")]
         internal MetalShaderSet CreateShaderSet(string vertexGlsl, string fragmentGlsl)
         {
-            MetalMslProgram program = MetalShaderBuild.Pair(vertexGlsl, fragmentGlsl);
+            MetalMslProgram program = MetalShaderBuild.Pair(vertexGlsl, fragmentGlsl, _cache);
 
             // THE TABLE IS CANONICALISED AFTER THE COMPILE RATHER THAN BEFORE IT, so a program Metal rejects
             // leaves nothing in the cache. The cache is never evicted, so an entry made for a shader set that was
-            // never handed out would sit there for the device's life.
+            // never handed out would sit there for the device's life. A table rebuilt from the DISK cache arrives
+            // here through this same call, so it deduplicates exactly as a freshly emitted one does (M-R9).
             return new MetalShaderSet(_liveness, CompileOnMacOs(program), _tables.Canonical(program.Table));
         }
 
@@ -80,7 +107,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         [SupportedOSPlatform("macos")]
         internal MetalComputeShader CreateComputeShader(string computeGlsl)
         {
-            (MetalMslProgram program, uint x, uint y, uint z) = MetalShaderBuild.Compute(computeGlsl);
+            (MetalMslProgram program, uint x, uint y, uint z) = MetalShaderBuild.Compute(computeGlsl, _cache);
             MetalCompiledStage[] stages = CompileOnMacOs(program);
             return new MetalComputeShader(_liveness, stages[0], _tables.Canonical(program.Table), x, y, z);
         }

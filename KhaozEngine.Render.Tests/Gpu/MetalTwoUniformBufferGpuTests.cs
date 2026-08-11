@@ -206,7 +206,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void TheSplitStageProgramIsWhereTheEmissionAndTheCountDisagree()
         {
-            MetalShaderIndexTable table = MetalShaderBuild.Pair(SplitStageVert, SplitStageFrag,
+            MetalShaderIndexTable table = MetalShaderBuild.Pair(SplitStageVert, SplitStageFrag, null,
                 "MM6SplitStage").Table;
 
             Assert.True(table.TryGetIndex(1, 0, MetalShaderStage.Fragment, out MetalIndexTableEntry emitted),

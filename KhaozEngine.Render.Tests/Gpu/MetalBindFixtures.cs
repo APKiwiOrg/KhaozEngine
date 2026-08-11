@@ -81,7 +81,7 @@ void main() { oColor = texture(sampler2D(Albedo, Samp), vec2(0.5)) * Tint * View
 
         /// <summary>The real table for the pair above, built by the shipped path.</summary>
         internal static MetalShaderIndexTable Table()
-            => MetalShaderBuild.Pair(VertexGlsl, FragmentGlsl, "MetalBindProgram").Table;
+            => MetalShaderBuild.Pair(VertexGlsl, FragmentGlsl, null, "MetalBindProgram").Table;
 
         /// <summary>
         /// A set matching that program's layout: two ring-backed buffers from <paramref name="harness"/> and a
@@ -168,7 +168,7 @@ void main() { oColor = texture(sampler2D(Albedo, Samp), vec2(0.5)) * Tint * View
 
         /// <summary>The real table for the pair above, built by the shipped path.</summary>
         internal static MetalShaderIndexTable Table()
-            => MetalShaderBuild.Pair(VertexGlsl, FragmentGlsl, "MetalVertexSamplingProgram").Table;
+            => MetalShaderBuild.Pair(VertexGlsl, FragmentGlsl, null, "MetalVertexSamplingProgram").Table;
     }
 
     /// <summary>
@@ -213,6 +213,6 @@ void main() { oColor = Tint * Model * ViewProj[0]; }
 
         /// <summary>The real table for the pair above, built by the shipped path.</summary>
         internal static MetalShaderIndexTable Table()
-            => MetalShaderBuild.Pair(VertexGlsl, FragmentGlsl, "MetalTwoSetProgram").Table;
+            => MetalShaderBuild.Pair(VertexGlsl, FragmentGlsl, null, "MetalTwoSetProgram").Table;
     }
 }

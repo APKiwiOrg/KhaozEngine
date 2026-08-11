@@ -187,6 +187,68 @@ namespace KhaozEngine.Gpu.Metal.Internal
         }
 
         /// <summary>
+        /// REBUILD A TABLE THAT WAS ALREADY BUILT ONCE, from a cache payload rather than from an emission
+        /// (<see cref="MetalMslCacheEntry"/>, pin 6 of 2.2b). The join is not re-run, because the emission a hit
+        /// skips is the only thing that could answer it. What IS re-run is every check the join's OUTPUT has to
+        /// satisfy, because a payload is a file and a file can be wrong in ways an emission cannot.
+        /// <para>
+        /// THE STRUCTURAL CHECKS ARE THE POINT, and they are pin 1's discipline applied to a second way in.
+        /// A cached entry naming a set past the layout array, a binding past that set's elements, an index space
+        /// that does not match the element's kind, or two entries on one <c>(set, binding, stage)</c> throws here
+        /// exactly as it would have thrown in <see cref="Build"/>. The caller treats that throw as corruption,
+        /// which is a miss and a delete rather than a wrong table: a table is the one thing in this backend whose
+        /// silent corruption renders wrong pixels with no error anywhere.
+        /// </para>
+        /// </summary>
+        /// <param name="entries">The cached entries, in any order.</param>
+        /// <param name="layouts">The cached reflection layouts, in set order.</param>
+        /// <param name="label">A name for the program, included in any error message.</param>
+        /// <exception cref="ShaderValidationException">The payload's entries and layouts do not agree.</exception>
+        internal static MetalShaderIndexTable FromCache(
+            IReadOnlyList<KeyValuePair<MetalIndexTableKey, MetalIndexTableEntry>> entries,
+            GpuResourceLayoutDescription[] layouts, string label)
+        {
+            ArgumentNullException.ThrowIfNull(entries);
+            ArgumentNullException.ThrowIfNull(layouts);
+
+            var rebuilt = new Dictionary<MetalIndexTableKey, MetalIndexTableEntry>(entries.Count);
+            foreach ((MetalIndexTableKey key, MetalIndexTableEntry entry) in entries)
+            {
+                string where = $"{label} [{Name(key.Stage)}] [[{entry.Space.Word()}"
+                    + $"({entry.Index.ToString(CultureInfo.InvariantCulture)})]] "
+                    + $"set={key.Set.ToString(CultureInfo.InvariantCulture)} "
+                    + $"binding={key.Binding.ToString(CultureInfo.InvariantCulture)}";
+
+                if (key.Set < 0 || key.Set >= layouts.Length)
+                {
+                    throw Loud(where, "the cached entry names a set outside the cached layout array.");
+                }
+
+                GpuResourceLayoutElement[] elements = layouts[key.Set].Elements;
+                if (key.Binding < 0 || key.Binding >= elements.Length)
+                {
+                    throw Loud(where, "the cached entry names a binding outside that set's cached elements.");
+                }
+
+                if (!entry.Space.MatchesKind(elements[key.Binding].Kind))
+                {
+                    throw Loud(where,
+                        $"the cached entry resolves to a {elements[key.Binding].Kind} element, which does not "
+                        + "belong in that index space.");
+                }
+
+                if (entry.Index < 0) throw Loud(where, "the cached entry carries a negative index.");
+                if (!rebuilt.TryAdd(key, entry))
+                {
+                    throw Loud(where, "the payload carries two entries for one (set, binding, stage), so one of "
+                        + "them would never be bound.");
+                }
+            }
+
+            return new MetalShaderIndexTable(rebuilt, layouts);
+        }
+
+        /// <summary>
         /// Where <paramref name="stage"/> reads the element declared at <paramref name="set"/> /
         /// <paramref name="binding"/>, or false when that stage does not reference it and therefore must not be
         /// bound for it.

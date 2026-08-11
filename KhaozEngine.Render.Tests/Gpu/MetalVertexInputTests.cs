@@ -88,7 +88,7 @@ namespace KhaozEngine.Tests.Gpu
             foreach (ShippedGraphicsProgram program in D3D11ShaderProgramCatalog.GraphicsPrograms())
             {
                 MetalMslProgram built = MetalShaderBuild.Pair(
-                    program.VertexGlsl, program.FragmentGlsl, program.Name);
+                    program.VertexGlsl, program.FragmentGlsl, null, program.Name);
 
                 IReadOnlyList<int> indices = MetalVertexPlan.VertexStageBufferIndices(built.Table);
                 vertexBufferEntries += indices.Count;

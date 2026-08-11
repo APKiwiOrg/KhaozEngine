@@ -187,7 +187,7 @@ namespace KhaozEngine.Tests.Gpu
             foreach (ShippedGraphicsProgram program in D3D11ShaderProgramCatalog.GraphicsPrograms())
             {
                 MetalShaderIndexTable table = MetalShaderBuild.Pair(
-                    program.VertexGlsl, program.FragmentGlsl, program.Name).Table;
+                    program.VertexGlsl, program.FragmentGlsl, null, program.Name).Table;
 
                 var records = MetalBindRecords.ForGraphics(MetalBindProgram.DeviceOffsetAlignment);
                 var calls = new FakeMetalEncoderCalls();

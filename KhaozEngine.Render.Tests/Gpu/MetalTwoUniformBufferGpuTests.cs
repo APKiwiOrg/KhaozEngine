@@ -189,32 +189,16 @@ namespace KhaozEngine.Tests.Gpu
                 + "third row measures any more.");
             Assert.Equal(MetalIndexSpace.Buffer, emitted.Space);
 
-            int counted = CountedBufferIndex(table.Layouts, set: 1, element: 0);
+            // THE INCUMBENT'S ARITHMETIC, READ OFF M-T3'S STANDING COPY rather than written a third time. That
+            // copy is the one the shipped-corpus assertion runs on, so a correction there reaches this row too,
+            // and 2.2b's rule survives the sharing: the per-kind count is a COMPARISON here and a binding path
+            // nowhere.
+            int counted = MetalShaderIndexTableTests.IncumbentIndices(table.Layouts)[(1, 0)].Buffer;
             _out.WriteLine($"set 1 binding 0, fragment stage: the emission put it at buffer({emitted.Index}), a "
                 + $"per-kind declaration-order count puts it at buffer({counted}).");
 
             Assert.Equal(0, emitted.Index);
             Assert.Equal(1, counted);
-        }
-
-        // THE INCUMBENT'S ARITHMETIC, reproduced as a COMPARISON and never as a binding path, which is 2.2b's
-        // rule and the reason MetalShaderIndexTableTests carries its own copy of the same walk.
-        static int CountedBufferIndex(IReadOnlyList<GpuResourceLayoutDescription> layouts, int set, int element)
-        {
-            int buffers = 0;
-
-            for (int s = 0; s < layouts.Count; s++)
-            {
-                GpuResourceLayoutElement[] elements = layouts[s].Elements;
-                for (int e = 0; e < elements.Length; e++)
-                {
-                    if (s == set && e == element) return buffers;
-                    if (MetalIndexSpaces.For(elements[e].Kind) == MetalIndexSpace.Buffer) buffers++;
-                }
-            }
-
-            throw new ArgumentOutOfRangeException(nameof(set),
-                $"set {set} element {element} is not in the reflected layouts.");
         }
 
         // ---- The measurement ---------------------------------------------------------------------------------

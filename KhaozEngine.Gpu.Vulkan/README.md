@@ -455,7 +455,8 @@ more times per frame than `FramesInFlight` wraps onto its own oldest slot and wa
 value, which is real backpressure and is counted as such.
 
 **N lists record CONCURRENTLY on this backend, and the portable seam contract is unchanged.** `IGpuCommandList`
-documents exactly one open recording per device, and that is what portable code is written against. This backend
+documents exactly one open recording per device, that is what portable code is written against, and
+`GpuRecording` now refuses a second engine-opened recording on every backend including this one. This backend
 is more permissive as a BACKEND PROPERTY: a `VkCommandPool` and every buffer allocated from it are externally
 synchronised one thread at a time, per-list pools mean two lists on two threads never touch the same pool, and
 layout tracking is list-local ([#524](https://github.com/APKiwiOrg/KhaozEngine/issues/524)), so nothing shared is

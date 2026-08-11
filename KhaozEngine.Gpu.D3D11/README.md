@@ -177,7 +177,9 @@ the same list submitted twice costs one recording's calls rather than two, a sec
 state and the redundancy caches the first list already emitted, and RECORD order is the observable order. Both drivers ship until M1 deletes the loser, so
 neither shape may be quoted as "the native backend's contract" without naming the driver it belongs to. The
 portable `IGpuCommandList` contract is unchanged at one open recording per device, which is what a consumer may
-rely on, and it is written on `IGpuCommandList.Begin` and in `docs/USING-KHAOZENGINE.md`.
+rely on, and it is written on `IGpuCommandList.Begin` and in `docs/USING-KHAOZENGINE.md`. It is also enforced
+there: every recording the engine opens goes through `GpuRecording`, which refuses a second one on any backend,
+so neither driver's tolerance is something engine code exercises.
 
 **`D3D11DeviceState` is what is bound on the context, and the device owns exactly one.** It carries the
 redundancy caches for the seven pipeline-level objects (vertex shader, pixel shader, blend, depth-stencil,

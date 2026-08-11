@@ -9259,6 +9259,36 @@ machine that falls back after a failed device creation swaps the backend under y
 `End()` seals the list. Submitting one that was never ended is a half-recorded frame, and a backend is free to
 refuse it rather than replay it.
 
+**The rule is now enforced for every recording the engine opens (`GpuRecording`, 17.36.0).** It used to be a
+paragraph you had to have read. `GpuRecording.Open(device, list, owner)` begins a list and claims the device,
+the returned `GpuRecordingScope` ends it and releases, and a second `Open` on the same device throws
+`GpuNestedRecordingException`. The message names both sides and the fix, which is the part a stack trace cannot
+give you, because the damage this replaces surfaced several draws away from the call that caused it:
+
+```csharp
+using (GpuRecording.Open(gd, cl, "my streaming upload"))
+{
+    cl.GenerateMipmaps(tex);
+}                                   // End happens here, and the device is released
+gd.Submit(cl);
+gd.WaitForIdle();
+
+// Elsewhere, before opening a list of your own:
+if (GpuRecording.CanOpen(gd)) { /* safe */ }
+else { /* GpuRecording.OpenOwner(gd) says who has it */ }
+```
+
+The exception is what you now get for calling one of these mid-frame, on every backend: `Scene3D.LoadTexture`
+with mips, `Scene3D.LoadSplatMaterial`, `Scene3D.DebugReadShadowMap`, any `GpuReadback` entry point,
+`Render2DSurface.CaptureToTexture` / `CaptureToRgba`, `Render3DPreview.Capture`, and `Scene3D.Begin` on a device
+with GPU completion fences (its retire barrier submits). Move the call into the pre-record phase. A one-level
+`LoadTexture` opens no list and is unaffected.
+
+Two limits, both deliberate. Calling `IGpuCommandList.Begin` directly is still legal and unwatched, so a
+consumer's own list gets whatever its backend does. And the register is per DEVICE, not per thread, because the
+contract is: recording on two threads at once is refused here exactly as it is on one, even on a backend whose
+own object model would allow it.
+
 ### Uniform buffers on the native Direct3D 11 backend (17.32.0)
 
 Three things are worth knowing before that backend becomes selectable, and only the first can make it refuse

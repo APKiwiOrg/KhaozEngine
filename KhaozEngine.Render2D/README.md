@@ -48,7 +48,11 @@
   rects, lines, circles/rings, filled circles, vertical gradients, progress bars, filled sectors/arc-bands, and
   partial-ring strokes `DrawArc` (a general arc outline) / `DrawRadialProgress` (a 0..1 countdown/cooldown ring).
 - `Render2DSurface(AppWindow)` - draw into a `KhaozEngine.Windowing` window; texture/font/`ImageRgba` loaders;
-  `CaptureToTexture` / `CaptureToRgba` offscreen capture; `Render2DSnapshot` captures headless.
+  `CaptureToTexture` / `CaptureToRgba` offscreen capture, and `Render2DSnapshot` captures headless. Both captures
+  open, submit and drain a command list of their own, so they are NOT mid-frame calls: taken while the frame's
+  list is recording they throw `GpuNestedRecordingException` naming the fix rather than corrupting the frame
+  (the seam's one-open-recording-per-device rule, see `KhaozEngine.Gpu`). Capture from the frame's pre-record
+  phase or outside the loop.
 
 The GPU backend stays behind `KhaozEngine.Gpu`; this package has no direct graphics-backend reference (deps:
 `KhaozEngine.Gpu` + `KhaozEngine.Windowing` + StbTrueTypeSharp/StbImageSharp). Windowing/input come from

@@ -10,8 +10,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 A crash that nothing logged now writes its own file, the Metal shader emission is cached across
 processes, both shader-cache keys learn to name the cross-compiler that produced the bytes, the GPU disk caches
 start pruning the version folders they leave behind, the MSAA resolve destinations gain the instrument the golden
-family is not, the Retina first frame is sized in pixels, and two of phase 4's guards get the teeth their prose
-already claimed.
+family is not, the Retina first frame is sized in pixels, the seam's one-open-recording-per-device rule becomes a
+refusal instead of a paragraph, and two of phase 4's guards get the teeth their prose already claimed.
 
 ### The last-chance crash file (`CrashReport`, #607)
 
@@ -343,6 +343,43 @@ pruning. A folder that will not delete is skipped ON ITS OWN, so one locked fold
 nothing propagates, which is the posture the rest of the file store already had. `ResolveDirectory` stays pure
 and is still what an explicitly named directory goes through, because deciding about a string and deleting
 folders should not be the same call.
+
+### One open recording per device stops being a paragraph and starts being a refusal (`GpuRecording`, #424)
+
+New in `KhaozEngine.Gpu`: `GpuRecording`, `GpuRecordingScope` and `GpuNestedRecordingException`. The seam's
+portable contract on `IGpuCommandList.Begin` has said "one open recording per device" for several releases and
+nothing enforced it, so opening a second command list while a frame's list was recording stayed a silent device
+corruption on the Veldrid Direct3D11 immediate path and a silently half-recorded frame on the other Veldrid legs.
+`GpuRecording.Open(device, list, owner)` begins a list and claims the device, the returned scope ends it and
+releases, and a second `Open` on the same device throws `GpuNestedRecordingException` carrying both `Owner` and
+`Attempted`. The register is keyed by device instance and holds no strong reference, so two devices never see
+each other and a disposed one takes its entry with it.
+
+**Why the refusal lives above the backends rather than in one.** They disagree, and each disagreement is
+structural rather than negotiable: the Veldrid Direct3D11 leg rejects a second recording, the engine's own
+native Direct3D11, Vulkan and Metal backends each tolerate N concurrent recordings for three different reasons,
+and the Veldrid Metal and Vulkan legs quietly drop half a frame. Code written against any one of those does not
+port, and a machine that falls back after a failed device creation swaps the backend without telling the code.
+Decision R4 of the Direct3D11 native spec settled that the PORTABLE contract stays one open recording per
+device while both Direct3D11 implementations ship. This is that decision with teeth: the same sentence on every
+backend, provable with no GPU at all.
+
+**All seven latent sites now open through it**, which is the whole point of fixing this at the seam instead of
+patching seven call sites: `Scene3D.LoadTexture` and `Scene3D.LoadSplatMaterial` (mip generation),
+`Scene3D.DebugReadShadowMap`, all three `GpuReadback` entry points, both `Render2DSurface` offscreen captures,
+`Render3DPreview.Capture` and `GpuRetireBarrier.Submit`. Each was re-verified to still exist. So do the
+recordings that were already correct: the windowed frame list (`FramePhases`), both snapshot hosts and the FFT
+ocean's priming pass, which is what makes the frame's list the named owner a refusal points at.
+
+**The legitimate patterns are untouched.** Every one of those sites opens its own list SEQUENTIALLY, outside
+anyone else's recording, which is exactly what the pre-record phase exists to make possible, so nothing that was
+correct before changes. A one-level `LoadTexture` opens no list at all and stays legal mid-frame.
+
+**What changes for a consumer**, and it is deliberately a behaviour change. A host that drives a 3D surface
+without the frame's pre-record phase used to render correctly on Metal and Vulkan and fault only on Direct3D11.
+It now gets a `GpuNestedRecordingException` naming the fix on every backend. A refusal on the dev machine is
+worth more than a picture that is silently right there and corrupt on a player's. Calling `IGpuCommandList.Begin`
+directly is still legal and still bound by the contract, and is simply not watched.
 
 ## 17.35.0
 

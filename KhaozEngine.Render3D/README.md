@@ -60,7 +60,11 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   second `Begin`. Costs nothing on a frame that queues no water. On a WINDOWED host, `Render3DSurface.Render`'s own
   call is a safety net rather than the effective one - the frame's list is already open by then - so queue and
   prepare the scene in `AppWindow.Run`'s `onPrepare` callback instead (`GameApp3D` does, in `OnPrepareWorld`, see
-  issue #429).
+  issue #429). A host that does neither no longer gets a silently corrupt frame on one backend: every scene path
+  that opens a list of its own goes through the seam's open-recording register, so the nesting is a
+  `GpuNestedRecordingException` naming both sides on every backend (issue #424). The calls that refuse mid-frame
+  are a mipped `LoadTexture`, `LoadSplatMaterial`, `DebugReadShadowMap`, `Render3DPreview.Capture`, and
+  `Scene3D.Begin` on a device with GPU completion fences (its retire barrier submits).
 - `TextureMipPolicy` - an optional trailing argument on both `LoadTexture` overloads choosing how much of the mip
   chain to build. `Full` (the default, and what `default(TextureMipPolicy)` is, so every existing call is
   unchanged), `None` for level 0 only, and `AtlasGrid(columns, rows, minCellTexels = 4)` to stop at the coarsest

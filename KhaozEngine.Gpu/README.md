@@ -207,10 +207,22 @@ What it owns today:
   list any more, and the two ship together in 17.27.0 with the cause removed first. One residual remains by
   design: a host driving a `Render3DSurface` off a raw `AppWindow.Run(onFrame)` without passing `onPrepare` still
   nests, because the surface's safety-net `Scene3D.PrepareFrame` then runs inside the frame's recording. That
-  residual is now a loud `VeldridException` naming the fix (pass the pre-record phase) instead of silent
-  corruption, which is the intended trade. The rule for engine code is unchanged either way: do not open a command
+  residual is now refused on every backend rather than on that one leg (see **`GpuRecording`** below), which is
+  the intended trade. The rule for engine code is unchanged either way: do not open a command
   list while another is recording on Direct3D11, and put work that needs its own list in `Scene3D.PrepareFrame` or
   the loop's pre-record phase.
+- **`GpuRecording` / `GpuRecordingScope` / `GpuNestedRecordingException`** - the seam's open-recording register,
+  and where the portable one-open-recording-per-device contract on `IGpuCommandList.Begin` is enforced rather
+  than described ([#424](https://github.com/APKiwiOrg/KhaozEngine/issues/424)).
+  `GpuRecording.Open(device, list, owner)` begins the list and claims the device, the returned scope ends it and
+  releases, and a second `Open` on the same device throws `GpuNestedRecordingException` carrying `Owner` (who is
+  already recording) and `Attempted` (who was refused). `OpenOwner(device)` and `CanOpen(device)` answer the same
+  question without being refused. Every recording the engine opens goes through it (the windowed frame list, both
+  snapshot hosts, the preview, the offscreen 2D captures, the ocean's priming pass, the retire barrier, the mipmap
+  generates and every readback), so the refusal reads the same on every backend and is provable with no GPU.
+  Calling `IGpuCommandList.Begin` directly stays legal and unwatched: a consumer's own list gets whatever its
+  backend does. Keyed by device instance with no strong reference, and per device rather than per thread, because
+  the contract is.
 - **`GpuCapabilities`** - `ClipSpaceYInverted` / `DepthRangeZeroToOne` (so renderers derive clip-Y / depth
   handling from the active backend instead of a baked Metal assumption), plus diagnostics: `DeviceName` (the GPU
   adapter/driver), `SamplerAnisotropy`, `SamplerLodBias` (whether those sampler levers are supported),

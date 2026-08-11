@@ -441,7 +441,8 @@ bookkeeping.
 **N lists record concurrently here, and that is still not a promise of the seam.** Each list holds its own
 command buffer and its own encoders, and this backend has no shared record-time state at all: no layout
 tracker, no barrier batch, no device state cache. The portable contract remains one open recording per device,
-and code that relies on more does not port.
+and code that relies on more does not port. The engine's own recordings all open through `GpuRecording`, which
+refuses a second one whatever the backend is, so nothing engine-shipped exercises this property.
 
 ## The shader path, and where a binding index comes from
 

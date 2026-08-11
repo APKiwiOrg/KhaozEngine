@@ -1466,7 +1466,12 @@ one virtual call per emission, on top of a fake that is already writing to a lis
 fork are both worse: making the list generic is the thing this section forbids, and routing everything through
 the relay would put a virtual call per EMISSION on the shipped hot path, which is the cost the struct constraint
 exists to avoid. The fork repeats at each entry point and the pre-command ORDER does not, which is the split that
-matters, because a missing fork arm is a compile error where a missing step in the order is a wrong picture.
+matters, and the reason is narrower than row 14's first draft of this paragraph claimed. What is STRUCTURAL is
+that the fork cannot be SKIPPED: the boxed field cannot satisfy `where TSink : struct`, so an entry point that
+tried to hand the sink straight to the generic body does not compile. Writing only the native arm and leaving the
+relay one off DOES compile, and it is caught at RUNTIME by the device-free rows, which drive a fake sink and
+therefore take exactly the arm that would be missing. A missing step in the ORDER is caught by neither, which is
+the actual asymmetry: it renders a wrong picture.
 
 **And the seam gained ONE Objective-C enum, which narrows a rule rather than breaking it.** `IMetalEncoderSink`'s
 header said nothing on it names an Objective-C type. The draws cannot honour that: the topology is an ARGUMENT

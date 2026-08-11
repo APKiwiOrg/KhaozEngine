@@ -36,8 +36,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// </b> The per-draw classes are consumed through <c>where TSink : struct, IMetalEncoderSink</c> so the JIT
     /// monomorphizes them, and the list may NOT be generic over its sink. So each entry point type-tests for the
     /// shipped sink and hands the generic body either that or a <see cref="MetalRelayEncoderSink"/>. The fork
-    /// repeats and the ORDER does not, which is the split that matters: a missing fork arm is a compile error,
-    /// where a missing step in the order is a wrong picture.</para>
+    /// repeats and the ORDER does not, and what is STRUCTURAL about the fork is that it cannot be SKIPPED: the
+    /// boxed <c>_sink</c> field cannot satisfy the struct constraint, so an entry point that handed it straight to
+    /// a generic body does not compile. Leaving the RELAY arm off compiles perfectly well, and is caught at
+    /// runtime by the device-free rows, which drive a fake sink and so take exactly the arm that would be missing.
+    /// A missing step in the order is caught by neither, which is the real asymmetry.</para>
     ///
     /// <para><b>M-A5's END-BEFORE-ANYTHING-ILLEGAL NEEDS NO CODE HERE.</b> A dispatch opens a COMPUTE encoder
     /// through <see cref="MetalEncoderScope.EnsureComputeEncoder"/>, whose first act is to end whatever is open,

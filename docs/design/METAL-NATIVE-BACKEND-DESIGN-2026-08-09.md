@@ -3384,7 +3384,10 @@ backend has. That number is also the size of the thing this row was warned about
 this row records a leg going from 17 minutes to 49 for want of a lifecycle collection, and taking the
 collection literally here would have done the same damage by the opposite route. Raising the table costs a slightly longer lock-free scan per command buffer and nothing anywhere
 else. The constant is now 64 with the derivation in its own doc comment, the refusal still names a leak, and a
-device-free ratchet row pins the floor so the number cannot quietly go back.
+device-free ratchet row pins the FLOOR at 32. That is what a floor delivers and it is worth stating precisely:
+it catches a drop back to the old 4, and it does NOT catch 64 going to 32, which would be silent. The current
+width is read off `MaxRegisteredQueues`, and only the floor is asserted, because a test pinning 64 exactly
+would fail on the next legitimate raise.
 
 **The serialised run is also where a SECOND failure appeared, and it had been hiding behind the first.** With
 284 rows failing at device creation, `GpuDeviceSmokeTests` was one of them, and what it fails at once a device

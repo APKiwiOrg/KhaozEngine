@@ -1657,7 +1657,9 @@ needs a number. A fully serialised run of that assembly takes **23m12s against 4
 machine and commit, and the collection is backend-agnostic, so serialising would have charged the Windows and
 Linux legs for a limit only Metal has. Raising the table costs a slightly longer lock-free scan per
 command buffer and nothing anywhere else. The refusal still names a leak and now says which knob moves it, and
-a device-free ratchet row pins the floor so the number cannot quietly go back.
+a device-free ratchet row pins the FLOOR at 32. That is what it delivers rather than a guard on the number
+itself: a drop back to the old 4 fails that row, 64 going to 32 does not and would be silent, and the current
+width is read off `MaxRegisteredQueues` rather than off a test.
 
 **Serialising the suite also surfaced a failure the first one had been hiding**, which is the argument for
 running a broken suite twice rather than once. `GpuDeviceSmokeTests` builds a passthrough pipeline declaring

@@ -430,7 +430,11 @@ and a nil function, so that is a separate refusal with its own message.
 of its own, per stage, in an order that follows first reference rather than the shader's declarations. Counting
 declarations on the CPU and hoping the two agree is what produced three recorded incidents in this engine (a
 model pass reading the normal texture through the albedo sampler, a crease term reading depth data, and the
-splat terrain reading one uniform buffer's bytes through another). So this backend does not count. It reads each
+splat terrain reading one uniform buffer's bytes through another). The last of those three was MEASURED against
+this backend in 2026-08 and the count is what produces it: for a fragment function that reads set 1 alone, the
+emission puts the buffer at `buffer(0)` and a declaration-order count puts it at `buffer(1)`, so the incumbent
+writes it where the function does not read and the read comes back all zero. This backend reads correct bytes
+for the same program (`MetalTwoUniformBufferGpuTests`). So this backend does not count. It reads each
 stage's emitted entry point, takes the SPIR-V id each argument's name spells, and resolves that id to a
 `(set, binding)` through that stage's own `DescriptorSet` and `Binding` decorations. Decorations survive the
 debug-info stripping that removes names, and each stage's ids are read from that stage's own module, which is

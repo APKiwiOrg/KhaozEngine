@@ -72,13 +72,35 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         /// <summary>
         /// How many live native Metal devices can have a latch registered at once, counted in QUEUES because
-        /// M-N2 gives each device exactly one and the queue is what the table keys on. Four rather than one
-        /// because a test assembly creates and disposes headless devices and the <c>NativeDeviceLifecycle</c>
-        /// collection serialises their LIFETIMES rather than proving only one exists, and four rather than
-        /// unbounded because the lookup is a linear scan on the completion path and a process with five live GPU
-        /// devices has a different problem.
+        /// M-N2 gives each device exactly one and the queue is what the table keys on.
+        /// <para>
+        /// <b>IT WAS FOUR, AND FOUR WAS DERIVED FROM A PREMISE THAT TURNED OUT TO BE FALSE.</b> The reasoning
+        /// was that a test assembly creates and disposes headless devices and the <c>NativeDeviceLifecycle</c>
+        /// collection serialises their lifetimes, so only a handful can ever be live at once. That collection
+        /// holds the classes which build a device BESIDE the suite's own, which is the right membership when the
+        /// suite runs on another backend. On the <c>metal-native</c> leg the suite runs on THIS backend, so every
+        /// engine-wide <c>[GpuFact]</c> class builds one of these devices, xUnit runs those classes in parallel,
+        /// and the fifth concurrent one threw. Measured at row 14: 284 failures out of 6039 in one run, every one
+        /// of them the refusal below, and the count MOVED between identical runs, which is the signature of a
+        /// concurrency limit rather than a rendering defect
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/585).
+        /// </para>
+        /// <para>
+        /// <b>SIXTY-FOUR, AND THE ALTERNATIVE WAS REJECTED ON A MEASUREMENT.</b> The other way to satisfy a
+        /// four-slot table is to put every device-building class into the lifecycle collection, which serialises
+        /// them. That was measured on the same machine and the same commit: the assembly runs in about 4 minutes
+        /// parallel and about 15 serialised, and the collection is backend-agnostic, so the cost would land on
+        /// the Windows and Linux legs too for a limit only this backend has. Raising the table costs the SCAN
+        /// instead, which is a handful of volatile pointer compares per command buffer on a path that already
+        /// takes no lock, and it costs nothing at all on any other leg. Sixty-four is comfortably above one
+        /// device per xUnit worker on the widest machine in the fleet with room for the rows that build two.
+        /// </para>
+        /// <para>
+        /// <b>IT IS STILL A LEAK DETECTOR, AND THAT IS WHY IT IS NOT UNBOUNDED.</b> A process with sixty-five
+        /// live GPU devices is leaking them, and the refusal says so and says which knob moves it.
+        /// </para>
         /// </summary>
-        internal const int MaxRegisteredQueues = 4;
+        internal const int MaxRegisteredQueues = 64;
 
         // Registration is cold (device creation and teardown) so it takes a lock. The completion path is hot and
         // takes none: it scans the same two arrays with volatile reads. Pointer-sized elements cannot tear, so
@@ -133,8 +155,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     throw new InvalidOperationException(
                         $"More than {MaxRegisteredQueues} native Metal devices tried to register a "
                         + "command-buffer error latch at once. The completion path scans this table per "
-                        + "command buffer, so it is deliberately small. A process holding this many live GPU "
-                        + "devices is leaking them.");
+                        + "command buffer, so it is bounded rather than growable, and the bound is sized for a "
+                        + "test assembly running device-building classes in parallel. A process holding this "
+                        + "many live GPU devices at once is leaking them: look for engine devices that were "
+                        + "never disposed before raising MetalCompletionHandler.MaxRegisteredQueues.");
                 }
 
                 _sinks[free] = sink;

@@ -16,7 +16,7 @@ namespace KhaozEngine.Tests.Gpu
     /// </para>
     /// <para>
     /// THE REGISTRY IS PROCESS-STATIC, which is why this class sits in <c>NativeDeviceLifecycle</c> alongside
-    /// the GPU test that registers a real queue into the same four-slot table. Two suites filling it
+    /// the GPU test that registers a real queue into the same table. Two suites filling it
     /// concurrently would fail each other for a reason that is a test-harness artefact rather than a defect, and
     /// one collection is what makes the two run in sequence: xUnit runs the CLASSES of a collection one at a
     /// time, where two separate non-parallel collections would only be ordered by the runner's own rules. See
@@ -184,13 +184,41 @@ namespace KhaozEngine.Tests.Gpu
             }
         }
 
+        /// <summary>
+        /// A RATCHET ON THE TABLE'S SIZE, because the number it holds today was paid for with a measurement and
+        /// a one-line edit would give it back. The table held four until the whole engine-wide `[GpuFact]` suite
+        /// was first run against this backend, where every device-building class builds one of these devices and
+        /// xUnit runs those classes in parallel: 284 of 6039 rows failed and every one was the registration
+        /// refusal (row 19, https://github.com/APKiwiOrg/KhaozEngine/issues/585). The alternative, serialising
+        /// every device-building class through the lifecycle collection, was measured at roughly four times the
+        /// wall clock on an assembly whose Metal legs run it on EVERY trigger, and it would have charged that to
+        /// the Windows and Linux legs as well.
+        /// <para>
+        /// The floor is a stated number rather than a function of <c>Environment.ProcessorCount</c> on purpose.
+        /// A machine-derived floor would red a leg on a wider runner that had not actually run out of slots,
+        /// which is a false failure, and the real bound is "more than the suite ever holds live at once" rather
+        /// than "more than this machine has cores".
+        /// </para>
+        /// </summary>
+        [Fact]
+        public void TheTable_StaysBigEnoughForAParallelSuiteOfDeviceBuildingClasses()
+        {
+            Assert.True(
+                MetalCompletionHandler.MaxRegisteredQueues >= 32,
+                $"MaxRegisteredQueues is {MetalCompletionHandler.MaxRegisteredQueues}. It was raised from 4 "
+                + "because the engine-wide [GpuFact] suite builds one native Metal device per device-building "
+                + "class and xUnit runs those in parallel, and 284 rows failed at 4. Lowering it below 32 puts "
+                + "the metal-native CI leg back into that failure, so lower it only with a measurement that "
+                + "says the suite no longer holds that many devices live at once.");
+        }
+
         [Fact]
         public void RegisteringMoreQueuesThanTheTableHolds_IsRefused()
         {
             var registered = new List<IntPtr>();
             try
             {
-                // The scan runs per command buffer on the completion path, so the table is deliberately small.
+                // The scan runs per command buffer on the completion path, so the table is bounded.
                 // The count is EXACT rather than tolerant: this class and the GPU probe are the only registrants
                 // in the assembly and they share one collection, whose classes xUnit runs one at a time, so the
                 // table is empty when this starts. A tolerant "at most capacity" would pass with zero slots

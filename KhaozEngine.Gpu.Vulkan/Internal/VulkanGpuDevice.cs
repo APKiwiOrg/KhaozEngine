@@ -262,7 +262,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // compare row 11's compatibility prefix is. The disk cache is RESOLVED BY THE CALLER rather than
             // here, so a test can hand it a directory it owns or no cache at all: the environment read is also a
             // PRUNE, and a device-free test building a device must not sweep a developer's cache folder as a side
-            // effect. The shipped path resolves it in VulkanGpuDevice.Create.cs, one line above the constructor.
+            // effect. The shipped path resolves it as an ARGUMENT in the constructor call, so the prune happens
+            // inside the same expression that builds the device: see VulkanGpuDevice.Create.cs.
             _pipelines = new VulkanPipelines(
                 new VulkanPipelineOwner(pipelineApi, timeline, _retired),
                 _descriptors.PipelineLayouts,

@@ -473,7 +473,15 @@ instance lease is now optional and read through an `Instance` property that refu
 loader cannot hand out a command list (the five recording seams are `Vk` entry points) and says so instead of
 throwing a `NullReferenceException`. And the disk pipeline cache is resolved by the caller rather than inside the
 constructor, because opening it also PRUNES stale engine-version folders and no test may sweep a developer's
-cache directory as a side effect. `VulkanGpuDevice.Create.cs` resolves it one line above the constructor call.
+cache directory as a side effect. `VulkanGpuDevice.Create.cs` resolves it as an ARGUMENT in the constructor
+call, so the prune runs inside the same expression that builds the device.
+
+**And teardown branches on that missing lease rather than on the liveness token.** `Dispose`'s native path reads
+`Instance` on its first statement and the disposed flag is set before it does, so a device with no lease threw
+out of `Dispose` and every call after it returned silently, leaving the staging maps, the setup buffer, the
+descriptors, the shader modules, the pipelines and the timeline unreleased. Such a device now takes the teardown
+that touches nothing native, which is what the liveness token was standing in for and is why the rig no longer
+kills the device on its way out.
 
 **Order is read off the timeline VALUES rather than a call log.** Every submission takes the timeline's next
 value inside the lock that orders `vkQueueSubmit`, so a lower value is an earlier submission by construction. The

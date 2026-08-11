@@ -5,10 +5,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 {
     /// <summary>
     /// THE DEVICE-FREE CONSTRUCTION HOOK, and the one caller that passes no instance lease. It holds the factory
-    /// and NOTHING the shipped paths depend on: <see cref="Instance"/>, which every device with no lease is read
-    /// through, lives on the main partial beside the field it guards, because teardown and command-list creation
-    /// are shipped members and a shipped member's dependency does not belong in a file named for a test hook. It
-    /// exists because <see cref="VulkanGpuDevice"/>'s constructor is private and reachable only through
+    /// and NOTHING a shipped path depends on: the <see cref="Instance"/> guard every read of that lease goes
+    /// through lives on the main partial, beside the field it guards, because the two members that read it are
+    /// shipped ones (teardown and command-list creation) and a shipped member's dependency does not belong in a
+    /// file named for a test hook. It exists
+    /// because <see cref="VulkanGpuDevice"/>'s constructor is private and reachable only through
     /// <c>CreateHeadless</c> and <c>CreateForWindow</c>, both of which need a Vulkan loader, so until this landed
     /// NO TEST ANYWHERE CONSTRUCTED THIS TYPE and every claim about the device's own WIRING was carried by
     /// inspection (https://github.com/APKiwiOrg/KhaozEngine/issues/550).

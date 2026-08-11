@@ -84,8 +84,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         }
 
         /// <inheritdoc/>
-        /// <remarks>Every value the seam does not expose is hardcoded to what the incumbent hardcodes, and the
-        /// incumbent's two conditionals are resolved rather than reproduced. See
+        /// <remarks>Every value the seam does not expose is hardcoded to what the incumbent hardcodes, the
+        /// incumbent's compare-function conditional is resolved rather than reproduced, and its border-colour one
+        /// is diverged from: a <see cref="GpuSamplerAddress.Border"/> mode on a device without border colours is
+        /// refused by name here rather than aborting the process under the debug layer. See
         /// <see cref="MetalSamplerPolicy"/>.</remarks>
         public IGpuSampler CreateSampler(in GpuSamplerDescription d)
         {
@@ -235,7 +237,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         IGpuSampler CreateSamplerOnMacOs(in GpuSamplerDescription d)
         {
             using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
-            return MetalSampler.Create(_device.Handle, _device.Liveness, d);
+            return MetalSampler.Create(_device.Handle, _device.Liveness, d, _device.SupportsBorderColor);
         }
 
         // No pool at these two, unlike every other body here, and that is not an oversight: the compiler opens

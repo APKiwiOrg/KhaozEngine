@@ -40,12 +40,25 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// already written the bind path, and the resource-set row is the one that will ask.</remarks>
         public IMetalDeviceLiveness Owner => _liveness;
 
-        /// <summary>Create one from the seam's description, through the policy.</summary>
+        /// <summary>
+        /// Create one from the seam's description, through the policy.
+        /// <para>
+        /// <paramref name="deviceSupportsBorderColor"/> is the device's own <c>MTLGPUFamilyMac2</c> answer, read
+        /// once at device creation and carried here rather than asked per sampler. A false answer with a Border
+        /// address mode is the ONE description this backend refuses outright, and the refusal is named: the
+        /// alternative on such a device is a process abort under the debug layer.
+        /// </para>
+        /// </summary>
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static MetalSampler Create(MTLDevice device, IMetalDeviceLiveness liveness,
-            in GpuSamplerDescription description)
+            in GpuSamplerDescription description, bool deviceSupportsBorderColor)
         {
+            // BEFORE THE DESCRIPTOR EXISTS, because the abort this avoids happens inside
+            // -newSamplerStateWithDescriptor: and nothing after that call gets to run.
+            if (MetalSamplerPolicy.MissingBorderColorSupport(description, deviceSupportsBorderColor) is { } missing)
+                throw new NotSupportedException("The native Metal backend cannot create this sampler: " + missing);
+
             MetalSamplerSpec spec = MetalSamplerPolicy.For(description);
 
             MTLSamplerDescriptor descriptor = MTLSamplerDescriptor.New();

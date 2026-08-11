@@ -105,6 +105,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // offset is checked against. 256 would refuse offsets the device accepts (macOS reports 16 or 32).
         readonly uint _bufferOffsetAlignment;
 
+        // THE DEVICE'S BORDER-COLOUR ANSWER, read off the probe's snapshot at creation because a sampler cannot
+        // ask it safely: the way to ask a device directly is to build a border sampler, which is the abort.
+        readonly bool _supportsBorderColor;
+
         MetalSampler _pointSampler = null!;
         MetalSampler _linearSampler = null!;
 
@@ -115,7 +119,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         MetalGpuDevice(MTLDevice device, MTLCommandQueue queue, GpuCapabilities capabilities,
             MetalDeviceLiveness liveness, MetalDeviceLossLatch loss, MetalTimeline timeline,
             MetalUncommittedBuffers uncommitted, IMetalSetupNative setupNative, int framesInFlight,
-            IMetalStagingSource staging, uint bufferOffsetAlignment)
+            IMetalStagingSource staging, uint bufferOffsetAlignment, bool supportsBorderColor)
         {
             _device = device;
             Queue = queue;
@@ -131,6 +135,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _renderApi = new MetalRenderApi();
             _computeApi = new MetalComputeApi();
             _bufferOffsetAlignment = bufferOffsetAlignment;
+            _supportsBorderColor = supportsBorderColor;
 
             // THE ONE RING ALLOCATOR (M-M3), sharing the submit lock rather than owning one. It has to read
             // MetalTimeline.LastSubmitted under exactly the lock that orders the commit which registers it, or
@@ -160,6 +165,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         /// <summary>The liveness token every wrapper this device creates will be handed (M-F6).</summary>
         internal MetalDeviceLiveness Liveness => _liveness;
+
+        /// <summary>Whether this device supports sampler border colours, which is its <c>MTLGPUFamilyMac2</c>
+        /// answer read once at creation. False on a virtualized GPU, where a Border-mode sampler is refused by
+        /// name rather than aborting the process under the debug layer. See <see cref="MetalSamplerPolicy"/>.
+        /// </summary>
+        internal bool SupportsBorderColor => _supportsBorderColor;
 
         /// <summary>The device's ONE index-table cache (M-R9, row 10). Read by the shader compiler, which is the
         /// only site that puts a table in it, because a table is a property of the emission and shader-set

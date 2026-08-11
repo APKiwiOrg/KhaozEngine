@@ -172,7 +172,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     // M-N4's BUFFER-OFFSET ALIGNMENT, carried rather than re-read. The selection already refused
                     // a device reporting 0 or a value M-M3's 256-byte stride is not a multiple of, so this is a
                     // power of two no wider than the stride and the cast cannot lose anything.
-                    (uint)selected.Facts.BufferOffsetAlignment);
+                    (uint)selected.Facts.BufferOffsetAlignment,
+                    // AND THE BORDER-COLOUR ANSWER, from the same snapshot for the same reason: the probe already
+                    // asked supportsFamily: for Mac2 to clear the floor, and a sampler cannot ask a device this
+                    // question safely (building one to find out IS the abort under MTL_DEBUG_LAYER=1).
+                    MetalSamplerPolicy.DeviceSupportsBorderColor(selected.Facts));
 
                 // THE SHARED SAMPLER PAIR, from MetalSharedSamplers and not from the engine's same-named
                 // GpuSamplerDescription statics. Both are WRAP on all three axes, and reading the engine statics
@@ -218,11 +222,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         void CreateSharedSamplers()
         {
-            _pointSampler = MetalSampler.Create(_device, _liveness, MetalSharedSamplers.Point);
+            // BOTH ARE WRAP ON ALL THREE AXES, so neither can reach the border-colour refusal whatever the device
+            // answers. The flag is passed rather than hardcoded true because this path must not be the one place
+            // that decides, and MetalSharedSamplers is where the wrap is stated.
+            _pointSampler = MetalSampler.Create(_device, _liveness, MetalSharedSamplers.Point, _supportsBorderColor);
 
             try
             {
-                _linearSampler = MetalSampler.Create(_device, _liveness, MetalSharedSamplers.Linear);
+                _linearSampler = MetalSampler.Create(_device, _liveness, MetalSharedSamplers.Linear,
+                    _supportsBorderColor);
             }
             catch
             {

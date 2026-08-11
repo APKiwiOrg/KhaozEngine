@@ -63,10 +63,16 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
     /// <c>MTLSamplerBorderColor</c>, an <c>NSUInteger</c>. The seam exposes no border colour at all, so the engine
     /// hardcodes <see cref="TransparentBlack"/> on every backend and this enum exists to name that one value
     /// rather than to offer a choice.
+    /// <para>
+    /// NOT EVERY METAL DEVICE HAS THESE. Border colours are a <c>MTLGPUFamilyMac2</c> feature, and a device
+    /// answering no to that family asserts under the debug layer on any descriptor that carries one, naming this
+    /// enum's member in the message. See <c>MetalSamplerPolicy</c> for the read and the refusal.
+    /// </para>
     /// </summary>
     internal enum MTLSamplerBorderColor : ulong
     {
-        /// <summary>What every sampler in this engine is created with.</summary>
+        /// <summary>What every BORDERING sampler in this engine is created with, and the only member any of them
+        /// reaches.</summary>
         TransparentBlack = 0,
 
         /// <summary>Opaque black. Never selected.</summary>
@@ -80,15 +86,15 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
     /// An <c>MTLSamplerDescriptor</c>, created at +1 through <c>alloc</c> plus <c>init</c> and released once the
     /// sampler state exists. Write-only for the same reason <see cref="MTLTextureDescriptor"/> is.
     /// <para>
-    /// <b>THE BORDER COLOUR IS SET AND THE COMPARE FUNCTION IS NOT, and that pair IS the incumbent's two
-    /// conditionals resolved</b> (row 6's "both reachable conditionals"). <c>Veldrid.MTL.MTLSampler</c> writes the
-    /// border colour only <c>if (gd.MetalFeatures.IsMacOS)</c>, which is true on every machine this backend runs
-    /// on, so that arm is always taken. It writes the compare function only when the seam supplied a comparison
-    /// kind, and the engine's own Veldrid path passes <c>null</c> at every call site, so that arm is never taken
-    /// and the descriptor keeps its default of <c>MTLCompareFunctionNever</c>. Reproducing a conditional
-    /// whose condition is constant would be reproducing a branch instead of a behaviour, so the constant answers
-    /// are written directly and this paragraph is the citation for both. <c>MetalSamplerPolicy</c> carries the
-    /// same statement where a test can read it.
+    /// <b>THE COMPARE FUNCTION IS NEVER SET AND THE BORDER COLOUR IS SET ONLY WHEN A BORDER MODE ASKS FOR IT.</b>
+    /// <c>Veldrid.MTL.MTLSampler</c> writes the compare function only when the seam supplied a comparison kind,
+    /// and the engine's own Veldrid path passes <c>null</c> at every call site, so that arm is never taken and the
+    /// descriptor keeps its default of <c>MTLCompareFunctionNever</c>. Reproducing a conditional whose condition
+    /// is constant would be reproducing a branch instead of a behaviour, so the constant answer is written
+    /// directly. The border colour is a DIVERGENCE rather than a resolved conditional: the incumbent writes it
+    /// whenever it is on macOS, and this sends <c>-setBorderColor:</c> only for a descriptor that actually borders,
+    /// because a device without border colours asserts under the debug layer on one that carries the property.
+    /// <c>MetalSamplerPolicy</c> carries both statements where a test can read them.
     /// </para>
     /// </summary>
     /// <param name="Handle">The Objective-C object, or <see cref="IntPtr.Zero"/> for nil.</param>
@@ -113,12 +119,17 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         /// Write the whole request, in the incumbent's own order and with its own values. The LOD clamps are the
         /// ones the engine's Veldrid path passes (<c>0</c> and <c>uint.MaxValue</c>), and the maximum anisotropy
         /// is raised to at least 1 exactly as <c>Veldrid.MTL.MTLSampler</c> raises it, because Metal rejects 0.
+        /// <para>
+        /// A NULL <paramref name="border"/> SENDS NOTHING, and the difference is not cosmetic. Leaving the
+        /// property at its default is not the same as setting it to that default on a device without border
+        /// colours: the descriptor validation reads the value that is there.
+        /// </para>
         /// </summary>
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal void Configure(MTLSamplerAddressMode s, MTLSamplerAddressMode t, MTLSamplerAddressMode r,
             MTLSamplerMinMagFilter min, MTLSamplerMinMagFilter mag, MTLSamplerMipFilter mip,
-            MTLSamplerBorderColor border, nuint maxAnisotropy, float lodMinClamp, float lodMaxClamp)
+            MTLSamplerBorderColor? border, nuint maxAnisotropy, float lodMinClamp, float lodMaxClamp)
         {
             SetNUInt("setSAddressMode:", (nuint)s);
             SetNUInt("setTAddressMode:", (nuint)t);
@@ -126,7 +137,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
             SetNUInt("setMinFilter:", (nuint)min);
             SetNUInt("setMagFilter:", (nuint)mag);
             SetNUInt("setMipFilter:", (nuint)mip);
-            SetNUInt("setBorderColor:", (nuint)border);
+            if (border is { } colour) SetNUInt("setBorderColor:", (nuint)colour);
             SetNUInt("setMaxAnisotropy:", maxAnisotropy);
             ObjCMsgSend.SendVoidFloat(Handle, ObjCRuntime.Sel("setLodMinClamp:"), lodMinClamp);
             ObjCMsgSend.SendVoidFloat(Handle, ObjCRuntime.Sel("setLodMaxClamp:"), lodMaxClamp);

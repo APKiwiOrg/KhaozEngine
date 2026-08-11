@@ -3821,9 +3821,20 @@ declined.
 boundaries or record-time buffer allocations, on either backend. The incumbent half needs the throwaway
 instrumented build MM1 names, and the counter gap above means it cannot be shortcut through a capture.
 
-**What gate 4 still owes.** The pass bar is "no worse over a week" (MM12), and a week has not passed: these are
-one capture each. The soak build has to run repeatedly over that window, and MM1's two halves have to be
-measured. The prerequisite is discharged and the gate stays PENDING.
+**What gate 4 still owes.** The pass bar is "no worse over accumulated field exposure" (MM12's week was the
+estimate of how much), and MM1's two halves have to be measured. The prerequisite is discharged and the gate
+stays PENDING.
+
+**The soak is ORGANIC SESSIONS, not a scheduled capture loop, reframed 2026-08-11 at the user's call.** The
+build does not change day to day, so a dedicated daily capture would measure the calendar. What the exposure
+window is actually for is what a single capture cannot sample: long-session accumulation (the engine's own
+record has a frame-rate ratchet that needed time in world to appear), thermal and refresh-regime variance, and
+sleep and wake. The consumer release that adopts 17.35.0 generates exactly that for free, so the instrument is
+the telemetry the user's and the testers' own sessions write, reviewed on a schedule rather than produced by
+one. Two practical notes for whoever reads the gate: macOS native exposure requires the game head to register
+the backend and the session to select it (`KE_GRAPHICS_BACKEND=metal-native`) until the ProbeOS flip, and
+tester machines' telemetry currently never leaves them, so remote evidence arrives as reports unless the
+upload feature filed from this reframing lands.
 
 **The native session did NOT reach the 120 Hz refresh regime and the incumbent did.** Read like for like at
 60 Hz the native backend is at or slightly ahead of the incumbent on every average (identical median frame

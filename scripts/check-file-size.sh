@@ -1,6 +1,8 @@
 #!/bin/sh
-# Engine copy for BASELINE MANAGEMENT ONLY (--init/--update/--preview). Enforcement in this repo is
-# the KhaozEngine.CodeHealth.Analyzers KESIZE analyzer at compile time, wired in Directory.Build.props.
+# Engine copy. Enforcement in this repo is the KhaozEngine.CodeHealth.Analyzers KESIZE analyzer at
+# compile time (wired in Directory.Build.props) PLUS the --tree leg .github/workflows/ci.yml runs on
+# every push and PR, which is what covers the projects a selective build never compiles (#554). The
+# local git hooks here call neither leg, so --init/--update/--preview stay this copy's interactive use.
 # The canonical enforcement copy (hooks + CI) is game-template/scripts/check-file-size.sh, which is
 # also the semantic authority the analyzer mirrors. Keep the body identical when refreshing.
 # check-file-size.sh - a RATCHET on source-file size, not a cap.

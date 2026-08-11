@@ -41,6 +41,22 @@ jobs:
         # too but do not use the diff, and a missing base just falls the script back to a FULL run.
         with:
           fetch-depth: 0
+      # The three whole-tree convention guards, run unconditionally: every event, both paths, before the
+      # dotnet setup below and outside ci-selective-test.sh's docs-only skip (a docs-only push is exactly
+      # when the dash and prose guards matter most). They are seconds-fast text sweeps over tracked files,
+      # so there is nothing to gate them on. .githooks/pre-commit runs the cheaper STAGED legs of dashes
+      # and prose at commit time; tree mode is what catches a commit that bypassed the hook (--no-verify,
+      # another IDE, the GitHub web UI), which the staged leg by construction cannot see. Each script
+      # exits 1 on a violation and 0 clean, so the default bash -e shell fails the job on the first one.
+      # check-file-size.sh --tree earns its place next to the compile-time KESIZE analyzer because the
+      # analyzer only sees what the compiler sees, and the selective path builds a slice of the solution:
+      # growth in an unaffected project would otherwise reach main uninspected. Mirrors the five game
+      # repos' "Repo convention checks" step in build-test.yml (issue #554).
+      - name: Repo convention checks (dash ban + prose ratchet + file-size ratchet)
+        run: |
+          sh scripts/check-dashes.sh --tree
+          sh scripts/check-prose.sh --tree
+          sh scripts/check-file-size.sh --tree
       # Fail fast if the docs' "current version" declarations drifted from Directory.Build.props. Runs
       # on every event, both paths, so a selective docs-only push is still guarded.
       - name: Check doc version consistency

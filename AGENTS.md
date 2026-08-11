@@ -19,9 +19,12 @@ Claude loads the full versions from ~/.claude/CLAUDE.md every session. Codex doe
 - No em/en dashes and no prose semicolons in shipped text.
 
 `scripts/check-dashes.sh --tree` is the sweep for that last rule: it checks every tracked `.md`/`.cs`
-file as it stands, so an orchestrator runs it across the whole branch diff before merging. The
-pre-commit hook only sees staged additions, and implementers of every tier emit dashes and then
-report clean.
+file as it stands. The pre-commit hook only sees staged additions, and implementers of every tier emit
+dashes and then report clean, so run it across the whole branch diff before merging. Since #554, CI
+runs it too, alongside `check-prose.sh --tree` and `check-file-size.sh --tree`, in one unconditional
+`ci.yml` step on every push and PR. The orchestrator sweep is still the one that catches a violation
+before it becomes someone else's red run, and it is the only one that sees a branch that was never
+pushed.
 
 Everything below binds those rules to this engine's own mechanics, and wins where it differs.
 
@@ -95,7 +98,10 @@ exception is the trivial-change case below.
   full test, determinism double-pass, pack, publish). Ordinary pushes and PRs run
   `scripts/ci-selective-test.sh`, which builds and tests only the test projects `dotnet-affected` marks
   affected by the diff, skips entirely on a docs-only diff, and forces full on a
-  workflow/scripts/props/slnx/tool-manifest change or a missing base sha. See
+  workflow/scripts/props/slnx/tool-manifest change or a missing base sha. Ahead of that split, both
+  paths run the convention step (`check-dashes.sh --tree`, `check-prose.sh --tree`,
+  `check-file-size.sh --tree`) and `check-doc-versions.sh` unconditionally, so a docs-only push that
+  builds nothing is still gated on content (#554). See
   `docs/design/CI-SELECTIVE-TESTS-DESIGN-2026-07-18.md` for the full design.
 - **Public repo, every leg GitHub-hosted.** The engine went public on 2026-08-06, after its private CI
   became the largest line on the org's GitHub bill, so standard hosted runners are free and no leg

@@ -10,8 +10,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 A crash that nothing logged now writes its own file, the Metal shader emission is cached across
 processes, both shader-cache keys learn to name the cross-compiler that produced the bytes, the GPU disk caches
 start pruning the version folders they leave behind, the MSAA resolve destinations gain the instrument the golden
-family is not, the Retina first frame is sized in pixels, and two of phase 4's guards get the teeth their prose
-already claimed.
+family is not, the Retina first frame is sized in pixels, two of phase 4's guards get the teeth their prose
+already claimed, and CI starts gating the three whole-tree convention guards it never ran.
 
 ### The last-chance crash file (`CrashReport`, #607)
 
@@ -343,6 +343,38 @@ pruning. A folder that will not delete is skipped ON ITS OWN, so one locked fold
 nothing propagates, which is the posture the rest of the file store already had. `ResolveDirectory` stays pure
 and is still what an explicitly named directory goes through, because deciding about a string and deleting
 folders should not be the same call.
+
+### CI gates the three whole-tree convention guards (#554)
+
+`ci.yml` gains one unconditional step, `Repo convention checks`, running `check-dashes.sh --tree`,
+`check-prose.sh --tree` and `check-file-size.sh --tree` before the dotnet setup, on every push and PR and on
+both the selective and the full path. It sits beside the existing `check-doc-versions.sh` step, which already
+ran that way. No behaviour change to any script and no baseline moved: all three were green on `main` when this
+landed, so the wiring lands green rather than red.
+
+**The engine carried all three guards and invoked none of them in tree mode.** `.githooks/pre-commit` runs the
+STAGED legs of dashes and prose, which by construction cannot see a commit that never went through the hook.
+`--no-verify`, another IDE, and the GitHub web UI all bypass it, and a violation that lands that way was
+detectable only by a manual sweep somebody had to remember. The five game repos have run exactly these three in
+a `Repo convention checks` step since the fleet prose-gating pass. The engine had no `build-test.yml` for that
+pass to touch, which is the whole reason it was skipped.
+
+**Unconditional, and deliberately outside the selective path.** `ci-selective-test.sh` skips entirely on a
+docs-only diff, which is precisely the diff shape the dash and prose guards exist for, so gating the step on it
+would have disarmed it on the pushes that need it most. The three sweeps are seconds of `git ls-files` plus
+`grep` over tracked text, so there is nothing to gate them on in the first place.
+
+**Why the file-size leg is here despite the compile-time analyzer.** KESIZE only sees files the compiler sees,
+and the selective path compiles the affected slice rather than the solution, so growth in an unaffected project
+reached `main` uninspected on a normal push. This closes the gap that `docs/design/FILESIZE-ANALYZER-DESIGN-2026-07-20.md`
+recorded as a known correction, and that doc now says so.
+
+**Each guard was proved to fail before it was trusted.** A guard that prints a violation and exits 0 gates
+nothing, so one deliberate violation was run through each script and then reverted: an em-dash appended to
+`README.md` (exit 1), a prose semicolon appended to `README.md`, taking it to 36 against its baseline of 35
+(exit 1), 900 padding lines appended to a small unbaselined `.cs`, taking it to 912 against the 800 cap
+(exit 1), and a hand-edited `PackageReference` version in `README.md` (exit 1). All four return 0 on the clean
+tree.
 
 ## 17.35.0
 

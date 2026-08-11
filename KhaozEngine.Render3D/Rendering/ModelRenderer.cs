@@ -434,8 +434,18 @@ namespace KhaozEngine.Render3D.Rendering
         public void BeginModelPass(IGpuCommandList cl, RenderResources res, PixelPostProcessSettings s)
         {
             cl.SetFramebuffer(res.ModelFB);
-            // Metal MRT clear collapses to one value across attachments; clear all three to the background.
-            // alpha 0 marks "background" for the starfield composite; the model writes alpha 1.
+            // All three colour targets are cleared to the background, and alpha 0 marks "background" for the
+            // starfield composite while the model writes alpha 1. That is what this pass wants on every backend.
+            //
+            // THE SECOND REASON THE THREE VALUES ARE EQUAL NAMES ONE IMPLEMENTATION: the VELDRID Metal backend
+            // writes every clear into colorAttachments[0], so attachments 1 and 2 are never cleared there at all
+            // and they LOAD a freshly created private texture nothing has written. Equal values do not fix that,
+            // they only make the one attachment that does get cleared carry the value the other two should have
+            // had. The engine's own native Metal backend (GpuBackendKind.MetalNative) folds each clear into its
+            // own attachment's loadAction, so all three really are cleared there, which is a deliberate rendering
+            // change on the fleet's reference golden family rather than an invisible correction (decision M-A2 of
+            // docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md). Keep the values equal until the Veldrid
+            // Metal leg retires: this code cannot tell which Metal it is on and must be correct on both.
             var bg = s.BackgroundColor.WithAlpha(0f);
             cl.ClearColorTarget(0, bg);
             cl.ClearColorTarget(1, bg);

@@ -5,11 +5,18 @@ backend; the GPU golden-snapshot net verifies rendering on each one through a CI
 
 ## Platform → backend (desktop scope)
 
-| OS      | Backend     | `GpuBackendKind` | golden file suffix | software rasterizer (CI) |
-| ------- | ----------- | ---------------- | ------------------ | ------------------------ |
-| macOS   | Metal       | `Metal`          | `.metal.txt`       | native (Apple GPU)       |
-| Windows | Direct3D11  | `Direct3D11`     | `.direct3d11.txt`  | WARP (auto fallback)     |
-| Linux   | Vulkan      | `Vulkan`         | `.vulkan.txt`      | Mesa lavapipe            |
+| OS      | Backend the OS probe picks | `GpuBackendKind` | golden file suffix | engine-owned native backend (opt-in, same family) | software rasterizer (CI) |
+| ------- | -------------------------- | ---------------- | ------------------ | ------------------------------------------------- | ------------------------ |
+| macOS   | Metal                      | `Metal`          | `.metal.txt`       | `MetalNative` (`KhaozEngine.Gpu.Metal`)           | none, a real Apple GPU   |
+| Windows | Direct3D11                 | `Direct3D11`     | `.direct3d11.txt`  | `Direct3D11Native` (`KhaozEngine.Gpu.D3D11`)      | WARP (auto fallback)     |
+| Linux   | Vulkan                     | `Vulkan`         | `.vulkan.txt`      | `VulkanNative` (`KhaozEngine.Gpu.Vulkan`)         | Mesa lavapipe            |
+
+Every API in that table has TWO implementations behind it now, and the right-hand column is the engine's own.
+Each native backend is opt-in (its package is in no umbrella and registers explicitly), is selected by nothing
+by default, and shares the incumbent's golden family rather than owning one, which is what makes its CI leg a
+verification of the incumbent's committed references on the incumbent's own rasterizer. The macOS row is the
+one whose rasterizer column reads "none": it is the only family baked on real hardware, and the only leg in
+this matrix where a golden disagreement is about a GPU rather than about a software rasterizer.
 
 Backend selection is centralized in `KhaozEngine.Gpu.GpuBackendSelector`:
 
@@ -123,9 +130,23 @@ fixed in 10.18.1 (Metal and Vulkan legs and every actual golden compare were gre
 The suite each leg runs is split by trigger, from measured hosted-runner cost
 (`KE_GPU_TESTS=1`, `fail-fast: false`):
 
-- **Self-hosted Metal leg (free)**: the WHOLE test suite (`--filter "Category!=LiveSocket"`) on every
+- **GitHub-hosted Metal leg (`macos-26`)**: the WHOLE test suite (`--filter "Category!=LiveSocket"`) on every
   trigger - every `[GpuFact]` test (golden and behavioral) plus the headless suite, matching `ci.yml`'s
-  own `Category!=LiveSocket` exclusion (LiveSocket tests need a live network peer, not available here).
+  own `Category!=LiveSocket` exclusion (LiveSocket tests need a live network peer, not available here). It ran
+  on the dev Mac until [#552](https://github.com/APKiwiOrg/KhaozEngine/issues/552) moved it to a hosted runner,
+  and the runner is pinned to `macos-26` by number rather than to `macos-latest` so an image promotion cannot
+  move the GPU under a golden gate.
+- **GitHub-hosted Metal NATIVE leg (`macos-26`)**: the engine's own `KhaozEngine.Gpu.Metal` backend
+  (`KE_GRAPHICS_BACKEND=metal-native`) on exactly the incumbent Metal leg's tier, which is the whole suite on
+  every trigger. It is a GUEST in the incumbent's `metal` golden family exactly as the other two native legs are
+  guests in theirs, so `KE_UPDATE_GOLDENS` stays empty on it for every trigger and it sits a bake dispatch out
+  entirely. **This is the strongest regression net in the program**: the other two native legs run golden-only
+  on push, on software rasterizers, and this one runs everything on a real GPU every time. Three things are its
+  own rather than the incumbent Metal leg's. It sets `KE_METAL_REQUIRED=1`, for the reason the Vulkan native leg
+  sets its own equivalent below. It arms `MTL_DEBUG_LAYER=1` on every run and `MTL_SHADER_VALIDATION=1` on the
+  scheduled full sweep, which are Metal's two validation tiers. And it sets `MTL_CAPTURE_ENABLED=1` on the
+  scheduled sweep alone, which is what lets the frame-capture suite really start a capture and write a
+  `.gputrace` bundle rather than only assert that an unarmed process refuses to.
 - **GitHub-hosted D3D11 leg (2x billing)**: golden tests only (`FullyQualifiedName~Golden`) on
   `push`/`pull_request`, and the WHOLE suite on the weekly `schedule` (Sunday 18:00 UTC) and on
   `workflow_dispatch`. The full suite on hosted Windows measured 17m14s vs the golden-only 7m44s, about
@@ -232,10 +253,10 @@ not a CI filter contract):
 
 | trigger                          | behaviour                                                                     |
 | -------------------------------- | ----------------------------------------------------------------------------- |
-| `push` / `pull_request` on main  | **verify**: Metal runs the full suite. Both D3D11 legs and both Vulkan legs run the golden tests only. No validation tier runs |
-| `schedule` (weekly, Sun 18:00 UTC) | **full sweep**: Metal + both D3D11 legs + both Vulkan legs all run the full suite (both Vulkan legs serialized, the native one under `strict` validation), plus the `sync` validation job |
-| `workflow_dispatch` `bake=false` | same as `schedule` (all five legs full suite, both Vulkan legs serialized, plus the `sync` job) |
-| `workflow_dispatch` `bake=true`  | **re-bake** (`KE_UPDATE_GOLDENS=1`) on Metal, D3D11 and Vulkan, uploaded as per-backend goldens. Both guest legs skip their test step and the `sync` job does not run at all: a guest owns no family to bake, and verifying against references being replaced mid-run would only red it |
+| `push` / `pull_request` on main  | **verify**: both Metal legs run the full suite. Both D3D11 legs and both Vulkan legs run the golden tests only. The only validation tier that runs is Metal's debug layer, which the native Metal leg arms on every trigger |
+| `schedule` (weekly, Sun 18:00 UTC) | **full sweep**: both Metal legs + both D3D11 legs + both Vulkan legs all run the full suite (both Vulkan legs serialized, the native one under `strict` validation), plus the `sync` validation job. It is also where the native Metal leg adds `MTL_SHADER_VALIDATION=1` and `MTL_CAPTURE_ENABLED=1` |
+| `workflow_dispatch` `bake=false` | same as `schedule` (all six legs full suite, both Vulkan legs serialized, plus the `sync` job) |
+| `workflow_dispatch` `bake=true`  | **re-bake** (`KE_UPDATE_GOLDENS=1`) on Metal, D3D11 and Vulkan, uploaded as per-backend goldens. All three guest legs skip their test step and the `sync` job does not run at all: a guest owns no family to bake, and verifying against references being replaced mid-run would only red it |
 
 Software rasterizers on the runners (no real GPU):
 
@@ -258,26 +279,30 @@ Software rasterizers on the runners (no real GPU):
   creates: both pin `KE_D3D11_ADAPTER=warp`, so the rasterizer under the shared goldens is stated rather than
   inherited from the runner image.
 
-Net result: **all five legs are blocking, none of them informational** - Metal (macOS), Direct3D11
-(Windows/WARP), Direct3D11 native (Windows/WARP), Vulkan (Linux/lavapipe) and Vulkan native
-(Linux/lavapipe). Three of them are long validated. The two guest legs block by design rather than by record:
+Net result: **all six legs are blocking, none of them informational** - Metal (macOS), Metal native (macOS),
+Direct3D11 (Windows/WARP), Direct3D11 native (Windows/WARP), Vulkan (Linux/lavapipe) and Vulkan native
+(Linux/lavapipe). Three of them are long validated. The three guest legs block by design rather than by record:
 a native backend's CI leg is its continuous exercise, so it gates from its first run, and their first recorded
-evidence is rollout gate 1 on [#460](https://github.com/APKiwiOrg/KhaozEngine/issues/460) and
-[#529](https://github.com/APKiwiOrg/KhaozEngine/issues/529). The overall workflow is green only when all five
-verify, with the one exception in the table above: on a `bake=true` dispatch both guest legs skip their test
-step, so that run is green on the three baking legs alone.
+evidence is rollout gate 1 on [#460](https://github.com/APKiwiOrg/KhaozEngine/issues/460),
+[#529](https://github.com/APKiwiOrg/KhaozEngine/issues/529) and
+[#566](https://github.com/APKiwiOrg/KhaozEngine/issues/566). The overall workflow is green only when all six
+verify, with the one exception in the table above: on a `bake=true` dispatch all three guest legs skip their
+test step, so that run is green on the three baking legs alone.
 
-**The incumbent Vulkan leg is deliberately not coupled to the native backend's health.** It installs no
-validation layer, sets no `KE_VULKAN_REQUIRED`, and the rows on it that touch a native device stay dormant if
-the probe ever refuses the runner. That leg is the escape hatch the rollout keeps selectable indefinitely, and
-an escape hatch that goes red whenever the thing it escapes from goes red is not one.
+**Neither incumbent leg is coupled to its native sibling's health, and that is the same decision made twice.**
+The incumbent Vulkan leg installs no validation layer and sets no `KE_VULKAN_REQUIRED`. The incumbent Metal leg
+arms neither Metal validation tier and sets no `KE_METAL_REQUIRED`. On both, the rows that touch a native device
+stay dormant if the probe ever refuses the runner. Those legs are the escape hatches the rollouts keep
+selectable indefinitely, and an escape hatch that goes red whenever the thing it escapes from goes red is not
+one.
 
 ### Per-backend golden flow
 
 1. **Push / PR = verify.** Each leg verifies the committed goldens of its FAMILY (`.metal.txt`,
-   `.direct3d11.txt`, `.vulkan.txt`). Three legs own the family they verify. The native leg owns none: it is a
-   guest in `direct3d11`, so it checks the incumbent's files on the same rasterizer and never writes them. A
-   family with no committed goldens **fails with "golden ... missing ... bake it"**.
+   `.direct3d11.txt`, `.vulkan.txt`). Three legs own the family they verify. The three native legs own none:
+   each is a guest in its incumbent's family, so it checks the incumbent's files on the same rasterizer (the
+   same real GPU, on macOS) and never writes them. A family with no committed goldens **fails with
+   "golden ... missing ... bake it"**.
 2. **Generate a new backend's goldens:** run the workflow manually with `bake = true`. The bake legs render
    with `KE_UPDATE_GOLDENS=1` and upload artifacts named `goldens-<backend>`
    (`scene2d.<backend>.txt`, `scene3d.<backend>.txt`).
@@ -308,9 +333,13 @@ numbers: the ARTIFACT is named for the leg (`golden-deltas-direct3d11-native`) a
 for the golden family the leg verified (`golden-deltas.direct3d11.txt`). So the guest leg's deltas arrive under
 its own artifact carrying the shared family's filename, and downloading both Windows artifacts gives you two
 same-named files that are two implementations measured against one set of references. The Linux pair works the
-same way: `golden-deltas-vulkan-native` contains `golden-deltas.vulkan.txt`.
+same way (`golden-deltas-vulkan-native` contains `golden-deltas.vulkan.txt`) and so does the macOS pair
+(`golden-deltas-metal-native` contains `golden-deltas.metal.txt`). **The macOS pair is the one where that trap
+costs the most**, because `metal` is the fleet's cross-backend reference family: two same-named files there are
+two implementations measured against the references every other family is read against, so mixing them up
+misattributes a fleet event to a leg or the reverse.
 
-Three artifacts carry no pixels at all and upload on `always()`, because each of them is read off a run that
+Four artifacts carry no pixels at all and upload on `always()`, because each of them is read off a run that
 PASSED:
 
 - **`vulkan-validation-strict-vulkan-native`** and **`vulkan-validation-sync`** are the two validation tiers'
@@ -326,6 +355,12 @@ PASSED:
   and allocator rest on spec minimums until the observed lavapipe values are recorded
   ([#541](https://github.com/APKiwiOrg/KhaozEngine/issues/541)). The artifact exists because those numbers have
   to be quotable verbatim into a design doc, and a job log is thousands of lines long and expires sooner.
+- **`metal-validation-<tier>-metal-native`** is the native Metal leg's suite output, teed the same way and
+  uploaded for the same reason: the debug layer reports on stderr beside the test names, and the interleaving is
+  the diagnostic. `debug-layer` is every run of that leg and `shader-validation` is the scheduled sweep, where
+  `MTL_SHADER_VALIDATION=1` adds in-shader bounds checking on top. **Neither tier is a synchronisation
+  validator**, and Metal has none at all, which is the one place this matrix is weaker than the Vulkan side:
+  a missing read-after-write hazard across encoders has no detector anywhere in this net.
 
 The fast inner-loop CI (`.github/workflows/ci.yml`: build/test/pack/publish, GPU tests skipped) is separate and
 untouched.

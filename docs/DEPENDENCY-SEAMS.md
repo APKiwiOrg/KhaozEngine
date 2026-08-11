@@ -53,7 +53,7 @@ this doc cannot silently drift apart.
 
 | Area | Seam (dependency-free) | Backend(s) | Third-party library |
 |---|---|---|---|
-| GPU / rendering | `KhaozEngine.Gpu` (`GpuDeviceContext` + `GpuInterfaces`, `GpuBackendSelector`, and `GpuBackendProviders` / `IGpuBackendProvider` for a backend that ships outside this package) | (in-package) `Internal/VeldridGpuDevice`, which is Metal and both Veldrid legs, plus TWO engine-owned native backends that ship outside it, each opt-in and in no umbrella: `KhaozEngine.Gpu.D3D11` (`KhaozEngineD3D11.Register()`) and `KhaozEngine.Gpu.Vulkan` (`KhaozEngineVulkan.Register()`), and any other registered out-of-package provider | Veldrid (+ Veldrid.SPIRV, Vortice.Direct3D11) in the seam. Vortice.Direct3D11 + Vortice.D3DCompiler in the D3D11 backend and Silk.NET.Vulkan (+ its KHR and EXT extension packages) in the Vulkan one, neither of which declares a Veldrid package of its own |
+| GPU / rendering | `KhaozEngine.Gpu` (`GpuDeviceContext` + `GpuInterfaces`, `GpuBackendSelector`, and `GpuBackendProviders` / `IGpuBackendProvider` for a backend that ships outside this package) | (in-package) `Internal/VeldridGpuDevice`, which is all four Veldrid legs including Metal, plus THREE engine-owned native backends that ship outside it, each opt-in and in no umbrella: `KhaozEngine.Gpu.D3D11` (`KhaozEngineD3D11.Register()`), `KhaozEngine.Gpu.Vulkan` (`KhaozEngineVulkan.Register()`) and `KhaozEngine.Gpu.Metal` (`KhaozEngineMetal.Register()`), and any other registered out-of-package provider | Veldrid (+ Veldrid.SPIRV, Vortice.Direct3D11) in the seam. Vortice.Direct3D11 + Vortice.D3DCompiler in the D3D11 backend and Silk.NET.Vulkan (+ its KHR and EXT extension packages) in the Vulkan one. The Metal backend declares NO third-party binding at all: its Objective-C interop is engine-owned `libobjc` and `Metal.framework` P/Invoke. None of the three declares a Veldrid package of its own |
 | 3D physics | `KhaozEngine.Physics` (`IPhysicsWorld`, value-type shapes/poses/queries, and since the floating-origin release also the default-method `Origin` / `CanRebase` / `Rebase(newOrigin)`, so an existing implementer keeps compiling and correctly reports that it cannot rebase - the seam learns a plain `Vector3`, never a frame type, and keeps its zero project references) | `KhaozEngine.Physics.Bepu` (`BepuPhysicsWorld`, which overrides all three: bulk direct pose writes plus broadphase refits over every allocated body set and the statics, so sleeping bodies, contacts and constraints all survive a shift) | BepuPhysics v2 |
 | Netcode transport | `KhaozEngine.Netcode` (`INetTransport` incl. the default-method `Stats` -> `NetTransportStats`, `LoopbackTransport`) + `Netcode.Abstractions` | `KhaozEngine.Netcode.LiteNetLib` (fills `Stats` via `EnableStatistics`) | LiteNetLib |
 | Persistence | `KhaozEngine.WorldStore` (`IWorldStore`, `InMemoryWorldStore`) | `WorldStore.Sqlite`, `WorldStore.SqlServer` | Microsoft.Data.Sqlite / SqlClient |
@@ -577,7 +577,7 @@ and decisions P4 and I2.
 
 ### The second instance: `KhaozEngine.Gpu.Vulkan`
 
-The pattern above is now used twice, which is what turns it from a one-off into the shape an out-of-package
+The pattern above is used three times now, which is what turns it from a one-off into the shape an out-of-package
 graphics backend has here. `KhaozEngine.Gpu.Vulkan` is phase 3 of the same program and takes the same inverted
 edge. As of `17.34.0` it registers a real provider through `KhaozEngineVulkan.Register()`, answers a real
 functional machine probe, and creates a real HEADLESS device
@@ -632,8 +632,13 @@ at the sampled bind rather than by the queued layout restore that comment descri
 chain inside one list IS ordered here. Both sentences were true of Veldrid's Vulkan backend and false of this
 one. The comment now names the implementation each mechanism belongs to, and says outright that the mechanism is
 the part that differs between two backends one environment variable apart, while rule 2's portable requirement is
-unchanged and a consumer that drops the drain still breaks on Metal
-([#529](https://github.com/APKiwiOrg/KhaozEngine/issues/529)). It registers under `GpuBackendKind.VulkanNative`, which landed in
+unchanged and a consumer that drops the drain still breaks on the Veldrid legs the same machine falls back to
+([#529](https://github.com/APKiwiOrg/KhaozEngine/issues/529)). The native Metal backend later joined the
+permissive side by a third mechanism, its compute encoder's serial dispatch type, which is what makes three of
+three engine-owned backends honour rule 2 natively
+([#585](https://github.com/APKiwiOrg/KhaozEngine/issues/585)) and leaves only the two Veldrid legs needing the
+drain. That is the quorum [#461](https://github.com/APKiwiOrg/KhaozEngine/issues/461) has been waiting for, and
+it is evidence rather than a contract change. It registers under `GpuBackendKind.VulkanNative`, which landed in
 `17.32.0`, so the backend is selectable by name (`KE_GRAPHICS_BACKEND=vulkan-native`) and a machine that cannot
 run it arrives through the reported fallback. Nothing selects it by default, and the `vulkan-native` CI leg
 verifies the incumbent's committed goldens on lavapipe as a guest in that family, which is the continuous
@@ -674,9 +679,54 @@ interface plus one adapter per backend, all of which live in `KhaozEngine.TestSu
 `IsPackable=false` and `IsTestProject=false`, so it ships nothing and no shared production home exists, and it
 already references both backend packages for the `[GpuFact]` registration seats. So the visibility this costs is
 one csproj line each, beside the `KhaozEngine.Render.Tests` grant both already carried. The edge direction is
-unchanged: `TestSupport.Gpu -> Gpu.D3D11` and `TestSupport.Gpu -> Gpu.Vulkan`, never the reverse.
+unchanged: `TestSupport.Gpu -> Gpu.D3D11`, `TestSupport.Gpu -> Gpu.Vulkan` and, since the Metal instance below,
+`TestSupport.Gpu -> Gpu.Metal`, never the reverse.
 
-The no-Veldrid rule below applies to BOTH packages, and both assertions are theories over the two of them.
+The no-Veldrid rule below applies to ALL THREE packages, and both assertions are theories over the three of them.
+
+### The third instance: `KhaozEngine.Gpu.Metal`
+
+`KhaozEngine.Gpu.Metal` is phase 4 and the LAST instance, because after it every API the engine renders on has
+an engine-owned implementation behind this seam. It takes the same inverted edge for the third time, registering
+through `KhaozEngineMetal.Register()` under `GpuBackendKind.MetalNative`, which landed in `17.35.0` with the
+`metal-native` and `mtl-native` tokens, so the backend is selectable by name
+(`KE_GRAPHICS_BACKEND=metal-native`) and a machine that cannot run it arrives through the reported fallback.
+Neither `IGpuDevice` nor `IGpuCommandList` has an unbuilt member left: it creates devices headless and windowed,
+compiles GLSL through SPIR-V to MSL, builds pipelines from a per-program binding table read out of the emitted
+MSL, records and submits against an `MTLSharedEvent` timeline, draws, dispatches, and presents through a
+`CAMetalLayer`. Nothing selects it by default, and the `metal-native` CI leg verifies the incumbent's committed
+`metal` goldens on the same real GPU as a guest in that family, which is the continuous exercise the rollout is
+measured against.
+
+```
+KhaozEngine.Gpu.Metal -> KhaozEngine.Gpu           (the only direction, for the third time)
+KhaozEngine.Gpu.Metal -> KhaozEngine.Diagnostics   (the probe's log lines, same as both siblings)
+KhaozEngine.Gpu.Metal -> (no third-party package at all)
+```
+
+**That last line is the difference worth knowing, and it is a decision rather than an omission** (M-P3 of
+[design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md)). Phase 2
+took `Vortice.Direct3D11` and phase 3 took `Silk.NET.Vulkan` on the reasoning that owning the BACKEND and owning
+the BINDING are different things. That reasoning is unchanged and it has nothing to point at here: Silk.NET
+ships no Metal, Vortice ships no Metal, and Apple ships no managed binding of any kind. Vendoring
+`Veldrid.MetalBindings` is rejected by name, so the interop is an engine-owned `[LibraryImport]` layer over
+`objc_msgSend` with blittable-only signatures, one file per Objective-C class, and this is the only backend in
+the program whose `ArchitectureTests.ThirdPartyHomes` row is empty. **Do not add one for symmetry**, and read
+an empty row there as the assertion it is rather than as a missing entry.
+
+**The platform boundary is the Direct3D 11 shape, not the Vulkan one**, and picking the wrong sibling as a
+template is the mistake this paragraph exists to stop. Metal is an OS-specific API exactly as Direct3D is, so
+the package targets plain `net10.0` (M-P1) and carries the whole
+`[SupportedOSPlatformGuard("macos")]`-over-`NoInlining`-`[SupportedOSPlatform("macos")]` apparatus the D3D11
+package carries, which with warnings as errors makes CA1416 the compiler-enforced boundary. The Vulkan
+package's deliberate ABSENCE of that apparatus (V-P1) is right for Vulkan and wrong here. A macOS-suffixed TFM
+would stop this assembly compiling on the Linux `ci.yml` leg and both Windows legs, and stop
+`KhaozEngine.Render.Tests` referencing it unconditionally, which is where its device-free tests live.
+
+Everything else is the pattern as before. The surface is pinned member by member
+(`GpuMetalPublicSurface_IsExactlyTheApprovedMembers`) beside the leak scan
+(`GpuMetalPublicApi_DoesNotLeakBackendTypes`), it grants `InternalsVisibleTo` to `KhaozEngine.Render.Tests` and
+to `KhaozEngine.TestSupport.Gpu` for the third shared ring adapter, and it declares no `Veldrid` package.
 
 ### What the backend package may reference, and the one edge it may NOT
 

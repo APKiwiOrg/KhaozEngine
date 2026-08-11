@@ -19,10 +19,10 @@ namespace KhaozEngine.Gpu
     /// <para>
     /// ABSENT IS NOT ZERO, and <see cref="HasValue"/> is the whole reason this is not a bag of nullable longs.
     /// Zero stalls IS the passing result, so a backend that keeps no counters must not report the same numbers as
-    /// a backend that kept them and never stalled. The default value answers false and is what Metal and the
-    /// incumbent Veldrid paths all give. The two native backends give a true value instead: D3D11 every field
-    /// except the acquire pair, which it passes as zero because a Direct3D 11 present has no acquire to wait on,
-    /// and Vulkan every field including that pair, which is the one backend here that really does wait on an
+    /// a backend that kept them and never stalled. The default value answers false and is what every incumbent
+    /// Veldrid path gives, Veldrid Metal included. The three native backends give a true value instead: D3D11
+    /// every field except the acquire pair, which it passes as zero because a Direct3D 11 present has no acquire
+    /// to wait on, and Vulkan and Metal every field including that pair, both of which really do wait on an
     /// acquire.
     /// </para>
     /// <para>
@@ -132,6 +132,15 @@ namespace KhaozEngine.Gpu
         /// the same lever, so a consumer reading a non-zero count reaches for the same knob either way and does
         /// not have to know which half moved. What the fold costs is the ability to tell them apart from here, and
         /// the backend keeps that breakdown internally for its own tests.
+        /// </para>
+        /// <para>
+        /// THE SECOND MEANING IS VULKAN'S, NOT UNIVERSAL, AND THAT MAKES THE NUMBER SHARPER ELSEWHERE. The native
+        /// Metal backend has no command-buffer pool to wait on at all: an <c>MTLCommandQueue</c> owns that
+        /// allocation and hands out a fresh buffer per recording, so there is no pool to reset and nothing for a
+        /// <c>Begin</c> to meet. Every unit on this counter there is the ring's segment acquire alone, which makes
+        /// a non-zero reading on Metal unambiguously a statement about <c>KE_METAL_FRAMES_IN_FLIGHT</c>, where the
+        /// same number on Vulkan folds two sources and has to be split by that backend's own breakdown before it
+        /// can be read as one.
         /// </para>
         /// </summary>
         public long BackpressureStallCount { get; }

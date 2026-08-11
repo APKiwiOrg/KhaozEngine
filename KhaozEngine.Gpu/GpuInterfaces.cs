@@ -200,9 +200,19 @@ namespace KhaozEngine.Gpu
         /// canonical resting layout, so nothing shared is read or written during recording at all. That is the
         /// same property the Direct3D 11 stream buys by touching no device state, obtained here from the API plus
         /// the barrier design instead. It is still a backend property and still not a promise of this interface:
-        /// the same code on Metal, on either Veldrid backend, or on the immediate Direct3D 11 driver is a
-        /// half-recorded frame or a corrupted one, and a machine that falls back after a failed device creation
-        /// swaps the backend under the code without telling it.
+        /// the same code on either Veldrid backend, on the Veldrid Metal backend, or on the immediate Direct3D 11
+        /// driver is a half-recorded frame or a corrupted one, and a machine that falls back after a failed device
+        /// creation swaps the backend under the code without telling it.
+        /// </para>
+        /// <para>
+        /// THE ENGINE'S OWN NATIVE METAL BACKEND IS PERMISSIVE TOO, AND IT COSTS THAT BACKEND NOTHING TO BE.
+        /// Each list holds its own <c>MTLCommandBuffer</c> and its own encoders, which is the allocation the queue
+        /// hands out per recording rather than anything shared, and that backend keeps no record-time state
+        /// outside the list at all: no layout tracker, no barrier batch, no device state cache. So N lists there
+        /// record concurrently and submit order is the observable order, because the commits are serialised. That
+        /// is the same shape the native Vulkan backend has, reached from Metal's object model instead of from a
+        /// barrier design, and it is a BACKEND PROPERTY with all the same caveats: <c>GpuBackendKind.Metal</c>,
+        /// which is the Veldrid Metal backend and the one a Mac falls back to, does not have it.
         /// </para>
         /// </summary>
         void Begin();
@@ -286,10 +296,13 @@ namespace KhaozEngine.Gpu
         // what ordering exists comes from each backend's implicit handling, and no two backends agree. Two rules
         // fall out of that, and both are proved by the compute [GpuFact] suite on every backend.
         //
-        // THE MECHANISMS BELOW ARE NAMED PER IMPLEMENTATION RATHER THAN PER API, and that is not pedantry. There
-        // are two Vulkan backends now (Veldrid's and the engine's own KhaozEngine.Gpu.Vulkan) and two Direct3D 11
-        // backends, and the pairs do NOT handle either rule the same way. A sentence that says "on Vulkan" was
-        // true of the one implementation that existed when it was written and is false of the other. What does
+        // THE MECHANISMS BELOW ARE NAMED PER IMPLEMENTATION RATHER THAN PER API, and that is not pedantry. Every
+        // API the engine renders on now has two backends behind it (Veldrid's and the engine's own
+        // KhaozEngine.Gpu.Direct3D11, .Vulkan and .Metal), and the pairs do NOT handle either rule the same way.
+        // A sentence that says "on Vulkan" was true of the one implementation that existed when it was written and
+        // is false of the other. The Metal pair is the one place a single sentence still covers both, and that is a
+        // measured coincidence rather than a licence to write to the API: both end the compute encoder when the
+        // render encoder begins, because that is Metal's own rule and neither backend gets to choose. What does
         // NOT vary is the rule: write to the rule, never to the mechanism, because the mechanism is the part that
         // differs between two backends a consumer can swap with one environment variable.
         //
@@ -298,8 +311,9 @@ namespace KhaozEngine.Gpu
         //      then handles the handoff. Veldrid's Vulkan backend queues a layout restore at dispatch time and
         //      drains it before the next draw (per command list, and armed by the Sampled flag). The native
         //      Vulkan backend tracks image layouts list-locally instead and transitions at the DRAW, from what
-        //      the bound sets name, so the restore is not something it can skip. Metal ends the compute encoder
-        //      when the render encoder begins, and both Direct3D 11 backends unbind the UAV as the SRV is bound.
+        //      the bound sets name, so the restore is not something it can skip. Both Metal backends end the
+        //      compute encoder when the render encoder begins, and both Direct3D 11 backends unbind the UAV as the
+        //      SRV is bound.
         //      Split across two command lists, the Veldrid Vulkan restore is silently skipped, so that split is
         //      NOT safe on this seam.
         //
@@ -315,10 +329,20 @@ namespace KhaozEngine.Gpu
         //      memory barrier before a dispatch that binds a resource an earlier dispatch in the same recording
         //      wrote, so the chain is ordered there without the drain. That is a BACKEND PROPERTY, exactly like
         //      the nested-Begin permissiveness on IGpuCommandList.Begin, and dropping the End plus Submit plus
-        //      WaitForIdle because it works on that backend breaks on Metal and on the backend the same machine
-        //      falls back to. It is evidence for an automatic-hazard seam capability
+        //      WaitForIdle because it works on that backend breaks on the Veldrid backend the same machine falls
+        //      back to. It is evidence for an automatic-hazard seam capability
         //      (https://github.com/APKiwiOrg/KhaozEngine/issues/461), which is where a consumer-visible version
         //      of this would have to live.
+        //
+        //      SO IS THE NATIVE METAL BACKEND, BY A THIRD MECHANISM, AND IT IS THE ONE THAT COMPLETES A QUORUM.
+        //      Its compute encoder is created with the default SERIAL dispatch type, where consecutive dispatches
+        //      in one encoder are ordered and their hazards tracked by the driver, so a dependent chain is ordered
+        //      there without a barrier and without the drain. That is now three of three engine-owned backends
+        //      honouring rule 2 natively by three different mechanisms (hazard tracking on Direct3D 11, a real
+        //      barrier on Vulkan, serial ordering on Metal), and only the two Veldrid legs still need the drain.
+        //      It is still a backend property and it still changes nothing above: the drain is what this SEAM
+        //      guarantees, the quorum is evidence for #461 rather than a contract change, and consumer code that
+        //      drops it because the machine it was written on tolerated it breaks on the fallback.
         //
         // Rule 2 costs a GPU stall per dependent stage, which is real: it is the current ceiling on any multi-pass
         // compute chain built against this seam.
@@ -484,6 +508,17 @@ namespace KhaozEngine.Gpu
         /// game can flip vsync mid-session. A no-op backing value on a headless (no-swapchain) device. On Metal it
         /// sets the layer's <c>displaySyncEnabled</c>, but the Veldrid Metal present still does not throttle the CPU
         /// from this alone - pair with a software frame cap for a deterministic rate (see <c>PresentMode</c>).
+        /// <para>
+        /// THAT SECOND CLAUSE IS MEASURED ON THE VELDRID METAL BACKEND, AND ONLY THERE. It has been the only Metal
+        /// implementation to run a windowed session, so it is the only one anyone has watched free-run. The
+        /// engine's own <see cref="GpuBackendKind.MetalNative"/> writes <c>displaySyncEnabled</c> unconditionally
+        /// where the incumbent writes it inside three values of a deprecated enum, and bounds
+        /// <c>maximumDrawableCount</c> with a blocking acquire at the present boundary, either of which may
+        /// throttle the CPU on its own. Whether it does is an open measurement, taken at rollout gate 5 of
+        /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c> with a mid-session vsync toggle as the
+        /// instrument, and until it is taken both Metal backends keep the software cap as a conservative default
+        /// (<see cref="GpuBackendKinds.IsMetal"/>, and <c>FrameCap.Resolve</c> carries the full reasoning).
+        /// </para>
         /// </summary>
         bool SyncToVerticalBlank { get; set; }
     }

@@ -1621,12 +1621,23 @@ So the layer runs at its default and the rows that provoke it ON PURPOSE stand d
 only if the thing it does is legitimate in a test and illegitimate in a shipped frame, which is three rows
 today: the row-1 interop spike records offset setters on an encoder with no pipeline bound because it is
 measuring the `objc_msgSend` ABI rather than drawing, the validation-reader row cannot tell an in-process
-variable from a launch one in a process launched with it, and **MM6's incumbent CONTROL reproduces the Veldrid
-Metal mis-binding on purpose**. That last one is worth reading twice: the layer's objection is
+variable from a launch one in a process launched with it, and **MM6's SPLIT-STAGE incumbent CONTROL reproduces
+the Veldrid Metal mis-binding on purpose**. That last one is worth reading twice: the layer's objection is
 `Fragment Function(main0): missing Buffer binding at index 0`, which is the incumbent writing the fragment's
 buffer at index 1 while the emitted function reads index 0. **Metal's own validation layer independently
 confirms MM6's mechanism**, from outside this repository's reasoning about it, and it did so the first time
-anyone armed it. The native measurement in that row is untouched and still runs under validation.
+anyone armed it. The native measurement in that row is untouched and still runs under validation, and so are
+the OTHER TWO MM6 pixel rows' controls: only the split-stage shape provokes the layer, and standing all three
+down would have cost two clean control readings on the one leg that arms it at all.
+
+**Two more rows stand down on the DEEP SWEEP, and they are a different mechanism worth counting separately.**
+Neither is a layer objection: in-shader bounds checking removes what they measure rather than complaining about
+it. `MetalCountersAndHeaderGpuTests` provokes a CPU-versus-GPU race on purpose, and under the shader rung 512
+recordings never make a single claim wait, because the GPU retires every buffer before the CPU wraps onto its
+segment, so the row would fail on its own provocation rather than on the wiring it exists to check.
+`MetalFrameCaptureTests` needs a startable GPU-trace capture, which is the one thing `MTL_SHADER_VALIDATION`
+refuses while still reporting the destination as supported. Both run on every other trigger, which on this leg
+is every trigger but the weekly one.
 
 **The 284-failure run, and the fix that was not the one the work breakdown predicted.** Row 14 measured the
 whole `KhaozEngine.Render.Tests` assembly against `KE_GRAPHICS_BACKEND=metal-native` and got 284 failures out

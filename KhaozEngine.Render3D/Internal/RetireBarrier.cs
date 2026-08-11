@@ -92,11 +92,23 @@ namespace KhaozEngine.Render3D.Internal
             if (_free.Count > 0) { fence = _free.Pop(); fence.Reset(); }
             else fence = _gd.Factory.CreateFence();
 
-            // The body is deliberately empty: the submission itself is the marker, not anything recorded into it
-            // (see the class note). Opened through the seam's register so a barrier fired from inside an open
-            // recording refuses by name rather than resetting that recording's device state (#424).
-            using (GpuRecording.Open(_gd, _cl, "GpuRetireBarrier.Submit")) { }
-            _gd.Submit(_cl, fence);
+            try
+            {
+                // The body is deliberately empty: the submission itself is the marker, not anything recorded into
+                // it (see the class note). Opened through the seam's register so a barrier fired from inside an
+                // open recording refuses by name rather than resetting that recording's device state (#424).
+                using (GpuRecording.Open(_gd, _cl, "GpuRetireBarrier.Submit")) { }
+                _gd.Submit(_cl, fence);
+            }
+            catch
+            {
+                // The refusal must not swallow the fence. A popped one is already off _free and Dispose drains
+                // only _free, so losing it here leaks a device fence per refused Begin, and a mis-phased host
+                // refuses on every frame that retires anything. Back it goes, unsubmitted and unsignaled, which
+                // is exactly the state the next Reset expects.
+                _free.Push(fence);
+                throw;
+            }
             return fence;
         }
 

@@ -610,23 +610,11 @@ namespace KhaozEngine.Render3D
         /// regions must not average into each other.</param>
         public TextureHandle LoadTexture(byte[] rgba, int width, int height, TextureMipPolicy policy = default)
         {
-            uint w = (uint)width, h = (uint)height, mips = policy.LevelsFor(width, height);
-            // A full mip chain is what stops distant model/prop surfaces from aliasing into "pixely" sparkle when the
-            // camera moves (level 0 alone point-minifies at range). Generate it exactly like the splat path; the model
-            // pass samples through the trilinear LinearSampler, which now has real mips to blend between. Skip the
-            // generate for a 1-level texture (e.g. a 1x1 default, or a policy that asked for none) so those stay
-            // byte-identical.
-            GpuTextureUsage usage = GpuTextureUsage.Sampled | (mips > 1 ? GpuTextureUsage.GenerateMipmaps : 0);
-            var tex = _gd.Factory.CreateTexture(new GpuTextureDescription(w, h, GpuPixelFormat.R8G8B8A8UNorm, usage, mips));
-            _gd.UpdateTexture(tex, rgba, 0, 0, w, h);
-            if (mips > 1)
-            {
-                using var cl = _gd.Factory.CreateCommandList();
-                using (GpuRecording.Open(_gd, cl, "Scene3D.LoadTexture")) cl.GenerateMipmaps(tex);
-                _gd.Submit(cl);
-                _gd.WaitForIdle();
-            }
-            _textures.Add(tex);
+            // Create, upload and mip in one place that also owns the failure path: the mid-frame refusal throws
+            // after the texture exists and before the scene has taken it, so TextureUploads frees it rather than
+            // leaking one per attempt (#424).
+            _textures.Add(TextureUploads.CreateMipped(
+                _gd, rgba, (uint)width, (uint)height, policy.LevelsFor(width, height), "Scene3D.LoadTexture"));
             return new TextureHandle(_textures.Count - 1);
         }
 
@@ -644,21 +632,12 @@ namespace KhaozEngine.Render3D
         {
             if (layers.Count != SplatMaterialConfig.LayerCount)
                 throw new ArgumentException($"a splat material needs exactly {SplatMaterialConfig.LayerCount} layers, got {layers.Count}.", nameof(layers));
-            var f = _gd.Factory;
             uint w = (uint)width, h = (uint)height, mips = SplatMaterialConfig.MipLevelCount(width, height);
-            const GpuTextureUsage usage = GpuTextureUsage.Sampled | GpuTextureUsage.GenerateMipmaps;
-            var albedo = f.CreateTexture(GpuTextureDescription.Texture2DArray(w, h, GpuPixelFormat.R8G8B8A8UNorm, usage, (uint)layers.Count, mips));
-            var normal = f.CreateTexture(GpuTextureDescription.Texture2DArray(w, h, GpuPixelFormat.R8G8B8A8UNorm, usage, (uint)layers.Count, mips));
-            for (int L = 0; L < layers.Count; L++)
-            {
-                _gd.UpdateTexture(albedo, layers[L].AlbedoRgba, 0, 0, w, h, mipLevel: 0, arrayLayer: (uint)L);
-                _gd.UpdateTexture(normal, layers[L].NormalRgba, 0, 0, w, h, mipLevel: 0, arrayLayer: (uint)L);
-            }
-            // Generate both mip chains in one transient command list.
-            using var cl = f.CreateCommandList();
-            using (GpuRecording.Open(_gd, cl, "Scene3D.LoadSplatMaterial")) { cl.GenerateMipmaps(albedo); cl.GenerateMipmaps(normal); }
-            _gd.Submit(cl);
-            _gd.WaitForIdle();
+            // Both arrays, uploaded and mipped in one transient list, and freed TOGETHER if that list is refused
+            // mid-frame: two 5-layer mipped arrays are the most expensive thing a refusal could have stranded
+            // (#424).
+            (IGpuTexture albedo, IGpuTexture normal) =
+                TextureUploads.CreateSplatArrays(_gd, w, h, mips, layers, "Scene3D.LoadSplatMaterial");
 
             var data = SplatMaterialConfig.BuildParams(layers, triplanarSharpness, projection, baseSpecStrength);
             // Combined UBO: frame uniforms (re-synced each frame in the splat pass) + these params appended. One

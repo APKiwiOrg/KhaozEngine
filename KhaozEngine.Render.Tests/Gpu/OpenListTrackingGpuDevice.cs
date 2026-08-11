@@ -50,6 +50,27 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>How many command lists were submitted.</summary>
         internal int Submits { get; private set; }
 
+        /// <summary>Textures handed out by this device's factory, and how many of them were freed. The difference
+        /// is what a leak test watches across a call that throws: a refusal that walks past a texture nobody owns
+        /// leaves one alive per attempt.</summary>
+        internal int TexturesCreated { get; private set; }
+
+        /// <summary>Textures freed. See <see cref="TexturesCreated"/>.</summary>
+        internal int TexturesDisposed { get; private set; }
+
+        /// <summary>Textures created and not yet freed.</summary>
+        internal int TexturesAlive => TexturesCreated - TexturesDisposed;
+
+        /// <summary>Device fences this factory created, so a test can prove a refused submission RECYCLED its
+        /// fence instead of losing it (a lost one is invisible except as a fresh create next time).</summary>
+        internal int FencesCreated { get; private set; }
+
+        internal void NoteTextureCreated() => TexturesCreated++;
+
+        internal void NoteTextureDisposed() => TexturesDisposed++;
+
+        internal void NoteFenceCreated() => FencesCreated++;
+
         internal void NoteBegin()
         {
             Begins++;
@@ -110,7 +131,8 @@ namespace KhaozEngine.Tests.Gpu
             }
 
             public IGpuBuffer CreateBuffer(in GpuBufferDescription d) => _inner.CreateBuffer(d);
-            public IGpuTexture CreateTexture(in GpuTextureDescription d) => _inner.CreateTexture(d);
+            public IGpuTexture CreateTexture(in GpuTextureDescription d)
+                => new CountingGpuTexture(_inner.CreateTexture(d), _device);
             public IGpuFramebuffer CreateFramebuffer(IGpuTexture? depth, params IGpuTexture[] colour)
                 => _inner.CreateFramebuffer(depth, colour);
             public IGpuSampler CreateSampler(in GpuSamplerDescription d) => _inner.CreateSampler(d);
@@ -126,7 +148,12 @@ namespace KhaozEngine.Tests.Gpu
             public IGpuComputePipeline CreateComputePipeline(in GpuComputePipelineDescription d)
                 => new StubComputePipeline();
             // The fake factory throws for this, which is the right answer when the device reports no fences.
-            public IGpuFence CreateFence() => _fences ? new StubFence() : _inner.CreateFence();
+            public IGpuFence CreateFence()
+            {
+                if (!_fences) return _inner.CreateFence();
+                _device.NoteFenceCreated();
+                return new StubFence();
+            }
         }
 
         /// <summary>A fence that is never signaled, which is all a recording-order test needs from one.</summary>

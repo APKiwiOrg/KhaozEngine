@@ -74,28 +74,39 @@ namespace KhaozEngine.Render2D.Internal
             IGpuTexture target = f.CreateTexture(GpuTextureDescription.Texture2D(
                 (uint)width, (uint)height, GpuPixelFormat.R8G8B8A8UNorm,
                 GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
-            IGpuFramebuffer fb = f.CreateFramebuffer(null, target);
-            // A batch whose pipeline targets the offscreen framebuffer's format, sharing the same device so any
-            // texture/font created on it draws straight in. Disposed here; only the target texture survives.
-            var batch = new SpriteBatch(gd, fb.Outputs);
-            IGpuCommandList cl = f.CreateCommandList();
             try
             {
-                using (GpuRecording.Open(gd, cl, "Render2DSurface.CaptureToTexture"))
+                IGpuFramebuffer fb = f.CreateFramebuffer(null, target);
+                // A batch whose pipeline targets the offscreen framebuffer's format, sharing the same device so any
+                // texture/font created on it draws straight in. Disposed here; only the target texture survives.
+                var batch = new SpriteBatch(gd, fb.Outputs);
+                IGpuCommandList cl = f.CreateCommandList();
+                try
                 {
-                    cl.SetFramebuffer(fb);
-                    cl.ClearColorTarget(0, clear);
-                    batch.NewFrame(cl, width, height);
-                    draw(batch);
+                    using (GpuRecording.Open(gd, cl, "Render2DSurface.CaptureToTexture"))
+                    {
+                        cl.SetFramebuffer(fb);
+                        cl.ClearColorTarget(0, clear);
+                        batch.NewFrame(cl, width, height);
+                        draw(batch);
+                    }
+                    gd.Submit(cl);
+                    gd.WaitForIdle();
                 }
-                gd.Submit(cl);
-                gd.WaitForIdle();
+                finally
+                {
+                    cl.Dispose();
+                    batch.Dispose();
+                    fb.Dispose();
+                }
             }
-            finally
+            catch
             {
-                cl.Dispose();
-                batch.Dispose();
-                fb.Dispose();
+                // The target is the one thing the finally above deliberately keeps, because it survives into the
+                // returned Texture2D. On the throw path nobody takes it, so it is freed here instead: a mid-frame
+                // refusal (#424) is meant to be recoverable, and a render target leaked per attempt is not.
+                target.Dispose();
+                throw;
             }
 
             return new Texture2D(gd, target, width, height, ownsHandle: true);

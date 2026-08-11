@@ -205,6 +205,110 @@ namespace KhaozEngine.Tests.Gpu
                 AssertRefused(scene.Begin, "GpuRetireBarrier.Submit");
         }
 
+        // ---- The refusal frees what the call already built (the fix round for #424) ----
+        //
+        // Four of the seven sites open the recording AFTER the expensive allocation, so before the fix round each
+        // refusal threw past a GPU resource nothing owned. That is not a cosmetic leak: the refusal exists to be
+        // RECOVERABLE (catch it, move the call into the pre-record phase, carry on), and a host that retries a
+        // streaming load every frame leaked one texture per attempt. Each test below refuses three times and
+        // asserts the count came back, so a per-attempt leak cannot hide inside a one-off.
+
+        const int Attempts = 3;
+
+        [Fact]
+        public void Scene3D_LoadTexture_frees_the_texture_it_built_when_it_is_refused()
+        {
+            using var device = new OpenListTrackingGpuDevice();
+            using IGpuFramebuffer fb = NewTarget(device.Factory);
+            using var scene = new Scene3D(device, fb.Outputs);
+            using IGpuCommandList frameList = device.Factory.CreateCommandList();
+
+            using (OpenFrame(device, frameList))
+            {
+                int alive = device.TexturesAlive;                       // after the scene built its own
+                for (int i = 0; i < Attempts; i++)
+                    AssertRefused(() => scene.LoadTexture(new byte[4 * 4 * 4], 4, 4), "Scene3D.LoadTexture");
+
+                Assert.Equal(alive, device.TexturesAlive);
+            }
+        }
+
+        [Fact]
+        public void Scene3D_LoadSplatMaterial_frees_both_arrays_when_it_is_refused()
+        {
+            using var device = new OpenListTrackingGpuDevice();
+            using IGpuFramebuffer fb = NewTarget(device.Factory);
+            using var scene = new Scene3D(device, fb.Outputs);
+            using IGpuCommandList frameList = device.Factory.CreateCommandList();
+
+            var layers = new List<SplatLayerImage>();
+            for (int i = 0; i < SplatMaterialConfig.LayerCount; i++)
+                layers.Add(new SplatLayerImage
+                {
+                    AlbedoRgba = new byte[4 * 4 * 4],
+                    NormalRgba = new byte[4 * 4 * 4],
+                });
+
+            using (OpenFrame(device, frameList))
+            {
+                int alive = device.TexturesAlive;
+                for (int i = 0; i < Attempts; i++)
+                    AssertRefused(() => scene.LoadSplatMaterial(4, 4, layers), "Scene3D.LoadSplatMaterial");
+
+                // Two 5-layer mipped arrays per attempt, which is the most expensive thing a refusal could have
+                // stranded anywhere in the engine.
+                Assert.Equal(alive, device.TexturesAlive);
+            }
+        }
+
+        [Fact]
+        public void Render2D_RenderToTexture_frees_its_target_when_it_is_refused()
+        {
+            using var device = new OpenListTrackingGpuDevice();
+            using IGpuCommandList frameList = device.Factory.CreateCommandList();
+
+            using (OpenFrame(device, frameList))
+            {
+                int alive = device.TexturesAlive;
+                for (int i = 0; i < Attempts; i++)
+                    AssertRefused(
+                        () => Render2DCore.RenderToTexture(device, W, H, Color.Black, _ => { }),
+                        "Render2DSurface.CaptureToTexture");
+
+                // The target is the one resource this path's finally deliberately keeps, since on the SUCCESS path
+                // it survives into the returned Texture2D. That is exactly why the throw path has to free it.
+                Assert.Equal(alive, device.TexturesAlive);
+            }
+        }
+
+        /// <summary>
+        /// The barrier's leak is a fence rather than a texture, and it is invisible from the outside: a popped
+        /// fence is already off the free stack and <c>Dispose</c> drains only that stack, so a refusal that loses
+        /// one shows up nowhere except as a FRESH create on the next submission. So that is what this asserts.
+        /// </summary>
+        [Fact]
+        public void The_retire_barrier_recycles_its_fence_when_it_is_refused()
+        {
+            using var device = new OpenListTrackingGpuDevice(completionFences: true);
+            using IGpuFramebuffer fb = NewTarget(device.Factory);
+            using var scene = new Scene3D(device, fb.Outputs);
+            using IGpuCommandList frameList = device.Factory.CreateCommandList();
+
+            scene.UnloadMesh(scene.LoadMesh(Triangle()));
+            scene.Begin();                       // seals the first batch behind a fence, outside any recording
+            scene.UnloadMesh(scene.LoadMesh(Triangle()));
+
+            using (OpenFrame(device, frameList))
+                AssertRefused(scene.Begin, "GpuRetireBarrier.Submit");
+
+            int fences = device.FencesCreated;   // the refused submission's fence, wherever it went
+
+            // Nothing was sealed, so the same retirement is still pending and the next Begin fires the barrier
+            // again. It must REUSE the fence the refusal was holding rather than create another.
+            scene.Begin();
+            Assert.Equal(fences, device.FencesCreated);
+        }
+
         /// <summary>
         /// And the same barrier from where every host actually begins a scene, which is the frame's pre-record
         /// phase. It submits, nothing is refused, and the peak stays at one open recording.

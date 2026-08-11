@@ -2601,6 +2601,20 @@ is a real difference from Vulkan, where a present-mode change forces a whole swa
 Multi-threaded recording is STRUCTURALLY SUPPORTED and is not in the shipped contract, which is W5's position
 unchanged for the third time. Nothing in the engine asks for it and no test exercises it.
 
+**Addendum, at row 15's review: the acquire was not the only blocking call the lock had to be kept off, and the
+second one was inside it.** The bullet above puts `presentDrawable` PLUS ITS COMMIT under `_submitLock`, and the
+first implementation read that as covering the whole present, so `IMetalSwapchainApi.PresentDrawable` also took
+M-W6's command buffer. `-commandBuffer` BLOCKS once `MTLCommandQueue` reaches its own maximum of uncommitted
+buffers, which is the bound `MetalUncommittedBuffers` exists to measure, and every commit that could release one
+goes through this same lock. So the acquire inside the lock is a stall for the length of a display refresh and
+that one is a DEADLOCK, reachable only near the queue's cap and real. The seam is two members now
+(`AcquirePresentBuffer` then `PresentDrawable(buffer, drawable)`), the boundary takes the buffer before it takes
+the lock, and what the lock covers is what this bullet always said it covered: the encode and the commit. The
+uncommitted bracket moved with it and is now exactly the buffer's life rather than a conservative superset
+around the whole call. Both blocking calls are asserted from underneath: the fake records
+`Monitor.IsEntered(_submitLock)` at the acquire, at the buffer take and at the present, and the boundary rows
+assert false, false and true.
+
 ---
 
 ## 12. Shader path

@@ -65,20 +65,27 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// THE ORDER OF A BOUNDARY, WHICH IS THE WHOLE OF 11.2 AND 11.4 IN ONE ASSERTION: present the drawable the
-        /// frame rendered into, service the capture, then acquire the next frame's. The capture is between them
-        /// because a trace brackets whole frames (M-G5), and the acquire is last because it BLOCKS and holds no
-        /// lock (M-W4, M-W8).
+        /// THE ORDER OF A BOUNDARY, WHICH IS THE WHOLE OF 11.2 AND 11.4 IN ONE ASSERTION: take M-W6's present
+        /// buffer, present the drawable the frame rendered into, service the capture, then acquire the next
+        /// frame's. The capture is between them because a trace brackets whole frames (M-G5), and the acquire is
+        /// last because it BLOCKS and holds no lock (M-W4, M-W8). The buffer is FIRST for the other half of
+        /// M-W8: <c>-commandBuffer</c> blocks at the queue's own cap and every commit that could clear it takes
+        /// the submit lock, so taking it inside that lock is a deadlock rather than a stall.
         /// </summary>
         [Fact]
-        public void ABoundaryPresentsThenServicesTheCaptureThenAcquires()
+        public void ABoundaryTakesItsBufferThenPresentsThenServicesTheCaptureThenAcquires()
         {
             Harness h = Harness.Windowed(scriptDrawables: 2);
             h.Api.Log.Clear();
 
             h.Boundary.Present();
 
-            Assert.Equal(new[] { "present", "releaseDrawable", "capture", "acquire" }, h.Api.Log);
+            Assert.Equal(new[] { "acquirePresentBuffer", "present", "releaseDrawable", "capture", "acquire" },
+                h.Api.Log);
+
+            // AND THE PRESENT RODE THE BUFFER THAT ACQUIRE HANDED OUT, which is what says the two halves of the
+            // split seam are still one present rather than a buffer taken and dropped.
+            Assert.Equal(h.Api.PresentBuffers, h.Api.PresentedOn);
         }
 
         /// <summary>
@@ -289,12 +296,42 @@ namespace KhaozEngine.Tests.Gpu
             Assert.False(h.Uncommitted.ExceededBound);
 
             // A SKIPPED PRESENT TAKES NO BUFFER, which is the other half: the bound is about buffers HELD, and a
-            // frame with no drawable never asks the queue for one.
+            // frame with no drawable never asks the queue for one. Three drawables were scripted, so the fourth
+            // boundary is the one that skips.
             h.Api.ScriptNoDrawable();
             h.Boundary.Present();
             h.Boundary.Present();
 
+            Assert.Equal(3, h.Api.PresentBuffers.Count);
+
+            h.Boundary.Present();
+
+            Assert.Equal(1L, h.Boundary.SkippedPresents);
+            Assert.Equal(3, h.Api.PresentBuffers.Count);
             Assert.Equal(1, h.Uncommitted.Peak);
+        }
+
+        /// <summary>
+        /// A QUEUE THAT WILL NOT MAKE A PRESENT BUFFER SKIPS THE PRESENT AND STILL RELEASES THE DRAWABLE, which
+        /// is a device already in trouble rather than a state to throw out of a frame loop: whatever went wrong
+        /// has already been latched by the buffer that saw it. The drawable release is the half worth pinning,
+        /// because holding it would leak one per frame for as long as the queue stayed in that state.
+        /// </summary>
+        [Fact]
+        public void APresentBufferTheQueueRefusesSkipsThePresentAndStillReleasesTheDrawable()
+        {
+            Harness h = Harness.Windowed(scriptDrawables: 2);
+            h.Api.PresentBufferIsRefused = true;
+            h.Api.Log.Clear();
+
+            h.Boundary.Present();
+
+            Assert.Empty(h.Api.Presented);
+            Assert.Equal(new[] { "acquirePresentBuffer", "releaseDrawable", "capture", "acquire" }, h.Api.Log);
+
+            // AND NOTHING WAS COUNTED AS HELD, because nothing was handed out to hold.
+            Assert.Equal(0, h.Uncommitted.Peak);
+            Assert.Equal(0, h.Uncommitted.Outstanding);
         }
 
         /// <summary>
@@ -318,8 +355,8 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal(new MetalDrawableSize(640u, 480u), h.Api.LastDrawableSize);
             Assert.Equal(1, h.Drains);
-            Assert.Equal(new[] { "present", "releaseDrawable", "drain", "drawableSize=640x480", "capture",
-                "acquire" }, h.Api.Log);
+            Assert.Equal(new[] { "acquirePresentBuffer", "present", "releaseDrawable", "drain",
+                "drawableSize=640x480", "capture", "acquire" }, h.Api.Log);
 
             // AND THE FRAMEBUFFER FOLLOWS IT, under the same object.
             Assert.Equal(640u, h.Boundary.Framebuffer.Width);
@@ -482,6 +519,11 @@ namespace KhaozEngine.Tests.Gpu
             internal RecordingLogger Logger { get; private init; } = null!;
             internal int Drains { get; private set; }
 
+            /// <summary>The one submit lock, KEPT rather than passed inline, so the fake can be handed the same
+            /// object and asked whether the caller was inside it. That is the whole instrument behind M-W8's
+            /// rows.</summary>
+            internal object SubmitLock { get; } = new();
+
             internal MetalBoundFramebuffer Bound
                 => ((IMetalBoundFramebufferSource)Boundary.Framebuffer).AsBound;
 
@@ -503,8 +545,12 @@ namespace KhaozEngine.Tests.Gpu
                     Logger = logger,
                 };
 
+                // BEFORE THE BOUNDARY IS BUILT, because the constructor takes the first drawable and that
+                // acquire is one of the ones M-W8's claim covers.
+                api.LockToWatch = harness.SubmitLock;
+
                 harness.Boundary = new MetalPresentBoundary(api, orphan, uncommitted, new MetalAcquireWaits(),
-                    new object(), harness.Drain, () => api.Note("capture"),
+                    harness.SubmitLock, harness.Drain, () => api.Note("capture"),
                     size ?? new MetalDrawableSize(1280u, 720u), MetalSwapchainPolicy.ColourSrgbRequested,
                     syncToVerticalBlank, FramesInFlight, logger);
 

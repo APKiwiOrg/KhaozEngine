@@ -166,7 +166,10 @@ namespace KhaozEngine.Tests.Gpu
                 // THE TEXTURE IS THE DRAWABLE's AND IS BORROWED FROM IT, which is what makes the framebuffer's
                 // colour attachment safe to bind for a whole recording: the retain the acquire took is the only
                 // thing keeping it alive.
-                api.PresentDrawable(acquired.Drawable);
+                IntPtr presentBuffer = api.AcquirePresentBuffer();
+                Assert.NotEqual(IntPtr.Zero, presentBuffer);
+
+                api.PresentDrawable(presentBuffer, acquired.Drawable);
                 api.ReleaseDrawable(acquired.Drawable);
 
                 // A SECOND ACQUIRE AFTER A PRESENT, which is what a frame loop does and what would block forever

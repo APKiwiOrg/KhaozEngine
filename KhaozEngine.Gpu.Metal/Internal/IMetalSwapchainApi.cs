@@ -30,7 +30,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// this row is answering. A headless runner cannot drive a real layer, so the only coverage available for the
     /// ORDER of a present boundary (present, then apply, then acquire, then publish), for the skipped present, for
     /// the counters and for the coalescing is coverage taken against a fake. This interface is the line that makes
-    /// that possible, and <c>MetalSwapchainApi</c> is the six-method implementation on the other side of it.</para>
+    /// that possible, and <c>MetalSwapchainApi</c> is the seven-method implementation on the other side of
+    /// it.</para>
     ///
     /// <para><b>IT IS DELIBERATELY NOT AN "IGpuSwapchain".</b> Every member here is one Objective-C message or a
     /// short fixed sequence of them, chosen so the real implementation has no decisions in it at all: which format
@@ -73,13 +74,31 @@ namespace KhaozEngine.Gpu.Metal.Internal
         void ReleaseDrawable(IntPtr drawable);
 
         /// <summary>
-        /// Present <paramref name="drawable"/> on ITS OWN COMMAND BUFFER (M-W6): take a buffer, encode
-        /// <c>-presentDrawable:</c>, commit, release. One cheap object per frame, and 11.2 argues at length why
-        /// the idiomatic alternative (encoding the present onto the frame's own buffer) is declined.
+        /// M-W6's OWN COMMAND BUFFER for the present, at +1, or <see cref="IntPtr.Zero"/> when the queue would
+        /// not make one.
+        /// <para>
+        /// IT IS A SEPARATE MEMBER SO THE CALLER CAN TAKE IT OUTSIDE THE SUBMIT LOCK, and that is the whole
+        /// reason this is not one call with <see cref="PresentDrawable"/>. <c>-commandBuffer</c> BLOCKS once the
+        /// queue's own maximum of uncommitted buffers is reached (see
+        /// <see cref="MetalUncommittedBuffers"/>), and every commit that could release one goes through the
+        /// submit lock, so blocking here while holding that lock is a deadlock rather than a stall. Called with
+        /// NO lock held, for the same reason <see cref="NextDrawable"/> is.
+        /// </para>
+        /// </summary>
+        IntPtr AcquirePresentBuffer();
+
+        /// <summary>
+        /// Present <paramref name="drawable"/> on <paramref name="commandBuffer"/> (M-W6): encode
+        /// <c>-presentDrawable:</c>, commit, and release the buffer. One cheap object per frame, and 11.2 argues
+        /// at length why the idiomatic alternative (encoding the present onto the frame's own buffer) is
+        /// declined.
         /// <para>
         /// THE BUFFER SIGNALS NO TIMELINE VALUE, which is why teardown drains the QUEUE rather than the timeline.
         /// </para>
         /// </summary>
-        void PresentDrawable(IntPtr drawable);
+        /// <param name="commandBuffer">A buffer from <see cref="AcquirePresentBuffer"/>, never
+        /// <see cref="IntPtr.Zero"/>. Released here, which is the one release of the acquire's retain.</param>
+        /// <param name="drawable">The drawable to present.</param>
+        void PresentDrawable(IntPtr commandBuffer, IntPtr drawable);
     }
 }

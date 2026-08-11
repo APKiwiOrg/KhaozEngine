@@ -27,6 +27,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// every other thread's submit for the length of a display refresh, which is exactly the "held for
     /// microseconds, not a frame" rule M-W8 states.</para>
     ///
+    /// <para><b>THE PRESENT BUFFER IS TAKEN BEFORE THE LOCK FOR THE SAME REASON, AND ON THIS ONE THE FAILURE IS
+    /// WORSE THAN A STALL.</b> M-W6's buffer comes from <c>-commandBuffer</c>, which BLOCKS once the queue's own
+    /// maximum of uncommitted buffers is reached (<see cref="MetalUncommittedBuffers"/> is the instrument that
+    /// says how close the backend gets). Every commit that could release one goes through this same lock, so a
+    /// blocked <c>-commandBuffer</c> inside it cannot be cleared by anything: unlike the acquire, that is a
+    /// deadlock rather than a wait. So <see cref="Present"/> takes the buffer first, holding nothing, and the
+    /// lock covers the encode and the commit alone. Reading <c>_drawable</c> to decide whether to take one is
+    /// safe because this whole member runs on the submit thread, which is the only writer it has.</para>
+    ///
     /// <para><b>A SKIPPED PRESENT IS NOT A SKIPPED FRAME (M-W5).</b> <see cref="FramesBegun"/> counts every
     /// boundary, including one whose drawable came back nil, because it is the denominator every per-frame figure
     /// in <c>GpuDeviceCounters</c> is divided by and a frame that recorded and submitted is a frame however it
@@ -212,9 +221,18 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // conditional on something and this one is not.
             Interlocked.Increment(ref _framesBegun);
 
+            // M-W6's BUFFER IS TAKEN BEFORE THE LOCK, AND THAT IS THE SECOND BLOCKING CALL KEPT OUT OF IT.
+            // -commandBuffer blocks once the queue's own maximum of uncommitted buffers is reached
+            // (MetalUncommittedBuffers), and every commit that could release one goes through this same lock, so
+            // taking it inside would be a deadlock rather than the acquire's mere stall. Reading _drawable here
+            // is safe for the reason the type remarks give: Present runs on the submit thread, which is the only
+            // thread that writes it.
+            IntPtr presentBuffer = _drawable != IntPtr.Zero ? _api.AcquirePresentBuffer() : IntPtr.Zero;
+            if (presentBuffer != IntPtr.Zero) _uncommitted.Acquired();
+
             lock (_submitLock)
             {
-                PresentHeldDrawable();
+                PresentHeldDrawable(presentBuffer);
                 ApplyPending();
             }
 
@@ -248,15 +266,20 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _api.Dispose();
         }
 
-        // M-W6's PRESENT: its own command buffer, taken and committed inside one api call, and counted into the
-        // device's uncommitted total for exactly that window.
+        // M-W6's PRESENT: its own command buffer, taken by the caller BEFORE the lock and committed here, and
+        // counted into the device's uncommitted total for exactly the window it is held.
         //
-        // THE BRACKET IS AROUND THE CALL RATHER THAN INSIDE IT, deliberately, and it is the conservative
-        // direction. Row 7 asked for Acquired() when the present buffer is taken and Released() after its commit,
-        // and the buffer's whole life is inside this one call, so bracketing the call can only report the peak
-        // HIGHER than the true one and never lower. What it buys is that the count is asserted device-free, on
-        // every leg, against a bound whose PLUS ONE exists for this buffer and had no occupant until this row.
-        void PresentHeldDrawable()
+        // THE BRACKET IS EXACTLY THE BUFFER'S LIFE NOW, which is what moving the acquire out of the lock also
+        // bought. Row 7 asked for Acquired() when the present buffer is taken and Released() after its commit.
+        // While the acquire lived inside this method the bracket wrapped the whole api call, which could only
+        // report the peak HIGHER than the true one and never lower, so it was correct in the conservative
+        // direction. With the acquire above the lock the increment sits directly after it and this release
+        // directly after the commit, so the count is the true one and the same assertion still holds: the peak
+        // is read device-free, on every leg, against a bound whose PLUS ONE exists for this buffer.
+        //
+        // A BUFFER THE QUEUE WOULD NOT MAKE IS ZERO, and the present is skipped while the drawable is still
+        // released, which is what the single-call version did when its own acquire answered nil.
+        void PresentHeldDrawable(IntPtr presentBuffer)
         {
             if (_drawable == IntPtr.Zero)
             {
@@ -264,14 +287,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 return;
             }
 
-            _uncommitted.Acquired();
-            try
+            if (presentBuffer != IntPtr.Zero)
             {
-                _api.PresentDrawable(_drawable);
-            }
-            finally
-            {
-                _uncommitted.Released();
+                try
+                {
+                    _api.PresentDrawable(presentBuffer, _drawable);
+                }
+                finally
+                {
+                    _uncommitted.Released();
+                }
             }
 
             // RELEASED HERE rather than at the next acquire, which is where the incumbent releases it. See the

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Metal.Internal;
 
@@ -38,9 +39,41 @@ namespace KhaozEngine.Tests.Gpu
         internal List<MetalAcquiredDrawable> Handed { get; } = new();
 
         internal List<IntPtr> Presented { get; } = new();
+
+        /// <summary>The buffer each present was committed on, so a row can assert the present rode the buffer
+        /// the boundary took OUTSIDE the lock rather than one taken inside it.</summary>
+        internal List<IntPtr> PresentedOn { get; } = new();
+
+        /// <summary>Every buffer handed out for a present, in order.</summary>
+        internal List<IntPtr> PresentBuffers { get; } = new();
+
+        /// <summary>Script the queue to refuse a present buffer, which on a device is a queue already in
+        /// trouble.</summary>
+        internal bool PresentBufferIsRefused { get; set; }
+
         internal List<IntPtr> Released { get; } = new();
         internal bool IsDisposed { get; private set; }
         internal int AcquireCount { get; private set; }
+
+        /// <summary>
+        /// THE SUBMIT LOCK THIS FAKE WATCHES, or null to watch nothing. M-W8's headline claim is that the
+        /// drawable acquire holds NO lock, and the only way to assert that from underneath is to ask, at the
+        /// moment of the call, whether the caller is inside it. The harness hands over the same object it gave
+        /// the boundary.
+        /// </summary>
+        internal object? LockToWatch { get; set; }
+
+        /// <summary>Whether any <see cref="NextDrawable"/> ran with <see cref="LockToWatch"/> held. M-W8 says
+        /// this is false forever.</summary>
+        internal bool AcquireSawLockHeld { get; private set; }
+
+        /// <summary>Whether any <see cref="AcquirePresentBuffer"/> ran with <see cref="LockToWatch"/> held. Also
+        /// false, and it is the OTHER blocking call the lock ordering keeps outside.</summary>
+        internal bool PresentBufferSawLockHeld { get; private set; }
+
+        /// <summary>Whether any <see cref="PresentDrawable"/> ran with <see cref="LockToWatch"/> held. TRUE, and
+        /// it is the positive control that says this fake can see the lock at all.</summary>
+        internal bool PresentSawLockHeld { get; private set; }
 
         /// <summary>How long the next acquire pretends to take, so the acquire-wait MILLISECONDS can be driven off
         /// zero rather than only the count. Real time, because <see cref="MetalAcquireWaits"/> reads a stopwatch
@@ -87,6 +120,11 @@ namespace KhaozEngine.Tests.Gpu
 
         public MetalAcquiredDrawable NextDrawable()
         {
+            // M-W8's HEADLINE CLAIM, ASKED AT THE ONE MOMENT IT MEANS ANYTHING. -nextDrawable blocks for the
+            // length of a display refresh, so an acquire made while the submit lock is held stops every other
+            // thread's submit for a frame. Nothing above this line can see that, which is why the fake asks.
+            if (LockToWatch is not null && Monitor.IsEntered(LockToWatch)) AcquireSawLockHeld = true;
+
             AcquireCount++;
             Log.Add("acquire");
 
@@ -108,9 +146,30 @@ namespace KhaozEngine.Tests.Gpu
             Log.Add("releaseDrawable");
         }
 
-        public void PresentDrawable(IntPtr drawable)
+        public IntPtr AcquirePresentBuffer()
         {
+            // WATCHED FOR THE SAME REASON THE ACQUIRE IS: -commandBuffer blocks at the queue's cap and every
+            // commit that could clear it needs the submit lock, so this one being inside the lock is a deadlock
+            // rather than a stall.
+            if (LockToWatch is not null && Monitor.IsEntered(LockToWatch)) PresentBufferSawLockHeld = true;
+
+            Log.Add("acquirePresentBuffer");
+            if (PresentBufferIsRefused) return IntPtr.Zero;
+
+            IntPtr buffer = new(_nextHandle++);
+            PresentBuffers.Add(buffer);
+            return buffer;
+        }
+
+        public void PresentDrawable(IntPtr commandBuffer, IntPtr drawable)
+        {
+            // THE POSITIVE CONTROL. The commit is what the submit lock exists to order (M-N2), so this one is
+            // expected to see it held, and a fake that could never see the lock at all would pass the two
+            // negative rows above for the wrong reason.
+            if (LockToWatch is not null && Monitor.IsEntered(LockToWatch)) PresentSawLockHeld = true;
+
             Presented.Add(drawable);
+            PresentedOn.Add(commandBuffer);
             Log.Add("present");
         }
 

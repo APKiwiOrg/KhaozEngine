@@ -31,6 +31,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <para><b>EVERY BODY OPENS ITS OWN AUTORELEASE POOL (M-N5).</b> <c>-nextDrawable</c> and
     /// <c>-commandBuffer</c> both hand back autoreleased objects and both are called once per frame forever, which
     /// is the exact shape the rule exists for.</para>
+    ///
+    /// <para><b>THE PRESENT IS TWO MEMBERS BECAUSE ONE OF THEM BLOCKS.</b> <c>-commandBuffer</c> blocks at the
+    /// queue's own maximum of uncommitted buffers, and the caller holds the submit lock across the present, so
+    /// <see cref="AcquirePresentBuffer"/> is taken FIRST and outside that lock. Folding the two together would
+    /// put the one blocking call in this type inside the lock every commit needs to release one, which is a
+    /// deadlock rather than a stall. See <see cref="MetalPresentBoundary"/> for the ordering.</para>
     /// </summary>
     [SupportedOSPlatform("macos")]
     internal sealed class MetalSwapchainApi : IMetalSwapchainApi
@@ -117,32 +123,40 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         /// <inheritdoc/>
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public void PresentDrawable(IntPtr drawable)
+        public IntPtr AcquirePresentBuffer()
         {
+            // ITS OWN POOL, because -commandBuffer autoreleases and the source retains what it hands back. The
+            // pool pops here and the retain is what carries the buffer to the present below.
             using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
 
-            IntPtr buffer = _buffers.Acquire();
+            // A QUEUE THAT WILL NOT MAKE A BUFFER IS A DEVICE ALREADY IN TROUBLE, and the caller skipping the
+            // present is the honest answer rather than throwing out of a frame loop: the same condition is what
+            // MetalQueueDrain reports as completed, and whatever went wrong has already been latched by the
+            // buffer that saw it.
+            return _buffers.Acquire();
+        }
 
-            // A QUEUE THAT WILL NOT MAKE A BUFFER IS A DEVICE ALREADY IN TROUBLE, and skipping the present is the
-            // honest answer rather than throwing out of a frame loop: the same condition is what MetalQueueDrain
-            // reports as completed, and whatever went wrong has already been latched by the buffer that saw it.
-            if (buffer == IntPtr.Zero) return;
+        /// <inheritdoc/>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public void PresentDrawable(IntPtr commandBuffer, IntPtr drawable)
+        {
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
 
             try
             {
                 // BEFORE THE COMMIT, for the reason the submit path gives: Metal refuses a handler added to a
                 // buffer that has already been committed.
-                MetalCompletionHandler.AttachTo(buffer);
+                MetalCompletionHandler.AttachTo(commandBuffer);
 
-                var commandBuffer = new MTLCommandBuffer(buffer);
-                commandBuffer.PresentDrawable(drawable);
-                commandBuffer.Commit();
+                var buffer = new MTLCommandBuffer(commandBuffer);
+                buffer.PresentDrawable(drawable);
+                buffer.Commit();
             }
             finally
             {
-                // The release of the retain Acquire took. A committed buffer is retained by the queue until it
-                // completes, so this is never the last reference to one the GPU is running.
-                _buffers.Release(buffer);
+                // The release of the retain the acquire took. A committed buffer is retained by the queue until
+                // it completes, so this is never the last reference to one the GPU is running.
+                _buffers.Release(commandBuffer);
             }
         }
 

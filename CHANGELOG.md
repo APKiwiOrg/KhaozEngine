@@ -5,6 +5,79 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.36.0
+
+### The native Metal backend caches the EMISSION, and the shader cache's file store is now shared by all three backends (#592, #606)
+
+A warm start on `GpuBackendKind.MetalNative` no longer cross-compiles anything: the emitted MSL and its binding
+table are read back off disk, which took the shipped corpus of 42 programs from 3,443 ms of emission to 13 ms.
+The file plumbing under that cache and the two older ones is now one shared type.
+
+**What is cached, and why it is not a `.metallib`.** Decision M-S7 specified a per-program `.metallib` and row 9
+measured that it cannot be built and would buy nothing if it could. No public API serializes an executable-type
+`MTLLibrary` compiled from source, and macOS already caches the MSL-to-library compile ACROSS PROCESSES, at
+0.02 ms for a source it has seen against 68 to 98 ms for a novel one, both with the compiler service warmed first
+so neither number is startup cost. What the OS does not touch is the engine's own half, GLSL to SPIR-V through
+glslang and then SPIR-V to MSL through SPIRV-Cross, and that is what this caches. Section 12.5 of
+[docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md)
+carries both measurements and the addendum recording that the cache landed as the shape that refusal predicted.
+
+**The payload carries the table, and that is a requirement rather than a nicety** (2.2b, pin 6). A hit skips the
+emission and the binding table is READ OUT of the emission, so a payload holding only MSL would have to re-parse
+it or, worse, fall back to counting arguments, which is the failure the whole binding ruling exists to remove.
+The entry-point name is in there for the same reason (M-S5). So one entry is one whole program: every stage's
+MSL, every stage's entry-point name, the reflected layouts, every table entry, and a compute kernel's workgroup
+size. That last one is where this diverges from the Direct3D 11 sibling on purpose: `D3D11ShaderBuild.Compute`
+still runs the front end on a cache hit because its payload is a bare DXBC blob with nowhere to put three
+numbers, and this payload is a written structure with a header already, so a Metal compute hit skips glslang too.
+
+**Cache reads are consulted BEFORE the front end**, keyed on `MetalShaderKey`, which row 9 kept whole for exactly
+this: a SHA-256 over the schema, the engine version, all three pinned option sets and every GLSL source of the
+program, length-prefixed. One file per program under `<local-app-data>/KhaozEngine/metal-msl/<engine version>/`.
+A table rebuilt from a payload reaches the per-device index-table dedup through the same call a fresh one does,
+so M-R9's pipeline-switch handle compare still holds across a hit.
+
+**`KE_METAL_MSL_CACHE` relocates it or turns it off**, taking the same five disable words (`off`, `0`, `false`,
+`no`, `none`) as `KE_D3D11_SHADER_CACHE` and `KE_VULKAN_PIPELINE_CACHE`, with any other value taken as a
+directory path verbatim. Every failure is a miss, so a cache that cannot be read or written is a slower start and
+nothing else.
+
+**The payload is authenticated, which neither sibling cache needs and this one does.** A mangled DXBC fails
+inside `CreateVertexShader` and a mangled `VkPipelineCache` blob fails the driver's own header check, so both
+siblings have a reader below them that refuses a bad payload on their behalf. This one has none: mangled MSL
+might still compile, and a mangled binding table has nothing at all below it, so it would bind the wrong resource
+and render a wrong pixel with no error anywhere. So the file carries a SHA-256 of its own body, restates the key
+it is filed under (a file copied or renamed under another program's key is refused), names its format version,
+and has its table re-checked structurally on the way in. Any of those failing is a miss AND a delete, since an
+entry that fails once fails identically on every launch after it.
+
+**Measured and asserted structurally rather than by wall clock.** `MetalMslCacheCorpusTests` loads the whole
+shipped corpus cold and then warm and prints both times, and what it ASSERTS is that the warm pass produced 42
+hits, 0 misses and 0 writes, so the emission ran zero times. `MetalMslCacheTests.ACacheHit_NeverReachesTheEmitter`
+is what makes that mean what it says: it plants an entry under the key of two sources that cannot compile at all,
+and the hit answers where the emitter would have thrown.
+
+**And the MSL drift test is pinned to FRESH emission.** `MetalMslByteEqualityTests` drives `SpirvCrossCompile`
+directly, in a package that cannot see a backend's cache, and now checks that rather than only relying on it. The
+reason is specific: the cache key names the sources, the engine version and all three pins, but not the
+`Veldrid.SPIRV` package version, which is what each pin's own header says actually freezes the emitted text. So
+within one engine version a cached entry can be stale, and a drift test reading one would report no drift on
+exactly the change it exists to catch.
+
+**The file store under all three caches is now `GpuDiskCache`** (#606). Row 18 of the Metal design refused
+sharing the shader-cache KEY, and that refusal stands: the Direct3D 11 key is pure content, the Vulkan one is
+pure device, and the intersection is empty. What it also recorded is that the plumbing BELOW the key was
+duplicated, at two copies, which is the count that declines an extraction. The Metal cache is the third client,
+so the directory resolution, the disable words, the verbatim-directory rule, the temp-plus-rename atomic write,
+the zero-length read as a miss and the recoverable-exception set move into `KhaozEngine.Gpu/Internal/` and the
+three callers keep their whole shape: their keys, their extensions, their subfolders and their header validation
+all stay where they are. `D3D11ShaderPathTests` and `VulkanPipelineCacheTests` pass unchanged, which is the
+regression proof, and `GpuDiskCacheTests` drives the shared contract once, directly.
+
+**Consumer impact: none, unless you want it.** No public API changed, nothing needs adopting, and the cache is on
+by default on `MetalNative` exactly as the Direct3D 11 and Vulkan ones are on theirs. Set `KE_METAL_MSL_CACHE=off`
+while chasing a shader or binding problem if you want to be sure of what ran.
+
 ## 17.35.0
 
 ### `KhaozEngine.Gpu.Metal`, phase 4's package skeleton, and the three spikes that ran on real hardware (#567)

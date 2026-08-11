@@ -5243,7 +5243,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.35.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.36.0" />
 ```
 
 ```csharp
@@ -8596,7 +8596,7 @@ run inside the engine's process-wide device-creation gate, so a provider needs n
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.35.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.36.0" />
 ```
 
 ```csharp
@@ -8630,7 +8630,7 @@ that up front is what routes it through the reported fallback instead of a crash
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="17.35.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="17.36.0" />
 ```
 
 ```csharp
@@ -8857,7 +8857,7 @@ is no recovery path: a lost device stays lost, which is what the liveness token 
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="17.35.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="17.36.0" />
 ```
 
 ```csharp
@@ -8937,8 +8937,22 @@ backend ships and stays selectable.
 
 A shader whose emission cannot be read fails at `CreateShadersFromSpirv` with a message naming the program, the
 stage and the offending argument, and it fails with no device involved, so it surfaces in a headless test run
-rather than as a wrong pixel. There is deliberately no compiled-shader disk cache: macOS already caches the
-MSL-to-library compile across processes.
+rather than as a wrong pixel.
+
+**`KE_METAL_MSL_CACHE` controls the emission cache, and what it caches is not what you might expect.** There is
+no compiled-library cache on this backend, because macOS already caches the MSL-to-library compile across
+processes and no public API can serialize a source-compiled `MTLLibrary` anyway. What IS cached is the engine's
+own half of the work, GLSL to SPIR-V and then SPIR-V to MSL, which nothing else caches and which cost 3,443 ms
+across the shipped set of 42 programs when measured. One file per program lands under
+`<local-app-data>/KhaozEngine/metal-msl/<engine version>/`, keyed on the shader sources, the pinned compile
+options and the engine version, and holds every stage's emitted MSL, its entry-point name, the binding table read
+off that emission and a compute kernel's workgroup size. A warm start reads all 42 back in 13 ms from 333 KiB.
+Point the variable at a directory to relocate it, or set it to any of `off`, `0`, `false`, `no` or `none` to emit
+fresh every time, which is what to do when you are chasing a binding or shader problem and want to be sure of
+what ran. Any other value is a directory path, which is why the disable words are a set rather than `off` alone.
+Every failure is a miss and a cache that cannot be read or written is a slower start and nothing else, and an
+entry that does not authenticate, does not restate its own key, is not this payload format or describes a binding
+table that fails its structural checks is deleted rather than used.
 
 **Layouts and sets are the same code you already write**, with one declaration this backend refuses that the
 others take: `GpuResourceLayoutElement`'s `dynamic: true` on a texture or a sampler element. The per-draw offset

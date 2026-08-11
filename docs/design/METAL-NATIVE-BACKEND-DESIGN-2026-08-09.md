@@ -3144,12 +3144,50 @@ its own key discipline, its own header validation and its own corruption test, a
 introduces the binding mechanism would give a first golden run two candidate causes. It is filed as
 [#592](https://github.com/APKiwiOrg/KhaozEngine/issues/592) with this measurement.
 
+**ADDENDUM, #592: THE CACHE LANDED, AS THE SHAPE THE REFUSAL PREDICTED.** Everything above is unchanged and the
+follow-up built exactly what the last paragraph specified, which is worth recording because it is the case where
+a refusal with a measurement behind it produced a better feature rather than a deferral.
+
+`MetalMslCache` is one file per program under `<local-app-data>/KhaozEngine/metal-msl/<engine version>/`, keyed on
+`MetalShaderKey` (which row 9 kept whole for this), holding every stage's MSL, every stage's entry-point name, the
+serialized binding table and a compute kernel's workgroup size. Pin 6 is satisfied for real now rather than
+vacuously: the table travels in the payload, so a hit reconstructs it through `MetalShaderIndexTable.FromCache`
+and hands it to `MetalIndexTableCache` exactly as a fresh one is handed over, and M-R9's handle compare still
+holds across a cache hit. The read is consulted BEFORE the front end rather than between the front end and the
+cross-compile, so a hit skips glslang as well as SPIRV-Cross, which is why the workgroup size rides the payload:
+the Direct3D 11 sibling keeps its front end on a compute hit because its payload is a bare DXBC blob with nowhere
+to put three numbers, and this payload is a written structure with a header already.
+
+*Measured, on the same machine as the numbers above.* The shipped corpus of 42 programs emits cold in 3,443 ms and
+loads warm in 13 ms from 333 KiB on disk, with the warm pass asserted STRUCTURALLY to have emitted nothing at all
+(42 hits, 0 misses, 0 writes) rather than asserted to be faster, because a timing assertion on a shared runner is
+a test people learn to re-run. `MetalMslCacheTests.ACacheHit_NeverReachesTheEmitter` is what makes "skips the
+emission" a checked fact: it plants an entry under the key of two sources that cannot compile, and the hit
+answers where the emitter would have thrown.
+
+*What the payload does that neither sibling does, and why.* It carries a SHA-256 of its own body. A mangled DXBC
+fails inside `CreateVertexShader` and a mangled `VkPipelineCache` blob fails the driver's own header check, so
+both siblings have a reader below them that refuses a bad payload on their behalf. This one has none: mangled MSL
+might still compile, and a mangled TABLE has nothing at all below it, so it would bind the wrong resource and
+render a wrong pixel with no error anywhere, which is the class 2.2b exists to close. So the file authenticates,
+restates its own key (a file copied or renamed under another key is refused), names its format version, and its
+table is re-checked structurally on the way in. Any failure is a miss AND a delete, since an entry that fails once
+fails identically on every future launch.
+
+*And the drift test was checked rather than assumed.* `MetalMslByteEqualityTests` compares FRESH emission against
+the bake, which matters more now than before: the cache key names the sources, the engine version and all three
+pins, but not the `Veldrid.SPIRV` package version, which is what the pins' own headers say actually freezes the
+emission. So a cached entry can be stale WITHIN one engine version, and a drift test reading one would report no
+drift on precisely the change it exists to catch. It drives `SpirvCrossCompile` directly, in a package that cannot
+see this cache, and now says so with a test rather than only in prose.
+
 *What row 9 kept from M-S7 anyway.* `MetalShaderKey` exists, whole, hashing all three pinned option sets and the
 whole program's sources, because the follow-up should not have to re-derive which inputs matter. Today it names
 programs in error messages, which is not nothing: the seam's `CreateShadersFromSpirv` takes two GLSL strings and
-no label, so its short tag is the only stable identity a failure can print. **Pin 6 is satisfied vacuously and
-that is worth stating**: nothing skips the emission, so the table is always built from it, and the pin's real
-content is a constraint on any cache that ever lands. `MTLLibrary`'s own header carries the refusal so that the
+no label, so its short tag is the only stable identity a failure can print. **Pin 6 was satisfied vacuously at
+row 9 and that was worth stating**: nothing skipped the emission then, so the table was always built from it, and
+the pin's real content was a constraint on any cache that ever landed. One did, and the addendum above is that
+constraint discharged rather than restated. `MTLLibrary`'s own header carries the refusal so that the
 next reader who finds `-libraryDataContents` in a class dump does not have to repeat this.
 
 ### 12.6 Three things this backend must not "fix" (M-B4, M-B5)
@@ -3847,7 +3885,10 @@ that cache for v1 with a measurement behind it, so there is no cache, no cache k
 corrupt file could break. The emission cache that IS worth building is
 [#592](https://github.com/APKiwiOrg/KhaozEngine/issues/592). Recorded here rather than left blank, because a
 gate row that stays empty reads as unmeasured when what actually happened is that the thing it measures was
-declined.
+declined. **Corrected once #592 landed: there IS a disk cache now**, of the emission rather than of a library,
+and MM10's corruption test exists against that payload instead (`MetalMslCacheTests`, seven refusal cases, each
+asserting the same three things: a miss, a delete, and nothing thrown). The launch-failure half of the criterion
+is what a field session still has to say, since a cache is only exercised by a second launch.
 
 **MM1 is STILL OWED, both halves.** Nothing this session did counts record-time `UpdateBuffer` calls, encoder
 boundaries or record-time buffer allocations, on either backend. The incumbent half needs the throwaway

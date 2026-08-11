@@ -27,18 +27,27 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// time bomb across the change that flips the third.
     /// </para>
     /// <para>
-    /// WHAT IT IS FOR TODAY IS NAMING, WHICH IS NOT NOTHING. The seam's <c>CreateShadersFromSpirv</c> takes two
-    /// GLSL strings and no label, so <see cref="ShortTag"/> is the only stable identity a failure message can
-    /// print, and every one of the shader path's seven refusal classes prints it (five in the binding table's
-    /// join, two in the argument parse in front of it). The <c>.metallib</c> cache this
-    /// key was also designed for (M-S7) is REFUSED for v1 with a measurement behind it: section 12.5's in-place
-    /// addendum records that no public API can serialize a source-compiled <c>MTLLibrary</c> at all, and that
-    /// macOS already caches the MSL-to-library compile across processes at 0.02 ms against 68 to 98 ms cold, both
-    /// taken with the compiler service warmed first so neither number is startup cost. The
-    /// cache that IS worth building caches the EMISSION instead, and is
-    /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/592">#592</see>. This key is kept whole rather
-    /// than trimmed to what naming needs, because that follow-up should not have to re-derive which inputs
-    /// matter.
+    /// IT NAMES A PROGRAM AND IT KEYS THE CACHE, and it was written for the second before the first was its only
+    /// job. The seam's <c>CreateShadersFromSpirv</c> takes two GLSL strings and no label, so
+    /// <see cref="ShortTag"/> is the only stable identity a failure message can print, and every one of the
+    /// shader path's seven refusal classes prints it (five in the binding table's join, two in the argument parse
+    /// in front of it). The <c>.metallib</c> cache this key was originally designed for (M-S7) is REFUSED for v1
+    /// with a measurement behind it: section 12.5's in-place addendum records that no public API can serialize a
+    /// source-compiled <c>MTLLibrary</c> at all, and that macOS already caches the MSL-to-library compile across
+    /// processes at 0.02 ms against 68 to 98 ms cold, both taken with the compiler service warmed first so
+    /// neither number is startup cost. What replaced it caches the EMISSION
+    /// (<see cref="MetalMslCache"/>, <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/592">#592</see>),
+    /// and this key is what it is keyed on. Keeping the key WHOLE at row 9 rather than trimming it to what a
+    /// message needs is what let that follow-up be written without re-deriving which inputs matter.
+    /// </para>
+    /// <para>
+    /// WHAT THE KEY DOES NOT NAME IS THE CROSS-COMPILER'S OWN VERSION, and a cache reader should know it. The
+    /// three pins freeze OPTIONS rather than the emission, and each of their headers says so: what actually
+    /// pins the emitted text is the <c>Veldrid.SPIRV</c> package version, which is not in this hash. Within one
+    /// engine version a package bump can therefore leave a cached entry holding the previous cross-compiler's
+    /// output. Across releases the engine version segment covers it, which is the case that matters in the field,
+    /// and <c>MetalMslByteEqualityTests</c> deliberately emits fresh so the drift test cannot be answered from a
+    /// cache that has it.
     /// </para>
     /// <para>
     /// Pure and device-free, so it is computed and tested identically on every operating system even though only

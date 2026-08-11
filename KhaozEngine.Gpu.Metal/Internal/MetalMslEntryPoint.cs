@@ -23,9 +23,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// THE NAME IS READ RATHER THAN ASSUMED (M-S5). SPIRV-Cross renames the GLSL <c>main</c>, because <c>main</c>
     /// is reserved in MSL, and it emits <c>main0</c> today. The incumbent looks a function up by a name Veldrid
     /// supplies from a layer this backend does not have, so guessing <c>main0</c> here would be inheriting a
-    /// convention through a gap rather than reading a fact. It is also what the <c>.metallib</c>-shaped cache
-    /// discussion forced into the payload: a cache hit that skipped the emission would have no other way to know
-    /// the function's name.
+    /// convention through a gap rather than reading a fact. It is also what the cache discussion forced into the
+    /// payload, and the cache that landed carries it: a hit skips the emission, so
+    /// <see cref="MetalMslCacheEntry"/> holds the name this parse read, because there is no other source for it.
     /// </para>
     /// <para>
     /// THE CLOSING PARENTHESIS IS MATCHED BY DEPTH, never taken as the first one. Every argument carries an

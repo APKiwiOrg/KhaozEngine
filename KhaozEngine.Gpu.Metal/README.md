@@ -51,6 +51,11 @@ and nothing that does not want the Objective-C interop ever carries it.
 > Row 15 made it WINDOWED: the `CAMetalLayer`, the drawable, the present, the queued resize and a vsync toggle
 > that always applies, so `IGpuDevice` has no unbuilt member left. See [The swapchain: a layer, a drawable, and
 > a present that cannot be skipped silently](#the-swapchain-a-layer-a-drawable-and-a-present-that-cannot-be-skipped-silently).
+> [#592](https://github.com/APKiwiOrg/KhaozEngine/issues/592) added the EMISSION cache, which is the one M-S7's
+> `.metallib` was refused in favour of: a warm start reads every program's MSL and its binding table off disk
+> instead of running glslang and SPIRV-Cross, 3,443 ms of cold emission against 13 ms over the shipped corpus.
+> See [The shader path, and where a binding index comes
+> from](#the-shader-path-and-where-a-binding-index-comes-from).
 
 Spec, decisions and the nineteen-row work breakdown:
 [docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](../docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md).
@@ -69,7 +74,8 @@ KhaozEngineMetal.Register();   // unconditionally, on every OS, once at startup
 next row has to mean it. Everything else in the assembly is internal: the Objective-C interop layer, the
 device and its queue, the provider, the machine probe and its device-free decision half, the completion
 timeline and the fence on it, the command list with its encoder lifecycle and the submit path, the shader path
-with its emission parse and binding table, the resource layouts and sets a pipeline binds through, the two
+with its emission parse, its binding table and the disk cache in front of both, the resource layouts and sets a
+pipeline binds through, the two
 pipeline types and the vertex-stream numbering behind them, the framebuffer and the pass schedule behind it,
 the bind records and the argument batch that flushes them, the draw and dispatch path with the
 pipeline-state block and the index binding behind it, the transfer family and its copy arithmetic, the
@@ -489,11 +495,25 @@ rather than assumed). Neither reaches the cross-compiler's naming or index assig
 depends on. What freezes those is the exact `Veldrid.SPIRV` version the engine pins, so that drift arrives on a
 deliberate package bump and lands as a red device-free test rather than as a wrong frame.
 
-**There is no compiled-shader disk cache, deliberately.** macOS already caches the MSL-to-library compile across
+**The disk cache holds the EMISSION, not a `.metallib`.** macOS already caches the MSL-to-library compile across
 processes (0.02 ms for a source it has seen before, against 68 to 98 ms cold, both taken with the compiler
 service warmed first so neither number is startup cost), and no public API can serialize a source-compiled
-`MTLLibrary` anyway. The cost worth caching is the engine's own GLSL-to-MSL half, which is
-tracked as [#592](https://github.com/APKiwiOrg/KhaozEngine/issues/592).
+`MTLLibrary` anyway, so caching one was measured, refused and written down. The cost the OS does not touch is the
+engine's own half, GLSL to SPIR-V and then SPIR-V to MSL, and that is what is cached
+([#592](https://github.com/APKiwiOrg/KhaozEngine/issues/592)). One file per program under
+`<local-app-data>/KhaozEngine/metal-msl/<engine version>/`, keyed on the shader sources, all three pinned option
+sets and the engine version, holding every stage's MSL, every stage's entry-point name, the binding table read
+off that emission and a compute kernel's workgroup size. Over the shipped corpus of 42 programs that is 333 KiB
+and turns 3,443 ms of cold emission into 13 ms.
+
+**`KE_METAL_MSL_CACHE` relocates it or turns it off.** Point it at a directory to move it (a CI workspace, or a
+machine whose local app data is not writable), or set it to any of `off`, `0`, `false`, `no` or `none` to emit
+fresh every time, which is what to do when you are chasing a binding or a shader problem and want to be sure of
+what ran. Any other value is a directory path, which is why the disable words are a set rather than `off` alone.
+A cache that cannot be read or written is a slower start and nothing else: every failure is a miss. A file that
+is present but does not authenticate, does not restate its own key, is not this payload format, or describes a
+binding table that fails its structural checks is a miss AND a delete, because a wrong table is the one thing
+this backend must never accept quietly.
 
 ## Layouts, sets, and the table two pipelines can share
 

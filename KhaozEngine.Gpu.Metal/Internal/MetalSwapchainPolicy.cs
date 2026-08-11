@@ -40,16 +40,29 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// the layer gets, what a zero-sized window resolves to, and how the size the layer is configured at is
     /// derived. Those are here, with no <c>MTLDevice</c> and no <c>CAMetalLayer</c> anywhere in the type.</para>
     ///
-    /// <para><b>THE INITIAL SIZE COMES OFF THE CONTENT VIEW AND NOT OFF THE REQUEST, WHICH IS THE INCUMBENT's OWN
-    /// SHAPE AND IS REPRODUCED RATHER THAN CORRECTED (M-W1).</b> <c>MTLSwapchain</c>'s constructor reads
-    /// <c>contentView.frame.size</c> and writes it straight into <c>drawableSize</c>, ignoring the width and
-    /// height its own <c>SwapchainDescription</c> carries. A view frame is in POINTS and a drawable size is in
-    /// PIXELS, so on a Retina display the layer starts at half the window's real resolution and the FIRST
+    /// <para><b>THE INITIAL SIZE COMES OFF THE CONTENT VIEW AND NOT OFF THE REQUEST (M-W1), AND IT IS MULTIPLIED
+    /// BY THE BACKING SCALE, WHICH IS THE ONE PLACE THIS BACKEND DIVERGES FROM THE INCUMBENT'S NSVIEW ARM
+    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/605">#605</see>).</b> <c>MTLSwapchain</c>'s
+    /// constructor reads <c>contentView.frame.size</c> and writes it straight into <c>drawableSize</c>, ignoring
+    /// the width and height its own <c>SwapchainDescription</c> carries. A view frame is in POINTS and a drawable
+    /// size is in PIXELS, so that arm opens a Retina window at half its real resolution until the first
     /// framebuffer-resize callback (which forwards the windowing layer's pixel size) writes the right number over
-    /// it. That is visible only to a human, on the one surface with no automated coverage anywhere in the net,
-    /// which is precisely where W1's lesson binds hardest: correcting it here would be a resolution change
-    /// smuggled into a backend swap. It is recorded rather than fixed, and
-    /// <c>MetalSwapchainSizeIsTheContentViewsAndNotTheRequests</c> pins that it is deliberate.</para>
+    /// it.</para>
+    ///
+    /// <para><b>THE INCUMBENT'S OWN UIVIEW ARM MULTIPLIES BY THE NATIVE SCALE</b>, which is what makes this a fix
+    /// rather than an improvement: the two arms of the same constructor disagree, one of them is right, and
+    /// reproducing the wrong one field for field would be reproducing a defect rather than a decision. So the
+    /// scale is read from <c>-[NSWindow backingScaleFactor]</c> and applied here, and
+    /// <c>MetalSwapchainPolicyTests.AHostViewFrameIsScaledIntoPixelsBeforeItIsTruncated</c> pins it.</para>
+    ///
+    /// <para><b>WHAT WAS ALREADY CORRECT, AND WHAT ONLY A WINDOW CAN CONFIRM.</b> The STEADY STATE never had a
+    /// defect: <c>ResizeSwapchain</c> writes the numbers the windowing layer forwards and those are already
+    /// pixels, so this changes the FIRST frame and nothing after it. Whether that first frame was ever visible at
+    /// half resolution is a Silk/GLFW question about callback timing that nobody here has measured, and gate 5's
+    /// windowed pass read the window as full-scale, which is consistent with the callback landing before anything
+    /// visible rendered. So the evidence for this change is the arithmetic and the incumbent's own disagreement
+    /// with itself, and what a windowed run on a Retina display still has to confirm is that
+    /// <c>CAMetalLayer.drawableSize</c> on frame one now equals the window's backing size.</para>
     /// </summary>
     internal static class MetalSwapchainPolicy
     {
@@ -92,22 +105,53 @@ namespace KhaozEngine.Gpu.Metal.Internal
         }
 
         /// <summary>
-        /// The drawable size a host view's frame asks for. <paramref name="frame"/> is in POINTS and the answer is
-        /// used as PIXELS, which is the incumbent's own arithmetic (see the type remarks).
+        /// The drawable size a host view's frame asks for, in PIXELS. <paramref name="frame"/> is in POINTS and
+        /// <paramref name="backingScale"/> is how many pixels a point covers on the display the window is
+        /// currently on, so the answer is their product (see the type remarks for why the multiply is here and not
+        /// in Cocoa).
         /// <para>
-        /// TRUNCATION RATHER THAN ROUNDING, matching the incumbent's <c>(uint)</c> cast, and a negative or
-        /// non-finite frame (which a window mid-teardown can report) resolves to zero and is then clamped by the
-        /// caller, rather than wrapping to four billion through an unchecked cast.
+        /// TRUNCATION RATHER THAN ROUNDING, AND IT HAPPENS AFTER THE MULTIPLY. The truncation is the incumbent's
+        /// <c>(uint)</c> cast, kept: a drawable one pixel wider than the window's real backing size is not a
+        /// better answer than one truncated to it. Doing it after the scale is what the incumbent's own UIView arm
+        /// does, and it matters at a fractional point size, where truncating first would lose up to a whole pixel
+        /// per point of scale rather than up to one pixel.
+        /// </para>
+        /// <para>
+        /// A DEGENERATE FRAME RESOLVES TO ZERO and is then clamped by the caller, rather than wrapping to four
+        /// billion through an unchecked cast: a window mid-teardown and a minimised window both report sizes an
+        /// unchecked cast turns into a texture no machine can allocate.
+        /// </para>
+        /// <para>
+        /// AND A DEGENERATE SCALE RESOLVES TO 1.0, THE NON-RETINA IDENTITY, which is the direction that fails
+        /// safe. <c>objc_msgSend</c> to nil answers zero, so a handle that is not an <c>NSWindow</c> reports a
+        /// scale of 0 rather than raising, and a scale of zero applied faithfully would configure a layer at
+        /// nothing at all on a window whose points are perfectly readable. Falling back to the unscaled size
+        /// reproduces exactly the incumbent's behaviour in the one case where this backend cannot do better,
+        /// which is the smallest available divergence rather than a new failure mode.
         /// </para>
         /// </summary>
-        internal static MetalDrawableSize SizeOfHostView(CGRect frame)
-            => new(ToPixels(frame.Size.Width), ToPixels(frame.Size.Height));
+        internal static MetalDrawableSize SizeOfHostView(CGRect frame, double backingScale)
+        {
+            double scale = UsableScale(backingScale);
+            return new(ToPixels(frame.Size.Width, scale), ToPixels(frame.Size.Height, scale));
+        }
 
-        static uint ToPixels(double points)
+        /// <summary>The scale to actually multiply by: <paramref name="backingScale"/> when it is a real positive
+        /// number, and 1.0 otherwise. Separate from <see cref="ToPixels"/> so the fallback is decided ONCE per
+        /// resolve rather than once per dimension, which is what stops a pathological scale producing a drawable
+        /// with two different aspect ratios in it.</summary>
+        internal static double UsableScale(double backingScale)
+            => double.IsNaN(backingScale) || double.IsInfinity(backingScale) || backingScale <= 0d
+                ? 1d
+                : backingScale;
+
+        static uint ToPixels(double points, double scale)
         {
             if (double.IsNaN(points) || points <= 0d) return 0u;
-            if (points >= uint.MaxValue) return uint.MaxValue;
-            return (uint)points;
+            double pixels = points * scale;
+            if (double.IsNaN(pixels) || pixels <= 0d) return 0u;
+            if (pixels >= uint.MaxValue) return uint.MaxValue;
+            return (uint)pixels;
         }
     }
 }

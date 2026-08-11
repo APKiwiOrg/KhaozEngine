@@ -10,12 +10,12 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
     /// read the frame for the size, read the layer, ask whether it is already a <c>CAMetalLayer</c>, and if it is
     /// not, set <c>wantsLayer</c> and attach a fresh one.
     ///
-    /// <para><b>THE FRAME IS IN POINTS AND THE DRAWABLE SIZE IS IN PIXELS, and the incumbent writes one straight
-    /// into the other.</b> That is reproduced rather than corrected (M-W1): the seam's own
-    /// <c>GpuWindowedDeviceRequest</c> carries a width and a height the incumbent ignores here, and the first
-    /// framebuffer-resize callback writes the windowing layer's real pixel size over it. Correcting it would be a
-    /// resolution change on the one surface with no automated coverage anywhere in the net (MM7), which is
-    /// exactly where W1's lesson binds hardest. <c>MetalSwapchainPolicy</c> carries the note at the decision.</para>
+    /// <para><b>THE FRAME IS IN POINTS AND THE DRAWABLE SIZE IS IN PIXELS, and the incumbent's NSView arm writes
+    /// one straight into the other.</b> That half is NOT reproduced
+    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/605">#605</see>): the scale comes off
+    /// <see cref="NSWindow.BackingScaleFactor"/> and the multiply happens in <c>MetalSwapchainPolicy</c>, which is
+    /// where the decision and its whole argument live. The short version is that the incumbent's own UIView arm
+    /// already multiplies, so the two arms of one constructor disagree and only one of them can be right.</para>
     ///
     /// <para><b>NOTHING HERE IS OWNED.</b> A content view belongs to its window and a layer read off a view
     /// belongs to the view, so this type retains nothing and releases nothing. The one reference the swapchain

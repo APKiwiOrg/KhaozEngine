@@ -830,16 +830,23 @@ drawable, and hands back a device whose `SwapchainFramebuffer` is the same objec
 `Present()` presents the drawable the frame rendered into, applies anything a resize or a vsync change queued,
 and acquires the drawable the next frame will use.
 
-**The layer configuration is the Veldrid Metal backend's, field for field, and it is reproduced rather than
-improved.** `device`, `pixelFormat` (`BGRA8Unorm`, or its sRGB sibling if the seam ever grows a way to ask),
-`framebufferOnly = true`, and `drawableSize` from the host view's frame. That last one is in POINTS where a
-drawable size is in PIXELS, which is the incumbent's own arithmetic: on a Retina display the layer starts at
-half the window's real resolution and the first framebuffer-resize callback writes the right number over it.
-Correcting it would be a resolution change smuggled into a backend swap, on the one surface a human is the only
-witness to, so it is carried deliberately and tracked as
-[#605](https://github.com/APKiwiOrg/KhaozEngine/issues/605).
+**The layer configuration is the Veldrid Metal backend's, field for field, with one exception.** `device`,
+`pixelFormat` (`BGRA8Unorm`, or its sRGB sibling if the seam ever grows a way to ask), `framebufferOnly = true`,
+and `drawableSize` from the host view's frame.
 
-**Four things do change, and each answers something the incumbent gets wrong.**
+**The exception is that `drawableSize` is the view frame in POINTS multiplied by
+`-[NSWindow backingScaleFactor]`, because a drawable size is in PIXELS**
+([#605](https://github.com/APKiwiOrg/KhaozEngine/issues/605)). The incumbent's NSView arm writes the points
+straight through, which opens a Retina window at half its real resolution until the first framebuffer-resize
+callback corrects it, and the incumbent's own UIView arm multiplies by the native scale. The two arms of one
+constructor disagree and only one of them can be right, so this is a fix rather than an improvement smuggled
+into a backend swap. Only the FIRST frame moves: `ResizeSwapchain` already writes the pixel size the windowing
+layer forwards, so the steady state never had the defect. A degenerate scale (a handle that is not a live
+`NSWindow` answers 0) falls back to 1.0, which is the incumbent's exact behaviour in the one case this backend
+cannot do better in. The arithmetic lives in `MetalSwapchainPolicy` and is asserted device-free on every leg,
+which is why the scalar is read rather than the whole conversion handed to `-[NSView convertRectToBacking:]`.
+
+**Four more things change, and each answers something the incumbent gets wrong.**
 
 **Vsync always applies.** The incumbent writes `displaySyncEnabled` only when its `MTLFeatureSet` enumeration
 lands on one of three values of an enum deprecated since macOS 10.15, so on a machine outside that set a vsync

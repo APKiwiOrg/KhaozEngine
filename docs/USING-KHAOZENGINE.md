@@ -8941,11 +8941,13 @@ into `AcquireWaitCount` and `AcquireWaitMs`, one entry per boundary, because `-n
 offers no zero-timeout probe. Expect that pair to be non-zero under vsync: a vsync-paced frame SHOULD wait for a
 drawable.
 
-**One thing carries over that you can see, and it is deliberate.** The layer's initial `drawableSize` is the
-content view's frame in POINTS where a drawable size is in PIXELS, which is the incumbent's own arithmetic
-reproduced rather than corrected, so on a Retina display the window starts at half its real resolution until the
-first framebuffer-resize callback writes the right number over it
-([#605](https://github.com/APKiwiOrg/KhaozEngine/issues/605)). The swapchain framebuffer has no depth attachment
+**A fifth thing changes, and it is the one that touches resolution.** The layer's initial `drawableSize` is the
+content view's frame in POINTS multiplied by the window's backing scale factor, because a drawable size is in
+PIXELS ([#605](https://github.com/APKiwiOrg/KhaozEngine/issues/605)). The incumbent's NSView arm writes the
+points straight through and its own UIView arm multiplies, so the two arms of one constructor disagree and this
+backend follows the one that is right: a Retina window is configured at its real resolution on frame one rather
+than at half of it until the first framebuffer-resize callback corrects it. Nothing about the steady state moves,
+because a resize already carries pixels. The swapchain framebuffer has no depth attachment
 and no MSAA, matching the incumbent as the engine drives it, and its `Outputs` are fixed at construction, so
 every pipeline built against the window survives every resize.
 

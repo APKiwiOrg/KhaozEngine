@@ -11,8 +11,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// the size the host view asked for.
     /// </summary>
     /// <param name="Layer">The layer, owned by whoever received this.</param>
-    /// <param name="Size">The initial drawable size, in the incumbent's own units. See
-    /// <see cref="MetalSwapchainPolicy"/> for why a view's POINTS become a drawable's PIXELS unchanged.</param>
+    /// <param name="Size">The initial drawable size, in PIXELS: the host view's frame in points multiplied by the
+    /// window's backing scale factor. See <see cref="MetalSwapchainPolicy"/> for why that multiply is here and why
+    /// it diverges from the incumbent's NSView arm.</param>
     internal readonly record struct MetalSwapchainHost(CAMetalLayer Layer, MetalDrawableSize Size);
 
     /// <summary>
@@ -24,7 +25,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// runner cannot produce an <c>NSWindow</c> and CAN produce a <c>CAMetalLayer</c>, which row 1's spike already
     /// established. Keeping the window resolution in its own type is what lets
     /// <c>MetalGpuDevice.CreateForLayer</c> exist beside <c>CreateForWindow</c>, so the whole swapchain below this
-    /// line is driven against a REAL layer on a real device in CI, and only these four selectors wait for a
+    /// line is driven against a REAL layer on a real device in CI, and only these five selectors wait for a
     /// windowed playtest. That is as far as MM7 can be pushed and it is a long way further than zero.</para>
     ///
     /// <para><b>ONLY THE <c>NSWindow</c> SOURCE IS REPRODUCED.</b> The incumbent additionally accepts an
@@ -58,10 +59,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
             if (window.Kind != GpuWindowKind.Cocoa) throw NotCocoa(window.Kind);
             if (window.Handle == IntPtr.Zero) throw NoHandle();
 
-            NSView view = new NSWindow(window.Handle).ContentView();
+            var host = new NSWindow(window.Handle);
+            NSView view = host.ContentView();
             if (view.IsNull) throw NoContentView();
 
-            MetalDrawableSize size = MetalSwapchainPolicy.SizeOfHostView(view.Frame());
+            // POINTS TIMES SCALE IS PIXELS, and the scale is read AFTER the content view has answered, so the
+            // selector only ever reaches an object already shown to be a live NSWindow (#605).
+            MetalDrawableSize size = MetalSwapchainPolicy.SizeOfHostView(view.Frame(), host.BackingScaleFactor());
 
             IntPtr existing = view.Layer();
             if (CAMetalLayer.IsMetalLayer(existing))

@@ -231,6 +231,40 @@ and the test would otherwise compare the single-sample path against itself and p
 both runs share one device rather than creating one each. No public API changed: the three new `Scene3D`
 accessors are `internal`, next to the ones that already expose the render-target size to tests.
 
+### A Retina window's native Metal swapchain is configured in pixels on frame one (#605)
+
+`MetalLayerHost` multiplies the content view's frame by `-[NSWindow backingScaleFactor]` before it becomes a
+`drawableSize`, which is the fix for a defect row 15 reproduced on purpose and should not have.
+
+**Why it was reproduced and why that is now wrong.** A view frame is in POINTS and a `CAMetalLayer.drawableSize`
+is in PIXELS. Row 15's job was a backend swap with no rendering change, so it copied the incumbent's arithmetic
+field for field and recorded the mismatch as an open question rather than correcting it mid-swap. What that
+missed is that `MTLSwapchain`'s constructor has three source arms and they disagree: the `NSWindow` and `NSView`
+arms write the points straight through, and the `UIView` arm multiplies by `view.contentScaleFactor` first. Only
+one of those can be right on platforms where both units exist, and it is the one that multiplies. Field-for-field
+parity reproduces DECISIONS, and there was no single field here to reproduce.
+
+**What actually changes: the FIRST frame, and nothing after it.** `ResizeSwapchain` already writes the pixel
+size the windowing layer forwards, so the steady state never carried the defect and no resize behaviour moves.
+Whether the first frame was ever VISIBLY half-resolution is a callback-timing question nobody has measured, and
+gate 5's windowed pass read the window as full-scale, which is consistent with the correcting callback landing
+before anything visible renders. So the honest claim is that a wrong number is gone from frame one, not that a
+visible defect is fixed. What a windowed run on a Retina display still owes is one reading of
+`CAMetalLayer.drawableSize` on the first frame against the window's backing size.
+
+**The policy half is device-free and the interop half is one measured prototype.**
+`MetalSwapchainPolicy.SizeOfHostView(frame, backingScale)` does the multiply, truncates AFTER it (which is what
+the UIView arm does, and truncating first would lose up to a whole pixel per point of scale), saturates rather
+than wrapping when the scaled size passes the cast's limit, and falls back to a scale of 1.0 when the scale is
+zero, negative or non-finite. That last one is not defensive decoration: `objc_msgSend` to nil answers zero, so
+a handle that is not a live `NSWindow` reports a scale of 0, and applying it faithfully would configure a layer
+at nothing at all. Falling back to unscaled is the incumbent's exact behaviour in the one case this backend
+cannot do better in. All of it is asserted on every leg, which is also why the SCALAR is read rather than the
+whole conversion being handed to `-[NSView convertRectToBacking:]`: that would produce the same pixels on a Mac
+and move the only assertable part into a selector no Linux or Windows leg can reach. The new prototype is a bare
+`double` return, which row 1's interop spike ran verbatim and value-checked by reading `2.0` back off
+`-setContentsScale:` on a real layer, so the ABI needed no new measurement.
+
 ## 17.35.0
 
 ### `KhaozEngine.Gpu.Metal`, phase 4's package skeleton, and the three spikes that ran on real hardware (#567)

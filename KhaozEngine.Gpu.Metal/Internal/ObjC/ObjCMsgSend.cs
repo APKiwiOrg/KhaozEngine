@@ -587,8 +587,8 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         internal static partial CGSize SendCGSize(IntPtr receiver, IntPtr sel);
 
         /// <summary>
-        /// A <c>CGRect</c>-returning bare message, which is <c>-[NSView frame]</c> and the one place this backend
-        /// asks a Cocoa object anything at all.
+        /// A <c>CGRect</c>-returning bare message, which is <c>-[NSView frame]</c> and one of the two places this
+        /// backend asks a Cocoa object anything at all.
         /// <para>
         /// FOUR DOUBLES COMING BACK, so <c>d0</c> to <c>d3</c>. See <see cref="CGRect"/> for why the incumbent's
         /// architecture branch around <c>objc_msgSend_stret</c> is not reproduced.
@@ -597,5 +597,27 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
         [SupportedOSPlatform("macos")]
         internal static partial CGRect SendCGRect(IntPtr receiver, IntPtr sel);
+
+        /// <summary>
+        /// A bare <c>CGFloat</c>-returning message, which is <c>-[NSWindow backingScaleFactor]</c> and the OTHER
+        /// Cocoa read: the number that turns the view frame's POINTS into the drawable's PIXELS
+        /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/605">#605</see>).
+        /// <para>
+        /// ONE DOUBLE COMING BACK IN <c>d0</c>, the degenerate case of the HFA return
+        /// <see cref="SendCGRect"/> already uses, so there is nothing new about the placement and no
+        /// <c>objc_msgSend_stret</c> to reach for on arm64 in any case. <c>CGFloat</c> is a double on 64-bit, per
+        /// this file's header.
+        /// </para>
+        /// <para>
+        /// AND ROW 1's SPIKE RAN THIS EXACT PROTOTYPE, which is the standard this file holds a shape to. It
+        /// declared <c>MsgSendDouble(IntPtr, IntPtr)</c>, set <c>-setContentsScale:</c> on a real
+        /// <c>CAMetalLayer</c> to 2.0 and read the property back through it, and the answer was 2.0 (section 3.1).
+        /// So this direction is measured BY VALUE rather than by acceptance, on the very quantity it is now used
+        /// to read.
+        /// </para>
+        /// </summary>
+        [LibraryImport(ObjCRuntime.Objc, EntryPoint = "objc_msgSend")]
+        [SupportedOSPlatform("macos")]
+        internal static partial double SendDouble(IntPtr receiver, IntPtr sel);
     }
 }

@@ -52,7 +52,7 @@ went stale inside one release and `GpuBackendKindAppendAuditTests` records it.
 | M-P1 | Package | New `KhaozEngine.Gpu.Metal`, opt-in, outside every umbrella, `net10.0` (NOT `net10.0-macos`) with `[SupportedOSPlatformGuard("macos")]` entry points and `NoInlining` bodies behind `OperatingSystem.IsMacOS()`. That is P1's apparatus, which V-P1 did not need because Vulkan is not an OS-specific API and Metal is. The assembly compiles and its device-free tests run on the Linux `ci.yml` leg and both Windows legs | Both, converged |
 | M-P2 | Binding | An ENGINE-OWNED Objective-C interop layer, `[LibraryImport]` with blittable-only signatures over `objc_msgSend`, source-generated with no marshalling stub (which is also what the SYSLIB1054 analyzer requires under this repo's warnings-as-errors rule). No maintained managed Metal binding exists to take, so the Vortice and Silk.NET precedents have nothing to point at, and vendoring `Veldrid.MetalBindings` is rejected by name. Reading it as the reference implementation is a different act and is what this document does throughout | Both, B's mechanism |
 | M-P3 | Layering | References `KhaozEngine.Gpu` and `KhaozEngine.Diagnostics` only, with NO third-party package at all, which makes it the first backend whose `ArchitectureTests.ThirdPartyHomes` row is empty. The no-Veldrid pair (csproj read plus IL reference walk) is extended in both forms, and the walk is the load-bearing one | Both, converged |
-| M-P4 | Shared home | **#531's extraction is TAKEN and it is FIVE things**: the `DeviceLiveness` latch, the counter accumulators, the diagnostic rate limiter, the shader-cache KEY and file discipline, and the completion TIMELINE's bookkeeping. Each is three implementations writing the same thing, and the fifth is only extractable because M-F1 makes Metal's timeline the same primitive the other two have. Section 2.8 walks every candidate | Judge, merged from A's list and B's |
+| M-P4 | Shared home | **#531's extraction is TAKEN and it is FIVE things**: the `DeviceLiveness` latch, the counter accumulators, the diagnostic rate limiter, the shader-cache KEY and file discipline, and the completion TIMELINE's bookkeeping. Each is three implementations writing the same thing, and the fifth is only extractable because M-F1 makes Metal's timeline the same primitive the other two have. Section 2.8 walks every candidate. (**Corrected in place at row 18: it is TWO things, one of them only in part.** The latch extracts whole and absorbs a fourth copy, the counters extract at the CARRIERS and refuse at the sites, and the rate limiter, the shader-cache key and the timeline bookkeeping are all refused. Two of those three refusals overturn a FACT this row asserted rather than a judgement it made: Metal has no rate limiter and no disk shader cache, and cannot have either. See the row 18 addendum in 2.8) | Judge, merged from A's list and B's |
 | M-P5 | Shared home | The ring's CODE does not extract and its POLICY already did, into tests. `KhaozEngine.TestSupport.Gpu`'s shared ring semantic tests gain a THIRD adapter, so section 9.4's inventory becomes an assertion about three implementations. The record-then-flush SCHEDULE, the dirty MODEL and the generic EMITTER interface are all refused in writing, per candidate | B, A's reasons on the schedule |
 | M-P6 | Shared home | The extraction lands AFTER rollout gate 3, never interleaved with the backend, and every candidate carries a written exit: a candidate the third implementation does not fit closes as NOT PLANNED with that reason. Refactoring two shipped backends inside the phase whose gate is a golden family is how a golden failure stops being attributable | B's trigger, A's exit |
 | M-I1 | Identity | Append `GpuBackendKind.MetalNative = 6` with an explicit ordinal and the append-only comment. New tokens `metal-native` and `mtl-native`, added to `RecognizedTokens` | Both, converged |
@@ -995,6 +995,174 @@ PLANNED with that reason. A decision to extract that cannot fail is not a decisi
 `Gpu.Vulkan` in a release that is otherwise additive. Phase 2's frozen native-call marginals and phase 3's are
 the regression proof that the move changed nothing, and that proof is cheap because both are device-free tests
 that already run on every `dotnet test`.
+
+**ADDENDUM, ROW 18: THE RE-ASSESSMENT AGAINST THREE IMPLEMENTATIONS MOVED THE LIST. TWO CANDIDATES EXTRACT,
+ONE OF THEM ONLY IN PART, AND THREE ARE REFUSED.** #531's own instruction was to re-assess each candidate
+against the three implementations rather than assume the list carries, and M-P6 is what made that instruction
+able to fail. It failed for three of the five. The list above is left standing because its REASONING is the
+thing the re-assessment was run against, and because two of the three refusals are refusals of a premise the
+list states as fact. What follows is the four refusals per candidate the row owes: what the shared home would
+be, what each backend's copy does differently, whether the difference is essential or drift, and the decision
+with its reason.
+
+**1. The `DeviceLiveness` latch. EXTRACTED, and it absorbs a FOURTH copy the list did not know about.**
+
+*The shared home.* `KhaozEngine.Gpu/Internal/DeviceLiveness.cs`, holding `IDeviceLiveness` (one `bool IsDead`),
+`DeviceLiveness` (the `volatile bool` with `IsAlive` and `MarkDead`) and `LiveDevice` (the singleton null
+object).
+
+*What each copy does differently.* Nothing. `D3D11DeviceLiveness`, `VulkanDeviceLiveness` and
+`MetalDeviceLiveness` are member for member identical down to accessibility and initializer form: one
+`volatile bool _dead`, no lock, no `Interlocked`, no reset path, each shipping the same interface and the same
+null object beside it. No signature in any of the nine types names a backend type, and two of the three files
+carry no `using` directive at all.
+
+*Essential or drift.* Every difference is drift: the type-name prefix, whether the interface shares a file with
+its implementation, and whether the doc says "release" or "destroy". Two things are NOT drift and both survive
+the move untouched. The flip's ordering against teardown differs per backend (D3D11 flips last, Vulkan flips
+between `vkDeviceWaitIdle` and `vkDestroyDevice`, Metal flips after the drain and before the queue release) and
+that ordering lives in the CALLER, so the latch has no opinion to lose. And Metal overloads the token as device
+IDENTITY through `IMetalOwnedResource.Owner` and `MetalResourceOwnership.Require`, because Apple silicon
+reports one `MTLDevice` per process and a handle comparison therefore decides nothing. What that gate needs is
+a reference-identity token, which a shared interface is exactly as well as a per-backend one.
+
+*Decision.* **Extract.** The fourth copy is what makes it not close. `KhaozEngine.Gpu.Internal` already declared
+a `DeviceLiveness` for the Veldrid wrappers, a bare `public volatile bool Dead` with no interface and no null
+object, sitting in the very namespace this extraction lands in. Deleting three copies and keeping a fourth
+where a reader looks first is not an extraction, so it is absorbed: `Dead` becomes `IsDead`, the two writes
+become `MarkDead()`, and that is the same volatile store either way.
+
+**2. The counter accumulators. EXTRACTED IN PART, and the part that refuses is the part the list named first.**
+
+*The shared home.* `KhaozEngine.Gpu/Internal/WaitTotals.cs` for the count-and-duration snapshot struct and its
+`Sample(ref long, ref long)`, `KhaozEngine.Gpu/Internal/WaitAccumulator.cs` for the `Record(long elapsedTicks)`
+pair behind it, and `KhaozEngine.Gpu/Internal/RingPatchStats.cs` for the off-timeline deferral counters.
+
+*What each copy does differently.* At the CARRIER level, nothing at all. `D3D11WaitTotals`, `VulkanWaitTotals`
+and `MetalWaitTotals` are code-identical, and `MetalWaitTotals`'s own header says it "is written to be deleted"
+and names this row. `D3D11PendingPatchStats`, `VulkanRingPatchStats` and `MetalRingPatchStats` are
+code-identical too, with three different sets of doc prose over one set of four `int`s and an `Outstanding`
+subtraction. `VulkanBackpressure`, `MetalBackpressure`, `VulkanAcquireWaits` and `MetalAcquireWaits` are FOUR
+copies of the same nine lines. At the SITE level everything differs: the drain pair is counted on every drain
+in D3D11 and only on a drain that was not already caught up in the other two, the backpressure pair folds one
+source in D3D11, two in Vulkan and two in Metal, the acquire pair is hardcoded to zero in D3D11, probe-gated in
+Vulkan and unconditional in Metal, and `FramesBegun` is the ring's rotation index in D3D11 and a standalone
+`long` on the present boundary in the other two.
+
+*Essential or drift.* The carriers' differences are pure drift: three prefixes, three sets of prose, and one
+`PendingPatchStats`-versus-`RingPatchStats` naming. The sites' differences are essential, every one of them,
+and each is already argued in the code that holds it: a Direct3D 11 present has no acquire to wait on, a
+`VkCommandPool` cannot be reset while its buffers are in flight where an `MTLCommandBuffer` is single-use, and
+`nextDrawable` has no zero-timeout form to probe with where `vkAcquireNextImageKHR` does. `FramesBegun` is the
+sharpest of them: D3D11's is the ring rotation index, which cannot be lifted without lifting the rotation, and
+lifting it would put two numbers in a backend that already flags keeping them in step as a hazard.
+
+*Decision.* **Extract the carriers, refuse the sites and refuse `FramesBegun`.** The list's own words are "the
+same arithmetic behind the same struct in three places", and the struct half is true to the byte while the
+arithmetic half is false at every counter but the off-timeline pair. Extracting a shared `WaitForIdle` would
+have to pick ONE counting rule, and `DrainCount` is a shipped `GpuDeviceCounters` channel that gate 4 reads, so
+picking either rule changes a number in the field on two backends. One cost is accepted rather than argued
+away: four role-named accumulator types become one, so a mix-up at an injection site now compiles where it did
+not. The role moves to the field name and its doc, the two backends have two injection sites each, and both
+have a counters test that would fail immediately.
+
+**3. The diagnostic rate limiter. REFUSED. There is no third implementation, and there cannot be one.**
+
+*The shared home.* It would have been a first-N-per-key admission counter with a cumulative session cap, keyed
+on a flattened `(severity, id, text)` message, with the subsystem label and the quoted id token as hooks.
+
+*What each copy does differently.* `D3D11InfoQueueRateLimit` and `VulkanValidationRateLimit` are the same
+algorithm to the point of verbatim-identical comments and note strings, differing by one cap
+(`DefaultMessagesPerPump` and `BeginPump`) and one lock. **Metal has no copy.** There is no `Admit`, no key, no
+dedup table, no `Suppressed` count and no cap anywhere in `KhaozEngine.Gpu.Metal`. What stands in its place is
+`MetalDeviceLossLatch`, a once-only `Interlocked.CompareExchange` that logs one line per device and then
+short-circuits every later failure.
+
+*Essential or drift.* Essential, and structurally so. A limiter needs a repeating message stream to sit in
+front of, and Metal has none: API validation output goes to the OS console rather than through engine logging,
+and the only engine-visible diagnostic is a per-buffer completion object whose `Description` is a localized
+human sentence, explicitly documented as a bad thing to group on. A command-buffer failure is terminal on this
+backend because the seam has no resubmit path, so the honest volume control is a latch and not a budget.
+
+*Decision.* **Refuse, and close it as not planned with that reason.** Two implementations is exactly the count
+V-P4 declined, and the argument it declined on is unchanged: a shared home built at two has its shape guessed
+from one of them. Nothing about the third implementation was predictable from the other two here, which is the
+case #531 filed itself to find out about.
+
+**4. The shader-cache KEY and file discipline. REFUSED, and the premise is refuted rather than merely
+outvoted.**
+
+*The shared home.* It would have been a key of pin plus engine version plus device identity, an
+engine-authored header validated before the payload is trusted, silent discard on mismatch, and a best-effort
+file store.
+
+*What each copy does differently.* **Metal has no disk cache at all.** Section 12.5's row-9 addendum already
+records why, with two measurements: no public API serializes a source-compiled executable `MTLLibrary`, and
+macOS already caches the compile across processes at 0.02 ms warm. `MetalShaderKey` exists and is key-shaped,
+but nothing reads it except two error-message tags, and `MetalIndexTableCache` is an in-memory content
+deduplicator with no file, no header and no key discipline. That leaves two, and the two share NOTHING on
+either axis the candidate names. `D3D11DxbcCache`'s key is pure content (schema, engine version, both pins,
+profile, flags, entry point, length-prefixed sources, SHA-256) with no device in it, and it has no header at
+all. `VulkanPipelineCacheFile`'s key is pure device (`pipelineCacheUUID`, vendor, device, driver version),
+unhashed, with no pin and no engine version, and the header it validates is the driver's own
+`VkPipelineCacheHeaderVersionOne` rather than one the engine wrote. The intersection of the two key strings is
+empty. So is the intersection of the two headers.
+
+*Essential or drift.* Essential. DXBC is device-independent engine output valid on any Direct3D 11 device, so
+device identity in its key would only fragment a cache that does not need fragmenting. A `VkPipelineCache` blob
+is an opaque driver aggregate with no per-program entry to key on content, and its real backstop is not the
+header check at all but the driver refusal path, where `CreateCache` returning 0 discards the file and
+re-creates empty. That path has no Direct3D 11 counterpart.
+
+*Decision.* **Refuse, and close it as not planned with that reason.** The candidate as specified does not exist
+at three, at two, or even at one: no backend implements pin plus engine version plus device identity. What IS
+duplicated between the two that have caches is the file-store plumbing (the directory resolution, the five
+disable words, the temp-plus-rename write, `IsRecoverable` and `TryDelete`), and that is two copies, which is
+the count V-P4 declined for exactly this class of thing. Filed as a follow-up so the observation is not lost.
+
+**5. The completion TIMELINE's bookkeeping. REFUSED, and it is #531's own prediction about Direct3D 11 coming
+true at the last candidate.**
+
+*The shared home.* A monotone `ulong` advanced on submit, a non-blocking read that answers the allocated value
+once the device is dead, a blocking wait, and a drain that counts into `WaitTotals`.
+
+*What each copy does differently.* M-F1 delivered what it promised: `VulkanTimeline` and `MetalTimeline` are the
+same object nearly line for line, agreeing on `LastAllocated`, `LastSubmitted`, `RegisterSubmitted`,
+`CompletedValue`, `TotalDrain`, `WaitForValue`, `WaitForIdle` and `Dispose`, and differing only in a slice loop,
+a `_disposed` read guard, a `target == 0` shortcut and a destroy gate. The third implementation is the problem.
+D3D11's peer is not `D3D11MonotonicFenceTimeline` at all, which is nine lines of bookkeeping under a pile of
+native calls, but `D3D11FenceSubsystem`, and that type carries SEVEN things the other two deliberately do not
+have: one high-water instead of two, a drain target that is a FRESH signal rather than the last submitted
+value, a counting rule that counts every drain rather than skipping a caught-up one, ownership of the submit
+lock plus a re-entrancy refusal, a `Flush` between signal and first poll, a `KE_D3D11_REAL_DRAIN` kill switch,
+and a per-frame roll. It also has a SECOND bookkeeping implementation, `D3D11EventTimelineQueue`, behind a
+mechanism enum, with an issue counter, an in-flight ordering queue and a marker pool, and no counterpart on
+either sibling.
+
+*Essential or drift.* Essential, all seven. The immediate context can hold unflushed device-level work no fence
+describes, which is why the drain must signal fresh and flush, which is in turn why it always has something
+outstanding and therefore counts every drain. `ID3D11Device5` needs Windows 10 1703, which is why there is a
+fallback at all. `ID3D11FenceTimeline` is not the shared shape either, which is worth saying because it looks
+like one: it is the NATIVE seam, the peer of `IVulkanTimelineSemaphore` and `IMetalSharedEvent`, and the
+intersection of those three is two members, one of which disagrees on whether it takes a timeout, on that
+timeout's type, and on what its returned bool means.
+
+*Decision.* **Refuse, and close it as not planned with that reason.** M-P4 said this candidate was extractable
+because M-F1 chose the shared event, and M-F1 did deliver exactly that: at TWO backends the timeline is now one
+object. What M-P4 did not check is the third, and #531 predicted the third by name when it wrote that the
+backend most likely to be the outlier of the eventual three is D3D11. A shared drain would have to pick one
+counting rule, and `DrainCount` is a shipped counter, so this refusal and candidate 2's are the same refusal
+seen from two directions. The `WaitTotals` struct the drain counts into DOES extract, under candidate 2, which
+is the part of this candidate that was genuinely three implementations writing the same thing.
+
+**The tally, and what it costs #531.** Two extractions and three refusals, against a list of five extractions
+and four refusals, so #531 closes with seven written refusals rather than four. That is the outcome M-P6 exists
+to permit, and it is worth being plain about what produced it: two of the three refusals are refusals of a
+FACT the list asserted (that Metal rate-limits command-buffer error logging, and that Metal has a `.metallib`
+cache), and both of those facts were true of the design and false of the backend that got built. The design
+knew about the second one already, in 12.5's row-9 addendum, and 2.8 was never reconciled with it. A list
+written in section 2 and a measurement recorded in section 12 do not meet unless something makes them, and
+what made them was scheduling this row after the backend rather than during it.
 
 ### 2.9 Vsync, the deprecated enum, and the two frame-cap sites
 
@@ -2878,7 +3046,9 @@ A per-program `.metallib` is written to disk and loaded through `newLibraryWithD
 identity, the SPIR-V hash, the device's registry identity and the engine version. Header-validated before
 trusting, discarded silently on any mismatch, best-effort so a read or write failure is never fatal and never
 crashes a launch. This is S4's disk cache and V-S7's `VkPipelineCache` with a third noun, and M-P4 extracts the
-KEY discipline the three share.
+KEY discipline the three share. (**Corrected in place at row 18: M-P4 extracts nothing here.** The row-9
+addendum below removed the third implementation, and the two that remain share no key component and no header
+field, so the candidate was refused. See the row 18 addendum in 2.8.)
 
 **`MTLBinaryArchive` is DECLINED for v1**, and the decline is argued rather than deferred. It is a compiled
 pipeline-state cache one level further down, which is a second and newer mechanism for the same win, with its
@@ -3664,7 +3834,7 @@ Each row becomes one implementation issue, `kind/backlog` unless noted, `confide
 | 15 | Swapchain: `CAMetalLayer` acquisition and configuration reproduced field for field, **unconditional `displaySyncEnabled` (M-W2)**, the drawable acquired at the present boundary and counted into the acquire-wait pair, `maximumDrawableCount`, **the nil-drawable orphan target and the skipped present that still counts into `FramesBegun`**, the separate present command buffer, queued resize and vsync change applied at the boundary after a drain, and stable framebuffer identity. (**Corrected in place: the DEPTH-TEXTURE half of the regression column has no occupant**, because the seam cannot ask for a swapchain depth attachment at all, so what the drain protects is the layer reconfiguration and the drawable swap. See the row 15 addendum in 11.3. **And "zero automated coverage anywhere in the net" was over-general**: a headless `CAMetalLayer` vends drawables, so the layer half runs in the `[GpuFact]` suite and only the four Cocoa selectors and the does-it-appear question are left for gate 5. See the row 15 addendum in 11.1.) | The incumbent silently discards every draw of a frame whose drawable is nil, recreates the depth texture inline with no drain while in-flight frames may be reading it, throttles the CPU on `nextDrawable` with nothing counting it, and applies a vsync toggle only inside three values of a deprecated enum. Zero automated coverage anywhere in the net (MM7) |
 | 16 | Capability read and the ZERO-difference parity test with its reflection-completeness check, the `GpuDeviceCounters` fill, `GpuDeviceDiagnostics` with `softwareAdapter` and `deviceLossReason`, and **`MetalFrameCapture` taking the native queue pointer instead of reflecting into Veldrid's private field** | Capability drift is silent and golden-visible through `AntiAliasing.ResolveFor`. Phase 3's row-18 pair are both inherited by name: `DeviceName` is not trimmed, and `SupportsShadowMaps` asks what the incumbent asks rather than what the member's name suggests. The frame-capture reflection is one Veldrid refactor away from silently not working, and it is one of 4.2's three silent sites |
 | 17 | **MM6's measurement**: the two-uniform-buffer `[GpuFact]` probes with pixel READBACK assertions, and the RESULT recorded in this design doc whichever way it goes. **No shader change lands in this row**, and M-B4's invariant stays in force regardless. (**Corrected in place: the row landed THREE pixel probes plus a device-free mechanism row, not two.** The two shapes this cell inherited from 2.3 both came back correct on the incumbent as well, which separates nothing, and the shape that discriminates is the one where each stage references exactly one of the two buffers. See the row 17 addendum in 2.3a, which carries the values, the mechanism and the two corrections to the recorded rule.) | The memory records four sessions' worth of open question and one shipped consequence. A `GpuFact` that only asserts no-throw is how the all-black splat terrain shipped. A pass authorises FILING the invariant's removal with its own gates and nothing more |
-| 18 | **The #531 extraction (M-P4 to M-P6), and it lands AFTER rollout gate 3.** The `DeviceLiveness` latch, the counter accumulators, the diagnostic rate limiter, the shader-cache key and file discipline, and the completion timeline's bookkeeping, into `KhaozEngine.Gpu/Internal/`, with all three backends rewired onto them. The four refusals written per candidate, and #531 closed with the reasoning. **Depends on gate 3** | Phase 2's frozen native-call marginals and phase 3's must be byte-identical across the commit, which is the regression proof, and both are device-free tests that already run on every `dotnet test`. Extracting while the backend is being written gives a golden failure two candidate causes, and the whole value of a guest golden family is that it has one. #531's own instruction is to re-assess each candidate against three implementations rather than assume the list carries |
+| 18 | **The #531 extraction (M-P4 to M-P6), and it lands AFTER rollout gate 3.** The `DeviceLiveness` latch, the counter accumulators, the diagnostic rate limiter, the shader-cache key and file discipline, and the completion timeline's bookkeeping, into `KhaozEngine.Gpu/Internal/`, with all three backends rewired onto them. The four refusals written per candidate, and #531 closed with the reasoning. **Depends on gate 3**. (**Corrected in place: the row landed TWO extractions and THREE refusals, not five and none.** The latch and the counter CARRIERS moved and all three backends were rewired onto them, and the rate limiter, the shader-cache key and the timeline bookkeeping were each refused in writing, two of them because the third implementation the list assumed does not exist. See the row 18 addendum in 2.8.) | Phase 2's frozen native-call marginals and phase 3's must be byte-identical across the commit, which is the regression proof, and both are device-free tests that already run on every `dotnet test`. Extracting while the backend is being written gives a golden failure two candidate causes, and the whole value of a guest golden family is that it has one. #531's own instruction is to re-assess each candidate against three implementations rather than assume the list carries |
 | 19 | The `metal-native` CI leg with both validation tiers and `KE_METAL_REQUIRED=1`, the `NativeDeviceLifecycle` collection in every `[GpuFact]` assembly, **the seam rule 1 and rule 2 comment's third arm**, the `IGpuCommandList.Begin` XML doc's Metal sentence, **`ModelRenderer.BeginModelPass`'s stale MRT-clear comment reworded to name the implementation it describes**, `BackpressureStallCount`'s doc comment, the doc sweep below, the soak build, the five rollout gates, and the `ProbeOS` flip. (**Corrected in place, twice.** The collection cell was already SATISFIED when this row started and it was not what fixed the 284-failure run: both `[GpuFact]` assemblies already carry the definition, and the failure was `MetalCompletionHandler`'s four-slot table meeting an engine-wide suite where every device-building class builds one of these devices in parallel. The table was raised instead, on a measurement, and the row-19 addendum in section 15 carries both numbers and why serialising was rejected. And **the `ProbeOS` flip does NOT land here**: section 17 gates it on five gates being green, this row BUILDS the instrument for two of them and can read neither, so the rollout record says so in the design's own words rather than leaving a reader to find three unflipped sites and guess.) | #423 records the push-triggered D3D11 golden gate degraded for weeks without anyone noticing. A second live-device backend without a lifecycle collection took one leg from 17 minutes to 49. `Begin`'s doc currently says the same code on Metal is a half-recorded frame, which becomes false for this backend on the day it ships, and a comment that describes a mechanism the native backend does not have decays faster than an unwritten one |
 
 **Order.**
@@ -3828,8 +3998,10 @@ to a named exception rather than members that disappear.
 - The provider registry, the golden-guest pattern, the capability-parity pattern, the opt-in package shape, the
   append audit test, the counters plumbing and the CI matrix leg are templates proven three times. There is no
   fourth backend, so they stop being templates and start being history.
-- The shared home is DECIDED rather than deferred (2.8). #531 closes with five extractions and a written
-  refusal for the rest.
+- The shared home is DECIDED rather than deferred (2.8). #531 closes with TWO extractions, one of them partial,
+  and a written refusal for the other three, which is the outcome M-P6 existed to permit. The re-assessment
+  against three implementations is what moved it, and two of the three refusals overturned a fact the list
+  asserted rather than a judgement it made.
 - `libveldrid-spirv` is still a bundled native per RID. This phase does not reduce the native packaging burden,
   and #420 partly existed to.
 - The `KE_D3D11_*`, `KE_VULKAN_*` and `KE_METAL_*` variable families are now three dialects. Phase 3's VF2

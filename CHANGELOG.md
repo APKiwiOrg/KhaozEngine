@@ -916,8 +916,9 @@ does nothing about two attachments that are never cleared at all. This backend c
 named. The consequence is that `ModelFB`'s normal and linear-depth attachments start being CLEARED where today
 they LOAD, and what they load today is a freshly created `StorageModePrivate` texture nothing has written, which
 means the current behaviour is the unstable one and the committed `metal` goldens were baked reading it.
-`KE_METAL_CLEAR=attachment0` reproduces the collapse exactly, for the A/B on the first golden run, and both the
-switch and the losing branch are removed at gate 1.
+`KE_METAL_CLEAR=attachment0` reproduced the collapse exactly for the A/B on the first golden run, and the
+switch was removed at gate 1, inside this same release. The gate section at the end of this entry has the
+reading and says what stayed behind.
 
 **A pass is a descriptor per pass, so most of what phase 3 had to build has no occupant here.** No render pass
 object to cache, no framebuffer object to rebuild on a resize, and no invalidation of either.
@@ -966,9 +967,9 @@ NOT the colour asked for, because asserting a specific value would be asserting 
 end. Everything the schedule DECIDES is device-free and runs on the Linux and Windows legs.
 
 **Four guards this row's own review added, each closing a gap that produced no error anywhere.** A mistyped
-`KE_METAL_CLEAR` now WARNS at device creation naming the value: the parse always reported the typo and nothing
-logged it, so a mistyped A/B run would have measured the fix twice while the tester believed they had captured
-the incumbent. `MetalEncoderScope.EnsureRenderEncoder` refuses a nil `MTLRenderPassDescriptor` by name, because
+`KE_METAL_CLEAR` WARNED at device creation naming the value, for as long as the switch existed: the parse
+always reported the typo and nothing logged it, so a mistyped A/B run would have measured the fix twice while
+the tester believed they had captured the incumbent. `MetalEncoderScope.EnsureRenderEncoder` refuses a nil `MTLRenderPassDescriptor` by name, because
 `renderCommandEncoderWithDescriptor:` takes a nonnull argument and the pass schedule's own nil arm protects only
 callers that go through the schedule, and the device-free fake asserts the same contract instead of obligingly
 handing back an encoder for it. `EndPass` refuses a render pass that is open AND owed a clear, which is the
@@ -1751,6 +1752,46 @@ for `RequiresRealGpu` (duplicated deliberately, the reference direction forbids 
 cross-reference and a device-free row asserts the two agree). The refusal message names both halves. Gate 2's
 criterion also gained its one standing exception from the same run: a `RequiresRealGpu` row self-skips on the
 paravirtual adapter by design, so the leg reads 0 skipped beyond those rows rather than a flat 0.
+
+### Metal rollout gates 1, 2 and 3 read GREEN, and `KE_METAL_CLEAR` retires with them (#578, #585)
+
+The `metal-native` leg's third hosted run is its first green one (run 31464944222, commit `b4b46fcf`), and
+three of the five rollout gates in
+[docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md](docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md)
+are read off it. Gates 4 and 5 stay PENDING: one wants a field capture and the other a person at a window.
+Nothing selects this backend yet, so no shipped behaviour changes with these readings.
+
+**Gate 1: all 36 goldens green, worst cell `scene3d_sky_world_sun` at 0.0431 against the 0.06 verify
+tolerance.** MM2 resolves on its FIRST arm (both positions green), and the evidence is the SHAPE of the deltas
+rather than the pass: the native leg's per-scene worst cell is identical to the incumbent `metal` leg's on all
+36 scenes, line for line, both artifacts coming off the same run. On the paravirtual device the two backends
+diverge from the committed grids by exactly the same amounts.
+
+**Gate 2: 0 failed across the whole solution, with the passed count EQUAL to the incumbent leg's.**
+`KhaozEngine.Render.Tests` reads 6051 passed and 1 skipped, that skip being the `RequiresRealGpu` standing
+exception (`DistortionGpuTests`) and nothing else, `KhaozEngine.MapEditor.Tests` reads 922 passed and 0
+skipped, the 18 backend-independent skips land as the criterion predicts, and the armed API validation layer
+reported nothing, which is MM9's standing answer too. The equality is the expected healthy shape rather than a
+coincidence: both legs run the identical suite, because the native `[GpuFact]` rows build their own devices
+whatever backend the leg overrides to, so an inequality in either direction would be the thing to investigate.
+
+**Gate 3: MM6 taken and passed at row 17, and the other three halves green on every `dotnet test`.** The
+budget test with its marginals, MM3 and the MSL index-table test are device-free, so this gate was waiting on
+somebody reading it rather than on a machine producing it. Row 18, the #531 extraction, was gated on it and is
+now unblocked.
+
+**`KE_METAL_CLEAR` is gone, which is what gate 1 said would happen either way.** The environment read, the
+once-per-process memo, the parse, the unrecognized-value WARN and the device-creation report call are all
+removed, and the native Metal backend clears the attachment the caller named unconditionally. Nothing a
+consumer can set changes where a clear lands.
+
+**What did NOT go is the position itself, and the A/B is the reason.** Taken on an M2 Max rather than on the
+leg, because the workflow carries no plumbing for the variable and a real device beats a paravirtual one for a
+measurement about what a clear leaves in an attachment, the golden suite passed 31 of 31 in BOTH positions. So
+no golden in the family can tell the fix from the incumbent's `colorAttachments[0]` collapse, and the only
+instrument that can is a `[GpuFact]` that clears two attachments and reads the second one back as a texel.
+`MetalClearMode.Attachment0` therefore survives as a constructor value on the recording types, reachable from
+that test and from nowhere else, and production pays one comparison that is always the identity.
 
 
 ## 17.34.0

@@ -60,12 +60,36 @@ SessionLog.Configure(new SessionLogOptions
 ```
 
 The game owns the directory (typically a `logs` subdir of `AppDataPaths`). This is the rich, category-tagged
-record and is orthogonal to the last-chance `KhaozEngine.Game.StartupCrashLog` net `GameApp` installs
-automatically on a no-console Windows GUI launch: that net only catches a startup crash before any logging is
-configured and writes a bare file under `%LocalAppData%\KhaozEngine\crash`, so the two write to different
-destinations and never double-handle a crash into the same file. The older single-file rotating shape
+record and is orthogonal to the last-chance `CrashReport` file `GameApp` arms automatically for every head (see
+below): that file catches a crash before any logging is configured and writes to an OS crash location, so the two
+write to different destinations and never double-handle a crash into the same file. The older single-file rotating shape
 (`game.log` -> `game.prev.log`) is still just `new FileSink(new FileSinkOptions { Path, PreviousPath })` built
 directly - `SessionLog` deliberately standardises on the per-session shape that keeps a tester's crash history.
+
+## Last-chance crash file (`CrashReport`, since 17.36.0)
+
+The session log is the record when a game configured one. `CrashReport` is the floor for when it did not, or for
+a crash that happens before it did: it writes the exception to its own file with no configuration at all, in the
+place a tester already looks for crashes.
+
+```csharp
+CrashReport.Install(new CrashReportOptions { ProcessLabel = "MyGame" });
+CrashReport.Note("backend", device.Backend.ToString());   // any fact worth having at the moment of a crash
+```
+
+`GameApp` does both for every head already (opt out with `GameAppOptions.SuppressCrashReportFile`, and it notes
+the graphics backend as soon as its window exists), so this is only wired by hand in a head that is not a
+`GameApp`, e.g. a dedicated server.
+
+- Default directory: `~/Library/Logs/KhaozEngine` on macOS, which is the same tree the system's own `.ips` crash
+  report lands in under `DiagnosticReports`. `%LOCALAPPDATA%\KhaozEngine\crash` on Windows,
+  `$XDG_STATE_HOME/KhaozEngine/crash` (else `~/.local/state/...`) elsewhere. Override with
+  `CrashReportOptions.Directory`.
+- One file per crash, `{process}-crash-{yyyyMMdd-HHmmss-fff}.log`, pruned to `MaxRetainedReports` (default 20)
+  per process label.
+- Contents: timestamp, process, engine version, runtime, OS, the crash context, every `Note`, then the exception
+  type, message and full stack.
+- Never throws and needs nothing configured, because it runs on the runtime's crash path.
 
 ## Categories
 
@@ -83,7 +107,8 @@ Do **not** prefix the message with the category: `Log.Info("[CloudSave] saved")`
 - `LogManager` + `LoggerOptions` - injectable instance core (DI/tests). Runtime-settable `MinimumLevel`. Async by default; set `Synchronous = true` for deterministic tests.
 - `ILogger` - category logger (`Trace`/`Debug`/`Info`/`Warn`/`Error`/`Fatal`, each with an optional exception).
 - `ILogSink` + `FileSink` (rotate-on-launch + size rotation + retention), `ConsoleSink`, `DebugSink`, `InMemorySink`. Implement `ILogSink` for custom targets (in-game console, crash uploader).
-- `CrashHandler` - wires `AppDomain.UnhandledException` + `TaskScheduler.UnobservedTaskException`.
+- `CrashHandler` - wires `AppDomain.UnhandledException` + `TaskScheduler.UnobservedTaskException` into the log.
+- `CrashReport` + `CrashReportOptions` - the last-chance crash FILE, written with no logging configured.
 - `IClock`/`SystemClock` - injectable timestamps.
 
 (OS-correct app-data paths live in `KhaozEngine.App` as `AppDataPaths`; resolve `FileSinkOptions.Path` through it.)

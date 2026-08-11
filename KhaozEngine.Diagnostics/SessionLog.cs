@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
 
 namespace KhaozEngine.Diagnostics;
@@ -16,14 +15,14 @@ namespace KhaozEngine.Diagnostics;
 /// </summary>
 /// <remarks>
 /// <para>
-/// This is the rich, category-tagged session log. It is orthogonal to the last-chance
-/// <c>KhaozEngine.Game.StartupCrashLog</c> net that <c>GameApp</c> installs automatically on a no-console Windows
-/// GUI launch: that net exists only to catch a STARTUP crash that happens before (or without) any logging is
-/// configured, writing a bare file under <c>%LocalAppData%\KhaozEngine\crash</c>. The two do not double-handle a
-/// crash into the same file - they write to different destinations for different purposes (the startup net is the
-/// floor, this session log is the record). Both an <see cref="AppDomain.UnhandledException"/> handler from the
-/// startup net and one from <see cref="CrashHandler"/> may be live at once; that is intentional belt-and-suspenders,
-/// each writing its own file.
+/// This is the rich, category-tagged session log. It is orthogonal to the last-chance <see cref="CrashReport"/>
+/// file that <c>GameApp</c> arms automatically for every game head: that file exists to catch a crash that
+/// happens before (or without) any logging being configured, and it goes to an OS location beside the system's
+/// own crash report rather than into the game's log directory. The two do not double-handle a crash into the
+/// same file, they write to different destinations for different purposes (the crash file is the floor, this
+/// session log is the record). Both an <see cref="AppDomain.UnhandledException"/> handler from
+/// <see cref="CrashReport"/> and one from <see cref="CrashHandler"/> may be live at once, which is intentional
+/// belt-and-suspenders, each writing its own file.
 /// </para>
 /// <para>
 /// The single-file rotating shape some games used before (<c>game.log</c> -&gt; <c>game.prev.log</c>) is not a
@@ -95,28 +94,12 @@ public static class SessionLog
     /// Keeps at most <paramref name="maxRetained"/> - 1 EXISTING <c>{prefix}-*.log</c> files (newest by last-write
     /// time), so the directory holds at most <paramref name="maxRetained"/> once <see cref="Configure(SessionLogOptions)"/>
     /// opens its own. Internal so the engine tests can exercise it directly without touching the ambient
-    /// <see cref="Log"/>/<see cref="CrashHandler"/> global state. Best-effort: any I/O failure (locked file,
-    /// missing/unreadable directory) is swallowed, matching the sinks' "logging never throws" contract - an odd
-    /// file-permission setup on a player's machine must not block the game from starting.
+    /// <see cref="Log"/>/<see cref="CrashHandler"/> global state. The sweep itself is
+    /// <see cref="LogFilePruner.KeepNewest"/>, shared with <see cref="CrashReport"/>, and is best-effort: any I/O
+    /// failure (locked file, missing/unreadable directory) is swallowed, matching the sinks' "logging never
+    /// throws" contract - an odd file-permission setup on a player's machine must not block the game from
+    /// starting.
     /// </summary>
     internal static void PruneOldSessionLogs(string directory, int maxRetained, string prefix)
-    {
-        if (maxRetained < 1) maxRetained = 1;
-        try
-        {
-            if (!Directory.Exists(directory)) return;
-            var files = new List<FileInfo>(new DirectoryInfo(directory).GetFiles($"{prefix}-*.log"));
-            if (files.Count < maxRetained) return;
-
-            files.Sort((a, b) => b.LastWriteTimeUtc.CompareTo(a.LastWriteTimeUtc));
-            for (int i = maxRetained - 1; i < files.Count; i++)
-            {
-                try { files[i].Delete(); }
-                catch (IOException) { }
-                catch (UnauthorizedAccessException) { }
-            }
-        }
-        catch (IOException) { }
-        catch (UnauthorizedAccessException) { }
-    }
+        => LogFilePruner.KeepNewest(directory, maxRetained, prefix);
 }

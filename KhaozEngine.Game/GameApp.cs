@@ -110,14 +110,15 @@ namespace KhaozEngine.Game
             // untouched); never throws. Opt out with GameAppOptions.SuppressParentConsoleAttach.
             AppWindow.TryAttachParentConsole(enable: !options.SuppressParentConsoleAttach);
 
-            // Last-chance crash net for the invisible case: a Windows GUI launch (no parent console, so the attach
-            // above was a no-op) has no window yet and no console, so an uncaught STARTUP crash would vanish
-            // silently. When the process still owns no console, install a floor that writes the fatal exception to
-            // a file under the per-user local app-data dir. A terminal launch (console now attached) shows the
-            // exception on stderr and skips this; a game that wires KhaozEngine.Diagnostics.CrashHandler still gets
-            // its richer game.log too. Never throws.
-            if (!AppWindow.ProcessHasConsole)
-                StartupCrashLog.InstallForNoConsole(options.Title);
+            // Last-chance crash file, armed for EVERY head rather than only for the no-console case. A terminal
+            // launch does print the exception on stderr, which is exactly what is gone an hour later when someone
+            // asks what the crash said: the engine's own showcase lost a one-off managed exception that way, with
+            // the operating system's crash report naming only coreclr's dispatch frames (issue #607). So the floor
+            // is armed unconditionally now, writing type, message, stack, timestamp, engine version and (from
+            // below) the graphics backend to a file beside the OS crash report. Opt out with
+            // GameAppOptions.SuppressCrashReportFile. Never throws.
+            if (!options.SuppressCrashReportFile)
+                CrashReport.Install(new CrashReportOptions { ProcessLabel = options.Title });
 
             _resumeGapThresholdSeconds = options.ResumeGapThresholdSeconds;
             _jobSchedulerDisabled = options.DisableJobScheduler;
@@ -163,6 +164,12 @@ namespace KhaozEngine.Game
             if (OperatingSystem.IsMacOS() && !string.IsNullOrEmpty(options.WindowIconPath)
                 && System.IO.File.Exists(options.WindowIconPath))
                 _window.SetMacDockIcon(System.IO.File.ReadAllBytes(options.WindowIconPath));
+
+            // The graphics backend is the first fact worth having in a crash file and the first one that exists:
+            // the device is up as soon as the window is. A boot-time crash that reads "backend: MetalNative" is a
+            // different investigation from the same crash on the incumbent, and the tester should not have to
+            // remember which one they launched. Free when the crash file is opted out (the note is just held).
+            CrashReport.Note("backend", _window.Backend.ToString());
 
             // Reveal the window now that the runtime icon is set (born hidden - see AppWindow.Show).
             _window.Show();

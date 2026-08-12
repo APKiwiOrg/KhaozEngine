@@ -14,9 +14,11 @@ family is not, the Retina first frame is sized in pixels, the seam's one-open-re
 refusal instead of a paragraph, two of phase 4's guards get the teeth their prose already claimed, CI starts
 gating the three whole-tree convention guards it never ran, the graphics shader pair finally gets the Metal
 binding-order guard the compute one has had since 16.3.0, the native Vulkan device becomes constructible
-without a loader so its own wiring is tested rather than inspected, the scene-depth MRT stops being interpolated
-from the vertex stage so it is right under perspective as well as under the orthographic projections every
-golden uses, and the ambient Gui theme stops racing the rest of its test assembly.
+without a loader so its own wiring is tested rather than inspected, the shadow pass's last-frame snapshot starts
+reporting what it recorded instead of only why it woke, the ambient Gui theme stops racing the rest of its test
+assembly, both Vulkan validation tiers get an artifact that can actually contain an engine validation line, and
+the scene-depth MRT stops being interpolated from the vertex stage so it is right under perspective as well as
+under the orthographic projections almost every golden uses.
 
 ### The scene-depth MRT is written per fragment, so it is correct under perspective (#301)
 
@@ -52,13 +54,17 @@ The emitted HLSL was checked directly: every one of the five pixel shaders decla
 The pinned Direct3D 11 HLSL hash table was re-baked for exactly those five programs and nothing else, which is
 the evidence that a shader source moved and the cross-compile options did not.
 
-**No golden moved.** All 36 golden scenes were compared on Metal and every one still matches its committed
-grid, including `perspective_outline`, the only perspective golden: its outline threshold is a relative
-Laplacian and the correction is well inside it. `SceneDepthPerspectiveGpuTests` is the new regression test, and
-it is an A/B rather than a baked reference. It draws one seabed plane twice, as a single 2400-unit quad and as a
-24x24 grid of 100-unit tiles, with the water tuned so its body colour is a live readout of the reconstructed
-depth. Before the fix the near-field band differed by a mean of 47.24 luminance levels between the two. After,
-it differs by 0.01.
+**Exactly one golden moved, and its old image encoded the bug.** 35 of the 36 golden scenes still match their
+committed grids, including `perspective_outline`, whose relative-Laplacian threshold absorbs the correction.
+`scene3d_sky_world_sun` moved because it is a perspective scene whose old reference shows the defect itself: the
+near field renders as a black region where the corrected depth reconstructs the lit ground plane (worst cell
+delta 0.769 in the blue channel, verified visually from the evidence images before rebaking). All three
+backends' grids for that scene were re-baked in this change, Metal on real local hardware and Direct3D 11 (WARP)
+plus Vulkan (lavapipe) via the workflow's bake dispatch. `SceneDepthPerspectiveGpuTests` is the new regression
+test, and it is an A/B rather than a baked reference. It draws one seabed plane twice, as a single 2400-unit
+quad and as a 24x24 grid of 100-unit tiles, with the water tuned so its body colour is a live readout of the
+reconstructed depth. Before the fix the near-field band differed by a mean of 47.24 luminance levels between the
+two. After, it differs by 0.01.
 
 ### The last-chance crash file (`CrashReport`, #607)
 
@@ -649,6 +655,98 @@ proved to pass again with the guard switched off, so a guard that had started re
 these rather than look like a pass. `MslBindingOrderGuardTests` carries the water fragment's depth/ocean texture
 swap, the water vertex's dropped bathymetry tap (the prefix case), and the ocean column pass's storage/storage
 swap. That last one still passed under the 16.3.0 guard, which is the direct evidence for the same-kind half.
+
+### Both Vulkan validation tiers can now produce the log they exist for (#565)
+
+Neither `vulkan-validation-strict-vulkan-native` nor `vulkan-validation-sync` could contain a single
+engine-formatted validation line, on any leg, ever. `VulkanValidationPump` logs through the ambient `Log`
+facade, that facade hands out a no-op logger until something calls `Log.Configure`, and nothing in the
+`KhaozEngine.Render.Tests` process ever did. So `_log.Error` and `_log.Warn` in `ReportCore` were no-ops on
+every run. The `strict` tier was unaffected, because its latch and its throw are counters rather than log
+calls. What was lost is the whole point of the `sync` tier: warning-severity messages never fail anything by
+design, which makes the artifact the only place they are ever read, and a hazard the layer reports as a warning
+is exactly what that tier was installed to find.
+
+**Two separate faults sat between the pump and the artifact, and fixing one alone would have looked fixed.**
+The first is the missing sink above. The second is that `vstest` forwards the test host's stdout only at
+`--logger "console;verbosity=detailed"`, so at the default verbosity a console sink writes into a stream the
+runner discards. Both armed test steps in `cross-platform-gpu.yml` now pass that logger, which has the second
+benefit of printing one `Passed <TestName>` line per test: the interleaving both artifacts are described as
+carrying is real now rather than asserted.
+
+**The sink is armed by the backend's own lever and scoped to the backend's own categories.**
+`KhaozEngine.Render.Tests/Gpu/VulkanValidationConsoleLogging.cs` configures a console sink from a
+`[ModuleInitializer]`, following the three backend registration initializers beside it, when and only when
+`KE_VULKAN_VALIDATION` parses to a rung above `Off`
+through `VulkanValidation.Parse`. Armed means exactly what it means to the code that creates the messenger, so
+a typo that leaves validation off also leaves the log unconfigured rather than implying an instrument that is
+not running. A category filter keeps the log to the `Vulkan`-prefixed categories, and that admits the WHOLE
+native backend at Info and above rather than the pump alone. The breadth is deliberate: a measured armed `sync`
+run carries the allocator's per-allocation `VulkanMemoryAllocator` INFO lines (the bulk of the log by a wide
+margin), `VulkanGpuDevice` and `VulkanBackendProvider` warnings, `VulkanPresentBoundary` warnings and errors, a
+`VulkanTimeline` warning, and the `VulkanInstance` lines saying whether the layer was found and which rung is
+live. A validation message is only evidence next to what the backend was doing when it fired, and a barrier or
+lifetime complaint has to be read against the allocations and presents around it. What the filter keeps out is
+the rest of the engine. Every unarmed leg and every developer `dotnet test` is byte-identical to before, and an
+unarmed process now allocates nothing at all here: the lever is checked before the sink and the options exist.
+
+**One line per armed run says the sink existed.** The host writes a `VulkanValidationLogHost` line naming the
+lever, the scope and the shape a reader then greps for. Zero validation messages is what a clean sweep looks
+like AND what a log looks like once it has lost its producer, which is the ambiguity the sync job's gate step
+already prints a count for, and that line is what tells the two apart from the artifact alone. The gate's
+zero-total notice now names it.
+
+**`VulkanValidationPump` resolves its fallback logger per pump instead of once into a `static readonly`
+field.** A static `Log.For<T>()` is captured at type initialization, so which logger it holds forever depends
+on whether the type was touched before or after the process configured logging, and the loser of that race is
+the no-op logger. That is the same defect a second time, silently, in a process that HAD configured a sink.
+
+**No test in the assembly reconfigures the facade, and that is why the seam is split the way it is.**
+`Log.Configure` shuts down the manager it replaces, shutdown disposes and CLEARS that manager's sinks, and every
+`ILogger` already handed out keeps pointing at the dead manager, so a reconfigure part-way through a run is not
+restorable: it silences every producer that resolved earlier, for the rest of the process, with no symptom at
+all. Six Vulkan types hold their logger in a `static readonly` field, so a first cut of this fix, whose tests
+configured the facade and restored it afterwards, cost the armed `sync` artifact most of its content: a measured
+A/B put 119 Vulkan-category lines in the run without that test class against 30 with it, every
+`VulkanMemoryAllocator` INFO line and every `VulkanPresentBoundary` WARN and ERROR line after it gone. So the
+seam's decision half (`IsArmed`, `BuildOptions`) is pure and is what the tests drive, through a `LogManager`
+they own and dispose, the apply half is the single `Log.Configure` in the module initializer, and the one test
+that touches the process facade only READS it, asserting that an armed process has a configured manager the
+pump's category is enabled on and an unarmed one has the untouched no-op facade. The same A/B now reads equal
+line counts with and without the class. The assembly's `LoggingSerial` collection went with the reconfigure,
+since nothing in it writes process-global logging state any more.
+
+### The shadow pass's last-frame snapshot reports what it RECORDED, not just why it woke (#410)
+
+`Scene3D.LastShadowPassDiagnostics` (a `ShadowPassDiagnostics`) already named each dirty reason. It could not say
+what the dirty decision then cost, which is the half a field trace needs. It gains the counts the pass actually
+recorded: `RigidSpanCount(cascade)` and `TotalRigidSpanCount` for the per-cascade span lists it walked, plus the raw
+`RigidDrawCalls`, `SkinnedDrawCalls` and `TotalDrawCalls` it issued. Still a `readonly struct`, still always on, and
+now allocation-free by construction rather than by luck: the per-cascade counts live in an inline array, so a
+snapshot is a value copy and never a view onto the array the scene reuses next frame.
+
+**Raw means raw.** `RigidDrawCalls` counts `DrawShadowCasterRun` invocations, so it sits at or below
+`TotalRigidSpanCount`: a span whose mesh was unloaded between the span build and the draw is walked and then
+skipped, and that gap is now visible instead of being folded away. The counts are read where the pass walks them,
+inside `RenderShadowDepthPass`, so the numbers describe the list the loop actually iterated.
+
+**The counts describe THIS frame, which is the difference from the existing properties.** A skipped frame reports
+zero spans and zero draws, because a skipped frame records none, it reuses the persistent atlas.
+`Scene3D.ShadowCascadeSpanCount` / `ShadowCascadeCasterCount` are unchanged and keep reporting the last RENDERED
+pass across a skip, which is the right answer to a different question. The snapshot is also now built AFTER the
+decision rather than before it, so every field in one snapshot describes one frame.
+
+Rendering is untouched. The instrument only increments counters, no dirty input, no draw and no pipeline bind
+moved, and `ShadowDepthPassDirty` is byte-for-byte the predicate it was. What the new tests pin is the CURRENT
+behaviour, including the wasteful-looking part: a wholly stationary scene holding one skinned caster re-records the
+whole atlas every frame, naming `AnySkinnedCaster` and nothing else, because bone palettes are not hashed.
+`ShadowPassDiagnosticsGpuTests` drives each reason alone through a live pass and asserts the snapshot names exactly
+that one, and `ShadowPassDiagnosticsTests` covers the truth table headless plus the zero-allocation promise.
+`ResolutionChanged` has no live row on purpose: `ShadowSettings.ShadowMapResolution` is a construction-time knob, so
+no running scene can change it between two passes.
+
+Issue #410 stays open. This ships the instrument, not a fix: whether that always-dirty stationary pass is worth
+optimising is a question for the field data a consumer can now forward.
 
 ## 17.35.0
 

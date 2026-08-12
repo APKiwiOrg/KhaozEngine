@@ -213,7 +213,10 @@ The suite each leg runs is split by trigger, from measured hosted-runner cost
   green, so the scan step supplies the teeth at the CI level and engine-side latching stays strict-only by
   design. The scan matches the engine pump's own `Vulkan validation [Error]` format and the Khronos layer's
   `Validation Error:` message prefix, and it prints the count of validation lines at any severity on every run,
-  so a scan that has quietly stopped matching anything is visible instead of reading as a clean sweep.
+  so a scan that has quietly stopped matching anything is visible instead of reading as a clean sweep. The
+  engine arm of that scan could not fire until [#565](https://github.com/APKiwiOrg/KhaozEngine/issues/565): the
+  pump logged through an ambient facade nothing in the test process had configured, so it wrote to a no-op
+  logger on every leg. The artifacts section below has what each producer contributes now.
 
 **The validation layer is an install, not a knob**, which is why the tiers arrived with a workflow step
 rather than a variable. Before them, `VK_LAYER`, `VK_INSTANCE_LAYERS` and `vulkan-validationlayers` had zero
@@ -370,6 +373,16 @@ PASSED:
   names is the diagnostic: a validation message is only actionable next to the test that provoked it. The sync
   artifact keeps uploading on `always()` for a second reason too, now that the sync job's own scan step fails
   the job on an error-severity line: the gate goes red and the log that explains it survives the red.
+  **Two independent producers put validation text in these logs, and only one of them is the engine.** The
+  engine-formatted lines (`Vulkan validation [<Severity>] <VUID>: <text>`, written by `VulkanValidationPump`)
+  appear only when the run armed a rung, because the test host configures a console sink for the Vulkan
+  backend's log categories exactly then and leaves the ambient logger unconfigured otherwise
+  ([#565](https://github.com/APKiwiOrg/KhaozEngine/issues/565)). The Khronos layer's own output
+  (`Validation Error:` / `Validation Warning:`) is written by the layer on its own account and is independent of
+  that sink. One line under the category `VulkanValidationLogHost` is written per armed run, so a log with no
+  validation messages in it can be read as a clean sweep rather than as a lost producer. Both armed test steps
+  run at `--logger "console;verbosity=detailed"`, which is what forwards the test host's stdout at all and what
+  supplies the `Passed <TestName>` lines the interleaving is measured against.
 - **`vulkan-device-limits-<leg>`** is the `vulkaninfo` dump, which runs without `--summary` on purpose so the
   whole `VkPhysicalDeviceLimits` block lands rather than the driver and API version alone. No Vulkan device
   limit had ever been observable anywhere in this repo before that, so the native backend's descriptor model

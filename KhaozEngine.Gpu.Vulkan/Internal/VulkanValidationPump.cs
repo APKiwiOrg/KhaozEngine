@@ -64,8 +64,6 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// </summary>
     internal sealed class VulkanValidationPump
     {
-        static readonly ILogger log = Log.For<VulkanValidationPump>();
-
         readonly VulkanValidationMode _mode;
         readonly VulkanValidationRateLimit _limit;
         readonly ILogger _log;
@@ -78,12 +76,21 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="limit">The rate limit, or null for the defaults.</param>
         /// <param name="logger">The sink, or null for this type's own category logger. Present so a test can
         /// assert what was logged and at which level, which is the half of this type worth asserting.</param>
+        /// <remarks>
+        /// THE FALLBACK LOGGER IS RESOLVED HERE, PER PUMP, AND NOT ONCE INTO A STATIC FIELD (#565). A static
+        /// <c>Log.For&lt;VulkanValidationPump&gt;()</c> is captured at type initialization, so which logger it
+        /// holds forever depends on whether the type was touched before or after the process called
+        /// <c>Log.Configure</c>, and the loser of that race is <see cref="NullLogger"/>. Every message this pump
+        /// exists to surface would then be dropped by a process that HAD configured a sink, which is the exact
+        /// failure #565 is about, and it would be invisible: a dropped log line and a clean run look identical.
+        /// One <c>Log.For</c> call per pump costs nothing next to creating a Vulkan instance.
+        /// </remarks>
         internal VulkanValidationPump(VulkanValidationMode mode, VulkanValidationRateLimit? limit = null,
             ILogger? logger = null)
         {
             _mode = mode;
             _limit = limit ?? new VulkanValidationRateLimit();
-            _log = logger ?? log;
+            _log = logger ?? Log.For<VulkanValidationPump>();
         }
 
         /// <summary>How many messages the rate limit has refused. The number that stops a truncated log reading as

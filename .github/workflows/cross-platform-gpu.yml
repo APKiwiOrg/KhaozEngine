@@ -725,6 +725,24 @@ jobs:
           # and the strict-tier artifact upload have to agree with this variable exactly and a copy per site is
           # how they stopped agreeing. Empty means no tier is armed on this run.
           KE_VULKAN_VALIDATION: ${{ env.VULKAN_VALIDATION_ARMED }}
+          # WHAT PUTS THE ENGINE'S OWN VALIDATION LINES IN THE ARTIFACT (#565), and it takes both halves. The
+          # test host configures a console sink when KE_VULKAN_VALIDATION arms a rung (see
+          # KhaozEngine.Render.Tests/Gpu/VulkanValidationConsoleLogging.cs), which is the half that gives the
+          # pump somewhere to write at all: the ambient Log facade hands out a no-op logger until something
+          # calls Log.Configure, and nothing in that process ever did, so every warning-severity message the
+          # tiers exist to surface was dropped. THIS is the other half. vstest forwards the test host's stdout
+          # only at detailed console verbosity, so at the default the sink writes into a stream the runner
+          # discards and the artifact is empty for a second, entirely separate reason. Detailed verbosity also
+          # prints one `Passed <TestName>` line per test, which is what makes the interleaving this artifact is
+          # for real rather than described.
+          #
+          # ARMED RUNS ONLY, so the push path's log keeps its current size and shape. The `;` inside the value
+          # survives the unquoted expansion below: bash word-splits an expansion, it does not re-parse shell
+          # metacharacters in it.
+          #
+          # The scope is the Vulkan backend's own log categories, not the whole engine. The Khronos layer's own
+          # output is independent of all of this and lands in the log whether or not the sink was configured.
+          KE_TEST_LOGGER_ARGS: ${{ env.VULKAN_VALIDATION_ARMED != '' && '--logger console;verbosity=detailed' || '' }}
           # EMPTY ON EITHER GUEST LEG for every trigger, bake dispatches included (decisions I3 and V-T1). A guest
           # leg verifies a golden family it does not own, so GoldenCompare.BakeRefusal turns KE_UPDATE_GOLDENS=1
           # under its token into a hard failure BY DESIGN: baking there would overwrite the very references it is
@@ -755,7 +773,7 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p TestResults
-          dotnet test -c Release --no-build --filter "$KE_TEST_FILTER" --blame --results-directory TestResults $KE_TEST_EXTRA_ARGS 2>&1 | tee TestResults/suite-output.log
+          dotnet test -c Release --no-build --filter "$KE_TEST_FILTER" --blame --results-directory TestResults $KE_TEST_LOGGER_ARGS $KE_TEST_EXTRA_ARGS 2>&1 | tee TestResults/suite-output.log
         shell: bash
 
       # TIER ONE'S EVIDENCE, on always(), and only where a tier was actually ARMED. A `strict` run that passes
@@ -995,10 +1013,17 @@ jobs:
           KE_VULKAN_VALIDATION: sync
         # pipefail explicitly, for the reason the matrix job's test step states: this is a gating command and
         # its exit code must not depend on an implicit shell option.
+        #
+        # DETAILED CONSOLE VERBOSITY, unconditionally here because this job is armed on every trigger that runs
+        # it at all (#565). The test host configures a console sink when KE_VULKAN_VALIDATION arms a rung, and
+        # vstest forwards the test host's stdout only at this verbosity, so at the default the engine's own
+        # formatted validation lines are written into a stream the runner discards and the gate step below
+        # scans a log that structurally cannot contain them. It also prints one `Passed <TestName>` line per
+        # test, which is what puts each message next to the test that provoked it.
         run: |
           set -o pipefail
           mkdir -p TestResults
-          dotnet test -c Release --no-build --filter "FullyQualifiedName~Golden|FullyQualifiedName~Compute" --blame --results-directory TestResults 2>&1 | tee TestResults/sync-validation.log
+          dotnet test -c Release --no-build --filter "FullyQualifiedName~Golden|FullyQualifiedName~Compute" --blame --results-directory TestResults --logger "console;verbosity=detailed" 2>&1 | tee TestResults/sync-validation.log
         shell: bash
 
       # WHAT MAKES TIER TWO A GATE. The engine does not fail a sync run on an error (the job header says why,
@@ -1010,7 +1035,8 @@ jobs:
       #   * `Vulkan validation [Error]` is the ENGINE's, exactly. VulkanValidationPump.Format writes every
       #     message it logs as `Vulkan validation [<Severity>] <VUID>: <text>`, with the severity spelled by
       #     VulkanValidationSeverity, so the Error rung is that literal and the Warning rung cannot collide
-      #     with it.
+      #     with it. This arm could not fire at all before #565: the pump logged through a facade nothing in
+      #     the test process had configured, so it wrote to a no-op logger on every leg. It is a real arm now.
       #   * `Validation Error:` is the LAYER's own, and it is the more important of the two here. The Khronos
       #     layer reports on its own account as well as through the application messenger, and its message body
       #     opens with `Validation Error:` at error severity and `Validation Warning:` at warning severity. The
@@ -1044,7 +1070,7 @@ jobs:
           echo "validation lines in $log: $total at any severity, $errors at error severity"
 
           if [ "$total" -eq 0 ]; then
-            echo "::notice::No validation line of any severity was found in $log. On a genuinely clean sweep that is the right answer, but it is also exactly what this scan looks like if it lost its producer, so treat it as a reading to confirm rather than as a pass. The shapes it looks for are 'Vulkan validation [<Severity>]' (the engine pump's format) and 'Validation Error:' or 'Validation Warning:' (the Khronos layer's own message body)."
+            echo "::notice::No validation line of any severity was found in $log. On a genuinely clean sweep that is the right answer, but it is also exactly what this scan looks like if it lost its producer, so treat it as a reading to confirm rather than as a pass. The shapes it looks for are 'Vulkan validation [<Severity>]' (the engine pump's format) and 'Validation Error:' or 'Validation Warning:' (the Khronos layer's own message body). To tell the two cases apart, grep the log for 'VulkanValidationLogHost': that line is written once per armed run by the test host that configures the sink the engine pump writes to, so its ABSENCE means the engine half could not have reported anything whatever the layer saw (#565)."
           fi
 
           if [ "$errors" -gt 0 ]; then

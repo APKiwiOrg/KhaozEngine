@@ -143,6 +143,12 @@
 #   4. After that, the push/PR legs VERIFY those backends, both guest legs included, which checks each
 #      freshly baked family against a second implementation on the same rasterizer.
 #
+# Running the matrix WITHOUT the GPU shader disk caches (#614):
+#   Dispatch with disableGpuDiskCache = true. Every leg's test step and the sync job then set all three
+#   cache variables to `off`, so no backend reads or writes an entry for the whole run. That is the A/B
+#   for a flake that could be a warm cache entry read back wrong: the same commit, cacheless. Every other
+#   trigger leaves the variables blank, which is the default location and the shipped behaviour.
+#
 # Software rasterizers (these runners have no real GPU):
 #   * Linux uses Mesa lavapipe (software Vulkan); the workflow discovers the lavapipe ICD manifest at runtime
 #     (its name/path drifts across Ubuntu images) and points VK_ICD_FILENAMES/VK_DRIVER_FILES at it. Both
@@ -278,11 +284,47 @@ on:
         type: choice
         default: deep
         options: [deep, push]
+      # THE DISCRIMINATING KNOB FOR #614, and the reason it is an INPUT rather than a branch edit is that the
+      # thing it has to split is per-boot. The metal-native leg fails roughly one varying GPU test per boot on
+      # the hosted paravirtual adapter, deterministically wrong when it is wrong, and one hypothesis is the
+      # shader disk caches: a warm entry read back on an unhealthy boot is a stable wrong answer, where an
+      # adapter fault would be expected to vary. Splitting those needs the SAME commit run with the caches off,
+      # which a workflow input gives and a code change does not.
+      #
+      # ALL SIX LEGS, not the metal ones, which is what keeps the A/B honest. The three backends' caches are one
+      # mechanism (KhaozEngine.Gpu/Internal/GpuDiskCache), so a dispatch that disabled one leg's cache would
+      # compare a cacheless macOS run against cached Windows and Linux runs and could not say whether a
+      # difference belonged to the cache or to the leg. Every leg reads the same value from the workflow-level
+      # GPU_DISK_CACHE below.
+      #
+      # Default false, so every unattended dispatch, the cron and every push run exactly as before: blank is the
+      # shipped default (the cache in its default location), not a third state.
+      disableGpuDiskCache:
+        description: 'Run with the GPU shader disk caches OFF on every leg (the #614 cache-vs-adapter split)'
+        type: boolean
+        default: false
 
 # Least privilege: this workflow only checks out, builds, tests, and uploads run artifacts. No step
 # writes back to the repo or publishes a package, so contents: read covers everything it does.
 permissions:
   contents: read
+
+# WHAT THE THREE BACKENDS' CACHE VARIABLES READ, as ONE expression, at the WORKFLOW level rather than per job.
+# The other shared predicates in this file (VULKAN_VALIDATION_ARMED, METAL_DEEP_TIER) are job-level because
+# they read `matrix`, which does not exist above a job. This one reads only the event and the input, and it has
+# readers in TWO jobs: the matrix legs' test step and the sync job's. A copy per job is exactly how the pair
+# would stop agreeing, and a dispatch where one job still cached would make the run's own name false.
+#
+# `off` is one of GpuDiskCache.ResolveDirectory's five disable words (off / 0 / false / no / none, trimmed and
+# case-insensitive). Anything else is taken as a DIRECTORY PATH verbatim, which is why the disable side has to
+# be a word from that set and not, say, an empty path: a typo lands the cache in a directory named after the
+# typo and the run reads as cacheless while caching.
+#
+# EMPTY IS THE SHIPPED DEFAULT AND NOT A THIRD STATE. A blank value resolves to the default location under
+# local-app-data exactly as an unset variable does, so every non-dispatch trigger is byte-identical to before
+# this input existed.
+env:
+  GPU_DISK_CACHE: ${{ (github.event_name == 'workflow_dispatch' && inputs.disableGpuDiskCache) && 'off' || '' }}
 
 jobs:
   # Which legs this run uses. This exists as a JOB rather than as a condition because a matrix cannot be
@@ -743,6 +785,15 @@ jobs:
           # The scope is the Vulkan backend's own log categories, not the whole engine. The Khronos layer's own
           # output is independent of all of this and lands in the log whether or not the sink was configured.
           KE_TEST_LOGGER_ARGS: ${{ env.VULKAN_VALIDATION_ARMED != '' && '--logger console;verbosity=detailed' || '' }}
+          # THE THREE SHADER DISK CACHES, ALL FROM ONE VALUE (#614). Blank on every ordinary trigger, which is
+          # the shipped default location, and `off` on a dispatch that asked for it. Each variable belongs to one
+          # backend and is inert on the other two legs, so setting all three on every leg costs nothing and is
+          # what makes the cacheless dispatch uniform: KE_METAL_MSL_CACHE is MetalMslCache's, KE_D3D11_SHADER_CACHE
+          # is D3D11DxbcCache's and KE_VULKAN_PIPELINE_CACHE is VulkanPipelineCacheFile's, and all three resolve
+          # through GpuDiskCache, which is where the disable words live.
+          KE_METAL_MSL_CACHE: ${{ env.GPU_DISK_CACHE }}
+          KE_D3D11_SHADER_CACHE: ${{ env.GPU_DISK_CACHE }}
+          KE_VULKAN_PIPELINE_CACHE: ${{ env.GPU_DISK_CACHE }}
           # EMPTY ON EITHER GUEST LEG for every trigger, bake dispatches included (decisions I3 and V-T1). A guest
           # leg verifies a golden family it does not own, so GoldenCompare.BakeRefusal turns KE_UPDATE_GOLDENS=1
           # under its token into a hard failure BY DESIGN: baking there would overwrite the very references it is
@@ -1011,6 +1062,11 @@ jobs:
           KE_VULKAN_DEVICE: llvmpipe
           KE_VULKAN_REQUIRED: '1'
           KE_VULKAN_VALIDATION: sync
+          # THE SAME ONE VALUE THE MATRIX LEGS READ (#614). This job is part of the run, so a cacheless dispatch
+          # that left it caching would make the dispatch's own description false, which is the same objection
+          # this file already records against an artifact whose name is false. Only the Vulkan variable can do
+          # anything here, and it is the pipeline cache the native backend writes.
+          KE_VULKAN_PIPELINE_CACHE: ${{ env.GPU_DISK_CACHE }}
         # pipefail explicitly, for the reason the matrix job's test step states: this is a gating command and
         # its exit code must not depend on an implicit shell option.
         #

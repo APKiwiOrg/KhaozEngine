@@ -228,6 +228,24 @@ a future runner image cannot redden the incumbent leg, and the layer manifest is
 layer only WARNs and creates the device anyway, which would leave a validation gate passing while validating
 nothing.
 
+**A dispatch can run the whole matrix with the GPU shader disk caches OFF** (`disableGpuDiskCache`, default
+false). The three backends' caches are one mechanism, `KhaozEngine.Gpu/Internal/GpuDiskCache`, reached through
+`KE_METAL_MSL_CACHE`, `KE_D3D11_SHADER_CACHE` and `KE_VULKAN_PIPELINE_CACHE`. Each takes a directory path
+verbatim, treats blank as the default location under local app data, and recognises five disable words
+(`off`, `0`, `false`, `no`, `none`, trimmed and case-insensitive), which is why anything else, a typo included,
+is read as a directory name and caches happily under it. The input sets all three to `off` on every leg and on
+the sync job, so a cacheless run is uniform and nothing in it is left comparing a cacheless leg against a
+cached one. Empty is the shipped default rather than a third state, so every push, the cron and every dispatch
+that leaves the box unticked behave exactly as before the input existed.
+It exists for [#614](https://github.com/APKiwiOrg/KhaozEngine/issues/614), where the metal-native leg fails
+roughly one varying GPU test per boot on the hosted paravirtual adapter, bit-identically wrong when it is
+wrong, while the same commit passes on real Metal locally and the incumbent Metal leg passes beside it. A warm
+cache entry read back on an unhealthy boot would be a stable wrong answer, and an adapter fault would not have
+to be, so running the same commit cacheless is what tells those apart. Measured end to end on real Metal: cold
+with the cache on writes 32 `.kemsl` entries and costs about 3 s of emission, warm costs 140 ms and writes
+nothing, and warm with `off` set costs the full 3 s again and does not touch one of the 32 entries, which is
+what "neither read nor written" looks like from outside the process.
+
 Historically the test step filtered every leg to `FullyQualifiedName~Golden`, so any `[GpuFact]` class
 without "Golden" in its name never ran on ANY backend (`Scene3DTextureUnloadTests`, `WaterQueueTests`,
 `RenderServiceTests`, and dozens of other classes were never exercised on Metal/D3D11/Vulkan). Every GPU
@@ -395,7 +413,6 @@ PASSED:
   `MTL_SHADER_VALIDATION=1` adds in-shader bounds checking on top. **Neither tier is a synchronisation
   validator**, and Metal has none at all, which is the one place this matrix is weaker than the Vulkan side:
   a missing read-after-write hazard across encoders has no detector anywhere in this net.
-
 The fast inner-loop CI (`.github/workflows/ci.yml`: build/test/pack/publish, GPU tests skipped) is separate and
 untouched.
 

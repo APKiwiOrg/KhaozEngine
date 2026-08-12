@@ -14,8 +14,9 @@ family is not, the Retina first frame is sized in pixels, the seam's one-open-re
 refusal instead of a paragraph, two of phase 4's guards get the teeth their prose already claimed, CI starts
 gating the three whole-tree convention guards it never ran, the graphics shader pair finally gets the Metal
 binding-order guard the compute one has had since 16.3.0, the native Vulkan device becomes constructible
-without a loader so its own wiring is tested rather than inspected, and the ambient Gui theme stops racing the
-rest of its test assembly.
+without a loader so its own wiring is tested rather than inspected, the ambient Gui theme stops racing the
+rest of its test assembly, and both Vulkan validation tiers get an artifact that can actually contain an engine
+validation line.
 
 ### The last-chance crash file (`CrashReport`, #607)
 
@@ -606,6 +607,45 @@ proved to pass again with the guard switched off, so a guard that had started re
 these rather than look like a pass. `MslBindingOrderGuardTests` carries the water fragment's depth/ocean texture
 swap, the water vertex's dropped bathymetry tap (the prefix case), and the ocean column pass's storage/storage
 swap. That last one still passed under the 16.3.0 guard, which is the direct evidence for the same-kind half.
+
+### Both Vulkan validation tiers can now produce the log they exist for (#565)
+
+Neither `vulkan-validation-strict-vulkan-native` nor `vulkan-validation-sync` could contain a single
+engine-formatted validation line, on any leg, ever. `VulkanValidationPump` logs through the ambient `Log`
+facade, that facade hands out a no-op logger until something calls `Log.Configure`, and nothing in the
+`KhaozEngine.Render.Tests` process ever did. So `_log.Error` and `_log.Warn` in `ReportCore` were no-ops on
+every run. The `strict` tier was unaffected, because its latch and its throw are counters rather than log
+calls. What was lost is the whole point of the `sync` tier: warning-severity messages never fail anything by
+design, which makes the artifact the only place they are ever read, and a hazard the layer reports as a warning
+is exactly what that tier was installed to find.
+
+**Two separate faults sat between the pump and the artifact, and fixing one alone would have looked fixed.**
+The first is the missing sink above. The second is that `vstest` forwards the test host's stdout only at
+`--logger "console;verbosity=detailed"`, so at the default verbosity a console sink writes into a stream the
+runner discards. Both armed test steps in `cross-platform-gpu.yml` now pass that logger, which has the second
+benefit of printing one `Passed <TestName>` line per test: the interleaving both artifacts are described as
+carrying is real now rather than asserted.
+
+**The sink is armed by the backend's own lever and scoped to the backend's own categories.**
+`KhaozEngine.Render.Tests/Gpu/VulkanValidationConsoleLogging.cs` configures a console sink from a
+`[ModuleInitializer]`, following the three backend registration initializers beside it, when and only when
+`KE_VULKAN_VALIDATION` parses to a rung above `Off`
+through `VulkanValidation.Parse`. Armed means exactly what it means to the code that creates the messenger, so
+a typo that leaves validation off also leaves the log unconfigured rather than implying an instrument that is
+not running. A category filter keeps the log to the `Vulkan`-prefixed categories, which is the pump plus the
+instance and device lines saying whether the layer was found and which rung is live, and not the rest of the
+engine. Every unarmed leg and every developer `dotnet test` is byte-identical to before.
+
+**One line per armed run says the sink existed.** The host writes a `VulkanValidationLogHost` line naming the
+lever, the scope and the shape a reader then greps for. Zero validation messages is what a clean sweep looks
+like AND what a log looks like once it has lost its producer, which is the ambiguity the sync job's gate step
+already prints a count for, and that line is what tells the two apart from the artifact alone. The gate's
+zero-total notice now names it.
+
+**`VulkanValidationPump` resolves its fallback logger per pump instead of once into a `static readonly`
+field.** A static `Log.For<T>()` is captured at type initialization, so which logger it holds forever depends
+on whether the type was touched before or after the process configured logging, and the loser of that race is
+the no-op logger. That is the same defect a second time, silently, in a process that HAD configured a sink.
 
 ## 17.35.0
 

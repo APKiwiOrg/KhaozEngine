@@ -8809,6 +8809,15 @@ environment variable can conjure one that is not on the machine. On Debian and U
 and a device created without validation, which is the right behaviour on a developer box and a silently vacuous
 gate anywhere that was relying on it.
 
+**The messages go to YOUR logging, so a session that configured none sees none.** The pump writes through the
+ambient `Log` facade, and that facade discards everything until something calls `Log.Configure`. Set the lever in
+an app that never configured logging and the layer runs, the rate limiter counts, `strict` still latches and
+throws, and not one message is printed. Configure a `LogManager` with a `ConsoleSink` (or any other sink) before
+creating the device if you want to read them. The Khronos layer's own stdout is separate and arrives either way,
+which is why a run can look half-instrumented. The engine's own CI hit exactly this and its test host now
+configures a sink whenever the lever arms a rung
+([#565](https://github.com/APKiwiOrg/KhaozEngine/issues/565)).
+
 **Both tiers are CI gates in the engine's own matrix**, which is what they were built for. The scheduled full
 suite on the `vulkan-native` leg runs under `strict`, so an error-severity message fails the leg. A separate job
 runs the golden subset plus the compute suite under `sync`, on the schedule and on a manual dispatch. The split

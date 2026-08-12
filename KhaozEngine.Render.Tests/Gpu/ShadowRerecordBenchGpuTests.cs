@@ -15,13 +15,22 @@ namespace KhaozEngine.Tests.Gpu
     /// process under the four shadow-decision regimes the field trace can be in, with the cost of each printed
     /// beside the reason bits that produced it.
     /// <para>
-    /// The scene is built to the Windows/D3D11 field trace's shape rather than to a round number: about 1,600 rigid
-    /// shadow-caster instances inside about 4,800 drawn instances, chunk-major over a 500 m disc, four cascades at
-    /// 2048, one skinned caster. The regimes are the ones the trace's diagnostics named: a stationary scene whose
-    /// only dirty reason is that a skinned caster exists, the same scene with the skinned caster gone and the sun
-    /// frozen (the cheap frame, the pass skips), the same scene under Ruinborne's real daylight rate (the sun alone
-    /// re-fits every cascade), and the same scene under a sun delta a thousandth of that, which is far below
-    /// anything a viewer could see and still re-records the whole atlas.
+    /// The scene is built to the Windows/D3D11 field trace's shape rather than to a round number: 1,525 rigid
+    /// shadow-caster instances inside 4,593 drawn instances (the 1,600 and 4,800 quotas below, less the placements
+    /// the disc clip rejects), chunk-major over a 500 m disc, four cascades at 2048, one skinned caster. The regimes
+    /// are the ones the trace's diagnostics named: a stationary scene whose only dirty reason is that a skinned
+    /// caster exists, the same scene with the skinned caster gone and the sun frozen (the cheap frame, the pass
+    /// skips), the same scene under Ruinborne's real daylight rate (the sun alone re-fits every cascade), and the
+    /// same scene under a sun delta a third of that, which is far below anything a viewer could see and still
+    /// re-records the whole atlas.
+    /// </para>
+    /// <para>
+    /// <b>The printed table is only meaningful from a serialized or an isolated run.</b> This class sits in the
+    /// <c>AllocSensitive</c> collection, whose <c>DisableParallelization</c> keeps it off the parallel pool, because
+    /// the rest of the assembly running beside it inflates this bench's encode numbers four to six times over
+    /// (0.300 ms measured alone against 1.392 ms measured in an unserialized suite). Quote the table from a run
+    /// where nothing else on this machine is competing for the device, and treat a number from any other run as
+    /// contaminated.
     /// </para>
     /// <para>
     /// <b>What is asserted and what is only reported.</b> The assertions are the dirty-reason facts, which are
@@ -41,6 +50,7 @@ namespace KhaozEngine.Tests.Gpu
     /// Gated on KE_GPU_TESTS. Run it in Release: a Debug build inflates the CPU-side recording several times over
     /// and would read as a re-record cost this machine does not actually pay.
     /// </summary>
+    [Collection("AllocSensitive")]
     public sealed class ShadowRerecordBenchGpuTests
     {
         const int W = 960, H = 600;
@@ -62,8 +72,11 @@ namespace KhaozEngine.Tests.Gpu
         // Ruinborne's real daylight rate: a 30 minute day is 0.2 deg/s, so 0.00333 deg per frame at 60 fps.
         const float DaylightDegreesPerFrame = 0.2f / 60f;
         // A thousandth of a degree per frame: three times slower than daylight and still far below any visual
-        // epsilon. At cascade 3 (radius ~= 120 m at 2048) one texel is about 12 cm on the ground, and 0.001 deg
-        // moves the shadow of a 10 m caster by 0.17 mm, roughly 700x below one texel.
+        // epsilon. How far a sun step moves a shadow depends on the sun's ELEVATION as well as on the rotation: the
+        // foot of a caster h tall sits at h*cot(e), so an azimuth step sweeps it by h*cot(e)*dTheta and an elevation
+        // step lifts it by h*dTheta/sin^2(e). At this bench's 35 deg sun those are 1.43x and 3.04x the naive
+        // h*dTheta, so 0.001 deg moves the shadow of a 10 m caster by at most 0.53 mm (0.17 mm naive). At cascade 3
+        // (radius ~= 120 m at 2048) one texel is about 12 cm on the ground, so that is still ~220x below one texel.
         const float SubEpsilonDegreesPerFrame = 0.001f;
         // Interleaved round-robin blocks on one device, reduced by median, for the same reason the cascade-cull
         // bench does it: a sequential run charges the first configuration with the JIT and the device warm-up for
@@ -80,6 +93,12 @@ namespace KhaozEngine.Tests.Gpu
         /// each measured frame (off makes it the pipelined probe).</summary>
         readonly record struct Config(string Label, ShadowMode Mode, bool Skinned, float SunDegreesPerFrame, bool Drain);
 
+        /// <summary>One regime's reduced numbers. <paramref name="Spans"/> and <paramref name="DrawCalls"/> are
+        /// means over the regime's RENDERED frames, not a snapshot of the last one, so dividing the mean
+        /// milliseconds by them compares two quantities reduced the same way (the sun-moving regimes sit at a
+        /// slightly different angle each frame, so the cull splits the caster list into a slightly different span
+        /// set every time). <paramref name="PerCascadeSpans"/> is the exception and IS the last rendered frame's
+        /// snapshot, because a per-cascade split only means something as one frame's four numbers.</summary>
         readonly record struct Measurement(string Label, double ShadowMeanMs, double ShadowMedianMs,
             double FrameMedianMs, int Spans, int[] PerCascadeSpans, int DrawCalls, int SkinnedDraws, int Candidates,
             int RenderedFrames, int SkippedFrames)
@@ -179,8 +198,8 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(0, skip.RenderedFrames);
             Assert.Equal(0, skip.DrawCalls);
 
-            // The sun alone is enough, at Ruinborne's real rate and at a thousandth of it alike: the cascade compare
-            // is exact matrix equality, so there is no movement small enough to be ignored.
+            // The sun alone is enough, at Ruinborne's real rate and at a third of that rate alike: the cascade
+            // compare is exact matrix equality, so there is no movement small enough to be ignored.
             Assert.Equal(Rounds * BlockFrames, daylight.RenderedFrames);
             Assert.Equal(Rounds * BlockFrames, subEpsilon.RenderedFrames);
             Assert.True(daylight.DrawCalls > 0);
@@ -251,9 +270,9 @@ namespace KhaozEngine.Tests.Gpu
             var shadowSamples = new List<double>[n];
             var frameSamples = new List<double>[n];
             var sunAngles = new float[n];
-            var spans = new int[n];
+            var spanSums = new long[n];
             var perCascadeSpans = new int[n][];
-            var draws = new int[n];
+            var drawSums = new long[n];
             var skinnedDraws = new int[n];
             var candidates = new int[n];
             var rendered = new int[n];
@@ -292,10 +311,12 @@ namespace KhaozEngine.Tests.Gpu
                         if (d.Rendered)
                         {
                             rendered[ci]++;
-                            spans[ci] = d.TotalRigidSpanCount;
+                            // Summed per rendered frame, reduced to a mean below, so the us/span and us/draw columns
+                            // divide a 200-frame mean by a 200-frame mean rather than by one frame's count.
+                            spanSums[ci] += d.TotalRigidSpanCount;
+                            drawSums[ci] += d.TotalDrawCalls;
                             perCascadeSpans[ci] ??= new int[Cascades];
                             for (int c = 0; c < Cascades; c++) perCascadeSpans[ci][c] = d.RigidSpanCount(c);
-                            draws[ci] = d.TotalDrawCalls;
                             skinnedDraws[ci] = d.SkinnedDrawCalls;
                             candidates[ci] = scene.ShadowCasterCandidateCount;
                         }
@@ -307,9 +328,13 @@ namespace KhaozEngine.Tests.Gpu
 
             var results = new Measurement[n];
             for (int i = 0; i < n; i++)
+            {
+                int meanSpans = rendered[i] > 0 ? (int)Math.Round((double)spanSums[i] / rendered[i]) : 0;
+                int meanDraws = rendered[i] > 0 ? (int)Math.Round((double)drawSums[i] / rendered[i]) : 0;
                 results[i] = new Measurement(configs[i].Label, Mean(shadowSamples[i]), Median(shadowSamples[i]),
-                    Median(frameSamples[i]), spans[i], perCascadeSpans[i] ?? new int[Cascades], draws[i],
+                    Median(frameSamples[i]), meanSpans, perCascadeSpans[i] ?? new int[Cascades], meanDraws,
                     skinnedDraws[i], candidates[i], rendered[i], skipped[i]);
+            }
             return results;
         }
 
@@ -342,6 +367,8 @@ namespace KhaozEngine.Tests.Gpu
             _out.WriteLine($"daylight sun = {DaylightDegreesPerFrame:0.#####} deg/frame (Ruinborne's 30 minute day at 60 fps), " +
                            $"sub-epsilon sun = {SubEpsilonDegreesPerFrame:0.#####} deg/frame");
             _out.WriteLine("");
+            _out.WriteLine("spans and draws are means over the regime's rendered frames, so us/span and us/draw " +
+                           "divide one reduction by another");
             _out.WriteLine($"{"configuration",-32} {"shadow mean",11} {"shadow med",10} {"frame med",9} {"spans",6} {"draws",6} {"us/span",8} {"us/draw",8} {"rendered",8} {"skipped",7}");
             foreach (Measurement m in results)
                 _out.WriteLine($"{m.Label,-32} {m.ShadowMeanMs,11:0.000} {m.ShadowMedianMs,10:0.000} {m.FrameMedianMs,9:0.000} " +
@@ -353,7 +380,7 @@ namespace KhaozEngine.Tests.Gpu
             _out.WriteLine("");
             foreach (Measurement m in results)
                 if (m.RenderedFrames > 0)
-                    _out.WriteLine($"{m.Label}: spans per cascade [{string.Join(", ", m.PerCascadeSpans)}] " +
+                    _out.WriteLine($"{m.Label}: spans per cascade, last rendered frame [{string.Join(", ", m.PerCascadeSpans)}] " +
                                    $"(the field trace's D3D11 stationary window: 45, 153, 221, 285)");
             _out.WriteLine("");
             _out.WriteLine($"candidates considered per rendered pass: {rerecord.Candidates}");

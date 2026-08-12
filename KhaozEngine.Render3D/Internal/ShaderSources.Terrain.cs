@@ -42,29 +42,28 @@ layout(location=8) in vec4 IModel3;
 layout(location=9) in vec4 ITint;
 layout(location=10) in vec4 IEmissive;
 layout(location=11) in vec4 ISpecParams;
-// Interpolant locations are ordered so the SplatFrag-USED outputs (vNormalW,vColor,vDepth,vWorldPos,vTint,vEmissive)
-// occupy a CONTIGUOUS 0..5 block, and the fragment-UNUSED outputs (vUv,vSpecParams,vTangent) sit above at 6..8.
-// SplatFrag declares only the gap-free prefix 0..5. This is load-bearing on D3D11: a HOLE in the pixel-input
+// Interpolant locations are ordered so the SplatFrag-USED outputs (vNormalW,vColor,vWorldPos,vTint,vEmissive)
+// occupy a CONTIGUOUS 0..4 block, and the fragment-UNUSED outputs (vUv,vSpecParams,vTangent) sit above at 5..7.
+// SplatFrag declares only the gap-free prefix 0..4. This is load-bearing on D3D11: a HOLE in the pixel-input
 // semantics (the old layout had vUv at TEXCOORD4 declared-but-unused, dropped by SPIRV-Cross, leaving a gap between
 // vWorldPos@3 and vTint@5) miscompiles on FXC/WARP - the highest live interpolant (vEmissive) read garbage and blew
 // the whole terrain to flat white (Metal/Vulkan tolerated the gap). Keep the used interpolants contiguous from 0;
-// do NOT reintroduce a fragment-unused interpolant below location 6.
+// do NOT reintroduce a fragment-unused interpolant below location 5. Dropping the old vDepth@2 (issue #301, the
+// depth MRT is written from gl_FragCoord.z in the fragment now) is why the two blocks each moved down one.
 layout(location=0) out vec3 vNormalW;
 layout(location=1) out vec4 vColor;
-layout(location=2) out float vDepth;
-layout(location=3) out vec3 vWorldPos;
-layout(location=4) out vec4 vTint;
-layout(location=5) out vec4 vEmissive;
-layout(location=6) out vec2 vUv;         // fragment-unused (world-space UV is used); kept above the live block
-layout(location=7) out vec4 vSpecParams; // fragment-unused (base spec from Misc.w)
-layout(location=8) out vec4 vTangent;    // fragment-unused (triplanar derives its own basis)
+layout(location=2) out vec3 vWorldPos;
+layout(location=3) out vec4 vTint;
+layout(location=4) out vec4 vEmissive;
+layout(location=5) out vec2 vUv;         // fragment-unused (world-space UV is used); kept above the live block
+layout(location=6) out vec4 vSpecParams; // fragment-unused (base spec from Misc.w)
+layout(location=7) out vec4 vTangent;    // fragment-unused (triplanar derives its own basis)
 void main() {
     mat4 Model = mat4(IModel0, IModel1, IModel2, IModel3);
     vec4 world = Model * vec4(Position, 1.0);
     gl_Position = ViewProj * world;
     vNormalW = normalize(mat3(Model) * Normal);
     vColor = Color;
-    vDepth = gl_Position.z / gl_Position.w;
     vWorldPos = world.xyz;
     vUv = TexCoord;
     vTint = ITint;
@@ -103,16 +102,15 @@ layout(set=0, binding=2) uniform texture2DArray NormalArray;
 layout(set=0, binding=3) uniform sampler Samp;
 layout(set=0, binding=4) uniform texture2D ShadowMap;    // key-light depth map (R32F); sampled LAST, after the terrain arrays (Metal first-sample-order rule)
 layout(set=0, binding=5) uniform sampler ShadowSamp;     // clamp/linear sampler for the shadow-map PCF taps
-// Declare ONLY the interpolants this fragment reads, as a CONTIGUOUS 0..5 block (no gap). SplatVert emits these
-// same six at 0..5 and the fragment-unused vUv/vSpecParams/vTangent at 6..8 (which this shader does not declare).
-// A hole in the pixel-input semantics (e.g. declaring vUv@4 but never using it) makes FXC/WARP miscompile and the
+// Declare ONLY the interpolants this fragment reads, as a CONTIGUOUS 0..4 block (no gap). SplatVert emits these
+// same five at 0..4 and the fragment-unused vUv/vSpecParams/vTangent at 5..7 (which this shader does not declare).
+// A hole in the pixel-input semantics (e.g. declaring vUv@3 but never using it) makes FXC/WARP miscompile and the
 // terrain renders flat white - the live interpolants must be gap-free from location 0. See the SplatVert note.
 layout(location=0) in vec3 vNormalW;
 layout(location=1) in vec4 vColor;       // packed weights (grass,dirt,rock,sand); snow = 1 - sum
-layout(location=2) in float vDepth;
-layout(location=3) in vec3 vWorldPos;
-layout(location=4) in vec4 vTint;
-layout(location=5) in vec4 vEmissive;
+layout(location=2) in vec3 vWorldPos;
+layout(location=3) in vec4 vTint;
+layout(location=4) in vec4 vEmissive;
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oNormal;
 layout(location=2) out vec4 oDepth;
@@ -215,7 +213,9 @@ void main() {
     vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor + vEmissive.rgb;
     oColor = vec4(lit, 1.0);
     oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0); // GEOMETRIC normal for the edge pass
-    oDepth = vec4(vDepth, vDepth, vDepth, 1.0);
+    // Per-fragment NDC depth, never a varying: see the note at the top of ShaderSources.Model.cs (issue #301).
+    // Terrain is the shader that needed it most, since a chunk's triangles are the largest the engine draws.
+    oDepth = vec4(gl_FragCoord.z, gl_FragCoord.z, gl_FragCoord.z, 1.0);
 }";
     }
 }

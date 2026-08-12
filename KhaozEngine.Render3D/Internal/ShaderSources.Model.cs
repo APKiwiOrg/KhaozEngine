@@ -16,7 +16,18 @@ namespace KhaozEngine.Render3D.Internal
         //      row-major UBO Model. So Model * vec4(pos) reproduces the previous world transform.
         //      Per-vertex layout: locations 0..4 are position/normal/color/texcoord/tangent. The tangent (location 4)
         //      carries model-space tangent xyz + handedness w; zero tangent = no TBN (primitives, untangented meshes).
-        //      Per-instance data shifts to locations 5..11 (IModel0..3, ITint, IEmissive, ISpecParams). ----
+        //      Per-instance data shifts to locations 5..11 (IModel0..3, ITint, IEmissive, ISpecParams).
+        //
+        //      THE SCENE-DEPTH MRT (attachment 2) IS WRITTEN PER FRAGMENT, from gl_FragCoord.z, and never from a
+        //      varying. gl_FragCoord.z is the true NDC depth of the fragment, the same [0,1] value the depth buffer
+        //      holds (System.Numerics projections target that range and neither cross-compile pin fixes clip-space
+        //      Z, so it is the same number on Metal, Direct3D 11 and Vulkan alike). It used to be
+        //      gl_Position.z/gl_Position.w computed here in the vertex stage and interpolated, which is exact under
+        //      an ORTHOGRAPHIC projection and wrong under a perspective one: varyings interpolate
+        //      perspective-correct, which reproduces exactly the functions that are affine in world space, and NDC
+        //      z is a ratio of two of those rather than one of them. The error is zero at the vertices and grows
+        //      with the w-range the triangle spans, so it stayed invisible across small triangles and put the
+        //      water pass's reconstructed ground tens of metres out across one big one (issue #301). ----
         public const string ModelVert = @"#version 450
 layout(set=0, binding=0) uniform U {
     mat4 ViewProj;
@@ -46,22 +57,20 @@ layout(location=12) in float IDynamic;   // dynamic-geometry decal mask (0 stati
 layout(location=13) in vec2 IDissolve;   // per-instance rigid dissolve (issue #253): x = threshold, y = edge width
 layout(location=0) out vec3 vNormalW;
 layout(location=1) out vec4 vColor;
-layout(location=2) out float vDepth;
-layout(location=3) out vec3 vWorldPos;
-layout(location=4) out vec2 vUv;
-layout(location=5) out vec4 vTint;
-layout(location=6) out vec4 vEmissive;
-layout(location=7) out vec4 vSpecParams;
-layout(location=8) out vec4 vTangent;
-layout(location=9) out float vDynamic;
-layout(location=10) out vec2 vDissolve;
+layout(location=2) out vec3 vWorldPos;
+layout(location=3) out vec2 vUv;
+layout(location=4) out vec4 vTint;
+layout(location=5) out vec4 vEmissive;
+layout(location=6) out vec4 vSpecParams;
+layout(location=7) out vec4 vTangent;
+layout(location=8) out float vDynamic;
+layout(location=9) out vec2 vDissolve;
 void main() {
     mat4 Model = mat4(IModel0, IModel1, IModel2, IModel3);
     vec4 world = Model * vec4(Position, 1.0);
     gl_Position = ViewProj * world;
     vNormalW = normalize(mat3(Model) * Normal);
     vColor = Color;
-    vDepth = gl_Position.z / gl_Position.w; // 0..1 in clip space; linear for ortho
     vWorldPos = world.xyz;
     vUv = TexCoord;
     vTint = ITint;
@@ -98,15 +107,14 @@ layout(set=0, binding=5) uniform texture2D ShadowMap;    // key-light depth map 
 layout(set=0, binding=6) uniform sampler ShadowSamp;     // clamp/linear sampler for the shadow-map PCF taps
 layout(location=0) in vec3 vNormalW;
 layout(location=1) in vec4 vColor;
-layout(location=2) in float vDepth;
-layout(location=3) in vec3 vWorldPos;
-layout(location=4) in vec2 vUv;
-layout(location=5) in vec4 vTint;
-layout(location=6) in vec4 vEmissive;
-layout(location=7) in vec4 vSpecParams; // x = specular strength, y = shininess exponent, z = alpha-cutout threshold (0 = OPAQUE, no clip)
-layout(location=8) in vec4 vTangent;    // world-space tangent (xyz) + handedness (w); zero => geometric normal
-layout(location=9) in float vDynamic;   // dynamic-geometry decal mask (0 static / 1 skinned); written to oNormal.a
-layout(location=10) in vec2 vDissolve;  // per-instance rigid dissolve (issue #253): x = threshold (0 = solid .. 1 = gone), y = edge width
+layout(location=2) in vec3 vWorldPos;
+layout(location=3) in vec2 vUv;
+layout(location=4) in vec4 vTint;
+layout(location=5) in vec4 vEmissive;
+layout(location=6) in vec4 vSpecParams; // x = specular strength, y = shininess exponent, z = alpha-cutout threshold (0 = OPAQUE, no clip)
+layout(location=7) in vec4 vTangent;    // world-space tangent (xyz) + handedness (w); zero => geometric normal
+layout(location=8) in float vDynamic;   // dynamic-geometry decal mask (0 static / 1 skinned); written to oNormal.a
+layout(location=9) in vec2 vDissolve;   // per-instance rigid dissolve (issue #253): x = threshold (0 = solid .. 1 = gone), y = edge width
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oNormal;
 layout(location=2) out vec4 oDepth;
@@ -185,7 +193,7 @@ void main() {
     // rgb: GEOMETRIC normal for the edge pass (not the perturbed one). a: dynamic-geometry decal mask - 1 for the
     // static world (unchanged), 0 for skinned/dynamic geometry so the main ground-decal pass rejects it (issue #235).
     oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0 - clamp(vDynamic, 0.0, 1.0));
-    oDepth = vec4(vDepth, vDepth, vDepth, 1.0);
+    oDepth = vec4(gl_FragCoord.z, gl_FragCoord.z, gl_FragCoord.z, 1.0);   // per-fragment NDC depth, see the note at the top
 }";
 
         // ---- CharDissolve variant of ModelFrag: noise-thresholded alpha clip + emissive edge ----
@@ -220,14 +228,13 @@ layout(set=0, binding=5) uniform texture2D ShadowMap;
 layout(set=0, binding=6) uniform sampler ShadowSamp;
 layout(location=0) in vec3 vNormalW;
 layout(location=1) in vec4 vColor;
-layout(location=2) in float vDepth;
-layout(location=3) in vec3 vWorldPos;
-layout(location=4) in vec2 vUv;
-layout(location=5) in vec4 vTint;
-layout(location=6) in vec4 vEmissive;   // during a dissolve this carries the emissive EDGE colour
-layout(location=7) in vec4 vSpecParams; // x=spec strength, y=shininess, z=dissolve threshold, w=dissolve edge width
-layout(location=8) in vec4 vTangent;
-layout(location=9) in float vDynamic;   // dynamic-geometry decal mask (0 static / 1 skinned); written to oNormal.a
+layout(location=2) in vec3 vWorldPos;
+layout(location=3) in vec2 vUv;
+layout(location=4) in vec4 vTint;
+layout(location=5) in vec4 vEmissive;   // during a dissolve this carries the emissive EDGE colour
+layout(location=6) in vec4 vSpecParams; // x=spec strength, y=shininess, z=dissolve threshold, w=dissolve edge width
+layout(location=7) in vec4 vTangent;
+layout(location=8) in float vDynamic;   // dynamic-geometry decal mask (0 static / 1 skinned); written to oNormal.a
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oNormal;
 layout(location=2) out vec4 oDepth;
@@ -274,7 +281,7 @@ void main() {
     lit += vEmissive.rgb * edge;
     oColor = vec4(lit, 1.0);
     oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0 - clamp(vDynamic, 0.0, 1.0)); // a: dynamic-geometry decal mask (issue #235)
-    oDepth = vec4(vDepth, vDepth, vDepth, 1.0);
+    oDepth = vec4(gl_FragCoord.z, gl_FragCoord.z, gl_FragCoord.z, 1.0);   // per-fragment NDC depth, see the note at the top
 }";
 
         // ---- GPU skinning (opt-in, Scene3D.UseGpuSkinning). The whole skinned pipeline reads EXACTLY ONE uniform
@@ -315,14 +322,13 @@ layout(location=5) in vec4 BoneWeights;   // 4 blend weights (WEIGHTS_0), all-ze
 layout(location=6) in vec4 Tangent;       // model-space tangent xyz + handedness w, zero => no TBN
 layout(location=0) out vec3 vNormalW;
 layout(location=1) out vec4 vColor;
-layout(location=2) out float vDepth;
-layout(location=3) out vec3 vWorldPos;
-layout(location=4) out vec2 vUv;
-layout(location=5) out vec4 vTint;
-layout(location=6) out vec4 vEmissive;
-layout(location=7) out vec4 vSpecParams;
-layout(location=8) out vec4 vTangent;
-layout(location=9) out float vDynamic;
+layout(location=2) out vec3 vWorldPos;
+layout(location=3) out vec2 vUv;
+layout(location=4) out vec4 vTint;
+layout(location=5) out vec4 vEmissive;
+layout(location=6) out vec4 vSpecParams;
+layout(location=7) out vec4 vTangent;
+layout(location=8) out float vDynamic;
 void main() {
     // 4-bone blend, mirroring SkinningMath.BlendSkinMatrix: raw (un-renormalized) weights, identity on ~0 total so an
     // unrigged vertex stays in place. bones[i] uploaded raw (System.Numerics row-major) reads column-major here as its
@@ -356,7 +362,6 @@ void main() {
     gl_Position = Mvp * localPos;
     vNormalW = normalize(mat3(Model) * nLocal);
     vColor = Color;
-    vDepth = gl_Position.z / gl_Position.w;
     vWorldPos = world.xyz;
     vUv = TexCoord;
     vTint = P[0];
@@ -400,14 +405,13 @@ layout(set=1, binding=4) uniform texture2D ShadowMap;
 layout(set=1, binding=5) uniform sampler ShadowSamp;
 layout(location=0) in vec3 vNormalW;
 layout(location=1) in vec4 vColor;
-layout(location=2) in float vDepth;
-layout(location=3) in vec3 vWorldPos;
-layout(location=4) in vec2 vUv;
-layout(location=5) in vec4 vTint;
-layout(location=6) in vec4 vEmissive;
-layout(location=7) in vec4 vSpecParams;
-layout(location=8) in vec4 vTangent;
-layout(location=9) in float vDynamic;   // dynamic-geometry decal mask (0 static / 1 skinned); written to oNormal.a
+layout(location=2) in vec3 vWorldPos;
+layout(location=3) in vec2 vUv;
+layout(location=4) in vec4 vTint;
+layout(location=5) in vec4 vEmissive;
+layout(location=6) in vec4 vSpecParams;
+layout(location=7) in vec4 vTangent;
+layout(location=8) in float vDynamic;   // dynamic-geometry decal mask (0 static / 1 skinned); written to oNormal.a
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oNormal;
 layout(location=2) out vec4 oDepth;
@@ -437,7 +441,7 @@ void main() {
     vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor + vEmissive.rgb;
     oColor = vec4(lit, 1.0);
     oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0 - clamp(vDynamic, 0.0, 1.0)); // a: dynamic-geometry decal mask (issue #235)
-    oDepth = vec4(vDepth, vDepth, vDepth, 1.0);
+    oDepth = vec4(gl_FragCoord.z, gl_FragCoord.z, gl_FragCoord.z, 1.0);   // per-fragment NDC depth, see the note at the top
 }";
 
         // Skinned CharDissolve variant: reads the frame fields from the same combined VBlock (set 0 binding 0),
@@ -472,14 +476,13 @@ layout(set=1, binding=4) uniform texture2D ShadowMap;
 layout(set=1, binding=5) uniform sampler ShadowSamp;
 layout(location=0) in vec3 vNormalW;
 layout(location=1) in vec4 vColor;
-layout(location=2) in float vDepth;
-layout(location=3) in vec3 vWorldPos;
-layout(location=4) in vec2 vUv;
-layout(location=5) in vec4 vTint;
-layout(location=6) in vec4 vEmissive;
-layout(location=7) in vec4 vSpecParams;
-layout(location=8) in vec4 vTangent;
-layout(location=9) in float vDynamic;   // dynamic-geometry decal mask (0 static / 1 skinned); written to oNormal.a
+layout(location=2) in vec3 vWorldPos;
+layout(location=3) in vec2 vUv;
+layout(location=4) in vec4 vTint;
+layout(location=5) in vec4 vEmissive;
+layout(location=6) in vec4 vSpecParams;
+layout(location=7) in vec4 vTangent;
+layout(location=8) in float vDynamic;   // dynamic-geometry decal mask (0 static / 1 skinned); written to oNormal.a
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oNormal;
 layout(location=2) out vec4 oDepth;
@@ -524,7 +527,7 @@ void main() {
     lit += vEmissive.rgb * edge;
     oColor = vec4(lit, 1.0);
     oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0 - clamp(vDynamic, 0.0, 1.0)); // a: dynamic-geometry decal mask (issue #235)
-    oDepth = vec4(vDepth, vDepth, vDepth, 1.0);
+    oDepth = vec4(gl_FragCoord.z, gl_FragCoord.z, gl_FragCoord.z, 1.0);   // per-fragment NDC depth, see the note at the top
 }";
     }
 }

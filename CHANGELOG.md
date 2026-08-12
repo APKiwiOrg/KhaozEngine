@@ -14,7 +14,8 @@ family is not, the Retina first frame is sized in pixels, the seam's one-open-re
 refusal instead of a paragraph, two of phase 4's guards get the teeth their prose already claimed, CI starts
 gating the three whole-tree convention guards it never ran, the graphics shader pair finally gets the Metal
 binding-order guard the compute one has had since 16.3.0, the native Vulkan device becomes constructible
-without a loader so its own wiring is tested rather than inspected, and the ambient Gui theme stops racing the
+without a loader so its own wiring is tested rather than inspected, the shadow pass's last-frame snapshot starts
+reporting what it recorded instead of only why it woke, and the ambient Gui theme stops racing the
 rest of its test assembly.
 
 ### The last-chance crash file (`CrashReport`, #607)
@@ -606,6 +607,38 @@ proved to pass again with the guard switched off, so a guard that had started re
 these rather than look like a pass. `MslBindingOrderGuardTests` carries the water fragment's depth/ocean texture
 swap, the water vertex's dropped bathymetry tap (the prefix case), and the ocean column pass's storage/storage
 swap. That last one still passed under the 16.3.0 guard, which is the direct evidence for the same-kind half.
+
+### The shadow pass's last-frame snapshot reports what it RECORDED, not just why it woke (#410)
+
+`Scene3D.LastShadowPassDiagnostics` (a `ShadowPassDiagnostics`) already named each dirty reason. It could not say
+what the dirty decision then cost, which is the half a field trace needs. It gains the counts the pass actually
+recorded: `RigidSpanCount(cascade)` and `TotalRigidSpanCount` for the per-cascade span lists it walked, plus the raw
+`RigidDrawCalls`, `SkinnedDrawCalls` and `TotalDrawCalls` it issued. Still a `readonly struct`, still always on, and
+now allocation-free by construction rather than by luck: the per-cascade counts live in an inline array, so a
+snapshot is a value copy and never a view onto the array the scene reuses next frame.
+
+**Raw means raw.** `RigidDrawCalls` counts `DrawShadowCasterRun` invocations, so it sits at or below
+`TotalRigidSpanCount`: a span whose mesh was unloaded between the span build and the draw is walked and then
+skipped, and that gap is now visible instead of being folded away. The counts are read where the pass walks them,
+inside `RenderShadowDepthPass`, so the numbers describe the list the loop actually iterated.
+
+**The counts describe THIS frame, which is the difference from the existing properties.** A skipped frame reports
+zero spans and zero draws, because a skipped frame records none, it reuses the persistent atlas.
+`Scene3D.ShadowCascadeSpanCount` / `ShadowCascadeCasterCount` are unchanged and keep reporting the last RENDERED
+pass across a skip, which is the right answer to a different question. The snapshot is also now built AFTER the
+decision rather than before it, so every field in one snapshot describes one frame.
+
+Rendering is untouched. The instrument only increments counters, no dirty input, no draw and no pipeline bind
+moved, and `ShadowDepthPassDirty` is byte-for-byte the predicate it was. What the new tests pin is the CURRENT
+behaviour, including the wasteful-looking part: a wholly stationary scene holding one skinned caster re-records the
+whole atlas every frame, naming `AnySkinnedCaster` and nothing else, because bone palettes are not hashed.
+`ShadowPassDiagnosticsGpuTests` drives each reason alone through a live pass and asserts the snapshot names exactly
+that one, and `ShadowPassDiagnosticsTests` covers the truth table headless plus the zero-allocation promise.
+`ResolutionChanged` has no live row on purpose: `ShadowSettings.ShadowMapResolution` is a construction-time knob, so
+no running scene can change it between two passes.
+
+Issue #410 stays open. This ships the instrument, not a fix: whether that always-dirty stationary pass is worth
+optimising is a question for the field data a consumer can now forward.
 
 ## 17.35.0
 

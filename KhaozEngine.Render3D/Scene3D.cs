@@ -315,8 +315,8 @@ namespace KhaozEngine.Render3D
         /// </summary>
         public bool ShadowPassSkippedLastFrame => _shadowPassSkippedLastFrame;
 
-        /// <summary>Last-frame shadow depth-pass decision and its dirty reasons. This is default-valued when the
-        /// resolved shadow tier is not <see cref="ShadowMode.ShadowMap"/>. Diagnostics only.</summary>
+        /// <summary>Last-frame shadow depth-pass decision: each dirty reason on its own bit, plus what the pass
+        /// recorded (per-cascade rigid spans, raw draw calls). See <see cref="ShadowPassDiagnostics"/>.</summary>
         public ShadowPassDiagnostics LastShadowPassDiagnostics => _lastShadowPassDiagnostics;
 
         /// <summary>
@@ -1965,11 +1965,6 @@ namespace KhaozEngine.Render3D
                     resolutionChanged: resolutionChanged,
                     lightMatrixChanged: lightMatrixChanged,
                     casterDataChanged: casterDataChanged);
-                _lastShadowPassDiagnostics = new ShadowPassDiagnostics(
-                    active: true, rendered: dirty, skipped: !dirty, hadPrevious: hadPrevious,
-                    anySkinnedCaster: skinnedCasterCount > 0, resolutionChanged: resolutionChanged,
-                    lightMatrixChanged: lightMatrixChanged, casterDataChanged: casterDataChanged,
-                    skinnedCasterCount: skinnedCasterCount, cascadeCount: _cascadeCount);
                 if (dirty)
                 {
                     // Split the one caster list into the sub-spans each cascade actually reaches, then draw. Only on
@@ -1991,6 +1986,11 @@ namespace KhaozEngine.Render3D
                 }
                 else
                     _shadowPassSkippedLastFrame = true;
+                // Recorded AFTER the decision so one snapshot describes one frame: the per-cascade rigid span counts
+                // and the raw draw calls only exist once the pass has walked them, and a skipped frame must report
+                // zero of both rather than the last rendered pass's numbers (issue #410).
+                RecordShadowPassDiagnostics(dirty, hadPrevious, skinnedCasterCount > 0, resolutionChanged,
+                    lightMatrixChanged, casterDataChanged, skinnedCasterCount);
                 if (EnableTiming) shadowDepthMs = ElapsedMs(timingStart);
             }
             else

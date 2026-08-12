@@ -92,10 +92,11 @@ namespace KhaozEngine.Render3D
         public int ShadowCascadeCasterCount(int cascade)
             => (uint)cascade < (uint)_cascadeCasterCounts.Length ? _cascadeCasterCounts[cascade] : 0;
 
-        /// <summary>How many DRAW CALLS the last rendered depth pass issued into <paramref name="cascade"/> for the
-        /// rigid casters. The counterpart of <see cref="ShadowCascadeCasterCount"/>: culling trades this up (a split
-        /// run becomes several draws) to trade that down, which is the whole reason the merge gap exists.
-        /// Diagnostics.</summary>
+        /// <summary>How many rigid caster SPANS the last rendered depth pass walked for <paramref name="cascade"/>.
+        /// The counterpart of <see cref="ShadowCascadeCasterCount"/>: culling trades this up (a split run becomes
+        /// several spans) to trade that down, which is the whole reason the merge gap exists. A span whose mesh was
+        /// unloaded issues no draw, so draws can sit below this count: see
+        /// <see cref="ShadowPassDiagnostics.RigidDrawCalls"/> for the issued-draw number. Diagnostics.</summary>
         public int ShadowCascadeSpanCount(int cascade)
             => (uint)cascade < (uint)_cascadeCasterSpans.Length ? _cascadeCasterSpans[cascade].Count : 0;
 

@@ -258,6 +258,7 @@ namespace KhaozEngine.Render3D
             // their bounds move with the pose). The rigid spans are per-cascade, so a near cascade no longer
             // rasterizes the whole world to fill a 19 m footprint.
             int count = _cascadeCount;
+            ResetShadowPassCounters();
             _model.BeginShadowPass(cl, _cascadeDepthVps.AsSpan(0, count), count, _frameOrigin,
                 _cascadeNoiseScales.AsSpan(0, count));
 
@@ -266,6 +267,9 @@ namespace KhaozEngine.Render3D
             for (int c = 0; c < count; c++)
             {
                 _model.BeginShadowCascadeRigid(cl, c);
+                // The span list this cascade is about to walk, counted here rather than derived later, so the
+                // instrument reports the list the loop actually iterated (issue #410).
+                _shadowPassRigidSpans[c] = spansPerCascade[c].Count;
                 // Which of the two depth pipelines is bound right now. Switched only when a span's kind differs from
                 // the last one (the same pattern the main pass's dissolve draws use), so an all-opaque frame binds
                 // once per cascade exactly as before.
@@ -282,6 +286,7 @@ namespace KhaozEngine.Render3D
                         bound = span.Kind;
                     }
                     _model.DrawShadowCasterRun(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, span.Start, span.Count);
+                    _shadowPassRigidDraws++;
                     CountMeshDraw(mesh.IndexCount, span.Count);
                 }
                 if (!UseGpuSkinning && _cpuSkinnedDraws.Count > 0)
@@ -293,6 +298,7 @@ namespace KhaozEngine.Render3D
                     {
                         var dr = _cpuSkinnedDraws[d];
                         _model.DrawShadowSkinnedCaster(cl, dr.Ib, dr.IndexCount, dr.IndexFormat, dr.BaseVertex, (uint)d);
+                        _shadowPassSkinnedDraws++;
                         CountSkinnedDraw(dr.IndexCount);
                     }
                 }
@@ -323,6 +329,7 @@ namespace KhaozEngine.Render3D
                     {
                         var dr = _gpuSkinnedDraws[d];
                         _model.DrawGpuSkinnedShadowCaster(cl, dr.RestVb, dr.Ib, dr.IndexCount, dr.IndexFormat, (uint)(c * gpuCount + d));
+                        _shadowPassSkinnedDraws++;
                         CountSkinnedDraw(dr.IndexCount);
                     }
                 }

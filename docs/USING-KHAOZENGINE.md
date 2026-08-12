@@ -2433,10 +2433,20 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       forces a re-render). An unchanged static scene reuses the prior atlas and skips every caster draw, so a
       mostly-static view stops repainting the shadow map each frame. A skipped pass contributes zero shadow draw
       calls to `LastFrameStats`. Read `Scene3D.ShadowPassSkippedLastFrame` (last rendered frame, always `false` when
-      the tier is not `ShadowMap`) for a HUD/diagnostics signal. `LastShadowPassDiagnostics` gives the full decision:
-      whether the pass rendered or skipped, whether a prior atlas existed, each dirty reason (skinned caster,
-      resolution, cascade matrix, or rigid caster data), and the skinned-caster/cascade counts. The receiver tail
-      (light matrix + bias/strength) is
+      the tier is not `ShadowMap`) for a HUD/diagnostics signal. `LastShadowPassDiagnostics` (a
+      `ShadowPassDiagnostics`) gives the full decision: whether the pass rendered or skipped, whether a prior atlas
+      existed, each dirty reason on its own bit (`AnySkinnedCaster`, `ResolutionChanged`, `LightMatrixChanged`,
+      `CasterDataChanged`), the skinned-caster and cascade counts, AND what the pass recorded this frame:
+      `RigidSpanCount(cascade)` / `TotalRigidSpanCount` (the span lists it walked, per cascade, after the cull split
+      them) plus the raw `RigidDrawCalls` / `SkinnedDrawCalls` / `TotalDrawCalls` it issued. It is a last-frame
+      snapshot in the same shape as `PassTimingsMs` below, always on and allocation-free, so a game can sample it
+      into a telemetry line every frame. Two things to know when reading it. The counts describe THIS frame, so a
+      skipped frame reports zero of them, while `ShadowCascadeSpanCount` / `ShadowCascadeCasterCount` keep reporting
+      the last RENDERED pass across a skip. And `RigidDrawCalls` sits at or below `TotalRigidSpanCount`, because a
+      span whose mesh was unloaded between the span build and the draw is walked and then skipped. Reason bits are
+      the diagnosis: a stationary scene reporting `AnySkinnedCaster` and nothing else is re-recording the whole
+      atlas every frame purely because a skinned caster exists, since bone palettes are not hashed. The receiver
+      tail (light matrix + bias/strength) is
       still applied on a skipped frame, so bias/strength tweaks take effect immediately and the receivers sample the
       map with the matrix it was baked against.
 - Edge outline: `Post.Outline` (off by default, opt-in per consumer) draws a depth/normal toon outline. `OutlineColor`,

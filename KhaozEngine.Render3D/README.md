@@ -144,8 +144,13 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   caster set/transforms, the resolution, or any animated skinned caster present) and otherwise reuses the prior atlas,
   so a mostly-static scene stops repainting it every frame. A skipped pass adds zero shadow draw calls to
   `LastFrameStats`. Read `Scene3D.ShadowPassSkippedLastFrame` for a simple diagnostics signal, or
-  `Scene3D.LastShadowPassDiagnostics` to identify whether skinned casters, resolution, cascade matrices, or caster
-  data required the last depth pass.
+  `Scene3D.LastShadowPassDiagnostics` (a `ShadowPassDiagnostics`) for the whole last-frame decision: `Rendered` /
+  `Skipped` / `HadPrevious`, one bit per dirty reason (`AnySkinnedCaster`, `ResolutionChanged`, `LightMatrixChanged`,
+  `CasterDataChanged`), `SkinnedCasterCount` / `CascadeCount`, and what the pass actually recorded, namely
+  `RigidSpanCount(cascade)` / `TotalRigidSpanCount` plus the raw `RigidDrawCalls` / `SkinnedDrawCalls` /
+  `TotalDrawCalls`. Same last-frame shape as `PassTimingsMs`, always on and allocation-free, so a game can sample it
+  every frame into a telemetry line. The counts are what THIS frame recorded, so a skipped frame reports zero of them
+  (the `ShadowCascadeSpanCount` / `ShadowCascadeCasterCount` properties keep reporting the last rendered pass instead).
   - Validate a menu choice with `Shadows.ResolveFor(caps)` and read `.Effective`/`.Degraded`/`.Reason` (same
   `ResolveFor`-clamps-a-request pattern as AA, never throws). With `Off` the blob queue is ignored and the shadow tail
   sits at strength 0 (never tapped), so existing scenes are byte-stable.

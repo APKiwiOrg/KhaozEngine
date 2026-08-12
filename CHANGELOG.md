@@ -13,8 +13,9 @@ start pruning the version folders they leave behind, the MSAA resolve destinatio
 family is not, the Retina first frame is sized in pixels, the seam's one-open-recording-per-device rule becomes a
 refusal instead of a paragraph, two of phase 4's guards get the teeth their prose already claimed, CI starts
 gating the three whole-tree convention guards it never ran, the graphics shader pair finally gets the Metal
-binding-order guard the compute one has had since 16.3.0, and the ambient Gui theme stops racing the rest of
-its test assembly.
+binding-order guard the compute one has had since 16.3.0, the native Vulkan device becomes constructible
+without a loader so its own wiring is tested rather than inspected, and the ambient Gui theme stops racing the
+rest of its test assembly.
 
 ### The last-chance crash file (`CrashReport`, #607)
 
@@ -452,6 +453,55 @@ nothing, so one deliberate violation was run through each script and then revert
 (exit 1), 900 padding lines appended to a small unbaselined `.cs`, taking it to 912 against the 800 cap
 (exit 1), and a hand-edited `PackageReference` version in `README.md` (exit 1). All four return 0 on the clean
 tree.
+
+### The native Vulkan device is constructible without a loader, so its flush-before-read wiring is tested (#550)
+
+New internal hook `VulkanGpuDevice.CreateOverSeams` in `KhaozEngine.Gpu.Vulkan`, plus
+`VulkanDeviceWiringTests` and its `VulkanDeviceFixture` rig in `KhaozEngine.Render.Tests`. No public API
+changed, no seam widened, and no fake was invented: the rig is the same `FakeVulkanCommandApi`,
+`FakeVulkanSetupSink`, `FakeVulkanResourceApi`, `FakeVulkanDeviceMemoryApi` and `FakeVulkanTimelineSemaphore`
+every other device-free Vulkan suite already uses.
+
+**Nothing anywhere constructed a `VulkanGpuDevice`, which is why two shipped claims were inspection-only.** The
+constructor is private and reachable only through `CreateHeadless` and `CreateForWindow`, both of which need a
+live Vulkan loader, so the claim that every device-level read flushes the setup command buffer first (V-M10) and
+the claim that `Map(staging, Read)` waits on the timeline as a drain (V-C8) were held by reading the code at all
+six flush call sites. The nearest existing row, in `VulkanSetupBufferTests`, calls `Setup.Flush()` itself with a
+comment saying the device does exactly this pair, which is the subsystem rather than the device path.
+
+**Two things had to move, and both absences on a test-built device are honest rather than convenient.** The
+instance lease is now optional and read through an `Instance` property that refuses BY NAME, so a device with no
+loader cannot hand out a command list (the five recording seams are `Vk` entry points) and says so instead of
+throwing a `NullReferenceException`. And the disk pipeline cache is resolved by the caller rather than inside the
+constructor, because opening it also PRUNES stale engine-version folders and no test may sweep a developer's
+cache directory as a side effect. `VulkanGpuDevice.Create.cs` resolves it as an ARGUMENT in the constructor
+call, so the prune runs inside the same expression that builds the device.
+
+**And teardown branches on that missing lease rather than on the liveness token.** `Dispose`'s native path reads
+`Instance` on its first statement and the disposed flag is set before it does, so a device with no lease threw
+out of `Dispose` and every call after it returned silently, leaving the staging maps, the setup buffer, the
+descriptors, the shader modules, the pipelines and the timeline unreleased. Such a device now takes the teardown
+that touches nothing native, which is what the liveness token was standing in for and is why the rig no longer
+kills the device on its way out.
+
+**Order is read off the timeline VALUES rather than a call log.** Every submission takes the timeline's next
+value inside the lock that orders `vkQueueSubmit`, so a lower value is an earlier submission by construction. The
+setup batch carrying value 1 and the frame's list carrying value 2 is the flush-first rule stated in the only
+currency the queue has, and `WaitForIdle` and both `Map` overloads assert that the value the drain waits for is
+the value the flush just submitted at.
+
+**Every row was proved to fail before it was trusted, one broken site at a time.** Removing `FlushSetup()` from
+`Submit(cl)`, from `Submit(cl, fence)`, from `WaitForIdle` and from `DrainBeforeRead`, removing
+`DrainBeforeRead(mode)` from each `Map` overload, and deleting the read-only condition so a WRITE map drains too:
+seven mutations, each caught by the row that owns it, each reverted. The write-map row matters as much as the
+read one, because a device that drained on every map would look identical to a correct one on a suite that only
+checked reads, and would serialise every staging write behind the queue.
+
+**Left for the CI leg, deliberately, and filed rather than assumed (#615).** No fake can prove a value was
+signalled because real GPU work finished, so "the flush and the drain happen against a real driver" stays with
+the `vulkan-native` lavapipe leg and is its own item. What this catches is a regression in the WIRING, which
+would otherwise ship silently until a golden read back stale bytes on Linux and be read as an intermittent
+golden failure rather than as a defect.
 
 ### The ambient `GuiTheme.Default` swap stops racing the rest of the Gui test assembly (#349)
 

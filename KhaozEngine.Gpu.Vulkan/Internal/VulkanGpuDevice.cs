@@ -129,7 +129,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     {
         static readonly ILogger log = Log.For<VulkanGpuDevice>();
 
-        readonly VulkanInstanceLease<VulkanInstance> _instance;
+        // NULL ON THE DEVICE-FREE TEST HOOK'S DEVICE AND NOWHERE ELSE. Every shipped path comes through
+        // VulkanGpuDevice.Create.cs with a real lease, and the one caller that passes null is CreateOverSeams,
+        // which builds a device with no Vulkan loader under it at all. Read through Instance, which refuses by
+        // name rather than by a NullReferenceException. See VulkanGpuDevice.OverSeams.cs.
+        readonly VulkanInstanceLease<VulkanInstance>? _instance;
         readonly DeviceLiveness _liveness;
         readonly VulkanDeviceLossLatch _loss;
         readonly VulkanTimeline _timeline;
@@ -165,13 +169,29 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         bool _disposed;
         bool _syncToVerticalBlank;
 
-        VulkanGpuDevice(VulkanInstanceLease<VulkanInstance> instance, Device device, Queue graphicsQueue,
+        /// <summary>
+        /// The shared <c>VkInstance</c> this device leased, for the members that need the loaded entry points or
+        /// the validation rung. Refuses BY NAME on a device the test hook built, which holds no lease because
+        /// there is no loader under it. It lives here rather than with that hook because the members that read it
+        /// are shipped ones: <see cref="Dispose"/> routes past it on the null rather than reading it, and
+        /// <c>CreateCommandList</c> is the refusal itself.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">This device was built by <c>CreateOverSeams</c> and has no
+        /// instance.</exception>
+        VulkanInstance Instance
+            => _instance?.Value ?? throw new InvalidOperationException(
+                "This native Vulkan device was built over fake seams by the test hook, so it holds no VkInstance "
+                + "and no loaded entry points. The members that need them (command-list creation, and the "
+                + "teardown that destroys the real device) are not reachable on such a device. Drive the device's "
+                + "own wiring instead, or take a real device through VulkanGpuDevice.CreateHeadless.");
+
+        VulkanGpuDevice(VulkanInstanceLease<VulkanInstance>? instance, Device device, Queue graphicsQueue,
             uint graphicsQueueFamily, GpuCapabilities capabilities, bool softwareAdapter,
             DeviceLiveness liveness, VulkanDeviceLossLatch loss, VulkanTimeline timeline,
             IVulkanDeviceMemoryApi memoryApi, VulkanMemoryFacts memoryFacts, IVulkanCommandApi commands,
             IVulkanResourceApi resourceApi, IVulkanSetupSink setupSink, IVulkanDescriptorApi descriptorApi,
             IVulkanShaderApi shaderApi, IVulkanPipelineApi pipelineApi,
-            VulkanPipelineCacheIdentity pipelineCacheIdentity, uint maxDynamicUniformBuffers, int framesInFlight,
+            VulkanPipelineCacheFile? pipelineCache, uint maxDynamicUniformBuffers, int framesInFlight,
             VulkanWindowedParts? windowed)
         {
             _instance = instance;
@@ -239,12 +259,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // a pipeline is a shader compile, so the seam that can do it must not sit anywhere a recorder's field
             // graph reaches. It takes the DESCRIPTORS' pipeline-layout cache rather than making one, because a
             // second cache would hand out two handles for one set-layout array and silently break the pointer
-            // compare row 11's compatibility prefix is. The disk cache is resolved from the environment HERE
-            // rather than inside the subsystem, so a test can hand it a directory it owns.
+            // compare row 11's compatibility prefix is. The disk cache is RESOLVED BY THE CALLER rather than
+            // here, so a test can hand it a directory it owns or no cache at all: the environment read is also a
+            // PRUNE, and a device-free test building a device must not sweep a developer's cache folder as a side
+            // effect. The shipped path resolves it as an ARGUMENT in the constructor call, so the prune happens
+            // inside the same expression that builds the device: see VulkanGpuDevice.Create.cs.
             _pipelines = new VulkanPipelines(
                 new VulkanPipelineOwner(pipelineApi, timeline, _retired),
                 _descriptors.PipelineLayouts,
-                VulkanPipelineCacheFile.FromEnvironment(pipelineCacheIdentity));
+                pipelineCache);
 
             _factory = new VulkanResourceFactory(_resources, _rings, _setup, _descriptors, _modules, _pipelines,
                 () => CreateCommandList(), () => _timeline.CreateFence(), capabilities,
@@ -465,7 +488,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             // The strict rung's controlled throw. Placed after the wait rather than before it, so a validation
             // error raised by work this wait was flushing is caught by the same call that flushed it.
-            _instance.Value.Messenger?.Pump.ThrowIfLatched("WaitForIdle");
+            _instance?.Value.Messenger?.Pump.ThrowIfLatched("WaitForIdle");
         }
 
         /// <inheritdoc/>
@@ -550,6 +573,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// share an instance whose first holder is gone.
         /// </para>
         /// <para>
+        /// A DEVICE WITH NO INSTANCE TAKES THE SECOND PATH WHATEVER ITS LIVENESS TOKEN SAYS. The first path's
+        /// first statement reads <see cref="Instance"/>, so on the test hook's device it would throw out of
+        /// Dispose with <c>_disposed</c> already set, which makes the next call a silent no-op and leaves the
+        /// maps, the setup buffer, the descriptors, the modules, the pipelines and the timeline unreleased.
+        /// </para>
+        /// <para>
         /// The order below is held by nothing more than the sequence of statements: no test asserts it, because
         /// there is no seam that can observe teardown order device-free. An edit that reorders these lines must
         /// re-read this block rather than trust a green suite to catch the regression.
@@ -564,9 +593,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
                 try
                 {
-                    if (!_liveness.IsDead)
+                    // THE FIRST PATH NEEDS AN INSTANCE AS MUCH AS IT NEEDS A LIVE DEVICE. Every native call in it
+                    // goes through Instance, which a device the test hook built does not have.
+                    if (_instance is not null && !_liveness.IsDead)
                     {
-                        Vk vk = _instance.Value.Api;
+                        Vk vk = Instance.Api;
 
                         // FIRST. A device destroyed with work in flight takes the driver down with it on some
                         // implementations and corrupts silently on others.
@@ -664,9 +695,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     }
                     else
                     {
-                        // A device that was ALREADY dead when Dispose arrived. Its children went with it, so the
-                        // held destroys are dropped rather than run, every memory chunk is forgotten rather than
-                        // freed, and the timeline's own Dispose skips the native destroy for the same reason.
+                        // A DEVICE WITH NOTHING NATIVE LEFT TO DESTROY, which is two entrants: one that was
+                        // already dead when Dispose arrived, and one the test hook built, which never had a
+                        // loader under it at all. Its children went with it (or were never real), so the held
+                        // destroys are dropped rather than run, every memory chunk is forgotten rather than
+                        // freed, and each subsystem below releases only what its own seam can still be asked
+                        // for, which on a dead liveness token is nothing.
                         ReportForgottenMaps(_maps.Forget());
                         _setup.Retire(_retired);
                         ReportAbandoned(_retired.Abandon(), _memory.Abandon());
@@ -680,7 +714,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 {
                     // ALWAYS, including the device-lost path where the destroy above was skipped. The instance
                     // survives a lost device, and the next device created on it is the recovery such as it is.
-                    _instance.Dispose();
+                    // Null only on a device the test hook built, which took no lease to give back.
+                    _instance?.Dispose();
                 }
             }
         }

@@ -227,9 +227,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     // input derivation, the blend attachment count, the dynamic state list and the whole disk
                     // cache all sit above it in device-free types.
                     new VulkanPipelineApi(vk, device, loss, liveness),
-                    // The device's own pipeline cache identity, off the SAME physical-device read, so the file the
-                    // cache is seeded from is keyed on the device that was actually selected (V-S7).
-                    read.PipelineCacheIdentity,
+                    // THE DISK PIPELINE CACHE, OPENED HERE rather than inside the constructor, and keyed on the
+                    // device's own identity off the SAME physical-device read, so the file the cache is seeded
+                    // from belongs to the device that was actually selected (V-S7). The open also PRUNES stale
+                    // engine-version folders, which is exactly why it is a caller's call: a device built over
+                    // fake seams by the test hook passes null and sweeps nothing.
+                    VulkanPipelineCacheFile.FromEnvironment(read.PipelineCacheIdentity),
                     // The device's own maxDescriptorSetUniformBuffersDynamic, read off the SAME physical-device
                     // read the support probe gated on, so 8.3's third and fourth defences measure against one
                     // number rather than two reads that can disagree.

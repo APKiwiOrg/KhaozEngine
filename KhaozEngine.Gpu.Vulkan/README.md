@@ -536,6 +536,19 @@ reverse, and the one path that touches both (a device `Submit`, which flushes th
 the frame's list) takes them sequentially rather than nested. `VulkanSetupBufferTests` pins the nesting by
 asserting from inside the submit that the setup lock is held.
 
+**The flush-before-read rule is DRIVEN through the device now, at all six of its call sites.** It used to be
+carried by inspection, because `VulkanGpuDevice`'s constructor is private and reachable only through
+`CreateHeadless` and `CreateForWindow`, both of which need a live loader, so nothing anywhere constructed the
+type and `VulkanSetupBufferTests` could only call `Setup.Flush()` itself, which is the subsystem rather than the
+device path ([#550](https://github.com/APKiwiOrg/KhaozEngine/issues/550)). `VulkanGpuDevice.CreateOverSeams` is
+the internal hook that closes it: a real device over the same fakes every other device-free Vulkan suite uses,
+with no instance lease and no disk pipeline cache, which are the only two things a machine with no loader cannot
+supply. `VulkanDeviceWiringTests` drives both `Submit` overloads, `WaitForIdle` and both `Map` overloads through
+it and reads the order off the TIMELINE VALUES, since every submission takes its value inside the lock that
+orders `vkQueueSubmit` and a lower value is therefore an earlier submission. The same rig carries `Map(staging,
+Read)`'s drain and, just as importantly, the fact that a WRITE map does not drain: a device that waited on every
+map would be indistinguishable from a correct one on a suite that only checked the read path.
+
 **A staging texture is a `VkBuffer` and its subresource layout is computed in SOFTWARE, reproduced from the
 incumbent byte for byte.** This is the highest-risk parity surface in the backend. Every golden reads back
 through `IGpuDevice.Map(staging, ...)` and consumes `MappedData.RowPitch`, so a different arithmetic garbles all

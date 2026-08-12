@@ -77,10 +77,11 @@ namespace KhaozEngine.Tests.Gpu
                 },
                 drawFrame: scene =>
                 {
-                    // The beach is many SMALL tiles, each rotated to the ramp angle and dropped onto it. One big
-                    // quad would not do: the depth the water pass reconstructs is written per vertex and
-                    // interpolated, so across a large perspective triangle the reconstructed seabed drifts far
-                    // enough to break the shore fade (see WaterDistanceBandingProbe's note).
+                    // The beach is many SMALL tiles, each rotated to the ramp angle and dropped onto it. That was
+                    // once a requirement, because the depth the water pass reconstructs was written per vertex and
+                    // interpolated and drifted far enough across a large perspective triangle to break the shore
+                    // fade. Issue #301 moved the write into the fragment stage and one quad would do now, but the
+                    // ramp is still built this way because it is what these differences were measured against.
                     float angle = MathF.Atan(Slope);
                     for (int gz = 0; gz < BeachTiles; gz++)
                     {

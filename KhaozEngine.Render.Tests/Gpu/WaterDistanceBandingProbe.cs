@@ -39,8 +39,9 @@ namespace KhaozEngine.Tests.Gpu
         /// what remains is purely the ripple + swell shading this probe is about.</summary>
         const float WaterY = 0f;
 
-        /// <summary>Seabed subdivision (see the note at the draw site: the depth reconstruction the water pass
-        /// relies on degrades badly across large perspective triangles).</summary>
+        /// <summary>Seabed subdivision. Kept as the scene these dumps were read against, not as a workaround: the
+        /// depth reconstruction stopped caring about triangle size when issue #301 moved the scene-depth MRT into
+        /// the fragment stage.</summary>
         const int SeabedTiles = 25;
         const float SeabedTileSize = 120f;
 
@@ -107,13 +108,13 @@ namespace KhaozEngine.Tests.Gpu
                 },
                 drawFrame: scene =>
                 {
-                    // The seabed is TILED rather than one huge quad, and that is load-bearing. The depth the water
-                    // pass reconstructs from is `gl_Position.z / gl_Position.w` written per VERTEX and interpolated
-                    // (ShaderSources.Model.cs), which under a perspective projection is not the true per-fragment
-                    // NDC z. Across one 2400-unit quad the error is large enough that the reconstructed seabed
-                    // lands above the surface, the shore fade drives alpha to zero and the near water is discarded
-                    // outright. Small triangles keep the error negligible. Tracked separately; not this change's
-                    // job to fix, and Ruinborne does not hit it because its terrain is finely chunked.
+                    // The seabed is TILED rather than one huge quad. That USED to be load-bearing: the depth the
+                    // water pass reconstructs from was `gl_Position.z / gl_Position.w` written per VERTEX and
+                    // interpolated (ShaderSources.Model.cs), which under a perspective projection is not the true
+                    // per-fragment NDC z, and across one 2400-unit quad the error put the reconstructed seabed
+                    // tens of metres out. Issue #301 moved that write into the fragment stage, so one quad now
+                    // renders the same as this grid (SceneDepthPerspectiveGpuTests asserts exactly that). The
+                    // tiling stays because it is the scene these dumps were read against.
                     for (int gz = 0; gz < SeabedTiles; gz++)
                         for (int gx = 0; gx < SeabedTiles; gx++)
                         {

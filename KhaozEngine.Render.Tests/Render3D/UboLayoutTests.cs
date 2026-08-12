@@ -154,12 +154,13 @@ namespace KhaozEngine.Tests.Render3D
         public void ModelShaders_CarryThePerInstanceDissolve()
         {
             // The rigid/instanced dissolve (issue #253) rides InstanceData.Dissolve -> IDissolve (location 13) ->
-            // vDissolve (location 10) and is folded INTO ModelFrag gated by an if (dissolve <= 0 keeps the old path
+            // vDissolve (location 9) and is folded INTO ModelFrag gated by an if (dissolve <= 0 keeps the old path
             // byte-exact), NOT reusing ModelDissolveFrag. Assert the GLSL halves so a struct/layout change without
             // the shader (or vice versa) trips headlessly, and that the gate is a branch and not a multiply.
+            // The interpolant sits at 9 rather than 10 since issue #301 dropped vDepth from the block.
             Assert.Contains("layout(location=13) in vec2 IDissolve;", ShaderSources.ModelVert);
             Assert.Contains("vDissolve = IDissolve;", ShaderSources.ModelVert);
-            Assert.Contains("layout(location=10) in vec2 vDissolve;", ShaderSources.ModelFrag);
+            Assert.Contains("layout(location=9) in vec2 vDissolve;", ShaderSources.ModelFrag);
             Assert.Contains("if (vDissolve.x > 0.0)", ShaderSources.ModelFrag);
         }
 

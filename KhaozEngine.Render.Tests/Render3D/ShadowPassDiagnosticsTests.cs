@@ -9,9 +9,11 @@ namespace KhaozEngine.Tests.Render3D
     /// issue #410 forwards to a consumer's field telemetry. Two things are pinned here, both without a GPU.
     /// <para>
     /// First, the snapshot must NAME the responsible reason rather than only report that the pass was dirty. Each
-    /// row below sets exactly one reason bit, checks the pass would render for it, and checks no other bit reads
-    /// true. A snapshot that could not distinguish a moving sun from a present skinned caster would answer the
-    /// wrong question in the field, which is the whole reason the struct exists rather than one dirty flag.
+    /// row below pins two things SEPARATELY: that the dirty predicate would render for exactly that reason, and
+    /// that the struct carries exactly that bit. The wiring between the pass and the snapshot needs a live device
+    /// and is proved only by <c>ShadowPassDiagnosticsGpuTests</c>, not here. A snapshot that could not distinguish
+    /// a moving sun from a present skinned caster would answer the wrong question in the field, which is the whole
+    /// reason the struct exists rather than one dirty flag.
     /// </para>
     /// <para>
     /// Second, the count surface must behave as a value: the per-cascade spans are copied into the struct, an out

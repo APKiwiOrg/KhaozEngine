@@ -47,14 +47,15 @@ namespace KhaozEngine.Render3D
         /// </para>
         /// </summary>
         void RecordShadowPassDiagnostics(bool rendered, bool hadPrevious, bool anySkinnedCaster,
-            bool resolutionChanged, bool lightMatrixChanged, bool casterDataChanged, int skinnedCasterCount)
+            bool resolutionChanged, bool lightMatrixChanged, bool casterDataChanged, int skinnedCasterCount,
+            int cascadeCount)
         {
             ReadOnlySpan<int> spans = rendered ? _shadowPassRigidSpans : ReadOnlySpan<int>.Empty;
             _lastShadowPassDiagnostics = new ShadowPassDiagnostics(
                 active: true, rendered: rendered, skipped: !rendered, hadPrevious: hadPrevious,
                 anySkinnedCaster: anySkinnedCaster, resolutionChanged: resolutionChanged,
                 lightMatrixChanged: lightMatrixChanged, casterDataChanged: casterDataChanged,
-                skinnedCasterCount: skinnedCasterCount, cascadeCount: _cascadeCount,
+                skinnedCasterCount: skinnedCasterCount, cascadeCount: cascadeCount,
                 rigidSpanCounts: spans,
                 rigidDrawCalls: rendered ? _shadowPassRigidDraws : 0,
                 skinnedDrawCalls: rendered ? _shadowPassSkinnedDraws : 0);

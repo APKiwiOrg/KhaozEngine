@@ -28,8 +28,10 @@ namespace KhaozEngine.Render3D
     /// </para>
     /// <para>
     /// A struct, always on, and allocation-free: reading the property copies value fields only, which is what lets a
-    /// consumer sample it every frame into an F3-style telemetry line. It is default-valued (every field false or 0,
-    /// including <see cref="Active"/>) whenever the resolved shadow tier is not <see cref="ShadowMode.ShadowMap"/>.
+    /// consumer sample it every frame into an F3-style telemetry line. Sample it on the render thread after
+    /// <c>Render</c> returns: the snapshot is a plain multi-word field, so a concurrent off-thread read can tear
+    /// across two frames' values. It is default-valued (every field false or 0, including <see cref="Active"/>)
+    /// before the first render and whenever the resolved shadow tier is not <see cref="ShadowMode.ShadowMap"/>.
     /// </para>
     /// <para>
     /// <b>The counts are what the LAST FRAME recorded.</b> A skipped frame reports 0 spans and 0 draw calls, because

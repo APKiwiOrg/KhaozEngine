@@ -315,8 +315,8 @@ namespace KhaozEngine.Render3D
         /// </summary>
         public bool ShadowPassSkippedLastFrame => _shadowPassSkippedLastFrame;
 
-        /// <summary>Last-frame shadow depth-pass decision: each dirty reason on its own bit, plus what the pass
-        /// recorded (per-cascade rigid spans, raw draw calls). See <see cref="ShadowPassDiagnostics"/>.</summary>
+        /// <summary>Last-frame shadow depth-pass decision. Default-valued before the first render and off the
+        /// ShadowMap tier. Fields, counts, and the render-thread read rule: <see cref="ShadowPassDiagnostics"/>.</summary>
         public ShadowPassDiagnostics LastShadowPassDiagnostics => _lastShadowPassDiagnostics;
 
         /// <summary>
@@ -1990,7 +1990,7 @@ namespace KhaozEngine.Render3D
                 // and the raw draw calls only exist once the pass has walked them, and a skipped frame must report
                 // zero of both rather than the last rendered pass's numbers (issue #410).
                 RecordShadowPassDiagnostics(dirty, hadPrevious, skinnedCasterCount > 0, resolutionChanged,
-                    lightMatrixChanged, casterDataChanged, skinnedCasterCount);
+                    lightMatrixChanged, casterDataChanged, skinnedCasterCount, _cascadeCount);
                 if (EnableTiming) shadowDepthMs = ElapsedMs(timingStart);
             }
             else

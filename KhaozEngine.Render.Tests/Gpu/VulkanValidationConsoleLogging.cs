@@ -19,21 +19,41 @@ namespace KhaozEngine.Tests.Gpu
     /// <c>gpu-vulkan-sync</c> tier exists to surface exactly those, and it was surfacing them into a no-op.
     /// </para>
     /// <para>
+    /// CONFIGURED EXACTLY ONCE, FROM THE MODULE INITIALIZER, AND NEVER FROM A TEST. This is a hard rule for
+    /// this assembly and the reason the type is split the way it is. <see cref="Log.Configure(LoggerOptions)"/>
+    /// SHUTS DOWN the manager it replaces, and shutdown disposes and clears that manager's sink list, while an
+    /// <c>ILogger</c> handed out earlier keeps pointing at the manager it came from. Every logger resolved before
+    /// a reconfigure therefore writes into a gutted manager for the rest of the process: enabled, submitting,
+    /// and silent. Several Vulkan types resolve their logger once into a <c>static readonly</c> field, so a
+    /// single reconfigure part-way through an armed run orphans the very producers the artifact exists to
+    /// capture. A first cut of this seam had its own tests reconfiguring the facade and restoring it afterwards,
+    /// which cost the armed <c>sync</c> run most of its Vulkan lines: every <c>VulkanMemoryAllocator</c> INFO
+    /// line and every <c>VulkanPresentBoundary</c> WARN and ERROR line logged after that class ran went nowhere.
+    /// So the decision half of this seam (<see cref="IsArmed"/> and <see cref="BuildOptions"/>) is pure and is
+    /// what the tests exercise, against a <see cref="LogManager"/> they own, and the apply half is the one call
+    /// below.
+    /// </para>
+    /// <para>
     /// ARMED LEGS ONLY, so an ordinary run stays byte-quiet. The lever is the backend's own
     /// <c>KE_VULKAN_VALIDATION</c>, read through the backend's own parser, so "armed" here means precisely what
     /// it means to the code that creates the messenger: a typo that <see cref="VulkanValidation.Parse"/> refuses
     /// leaves validation off AND leaves this sink unconfigured, rather than producing a log that implies an
     /// instrument that is not running. Every other leg (and every developer's <c>dotnet test</c>) sees the
-    /// unconfigured facade the rest of the suite has always seen.
+    /// unconfigured facade the rest of the suite has always seen, and allocates nothing at all here: the lever is
+    /// checked before the sink and the options are built.
     /// </para>
     /// <para>
-    /// SCOPED TO THE VULKAN BACKEND'S CATEGORIES rather than to the whole engine, through
-    /// <see cref="CategoryPrefixSink"/>. The facade has no category filtering of its own, so an unfiltered
-    /// console sink would put every engine log line from every subsystem into a log whose entire value is that a
-    /// validation message reads next to the test name that provoked it. The prefix is <c>Vulkan</c>, which is
-    /// wider than the pump alone on purpose: <c>VulkanInstance</c> logs whether the layer was actually found and
-    /// which rung is live, and a validation log that cannot show the instrument was running is not evidence of
-    /// anything.
+    /// SCOPED TO THE VULKAN BACKEND, WHICH IS WIDER THAN THE PUMP AND IS MEANT TO BE. The prefix is
+    /// <c>Vulkan</c>, matched through <see cref="CategoryPrefixSink"/>, and it admits EVERY category the native
+    /// backend logs under, at Info and above. On a measured armed <c>sync</c> run that is: the allocator's
+    /// per-allocation INFO lines from <c>VulkanMemoryAllocator</c> (the bulk of the log by a wide margin),
+    /// <c>VulkanGpuDevice</c> and <c>VulkanBackendProvider</c> warnings, <c>VulkanPresentBoundary</c> warnings and
+    /// errors, a <c>VulkanTimeline</c> warning, this host's own banner, and the pump's validation lines when the
+    /// layer produces any. That breadth is the point: a validation line is only evidence next to what the backend
+    /// was doing when it fired, <c>VulkanInstance</c> is what says the layer was found and which rung is live, and
+    /// the allocator and present-boundary lines are what a barrier or lifetime complaint has to be read against.
+    /// What the prefix keeps OUT is the rest of the engine, because the facade has no category filtering of its
+    /// own and an unfiltered console sink would bury the whole thing under every other subsystem that logs.
     /// </para>
     /// <para>
     /// A <c>[ModuleInitializer]</c>, following the three backend-registration initializers beside this file. It
@@ -54,7 +74,8 @@ namespace KhaozEngine.Tests.Gpu
     {
         /// <summary>Every category the native Vulkan backend logs under starts with this, and nothing else in the
         /// engine does. <c>Log.For&lt;T&gt;</c> uses <c>typeof(T).Name</c>, so the categories are the type names:
-        /// <c>VulkanValidationPump</c>, <c>VulkanInstance</c>, <c>VulkanGpuDevice</c> and their siblings.</summary>
+        /// <c>VulkanValidationPump</c>, <c>VulkanInstance</c>, <c>VulkanMemoryAllocator</c>,
+        /// <c>VulkanPresentBoundary</c> and their siblings.</summary>
         internal const string CategoryPrefix = "Vulkan";
 
         /// <summary>The category the facade's own convenience methods would use. Named for this seam so a line
@@ -68,40 +89,46 @@ namespace KhaozEngine.Tests.Gpu
         /// its own filter.</summary>
         internal const string HostCategory = "VulkanValidationLogHost";
 
-        /// <summary>Runs before any test in this assembly. A module initializer must return void, so the answer
-        /// lives on <see cref="ConfigureFromEnvironment"/> next door.</summary>
+        /// <summary>
+        /// THE ONLY <see cref="Log.Configure(LoggerOptions)"/> CALL IN THIS ASSEMBLY, and it runs before any test
+        /// does. Everything it decides lives next door in <see cref="IsArmed"/> and <see cref="BuildOptions"/>,
+        /// which is what makes the decision testable without a second call ever reconfiguring the facade.
+        /// </summary>
         [ModuleInitializer]
         internal static void Initialize()
         {
             string? envValue = Environment.GetEnvironmentVariable(VulkanValidation.EnvVarName);
-            if (ConfigureFromEnvironment()) Log.Get(HostCategory).Info(ArmedAnnouncement(envValue));
+
+            // The lever is read before anything is constructed, so an unarmed process allocates neither the sink
+            // nor the options: it leaves this file having done nothing but one getenv.
+            if (!IsArmed(envValue)) return;
+
+            // useStdErrForErrors: false, deliberately. The artifact's whole value is the INTERLEAVING with test
+            // names, and two streams merged by a shell pipe do not preserve the order they were written in, so an
+            // error-severity line split onto stderr can land next to the wrong test.
+            Log.Configure(BuildOptions(new ConsoleSink(useStdErrForErrors: false)));
+            Log.Get(HostCategory).Info(ArmedAnnouncement(envValue));
         }
 
         /// <summary>
-        /// The host's own configuration, read from the live lever. Writes to stdout, which is what the CI step
-        /// tees into the artifact. Returns whether a rung was armed, which is what lets a test that swapped the
-        /// ambient manager put the host back the way it found it.
-        /// </summary>
-        internal static bool ConfigureFromEnvironment()
-            => TryConfigure(
-                Environment.GetEnvironmentVariable(VulkanValidation.EnvVarName),
-                // useStdErrForErrors: false, deliberately. The artifact's whole value is the INTERLEAVING with
-                // test names, and two streams merged by a shell pipe do not preserve the order they were written
-                // in, so an error-severity line split onto stderr can land next to the wrong test.
-                new ConsoleSink(useStdErrForErrors: false));
-
-        /// <summary>
-        /// Configures the ambient facade to write the Vulkan backend's lines to <paramref name="destination"/>,
-        /// when and only when <paramref name="envValue"/> arms a validation rung. Returns false and touches
-        /// nothing at all otherwise.
+        /// Whether <paramref name="envValue"/> arms a validation rung, which is the whole of this seam's
+        /// decision. Pure, and deliberately the backend's own parser rather than a second spelling of it: a value
+        /// the backend refuses runs no validation, so a log configured for it would imply an instrument that is
+        /// not running.
         /// </summary>
         /// <param name="envValue">The raw <c>KE_VULKAN_VALIDATION</c> value.</param>
+        internal static bool IsArmed(string? envValue)
+            => VulkanValidation.Parse(envValue, out _) != VulkanValidationMode.Off;
+
+        /// <summary>
+        /// The configuration an armed run gets. Pure: it builds and returns, and never touches the ambient
+        /// facade, so a test can drive the whole seam through a <see cref="LogManager"/> of its own.
+        /// </summary>
         /// <param name="destination">Where the surviving lines go. The console on CI, an
         /// <see cref="InMemorySink"/> under test.</param>
-        internal static bool TryConfigure(string? envValue, ILogSink destination)
+        internal static LoggerOptions BuildOptions(ILogSink destination)
         {
             if (destination is null) throw new ArgumentNullException(nameof(destination));
-            if (VulkanValidation.Parse(envValue, out _) == VulkanValidationMode.Off) return false;
 
             var options = new LoggerOptions
             {
@@ -115,8 +142,7 @@ namespace KhaozEngine.Tests.Gpu
                 DefaultCategory = FacadeCategory,
             };
             options.Sinks.Add(new CategoryPrefixSink(CategoryPrefix, destination));
-            Log.Configure(options);
-            return true;
+            return options;
         }
 
         /// <summary>

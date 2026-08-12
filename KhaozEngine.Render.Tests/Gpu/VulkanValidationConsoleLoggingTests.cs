@@ -7,32 +7,39 @@ namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
     /// #565: the test host's validation logging seam, both halves of it. Armed, a pump message reaches the
-    /// configured sink as the formatted line the CI gate greps for. Unarmed, nothing is configured at all and the
+    /// configured sink as the formatted line the CI gate greps for. Unarmed, nothing is armed at all and the
     /// facade stays the no-op it has always been on an ordinary run.
     /// <para>
-    /// SERIAL, because <see cref="Log.Configure(LoggerOptions)"/> writes process-global state and xUnit runs
-    /// collections in parallel. Every test that swaps it restores the host afterwards through
-    /// <see cref="RestoreHostState"/>, which REBUILDS the configuration rather than putting the old manager back,
-    /// for the reason written there.
+    /// NOTHING HERE CALLS <see cref="Log.Configure(LoggerOptions)"/>, WHICH IS THE POINT. A reconfigure is not
+    /// restorable in this process: it shuts down the manager it replaces, shutdown disposes and clears that
+    /// manager's sinks, and every <c>ILogger</c> already handed out keeps pointing at the dead manager. The
+    /// Vulkan backend resolves several of its loggers once into <c>static readonly</c> fields, so one reconfigure
+    /// part-way through an armed run silences those producers for the rest of it: an earlier version of this
+    /// class did exactly that and cost the armed <c>sync</c> artifact most of its Vulkan lines, all of them
+    /// silently. So the tests drive the PURE half of the seam
+    /// (<see cref="VulkanValidationConsoleLogging.IsArmed"/> and
+    /// <see cref="VulkanValidationConsoleLogging.BuildOptions"/>) through a <see cref="LogManager"/> they own and
+    /// dispose, and the process facade is only ever READ, in
+    /// <see cref="TheProcessFacade_MatchesTheLeverTheHostWasStartedWith"/>.
+    /// </para>
+    /// <para>
+    /// No <c>DisableParallelization</c> collection either, for the same reason: with no writer of the ambient
+    /// manager left in this assembly, the one read below cannot race anything, and a serial collection would
+    /// suggest a hazard that has been removed rather than contained. A future test that DOES write the facade
+    /// would need both the collection back and a much better reason than this one had.
     /// </para>
     /// <para>
     /// Device-free throughout. The pump takes plain message values, so the whole seam is decided on a machine
     /// with no Vulkan loader.
     /// </para>
     /// </summary>
-    [Collection("LoggingSerial")]
     public sealed class VulkanValidationConsoleLoggingTests
     {
         /// <summary>
-        /// THE FIX, end to end: with the lever armed, a message handed to the pump comes out of the configured
-        /// sink as the exact line the <c>gpu-vulkan-sync</c> gate step greps for.
-        /// <para>
-        /// The pump is constructed with no logger, which is how the real one is built
-        /// (<c>VulkanDebugMessenger.TryCreate</c> passes <c>logger: null</c>), so this exercises the ambient
-        /// facade path rather than a hand-injected logger. It also pins the ordering half of the fix: by the time
-        /// this runs the pump type has long been initialized by its sibling tests, and the line still arrives,
-        /// which a logger captured once into a static field could not do.
-        /// </para>
+        /// THE FIX, end to end: with the lever armed, a message handed to the pump comes out of the seam's own
+        /// configuration as the exact line the <c>gpu-vulkan-sync</c> gate step greps for. The manager is built
+        /// from <see cref="VulkanValidationConsoleLogging.BuildOptions"/>, which is the same object the module
+        /// initializer hands to the facade on an armed leg, so what is asserted here is what CI gets.
         /// </summary>
         [Theory]
         [InlineData("1")]
@@ -40,30 +47,26 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData("sync")]
         public void AnArmedLever_PutsThePumpsFormattedLineInTheSink(string lever)
         {
-            try
-            {
-                var sink = new InMemorySink();
-                Assert.True(VulkanValidationConsoleLogging.TryConfigure(lever, sink));
+            Assert.True(VulkanValidationConsoleLogging.IsArmed(lever));
 
-                var pump = new VulkanValidationPump(VulkanValidationMode.Sync);
-                pump.Report(new VulkanValidationMessage(
-                    VulkanValidationSeverity.Warning, 42, "VUID-vkCmdDraw-None-08600", "a fabricated hazard"));
+            var sink = new InMemorySink();
+            using var manager = new LogManager(VulkanValidationConsoleLogging.BuildOptions(sink));
 
-                var entry = Assert.Single(sink.Entries);
-                Assert.Equal(LogLevel.Warn, entry.Level);
-                Assert.Equal(nameof(VulkanValidationPump), entry.Category);
-                Assert.Equal(
-                    "Vulkan validation [Warning] VUID-vkCmdDraw-None-08600: a fabricated hazard", entry.Message);
+            var pump = new VulkanValidationPump(
+                VulkanValidationMode.Sync, logger: manager.GetLogger<VulkanValidationPump>());
+            pump.Report(new VulkanValidationMessage(
+                VulkanValidationSeverity.Warning, 42, "VUID-vkCmdDraw-None-08600", "a fabricated hazard"));
 
-                // The CI gate greps the FORMATTED line, not the message, so the formatter's output is what has to
-                // carry the shape. Both jobs match 'Vulkan validation [<Severity>]' against the teed log.
-                Assert.Contains(
-                    "Vulkan validation [Warning]", LogFormatter.Format(entry), StringComparison.Ordinal);
-            }
-            finally
-            {
-                RestoreHostState();
-            }
+            var entry = Assert.Single(sink.Entries);
+            Assert.Equal(LogLevel.Warn, entry.Level);
+            Assert.Equal(nameof(VulkanValidationPump), entry.Category);
+            Assert.Equal(
+                "Vulkan validation [Warning] VUID-vkCmdDraw-None-08600: a fabricated hazard", entry.Message);
+
+            // The CI gate greps the FORMATTED line, not the message, so the formatter's output is what has to
+            // carry the shape. Both jobs match 'Vulkan validation [<Severity>]' against the teed log.
+            Assert.Contains(
+                "Vulkan validation [Warning]", LogFormatter.Format(entry), StringComparison.Ordinal);
         }
 
         /// <summary>An error-severity message is the arm the <c>strict</c> tier latches on, and it has to reach
@@ -71,38 +74,26 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void AnErrorSeverityMessage_ArrivesAtErrorLevel()
         {
-            try
-            {
-                var sink = new InMemorySink();
-                Assert.True(VulkanValidationConsoleLogging.TryConfigure("sync", sink));
+            var sink = new InMemorySink();
+            using var manager = new LogManager(VulkanValidationConsoleLogging.BuildOptions(sink));
 
-                var pump = new VulkanValidationPump(VulkanValidationMode.Sync);
-                pump.Report(new VulkanValidationMessage(
-                    VulkanValidationSeverity.Error, 7, "VUID-vkCmdPipelineBarrier2-None-00001",
-                    "a fabricated error"));
+            var pump = new VulkanValidationPump(
+                VulkanValidationMode.Sync, logger: manager.GetLogger<VulkanValidationPump>());
+            pump.Report(new VulkanValidationMessage(
+                VulkanValidationSeverity.Error, 7, "VUID-vkCmdPipelineBarrier2-None-00001", "a fabricated error"));
 
-                var entry = Assert.Single(sink.Entries);
-                Assert.Equal(LogLevel.Error, entry.Level);
-                Assert.Equal(
-                    "Vulkan validation [Error] VUID-vkCmdPipelineBarrier2-None-00001: a fabricated error",
-                    entry.Message);
-            }
-            finally
-            {
-                RestoreHostState();
-            }
+            var entry = Assert.Single(sink.Entries);
+            Assert.Equal(LogLevel.Error, entry.Level);
+            Assert.Equal(
+                "Vulkan validation [Error] VUID-vkCmdPipelineBarrier2-None-00001: a fabricated error",
+                entry.Message);
         }
 
         /// <summary>
         /// THE QUIET DEFAULT, which is the half that keeps every unarmed leg byte-identical to what it was. An
-        /// unset, off or unrecognized lever configures nothing and does not touch the ambient manager, so a
-        /// developer's <c>dotnet test</c> and every non-validation CI leg keep the no-op facade
-        /// <c>LogFacadeTests</c> pins as intended behaviour.
-        /// <para>
-        /// The assertion is that the ambient manager is the SAME reference afterwards, rather than that it is
-        /// null. On an armed leg the module initializer has already configured one, and "did not touch it" is the
-        /// property that holds on both. Nothing is restored here because nothing was changed.
-        /// </para>
+        /// unset, off or unrecognized lever arms nothing, so the module initializer returns before it builds a
+        /// sink or options and a developer's <c>dotnet test</c> keeps the no-op facade <c>LogFacadeTests</c> pins
+        /// as intended behaviour.
         /// </summary>
         [Theory]
         [InlineData(null)]
@@ -113,69 +104,72 @@ namespace KhaozEngine.Tests.Gpu
         // A typo reads as Off to the backend, which then runs no validation at all, so a log implying an
         // instrument that is not running would be the worst outcome available here.
         [InlineData("syncronization")]
-        public void AnUnarmedLever_ConfiguresNothing(string? lever)
-        {
-            var prior = Log.Manager;
-            var sink = new InMemorySink();
-
-            Assert.False(VulkanValidationConsoleLogging.TryConfigure(lever, sink));
-
-            Assert.Same(prior, Log.Manager);
-            Assert.Empty(sink.Entries);
-        }
-
-        /// <summary>With nothing configured the facade hands back a logger that is enabled for nothing, which is
-        /// what makes the pump's calls free rather than merely quiet. The pump must survive it without throwing,
-        /// because the callback it runs under is a native driver frame, and it must still COUNT the error, since
-        /// the <c>strict</c> latch is what a count feeds and that half was never broken.</summary>
-        [Fact]
-        public void WithNothingConfigured_ThePumpRoutesToADisabledLogger()
-        {
-            try
-            {
-                Log.Shutdown();
-
-                Assert.False(Log.IsConfigured);
-                Assert.False(Log.For<VulkanValidationPump>().IsEnabled(LogLevel.Error));
-
-                var pump = new VulkanValidationPump(VulkanValidationMode.Sync);
-                var ex = Record.Exception(() => pump.Report(new VulkanValidationMessage(
-                    VulkanValidationSeverity.Error, 1, "VUID-nothing", "into the void")));
-
-                Assert.Null(ex);
-                Assert.Equal(1, pump.ErrorCount);
-            }
-            finally
-            {
-                RestoreHostState();
-            }
-        }
+        public void AnUnarmedLever_ArmsNothing(string? lever)
+            => Assert.False(VulkanValidationConsoleLogging.IsArmed(lever));
 
         /// <summary>
         /// THE SCOPE. An armed leg carries the Vulkan backend's own categories and nothing else, so the artifact
         /// stays a validation log rather than becoming a dump of every engine subsystem that happens to log. The
-        /// Info floor is pinned here too: <c>VulkanInstance</c> announces the live rung at Info, and that line is
-        /// what proves the instrument was running on the run being read.
+        /// Info floor is pinned here too, in both directions: <c>VulkanInstance</c> announces the live rung at
+        /// Info and that line proves the instrument was running, while anything below Info is dropped even from a
+        /// Vulkan category.
         /// </summary>
         [Fact]
         public void OnlyTheVulkanBackendsCategoriesReachTheSink()
         {
-            try
+            var sink = new InMemorySink();
+            using var manager = new LogManager(VulkanValidationConsoleLogging.BuildOptions(sink));
+
+            manager.GetLogger("VulkanInstance").Info("the rung is live");
+            manager.GetLogger("VulkanInstance").Debug("below the floor");
+            manager.GetLogger("AudioEngine").Warn("unrelated engine chatter");
+            // What Log.Warn would route to on an armed process: the default category, deliberately unprefixed.
+            manager.GetLogger(manager.DefaultCategory).Warn("through the facade's default category");
+
+            var entry = Assert.Single(sink.Entries);
+            Assert.Equal("VulkanInstance", entry.Category);
+            Assert.Equal(LogLevel.Info, entry.Level);
+        }
+
+        /// <summary>The rest of the configuration an armed leg depends on: writes land before the call returns
+        /// (a run that dies in the driver keeps its last message), the floor is Info, and the facade's own
+        /// convenience methods route to a category the prefix filter drops.</summary>
+        [Fact]
+        public void TheArmedOptions_AreSynchronousAtInfoWithAnUnprefixedDefaultCategory()
+        {
+            LoggerOptions options = VulkanValidationConsoleLogging.BuildOptions(new InMemorySink());
+
+            Assert.True(options.Synchronous);
+            Assert.Equal(LogLevel.Info, options.MinimumLevel);
+            Assert.Equal(VulkanValidationConsoleLogging.FacadeCategory, options.DefaultCategory);
+            Assert.DoesNotContain(
+                VulkanValidationConsoleLogging.CategoryPrefix, options.DefaultCategory, StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// THE ONE READ OF THE PROCESS FACADE, and it is read-only on purpose. It asserts the host and the live
+        /// lever agree: an armed run has a configured manager that the pump's own category is enabled on, and an
+        /// unarmed one has the untouched no-op facade. Both branches are reachable, and which one runs is decided
+        /// by the environment rather than by this test, which is why it asserts a consistency rather than a state.
+        /// </summary>
+        [Fact]
+        public void TheProcessFacade_MatchesTheLeverTheHostWasStartedWith()
+        {
+            string? envValue = Environment.GetEnvironmentVariable(VulkanValidation.EnvVarName);
+            ILogger pumpLogger = Log.For<VulkanValidationPump>();
+
+            if (VulkanValidationConsoleLogging.IsArmed(envValue))
             {
-                var sink = new InMemorySink();
-                Assert.True(VulkanValidationConsoleLogging.TryConfigure("strict", sink));
-
-                Log.Get("VulkanInstance").Info("the rung is live");
-                Log.Get("AudioEngine").Warn("unrelated engine chatter");
-                Log.Warn("through the facade's default category");
-
-                var entry = Assert.Single(sink.Entries);
-                Assert.Equal("VulkanInstance", entry.Category);
-                Assert.Equal(LogLevel.Info, entry.Level);
+                Assert.True(Log.IsConfigured);
+                // The level the pump's warnings arrive at, and the one the module initializer's floor admits.
+                Assert.True(pumpLogger.IsEnabled(LogLevel.Warn));
             }
-            finally
+            else
             {
-                RestoreHostState();
+                Assert.False(Log.IsConfigured);
+                // Not merely quiet: an unconfigured facade hands back a logger enabled for nothing, which is what
+                // makes the pump's calls free rather than formatted-then-discarded.
+                Assert.False(pumpLogger.IsEnabled(LogLevel.Error));
             }
         }
 
@@ -198,23 +192,6 @@ namespace KhaozEngine.Tests.Gpu
                 VulkanValidationConsoleLogging.CategoryPrefix,
                 VulkanValidationConsoleLogging.HostCategory,
                 StringComparison.Ordinal);
-        }
-
-        /// <summary>
-        /// Puts the process back the way the module initializer left it.
-        /// <para>
-        /// IT REBUILDS RATHER THAN RE-ADOPTING, which is not a style choice. <c>Log.Configure</c> shuts down
-        /// whatever manager it replaces, and shutdown disposes and CLEARS that manager's sink list, so the
-        /// manager a test captured on entry is already gutted by the time the test wants it back. Putting that
-        /// object back would leave an armed CI leg logging into a manager with no sinks for every test that runs
-        /// after this class, which is the original bug wearing a different hat and just as invisible. Reading the
-        /// live lever again reproduces the host's real configuration, and leaves the facade unconfigured on every
-        /// unarmed run.
-        /// </para>
-        /// </summary>
-        static void RestoreHostState()
-        {
-            if (!VulkanValidationConsoleLogging.ConfigureFromEnvironment()) Log.Shutdown();
         }
     }
 }

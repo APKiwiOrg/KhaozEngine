@@ -632,9 +632,15 @@ carrying is real now rather than asserted.
 `KE_VULKAN_VALIDATION` parses to a rung above `Off`
 through `VulkanValidation.Parse`. Armed means exactly what it means to the code that creates the messenger, so
 a typo that leaves validation off also leaves the log unconfigured rather than implying an instrument that is
-not running. A category filter keeps the log to the `Vulkan`-prefixed categories, which is the pump plus the
-instance and device lines saying whether the layer was found and which rung is live, and not the rest of the
-engine. Every unarmed leg and every developer `dotnet test` is byte-identical to before.
+not running. A category filter keeps the log to the `Vulkan`-prefixed categories, and that admits the WHOLE
+native backend at Info and above rather than the pump alone. The breadth is deliberate: a measured armed `sync`
+run carries the allocator's per-allocation `VulkanMemoryAllocator` INFO lines (the bulk of the log by a wide
+margin), `VulkanGpuDevice` and `VulkanBackendProvider` warnings, `VulkanPresentBoundary` warnings and errors, a
+`VulkanTimeline` warning, and the `VulkanInstance` lines saying whether the layer was found and which rung is
+live. A validation message is only evidence next to what the backend was doing when it fired, and a barrier or
+lifetime complaint has to be read against the allocations and presents around it. What the filter keeps out is
+the rest of the engine. Every unarmed leg and every developer `dotnet test` is byte-identical to before, and an
+unarmed process now allocates nothing at all here: the lever is checked before the sink and the options exist.
 
 **One line per armed run says the sink existed.** The host writes a `VulkanValidationLogHost` line naming the
 lever, the scope and the shape a reader then greps for. Zero validation messages is what a clean sweep looks
@@ -646,6 +652,21 @@ zero-total notice now names it.
 field.** A static `Log.For<T>()` is captured at type initialization, so which logger it holds forever depends
 on whether the type was touched before or after the process configured logging, and the loser of that race is
 the no-op logger. That is the same defect a second time, silently, in a process that HAD configured a sink.
+
+**No test in the assembly reconfigures the facade, and that is why the seam is split the way it is.**
+`Log.Configure` shuts down the manager it replaces, shutdown disposes and CLEARS that manager's sinks, and every
+`ILogger` already handed out keeps pointing at the dead manager, so a reconfigure part-way through a run is not
+restorable: it silences every producer that resolved earlier, for the rest of the process, with no symptom at
+all. Six Vulkan types hold their logger in a `static readonly` field, so a first cut of this fix, whose tests
+configured the facade and restored it afterwards, cost the armed `sync` artifact most of its content: a measured
+A/B put 119 Vulkan-category lines in the run without that test class against 30 with it, every
+`VulkanMemoryAllocator` INFO line and every `VulkanPresentBoundary` WARN and ERROR line after it gone. So the
+seam's decision half (`IsArmed`, `BuildOptions`) is pure and is what the tests drive, through a `LogManager`
+they own and dispose, the apply half is the single `Log.Configure` in the module initializer, and the one test
+that touches the process facade only READS it, asserting that an armed process has a configured manager the
+pump's category is enabled on and an unarmed one has the untouched no-op facade. The same A/B now reads equal
+line counts with and without the class. The assembly's `LoggingSerial` collection went with the reconfigure,
+since nothing in it writes process-global logging state any more.
 
 ## 17.35.0
 

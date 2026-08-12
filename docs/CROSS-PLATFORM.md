@@ -414,7 +414,9 @@ PASSED:
   validator**, and Metal has none at all, which is the one place this matrix is weaker than the Vulkan side:
   a missing read-after-write hazard across encoders has no detector anywhere in this net.
 - **`device-evidence-<leg>`** is what the boot's GPU actually was, taken on BOTH macOS legs after the test step:
-  `system_profiler SPDisplaysDataType`, the runner image version and OS, the engine's own device facts (the
+  `system_profiler SPDisplaysDataType SPHardwareDataType` (the displays view alone is a zero-byte file on a
+  headless runner, and the hardware one plus `sysctl hw.model` is what says which machine in the pool the boot
+  landed on), the runner image version and OS, the engine's own device facts (the
   Metal probe's four reads, the reported capability set and the adapter description, from a filtered `--no-build`
   run of three device-reading rows at detailed verbosity, which is what forwards a PASSING row's output), and the
   last 200 lines of the suite log. It is the [#614](https://github.com/APKiwiOrg/KhaozEngine/issues/614)

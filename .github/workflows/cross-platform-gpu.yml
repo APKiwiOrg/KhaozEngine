@@ -863,8 +863,16 @@ jobs:
             echo "gpu disk caches: ${KE_METAL_MSL_CACHE:-(default location)}"
             sw_vers || true
             uname -mrs || true
+            # THE HOST BEHIND THE VM, which is #614's live hypothesis and the reading system_profiler does not
+            # give here: hw.model and the CPU brand are the closest thing to "which machine in the pool did this
+            # boot land on", and the paravirtual GPU's own name is identical on every one of them.
+            sysctl -n hw.model machdep.cpu.brand_string hw.ncpu hw.memsize 2>/dev/null || true
           } > device-evidence/host.txt 2>&1 || true
-          system_profiler SPDisplaysDataType > device-evidence/system-profiler-displays.txt 2>&1 || true
+          # BOTH DATA TYPES, because the displays one is EMPTY on this runner. Measured on run 31581572414: a
+          # headless VM has no display, so SPDisplaysDataType writes a zero-byte file and the artifact's headline
+          # reading is nothing at all. SPHardwareDataType answers on the same call and is the one that describes
+          # the machine. The displays view is kept for a real Mac, where it is the GPU's own entry.
+          system_profiler SPDisplaysDataType SPHardwareDataType > device-evidence/system-profiler.txt 2>&1 || true
           # THE ENGINE'S OWN VIEW OF THE SAME DEVICE, which system_profiler cannot give: the Metal probe's four
           # reads (name, highest Apple family, Mac2 / Common1, buffer-offset alignment and its selector, sample
           # count 1), the capability set the backend reports, and the adapter description the device answers

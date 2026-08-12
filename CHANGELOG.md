@@ -14,8 +14,51 @@ family is not, the Retina first frame is sized in pixels, the seam's one-open-re
 refusal instead of a paragraph, two of phase 4's guards get the teeth their prose already claimed, CI starts
 gating the three whole-tree convention guards it never ran, the graphics shader pair finally gets the Metal
 binding-order guard the compute one has had since 16.3.0, the native Vulkan device becomes constructible
-without a loader so its own wiring is tested rather than inspected, and the ambient Gui theme stops racing the
-rest of its test assembly.
+without a loader so its own wiring is tested rather than inspected, the scene-depth MRT stops being interpolated
+from the vertex stage so it is right under perspective as well as under the orthographic projections every
+golden uses, and the ambient Gui theme stops racing the rest of its test assembly.
+
+### The scene-depth MRT is written per fragment, so it is correct under perspective (#301)
+
+`ShaderSources.Model.cs` and `ShaderSources.Terrain.cs` wrote the scene-depth MRT (attachment 2) from a varying
+the vertex stage filled with `gl_Position.z / gl_Position.w`. All five writers now write `gl_FragCoord.z` in the
+fragment stage instead: the four model variants (`ModelFrag`, `ModelDissolveFrag`, `SkinnedModelFrag`,
+`SkinnedModelDissolveFrag`) and the terrain `SplatFrag`. No public API changes.
+
+**Why the old value was wrong.** NDC z is a correct number at a vertex and the wrong thing to interpolate.
+Varyings interpolate perspective-correct, which reproduces exactly those functions that are affine in world
+space, and NDC z is a ratio of two such functions rather than one of them. The error is zero at the vertices and
+grows with the w-range the triangle spans. Under an orthographic projection w is constant, the interpolation is
+exact, and the old code was right, which is the whole reason this survived: every committed golden on this path
+is orthographic. The in-source comment even said "linear for ortho".
+
+**What it broke.** The water pass reconstructs the world position of whatever is under each water pixel out of
+this buffer, and `depthBelowSurface` drives the absorption grading, the shore foam and the waterline alpha. Over
+one 2400-unit seabed quad under a perspective camera the reconstructed ground came out tens of metres from where
+it is. The ground-decal, particle-fade and outline passes read the same buffer. Terrain is the worst case in
+practice, since a chunk's triangles are the largest thing the engine draws.
+
+**`gl_FragCoord.z` rather than a pair of clip-space varyings.** It is the depth the hardware itself interpolated
+and wrote to the depth attachment, so the MRT and the depth buffer now hold the same number by construction
+rather than by agreement. It is also the same number on all three backends: System.Numerics projections target a
+[0,1] NDC depth range (`OutlineMath.ExtractCameraDepth` already depends on that), and both cross-compile pins set
+`FixClipSpaceZ = false`, so nothing rewrites clip-space Z on the way to HLSL or MSL.
+
+**The interpolants below the dropped varying all moved down one**, rather than leaving a hole where it was. A
+gap in the emitted pixel-input semantics is the FXC/WARP miscompile that once blew the whole terrain to flat
+white, so the contiguity rule the terrain shaders carry in comments is preserved: `vDissolve` is at location 9
+on the model path, and `SplatFrag`'s live block is 0..4 with the fragment-unused interpolants above it at 5..7.
+The emitted HLSL was checked directly: every one of the five pixel shaders declares `TEXCOORD0..n` with no gap.
+The pinned Direct3D 11 HLSL hash table was re-baked for exactly those five programs and nothing else, which is
+the evidence that a shader source moved and the cross-compile options did not.
+
+**No golden moved.** All 36 golden scenes were compared on Metal and every one still matches its committed
+grid, including `perspective_outline`, the only perspective golden: its outline threshold is a relative
+Laplacian and the correction is well inside it. `SceneDepthPerspectiveGpuTests` is the new regression test, and
+it is an A/B rather than a baked reference. It draws one seabed plane twice, as a single 2400-unit quad and as a
+24x24 grid of 100-unit tiles, with the water tuned so its body colour is a live readout of the reconstructed
+depth. Before the fix the near-field band differed by a mean of 47.24 luminance levels between the two. After,
+it differs by 0.01.
 
 ### The last-chance crash file (`CrashReport`, #607)
 

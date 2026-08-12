@@ -381,7 +381,7 @@ costs the most**, because `metal` is the fleet's cross-backend reference family:
 two implementations measured against the references every other family is read against, so mixing them up
 misattributes a fleet event to a leg or the reverse.
 
-Four artifacts carry no pixels at all and upload on `always()`, because each of them is read off a run that
+Five artifacts carry no pixels at all and upload on `always()`, because each of them is read off a run that
 PASSED:
 
 - **`vulkan-validation-strict-vulkan-native`** and **`vulkan-validation-sync`** are the two validation tiers'
@@ -413,6 +413,18 @@ PASSED:
   `MTL_SHADER_VALIDATION=1` adds in-shader bounds checking on top. **Neither tier is a synchronisation
   validator**, and Metal has none at all, which is the one place this matrix is weaker than the Vulkan side:
   a missing read-after-write hazard across encoders has no detector anywhere in this net.
+- **`device-evidence-<leg>`** is what the boot's GPU actually was, taken on BOTH macOS legs after the test step:
+  `system_profiler SPDisplaysDataType`, the runner image version and OS, the engine's own device facts (the
+  Metal probe's four reads, the reported capability set and the adapter description, from a filtered `--no-build`
+  run of three device-reading rows at detailed verbosity, which is what forwards a PASSING row's output), and the
+  last 200 lines of the suite log. It is the [#614](https://github.com/APKiwiOrg/KhaozEngine/issues/614)
+  instrument: that leg's red runs name a test and say nothing about the machine, so the reading wanted is what
+  DIFFERS between a red boot and a green one. **That is the whole reason it is not `failure()`-gated**, and the
+  incumbent leg carries it for the same reason: a failure-only capture produces a red boot's facts with no
+  baseline anywhere to difference them against. The step is `continue-on-error` with `|| true` on every command,
+  because a diagnostic that can redden the leg it is diagnosing would be a second flake on top of the one being
+  chased.
+
 The fast inner-loop CI (`.github/workflows/ci.yml`: build/test/pack/publish, GPU tests skipped) is separate and
 untouched.
 

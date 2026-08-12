@@ -827,6 +827,67 @@ jobs:
           dotnet test -c Release --no-build --filter "$KE_TEST_FILTER" --blame --results-directory TestResults $KE_TEST_LOGGER_ARGS $KE_TEST_EXTRA_ARGS 2>&1 | tee TestResults/suite-output.log
         shell: bash
 
+      # WHAT THE BOOT'S GPU ACTUALLY WAS (#614), on BOTH macOS legs. That issue's whole difficulty is that a red
+      # run tells you the name of a test and nothing about the machine it failed on: the metal-native leg fails
+      # roughly one varying GPU test per boot on the hosted Apple Paravirtual device, bit-identically wrong when
+      # it is wrong, while the same commit passes on real Metal locally and the incumbent leg passes beside it.
+      # The runner image version is already known to be identical across green and red attempts, so the next
+      # readings worth having are the device's own.
+      #
+      # ALWAYS RATHER THAN failure(), WHICH IS THE POINT OF THE INSTRUMENT. The question is what DIFFERS between
+      # a red boot and a green one, and a failure-only capture has nothing to difference against: it would
+      # produce a red boot's facts and no baseline anywhere. The incumbent leg is green in every occurrence on
+      # the ledger, so it is the control, and its evidence only exists if a green run takes it.
+      #
+      # IT CANNOT RED A GREEN LEG. continue-on-error plus `|| true` on every command, for the reason the Vulkan
+      # diagnostics step above carries it: this is evidence, and a diagnostic that can fail the thing it is
+      # diagnosing would be the second flake this issue does not need.
+      #
+      # AFTER the suite rather than before it, because the facts wanted are the ones from the boot that just ran
+      # the tests, and because the log tail below does not exist until then. Seconds: system_profiler is one
+      # call, and the engine's own facts come from a filtered --no-build run of three device-reading rows.
+      # The macOS pin is the leg table's `os` key, exactly as the lavapipe steps pin ubuntu-latest.
+      - name: Collect device evidence
+        if: always() && matrix.os == 'macos-26'
+        continue-on-error: true
+        env:
+          KE_GPU_TESTS: '1'
+          KE_GRAPHICS_BACKEND: ${{ matrix.backend }}
+          KE_METAL_MSL_CACHE: ${{ env.GPU_DISK_CACHE }}
+        run: |
+          mkdir -p device-evidence
+          {
+            echo "leg: ${{ matrix.backend }} on ${{ matrix.runner }}"
+            echo "run: ${{ github.run_id }} attempt ${{ github.run_attempt }} (${{ github.sha }})"
+            echo "image: ${ImageVersion:-unknown}"
+            echo "gpu disk caches: ${KE_METAL_MSL_CACHE:-(default location)}"
+            sw_vers || true
+            uname -mrs || true
+          } > device-evidence/host.txt 2>&1 || true
+          system_profiler SPDisplaysDataType > device-evidence/system-profiler-displays.txt 2>&1 || true
+          # THE ENGINE'S OWN VIEW OF THE SAME DEVICE, which system_profiler cannot give: the Metal probe's four
+          # reads (name, highest Apple family, Mac2 / Common1, buffer-offset alignment and its selector, sample
+          # count 1), the capability set the backend reports, and the adapter description the device answers
+          # with. Those rows already print all of it through ITestOutputHelper, and detailed verbosity is what
+          # forwards a PASSING test's output at all, so this needs no new code. They run on the incumbent leg
+          # too: the Metal probe reads the system default device rather than the selected backend's.
+          dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build \
+            --filter "FullyQualifiedName~MetalBackendPackageTests.TheFourReads_AnswerOnARealDevice|FullyQualifiedName~GpuCapabilitiesDiagTests.LiveDeviceReportsNameAndSamplerFeatures|FullyQualifiedName~GpuDeviceDiagnosticsGpuTests.AdapterDescription_IsTheDeviceNameTheBackendReports" \
+            --logger "console;verbosity=detailed" > device-evidence/engine-device-facts.txt 2>&1 || true
+          tail -n 200 TestResults/suite-output.log > device-evidence/suite-output.tail.txt 2>&1 || true
+          ls -la device-evidence || true
+        shell: bash
+
+      # Uploaded on always() for the reason the step above runs on always(): a green boot's readings are the
+      # baseline the red boot's are read against, and half of a difference is not one. Kilobytes of text.
+      - name: Upload device evidence
+        if: always() && matrix.os == 'macos-26'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: device-evidence-${{ matrix.backend }}
+          path: device-evidence/
+          if-no-files-found: ignore
+
       # TIER ONE'S EVIDENCE, on always(), and only where a tier was actually ARMED. A `strict` run that passes
       # still logs every warning and performance message the layer emitted, and those are exactly the readings
       # that are never allowed to fail a leg, so a failure-only upload would discard the entire non-fatal half of

@@ -126,7 +126,8 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void TheArmedAnnouncement_NamesTheVariablesTheTierAndTheShape()
         {
-            string line = MetalValidationConsoleLogging.ArmedAnnouncement(MetalValidationMode.Shaders);
+            string line = MetalValidationConsoleLogging.ArmedAnnouncement(
+                Arming(debugLayerArmed: true, shaderValidationArmed: true));
 
             Assert.Contains(MetalValidation.DebugLayerVar, line, StringComparison.Ordinal);
             Assert.Contains(MetalValidation.ShaderValidationVar, line, StringComparison.Ordinal);
@@ -139,6 +140,42 @@ namespace KhaozEngine.Tests.Gpu
                 MetalValidationConsoleLogging.HostCategory,
                 StringComparison.Ordinal);
         }
+
+        /// <summary>
+        /// A SHADER-ONLY RUN'S HEADER DOES NOT NAME <c>MTL_DEBUG_LAYER</c>, which is #628 in the test host rather
+        /// than in the backend. The header named both variables on every armed run because it was handed the
+        /// merged tier, and the merge cannot tell a shader-only launch from a both-armed one. This is the first
+        /// line of the artifact, so it fixed the reader's belief about the launch environment before any engine
+        /// line could correct it.
+        /// </summary>
+        [Fact]
+        public void TheArmedAnnouncement_OnAShaderOnlyRun_NamesOnlyTheShaderVariable()
+        {
+            string line = MetalValidationConsoleLogging.ArmedAnnouncement(
+                Arming(debugLayerArmed: false, shaderValidationArmed: true));
+
+            Assert.Contains(MetalValidation.ShaderValidationVar, line, StringComparison.Ordinal);
+            Assert.DoesNotContain(MetalValidation.DebugLayerVar, line, StringComparison.Ordinal);
+            Assert.Contains("Shaders", line, StringComparison.Ordinal);
+        }
+
+        /// <summary>The debug layer alone reports the lower tier and names only its own variable.</summary>
+        [Fact]
+        public void TheArmedAnnouncement_OnADebugLayerOnlyRun_NamesOnlyTheDebugVariable()
+        {
+            string line = MetalValidationConsoleLogging.ArmedAnnouncement(new MetalValidationArming(
+                MetalValidationMode.On, null, MetalValidationMode.On, true, false, false, false));
+
+            Assert.Contains(MetalValidation.DebugLayerVar, line, StringComparison.Ordinal);
+            Assert.DoesNotContain(MetalValidation.ShaderValidationVar, line, StringComparison.Ordinal);
+            Assert.Contains("On", line, StringComparison.Ordinal);
+        }
+
+        // An arming reading at the Shaders tier, with the two variables driven independently of it: that is the
+        // whole distinction the merged tier loses.
+        static MetalValidationArming Arming(bool debugLayerArmed, bool shaderValidationArmed)
+            => new(MetalValidationMode.Shaders, null, MetalValidationMode.Shaders, debugLayerArmed,
+                shaderValidationArmed, false, false);
 
         /// <summary>
         /// THE ONE READ OF THE PROCESS FACADE on this side, read-only, and it asserts the same consistency the

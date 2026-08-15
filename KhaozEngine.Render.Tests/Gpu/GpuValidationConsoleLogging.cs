@@ -62,9 +62,9 @@ namespace KhaozEngine.Tests.Gpu
             string? vulkanLever = Environment.GetEnvironmentVariable(
                 KhaozEngine.Gpu.Vulkan.Internal.VulkanValidation.EnvVarName);
             bool vulkanArmed = VulkanValidationConsoleLogging.IsArmed(vulkanLever);
-            KhaozEngine.Gpu.Metal.Internal.MetalValidationMode metalArmed =
-                MetalValidationConsoleLogging.ArmedTier();
-            bool metalIsArmed = MetalValidationConsoleLogging.IsArmed(metalArmed);
+            KhaozEngine.Gpu.Metal.Internal.MetalValidationArming metalArming =
+                MetalValidationConsoleLogging.ArmedReading();
+            bool metalIsArmed = MetalValidationConsoleLogging.IsArmed(metalArming.Armed);
 
             // Both levers are read before anything is constructed, so an unarmed process leaves this file having
             // done nothing but a handful of environment reads.
@@ -90,7 +90,7 @@ namespace KhaozEngine.Tests.Gpu
             if (metalIsArmed)
             {
                 Log.Get(MetalValidationConsoleLogging.HostCategory)
-                    .Info(MetalValidationConsoleLogging.ArmedAnnouncement(metalArmed));
+                    .Info(MetalValidationConsoleLogging.ArmedAnnouncement(metalArming));
             }
         }
 

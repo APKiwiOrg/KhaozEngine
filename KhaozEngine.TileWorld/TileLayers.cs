@@ -29,8 +29,9 @@ public enum TileOverlayShape : byte
 }
 
 /// <summary>The four dense layers of one plane of one region. Each layer is null until first written and
-/// nulled again by <see cref="Trim"/> when it is entirely default, so a region file carries only what was
-/// authored. Index with <see cref="Index"/> (row-major, z then x).</summary>
+/// nulled again by <see cref="Trim(int)"/> when it is entirely default, so a region file carries only what was
+/// authored. <see cref="Heights"/> above plane 0 is the one exception, see <see cref="Trim(int)"/>. Index with
+/// <see cref="Index"/> (row-major, z then x).</summary>
 public sealed class TilePlaneData
 {
     /// <summary>Height of each tile's SW corner in centimetres. Null on plane 0 means 0 everywhere, null on a
@@ -52,10 +53,13 @@ public sealed class TilePlaneData
 
     public static int Index(int lx, int lz) => lz * TileRegion.Size + lx;
 
-    /// <summary>Nulls any layer that is entirely default so the file form stays minimal.</summary>
-    public void Trim()
+    /// <summary>Nulls any layer that is entirely default so the file form stays minimal. Pass the index of the
+    /// plane this data belongs to: <see cref="Heights"/> is only dropped on plane 0, because above plane 0 a
+    /// null height layer means "derive from plane 0 plus the plane lift", which is a DIFFERENT terrain from an
+    /// authored flat zero, and dropping it would silently lift the plane on the next load.</summary>
+    public void Trim(int planeIndex)
     {
-        if (Heights is not null && AllZero(Heights)) Heights = null;
+        if (planeIndex == 0 && Heights is not null && AllZero(Heights)) Heights = null;
         if (Underlay is not null && AllZero(Underlay)) Underlay = null;
         if (Overlay is not null && AllZero(Overlay)) Overlay = null;
         if (OverlayShape is not null && AllZero(OverlayShape)) OverlayShape = null;

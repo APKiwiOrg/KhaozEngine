@@ -145,12 +145,14 @@ public sealed partial class TileWorldDocument
                 if (_regions.TryGetValue(new RegionCoord(rx, rz), out TileRegion? r)) yield return r;
     }
 
+    /// <summary>Places (or re-homes) the uniquely named marker. Validates the destination BEFORE dropping the
+    /// old one, so a throw leaves the existing marker where it was rather than deleting it.</summary>
     public TileMarker SetMarker(string name, int x, int z, int plane, IEnumerable<string>? tags = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         RequirePlane(plane);
-        RemoveMarker(name);
         TileRegion region = RequireRegion(x, z);
+        RemoveMarker(name);
         var m = new TileMarker { Name = name, X = x, Z = z, Plane = plane, Tags = tags?.ToList() };
         region.Markers.Add(m);
         region.Dirty = true;

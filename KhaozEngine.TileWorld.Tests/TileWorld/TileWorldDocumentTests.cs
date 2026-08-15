@@ -65,9 +65,22 @@ public class TileWorldDocumentTests
         doc.SetUnderlay(1, 1, 0, 0);
         TilePlaneData p = doc.GetRegion(new RegionCoord(0, 0))!.Plane(0);
         Assert.NotNull(p.Underlay);
-        p.Trim();
+        p.Trim(0);
         Assert.Null(p.Underlay);
         Assert.True(p.IsEmpty);
+    }
+
+    [Fact]
+    public void Trim_keeps_all_zero_heights_on_a_higher_plane()
+    {
+        var doc = new TileWorldDocument { Id = "w", DisplayName = "W" };
+        TileRegion r = doc.GetOrCreateRegion(new RegionCoord(0, 0));
+        r.Plane(1).HeightsOrAlloc();
+        r.Plane(1).Trim(1);
+        Assert.NotNull(r.Plane(1).Heights);
+        r.Plane(0).HeightsOrAlloc();
+        r.Plane(0).Trim(0);
+        Assert.Null(r.Plane(0).Heights);
     }
 
     [Fact]
@@ -127,6 +140,18 @@ public class TileWorldDocumentTests
         Assert.Same(m, doc.FindMarker("spawn"));
         Assert.True(doc.RemoveMarker("spawn"));
         Assert.Empty(doc.AllMarkers());
+    }
+
+    [Fact]
+    public void SetMarker_to_a_missing_region_throws_and_keeps_the_old_marker()
+    {
+        var doc = new TileWorldDocument { Id = "w", DisplayName = "W" };
+        doc.GetOrCreateRegion(new RegionCoord(0, 0));
+        doc.SetMarker("spawn", 5, 5, 0);
+        Assert.Throws<TileWorldException>(() => doc.SetMarker("spawn", 500, 500, 0));
+        TileMarker? m = doc.FindMarker("spawn");
+        Assert.NotNull(m);
+        Assert.Equal(5, m!.X);
     }
 
     [Fact]

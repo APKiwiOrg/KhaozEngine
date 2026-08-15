@@ -130,6 +130,49 @@ public class TilePrefabTests
     }
 
     [Fact]
+    public void Place_at_the_edge_of_the_authored_world_skips_the_far_corners_and_still_stamps_the_tiles()
+    {
+        TilePrefab p = TilePrefabs.Extract(HouseWorld(), Cat, new TileRect(10, 10, 3, 2), 0, 1, name: "house");
+        // One region only, so the stamp's east corner column at x = 64 falls in a region that does not exist.
+        TileWorldDocument doc = TileWorldTestData.FlatWorld(4, new RegionCoord(0, 0));
+        TilePrefabs.Place(doc, p, 61, 10, 0, 0);
+        Assert.Equal(5, doc.GetOverlay(61, 10, 0));
+        Assert.Equal(5, doc.GetOverlay(63, 11, 0));
+        Assert.Equal(TileOverlayShape.DiagonalHalf, doc.GetOverlayShape(61, 10, 0));
+        Assert.Equal(TileSettings.Indoors, doc.GetSettings(62, 11, 0));
+        // The dropped corner is edge-extended from the last authored column, which is the value it would have
+        // read whatever the stamp wrote there.
+        Assert.Equal(doc.CornerHeightCm(63, 10, 0), doc.CornerHeightCm(64, 10, 0));
+        Assert.Equal(0, doc.CornerHeightCm(61, 10, 0));
+    }
+
+    [Fact]
+    public void Place_rejects_a_prefab_whose_object_sits_on_a_plane_it_does_not_have()
+    {
+        TileWorldDocument doc = HouseWorld();
+        TilePrefab p = TilePrefabs.Extract(doc, Cat, new TileRect(10, 10, 3, 2), 0, 1);
+        p.Objects[0].Plane = -1;
+        TileWorldException ex = Assert.Throws<TileWorldException>(() => TilePrefabs.Place(doc, p, 40, 40, 0, 0));
+        Assert.Contains("plane -1", ex.Message);
+        // Nothing was written: the layers go down before the first object is placed, so a plane caught late
+        // would have torn the stamp.
+        Assert.Equal(0, doc.GetOverlay(40, 40, 0));
+        Assert.Equal(TileOverlayShape.Full, doc.GetOverlayShape(40, 40, 0));
+    }
+
+    [Fact]
+    public void Loading_a_prefab_with_a_marker_on_a_plane_it_does_not_have_throws()
+    {
+        using var tmp = new TempDir();
+        TilePrefab p = TilePrefabs.Extract(HouseWorld(), Cat, new TileRect(10, 10, 3, 2), 0, 1);
+        p.Markers[0].Plane = 4;
+        TilePrefabFile.Save(p, tmp.Sub("bad-plane.json"));
+        TileWorldException ex = Assert.Throws<TileWorldException>(() => TilePrefabFile.Load(tmp.Sub("bad-plane.json")));
+        Assert.Contains("bad-plane.json", ex.Message);
+        Assert.Contains("plane 4", ex.Message);
+    }
+
+    [Fact]
     public void Prefab_file_round_trips()
     {
         using var tmp = new TempDir();

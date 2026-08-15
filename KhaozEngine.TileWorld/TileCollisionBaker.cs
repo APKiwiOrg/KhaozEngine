@@ -25,7 +25,8 @@ public static class TileCollisionBaker
     /// <summary>Recomputes the dirty rect (expanded by one tile for mirrored edges) on one plane. The caller's
     /// rect must cover the FULL footprint of anything it removed, taken with <c>TileFootprint.Of</c> BEFORE the
     /// removal, because a rebake can only re-derive the tiles it clears and a deleted object is no longer there
-    /// to be measured.</summary>
+    /// to be measured. A region the rect reaches into that the DOCUMENT no longer has loses its storage here, so
+    /// it goes back to reading blocked instead of becoming walkable void.</summary>
     public static void Rebake(TileCollisionMap map, TileWorldDocument doc, TileWorldCatalogs catalogs, TileRect dirty, int plane)
     {
         ArgumentNullException.ThrowIfNull(map);
@@ -33,6 +34,18 @@ public static class TileCollisionBaker
         ArgumentNullException.ThrowIfNull(catalogs);
         if (dirty.IsEmpty) return;
         TileRect clear = dirty.Expand(1);
+        // A region DELETED since the bake still has its storage, and clearing it would leave every one of its
+        // tiles reading walkable: the ground loop below skips a tile whose region the document no longer has,
+        // so nothing would put the Blocked bits back. Dropping the storage restores the map's own rule that an
+        // absent region reads blocked. The span is walked over coordinates rather than through RegionsTouching,
+        // because that only yields regions the document still has, and this is looking for the ones it does not.
+        RegionCoord lo = RegionCoord.Of(clear.X, clear.Z), hi = RegionCoord.Of(clear.X1 - 1, clear.Z1 - 1);
+        for (int rz = lo.Rz; rz <= hi.Rz; rz++)
+            for (int rx = lo.Rx; rx <= hi.Rx; rx++)
+            {
+                var c = new RegionCoord(rx, rz);
+                if (map.HasRegion(c) && doc.GetRegion(c) is null) map.RemoveRegion(c);
+            }
         // A region created since the bake has no storage yet, and the map drops writes to a region it does not
         // hold, so the document's regions get their storage before anything writes into them. This rect and this
         // plane are the part being RE-derived, not the part being made real, which is why a region that gains

@@ -184,6 +184,22 @@ public class TileCollisionBakerTests
     }
 
     [Fact]
+    public void Rebake_drops_map_storage_for_a_region_the_document_no_longer_has()
+    {
+        TileWorldDocument doc = TileWorldTestData.FlatWorld(4, new RegionCoord(0, 0), new RegionCoord(1, 0));
+        TileCollisionMap map = TileCollisionBaker.Bake(doc, Cat);
+        Assert.Equal(TileCollisionFlags.None, map.Get(70, 5, 0));
+        doc.RemoveRegion(new RegionCoord(1, 0));
+        // A rect straddling the boundary, so the rebake reaches into the region that is gone. Clearing its
+        // storage without dropping it would leave all 4096 of its tiles reading walkable.
+        TileCollisionBaker.Rebake(map, doc, Cat, new TileRect(62, 5, 4, 1), 0);
+        Assert.False(map.HasRegion(new RegionCoord(1, 0)));
+        Assert.Equal(TileCollisionFlags.Blocked, map.Get(70, 5, 0));
+        Assert.Equal(TileCollisionFlags.Blocked, map.Get(64, 5, 0));
+        Assert.Equal(TileCollisionFlags.None, map.Get(63, 5, 0));
+    }
+
+    [Fact]
     public void Rebake_picks_up_a_ground_change_and_a_new_wall_at_the_rect_edge()
     {
         TileWorldDocument doc = TileWorldTestData.FlatWorld();

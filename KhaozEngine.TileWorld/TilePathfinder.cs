@@ -39,14 +39,23 @@ public static class TilePathfinder
     /// <summary>The default half width of the search window, in tiles.</summary>
     public const int DefaultMaxRadius = 64;
 
+    /// <summary>The largest half width <see cref="FindPath"/> accepts. The window's scratch arrays are
+    /// <c>(2r + 1)^2</c> entries EACH, so this cap is already about 335 MB of allocation on one call. A radius
+    /// above it is far likelier to be a unit mix-up than a search anyone meant to run.</summary>
+    public const int MaxSearchRadius = 4096;
+
     /// <summary>Walks from <paramref name="start"/> toward <paramref name="goal"/> on <paramref name="plane"/>,
     /// which overrides the planes carried on both coords. A start standing on a Blocked tile is treated like any
     /// other start, because <see cref="TileCollision.CanStep"/> allows egress from a tile that was blocked under
-    /// the agent, so the search proceeds normally rather than refusing to move.</summary>
+    /// the agent, so the search proceeds normally rather than refusing to move. <paramref name="maxRadius"/>
+    /// must be 1..<see cref="MaxSearchRadius"/>.</summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxRadius"/> is below 1 or above
+    /// <see cref="MaxSearchRadius"/>.</exception>
     public static TilePath FindPath(TileCollisionMap map, int plane, TileCoord start, TileCoord goal, int agentSize = 1, int maxRadius = DefaultMaxRadius)
     {
         ArgumentNullException.ThrowIfNull(map);
-        if (maxRadius < 1) throw new ArgumentOutOfRangeException(nameof(maxRadius));
+        if (maxRadius < 1 || maxRadius > MaxSearchRadius)
+            throw new ArgumentOutOfRangeException(nameof(maxRadius), maxRadius, $"maxRadius must be 1..{MaxSearchRadius}");
         if (start.X == goal.X && start.Z == goal.Z) return TilePath.Empty(new TileCoord(start.X, start.Z, plane));
 
         int side = 2 * maxRadius + 1;
@@ -61,12 +70,17 @@ public static class TilePathfinder
         queue.Enqueue(startIndex);
         int goalIndex = -1;
 
+        // Indexed, not foreach: the neighbour loop runs once per dequeued tile, and IReadOnlyList's enumerator
+        // is a heap allocation each time round. The order is still exactly TileDirections.All's, which the
+        // tie-breaking depends on.
+        IReadOnlyList<TileDirection> dirs = TileDirections.All;
         while (queue.Count > 0 && goalIndex < 0)
         {
             int cur = queue.Dequeue();
             int cx = originX + cur % side, cz = originZ + cur / side;
-            foreach (TileDirection d in TileDirections.All)
+            for (int i = 0; i < dirs.Count; i++)
             {
+                TileDirection d = dirs[i];
                 (int dx, int dz) = TileDirections.Delta(d);
                 int nx = cx + dx, nz = cz + dz;
                 int wx = nx - originX, wz = nz - originZ;

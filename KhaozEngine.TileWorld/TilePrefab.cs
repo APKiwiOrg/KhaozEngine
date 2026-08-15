@@ -161,8 +161,10 @@ public static class TilePrefabs
     }
 
     /// <summary>The prefab turned <paramref name="rotation"/> quarter turns clockwise (north up). The rotated
-    /// prefab is re-based so its new SW corner on plane 0 is height 0, the same datum Extract uses. The input is
-    /// not modified.</summary>
+    /// prefab is re-based so its new SW corner on plane 0 is height 0, the same datum Extract uses, and then
+    /// re-trimmed, so a layer the re-base or the overlay-rotation bump drove to all-default comes out null and
+    /// the result is shaped exactly like a fresh Extract of the same content. The input is not
+    /// modified.</summary>
     public static TilePrefab Rotate(TilePrefab prefab, int rotation)
     {
         ArgumentNullException.ThrowIfNull(prefab);
@@ -179,9 +181,13 @@ public static class TilePrefabs
 
     /// <summary>Stamps the prefab with its SW tile at (x, z) on <paramref name="plane"/> (prefab plane i lands
     /// on plane + i, clipped to the world's plane count). The prefab's SW corner is its height datum, so it
-    /// lands on the existing ground at (x, z) whatever the rotation. Every target tile's region must exist.
-    /// Objects get fresh ids, markers replace same-name markers. Returns the touched rect (one tile wider to the
-    /// west and south and one row/column further north and east, for the corner writes).</summary>
+    /// lands on the existing ground at (x, z) whatever the rotation. Every region of the TILE rect is required
+    /// before the first write, so a bad stamp cannot tear half way through. The far-edge CORNER writes at x + w
+    /// and z + h are the exception: their region may not exist at the edge of the authored world, and those
+    /// writes are SKIPPED rather than refusing the stamp, because the corner is edge-extended from the tile rect
+    /// there and is not readable as its own value anyway. Objects get fresh ids, markers replace same-name
+    /// markers. Returns the touched rect (one tile wider to the west and south and one row/column further north
+    /// and east, for the corner writes).</summary>
     public static TileRect Place(TileWorldDocument doc, TilePrefab prefab, int x, int z, int plane, int rotation)
     {
         ArgumentNullException.ThrowIfNull(doc);
@@ -200,6 +206,9 @@ public static class TilePrefabs
             int tp = plane + pi;
             TilePrefabPlane? src = p.Planes[pi];
             if (src is null) continue;
+            // Try, not Require: the corner row at x + w and the column at z + h can fall in a region the world
+            // does not have, and dropping those writes is deliberate (see the summary). The tile rect's own
+            // regions were required above, so nothing INSIDE the stamp can be dropped here.
             if (src.HeightsRelative is not null)
                 for (int cz = 0; cz <= h; cz++)
                     for (int cx = 0; cx <= w; cx++)
@@ -242,6 +251,15 @@ public static class TilePrefabs
             RequireLength(p, i, "overlayRotation", plane.OverlayRotation?.Length, tiles);
             RequireLength(p, i, "settings", plane.Settings?.Length, tiles);
         }
+        // Planes are checked here too, not left to AddObject. A stamp writes every layer before it places a
+        // single object, so an out-of-range plane caught there would fault a prefab that had already half
+        // landed, which is the tear the whole pre-flight exists to prevent.
+        foreach (TilePrefabObject o in p.Objects)
+            if ((uint)o.Plane >= (uint)p.PlaneCount)
+                throw new TileWorldException($"prefab '{p.Name}': object '{o.ArchetypeId}' at ({o.X}, {o.Z}) is on plane {o.Plane}, the prefab has {p.PlaneCount}");
+        foreach (TilePrefabMarker m in p.Markers)
+            if ((uint)m.Plane >= (uint)p.PlaneCount)
+                throw new TileWorldException($"prefab '{p.Name}': marker '{m.Name}' at ({m.X}, {m.Z}) is on plane {m.Plane}, the prefab has {p.PlaneCount}");
     }
 
     static void RequireLength(TilePrefab p, int plane, string layer, int? actual, int expected)

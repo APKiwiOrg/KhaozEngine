@@ -6,8 +6,11 @@ namespace KhaozEngine.TileWorld;
 public static class TileCollision
 {
     /// <summary>Whether the whole tile is impassable, which needs no edge test.</summary>
-    public static bool IsBlocked(TileCollisionMap map, int x, int z, int plane) =>
-        (map.Get(x, z, plane) & TileCollisionFlags.Blocked) != 0;
+    public static bool IsBlocked(TileCollisionMap map, int x, int z, int plane)
+    {
+        ArgumentNullException.ThrowIfNull(map);
+        return (map.Get(x, z, plane) & TileCollisionFlags.Blocked) != 0;
+    }
 
     /// <summary>Whether an agent anchored at (x, z) with an NxN footprint may take one step in <paramref name="dir"/>.
     /// Cardinal: no wall on the leaving edge, target not blocked, no wall on the entering edge. Diagonal: the

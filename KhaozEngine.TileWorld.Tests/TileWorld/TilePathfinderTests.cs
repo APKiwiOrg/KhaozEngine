@@ -1,4 +1,4 @@
-using System.Linq;
+using System;
 using KhaozEngine.TileWorld;
 using Xunit;
 
@@ -75,6 +75,24 @@ public class TilePathfinderTests
         TilePath bounded = Find(map, 5, 5, 40, 40, radius: 8);
         Assert.False(bounded.Reached);
         Assert.Equal(new TileCoord(13, 13, 0), bounded.End);
+    }
+
+    [Fact]
+    public void A_start_on_a_blocked_tile_still_walks_out()
+    {
+        // The tree blocks the tile the agent stands on. CanStep allows egress, so the search has to proceed
+        // normally rather than refusing to move off a tile something was dropped on top of.
+        TilePath p = Find(Map(objects: new[] { ("tree", 5, 5, 0) }), 5, 5, 8, 8);
+        Assert.True(p.Reached);
+        Assert.Equal(new TileCoord(8, 8, 0), p.End);
+    }
+
+    [Fact]
+    public void A_radius_outside_the_accepted_range_is_refused()
+    {
+        TileCollisionMap map = Map();
+        Assert.Throws<ArgumentOutOfRangeException>(() => Find(map, 5, 5, 8, 8, radius: 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => Find(map, 5, 5, 8, 8, radius: TilePathfinder.MaxSearchRadius + 1));
     }
 
     [Fact]

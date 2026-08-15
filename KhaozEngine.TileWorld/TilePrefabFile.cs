@@ -69,12 +69,23 @@ public static class TilePrefabFile
             throw new TileWorldException($"{path}: prefab dimensions are inconsistent");
         int tiles = dto.Width * dto.Height, corners = (dto.Width + 1) * (dto.Height + 1);
         var prefab = new TilePrefab { Name = dto.Name, Width = dto.Width, Height = dto.Height, PlaneCount = dto.PlaneCount, Objects = dto.Objects ?? new(), Markers = dto.Markers ?? new() };
+        // The plane is checked alongside the footprint, and for the same reason: a hand-written "plane": -1 is
+        // as far outside the prefab as a hand-written x of -1, and catching it here names the FILE rather than
+        // letting a stamp discover it after it has already written the layers.
         foreach (TilePrefabObject o in prefab.Objects)
+        {
             if (!InFootprint(prefab, o.X, o.Z))
                 throw new TileWorldException($"{path}: object '{o.ArchetypeId}' at ({o.X}, {o.Z}) is outside the {prefab.Width}x{prefab.Height} prefab");
+            if ((uint)o.Plane >= (uint)prefab.PlaneCount)
+                throw new TileWorldException($"{path}: object '{o.ArchetypeId}' at ({o.X}, {o.Z}) is on plane {o.Plane}, the prefab has {prefab.PlaneCount}");
+        }
         foreach (TilePrefabMarker m in prefab.Markers)
+        {
             if (!InFootprint(prefab, m.X, m.Z))
                 throw new TileWorldException($"{path}: marker '{m.Name}' at ({m.X}, {m.Z}) is outside the {prefab.Width}x{prefab.Height} prefab");
+            if ((uint)m.Plane >= (uint)prefab.PlaneCount)
+                throw new TileWorldException($"{path}: marker '{m.Name}' at ({m.X}, {m.Z}) is on plane {m.Plane}, the prefab has {prefab.PlaneCount}");
+        }
         for (int i = 0; i < planes.Count; i++)
         {
             PlaneDto? p = planes[i];

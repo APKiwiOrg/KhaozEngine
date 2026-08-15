@@ -98,14 +98,16 @@ sets the edge bit on both tiles and a movement check never has to look at object
 
 `TileCollisionBaker.Bake(doc, catalogs)` builds the whole map. `Rebake(map, doc, catalogs, dirtyRect, plane)`
 re-derives one rect, expanded by a tile for mirrored edges, ensuring and full-ground-baking any document region
-the cleared rect touches that has no storage yet, and gathering objects out to a margin taken from the
-catalogs' largest footprint. THE CALLER MUST PASS A RECT COVERING THE FULL FOOTPRINT of anything it removed,
+the cleared rect touches that has no storage yet, dropping the storage of any it touches that the DOCUMENT no
+longer has (so a deleted region reads blocked again rather than turning into walkable void), and gathering
+objects out to a margin taken from the catalogs' largest footprint. THE CALLER MUST PASS A RECT COVERING THE
+FULL FOOTPRINT of anything it removed,
 measured with `TileFootprint.Of` BEFORE the removal. `EdgeFlag` and `WallFacing` are the mapping helpers.
 
 `TileCollisionMap` is the storage, keyed by region and plane, never persisted. Reads outside storage answer
-`Blocked`, so an unloaded region is a wall rather than a void, and `Set`/`Or` outside storage are NO-OPS.
+`Blocked`, so an unloaded region is a wall rather than a void, and an `Or` outside storage is a NO-OP.
 `EnsureRegion` is the only allocator, so a footprint or a mirrored edge spilling into a region the document does
-not have is dropped and that region stays blocked. `Get`, `Clear`, `HasRegion`, `RemoveRegion`, `Regions`.
+not have is dropped and that region stays blocked. `Get`, `Or`, `Clear`, `HasRegion`, `RemoveRegion`, `Regions`.
 
 `TileCollision.IsBlocked` and `CanStep(map, x, z, plane, dir, agentSize = 1)` are the one movement primitive the
 pathfinder and a tick mover share. A cardinal step needs no wall on the leaving edge, an unblocked target and no
@@ -117,7 +119,8 @@ allows EGRESS from a `Blocked` tile, so an agent standing where the ground was b
 
 `TilePathfinder.FindPath(map, plane, start, goal, agentSize = 1, maxRadius = 64)` is a deterministic BFS over
 the collision map through `CanStep` in the fixed direction order, bounded to a square window around the start,
-so both heads replay identical paths. `TilePath` carries `Tiles` (the steps AFTER the start), `Reached` and
+so both heads replay identical paths. `maxRadius` must be 1..`MaxSearchRadius` (4096), the window's two scratch
+arrays being `(2r + 1)^2` entries each. `TilePath` carries `Tiles` (the steps AFTER the start), `Reached` and
 `End`. An unreachable goal yields the walk to the nearest reachable tile, nearest by SQUARED EUCLIDEAN distance
 to the goal, then by BFS distance, then by scan order, and a start on a `Blocked` tile behaves like any other.
 **Branch on `Reached`, never on `Tiles.Count`**: a partial walk and a reached one both carry steps.
@@ -139,10 +142,14 @@ corner, objects and markers in prefab-relative coordinates) that can be stamped 
 - `Rotate(prefab, rotation)` turns a copy, bumping overlay rotations with the tiles and re-basing every plane's
   heights by the shift that puts the rotated SW corner on plane 0 at height 0, so the inter-plane offsets
   survive, then re-trimming, so a rotated prefab is shaped exactly like a fresh `Extract` of the same content.
-- `Place(doc, prefab, x, z, plane, rotation)` validates the prefab's shape, rotates, then requires every target
-  region BEFORE the first write, so a bad stamp cannot tear half way through. The prefab's SW corner is the
-  height datum, so it lands on the existing ground at (x, z) whatever the rotation. Objects get fresh ids,
-  markers replace same-name markers, and the returned rect is the touched area for a collision rebake.
+- `Place(doc, prefab, x, z, plane, rotation)` validates the prefab's shape (sizes, layer lengths, and every
+  object's and marker's plane), rotates, then requires every region of the TILE RECT BEFORE the first write, so
+  a bad stamp cannot tear half way through. The far-edge CORNER writes at `x + w` and `z + h` are the one
+  exception: at the edge of the authored world their region may not exist, and those writes are SKIPPED rather
+  than refusing the stamp, because a corner out there is edge-extended from the tile rect and is not readable
+  as its own value anyway. The prefab's SW corner is the height datum, so it lands on the existing ground at
+  (x, z) whatever the rotation. Objects get fresh ids, markers replace same-name markers, and the returned rect
+  is the touched area for a collision rebake.
 
 A stamp is ADDITIVE per layer: a null layer is skipped rather than zeroed, so pre-existing overlays or settings
 under the stamp survive it. Clear the rect first if you want a replace.

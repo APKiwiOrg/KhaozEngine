@@ -39,18 +39,38 @@ public static class TileWorldFile
     public static bool Exists(string directory) => File.Exists(ManifestPath(directory));
 
     /// <summary>Writes dirty regions (all when <paramref name="force"/>), removes files of regions the document
-    /// no longer has, then the manifest. Clears <see cref="TileRegion.Dirty"/> on what it wrote.</summary>
+    /// no longer has, then the manifest. Clears <see cref="TileRegion.Dirty"/> on what it wrote. Before writing
+    /// anything it refuses a document a load would reject: a region whose plane count disagrees with the
+    /// document's, or an object or marker anchored outside its own region or on a plane the world does not
+    /// have.</summary>
     public static void Save(TileWorldDocument doc, string directory, bool force = false)
     {
         ArgumentNullException.ThrowIfNull(doc);
         ArgumentException.ThrowIfNullOrWhiteSpace(directory);
-        // Every region is checked against the document's plane count BEFORE the first byte is written. A
-        // document whose PlaneCount was changed after its regions were built would otherwise save a world
-        // that every load refuses, and half of it would already be on disk by the time that showed up.
+        // Everything a load will refuse is checked BEFORE the first byte is written: the region's plane count,
+        // and every object's and marker's anchor and plane. A document whose PlaneCount was changed after its
+        // regions were built, or one whose object was moved out of its own region by a bare X assignment,
+        // would otherwise save a world that every load refuses, and half of it would already be on disk by the
+        // time that showed up. These are exactly the checks TileRegionFile.Parse makes on the way back in.
         foreach (TileRegion region in doc.Regions.Values)
         {
             if (region.Planes.Length != doc.PlaneCount)
                 throw new TileWorldException($"region {region.Coord}: has {region.Planes.Length} planes, the document has {doc.PlaneCount}, refusing to save an inconsistent world");
+            TileRect rect = region.Coord.Rect;
+            foreach (TileObject o in region.Objects)
+            {
+                if (!rect.Contains(o.X, o.Z))
+                    throw new TileWorldException($"region {region.Coord}: object {o.Id} '{o.ArchetypeId}' is anchored at ({o.X}, {o.Z}), outside its own region, refusing to save a world no load would accept");
+                if ((uint)o.Plane >= (uint)doc.PlaneCount)
+                    throw new TileWorldException($"region {region.Coord}: object {o.Id} '{o.ArchetypeId}' is on plane {o.Plane}, the document has {doc.PlaneCount}, refusing to save a world no load would accept");
+            }
+            foreach (TileMarker m in region.Markers)
+            {
+                if (!rect.Contains(m.X, m.Z))
+                    throw new TileWorldException($"region {region.Coord}: marker '{m.Name}' is at ({m.X}, {m.Z}), outside its own region, refusing to save a world no load would accept");
+                if ((uint)m.Plane >= (uint)doc.PlaneCount)
+                    throw new TileWorldException($"region {region.Coord}: marker '{m.Name}' is on plane {m.Plane}, the document has {doc.PlaneCount}, refusing to save a world no load would accept");
+            }
         }
         string regionsDir = Path.Combine(directory, RegionsDirectoryName);
         Directory.CreateDirectory(regionsDir);

@@ -275,9 +275,11 @@ is the one primitive the tick movement (sub-project 3) and the pathfinder share.
 `TilePathfinder.FindPath(map, plane, start, goal, agentSize = 1, maxRadius = 64)`: integer BFS over the
 collision map (8-connected through `CanStep`), a fixed neighbour order (W, E, S, N, SW, SE, NW, NE, the OSRS
 order, so both heads replay identical paths for identical inputs), search bounded to a `(2 * maxRadius)`
-square around the start. OSRS's partial-path rule: an unreachable goal yields the path to the nearest
-reachable tile, nearest by SQUARED EUCLIDEAN distance to the goal (OSRS's own tie-break, and Chebyshev would
-tie a whole column at distance N), then by path length, then by scan order. Result
+square around the start, with `maxRadius` itself bounded to 1..`MaxSearchRadius` (4096) because the window's
+two scratch arrays are `(2r + 1)^2` entries each and a radius past that is a caller passing the wrong unit
+rather than a search anyone wants to run. OSRS's partial-path rule: an unreachable goal yields the path to the
+nearest reachable tile, nearest by SQUARED EUCLIDEAN distance to the goal (OSRS's own tie-break, and Chebyshev
+would tie a whole column at distance N), then by path length, then by scan order. Result
 `TilePath { Tiles, Reached, End }`, and callers branch on `Reached`, never on `Tiles.Count`, because a partial
 walk carries steps too. A start standing on a `Blocked` tile is treated like any other start, since `CanStep`
 allows egress from a tile that was blocked under the agent. Stairs and ladders are gameplay teleports across
@@ -306,10 +308,15 @@ come out relative to that one corner on `planeFrom`, so the offsets between plan
 `Rotate` re-bases after the turn, because a quarter turn moves the SW corner to a different physical corner and
 would otherwise leave the heights relative to a corner that is no longer the prefab's own (0, 0). It then
 re-trims, so a rotated prefab is shaped exactly like a fresh `Extract` of the same content. `Place` therefore
-lands the stamp on the existing ground at (x, z) whatever the rotation, and it validates the prefab's shape,
-rotates, and requires every target region BEFORE the first write, so a bad stamp cannot tear half way through.
-A stamp is ADDITIVE per layer: a null layer is skipped rather than zeroed, so pre-existing overlays or settings
-under the stamp survive it, and a caller wanting a replace clears the rect first.
+lands the stamp on the existing ground at (x, z) whatever the rotation, and it validates the prefab's shape
+(sizes, layer lengths, and every object's and marker's plane), rotates, and requires every region of the TILE
+RECT BEFORE the first write, so a bad stamp cannot tear half way through. The far-edge CORNER writes at `x + w`
+and `z + h` are the deliberate exception. Their region may not exist at the edge of the authored world, and
+refusing a stamp there is worse than dropping them: a corner outside the tile rect's regions is edge-extended
+from those regions on the way back out, so it never carries a value of its own to lose. Those writes are
+therefore SKIPPED, which is why `Place` writes corners through `TrySetCornerHeightCm` rather than the throwing
+form. A stamp is ADDITIVE per layer: a null layer is skipped rather than zeroed, so pre-existing overlays or
+settings under the stamp survive it, and a caller wanting a replace clears the rect first.
 
 ## 7. Renderer (`KhaozEngine.TileWorld.Render3D`)
 

@@ -214,7 +214,10 @@ exact bytes has landed, so a throw anywhere earlier cannot leave a clean region 
 
 **Prefabs stamp additively off one datum.** The extracted rect's SW corner is the height datum on every plane,
 `Rotate` re-bases after a turn so the rotated SW corner is height 0 again and then re-trims, and `Place`
-validates the prefab's shape, rotates, and requires every target region before the first write. A stamp skips a
+validates the prefab's shape (sizes, layer lengths, and every object's and marker's plane), rotates, and
+requires every region of the tile rect before the first write. The far-edge corner writes at `x + w` and
+`z + h` are the exception, skipped rather than refusing a stamp at the edge of the authored world, because a
+corner out there is edge-extended from the tile rect and carries no value of its own. A stamp skips a
 null layer rather than zeroing it, so pre-existing overlays or settings under it survive, and a caller wanting a
 replace clears the rect first.
 

@@ -246,6 +246,35 @@ public class TileWorldFileTests
     }
 
     [Fact]
+    public void Save_refuses_an_object_or_marker_a_load_would_reject_before_writing_anything()
+    {
+        using var tmp = new TempDir();
+        string dir = tmp.Sub("world");
+        TileWorldDocument doc = Authored();
+        TileWorldFile.Save(doc, dir);
+        string manifestBefore = File.ReadAllText(Path.Combine(dir, "world.json"));
+        string regionBefore = File.ReadAllText(Path.Combine(dir, "regions", "r_0_0.json"));
+
+        // X and Z are public and settable, so an editor can walk an object out of its own region without ever
+        // going through MoveObject. Parse refuses that on the way back in, so Save has to refuse it going out.
+        TileObject tree = doc.FindObject(1)!;
+        tree.X = 200;
+        TileWorldException ex = Assert.Throws<TileWorldException>(() => TileWorldFile.Save(doc, dir));
+        Assert.Contains("(200, 4)", ex.Message);
+        Assert.Contains("(0, 0)", ex.Message);
+
+        tree.X = 3;
+        doc.FindMarker("spawn")!.Plane = 9;
+        TileWorldException planeEx = Assert.Throws<TileWorldException>(() => TileWorldFile.Save(doc, dir));
+        Assert.Contains("spawn", planeEx.Message);
+        Assert.Contains("plane 9", planeEx.Message);
+
+        Assert.Equal(manifestBefore, File.ReadAllText(Path.Combine(dir, "world.json")));
+        Assert.Equal(regionBefore, File.ReadAllText(Path.Combine(dir, "regions", "r_0_0.json")));
+        Assert.Equal("tree", TileWorldFile.Load(dir).FindObject(1)!.ArchetypeId);
+    }
+
+    [Fact]
     public void Codec_round_trips_and_rejects_wrong_lengths()
     {
         short[] s = { -1, 0, 1, short.MaxValue };

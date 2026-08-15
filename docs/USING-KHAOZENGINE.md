@@ -2430,7 +2430,8 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     - **Depth-pass dirty-skip** (automatic, presentation-neutral): the cascade atlas persists across frames, so the
       depth pass re-renders only when a shadow-relevant input changed since the last rendered pass - ANY of the fitted
       cascade matrices (which fold in the light direction, the camera-frustum slice, and the light distance, so a
-      moving sun or a camera pan/turn past a texel re-renders), the rigid caster set + world transforms, the map
+      moving sun past the light-hold threshold below, or a camera pan/turn past a texel, re-renders), the rigid caster
+      set + world transforms, the map
       resolution, or any animated skinned caster present (a bone pose can change every frame, so any skinned caster
       forces a re-render). An unchanged static scene reuses the prior atlas and skips every caster draw, so a
       mostly-static view stops repainting the shadow map each frame. A skipped pass contributes zero shadow draw
@@ -2451,6 +2452,26 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       tail (light matrix + bias/strength) is
       still applied on a skipped frame, so bias/strength tweaks take effect immediately and the receivers sample the
       map with the matrix it was baked against.
+    - **Light-movement hold** (`ShadowLightHoldTexels` default `1`, `ShadowLightHoldCasterHeight` default `12`, both
+      on `ShadowSettings`, since 17.36.1): the fit texel-snaps its FOCUS, so a camera sliding by less than a texel
+      does not move it. This is the same quantization for ROTATION. The cascade fit keeps using the light direction it
+      last adopted until the sun has turned far enough to drag a worst-case caster's shadow by
+      `ShadowLightHoldTexels` shadow texels, and only then adopts the new one, so a stationary scene under a day/night
+      cycle stops repainting the whole atlas every frame for a displacement nobody can see. Under Ruinborne's
+      30 minute day (0.00333 deg/frame) a wide outdoor camera re-fits about once every 29 frames instead of every
+      frame. Set `ShadowLightHoldTexels = 0` to disable it, which restores the pre-17.36.1 fit byte for byte.
+      Three things to know. The threshold is elevation-corrected and recomputed every frame
+      (`budget * (2r/res) * sin^2(e) / h` against the tightest active cascade), because a low sun throws shadows far
+      and the same rotation moves them much further: it is about 43x tighter at a 5 degree dusk than at a 35 degree
+      afternoon, and near the horizon it stops holding at all, because the threshold there is finer than a float
+      direction vector can carry. That standdown elevation is derived from the same formula rather than fixed
+      (`budget * (2r/res) * sin^2(e) / h = 1e-5`), so it scales as `1/sqrt(r)` with cascade 0's camera-derived
+      radius: about 2.6 degrees on a wide outdoor framing (`r` around 60 m), about 5.8 degrees at a 12 m radius.
+      Only the SHADOW fit is held, so `Post.LightDirection` still drives diffuse, specular, the sky sun disc and
+      the water live, and only the cast shadow lags. And the hold suppresses the LIGHT reason only, so a caster that moves under a held sun still
+      re-records via `CasterDataChanged` and cannot leave a ghost. Raise `ShadowLightHoldCasterHeight` for a scene
+      with casters taller than 12 m (the hold then releases sooner), and raise `ShadowLightHoldTexels` above 1 only
+      with the result in front of you, since it is a visible step at the re-fit boundary that it is trading away.
 - Edge outline: `Post.Outline` (off by default, opt-in per consumer) draws a depth/normal toon outline. `OutlineColor`,
   `OutlineDepthThreshold` (depth-discontinuity sensitivity), and `OutlineNormalThreshold` (interior-crease
   sensitivity from the geometric normal) tune it. The outline is perspective-correct: under a

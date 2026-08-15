@@ -151,6 +151,17 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   `TotalDrawCalls`. Same last-frame shape as `PassTimingsMs`, always on and allocation-free, so a game can sample it
   every frame into a telemetry line. The counts are what THIS frame recorded, so a skipped frame reports zero of them
   (the `ShadowCascadeSpanCount` / `ShadowCascadeCasterCount` properties keep reporting the last rendered pass instead).
+  - The fit also quantizes the LIGHT's rotation, not just its focus translation: `ShadowLightHoldTexels` (default
+  `1`) and `ShadowLightHoldCasterHeight` (default `12`) hold the direction the cascades were last fitted from until
+  the sun has turned far enough to drag a worst-case caster's shadow by that many shadow texels, so a stationary
+  scene under a day/night cycle stops re-recording the whole atlas every frame. The threshold is elevation-corrected
+  and recomputed per frame (`budget * (2r/res) * sin^2(e) / h` on the tightest active cascade), because a low sun
+  throws shadows far: it is about 43x tighter at a 5 degree dusk than a 35 degree afternoon, and stands down near
+  the horizon. That standdown elevation falls out of the same formula rather than being a constant, so it scales as
+  `1/sqrt(r)` with cascade 0's camera-derived radius: about 2.6 degrees on a wide outdoor framing where `r` is
+  around 60 m. Only the shadow FIT is held, so `Post.LightDirection` still drives diffuse, specular, sky and
+  water live, and a caster that moves under a held sun still re-records via `CasterDataChanged`, so no shadow can
+  ghost. `ShadowLightHoldTexels = 0` disables it and restores the pre-17.36.1 fit byte for byte.
   - Validate a menu choice with `Shadows.ResolveFor(caps)` and read `.Effective`/`.Degraded`/`.Reason` (same
   `ResolveFor`-clamps-a-request pattern as AA, never throws). With `Off` the blob queue is ignored and the shadow tail
   sits at strength 0 (never tapped), so existing scenes are byte-stable.

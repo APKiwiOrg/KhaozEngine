@@ -20,9 +20,18 @@ namespace KhaozEngine.Tests.Gpu
     /// the disc clip rejects), chunk-major over a 500 m disc, four cascades at 2048, one skinned caster. The regimes
     /// are the ones the trace's diagnostics named: a stationary scene whose only dirty reason is that a skinned
     /// caster exists, the same scene with the skinned caster gone and the sun frozen (the cheap frame, the pass
-    /// skips), the same scene under Ruinborne's real daylight rate (the sun alone re-fits every cascade), and the
-    /// same scene under a sun delta a third of that, which is far below anything a viewer could see and still
-    /// re-records the whole atlas.
+    /// skips), the same scene under Ruinborne's real daylight rate, and the same scene under a sun delta a third of
+    /// that, which is far below anything a viewer could see.
+    /// </para>
+    /// <para>
+    /// <b>The two sun-moving rows are the before and after of the light-movement epsilon.</b> They re-recorded 200
+    /// frames out of 200 when this bench was written, because the cascade compare was exact matrix equality and no
+    /// sun movement was small enough to ignore. Since 17.36.1 the fit holds the light direction until the sun has
+    /// moved the shadow by a texel (<c>ShadowSettings.ShadowLightHoldTexels</c>), so both rows now re-fit on a
+    /// cadence instead, and the slower sun holds proportionally longer. What the assertions pin is the SHAPE of that
+    /// (the pass renders exactly when a skinned caster is present or the fit actually moved, and the sub-epsilon sun
+    /// holds strictly longer than the daylight one), never a frame count, because the cadence depends on the fitted
+    /// cascade radius this camera happens to produce.
     /// </para>
     /// <para>
     /// <b>The printed table is only meaningful from a serialized or an isolated run.</b> This class sits in the
@@ -73,11 +82,17 @@ namespace KhaozEngine.Tests.Gpu
         const float DaylightDegreesPerFrame = 0.2f / 60f;
         // A thousandth of a degree per frame: three times slower than daylight and still far below any visual
         // epsilon. How far a sun step moves a shadow depends on the sun's ELEVATION as well as on the rotation: the
-        // foot of a caster h tall sits at h*cot(e), so an azimuth step sweeps it by h*cot(e)*dTheta and an elevation
-        // step lifts it by h*dTheta/sin^2(e). At this bench's 35 deg sun those are 1.43x and 3.04x the naive
-        // h*dTheta, so 0.001 deg moves the shadow of a 10 m caster by at most 0.53 mm (0.17 mm naive). At cascade 3
+        // foot of a caster h tall sits at h*cot(e), so an azimuth step sweeps it by h*cot(e)*dPhi and an elevation
+        // step lifts it by h*dTheta/sin^2(e). Compared on the same axis, which is great-circle angle (an azimuth
+        // step of dPhi is only cos(e)*dPhi of great circle), those read h/sin(e) and h/sin^2(e) per radian: 1.74x
+        // and 3.04x the naive h*dTheta at this bench's 35 deg sun. So 0.001 deg moves the shadow of a 10 m caster
+        // by at most 0.53 mm, on the elevation term (0.17 mm naive). At cascade 3
         // (radius ~= 120 m at 2048) one texel is about 12 cm on the ground, so that is still ~220x below one texel.
         const float SubEpsilonDegreesPerFrame = 0.001f;
+        // The shipped light-hold defaults, pinned explicitly rather than inherited, so this bench keeps measuring one
+        // known configuration if the defaults are ever retuned.
+        const float HoldTexels = 1f;
+        const float HoldCasterHeight = 12f;
         // Interleaved round-robin blocks on one device, reduced by median, for the same reason the cascade-cull
         // bench does it: a sequential run charges the first configuration with the JIT and the device warm-up for
         // all of them, and machine drift over the run lands entirely on whichever configuration ran last.
@@ -160,6 +175,12 @@ namespace KhaozEngine.Tests.Gpu
             return xs.Count == 0 ? 0 : xs.Count % 2 == 1 ? xs[xs.Count / 2] : (xs[xs.Count / 2 - 1] + xs[xs.Count / 2]) * 0.5;
         }
 
+        /// <summary>Mean frames between two re-fits: total measured frames over the ones that recorded. Design
+        /// section 5 reading 2 is this number, checked against the threshold divided by the sun's per-frame step.
+        /// </summary>
+        static double Cadence(Measurement m)
+            => m.RenderedFrames > 0 ? (double)(m.RenderedFrames + m.SkippedFrames) / m.RenderedFrames : 0;
+
         static double Mean(List<double> xs)
         {
             if (xs.Count == 0) return 0;
@@ -198,15 +219,19 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(0, skip.RenderedFrames);
             Assert.Equal(0, skip.DrawCalls);
 
-            // The sun alone is enough, at Ruinborne's real rate and at a third of that rate alike: the cascade
-            // compare is exact matrix equality, so there is no movement small enough to be ignored.
-            Assert.Equal(Rounds * BlockFrames, daylight.RenderedFrames);
-            Assert.Equal(Rounds * BlockFrames, subEpsilon.RenderedFrames);
-            Assert.True(daylight.DrawCalls > 0);
-            // The same work for a movement 3.3x smaller. Not byte-equal: the two regimes sit at different sun
-            // angles, so the per-cascade cull splits the caster list into a slightly different span set. Within a
-            // few percent is the claim, and a real saving would show as a different order of magnitude.
-            Assert.InRange(subEpsilon.DrawCalls, (int)(daylight.DrawCalls * 0.9), (int)(daylight.DrawCalls * 1.1));
+            // The sun still re-fits the cascades, but only once it has moved the shadow past a texel, and on this
+            // scene the threshold is wider than a whole measured block, so both sun-moving regimes now sit on the
+            // skip floor for every frame this bench times. Both of these used to read
+            // "Assert.Equal(Rounds * BlockFrames, RenderedFrames)", which is the before half of this fix's evidence.
+            Assert.True(daylight.SkippedFrames > daylight.RenderedFrames,
+                $"the daylight sun must now hold more often than it re-fits ({daylight.SkippedFrames} skipped, " +
+                $"{daylight.RenderedFrames} rendered)");
+            Assert.True(subEpsilon.SkippedFrames >= daylight.SkippedFrames,
+                "a slower sun can never hold less often than a faster one");
+            // The re-fit CADENCE cannot be read off these rows: each block's measured window opens four frames after
+            // a warmup that always re-adopts, so a threshold wider than the window reads as a flat 200 skips whatever
+            // its real width is. The_hold_releases_on_a_cadence_the_threshold_predicts measures it on a continuous
+            // sweep instead, and that is where the rate-versus-threshold comparison and the re-fit draw counts live.
 
             // Every caster instance is considered on every rendered pass, and the count is the trace's shape, so a
             // reader can tell at a glance whether this bench measured the field scene or some other one.
@@ -216,6 +241,117 @@ namespace KhaozEngine.Tests.Gpu
             Assert.InRange(rerecord.Candidates, 1400, 1800);
         }
 
+        // A continuous sweep long enough to contain several re-fits at the slower of the two rates.
+        const int SweepFrames = 400;
+
+        /// <summary>
+        /// Design section 5, reading 2: the frames between <c>LightMatrixChanged</c> samples must equal the threshold
+        /// divided by the sun's per-frame rotation. The interleaved bench above cannot answer that (its measured
+        /// window is shorter than the threshold, so every frame in it reads as held), so this sweeps ONE continuous
+        /// run per rate on a settled scene and reads the cadence straight off it.
+        /// <para>
+        /// It also answers the question the design left open: whether Ruinborne's real daylight rate lands above or
+        /// below the threshold. The implied threshold printed here is <c>cadence * rate</c>, and comparing it against
+        /// the rate is the whole answer. No milliseconds are taken, so this does not need the AllocSensitive
+        /// isolation the table above does.
+        /// </para>
+        /// </summary>
+        [GpuFact]
+        public void The_hold_releases_on_a_cadence_the_threshold_predicts()
+        {
+            Placement[] placements = BuildPlacements();
+            (int refits, int frames, int draws) daylight = Sweep(placements, DaylightDegreesPerFrame);
+            (int refits, int frames, int draws) subEpsilon = Sweep(placements, SubEpsilonDegreesPerFrame);
+
+            double dayCadence = (double)daylight.frames / daylight.refits;
+            double subCadence = (double)subEpsilon.frames / subEpsilon.refits;
+            _out.WriteLine($"continuous sweep, {SweepFrames} frames per rate, hold at {HoldTexels:0.##} texel(s) over " +
+                           $"a {HoldCasterHeight:0.#} m caster, sun {SunElevationDegrees} deg:");
+            _out.WriteLine($"  daylight {DaylightDegreesPerFrame:0.#####} deg/frame: {daylight.refits} re-fits in " +
+                           $"{daylight.frames} frames = one every {dayCadence:0.0} frames, " +
+                           $"implied threshold {dayCadence * DaylightDegreesPerFrame:0.#####} deg, " +
+                           $"{daylight.draws} draws on a re-fit frame");
+            _out.WriteLine($"  sub-epsilon {SubEpsilonDegreesPerFrame:0.#####} deg/frame: {subEpsilon.refits} re-fits in " +
+                           $"{subEpsilon.frames} frames = one every {subCadence:0.0} frames, " +
+                           $"implied threshold {subCadence * SubEpsilonDegreesPerFrame:0.#####} deg, " +
+                           $"{subEpsilon.draws} draws on a re-fit frame");
+            _out.WriteLine($"  so {100.0 * (1.0 - 1.0 / dayCadence):0.#} percent of daylight frames and " +
+                           $"{100.0 * (1.0 - 1.0 / subCadence):0.#} percent of sub-epsilon frames now skip the pass " +
+                           "entirely, against 0 percent of both before 17.36.1");
+
+            // The hold releases. A hold that never released would be a stale shadow rather than a saving, and it is
+            // the reading design section 5 calls for on the field capture too.
+            Assert.True(daylight.refits > 0, "the daylight sun must still re-fit within a 400 frame sweep");
+            Assert.True(subEpsilon.refits > 0);
+            // And it releases on the threshold, not on the frame count: a sun 3.33x slower must hold about 3.33x
+            // longer. Generous bounds, because the accumulated angle steps past the threshold rather than landing on
+            // it, so a cadence is always rounded up by up to a frame.
+            double ratio = subCadence / dayCadence;
+            Assert.InRange(ratio, 2.5, 4.2);
+            // Both thresholds are the same angle, read two ways, which is what says the cadence is the threshold's
+            // and not an artifact of either rate.
+            Assert.Equal(subCadence * SubEpsilonDegreesPerFrame, dayCadence * DaylightDegreesPerFrame,
+                dayCadence * DaylightDegreesPerFrame * 0.25);
+            // A re-fit frame is a FULL re-record: the saving is in the frames between them, never in a cheaper pass.
+            Assert.True(daylight.draws > 300, $"a re-fit frame must still draw the whole atlas ({daylight.draws})");
+            Assert.InRange(subEpsilon.draws, (int)(daylight.draws * 0.9), (int)(daylight.draws * 1.1));
+        }
+
+        /// <summary>Settle a static scene, then advance the sun by <paramref name="degreesPerFrame"/> for
+        /// <see cref="SweepFrames"/> frames, counting the frames whose fit actually moved and the draw calls one of
+        /// them issued. Nothing but the sun changes, so every rendered frame is a light re-fit.</summary>
+        (int Refits, int Frames, int Draws) Sweep(Placement[] placements, float degreesPerFrame)
+        {
+            var shadows = new ShadowSettings
+            {
+                Mode = ShadowMode.ShadowMap,
+                ShadowMapResolution = Resolution,
+                ShadowCascadeCount = Cascades,
+                ShadowLightHoldTexels = HoldTexels,
+                ShadowLightHoldCasterHeight = HoldCasterHeight,
+            };
+            using GpuDeviceContext ctx = GpuDeviceContext.CreateHeadless();
+            IGpuDevice gd = ctx.GpuDevice;
+            using var preview = new Render3DPreview(gd, W, H, shadows);
+            Scene3D scene = preview.Scene;
+            scene.Post.TransparentBackground = false;
+            scene.Post.Starfield = false;
+            scene.Post.Outline = false;
+            scene.Post.BackgroundColor = new Color(0.10f, 0.12f, 0.16f, 1f);
+            scene.Camera.Azimuth = 0.6f;
+            scene.Camera.Elevation = 0.35f;
+            scene.Camera.Frame(Vector3.Zero, new Vector3(60f, 20f, 60f));
+
+            MeshHandle ground = scene.LoadMesh(MeshPrimitives.Tile(2f * DiscRadius, 0.2f));
+            var kinds = new[] { scene.LoadMesh(MeshPrimitives.Box(0.8f)), scene.LoadMesh(MeshPrimitives.Cone(0.5f, 2.2f, 6)) };
+            var tint = new Color(0.35f, 0.55f, 0.3f, 1f);
+
+            float sunDegrees = 0f;
+            void DrawFrame(Scene3D s)
+            {
+                s.Post.LightDirection = SunAt(sunDegrees);
+                s.Draw(ground, Matrix4x4.Identity, new Color(0.55f, 0.56f, 0.5f, 1f), Material.None, false);
+                foreach (Placement p in placements)
+                    s.Draw(kinds[p.Kind], Matrix4x4.CreateScale(p.Scale) * Matrix4x4.CreateRotationY(p.Yaw)
+                        * Matrix4x4.CreateTranslation(p.Position), tint, Material.None, p.CastsShadows);
+            }
+
+            preview.Capture(DrawFrame);   // the first frame has no atlas and always records
+            int refits = 0, draws = 0;
+            for (int i = 0; i < SweepFrames; i++)
+            {
+                sunDegrees += degreesPerFrame;
+                preview.Capture(DrawFrame);
+                ShadowPassDiagnostics d = scene.LastShadowPassDiagnostics;
+                Assert.False(d.CasterDataChanged, "nothing but the sun moves in this sweep");
+                Assert.Equal(d.LightMatrixChanged, d.Rendered);
+                if (!d.Rendered) continue;
+                refits++;
+                draws = d.TotalDrawCalls;
+            }
+            return (refits, SweepFrames, draws);
+        }
+
         Measurement[] MeasureAll(Config[] configs, Placement[] placements)
         {
             var shadows = new ShadowSettings
@@ -223,6 +359,8 @@ namespace KhaozEngine.Tests.Gpu
                 Mode = ShadowMode.ShadowMap,
                 ShadowMapResolution = Resolution,
                 ShadowCascadeCount = Cascades,
+                ShadowLightHoldTexels = HoldTexels,
+                ShadowLightHoldCasterHeight = HoldCasterHeight,
             };
 
             using GpuDeviceContext ctx = GpuDeviceContext.CreateHeadless();
@@ -339,17 +477,23 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>The stable half of this bench: each regime must name exactly the reason it was built to isolate,
-        /// on every measured frame, or the numbers beside it describe a different experiment.</summary>
+        /// on every measured frame, or the numbers beside it describe a different experiment.
+        /// <para>
+        /// A sun-moving regime is no longer dirty on every frame (the light hold), so the invariant is one step
+        /// weaker than "this regime always renders" and no weaker: the pass renders exactly when a skinned caster is
+        /// present or the fit actually moved, a frozen sun can never move the fit, and a skipped frame recorded
+        /// nothing. Which frames the fit moves on is the cadence, and that is reported rather than asserted.
+        /// </para></summary>
         static void AssertReasonBits(Config cfg, ShadowPassDiagnostics d)
         {
             Assert.True(d.Active);
             Assert.False(d.ResolutionChanged, "the atlas resolution is a construction-time knob and cannot move here");
             Assert.False(d.CasterDataChanged, "no rigid caster moves in any regime: the signature must compare equal");
             Assert.Equal(cfg.Skinned, d.AnySkinnedCaster);
-            Assert.Equal(cfg.SunDegreesPerFrame != 0f, d.LightMatrixChanged);
-            bool expectRender = cfg.Skinned || cfg.SunDegreesPerFrame != 0f;
-            Assert.Equal(expectRender, d.Rendered);
-            Assert.Equal(!expectRender, d.Skipped);
+            if (cfg.SunDegreesPerFrame == 0f)
+                Assert.False(d.LightMatrixChanged, "a frozen sun and a still camera cannot move the fitted matrices");
+            Assert.Equal(cfg.Skinned || d.LightMatrixChanged, d.Rendered);
+            Assert.Equal(!d.Rendered, d.Skipped);
             if (!d.Rendered)
             {
                 Assert.Equal(0, d.TotalDrawCalls);
@@ -388,8 +532,17 @@ namespace KhaozEngine.Tests.Gpu
                            $"re-recording frame {rerecord.FrameMedianMs - noShadows.FrameMedianMs:0.000} ms (over shadows off)");
             _out.WriteLine($"the re-record itself: {rerecord.ShadowMeanMs - skip.ShadowMeanMs:0.000} ms/frame of encode a skip does not pay " +
                            $"({rerecord.ShadowMeanMs:0.000} vs {skip.ShadowMeanMs:0.000})");
-            _out.WriteLine($"sun movement size does not change the price: daylight {daylight.ShadowMeanMs:0.000} ms, " +
-                           $"a thousandth of a degree {subEpsilon.ShadowMeanMs:0.000} ms, same {subEpsilon.DrawCalls} draws");
+            _out.WriteLine($"the light hold, at {HoldTexels:0.##} texel(s) of drift over a {HoldCasterHeight:0.#} m " +
+                           $"caster: daylight held {daylight.SkippedFrames}/{daylight.RenderedFrames + daylight.SkippedFrames} " +
+                           $"measured frames at {daylight.ShadowMeanMs:0.000} ms, a thousandth of a degree held " +
+                           $"{subEpsilon.SkippedFrames}/{subEpsilon.RenderedFrames + subEpsilon.SkippedFrames} at " +
+                           $"{subEpsilon.ShadowMeanMs:0.000} ms. Both re-recorded EVERY frame before 17.36.1, at the " +
+                           $"skinned row's cost less its limb, so each row's saving is that row against " +
+                           $"{rerecord.ShadowMeanMs:0.000} ms.");
+            _out.WriteLine("do NOT read a re-fit cadence off those two rows: a block's measured window opens four " +
+                           "frames after a warmup that always re-adopts (the previous block left the sun at a " +
+                           "different angle), so any threshold wider than the window reads as a flat 200 skips. " +
+                           "The_hold_releases_on_a_cadence_the_threshold_predicts measures the cadence continuously.");
             _out.WriteLine($"CPU or queue: drained {rerecord.ShadowMeanMs:0.000} ms vs pipelined {pipelined.ShadowMeanMs:0.000} ms encode " +
                            $"({(rerecord.ShadowMeanMs > 0 ? 100.0 * (pipelined.ShadowMeanMs - rerecord.ShadowMeanMs) / rerecord.ShadowMeanMs : 0):0.0} percent), " +
                            $"frame {rerecord.FrameMedianMs:0.000} vs {pipelined.FrameMedianMs:0.000} ms");

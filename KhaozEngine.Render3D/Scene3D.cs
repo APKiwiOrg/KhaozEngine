@@ -1716,7 +1716,7 @@ namespace KhaozEngine.Render3D
             int count = _model.ShadowMap.CascadeCount;     // the actual allocated cascade count (clamped)
             Span<float> splits = stackalloc float[ShadowSettings.MaxCascades];
             Internal.ShadowMapMath.FillCascadeSplits(splits, count, shadows.ShadowNearDistance, shadows.ResolvedMaxDistance);
-            Vector3 lightDir = Vector3.Normalize(Post.LightDirection);
+            Vector3 lightDir = HeldLightDirection(splits, count, camNear, camFar, range, res);
             float prev = camNear;
             for (int i = 0; i < count; i++)
             {

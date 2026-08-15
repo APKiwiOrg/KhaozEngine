@@ -11,7 +11,7 @@ namespace KhaozEngine.Tests.Gpu
     /// engine-formatted line.
     /// <para>
     /// WHY THERE WAS NOTHING TO READ. <c>VulkanValidationPump</c> logs through the ambient
-    /// <see cref="Log"/> facade, and that facade hands out <c>NullLogger</c> until something calls
+    /// <see cref="Log"/> facade, and that facade discards everything until something calls
     /// <see cref="Log.Configure(LoggerOptions)"/>. Nothing in this assembly ever did, so every
     /// <c>_log.Warn</c> and <c>_log.Error</c> in the pump was a no-op on every leg. The <c>strict</c> tier was
     /// unaffected, because its latch and its throw are counters rather than log calls, but WARNING-severity
@@ -21,16 +21,24 @@ namespace KhaozEngine.Tests.Gpu
     /// <para>
     /// CONFIGURED EXACTLY ONCE PER PROCESS, AND NEVER FROM A TEST. This is a hard rule for this assembly and the
     /// reason the type is split the way it is. <see cref="Log.Configure(LoggerOptions)"/>
-    /// SHUTS DOWN the manager it replaces, and shutdown disposes and clears that manager's sink list, while an
-    /// <c>ILogger</c> handed out earlier keeps pointing at the manager it came from. Every logger resolved before
-    /// a reconfigure therefore writes into a gutted manager for the rest of the process: enabled, submitting,
-    /// and silent. Several Vulkan types resolve their logger once into a <c>static readonly</c> field, so a
-    /// single reconfigure part-way through an armed run orphans the very producers the artifact exists to
-    /// capture. A first cut of this seam had its own tests reconfiguring the facade and restoring it afterwards,
-    /// which cost the armed <c>sync</c> run most of its Vulkan lines: every <c>VulkanMemoryAllocator</c> INFO
-    /// line and every <c>VulkanPresentBoundary</c> WARN and ERROR line logged after that class ran went nowhere.
-    /// So this type is the DECISION half only (<see cref="IsArmed"/>, the scope, and the announcement), it is
-    /// pure, and it is what the tests exercise against a <see cref="LogManager"/> they own.
+    /// SHUTS DOWN the manager it replaces, and shutdown disposes and clears that manager's sink list, so a
+    /// reconfigure part-way through an armed run throws away the console sink this host installed and the rest
+    /// of the run is captured by whatever the replacement admits. A first cut of this seam had its own tests
+    /// reconfiguring the facade and restoring it afterwards, which cost the armed <c>sync</c> run most of its
+    /// Vulkan lines: every <c>VulkanMemoryAllocator</c> INFO line and every <c>VulkanPresentBoundary</c> WARN and
+    /// ERROR line logged after that class ran went nowhere. So this type is the DECISION half only
+    /// (<see cref="IsArmed"/>, the scope, and the announcement), it is pure, and it is what the tests exercise
+    /// against a <see cref="LogManager"/> they own.
+    /// </para>
+    /// <para>
+    /// PART of that used to be a second, worse failure, and 17.36.2 removed it (#616). A logger handed out by the
+    /// facade used to keep pointing at the manager it came from, so every logger resolved before a reconfigure
+    /// wrote into a gutted manager for the rest of the process: enabled, submitting, and silent. Several Vulkan
+    /// types resolve their logger once into a <c>static readonly</c> field, so one reconfigure orphaned the very
+    /// producers the artifact exists to capture. A facade logger now finds the configured manager per call, so
+    /// the producers survive a reconfigure. The rule above is NOT relaxed on the back of that: the sink still
+    /// does not survive, and one host configuring once is still the only arrangement in which the artifact holds
+    /// what the run was armed for.
     /// </para>
     /// <para>
     /// THE APPLY HALF MOVED TO <see cref="GpuValidationConsoleLogging"/>

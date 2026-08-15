@@ -207,7 +207,7 @@ The suite each leg runs is split by trigger, from measured hosted-runner cost
   **A failed command buffer is NOT a failed row**, which is the blindness #617 ran into.
   `MetalDeviceLossLatch` logs the driver's own description and flips the device's liveness, and nothing in it
   fails a test, so a leg can go red for a pile of unrelated-looking golden reasons with the real fault sitting
-  in a log line. Until that issue, that line went to a `NullLogger`: the test host configures a sink for the
+  in a log line. Until that issue, that line went nowhere at all: the test host configures a sink for the
   `Metal` log categories only when a Metal rung is armed, and the leg forwards the host's stdout at detailed
   verbosity on exactly the runs that arm one, which is every run of this leg. Those are the two halves it takes
   for the line to reach the artifact at all, and they read the same predicate, so the artifact cannot exist

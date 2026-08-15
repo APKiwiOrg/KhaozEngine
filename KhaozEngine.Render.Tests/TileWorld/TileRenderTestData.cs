@@ -1,3 +1,8 @@
+using System;
+using System.Collections.Generic;
+using System.Numerics;
+using KhaozEngine.Render3D;
+using KhaozEngine.Terrain;
 using KhaozEngine.TileWorld;
 
 namespace KhaozEngine.Tests.TileWorld;
@@ -140,5 +145,114 @@ public static class TileRenderTestData
             doc.AddObject("wall", HouseMinX, z, 0, 0);
             doc.AddObject("wall", HouseMaxX, z, 0, 2);
         }
+    }
+}
+
+/// <summary>One prop-draw call as <see cref="RecordingTileWorldScene"/> saw it.</summary>
+/// <param name="Placements">The placement list handed in, so a test can name the archetypes it carried.</param>
+/// <param name="Focus">The focus point the call culled around.</param>
+/// <param name="DrawRadius">The horizontal draw radius the call culled with.</param>
+/// <param name="Drawn">How many placements survived the cull and had a loaded mesh.</param>
+public sealed record TilePropDrawRecord(
+    IReadOnlyList<PropPlacement> Placements, Vector3 Focus, float DrawRadius, int Drawn);
+
+/// <summary>A device-free <see cref="ITileWorldScene"/> that hands out an incrementing handle per upload and
+/// records every load, unload and draw, so a test asserts exact handle counts and exact draw contents. Unloading
+/// a handle that is not live throws, which turns a double free in the view into a failing test rather than a
+/// silent leak of the bug into a real device.</summary>
+public sealed class RecordingTileWorldScene : ITileWorldScene
+{
+    readonly HashSet<int> _alive = new();
+    int _next;
+
+    /// <summary>Every ground-mesh handle handed out, in upload order.</summary>
+    public List<MeshHandle> MeshLoads { get; } = new();
+
+    /// <summary>Every handle freed, in unload order, ground meshes and prop parts alike.</summary>
+    public List<MeshHandle> MeshUnloads { get; } = new();
+
+    /// <summary>Every prop part-list handed out, in upload order, one entry per archetype uploaded.</summary>
+    public List<IReadOnlyList<MeshHandle>> PropMeshLoads { get; } = new();
+
+    /// <summary>The mesh draws of the frames since the last <see cref="ClearFrame"/>, in submission order.</summary>
+    public List<(MeshHandle Handle, Matrix4x4 World)> Drawn { get; } = new();
+
+    /// <summary>The prop draws of the frames since the last <see cref="ClearFrame"/>, in submission order.</summary>
+    public List<TilePropDrawRecord> PropDraws { get; } = new();
+
+    /// <summary>How many handles are live right now, uploaded and not yet freed.</summary>
+    public int AliveMeshCount => _alive.Count;
+
+    /// <summary>Forgets the recorded draws, so the next frame's records stand alone. Handles are untouched.</summary>
+    public void ClearFrame()
+    {
+        Drawn.Clear();
+        PropDraws.Clear();
+    }
+
+    /// <summary>Hands out a fresh live handle for a ground mesh.</summary>
+    public MeshHandle LoadMesh(GltfMesh mesh)
+    {
+        MeshHandle handle = Next();
+        MeshLoads.Add(handle);
+        return handle;
+    }
+
+    /// <summary>Frees a live handle. A default handle is a no-op, a stale one throws.</summary>
+    public void UnloadMesh(MeshHandle handle)
+    {
+        if (handle.Generation == 0) return;
+        if (!_alive.Remove(handle.Index))
+            throw new InvalidOperationException($"mesh {handle.Index} was already unloaded.");
+        MeshUnloads.Add(handle);
+    }
+
+    /// <summary>Records one mesh draw at its world transform.</summary>
+    public void DrawMesh(MeshHandle handle, Matrix4x4 world) => Drawn.Add((handle, world));
+
+    /// <summary>Hands out one fresh live handle per part.</summary>
+    public IReadOnlyList<MeshHandle> LoadPropMeshes(IReadOnlyList<GltfMeshPart> parts)
+    {
+        ArgumentNullException.ThrowIfNull(parts);
+        var handles = new MeshHandle[parts.Count];
+        for (int i = 0; i < parts.Count; i++) handles[i] = Next();
+        PropMeshLoads.Add(handles);
+        return handles;
+    }
+
+    /// <summary>Frees every part handle of one archetype.</summary>
+    public void UnloadPropMeshes(IReadOnlyList<MeshHandle> handles)
+    {
+        ArgumentNullException.ThrowIfNull(handles);
+        foreach (MeshHandle handle in handles) UnloadMesh(handle);
+    }
+
+    /// <summary>Counts the in-range placements whose archetype has an uploaded mesh, with the same horizontal
+    /// cull the real prop path applies, and records the call.</summary>
+    public int DrawProps(IReadOnlyList<PropPlacement> placements,
+                         IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> parts,
+                         Vector3 focus, float drawRadius)
+    {
+        ArgumentNullException.ThrowIfNull(placements);
+        ArgumentNullException.ThrowIfNull(parts);
+
+        float r2 = drawRadius * drawRadius;
+        int drawn = 0;
+        foreach (PropPlacement p in placements)
+        {
+            float dx = p.X - focus.X, dz = p.Z - focus.Z;
+            if (dx * dx + dz * dz > r2) continue;
+            if (!parts.ContainsKey(p.Id)) continue;
+            drawn++;
+        }
+        PropDraws.Add(new TilePropDrawRecord(placements, focus, drawRadius, drawn));
+        return drawn;
+    }
+
+    MeshHandle Next()
+    {
+        var handle = new MeshHandle(++_next);
+        _alive.Add(handle.Index);
+        return handle;
     }
 }

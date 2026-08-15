@@ -831,12 +831,12 @@ scissor per colour target, nothing in the engine passes a non-zero one, and hono
 `multiViewport` and matching every pipeline's viewport count to its attachment count for a shape no shipped
 renderer has. The native Direct3D 11 backend refuses the same index for the same reason.
 
-**What is not built yet, and where it lands.** The attachment layout transitions a begin owes are the barrier
-row's ([#524](https://github.com/APKiwiOrg/KhaozEngine/issues/524)), and the bound framebuffer already carries
-each attachment's `VkImage` for it. The pre-draw hook is called by nothing yet, and the
-end-before-illegal-command helper is called by the staged upload path above and by the compute pipeline bind:
-the draws, dispatches, copies and resolves are
-[#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525).
+**Where the rest of it landed.** The attachment layout transitions a begin owes are the barrier row's
+([#524](https://github.com/APKiwiOrg/KhaozEngine/issues/524)), emitted inside the begin off the `VkImage` the
+bound framebuffer carries for each attachment. The pre-draw hook is called first by `Draw` and `DrawIndexed`
+([#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525)), ahead of the bind flush and the vertex binds,
+and the end-before-illegal-command helper is called by `End`, by the staged upload path above, by the compute
+pipeline bind, and by every dispatch, copy, resolve and mip generation.
 
 ## Shaders: there is no cross-compilation, and that is the headline
 

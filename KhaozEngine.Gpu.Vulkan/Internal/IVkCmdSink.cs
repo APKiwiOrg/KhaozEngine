@@ -33,7 +33,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <para><b>AND THE SINK CANNOT GATE THE INVARIANT THAT MATTERS MOST, WHICH IS WHY V-D2 EXISTS.</b> "Zero
     /// <c>vkAllocateDescriptorSets</c> and zero <c>vkUpdateDescriptorSets</c> between <c>Begin</c> and
     /// <c>End</c>" is the Vulkan #418 protection, and NEITHER of those is a sink call, so no counting seam can see
-    /// them. That enforcement is STRUCTURAL and lands in rows 10 and 11: the descriptor pool is not reachable from
+    /// them. That enforcement is STRUCTURAL and landed in rows 10 and 11: the descriptor pool is not reachable from
     /// the recording type, asserted by an architecture test over the type graph, plus a fake pool whose allocate
     /// and write counters must both read zero. Do not add either call to this interface to make it countable: a
     /// call that cannot be made is a stronger guarantee than a call that is counted and found to be zero.</para>

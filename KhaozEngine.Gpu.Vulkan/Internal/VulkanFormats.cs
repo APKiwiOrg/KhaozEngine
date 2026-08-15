@@ -87,7 +87,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         /// <summary>
         /// The real <c>VkShaderStageFlags</c> for the seam's stage set. Read by every descriptor set layout
-        /// binding, and by row 13's pipeline stages when it lands.
+        /// binding, and by row 13's pipeline stages.
         /// <para>
         /// <see cref="GpuShaderStages.None"/> maps to no bits, which <c>vkCreateDescriptorSetLayout</c> accepts
         /// and which means the binding is visible to no stage. It is not refused here, because the honest place

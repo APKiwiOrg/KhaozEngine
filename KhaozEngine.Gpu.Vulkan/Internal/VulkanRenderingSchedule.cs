@@ -295,7 +295,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <summary>
         /// THE END-BEFORE-ANYTHING-ILLEGAL INVARIANT, AS ONE HELPER (V-A4). <c>End</c> calls it, and so does every
         /// command that may not appear inside a render pass instance: a dispatch, a resolve, a copy and a mip
-        /// generation. Those callers arrive in rows 13 and 15 and call this rather than writing the rule a second
+        /// generation. Those callers arrived in rows 13 and 15 and call this rather than writing the rule a second
         /// time, which is what "one invariant, one helper, one device-free test" means.
         /// <para>
         /// IT IS SAFE TO CALL WHEN NOTHING IS OPEN AND NOTHING IS PENDING, and does nothing then, so a caller

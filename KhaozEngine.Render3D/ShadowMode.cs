@@ -221,10 +221,13 @@ namespace KhaozEngine.Render3D
         /// <c>res</c> <see cref="ShadowMapResolution"/>, <c>e</c> the current sun elevation and <c>h</c>
         /// <see cref="ShadowLightHoldCasterHeight"/>. A low sun throws shadows far, so the same rotation moves them
         /// much further: the threshold at a 5 degree dusk is about 43x tighter than at a 35 degree afternoon, and the
-        /// hold correspondingly releases sooner, and below roughly a 6 degree sun it stops holding at all (the
-        /// threshold there is finer than a float direction vector can carry, so the fit re-records every frame as it
-        /// did before the epsilon). Raising this above 1 trades a visible step at the re-fit boundary for fewer
-        /// re-records, and is not recommended without looking at the result.
+        /// hold correspondingly releases sooner. Near the horizon it stops holding at all, because the threshold
+        /// there is finer than a float direction vector can carry, so the fit re-records every frame as it did
+        /// before the epsilon. That standdown elevation is DERIVED rather than constant: it solves
+        /// <c>budget*(2r/res)*sin^2(e)/h = 1e-5</c> and therefore scales as <c>1/sqrt(r)</c> with cascade 0's
+        /// camera-derived radius, which is about 2.6 degrees on a wide outdoor framing (<c>r</c> around 60 m) and
+        /// about 5.8 degrees on a tight one fitting <c>r</c> at 12 m. Raising this above 1 trades a visible step at
+        /// the re-fit boundary for fewer re-records, and is not recommended without looking at the result.
         /// </para></summary>
         public float ShadowLightHoldTexels = 1f;
 
@@ -235,6 +238,13 @@ namespace KhaozEngine.Render3D
         /// hold then releases sooner and re-records more often), lower it only if nothing tall casts (the hold lasts
         /// longer, at the risk of a visible step at the re-fit boundary). <c>0</c> or below disables the hold like a
         /// <see cref="ShadowLightHoldTexels"/> of 0.
+        /// <para>
+        /// The <c>h*cot(e)</c> model behind the budget assumes the shadow lands on horizontal ground at the caster's
+        /// base, so the one-texel bound is sub-texel BY CONSTRUCTION only there: a receiver grazed more shallowly
+        /// than the sun's elevation (a cliff face, a wall) takes <c>(ray length)*dTheta/sin(grazing angle)</c> of
+        /// drift instead, which can pass a texel on the same rotation. It stays bounded and small, and this knob is
+        /// where a game with a lot of steep receivers buys the margin back.
+        /// </para>
         /// <para>
         /// This is a knob rather than a per-frame measurement on purpose. The engine does have every rigid caster's
         /// world bounding sphere in hand, but a merged HLOD cluster's sphere is the radius of a whole chunk of

@@ -13,20 +13,33 @@ namespace KhaozEngine.Render3D.Internal
     /// <para>
     /// <b>Why this exists.</b> <see cref="ShadowMapMath.BuildLightViewProj"/> already snaps the focus to texel
     /// increments in light-view space, so a camera sliding by less than a texel does not move the fitted frustum and
-    /// the depth pass reuses its atlas. The light DIRECTION had no equivalent treatment, so a sun rotation of any
-    /// size rebuilt the view basis, moved every matrix entry, and re-recorded the whole atlas. A stationary scene
-    /// under a moving sun therefore repainted every caster every frame for a shadow displacement far below one texel
-    /// (issue #410, docs/design/SHADOW-RERECORD-STALL-DESIGN-2026-08-12.md section 3.3).
+    /// the depth pass reuses its atlas. The light DIRECTION had no equivalent treatment in the code this replaces,
+    /// so a sun rotation of any size rebuilt the view basis, moved every matrix entry, and re-recorded the whole
+    /// atlas. A stationary scene under a moving sun therefore repainted every caster every frame for a shadow
+    /// displacement far below one texel (issue #410,
+    /// docs/design/SHADOW-RERECORD-STALL-DESIGN-2026-08-12.md section 3.3). That is true of the current code and
+    /// not of this repo's history: 13.1.0 shipped <c>ShadowSettings.ShadowLightQuantizeDegrees</c> plus
+    /// <c>ShadowMapMath.QuantizeDirection</c>, an angular-lattice snap of the direction before the fit, for the
+    /// same dirty-skip, and 14.0.0 removed both unadopted. The design doc's 3.3 prior-art paragraph says why this
+    /// is a different bet: it defaults ON, it HOLDS the last adopted direction instead of snapping to a lattice
+    /// (so a static sun fits byte-identically to before, which a lattice snap does not), and it ships no
+    /// step-blend companion, so the moving-caster ghosting that killed the earlier family is absent by
+    /// construction.
     /// </para>
     /// <para>
     /// <b>The rule, and why the naive one is wrong.</b> What a viewer sees is how far a shadow moves ON THE GROUND,
     /// and that depends on the sun's ELEVATION as much as on the rotation. A caster <c>h</c> tall at sun elevation
     /// <c>e</c> throws its foot <c>h*cot(e)</c> from its base, so an azimuth step <c>dPhi</c> sweeps that foot by
-    /// <c>h*cot(e)*dPhi</c> and an elevation step <c>dE</c> slides it by <c>h*dE/sin^2(e)</c>. The naive
-    /// <c>h*dTheta</c> is neither, and it is always the optimistic one. Since <c>1/sin^2(e)</c> exceeds
-    /// <c>cot(e)</c> at every elevation (their ratio is <c>2/sin(2e) &gt;= 2</c>), the elevation term alone is a
-    /// conservative bound on any rotation direction, which is what lets ONE condition cover azimuth and elevation
-    /// together. Against a cascade's own quantum <c>TexelWorldSize(r, res) = 2r/res</c>:
+    /// <c>h*cot(e)*dPhi</c> and an elevation step <c>dE</c> slides it by <c>h*dE/sin^2(e)</c>. Those two are not
+    /// comparable as written, because <c>dPhi</c> is AZIMUTH and <c>dE</c> is great-circle: an azimuth step of
+    /// <c>dPhi</c> is only <c>cos(e)*dPhi</c> of great-circle travel. Per great-circle radian the pair is
+    /// <c>h/sin(e)</c> for azimuth and <c>h/sin^2(e)</c> for elevation, so both exceed the naive <c>h*dTheta</c>
+    /// at every elevation and the elevation term is the larger by <c>1/sin(e) &gt;= 1</c>. It is also an EXACT
+    /// bound rather than merely a conservative one, because the two displacements are perpendicular on the ground
+    /// (elevation slides the foot along the azimuth, azimuth sweeps it across): a rotation splitting
+    /// <c>dTheta</c> between them drifts <c>h*sqrt((dE/sin^2(e))^2 + (dPhiGc/sin(e))^2)</c>, at most
+    /// <c>h*dTheta/sin^2(e)</c> and reaching it on a pure elevation change. That is what lets ONE condition cover
+    /// azimuth and elevation together. Against a cascade's own quantum <c>TexelWorldSize(r, res) = 2r/res</c>:
     /// <code>
     /// h_max * dTheta / sin^2(e) &lt; budget * 2r/res
     /// </code>
@@ -51,10 +64,14 @@ namespace KhaozEngine.Render3D.Internal
         /// unconditionally under it.
         /// <para>
         /// This costs nothing real, because the elevation correction has already made the hold worthless wherever it
-        /// bites. With the shipped defaults it engages below about a 6 degree sun, where the threshold is under
-        /// <c>5e-4</c> degrees and Ruinborne's own daylight rate of <c>0.00333</c> degrees per frame crosses it on
-        /// every single frame anyway. What it buys is that a near-horizon sun degrades to today's re-fit-always
-        /// behaviour deterministically rather than holding or releasing on float noise.
+        /// bites. Where it engages is not a fixed sun angle: solving <c>budget*(2r/res)*sin^2(e)/h = 1e-5</c> for
+        /// the elevation gives a standdown that scales as <c>1/sqrt(r)</c> with cascade 0's CAMERA-derived fitted
+        /// radius, so it is about 2.6 degrees on a wide outdoor framing (<c>r</c> around 60 m) and about 5.8
+        /// degrees at the 12 m radius <c>ShadowLightHoldTests</c> fits. Wherever it lands, the threshold there IS
+        /// the floor, <c>1e-5</c> radians or about <c>5.7e-4</c> degrees, and Ruinborne's own daylight rate of
+        /// <c>0.00333</c> degrees per frame is some six times that, so it crosses on every single frame anyway.
+        /// What it buys is that a near-horizon sun degrades to today's re-fit-always behaviour deterministically
+        /// rather than holding or releasing on float noise.
         /// </para>
         /// </summary>
         public const float MinResolvableRadians = 1e-5f;

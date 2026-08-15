@@ -19,7 +19,10 @@ namespace KhaozEngine.Tests.Render3D
     public sealed class ShadowLightHoldTests
     {
         const int Resolution = 2048;
-        const float Radius = 12f;          // a plausible cascade 0 fitted slice-sphere radius
+        // A plausible cascade 0 fitted slice-sphere radius, and a TIGHT one: the shadow bench's wide outdoor framing
+        // fits cascade 0 at around 60 m. Every threshold and elevation below scales with it (the resolvability
+        // standdown as 1/sqrt(r)), so nothing derived from this constant is a shipped fact about the feature.
+        const float Radius = 12f;
         const float CasterHeight = 12f;    // the shipped ShadowLightHoldCasterHeight default
 
         /// <summary>A key light travelling away from a sun <paramref name="elevationDegrees"/> above the horizon, at
@@ -202,10 +205,13 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void Angle_between_is_accurate_at_the_tiny_angles_this_decision_lives_at()
         {
-            // acos(dot) is worthless here: at 0.001 degrees the dot product is 1 - 1.5e-10, which a float cannot even
-            // represent as distinct from 1, so the angle would read as exactly 0 and every sun step would be held
-            // forever. The chord form has no such collapse (subtracting two nearby floats is exact), and it must land
-            // on the right answer all the way down to the resolvability floor.
+            // acos(dot) loses most of its significant digits here: at 0.001 degrees the dot product is 1 - 1.5e-10,
+            // which a float cannot represent as distinct from 1, so that step reads as exactly 0. That is a precision
+            // argument, not a liveness one. It would not hang the hold, because ShouldAdopt compares the ACCUMULATED
+            // angle between held and live rather than a per-frame step, and 1 - cos(theta) clears a float's last
+            // place near 1 at about 3.4e-4 rad (0.020 deg), under the 0.095 deg threshold the bench measures. acos
+            // would release, a few percent late or early. The chord form has no such loss (subtracting two nearby
+            // floats is exact), and it must land on the right answer all the way down to the resolvability floor.
             foreach (double degrees in new[] { 1.0, 0.1, 0.01, 0.001 })
             {
                 Vector3 a = SunAtD(35.0);

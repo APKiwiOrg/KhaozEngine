@@ -2463,9 +2463,12 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       Three things to know. The threshold is elevation-corrected and recomputed every frame
       (`budget * (2r/res) * sin^2(e) / h` against the tightest active cascade), because a low sun throws shadows far
       and the same rotation moves them much further: it is about 43x tighter at a 5 degree dusk than at a 35 degree
-      afternoon, and below roughly a 6 degree sun it stops holding at all. Only the SHADOW fit is held, so
-      `Post.LightDirection` still drives diffuse, specular, the sky sun disc and the water live, and only the cast
-      shadow lags. And the hold suppresses the LIGHT reason only, so a caster that moves under a held sun still
+      afternoon, and near the horizon it stops holding at all, because the threshold there is finer than a float
+      direction vector can carry. That standdown elevation is derived from the same formula rather than fixed
+      (`budget * (2r/res) * sin^2(e) / h = 1e-5`), so it scales as `1/sqrt(r)` with cascade 0's camera-derived
+      radius: about 2.6 degrees on a wide outdoor framing (`r` around 60 m), about 5.8 degrees at a 12 m radius.
+      Only the SHADOW fit is held, so `Post.LightDirection` still drives diffuse, specular, the sky sun disc and
+      the water live, and only the cast shadow lags. And the hold suppresses the LIGHT reason only, so a caster that moves under a held sun still
       re-records via `CasterDataChanged` and cannot leave a ghost. Raise `ShadowLightHoldCasterHeight` for a scene
       with casters taller than 12 m (the hold then releases sooner), and raise `ShadowLightHoldTexels` above 1 only
       with the result in front of you, since it is a visible step at the re-fit boundary that it is trading away.

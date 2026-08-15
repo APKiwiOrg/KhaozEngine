@@ -82,9 +82,11 @@ namespace KhaozEngine.Tests.Gpu
         const float DaylightDegreesPerFrame = 0.2f / 60f;
         // A thousandth of a degree per frame: three times slower than daylight and still far below any visual
         // epsilon. How far a sun step moves a shadow depends on the sun's ELEVATION as well as on the rotation: the
-        // foot of a caster h tall sits at h*cot(e), so an azimuth step sweeps it by h*cot(e)*dTheta and an elevation
-        // step lifts it by h*dTheta/sin^2(e). At this bench's 35 deg sun those are 1.43x and 3.04x the naive
-        // h*dTheta, so 0.001 deg moves the shadow of a 10 m caster by at most 0.53 mm (0.17 mm naive). At cascade 3
+        // foot of a caster h tall sits at h*cot(e), so an azimuth step sweeps it by h*cot(e)*dPhi and an elevation
+        // step lifts it by h*dTheta/sin^2(e). Compared on the same axis, which is great-circle angle (an azimuth
+        // step of dPhi is only cos(e)*dPhi of great circle), those read h/sin(e) and h/sin^2(e) per radian: 1.74x
+        // and 3.04x the naive h*dTheta at this bench's 35 deg sun. So 0.001 deg moves the shadow of a 10 m caster
+        // by at most 0.53 mm, on the elevation term (0.17 mm naive). At cascade 3
         // (radius ~= 120 m at 2048) one texel is about 12 cm on the ground, so that is still ~220x below one texel.
         const float SubEpsilonDegreesPerFrame = 0.001f;
         // The shipped light-hold defaults, pinned explicitly rather than inherited, so this bench keeps measuring one

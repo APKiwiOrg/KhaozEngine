@@ -224,6 +224,97 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
+        /// AND A SWITCH TO A PIPELINE DECLARING FEWER SETS DOES NOT CARRY THE SET IT DROPPED
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/625). This is the shipped transition every post-process
+        /// pass makes: the GPU-skinned model pipeline declares two sets and every <c>PixelPostProcess</c> pipeline
+        /// declares one, so set 1 is invalidated by the switch, still holds the material set, and is a slot the
+        /// incoming layout has no entry for at all. Binding it is not a redundant bind, it is a
+        /// <c>vkCmdBindDescriptorSets</c> whose <c>firstSet</c> plus set count leaves the layout's
+        /// <c>setLayoutCount</c>, and V-R7's draw-time assertion is what caught it on the vulkan-native leg.
+        /// </summary>
+        [Fact]
+        public void UnderValidation_ASwitchToAPipelineWithFewerSets_BindsOnlyWhatItDeclares()
+        {
+            using var harness = new VulkanBindHarness();
+            VulkanResourceSet vertex = harness.Set("Model.skinnedVertex");
+            VulkanResourceSet material = harness.Set("Model.skinnedFrag");
+            VulkanResourceSet post = harness.Set("Pixel.blit");
+
+            VulkanBoundPipeline skinned = harness.PipelineFor(vertex, material);
+            VulkanBoundPipeline blit = harness.PipelineFor(post);
+            Assert.Equal(2, skinned.SetLayouts.Length);
+            Assert.Single(blit.SetLayouts);
+
+            var binds = new List<VulkanRecordedBind>();
+            var sink = new VulkanCapturingCmdSink(binds);
+            var records = new VulkanBindRecords(PipelineBindPoint.Graphics, assertsBoundSetLayouts: true);
+
+            records.SetPipelineLayout(skinned.Layout, skinned.SetLayouts);
+            records.Record(0, vertex, 0);
+            records.Record(1, material, 0);
+            records.Flush(ref sink);
+            binds.Clear();
+
+            // The post pass: a one-set pipeline, and a bind at set 0 alone. Set 1 is dirty from the switch and
+            // still records the material set, which is exactly the state the assertion fired on.
+            records.SetPipelineLayout(blit.Layout, blit.SetLayouts);
+            records.Record(0, post, 0);
+            records.Flush(ref sink);
+
+            VulkanRecordedBind bind = Assert.Single(binds);
+            Assert.Equal(0u, bind.FirstSet);
+            Assert.Equal(new[] { post.DescriptorSet }, bind.Sets);
+
+            // AND SET 1 STILL OWES A BIND rather than having been quietly cleaned on the way past. The record is
+            // the shadow of what should be bound and the one-set layout is only what stops it being bound now.
+            Assert.True(records.IsDirty(1));
+            Assert.Equal(material.DescriptorSet, records.RecordedSet(1));
+        }
+
+        /// <summary>
+        /// AND THE SET THE SHORTER LAYOUT PUT OUT OF REACH COMES BACK THE MOMENT A LAYOUT DECLARES IT AGAIN, in one
+        /// call with the set the caller did re-record. Keeping the record rather than clearing it is what makes the
+        /// trip back a rebind of a set nobody re-recorded, and clearing it would leave the next skinned draw reading
+        /// a descriptor slot the post pass disturbed, which is the silent half of the same defect.
+        /// </summary>
+        [Fact]
+        public void UnderValidation_TheSetAWiderLayoutDeclaresAgain_IsBoundOnTheWayBack()
+        {
+            using var harness = new VulkanBindHarness();
+            VulkanResourceSet vertex = harness.Set("Model.skinnedVertex");
+            VulkanResourceSet material = harness.Set("Model.skinnedFrag");
+            VulkanResourceSet post = harness.Set("Pixel.blit");
+
+            VulkanBoundPipeline skinned = harness.PipelineFor(vertex, material);
+            VulkanBoundPipeline blit = harness.PipelineFor(post);
+
+            var binds = new List<VulkanRecordedBind>();
+            var sink = new VulkanCapturingCmdSink(binds);
+            var records = new VulkanBindRecords(PipelineBindPoint.Graphics, assertsBoundSetLayouts: true);
+
+            records.SetPipelineLayout(skinned.Layout, skinned.SetLayouts);
+            records.Record(0, vertex, 0);
+            records.Record(1, material, 0);
+            records.Flush(ref sink);
+
+            records.SetPipelineLayout(blit.Layout, blit.SetLayouts);
+            records.Record(0, post, 0);
+            records.Flush(ref sink);
+            binds.Clear();
+
+            // Back to the skinned pipeline. Set 0 is re-recorded because the post pass overwrote it, and set 1 is
+            // not: it is still the material set the switch away disturbed.
+            records.SetPipelineLayout(skinned.Layout, skinned.SetLayouts);
+            records.Record(0, vertex, 0);
+            records.Flush(ref sink);
+
+            VulkanRecordedBind bind = Assert.Single(binds);
+            Assert.Equal(0u, bind.FirstSet);
+            Assert.Equal(new[] { vertex.DescriptorSet, material.DescriptorSet }, bind.Sets);
+            Assert.False(records.IsDirty(1));
+        }
+
+        /// <summary>
         /// A REBIND OF THE LAYOUT ALREADY CURRENT DOES NOTHING, which is the fork's pipeline-identity guard in the
         /// seat that matters here. Two pipelines built from the same set layouts SHARE one <c>VkPipelineLayout</c>
         /// under V-D5, so switching between them is this case rather than a compatible-prefix computation, and it

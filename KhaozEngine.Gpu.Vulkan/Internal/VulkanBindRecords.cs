@@ -97,7 +97,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// order. A full activation of the engine's shapes is one call and an offsets-only rebind of one set is one
     /// call.</description></item>
     /// <item><description>A pipeline switch invalidates recorded slots from the first INCOMPATIBLE set onward
-    /// (<see cref="SetPipelineLayout"/>). A rebind of the layout already current does
+    /// (<see cref="SetPipelineLayout"/>), and a slot the incoming layout does not declare at all goes out of the
+    /// flush's reach until some later layout declares it again. A rebind of the layout already current does
     /// nothing.</description></item>
     /// <item><description>A slot whose recorded set has gone null is SKIPPED.</description></item>
     /// <item><description>Repeated dirty marks between two draws collapse to one flush, which falls out of an
@@ -131,6 +132,18 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// sets. The one way that reads wrong is a set disposed and a later set allocated onto the same freed handle,
     /// and binding a disposed set is already undefined on this backend: the free is deferred behind the timeline
     /// precisely because a submission may still be reading it.</para>
+    ///
+    /// <para><b>A FLUSH REACHES ONLY AS FAR AS THE BOUND PIPELINE LAYOUT DECLARES, which is the half of clause 4 a
+    /// switch to a SHORTER layout needs (https://github.com/APKiwiOrg/KhaozEngine/issues/625).</b> The compatible
+    /// prefix is bounded by the shorter of the two handle sequences, so a switch from a two-set pipeline to a
+    /// one-set one answers 1 and marks set 1 dirty, and set 1 is a slot the incoming layout has no entry for at all.
+    /// Binding it is not a redundant bind, it is an invalid call: <c>vkCmdBindDescriptorSets</c> requires
+    /// <c>firstSet</c> plus the set count to stay inside the layout's <c>setLayoutCount</c>, and V-R7's draw-time
+    /// assertion reads it as a set carrying a layout the pipeline declares 0 for. So the walk stops at the declared
+    /// count, and the slots past it stay DIRTY rather than going clean: they owe a bind to the next layout that
+    /// declares them. Keeping the record is what makes the trip back one rebind of a set the caller never
+    /// re-recorded, and it costs nothing to be sure of, because a prefix can never exceed the shorter length and so
+    /// the switch back marks those slots again anyway.</para>
     ///
     /// <para><b>ONE PER BIND POINT PER LIST, AND NOT SYNCHRONISED.</b> Graphics and compute bindings are separate
     /// on this seam and separate in Vulkan, so each gets its own records with its own
@@ -302,6 +315,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <para><b>WITH NO PIPELINE PREVIOUSLY BOUND EVERY RECORDED SLOT IS INVALIDATED</b>, and that is correct
         /// rather than conservative: nothing is bound, so nothing survives. It needs no arm of its own because an
         /// empty outgoing sequence has an empty common prefix.</para>
+        ///
+        /// <para><b>AND A SHORTER INCOMING LAYOUT NEEDS NO ARM HERE EITHER, because the answer is the FLUSH's</b>
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/625). The prefix is bounded by the shorter sequence, so
+        /// every slot the incoming layout drops is at or past it and is marked dirty by the loop below, which is the
+        /// right mark: those sets really are disturbed. What they are not is bindable, and that is a question about
+        /// the layout a bind names rather than about the switch that disturbed them, so the flush answers it by
+        /// stopping at the declared count. Clearing them here instead would lose the record the trip back rebinds
+        /// from.</para>
         /// </summary>
         /// <param name="pipelineLayout">The incoming <c>VkPipelineLayout</c>, non-zero.</param>
         /// <param name="setLayouts">Its set-layout handles in slot order. Held by reference and never mutated: the
@@ -361,6 +382,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// starting at one index. Both go clean on the way past, so a skip happens once rather than at every
         /// draw.</para>
         ///
+        /// <para><b>A SLOT THE BOUND LAYOUT DOES NOT DECLARE ENDS THE WALK INSTEAD, AND DOES NOT GO CLEAN.</b> It is
+        /// the third way a slot leaves a run and the only one that is not a skip: a bind naming a set number the
+        /// pipeline layout has no entry for is an invalid call rather than a wasted one, and the mark has to survive
+        /// so the next layout that declares that set rebinds it. See the class note for the switch this is really
+        /// about (https://github.com/APKiwiOrg/KhaozEngine/issues/625).</para>
+        ///
         /// <para><b>THE SLOTS GO CLEAN ONLY AFTER THE CALL LANDS.</b> The composition refuses a window that would
         /// leave its own segment (V-M6) and a run's marks must survive that throw: clearing first would mean the
         /// exception escapes the draw, the slots read clean, and the SECOND draw issues nothing for them and
@@ -369,8 +396,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// </summary>
         internal void Flush<TSink>(ref TSink sink) where TSink : struct, IVkCmdSink
         {
+            int limit = BindableSlotLimit();
+
             int slot = 0;
-            while (slot < _recorded)
+            while (slot < limit)
             {
                 if (!IsBindable(slot))
                 {
@@ -382,7 +411,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 int runStart = slot;
                 int count = 0;
 
-                while (slot < _recorded && IsBindable(slot))
+                while (slot < limit && IsBindable(slot))
                 {
                     EnsureRun(count + 1);
                     _run[count++] = new DescriptorSet(_slots[slot].Bound.DescriptorSet);
@@ -437,6 +466,16 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         // the run's start and again at every step, because a run is exactly the maximal span where both hold.
         bool IsBindable(int slot) => _slots[slot].Dirty && _slots[slot].Bound.IsBound;
 
+        // HOW FAR ONE FLUSH REACHES: the bound pipeline layout's own set count, because vkCmdBindDescriptorSets
+        // requires firstSet plus the set count to stay inside setLayoutCount and a slot past it has no entry to be
+        // bound against at all. Read here rather than folded into IsBindable, because a slot out of reach must keep
+        // its mark and every path through that predicate spends one.
+        //
+        // WITH NO PIPELINE BOUND IT REACHES EVERYTHING, deliberately. That is the case RequireLayout refuses by
+        // name, and a limit of zero there would turn a draw issued before a pipeline into silence.
+        int BindableSlotLimit()
+            => _pipelineSetLayouts is null ? _recorded : Math.Min(_recorded, _pipelineSetLayouts.Length);
+
         // A bind names a pipeline layout, so a run with no pipeline bound is not something to round down to
         // nothing: it would be vkCmdBindDescriptorSets with VK_NULL_HANDLE, which is invalid, and the caller's real
         // mistake is a draw before a pipeline.
@@ -459,6 +498,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         // would consume it, that the sets about to be bound really do satisfy the layout they are being bound
         // under. Under KE_VULKAN_VALIDATION only: it is a per-bind loop over the run, and it exists to catch a
         // mistake in the prefix computation, which is exactly the class a validation run is looking for.
+        //
+        // ITS PAST-THE-END ARM IS A BACKSTOP NOW RATHER THAN A LIVE CASE, and it stays exactly as strict. The flush
+        // stops at the layout's declared count, so a run cannot present a slot the layout has no entry for, and
+        // reading such a slot as a declared 0 is what this assertion did about the defect rather than what the
+        // defect was (https://github.com/APKiwiOrg/KhaozEngine/issues/625). Loosening it would only make the next
+        // way into that state quiet.
         void AssertBoundSetLayouts(int firstSet, int count)
         {
             ulong[] layouts = _pipelineSetLayouts

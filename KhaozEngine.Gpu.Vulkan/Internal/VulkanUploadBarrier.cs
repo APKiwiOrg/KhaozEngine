@@ -3,9 +3,21 @@ using Silk.NET.Vulkan;
 namespace KhaozEngine.Gpu.Vulkan.Internal
 {
     /// <summary>
-    /// THE BARRIER A STAGED UPLOAD OWES, NARROWED TO THE DESTINATION'S ACTUAL USAGE (V-M9, section 9.3). Pure
+    /// THE TWO BARRIERS A STAGED UPLOAD OWES, NARROWED TO THE DESTINATION'S ACTUAL USAGE (V-M9, section 9.3). Pure
     /// arithmetic over a flags word, so what a copy is synchronised against is a plain <c>[Fact]</c> rather than a
     /// thing only a validation layer on a real device can see.
+    ///
+    /// <para><b>THERE ARE TWO, AND FOR A LONG TIME THERE WAS ONLY ONE</b>
+    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/618">#618</see>). <see cref="After"/> makes the
+    /// transfer write visible to the reads that FOLLOW it, which is the read-after-write direction and the only
+    /// one this type originally carried. <see cref="Before"/> orders the write against whatever came BEFORE it,
+    /// which is write-after-read and write-after-write, and without it a per-frame <c>UpdateBuffer</c> of a vertex
+    /// buffer is a copy racing the previous frame's vertex fetch. Nothing in the engine's own frame loop makes that
+    /// safe: the pool ring's fence covers the submission N frames back, not the one immediately before, and
+    /// submission order alone gives no execution dependency between two submissions on one queue. The sync
+    /// validation tier reported it 138 times over the golden suite, always as
+    /// <c>SYNC_COPY_TRANSFER_WRITE</c> against a prior
+    /// <c>SYNC_VERTEX_ATTRIBUTE_INPUT_VERTEX_ATTRIBUTE_READ</c> with <c>read_barriers</c> empty.</para>
     ///
     /// <para><b>WHAT IT REPLACES.</b> The shipped incumbent emits ONE global <c>VkMemoryBarrier</c> after every
     /// upload it makes, with <c>dstStageMask = VertexInput</c> and <c>dstAccessMask = VertexAttributeRead</c>.
@@ -99,8 +111,50 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         }
 
         /// <summary>
-        /// The whole barrier for one staged upload, as a <c>VkBufferMemoryBarrier2</c> over the WRITTEN RANGE ALONE
-        /// rather than a global memory barrier. Both queue family indices are
+        /// The stages that could already have touched the destination range when the copy is recorded, which is the
+        /// PRE-copy barrier's <c>srcStageMask</c>: everything that READS a buffer of this usage, plus the transfer
+        /// stage for the write an earlier upload to the same range left behind.
+        /// </summary>
+        internal static PipelineStageFlags2 PriorStage(GpuBufferUsage usage)
+            => DestinationStage(usage) | SourceStage;
+
+        /// <summary>
+        /// THE BARRIER BEFORE THE COPY: the write-after-read and write-after-write half, over the WRITTEN RANGE
+        /// ALONE.
+        ///
+        /// <para><b>THE SOURCE ACCESS IS THE WRITE ALONE AND THAT IS NOT AN OVERSIGHT.</b> A read needs no
+        /// availability operation, so the write-after-read half is carried entirely by <see cref="PriorStage"/> in
+        /// <c>srcStageMask</c>, which is an execution dependency and is what the specification asks for. Naming
+        /// the read accesses in <c>srcAccessMask</c> as well would be legal and would do nothing. The one access
+        /// that DOES have to be made available is an earlier staged upload's own
+        /// <c>TRANSFER_WRITE</c> to the same range, which is the write-after-write half.</para>
+        ///
+        /// <para><b>ITS FIRST SCOPE REACHES INTO EARLIER SUBMISSIONS</b>, which is the whole point: a
+        /// <c>vkCmdPipelineBarrier2</c>'s first synchronisation scope includes every command submitted to the same
+        /// queue before it, not merely the ones earlier in this command buffer. That is why the copy at the head of
+        /// frame N+1's recording is ordered against frame N's draws, with no semaphore and no fence involved.</para>
+        /// </summary>
+        /// <param name="destination">The destination <c>VkBuffer</c>.</param>
+        /// <param name="offsetBytes">Where the copy is about to write.</param>
+        /// <param name="sizeBytes">How much it is about to write.</param>
+        /// <param name="usage">The destination buffer's usage, which narrows the source stages.</param>
+        internal static unsafe BufferMemoryBarrier2 Before(ulong destination, ulong offsetBytes, ulong sizeBytes,
+            GpuBufferUsage usage)
+            => new(
+                sType: StructureType.BufferMemoryBarrier2,
+                srcStageMask: PriorStage(usage),
+                srcAccessMask: SourceAccess,
+                dstStageMask: SourceStage,
+                dstAccessMask: SourceAccess,
+                srcQueueFamilyIndex: Vk.QueueFamilyIgnored,
+                dstQueueFamilyIndex: Vk.QueueFamilyIgnored,
+                buffer: new Buffer(destination),
+                offset: offsetBytes,
+                size: sizeBytes);
+
+        /// <summary>
+        /// THE BARRIER AFTER THE COPY: the read-after-write half, as a <c>VkBufferMemoryBarrier2</c> over the
+        /// WRITTEN RANGE ALONE rather than a global memory barrier. Both queue family indices are
         /// <c>VK_QUEUE_FAMILY_IGNORED</c>, because this backend has exactly one queue (V-N5) so there is no
         /// ownership transfer to express.
         /// </summary>
@@ -108,7 +162,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="offsetBytes">Where the copy wrote.</param>
         /// <param name="sizeBytes">How much it wrote.</param>
         /// <param name="usage">The destination buffer's usage, which narrows the destination masks.</param>
-        internal static unsafe BufferMemoryBarrier2 For(ulong destination, ulong offsetBytes, ulong sizeBytes,
+        internal static unsafe BufferMemoryBarrier2 After(ulong destination, ulong offsetBytes, ulong sizeBytes,
             GpuBufferUsage usage)
             => new(
                 sType: StructureType.BufferMemoryBarrier2,

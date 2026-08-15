@@ -5,11 +5,22 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 {
     /// <summary>
     /// ONE STAGED BUFFER UPLOAD, END TO END (V-M9, section 9.3): end the pass, take a staging lease, memcpy into
-    /// it, record the copy, and barrier the destination with masks narrowed to what actually reads it.
+    /// it, barrier the destination against whatever already touched it, record the copy, and barrier it again with
+    /// masks narrowed to what actually reads it.
     ///
     /// <para><b>THE ORDER IS THE WHOLE OF IT.</b> The pass ends FIRST, because a copy is illegal inside a
-    /// <c>vkCmdBeginRendering</c> scope. The barrier comes LAST, because it orders the transfer write against the
-    /// reads that follow, and a barrier emitted before the copy would order nothing.</para>
+    /// <c>vkCmdBeginRendering</c> scope. Then the copy is BRACKETED by two barriers, and each one closes a
+    /// direction the other cannot. The one after it orders the transfer write against the reads that follow. The
+    /// one before it orders the write against the reads and the writes that came earlier, INCLUDING the ones in
+    /// earlier submissions, which is the half this path shipped without
+    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/618">#618</see>).</para>
+    ///
+    /// <para><b>WHY THE FRAME LOOP DOES NOT ALREADY COVER IT.</b> A consumer that re-uploads a vertex buffer every
+    /// frame records that copy at the head of the next frame's command buffer, while the previous frame's
+    /// <c>vkCmdDrawIndexed</c> is still in flight reading the same bytes as vertex attributes. Two submissions on
+    /// one queue are ordered in submission order and nothing else: the second may START its transfer stage before
+    /// the first has finished its vertex fetch. The pool ring's fence does not help either, because it waits on the
+    /// submission FRAMES-IN-FLIGHT back rather than the immediately preceding one.</para>
     ///
     /// <para><b>A STATIC OVER A GENERIC SINK, deliberately.</b> The barrier goes through
     /// <see cref="IVkCmdSink"/>, which is consumed through a <c>where TSink : struct</c> constraint so the JIT
@@ -17,13 +28,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// which is the one way to spend the cost that seam was shaped to avoid, so the sink is a parameter and the row
     /// that owns a real sink calls in with its own.</para>
     ///
-    /// <para><b>ONE BARRIER PER UPLOAD, OVER THE WRITTEN RANGE.</b> The incumbent emits a GLOBAL
-    /// <c>VkMemoryBarrier</c> instead, which makes every access of its class wait rather than the one buffer that
-    /// was written, and names <c>VertexAttributeRead</c> at <c>VertexInput</c> whatever the destination is. See
-    /// <see cref="VulkanUploadBarrier"/> for what that gets wrong in both directions at once.</para>
+    /// <para><b>BOTH BARRIERS ARE OVER THE WRITTEN RANGE.</b> The incumbent emits a GLOBAL
+    /// <c>VkMemoryBarrier</c> instead, one of them, which makes every access of its class wait rather than the one
+    /// buffer that was written, and names <c>VertexAttributeRead</c> at <c>VertexInput</c> whatever the destination
+    /// is. See <see cref="VulkanUploadBarrier"/> for what that gets wrong in both directions at once.</para>
     ///
     /// <para><b>NO BATCHING, AND THAT IS A CHOICE THIS ROW MAKES CHEAPLY REVERSIBLE.</b> Two uploads in a row
-    /// produce two copies and two barriers. Coalescing them into one <c>vkCmdPipelineBarrier2</c> carrying N
+    /// produce two copies and four barriers. Coalescing them into one <c>vkCmdPipelineBarrier2</c> carrying N
     /// buffer barriers is strictly better and needs a pending-upload list on the recorder, which is the recorder's
     /// shape rather than this function's, so it belongs with the row that builds one. The barrier count is visible
     /// through the counting sink either way, so a load that turns out to emit thousands is measurable rather than
@@ -66,22 +77,28 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             VulkanStagingLease lease = arena.Take((ulong)data.Length);
             lease.Write(data);
 
-            copies.CopyBuffer(lease.Buffer, lease.OffsetBytes, destination.DeviceBuffer, destinationOffsetBytes,
-                (ulong)data.Length);
+            ulong sizeBytes = (ulong)data.Length;
 
-            RecordBarrier(sink, destination, destinationOffsetBytes, (ulong)data.Length);
+            // BEFORE. Nothing else orders this write against the reads a previous submission is still making out
+            // of the same range, and a buffer has no layout for the tracker to have ordered it through (#618).
+            RecordBarrier(sink, VulkanUploadBarrier.Before(
+                destination.DeviceBuffer, destinationOffsetBytes, sizeBytes, destination.UploadUsage));
+
+            copies.CopyBuffer(lease.Buffer, lease.OffsetBytes, destination.DeviceBuffer, destinationOffsetBytes,
+                sizeBytes);
+
+            // AFTER. The write becomes visible to whatever this buffer's usage says reads it.
+            RecordBarrier(sink, VulkanUploadBarrier.After(
+                destination.DeviceBuffer, destinationOffsetBytes, sizeBytes, destination.UploadUsage));
         }
 
         // The barrier alone, split out so the fixed statement's scope is one statement rather than the whole
         // upload. A VkDependencyInfo carries raw pointer arrays as a matter of ABI, which is why this package is
-        // unsafe by construction (V-P1's note) rather than by choice.
-        static unsafe void RecordBarrier<TSink>(TSink sink, IVulkanUploadDestination destination,
-            ulong destinationOffsetBytes, ulong sizeBytes)
+        // unsafe by construction (V-P1's note) rather than by choice. The barrier arrives BY VALUE so its address
+        // is this frame's rather than the caller's, which is what lets one helper serve both halves.
+        static unsafe void RecordBarrier<TSink>(TSink sink, BufferMemoryBarrier2 barrier)
             where TSink : struct, IVkCmdSink
         {
-            BufferMemoryBarrier2 barrier = VulkanUploadBarrier.For(
-                destination.DeviceBuffer, destinationOffsetBytes, sizeBytes, destination.UploadUsage);
-
             var dependency = new DependencyInfo(
                 sType: StructureType.DependencyInfo,
                 bufferMemoryBarrierCount: 1,

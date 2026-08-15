@@ -432,7 +432,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void TheBarrier_IsOverTheWrittenRangeOfOneBuffer()
         {
-            BufferMemoryBarrier2 barrier = VulkanUploadBarrier.For(
+            BufferMemoryBarrier2 barrier = VulkanUploadBarrier.After(
                 destination: 0xB0B0, offsetBytes: 64, sizeBytes: 128, GpuBufferUsage.VertexBuffer);
 
             Assert.Equal(0xB0B0ul, barrier.Buffer.Handle);
@@ -444,21 +444,72 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(AccessFlags2.TransferWriteBit, barrier.SrcAccessMask);
         }
 
+        // ---- the barrier BEFORE the copy (#618) ----------------------------------------------------------
+
+        /// <summary>
+        /// THE PRE-COPY BARRIER NAMES THE STAGES THAT ALREADY READ THE BUFFER, which is what makes a per-frame
+        /// vertex-buffer upload safe against the previous frame's still-running vertex fetch. Without it the sync
+        /// validation tier reports <c>SYNC_COPY_TRANSFER_WRITE</c> against a prior
+        /// <c>SYNC_VERTEX_ATTRIBUTE_INPUT_VERTEX_ATTRIBUTE_READ</c>
+        /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/618">#618</see>).
+        /// </summary>
+        [Theory]
+        [InlineData(GpuBufferUsage.VertexBuffer, PipelineStageFlags2.VertexInputBit)]
+        [InlineData(GpuBufferUsage.IndexBuffer, PipelineStageFlags2.VertexInputBit)]
+        [InlineData(GpuBufferUsage.IndirectBuffer, PipelineStageFlags2.DrawIndirectBit)]
+        public void ThePriorStages_AreTheReadingStagesPlusTransfer(GpuBufferUsage usage,
+            PipelineStageFlags2 reader)
+        {
+            Assert.Equal(reader | PipelineStageFlags2.TransferBit, VulkanUploadBarrier.PriorStage(usage));
+        }
+
+        /// <summary>
+        /// THE PRE-COPY BARRIER IS TRANSFER-WRITE ON THE DESTINATION SIDE, over the same range the copy is about to
+        /// write. Its source ACCESS is the transfer write alone, because a read needs no availability operation and
+        /// the write-after-read half is carried by the source STAGE mask, while an earlier upload's write to the
+        /// same range is the one access that does have to be made available.
+        /// </summary>
+        [Fact]
+        public void ThePreCopyBarrier_OrdersPriorReadsAndPriorWritesAgainstTheTransferWrite()
+        {
+            BufferMemoryBarrier2 barrier = VulkanUploadBarrier.Before(
+                destination: 0xB0B0, offsetBytes: 64, sizeBytes: 128, GpuBufferUsage.VertexBuffer);
+
+            Assert.Equal(0xB0B0ul, barrier.Buffer.Handle);
+            Assert.Equal(64ul, barrier.Offset);
+            Assert.Equal(128ul, barrier.Size);
+            Assert.Equal(PipelineStageFlags2.VertexInputBit | PipelineStageFlags2.TransferBit,
+                barrier.SrcStageMask);
+            Assert.Equal(AccessFlags2.TransferWriteBit, barrier.SrcAccessMask);
+            Assert.Equal(PipelineStageFlags2.TransferBit, barrier.DstStageMask);
+            Assert.Equal(AccessFlags2.TransferWriteBit, barrier.DstAccessMask);
+        }
+
+        /// <summary>A destination with no read usage still gets a pre-copy barrier, and its source stage falls back
+        /// to transfer rather than collapsing to NONE, which would order the write against nothing.</summary>
+        [Fact]
+        public void APreCopyBarrierForANonReadDestination_StillNamesTransfer()
+        {
+            Assert.Equal(PipelineStageFlags2.TransferBit, VulkanUploadBarrier.PriorStage(GpuBufferUsage.Staging));
+        }
+
         // ---- the recorded upload -------------------------------------------------------------------------
 
         /// <summary>
-        /// THE WHOLE UPLOAD, IN ORDER: the pass ends FIRST because a copy is illegal inside a rendering scope, the
-        /// copy names the lease, and the barrier comes LAST because a barrier emitted before the copy would order
-        /// nothing.
+        /// THE WHOLE UPLOAD, IN ORDER: the pass ends FIRST because a copy is illegal inside a rendering scope, and
+        /// the copy is BRACKETED by the two barriers, because each direction needs its own and the one after the
+        /// copy cannot order the reads that came before it
+        /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/618">#618</see>).
         /// </summary>
         [Fact]
-        public void ARecordedUpload_EndsThePassThenCopiesThenBarriers()
+        public void ARecordedUpload_EndsThePassThenBracketsTheCopyInTwoBarriers()
         {
             var source = new FakeStagingSource();
             using var arena = new VulkanStagingArena(source, framesInFlight: 3, blockBytes: 1024);
-            var copies = new FakeUploadSink();
+            var log = new CmdLog();
+            var copies = new FakeUploadSink(log);
             var rendering = new FakeRenderingScope();
-            var sink = new RecordingCmdSink(new CmdLog());
+            var sink = new RecordingCmdSink(log);
 
             var destination = new FakeVulkanUploadBuffer(0xDEAD, 256, GpuBufferUsage.VertexBuffer);
             var payload = new byte[] { 4, 5, 6, 7 };
@@ -470,7 +521,20 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(0xDEADul, copies.Copies[0].Destination);
             Assert.Equal(32ul, copies.Copies[0].DestinationOffset);
             Assert.Equal(4ul, copies.Copies[0].SizeBytes);
-            Assert.Equal(1, sink.Log.Barriers);
+
+            Assert.Equal(new[] { "barrier", "copy", "barrier" }, log.Sequence);
+
+            // The FIRST barrier is the write-after-read half: prior vertex fetches, then this transfer write. The
+            // second is the read-after-write half. Reading them off the recorded DependencyInfo is what makes the
+            // ordering an assertion rather than a comment.
+            Assert.Equal(PipelineStageFlags2.VertexInputBit | PipelineStageFlags2.TransferBit,
+                log.BufferBarriers[0].SrcStageMask);
+            Assert.Equal(AccessFlags2.TransferWriteBit, log.BufferBarriers[0].DstAccessMask);
+            Assert.Equal(32ul, log.BufferBarriers[0].Offset);
+            Assert.Equal(4ul, log.BufferBarriers[0].Size);
+
+            Assert.Equal(PipelineStageFlags2.TransferBit, log.BufferBarriers[1].SrcStageMask);
+            Assert.Equal(AccessFlags2.VertexAttributeReadBit, log.BufferBarriers[1].DstAccessMask);
 
             // The bytes went into the lease the copy names.
             byte[] block = source.BytesOf(copies.Copies[0].Source);
@@ -484,9 +548,10 @@ namespace KhaozEngine.Tests.Gpu
         {
             var source = new FakeStagingSource();
             using var arena = new VulkanStagingArena(source, framesInFlight: 3, blockBytes: 1024);
-            var copies = new FakeUploadSink();
+            var log = new CmdLog();
+            var copies = new FakeUploadSink(log);
             var rendering = new FakeRenderingScope();
-            var sink = new RecordingCmdSink(new CmdLog());
+            var sink = new RecordingCmdSink(log);
 
             VulkanBufferUpload.Record(sink, copies, arena, rendering,
                 new FakeVulkanUploadBuffer(0xDEAD, 256, GpuBufferUsage.VertexBuffer), 0,
@@ -506,8 +571,9 @@ namespace KhaozEngine.Tests.Gpu
         {
             var source = new FakeStagingSource();
             using var arena = new VulkanStagingArena(source, framesInFlight: 3, blockBytes: 1024);
-            var copies = new FakeUploadSink();
-            var sink = new RecordingCmdSink(new CmdLog());
+            var log = new CmdLog();
+            var copies = new FakeUploadSink(log);
+            var sink = new RecordingCmdSink(log);
 
             VulkanBufferUpload.Record(sink, copies, arena, rendering: null,
                 new FakeVulkanUploadBuffer(0xDEAD, 256, GpuBufferUsage.IndexBuffer), 0, new byte[] { 1 });
@@ -563,15 +629,24 @@ namespace KhaozEngine.Tests.Gpu
             }
         }
 
-        /// <summary>The copy side, recorded rather than made.</summary>
+        /// <summary>The copy side, recorded rather than made. It shares the command log with the barrier sink so
+        /// the two streams interleave into ONE sequence, which is the only way the bracket around the copy is an
+        /// assertion rather than two independent counts.</summary>
         sealed class FakeUploadSink : IVulkanUploadSink
         {
+            readonly CmdLog _log;
+
+            internal FakeUploadSink(CmdLog log) => _log = log;
+
             internal List<(ulong Source, ulong SourceOffset, ulong Destination, ulong DestinationOffset,
                 ulong SizeBytes)> Copies { get; } = new();
 
             public void CopyBuffer(ulong source, ulong sourceOffsetBytes, ulong destination,
                 ulong destinationOffsetBytes, ulong sizeBytes)
-                => Copies.Add((source, sourceOffsetBytes, destination, destinationOffsetBytes, sizeBytes));
+            {
+                Copies.Add((source, sourceOffsetBytes, destination, destinationOffsetBytes, sizeBytes));
+                _log.Sequence.Add("copy");
+            }
         }
 
         /// <summary>The rendering scope, counting the pass ends the upload path owes.</summary>
@@ -582,11 +657,19 @@ namespace KhaozEngine.Tests.Gpu
             public void EndActiveRendering() => Ended++;
         }
 
-        /// <summary>The barrier count, behind the budget seam, because the arena's barrier is one of the three call
-        /// classes that seam exists to watch even though the copy beside it is not.</summary>
+        /// <summary>The barrier count, behind the budget seam, because the arena's barriers are one of the three
+        /// call classes that seam exists to watch even though the copy between them is not. It also carries the
+        /// interleaved sequence and the barrier structs themselves, so the bracket's ORDER and its MASKS are both
+        /// readable.</summary>
         sealed class CmdLog
         {
             internal int Barriers { get; set; }
+
+            /// <summary>"barrier" and "copy" in the order they were recorded.</summary>
+            internal List<string> Sequence { get; } = new();
+
+            /// <summary>Every buffer memory barrier the sink saw, in order.</summary>
+            internal List<BufferMemoryBarrier2> BufferBarriers { get; } = new();
         }
 
         readonly struct RecordingCmdSink : IVkCmdSink
@@ -613,7 +696,16 @@ namespace KhaozEngine.Tests.Gpu
             {
             }
 
-            public void PipelineBarrier(in DependencyInfo dependency) => Log.Barriers++;
+            public unsafe void PipelineBarrier(in DependencyInfo dependency)
+            {
+                Log.Barriers++;
+                Log.Sequence.Add("barrier");
+
+                for (uint i = 0; i < dependency.BufferMemoryBarrierCount; i++)
+                {
+                    Log.BufferBarriers.Add(dependency.PBufferMemoryBarriers[i]);
+                }
+            }
         }
     }
 }

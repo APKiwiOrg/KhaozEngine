@@ -267,14 +267,21 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         }
 
         /// <summary>
-        /// Append a device-level BUFFER upload: stage the bytes and record the copy, with the barrier narrowed to
-        /// what actually reads the destination.
+        /// Append a device-level BUFFER upload: stage the bytes and record the copy, bracketed by the two barriers
+        /// narrowed to what actually reads the destination.
         /// <para>
         /// A RING-BACKED UNIFORM BUFFER NEVER COMES HERE. Its device-level write reaches every segment as a memcpy
         /// into persistently mapped memory and records no command at all (9.2), which is the whole contrast
         /// between the two write paths. What arrives here is a vertex, index, indirect or storage buffer, and the
-        /// barrier <see cref="VulkanUploadBarrier"/> builds names the stage and access that buffer's own usage
+        /// barriers <see cref="VulkanUploadBarrier"/> builds name the stage and access that buffer's own usage
         /// implies rather than the incumbent's one-size vertex-attribute guess.
+        /// </para>
+        /// <para>
+        /// THE PRE-COPY BARRIER IS NOT ONLY FOR FRESH BUFFERS' SAKE. Initial data lands on a buffer nothing has
+        /// read yet, where it costs an ordering nobody needed, but this is also where a consumer's
+        /// device-level <c>UpdateBuffer</c> of a long-lived vertex buffer arrives, and there the previous frame's
+        /// draw is exactly the prior read that has to finish first
+        /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/618">#618</see>).
         /// </para>
         /// </summary>
         internal void UploadBuffer(IVulkanUploadDestination destination, ulong destinationOffsetBytes,
@@ -295,10 +302,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 VulkanStagingLease lease = _arena.Take((ulong)data.Length);
                 lease.Write(data);
 
+                BufferBarrier(buffer, VulkanUploadBarrier.Before(
+                    destination.DeviceBuffer, destinationOffsetBytes, (ulong)data.Length,
+                    destination.UploadUsage));
+
                 _sink.CopyBuffer(buffer, lease.Buffer, lease.OffsetBytes, destination.DeviceBuffer,
                     destinationOffsetBytes, (ulong)data.Length);
 
-                BufferBarrier(buffer, VulkanUploadBarrier.For(
+                BufferBarrier(buffer, VulkanUploadBarrier.After(
                     destination.DeviceBuffer, destinationOffsetBytes, (ulong)data.Length,
                     destination.UploadUsage));
 

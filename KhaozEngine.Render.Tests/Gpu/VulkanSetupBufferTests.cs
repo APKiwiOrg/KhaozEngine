@@ -269,13 +269,19 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// A DEVICE-LEVEL BUFFER UPLOAD IS A STAGED COPY PLUS A NARROWED BARRIER. The narrowing is
+        /// A DEVICE-LEVEL BUFFER UPLOAD IS A STAGED COPY BRACKETED BY TWO NARROWED BARRIERS. The narrowing is
         /// <see cref="VulkanUploadBarrier"/>'s: the incumbent emits one global <c>VkMemoryBarrier</c> whose
         /// destination is a vertex-attribute read whatever the buffer really is, so an index buffer and a storage
         /// buffer are both synchronised as though they were vertex attributes.
+        /// <para>
+        /// THE FIRST OF THE TWO IS <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/618">#618</see>'s.
+        /// A device-level <c>UpdateBuffer</c> of a long-lived buffer lands over bytes a previous submission's draw
+        /// is still fetching, and nothing else orders that: a <c>VkBuffer</c> has no layout for the tracker to have
+        /// transitioned, and two submissions on one queue carry no execution dependency of their own.
+        /// </para>
         /// </summary>
         [Fact]
-        public void ADeviceLevelBufferUpload_IsAStagedCopyWithANarrowedBarrier()
+        public void ADeviceLevelBufferUpload_IsAStagedCopyBracketedByTwoNarrowedBarriers()
         {
             var fixture = new VulkanResourceFixture();
 
@@ -288,10 +294,21 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(64UL, copy.DestinationOffset);
             Assert.Equal(32UL, copy.Size);
 
-            FakeBufferBarrier barrier = Assert.Single(fixture.SetupSink.BufferBarriers);
-            Assert.Equal(64UL, barrier.Offset);
-            Assert.Equal(32UL, barrier.Size);
-            Assert.Equal(AccessFlags2.IndexReadBit, barrier.DestinationAccess);
+            Assert.Equal(2, fixture.SetupSink.BufferBarriers.Count);
+
+            // The pre-copy one ends at the transfer write, which is what makes it the write-after-read half.
+            FakeBufferBarrier before = fixture.SetupSink.BufferBarriers[0];
+            Assert.Equal(64UL, before.Offset);
+            Assert.Equal(32UL, before.Size);
+            Assert.Equal(PipelineStageFlags2.TransferBit, before.DestinationStage);
+            Assert.Equal(AccessFlags2.TransferWriteBit, before.DestinationAccess);
+
+            // The post-copy one ends at the index read, narrowed to what this buffer's own usage implies.
+            FakeBufferBarrier after = fixture.SetupSink.BufferBarriers[1];
+            Assert.Equal(64UL, after.Offset);
+            Assert.Equal(32UL, after.Size);
+            Assert.Equal(AccessFlags2.IndexReadBit, after.DestinationAccess);
+
             Assert.Empty(fixture.CommandApi.Submissions);
         }
 

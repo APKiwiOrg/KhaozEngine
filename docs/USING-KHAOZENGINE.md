@@ -5279,7 +5279,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.36.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.36.2" />
 ```
 
 ```csharp
@@ -8729,7 +8729,7 @@ run inside the engine's process-wide device-creation gate, so a provider needs n
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.36.1" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="17.36.2" />
 ```
 
 ```csharp
@@ -8763,7 +8763,7 @@ that up front is what routes it through the reported fallback instead of a crash
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="17.36.1" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="17.36.2" />
 ```
 
 ```csharp
@@ -9001,7 +9001,7 @@ is no recovery path: a lost device stays lost, which is what the liveness token 
 Opt-in, in NO umbrella, added explicitly like `Physics.Bepu`:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="17.36.1" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="17.36.2" />
 ```
 
 ```csharp

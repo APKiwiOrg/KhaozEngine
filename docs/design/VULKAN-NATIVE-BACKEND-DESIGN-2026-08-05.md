@@ -923,6 +923,23 @@ and the slots past that count KEEP their marks rather than going clean, so the n
 rebinds a set the caller never re-recorded. Clearing them instead would leave a draw after the post pass reading
 a descriptor slot the post pass disturbed, which is the same defect with nothing to catch it.
 
+**And the same limit answers the OTHER walk over these records (#626), which is where the correction above was
+half applied.** Row 15's per-command bound-image walk reads the same per-slot array to put each bound set's
+images into the layout its binding needs (V-C1), and it kept walking every recorded slot after the flush stopped
+walking them. That is not an invalid call, so nothing catches it: it is work for an image no shader on the bound
+pipeline can read. Where the image was already resting where the binding wanted it the tracker emitted nothing,
+which is why the shipped post chain showed no extra barrier and why this cost nothing observable. Where it was
+not, the draw moved the image out of the layout its real consumer wants and the consumer moved it back, and in
+the sharp shape, a dropped set naming a `RenderTarget | Sampled` image the pass begin itself moves, the walk was
+owed a transition the instant the pass reopened, so the draw ended the pass, transitioned, reopened, and the
+begin put the attachment straight back, at EVERY draw of that pass rather than once. Both the emitting walk and
+the ask that decides whether the pass is ended now stop at the declared count, identically and on purpose: a
+question reaching further than the walk it gates would end passes for nothing, and one reaching less far would
+leave a barrier to be recorded INSIDE an open render pass instance. The bound is DECLARED and emphatically not
+dirty, which the surviving clause here is about from the other side: dirty is what owes a bind, declared is what
+can be bound at all, and a set bound before a dispatch still owes its rule 1 transition at the next draw without
+owing a bind.
+
 **The dynamic offset array is where a subtle mistake lives.** `pDynamicOffsets` covers every dynamic descriptor
 in every set being bound by that call, in set order then binding order, and it is POSITIONAL. Bind a run of
 three sets and the array must carry an entry for each dynamic descriptor in all three, in order, including ring

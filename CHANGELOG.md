@@ -5,6 +5,38 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.36.2
+
+The native Vulkan backend's per-command image transition walk now stops at the set count the bound pipeline
+layout declares, the same limit its bind flush already stopped at, so a draw no longer barriers, and in the sharp
+case reopens its render pass for, images belonging to a set the current pipeline dropped.
+
+### The per-draw transition walk stops where the bound pipeline layout stops (#626)
+
+`VulkanDrawRecorder`'s bound-image walk, and the ask that decides whether the open render pass has to close for
+it, both read every RECORDED descriptor slot. #625 stopped the bind flush at the bound layout's declared set
+count and left these two behind. No public API changes: the whole schedule is internal to
+`KhaozEngine.Gpu.Vulkan`.
+
+**It was wasted work rather than a wrong picture, and that distinction is the whole finding.** Every barrier the
+over-broad walk emitted was correct, was recorded in the list-local layout tracker, and was restored at `End`, so
+no consumer ever read a layout that was not true. What it did was move images no shader on the bound pipeline can
+read. Where the image was already resting where its binding wanted it the tracker emitted nothing, which is why
+the shipped post chain never showed an extra barrier and why #625's nine victims measured no extra cost.
+
+**Two shapes where it was not free.** A dispatch that leaves a storage texture in `GENERAL` and a dropped set
+that names it as sampled cost the next draw one barrier to move it out of the layout its real consumer wants, and
+the next dispatch a second one to move it back. The sharp shape is a dropped set naming an image the pass BEGIN
+itself moves, a `RenderTarget | Sampled` target that rests in `SHADER_READ_ONLY_OPTIMAL`: the walk was owed a
+transition the instant the pass reopened, so the draw ended the pass, transitioned, reopened, and the begin put
+the attachment straight back, at EVERY draw of that pass rather than once.
+
+**The bound is DECLARED and not dirty, which is a different question and the one a fix could get wrong.** Dirty
+is what owes a bind, declared is what can be bound at all, and a set bound before a dispatch is still bound at
+the draw after it and still owes its compute rule 1 transition without owing a bind. A slot past the limit keeps
+its record and is walked again the moment a layout declares it. Three device-free tests in the new
+`VulkanTransitionWalkTests` drive both cost shapes and the clean declared slot that must keep being walked.
+
 ## 17.36.1
 
 The native Vulkan backend's staged buffer upload now barriers on the way IN as well as on the way out, closing

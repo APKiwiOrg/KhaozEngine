@@ -1055,7 +1055,7 @@ about this backend either way.
 
 | Point | Transition |
 |---|---|
-| Before a draw or a dispatch | each image the bound sets name to `SHADER_READ_ONLY_OPTIMAL` or `GENERAL` |
+| Before a draw or a dispatch | each image named by a bound set the CURRENT pipeline layout declares, to `SHADER_READ_ONLY_OPTIMAL` or `GENERAL` |
 | Begin rendering | each attachment to `COLOR_ATTACHMENT_OPTIMAL` or `DEPTH_STENCIL_ATTACHMENT_OPTIMAL` |
 | Copy source or destination | to `TRANSFER_SRC_OPTIMAL` or `TRANSFER_DST_OPTIMAL` |
 | Mip chain, per level | level N-1 to `TRANSFER_SRC_OPTIMAL` and level N to `TRANSFER_DST_OPTIMAL` |
@@ -1065,6 +1065,20 @@ about this backend either way.
 The attachment transitions ride the DEFERRED begin, so they are emitted immediately before
 `vkCmdBeginRendering` and never inside the instance, where the same call would mean something much narrower. The
 bound-image row is emitted BEFORE that begin, for the same reason.
+
+**That first row covers DECLARED slots and not merely recorded ones**
+([#626](https://github.com/APKiwiOrg/KhaozEngine/issues/626)), which is the flush's own limit above read from the
+other end: the flush stops at the declared set count because a bind past it is an INVALID call, and this walk
+stops there because a transition past it is work for an image no shader on the bound pipeline can read. It is not
+a bound on DIRTY slots, which is a different question entirely, and the row would be wrong if it were: a set bound
+before a dispatch is still bound at the draw after it and still owes its rule 1 transition without owing a bind.
+A switch to a pipeline with fewer sets leaves the dropped slots recording their sets on purpose, and those sets
+were walked here too. Where the image was already resting where the binding wanted it the tracker emitted nothing,
+which is why the shipped post chain never showed an extra barrier. Where it was not, the draw moved an image out
+of the layout its real consumer wants and the consumer moved it back, and in the sharp shape, a dropped set naming
+a `RenderTarget | Sampled` image the pass begin itself moves, the walk was owed a transition the instant the pass
+reopened, so the draw ended the pass, transitioned, reopened and the begin put the attachment straight back, at
+every draw of that pass rather than once. A slot past the limit is walked again the moment a layout declares it.
 
 **There is no PRESENT row, and its absence is a ruling rather than a gap**
 ([#557](https://github.com/APKiwiOrg/KhaozEngine/issues/557)). `PRESENT_SRC_KHR` is the swapchain image's

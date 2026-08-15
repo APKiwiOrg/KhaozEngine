@@ -22,7 +22,8 @@ public enum TileSettings : byte
 public enum TileOverlayShape : byte
 {
     Full = 0,
-    /// <summary>One triangle of the tile, along the diagonal the tile triangulation selects for it.</summary>
+    /// <summary>One triangle of the tile. This overlay's rotation FORCES the tile's diagonal split rather
+    /// than following it (even rotation SW to NE, odd NW to SE), see TileTriangulation.</summary>
     DiagonalHalf = 1,
     CornerQuarter = 2,
     CornerThreeQuarter = 3,

@@ -11,6 +11,11 @@ public class TileRaycastTests
     {
         Assert.True(TileTriangulation.SplitSwNe(0, 100, 100, 0, TileOverlayShape.Full, 0));
         Assert.False(TileTriangulation.SplitSwNe(0, 0, 0, 100, TileOverlayShape.Full, 0));
+        // Neither case above separates <= from ==. The first is a tie (0 vs 0) and the second is a strict
+        // greater, so both hold either way. These two pin the rest of the rule: a strictly flatter SW-NE
+        // diagonal wins, and a strictly flatter NW-SE one loses.
+        Assert.True(TileTriangulation.SplitSwNe(0, 0, 100, 0, TileOverlayShape.Full, 0));
+        Assert.False(TileTriangulation.SplitSwNe(0, 50, 50, 100, TileOverlayShape.Full, 0));
         Assert.True(TileTriangulation.SplitSwNe(0, 0, 0, 100, TileOverlayShape.DiagonalHalf, 2));
         Assert.False(TileTriangulation.SplitSwNe(0, 100, 100, 0, TileOverlayShape.DiagonalHalf, 1));
     }
@@ -36,6 +41,28 @@ public class TileRaycastTests
         Assert.Equal(20, hit!.Value.X);
         Assert.Equal(5, hit.Value.Z);
         Assert.Equal(5f, hit.Value.Point.Y, 2);
+    }
+
+    [Fact]
+    public void An_oblique_ray_at_a_non_unit_tile_size_measures_in_world_units()
+    {
+        TileWorldDocument doc = TileWorldTestData.FlatWorld();
+        doc.TileSize = 2f;
+        for (int x = 20; x <= 21; x++) for (int z = 5; z <= 6; z++) doc.SetCornerHeightCm(x, z, 0, 500);
+        // Origin is in world units, so this is tile x 0.5, tile z 5.5. The slope is half the unit-size test's:
+        // a tile is two world units wide now, so 0.05 would drop below the 5 m plateau early and hit the ramp
+        // in tile 19. At 0.025 the ray is y = 6 - 0.025 * (wx - 1), so 5.025 at wx 40 (clearing tile 19's ramp
+        // by 25 mm) and crossing y = 5 at wx 41, inside tile 20, which spans wx 40 to 42.
+        var origin = new Vector3(1f, 6f, 11f);
+        TileHit? hit = TileRaycast.Pick(doc, 0, origin, new Vector3(1f, -0.025f, 0f));
+        Assert.NotNull(hit);
+        Assert.Equal(20, hit!.Value.X);
+        Assert.Equal(5, hit.Value.Z);
+        Assert.Equal(5f, hit.Value.Point.Y, 2);
+        Assert.Equal(41f, hit.Value.Point.X, 1);
+        // The distance is what pins world units. sqrt(40^2 + 1^2) is 40.01, a tile-unit distance would be 20.
+        Assert.Equal(Vector3.Distance(origin, hit.Value.Point), hit.Value.Distance, 3);
+        Assert.InRange(hit.Value.Distance, 39.96f, 40.06f);
     }
 
     [Fact]

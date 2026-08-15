@@ -45,7 +45,7 @@ public static class TileRaycast
     static bool TestTile(TileWorldDocument doc, int plane, int tx, int tz, Vector3 origin, Vector3 dir, float maxDistance, out TileHit hit)
     {
         hit = default;
-        if (doc.RegionAt(tx, tz) is null || doc.GetUnderlay(tx, tz, plane) == 0) return false;
+        if (doc.GetUnderlay(tx, tz, plane) == 0) return false;
         float ts = doc.TileSize;
         short h00 = doc.CornerHeightCm(tx, tz, plane), h10 = doc.CornerHeightCm(tx + 1, tz, plane);
         short h01 = doc.CornerHeightCm(tx, tz + 1, plane), h11 = doc.CornerHeightCm(tx + 1, tz + 1, plane);
@@ -55,6 +55,8 @@ public static class TileRaycast
         var ne = new Vector3((tx + 1) * ts, h11 * 0.01f, (tz + 1) * ts);
         bool swne = TileTriangulation.SplitSwNe(h00, h10, h01, h11, doc.GetOverlayShape(tx, tz, plane), doc.GetOverlayRotation(tx, tz, plane));
 
+        // This vertex order winds a DOWNWARD normal, harmless here because Intersect is two-sided. A mesher
+        // that back-face culls must wind the other way round.
         float best = float.PositiveInfinity;
         if (swne)
         {

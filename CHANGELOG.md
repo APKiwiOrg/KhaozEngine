@@ -14,7 +14,10 @@ per-capture device teardown, which that same tier reported as twelve leaked Vulk
 flush also stops at the set count the bound pipeline layout declares, so a switch to a pipeline with fewer sets
 no longer binds a set that layout has no entry for, which was nine of the `vulkan-native` leg's failures. On the
 Metal side, the unattributed draw that aborted the incumbent test host under the API validation layer is
-attributed to one row and stood down, so that suite finishes armed.
+attributed to one row and stood down, so that suite finishes armed. Alongside all of that, the engine gains a
+new GPU-free `Foundation` package, `KhaozEngine.TileWorld`: the OSRS-style tile world document, its
+hash-checked directory file form, catalogs, validator, derived collision, deterministic pathfinder, lattice
+raycast and prefabs.
 
 ### A staged upload brackets its copy in two barriers (#618)
 
@@ -160,6 +163,66 @@ shipped transition both ways with the assertion armed.
 failures to 10, and the nine that went are exactly this issue's nine. What remains is other people's: eight
 `WaterClipmapAcceptanceTests` plus `WaterSurfProbe` (#623) and `TheUnbuiltMembers_NameTheirOwnRow` (#622, which
 reds the incumbent Vulkan leg too). The `gpu-vulkan-sync` job is green on the same run.
+
+### The tile world document package (#629)
+
+`KhaozEngine.TileWorld` is a new packable package in the `Foundation` umbrella, round 1 of the tile-world
+program. It holds an OSRS-style discrete tile grid: 64x64 tile regions, N stacked planes, a global tile-corner
+height lattice in centimetre shorts, per-tile ground `Underlay`, shaped `Overlay` and authored `TileSettings`
+flags, tile-anchored objects and named markers, with ground materials and object archetypes referenced by
+catalog id and never stored in the world. It is GPU-free and render-free, and it is a SIBLING of
+`KhaozEngine.MapDoc` rather than an extension of it, so a game picks one model or the other per world and the
+two packages have no edge between them in either direction.
+
+**The public surface, by area.** Document: `TileWorldDocument` (header fields, sparse `TileRegion` map, tile
+and height accessors, objects, markers), `TileRegion`, `TilePlaneData`, `TileObject`, `TileMarker`,
+`RegionCoord`, `TileCoord`, `TileRect`, `TileDirection`/`TileDirections`, `TileSettings`, `TileOverlayShape`,
+`TileWorldException`. File form: `TileWorldFile.Save`/`Load`, `TileWorldSource.Open`/`EnsureLoaded`/`Unload`,
+`TileWorldLoadOptions.RegisterMigration`, `TileWorldHash.OfRegionBytes`/`OfRegion`/`OfWorld`/
+`OfManifestRegions`. Catalogs: `TileWorldCatalogs.Load`/`LoadJson`/`Merge`/`Greybox`, `GroundMaterial`,
+`TileObjectArchetype`, `TileCollisionKind`, `TileFootprint`, `TileWorldSchema`. Validation:
+`TileWorldValidator.Validate`/`ValidateOrThrow` over `TileWorldIssue`, with fourteen stable codes callers may
+branch on. Collision and pathing: `TileCollisionFlags`, `TileCollisionMap`, `TileCollisionBaker.Bake`/`Rebake`,
+`TileCollision.IsBlocked`/`CanStep`, `TilePathfinder.FindPath`, `TilePath`. Picking and prefabs:
+`TileRaycast.Pick`, `TileHit`, `TileTriangulation.SplitSwNe`, `TilePrefab` with
+`TilePrefabs.Extract`/`Rotate`/`Place` and `TilePrefabFile.Save`/`Load`.
+
+**Two conventions run through every type.** Coordinates are WORLD tile coordinates everywhere, `TileObject.X/Z`
+and `TileMarker.X/Z` included, and the owning region is always `RegionCoord.Of(X, Z)`, which floors, so a
+negative coordinate lands in a negative region with a local coordinate in 0..63. Rotation is quarter turns
+clockwise from above, 0 west, 1 north, 2 east, 3 south, on objects, on overlay shapes and on prefab stamps.
+
+**Collision is DERIVED, never authored, and never persisted.** The baker reads authored settings plus the
+objects' archetypes, and a wall is one edge shared by two tiles, so it sets the edge bit on the object's tile
+AND the mirrored bit on the tile across that edge, which is what lets `CanStep` answer without ever looking at
+an object. Storage is allocated by `TileCollisionMap.EnsureRegion` alone: reads outside storage answer
+`Blocked` so an unloaded region is a wall rather than a void, and writes outside storage are dropped, so a
+footprint or a mirrored edge spilling past the authored world cannot open a region nobody authored and turn the
+whole 64x64 of it walkable. `Rebake` must be handed a rect covering the FULL footprint of anything the caller
+removed, measured with `TileFootprint.Of` before the removal, because a rebake can only re-derive the tiles it
+clears. `CanStep` deliberately allows egress FROM a `Blocked` tile, so an agent standing where the ground was
+blocked under it can walk out, and `TilePathfinder` treats such a start like any other. An unreachable goal
+yields the walk to the nearest reachable tile, nearest by squared Euclidean distance to the goal, then by BFS
+distance, then by scan order, so callers branch on `TilePath.Reached` and never on `Tiles.Count`.
+
+**Saves detect a torn write rather than rolling one back.** Region files land through tmp plus rename with the
+manifest written last, and every region's bytes are hashed into that manifest and re-checked on load. Bytes are
+replaced in place, so a save interrupted part way leaves the regions it already wrote, and the next load
+refuses the world naming the first file whose bytes disagree. `Dirty` clears only once the manifest naming those
+exact bytes has landed, so a throw anywhere earlier cannot leave a clean region under a stale hash.
+
+**Prefabs stamp additively off one datum.** The extracted rect's SW corner is the height datum on every plane,
+`Rotate` re-bases after a turn so the rotated SW corner is height 0 again and then re-trims, and `Place`
+validates the prefab's shape, rotates, and requires every target region before the first write. A stamp skips a
+null layer rather than zeroing it, so pre-existing overlays or settings under it survive, and a caller wanting a
+replace clears the rect first.
+
+**What is deliberately absent.** No renderer, no editor and no MCP tool: the ground mesher and props
+(`KhaozEngine.TileWorld.Render3D`) plus the `KhaozEngine.Editor` kernel extraction are round 2, and the
+`TileEditor` GUI with the `ke-tileedit` MCP tool are round 3. An `IPathPlanner` adapter over `TilePathfinder`
+(tile centres to `Vector3`) is also deferred: `Navigation`'s clearance grid blocks per cell and cannot express
+per-edge walls, so the adapter is about thirty lines that nothing in this round calls, and it waits for the NPC
+AI that wants `Navigation`'s utilities.
 
 ## 17.36.0
 

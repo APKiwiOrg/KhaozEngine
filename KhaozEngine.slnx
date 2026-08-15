@@ -34,7 +34,6 @@
   <Project Path="KhaozEngine.Localization.TestKit/KhaozEngine.Localization.TestKit.csproj" />
   <Project Path="KhaozEngine.Locomotion/KhaozEngine.Locomotion.csproj" />
   <Project Path="KhaozEngine.MapDoc/KhaozEngine.MapDoc.csproj" />
-  <Project Path="KhaozEngine.TileWorld/KhaozEngine.TileWorld.csproj" />
   <Project Path="KhaozEngine.MapEditor/KhaozEngine.MapEditor.csproj" />
   <Project Path="KhaozEngine.NetWorld/KhaozEngine.NetWorld.csproj" />
   <Project Path="KhaozEngine.Navigation/KhaozEngine.Navigation.csproj" />
@@ -66,6 +65,7 @@
   <Project Path="KhaozEngine.Telegraphs.Render3D/KhaozEngine.Telegraphs.Render3D.csproj" />
   <Project Path="KhaozEngine.Terrain/KhaozEngine.Terrain.csproj" />
   <Project Path="KhaozEngine.Terrain.Render3D/KhaozEngine.Terrain.Render3D.csproj" />
+  <Project Path="KhaozEngine.TileWorld/KhaozEngine.TileWorld.csproj" />
   <Project Path="KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
   <Project Path="KhaozEngine.Http/KhaozEngine.Http.csproj" />
   <Project Path="KhaozEngine.ServerStatus/KhaozEngine.ServerStatus.csproj" />

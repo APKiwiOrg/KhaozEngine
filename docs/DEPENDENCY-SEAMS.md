@@ -388,6 +388,26 @@ transitively through `MapDoc` (`MapDoc -> Terrain`, and `Terrain` itself depends
 `Collision`), so the new edge introduces no cycle. `DungeonNav.Bake` lives in `KhaozEngine.Dungeon` and
 returns a `KhaozEngine.Navigation.NavSpace`, but nothing in `Navigation` references `Dungeon` back.
 
+## Tile world package edges
+
+`KhaozEngine.TileWorld` adds four edges, all acyclic and all onto packages that already sit below it:
+
+```
+KhaozEngine.TileWorld -> KhaozEngine.Primitives      (the foundation leaf, declared like every sibling package)
+KhaozEngine.TileWorld -> KhaozEngine.Serialization   (Jsonc for the JSONC-tolerant manifest and catalog reads)
+KhaozEngine.TileWorld -> KhaozEngine.Content         (JsonSchemaValidator against the embedded catalog schema)
+KhaozEngine.Foundation -> KhaozEngine.TileWorld      (umbrella ProjectReference, like every other Foundation package)
+```
+
+It is a SIBLING of `KhaozEngine.MapDoc` rather than an extension of it, and there is no edge between the two in
+either direction. `MapDoc` describes a continuous-terrain zone, `TileWorld` a discrete tile grid, and all they
+share is the two foundation packages each already depends on. `TileWorld` deliberately does NOT reference
+`Terrain` (which `MapDoc` does), because a tile lattice carries its own corner heights and has no analytic
+field to sample, and it does not reference `Navigation` either: per-edge walls cannot be expressed in a
+`NavGrid`'s per-cell blocking model, so `TilePathfinder` is its own BFS over `TileCollisionMap`. An
+`IPathPlanner` adapter over it (tile centres to `Vector3`) is a follow-up for when NPC AI wants `Navigation`'s
+utilities, and would live on the `TileWorld` side, so the non-edge holds either way.
+
 ## Surface-source seam: INavSurfaceProvider (a deliberate non-edge)
 
 The step-aware overworld bake (`NavGridBaker.BakeOverworldSteps`) needs a per-cell walkable surface

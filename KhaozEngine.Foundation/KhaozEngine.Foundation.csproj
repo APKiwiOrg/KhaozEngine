@@ -27,7 +27,6 @@
     <ProjectReference Include="../KhaozEngine.Identity/KhaozEngine.Identity.csproj" />
     <ProjectReference Include="../KhaozEngine.Locomotion/KhaozEngine.Locomotion.csproj" />
     <ProjectReference Include="../KhaozEngine.MapDoc/KhaozEngine.MapDoc.csproj" />
-    <ProjectReference Include="../KhaozEngine.TileWorld/KhaozEngine.TileWorld.csproj" />
     <ProjectReference Include="../KhaozEngine.Navigation/KhaozEngine.Navigation.csproj" />
     <ProjectReference Include="../KhaozEngine.Objectives/KhaozEngine.Objectives.csproj" />
     <ProjectReference Include="../KhaozEngine.Persistence/KhaozEngine.Persistence.csproj" />
@@ -40,6 +39,7 @@
     <ProjectReference Include="../KhaozEngine.Social/KhaozEngine.Social.csproj" />
     <ProjectReference Include="../KhaozEngine.Stats/KhaozEngine.Stats.csproj" />
     <ProjectReference Include="../KhaozEngine.Terrain/KhaozEngine.Terrain.csproj" />
+    <ProjectReference Include="../KhaozEngine.TileWorld/KhaozEngine.TileWorld.csproj" />
     <ProjectReference Include="../KhaozEngine.Updates/KhaozEngine.Updates.csproj" />
     <!-- File-size ratchet analyzer: packs as a dependency so it flows to any consumer of this umbrella.
          PrivateAssets="none" keeps the Analyzers+Build assets in the packed dependency (the

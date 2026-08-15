@@ -24,6 +24,10 @@ Pulls in:
   (terrain with parametric features, scatter and companion layers, exclusion/override shapes, authored
   placements, spawns, regions) plus `MapRuntime` builders that produce the exact `TerrainField`/
   `ScatterConfig`/`PropPlacement` objects games consume.
+- `KhaozEngine.TileWorld` - the OSRS-style tile world document: 64x64 tile regions with stacked planes, a
+  global tile-corner height lattice, ground/overlay materials and settings flags, tile-anchored objects and
+  named markers, a hash-checked directory file form, catalogs, a validator, the derived per-edge collision
+  map and its baker, a deterministic BFS pathfinder, a lattice raycast and prefabs.
 - `KhaozEngine.Determinism` - `DeterministicFpScope` FP-environment pinning for lockstep sims.
 - `KhaozEngine.Platform` - cross-platform `Clipboard` facade.
 - `KhaozEngine.Updates` - delta auto-update pipeline.

@@ -1,6 +1,7 @@
 # OSRS-style tile world: document, collision, renderer, editor kernel, tile editor and MCP tool (2026-08-15)
 
-Status: design approved, implementation pending. Program issue:
+Status: R1 shipped (document, file form, catalogs, validator, collision, pathfinder, raycast, prefabs), R2 and
+R3 pending. Program issue:
 [#629](https://github.com/APKiwiOrg/KhaozEngine/issues/629). First adopter: Grimhollow, a new low-poly 3D
 MMO on the Ruinborne shell (repo to be scaffolded, `APKiwiOrg/Grimhollow`).
 
@@ -150,12 +151,18 @@ Layers null out when entirely default so an empty region file is small.
 ### 5.3 Per region, sparse
 
 - `Objects`: `List<TileObject>` across all planes. `TileObject { Id (long, unique per document, allocated
-  from NextObjectId, MCP-addressable), ArchetypeId (string), X, Z (region-local, the anchor is the SW tile
-  of the footprint), Plane, Rotation (0..3 quarter turns), Tags (string list, optional) }`. The footprint
-  comes from the archetype and is swapped by rotation. A footprint may cross into a neighbouring region: the
-  anchor region owns the object, and the collision baker resolves the spill.
-- `Markers`: `List<TileMarker>`, `{ Name, X, Z, Plane, Tags }`: spawn points, bank and respawn anchors, later
-  NPC spawn sites. Gameplay positions are authored in the same tool as the world and never live in code.
+  from NextObjectId, MCP-addressable), ArchetypeId (string), X, Z (WORLD tile coordinates, the anchor is the
+  SW tile of the footprint, the owning region is `RegionCoord.Of(X, Z)`), Plane, Rotation (0..3 quarter
+  turns), Tags (string list, optional) }`. The footprint comes from the archetype and is swapped by rotation.
+  A footprint may cross into a neighbouring region: the anchor region owns the object, and the collision baker
+  resolves the spill.
+- `Markers`: `List<TileMarker>`, `{ Name, X, Z, Plane, Tags }`, X and Z world coordinates like an object's:
+  spawn points, bank and respawn anchors, later NPC spawn sites. Gameplay positions are authored in the same
+  tool as the world and never live in code.
+
+World coordinates rather than region-local ones were decided at R1 plan time. Region-local buys nothing once
+regions are 64-aligned (the local pair is one `FloorMod` away, and `TileCoord.LocalX`/`LocalZ` expose it), and
+it would make every consumer carry the region alongside an object just to know where that object is.
 
 ### 5.4 Catalogs (game content, referenced by id)
 
@@ -247,6 +254,13 @@ edge on a neighbour tile (including across a region boundary) is recomputed. Rul
 5. `Diagonal` -> `Blocked` (OSRS's diagonal wall type blocks the whole tile for movement).
 6. `Interactive` and `IsRoof` never touch collision. `CollisionKind.None` never touches collision.
 
+**A spill into a region the DOCUMENT does not have is DROPPED, and that region stays `Blocked`.** Storage is
+allocated by `TileCollisionMap.EnsureRegion` alone, and both entry points give storage to the document's own
+regions before any object is applied, so `Set`/`Or` outside storage is a no-op. Letting a footprint or a
+mirrored wall edge allocate its own region instead would turn the whole 64x64 of a region nobody authored
+walkable, since every tile the spill did not touch would then read as clear rather than as the edge of the
+world. Reads outside storage answer `Blocked` for the same reason: an unloaded region is a wall, not a void.
+
 ### 6.2 Movement primitive
 
 `TileCollision.CanStep(map, plane, from, dir, agentSize)`: for a 1x1 agent, the leaving tile has no wall on
@@ -261,8 +275,12 @@ is the one primitive the tick movement (sub-project 3) and the pathfinder share.
 collision map (8-connected through `CanStep`), a fixed neighbour order (W, E, S, N, SW, SE, NW, NE, the OSRS
 order, so both heads replay identical paths for identical inputs), search bounded to a `(2 * maxRadius)`
 square around the start. OSRS's partial-path rule: an unreachable goal yields the path to the nearest
-reachable tile, nearest by Chebyshev distance to the goal, ties broken by path length. Result
-`TilePath { Tiles, Reached }`. Stairs and ladders are gameplay teleports across planes, not collision.
+reachable tile, nearest by SQUARED EUCLIDEAN distance to the goal (OSRS's own tie-break, and Chebyshev would
+tie a whole column at distance N), then by path length, then by scan order. Result
+`TilePath { Tiles, Reached, End }`, and callers branch on `Reached`, never on `Tiles.Count`, because a partial
+walk carries steps too. A start standing on a `Blocked` tile is treated like any other start, since `CanStep`
+allows egress from a tile that was blocked under the agent. Stairs and ladders are gameplay teleports across
+planes, not collision.
 
 Not folded into `Navigation.NavGrid`: that is a clearance grid for continuous worlds with per-cell blocking
 only, and its A* expands 8-connected neighbours implicitly, so per-edge walls cannot be expressed there
@@ -275,11 +293,22 @@ It is not built now, because nothing in this program calls it.
 - `TileRaycast.Pick(document, plane, ray) -> TileHit? { X, Z, Plane, Point }`: ray against the lattice
   triangles of the loaded regions, in the document package because sub-project 3's click-to-walk needs it
   server-free.
-- `TilePrefab`: `Extract(document, rect, planes, includeObjects) -> TilePrefab` (dense layers per plane,
-  objects and markers with rect-relative coordinates, catalog ids by value) and `Place(document, prefab, x,
-  z, plane, rotation)` (rotates layers, shapes, object rotations and footprints, and re-allocates object
-  ids). Serialised to JSON in a game-owned prefabs directory. Prefabs are what make "build one house, stamp
-  a village" a single verb for the AI.
+- `TilePrefab`: `Extract(document, catalogs, rect, planeFrom, planeCount, includeObjects, includeMarkers,
+  name) -> TilePrefab` (dense layers per plane, objects and markers with rect-relative coordinates, catalog
+  ids by value plus each object's UNROTATED footprint size so a later rotation needs no catalog) and
+  `Place(document, prefab, x, z, plane, rotation)` (rotates layers, shapes, object rotations and footprints,
+  and re-allocates object ids). Serialised to JSON in a game-owned prefabs directory. Prefabs are what make
+  "build one house, stamp a village" a single verb for the AI.
+
+**The prefab datum contract.** The SW corner of the extracted rect is the height datum, on EVERY plane: heights
+come out relative to that one corner on `planeFrom`, so the offsets between planes survive extraction.
+`Rotate` re-bases after the turn, because a quarter turn moves the SW corner to a different physical corner and
+would otherwise leave the heights relative to a corner that is no longer the prefab's own (0, 0). It then
+re-trims, so a rotated prefab is shaped exactly like a fresh `Extract` of the same content. `Place` therefore
+lands the stamp on the existing ground at (x, z) whatever the rotation, and it validates the prefab's shape,
+rotates, and requires every target region BEFORE the first write, so a bad stamp cannot tear half way through.
+A stamp is ADDITIVE per layer: a null layer is skipped rather than zeroed, so pre-existing overlays or settings
+under the stamp survive it, and a caller wanting a replace clears the rect first.
 
 ## 7. Renderer (`KhaozEngine.TileWorld.Render3D`)
 

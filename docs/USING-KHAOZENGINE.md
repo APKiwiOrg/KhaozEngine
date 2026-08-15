@@ -6362,6 +6362,64 @@ the full section list and a complete example document.
 
 ---
 
+## Tile world (`KhaozEngine.TileWorld`)
+
+The tile world is the OSRS-shaped alternative to the continuous terrain stack above, and a SIBLING of
+`KhaozEngine.MapDoc` rather than an extension of it: a discrete grid of 64x64 tile regions with stacked planes,
+a global tile-corner height lattice in centimetre shorts, per-tile ground and overlay materials, tile-anchored
+objects and named markers. GPU-free, in the `Foundation` umbrella, so the client, the server and an editor all
+read one document through one path.
+
+```csharp
+var doc = new TileWorldDocument { Id = "grimhollow", DisplayName = "Grimhollow", PlaneCount = 4 };
+doc.GetOrCreateRegion(new RegionCoord(0, 0));            // world tiles (0, 0) to (63, 63)
+TileWorldCatalogs catalogs = TileWorldCatalogs.Greybox(); // a game ships its own via TileWorldCatalogs.Load
+
+for (int z = 0; z < TileRegion.Size; z++)
+    for (int x = 0; x < TileRegion.Size; x++)
+        doc.SetUnderlay(x, z, 0, 1);                     // material 1 = grass. 0 is void, drawn as nothing
+doc.SetCornerHeightCm(10, 10, 0, 150);                   // SW corner of tile (10, 10), 1.5 m up
+doc.AddObject("tree", 12, 8, plane: 0, rotation: 0);     // Solid in the greybox catalog
+doc.SetMarker("spawn", 2, 2, 0);
+
+TileWorldValidator.ValidateOrThrow(doc, catalogs);       // dangling ids, bad planes, off-region footprints
+TileCollisionMap map = TileCollisionBaker.Bake(doc, catalogs);
+bool canEnterTree = TileCollision.CanStep(map, 12, 7, 0, TileDirection.N);    // false, the tree blocks it
+TilePath path = TilePathfinder.FindPath(map, 0, new TileCoord(2, 2, 0), new TileCoord(40, 30, 0));
+if (!path.Reached) { /* path.End is the nearest reachable tile, path.Tiles still walks there */ }
+
+TileWorldFile.Save(doc, "assets/worlds/grimhollow");     // world.json + regions/r_0_0.json, manifest LAST
+TileWorldDocument reloaded = TileWorldFile.Load("assets/worlds/grimhollow");
+string identity = TileWorldHash.OfWorld(reloaded);       // what a client and a server compare
+```
+
+**Two conventions run through every type.** Coordinates are WORLD tile coordinates everywhere, including
+`TileObject.X/Z` and `TileMarker.X/Z`, and the owning region is always `RegionCoord.Of(X, Z)`, which floors, so
+a negative coordinate lands in a negative region with a local coordinate in 0..63. Rotation is quarter turns
+clockwise from above, 0 west, 1 north, 2 east, 3 south, on objects, on overlay shapes and on prefab stamps.
+
+**Streaming.** `TileWorldSource.Open(dir)` reads the manifest only and materialises regions on demand through
+`EnsureLoaded(coord)` or `EnsureLoaded(rect)`, each hash-checked exactly like an eager load, and `Unload(coord)`
+drops a clean region while keeping its hash so a later save carries it through untouched. `TileWorldFile.Load`
+is that plus load-everything. A region the manifest knows about but that is not in memory cannot be created
+blind: `GetOrCreateRegion` and `RequireRegion` both throw for it, so a save can never blank authored terrain.
+
+**Collision is derived, never authored.** `TileCollisionBaker.Bake` builds the whole `TileCollisionMap` from
+settings plus object archetypes, `Rebake(map, doc, catalogs, dirtyRect, plane)` re-derives one rect after an
+edit, and a wall is one edge shared by two tiles (the baker sets the bit on both), so `CanStep` never looks at
+objects. Pass `Rebake` a rect covering the FULL footprint of anything you removed, measured with
+`TileFootprint.Of` before the removal, because a rebake can only re-derive the tiles it clears. Branch on
+`TilePath.Reached`, never on `Tiles.Count`: a partial walk to the nearest reachable tile carries steps too.
+
+**Picking and prefabs.** `TileRaycast.Pick(doc, plane, origin, direction)` is the GPU-free ray against the
+lattice, splitting each tile with `TileTriangulation.SplitSwNe`, the same rule the ground mesher uses, so a
+click lands on the triangle that is drawn. `TilePrefabs.Extract`/`Rotate`/`Place` lift a rect of tiles (layers,
+relative heights, objects, markers) and stamp it elsewhere at any rotation, with `TilePrefabFile` as the JSON
+form. A stamp is additive per layer, so clear the rect first if you want a replace. Full API summary: the
+`KhaozEngine.TileWorld` package README. Design rationale: `docs/design/TILE-WORLD-DESIGN-2026-08-15.md`.
+
+---
+
 ## Editor building blocks (`NumberField` / `TreeView` / `PropertyGrid` / `FlyCamera3D` / `RayMath` / `TerrainRaycast`)
 
 The primitives an in-engine editor viewport is built from: three inspector widgets (`KhaozEngine.Gui`), a

@@ -116,6 +116,95 @@ public class TileGroundMesherTests
     }
 
     [Fact]
+    public void DiagonalHalf_rotation_0_paints_the_north_west_half()
+    {
+        (List<TileTriangle> tile, Vector4 road, TileWorldDocument doc) = ShapedRoadTile(TileOverlayShape.DiagonalHalf, 0);
+
+        Assert.Equal(2, tile.Count);
+        TileTriangle paved = Assert.Single(tile.FindAll(t => IsFlat(t, road)));
+        Vector2 centre = LocalCentroid(paved, doc);
+        Assert.True(centre.X < 0.5f, $"the north west half sits west of the middle, not at {centre}");
+        Assert.True(centre.Y > 0.5f, $"the north west half sits north of the middle, not at {centre}");
+        Assert.Equal(doc.TileSize * doc.TileSize * 0.5f, GroundArea(paved), 1e-5f);
+    }
+
+    [Theory]
+    [InlineData(1, true, true)]
+    [InlineData(2, true, false)]
+    [InlineData(3, false, false)]
+    public void DiagonalHalf_rotation_paints_the_matching_half(int rotation, bool east, bool north)
+    {
+        (List<TileTriangle> tile, Vector4 road, TileWorldDocument doc) = ShapedRoadTile(TileOverlayShape.DiagonalHalf, rotation);
+
+        Assert.Equal(2, tile.Count);
+        TileTriangle paved = Assert.Single(tile.FindAll(t => IsFlat(t, road)));
+        Vector2 centre = LocalCentroid(paved, doc);
+        Assert.Equal(east, centre.X > 0.5f);
+        Assert.Equal(north, centre.Y > 0.5f);
+    }
+
+    [Fact]
+    public void CornerQuarter_rotation_2_paints_a_small_triangle_at_the_north_east_corner()
+    {
+        (List<TileTriangle> tile, Vector4 road, TileWorldDocument doc) = ShapedRoadTile(TileOverlayShape.CornerQuarter, 2);
+
+        // The small triangle plus the remaining pentagon, fanned into three.
+        Assert.Equal(4, tile.Count);
+        TileTriangle paved = Assert.Single(tile.FindAll(t => IsFlat(t, road)));
+        Assert.Equal(doc.TileSize * doc.TileSize / 8f, GroundArea(paved), 1e-5f);
+
+        Vector2 centre = LocalCentroid(paved, doc);
+        Assert.True(centre.X > 0.5f && centre.Y > 0.5f, $"the north east corner, not {centre}");
+    }
+
+    [Theory]
+    [InlineData(0, false, false)]
+    [InlineData(1, false, true)]
+    [InlineData(2, true, true)]
+    [InlineData(3, true, false)]
+    public void CornerQuarter_rotation_selects_the_corner(int rotation, bool east, bool north)
+    {
+        (List<TileTriangle> tile, Vector4 road, TileWorldDocument doc) = ShapedRoadTile(TileOverlayShape.CornerQuarter, rotation);
+
+        TileTriangle paved = Assert.Single(tile.FindAll(t => IsFlat(t, road)));
+        Vector2 centre = LocalCentroid(paved, doc);
+        Assert.Equal(east, centre.X > 0.5f);
+        Assert.Equal(north, centre.Y > 0.5f);
+    }
+
+    [Fact]
+    public void CornerThreeQuarter_is_the_complement()
+    {
+        (List<TileTriangle> tile, Vector4 road, TileWorldDocument doc) = ShapedRoadTile(TileOverlayShape.CornerThreeQuarter, 2);
+
+        Assert.Equal(4, tile.Count);
+        List<TileTriangle> paved = tile.FindAll(t => IsFlat(t, road));
+        Assert.Equal(3, paved.Count);
+
+        float pavedArea = 0f;
+        foreach (TileTriangle t in paved) pavedArea += GroundArea(t);
+        Assert.Equal(doc.TileSize * doc.TileSize * 7f / 8f, pavedArea, 1e-5f);
+
+        // The one triangle left to the ground is the small one at the rotation's corner, the north east.
+        TileTriangle plain = Assert.Single(tile.FindAll(t => !IsFlat(t, road)));
+        Vector2 centre = LocalCentroid(plain, doc);
+        Assert.True(centre.X > 0.5f && centre.Y > 0.5f, $"the north east corner, not {centre}");
+        Assert.Equal(doc.TileSize * doc.TileSize / 8f, GroundArea(plain), 1e-5f);
+    }
+
+    [Fact]
+    public void Non_full_shape_with_no_overlay_is_a_plain_tile()
+    {
+        TileWorldDocument doc = TileRenderTestData.RoadWorld();
+        // A cut with no overlay material has nothing to paint into it, so the tile stays the plain pair.
+        doc.SetOverlayShape(30, 30, 0, TileOverlayShape.CornerQuarter);
+        doc.SetOverlayRotation(30, 30, 0, 1);
+        GltfMesh mesh = Require(doc, 0);
+
+        Assert.Equal(2, TileTriangles(mesh, doc, 30, 30).Count);
+    }
+
+    [Fact]
     public void Missing_material_renders_magenta()
     {
         var doc = new TileWorldDocument { Id = "tile-render-dangling", DisplayName = "Dangling material" };
@@ -235,11 +324,11 @@ public class TileGroundMesherTests
             && cz >= TileRenderTestData.HillMin - 1 && cz <= TileRenderTestData.HillMax + 1;
     }
 
-    // Every vertex of every triangle whose centroid falls inside the region-local tile, which identifies a tile
-    // without depending on the mesher's emission order.
-    static List<ModelVertex> TileVertices(GltfMesh mesh, TileWorldDocument doc, int localX, int localZ)
+    // Every triangle whose centroid falls inside the region-local tile, which identifies a tile without depending
+    // on the mesher's emission order.
+    static List<TileTriangle> TileTriangles(GltfMesh mesh, TileWorldDocument doc, int localX, int localZ)
     {
-        var found = new List<ModelVertex>();
+        var found = new List<TileTriangle>();
         for (int t = 0; t < mesh.TriangleCount; t++)
         {
             ModelVertex a = mesh.Vertices[mesh.Indices32[t * 3]];
@@ -248,11 +337,75 @@ public class TileGroundMesherTests
             Vector3 centre = (a.Position + b.Position + c.Position) / 3f;
             if ((int)MathF.Floor(centre.X / doc.TileSize) != localX) continue;
             if ((int)MathF.Floor(centre.Z / doc.TileSize) != localZ) continue;
-            found.Add(a);
-            found.Add(b);
-            found.Add(c);
+            found.Add(new TileTriangle(a, b, c));
         }
         return found;
+    }
+
+    // Every vertex of those triangles, three per triangle in emission order.
+    static List<ModelVertex> TileVertices(GltfMesh mesh, TileWorldDocument doc, int localX, int localZ)
+    {
+        var found = new List<ModelVertex>();
+        foreach (TileTriangle t in TileTriangles(mesh, doc, localX, localZ))
+        {
+            found.Add(t.A);
+            found.Add(t.B);
+            found.Add(t.C);
+        }
+        return found;
+    }
+
+    // RoadWorld's shaped tile re-authored with one cut, read back as triangles alongside the road colour they are
+    // tested against and the document the positions are measured in.
+    static (List<TileTriangle> Tile, Vector4 Road, TileWorldDocument Doc) ShapedRoadTile(TileOverlayShape shape, int rotation)
+    {
+        TileWorldDocument doc = TileRenderTestData.RoadWorld();
+        TileWorldCatalogs catalogs = TileRenderTestData.Catalogs;
+        int x = TileRenderTestData.RoadDiagonalX;
+        doc.SetOverlayShape(x, TileRenderTestData.RoadZ, 0, shape);
+        doc.SetOverlayRotation(x, TileRenderTestData.RoadZ, 0, rotation);
+
+        GltfMesh mesh = Require(doc, 0, catalogs);
+        Vector4 road = TileColors.Parse(catalogs.Material(TileRenderTestData.Road)!);
+        return (TileTriangles(mesh, doc, x, TileRenderTestData.RoadZ), road, doc);
+    }
+
+    // True when all three vertices carry the flat overlay colour, which is what marks a triangle as paved: the
+    // underlay path blends and jitters its corners, so it never lands on the material colour exactly.
+    static bool IsFlat(in TileTriangle t, Vector4 color) =>
+        t.A.Color == color && t.B.Color == color && t.C.Color == color;
+
+    // The triangle's centroid in tile-local terms, 0 to 1 across whichever tile it belongs to.
+    static Vector2 LocalCentroid(in TileTriangle t, TileWorldDocument doc)
+    {
+        Vector3 centre = (t.A.Position + t.B.Position + t.C.Position) / 3f;
+        float x = centre.X / doc.TileSize;
+        float z = centre.Z / doc.TileSize;
+        return new Vector2(x - MathF.Floor(x), z - MathF.Floor(z));
+    }
+
+    // The triangle's area in the ground plane, from the 2D cross product of two of its edges on x and z.
+    static float GroundArea(in TileTriangle t)
+    {
+        Vector3 a = t.A.Position;
+        Vector3 b = t.B.Position;
+        Vector3 c = t.C.Position;
+        return MathF.Abs((b.X - a.X) * (c.Z - a.Z) - (c.X - a.X) * (b.Z - a.Z)) * 0.5f;
+    }
+
+    // One emitted triangle, so a shaped tile's parts can be read back by colour, centroid and area.
+    readonly struct TileTriangle
+    {
+        public TileTriangle(ModelVertex a, ModelVertex b, ModelVertex c)
+        {
+            A = a;
+            B = b;
+            C = c;
+        }
+
+        public ModelVertex A { get; }
+        public ModelVertex B { get; }
+        public ModelVertex C { get; }
     }
 
     // The one vertex the mesh carries at this region-local corner, asserting every copy of it agrees.

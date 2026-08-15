@@ -124,9 +124,8 @@ public static partial class TileGroundMesher
         int rotation = c.Doc.GetOverlayRotation(x, z, c.Plane);
         bool swne = TileTriangulation.SplitSwNe(h00, h10, h01, h11, shape, rotation);
 
-        // Full tiles only for now. Every shape draws as Full until the shaped-overlay triangulation lands in the
-        // mesher's other half, which replaces this block with a per-shape dispatch. Alpha is forced to 1 to match
-        // the blended underlay path, so an authored #rrggbbaa overlay cannot make the ground translucent.
+        // Alpha is forced to 1 to match the blended underlay path, so an authored #rrggbbaa overlay cannot make the
+        // ground translucent.
         ushort overlay = c.Doc.GetOverlay(x, z, c.Plane);
         Vector4? flat = null;
         if (overlay != 0)
@@ -134,6 +133,10 @@ public static partial class TileGroundMesher
             Vector4 overlayColor = MaterialColor(c.Catalogs, overlay);
             flat = new Vector4(overlayColor.X, overlayColor.Y, overlayColor.Z, 1f);
         }
+
+        // A shape only cuts the tile when there is an overlay material to paint into the cut. A shape with no
+        // overlay, and a shape id this build does not know, both fall through to the plain full tile below.
+        if (flat is not null && TryAddShapedTile(mesh, c, lx, lz, shape, rotation, flat.Value, swne)) return;
 
         ModelVertex sw = CornerVertex(c, lx, lz, 0, 0, flat);
         ModelVertex se = CornerVertex(c, lx, lz, 1, 0, flat);
@@ -154,18 +157,8 @@ public static partial class TileGroundMesher
 
     /// <summary>One corner of the tile at region-local (lx, lz), offset by a 0 or 1 corner step on each axis.
     /// A non-null <paramref name="flat"/> is the overlay colour, which replaces the blended underlay.</summary>
-    static ModelVertex CornerVertex(in TileMeshContext c, int lx, int lz, int dx, int dz, Vector4? flat)
-    {
-        int cx = c.OriginX + lx + dx;
-        int cz = c.OriginZ + lz + dz;
-        var position = new Vector3(
-            (lx + dx) * c.TileSize,
-            c.Doc.CornerHeightCm(cx, cz, c.Plane) * 0.01f,
-            (lz + dz) * c.TileSize);
-        Vector3 normal = c.Options.SmoothNormals ? CornerNormal(c.Doc, cx, cz, c.Plane) : Vector3.UnitY;
-        Vector4 color = flat ?? CornerColor(c.Doc, c.Catalogs, cx, cz, c.Plane, c.Options);
-        return new ModelVertex(position, normal, color, new Vector2(dx, dz));
-    }
+    static ModelVertex CornerVertex(in TileMeshContext c, int lx, int lz, int dx, int dz, Vector4? flat) =>
+        Corner(c, lx, lz, dx, dz, flat).ToVertex(null);
 
     /// <summary>Adds a triangle, replacing the three corner normals with the triangle's own when the options ask
     /// for flat shading.</summary>

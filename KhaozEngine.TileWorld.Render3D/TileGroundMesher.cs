@@ -68,7 +68,9 @@ public static partial class TileGroundMesher
     }
 
     /// <summary>The blended underlay colour at a lattice corner: the average of the jittered material colours of
-    /// the up-to-four tiles that share it, void tiles excluded. All void blends to <see cref="TileColors.Void"/>.</summary>
+    /// the up-to-four tiles that share it, void tiles excluded. All void blends to <see cref="TileColors.Void"/>.
+    /// A <see cref="TileSettings.NoDraw"/> tile draws no ground of its own but DOES contribute its underlay here,
+    /// so the ground colour stays continuous across a hole punched for an object floor.</summary>
     public static Vector4 CornerColor(
         TileWorldDocument doc,
         TileWorldCatalogs catalogs,
@@ -81,6 +83,8 @@ public static partial class TileGroundMesher
         ArgumentNullException.ThrowIfNull(catalogs);
         ArgumentNullException.ThrowIfNull(options);
 
+        // Underlay 0 is the ONLY exclusion. A NoDraw tile is deliberately still counted, because its neighbours'
+        // ground would otherwise step to a hard edge at the hole rather than blending across it.
         Span<Vector4> sharing = stackalloc Vector4[4];
         int count = 0;
         for (int dz = -1; dz <= 0; dz++)
@@ -92,7 +96,7 @@ public static partial class TileGroundMesher
                 if (underlay == 0) continue;
                 sharing[count++] = MaterialColor(catalogs, underlay) * TileColors.Jitter(tx, tz, plane, options.JitterAmplitude);
             }
-        return count == 0 ? TileColors.Void : TileColors.Blend(sharing[..count]);
+        return TileColors.Blend(sharing[..count]);
     }
 
     /// <summary>True when the tile draws ground: it has an underlay and is not marked
@@ -121,9 +125,15 @@ public static partial class TileGroundMesher
         bool swne = TileTriangulation.SplitSwNe(h00, h10, h01, h11, shape, rotation);
 
         // Full tiles only for now. Every shape draws as Full until the shaped-overlay triangulation lands in the
-        // mesher's other half, which replaces this line with a per-shape dispatch.
+        // mesher's other half, which replaces this block with a per-shape dispatch. Alpha is forced to 1 to match
+        // the blended underlay path, so an authored #rrggbbaa overlay cannot make the ground translucent.
         ushort overlay = c.Doc.GetOverlay(x, z, c.Plane);
-        Vector4? flat = overlay == 0 ? null : MaterialColor(c.Catalogs, overlay);
+        Vector4? flat = null;
+        if (overlay != 0)
+        {
+            Vector4 overlayColor = MaterialColor(c.Catalogs, overlay);
+            flat = new Vector4(overlayColor.X, overlayColor.Y, overlayColor.Z, 1f);
+        }
 
         ModelVertex sw = CornerVertex(c, lx, lz, 0, 0, flat);
         ModelVertex se = CornerVertex(c, lx, lz, 1, 0, flat);
@@ -223,9 +233,6 @@ public static partial class TileGroundMesher
     {
         readonly List<ModelVertex> _vertices = new();
         readonly List<uint> _indices = new();
-
-        /// <summary>Triangles collected so far.</summary>
-        public int TriangleCount => _indices.Count / 3;
 
         /// <summary>Appends one triangle as three fresh vertices.</summary>
         public void AddTriangle(ModelVertex a, ModelVertex b, ModelVertex c)

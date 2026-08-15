@@ -13,6 +13,9 @@ public class TileGroundMesherTests
 {
     const int TilesPerRegion = TileRegion.Size * TileRegion.Size;
 
+    // The greybox catalogs' second material, the one the NoDraw blend case needs beside grass.
+    const ushort Dirt = 2;
+
     [Fact]
     public void Flat_grass_region_meshes_two_triangles_per_tile()
     {
@@ -132,6 +135,75 @@ public class TileGroundMesherTests
     }
 
     [Fact]
+    public void Split_rule_picks_the_flatter_diagonal_and_the_mesher_emits_that_pair()
+    {
+        TileWorldDocument doc = FlatGrassWorld();
+        // A saddle: both diagonals span the same height difference, and the rule's tie-break takes SW to NE.
+        Saddle(doc, 40, 40, sw: 0, se: 100, nw: 100, ne: 0);
+        // One raised NE corner: the SW-NE diagonal spans 100 cm and the NW-SE one spans 0, so NW to SE wins.
+        Saddle(doc, 44, 44, sw: 0, se: 0, nw: 0, ne: 100);
+        GltfMesh mesh = Require(doc, 0);
+
+        // Triangles (SW, SE, NE) and (SW, NE, NW): the split's two ends appear in both, the others once each.
+        List<ModelVertex> swne = TileVertices(mesh, doc, 40, 40);
+        Assert.Equal(2, CountAt(swne, 40f, 40f));
+        Assert.Equal(2, CountAt(swne, 41f, 41f));
+        Assert.Equal(1, CountAt(swne, 41f, 40f));
+        Assert.Equal(1, CountAt(swne, 40f, 41f));
+
+        // Triangles (SW, SE, NW) and (SE, NE, NW).
+        List<ModelVertex> nwse = TileVertices(mesh, doc, 44, 44);
+        Assert.Equal(2, CountAt(nwse, 45f, 44f));
+        Assert.Equal(2, CountAt(nwse, 44f, 45f));
+        Assert.Equal(1, CountAt(nwse, 44f, 44f));
+        Assert.Equal(1, CountAt(nwse, 45f, 45f));
+    }
+
+    [Fact]
+    public void Positions_and_normals_scale_with_TileSize()
+    {
+        TileWorldDocument doc = TileRenderTestData.HillWorld();
+        doc.TileSize = 2f;
+        GltfMesh mesh = Require(doc, 0);
+
+        ModelVertex raised = FindCorner(mesh, 42f, 42f);
+        Assert.Equal(42f, raised.Position.X, 1e-5f);
+        Assert.Equal(2f, raised.Position.Y, 1e-5f);
+        Assert.Equal(42f, raised.Position.Z, 1e-5f);
+
+        // The same 2 m rise spread over a 2 m tile is half the gradient, so the normal stands closer to straight up.
+        TileWorldDocument unit = TileRenderTestData.HillWorld();
+        Assert.True(TileGroundMesher.CornerNormal(doc, 20, 21, 0).Y > TileGroundMesher.CornerNormal(unit, 20, 21, 0).Y);
+
+        Matrix4x4 world = TileGroundMesher.WorldMatrix(doc, new RegionCoord(1, 0));
+        Assert.Equal(128f, world.Translation.X, 1e-5f);
+        Assert.Equal(0f, world.Translation.Y, 1e-5f);
+        Assert.Equal(0f, world.Translation.Z, 1e-5f);
+    }
+
+    [Fact]
+    public void A_NoDraw_tile_still_tints_its_neighbours_corners()
+    {
+        TileWorldDocument doc = FlatGrassWorld();
+        doc.SetUnderlay(41, 40, 0, Dirt);
+        doc.SetSettings(41, 40, 0, TileSettings.NoDraw);
+        // Void the two tiles north of nothing and south of the pair, so the shared corner blends exactly the grass
+        // tile and the NoDraw dirt tile and the assertion has no third material in it.
+        doc.SetUnderlay(40, 39, 0, 0);
+        doc.SetUnderlay(41, 39, 0, 0);
+        GltfMesh mesh = Require(doc, 0);
+
+        TileWorldCatalogs catalogs = TileRenderTestData.Catalogs;
+        float grass = TileColors.Parse(catalogs.Material(TileRenderTestData.Grass)!).X;
+        float dirt = TileColors.Parse(catalogs.Material(Dirt)!).X;
+
+        // The corner the grass tile shares with the NoDraw dirt tile. A NoDraw tile draws no ground of its own but
+        // still contributes its underlay to the blend, so this corner lands between the two materials.
+        ModelVertex shared = FindCorner(mesh, 41f, 40f);
+        Assert.InRange(shared.Color.X, grass + 0.05f, dirt - 0.05f);
+    }
+
+    [Fact]
     public void Flat_normals_option_gives_one_normal_per_triangle()
     {
         TileWorldDocument doc = TileRenderTestData.HillWorld();
@@ -196,6 +268,36 @@ public class TileGroundMesherTests
         }
         Assert.True(first.HasValue, $"no vertex at region-local ({x}, {z})");
         return first!.Value;
+    }
+
+    // How many of these vertices sit at the region-local corner (x, z), which is how a tile's emitted triangle pair
+    // is read back: the two ends of the split diagonal are each in both triangles, the other two corners in one.
+    static int CountAt(List<ModelVertex> vertices, float x, float z)
+    {
+        int found = 0;
+        foreach (ModelVertex v in vertices)
+            if (MathF.Abs(v.Position.X - x) < 1e-4f && MathF.Abs(v.Position.Z - z) < 1e-4f) found++;
+        return found;
+    }
+
+    // One region of flat grass, the base the split-rule and NoDraw cases author their handful of tiles into.
+    static TileWorldDocument FlatGrassWorld()
+    {
+        var doc = new TileWorldDocument { Id = "tile-render-flat", DisplayName = "Flat grass" };
+        doc.GetOrCreateRegion(TileRenderTestData.Region);
+        for (int z = 0; z < TileRegion.Size; z++)
+            for (int x = 0; x < TileRegion.Size; x++)
+                doc.SetUnderlay(x, z, 0, TileRenderTestData.Grass);
+        return doc;
+    }
+
+    // The four corner heights of one tile in centimetres. Its neighbours' far corners stay at 0.
+    static void Saddle(TileWorldDocument doc, int x, int z, short sw, short se, short nw, short ne)
+    {
+        doc.SetCornerHeightCm(x, z, 0, sw);
+        doc.SetCornerHeightCm(x + 1, z, 0, se);
+        doc.SetCornerHeightCm(x, z + 1, 0, nw);
+        doc.SetCornerHeightCm(x + 1, z + 1, 0, ne);
     }
 
     // Two regions of grass with a ramp climbing east straight through their shared border at x = 64.

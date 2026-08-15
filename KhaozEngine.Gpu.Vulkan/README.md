@@ -383,8 +383,8 @@ patch is not a stall at all.
 
 **Bulk payloads take a per-list staging arena instead, and the render-pass split is theirs.** A record-time
 write to a NON-uniform buffer, and a texture upload, sub-allocate out of a host-visible persistently mapped
-arena, record a copy, and take a barrier narrowed to the destination's actual usage rather than the incumbent's
-one global `VertexAttributeRead` guess. Staging blocks are pooled by power-of-two size class with a real
+arena, record a copy, and bracket it in two barriers narrowed to the destination's actual usage rather than the
+incumbent's one global `VertexAttributeRead` guess. Staging blocks are pooled by power-of-two size class with a real
 retention cap of 8 MiB. The incumbent destroys any returned staging buffer over 512 bytes, so every real-sized
 upload creates and destroys a `VkBuffer` AND a device memory block per call, and raising that to a real cap is
 removing an allocation storm from every load rather than an optimisation. The arena recycles PER SLOT, in the

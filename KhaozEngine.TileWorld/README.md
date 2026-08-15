@@ -24,8 +24,9 @@ gives the eight step directions in the fixed W, E, S, N, SW, SE, NW, NE order th
 of its own and raises no events: every mutation marks its region `Dirty`, and the caller tracks the rect.
 
 - Regions: `GetRegion`, `GetOrCreateRegion`, `RegionAt`, `RequireRegion`, `RemoveRegion`, `RegionsTouching`.
-  The last two of those THROW for a coordinate the manifest knows about but that is not in memory (blanking it
-  would let the next save overwrite authored terrain), so load it through `TileWorldSource` first.
+  `GetOrCreateRegion` and `RequireRegion` are the two that THROW. `RequireRegion` throws for a region that does
+  not exist at all, and both throw for one the manifest knows about but that is not in memory (creating it
+  blind would let the next save overwrite authored terrain), so load that one through `TileWorldSource` first.
 - Tiles: `Get`/`Set` pairs for `Underlay`, `Overlay`, `OverlayShape`, `OverlayRotation` and `Settings`, where
   `TileSettings` is `Blocked`, `Indoors`, `Bridge`, `NoDraw` and `TileOverlayShape` is `Full`, `DiagonalHalf`,
   `CornerQuarter`, `CornerThreeQuarter`. Reads outside a loaded region answer the default, writes require it.
@@ -122,9 +123,9 @@ to the goal, then by BFS distance, then by scan order, and a start on a `Blocked
 **Branch on `Reached`, never on `Tiles.Count`**: a partial walk and a reached one both carry steps.
 
 `TileRaycast.Pick(doc, plane, origin, direction, maxDistance = 2000f)` marches the lattice in XZ and returns the
-first `TileHit(X, Z, Plane, Point, Distance)`, or null. The direction need not be normalised, the plane is
-validated uniformly so a plane outside the document throws whatever the ray does, and world units are tiles
-times `TileWorldDocument.TileSize` on x and z and metres on y. `TileTriangulation.SplitSwNe` is the ONE
+first `TileHit(X, Z, Plane, Point, Distance)`, or null. The direction need not be normalised, a plane outside
+the document throws as soon as the walk touches a tile, and world units are tiles times
+`TileWorldDocument.TileSize` on x and z and metres on y. `TileTriangulation.SplitSwNe` is the ONE
 diagonal-split rule, shared with the ground mesher so a click lands on the triangle that is drawn: a
 `DiagonalHalf` overlay forces the split, otherwise the diagonal whose corners differ least in height wins. The
 raycast winds its triangles downward, harmless for its two-sided test, and a culled mesher winds the other way.
@@ -135,9 +136,9 @@ corner, objects and markers in prefab-relative coordinates) that can be stamped 
 
 - `Extract(doc, catalogs, rect, planeFrom, planeCount, includeObjects, includeMarkers, name)` lifts it,
   stamping each object's UNROTATED `SizeX`/`SizeZ` so a rotation later needs no catalog.
-- `Rotate(prefab, rotation)` turns a copy, bumping overlay rotations with the tiles and re-basing the heights so
-  the rotated SW corner on plane 0 is height 0 on every plane, then re-trimming, so a rotated prefab is shaped
-  exactly like a fresh `Extract` of the same content.
+- `Rotate(prefab, rotation)` turns a copy, bumping overlay rotations with the tiles and re-basing every plane's
+  heights by the shift that puts the rotated SW corner on plane 0 at height 0, so the inter-plane offsets
+  survive, then re-trimming, so a rotated prefab is shaped exactly like a fresh `Extract` of the same content.
 - `Place(doc, prefab, x, z, plane, rotation)` validates the prefab's shape, rotates, then requires every target
   region BEFORE the first write, so a bad stamp cannot tear half way through. The prefab's SW corner is the
   height datum, so it lands on the existing ground at (x, z) whatever the rotation. Objects get fresh ids,

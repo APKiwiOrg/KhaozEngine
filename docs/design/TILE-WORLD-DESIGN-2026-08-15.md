@@ -255,15 +255,16 @@ edge on a neighbour tile (including across a region boundary) is recomputed. Rul
 6. `Interactive` and `IsRoof` never touch collision. `CollisionKind.None` never touches collision.
 
 **A spill into a region the DOCUMENT does not have is DROPPED, and that region stays `Blocked`.** Storage is
-allocated by `TileCollisionMap.EnsureRegion` alone, and both entry points give storage to the document's own
-regions before any object is applied, so `Set`/`Or` outside storage is a no-op. Letting a footprint or a
+allocated by `TileCollisionMap.EnsureRegion` alone, and both entry points call it on the document's own regions
+before any object is applied (`Bake` on every region the document has, `Rebake` on the ones the cleared rect
+touches), so `Set`/`Or` outside storage is a no-op. Letting a footprint or a
 mirrored wall edge allocate its own region instead would turn the whole 64x64 of a region nobody authored
 walkable, since every tile the spill did not touch would then read as clear rather than as the edge of the
 world. Reads outside storage answer `Blocked` for the same reason: an unloaded region is a wall, not a void.
 
 ### 6.2 Movement primitive
 
-`TileCollision.CanStep(map, plane, from, dir, agentSize)`: for a 1x1 agent, the leaving tile has no wall on
+`TileCollision.CanStep(map, x, z, plane, dir, agentSize = 1)`: for a 1x1 agent, the leaving tile has no wall on
 `dir`'s edge, the entering tile is not `Blocked` and has no wall on the opposite edge, and a diagonal step
 additionally requires both orthogonal intermediate steps to be legal (no corner cutting, and the corner bits
 block the diagonal). For an NxN agent the same check runs over the leading edge tiles of the footprint. This
@@ -290,9 +291,9 @@ It is not built now, because nothing in this program calls it.
 
 ### 6.4 Raycast and prefabs (also GPU-free)
 
-- `TileRaycast.Pick(document, plane, ray) -> TileHit? { X, Z, Plane, Point }`: ray against the lattice
-  triangles of the loaded regions, in the document package because sub-project 3's click-to-walk needs it
-  server-free.
+- `TileRaycast.Pick(document, plane, origin, direction, maxDistance = 2000f) -> TileHit? { X, Z, Plane, Point,
+  Distance }`: ray against the lattice triangles of the loaded regions, in the document package because
+  sub-project 3's click-to-walk needs it server-free.
 - `TilePrefab`: `Extract(document, catalogs, rect, planeFrom, planeCount, includeObjects, includeMarkers,
   name) -> TilePrefab` (dense layers per plane, objects and markers with rect-relative coordinates, catalog
   ids by value plus each object's UNROTATED footprint size so a later rotation needs no catalog) and

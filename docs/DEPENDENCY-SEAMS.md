@@ -401,7 +401,8 @@ KhaozEngine.Foundation -> KhaozEngine.TileWorld      (umbrella ProjectReference,
 
 It is a SIBLING of `KhaozEngine.MapDoc` rather than an extension of it, and there is no edge between the two in
 either direction. `MapDoc` describes a continuous-terrain zone, `TileWorld` a discrete tile grid, and all they
-share is the two foundation packages each already depends on. `TileWorld` deliberately does NOT reference
+share is the three foundation packages each already depends on (`Primitives`, `Serialization`, `Content`).
+`TileWorld` deliberately does NOT reference
 `Terrain` (which `MapDoc` does), because a tile lattice carries its own corner heights and has no analytic
 field to sample, and it does not reference `Navigation` either: per-edge walls cannot be expressed in a
 `NavGrid`'s per-cell blocking model, so `TilePathfinder` is its own BFS over `TileCollisionMap`. An

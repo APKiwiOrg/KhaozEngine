@@ -39,14 +39,18 @@
 #     install and no measurable cost at this scale, and MTL_SHADER_VALIDATION=1 on the deep tier, which is a
 #     DISPATCH and nothing else since #617 (https://github.com/APKiwiOrg/KhaozEngine/issues/617): that rung
 #     renders nothing at all on this runner's paravirtual device while being fully green on real Apple silicon,
-#     so the cron may not arm it. And it sets
+#     so the cron may not arm it. THIS WORKFLOW SUPERSEDES M-T7'S OWN ARMING, which puts the shader rung "on
+#     the scheduled run" (docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md, decision table row M-T7 and
+#     its section 16 restatement). That doc records what was decided before the rung had ever run, and it is
+#     kept as history rather than edited, so the tier that actually runs is this file's. And it sets
 #     MTL_CAPTURE_ENABLED=1 on every trigger EXCEPT the deep tier, which is the only thing that runs the
 #     frame-capture interop end to end: without it Metal refuses the GPU-trace destination and the row asserts
 #     that nothing started, with it the capture really starts from the native queue pointer and writes a
 #     .gputrace bundle. The inverse trigger is measured, not preferred: a capture cannot share a process with
 #     MTL_SHADER_VALIDATION (the manager still reports the destination as supported and startCapture returns
-#     false), and the cost that was supposed to keep it off the push path does not exist (4m39s with it against
-#     4m37s without, same machine, same commit). Because those two are inverses, the deep tier is a DISPATCH
+#     false), and the cost that was supposed to keep it off the push path is seconds (22.4s without it against
+#     25.0s with it, on this leg's own backend on an M2 Max, the measurement beside the variable itself
+#     below). Because those two are inverses, the deep tier is a DISPATCH
 #     INPUT rather than "any dispatch": every arm this leg has must be reachable on demand, and a dispatch that
 #     was always deep could never start a capture. `tier` defaults to deep, so an unattended dispatch is
 #     unchanged, and the cron now takes the capture path it could never take while the shader rung was armed.
@@ -517,29 +521,67 @@ jobs:
       # picks now, defaulting to deep so an unattended one is unchanged.
       #
       # THE CRON NO LONGER ARMS IT, AND THAT IS #617 (https://github.com/APKiwiOrg/KhaozEngine/issues/617). This
-      # tier's first ever armed run failed 186 of 6201 rows on this leg, and the failure is not a finding about
-      # the engine's shaders. Every golden read back as EXACTLY the pass clear colour, so the clears landed and
-      # no draw produced a fragment, across every unrelated subsystem at once. Three readings say the rung itself
-      # is what broke rendering on this runner rather than the rung reporting a bug:
+      # tier's first ever armed run failed 186 of 6201 rows on this leg (run 31581572414), and the failure is not
+      # a finding about the engine's shaders. Every golden read back as EXACTLY the pass clear colour, so the
+      # clears landed and no draw produced a fragment, across every unrelated subsystem at once. Three readings
+      # say the rung itself is what broke rendering on this runner rather than the rung reporting a bug:
       #   * The same commit, the same suite and the same rung are FULLY GREEN on real Apple silicon. Measured
       #     here on an M2 Max, macOS 26.5: 6202 passed, 0 failed, 0 skipped, with the sink added in 56c8ceec
       #     printing "arm tier 'Shaders' in this process's LAUNCH environment" and a device class of
       #     MTLDebugDevice, so the rung was demonstrably armed rather than quietly absent.
-      #   * The rung's COST has the wrong sign on the runner. Locally it is instrumentation and costs what
-      #     instrumentation costs (5m10s without, 6m16s with, +21%). On the hosted Apple Paravirtual device the
-      #     armed run was 7m46s against the unarmed run's 10m54s, 29% FASTER, which is work being dropped rather
-      #     than instrumented.
+      #   * The rung's COST has the wrong sign on the runner, and EVERY NUMBER BELOW NAMES ITS BACKEND, because
+      #     the pair this comment used to quote (5m10s without, 6m16s with, +21%) was read as though it were
+      #     this leg's and cannot be: on this machine the same assembly and the same filter run about TEN TIMES
+      #     faster on metal-native than on the incumbent, so a five-minute local run is the incumbent's shape
+      #     and nothing this leg has ever produced. Local, on an M2 Max under macOS 26.5, running
+      #     `dotnet test KhaozEngine.Render.Tests -c Release --no-build --filter "Category!=LiveSocket"` under
+      #     KE_GPU_TESTS=1 (6210 rows):
+      #       - KE_GRAPHICS_BACKEND=metal-native, nothing armed: 22s to 28s across two sittings.
+      #       - the same plus MTL_DEBUG_LAYER=1: 22s to 28s, indistinguishable, which is the measurement the
+      #         "no measurable cost at this scale" claim for tier one rests on.
+      #       - the same plus MTL_SHADER_VALIDATION=1 on top: 1m19s to 1m50s, a 3.5x to 4x multiplier.
+      #       - the INCUMBENT backend, which is the shape the old pair belongs to: 3m43s to 5m20s unarmed
+      #         against 4m37s to 6m2s with the shader rung, +24% and +13% within their own sittings. Same
+      #         command, KE_GRAPHICS_BACKEND unset.
+      #     On the hosted Apple Paravirtual device the armed run was 7m46s (run 31581572414) against the same
+      #     leg's debug-layer-only run at 10m54s (run 31585988023), 29% FASTER, which is work being dropped
+      #     rather than instrumented. Local arming multiplies the time. Hosted arming divides it.
       #   * The debug layer's error mode is assert by default (row 19's measurement, in the header above), so an
       #     API objection or an in-shader bounds failure ABORTS this host. The run did not abort. Nothing
       #     objected. The rung simply produced no fragments.
-      # There is no engine defect to fix here and no control leg to appeal to either: the incumbent metal leg
-      # arms NEITHER Metal variable, so run 31581572414's green metal leg is not the control it looks like.
+      # WHAT THAT DOES NOT ESTABLISH IS THAT THE ENGINE IS CLEAN, and this comment used to claim it did. The
+      # paravirtual failure is UNRESOLVED until the sink's first armed artifact, because a MetalDeviceLossLatch
+      # command-buffer failure fits the observed shape exactly: it logs, it flips the device's liveness, it
+      # fails no row, and drains against a dead device return immediately, so the run is FASTER and clears to
+      # the pass colour without drawing, which is every symptom above. That is the same silent-loss mechanism
+      # #614 (https://github.com/APKiwiOrg/KhaozEngine/issues/614) carries as a live candidate for its own
+      # varying failures on this leg, so one armed artifact is likely to answer both questions or neither.
+      # There is no control leg to appeal to either: the incumbent metal leg arms NEITHER Metal variable, so run
+      # 31581572414's green metal leg is not the control it looks like.
       # The cron is always deep, so leaving this as it was turns the whole matrix red every Sunday on a rung
       # that cannot testify about the code. It is now DISPATCH ONLY: a human aims it, on purpose, at a
       # question worth asking, and the cron keeps MTL_DEBUG_LAYER (armed on every run of this leg, below) plus
       # the frame capture it could never take while this was armed. #617 stays open with the diagnosis, and the
-      # experiment that would close it is a deep dispatch with the incumbent metal leg armed the same way, which
-      # is the control this matrix has never had.
+      # experiment that would close it is a deep dispatch with MTL_SHADER_VALIDATION armed on the INCUMBENT
+      # metal leg, which is the control this matrix has never had.
+      # THAT VARIABLE ALONE. MTL_DEBUG_LAYER MUST STAY OFF THE INCUMBENT, and this is the one place the two legs
+      # cannot be armed the same way. Reproduced locally on this commit: the same assembly and filter with
+      # KE_GRAPHICS_BACKEND unset and MTL_DEBUG_LAYER=1 ABORTS the test host after about 1000 rows, in under two
+      # seconds, on
+      #     -[MTLDebugRenderCommandEncoder validateCommonDrawErrors:]:6001: failed assertion
+      #     `Draw Errors Validation / Fragment Function(main0): missing Buffer binding at index 0 for _14[0].'
+      # which is the layer at its default assert error mode killing the process, exactly as row 19 measured on
+      # the native side. MM6's constructed control is NOT the source, so this is not the known case being
+      # re-observed: its provoking half stands down whenever the layer is armed
+      # (MetalValidationDormancy.StandDown), and running MetalTwoUniformBufferGpuTests alone under the layer on
+      # the incumbent is green. Some other draw in that suite leaves a declared fragment buffer unbound, and
+      # which one is unattributed: that is #621
+      # (https://github.com/APKiwiOrg/KhaozEngine/issues/621), which carries the repro and what is already ruled
+      # out. MTL_SHADER_VALIDATION on its own does NOT abort it: the incumbent runs the
+      # whole assembly green under that variable, which is what makes the control experiment above possible at
+      # all. The native leg can carry the layer only because the three rows that provoke it on purpose stand
+      # down in-process, and standing an incumbent leg down row by row against a fault that is not the test's
+      # would be the opposite of a control.
       METAL_DEEP_TIER: ${{ (matrix.backend == 'metal-native' && github.event_name == 'workflow_dispatch' && inputs.tier != 'push') && '1' || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -770,9 +812,10 @@ jobs:
           # rather than through the engine's own KE_METAL_VALIDATION knob: that knob REPORTS which tier is really
           # armed and warns when a process asked for one it cannot have, and this is what actually arms it.
           MTL_DEBUG_LAYER: ${{ (matrix.backend == 'metal-native') && '1' || '' }}
-          # TIER TWO (decision M-T7): in-shader bounds checking, on the deep sweep only. It instruments every
-          # shader, so it is the expensive half, and a broad sweep is worth its cost once a week the same way the
-          # Vulkan strict tier is. The predicate lives once, in the METAL_DEEP_TIER job env above.
+          # TIER TWO (decision M-T7): in-shader bounds checking, on the deep tier only. It instruments every
+          # shader, so it is the expensive half, and it is a DISPATCH rather than the weekly slot the Vulkan
+          # strict tier holds, because #617 measured it rendering nothing at all on this runner. The predicate
+          # lives once, in the METAL_DEEP_TIER job env above, with the whole reasoning beside it.
           MTL_SHADER_VALIDATION: ${{ env.METAL_DEEP_TIER }}
           # NOT A VALIDATION TIER, and its trigger is the INVERSE of tier two's, which is a measurement rather
           # than a preference. Metal refuses a GPU-trace capture destination in a process that did not have this
@@ -784,10 +827,22 @@ jobs:
           # MTL_SHADER_VALIDATION: with the shader rung armed, MTLCaptureManager still reports the GPU-trace
           # destination as supported and startCapture returns false, so the capture arm would fail on a platform
           # fact. With MTL_DEBUG_LAYER alone, or with neither, it starts and writes. Second, the reason it was
-          # originally proposed for the scheduled sweep alone was cost, and there is none to speak of: the full
-          # assembly runs 4m39s with it against 4m37s without, on the same machine and commit. So it rides EVERY
-          # trigger, which is strictly more coverage than the design asked for, and stands aside on the one
-          # trigger that arms the rung it cannot live with.
+          # originally proposed for the scheduled sweep alone was cost, and the cost is seconds. Re-measured on
+          # this commit, on an M2 Max, on THIS leg's own backend (KE_GRAPHICS_BACKEND=metal-native,
+          # MTL_DEBUG_LAYER=1, KhaozEngine.Render.Tests at Category!=LiveSocket, 6210 rows): 22.4s without it
+          # against 25.0s with it. That is about +11% of a 22-second assembly: a different-looking number from
+          # the 4m39s-against-4m37s pair this comment used to quote, whose backend was never recorded and whose
+          # magnitude fits the incumbent's shape rather than this leg's, and the same conclusion either way.
+          # Two and a half seconds does not buy confining the one row that exercises the capture interop end to
+          # end to a weekly sweep. So it rides EVERY trigger, which is strictly more coverage than the design
+          # asked for, and stands aside on the one trigger that arms the rung it cannot live with.
+          #
+          # AND THE NEGATIVE ROW MOVED WITH THE DEEP TIER. MetalFrameCaptureTests' unarmed assertion, that a
+          # process launched without this variable refuses the GPU-trace destination, used to ride the cron
+          # because the cron was always deep. Since #617 re-tiered that rung to a dispatch, a `tier=deep`
+          # dispatch is the only trigger that runs the negative path at all, so that half of the interop is
+          # ATTENDED-ONLY coverage now. Recorded rather than fixed: unattended coverage of the path that really
+          # starts a capture is worth more than unattended coverage of the path that asserts a refusal.
           MTL_CAPTURE_ENABLED: ${{ (matrix.backend == 'metal-native' && env.METAL_DEEP_TIER == '') && '1' || '' }}
           # TIER ONE OF THE VALIDATION GATE (decision V-T4): core validation, error severity fails the leg at a
           # controlled point rather than inside the driver callback. On the FULL suite only, which is the same
@@ -802,7 +857,9 @@ jobs:
           KE_VULKAN_VALIDATION: ${{ env.VULKAN_VALIDATION_ARMED }}
           # WHAT PUTS THE ENGINE'S OWN VALIDATION LINES IN THE ARTIFACT (#565), and it takes both halves. The
           # test host configures a console sink when KE_VULKAN_VALIDATION arms a rung (see
-          # KhaozEngine.Render.Tests/Gpu/VulkanValidationConsoleLogging.cs), which is the half that gives the
+          # KhaozEngine.Render.Tests/Gpu/GpuValidationConsoleLogging.cs, which owns the single Log.Configure
+          # call that assembly makes and takes its Vulkan half from VulkanValidationConsoleLogging and its
+          # Metal half from MetalValidationConsoleLogging), which is the half that gives the
           # pump somewhere to write at all: the ambient Log facade hands out a no-op logger until something
           # calls Log.Configure, and nothing in that process ever did, so every warning-severity message the
           # tiers exist to surface was dropped. THIS is the other half. vstest forwards the test host's stdout
@@ -827,12 +884,30 @@ jobs:
           # artifact is empty for a second, entirely separate reason. That is exactly the pair #565 had to fix on
           # the Vulkan side.
           #
-          # FULL-SUITE TRIGGERS ONLY on the Metal side, rather than "whenever a rung is armed". MTL_DEBUG_LAYER
-          # arms on EVERY run of that leg, so keying off the rung alone would put one `Passed <TestName>` line
-          # per test into every push's log for a 6200-row suite. The readings this is for (the armed-tier line,
-          # the device class, and any MetalDeviceLossLatch command-buffer failure) are wanted on the cron and on
-          # a dispatch, which is where a run is actually read.
-          KE_TEST_LOGGER_ARGS: ${{ (env.VULKAN_VALIDATION_ARMED != '' || (matrix.backend == 'metal-native' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'))) && '--logger console;verbosity=detailed' || '' }}
+          # THE LOGGER FOLLOWS THE INSTRUMENT on the Metal side: this predicate is MTL_DEBUG_LAYER's own,
+          # `matrix.backend == 'metal-native'` and nothing else, so detailed verbosity is armed on exactly the
+          # runs a Metal rung is armed on. It was schedule-and-dispatch first, for a size argument, and that
+          # left the artifact upload below (always(), on every run of this leg) producing a push-path artifact
+          # named for the debug layer whose engine-side half was missing: the sink WAS configured, its
+          # announcement went to a stream vstest discarded, and a reader could not tell that from a run where
+          # the sink never existed. That is the same "an artifact whose name is false is worse than a missing
+          # one" rule the strict-tier upload is gated by, one step earlier in the chain.
+          #
+          # THE SIZE ARGUMENT DID NOT SURVIVE MEASUREMENT. This leg is `fullSuite: always`, so there is no
+          # cheaper push tier to protect: every trigger already runs the whole 6210-row suite, and that suite's
+          # detailed console output measured 1.5MB to 1.6MB across two sittings on this commit, which is a
+          # rounding error against an artifact this leg uploads either way.
+          #
+          # The Vulkan half of the expression is unchanged and stays keyed to VULKAN_VALIDATION_ARMED: those
+          # legs are `fullSuite: scheduled`, their rungs really are schedule-and-dispatch only, and the same
+          # follow-the-instrument rule therefore already holds there.
+          #
+          # ONE KNOWN SIDE EFFECT, and it is a levelling rather than a regression: the device-evidence step's
+          # `tail -n 200 TestResults/suite-output.log` now reads a detailed tail on the push path too, where a
+          # `Passed <TestName>` line per test crowds out some of what a terse tail would have carried. Every red
+          # run #614 has actually read came off the cron or a dispatch, which were detailed already, so this
+          # makes the push tail match the tail that instrument was designed against instead of diverging from it.
+          KE_TEST_LOGGER_ARGS: ${{ (env.VULKAN_VALIDATION_ARMED != '' || matrix.backend == 'metal-native') && '--logger console;verbosity=detailed' || '' }}
           # THE THREE SHADER DISK CACHES, ALL FROM ONE VALUE (#614). Blank on every ordinary trigger, which is
           # the shipped default location, and `off` on a dispatch that asked for it. Each variable belongs to one
           # backend and is inert on the other two legs, so setting all three on every leg costs nothing and is
@@ -984,6 +1059,20 @@ jobs:
       # that line exists at all, and the detailed logger above is what carries it into this artifact. A scan step
       # is the obvious next move if the next armed run shows the latch firing, and it is deliberately not being
       # added blind: nobody has yet seen a Metal artifact with the sink configured.
+      #
+      # ITS EXCLUSION LIST IS ALREADY KNOWN, THOUGH, so whoever adds that step does not have to discover it as a
+      # pile of false positives. Measured locally on this commit, metal-native under MTL_DEBUG_LAYER=1 at
+      # detailed verbosity, 6210 rows all green: above Info the whole log holds FIVE lines, of three kinds, and
+      # every one of them is a test doing its job.
+      #   * [WARN] [MetalTimeline] "WaitForIdle stopped waiting for timeline value N because the device is
+      #     dead", twice, at values 1 and 9999. Draining a dead device is the behaviour those rows assert.
+      #   * [WARN] [MetalGpuDevice] "KE_METAL_DEVICE=... Taking the first device that meets the requirements",
+      #     twice: the selector's two negative probes, a device name this machine does not have and index 99.
+      #   * [ERROR] [MetalCompletionHandler] "swallowed an exception on the completion path", once, from
+      #     MetalCompletionHandlerTests' deliberately throwing sink.
+      # Everything else in the log is Info: roughly 650 MetalGpuDevice lines, one set per device created, plus
+      # the single MetalValidationLogHost announcement. A MetalDeviceLossLatch line appears NOWHERE in a clean
+      # run, which is exactly what makes that category the thing a scan step should be looking for.
       - name: Upload Metal validation log
         if: always() && matrix.backend == 'metal-native'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

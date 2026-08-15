@@ -169,6 +169,21 @@ The suite each leg runs is split by trigger, from measured hosted-runner cost
   costs, stated rather than glossed: `MetalFrameCaptureTests`' positive arm, the one that starts a capture from
   the native queue pointer and asserts the bundle, is attended-only coverage now, and its negative arm is what
   every unattended trigger runs.
+  **Two guards keep that exclusion true, because the re-tier above is only a set of comments an editor is free
+  to not read.** The first is a step at the top of the matrix job, before the checkout, on the macOS legs. It
+  reads the same job variables the test step arms and fails the job when an UNATTENDED trigger (push, pull
+  request, cron) would run with both `MTL_DEBUG_LAYER` and `MTL_CAPTURE_ENABLED` set, and it asserts the inverse
+  as well, that the `metal-native` leg really does carry the debug layer with the capture empty there, because
+  "not both" is also satisfied by arming neither. It is scoped to the unattended triggers on purpose: the
+  `capture` tier arms both by design, and a universal assertion would red the one tier that chose the pair.
+  The second guard reads the DEVICE rather than the workflow. `MetalCaptureDisplacementTripwire` in
+  `KhaozEngine.Render.Tests` promotes the engine's existing "armed but not a debug device" warning to a test
+  failure on an unattended CI run, so a leg cannot report six thousand green rows under an instrument that was
+  displaced. It passes `MTLDebugDevice` and `MTLLegacySVDevice` (both validate) and fails `CaptureMTLDevice` and
+  the driver's own class, naming the capture as the displacement when the capture is armed. Off CI, and on an
+  attended dispatch, it stands down and the warning is the whole answer. The two layers catch different things:
+  the workflow step catches a bad tier edit at authoring time on the first push, and the tripwire catches a
+  displacement this repository did not cause, such as a runner image that starts injecting the variable.
   **The deep tier is a DISPATCH and nothing else, and the cron does not arm it**
   ([#617](https://github.com/APKiwiOrg/KhaozEngine/issues/617)). Its first ever armed run failed 186 of 6201
   rows on this leg (run `31581572414`), with every golden reading back as exactly the pass clear colour: the

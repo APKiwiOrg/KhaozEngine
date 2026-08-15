@@ -15,7 +15,7 @@ public sealed partial class TileWorldDocument
         RequirePlane(plane);
         if (TryResolveCorner(x, z, out TileRegion? region, out int index))
             return ReadCorner(region!, plane, index);
-        return (short)Math.Clamp(plane * PlaneHeightCm, short.MinValue, short.MaxValue);
+        return LiftedCm(0, plane);
     }
 
     /// <summary>The same corner height in metres.</summary>
@@ -26,7 +26,12 @@ public sealed partial class TileWorldDocument
     public void SetCornerHeightCm(int x, int z, int plane, short cm)
     {
         if (!TrySetCornerHeightCm(x, z, plane, cm))
-            throw new TileWorldException($"corner ({x}, {z}) is in region {RegionCoord.Of(x, z)}, which does not exist. Create it first.");
+        {
+            // The write above fails only when the corner's region is absent, so this always throws. Routing the
+            // throw through RequireRegion keeps the message that tells a never-created region apart from one
+            // that is merely unloaded, which matters because GetOrCreateRegion refuses the unloaded case.
+            RequireRegion(x, z);
+        }
     }
 
     /// <summary>Writes a corner, returning false instead of throwing when its region does not exist.</summary>
@@ -46,11 +51,11 @@ public sealed partial class TileWorldDocument
     public void FillDerivedHeights(TileRegion region, int plane)
     {
         ArgumentNullException.ThrowIfNull(region);
+        RequirePlane(plane);
         short[] h = region.Plane(plane).HeightsOrAlloc();
         short[]? h0 = region.Plane(0).Heights;
-        int lift = plane * PlaneHeightCm;
         for (int i = 0; i < h.Length; i++)
-            h[i] = (short)Math.Clamp((h0?[i] ?? 0) + lift, short.MinValue, short.MaxValue);
+            h[i] = LiftedCm(h0?[i] ?? 0, plane);
         region.Dirty = true;
     }
 
@@ -71,9 +76,12 @@ public sealed partial class TileWorldDocument
     {
         short[]? h = region.Plane(plane).Heights;
         if (h is not null) return h[index];
-        int baseCm = region.Plane(0).Heights?[index] ?? 0;
-        return (short)Math.Clamp(baseCm + plane * PlaneHeightCm, short.MinValue, short.MaxValue);
+        return LiftedCm(region.Plane(0).Heights?[index] ?? 0, plane);
     }
+
+    // A plane-0 height carried up to the given plane, saturating rather than wrapping at the short bounds.
+    short LiftedCm(int baseCm, int plane) =>
+        (short)Math.Clamp(baseCm + plane * PlaneHeightCm, short.MinValue, short.MaxValue);
 
     bool TryResolveCorner(int x, int z, out TileRegion? region, out int index)
     {

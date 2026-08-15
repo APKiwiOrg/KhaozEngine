@@ -48,6 +48,48 @@ public class TileHeightsTests
     }
 
     [Fact]
+    public void Far_east_edge_reads_the_western_region_when_the_owner_is_missing()
+    {
+        TileWorldDocument doc = TileWorldTestData.FlatWorld(4, new RegionCoord(0, 0), new RegionCoord(1, 0));
+        doc.SetCornerHeightCm(127, 10, 0, 70);
+        // (128, 10) belongs to region (2, 0), which does not exist, so the read edge-extends west from region
+        // (1, 0)'s column 63, row 10.
+        Assert.Equal(70, doc.CornerHeightCm(128, 10, 0));
+    }
+
+    [Fact]
+    public void Far_north_east_corner_reads_the_diagonal_region_when_owner_west_and_south_are_missing()
+    {
+        TileWorldDocument doc = TileWorldTestData.FlatWorld(4, new RegionCoord(1, 0));
+        doc.SetCornerHeightCm(127, 63, 0, 55);
+        // (128, 64) has no owner (2, 1), no western region (1, 1) and no southern region (2, 0), so only the
+        // south-west diagonal (1, 0) is left, read at its (63, 63).
+        Assert.Equal(55, doc.CornerHeightCm(128, 64, 0));
+    }
+
+    [Fact]
+    public void Negative_coordinates_index_the_owning_region_correctly()
+    {
+        TileWorldDocument doc = TileWorldTestData.FlatWorld(4, new RegionCoord(-1, -1));
+        doc.SetCornerHeightCm(-1, -1, 0, 33);
+        doc.SetCornerHeightCm(-64, -64, 0, 44);
+        Assert.Equal(33, doc.CornerHeightCm(-1, -1, 0));
+        Assert.Equal(44, doc.CornerHeightCm(-64, -64, 0));
+        Assert.Equal(0, doc.CornerHeightCm(-2, -1, 0));
+    }
+
+    [Fact]
+    public void Writing_into_an_unloaded_region_says_to_load_it_rather_than_create_it()
+    {
+        TileWorldDocument doc = TileWorldTestData.FlatWorld();
+        doc.UnloadedRegionHashes[new RegionCoord(5, 5)] = "abc123";
+        var ex = Assert.Throws<TileWorldException>(() => doc.SetCornerHeightCm(320, 320, 0, 1));
+        Assert.Contains("(5, 5)", ex.Message);
+        Assert.Contains("not loaded", ex.Message);
+        Assert.False(doc.TrySetCornerHeightCm(320, 320, 0, 1));
+    }
+
+    [Fact]
     public void HeightAt_is_bilinear_in_metres()
     {
         TileWorldDocument doc = TileWorldTestData.FlatWorld();

@@ -20,7 +20,10 @@ public static class TileWorldHash
     /// <summary>Lower-hex SHA-256 of a region file's exact bytes.</summary>
     public static string OfRegionBytes(ReadOnlySpan<byte> bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));
 
-    /// <summary>The hash a save of this region would record.</summary>
+    /// <summary>The hash a save of this region would record. Hashing TRIMS the region, because it hashes the
+    /// canonical write, which drops layers that are all-default. That is content-preserving and exactly what a
+    /// save does, but a layer array a caller took from an <c>OrAlloc</c> accessor before the hash can be left
+    /// orphaned by it, so re-take the reference afterwards.</summary>
     public static string OfRegion(TileRegion region)
     {
         ArgumentNullException.ThrowIfNull(region);
@@ -28,7 +31,8 @@ public static class TileWorldHash
     }
 
     /// <summary>The world identity of a document, from loaded regions' canonical bytes plus stored hashes for
-    /// regions known but not materialised.</summary>
+    /// regions known but not materialised. Trims every loaded region, with the caveat on
+    /// <see cref="OfRegion"/>.</summary>
     public static string OfWorld(TileWorldDocument doc)
     {
         ArgumentNullException.ThrowIfNull(doc);
@@ -37,17 +41,27 @@ public static class TileWorldHash
         return OfManifestRegions(doc.TileSize, doc.PlaneCount, doc.PlaneHeight, regions);
     }
 
-    /// <summary>The same composition from a manifest's stored region hashes.</summary>
+    /// <summary>The same composition from a manifest's stored region hashes. Every number in the digest is
+    /// formatted through the invariant culture, so one world has one identity on every machine whatever the
+    /// ambient culture is.</summary>
     public static string OfManifestRegions(float tileSize, int planeCount, float planeHeight, IEnumerable<(RegionCoord Coord, string Hash)> regions)
     {
         ArgumentNullException.ThrowIfNull(regions);
+        var seen = new HashSet<RegionCoord>();
         var sb = new StringBuilder();
         sb.Append(Domain).Append(Inv(SchemeVersion)).Append('\n');
         sb.Append(tileSize.ToString("R", CultureInfo.InvariantCulture)).Append('\n');
         sb.Append(Inv(planeCount)).Append('\n');
         sb.Append(planeHeight.ToString("R", CultureInfo.InvariantCulture)).Append('\n');
         foreach ((RegionCoord c, string h) in regions.OrderBy(r => r.Coord.Rz).ThenBy(r => r.Coord.Rx))
+        {
+            // Both of these are a caller handing over a region list that cannot describe one world. Digesting
+            // it anyway would mint an identity for a world that does not exist, and the mismatch would then
+            // surface as a client/server desync with no way back to the malformed list that caused it.
+            if (h is null) throw new TileWorldException($"region {c}: hash is null");
+            if (!seen.Add(c)) throw new TileWorldException($"region {c} is listed twice");
             sb.Append(Inv(c.Rx)).Append(' ').Append(Inv(c.Rz)).Append(' ').Append(h.ToLowerInvariant()).Append('\n');
+        }
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(sb.ToString())));
     }
 

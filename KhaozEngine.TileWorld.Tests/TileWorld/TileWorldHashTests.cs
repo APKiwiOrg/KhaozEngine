@@ -1,4 +1,8 @@
+using System;
+using System.Globalization;
 using System.Linq;
+using System.Runtime.ExceptionServices;
+using System.Threading;
 using KhaozEngine.TileWorld;
 using Xunit;
 
@@ -65,5 +69,53 @@ public class TileWorldHashTests
         string h = TileWorldHash.OfRegion(r);
         a.SetSettings(1, 1, 0, TileSettings.Indoors);
         Assert.NotEqual(h, TileWorldHash.OfRegion(r));
+    }
+
+    [Fact]
+    public void Header_fields_are_part_of_the_world_hash()
+    {
+        // Without this, dropping any of the three header fields (or the scheme version) from the composition
+        // still passes every other test in this file, because they all hold the header constant.
+        (RegionCoord, string)[] regions = { (new RegionCoord(0, 0), "aa") };
+        string baseline = TileWorldHash.OfManifestRegions(1f, 4, 3f, regions);
+        Assert.Equal(baseline, TileWorldHash.OfManifestRegions(1f, 4, 3f, regions));
+        Assert.NotEqual(baseline, TileWorldHash.OfManifestRegions(2f, 4, 3f, regions));
+        Assert.NotEqual(baseline, TileWorldHash.OfManifestRegions(1f, 5, 3f, regions));
+        Assert.NotEqual(baseline, TileWorldHash.OfManifestRegions(1f, 4, 4f, regions));
+    }
+
+    [Fact]
+    public void World_hash_ignores_the_ambient_culture()
+    {
+        // A negative region coordinate is what picks up a culture's own minus sign. The hostile culture runs
+        // on its own thread so it cannot leak into another test through a pooled one.
+        var hostile = (CultureInfo)CultureInfo.InvariantCulture.Clone();
+        hostile.NumberFormat.NegativeSign = "\u2212";
+        TileWorldDocument doc = TileWorldTestData.FlatWorld(4, new RegionCoord(-1, -2));
+        string here = TileWorldHash.OfWorld(doc);
+        string? there = null;
+        ExceptionDispatchInfo? failure = null;
+        var t = new Thread(() =>
+        {
+            try
+            {
+                CultureInfo.CurrentCulture = hostile;
+                there = TileWorldHash.OfWorld(doc);
+            }
+            catch (Exception ex) { failure = ExceptionDispatchInfo.Capture(ex); }
+        });
+        t.Start();
+        t.Join();
+        failure?.Throw();
+        Assert.Equal(here, there);
+    }
+
+    [Fact]
+    public void Manifest_composition_refuses_a_null_hash_and_a_repeated_region()
+    {
+        (RegionCoord, string)[] nulled = { (new RegionCoord(0, 0), null!) };
+        Assert.Throws<TileWorldException>(() => TileWorldHash.OfManifestRegions(1f, 4, 3f, nulled));
+        (RegionCoord, string)[] repeated = { (new RegionCoord(2, 3), "aa"), (new RegionCoord(2, 3), "bb") };
+        Assert.Throws<TileWorldException>(() => TileWorldHash.OfManifestRegions(1f, 4, 3f, repeated));
     }
 }

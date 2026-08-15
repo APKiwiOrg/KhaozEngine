@@ -136,6 +136,12 @@ namespace KhaozEngine.Tests.Gpu
                 Mode = ShadowMode.ShadowMap,
                 ShadowMapResolution = Resolution,
                 ShadowCascadeCount = Cascades,
+                // The light hold is OFF here, and that is the whole point of the moving sun below: this bench
+                // measures the per-cascade CULL, which only runs on a frame that records, so it needs the depth pass
+                // dirty on every measured frame. With the hold at its shipped default the sun would be held for most
+                // frames and the bench would time the skip floor instead of the cull. What the hold itself costs is
+                // ShadowRerecordBenchGpuTests.
+                ShadowLightHoldTexels = 0f,
             };
 
             using GpuDeviceContext ctx = GpuDeviceContext.CreateHeadless();

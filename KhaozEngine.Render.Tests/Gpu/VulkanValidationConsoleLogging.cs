@@ -19,8 +19,8 @@ namespace KhaozEngine.Tests.Gpu
     /// <c>gpu-vulkan-sync</c> tier exists to surface exactly those, and it was surfacing them into a no-op.
     /// </para>
     /// <para>
-    /// CONFIGURED EXACTLY ONCE, FROM THE MODULE INITIALIZER, AND NEVER FROM A TEST. This is a hard rule for
-    /// this assembly and the reason the type is split the way it is. <see cref="Log.Configure(LoggerOptions)"/>
+    /// CONFIGURED EXACTLY ONCE PER PROCESS, AND NEVER FROM A TEST. This is a hard rule for this assembly and the
+    /// reason the type is split the way it is. <see cref="Log.Configure(LoggerOptions)"/>
     /// SHUTS DOWN the manager it replaces, and shutdown disposes and clears that manager's sink list, while an
     /// <c>ILogger</c> handed out earlier keeps pointing at the manager it came from. Every logger resolved before
     /// a reconfigure therefore writes into a gutted manager for the rest of the process: enabled, submitting,
@@ -29,9 +29,14 @@ namespace KhaozEngine.Tests.Gpu
     /// capture. A first cut of this seam had its own tests reconfiguring the facade and restoring it afterwards,
     /// which cost the armed <c>sync</c> run most of its Vulkan lines: every <c>VulkanMemoryAllocator</c> INFO
     /// line and every <c>VulkanPresentBoundary</c> WARN and ERROR line logged after that class ran went nowhere.
-    /// So the decision half of this seam (<see cref="IsArmed"/> and <see cref="BuildOptions"/>) is pure and is
-    /// what the tests exercise, against a <see cref="LogManager"/> they own, and the apply half is the one call
-    /// below.
+    /// So this type is the DECISION half only (<see cref="IsArmed"/>, the scope, and the announcement), it is
+    /// pure, and it is what the tests exercise against a <see cref="LogManager"/> they own.
+    /// </para>
+    /// <para>
+    /// THE APPLY HALF MOVED TO <see cref="GpuValidationConsoleLogging"/>
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/617), because Metal needed the same seam and a second
+    /// module initializer calling <see cref="Log.Configure(LoggerOptions)"/> would be precisely the orphaning
+    /// reconfigure described above, on any leg where both rungs were armed. One host, two decisions.
     /// </para>
     /// <para>
     /// ARMED LEGS ONLY, so an ordinary run stays byte-quiet. The lever is the backend's own
@@ -56,12 +61,10 @@ namespace KhaozEngine.Tests.Gpu
     /// own and an unfiltered console sink would bury the whole thing under every other subsystem that logs.
     /// </para>
     /// <para>
-    /// A <c>[ModuleInitializer]</c>, following the three backend-registration initializers beside this file. It
-    /// is the mechanism this assembly already uses for per-process setup that must happen before any test runs,
-    /// and CA2255 is fine here for the reason stated on those: a test project is application code, and the load
-    /// guarantee a library cannot make is one a test assembly makes by definition. Ordering matters too. The
-    /// pump resolves its fallback logger when it is constructed, and a module initializer runs before any test
-    /// can reach the code that constructs one.
+    /// Applied from a <c>[ModuleInitializer]</c> next door, following the three backend-registration initializers
+    /// beside this file. It is the mechanism this assembly already uses for per-process setup that must happen
+    /// before any test runs. Ordering matters too. The pump resolves its fallback logger when it is constructed,
+    /// and a module initializer runs before any test can reach the code that constructs one.
     /// </para>
     /// <para>
     /// It covers BOTH tiers because both run this assembly. The matrix leg's <c>strict</c> run and the
@@ -78,37 +81,16 @@ namespace KhaozEngine.Tests.Gpu
         /// <c>VulkanPresentBoundary</c> and their siblings.</summary>
         internal const string CategoryPrefix = "Vulkan";
 
-        /// <summary>The category the facade's own convenience methods would use. Named for this seam so a line
-        /// that somehow arrives through <c>Log.Warn</c> rather than a category logger is attributable, and
+        /// <summary>The category the facade's own convenience methods would use. Named for the shared host so a
+        /// line that somehow arrives through <c>Log.Warn</c> rather than a category logger is attributable, and
         /// filtered out by the prefix above rather than landing in the artifact unexplained. Deliberately NOT
         /// prefixed <c>Vulkan</c>: a Vulkan-prefixed default would let any stray facade call anywhere in the
         /// process leak into the artifact.</summary>
-        internal const string FacadeCategory = "RenderTestsHost";
+        internal const string FacadeCategory = GpuValidationConsoleLogging.FacadeCategory;
 
         /// <summary>The category this seam announces itself under. Prefixed, so the one line it writes survives
         /// its own filter.</summary>
         internal const string HostCategory = "VulkanValidationLogHost";
-
-        /// <summary>
-        /// THE ONLY <see cref="Log.Configure(LoggerOptions)"/> CALL IN THIS ASSEMBLY, and it runs before any test
-        /// does. Everything it decides lives next door in <see cref="IsArmed"/> and <see cref="BuildOptions"/>,
-        /// which is what makes the decision testable without a second call ever reconfiguring the facade.
-        /// </summary>
-        [ModuleInitializer]
-        internal static void Initialize()
-        {
-            string? envValue = Environment.GetEnvironmentVariable(VulkanValidation.EnvVarName);
-
-            // The lever is read before anything is constructed, so an unarmed process allocates neither the sink
-            // nor the options: it leaves this file having done nothing but one getenv.
-            if (!IsArmed(envValue)) return;
-
-            // useStdErrForErrors: false, deliberately. The artifact's whole value is the INTERLEAVING with test
-            // names, and two streams merged by a shell pipe do not preserve the order they were written in, so an
-            // error-severity line split onto stderr can land next to the wrong test.
-            Log.Configure(BuildOptions(new ConsoleSink(useStdErrForErrors: false)));
-            Log.Get(HostCategory).Info(ArmedAnnouncement(envValue));
-        }
 
         /// <summary>
         /// Whether <paramref name="envValue"/> arms a validation rung, which is the whole of this seam's
@@ -127,23 +109,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <param name="destination">Where the surviving lines go. The console on CI, an
         /// <see cref="InMemorySink"/> under test.</param>
         internal static LoggerOptions BuildOptions(ILogSink destination)
-        {
-            if (destination is null) throw new ArgumentNullException(nameof(destination));
-
-            var options = new LoggerOptions
-            {
-                // Synchronous, so a line is on the stream before the call that logged it returns. The async
-                // writer is a background thread, and a run that dies inside the driver would lose whatever was
-                // still queued, which is exactly the last message before a crash and the one worth having.
-                Synchronous = true,
-                // Info, not Warn. The pump's own messages are Warn and Error, but VulkanInstance announces the
-                // live rung at Info and that line is what proves the lever was set on the run being read.
-                MinimumLevel = LogLevel.Info,
-                DefaultCategory = FacadeCategory,
-            };
-            options.Sinks.Add(new CategoryPrefixSink(CategoryPrefix, destination));
-            return options;
-        }
+            => GpuValidationConsoleLogging.BuildOptions(destination, new[] { CategoryPrefix });
 
         /// <summary>
         /// The one line this seam writes on its own account, at the top of an armed run's log.
@@ -162,39 +128,5 @@ namespace KhaozEngine.Tests.Gpu
                 + "('Vulkan validation [<Severity>] <VUID>: <text>') therefore reach this log. The Khronos "
                 + "layer's own output is independent of this and arrives whether or not it is configured. An "
                 + "unarmed run configures nothing and this line is absent.";
-    }
-
-    /// <summary>
-    /// A sink decorator that passes on only the entries whose category starts with a prefix.
-    /// <para>
-    /// DELIBERATELY TEST-LOCAL AND NOT ENGINE API. The engine's sinks filter on level and nothing else, and a
-    /// category filter is a reasonable thing for <c>KhaozEngine.Diagnostics</c> to grow one day. It is not
-    /// growing it here: #565 is a CI-evidence fix, and shipping a new public type in a package to serve one test
-    /// host is how a fix turns into a surface that has to be documented, versioned and kept.
-    /// </para>
-    /// </summary>
-    internal sealed class CategoryPrefixSink : ILogSink
-    {
-        readonly string _prefix;
-        readonly ILogSink _inner;
-
-        internal CategoryPrefixSink(string prefix, ILogSink inner)
-        {
-            _prefix = prefix ?? throw new ArgumentNullException(nameof(prefix));
-            _inner = inner ?? throw new ArgumentNullException(nameof(inner));
-        }
-
-        /// <inheritdoc />
-        public void Emit(in LogEntry entry)
-        {
-            if (!entry.Category.StartsWith(_prefix, StringComparison.Ordinal)) return;
-            _inner.Emit(entry);
-        }
-
-        /// <inheritdoc />
-        public void Flush() => _inner.Flush();
-
-        /// <inheritdoc />
-        public void Dispose() => _inner.Dispose();
     }
 }

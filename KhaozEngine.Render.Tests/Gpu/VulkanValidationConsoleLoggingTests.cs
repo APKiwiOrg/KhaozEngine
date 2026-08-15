@@ -151,6 +151,13 @@ namespace KhaozEngine.Tests.Gpu
         /// lever agree: an armed run has a configured manager that the pump's own category is enabled on, and an
         /// unarmed one has the untouched no-op facade. Both branches are reachable, and which one runs is decided
         /// by the environment rather than by this test, which is why it asserts a consistency rather than a state.
+        /// <para>
+        /// THE VULKAN LEVER IS NO LONGER THE ONLY ONE THAT CONFIGURES THE FACADE
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/617), so the unarmed branch asks the shared host
+        /// rather than this seam alone. Asserting an unconfigured facade off the Vulkan lever by itself would
+        /// fail on the metal-native leg, where <c>MTL_DEBUG_LAYER</c> is armed on every run and Vulkan's is
+        /// never armed at all.
+        /// </para>
         /// </summary>
         [Fact]
         public void TheProcessFacade_MatchesTheLeverTheHostWasStartedWith()
@@ -164,12 +171,19 @@ namespace KhaozEngine.Tests.Gpu
                 // The level the pump's warnings arrive at, and the one the module initializer's floor admits.
                 Assert.True(pumpLogger.IsEnabled(LogLevel.Warn));
             }
-            else
+            else if (!MetalValidationConsoleLogging.IsArmed(MetalValidationConsoleLogging.ArmedTier()))
             {
                 Assert.False(Log.IsConfigured);
                 // Not merely quiet: an unconfigured facade hands back a logger enabled for nothing, which is what
                 // makes the pump's calls free rather than formatted-then-discarded.
                 Assert.False(pumpLogger.IsEnabled(LogLevel.Error));
+            }
+            else
+            {
+                // A Metal-armed leg: the facade IS configured, and the scope is Metal's, so a Vulkan category
+                // reaches a sink that drops it. That is the property worth pinning here, because it is what keeps
+                // a Metal artifact from filling with Vulkan lines.
+                Assert.True(Log.IsConfigured);
             }
         }
 

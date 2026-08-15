@@ -156,6 +156,11 @@ Clearing them would have left the next skinned draw reading a descriptor slot th
 the same defect with nothing to catch it. Two device-free tests in `VulkanLayoutCompatibilityTests` drive the
 shipped transition both ways with the assertion armed.
 
+**Proved on the leg that reported it.** Dispatch run 31864195550 takes the `vulkan-native` full suite from 19
+failures to 10, and the nine that went are exactly this issue's nine. What remains is other people's: eight
+`WaterClipmapAcceptanceTests` plus `WaterSurfProbe` (#623) and `TheUnbuiltMembers_NameTheirOwnRow` (#622, which
+reds the incumbent Vulkan leg too). The `gpu-vulkan-sync` job is green on the same run.
+
 ## 17.36.0
 
 A crash that nothing logged now writes its own file, the Metal shader emission is cached across

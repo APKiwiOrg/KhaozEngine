@@ -29,9 +29,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <b><see cref="GpuCapabilities.MaxMsaaSampleCount"/> IS THE ONE MEMBER THIS TYPE DOES NOT DECIDE</b>, and it takes it as a
     /// parameter for that reason. V-C5 rules that the computation is READ OFF the incumbent's own
     /// <c>GetSampleCountLimit</c> and reproduced with its citation pinned, which is work-breakdown row 15
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/525). Until that lands the caller passes
-    /// <see cref="NoMultisampling"/>, which under-promises rather than inventing a formula: two drafts of the
-    /// design each invented one, the two differ, and both then asserted equality with the incumbent as a test.
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/525). That row landed, so the caller passes what
+    /// <see cref="VulkanMsaaLimit.MinOverTheEngineTargets"/> read off the driver, and
+    /// <see cref="NoMultisampling"/> is the floor that computation lands on rather than a stand-in for it.
+    /// Reading it off the incumbent instead of inventing a formula is the decision: two drafts of the design
+    /// each invented one, the two differ, and both then asserted equality with the incumbent as a test.
     /// </para>
     /// </summary>
     internal static class VulkanCapabilityRead
@@ -67,8 +69,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// </summary>
         internal const bool SupportsCompletionFences = true;
 
-        /// <summary>One sample, which is how "no MSAA" is spelled everywhere in the seam, and the value the
-        /// capability read carries until row 15 supplies the incumbent's own computation.</summary>
+        /// <summary>One sample, which is how "no MSAA" is spelled everywhere in the seam, and the floor
+        /// <see cref="VulkanMsaaLimit.Reduce"/> answers with for a mask carrying no recognised bit.</summary>
         internal const int NoMultisampling = 1;
 
         /// <summary>
@@ -113,8 +115,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// sampled image, off <c>vkGetPhysicalDeviceFormatProperties</c>. That pair, and not the depth-stencil one
         /// the capability's name suggests, is what the shadow pass needs and what the incumbent asks
         /// (<see cref="VulkanPhysicalDeviceReader.ShadowMapFormatFeatures"/>).</param>
-        /// <param name="maxMsaaSampleCount">Row 15's reproduction of the incumbent's own computation, or
-        /// <see cref="NoMultisampling"/> until it lands.</param>
+        /// <param name="maxMsaaSampleCount">Row 15's reproduction of the incumbent's own computation
+        /// (<see cref="VulkanMsaaLimit.MinOverTheEngineTargets"/>), which floors at
+        /// <see cref="NoMultisampling"/> on a device that multisamples none of the engine's targets.</param>
         internal static GpuCapabilities Assemble(
             string? deviceName,
             bool samplerAnisotropy,

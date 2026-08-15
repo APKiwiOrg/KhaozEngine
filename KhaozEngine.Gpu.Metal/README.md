@@ -155,10 +155,27 @@ MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 dotnet run --project <your game>
 ```
 
 and the engine's knob then says which tier is really armed, checks that answer against the device's own
-Objective-C class (a validated device is an `MTLDebugDevice`), and WARNS with the exact prefix above when a tier
-was asked for and the process cannot have it. It also catches the case that looks like it should work and
-cannot, a variable set from managed code after launch, because on Unix that never reaches the native
-environment the Metal runtime read.
+Objective-C class, and WARNS with the exact prefix above when a tier was asked for and the process cannot have
+it.
+
+The class check knows all four devices Metal has been measured handing back:
+
+| launch environment | device class | validated |
+| --- | --- | --- |
+| `MTL_DEBUG_LAYER=1` (with or without the shader variable) | `MTLDebugDevice` | yes, the API layer holds it |
+| `MTL_SHADER_VALIDATION=1` alone | `MTLGPUDebugDevice` on real Apple silicon, `MTLLegacySVDevice` on a hosted `macos-26` runner | yes, the shader layer holds it |
+| `MTL_DEBUG_LAYER=1 MTL_CAPTURE_ENABLED=1` | `CaptureMTLDevice` | no, the capture displaced the layer |
+| nothing armed, or something displaced what was | the driver's own (`AGXG14CDevice` on Apple silicon) | no |
+
+The disambiguation WARN fires only when a variable IS armed and NOTHING is validating after all, and it names
+the variable you actually set. It asks whether any validation wrapper is holding the device rather than whether
+one named class came back, because shader validation alone answers with two different class names on two
+machines and pinning either one puts a false warning on the other. Before
+[#628](https://github.com/APKiwiOrg/KhaozEngine/issues/628) the check was a single "does the class contain
+Debug" test, so it fired on every `MTL_SHADER_VALIDATION`-only run, naming `MTL_DEBUG_LAYER` and calling a
+validated run unvalidated. The knob also catches the case that looks like it should work and cannot, a variable
+set from managed code after launch, because on Unix that never reaches the native environment the Metal runtime
+read.
 
 ## Where a Metal failure shows up now
 

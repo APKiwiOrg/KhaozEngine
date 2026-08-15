@@ -130,10 +130,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// above the maximum came from a caller that skipped it, and rounding down would hide that behind a
         /// framebuffer that is quietly not multisampled.
         /// <para>
-        /// THE CEILING IS 1 UNTIL ROW 18 (https://github.com/APKiwiOrg/KhaozEngine/issues/528) FILLS IT IN, which
-        /// is a real refusal rather than a placeholder: the incumbent's own MSAA computation is what that row
-        /// reproduces (V-C5), and a number invented here would be a silent lie that
-        /// <c>AntiAliasing.ResolveFor</c> would act on.
+        /// THE CEILING IS THE DRIVER'S OWN ANSWER, not a pin. <see cref="VulkanMsaaLimit.MinOverTheEngineTargets"/>
+        /// reduces each of the engine's three MRT formats to the highest sample bit
+        /// <c>vkGetPhysicalDeviceImageFormatProperties</c> reports for the usage that format is used under, and
+        /// takes the minimum, which is the incumbent's own <c>GetSampleCountLimit</c> fold reproduced (V-C5). It
+        /// reaches this type as <see cref="GpuCapabilities.MaxMsaaSampleCount"/> through
+        /// <c>VulkanPhysicalDeviceReader</c>, so a refusal here is a real device limit and never a number the
+        /// engine invented for <c>AntiAliasing.ResolveFor</c> to act on.
         /// </para>
         /// </exception>
         public IGpuTexture CreateTexture(in GpuTextureDescription d)
@@ -147,9 +150,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     + _maxMsaaSampleCount.ToString(CultureInfo.InvariantCulture)
                     + ". It is refused rather than rounded down, because the engine clamps upstream in "
                     + "AntiAliasing.ResolveFor and a silent downgrade presents as a golden mismatch that reads "
-                    + "like a rendering bug. This device's ceiling is still the conservative 1 that row 4 pinned: "
-                    + "the real computation is read off the incumbent's own by the capability row "
-                    + "(https://github.com/APKiwiOrg/KhaozEngine/issues/528).",
+                    + "like a rendering bug. That ceiling is what this driver reported, not an engine pin: "
+                    + "vkGetPhysicalDeviceImageFormatProperties is asked for each of the engine's three MRT "
+                    + "targets (R8G8B8A8_UNorm, R32_Float and D32_Float_S8_UInt) with the usage that target is "
+                    + "used under, each answer is reduced to its highest supported sample bit, and the minimum "
+                    + "of the three is the device's MaxMsaaSampleCount.",
                     nameof(d));
             }
 

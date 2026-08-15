@@ -16,8 +16,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// selective feature enable, the device-loss latch, the liveness token and the validation pump) with each
     /// unbuilt member naming the row that builds it, and the swapchain pair was the last of those: row 17
     /// (https://github.com/APKiwiOrg/KhaozEngine/issues/527) made <see cref="ResizeSwapchain"/> and
-    /// <see cref="Present"/> real, so nothing on this type refuses by naming a row any more. The recording rows
-    /// still open live on <c>VulkanCommandList</c>, not here.
+    /// <see cref="Present"/> real, so nothing on this type refuses by naming a row any more. There are no
+    /// recording rows left open either: row 15 (https://github.com/APKiwiOrg/KhaozEngine/issues/525) filled in
+    /// the last of <c>VulkanCommandList</c>'s content, and that type's own doc is the ledger for it.
     /// The Direct3D 11 package's <c>D3D11ResourceFactory</c> landed the same way and its doc paragraph was
     /// rewritten at every fill-in, which is the discipline this paragraph is under too: it is a ledger, and a
     /// stale one is worse than none.
@@ -66,13 +67,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <see cref="IVulkanPipelineBinder"/> instead.
     /// </para>
     /// <para>
-    /// <b>THE COMMAND PATH IS LIVE IN ITS LIFECYCLE AND IN ONE RECORDING MEMBER</b> (rows 7 and 8,
+    /// <b>THE COMMAND PATH IS LIVE, LIFECYCLE AND RECORDING BOTH</b> (rows 7 and 8,
     /// https://github.com/APKiwiOrg/KhaozEngine/issues/517 and
     /// https://github.com/APKiwiOrg/KhaozEngine/issues/518). <c>CreateCommandList</c> hands out a real
     /// <see cref="VulkanCommandList"/> with its own per-slot <c>VkCommandPool</c>s, <c>Begin</c> and <c>End</c>
     /// work, <c>Submit</c> is ONE <c>vkQueueSubmit</c> under one short lock that allocates and signals the
     /// timeline value inside it, and a record-time <c>UpdateBuffer</c> on a ring-backed uniform buffer is a memcpy
-    /// into that frame's segment. Everything else a list could record names the row that builds it. A list is
+    /// into that frame's segment. Everything else a list could record landed on top of that, the last of it in
+    /// row 15 (https://github.com/APKiwiOrg/KhaozEngine/issues/525), so no member of that type names a row any
+    /// more either. A list is
     /// reachable through the SEAM from row 9 onward, as <c>IGpuResourceFactory.CreateCommandList</c>, and it now
     /// arrives with its own staging arena so a record-time write to a NON-uniform buffer stages and copies rather
     /// than refusing. See <c>VulkanGpuDevice.Submit.cs</c>.
@@ -370,11 +373,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// backpressure accumulator its stalls land in.
         /// </para>
         /// <para>
-        /// AND ITS FRAME BOUNDARY HAS NO CALLER YET, for the same reason <see cref="DrainRetiredResources"/> has
-        /// none: the boundary is <see cref="Present"/> and that is row 17's
-        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/527). That row calls
-        /// <see cref="VulkanRingAllocator.BeginFrame"/> AFTER the present has released the submit lock, which the
-        /// allocator refuses a caller by name for.
+        /// AND ITS FRAME BOUNDARY IS <see cref="Present"/>, live since row 17
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/527), which calls
+        /// <see cref="VulkanRingAllocator.BeginFrame"/> and then <see cref="DrainRetiredResources"/> AFTER the
+        /// present has released the submit lock, which the allocator refuses a caller by name for.
         /// </para>
         /// </summary>
         internal VulkanRingAllocator Rings => _rings;
@@ -383,9 +385,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// THE FRAME-BOUNDARY DRAIN of the retire list: run every held destroy the timeline has passed, and leave
         /// the rest. Returns how many ran.
         /// <para>
-        /// Nothing calls it yet, because the frame boundary is <see cref="Present"/> and that is row 17's
-        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/527). It exists at this row rather than at that one so
-        /// that the retire list has exactly ONE release path from the start: this method and the teardown drain
+        /// <see cref="Present"/> calls it, on the frame boundary row 17
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/527) built, right after
+        /// <see cref="VulkanRingAllocator.BeginFrame"/> and outside every lock. It was written at this row rather
+        /// than at that one so that the retire list has exactly ONE release path from the start: this method and
+        /// the teardown drain
         /// inside <see cref="Dispose"/> both go through <see cref="VulkanRetireList"/>, and no later row has to
         /// invent a second rule about when a deferred destroy is safe.
         /// </para>

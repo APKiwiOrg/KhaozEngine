@@ -30,20 +30,20 @@ namespace KhaozEngine.Tests.Gpu
     /// off values written by hand. So is the COMPARER, plus the reflection check that it covers every member of
     /// <see cref="GpuCapabilities"/>, which is the guard that matters most: a member appended to that struct
     /// without a line added to the comparison would make the parity assertion silently weaker while staying
-    /// green. The two-device half is a <c>[GpuFact]</c> and needs a real Vulkan device, which nothing on the
-    /// current legs has: it first RUNS on the <c>vulkan-native</c> leg row 19
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/529) installs, against lavapipe. Until then its
-    /// device-free half and this comparer are what the row actually delivers, which is said out loud here rather
+    /// green. The two-device half is a <c>[GpuFact]</c> and needs a real Vulkan device, which no developer
+    /// machine here has: it RUNS on the <c>vulkan-native</c> leg row 19
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/529) installed, against lavapipe. Everywhere else the
+    /// device-free half and this comparer are what runs, which is said out loud here rather
     /// than left for a reader to infer from a green run that asserted nothing.</para>
     ///
-    /// <para><b>THE MSAA MEMBER IS THE ONE THIS TEST CANNOT SATISFY YET, AND SAYING SO IS THE POINT.</b>
-    /// <see cref="GpuCapabilities.MaxMsaaSampleCount"/> is pinned to
+    /// <para><b>THE MSAA MEMBER IS THE ONE THAT TOOK LONGEST TO SATISFY, AND SAYING SO IS THE POINT.</b>
+    /// <see cref="GpuCapabilities.MaxMsaaSampleCount"/> was pinned to
     /// <see cref="VulkanCapabilityRead.NoMultisampling"/> until row 15
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/525) reproduces the incumbent's own
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/525) reproduced the incumbent's own
     /// <c>GetSampleCountLimit</c> computation, which V-C5 rules is READ OFF the incumbent rather than invented so
-    /// that "asserted identical" holds by construction rather than by luck. The comparer covers the member from
-    /// today, so the day the two-device row runs against a lavapipe that reports more than one sample it names
-    /// exactly that member, which is the correct failure rather than a silent pass.</para>
+    /// that "asserted identical" holds by construction rather than by luck. The comparer has covered the member
+    /// from the start, so a lavapipe reporting more than one sample against a native read that disagreed would
+    /// name exactly that member, which is the correct failure rather than a silent pass.</para>
     ///
     /// <para><b>THE WHOLE CLASS SITS IN THE <c>NativeDeviceLifecycle</c> COLLECTION,</b> which costs the
     /// device-free rows nothing measurable and is what the two-device row needs. See the collection's own
@@ -161,8 +161,9 @@ namespace KhaozEngine.Tests.Gpu
         public void SupportsShadowMapFormat_NeedsBothBits(FormatFeatureFlags reported, bool expected)
             => Assert.Equal(expected, VulkanPhysicalDeviceReader.SupportsShadowMapFormat(reported));
 
-        /// <summary>The floor is one sample, which is how the seam spells "no MSAA", and it is what the capability
-        /// carries until row 15 supplies the incumbent's own computation.</summary>
+        /// <summary>The floor is one sample, which is how the seam spells "no MSAA", and it is what row 15's
+        /// reproduction of the incumbent's computation answers on a device that multisamples none of the
+        /// engine's three targets.</summary>
         [Fact]
         public void NoMultisampling_IsOneSample()
         {

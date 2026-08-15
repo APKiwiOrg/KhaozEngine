@@ -44,7 +44,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <c>vkGetSemaphoreCounterValue</c>, <c>vkMapMemory</c>, <c>vkDeviceWaitIdle</c> and every creation call.
     /// The device row wired <c>vkDeviceWaitIdle</c> at teardown, the timeline row added
     /// <c>vkGetSemaphoreCounterValue</c> and <c>vkWaitSemaphores</c> (which is what <c>WaitForIdle</c> became),
-    /// and each later row wires its own as it lands. That is what "latched at the fault site" means: the site's
+    /// and each later row wired its own as it landed. That is what "latched at the fault site" means: the site's
     /// own name travels into <see cref="Check"/> rather than being inferred downstream.</para>
     ///
     /// <para><b>THE LATCH IS TAKEN EXACTLY ONCE.</b> Two threads can notice a loss in the same instant, and one

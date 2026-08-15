@@ -8159,6 +8159,17 @@ CrashReport.Install(new CrashReportOptions { ProcessLabel = "MyGame.Server" });
 Rules for consumers:
 
 - Configure `Log` once per process; call `Log.Shutdown()` on exit.
+- **For a logger from the facade, where you configure it in startup does not matter, and neither does what has
+  already logged.** A logger from
+  `Log.For<T>()` / `Log.Get(...)` is bound to its category and to the facade, not to whichever manager was
+  configured when you asked for it, so it reads the current one on every call. Cache it in a
+  `static readonly ILogger` field if you like: touching the type before `Log.Configure` runs, or reconfiguring
+  afterwards to swap the sink set, leaves that field writing to the live manager either way (17.36.2, #616). The one
+  logger this does NOT apply to is `LogManager.GetLogger(...)`, which is bound to the manager you took it from,
+  on purpose, so an injected manager and its sink keep meaning what they say. `CrashHandler.Install()` is the
+  other thing that still cares about order: it pins `Log.Manager` at install time and reports the fatal line
+  through that pinned manager, so install it AFTER `Log.Configure` and re-install it if you reconfigure, or the
+  crash line lands in a manager whose sinks were disposed (tracked to make it resolve per report: #633).
 - Pick a **category**, then log under it (pass an exception as the optional second argument):
   - A single class's logging → `Log.For<T>()` (category = the type name).
   - A feature/subsystem spanning several classes, or a game-side module with no single owning type → 
@@ -9194,9 +9205,19 @@ MTL_DEBUG_LAYER=1 dotnet run --project <your game>
 MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 dotnet run --project <your game>
 ```
 
-The engine's knob then logs which tier is really armed, checks that against the device's own Objective-C class
-(a validated device is an `MTLDebugDevice` rather than the driver's own), and WARNS with the exact prefix above
-when a tier was asked for and this process cannot have it. Neither tier is a synchronisation validator.
+The engine's knob then logs which tier is really armed, checks that against the device's own Objective-C class,
+and WARNS with the exact prefix above when a tier was asked for and this process cannot have it. Neither tier is
+a synchronisation validator.
+
+**The log line reads the class rather than printing it bare.** `MTL_DEBUG_LAYER=1` gets an `MTLDebugDevice`
+whether or not the shader variable is beside it. `MTL_SHADER_VALIDATION=1` ALONE gets a shader-validation
+device, which is validated and not unvalidated, and which has two measured spellings: `MTLGPUDebugDevice` on
+real Apple silicon and `MTLLegacySVDevice` on a hosted `macos-26` runner. A GPU-trace capture in the same
+process gets a `CaptureMTLDevice` and displaces the layer, so that one really is unvalidated. Anything else is
+the driver's own class (`AGXG14CDevice` on Apple silicon). The disambiguation WARN fires only when a variable
+IS armed and nothing is validating after all, and it names the variable you actually set, which is what
+[#628](https://github.com/APKiwiOrg/KhaozEngine/issues/628) fixed after a shader-only run emitted 99 warnings
+naming a variable nobody had set.
 
 **Three things about arming it that cost a debugging session to learn, all measured on macOS 26.**
 

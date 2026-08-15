@@ -460,8 +460,10 @@ namespace KhaozEngine.Tests.Gpu
         /// A SAMPLE COUNT ABOVE THE DEVICE'S CEILING IS REFUSED RATHER THAN ROUNDED DOWN (C4's departure
         /// inherited). The engine clamps upstream in <c>AntiAliasing.ResolveFor</c>, so a count arriving here came
         /// from a caller that skipped it, and a silent downgrade presents as a golden mismatch that reads like a
-        /// rendering bug. The message names the capability row, because the ceiling is still the conservative 1
-        /// row 4 pinned.
+        /// rendering bug. The message names the ceiling THIS device reported and the driver query it came off,
+        /// because row 15 (https://github.com/APKiwiOrg/KhaozEngine/issues/525) made that ceiling a real read
+        /// rather than the conservative 1 row 4 pinned. It must NOT send a caller to that closed row any more,
+        /// which is the assertion #627 added.
         /// </summary>
         [Fact]
         public void ASampleCountAboveTheCeiling_IsRefusedByName()
@@ -471,7 +473,9 @@ namespace KhaozEngine.Tests.Gpu
             ArgumentException ex = Assert.Throws<ArgumentException>(() => fixture.Factory.CreateTexture(
                 VulkanResourceFixture.Texture(8, 8, GpuTextureUsage.RenderTarget, sampleCount: 4)));
 
-            Assert.Contains("528", ex.Message, StringComparison.Ordinal);
+            Assert.Contains("MaxMsaaSampleCount is 1", ex.Message, StringComparison.Ordinal);
+            Assert.Contains("vkGetPhysicalDeviceImageFormatProperties", ex.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain("528", ex.Message, StringComparison.Ordinal);
             Assert.Empty(fixture.ResourceApi.Events);
 
             // And a device whose ceiling is real accepts it.

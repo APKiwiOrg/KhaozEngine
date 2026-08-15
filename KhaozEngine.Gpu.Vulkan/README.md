@@ -831,12 +831,12 @@ scissor per colour target, nothing in the engine passes a non-zero one, and hono
 `multiViewport` and matching every pipeline's viewport count to its attachment count for a shape no shipped
 renderer has. The native Direct3D 11 backend refuses the same index for the same reason.
 
-**What is not built yet, and where it lands.** The attachment layout transitions a begin owes are the barrier
-row's ([#524](https://github.com/APKiwiOrg/KhaozEngine/issues/524)), and the bound framebuffer already carries
-each attachment's `VkImage` for it. The pre-draw hook is called by nothing yet, and the
-end-before-illegal-command helper is called by the staged upload path above and by the compute pipeline bind:
-the draws, dispatches, copies and resolves are
-[#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525).
+**Where the rest of it landed.** The attachment layout transitions a begin owes are the barrier row's
+([#524](https://github.com/APKiwiOrg/KhaozEngine/issues/524)), emitted inside the begin off the `VkImage` the
+bound framebuffer carries for each attachment. The pre-draw hook is called first by `Draw` and `DrawIndexed`
+([#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525)), ahead of the bind flush and the vertex binds,
+and the end-before-illegal-command helper is called by `End`, by the staged upload path above, by the compute
+pipeline bind, and by every dispatch, copy, resolve and mip generation.
 
 ## Shaders: there is no cross-compilation, and that is the headline
 
@@ -1393,11 +1393,14 @@ reports that bit for it. The pass wants this pair anyway, since `ShadowMapRender
 `R32Float` with `RenderTarget | Sampled` and hangs a separate depth-stencil off it, and it is also the parity
 answer, since `VeldridMap.SupportsShadowMaps` asks `GetPixelFormatSupport` for the same two.
 
-**`MaxMsaaSampleCount` is pinned to one sample until [#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525)
-reproduces the incumbent's own `GetSampleCountLimit`.** That is a ruling rather than an omission: two drafts of
-the design each invented a formula, the two differ, and both then asserted equality with the incumbent as a test,
-so at most one of them could have been measuring anything. Pinning under-promises, and `AntiAliasing.ResolveFor`
-clamps a request rather than throwing on one.
+**`MaxMsaaSampleCount` is a real driver reading**, since row 15
+([#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525)) reproduced the incumbent's own
+`GetSampleCountLimit`: the minimum over the engine's three MRT targets of the highest sample count each supports,
+read through `vkGetPhysicalDeviceImageFormatProperties` with the citation pinned in a constant. It was pinned to
+one sample before that row, and the pin was a ruling rather than an omission: two drafts of the design each
+invented a formula, the two differ, and both then asserted equality with the incumbent as a test, so at most one
+of them could have been measuring anything. Pinning under-promised until there was a reading to promise, and
+`AntiAliasing.ResolveFor` clamps a request rather than throwing on one either way.
 
 **The counter fill is nine READINGS.** The drain pair comes off the timeline, the backpressure pair off the one
 accumulator both the command lists and the uniform ring stall into, the off-timeline pair off the ring's pending

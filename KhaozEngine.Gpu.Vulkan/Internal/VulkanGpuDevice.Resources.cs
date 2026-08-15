@@ -33,8 +33,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     internal sealed unsafe partial class VulkanGpuDevice
     {
         /// <inheritdoc/>
-        /// <remarks>Live from this row. Buffers, textures, samplers, command lists and fences are real, and the
-        /// members later rows own refuse by naming their own issue.</remarks>
+        /// <remarks>Live from this row. Buffers, textures, samplers, command lists and fences are real, and every
+        /// member the later rows owned has since landed, so the factory refuses nothing by naming a row.</remarks>
         public IGpuResourceFactory Factory => _factory;
 
         /// <inheritdoc/>

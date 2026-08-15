@@ -158,7 +158,19 @@ The suite each leg runs is split by trigger, from measured hosted-runner cost
   | launch environment | what `MetalGpuDevice` reported |
   | --- | --- |
   | `MTL_DEBUG_LAYER=1` | `The device class is MTLDebugDevice`, no disambiguation warning |
+  | `MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1` | `The device class is MTLDebugDevice`, no warning. The debug layer wins the class when both are armed |
+  | `MTL_SHADER_VALIDATION=1` alone | `The device class is MTLGPUDebugDevice`, no warning. Hosted `macos-26` answers `MTLLegacySVDevice` for the same environment, see below |
   | `MTL_DEBUG_LAYER=1 MTL_CAPTURE_ENABLED=1` | `The device class is CaptureMTLDevice`, plus the WARN that the run `is probably NOT validated` |
+
+  **Shader validation alone has TWO class spellings, and that is what
+  [#628](https://github.com/APKiwiOrg/KhaozEngine/issues/628) turned out to be about.** That issue was filed on
+  run `31874140088`, where hosted `macos-26` under `MTL_SHADER_VALIDATION=1` alone reported `MTLLegacySVDevice`
+  and the engine emitted 99 copies of a warning calling a validated run unvalidated. The same launch environment
+  on the M2 Max above reports `MTLGPUDebugDevice`. Both are shader-validation wrappers, so the disambiguation
+  asks whether ANY validation wrapper is holding the device rather than whether one named class came back:
+  pinning it to either spelling would put the false warning back on the other machine. Only `CaptureMTLDevice`
+  and the driver's own class read as unvalidated now, and the WARN names whichever of the two variables was
+  actually armed.
 
   `MTLDebugDevice` is the class that performs the API validation, so the arrangement this replaces (capture on
   every trigger except the deep dispatch) left tier one INERT on every push, pull request and cron this leg has
@@ -169,6 +181,23 @@ The suite each leg runs is split by trigger, from measured hosted-runner cost
   costs, stated rather than glossed: `MetalFrameCaptureTests`' positive arm, the one that starts a capture from
   the native queue pointer and asserts the bundle, is attended-only coverage now, and its negative arm is what
   every unattended trigger runs.
+  **Two guards keep that exclusion true, because the re-tier above is only a set of comments an editor is free
+  to not read.** The first is a step at the top of the matrix job, before the checkout, on the macOS legs. It
+  reads the same job variables the test step arms and fails the job when an UNATTENDED trigger (push, pull
+  request, cron) would run with both `MTL_DEBUG_LAYER` and `MTL_CAPTURE_ENABLED` set, and it asserts the inverse
+  as well, that the `metal-native` leg really does carry the debug layer with the capture empty there, because
+  "not both" is also satisfied by arming neither. It is scoped to the unattended triggers on purpose: the
+  `capture` tier arms both by design, and a universal assertion would red the one tier that chose the pair.
+  The second guard reads the DEVICE rather than the workflow. `MetalCaptureDisplacementTripwire` in
+  `KhaozEngine.Render.Tests` promotes the engine's "armed and nothing is validating" warning to a test
+  failure on an unattended CI run, so a leg cannot report six thousand green rows under an instrument that was
+  displaced. It asks the engine's own `MetalValidation.ClassifyDevice`, so there is one predicate rather than
+  two: it passes `MTLDebugDevice`, `MTLLegacySVDevice` and `MTLGPUDebugDevice` (all three validate, the last two
+  being the same shader-validation wrapper under the two spellings measured across machines) and fails
+  `CaptureMTLDevice` and the driver's own class, naming the capture as the displacement when the capture is
+  armed. Off CI, and on an attended dispatch, it stands down and the warning is the whole answer. The two layers catch different things:
+  the workflow step catches a bad tier edit at authoring time on the first push, and the tripwire catches a
+  displacement this repository did not cause, such as a runner image that starts injecting the variable.
   **The deep tier is a DISPATCH and nothing else, and the cron does not arm it**
   ([#617](https://github.com/APKiwiOrg/KhaozEngine/issues/617)). Its first ever armed run failed 186 of 6201
   rows on this leg (run `31581572414`), with every golden reading back as exactly the pass clear colour: the
@@ -207,7 +236,7 @@ The suite each leg runs is split by trigger, from measured hosted-runner cost
   **A failed command buffer is NOT a failed row**, which is the blindness #617 ran into.
   `MetalDeviceLossLatch` logs the driver's own description and flips the device's liveness, and nothing in it
   fails a test, so a leg can go red for a pile of unrelated-looking golden reasons with the real fault sitting
-  in a log line. Until that issue, that line went to a `NullLogger`: the test host configures a sink for the
+  in a log line. Until that issue, that line went nowhere at all: the test host configures a sink for the
   `Metal` log categories only when a Metal rung is armed, and the leg forwards the host's stdout at detailed
   verbosity on exactly the runs that arm one, which is every run of this leg. Those are the two halves it takes
   for the line to reach the artifact at all, and they read the same predicate, so the artifact cannot exist

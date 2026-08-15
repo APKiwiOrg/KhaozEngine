@@ -453,10 +453,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// dispatch, a resolve, a copy and a mip generation are all illegal inside a render pass instance, so each
         /// ends the pending rendering first.
         /// <para>
-        /// THE BULK UPLOAD PATH CALLS IT TODAY, through <see cref="IVulkanRenderingScope"/> below: a staged
+        /// THE BULK UPLOAD PATH CALLS IT, through <see cref="IVulkanRenderingScope"/> below: a staged
         /// <c>UpdateBuffer</c> records a <c>vkCmdCopyBuffer</c>, which is as illegal inside a pass as a dispatch
-        /// is. The dispatch, resolve and mip-generation callers land in rows 13 and 15 and call this rather than
-        /// writing the rule a second time.
+        /// is. The dispatch, resolve and mip-generation callers arrived in rows 13 and 15 and call this rather
+        /// than writing the rule a second time.
         /// </para>
         /// <para>
         /// SAFE TO CALL WHEN NOTHING IS OPEN, so a caller never has to ask first, and it takes the clear-only

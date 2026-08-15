@@ -47,11 +47,21 @@ namespace KhaozEngine.Tests.Gpu
         internal const string HostCategory = "MetalValidationLogHost";
 
         /// <summary>
-        /// Which Metal validation tier this PROCESS really has, read through the backend's own reader. Pure in
-        /// the sense that matters: it reads the environment and decides nothing else, and it never configures
-        /// anything.
+        /// Which Metal validation tier this PROCESS really has AND which variables armed it, read through the
+        /// backend's own reader. Pure in the sense that matters: it reads the environment and decides nothing
+        /// else, and it never configures anything.
+        /// <para>
+        /// THE VARIABLES COME BACK BESIDE THE TIER RATHER THAN BEING DERIVED FROM IT. The tier is a merge, and
+        /// the merge loses the distinction: <c>MTL_SHADER_VALIDATION</c> alone and both variables together both
+        /// report <see cref="MetalValidationMode.Shaders"/>. Deriving the pair back out of the tier is what made
+        /// this host's own announcement name a variable nobody had set, which is
+        /// https://github.com/APKiwiOrg/KhaozEngine/issues/628 one process further out.
+        /// </para>
         /// </summary>
-        internal static MetalValidationMode ArmedTier() => MetalValidationReader.Capture().Armed;
+        internal static MetalValidationArming ArmedReading() => MetalValidationReader.Capture();
+
+        /// <summary>The tier alone, for the callers that only need the rung.</summary>
+        internal static MetalValidationMode ArmedTier() => ArmedReading().Armed;
 
         /// <summary>Whether <paramref name="armed"/> is a rung worth configuring a sink for, which is any rung
         /// above <see cref="MetalValidationMode.Off"/>. Both tiers count: the API layer alone already produces
@@ -67,9 +77,21 @@ namespace KhaozEngine.Tests.Gpu
         /// exactly the state #617's artifact was in and could not report. This says the sink existed on the run
         /// being read, so the two are tellable apart from the artifact alone.
         /// </para>
+        /// <para>
+        /// IT NAMES ONLY THE VARIABLES THAT WERE ACTUALLY ARMED, through the backend's own
+        /// <see cref="MetalValidation.ArmedVariables"/>, so a shader-only run is not described as having set
+        /// <c>MTL_DEBUG_LAYER</c>. Naming both on every armed run is the header half of
+        /// https://github.com/APKiwiOrg/KhaozEngine/issues/628, and it is worse here than in the backend: this
+        /// is the FIRST line of the artifact, so it sets the reader's belief about the launch environment before
+        /// any engine line has had a chance to correct it.
+        /// </para>
         /// </summary>
-        internal static string ArmedAnnouncement(MetalValidationMode armed)
-            => $"{MetalValidation.DebugLayerVar} and {MetalValidation.ShaderValidationVar} arm tier '{armed}' in "
+        internal static string ArmedAnnouncement(MetalValidationArming arming)
+        {
+            string armed = MetalValidation.ArmedVariables(arming.DebugLayerArmed, arming.ShaderValidationArmed);
+            string verb = arming.DebugLayerArmed && arming.ShaderValidationArmed ? "arm" : "arms";
+
+            return $"{armed} {verb} tier '{arming.Armed}' in "
                 + "this process's LAUNCH environment, so this test host configured a console sink for log "
                 + $"categories starting with '{CategoryPrefix}' at Info and above. The native Metal backend's own "
                 + "lines therefore reach this log: the armed-tier and device-class report from MetalGpuDevice, "
@@ -77,5 +99,6 @@ namespace KhaozEngine.Tests.Gpu
                 + "FAILED'). Metal's own validation output is independent of this and arrives on the runtime's "
                 + "stream whether or not the sink was configured. An unarmed run configures nothing and this "
                 + "line is absent.";
+        }
     }
 }

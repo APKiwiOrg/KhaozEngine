@@ -29,6 +29,9 @@ public sealed class TileWorldView : IDisposable
     /// <summary>Side in metres of the box an archetype with no mesh is drawn as.</summary>
     public const float PlaceholderSize = 1f;
 
+    /// <summary>How many tiles a dirty world rect is grown by before it is turned into region marks.</summary>
+    public const int DirtyRegionMargin = 2;
+
     // A flat mid grey: visibly not content, and visible against both the greybox palette and lit ground.
     static readonly Vector4 PlaceholderColor = new(0.5f, 0.5f, 0.5f, 1f);
 
@@ -94,7 +97,7 @@ public sealed class TileWorldView : IDisposable
         set
         {
             _observer = value;
-            ObserverIndoors = (_doc.GetSettings(value.X, value.Z, value.Plane) & TileSettings.Indoors) != 0;
+            ObserverIndoors = IndoorsAt(value);
         }
     }
 
@@ -107,8 +110,17 @@ public sealed class TileWorldView : IDisposable
     /// <summary>How many regions are loaded right now.</summary>
     public int LoadedRegionCount => _loaded.Count;
 
-    /// <summary>The loaded regions, in no particular order.</summary>
-    public IReadOnlyCollection<RegionCoord> LoadedRegions => _loaded.Keys;
+    /// <summary>A snapshot of the loaded regions, in no particular order. A copy rather than a live view, so a
+    /// caller may load or unload regions while walking it, which is exactly what a residency ring does.</summary>
+    public IReadOnlyCollection<RegionCoord> LoadedRegions
+    {
+        get
+        {
+            var snapshot = new RegionCoord[_loaded.Count];
+            _loaded.Keys.CopyTo(snapshot, 0);
+            return snapshot;
+        }
+    }
 
     /// <summary>Builds and uploads every plane of one region. Loading a region that is already loaded rebuilds it
     /// from the document rather than doubling up, so a caller may use this as a whole-region refresh.</summary>
@@ -131,6 +143,7 @@ public sealed class TileWorldView : IDisposable
     /// Unloading a region that is not loaded does nothing.</summary>
     public void UnloadRegion(RegionCoord region)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         for (int plane = 0; plane < _planes; plane++) _dirty.Remove((region, plane));
         if (!_loaded.Remove(region, out RegionHandles? handles)) return;
         FreeMeshes(handles);
@@ -140,34 +153,51 @@ public sealed class TileWorldView : IDisposable
     /// document is ignored, and a region that is not loaded is dropped when the flush runs.</summary>
     public void MarkDirty(RegionCoord region, int plane)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         if (plane < 0 || plane >= _planes) return;
         _dirty.Add((region, plane));
     }
 
-    /// <summary>Queues every region the world-space tile rect touches on one plane. This is the edit-facing
-    /// overload: an editor hands over the tiles it wrote and the view works out which regions that is.</summary>
+    /// <summary>Queues every region a world-space tile rect can affect on one plane: every region the rect
+    /// touches after growing it by <see cref="DirtyRegionMargin"/> tiles. That margin is correctness, not
+    /// padding. A corner height is shared by the four tiles around it and so by up to four regions, the smooth
+    /// normal at a corner is a central difference that reads one corner further still, and a corner colour
+    /// averages the tiles meeting there, so an edit one tile inside a region border genuinely changes the
+    /// NEIGHBOUR's mesh. The margin is applied unconditionally, because the rect does not say which of those
+    /// three inputs the edit touched, and marking wide is free: the flush drops every region that is not
+    /// loaded. This is the edit-facing overload, where an editor hands over the tiles it wrote and the view
+    /// works out which regions that is.</summary>
     public void MarkDirty(TileRect worldRect, int plane)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         if (worldRect.IsEmpty || plane < 0 || plane >= _planes) return;
-        RegionCoord min = RegionCoord.Of(worldRect.X, worldRect.Z);
-        RegionCoord max = RegionCoord.Of(worldRect.X1 - 1, worldRect.Z1 - 1);
+        TileRect reach = worldRect.Expand(DirtyRegionMargin);
+        RegionCoord min = RegionCoord.Of(reach.X, reach.Z);
+        RegionCoord max = RegionCoord.Of(reach.X1 - 1, reach.Z1 - 1);
         for (int rz = min.Rz; rz <= max.Rz; rz++)
             for (int rx = min.Rx; rx <= max.Rx; rx++)
                 _dirty.Add((new RegionCoord(rx, rz), plane));
     }
 
-    /// <summary>Rebuilds every queued region-plane that is currently loaded and clears the queue. Called at the
-    /// start of <see cref="Draw"/>, so an explicit call is only needed to pay the cost off the draw path.</summary>
+    /// <summary>Rebuilds every queued region-plane that is currently loaded and clears the queue, and refreshes
+    /// the roof rule's indoor flag. Called at the start of <see cref="Draw"/>, so an explicit call is only needed
+    /// to pay the cost off the draw path.</summary>
     public void Flush()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        // One settings lookup a frame, which is what it costs to stay right when the tile UNDER a stationary
+        // observer is edited: the setter alone only sees the observer moving.
+        ObserverIndoors = IndoorsAt(_observer);
         if (_dirty.Count == 0) return;
 
         foreach ((RegionCoord region, int plane) in _dirty)
         {
             if (!_loaded.TryGetValue(region, out RegionHandles? handles)) continue;
+            // Build BEFORE freeing. A mesher that throws must leave the old handle live and drawable rather than
+            // a freed one in the slot, which would be a use-after-free on the next frame.
+            MeshHandle? rebuilt = BuildMesh(region, plane);
             if (handles.Meshes[plane] is { } old) _scene.UnloadMesh(old);
-            handles.Meshes[plane] = BuildMesh(region, plane);
+            handles.Meshes[plane] = rebuilt;
             handles.Props[plane] = TileObjectProps.Build(_doc, _catalogs, region, plane);
         }
         _dirty.Clear();
@@ -220,6 +250,8 @@ public sealed class TileWorldView : IDisposable
     // The roof rule: standing indoors hides the roofs of every plane ABOVE the observer's own, so the storey the
     // observer is on keeps its own props and the ceiling between them and the camera goes.
     bool RoofsHiddenOn(int plane) => ObserverIndoors && plane > _observer.Plane;
+
+    bool IndoorsAt(TileCoord tile) => (_doc.GetSettings(tile.X, tile.Z, tile.Plane) & TileSettings.Indoors) != 0;
 
     MeshHandle? BuildMesh(RegionCoord region, int plane)
     {

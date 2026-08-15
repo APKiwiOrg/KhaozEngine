@@ -37,6 +37,28 @@ public class TileWorldViewTests
         return doc;
     }
 
+    // Two regions of grass side by side in x, so a dirty rect near their shared border has a neighbour to reach.
+    static TileWorldDocument TwoRegionGrass()
+    {
+        var doc = new TileWorldDocument { Id = "tile-view-tests", DisplayName = "Tile view tests" };
+        foreach (RegionCoord region in new[] { new RegionCoord(0, 0), new RegionCoord(1, 0) })
+        {
+            doc.GetOrCreateRegion(region);
+            for (int z = 0; z < TileRegion.Size; z++)
+                for (int x = 0; x < TileRegion.Size; x++)
+                    doc.SetUnderlay(region.OriginX + x, region.OriginZ + z, 0, TileRenderTestData.Grass);
+        }
+        return doc;
+    }
+
+    // The ground-mesh handle a region drew this frame, found by its world transform rather than by draw order,
+    // because the view iterates a dictionary and promises no order.
+    static int HandleOf(RecordingTileWorldScene scene, TileWorldDocument doc, RegionCoord region)
+    {
+        Matrix4x4 world = TileGroundMesher.WorldMatrix(doc, region);
+        return scene.Drawn.Single(d => d.World == world).Handle.Index;
+    }
+
     [Fact]
     public void LoadRegion_creates_one_mesh_per_drawable_plane_and_props()
     {
@@ -134,6 +156,59 @@ public class TileWorldViewTests
     }
 
     [Fact]
+    public void MarkDirty_by_world_rect_reaches_into_the_neighbouring_region()
+    {
+        var scene = new RecordingTileWorldScene();
+        TileWorldDocument doc = TwoRegionGrass();
+        var west = new RegionCoord(0, 0);
+        var east = new RegionCoord(1, 0);
+        using TileWorldView view = View(scene, doc);
+        view.LoadRegion(west);
+        view.LoadRegion(east);
+
+        view.Draw(Vector3.Zero);
+        int west0 = HandleOf(scene, doc, west), east0 = HandleOf(scene, doc, east);
+        scene.ClearFrame();
+
+        // One tile INSIDE the east region. The corner heights it moves are shared with the west region, and the
+        // normal and colour rules read a corner further still, so the west mesh has to be rebuilt too.
+        view.MarkDirty(new TileRect(TileRegion.Size + 1, 10, 1, 1), 0);
+        view.Draw(Vector3.Zero);
+        int west1 = HandleOf(scene, doc, west), east1 = HandleOf(scene, doc, east);
+        Assert.NotEqual(west0, west1);
+        Assert.NotEqual(east0, east1);
+        scene.ClearFrame();
+
+        // Well inside the west region: nothing the east mesh reads changed, so it must not be rebuilt.
+        view.MarkDirty(new TileRect(30, 30, 1, 1), 0);
+        view.Draw(Vector3.Zero);
+        Assert.NotEqual(west1, HandleOf(scene, doc, west));
+        Assert.Equal(east1, HandleOf(scene, doc, east));
+    }
+
+    [Fact]
+    public void Flush_rebuilds_the_dirty_planes_props_not_just_its_mesh()
+    {
+        var scene = new RecordingTileWorldScene();
+        TileWorldDocument doc = TileRenderTestData.HouseWorld();
+        using TileWorldView view = View(scene, doc);
+        view.LoadRegion(TileRenderTestData.Region);
+
+        view.Draw(HouseFocus);
+        Assert.DoesNotContain(scene.PropDraws, r => r.Placements.Any(p => p.Id == "tree"));
+        int before = view.LastDrawnProps;
+        scene.ClearFrame();
+
+        // An object added after the load only reaches the scene if the flush rebuilt the placements as well.
+        doc.AddObject("tree", TileRenderTestData.HouseMinX, TileRenderTestData.HouseMinZ - 2, 0, 0);
+        view.MarkDirty(TileRenderTestData.Region, 0);
+        view.Draw(HouseFocus);
+
+        Assert.Contains(scene.PropDraws, r => r.Placements.Any(p => p.Id == "tree"));
+        Assert.Equal(before + 1, view.LastDrawnProps);
+    }
+
+    [Fact]
     public void Roofs_are_hidden_above_an_indoor_observer_and_shown_otherwise()
     {
         var scene = new RecordingTileWorldScene();
@@ -152,6 +227,36 @@ public class TileWorldViewTests
         view.Draw(HouseFocus);
         Assert.Contains(scene.PropDraws, r => r.Placements.Any(p => p.Id == "roof_flat") && r.Drawn == HouseRoofProps);
         Assert.Equal(HouseGroundProps + HouseRoofProps, view.LastDrawnProps);
+    }
+
+    [Fact]
+    public void Roofs_on_the_observers_own_plane_stay_drawn_indoors()
+    {
+        var scene = new RecordingTileWorldScene();
+        TileWorldDocument doc = TileRenderTestData.HouseWorld();
+        // A roof on the GROUND plane, and the roof plane flagged indoors too, so the rule can be judged from an
+        // observer standing on either storey.
+        doc.AddObject("roof_flat", TileRenderTestData.HouseMinX, TileRenderTestData.HouseMinZ, 0, 0);
+        for (int z = TileRenderTestData.HouseMinZ; z <= TileRenderTestData.HouseMaxZ; z++)
+            for (int x = TileRenderTestData.HouseMinX; x <= TileRenderTestData.HouseMaxX; x++)
+                doc.SetSettings(x, z, TileRenderTestData.RoofPlane, TileSettings.Indoors);
+
+        using TileWorldView view = View(scene, doc);
+        view.LoadRegion(TileRenderTestData.Region);
+
+        // Indoors on plane 0: the roof ON plane 0 is not above the observer, so it stays.
+        view.Observer = new TileCoord(TileRenderTestData.HouseMinX, TileRenderTestData.HouseMinZ, 0);
+        Assert.True(view.ObserverIndoors);
+        view.Draw(HouseFocus);
+        Assert.Equal(HouseGroundProps + 1, view.LastDrawnProps);
+        scene.ClearFrame();
+
+        // Indoors on plane 1: plane 1's own roofs stay too, so an observer upstairs is not standing in the open.
+        view.Observer = new TileCoord(TileRenderTestData.HouseMinX, TileRenderTestData.HouseMinZ,
+                                      TileRenderTestData.RoofPlane);
+        Assert.True(view.ObserverIndoors);
+        view.Draw(HouseFocus);
+        Assert.Equal(HouseGroundProps + 1 + HouseRoofProps, view.LastDrawnProps);
     }
 
     [Fact]

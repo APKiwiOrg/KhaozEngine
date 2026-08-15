@@ -7,6 +7,7 @@ using KhaozEngine.Gpu;
 using KhaozEngine.Imaging;
 using KhaozEngine.Primitives;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace KhaozEngine.Tests.Gpu
 {
@@ -34,6 +35,10 @@ namespace KhaozEngine.Tests.Gpu
     // Skipped unless KE_GPU_TESTS is set.
     public sealed class GpuSkinningReproGpuTests
     {
+        readonly ITestOutputHelper _out;
+
+        public GpuSkinningReproGpuTests(ITestOutputHelper output) => _out = output;
+
         const int W = 256, H = 64;
         const int N = 8;                 // distinct bones exercised (0..7), index 7 is a strong "past element 0" probe
         const int MaxBones = 128;        // matches SkinningMath.MaxBonesPerDraw: the uniform block is `mat4 bones[128]` = 8 KiB
@@ -195,6 +200,33 @@ void main() { o = vec4(1.0, 1.0, 1.0, 1.0) + Tint * 1e-30; }";
         {
             using GpuDeviceContext ctx = GpuDeviceContext.CreateHeadless();
             IGpuDevice gd = ctx.GpuDevice;
+
+            // THIS ROW IS THE OTHER ONE THAT PROVOKES METAL'S API VALIDATION ON THE INCUMBENT, and it took
+            // https://github.com/APKiwiOrg/KhaozEngine/issues/621 to attribute it. The shape above is the
+            // split-stage one 2.3a of docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md measures: the vertex
+            // reads VBlock at set 0 and nothing else, the fragment reads U at set 1 and nothing else. The
+            // incumbent counts one slot per kind across the WHOLE declared layout, so it writes U at buffer index
+            // 1, while the cross-compiler numbers each stage densely from 0 over only what that stage declares,
+            // so the emitted fragment function reads buffer index 0. Nothing is bound there, and the layer's
+            // default error mode is assert, so the draw kills the test HOST rather than failing this row.
+            //
+            // The mis-bind costs this row's ASSERTION nothing, which is why it went unnoticed for so long: U's
+            // only use is `Tint * 1e-30`, present to put a second uniform buffer in the pipeline rather than to
+            // be read, and the bone columns this row measures come from the vertex stage, which binds correctly.
+            // So the row keeps its meaning on every unarmed run and on every other backend.
+            //
+            // THE GUARD IS THE BACKEND AS WELL AS THE ARMING, deliberately. The engine's own native Metal backend
+            // binds at the index read out of each stage's emission, so this same draw is CORRECT there and the
+            // layer says nothing: the metal-native leg runs this row armed today and it passes. Standing down on
+            // the arming alone would throw that away to work around a defect that is not on that backend. The
+            // defect itself is the incumbent's numbering, measured, recorded, and retiring with that leg
+            // (https://github.com/APKiwiOrg/KhaozEngine/issues/604), so there is nothing to fix here.
+            if (gd.Backend == GpuBackendKind.Metal && MetalValidationDormancy.StandDown(_out,
+                    "reproduces the incumbent's split-stage mis-binding on purpose, by reading its frame UBO from "
+                    + "the fragment stage alone at set 1 behind a vertex-only set 0, which the layer sees as a "
+                    + "draw with an unbound fragment buffer at index 0"))
+                return;
+
             var f = gd.Factory;
 
             // Combined vertex block: [0] = Mvp (identity), [1+i] = bones[i]. The shader's bones[i] == combined[1+i].

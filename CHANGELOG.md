@@ -12,9 +12,11 @@ the write-after-read hazard the `sync` validation tier reported 138 times across
 `Render2DSnapshot.Capture` frees the textures and fonts its callback created instead of leaving them to the
 per-capture device teardown, which that same tier reported as twelve leaked Vulkan objects. That backend's bind
 flush also stops at the set count the bound pipeline layout declares, so a switch to a pipeline with fewer sets
-no longer binds a set that layout has no entry for, which was nine of the `vulkan-native` leg's failures. On the
-Metal side, the unattributed draw that aborted the incumbent test host under the API validation layer is
-attributed to one row and stood down, so that suite finishes armed.
+no longer binds a set that layout has no entry for, which was nine of the `vulkan-native` leg's failures, and its
+layout tracker answers a subresource range CONTAINED IN one it already tracks instead of refusing it as a partial
+overlap, which was another nine and the whole of that leg's water failures. On the Metal side, the unattributed
+draw that aborted the incumbent test host under the API validation layer is attributed to one row and stood down,
+so that suite finishes armed.
 
 ### A staged upload brackets its copy in two barriers (#618)
 
@@ -160,6 +162,38 @@ shipped transition both ways with the assertion armed.
 failures to 10, and the nine that went are exactly this issue's nine. What remains is other people's: eight
 `WaterClipmapAcceptanceTests` plus `WaterSurfProbe` (#623) and `TheUnbuiltMembers_NameTheirOwnRow` (#622, which
 reds the incumbent Vulkan leg too). The `gpu-vulkan-sync` job is green on the same run.
+
+### A subresource range inside a tracked one moves that entry rather than being refused (#623)
+
+`VulkanLayoutTracker.Classify` enumerated three shapes for a transition that meets an already tracked range: the
+same range, a range CONTAINING tracked narrower ones, and a partial overlap, which it refused. A fourth shape was
+never named and fell through to that refusal: a range CONTAINED IN one tracked wider entry. No public API
+changes, since the tracker is internal to `KhaozEngine.Gpu.Vulkan`.
+
+**The shape is what the third one's own collapse produces.** `OceanFftProducer.BuildMipChain` seeds each layer of
+the cascade map with a per-layer `CopyTextureSubresource` and then calls `GenerateMipmaps`, which names mip 0 over
+every layer. That request contains the per-layer entries, so it is answered and the pieces COLLAPSE into one entry
+covering mip 0 over all layers, which is the behaviour that keeps the restore at `End` one barrier. The next
+recording of the same composition then seeds layer 0 again, into a mip 0 the tracker now holds whole, and the
+refusal fired with a message asserting that neither range contains the other while the tracked one plainly does.
+
+**Answered by moving the entry, not by splitting it.** The barrier covers the ENTRY's range rather than the
+request's, so the entry moves from its own layout and stays one uniform entry. That transitions subresources the
+caller did not name, and it is sound precisely because they are already that list's: every one is inside an entry
+the recording put there, nothing at rest is touched, and `End` still restores it in one barrier. Splitting the
+entry down to the request would mean naming the entry MINUS the request, which is the rectangle subtraction this
+tracker declines to do, and it would trade one entry for up to four. Genuine partial overlaps are still refused
+by name.
+
+**The test that pinned the refusal was built from a contained pair**, so it passed for the wrong reason and left
+this gap uncovered for the life of the backend. It now uses mips 0 to 1 against mips 1 to 2, which really do
+overlap with neither holding the other, and the new `VulkanRepeatedChainTests` drives the ocean's two-round
+composition through the real `VulkanCommandList`.
+
+**Nine rows, one mechanism, one leg.** Eight `WaterClipmapAcceptanceTests` and
+`WaterSurfProbe.Clipmap_boundary_step_height_maps` all failed with this single exception on `vulkan-native`. The
+incumbent Veldrid Vulkan leg passes them on the same lavapipe, because the refusal is this backend's own
+bookkeeping and no driver is involved, which is the guest-leg design doing the job it was added for.
 
 ## 17.36.0
 

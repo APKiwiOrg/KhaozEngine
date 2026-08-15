@@ -1029,8 +1029,19 @@ full-chain by construction. So a wider range that CONTAINS narrower tracked ones
 with ONE barrier per piece, each from its own layout, which is why levels left disagreeing by a blit chain
 (0 to N-2 in `TRANSFER_SRC_OPTIMAL`, N-1 in `TRANSFER_DST_OPTIMAL`) are not an ambiguity. The pieces then COLLAPSE
 into one entry, so the restore at `End` owes one barrier rather than one per level and a second bind of the same
-chain owes none. Two shapes are refused by name. A range that PARTIALLY overlaps a tracked one, because
-transitioning it would move part of that range and leave its entry claiming a layout the rest no longer has. And
+chain owes none.
+
+That collapse is what makes the OPPOSITE shape ordinary, and it is answered too: a range CONTAINED IN one tracked
+wider entry, which is what a per-layer copy asks for once a whole-layer mip generation has collapsed the layers
+into one entry. The barrier covers the ENTRY rather than the request, so the entry moves whole from its own layout
+and stays one uniform entry. That widens past what the caller named, and it is sound because every subresource it
+moves is already inside an entry that recording put there: nothing at rest is touched, and `End` still restores
+the entry in one barrier. Splitting the entry down to the request instead would mean naming the entry MINUS the
+request, which is a rectangle subtraction this tracker does not do, and it would trade one entry for up to four.
+
+Two shapes are refused by name. A range that PARTIALLY overlaps a tracked one, meaning they share a subresource
+and neither holds the other, because transitioning it would move part of that range and leave its entry claiming a
+layout the rest no longer has. And
 a wider range whose untouched levels would themselves need a barrier, which only happens when the target is not
 the resting layout, since untouched means at rest. That second one is unreachable through a sampled bind, because
 `Sampled` wins the resting ladder, so a full-chain texture rests exactly where a sampled bind wants it.

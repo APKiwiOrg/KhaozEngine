@@ -96,6 +96,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// mid-generation stay trackable: the tracker refuses two PARTIALLY OVERLAPPING ranges and answers
         /// disjoint ones, and a per-subresource range is disjoint from every other.
         /// </para>
+        /// <para>
+        /// ON THE SECOND AND EVERY LATER RECORDING OF A CHAIN INTO ONE LIST it is not disjoint from every other,
+        /// and that shape is answered too. <see cref="GenerateMipmaps"/> names mip 0 over every layer, which
+        /// collapses the per-layer entries these copies left into one wider entry, so the next round of copies
+        /// asks for one layer of a mip the tracker now holds whole. The tracker transitions the entry it holds.
+        /// </para>
         /// </remarks>
         public void CopyTextureSubresource(IGpuTexture src, uint srcMipLevel, uint srcArrayLayer, IGpuTexture dst,
             uint dstMipLevel, uint dstArrayLayer, uint width, uint height)

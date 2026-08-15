@@ -55,7 +55,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// Tracking is per subresource RANGE (V-F6), and the standard streaming path produces both shapes in one
     /// recording: a copy seeds mip 0, mip generation walks the chain a level at a time, and then a sampled bind
     /// names the WHOLE chain, because the seam has no texture-view type and the sampled view is full-chain by
-    /// construction (V-M11). Three cases, and only one of them is refused.
+    /// construction (V-M11). Four cases, and only one of them is refused.
     /// <list type="bullet">
     /// <item><description><b>The same range.</b> The entry is updated in place.</description></item>
     /// <item><description><b>A range that CONTAINS tracked narrower ones.</b> Answered: one barrier per piece,
@@ -66,6 +66,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// answered when the leftover needs no barrier (the target IS the resting layout, which every whole-chain
     /// sampled bind satisfies because Sampled wins the resting ladder outright) and refused
     /// otherwise.</description></item>
+    /// <item><description><b>A range CONTAINED IN one tracked wider entry.</b> Answered over the ENTRY's range
+    /// rather than the request's: one barrier from the entry's own layout, covering every subresource the entry
+    /// holds, and the entry stays one entry at the new layout. It is the previous case arriving a second time,
+    /// because the collapse that case performs is what makes the entry wider than the next request. Nothing
+    /// outside the entry is touched, so the list transitions only subresources it already owns, and no leftover
+    /// has to be named as a range.</description></item>
     /// <item><description><b>A range that PARTIALLY overlaps a tracked one.</b> REFUSED, and this is the case
     /// worth naming: transitioning it would move part of the tracked range, so that entry would claim a layout
     /// the rest of it no longer has, and the restore at <c>End</c> would emit a barrier whose old layout is a
@@ -120,6 +126,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// MAKES the range uniform, one barrier per piece. Reporting one layout for it would have to pick a level
         /// and call it the answer, and a caller that skipped a barrier on that answer is the corruption this whole
         /// model exists to make impossible.
+        /// </para>
+        /// <para>
+        /// A RANGE CONTAINED IN A WIDER TRACKED ONE IS THE OPPOSITE CASE AND IS ANSWERED, with that entry's
+        /// layout. An entry is uniform, so its layout is true of every subresource in it, and therefore of any
+        /// part of it somebody asks about.
         /// </para>
         /// </summary>
         /// <exception cref="InvalidOperationException">The range contains tracked narrower ranges, or partially
@@ -371,6 +382,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             EnsureCapacity(slot + 1);
 
+            // THE ENTRY'S RANGE WINS OVER THE REQUEST'S, which is what answers a request NARROWER than the entry
+            // that holds it: the barrier covers everything the entry claims, so the entry stays uniform and stays
+            // one entry. For an exact match the two ranges are the same range, so this is the same line twice.
             ImageSubresourceRange range = index < 0 ? image.SubresourceRange : Map[index].Range;
             _batch[slot] = Transition(image.Image, range, current, target);
 
@@ -442,9 +456,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             return count;
         }
 
-        // The entry for this image AND this exact range, or -1, plus how many tracked entries the requested range
-        // CONTAINS. It keeps scanning past a hit deliberately, so a range recorded under a shape this one neither
-        // equals nor contains is caught rather than silently mistracked.
+        // The entry a transition of this range acts on, or -1, plus how many tracked entries the requested range
+        // CONTAINS. The entry is the one that EQUALS the request, or the one wider entry that contains it, and both
+        // answers mean the same thing to every caller: this is the entry whose layout the range is in and whose
+        // range the barrier names. It keeps scanning past a hit deliberately, so a range recorded under a shape
+        // this one neither equals, contains, nor sits inside is caught rather than silently mistracked.
         int Classify(in VulkanTrackedImage image, out int covered)
         {
             int found = -1;
@@ -470,6 +486,26 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 if (image.Range.Contains(entry.Subrange))
                 {
                     covered++;
+                    continue;
+                }
+
+                // AND NARROWER THAN ONE TRACKED ENTRY IS ANSWERABLE OVER THAT ENTRY, which is the SECOND arrival
+                // of the widening case above and the shape the ocean's mip chain produces every frame after the
+                // first. GenerateMipmaps names mip 0 over every layer, which collapses the per-layer entries the
+                // seeding copies left into one, and the next frame's copies then ask for one layer of a mip 0 the
+                // tracker now holds whole.
+                //
+                // THE BARRIER WIDENS TO THE ENTRY RATHER THAN THE ENTRY SPLITTING TO THE REQUEST. An entry is
+                // UNIFORM by construction, so its layout is true of every subresource in it and one barrier over
+                // the whole entry is valid. Splitting instead would mean naming the entry MINUS the request, which
+                // is the rectangle subtraction this tracker refuses to do, and it would trade one entry for up to
+                // four that all have to be restored separately at End. Widening moves subresources the caller did
+                // not name, and that is sound precisely because they are already this list's: every one of them is
+                // inside an entry this recording put there, nothing at rest is touched, and End still restores the
+                // entry in one barrier.
+                if (entry.Subrange.Contains(image.Range))
+                {
+                    found = i;
                     continue;
                 }
 

@@ -181,7 +181,16 @@ void main() { o = vec4(1.0, 1.0, 1.0, 1.0); }";
         //   buffer (the combined { Mvp; bones[128] }) AT SET 0, with every other UBO/texture at set 1+ read ONLY by
         //   the fragment. Then all 8 bones read correctly. Shipping this in the engine requires the material + frame
         //   UBO moved off set 0 for the skinned pipeline (a skinned-specific fragment + material layout), because the
-        //   shared ModelFrag reads the material at set 0 - see the spike report. ----
+        //   shared ModelFrag reads the material at set 0 - see the spike report.
+        //   AND THAT LAST SENTENCE HAS A CAVEAT THE SPIKE COULD NOT SEE, added after MM6 measured the same shape
+        //   (2.3a of docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md, issue #604). "Every other UBO read ONLY
+        //   by the fragment, at set 1+" is precisely the split-stage layout the INCUMBENT mis-binds: it writes that
+        //   buffer at an index the emitted fragment function does not read, so a real material UBO there would read
+        //   all zero on GpuBackendKind.Metal, silently. It costs THIS row nothing because U is only ever
+        //   `Tint * 1e-30`, which is why the row still passes and why the layer, not a pixel, is what found it
+        //   (#621). So the fold is still the fix for the BONE read, and the set-1 half of the recommendation waits
+        //   on the incumbent leg retiring. MslBindingOrder.CheckPrefix rejects the shape mechanically in the
+        //   meantime, so it cannot reach a shipped shader by accident. ----
         const string TwoUboVert = @"#version 450
 layout(set=0, binding=0) uniform VBlock { mat4 Mvp; mat4 bones[128]; };  // the vertex's ONLY resource buffer, at set 0
 layout(location=0) in vec2 Pos;

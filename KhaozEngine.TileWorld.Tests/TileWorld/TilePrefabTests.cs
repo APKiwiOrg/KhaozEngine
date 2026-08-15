@@ -52,7 +52,9 @@ public class TilePrefabTests
         TilePrefabObject wall = r.Objects.First(o => o.ArchetypeId == "wall");
         Assert.Equal((0, 2, 1), (wall.X, wall.Z, wall.Rotation));
         Assert.Equal(2, r.Planes[0]!.OverlayRotation![0 * 2 + 0 + 2 * 2]);
-        Assert.Equal(300 - 100, r.Planes[0]!.HeightsRelative![0 * 3 + 2]);
+        // The rotated SW corner came from the old (3, 0) corner at relative -100, so re-basing lifts every corner by 100.
+        Assert.Equal(300 - 100 + 100, r.Planes[0]!.HeightsRelative![0 * 3 + 2]);
+        Assert.Equal(0, r.Planes[0]!.HeightsRelative![0]);
     }
 
     [Fact]
@@ -82,15 +84,12 @@ public class TilePrefabTests
         Assert.Equal(expected.Planes[0]!.OverlayShape, back.Planes[0]!.OverlayShape);
         Assert.Equal(expected.Planes[0]!.OverlayRotation, back.Planes[0]!.OverlayRotation);
         Assert.Equal(expected.Planes[0]!.Settings, back.Planes[0]!.Settings);
-        // A turn moves the prefab's SW corner to a different physical corner, so a rotated prefab's heights stay
-        // relative to a corner that is no longer its own (0, 0). Extract always re-bases on ITS (0, 0), so the
-        // round trip preserves the height SHAPE with that one constant taken out.
-        short baseShift = expected.Planes[0]!.HeightsRelative![0];
-        Assert.Equal(expected.Planes[0]!.HeightsRelative!.Select(v => (short)(v - baseShift)), back.Planes[0]!.HeightsRelative);
+        Assert.Equal(expected.Planes[0]!.HeightsRelative, back.Planes[0]!.HeightsRelative);
         Assert.Equal(expected.Planes[1]!.Underlay, back.Planes[1]!.Underlay);
         Assert.Equal(expected.Objects.Select(o => (o.ArchetypeId, o.X, o.Z, o.Plane, o.Rotation)).OrderBy(t => t),
                      back.Objects.Select(o => (o.ArchetypeId, o.X, o.Z, o.Plane, o.Rotation)).OrderBy(t => t));
-        Assert.Equal(50 + baseShift, doc.CornerHeightCm(40, 40, 0));
+        // The datum invariant: the prefab's SW corner lands on the target's existing ground under every rotation.
+        Assert.Equal(50, doc.CornerHeightCm(40, 40, 0));
         Assert.True(touched.Contains(39, 39));
         Assert.True(touched.Contains(40 + expected.Width, 40 + expected.Height));
         Assert.All(doc.AllObjects().Where(o => o.X >= 40), o => Assert.True(o.Id > 2));

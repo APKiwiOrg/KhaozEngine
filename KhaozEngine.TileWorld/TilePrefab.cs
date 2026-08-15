@@ -160,20 +160,23 @@ public static class TilePrefabs
         return prefab;
     }
 
-    /// <summary>The prefab turned <paramref name="rotation"/> quarter turns clockwise (north up). The input is
+    /// <summary>The prefab turned <paramref name="rotation"/> quarter turns clockwise (north up). The rotated
+    /// prefab is re-based so its new SW corner on plane 0 is height 0, the same datum Extract uses. The input is
     /// not modified.</summary>
     public static TilePrefab Rotate(TilePrefab prefab, int rotation)
     {
         ArgumentNullException.ThrowIfNull(prefab);
         TilePrefab result = Clone(prefab);
         for (int i = 0; i < (rotation & 3); i++) result = RotateOnce(result);
+        Rebase(result);
         return result;
     }
 
     /// <summary>Stamps the prefab with its SW tile at (x, z) on <paramref name="plane"/> (prefab plane i lands
-    /// on plane + i, clipped to the world's plane count). Every target tile's region must exist. Objects get
-    /// fresh ids, markers replace same-name markers. Returns the touched rect (one tile wider to the west and
-    /// south and one row/column further north and east, for the corner writes).</summary>
+    /// on plane + i, clipped to the world's plane count). The prefab's SW corner is its height datum, so it
+    /// lands on the existing ground at (x, z) whatever the rotation. Every target tile's region must exist.
+    /// Objects get fresh ids, markers replace same-name markers. Returns the touched rect (one tile wider to the
+    /// west and south and one row/column further north and east, for the corner writes).</summary>
     public static TileRect Place(TileWorldDocument doc, TilePrefab prefab, int x, int z, int plane, int rotation)
     {
         ArgumentNullException.ThrowIfNull(doc);
@@ -209,6 +212,24 @@ public static class TilePrefabs
         foreach (TilePrefabMarker m in p.Markers)
             if (plane + m.Plane < doc.PlaneCount) doc.SetMarker(m.Name, x + m.X, z + m.Z, plane + m.Plane, m.Tags);
         return TileRect.FromCorners(x - 1, z - 1, x + w, z + h);
+    }
+
+    // A turn moves the SW corner to a different physical corner, so the heights come out relative to a corner
+    // that is no longer the prefab's own (0, 0). Put the datum back on that corner. The shift is read from plane
+    // 0 and applied to EVERY plane, so the offsets between planes survive it. Cheap and idempotent: an
+    // Extract-fresh prefab is already at datum 0, so this is a no-op on the unrotated path.
+    static void Rebase(TilePrefab p)
+    {
+        if (p.Planes.Count == 0) return;
+        short[]? datum = p.Planes[0]?.HeightsRelative;
+        if (datum is null || datum.Length == 0 || datum[0] == 0) return;
+        int shift = datum[0];
+        foreach (TilePrefabPlane? plane in p.Planes)
+        {
+            short[]? h = plane?.HeightsRelative;
+            if (h is null) continue;
+            for (int i = 0; i < h.Length; i++) h[i] = (short)Math.Clamp(h[i] - shift, short.MinValue, short.MaxValue);
+        }
     }
 
     static TilePrefab RotateOnce(TilePrefab p)

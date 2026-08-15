@@ -89,11 +89,17 @@ public sealed class TileWorldSource
         // Hashed from the region, not read out of _known, which is the manifest as it stood at Open. A region
         // that was loaded, edited and saved has new bytes on disk and a new hash in the manifest, while _known
         // still holds the old one. Recording that stale hash here would put it back into the next save's
-        // manifest over bytes it does not describe, and every later load would then refuse the world. The
-        // region is clean by the check above, so its canonical bytes are the ones already on disk.
+        // manifest over bytes it does not describe, and every later load would then refuse the world. Every
+        // file this engine writes is canonical, and a clean region reloaded from one re-serialises to the
+        // same bytes, so this is the hash of what is on disk.
         string hash = TileWorldHash.OfRegion(r);
         Document.RemoveRegion(c);
         Document.UnloadedRegionHashes[c] = hash;
+        // _known moves with it, or the next EnsureLoaded checks the file against the Open-time hash and calls
+        // a correctly saved region a torn write. This is also what makes a region CREATED after Open reachable:
+        // it was never in the manifest we read, so without this it would be permanently unknown to this source
+        // even though the save put it in the manifest on disk.
+        _known[c] = hash;
         return true;
     }
 }

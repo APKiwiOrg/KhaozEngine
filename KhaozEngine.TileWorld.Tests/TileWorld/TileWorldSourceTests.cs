@@ -22,6 +22,7 @@ public class TileWorldSourceTests
         Assert.Equal(3, s.KnownRegions.Count);
         Assert.Empty(s.Document.Regions);
         Assert.True(s.IsKnown(new RegionCoord(1, 0)));
+        Assert.False(s.IsKnown(new RegionCoord(9, 9)));
         Assert.False(s.IsLoaded(new RegionCoord(1, 0)));
         Assert.Null(s.EnsureLoaded(new RegionCoord(5, 5)));
         TileRegion r = s.EnsureLoaded(new RegionCoord(1, 0))!;
@@ -42,12 +43,22 @@ public class TileWorldSourceTests
     }
 
     [Fact]
+    public void EnsureLoaded_rect_stops_at_the_region_edge_and_ignores_an_empty_rect()
+    {
+        using var tmp = new TempDir();
+        TileWorldSource s = TileWorldSource.Open(SavedWorld(tmp));
+        Assert.Single(s.EnsureLoaded(new TileRect(0, 0, 64, 64)));
+        Assert.Empty(s.EnsureLoaded(new TileRect(0, 0, 0, 0)));
+    }
+
+    [Fact]
     public void Unload_drops_a_clean_region_and_a_save_still_carries_it()
     {
         using var tmp = new TempDir();
         string dir = SavedWorld(tmp);
         TileWorldSource s = TileWorldSource.Open(dir);
         s.EnsureLoaded(new RegionCoord(1, 0));
+        Assert.False(s.Unload(new RegionCoord(2, 2)));
         Assert.True(s.Unload(new RegionCoord(1, 0)));
         Assert.False(s.IsLoaded(new RegionCoord(1, 0)));
         Assert.Null(s.Document.FindObject(1));
@@ -83,6 +94,36 @@ public class TileWorldSourceTests
         TileWorldFile.Save(s.Document, dir);
         TileWorldDocument back = TileWorldFile.Load(dir);
         Assert.Equal(2, back.GetUnderlay(1, 1, 0));
+    }
+
+    [Fact]
+    public void A_region_saved_then_unloaded_loads_again_with_the_edit_on_it()
+    {
+        using var tmp = new TempDir();
+        string dir = SavedWorld(tmp);
+        TileWorldSource s = TileWorldSource.Open(dir);
+        s.EnsureLoaded(new RegionCoord(0, 0));
+        s.Document.SetUnderlay(1, 1, 0, 2);
+        TileWorldFile.Save(s.Document, dir);
+        Assert.True(s.Unload(new RegionCoord(0, 0)));
+        Assert.NotNull(s.EnsureLoaded(new RegionCoord(0, 0)));
+        Assert.Equal(2, s.Document.GetUnderlay(1, 1, 0));
+    }
+
+    [Fact]
+    public void A_region_created_after_open_becomes_known_once_it_is_saved_and_unloaded()
+    {
+        using var tmp = new TempDir();
+        string dir = SavedWorld(tmp);
+        TileWorldSource s = TileWorldSource.Open(dir);
+        var c = new RegionCoord(3, 3);
+        s.Document.GetOrCreateRegion(c);
+        s.Document.SetUnderlay(c.OriginX + 1, c.OriginZ + 1, 0, 5);
+        TileWorldFile.Save(s.Document, dir);
+        Assert.True(s.Unload(c));
+        Assert.True(s.IsKnown(c));
+        Assert.NotNull(s.EnsureLoaded(c));
+        Assert.Equal(5, s.Document.GetUnderlay(c.OriginX + 1, c.OriginZ + 1, 0));
     }
 
     [Fact]
